@@ -16,6 +16,19 @@ use lb_bus::Bus;
 
 use crate::registry::Registry;
 
+/// The MCP authorize gate, exposed for **host-native tools** (e.g. the asset verbs) that are not
+/// wasm extensions but must still be reached through the one MCP contract (README §6.5). A host
+/// tool runs this first — workspace-first, then the `mcp:<tool>:call` capability — so the MCP
+/// surface enforces the same isolation + deny as a routed extension call, *before* delegating to
+/// the host verb (which adds its own store-surface capability + membership/grant gate).
+pub fn authorize_tool(
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+) -> Result<(), ToolError> {
+    authorize::authorize(principal, ws, qualified_tool)
+}
+
 /// Call `<ext>.<tool>` as `principal` with a JSON input string. Returns the JSON output, or a
 /// [`ToolError`]. The single public entry to the MCP tool surface.
 ///

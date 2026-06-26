@@ -50,13 +50,24 @@ pub/sub.
 - **Idempotency:** stable `(channel, id)` keys make re-delivery safe, which is the precondition
   the must-deliver outbox will rely on (a receiver dedups on item id).
 
+## What S3 leaned on (idempotent apply shipped via sync)
+
+The idempotent `(channel, id)` upsert is exactly the precondition the §6.8 sync relies on. S3's
+channel sync (`../sync/sync-scope.md`) is the **append-style** subset of the outbox promise:
+`replay_history` re-publishes durable items and the receiver applies them idempotently (re-delivery
+is a no-op). The **transactional** outbox (must-deliver with a delivery cursor, mutable records with
+last-writer-wins) is still the next step — proven by `host/offline_sync_test`'s idempotent-apply
+and duplicate-replay tests, which validate the dedup precondition.
+
 ## Testing plan
 
 - S2 (shipped): `inbox/inbox_test` — record+list ordered, idempotent re-record, channels
   independent within a workspace, **mandatory workspace-isolation** (B never sees A's items).
   Channel-level coverage in `host/messaging_*` (deny, isolation across all three surfaces).
-- Outbox (S3+): write a must-deliver message offline on an edge, reconnect, assert at-least-once
-  delivery with receiver-side dedup on item id (the §6.8 idempotent-apply rule).
+- S3 (shipped, sync subset): `host/offline_sync_test` — offline edge writes apply idempotently on
+  reconnect; duplicate replay does not duplicate; sync never crosses the workspace wall.
+- Outbox (next): write a must-deliver message transactionally, relay at-least-once with a delivery
+  cursor, dedup on the receiver (extends the idempotent-apply rule to non-append-style records).
 
 ## Open questions
 

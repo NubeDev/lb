@@ -76,10 +76,20 @@ This is a property of the dependency, not our design; one worker thread suffices
   isolation** — a sub in ws B never receives a publish in ws A (`host/messaging_isolation_test`);
   presence join/leave via liveliness + a presence deny test (`host/presence_test`).
 
+## What shipped in S3 (request/response + the second node)
+
+- `bus::declare_queryable` / `bus::query` — a workspace-scoped Zenoh **queryable**: the
+  request/response transport the routed MCP tool call rides on (`mcp/{ext}/call`). The `ws/{id}/`
+  prefix walls it exactly like pub/sub — a query in workspace B can't reach a queryable in A.
+- The **second node** is config: `Node::boot_as(role)` opens the same peer; two in-process peers
+  auto-discover into one network. Explicit router endpoints stay a deployment concern (S7).
+
 ## Open questions
 
 - Message classification (fire-and-forget / must-deliver / must-replay, §6.2) — **still open**;
-  formalize when a second node exists. must-deliver routes through the outbox (inbox-outbox scope).
-- Router endpoint config shape (S3).
+  the **append-style idempotent-apply** subset shipped via sync (`replay_history` + idempotent
+  apply, see `../sync/sync-scope.md`); must-deliver still routes through the durable outbox.
+- Explicit router endpoint config shape — deferred to S7 (in-process auto-discovery proved S3).
 - Whether the live subscriber should also replay durable history on connect (today the UI reads
-  `history` then subscribes; a combined "backlog + live" bus primitive could fold the two).
+  `history` then subscribes; a combined "backlog + live" bus primitive could fold the two). Note
+  the sync layer's `replay_history` is a node↔node variant of exactly this.

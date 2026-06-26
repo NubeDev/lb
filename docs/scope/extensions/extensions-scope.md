@@ -108,8 +108,14 @@ instance before authorization can happen; breaks "authorize before dispatch", mc
 
 ## Open questions
 
-- Where the admin-approval set is stored (a `caps:install_grant:{ws}/{ext}` record?) — S1 can
-  hardcode the approved set for `hello`; formalize the install flow at S4/S7.
+- ~~Where the admin-approval set is stored~~ **RESOLVED (S4):** persisted as an `install:{ext_id}`
+  record in the workspace namespace by `lb_host::install_extension` (the `lb_assets::Install` model:
+  `ext_id`, `version`, `granted = requested ∩ admin_approved`, `ts`); `lb_host::installed` reads it
+  back, workspace-isolated. `load_extension` keeps its S1 signature (the low-level runtime load);
+  `install_extension` is the durable install (persist-before-load). See
+  `../../sessions/files/shared-assets-session.md` + `../files/files-scope.md`. Still open: the
+  admin-approval *UI/flow* that produces `admin_approved` (S4 takes it as a caller arg / test
+  fixture), and reconciling a persisted install on boot (re-grant from the record without re-asking).
 - Native (`tier="native"`) manifest fields (exec, supervision, socket) — S7.
 - UI/federation fields (`[ui] remote = …`) — add at S2 with the federated loader.
 - Multi-tool input/output schema declaration in-manifest vs WIT-only — keep WIT-only for now

@@ -15,7 +15,7 @@ mod registry;
 mod route;
 mod serve;
 
-pub use call::{call, ToolError};
+pub use call::{authorize_tool, call, ToolError};
 pub use registry::{Hosted, Registry, Target};
 pub use route::{call_key, CallReply, CallRequest};
 pub use serve::serve_call;

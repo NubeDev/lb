@@ -9,6 +9,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/assets",
     "crates/auth",
     "crates/bus",
     "crates/caps",
@@ -40,6 +41,7 @@ rust-version = "1.90"
 # One place for the shared stack. Crates opt in with `{ workspace = true }`.
 [workspace.dependencies]
 # core platform crates (path deps; the §9 crate map)
+lb-assets = { path = "crates/assets" }
 lb-auth = { path = "crates/auth" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }

@@ -3,6 +3,61 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S4 — shared workspace assets)
+
+A vertical slice through every layer, building the asset substrate the AI workflows (S5–S6) stand on:
+
+- **Docs as workspace assets** — a new `lb-assets` crate (the store side: `Doc`/`Skill`/relation/
+  install models + raw verbs) + a host `assets` service (the auth side). A doc read passes **three
+  gates in order**: workspace (namespace) → capability (`store:doc/*:read`, no grammar change) →
+  **membership** (owner / shared-team-member / linked-channel-`sub`-grantee — the layer tenancy
+  deferred). Sharing is a live graph relation, not a content copy; revoke = delete one edge. See
+  `files/files.md`.
+- **Content as a record, not a bucket** — `DEFINE BUCKET` isn't in our embedded `kv-mem` build, so
+  asset content is stored as a record value behind a bucket-compatible verb (S7 swaps the backend
+  by config). See `../debugging/store/define-bucket-unavailable-in-kv-mem-build.md`.
+- **Skills as versioned, grant-gated assets** — `skill:{id}@{version}` immutable per version
+  (rollback = a prior version); `load_skill` returns the body **only when the workspace granted the
+  skill** (`grant:skill/{id}` relation) — the §6.12 "load only when granted" rule. See `skills/skills.md`.
+- **Extension install records** — `install_extension` persists `granted = requested ∩ admin_approved`
+  as an `install:{ext_id}` record (closing the S1 deferral); `installed` reads it back,
+  workspace-isolated. See `extensions/extensions.md`.
+- **`assets.*` over MCP** — the verbs are reachable through the one MCP contract via a host-native
+  bridge (`call_asset_tool`): the MCP gate (`mcp:assets.*:call`, workspace-first) then the verb's
+  own store + membership gate. See `mcp/mcp.md`.
+- **UI** — a `DocView` + `assets.api` client mirroring the verbs, with a faithful in-memory fake
+  exercising the allow/deny paths. See `frontend/frontend.md`.
+
+**Exit gate met.** A doc private to a user can be shared to a team and linked into a channel; a
+non-member is denied; a skill loads only when granted. **83 Rust + 11 Vitest + 2 shell tests** pass
+— incl. capability-deny (non-member / no-grant) and workspace-isolation across **store + MCP**.
+
+## Shipped (S3 — multi-node / sync / SSE)
+
+A vertical slice through every layer, standing up a second node and the browser path:
+
+- **Node roles as config** — `lb_host::Role` (`Edge | Hub | Solo`) + `Node::boot_as(role)`. Same
+  binary, same crates; the only role-derived policy is data authority (§6.8). A second node is just
+  a second `boot_as` (two in-process Zenoh peers auto-discover). No `if cloud` anywhere. See
+  `sync/sync.md`.
+- **Cross-node MCP routing** — the dispatch seam is real: a tool call on the edge routes over a
+  Zenoh **queryable** (`mcp/{ext}/call`) to the hosting hub, callers + `authorize` unchanged,
+  `caps::check` on the calling node workspace-first. See `mcp/mcp.md`. New bus primitive:
+  `declare_queryable`/`query` (`bus/bus.md`).
+- **Channel sync (edge↔hub, §6.8 append-style subset)** — `sync_channel` idempotently applies bus
+  items into the local store; `replay_history` catches a reconnecting node up. Offline write →
+  reconnect → idempotent merge, conflict-free (inbox upserts on `(channel,id)`). See `sync/sync.md`.
+- **SSE/HTTP gateway** — `lb-role-gateway` (axum): POST/GET `/channels/{cid}/messages` + SSE
+  `/channels/{cid}/stream` (live `message` + `presence`). Every route forwards to a
+  capability-checked `lb_host` verb. The browser reaches a real node; only `ui/lib/ipc/invoke.ts`
+  swapped transport. See `frontend/frontend.md`.
+
+**Exit gate met.** A second node joins; a cross-node tool call routes and is capability-checked;
+channel data syncs edge↔hub with idempotent offline apply; the browser reaches a node over SSE/HTTP
+(replacing the S2 in-memory fake) and sees live messages appear. **61 Rust + 8 Vitest + 2 shell
+tests** pass — incl. capability-deny, workspace-isolation, and the first offline/sync categories,
+all now **across two nodes** and the gateway.
+
 ## Shipped (S2 — first app: messaging + UI + hot-reload)
 
 A vertical slice through every layer, on top of the S1 spine:
@@ -60,6 +115,8 @@ invisible. 35 tests pass (mandatory capability-deny + workspace-isolation includ
 
 ## Not yet built
 
-Multi-node / sync / SSE browser path (S3); shared assets (S4); AI core (S5); coding workflow
-(S6); registry + native tier (S7). The transactional must-deliver **outbox** and bus message
-classification wait for a second node. Tracked in `../STATUS.md` and `../STAGES.md`.
+AI core (S5); coding workflow (S6); registry + native tier (S7). The
+transactional must-deliver **outbox** (S3 shipped the append-style idempotent-apply sync subset;
+the durable outbox with a delivery cursor + change-feed-driven relay is next), bus message
+classification, serve-side authorization for hub-authoritative routed calls, and explicit
+edge→hub router endpoints (S7) remain. Tracked in `../STATUS.md` and `../STAGES.md`.

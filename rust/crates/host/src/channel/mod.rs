@@ -23,3 +23,8 @@ pub use subscribe::{subscribe_channel, ChannelSub};
 // Re-export the bus-key helpers crate-internally so the sync layer publishes/subscribes on the
 // EXACT same keys `post`/`subscribe_channel` use — they cannot drift (one owner, `key.rs`).
 pub(crate) use key::{msg_key as msg_key_for, sub_key as sub_key_for};
+
+// The channel capability gate, crate-internal, so the asset service can reuse it for the
+// doc→channel link path (a doc linked into a channel inherits the channel's `sub` audience).
+// One owner of "may this principal read this channel?" — no second copy to drift.
+pub(crate) use authorize::authorize as authorize_channel;

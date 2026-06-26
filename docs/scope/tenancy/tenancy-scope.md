@@ -56,10 +56,25 @@ touches data — that is how the wall stays real as the surface grows.
 - When the membership graph lands: a member of team X in workspace W cannot read a channel only
   team Y may see — *within* the same workspace (a second isolation layer below the wall).
 
+## The membership graph (landed S4 — the second isolation layer)
+
+S4 lands the first piece of the deferred membership graph, for **shared assets** (docs/skills):
+a third gate *below* the workspace wall and *below* the capability check. `lb_host::get_doc` runs
+ws → capability → **membership** (owner / member of a shared team / `sub`-grantee of a linked
+channel); a member of team X cannot read a doc shared only to team Y, in the same workspace — the
+second isolation layer this scope predicted. Membership is **SurrealDB relation records**
+(`member` team→user, `share` doc→team, `link` doc→channel, `grant` skill→ws), re-resolved live on
+every read, so a revoke is one delete — chosen over minting per-(member,resource) capabilities
+(which would put membership in a token you must chase down). See `../files/files-scope.md`,
+`../skills/skills-scope.md`, `../../sessions/files/shared-assets-session.md`.
+
 ## Open questions
 
-- Membership model: members ↔ teams ↔ channels as SurrealDB records + a capability projection,
-  or capabilities minted per (member, channel)? (Decide when the first multi-user app needs it.)
+- Membership model: ~~records + projection vs capabilities minted per (member, channel)~~
+  **DECIDED (S4):** relation records, re-resolved live (above). Still open: move to SurrealDB
+  `RELATE` graph edges when a second consumer (channel ACLs, tags) appears — the record names are
+  chosen to make that a projection swap; and per-channel ACLs themselves (S4 reuses the channel
+  `sub` capability for the doc→channel link path, not a separate channel-membership record yet).
 - Per-channel visibility (`private`/`public` channels) and how it maps onto the `bus:chan/*`
   capability grammar.
 - Workspace lifecycle: create/suspend/delete and what it does to the namespace + bus keys.

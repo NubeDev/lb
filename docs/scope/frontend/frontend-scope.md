@@ -80,14 +80,24 @@ been adapted to the reusable core-stack product.
 - Extension UI slots can be placeholders in P0, but the shell should leave room
   for them.
 
+## What shipped in S3 (the real browser transport)
+
+- **IPC vs SSE — resolved, the one-file-change promise held.** `lib/ipc/invoke.ts` now picks Tauri
+  IPC (shell) → real HTTP (`http.ts`, when `VITE_GATEWAY_URL` is set) → the fake (tests). The fake
+  is kept ONLY for tests; the browser hits a real node. `ChannelView`/`channel.api`/verb names
+  unchanged. The new files are `lib/ipc/http.ts` and `lib/channel/channel.stream.ts`.
+- **Live updates — shipped.** `channel.stream.ts` opens the gateway's SSE stream; `useChannel`
+  folds OTHERS' `message` events into its existing `setItems` sink (idempotent merge by id). The
+  event shape is the gateway's: `event: message` (an `Item`) and `event: presence`
+  (`{member, present}`).
+
 ## Open questions
 
-- **IPC vs SSE (the big one):** S2 talks to the in-process node over Tauri IPC, with an in-memory
-  fake standing in for the browser/test. S3 brings the real SSE/HTTP gateway; at that point the
-  browser hits a real node and the fake is dropped. The `invoke.ts` seam is shaped so only that
-  one file changes — confirm that holds when the gateway lands.
-- **Live updates:** today `useChannel` reads `history` then would subscribe; the live feed of
-  *others'* messages arrives at S3 (SSE/bus → the same `setItems` sink). Decide the event shape.
+- **Presence in the UI:** the SSE `presence` event is delivered but not yet rendered — wire it to a
+  presence indicator (a small `usePresence` hook beside `useChannel`).
+- **Per-workspace gateway routing:** the gateway fixes the workspace to its session principal, so
+  the UI's `ws` arg is plumbed but unused on the stream/HTTP path. A real login→token→principal
+  session (replacing the demo principal) makes the workspace dynamic.
 - **The native window:** building it needs the webkit2gtk toolchain (absent in CI). The windowed
   `tauri build` is a packaging step; the command layer is tested headlessly. Decide where the
   desktop packaging build runs.

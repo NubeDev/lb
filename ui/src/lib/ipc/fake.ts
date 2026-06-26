@@ -7,6 +7,7 @@
 // and against the real node — the verb names and shapes match the Rust commands one-to-one.
 
 import type { Item } from "@/lib/channel/channel.types";
+import { assetsFakeInvoke } from "./assets.fake";
 
 const store = new Map<string, Item[]>(); // key: `${ws}/${channel}`
 
@@ -15,6 +16,10 @@ function key(ws: string, channel: string): string {
 }
 
 export function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  // Asset commands (`assets_*`) are handled by the asset fake; it returns null for anything
+  // it doesn't own, so the channel cases below still run.
+  const asset = assetsFakeInvoke<T>(cmd, args);
+  if (asset !== null) return asset;
   switch (cmd) {
     case "channel_post": {
       const { ws, channel, item } = args as {

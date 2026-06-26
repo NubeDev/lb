@@ -78,12 +78,25 @@ the smallest thing that proves the whole spine: a caller → MCP → caps → WI
 
 These three are exactly the S1 exit gate (STAGES.md S1).
 
+## What shipped in S3 (cross-node routing)
+
+- `dispatch.rs` is now the real seam: a `Remote` target routes over the bus queryable
+  (`mcp/{ext}/call`) to the hosting node; a `Local` target calls the instance. `lb_mcp::serve_call`
+  + `lb_host::serve_ext` are the serving side. Callers and `authorize` are unchanged from S1;
+  `caps::check` runs on the **calling** node, workspace-first. `call` gained `bus` + `ws`.
+- The serving node does **not** re-authorize — the calling node did, and the workspace-scoped
+  queryable key means a routed request can only target the caller's own workspace.
+- Proven by `host/cross_node_routing_test` (routed call + deny + ws-isolation across two nodes).
+
 ## Open questions
 
-- Tool input/output schema format: raw JSON in S1; adopt JSON-Schema snapshots as the
-  **contract test** (testing §1 "Contract") once there's a second tool. Golden-file location
-  TBD with the WIT snapshots.
-- Streaming tool results (for AI/gateway, §6.14) — out of scope until S5; the `result<>`
-  shape will gain a streaming variant then, a deliberate WIT version bump.
-- Routing tie-breaks when two nodes host the same extension (S3) — defer to the sync/node-role
-  scope; not an S1 concern.
+- Tool input/output schema format: raw JSON; adopt JSON-Schema snapshots as the **contract test**
+  once there's a second tool. Golden-file location TBD with the WIT snapshots.
+- Streaming tool results (for AI/gateway, §6.14) — out of scope until S5; a deliberate WIT bump.
+- Routing tie-breaks when **two nodes host the same extension** — still open (S3 hosts each ext on
+  one node; the registry maps id→single target). Decide with the registry/discovery flow.
+- **Serve-side authorization** when a hub-hosted extension touches *hub-authoritative* data —
+  would need the principal/grant on the wire (token-on-the-bus). Sufficient today because routed
+  tools (hello) touch no hub-owned data and the workspace wall holds on the queryable key.
+- **Remote-extension discovery:** S3 registers remote extensions explicitly
+  (`register_remote_extension`); a discovery/registry flow (which node hosts what) lands S4/S7.

@@ -1,8 +1,9 @@
 # Frontend (as built)
 
-One React + TypeScript codebase. At S2 it ships a **channel view** running in a Tauri v2 shell
-that talks to the in-process node over IPC. Promoted from `scope/frontend/` after the messaging
-slice.
+One React + TypeScript codebase. A **channel view** runs in a Tauri v2 shell (in-process node over
+IPC) AND in a plain browser against a real node over **SSE/HTTP** (S3). Promoted from
+`scope/frontend/` after the messaging slice; the S3 transport swap is in
+`../../sessions/sync/multi-node-sync-session.md`.
 
 ## Layout (FILE-LAYOUT §4 — one component/hook per file)
 
@@ -16,10 +17,12 @@ ui/src/
     index.ts              ← barrel (re-export only)
   lib/channel/
     channel.api.ts        ← one call per export: post(), history()
+    channel.stream.ts     ← the SSE live feed (openChannelStream) — S3
     channel.types.ts      ← Item (mirrors lb_inbox::Item)
   lib/ipc/
-    invoke.ts             ← the single IPC seam
-    fake.ts               ← in-memory node stand-in (browser/tests)
+    invoke.ts             ← the single transport seam (Tauri | HTTP | fake)
+    http.ts               ← real HTTP transport to the gateway — S3
+    fake.ts               ← in-memory node stand-in (tests)
 ui/src-tauri/             ← the Tauri v2 desktop shell (the node runs in-process)
 ```
 
@@ -29,14 +32,26 @@ A verb has the **same name** in the host, the shell command, and the client:
 `lb_host::post` ↔ Tauri `channel_post` ↔ `channel.api.ts` `post()`. Opening any one tells you
 where to look for the others.
 
-## The IPC seam
+## The transport seam (one file, three transports)
 
-`lib/ipc/invoke.ts` is the one place that knows how to reach the node. In the Tauri shell it calls
-the Rust command via `@tauri-apps/api`; outside Tauri (a plain browser at S2, or a test) it routes
-to a **faithful in-memory fake** (`fake.ts`) with the same contract — ordered history, idempotent
-on id, workspace-scoped. Feature code never branches on "am I in Tauri", so the same `ChannelView`
-powers the desktop shell, the browser, and the tests unchanged. The fake is dropped at S3 when the
-browser talks to a real node over SSE/HTTP.
+`lib/ipc/invoke.ts` is the one place that knows how to reach the node. It picks by environment:
+
+1. **Tauri shell** → the Rust command via `@tauri-apps/api` (the node runs in-process).
+2. **Browser + gateway** → real **HTTP** (`http.ts`) to the node's SSE/HTTP gateway, when
+   `VITE_GATEWAY_URL` is set (the browser build). This is the S3 swap that replaced the fake.
+3. **Tests** → a faithful in-memory **fake** (`fake.ts`) with the same contract (ordered,
+   idempotent on id, workspace-scoped).
+
+Feature code never branches on the transport, so the same `ChannelView`/`channel.api` power all
+three unchanged — the S3 change was literally this one file (plus the new `http.ts`/`channel.stream.ts`).
+
+## Live updates over SSE (S3)
+
+`channel.stream.ts` opens `GET /channels/{cid}/stream` and receives the gateway's `message` and
+`presence` events. `useChannel` subscribes and folds OTHERS' live messages into its **existing
+`setItems` sink** — an idempotent merge by id (the node's contract), so a live item that also
+arrives via a later history refresh never duplicates. In the Tauri shell / tests there is no
+gateway URL, so the stream is a no-op and the post→refresh round trip is the feed (as at S2).
 
 ## The Tauri shell
 
@@ -55,13 +70,16 @@ style primitives to be pulled in as the component set grows.
 
 ## Tested
 
-Vitest `ChannelView.test.tsx` — **post a message, see it appear** (the S2 exit gate in the UI),
-ordering, empty-message guard — through the real hook + api client + IPC seam. `channel.api.test.ts`
-asserts the node contract over the fake. Rust `commands_test` proves the IPC path reaches the real
-capability-checked node.
+Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, empty-message guard);
+`useChannel.test.ts` (S3) — a message arriving over the (mocked) SSE stream is folded into items via
+`setItems`, idempotently. `channel.api.test.ts` asserts the node contract over the fake. Rust
+`commands_test` proves the IPC path reaches the real capability-checked node; the gateway's
+`gateway_test` proves the HTTP/SSE path (incl. a live message pushed to the browser over a real
+socket).
 
 ## Not yet built
 
 The operational shell (dashboard / extensions / workspaces / settings, the P0 plan in
-`scope/frontend/`); the SSE/HTTP browser path (S3); live push of *others'* messages and presence in
-the UI; the native window packaging build.
+`scope/frontend/`); presence rendered in the UI (the SSE `presence` event is delivered but not yet
+drawn); a real login→token→principal session (the gateway uses a demo principal, fixing the
+workspace per session); the native window packaging build.

@@ -11,6 +11,8 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-26 | store | `DEFINE BUCKET` fails to parse on the embedded `kv-mem` store (assets stored as records instead) | resolved | [store/define-bucket-unavailable-in-kv-mem-build.md](store/define-bucket-unavailable-in-kv-mem-build.md) |
+| 2026-06-26 | bus | `cargo test --workspace` OOM-killed (137) once tests boot 2 nodes each | resolved | [bus/cargo-test-workspace-ooms-with-many-peers.md](bus/cargo-test-workspace-ooms-with-many-peers.md) |
 | 2026-06-26 | bus | a live subscriber receives a message published by a *different* test | resolved | [bus/in-process-peers-share-the-keyspace.md](bus/in-process-peers-share-the-keyspace.md) |
 | 2026-06-26 | store | `ORDER BY data.ts` fails: "Missing order idiom in statement selection" | resolved | [store/order-by-needs-selected-idiom.md](store/order-by-needs-selected-idiom.md) |
 | 2026-06-26 | store | `.content()` rejects raw `serde_json::Value` | resolved | [store/content-rejects-serde-json-value.md](store/content-rejects-serde-json-value.md) |
