@@ -33,6 +33,7 @@ mod tests {
             requested_caps: requested.iter().map(|s| s.to_string()).collect(),
             tools: vec![],
             visibility: Visibility::Private,
+            native: None,
         }
     }
 

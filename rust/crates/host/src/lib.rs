@@ -15,11 +15,14 @@ mod channel;
 mod install;
 mod installed;
 mod load;
+mod native;
+mod registry;
 mod reload;
 mod remote;
 mod role;
 mod serve;
 mod sync;
+mod workflow;
 
 pub use agent::{
     agent_call_key, invoke, invoke_remote, resume, run_session, serve_agent, AgentError,
@@ -38,8 +41,23 @@ pub use channel::{
 pub use install::install_extension;
 pub use installed::installed;
 pub use load::{load_extension, LoadError, Loaded};
+pub use native::{
+    authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
+    restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
+    SidecarMap, Supervised,
+};
+pub use registry::{
+    authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
+    install_native_from_registry, list_catalog, pull, read_cached, record_catalog,
+    resolve as resolve_catalog, RegistryServiceError, Source,
+};
 pub use reload::reload_extension;
 pub use remote::register_remote_extension;
 pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
 pub use sync::{replay_history, sync_channel, ChannelSync};
+pub use workflow::{
+    call_workflow_tool, emit_effect, ingest_issue, relay_outbox, request_approval,
+    resolve_approval, start_coding_job, triage, CodingJob, RelayPass, Target, Triaged,
+    WorkflowError, APPROVAL_CHANNEL, TRIAGE_CHANNEL,
+};

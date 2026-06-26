@@ -3451,6 +3451,7 @@ dependencies = [
  "lb-inbox",
  "lb-jobs",
  "lb-mcp",
+ "lb-outbox",
  "lb-runtime",
  "lb-store",
  "serde",
@@ -3491,6 +3492,16 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "lb-outbox"
+version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

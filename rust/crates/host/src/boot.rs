@@ -9,6 +9,7 @@ use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
 use thiserror::Error;
 
+use crate::native::SidecarMap;
 use crate::role::Role;
 
 #[derive(Debug, Error)]
@@ -32,6 +33,10 @@ pub struct Node {
     /// `reload` all see one source of truth. Interior-mutable (an `RwLock` inside), so loading
     /// or reloading needs only `&Node`.
     pub registry: Arc<Registry>,
+    /// The live native Tier-2 sidecars on this node (native-tier scope), keyed `(ws, ext_id)`.
+    /// Runtime-only — the PID is motion; the durable truth is the `Install` + `native_status`
+    /// records. Shared (`Arc`) like `registry` so the native service drives it with `&Node`.
+    pub sidecars: Arc<SidecarMap>,
     pub role: Role,
 }
 
@@ -53,6 +58,7 @@ impl Node {
             bus,
             engine,
             registry: Arc::new(Registry::new()),
+            sidecars: Arc::new(SidecarMap::new()),
             role,
         })
     }

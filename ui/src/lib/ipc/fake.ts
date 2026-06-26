@@ -9,6 +9,9 @@
 import type { Item } from "@/lib/channel/channel.types";
 import { assetsFakeInvoke } from "./assets.fake";
 import { agentFakeInvoke } from "./agent.fake";
+import { workflowFakeInvoke } from "./workflow.fake";
+import { registryFakeInvoke } from "./registry.fake";
+import { nativeFakeInvoke } from "./native.fake";
 
 const store = new Map<string, Item[]>(); // key: `${ws}/${channel}`
 
@@ -17,10 +20,17 @@ function key(ws: string, channel: string): string {
 }
 
 export function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  // Agent commands (`agent_*`) and asset commands (`assets_*`) are handled by their own fakes;
-  // each returns null for anything it doesn't own, so the channel cases below still run.
+  // Agent (`agent_*`), workflow (`workflow_*`), registry (`registry_*`), and asset (`assets_*`)
+  // commands are handled by their own fakes; each returns null for anything it doesn't own, so the
+  // channel cases below still run.
   const agent = agentFakeInvoke<T>(cmd, args);
   if (agent !== null) return agent;
+  const workflow = workflowFakeInvoke<T>(cmd, args);
+  if (workflow !== null) return workflow;
+  const registry = registryFakeInvoke<T>(cmd, args);
+  if (registry !== null) return registry;
+  const native = nativeFakeInvoke<T>(cmd, args);
+  if (native !== null) return native;
   const asset = assetsFakeInvoke<T>(cmd, args);
   if (asset !== null) return asset;
   switch (cmd) {

@@ -77,8 +77,13 @@ second datastore or a claim race by accident.
   primitive (`UPDATE … WHERE status='queued' RETURN BEFORE`) is recorded but unbuilt.
 - Cron representation (a row vs a separate scheduler) → deferred past S5.
 - Whether `kind` dispatch is a static registry or capability-gated per workspace → S5 uses a single
-  `agent-session` kind driven by the agent host service; the registry/dispatch question opens with
-  the second job kind (S6).
+  `agent-session` kind; **S6 added a second kind** (`coding-session`, driven by the host `workflow`
+  service) — still a static set, no registry yet; the per-workspace capability-gated dispatch opens
+  when extensions provide job kinds (S7).
+- Outbox vs job queue (§6.10): **DECIDED at S6** — the must-deliver outbox is a *dedicated* `outbox`
+  table (the new `lb-outbox` crate), not a reuse of the job queue. A job is a resumable session; an
+  effect is a fire-once intent — separate lifecycles, separate tables. See
+  `../inbox-outbox/outbox-scope.md`.
 
 ## What shipped in S5 (durable resumable session)
 

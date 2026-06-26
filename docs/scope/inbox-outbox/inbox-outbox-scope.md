@@ -69,10 +69,20 @@ and duplicate-replay tests, which validate the dedup precondition.
 - Outbox (next): write a must-deliver message transactionally, relay at-least-once with a delivery
   cursor, dedup on the receiver (extends the idempotent-apply rule to non-append-style records).
 
+## What S6 leaned on (the transactional outbox + resolution facet shipped)
+
+The must-deliver outbox is built — see `outbox-scope.md` and `../../public/inbox-outbox/`. Two
+resolutions here: **(1)** the **outbox storage** open question below is **decided** — a *dedicated*
+`outbox` table (the new `lb-outbox` crate), NOT a reuse of the job queue: a job is a resumable
+session, an effect is a fire-once intent; they share the record shape but differ in lifecycle, so
+separate tables keep each verb single-responsibility and let the relay scan only effects. **(2)** the
+vision §5 "inbox item resolution" finding shipped as a **`Resolution` sibling record** (`lb_inbox`),
+NOT a new `Item` column — the `Item` shape stayed stable.
+
 ## Open questions
 
 - Item `meta`: do richer payloads ride in a `meta: Value` field on `Item`, or in a typed
   per-source extension record the item references? (Defer until a second source exists.)
-- Outbox storage: a dedicated `outbox` table with a delivery cursor vs reusing the job queue
-  (§6.10 ↔ jobs scope) — decide when the must-deliver path is built.
-- Retention/compaction of channel history (the inbox grows forever today).
+- ~~Outbox storage: a dedicated `outbox` table vs reusing the job queue~~ — **DECIDED at S6:** a
+  dedicated `outbox` table (separate lifecycle from jobs). See `outbox-scope.md`.
+- Retention/compaction of channel history *and* delivered outbox rows (both grow forever today).

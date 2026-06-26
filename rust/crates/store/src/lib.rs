@@ -12,8 +12,10 @@ mod open;
 mod read;
 mod record;
 mod write;
+mod write_tx;
 
 pub use list::list;
 pub use open::{Store, StoreError};
 pub use read::read;
 pub use write::write;
+pub use write_tx::{write_tx, Upsert};

@@ -1,0 +1,31 @@
+# The reference native Tier-2 extension (native-tier scope). UNLIKE the wasm `hello`, this is a real
+# host-platform binary the host supervises over stdio — the language-server-style sidecar that proves
+# supervision/restart and closes the S7 exit gate.
+[extension]
+id          = "echo-sidecar"
+version     = "0.1.0"
+name        = "Echo Sidecar"
+description = "A supervised native child exposing an echo tool — the S7 native-tier probe."
+
+[runtime]
+tier        = "native"                  # Tier 2: an OS child, not a wasm component (§6.3)
+world       = "lazybones:ext/extension@0.1.0"  # WIT major still checked at load (ABI gate)
+placement   = "either"
+
+# The native supervision recipe the host turns into a lb_supervisor::Spec.
+[native]
+exec        = "echo-sidecar"            # resolved by the host against the install/target dir
+args        = []
+restart     = "on-crash"                # auto-restart on crash (operator restart is separate)
+
+[capabilities]
+# The sidecar needs nothing host-side for this slice; the mcp:echo-sidecar.echo:call grant lives
+# on the caller's token. Declared empty to show the request/grant split (same as hello).
+request = []
+
+[[tools]]
+name        = "echo"
+description = "Echo the input back, tagged with the workspace identity injected at spawn."
+
+[visibility]
+class = "private"

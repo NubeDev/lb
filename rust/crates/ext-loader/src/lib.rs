@@ -10,4 +10,4 @@ mod grant;
 mod manifest;
 
 pub use grant::grant;
-pub use manifest::{Manifest, ManifestError, Tool, Visibility};
+pub use manifest::{Manifest, ManifestError, Native, Tool, Visibility};

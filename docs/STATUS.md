@@ -16,12 +16,14 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**S5 complete → entering S6 — coding workflow** (see `STAGES.md`). The Rust workspace + a React/Tauri
-UI exist and build; messaging, a second node + sync, cross-node routed tool calls, the browser
-SSE/HTTP path, shared workspace assets, and now the **AI core** — a central workspace-scoped agent
-that owns the tool-call loop (callable by edge users over the routed MCP namespace), the swappable
-AI-gateway sidecar (model access only), and durable resumable workflow jobs — are all proven end to
-end. No doc-site build and no native desktop window (webkit toolchain) yet.
+**In S7 — platform maturity** (see `STAGES.md`); the **signed extension registry** (the first S7 slice)
+has shipped. The Rust workspace + a React/Tauri UI exist and build; messaging, a second node + sync,
+cross-node routed tool calls, the browser SSE/HTTP path, shared workspace assets, the **AI core**
+(central agent + AI-gateway sidecar + durable jobs), the **coding workflow** (issue → triage →
+approval-gated job → progress → transactional outbox), and now the **signed registry** (pull · verify ·
+cache · install · offline · rollback) are all proven end to end. The native Tier-2 sidecar tier and
+packaging the S6 workflow as installed artifacts remain. No doc-site build and no native desktop window
+(webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
 build wasm guest + test + fmt); the four forever decisions (SDK/WIT, capability grammar +
@@ -64,9 +66,31 @@ the in-loop intersection), workspace-isolation across **store + MCP**, and offli
 session resumes; duplicate invocation does not re-spend). See `sessions/agent/ai-core-session.md`
 and `public/SCOPE.md`.
 
-**Exit gate (S6):** a GitHub issue → inbox `needs:triage` → the agent triages + drafts a scope doc →
-an approval inbox item gates a durable coding job → progress streams to a channel → every external
-effect goes through the outbox with retry.
+**S6 exit gate — MET.** A GitHub issue → inbox `needs:triage` → the S5 agent triages + drafts a
+**shared scope doc** → a `needs:approval` inbox item **genuinely gates** a durable coding job (no job
+record before approval; refused with `AwaitingApproval`; a rejected approval starts nothing) →
+progress streams to a channel (motion) → every external effect goes through the **transactional
+outbox** with at-least-once retry + receiver dedup (never lost, never double-sent). New: `lb-outbox`
+(the transactional `Effect` + `enqueue`/`pending`/`mark_*`/relay), `lb_store::write_tx` (the one-tx
+seam), `lb_inbox::Resolution` (the approval facet), the host `workflow` service (the orchestrator +
+the gate), `workflow.*` MCP bridge, UI `WorkflowView`. **124 Rust + 18 Vitest + 2 shell tests** pass
+— incl. capability-deny (each workflow verb), workspace-isolation across **store + MCP**, and
+offline/sync (the outbox delivers at-least-once, idempotently). See
+`sessions/coding-workflow/coding-workflow-session.md` and `public/SCOPE.md`.
+
+**S7 exit gate — FIRST HALF MET (registry); native-sidecar half remains.** An extension installs from
+the **signed** registry → pull · **verify** (Ed25519 over a digest binding manifest+wasm) · cache ·
+install through the existing S4 flow; it runs **offline** once cached (zero source calls on the cached
+path); it **rolls back** to a prior version with **no durable workspace state lost** (a channel message
++ job step survive an N→N−1 install through real wasm); a tampered/unsigned/foreign-key artifact is
+**rejected before caching, even with the grant** (the signature gate is independent of the capability
+gate). New: `lb-registry` (artifact identity + `verify_artifact` + the `VerifiedArtifact` newtype that
+makes verify-before-cache a compile-time guarantee), the host `registry` service (pull/cache/catalog/
+install behind a `Source` fetch seam), `registry.*` MCP bridge, UI `RegistryView`. **145 Rust + 22
+Vitest + 2 shell tests** pass — incl. capability-deny (each registry verb), workspace-isolation across
+**store + MCP**, offline, rollback/hot-reload, and signing/verification (the new crypto surface). The
+**native Tier-2 supervisor** is the remaining half of the gate. See
+`sessions/registry/registry-session.md` and `public/SCOPE.md`.
 
 ---
 
@@ -81,38 +105,50 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | Sync / SSE | sync | S3 | **shipped** | [sync](scope/sync/sync-scope.md) | [multi-node-sync](sessions/sync/multi-node-sync-session.md) | 2nd node (role=config) + queryable routed MCP + edge↔hub sync + axum SSE/HTTP gateway + UI transport swap; 61+8+2 green |
 | Shared assets | files | S4 | **shipped** | [files](scope/files/files-scope.md) + [skills](scope/skills/skills-scope.md) | [shared-assets](sessions/files/shared-assets-session.md) | `lb-assets` crate + host 3-gate (ws→cap→membership) doc/skill svc + grant-gated skills + persisted install records + `assets.*` MCP bridge + UI DocView; 83+11+2 green |
 | AI core | agent | S5 | **shipped** | [agent](scope/agent/agent-scope.md) + [ai-gateway](scope/ai-gateway/ai-gateway-scope.md) + [jobs](scope/jobs/jobs-scope.md) | [ai-core](sessions/agent/ai-core-session.md) | central agent (owns the loop) + routed edge→hub invoke + grant delegation (`agent ∩ caller`) + `lb-jobs` resumable session + `lb-role-ai-gateway` (mock + idempotency cache) + `agent.*` MCP bridge + UI AgentView; 105+14+2 green |
+| Coding workflow | coding-workflow | S6 | **shipped** | [coding-workflow](scope/coding-workflow/coding-workflow-scope.md) + [outbox](scope/inbox-outbox/outbox-scope.md) | [coding-workflow](sessions/coding-workflow/coding-workflow-session.md) | `lb-outbox` (transactional `Effect` + at-least-once relay) + `lb_store::write_tx` + `lb_inbox::Resolution` + host `workflow` service (ingest→triage→approval-GATE→job→outbox) + `workflow.*` MCP bridge + UI WorkflowView; 124+18+2 green |
+| Signed registry | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [registry](sessions/registry/registry-session.md) | `lb-registry` (digest binds manifest+wasm + `verify_artifact` + `VerifiedArtifact` newtype → verify-before-cache) + host `registry` service (pull·verify·cache·catalog·install behind a `Source` seam; rollback = install prior ver) + `registry.*` MCP bridge + UI RegistryView; 145+22+2 green |
 
 ---
 
 ## Scopes authored (ready to build)
 
 The `scope/<topic>/` docs exist for all areas (see `scope/README.md`). **Fully authored:** core,
-auth-caps, mcp, crate-layout, extensions, jobs, bus, inbox-outbox, tenancy, frontend, sync, testing,
-debugging, ai-gateway, **agent** (new this slice). **Promoted to `public/`:** core, auth-caps, mcp,
-crate-layout, bus, inbox-outbox, tenancy, store, frontend, sync, files, skills, **agent** (+
-`public/SCOPE.md`). The remaining `public/` and `sessions/` files are still stubs until their slice
-ships.
+auth-caps, mcp, crate-layout, extensions, jobs, bus, inbox-outbox (+ outbox), tenancy, frontend, sync,
+testing, debugging, ai-gateway, agent, coding-workflow, **registry** (new this slice). **Promoted to
+`public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox (+ outbox + the resolution facet),
+tenancy, store, frontend, sync, files, skills, agent, coding-workflow, **registry** (+ `public/SCOPE.md`).
+Still stubs until their slice ships: `node-roles`, `platform-targets` (S7, the native-tier slice).
 
 ---
 
 ## Next up
 
-1. **S6 coding workflow** (the worked example, `vision/0002-coding-agent-workplace.md`): GitHub
-   issue → inbox `needs:triage` → the **S5 agent** triages + drafts a scope doc → approval inbox
-   item → on approval a durable coding **job** → progress to a channel → external effects through the
-   **outbox**. This is the first real composition of the S5 agent + jobs primitives.
-2. **Transactional must-deliver outbox** (§6.10) — S3 shipped the append-style idempotent-apply sync
-   subset; the durable outbox with a delivery cursor + change-feed-driven relay is the S6 driver
-   (bus + inbox-outbox + sync open questions). Agent progress streaming rides on this.
+1. **S7 platform maturity** (`STAGES.md`): the **extension registry** (pull/verify/cache, signing) is
+   **shipped** (this slice). Remaining: the **native Tier-2** tier (a `process` PID supervisor proven
+   with an IDE-style extension — author `scope/extensions/` for the control plane/supervisor first via
+   SCOPE-WRITTING, re-based onto our primitives), and **packaging the S6 workflow/github-bridge as
+   installed wasm artifacts** (they are host services today; the registry now exists to install them
+   through). Exit gate: ~~install from a signed registry, run offline once cached, roll back a
+   version~~ (MET); a native sidecar is supervised and restarts cleanly (remaining).
+1b. **Registry follow-ups** (deferred from this slice, all in `scope/registry/`): a real HTTP
+   `Source`/`registry-host` server (the in-memory source is the only stub); a durable publisher-key
+   allow-list + admin trust-management flow; key rotation/revocation (needs the hub identity directory);
+   cache eviction/GC; the public catalog read-only union (per-workspace entries ship now);
+   `registry.update` semantics; gateway/Tauri wiring for `registry_*`.
+2. **Real outbox `Target` adapters + relay hardening** — GitHub HTTP / email / the sync publish
+   behind the `Target` trait (in-test target is the only stub); **backoff + dead-letter**, the
+   **multi-relay atomic claim**, FIFO-per-target ordering, and the **LIVE-query relay reactor** (S6
+   uses durable scans + an explicit `start_job`); plus a **resolution reactor** that auto-starts the
+   job on approval.
 3. **Real model provider + streaming** behind the S5 gateway contract — the mock is the only stub;
-   add an OpenAI-compatible / local adapter and stream tokens as Zenoh motion (the gateway fields
-   exist; the loop persists the job today).
-4. **Gateway/Tauri wiring for `agent_invoke` + `assets_*`** (S4/S5 follow-up): the host verbs + MCP
-   bridges + UI fakes exist; route them through the SSE/HTTP gateway + Tauri shell to a real node
-   (mirrors the S3 channel transport swap).
+   add an OpenAI-compatible / local adapter and stream tokens as Zenoh motion. Agent/job progress can
+   now also ride the durable outbox for the must-deliver transcript.
+4. **Gateway/Tauri wiring for `agent_invoke` + `assets_*` + `workflow_*`** (S4/S5/S6 follow-up): the
+   host verbs + MCP bridges + UI fakes exist; route them through the SSE/HTTP gateway + Tauri shell to
+   a real node (mirrors the S3 channel transport swap).
 5. **Fit-and-finish carryover:** render presence in the UI; a real login→token→principal session
    (replacing the gateway's demo principal); **token-on-the-bus** so the hub can verify a routed
-   agent caller's grant (S5 is in-process co-trust); sync the asset/job tables (all `(table,id)`
+   caller's grant (S5/S6 are in-process co-trust); sync the asset/job/outbox tables (all `(table,id)`
    upserts the channel sync path already covers); explicit edge→hub router endpoints (S7).
 
 ---

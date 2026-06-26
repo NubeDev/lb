@@ -3,6 +3,71 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S7 — platform maturity: the signed extension registry)
+
+The first S7 vertical slice: a node installs an extension from a **signed registry**, runs it
+**offline once cached**, and **rolls back** to a prior version — built by composing the S4 install
+flow with a new artifact-verification crate, not by re-cutting either.
+
+- **`lb-registry`** — artifact identity + the one new crypto surface. A `digest(manifest, wasm)`
+  binds the manifest AND the bytes (SHA-256, length-prefixed framing); `verify_artifact` recomputes
+  the digest and Ed25519-verifies the signature against an allow-listed publisher key, returning a
+  **`VerifiedArtifact` newtype it alone can mint**. Reuses the `lb_auth` `ed25519-dalek` idiom — no
+  second crypto stack. See `registry/registry.md`.
+- **The host `registry` service** (beside `agent`/`channel`/`assets`/`workflow`) — `pull` (fetch ·
+  **verify** · cache, serving the cache **without a source call** when present — the offline path),
+  `install_from_registry` (pull THEN the **existing** S4 `install_extension`; **rollback = the same
+  verb with a prior version**), `list`/`resolve` over MCP. The fetch is behind a host-owned `Source`
+  trait (the outbox `Target` / agent `ModelAccess` analogue); `cache_artifact` accepts only a
+  `VerifiedArtifact`, so **verify-before-cache is a compile-time guarantee**. Cache + catalog are
+  SurrealDB records in the workspace namespace (no second datastore; isolation is structural). See
+  `registry/registry.md`.
+- **Two independent gates** — the **capability** gate (`mcp:registry.<verb>:call`, workspace-first)
+  and the **signature** gate (`verify_artifact`). Granted ≠ trusted: a fully-granted caller is still
+  refused a tampered/unsigned/untrusted artifact, and a trusted artifact still needs the grant.
+- **UI** — a `RegistryView` + `registry.api` client mirroring the verbs, with a faithful in-memory
+  fake exercising the capability gate, the signature gate, and rollback. See `frontend/frontend.md`.
+
+**Exit gate — first half MET.** An extension installs from the signed registry; runs offline once
+cached (zero source calls on the cached path); rolls back to a prior version with **no durable
+workspace state lost** (a channel message + job step survive an N→N−1 install through the real wasm);
+a tampered/unsigned/foreign-key artifact is rejected before caching, even with the grant. **145 Rust +
+22 Vitest + 2 shell tests** pass — incl. capability-deny (each registry verb), workspace-isolation
+across **store + MCP** (a ws-B caller sees no ws-A cache/catalog and cannot ride its cache offline),
+offline (install succeeds with the source unreachable once cached), rollback/hot-reload (durable state
+preserved), and signing/verification (the new crypto surface). The native Tier-2 sidecar — the exit
+gate's second half — remains.
+
+## Shipped (S6 — coding workflow)
+
+A vertical slice composing the S5 agent + jobs with a new must-deliver outbox — the worked example
+end to end (vision `0002`), built **entirely from core primitives** (the core never learns "coding
+agent").
+
+- **The transactional must-deliver outbox** — a new `lb-outbox` crate: an `Effect` record + raw
+  verbs. The pattern: `enqueue` (over the new `lb_store::write_tx`) writes the **domain change AND
+  the effect in one transaction** — both commit or neither. `relay_outbox` delivers `pending`
+  at-least-once through a host-owned `Target` trait, retrying `failed` rows; the receiver dedups on
+  `idempotency_key` (never lost, never double-sent). See `inbox-outbox/inbox-outbox.md`.
+- **The inbox resolution facet** — `lb_inbox::Resolution` (approve/reject/defer + actor + ts), a
+  sibling record keyed by the item id (the `Item` shape stayed stable). The subject of the approval
+  gate. See `inbox-outbox/inbox-outbox.md`.
+- **The host `workflow` service** (beside `agent`/`channel`/`assets`) — the orchestrator, holding no
+  durable state: `ingest_issue` → `triage` (drives the S5 agent over MCP to draft + `share_doc` a
+  scope doc) → `request_approval` → `resolve_approval` → `start_coding_job` (**THE GATE**: starts the
+  durable job only on `Approved`, creating nothing otherwise) → `emit_effect` (job step + effect in
+  one transaction) → `relay_outbox`. `workflow.*` is reached over the one MCP contract. See
+  `coding-workflow/coding-workflow.md`.
+- **UI** — a `WorkflowView` + `workflow.api` client mirroring the verbs, with a faithful in-memory
+  fake exercising the capability + approval gates and the outbox. See `frontend/frontend.md`.
+
+**Exit gate met.** The full flow runs; the approval **genuinely gates** the job (no job record
+before approval; refused with `AwaitingApproval`; a rejected approval starts nothing); every external
+effect goes through the outbox with retry. **124 Rust + 18 Vitest + 2 shell tests** pass — incl.
+capability-deny (each workflow verb), workspace-isolation across **store + MCP** (a ws-B caller/relay
+sees no ws-A state), and offline/sync (an effect survives an outage and is delivered at-least-once,
+idempotently — never lost, never double-sent).
+
 ## Shipped (S5 — AI core)
 
 A vertical slice through every layer: a central agent, the swappable gateway, and durable jobs.
@@ -147,11 +212,18 @@ invisible. 35 tests pass (mandatory capability-deny + workspace-isolation includ
 
 ## Not yet built
 
-Coding workflow (S6); registry + native tier (S7). A **real model provider** behind the gateway
-contract (the S5 mock is the only stub), **streaming** agent progress as Zenoh motion + the
-transcript via outbox, and **token-on-the-bus** for routed agent invocations (S5 is in-process
-co-trust) remain. The transactional must-deliver **outbox** (S3 shipped the append-style
-idempotent-apply sync subset; the durable outbox with a delivery cursor + change-feed-driven relay
-is next — the S6 coding-workflow driver), bus message classification, serve-side authorization for
-hub-authoritative routed calls, and explicit edge→hub router endpoints (S7) remain. Tracked in
-`../STATUS.md` and `../STAGES.md`.
+The **native Tier-2 sidecar** tier (S7 exit gate's second half) and **packaging the S6
+workflow/github-bridge as installed wasm artifacts** (now that the registry exists to install them
+through). For the registry itself: a **real HTTP `Source`/`registry-host` server** (the in-memory test
+source is the only stub), a **durable publisher-key allow-list** + the admin trust-management flow,
+**key rotation/revocation** (needs the hub identity directory), **cache eviction/GC**, the **public
+catalog read-only union** (S7 ships per-workspace catalog entries), and **`registry.update`** semantics.
+A **real model provider** behind the gateway contract (the S5 mock is the only stub) and **streaming**
+agent progress as Zenoh motion remain. The outbox's **real `Target`
+adapters** (GitHub HTTP, email, sync), **backoff + dead-letter**, the **multi-relay atomic claim**,
+FIFO-per-target ordering, and the LIVE-query relay reactor are deferred (S6 shipped the transactional
+enqueue + at-least-once retry + receiver dedup with an in-test target). **Token-on-the-bus** for
+routed agent invocations (S5 is in-process co-trust), bus message classification, serve-side
+authorization for hub-authoritative routed calls, packaging the workflow/bridge as installed wasm
+artifacts, and explicit edge→hub router endpoints (S7) remain. Tracked in `../STATUS.md` and
+`../STAGES.md`.

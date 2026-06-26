@@ -16,6 +16,9 @@ lb-ext-loader.workspace = true
 lb-inbox.workspace = true
 lb-jobs.workspace = true
 lb-mcp.workspace = true
+lb-outbox.workspace = true
+lb-registry.workspace = true
+lb-supervisor.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 serde.workspace = true
@@ -24,6 +27,10 @@ tokio.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+# The registry tests sign artifacts with a deterministic publisher key (the same `ed25519-dalek`
+# stack `lb_registry::verify_artifact` checks against). Test-only — the host never build-depends on
+# it directly (verification lives in `lb-registry`).
+ed25519-dalek.workspace = true
 # The AI-gateway role crate supplies the model-access bridge + the deterministic mock provider for
 # the agent tests. It is a DEV dependency only: the host depends on the `ModelAccess` trait it owns,
 # never on a role crate at build time (roles depend on host, not the reverse — symmetric layering).

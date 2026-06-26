@@ -18,11 +18,15 @@ members = [
     "crates/inbox",
     "crates/jobs",
     "crates/mcp",
+    "crates/outbox",
+    "crates/registry",
     "crates/runtime",
     "crates/secrets",
     "crates/store",
+    "crates/supervisor",
     "crates/sync",
     "crates/tags",
+    "extensions/echo-sidecar",
     "sdk",
     "node",
     "role/gateway",
@@ -49,9 +53,12 @@ lb-ext-loader = { path = "crates/ext-loader" }
 lb-inbox = { path = "crates/inbox" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
+lb-outbox = { path = "crates/outbox" }
+lb-registry = { path = "crates/registry" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
 lb-store = { path = "crates/store" }
+lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
 lb-tags = { path = "crates/tags" }
 lb-host = { path = "crates/host" }
@@ -74,9 +81,15 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+# `process` + `io-util` + `time`: the native Tier-2 supervisor spawns and frames JSON-RPC over a
+# child's stdio with health timers (lb-supervisor, native-tier scope). Core crates use only the S1
+# subset; the extra features are additive (one tokio in the workspace).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
+# Artifact content digest for the signed extension registry (registry scope). SHA-256 over
+# manifest ‖ wasm; the Ed25519 signature (above) is over that digest.
+sha2 = "0.10"
 
 # HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework
 # (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI.

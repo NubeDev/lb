@@ -14,7 +14,9 @@
 mod item;
 mod list;
 mod record;
+mod resolution;
 
 pub use item::Item;
 pub use list::list;
 pub use record::{record, record_id, TABLE};
+pub use resolution::{resolution, resolve, Decision, Resolution, RESOLUTION_TABLE};

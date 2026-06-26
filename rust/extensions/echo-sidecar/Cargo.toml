@@ -1,0 +1,25 @@
+# `echo-sidecar` — the reference native Tier-2 extension (native-tier scope). A real host-platform
+# binary the supervisor spawns over stdio — the language-server-style sidecar that proves
+# supervision/restart. UNLIKE the wasm `hello` extension (a portable wasm32-wasip2 component), this
+# is a native binary for the host target, so it IS a workspace member (it builds for the host).
+[package]
+name = "echo-sidecar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "echo-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+# Reuses the supervisor's wire protocol + framing verbatim — the child and the host agree on the
+# ABI by sharing the crate, exactly as the wasm tier shares the WIT world (no drift).
+lb-supervisor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Own tokio (not `workspace = true`): the child reads/writes its OWN stdio, so it needs `io-std`
+# (the host crates never touch process stdio, so the workspace tokio omits it). A child binary
+# sets its own runtime features — it is a leaf, nothing depends on it.
+tokio = { version = "1", features = ["rt", "macros", "io-util", "io-std"] }
