@@ -1,67 +1,55 @@
-//! The gateway's shared state: the in-process node it fronts plus the session principal each
-//! request acts as. The gateway IS a node (symmetric nodes, §3.1) — it just also exposes an
-//! HTTP/SSE surface so a *browser* can reach it (README §6.13). It adds no authority of its own;
-//! every route forwards to `lb_host::*` with this principal, so the SAME capability check guards
-//! the browser as guards the desktop shell and every other caller (capability-first, §3.5).
+//! The gateway's shared state: the in-process node it fronts plus the **node signing key** it
+//! mints and verifies session tokens with. The gateway IS a node (symmetric nodes, §3.1) — it
+//! just also exposes an HTTP/SSE surface so a *browser* can reach it (README §6.13). It adds no
+//! authority of its own; every route reads the caller's **bearer token**, verifies it with this
+//! key (`session::authenticate`), and forwards to `lb_host::*` with the **verified principal** —
+//! so the SAME capability check guards the browser as guards every other caller (capability-first,
+//! §3.5), and the workspace comes from the *token*, never the request (the hard wall, §7).
 //!
-//! S3 mints a demo member principal (like the Tauri shell's `state.rs`). A real verified session
-//! (login → token → principal) lands with auth wiring later; kept in one place so routes stay thin.
+//! The demo principal is gone (collaboration scope, slice 1): `login` issues a real signed token
+//! and every other route verifies it. The credential check behind `login` is a dev-login for now
+//! (pick a principal); the *token path* is real (mint + verify). A real IdP plugs in behind the
+//! same `verify` seam later — `Non-goals` in the scope.
 
 use std::sync::Arc;
 
-use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{Node, Role as NodeRole};
+use lb_auth::SigningKey;
+use lb_host::Node;
 
-/// The live node + the principal the browser session acts as, shared across handlers (`Arc` so
-/// axum can clone it into each request).
+/// The live node + the node's token-signing key, shared across handlers (`Arc` so axum can clone
+/// it into each request). The key never leaves the node — the UI only ever holds the *issued*
+/// token (scope: "Secrets").
 #[derive(Clone)]
 pub struct Gateway {
     pub node: Arc<Node>,
-    pub principal: Arc<Principal>,
-    pub ws: String,
+    /// The node's Ed25519 signing key — `login` mints with it, every route verifies with it.
+    pub key: Arc<SigningKey>,
+    /// The logical "now" (unix seconds) used for mint `iat`/`exp` and verify expiry. Injected so
+    /// tests are deterministic (testing §3 — no wall-clock); `boot` seeds it from the real clock.
+    pub now: u64,
 }
 
 impl Gateway {
-    /// Boot a gateway-role node and mint the demo session: a member in `ws` with broad channel
-    /// grants (matching the Tauri shell's demo so the same UI works against either transport).
-    pub async fn boot(ws: &str) -> Result<Self, String> {
-        let node = Node::boot_as(NodeRole::Hub)
+    /// Boot a gateway-role node with a freshly generated signing key and the real wall clock.
+    /// Production entry point (the `node` binary / `serve`).
+    pub async fn boot() -> Result<Self, String> {
+        let node = Node::boot_as(lb_host::Role::Hub)
             .await
             .map_err(|e| e.to_string())?;
-        let principal = demo_principal(ws)?;
-        Ok(Self::with_principal(node, principal, ws))
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Ok(Self::new(Arc::new(node), SigningKey::generate(), now))
     }
 
-    /// Build a gateway around an existing node + an explicit principal/workspace. Lets a caller
-    /// (and the tests) front a node with a specific session — e.g. a principal WITHOUT grants
-    /// to prove the deny path, or one scoped to another workspace to prove isolation.
-    pub fn with_principal(node: Node, principal: Principal, ws: &str) -> Self {
-        Self::from_shared(Arc::new(node), principal, ws)
-    }
-
-    /// Build a gateway around a SHARED node (`Arc<Node>`) + a session. Two gateways over one node
-    /// — e.g. two browser sessions in different workspaces — prove that the workspace wall holds
-    /// at the gateway: each only ever sees its own workspace's data through the same store/bus.
-    pub fn from_shared(node: Arc<Node>, principal: Principal, ws: &str) -> Self {
+    /// Build a gateway around an existing node + an explicit signing key + clock. Lets the tests
+    /// front a node with a known key (so they can forge/expire tokens) and a fixed clock.
+    pub fn new(node: Arc<Node>, key: SigningKey, now: u64) -> Self {
         Self {
             node,
-            principal: Arc::new(principal),
-            ws: ws.to_string(),
+            key: Arc::new(key),
+            now,
         }
     }
-}
-
-/// Mint + verify the demo member principal (broad `bus:chan/*` grants for the demo workspace).
-fn demo_principal(ws: &str) -> Result<Principal, String> {
-    let key = SigningKey::generate();
-    let claims = Claims {
-        sub: "user:browser".into(),
-        ws: ws.into(),
-        role: Role::Member,
-        caps: vec!["bus:chan/*:pub".into(), "bus:chan/*:sub".into()],
-        iat: 0,
-        exp: u64::MAX,
-    };
-    let token = mint(&key, &claims);
-    verify(&key, &token, 1).map_err(|e| e.to_string())
 }

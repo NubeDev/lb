@@ -1,42 +1,53 @@
-//! `GET /channels/{cid}/stream` — the **server→browser** push the whole S3 UI story rides on
-//! (README §6.13: browsers receive updates over SSE). The browser opens this once and receives:
+//! `GET /channels/{cid}/stream?token=<jwt>` — the **server→browser** push the whole live-UI story
+//! rides on (README §6.13). The browser opens this once and receives:
 //!   - `event: message` — each live channel [`Item`] as it is posted (others' messages appear);
 //!   - `event: presence` — `{member, present}` as members join/leave (Zenoh liveliness).
 //!
-//! Both come straight off the bus via the SAME capability-checked host verbs the rest of the
-//! system uses (`subscribe_channel`, `watch`) — the gateway adds no new authority. Authorization
-//! (a `bus:chan/{cid}:sub` grant, workspace-first) runs when the subscriptions are declared, so
-//! an unauthorized browser session gets a 403 before any stream opens.
+//! Authentication is by a `?token=` **query param**, not a bearer header: the browser opens SSE with
+//! `EventSource`, which cannot set headers. The token is verified identically (`session::verify_token`)
+//! — workspace + caps come from it (§7) — so an unauthenticated session gets `401` before any stream
+//! opens, and the `sub` grant is then checked by the host verbs (a `403` if ungranted).
 
 use std::convert::Infallible;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use futures::stream::Stream;
+use serde::Deserialize;
 use serde_json::json;
 
+use crate::session::verify_token;
 use crate::state::Gateway;
 
-/// Open the SSE stream for channel `cid`. Errors with 403 if the session lacks the `sub` grant
-/// (the host's check) — the browser never gets a stream it isn't authorized for.
+/// The SSE auth query param: the session token (`EventSource` can't send a bearer header).
+#[derive(Debug, Deserialize)]
+pub struct StreamAuth {
+    #[serde(default)]
+    token: String,
+}
+
+/// Open the SSE stream for channel `cid`. `401` if the token is missing/bad; `403` if the session
+/// lacks the `sub` grant (the host's check). The browser never gets a stream it isn't authorized for.
 pub async fn channel_stream(
     State(gw): State<Gateway>,
     Path(cid): Path<String>,
+    Query(auth): Query<StreamAuth>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let principal = verify_token(&gw, &auth.token).map_err(|e| e.into_response())?;
+    let ws = principal.ws().to_string();
+
     // Authorize + declare both feeds up front (workspace-first). A denial here is a 403, before
     // any stream body is produced.
-    let sub = lb_host::subscribe_channel(&gw.node.bus, &gw.principal, &gw.ws, &cid)
+    let sub = lb_host::subscribe_channel(&gw.node.bus, &principal, &ws, &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
-    let presence = lb_host::watch(&gw.node.bus, &gw.principal, &gw.ws, &cid)
+    let presence = lb_host::watch(&gw.node.bus, &principal, &ws, &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
 
-    // Merge the two feeds into one SSE event stream. `async_stream` would be tidier, but a hand
-    // -rolled `unfold` keeps the dependency set minimal (one verb, no macro crate).
+    // Merge the two feeds into one SSE event stream.
     let stream = futures::stream::unfold((sub, presence), |(sub, presence)| async move {
-        // Race the next message against the next presence change; emit whichever arrives.
         let event = tokio::select! {
             item = sub.recv() => item.map(|i| {
                 Event::default()

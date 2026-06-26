@@ -1,20 +1,24 @@
 //! `GET /channels/{cid}/messages` — the browser's "read the durable history" verb. Mirrors the
 //! Tauri `channel_history` command and `channel.api.ts::history`. Reads the durable record, so it
-//! works across a node restart (state, §3.3). The same `sub`-grant check the host enforces.
+//! works across a node restart (state, §3.3). The same `sub`-grant check the host enforces, against
+//! the **verified session principal** (workspace from the token, §7).
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use lb_inbox::Item;
 
+use crate::session::authenticate;
 use crate::state::Gateway;
 
 /// Return channel `cid`'s items oldest→newest, for the session principal.
 pub async fn get_history(
     State(gw): State<Gateway>,
+    headers: HeaderMap,
     Path(cid): Path<String>,
 ) -> Result<Json<Vec<Item>>, (StatusCode, String)> {
-    let items = lb_host::history(&gw.node.store, &gw.principal, &gw.ws, &cid)
+    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let items = lb_host::history(&gw.node.store, &principal, principal.ws(), &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(items))

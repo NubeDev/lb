@@ -17,6 +17,7 @@ serde_json.workspace = true
 futures.workspace = true
 
 [dev-dependencies]
+lb-outbox.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }

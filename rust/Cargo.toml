@@ -16,6 +16,7 @@ members = [
     "crates/ext-loader",
     "crates/host",
     "crates/inbox",
+    "crates/ingest",
     "crates/jobs",
     "crates/mcp",
     "crates/outbox",
@@ -54,6 +55,7 @@ lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
 lb-ext-loader = { path = "crates/ext-loader" }
 lb-inbox = { path = "crates/inbox" }
+lb-ingest = { path = "crates/ingest" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
@@ -76,7 +78,13 @@ lb-role-github-target = { path = "role/github-target" }
 lb-role-github-workflow = { path = "role/github-workflow" }
 
 # the stack (docs/key-stack.md)
-surrealdb = { version = "2", default-features = false, features = ["kv-mem"] }
+# Two embedded KV backends are compiled in: `kv-mem` (tests / dev — `Store::memory()`) and
+# `kv-surrealkv` (a real node's persistent on-disk store — `Store::open(path)`). Both are present
+# at compile time on EVERY node; which *constructor* runs is a config decision at boot
+# (`LB_STORE_PATH`), never an `if cloud` branch in a core crate (symmetric nodes, rule #1). The
+# persistent backend was pinned to SurrealKV by the S9 store spike (pure-Rust, no C++ toolchain —
+# the "builds anywhere / on a Pi" posture); see docs/scope/store/persistent-backend-scope.md.
+surrealdb = { version = "2", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
 zenoh = "1"
 wasmtime = { version = "39", default-features = false, features = ["runtime", "component-model", "cranelift"] }
 wasmtime-wasi = "39"

@@ -12,10 +12,15 @@ mod agent;
 mod assets;
 mod boot;
 mod channel;
+mod channel_registry;
+mod inbox;
+mod ingest;
 mod install;
 mod installed;
 mod load;
+mod members;
 mod native;
+mod outbox;
 mod registry;
 mod reload;
 mod remote;
@@ -23,6 +28,7 @@ mod role;
 mod serve;
 mod sync;
 mod workflow;
+mod workspaces;
 
 pub use agent::{
     agent_call_key, invoke, invoke_remote, resume, run_session, serve_agent, AgentError,
@@ -34,6 +40,15 @@ pub use assets::{
     put_skill, revoke_skill, share_doc, AssetError,
 };
 pub use boot::{Node, NodeError};
+pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
+pub use inbox::{list_inbox, resolve_inbox, InboxError};
+pub use members::{add_team_member, list_members, MembersError};
+pub use outbox::{outbox_status, OutboxError, OutboxStatus};
+pub use workspaces::{workspace_create, workspace_list, WorkspaceRecord, WorkspacesError};
+pub use ingest::{
+    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_latest_value,
+    series_read_range, DrainPass, IngestError, Qos, Sample, COMMIT_BATCH, DEFAULT_STAGING_BOUND,
+};
 pub use channel::{
     history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
     PresenceFeed,

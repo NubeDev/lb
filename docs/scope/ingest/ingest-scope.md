@@ -1,8 +1,8 @@
 # Ingest scope — a generic buffered read/write surface for high-volume external data
 
-Status: scope (the ask). Promotes to `public/ingest/` once shipped. Target stage: **S9**
-(platform maturity, after the S7 registry + native tier; STAGES.md needs an S8/S9 row added
-when this is scheduled).
+Status: scope (the ask). Promotes to `public/ingest/` once shipped. Target stage: **S8 — the data
+plane** (after the S7 registry + native tier; see STAGES.md). Depends on the
+`scope/store/persistent-backend-scope.md` enabling slice (slice 0) shipping first.
 
 We want the framework to robustly absorb **high-volume, high-frequency external data**
 (a sensor stream, an app's metrics, a fleet of edge nodes reporting state) and to let a
@@ -22,7 +22,7 @@ as `github-bridge` lives outside the host.
 
 ## Goals
 
-- A **canonical `Sample` envelope** — `{ series, ts, seq, payload, labels, qos }` — that every producer,
+- A **canonical `Sample` envelope** — `{ series, producer, ts, seq, payload, labels, qos }` — that every producer,
   internal or external, normalizes to. Generic and domain-free. `payload` is **any SurrealDB-typed
   value** (scalar, nested object, array, bytes, or a file-bucket reference for large/binary) — the
   buffer is **payload-agnostic**; telemetry, structured events, documents, and binary frames all flow
@@ -46,10 +46,17 @@ as `github-bridge` lives outside the host.
 - An **ingest buffer** (cloud-side, but a *role* any node can run): accept → backpressure/batch/dedup
   → commit. Decouples *acceptance* from *durable commit* so bursts don't OOM or write-storm.
 - **Symmetric read/write MCP verbs**: `ingest.write` (append samples), `series.read` (range query),
-  `series.latest` (the "shadow" — last value per series). Capability-gated, workspace-first.
-- **Robustness primitives**: bounded buffer + explicit **overflow policy**, **idempotent commit** on
-  `(series, seq)`, **per-workspace/principal rate limits**, and **offline buffer + idempotent replay**
-  on reconnect (reuse §6.8 sync, not a new mechanism).
+  `series.latest` (last value per series — kept generic; *not* a "device shadow"). Capability-gated, workspace-first.
+- **Robustness primitives**: bounded buffer + explicit **overflow policy** (**both ends** — producer
+  staging *and* cloud staging are bounded), **idempotent commit** on the dedup identity
+  **`(series, producer, seq)`** (NOT `(series, seq)` — see below), **per-workspace/principal rate
+  limits**, and **offline buffer + idempotent replay** on reconnect (reuse §6.8 sync, not a new mechanism).
+- **A safe dedup identity for a multi-producer series.** The opening use case is "a fleet of edge nodes
+  reporting state" — so two producers may write the *same* series. The dedup/commit key is therefore
+  **`(series, producer, seq)`**, and the sample record id is `[series, producer, seq]`. Keying on
+  `(series, seq)` alone would let producer-B's `seq=5` silently upsert over producer-A's — data loss
+  disguised as idempotency. `seq` is monotonic **per `(series, producer)`**, not per series. (Alternative:
+  a series provably single-producer by grant — kept as a narrowing, not the default.)
 - **State vs motion kept clean**: the live stream is **Zenoh motion**; the buffer and the committed
   series are **SurrealDB state**. The buffer is the seam between them.
 
@@ -74,7 +81,7 @@ as `github-bridge` lives outside the host.
 **The outbox, mirrored for inbound volume.** The outbox already solved "a discrete effect must leave
 the system exactly once, durably, across a flaky link." Ingest is the same shape pointed the other
 way: "a high-volume stream must enter the system without loss-by-overload, committed once per
-`(series, seq)`." So the design reuses the outbox's proven discipline — a durable staging set,
+`(series, producer, seq)`." So the design reuses the outbox's proven discipline — a durable staging set,
 idempotent commit, backoff/dead-letter — rather than inventing a queue.
 
 **Three seams, each an existing primitive:**
@@ -82,19 +89,25 @@ idempotent commit, backoff/dead-letter — rather than inventing a queue.
 1. **Motion in** — producers publish `Sample`s as Zenoh motion on `ws/{id}/series/{series}` (best-effort,
    high-rate). This is the cheap, real-time path; a live dashboard subscribes here directly.
 2. **The ingest buffer** — a cloud-side subscriber (the new `lb-ingest` crate, run by a node holding the
-   *ingest role*) drains the stream into a **durable staging table**, applies the overflow/rate/batch
-   policy, and commits batches to the `series` tables. Accept-then-commit is what makes it robust:
-   acceptance is O(1) and bounded; commit is batched and idempotent. A restart re-drains uncommitted
-   staging — no loss, no double-commit.
+   *ingest role*) drains the stream into a **durable, append-only staging table**, applies the
+   overflow/rate/batch policy, and commits batches to the `series` tables. A restart re-drains
+   uncommitted staging — no loss, no double-commit.
 3. **State out** — `series.read` / `series.latest` read the committed series (range queries over the
-   record-ID-range layout; `latest` is the single newest record per series — the generic "shadow").
+   record-ID-range layout; `series.latest` is the single newest record per series).
 
-**Why a buffer at all, vs. writing each sample straight to the store?** A direct write couples producer
-rate to store write rate: a burst either blocks the producer or overruns the store. The buffer
-**decouples** them — it absorbs the burst at bounded cost and commits at the store's pace, with an
-explicit policy for what happens when the buffer is full (drop-oldest for best-effort series;
-dead-letter for must-deliver). This is the single most important robustness property, and it's why
-"buffer the data in the cloud" is the right framing, not "write faster."
+**Why a buffer at all, vs. writing each sample straight to the `series` tables? (And why staging isn't
+just the same write storm.)** The relief is **not** "avoid disk writes" — staging *is* durable, so
+acceptance is a disk write, not an in-memory O(1) op (an earlier draft claimed O(1); that was wrong). The
+relief is that a **staging append is cheap** where a **direct `series` write is expensive**: staging is
+append-only, single table, **no secondary indexes, no rollup-view maintenance, no tag-graph edges**;
+the `series` commit is where all of that index/rollup/edge cost lives, and the buffer does it **in
+batches** (one transaction per batch, amortizing the expensive part) at the store's pace rather than
+once per sample under burst. So the firehose hits the cheap path; the expensive path runs batched and
+backpressured. **Durability window:** a sample is durable once its staging append is fsync'd; staging
+batches fsyncs, so a bounded window (one fsync interval) of just-accepted samples may sit in the OS
+buffer — losable on a hard power-cut. That window is the explicit, bounded cost of throughput; name it,
+don't hide it. This decoupling — plus the explicit overflow policy (drop-oldest for best-effort;
+dead-letter for must-deliver) — is why "buffer the data in the cloud" is the right framing.
 
 **Why generic `series`, not `device`/`metric`?** A `series` is just a named, workspace-scoped sequence
 of timestamped values with labels. A temperature sensor, an app's request-latency, a node's free-memory,
@@ -123,48 +136,74 @@ becoming an IoT system: the IoT-ness lives entirely in *which* series a bridge e
   is opaque (`Denied`, no existence signal) — an un-granted producer leaks nothing about what series
   exist. Mandatory deny-test.
 - **Placement:** the **ingest role** is `either` — typically the cloud/hub runs it, but a Raspberry Pi
-  acting as a **LAN sub-hub** can run its own ingest buffer for its local peers and sync committed
-  rollups upward. No `if cloud {…}`; the role selects whether the buffer subscriber is mounted, like the
-  gateway and sync relay do today.
+  acting as a **LAN sub-hub** can run its own ingest buffer for its local peers. No `if cloud {…}`; the
+  role selects whether the buffer subscriber is mounted, like the gateway and sync relay do today.
+  **One authoritative ingest path per producer (no double-delivery).** A producer whose samples are
+  ingested by a sub-hub is committed *there*; that committed series syncs upward as `(table,id)` upserts
+  (§6.8) and the cloud does **not** also re-ingest the raw stream for it. A producer with no sub-hub
+  ingests directly at the cloud. The rule: a sample is committed by exactly one ingest node; the other
+  tier receives it only via series **sync**, never via a second ingest. Otherwise a sample arriving both
+  by sync-of-committed-series and by re-ingest would double-count.
 - **MCP surface:** `ingest.write(samples)` (a **heterogeneous `Sample[]`** — many series, many payload
   types, one call), `series.read(series, range)`, `series.latest(series)`, `series.list(prefix)`, and a
   tag-driven discovery verb `series.find(tags)` (faceted `key:value` query over the graph). Producers
   and the UI call them identically (MCP is the universal contract).
-- **Tags / graph:** labels are **graph edges** (`series ->tagged-> tag:{key,value}`), the existing tag
-  service (README §6.11, `scope/tags/`) reused as the time-series label model. This is the discovery
-  and relationship layer over heterogeneous payloads — query by metadata/relationship, not by schema.
-  Keep label cardinality bounded (a known risk below) — tags are for dimensions you filter by, not for
-  high-cardinality values (those belong in the payload).
-- **Data (SurrealDB):** a durable **`ingest_staging`** table (the buffer's backing — survives restart),
-  and the **`series`** tables (record-ID ranges per series + rollup table views). Labels via the tag
-  graph. State = staging + series; motion = the Zenoh stream feeding the buffer. **Storage is typed,
-  not opaque JSON:** a sample record is `id = [series, seq]` (composite, so a time range is a fast
-  ID-range scan), `ts` a `datetime`, and `payload` stored in its **richest typed form** — a scalar as a
+- **Tags / graph (one source of truth):** the **tag-graph edges are authoritative**; the inline
+  `Sample.labels` are only the **producer's raw declaration on the wire**. At commit, the buffer
+  **converts** declared labels into `series ->tagged-> tag:[key,value]` edges (the existing tag service,
+  README §6.11, `scope/tags/`) **once per series, not per sample** (a label describes the series, so the
+  edge is written when the series is first seen / when its label set changes — not on every sample). The
+  series rows do **not** also store labels — no parallel store. The producer pays the cardinality cost of
+  the dimensions it declares, and the tag-cardinality cap (`scope/tags/`) bounds it. Discovery is then a
+  graph query over edges — by metadata/relationship, not by schema. Tags are for dimensions you filter
+  by, never high-cardinality values (those stay in the payload).
+- **Data (SurrealDB):** a durable append-only **`ingest_staging`** table (the buffer's backing — survives
+  restart), and the **`series`** tables (record-ID ranges per series + rollup table views). Labels via
+  the tag graph (above). State = staging + series; motion = the Zenoh stream feeding the buffer.
+  **Commit boundary:** **one batch = one SurrealDB transaction**, and the commit is an **UPSERT keyed on
+  `[series, producer, seq]`** — so a die-mid-batch rolls the whole batch back (atomic) and a re-drain
+  upserts each sample exactly once. This is what makes "no double-commit on restart" true rather than
+  hoped. **Storage is typed, not opaque JSON:** a sample record is `id = [series, producer, seq]`
+  (composite, so a per-producer time range is a fast ID-range scan), `ts` a `datetime`, and `payload`
+  stored in its **richest typed form** — a scalar as a
   `number`/`bool` (so `AVG`/`MAX`/`GROUP BY` rollup views work), structured data as a **native nested
   object** (queryable, no app-side parsing), arbitrary/schemaless data as an object/array as-is, and
   **binary/large payloads as a file-bucket reference** (the S4 assets path), never streamed inline
   through the buffer. The buffer is uniform across all of these; only the commit step picks the shape,
   by **series class**.
-- **PREREQUISITE — persistent backend:** "buffer until written to disk" is **impossible on today's
-  store**, which is in-memory only (`Store::memory()`, the `Mem` engine; `crates/store/src/open.rs`).
-  A small prerequisite slice must add `Store::open(path)` on the persistent SurrealDB engine
-  (`surrealkv`/rocksdb) — **config, not a code branch** (symmetric nodes; the engine is config). Until
-  that lands, ingest is non-durable. Flag this as a hard dependency of the S9 slice.
+- **PREREQUISITE — the store persistent-backend slice + its GO/NO-GO matrix (hard gate).** "Buffer until
+  written to disk" is **impossible on today's store**, which is in-memory only (`Store::memory()`, the
+  `Mem` engine; `crates/store/src/open.rs`). Ingest **must not start** until
+  `scope/store/persistent-backend-scope.md` lands `Store::open(path)` *and* its spike publishes the
+  feature matrix. Ingest branches on it: **durability + transactions + composite IDs are LOAD-BEARING**
+  (a ✗ is NO-GO for ingest too); **`DEFINE BUCKET` is DEGRADABLE** — if the spike marks buckets
+  unavailable, **binary/large payloads fall back to the S4 record-as-content path** (inline-by-value with
+  a size cap) until buckets land, and the rest of ingest ships. No engine code-branch (symmetric nodes;
+  the engine is config).
 - **Bus (Zenoh):** subjects `ws/{id}/series/{series}` for the live sample stream — **fire-and-forget
   motion** (best-effort; the durable copy is the committed series, so a dropped frame on the live path
   is fine). Must-deliver data (rare for samples, common for commands *down* to a producer) rides the
   **outbox**, unchanged.
 - **Sync / authority:** an offline producer buffers samples in its **own node's** staging and replays
-  on reconnect; commit is idempotent on `(series, seq)`, so a re-delivered batch never double-commits
-  (§6.8). The committed series syncs as `(table, id)` upserts on the existing channel-sync path.
-- **Durability is endpoint-to-endpoint, NOT transport retention.** Zenoh is **best-effort motion** — it
-  has no durable commit-log, no consumer offsets, no "hold until acked" (relying on it for that would
-  violate rule #3, motion-as-state). The "never lost until on disk" guarantee lives at the **two
-  endpoints' disks**: the producer keeps its durable staging copy and **prunes it only after a
-  commit ack**; the cloud buffer commits to disk then acks; a dropped Zenoh frame is re-sent from the
-  producer's staging and de-duped on `(series, seq)`. This survives the producer *and* the cloud
-  crashing — strictly stronger than buffering in the transport. (Zenoh `reliable` + `CongestionControl::Block`
-  reduce loss and apply backpressure, but are an optimization, never the durability owner.)
+  on reconnect; commit is idempotent on `(series, producer, seq)`, so a re-delivered batch never
+  double-commits (§6.8). The committed series syncs as `(table, id)` upserts on the existing channel-sync
+  path (and is the *only* upward path — see Placement, no re-ingest).
+- **Durability is endpoint-to-endpoint, NOT transport retention — and scoped to QoS.** Zenoh is
+  **best-effort motion**: no durable commit-log, no consumer offsets, no "hold until acked" (relying on
+  it for that would violate rule #3). For a **`qos: must-deliver`** series the "never lost until on disk"
+  guarantee lives at the **two endpoints' disks**: the producer keeps its durable staging copy and
+  **prunes it only after a commit ack**; the cloud commits to disk then acks; a dropped frame is re-sent
+  from producer staging and de-duped on `(series, producer, seq)`. For a **`qos: best-effort`** series
+  (the default, e.g. high-rate telemetry) the path is **lossy by design** — drop-oldest under overflow,
+  no per-sample ack — and the "never lost" promise **does not apply**; the durable copy is whatever
+  committed. Do not read the must-deliver guarantee as universal.
+- **Producer staging is itself bounded (independent of acks).** Acks ride the same best-effort Zenoh, so
+  on an asymmetric link (data up, acks dropped) a producer could re-send forever and never prune —
+  filling its own disk; on a Pi that is an outage. So **producer staging has its own retention/overflow
+  policy** (bounded size/age; oldest-unacked dropped or dead-lettered past the bound), *independent* of
+  ack receipt. Every overflow control exists at **both ends**, not just cloud-side. (Zenoh `reliable` +
+  `CongestionControl::Block` reduce loss / apply backpressure, but are an optimization, never the
+  durability owner.)
 - **Secrets:** none in core. A protocol bridge that needs a broker credential mediates it through the
   secrets surface (`scope/secrets/`), out of the host.
 
@@ -173,15 +212,18 @@ becoming an IoT system: the IoT-ness lives entirely in *which* series a bridge e
 A Raspberry Pi (principal `client:pi-7`, a full node) reporting CPU temperature to the cloud:
 
 1. The Pi runs a **`mqtt-bridge` extension** (out-of-core, installed from the registry) — or just its
-   own code — that produces `Sample { series: "node.cpu_temp", ts, seq, value: 61.4, labels: {host:"pi-7"} }`.
+   own code — that produces `Sample { series: "node.cpu_temp", producer: "client:pi-7", ts, seq,
+   payload: 61.4, labels: {host:"pi-7"}, qos: "best-effort" }`.
 2. The Pi **publishes** the sample as Zenoh motion on `ws/acme/series/node.cpu_temp`. Cheap, real-time.
-   It *also* buffers it in its **local staging** (so an offline Pi loses nothing).
-3. The cloud node (holding the **ingest role**) **drains** the stream into its `ingest_staging` table.
-   Acceptance is bounded and O(1); a burst fills the buffer, it doesn't block the Pi or storm the store.
-4. The ingest worker **commits** batches to the `series` table, **idempotent on `(series, seq)`** —
-   a re-delivered batch after a reconnect commits once. The **overflow policy** (drop-oldest for this
-   best-effort series) bounds memory under sustained overload; a must-deliver series would **dead-letter**
-   instead.
+   It *also* buffers it in its **local staging** (bounded — see producer overflow), so a must-deliver
+   sample survives an offline Pi.
+3. The cloud node (holding the **ingest role**) **drains** the stream with a **cheap append** into its
+   `ingest_staging` table (no indexes/edges on that write); a burst hits the cheap path, it doesn't storm
+   the indexed `series` tables.
+4. The ingest worker **commits** batches to the `series` table — **one batch = one transaction**, UPSERT
+   on `[series, producer, seq]`, so a re-delivered batch after a reconnect commits exactly once and a
+   die-mid-batch rolls back. The **overflow policy** (drop-oldest for this best-effort series) bounds the
+   buffer under sustained overload; a must-deliver series would **dead-letter** instead.
 5. A browser dashboard calls **`series.latest("node.cpu_temp")`** for the live value and
    **`series.read("node.cpu_temp", last_1h)`** for the chart — both **capability-checked, workspace-first**.
    It also `watch_presence`es to show `pi-7` as **connected** (the existing S2 presence path).
@@ -202,15 +244,19 @@ Mandatory categories from `scope/testing/testing-scope.md` that apply:
   enumerate ws-A series; the buffer's staging is workspace-partitioned (a ws-B drain never commits into
   ws-A). Across **store + MCP**, the standard two surfaces.
 - **Offline / sync** — an offline producer buffers locally and replays on reconnect with **one** commit
-  per `(series, seq)` (idempotency); the **cloud ingest buffer survives a restart** and re-drains
-  uncommitted staging with **no loss and no double-commit** (the new durability case — mirror the outbox
-  relay tests).
+  per `(series, producer, seq)` (idempotency). The **cloud-restart re-drain test must kill mid-commit**,
+  not after a graceful drain (a graceful "restart" proves nothing): with uncommitted samples in staging,
+  **kill the node**, reopen on the persistent engine, and assert each uncommitted sample commits
+  **exactly once** and any partially-applied batch rolled back. A **two-producer collision** test writes
+  `seq=5` from producer-A and producer-B to the same series and asserts **both** survive (the
+  `(series, producer, seq)` key, not `(series, seq)`).
 
 Plus the load/robustness cases specific to this surface:
 
-- **Backpressure / overflow** — a sustained burst beyond the buffer bound does not OOM; the configured
-  overflow policy is honored (drop-oldest count is observable for best-effort; dead-letter for
-  must-deliver). A hot single-series partition doesn't stall other series.
+- **Backpressure / overflow at BOTH ends** — a sustained burst beyond the buffer bound does not OOM and
+  the overflow policy is honored (drop-oldest observable for best-effort; dead-letter for must-deliver);
+  **and** a producer whose acks are dropped (asymmetric link) honors its **own** staging bound rather
+  than filling its disk. A hot single-series partition doesn't stall other series.
 - **Rate limiting** — a producer exceeding its per-workspace/principal rate is throttled, not crashed,
   and the limit is workspace-scoped.
 - **Read correctness** — `series.read` range queries return the committed range ordered; `series.latest`
@@ -224,11 +270,13 @@ Plus the load/robustness cases specific to this surface:
 - **Retention / GC.** Time-series grows forever. Rollup table views + an **eviction/retention policy**
   per series (raw samples age out to rollups) are required, not optional — but defer the *mechanism* to
   a follow-up; the *scope* must name it.
-- **Buffer durability vs. throughput.** A fully-durable staging write per sample re-introduces the write
-  storm the buffer exists to avoid. The likely answer: an **in-memory ring backed by periodic durable
-  checkpoints** of the staging cursor — durable enough to bound loss to the last checkpoint window,
-  fast enough to absorb bursts. This is the core engineering tension; get it wrong and the buffer is
-  either slow or lossy. (Open question below.)
+- **Buffer durability vs. throughput (resolved in Intent — recorded here as the residual risk).** Staging
+  is a **durable append** (cheap: no indexes/edges/rollups) and `series` commit is **batched** (one tx,
+  amortizing the index/rollup/edge cost); the relief is cheap-append-vs-expensive-indexed-write, not
+  avoiding disk. The residual risk is the **fsync-batching window**: a hard power-cut can lose the last
+  un-fsync'd append interval of best-effort samples. Bounded and named, not hidden; a checkpointed
+  in-memory ring is a *later* throughput optimization only if measurements demand it, never the
+  correctness baseline.
 - **The IoT-creep governance risk.** The single biggest *architectural* risk is scope drift: the moment
   a `Device` table, an MQTT dependency, or a "sensor" type lands in a core crate, the platform stops
   being generic. Mitigation: a **review gate** — any core ingest PR is rejected if it names a device
@@ -238,17 +286,20 @@ Plus the load/robustness cases specific to this surface:
 
 ## Open questions
 
-- **Buffer backing:** pure in-memory ring + durable cursor checkpoints, or a durable `ingest_staging`
-  table drained transactionally? Recommendation: **durable staging table** for correctness first
-  (true to one-datastore, survives restart trivially), optimize to a checkpointed ring only if measured
-  throughput demands it.
 - **`ingest.write` acknowledgement:** synchronous ack on durable-accept (staged), or fire-and-forget with
   the live stream as the only fast path? Recommendation: **ack-on-stage** for must-deliver series,
   **fire-and-forget motion** for best-effort — the QoS is a per-series property.
 - **Overflow policy default:** drop-oldest vs. drop-newest vs. dead-letter — per-series, with what
-  default? (Lean drop-oldest for best-effort telemetry.)
-- **Series id grammar & label model:** dotted names (`node.cpu_temp`)? Reserved prefixes? How do grants
-  scope by prefix? How do labels map onto the tag graph without a cardinality blowup?
+  default? (Lean drop-oldest for best-effort telemetry.) Applies to **both** producer and cloud staging.
+- **Series id grammar:** dotted names (`node.cpu_temp`)? Reserved prefixes? How do grants scope by prefix?
+- **Producer identity in the dedup key:** is `producer` the calling principal, or a producer-declared id
+  the grant authorizes? (Lean: the authenticated principal — un-spoofable, already workspace-scoped.)
+
+Resolved in this doc (no longer open): the dedup identity is **`(series, producer, seq)`**; staging is a
+**durable append**, commit is **one-tx-per-batch UPSERT** (not an in-memory ring); the tag-graph is the
+**single source of truth** for labels (inline `Sample.labels` are a wire declaration converted to edges
+once per series); "never lost" is **scoped to `qos: must-deliver`**; one authoritative ingest path per
+producer (no re-ingest double-count).
 - **Rate-limit granularity:** per-workspace, per-principal, or per-series — and where enforced (the
   ingest verb, the bus subscriber, or both)?
 - **Retention policy shape:** raw→rollup aging rules, who configures them (a workspace admin grant?),

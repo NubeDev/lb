@@ -70,14 +70,15 @@ async fn main() -> anyhow::Result<()> {
     // mount the SSE/HTTP gateway so a browser can reach a real node (S3). Otherwise the binary
     // is the solo demo above. This is the thin wiring layer §3.1 permits to be role-aware.
     if let Ok(addr) = std::env::var("LB_GATEWAY_ADDR") {
-        let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
         let addr: std::net::SocketAddr = addr
             .parse()
             .map_err(|e| anyhow::anyhow!("bad LB_GATEWAY_ADDR: {e}"))?;
-        let gw = lb_role_gateway::Gateway::boot(&ws)
+        // The gateway boots its own node; the workspace now comes from each request's bearer token
+        // (the hard wall, §7), not from a gateway-wide setting.
+        let gw = lb_role_gateway::Gateway::boot()
             .await
             .map_err(|e| anyhow::anyhow!("gateway boot: {e}"))?;
-        println!("gateway: serving workspace '{ws}' on http://{addr}");
+        println!("gateway: serving on http://{addr}");
         lb_role_gateway::serve(gw, addr).await?;
     }
 

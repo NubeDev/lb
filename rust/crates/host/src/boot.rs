@@ -50,7 +50,7 @@ impl Node {
     /// layers mount (sync relay, gateway) and the data-authority axis (README §6.8). Every role
     /// opens the same store + Zenoh peer; the second node in S3 is just a second `boot_as`.
     pub async fn boot_as(role: Role) -> Result<Self, NodeError> {
-        let store = Store::memory().await?;
+        let store = Self::open_store().await?;
         let bus = Bus::peer().await?;
         let engine = Engine::new()?;
         Ok(Self {
@@ -61,5 +61,16 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             role,
         })
+    }
+
+    /// Select the store engine by **config, not role** (symmetric nodes, §3.1): `LB_STORE_PATH`
+    /// set → a persistent on-disk store (`Store::open`, durable across restart); unset → an
+    /// ephemeral in-memory store (`Store::memory`, dev/test). This is the thin boot-wiring layer
+    /// §3.1 permits to read config — no core path branches on it, and there is no `if cloud`.
+    async fn open_store() -> Result<Store, StoreError> {
+        match std::env::var("LB_STORE_PATH") {
+            Ok(path) if !path.is_empty() => Store::open(&path).await,
+            _ => Store::memory().await,
+        }
     }
 }

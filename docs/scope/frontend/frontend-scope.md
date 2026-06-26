@@ -103,3 +103,8 @@ been adapted to the reusable core-stack product.
   desktop packaging build runs.
 - shadcn/ui primitives: S2 used hand-rolled Tailwind controls; pull in the shadcn generator when
   the component set grows past a couple of inputs/buttons.
+- **Localization (client half).** `scope/prefs/user-prefs-scope.md` owns the preference/format contract;
+  the **client responsibilities are the frontend's to build**: bootstrap-locale resolution (pre-auth),
+  catalog bundling + workspace-override fetch/merge, the prefs settings surface (IANA tz picker + the
+  closed unit-override enum, shared with the server), re-render on the "prefs changed" hint, and **RTL
+  layout** (`dir=rtl`) when a non-LTR language is added. See that scope's "How the UI handles this".

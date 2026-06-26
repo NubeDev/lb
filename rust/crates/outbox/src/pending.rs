@@ -56,3 +56,15 @@ pub async fn dead_lettered(store: &Store, ws: &str) -> Result<Vec<Effect>, Store
     effects.sort_by_key(|e: &Effect| e.ts);
     Ok(effects)
 }
+
+/// The successfully **delivered** effects in workspace `ws` — acknowledged by the target, terminal
+/// (the relay never re-sends them). Oldest→newest. The completed end of the read-only status view
+/// (collaboration scope: pending → delivered). Never another workspace's effects (the hard wall §7).
+pub async fn delivered(store: &Store, ws: &str) -> Result<Vec<Effect>, StoreError> {
+    let mut effects = Vec::new();
+    for v in store_list(store, ws, TABLE, "status", "delivered").await? {
+        effects.push(serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?);
+    }
+    effects.sort_by_key(|e: &Effect| e.ts);
+    Ok(effects)
+}

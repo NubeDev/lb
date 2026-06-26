@@ -37,6 +37,13 @@ joins*, and *exit gate* spelled out for each stage.
 | **S5** | AI core: central agent + workflow jobs + AI-gateway sidecar | Edge + cloud | yes | 5 |
 | **S6** | Coding workflow extension (the worked example, end to end) | Edge + cloud | yes | 6 |
 | **S7** | Platform maturity: registry, native Tier-2, optional SpiceAI | both | yes | 7, 8, 9 |
+| **S8** | Data plane: durable on-disk store + generic ingest + tagging | both | yes | 6.1 |
+| **S9** | Real collaboration UI: identity, workspaces, channels, messaging, inbox/outbox | both | **yes** | 6.13 |
+
+> **S0–S7 are MET** (see `STATUS.md`). **S8** is the active stage (the persistent store + ingest + tags
+> slices); **S9** finishes the UI from an S2 demo into a real multi-user app. These two are independent
+> tracks — S8 deepens the platform (data), S9 finishes the existing surfaces (collaboration) — so they
+> can proceed in either order; numbered by when they were scoped, not a hard dependency.
 
 ---
 
@@ -121,6 +128,43 @@ The **extension registry** (pull/verify/cache, signing, public + private), then 
 
 **Exit gate:** an extension installs from the signed registry, runs offline once cached, and
 rolls back to a prior version; a native sidecar is supervised and restarts cleanly.
+
+## S8 — Data plane: durable store + generic ingest + tagging
+
+The first stage that **writes to disk**. Three slices, in order: (0) swap SurrealDB from the in-memory
+`kv-mem` engine to a **persistent embedded backend** (`Store::open(path)`, engine by config) and run a
+**day-one capability spike** that classifies each SurrealDB feature LOAD-BEARING vs DEGRADABLE
+(`scope/store/persistent-backend-scope.md`); (1) a **generic buffered ingest surface** — the read-side
+analog of the outbox — that absorbs high-volume external data into time-series `series` state without a
+write storm (`scope/ingest/ingest-scope.md`); (2) **tags** upgraded from key:value strings to a
+**typed annotation + relationship graph** (`scope/tags/tags-scope.md`), the discovery layer over
+heterogeneous data.
+
+Why now: must-deliver durability, the energy/IoT-style edge→cloud data-collection use cases, and any
+real dataset all need on-disk persistence the earlier stages deferred. Stays generic — a "device" is a
+principal, protocol bridges are out-of-core extensions; the platform does not become an IoT system.
+
+**Node posture:** both. The **ingest role** is `either` — the hub usually runs the buffer, but a Pi
+sub-hub can run its own. **Exit gate:** data survives a node restart (real persistence, crash-consistent);
+a fleet of producers writes one series without collision (`(series, producer, seq)` dedup), buffered and
+committed exactly-once; tags classify heterogeneous series and faceted/relationship queries return them;
+the capability-deny + two-workspace-isolation + offline-replay tests pass on the persistent engine.
+
+## S9 — Real collaboration UI
+
+Take the UI from a single-screen S2 demo bolted to fakes to a **real multi-user collaboration app over a
+real node** (`scope/frontend/collaboration-scope.md`). Finishes both ends as needed: a **real login →
+token → principal session** (replacing the gateway's demo principal — the keystone), then
+**workspaces**, a **channel registry** (list/create), **users/teams/members** (surfacing the S4
+membership backend), **messaging between real people** with **rendered presence**, and a **real inbox**
+(replacing the workflow fake) + **outbox status**. Mostly transport wiring + missing views over verbs
+that already exist — except identity, which is genuinely missing on both ends.
+
+**Node posture:** both (browser→gateway and the in-process Tauri shell). **Exit gate:** two **real**
+principals in two workspaces — one cannot see the other's channels/inbox/members (the wall, finally
+demonstrable end-to-end); messaging between people works live with presence; the real inbox's approval
+gate is a UI action; an expired/forged token is rejected. Capability-deny over real routes +
+two-session isolation + offline-replay pass.
 
 ---
 

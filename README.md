@@ -272,7 +272,7 @@ AI agents fit this model as workspace-scoped actors, not global super-users. A c
 
 One Cargo workspace.
 
-- **Core crates (compiled into every node):** `host`, `bus` (Zenoh wrapper), `store` (SurrealDB wrapper), `runtime` (wasmtime + native sidecar supervisor), `mcp` (rmcp), `auth`, `caps`, `tags`, `inbox`, `jobs`, `secrets`, `sync`, `ext-loader`.
+- **Core crates (compiled into every node):** `host`, `bus` (Zenoh wrapper), `store` (SurrealDB wrapper), `runtime` (wasmtime + native sidecar supervisor), `mcp` (rmcp), `auth`, `caps`, `tags`, `inbox`, `jobs`, `secrets`, `sync`, `ext-loader`, `prefs` (per-user/workspace preferences + localization/unit-conversion, canonical data in & localized presentation out).
 - **SDK crate (extension authors depend on this):** WIT bindings, capability traits, host-function interface. This is the public API surface — version it deliberately; breaking it breaks every extension.
 - **Role-only crates:** `gateway` (SSE/HTTP, cloud), `ai-gateway` (cloud model/provider gateway), `registry-host` (cloud), `bootstrap-ui` (cloud).
 - **`node` binary:** wires the crates together and reads config to select roles.

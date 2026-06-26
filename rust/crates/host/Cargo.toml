@@ -14,6 +14,7 @@ lb-bus.workspace = true
 lb-runtime.workspace = true
 lb-ext-loader.workspace = true
 lb-inbox.workspace = true
+lb-ingest.workspace = true
 lb-jobs.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
