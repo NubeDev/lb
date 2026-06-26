@@ -57,6 +57,11 @@ lb-tags = { path = "crates/tags" }
 lb-host = { path = "crates/host" }
 lb-sdk = { path = "sdk" }
 
+# role crates (the §8 role layer). Roles depend on host, never the reverse; listed here so a
+# crate — or a host DEV-dependency, as in the S5 agent tests — can inherit one by `{ workspace
+# = true }` without breaking the symmetric-layering rule (the host never build-depends on a role).
+lb-role-ai-gateway = { path = "role/ai-gateway" }
+
 # the stack (docs/key-stack.md)
 surrealdb = { version = "2", default-features = false, features = ["kv-mem"] }
 zenoh = "1"

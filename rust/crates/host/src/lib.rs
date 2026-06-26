@@ -8,6 +8,7 @@
 //! What the host exposes is the *spine*: a [`Node`] holding store + bus + the MCP registry,
 //! and `load_extension` to bring a component online. Tool calls go through `lb_mcp::call`.
 
+mod agent;
 mod assets;
 mod boot;
 mod channel;
@@ -20,6 +21,11 @@ mod role;
 mod serve;
 mod sync;
 
+pub use agent::{
+    agent_call_key, invoke, invoke_remote, resume, run_session, serve_agent, AgentError,
+    AgentInvokeReply, AgentInvokeRequest, AgentServer, AllowedTool, CallOutcome, Invocation,
+    ModelAccess, ProposedCall, Turn, MAX_STEPS,
+};
 pub use assets::{
     add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc,
     put_skill, revoke_skill, share_doc, AssetError,

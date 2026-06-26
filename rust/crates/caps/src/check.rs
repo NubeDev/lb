@@ -28,16 +28,28 @@ pub enum Denied {
     Capability,
 }
 
-/// Run the two gates in order. This is the only authorization entry point in the host.
+/// Run the gates in order. This is the only authorization entry point in the host.
+///
+/// For a **delegated** principal (the agent acting for a caller, agent scope) there is a third
+/// gate: the request must ALSO match the delegation `constraint` (the caller's caps). That makes
+/// the effective grant `agent ∩ caller` — a delegated actor can never do something *either* side
+/// forbids, so an agent cannot widen its access. An ordinary principal has no constraint and is
+/// bounded by gate 2 alone.
 pub fn check(principal: &Principal, req: &Request) -> Decision {
     // Gate 1: isolation first — the hard wall, before any capability is consulted.
     if principal.ws() != req.ws {
         return Decision::Denied(Denied::Workspace);
     }
-    // Gate 2: capability match within the workspace.
-    if matches(principal.caps(), req) {
-        Decision::Allowed
-    } else {
-        Decision::Denied(Denied::Capability)
+    // Gate 2: the actor's own capabilities must grant the request.
+    if !matches(principal.caps(), req) {
+        return Decision::Denied(Denied::Capability);
     }
+    // Gate 2b (delegation): if on-behalf-of, the caller's caps must ALSO grant it (intersection).
+    // No constraint → an ordinary actor, already allowed by gate 2.
+    if let Some(constraint) = principal.constraint() {
+        if !matches(constraint, req) {
+            return Decision::Denied(Denied::Capability);
+        }
+    }
+    Decision::Allowed
 }

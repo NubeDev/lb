@@ -2728,7 +2728,9 @@ dependencies = [
  "lb-caps",
  "lb-ext-loader",
  "lb-inbox",
+ "lb-jobs",
  "lb-mcp",
+ "lb-role-ai-gateway",
  "lb-runtime",
  "lb-store",
  "serde",
@@ -2751,6 +2753,13 @@ dependencies = [
 [[package]]
 name = "lb-jobs"
 version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
 
 [[package]]
 name = "lb-mcp"
@@ -2769,6 +2778,12 @@ dependencies = [
 [[package]]
 name = "lb-role-ai-gateway"
 version = "0.1.0"
+dependencies = [
+ "lb-host",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "lb-role-bootstrap-ui"

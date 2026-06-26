@@ -3449,6 +3449,7 @@ dependencies = [
  "lb-caps",
  "lb-ext-loader",
  "lb-inbox",
+ "lb-jobs",
  "lb-mcp",
  "lb-runtime",
  "lb-store",
@@ -3460,6 +3461,16 @@ dependencies = [
 
 [[package]]
 name = "lb-inbox"
+version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "lb-jobs"
 version = "0.1.0"
 dependencies = [
  "lb-store",

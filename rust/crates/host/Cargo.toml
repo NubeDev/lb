@@ -14,6 +14,7 @@ lb-bus.workspace = true
 lb-runtime.workspace = true
 lb-ext-loader.workspace = true
 lb-inbox.workspace = true
+lb-jobs.workspace = true
 lb-mcp.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
@@ -23,3 +24,7 @@ tokio.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+# The AI-gateway role crate supplies the model-access bridge + the deterministic mock provider for
+# the agent tests. It is a DEV dependency only: the host depends on the `ModelAccess` trait it owns,
+# never on a role crate at build time (roles depend on host, not the reverse — symmetric layering).
+lb-role-ai-gateway.workspace = true

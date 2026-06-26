@@ -151,7 +151,13 @@ capability check").
 ## Open questions
 
 - Grant *delegation* (an actor granting a subset to another) — needed for agents-calling-tools
-  (§6.16). Defer to S5; the grammar already supports subsetting, only the issuance flow is new.
+  (§6.16). **RESOLVED at S5** (agent scope): `Principal::derive(sub, agent_caps)` mints a strictly
+  narrower actor (same ws — delegation can't cross the wall — a distinct `agent:*` sub, the agent's
+  caps, and the caller's caps as a `constraint`); `caps::check` gained **gate 2b** requiring a
+  delegated request to match the constraint too — exact `agent ∩ caller` intersection, no pattern
+  algebra, reusing the one chokepoint. An agent can never widen its access. Tested in
+  `caps/tests/delegation_test.rs`. Signing a delegated/routed grant on the bus (token-on-the-bus) is
+  still open — tracked in the mcp scope.
 - Negative caps / deny rules — **rejected for v1**: deny-by-default + explicit grants is
   simpler and safer than mixing allow/deny. Revisit only if a real case needs it.
 - Where the signing key lives per role (edge verifies, hub issues) — custody is README §13's

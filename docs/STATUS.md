@@ -16,11 +16,12 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**S4 complete → entering S5 — AI core** (see `STAGES.md`). The Rust workspace + a React/Tauri UI
-exist and build; messaging, a second node + sync, cross-node routed tool calls, the browser
-SSE/HTTP path, and now **shared workspace assets** (docs/skills/install records behind
-capability- and membership-checked reads) are all proven end to end. No doc-site build and no
-native desktop window (webkit toolchain) yet.
+**S5 complete → entering S6 — coding workflow** (see `STAGES.md`). The Rust workspace + a React/Tauri
+UI exist and build; messaging, a second node + sync, cross-node routed tool calls, the browser
+SSE/HTTP path, shared workspace assets, and now the **AI core** — a central workspace-scoped agent
+that owns the tool-call loop (callable by edge users over the routed MCP namespace), the swappable
+AI-gateway sidecar (model access only), and durable resumable workflow jobs — are all proven end to
+end. No doc-site build and no native desktop window (webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
 build wasm guest + test + fmt); the four forever decisions (SDK/WIT, capability grammar +
@@ -52,8 +53,20 @@ host `assets` service + `assets.*` MCP bridge + UI `DocView`. **83 Rust + 11 Vit
 tests** pass. Content is stored as a record (not `DEFINE BUCKET` — unavailable in our `kv-mem`
 build; an S7 config swap). See `sessions/files/shared-assets-session.md` and `public/SCOPE.md`.
 
-**Exit gate (S5):** an edge user invokes the central agent; the agent calls the gateway for a model
-and a granted MCP tool; a workflow job survives the edge disconnecting and resumes.
+**S5 exit gate — MET.** An edge user invokes the central agent over the routed MCP namespace; the
+agent calls the gateway for a model turn and a **granted MCP tool** inside its loop (under
+`agent ∩ caller` — no widening); a workflow **job survives the edge disconnecting and resumes
+idempotently**. New: `lb-jobs` (durable resumable session), `lb-role-ai-gateway` (swappable model
+access + replay-safe idempotency cache, mock provider), host `agent` service (the loop + the gates)
++ routed wiring, grant **delegation** (`Principal::derive` + caps gate 2b), `agent.*` MCP bridge, UI
+`AgentView`. **105 Rust + 14 Vitest + 2 shell tests** pass — incl. capability-deny (invoke gate +
+the in-loop intersection), workspace-isolation across **store + MCP**, and offline/sync (interrupted
+session resumes; duplicate invocation does not re-spend). See `sessions/agent/ai-core-session.md`
+and `public/SCOPE.md`.
+
+**Exit gate (S6):** a GitHub issue → inbox `needs:triage` → the agent triages + drafts a scope doc →
+an approval inbox item gates a durable coding job → progress streams to a channel → every external
+effect goes through the outbox with retry.
 
 ---
 
@@ -67,6 +80,7 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | Messaging | bus | S2 | **shipped** | [bus](scope/bus/bus-scope.md) | [messaging](sessions/bus/messaging-session.md) | pub/sub + presence + inbox + channel svc + React/Tauri UI + hot-reload |
 | Sync / SSE | sync | S3 | **shipped** | [sync](scope/sync/sync-scope.md) | [multi-node-sync](sessions/sync/multi-node-sync-session.md) | 2nd node (role=config) + queryable routed MCP + edge↔hub sync + axum SSE/HTTP gateway + UI transport swap; 61+8+2 green |
 | Shared assets | files | S4 | **shipped** | [files](scope/files/files-scope.md) + [skills](scope/skills/skills-scope.md) | [shared-assets](sessions/files/shared-assets-session.md) | `lb-assets` crate + host 3-gate (ws→cap→membership) doc/skill svc + grant-gated skills + persisted install records + `assets.*` MCP bridge + UI DocView; 83+11+2 green |
+| AI core | agent | S5 | **shipped** | [agent](scope/agent/agent-scope.md) + [ai-gateway](scope/ai-gateway/ai-gateway-scope.md) + [jobs](scope/jobs/jobs-scope.md) | [ai-core](sessions/agent/ai-core-session.md) | central agent (owns the loop) + routed edge→hub invoke + grant delegation (`agent ∩ caller`) + `lb-jobs` resumable session + `lb-role-ai-gateway` (mock + idempotency cache) + `agent.*` MCP bridge + UI AgentView; 105+14+2 green |
 
 ---
 
@@ -74,27 +88,32 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 
 The `scope/<topic>/` docs exist for all areas (see `scope/README.md`). **Fully authored:** core,
 auth-caps, mcp, crate-layout, extensions, jobs, bus, inbox-outbox, tenancy, frontend, sync, testing,
-debugging. **Promoted to `public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox,
-tenancy, store, frontend, sync, **files, skills** (+ `public/SCOPE.md`). The remaining `public/` and
-`sessions/` files are still stubs until their slice ships.
+debugging, ai-gateway, **agent** (new this slice). **Promoted to `public/`:** core, auth-caps, mcp,
+crate-layout, bus, inbox-outbox, tenancy, store, frontend, sync, files, skills, **agent** (+
+`public/SCOPE.md`). The remaining `public/` and `sessions/` files are still stubs until their slice
+ships.
 
 ---
 
 ## Next up
 
-1. **S5 AI core:** a central workspace-scoped AI agent on the hub, callable by edge users over the
-   routed MCP namespace; remote workflow jobs (durable, resumable); the AI-gateway sidecar. The
-   agent loads granted **skills** (S4) and reads shared **docs** (S4) as its substrate.
-2. **Gateway/Tauri wiring for `assets_*`** (S4 follow-up, not blocking S5): the host verbs + MCP
-   bridge + UI fake exist; route `assets_*` through the SSE/HTTP gateway + Tauri shell to a real
-   node (mirrors the S3 channel transport swap).
-3. **Transactional must-deliver outbox** (§6.10) — S3 shipped the append-style idempotent-apply
-   sync subset; the durable outbox with a delivery cursor + change-feed-driven relay is next
-   (bus + inbox-outbox + sync open questions).
-4. **Fit-and-finish carryover:** render presence in the UI; a real login→token→principal session
-   (replacing the gateway's demo principal — the S4 asset verbs derive the owner from it); sync the
-   asset tables (doc/skill/install are `(table,id)` upserts the channel sync path already covers);
-   serve-side auth for hub-authoritative routed calls; explicit edge→hub router endpoints (S7).
+1. **S6 coding workflow** (the worked example, `vision/0002-coding-agent-workplace.md`): GitHub
+   issue → inbox `needs:triage` → the **S5 agent** triages + drafts a scope doc → approval inbox
+   item → on approval a durable coding **job** → progress to a channel → external effects through the
+   **outbox**. This is the first real composition of the S5 agent + jobs primitives.
+2. **Transactional must-deliver outbox** (§6.10) — S3 shipped the append-style idempotent-apply sync
+   subset; the durable outbox with a delivery cursor + change-feed-driven relay is the S6 driver
+   (bus + inbox-outbox + sync open questions). Agent progress streaming rides on this.
+3. **Real model provider + streaming** behind the S5 gateway contract — the mock is the only stub;
+   add an OpenAI-compatible / local adapter and stream tokens as Zenoh motion (the gateway fields
+   exist; the loop persists the job today).
+4. **Gateway/Tauri wiring for `agent_invoke` + `assets_*`** (S4/S5 follow-up): the host verbs + MCP
+   bridges + UI fakes exist; route them through the SSE/HTTP gateway + Tauri shell to a real node
+   (mirrors the S3 channel transport swap).
+5. **Fit-and-finish carryover:** render presence in the UI; a real login→token→principal session
+   (replacing the gateway's demo principal); **token-on-the-bus** so the hub can verify a routed
+   agent caller's grant (S5 is in-process co-trust); sync the asset/job tables (all `(table,id)`
+   upserts the channel sync path already covers); explicit edge→hub router endpoints (S7).
 
 ---
 

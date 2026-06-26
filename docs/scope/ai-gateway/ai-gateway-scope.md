@@ -112,6 +112,25 @@ deliberate, because every caller and every provider adapter depends on it.
 6. The job saves generated docs, creates approval inbox items, and sends durable external
    actions through outbox. A later resume reuses the cached response by idempotency key.
 
+## What shipped in S5 (the swappable model-access sidecar, mock provider)
+
+The `lb-role-ai-gateway` crate behind the stable contract: `complete(AiRequest) -> AiResponse`,
+**model access only — no loop** (the agent owns the loop, agent scope). S5 builds the contract and
+a **mock provider** wired at the test boundary (testing §3 — deterministic, no network): a provider
+that, given a prompt, returns scripted content and/or proposed `ToolCall`s, so the agent's loop is
+exercised end-to-end without a real model. The provider is a trait (`Provider::complete`) so the
+real OpenAI-compatible / SpiceAI / local adapters slot in behind the same contract later (one
+gateway contract, many implementations — never two gateways).
+
+**Replay-safe by idempotency key (S5):** every `AiRequest` carries an `idempotency_key`; the
+gateway caches the `AiResponse` keyed by it, so a **resumed** agent job (agent scope, offline/sync)
+does not re-spend budget or diverge — non-determinism is pinned to the first execution. This is the
+gateway half of the resume-idempotency guarantee; the agent half is the append-addressed transcript.
+
+**Deferred past S5:** real provider adapters, streaming token motion, embeddings, mid-stream budget
+enforcement, the audit hash-chain, and secrets-backed provider keys — the contract is shaped for
+them (the fields exist) but S5 ships completions + the idempotency cache only, against the mock.
+
 ## Open questions
 
 - Provider keys: per-workspace, hub-managed, or both — and the precedence when both exist?

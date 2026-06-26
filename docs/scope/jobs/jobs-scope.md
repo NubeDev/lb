@@ -35,14 +35,24 @@ worker/middleware/cron ergonomics) **or** a thin from-scratch SurrealDB-native q
 middleware ergonomics at a cost that exceeds maintaining a custom backend — measure at S5,
 don't pre-build.
 
-### The record shape (sketch, finalized at S5)
+### The record shape (S5 — as built)
 
-`job:{id}` with fields: `status` (queued|claimed|running|done|failed|dead), `kind`,
-`payload`, `run_at` (indexed), `attempts`, `max_attempts`, `backoff`, `claimed_by`,
-`lease_until`, `ws` (the hard wall — every job is workspace-scoped), timestamps. Retries =
-re-queue with `run_at = now + backoff(attempts)`; cron = a periodic enqueuer row. Remote
-workflow sessions (§6.9) own durable session state in their own records and *use* a job to
-drive progress; external effects go through the **outbox** (§6.10), never raw pub/sub.
+`job:{id}` with fields: `status` (queued|running|done|failed), `kind`, `payload` (opaque
+JSON — the agent stores its goal + caller here), `cursor` (the resume point — the next step
+index), `steps` (the append-addressed transcript: `steps[i]` is the durable result of step
+`i`, so re-running a persisted step is a lookup, not a re-spend), `attempts`, `ws` (the hard
+wall — every job is workspace-scoped), `ts` (injected logical clock — no wall-clock, testing
+§3). Remote workflow sessions (§6.9, agent scope) own durable session state **in this same
+record** (the transcript + cursor) and drive progress through it; external effects go through
+the **outbox** (§6.10) — deferred past S5, queued as job-owned state for now.
+
+**S5 scope vs the full sketch:** S5 builds the *durable resumable session* subset the agent
+needs — create / load / append-step / advance-cursor / complete, all workspace-scoped, with
+**idempotent resume** (re-applying a persisted step is a no-op). The atomic-claim primitive
+(`UPDATE … WHERE status='queued'`), `run_at` scheduling, backoff, lease/heartbeat, and cron
+are NOT needed for the single hub-hosted agent session and are deferred — they land when a
+multi-worker queue has contention to resolve (S6+). Recording the choice so nothing builds a
+second datastore or a claim race by accident.
 
 ## How it fits the core
 
@@ -61,7 +71,21 @@ drive progress; external effects go through the **outbox** (§6.10), never raw p
 
 ## Open questions
 
-- Lease/heartbeat interval and dead-worker reclamation policy → S5.
-- Cron representation (a row vs a separate scheduler) → S5.
-- Whether `kind` dispatch is a static registry or capability-gated per workspace → align with
-  caps grammar at S5.
+- Lease/heartbeat interval and dead-worker reclamation policy → **deferred past S5** (the single
+  hub-hosted agent session has no contending workers; lands with the multi-worker queue, S6+).
+- Atomic claim under contention (two workers, one job) → **deferred past S5** with the queue; the
+  primitive (`UPDATE … WHERE status='queued' RETURN BEFORE`) is recorded but unbuilt.
+- Cron representation (a row vs a separate scheduler) → deferred past S5.
+- Whether `kind` dispatch is a static registry or capability-gated per workspace → S5 uses a single
+  `agent-session` kind driven by the agent host service; the registry/dispatch question opens with
+  the second job kind (S6).
+
+## What shipped in S5 (durable resumable session)
+
+The `lb-jobs` crate: the `Job` record (above) + the raw store verbs `create` / `load` /
+`append_step` / `complete`, all workspace-namespaced (the hard wall, §7), **no authorization**
+(raw verbs, like `lb-inbox`/`lb-assets` — the host's agent service is the caps chokepoint). Resume
+is idempotent: `append_step(i, result)` upserts `steps[i]`, so re-applying a persisted step changes
+nothing; the cursor only advances past steps that durably landed. Proven by the agent slice's
+offline/sync test (a session survives the edge disconnecting and resumes without double-applying).
+See `../agent/agent-scope.md` and `../../sessions/agent/ai-core-session.md`.

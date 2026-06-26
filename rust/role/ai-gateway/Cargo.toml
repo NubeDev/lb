@@ -6,3 +6,13 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# Roles depend on host (never the reverse). The bridge here adapts this gateway's `AiGateway` to
+# the host-owned `ModelAccess` trait, so the host agent loop calls models without build-depending
+# on a role crate (it depends only on the trait it owns).
+lb-host.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

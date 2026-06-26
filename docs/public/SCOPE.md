@@ -3,6 +3,38 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S5 — AI core)
+
+A vertical slice through every layer: a central agent, the swappable gateway, and durable jobs.
+
+- **Central AI agent** — a host `agent` service (beside `channel`/`assets`): a workspace-scoped
+  actor that **owns the tool-call loop** (ask the gateway for a turn → run each proposed tool call,
+  capability-checked → feed results back → repeat, bounded by `MAX_STEPS`). Reached over MCP
+  (`mcp:agent.invoke:call`) and over the **routed namespace** — an edge invokes the hub agent via a
+  Zenoh queryable (`ws/*/agent/invoke`, the S3 routing seam), `caps::check` on the calling node.
+  See `agent/agent.md`.
+- **Grant delegation (the intersection)** — the agent acts under `agent ∩ caller`:
+  `Principal::derive` mints a strictly **narrower** actor, and `caps::check` gained **gate 2b** (a
+  delegated request must match the caller's caps too). An agent can never widen its own access.
+  Substrate reads (granted skill + shared doc) run **on the caller's behalf** (caller's identity for
+  the S4 membership/grant gate, intersected caps for the capability gate). See `auth-caps/auth-caps.md`.
+- **Swappable AI-gateway sidecar** — `lb-role-ai-gateway` behind a stable contract
+  (`AiRequest`/`AiResponse`/`ToolCall`): **model access only, no loop** (that's the agent's). A
+  `Provider` trait + a deterministic mock (the only external stubbed) + a **replay-safe idempotency
+  cache** (same key → cached response, never re-spent). One contract, many implementations.
+- **Durable resumable jobs** — a new `lb-jobs` crate: the session is a `job:{id}` record with an
+  **append-addressed transcript** + a cursor (no separate datastore, §3.2). Resume continues from
+  the cursor; re-applying a persisted step is a no-op. The atomic-claim multi-worker queue is
+  deferred (jobs scope). See `../scope/jobs/jobs-scope.md`.
+- **UI** — an `AgentView` + `agent.api` client mirroring the verb, with a faithful in-memory fake
+  exercising the invoke + grant gates. See `frontend/frontend.md`.
+
+**Exit gate met.** An edge user invokes the central agent; the agent calls the gateway for a model
+and a granted MCP tool; a workflow job survives the edge disconnecting and resumes idempotently.
+**105 Rust + 14 Vitest + 2 shell tests** pass — incl. capability-deny (invoke gate + the in-loop
+intersection), workspace-isolation across **store + MCP**, and offline/sync (interrupted session
+resumes from its cursor; a duplicated invocation does not double-apply or re-spend).
+
 ## Shipped (S4 — shared workspace assets)
 
 A vertical slice through every layer, building the asset substrate the AI workflows (S5–S6) stand on:
@@ -110,13 +142,16 @@ invisible. 35 tests pass (mandatory capability-deny + workspace-isolation includ
 |---|---|---|
 | SDK/WIT boundary | WASI 0.2 Component-Model world, semver-versioned | `crate-layout/` |
 | Capability grammar + token | `surface:resource:action` + Ed25519 JWT, two-gate check | `auth-caps/` |
-| Job queue | thin **native** SurrealDB queue (not apalis), built at S5 | `../scope/jobs/` |
+| Job queue | thin **native** SurrealDB queue (not apalis); resumable-session subset built at S5 | `../scope/jobs/` |
 | Extension manifest | **TOML** `extension.toml`; host grants `requested ∩ approved` | `../scope/extensions/` |
 
 ## Not yet built
 
-AI core (S5); coding workflow (S6); registry + native tier (S7). The
-transactional must-deliver **outbox** (S3 shipped the append-style idempotent-apply sync subset;
-the durable outbox with a delivery cursor + change-feed-driven relay is next), bus message
-classification, serve-side authorization for hub-authoritative routed calls, and explicit
-edge→hub router endpoints (S7) remain. Tracked in `../STATUS.md` and `../STAGES.md`.
+Coding workflow (S6); registry + native tier (S7). A **real model provider** behind the gateway
+contract (the S5 mock is the only stub), **streaming** agent progress as Zenoh motion + the
+transcript via outbox, and **token-on-the-bus** for routed agent invocations (S5 is in-process
+co-trust) remain. The transactional must-deliver **outbox** (S3 shipped the append-style
+idempotent-apply sync subset; the durable outbox with a delivery cursor + change-feed-driven relay
+is next — the S6 coding-workflow driver), bus message classification, serve-side authorization for
+hub-authoritative routed calls, and explicit edge→hub router endpoints (S7) remain. Tracked in
+`../STATUS.md` and `../STAGES.md`.
