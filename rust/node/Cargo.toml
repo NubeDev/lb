@@ -1,0 +1,20 @@
+# The `node` binary — wires the core crates together and selects roles by config (README §9).
+# This is one of the two thin role-aware layers (§3.1): no core crate is role-aware, the role
+# selection lives here. S1 runs solo.
+[package]
+name = "node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "node"
+path = "src/main.rs"
+
+[dependencies]
+lb-host.workspace = true
+lb-auth.workspace = true
+lb-mcp.workspace = true
+anyhow.workspace = true
+tokio.workspace = true

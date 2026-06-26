@@ -1,0 +1,16 @@
+# The trivial S1 WASM extension — a wasm32-wasip2 component, the spine probe (mcp scope).
+# EXCLUDED from the workspace (root Cargo.toml): it targets wasm, not the host platform.
+# Build it with: cargo build --target wasm32-wasip2 --release  (the host build script does this).
+[package]
+name = "hello-ext"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.40"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

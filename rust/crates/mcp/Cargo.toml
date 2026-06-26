@@ -1,0 +1,16 @@
+[package]
+name = "lb-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lb-auth.workspace = true
+lb-caps.workspace = true
+lb-runtime.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }

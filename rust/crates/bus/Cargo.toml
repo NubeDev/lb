@@ -1,0 +1,10 @@
+[package]
+name = "lb-bus"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zenoh.workspace = true
+thiserror.workspace = true

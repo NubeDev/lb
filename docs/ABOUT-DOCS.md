@@ -17,6 +17,10 @@ docs/
 Two areas sit outside the three-stage flow: `vision/` (why the platform exists) and
 `debugging/` (the append-only debugging memory — see "Testing & debugging" below).
 
+Top-level guides tie it together: `STATUS.md` (the live "where are we" dashboard),
+`SCOPE-WRITTING.md` (how to write a scope), `HOW-TO-CODE.md` (how to build one), and
+`FILE-LAYOUT.md` (how to lay out the code).
+
 ## The three stages
 
 ### `scope/` — what we want
@@ -126,15 +130,20 @@ the session is not done.
 
 ### Session doc template
 
+The sections mirror the **definition of done** above — fill every one (write "n/a" with a
+reason rather than deleting, so a reader knows it was considered). Driving a coding session
+end to end? Follow [`HOW-TO-CODE.md`](HOW-TO-CODE.md), the execution playbook.
+
 ```markdown
 # <Topic> — <short title> (session)
 
 - Date: YYYY-MM-DD
 - Scope: ../../scope/<topic>/<name>-scope.md
+- Stage: <e.g. S1 — the spine> (STAGES.md)
 - Status: in-progress | done | blocked
 
 ## Goal
-One or two sentences: what this session set out to do.
+One or two sentences: what this session set out to do, and the stage exit gate it targets.
 
 ## What changed
 The concrete edits/decisions (link files as path:line where useful).
@@ -143,12 +152,26 @@ The concrete edits/decisions (link files as path:line where useful).
 - Chose X over Y because …
 - Rejected Z because …
 
+## Tests
+What was tested, which mandatory categories apply (capability-deny, workspace-isolation,
+offline/sync, hot-reload), and the **green command output pasted here** — green is a claim
+that must be shown.
+
+## Debugging
+Links to any `debugging/<area>/<symptom>.md` entries opened this session, each with its
+regression test. "None" if nothing broke.
+
+## Public / scope updates
+What was promoted to `public/<topic>/` + `public/SCOPE.md`, and which scope open questions
+were resolved or refreshed.
+
 ## Dead ends / surprises
 What didn't work, and what was learned.
 
 ## Follow-ups
 - Open questions pushed back to the scope doc
 - TODOs for a future session
+- STATUS.md updated? (slice/stage state)
 ```
 
 ---

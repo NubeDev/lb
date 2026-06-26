@@ -5,6 +5,7 @@
 
 **A reusable, extensible backend + frontend platform.**
 Status: architecture scope (no implementation detail). Intended as the basis for writing a coding scope.
+Where the build actually is right now: see [`docs/STATUS.md`](docs/STATUS.md).
 
 ---
 

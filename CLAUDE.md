@@ -44,6 +44,10 @@ the per-directory READMEs) with the real `cargo`/frontend/Nextra commands.
   `scope/testing/` (how to test) and `scope/debugging/` (how to debug + the history system).
 - `docs/SCOPE-WRITTING.md` — the playbook for turning a raw feature idea into a complete
   scope setup (doc + stubs + testing plan + index updates). Follow it to write any scope.
+- `docs/HOW-TO-CODE.md` — the **coding-session playbook**: the execution counterpart to
+  `SCOPE-WRITTING.md`. Follow it to build a scope into shipped code + tests + docs.
+- `docs/STATUS.md` — the single **"where are we"** dashboard (current stage, slices in
+  flight, next up). Read it at the start of a session; update it at the end.
 - `docs/debugging/` — the append-only **working history**: every issue and how it was fixed.
 
 ## Every session writes docs, tests, and debug history (required)

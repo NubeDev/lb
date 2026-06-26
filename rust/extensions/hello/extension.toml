@@ -1,0 +1,23 @@
+# The S1 spine probe (extensions scope, the §13 manifest contract).
+[extension]
+id          = "hello"
+version     = "0.1.0"
+name        = "Hello"
+description = "Trivial echo tool — the S1 spine probe."
+
+[runtime]
+tier        = "wasm"
+world       = "lazybones:ext/extension@0.1.0"
+placement   = "either"
+
+[capabilities]
+# hello needs nothing beyond being callable; the mcp:hello.echo:call grant lives on the
+# caller's token, not requested here. Declared empty to show the request/grant split.
+request = []
+
+[[tools]]
+name        = "echo"
+description = "Echo the input message back."
+
+[visibility]
+class = "private"

@@ -1,0 +1,22 @@
+# hello v2 — same id as v1 (`hello`), bumped version. Loading it over v1 is the hot-reload
+# swap: same tool name `echo`, new behavior (output carries `v: 2`).
+[extension]
+id          = "hello"
+version     = "0.2.0"
+name        = "Hello"
+description = "Echo tool, v2 — the hot-reload swap target."
+
+[runtime]
+tier        = "wasm"
+world       = "lazybones:ext/extension@0.1.0"
+placement   = "either"
+
+[capabilities]
+request = []
+
+[[tools]]
+name        = "echo"
+description = "Echo the input message back (v2)."
+
+[visibility]
+class = "private"

@@ -1,0 +1,75 @@
+# Lazybones — one Cargo workspace.
+# Core crates compile into every node; role-only crates and the `node` binary wire them
+# together and select edge/cloud roles by config. See docs/scope/crate-layout/.
+#
+# The hello extension (extensions/hello) is a wasm32-wasip2 guest and is INTENTIONALLY
+# excluded from the workspace: it targets a different platform and is built separately by
+# the host's build script. Listing it as a workspace member would force the whole workspace
+# onto the wasm target.
+[workspace]
+resolver = "2"
+members = [
+    "crates/auth",
+    "crates/bus",
+    "crates/caps",
+    "crates/ext-loader",
+    "crates/host",
+    "crates/inbox",
+    "crates/jobs",
+    "crates/mcp",
+    "crates/runtime",
+    "crates/secrets",
+    "crates/store",
+    "crates/sync",
+    "crates/tags",
+    "sdk",
+    "node",
+    "role/gateway",
+    "role/ai-gateway",
+    "role/registry-host",
+    "role/bootstrap-ui",
+]
+exclude = ["extensions/hello", "extensions/hello-v2"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.90"
+
+# One place for the shared stack. Crates opt in with `{ workspace = true }`.
+[workspace.dependencies]
+# core platform crates (path deps; the §9 crate map)
+lb-auth = { path = "crates/auth" }
+lb-bus = { path = "crates/bus" }
+lb-caps = { path = "crates/caps" }
+lb-ext-loader = { path = "crates/ext-loader" }
+lb-inbox = { path = "crates/inbox" }
+lb-jobs = { path = "crates/jobs" }
+lb-mcp = { path = "crates/mcp" }
+lb-runtime = { path = "crates/runtime" }
+lb-secrets = { path = "crates/secrets" }
+lb-store = { path = "crates/store" }
+lb-sync = { path = "crates/sync" }
+lb-tags = { path = "crates/tags" }
+lb-host = { path = "crates/host" }
+lb-sdk = { path = "sdk" }
+
+# the stack (docs/key-stack.md)
+surrealdb = { version = "2", default-features = false, features = ["kv-mem"] }
+zenoh = "1"
+wasmtime = { version = "39", default-features = false, features = ["runtime", "component-model", "cranelift"] }
+wasmtime-wasi = "39"
+
+# shared utilities
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+
+[profile.release]
+lto = "thin"

@@ -1,0 +1,17 @@
+# The v2 hello WASM extension — same `echo` tool, but its output carries `"v": 2` so a test
+# can prove a LIVE swap (hot-reload) actually replaced the instance. Same wasm32-wasip2
+# component shape as `hello`; EXCLUDED from the workspace (it targets wasm, not the host).
+# Build: cargo build --target wasm32-wasip2 --release
+[package]
+name = "hello-v2-ext"
+version = "0.2.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.40"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

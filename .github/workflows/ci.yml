@@ -1,0 +1,68 @@
+# CI — the S0 gate (STAGES.md): the FILE-LAYOUT size check + the test runner. Runs on every
+# push and PR. Builds the host workspace and the wasm guest, then runs the tests.
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  file-layout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: FILE-LAYOUT size check (≤400 lines)
+        run: bash rust/scripts/check-file-size.sh
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Build the wasm guest (the S1 hello component)
+        working-directory: rust/extensions/hello
+        run: cargo build --target wasm32-wasip2 --release
+      - name: Build the wasm guest v2 (the S2 hot-reload swap target)
+        working-directory: rust/extensions/hello-v2
+        run: cargo build --target wasm32-wasip2 --release
+      - name: Build the host workspace
+        working-directory: rust
+        run: cargo build --workspace
+      - name: Test
+        working-directory: rust
+        run: cargo test --workspace
+      - name: Format check
+        working-directory: rust
+        run: cargo fmt --all --check
+
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: Install UI deps
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+      - name: Type-check + build
+        working-directory: ui
+        run: pnpm build
+      - name: Test (Vitest)
+        working-directory: ui
+        run: pnpm test

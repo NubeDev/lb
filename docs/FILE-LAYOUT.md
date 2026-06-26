@@ -5,9 +5,10 @@ Small, well-named files are not a style preference. They are how an
 AI (or a human reading cold) finds the right code without burning
 context on irrelevant lines.
 
-> **Companion doc (planned):** `HOW-TO-CODE.md` §0 will carry the short
-> version; this file is the long-form reference with patterns,
-> heuristics, and worked examples.
+> **Companion doc:** `HOW-TO-CODE.md` is the coding-session playbook
+> (procedure + deliverables + definition of done) and points back here;
+> this file is the long-form layout reference with patterns, heuristics,
+> and worked examples.
 
 ---
 

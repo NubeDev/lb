@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper; one
+   warm amber accent; hairline borders. A theme is a `.dark` class swap on <html>. */
+:root {
+  --bg: 40 30% 96%;
+  --panel: 40 24% 92%;
+  --border: 40 12% 82%;
+  --fg: 30 12% 14%;
+  --muted: 30 6% 44%;
+  --accent: 32 95% 48%;
+}
+
+.dark {
+  --bg: 24 8% 8%;
+  --panel: 24 7% 11%;
+  --border: 24 6% 18%;
+  --fg: 36 16% 90%;
+  --muted: 30 5% 56%;
+  --accent: 32 95% 56%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
