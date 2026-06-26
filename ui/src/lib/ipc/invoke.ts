@@ -1,17 +1,28 @@
-// The single IPC seam to the local node. In the Tauri shell this calls a Rust command (the
-// node runs in-process behind it). Outside Tauri (a plain browser during S2, or a test) there
-// is no node yet — SSE/HTTP is S3 — so it routes to an in-memory fake with the same contract.
+// The single IPC seam to a node. Three transports, chosen by environment — the feature code
+// above NEVER branches on which:
+//   1. Tauri shell        → a Rust command (the node runs in-process behind it).
+//   2. Browser + gateway  → real HTTP to the node's SSE/HTTP gateway (S3). Selected when
+//                           `VITE_GATEWAY_URL` is set (the browser build).
+//   3. Otherwise (tests)  → the in-memory faithful fake, same contract.
 //
-// One seam, swapped by environment: the feature code above never branches on "am I in Tauri".
-// That is what lets the same ChannelView power the desktop shell and a test unchanged.
+// S3 swaps the *browser* path from the fake to real HTTP — exactly the one-file change the
+// frontend scope promised. Tests still get the fake (no gateway URL), so the Vitest suite is
+// unchanged; the Tauri path is unchanged. Live updates ride a separate SSE stream
+// (`channel.stream.ts`) feeding `useChannel`'s existing `setItems` sink.
 
 import { fakeInvoke } from "./fake";
+import { httpInvoke, gatewayUrl } from "./http";
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 /** True when running inside the Tauri shell (the global is injected by Tauri v2). */
 function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** True when a real node gateway is configured (the browser build). */
+function hasGateway(): boolean {
+  return gatewayUrl() !== "" || import.meta.env.VITE_GATEWAY_URL !== undefined;
 }
 
 let real: Invoke | null = null;
@@ -28,5 +39,7 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 
 /** Invoke a node command by name. Mirrors the Rust command names (`channel_post`, …). */
 export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  return inTauri() ? tauriInvoke<T>(cmd, args) : fakeInvoke<T>(cmd, args);
+  if (inTauri()) return tauriInvoke<T>(cmd, args);
+  if (hasGateway()) return httpInvoke<T>(cmd, args);
+  return fakeInvoke<T>(cmd, args);
 }

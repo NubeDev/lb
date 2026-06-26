@@ -43,8 +43,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
 
 /// Boot a node and load hello into it.
 async fn node_with_hello() -> Node {
-    let mut node = Node::boot().await.expect("node boots");
-    load_extension(&mut node, MANIFEST, &hello_wasm(), &[])
+    let node = Node::boot().await.expect("node boots");
+    load_extension(&node, MANIFEST, &hello_wasm(), &[])
         .await
         .expect("hello loads");
     node
@@ -55,9 +55,16 @@ async fn echo_succeeds_with_the_grant() {
     let node = node_with_hello().await;
     let p = principal("acme", &["mcp:hello.echo:call"]);
 
-    let out = call(&node.registry, &p, "acme", "hello.echo", r#"{"msg":"hi"}"#)
-        .await
-        .expect("granted call succeeds");
+    let out = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        "acme",
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect("granted call succeeds");
 
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(value["echo"], "hi");
@@ -69,9 +76,16 @@ async fn echo_is_refused_without_the_grant() {
     let node = node_with_hello().await;
     let p = principal("acme", &[]); // no caps
 
-    let err = call(&node.registry, &p, "acme", "hello.echo", r#"{"msg":"hi"}"#)
-        .await
-        .expect_err("ungranted call is refused");
+    let err = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        "acme",
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect_err("ungranted call is refused");
     assert_eq!(err, ToolError::Denied);
 }
 
@@ -82,10 +96,10 @@ async fn denied_call_does_not_reveal_tool_existence() {
     let node = node_with_hello().await;
     let p = principal("acme", &[]);
 
-    let real = call(&node.registry, &p, "acme", "hello.echo", "{}")
+    let real = call(&node.registry, &node.bus, &p, "acme", "hello.echo", "{}")
         .await
         .unwrap_err();
-    let fake = call(&node.registry, &p, "acme", "hello.nope", "{}")
+    let fake = call(&node.registry, &node.bus, &p, "acme", "hello.nope", "{}")
         .await
         .unwrap_err();
     assert_eq!(real, ToolError::Denied);
@@ -100,8 +114,15 @@ async fn second_workspace_cannot_call_into_the_first() {
     let node = node_with_hello().await;
     let p = principal("other", &["mcp:hello.echo:call"]);
 
-    let err = call(&node.registry, &p, "acme", "hello.echo", r#"{"msg":"hi"}"#)
-        .await
-        .expect_err("cross-workspace call is refused");
+    let err = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        "acme",
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect_err("cross-workspace call is refused");
     assert_eq!(err, ToolError::Denied);
 }

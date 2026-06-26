@@ -21,6 +21,12 @@ pub struct Bus {
 
 impl Bus {
     /// Open a default in-process peer session (solo node, S1).
+    ///
+    /// Every node — edge, hub, or solo — opens a Zenoh **peer** here; the in-process peers
+    /// auto-discover and form one network (the multi-node substrate, S3). Whether a node also
+    /// runs a router or connects to an upstream endpoint is *config* set by the role/deployment
+    /// layer (README §3.1), never a branch in this crate. S3 proves the second node with two
+    /// peers on the same network; explicit endpoint config is a deployment concern (S7).
     pub async fn peer() -> Result<Self, BusError> {
         let session = zenoh::open(zenoh::Config::default())
             .await

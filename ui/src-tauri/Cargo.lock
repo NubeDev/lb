@@ -3444,6 +3444,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -3461,8 +3462,11 @@ name = "lb-mcp"
 version = "0.1.0"
 dependencies = [
  "lb-auth",
+ "lb-bus",
  "lb-caps",
  "lb-runtime",
+ "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]

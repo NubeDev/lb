@@ -12,6 +12,10 @@ mod boot;
 mod channel;
 mod load;
 mod reload;
+mod remote;
+mod role;
+mod serve;
+mod sync;
 
 pub use boot::{Node, NodeError};
 pub use channel::{
@@ -20,3 +24,7 @@ pub use channel::{
 };
 pub use load::{load_extension, LoadError, Loaded};
 pub use reload::reload_extension;
+pub use remote::register_remote_extension;
+pub use role::Role;
+pub use serve::{serve_ext, ToolServer};
+pub use sync::{replay_history, sync_channel, ChannelSync};

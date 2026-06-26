@@ -21,7 +21,7 @@ use crate::load::{LoadError, Loaded};
 /// The extension id in the manifest must already be hosted (it is a *re*-load) — loading a
 /// brand-new id is `load_extension`'s job.
 pub async fn reload_extension(
-    node: &mut Node,
+    node: &Node,
     manifest_toml: &str,
     wasm_bytes: &[u8],
     admin_approved: &[String],

@@ -19,3 +19,7 @@ pub use history::history;
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};
 pub use subscribe::{subscribe_channel, ChannelSub};
+
+// Re-export the bus-key helpers crate-internally so the sync layer publishes/subscribes on the
+// EXACT same keys `post`/`subscribe_channel` use — they cannot drift (one owner, `key.rs`).
+pub(crate) use key::{msg_key as msg_key_for, sub_key as sub_key_for};

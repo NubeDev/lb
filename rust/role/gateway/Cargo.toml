@@ -6,3 +6,18 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+lb-host.workspace = true
+lb-auth.workspace = true
+lb-inbox.workspace = true
+axum.workspace = true
+tower-http.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+tower = { version = "0.5", features = ["util"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+http-body-util = "0.1"

@@ -12,13 +12,19 @@ mod resolve;
 pub use error::ToolError;
 
 use lb_auth::Principal;
+use lb_bus::Bus;
 
 use crate::registry::Registry;
 
 /// Call `<ext>.<tool>` as `principal` with a JSON input string. Returns the JSON output, or a
 /// [`ToolError`]. The single public entry to the MCP tool surface.
+///
+/// `bus` + `ws` carry the routed path: if the extension is hosted on another node, `dispatch`
+/// routes the (already-authorized) call over the workspace-scoped queryable. Authorization
+/// always runs HERE first, workspace-first — the remote node never sees an unauthorized call.
 pub async fn call(
     registry: &Registry,
+    bus: &Bus,
     principal: &Principal,
     ws: &str,
     qualified_tool: &str,
@@ -30,9 +36,11 @@ pub async fn call(
     //    a unauthorized caller can reach return `Denied` with no existence signal.
     authorize::authorize(principal, ws, qualified_tool)?;
 
-    // 2. resolve the "<ext>.<tool>" name to a hosting extension (only reached once authorized).
+    // 2. resolve the "<ext>.<tool>" name to a target (local instance or remote node) — only
+    //    reached once authorized.
     let target = resolve::resolve(registry, qualified_tool)?;
 
-    // 3. dispatch into the hosting instance (local in S1; routed in S3 — same call site).
-    dispatch::dispatch(target, qualified_tool, input_json).await
+    // 3. dispatch: call the local instance, or route over the bus to the hosting node. The
+    //    seam is identical whether the ext is local or remote — that is the S3 point.
+    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json).await
 }

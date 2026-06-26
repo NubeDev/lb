@@ -1,5 +1,17 @@
-//! Role-only: SSE/HTTP gateway for browsers (README §6.13) — cloud, lands S3.
+//! Role-only: the **SSE/HTTP gateway** for browsers (README §6.13, frontend scope). A browser
+//! reaches a REAL node here — POST to send, GET for durable history, and one SSE stream that
+//! pushes *others'* live messages + presence. This replaces the S2 in-memory UI fake: the
+//! `channel.api` verbs and `ChannelView` are unchanged; only `ui/src/lib/ipc/invoke.ts` swaps
+//! its transport to point at this gateway.
 //!
-//! S0 placeholder — no implementation yet. Lands at its stage (see STAGES.md). The crate
-//! exists now so the §9 crate map and the dependency graph are real from day one.
-#![allow(dead_code)]
+//! Symmetric nodes (§3.1): the gateway IS a node that also speaks HTTP — not a separate service.
+//! It adds no authority; every route forwards to a capability-checked `lb_host` verb with the
+//! session principal, so the browser is gated exactly like the desktop shell and the routed-MCP
+//! caller. One verb per route file (FILE-LAYOUT §4).
+
+mod routes;
+mod server;
+mod state;
+
+pub use server::{router, serve};
+pub use state::Gateway;

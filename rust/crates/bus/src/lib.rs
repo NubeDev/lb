@@ -14,10 +14,12 @@ mod key;
 mod peer;
 mod presence;
 mod publish;
+mod query;
 mod subscribe;
 
 pub use key::ws_key;
 pub use peer::{Bus, BusError};
 pub use presence::{declare_presence, watch_presence, Presence, PresenceWatch};
 pub use publish::publish;
+pub use query::{declare_queryable, query, Incoming, Responder};
 pub use subscribe::{subscribe, Subscription};

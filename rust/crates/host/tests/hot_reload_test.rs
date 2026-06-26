@@ -53,10 +53,10 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn swapping_an_extension_version_keeps_durable_state() {
     let ws = "hot-reload-ws";
-    let mut node = Node::boot().await.expect("node boots");
+    let node = Node::boot().await.expect("node boots");
 
     // --- v1 online ---
-    load_extension(&mut node, MANIFEST_V1, &hello_v1(), &[])
+    load_extension(&node, MANIFEST_V1, &hello_v1(), &[])
         .await
         .expect("hello v1 loads");
 
@@ -84,15 +84,22 @@ async fn swapping_an_extension_version_keeps_durable_state() {
     }
 
     // v1 answers (no version field).
-    let v1_out = call(&node.registry, &p, ws, "hello.echo", r#"{"msg":"hi"}"#)
-        .await
-        .expect("v1 echo");
+    let v1_out = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        ws,
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect("v1 echo");
     let v1: serde_json::Value = serde_json::from_str(&v1_out).unwrap();
     assert_eq!(v1["echo"], "hi");
     assert!(v1.get("v").is_none(), "v1 output has no version field");
 
     // --- LIVE SWAP to v2 ---
-    let loaded = reload_extension(&mut node, MANIFEST_V2, &hello_v2(), &[])
+    let loaded = reload_extension(&node, MANIFEST_V2, &hello_v2(), &[])
         .await
         .expect("hot-reload to v2 succeeds");
     assert!(loaded.tools.contains(&"echo".to_string()));
@@ -109,9 +116,16 @@ async fn swapping_an_extension_version_keeps_durable_state() {
     );
 
     // 2. The swap really took effect — v2 answers with its new shape.
-    let v2_out = call(&node.registry, &p, ws, "hello.echo", r#"{"msg":"hi"}"#)
-        .await
-        .expect("v2 echo");
+    let v2_out = call(
+        &node.registry,
+        &node.bus,
+        &p,
+        ws,
+        "hello.echo",
+        r#"{"msg":"hi"}"#,
+    )
+    .await
+    .expect("v2 echo");
     let v2: serde_json::Value = serde_json::from_str(&v2_out).unwrap();
     assert_eq!(v2["echo"], "hi");
     assert_eq!(v2["v"], 2, "after reload the v2 instance must answer");
@@ -135,8 +149,8 @@ async fn swapping_an_extension_version_keeps_durable_state() {
 async fn reloading_an_uninstalled_extension_is_rejected() {
     // A reload swaps an EXISTING id; installing a brand-new id is load_extension's job. This
     // guards the swap semantics (no accidental silent install through the reload path).
-    let mut node = Node::boot().await.expect("node boots");
-    let err = reload_extension(&mut node, MANIFEST_V2, &hello_v2(), &[])
+    let node = Node::boot().await.expect("node boots");
+    let err = reload_extension(&node, MANIFEST_V2, &hello_v2(), &[])
         .await
         .expect_err("reload of a never-installed extension is refused");
     // It's a manifest-class error carrying the id; just assert it failed loudly.

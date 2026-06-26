@@ -71,5 +71,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 
+# HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework
+# (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI.
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+futures = "0.3"
+
 [profile.release]
 lto = "thin"

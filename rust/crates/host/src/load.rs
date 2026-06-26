@@ -31,7 +31,7 @@ pub struct Loaded {
 /// of requested caps with `admin_approved`. Registers the extension's declared tools in the
 /// MCP registry so they become callable (after caps).
 pub async fn load_extension(
-    node: &mut Node,
+    node: &Node,
     manifest_toml: &str,
     wasm_bytes: &[u8],
     admin_approved: &[String],

@@ -16,5 +16,6 @@ path = "src/main.rs"
 lb-host.workspace = true
 lb-auth.workspace = true
 lb-mcp.workspace = true
+lb-role-gateway = { path = "../role/gateway" }
 anyhow.workspace = true
 tokio.workspace = true

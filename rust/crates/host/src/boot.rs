@@ -1,11 +1,15 @@
 //! Boot a node: open the embedded store + bus, build the runtime engine, and hold the MCP
 //! registry. This is the assembled spine the rest of the host (and the `node` binary) drive.
 
+use std::sync::Arc;
+
 use lb_bus::{Bus, BusError};
 use lb_mcp::Registry;
 use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
 use thiserror::Error;
+
+use crate::role::Role;
 
 #[derive(Debug, Error)]
 pub enum NodeError {
@@ -17,19 +21,30 @@ pub enum NodeError {
     Runtime(#[from] RuntimeError),
 }
 
-/// A booted node: the embedded store + bus + runtime engine + the registry of hosted tools.
-/// One per process; the `node` binary owns it for the process lifetime.
+/// A booted node: the embedded store + bus + runtime engine + the registry of hosted tools,
+/// plus its configured [`Role`]. One per process; the `node` binary owns it for the process
+/// lifetime. The role is *config* the wiring layers read — core paths never branch on it (§3.1).
 pub struct Node {
     pub store: Store,
     pub bus: Bus,
     pub engine: Engine,
-    pub registry: Registry,
+    /// The MCP registry, shared (`Arc`) so the local call path, the routed serve loop, and
+    /// `reload` all see one source of truth. Interior-mutable (an `RwLock` inside), so loading
+    /// or reloading needs only `&Node`.
+    pub registry: Arc<Registry>,
+    pub role: Role,
 }
 
 impl Node {
-    /// Boot a solo node with an in-memory store and an embedded Zenoh peer (S1). Engine and
-    /// store backends are config later (symmetric nodes); S1 uses the minimal profile.
+    /// Boot a **solo** node with an in-memory store and an embedded Zenoh peer (S1 posture).
     pub async fn boot() -> Result<Self, NodeError> {
+        Self::boot_as(Role::Solo).await
+    }
+
+    /// Boot a node in `role`. Same code, same crates — the role only selects what the wiring
+    /// layers mount (sync relay, gateway) and the data-authority axis (README §6.8). Every role
+    /// opens the same store + Zenoh peer; the second node in S3 is just a second `boot_as`.
+    pub async fn boot_as(role: Role) -> Result<Self, NodeError> {
         let store = Store::memory().await?;
         let bus = Bus::peer().await?;
         let engine = Engine::new()?;
@@ -37,7 +52,8 @@ impl Node {
             store,
             bus,
             engine,
-            registry: Registry::new(),
+            registry: Arc::new(Registry::new()),
+            role,
         })
     }
 }
