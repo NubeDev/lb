@@ -6,3 +6,22 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+# The host owns the `Source` trait (the fetch seam) + the service error; this role crate supplies the
+# real HTTP impl. Roles depend on host, never the reverse.
+lb-host.workspace = true
+lb-registry.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+# The tests sign artifacts with a deterministic publisher key (same `ed25519-dalek` stack
+# `verify_artifact` checks against) and drive the install through the real `hello` wasm via `lb-host`.
+ed25519-dalek.workspace = true
+# Mint the calling principal + call the installed tool through the real MCP registry — the install is
+# proven end to end, not just at the fetch seam.
+lb-auth.workspace = true
+lb-mcp.workspace = true

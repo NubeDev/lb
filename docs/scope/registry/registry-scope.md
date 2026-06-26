@@ -46,12 +46,15 @@ and the prerequisite for packaging the S6 workflow/bridge as installed artifacts
 
 ## Non-goals (S7 first slice)
 
-- **A real network transport / a running registry-host HTTP server.** The pull path delivers through
-  a host-owned **`Source` trait** (the registry's analogue of the outbox's `Target` and the agent's
-  `ModelAccess`): the host calls only the trait; the test supplies a deterministic in-memory source
-  (a map of `(ext_id, version) → signed artifact`, able to be told "offline" / "tampered"). A real
-  HTTP `registry-host` client rides behind the same trait later — exactly as the real GitHub `Target`
-  is deferred behind the relay seam (outbox scope). **This keeps the slice's only external mocked.**
+- **A real network transport / a running registry-host HTTP server.** ~~The pull path delivers through
+  a host-owned **`Source` trait**; the test supplies a deterministic in-memory source. A real HTTP
+  `registry-host` client rides behind the same trait later.~~ **SHIPPED (S7 follow-up):** the
+  `lb-role-registry-host` crate now provides the real HTTP **server** (`router`/`serve`) + the
+  **`HttpSource`** client behind the same `Source` trait; the in-memory source remains the
+  deterministic unit stub, the HTTP transport is proven end to end (round-trip, offline-from-cache,
+  tamper-in-transit, isolation, deny over a real socket). See
+  [`../../sessions/registry/http-source-session.md`](../../sessions/registry/http-source-session.md).
+  Still deferred: a **durable backing** for the server's catalog + a **publish** endpoint + TLS/auth.
 - **Publisher-key custody / a key-distribution PKI.** S7 trusts a **caller-supplied set of publisher
   verifying keys** (the workspace's "who may I install from" allow-list, a test fixture here, the
   same shape the S4 `admin_approved` set took). Rotation, revocation, a key directory on the hub, and

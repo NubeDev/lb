@@ -22,10 +22,11 @@ MET**. The Rust workspace + a React/Tauri UI exist and build; messaging, a secon
 cross-node routed tool calls, the browser SSE/HTTP path, shared workspace assets, the **AI core**
 (central agent + AI-gateway sidecar + durable jobs), the **coding workflow** (issue → triage →
 approval-gated job → progress → transactional outbox), the **signed registry** (pull · verify · cache ·
-install · offline · rollback), and now the **native Tier-2 supervisor** (a supervised OS-process
-sidecar that restarts cleanly with no durable state lost) are all proven end to end. Packaging the S6
-workflow as installed artifacts remains (S7 follow-up). No doc-site build and no native desktop window
-(webkit toolchain) yet.
+install · offline · rollback) — now over a **real HTTP transport** (`lb-role-registry-host` server +
+`HttpSource` client, replacing the in-memory stub) — and the **native Tier-2 supervisor** (a supervised
+OS-process sidecar that restarts cleanly with no durable state lost) are all proven end to end.
+Packaging the S6 workflow as installed artifacts remains (S7 follow-up). No doc-site build and no native
+desktop window (webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
 build wasm guest + test + fmt); the four forever decisions (SDK/WIT, capability grammar +
@@ -116,6 +117,7 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | Coding workflow | coding-workflow | S6 | **shipped** | [coding-workflow](scope/coding-workflow/coding-workflow-scope.md) + [outbox](scope/inbox-outbox/outbox-scope.md) | [coding-workflow](sessions/coding-workflow/coding-workflow-session.md) | `lb-outbox` (transactional `Effect` + at-least-once relay) + `lb_store::write_tx` + `lb_inbox::Resolution` + host `workflow` service (ingest→triage→approval-GATE→job→outbox) + `workflow.*` MCP bridge + UI WorkflowView; 124+18+2 green |
 | Signed registry | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [registry](sessions/registry/registry-session.md) | `lb-registry` (digest binds manifest+wasm + `verify_artifact` + `VerifiedArtifact` newtype → verify-before-cache) + host `registry` service (pull·verify·cache·catalog·install behind a `Source` seam; rollback = install prior ver) + `registry.*` MCP bridge + UI RegistryView; 145+22+2 green |
 | Native Tier-2 | extensions | S7 | **shipped** | [native-tier](scope/extensions/native-tier-scope.md) | [native-tier](sessions/extensions/native-tier-session.md) | `lb-supervisor` (spawn·frame·health·shutdown·restart behind a `Launcher` seam) + `echo-sidecar` reference binary + `[native]` manifest block + host `native` service (stateless: runtime `SidecarMap` + durable `Install`/`native_status`; `mcp:native.<verb>:call` gate; crash-restart-on-fault) + `install_native_from_registry` + `native.*` MCP bridge + UI NativeView; ~163+26+2 green (real-process restart proof) |
+| Registry HTTP transport | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [http-source](sessions/registry/http-source-session.md) | `lb-role-registry-host` = real HTTP **server** (`router`/`serve`, dumb origin serving signed `Artifact`s at `GET /artifacts/{ext}/{ver}`) + **`HttpSource`** client filling the host `Source` seam's last mock; verify-before-cache holds over the wire (tamper-in-transit rejected); `reqwest`/`axum` in the role crate, never in core. +5 Rust (round-trip · offline-from-cache · tamper · isolation · deny over a real socket); ~168+26+2 green |
 
 ---
 
@@ -142,11 +144,12 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
    from records), OS-level hardening (cgroups/seccomp/userns), a background health-poll reactor (the
    slice restarts on-demand at the call boundary), the child→host MCP callback transport, and native
    platform-target enforcement.
-1b. **Registry follow-ups** (deferred from this slice, all in `scope/registry/`): a real HTTP
-   `Source`/`registry-host` server (the in-memory source is the only stub); a durable publisher-key
-   allow-list + admin trust-management flow; key rotation/revocation (needs the hub identity directory);
-   cache eviction/GC; the public catalog read-only union (per-workspace entries ship now);
-   `registry.update` semantics; gateway/Tauri wiring for `registry_*`.
+1b. **Registry follow-ups** (in `scope/registry/`): ~~a real HTTP `Source`/`registry-host` server~~
+   **(shipped — `lb-role-registry-host`)**; remaining — a **durable backing** for the registry-host
+   catalog + a **publish** endpoint (an outbox `Target` write) + TLS/read-auth on the server; a durable
+   publisher-key allow-list + admin trust-management flow; key rotation/revocation (needs the hub
+   identity directory); cache eviction/GC; the public catalog read-only union (per-workspace entries
+   ship now); `registry.update` semantics; gateway/Tauri wiring for `registry_*`.
 2. **Real outbox `Target` adapters + relay hardening** — GitHub HTTP / email / the sync publish
    behind the `Target` trait (in-test target is the only stub); **backoff + dead-letter**, the
    **multi-relay atomic claim**, FIFO-per-target ordering, and the **LIVE-query relay reactor** (S6

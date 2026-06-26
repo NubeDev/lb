@@ -97,5 +97,10 @@ axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 futures = "0.3"
 
+# The registry-host client (`HttpSource`) — the first outbound HTTP *client* in the tree (previously
+# only a gateway dev-dep). `rustls` so there is no system OpenSSL dependency; `json` for the artifact
+# body. Lives in the `registry-host` role crate, never in core `lb-host` (roles depend on host).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 [profile.release]
 lto = "thin"

@@ -65,6 +65,13 @@ flow with a new artifact-verification crate, not by re-cutting either.
 - **Two independent gates** — the **capability** gate (`mcp:registry.<verb>:call`, workspace-first)
   and the **signature** gate (`verify_artifact`). Granted ≠ trusted: a fully-granted caller is still
   refused a tampered/unsigned/untrusted artifact, and a trusted artifact still needs the grant.
+- **`lb-role-registry-host` — the real HTTP transport** (S7 follow-up, replacing the in-memory
+  source stub): an axum **server** (`router`/`serve`) serving signed artifacts at
+  `GET /artifacts/{ext_id}/{version}`, and an **`HttpSource`** client filling the host `Source` seam.
+  The server is a **dumb origin** (signs/verifies nothing); the wire is untrusted and the client
+  re-verifies on arrival, so a tamper *in transit* is caught by the same gate as a tamper at rest.
+  `reqwest`/`axum` live in this role crate, never in core `lb-host` (roles depend on host). See
+  `registry/registry.md`.
 - **UI** — a `RegistryView` + `registry.api` client mirroring the verbs, with a faithful in-memory
   fake exercising the capability gate, the signature gate, and rollback. See `frontend/frontend.md`.
 
@@ -76,7 +83,10 @@ a tampered/unsigned/foreign-key artifact is rejected before caching, even with t
 across **store + MCP** (a ws-B caller sees no ws-A cache/catalog and cannot ride its cache offline),
 offline (install succeeds with the source unreachable once cached), rollback/hot-reload (durable state
 preserved), and signing/verification (the new crypto surface). The native Tier-2 sidecar — the exit
-gate's second half — **shipped** next (above); the S7 exit gate is now fully met.
+gate's second half — **shipped** next (above); the S7 exit gate is now fully met. As an S7 follow-up,
+the registry's last mocked external became real: `lb-role-registry-host` (server + `HttpSource`) proves
+the whole pull·verify·cache path over a real HTTP socket — round-trip, offline-from-cache,
+tamper-in-transit rejected, ws isolation, and deny (+5 Rust tests; ~168+26+2 green).
 
 ## Shipped (S6 — coding workflow)
 

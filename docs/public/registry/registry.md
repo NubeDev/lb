@@ -35,10 +35,16 @@ Holds no durable state of its own; the cache, catalog, and install record are Su
 workspace namespace. One verb per file:
 
 - **`Source` trait** — the fetch seam (the outbox `Target` / agent `ModelAccess` analogue). The host
-  calls only the trait; the test supplies a deterministic in-memory source; a real HTTP `registry-host`
-  client rides behind it later. *Why a `Source` and not the outbox:* a pull is a request-scoped read the
-  caller waits on, not a fire-and-forget must-deliver write — routing it through the outbox would invert
-  the dependency.
+  calls only the trait; an in-memory source is the deterministic test stub, and a **real HTTP
+  `HttpSource`** (in the `lb-role-registry-host` crate, beside its server) is the production impl. *Why
+  a `Source` and not the outbox:* a pull is a request-scoped read the caller waits on, not a
+  fire-and-forget must-deliver write — routing it through the outbox would invert the dependency.
+- **`lb-role-registry-host` — the HTTP transport (server + client).** The cloud **role** that fills the
+  `Source` seam's last mock: an axum **server** (`router`/`serve`) serving signed `Artifact`s at
+  `GET /artifacts/{ext_id}/{version}`, and the **`HttpSource`** client that `GET`s + deserializes them.
+  The server is a **dumb origin** — it neither signs nor verifies; the wire is untrusted and the client
+  re-establishes trust with `verify_artifact` on arrival, so a tamper *in transit* is caught by the same
+  gate as a tamper at rest. `reqwest`/`axum` live here, never in core `lb-host` (roles depend on host).
 - **`pull`** — if the version is cached (a catalog entry holds its digest and the bytes are present),
   return them **without calling the source** (the offline path); else `Source::fetch` → **verify** →
   **cache** the verified bytes → record the catalog entry. A tampered/unsigned/untrusted artifact is
@@ -83,18 +89,23 @@ exercising the capability gate, the signature gate (an untrusted version is refu
 
 ## Tested
 
-145 Rust + 22 Vitest + 2 shell tests pass overall. Registry-specific: signing/verification (the new
-crypto surface — tampered wasm/manifest, unsigned, foreign-key, unknown-key all rejected),
-capability-deny (each verb), workspace-isolation (store + MCP), offline (cached install with the source
-unreachable, asserting zero source calls), and rollback/hot-reload (durable state preserved across
-N→N−1 through real wasm). Externals mocked: the `Source` + publisher keys only; real SurrealDB + Zenoh +
-wasm everywhere else.
+Registry-specific: signing/verification (the new crypto surface — tampered wasm/manifest, unsigned,
+foreign-key, unknown-key all rejected), capability-deny (each verb), workspace-isolation (store + MCP),
+offline (cached install with the source unreachable, asserting zero source calls), and
+rollback/hot-reload (durable state preserved across N→N−1 through real wasm). And now, over the **real
+HTTP transport** (`lb-role-registry-host`): a signed artifact installs end to end across a real socket;
+once cached it installs with the **server offline**; an artifact **tampered in transit** is rejected
+(`Unverified`); ws-B never sees ws-A's cache/catalog through the **shared** server; and the
+capability-deny gate is transport-independent. Externals mocked: publisher keys only; the `Source` is
+now a real HTTP client against a real server; real SurrealDB + Zenoh + wasm everywhere else.
 
 ## Not yet built
 
-A real HTTP `Source`/`registry-host` server (the in-memory source is the only stub); a durable
-publisher-key allow-list + the admin trust-management flow; key rotation/revocation (needs the hub
-identity directory); cache eviction/GC (keeping the current + immediately-prior version); the public
-catalog read-only union (this slice ships per-workspace catalog entries); `registry.update` semantics;
+A **durable backing for the registry-host catalog** (in-memory today) + a **publish** endpoint (an
+outbox `Target` write, not a `Source` read) + TLS/read-auth on the server; a durable publisher-key
+allow-list + the admin trust-management flow; key rotation/revocation (needs the hub identity
+directory); cache eviction/GC (keeping the current + immediately-prior version); the public catalog
+read-only union (this slice ships per-workspace catalog entries); `registry.update` semantics;
 gateway/Tauri wiring for `registry_*`. Tracked in [`../../STATUS.md`](../../STATUS.md) and the scope's
-open questions.
+open questions. *(The HTTP `Source`/`registry-host` server itself — previously the headline gap — now
+ships.)*
