@@ -25,8 +25,8 @@ mod pending;
 
 pub use enqueue::enqueue;
 pub use mark::{mark_delivered, mark_failed};
-pub use model::{Effect, EffectStatus};
-pub use pending::pending;
+pub use model::{backoff, Effect, EffectStatus, DEFAULT_MAX_ATTEMPTS};
+pub use pending::{dead_lettered, due, pending};
 
 /// The outbox table within a workspace namespace. One place owns the name so every verb agrees.
 pub(crate) const TABLE: &str = "outbox";

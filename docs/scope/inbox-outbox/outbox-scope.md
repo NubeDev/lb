@@ -160,9 +160,16 @@ Mandatory categories (testing §2) — these are the S6 gate, not extras:
 
 ## Open questions
 
-- **Backoff + dead-letter:** when does a perpetually-failing effect stop retrying, and where does
-  it go? Deferred with the jobs queue (no pressure yet); S6 retries every pass and records
-  `attempts`.
+- ~~**Backoff + dead-letter:**~~ **RESOLVED (S7):** an effect carries `max_attempts` (default 5) and
+  `next_attempt_ts`; on each failure `mark_failed` either pushes the next retry out by an exponential,
+  capped `backoff(attempts)` or — at `max_attempts` — moves it to the terminal `DeadLettered` status
+  (parked, off the schedulable set, readable via `dead_lettered` for audit/replay). The relay scans
+  `due` (schedulable AND past the backoff gate) instead of `pending`. See
+  `../../sessions/coding-workflow/outbox-egress-session.md`.
+- ~~**Real `Target` adapter:**~~ **RESOLVED (S7):** `lb-role-github-target` delivers `create_pr` /
+  `comment` effects to the GitHub REST API over `reqwest` (the in-test target was the only stub).
+  Idempotency rides GitHub's `422 "already exists"` for `create_pr`. Email / sync-publish adapters +
+  search-before-create dedup stay open.
 - **Atomic claim for multi-relay:** the `UPDATE … WHERE status='pending' RETURN BEFORE` primitive
   (same as the jobs queue) — recorded, deferred (one hub relay at S6).
 - **FIFO-per-target ordering:** some targets need ordered delivery (comment-before-close). Not

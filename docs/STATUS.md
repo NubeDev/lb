@@ -25,8 +25,11 @@ approval-gated job → progress → transactional outbox), the **signed registry
 install · offline · rollback) — now over a **real HTTP transport** (`lb-role-registry-host` server +
 `HttpSource` client, replacing the in-memory stub) — and the **native Tier-2 supervisor** (a supervised
 OS-process sidecar that restarts cleanly with no durable state lost) are all proven end to end.
-Packaging the S6 workflow as installed artifacts remains (S7 follow-up). No doc-site build and no native
-desktop window (webkit toolchain) yet.
+The S6 **github-bridge** is now packaged as an installed Tier-1 wasm artifact (the deferral resolved; the
+orchestrator stays a host service by design), with a **live HTTP ingress** (**`lb-role-github-webhook`**,
+HMAC-verify the `X-Hub-Signature-256` → `ingest_via_bridge`) and a **live HTTP egress** (the outbox's
+**`lb-role-github-target`**, delivering `create_pr`/`comment` over GitHub REST) — the relay now hardened
+with **backoff + dead-letter**. No doc-site build and no native desktop window (webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
 build wasm guest + test + fmt); the four forever decisions (SDK/WIT, capability grammar +
@@ -118,6 +121,9 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | Signed registry | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [registry](sessions/registry/registry-session.md) | `lb-registry` (digest binds manifest+wasm + `verify_artifact` + `VerifiedArtifact` newtype → verify-before-cache) + host `registry` service (pull·verify·cache·catalog·install behind a `Source` seam; rollback = install prior ver) + `registry.*` MCP bridge + UI RegistryView; 145+22+2 green |
 | Native Tier-2 | extensions | S7 | **shipped** | [native-tier](scope/extensions/native-tier-scope.md) | [native-tier](sessions/extensions/native-tier-session.md) | `lb-supervisor` (spawn·frame·health·shutdown·restart behind a `Launcher` seam) + `echo-sidecar` reference binary + `[native]` manifest block + host `native` service (stateless: runtime `SidecarMap` + durable `Install`/`native_status`; `mcp:native.<verb>:call` gate; crash-restart-on-fault) + `install_native_from_registry` + `native.*` MCP bridge + UI NativeView; ~163+26+2 green (real-process restart proof) |
 | Registry HTTP transport | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [http-source](sessions/registry/http-source-session.md) | `lb-role-registry-host` = real HTTP **server** (`router`/`serve`, dumb origin serving signed `Artifact`s at `GET /artifacts/{ext}/{ver}`) + **`HttpSource`** client filling the host `Source` seam's last mock; verify-before-cache holds over the wire (tamper-in-transit rejected); `reqwest`/`axum` in the role crate, never in core. +5 Rust (round-trip · offline-from-cache · tamper · isolation · deny over a real socket); ~168+26+2 green |
+| github-bridge as wasm | extensions | S7 | **shipped** | [github-bridge](scope/extensions/github-bridge-scope.md) | [github-bridge](sessions/extensions/github-bridge-session.md) | the S6 deferral resolved — the workflow's inbound edge ships as an installed **Tier-1 wasm** artifact (2nd real ext after `hello`). **Pure-transform** guest (`github-bridge.normalize`: webhook → `{issue_id,payload,ts}`, no host callback — WIT unchanged) + host **`ingest_via_bridge`** composing normalize→`ingest_issue` (2 gates). Orchestrator stays a host service. +7 Rust (install-deny · isolation · offline · rollback · transform branches, all through real wasm); finding: node-global stateless instance, wall is caps+store ([debug](debugging/extensions/loaded-extension-instance-is-node-global.md)); ~175+26+2 green |
+| github-webhook ingress | extensions | S7 | **shipped** | [github-webhook](scope/extensions/github-webhook-scope.md) | [github-webhook](sessions/extensions/github-webhook-session.md) | the github-bridge follow-up resolved — the **live HTTP ingress**. `lb-role-github-webhook` (beside `lb-role-registry-host`): `POST /webhook` → **constant-time HMAC-SHA256** verify of `X-Hub-Signature-256` over the **raw body** (mediated secret, never logged) → `ingest_via_bridge`. Two-layer boundary: authenticity (`401` forgery) *before* authority (`403` ungranted). +12 Rust (bad-sig · deny · isolation · idempotent re-delivery · happy/real-socket · malformed→`422` · HMAC units, through real wasm). `axum`/`hmac` in the role crate, no core/WIT/cap-grammar change; ~187+26+2 green |
+| outbox egress + hardening | coding-workflow | S7 | **shipped** | [outbox](scope/inbox-outbox/outbox-scope.md) | [outbox-egress](sessions/coding-workflow/outbox-egress-session.md) | the outbox's **live HTTP egress** + relay hardening (2 scope follow-ups). `lb-role-github-target` delivers `create_pr`/`comment` over GitHub REST (`reqwest` in the role crate; `422 already-exists` = idempotent success, no double-PR; token mediated). **Backoff + dead-letter** in `lb-outbox`+relay: `Effect` gains `max_attempts`/`next_attempt_ts`, new `DeadLettered` status, relay scans `due` (backoff-gated) + tallies dead-letters. +11 Rust (2 outbox backoff/dead-letter + 9 github-target: mapping units + happy·422·dead-letter·transport over real socket); 8 workflow regression updated; no core/WIT/cap change; ~198+26+2 green |
 
 ---
 
@@ -138,9 +144,14 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
 1. **S7 platform maturity** (`STAGES.md`): the **extension registry** AND the **native Tier-2
    supervisor** are **shipped** — the **S7 exit gate is fully MET** (~~install from a signed registry,
    run offline once cached, roll back~~; ~~a native sidecar is supervised and restarts cleanly~~).
-   Remaining S7 work: **packaging the S6 workflow/github-bridge as installed wasm artifacts** (they are
-   host services today; the registry now exists to install them through — author `scope/extensions/`
-   for the packaging first). **Native-tier follow-ups:** a boot reconciler (re-spawn `lifecycle=started`
+   Remaining S7 work: ~~**packaging the S6 workflow/github-bridge as installed wasm artifacts**~~
+   **(github-bridge SHIPPED** — a pure-transform Tier-1 wasm artifact; the orchestrator deliberately
+   stays a host service since it drives host-internal seams a guest can't reach). ~~Open follow-up here: a
+   **webhook-receiver role crate** that drives `ingest_via_bridge` on a real HTTP POST~~ **(SHIPPED —
+   `lb-role-github-webhook`: HMAC-verify → `ingest_via_bridge`)**; remaining webhook opens — a
+   **multi-tenant front door** (route by repo to a workspace; per-repo secrets), an `lb-secrets`-backed
+   secret, and a **resolution reactor** that auto-starts the job on approval. And the `host.call_tool`
+   WIT question if a guest ever needs to call a host tool (a forever-ABI change, its own scope). **Native-tier follow-ups:** a boot reconciler (re-spawn `lifecycle=started`
    from records), OS-level hardening (cgroups/seccomp/userns), a background health-poll reactor (the
    slice restarts on-demand at the call boundary), the child→host MCP callback transport, and native
    platform-target enforcement.
@@ -150,11 +161,12 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
    publisher-key allow-list + admin trust-management flow; key rotation/revocation (needs the hub
    identity directory); cache eviction/GC; the public catalog read-only union (per-workspace entries
    ship now); `registry.update` semantics; gateway/Tauri wiring for `registry_*`.
-2. **Real outbox `Target` adapters + relay hardening** — GitHub HTTP / email / the sync publish
-   behind the `Target` trait (in-test target is the only stub); **backoff + dead-letter**, the
-   **multi-relay atomic claim**, FIFO-per-target ordering, and the **LIVE-query relay reactor** (S6
-   uses durable scans + an explicit `start_job`); plus a **resolution reactor** that auto-starts the
-   job on approval.
+2. **Outbox `Target` adapters + relay hardening** — ~~GitHub HTTP~~ **(SHIPPED — `lb-role-github-target`)**
+   and ~~backoff + dead-letter~~ **(SHIPPED — `max_attempts`/`next_attempt_ts`/`DeadLettered` + `due`
+   scan)** are done. Remaining: **email / sync-publish** adapters behind the `Target` trait + the
+   **producer payload enrichment** a live PR needs + **search-before-create** dedup; the **multi-relay
+   atomic claim**, FIFO-per-target ordering, and the **LIVE-query relay reactor** (S6/S7 use durable
+   scans + an explicit `start_job`); plus a **resolution reactor** that auto-starts the job on approval.
 3. **Real model provider + streaming** behind the S5 gateway contract — the mock is the only stub;
    add an OpenAI-compatible / local adapter and stream tokens as Zenoh motion. Agent/job progress can
    now also ride the durable outbox for the must-deliver transcript.

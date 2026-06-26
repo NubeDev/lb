@@ -10,6 +10,8 @@
 //!
 //! The flow, one responsibility per file (FILE-LAYOUT §3):
 //!   - `ingest_issue`     — github-bridge writes an inbox `needs:triage` item.
+//!   - `ingest_via_bridge`— compose the installed `github-bridge` wasm `normalize` tool with
+//!     `ingest_issue` (S7: the bridge is a sandboxed transform artifact; the host owns the write).
 //!   - `triage`           — drive the S5 agent to draft + share a scope doc (vision steps 2–4).
 //!   - `request_approval` — write the `needs:approval` inbox item (the gate's subject).
 //!   - `resolve_approval` — a reviewer's resolution (approve/reject/defer).
@@ -25,6 +27,7 @@ mod authorize;
 mod effect;
 mod error;
 mod ingest;
+mod ingest_via_bridge;
 mod relay;
 mod request_approval;
 mod resolve_approval;
@@ -36,6 +39,7 @@ mod triage;
 pub use effect::emit_effect;
 pub use error::WorkflowError;
 pub use ingest::{ingest_issue, TRIAGE_CHANNEL};
+pub use ingest_via_bridge::ingest_via_bridge;
 pub use relay::{relay_outbox, RelayPass};
 pub use request_approval::{request_approval, APPROVAL_CHANNEL};
 pub use resolve_approval::resolve_approval;

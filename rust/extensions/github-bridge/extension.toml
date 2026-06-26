@@ -1,0 +1,27 @@
+# The `github-bridge` extension (extensions/github-bridge-scope.md, the §13 manifest contract).
+# A pure-transform Tier-1 wasm guest: it normalizes a raw GitHub webhook payload into the
+# canonical {issue_id, payload, ts} triple the host's workflow.ingest_issue consumes. It does
+# NOT call back into the host — the HOST composes normalize -> ingest_issue (the WIT world
+# imports only `log`; there is no host-tool-call import, by design).
+[extension]
+id          = "github-bridge"
+version     = "0.1.0"
+name        = "GitHub Bridge"
+description = "Normalizes a GitHub webhook payload into a canonical issue triple."
+
+[runtime]
+tier        = "wasm"
+world       = "lazybones:ext/extension@0.1.0"
+placement   = "either"               # pure transform runs identically on edge or cloud
+
+[capabilities]
+# Normalization needs NO host capability beyond being callable — it is a pure function over
+# its input (no store, no bus, no log-secret). The request/grant split shown empty, like hello.
+request = []
+
+[[tools]]
+name        = "normalize"
+description = "Map a raw GitHub webhook JSON payload to {issue_id, payload, ts}."
+
+[visibility]
+class = "private"                    # one workspace; the public-catalog union is a registry follow-up

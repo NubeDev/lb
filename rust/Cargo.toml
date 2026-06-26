@@ -32,9 +32,11 @@ members = [
     "role/gateway",
     "role/ai-gateway",
     "role/registry-host",
+    "role/github-webhook",
+    "role/github-target",
     "role/bootstrap-ui",
 ]
-exclude = ["extensions/hello", "extensions/hello-v2"]
+exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge"]
 
 [workspace.package]
 version = "0.1.0"
@@ -68,6 +70,8 @@ lb-sdk = { path = "sdk" }
 # crate — or a host DEV-dependency, as in the S5 agent tests — can inherit one by `{ workspace
 # = true }` without breaking the symmetric-layering rule (the host never build-depends on a role).
 lb-role-ai-gateway = { path = "role/ai-gateway" }
+lb-role-github-webhook = { path = "role/github-webhook" }
+lb-role-github-target = { path = "role/github-target" }
 
 # the stack (docs/key-stack.md)
 surrealdb = { version = "2", default-features = false, features = ["kv-mem"] }
@@ -90,6 +94,9 @@ rand = "0.8"
 # Artifact content digest for the signed extension registry (registry scope). SHA-256 over
 # manifest ‖ wasm; the Ed25519 signature (above) is over that digest.
 sha2 = "0.10"
+# HMAC-SHA256 for the GitHub webhook signature (`X-Hub-Signature-256`). Pairs with `sha2` (above);
+# lives in the `github-webhook` role crate (the inbound HTTP edge), never in core `lb-host`.
+hmac = "0.12"
 
 # HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework
 # (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI.

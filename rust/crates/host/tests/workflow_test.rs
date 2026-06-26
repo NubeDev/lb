@@ -235,7 +235,7 @@ async fn the_full_coding_workflow_runs_end_to_end() {
 
     // The relay delivers it (at-least-once). After one pass it is delivered, exactly once.
     let target = GithubTarget::new(0);
-    let pass = relay_outbox(&node.store, ws, &target).await.unwrap();
+    let pass = relay_outbox(&node.store, ws, &target, 1).await.unwrap();
     assert_eq!(pass.delivered, 1);
     assert_eq!(target.keys(), vec!["pr:2451".to_string()]);
     assert!(

@@ -115,7 +115,7 @@ async fn workspace_b_never_sees_workspace_a_workflow_state() {
 
     // A ws-B relay delivers nothing of ws-A's.
     let target = OkTarget(std::sync::Mutex::new(Vec::new()));
-    let pass = relay_outbox(&node.store, "wf-iso-b", &target)
+    let pass = relay_outbox(&node.store, "wf-iso-b", &target, 1)
         .await
         .unwrap();
     assert_eq!(pass.delivered, 0, "ws-B relay sees no ws-A effects");

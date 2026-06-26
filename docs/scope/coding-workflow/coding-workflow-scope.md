@@ -168,6 +168,9 @@ Mandatory categories (testing §2) — the S6 gate:
   a follow-up.
 - **Packaging as wasm extensions** — when `coding-workflow`/`github-bridge` move from host services
   to installed artifacts (S7 registry). The host-service shape is the S6 decision; revisit at S7.
+  **RESOLVED (S7) for the `github-bridge`:** packaged as a pure-transform Tier-1 wasm artifact
+  (`../extensions/github-bridge-scope.md`) — the normalizer is a sandboxed guest installed through
+  the registry; the orchestrator stays a host service (the §3.4 seam reasoning, re-confirmed).
 - **Follow-up inbox loop** — `needs:review` re-entry (vision §3 step 9) is sketched, not built at
   S6 (one pass through the flow).
 

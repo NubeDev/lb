@@ -24,6 +24,11 @@ pub enum WorkflowError {
     /// The agent (triage / the coding loop) failed underneath.
     #[error("agent error: {0}")]
     Agent(#[from] AgentError),
+    /// The `github-bridge` transform failed: the normalize tool call was refused/errored, or its
+    /// output didn't match the canonical `{issue_id, payload, ts}` contract (`ingest_via_bridge`).
+    /// A `Denied` from the tool's own gate is mapped to [`WorkflowError::Denied`], not here.
+    #[error("bridge error: {0}")]
+    Bridge(String),
     /// A durable store operation failed.
     #[error("store error: {0}")]
     Store(#[from] lb_store::StoreError),

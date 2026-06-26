@@ -57,7 +57,7 @@ pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
 pub use sync::{replay_history, sync_channel, ChannelSync};
 pub use workflow::{
-    call_workflow_tool, emit_effect, ingest_issue, relay_outbox, request_approval,
-    resolve_approval, start_coding_job, triage, CodingJob, RelayPass, Target, Triaged,
-    WorkflowError, APPROVAL_CHANNEL, TRIAGE_CHANNEL,
+    call_workflow_tool, emit_effect, ingest_issue, ingest_via_bridge, relay_outbox,
+    request_approval, resolve_approval, start_coding_job, triage, CodingJob, RelayPass, Target,
+    Triaged, WorkflowError, APPROVAL_CHANNEL, TRIAGE_CHANNEL,
 };

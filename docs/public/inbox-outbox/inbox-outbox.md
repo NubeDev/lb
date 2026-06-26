@@ -59,9 +59,29 @@ new `lb-outbox` crate: an `Effect` record (`outbox:{id}`) + raw verbs, workspace
 **Tested** (testing §2): the transactional enqueue is atomic; an effect survives an outage and is
 delivered on retry; a duplicate delivery is a no-op; ws-isolation across store + relay.
 
+## The egress, hardened (shipped S7 — real adapter + backoff/dead-letter)
+
+The relay went from "retry every pass forever, deliver to an in-test target" to a real, bounded edge:
+
+- **A real GitHub `Target`.** `lb-role-github-target` delivers `create_pr` / `comment` effects to the
+  GitHub REST API over `reqwest` (the last mock behind the host `Target` seam — the egress counterpart
+  to `lb-role-github-webhook`'s ingress; `reqwest` stays in the role crate, never core). Idempotency
+  rides GitHub's own `422 "already exists"` for `create_pr`: a re-delivery is acknowledged, never a
+  second PR. The token is mediated, never logged.
+- **Backoff.** Each `Effect` carries `next_attempt_ts`; on failure the relay pushes it out by an
+  exponential, capped `backoff(attempts)`. The relay scans `due` (schedulable AND past the backoff
+  gate), so a tight retry loop no longer hammers a down target.
+- **Dead-letter.** Each `Effect` carries `max_attempts` (default 5). At the cap, a failure moves the
+  effect to the terminal `DeadLettered` status — parked off the schedulable set, kept for audit/replay
+  via `dead_lettered`. A poison message (e.g. a permanently malformed payload) stops retrying.
+
+**Tested:** happy delivery + 422-idempotency through the real adapter over a socket; backoff (owed but
+not yet `due`); dead-letter at the cap; a transport failure stays schedulable and delivers on recovery.
+
 ## Not yet built
 
-Real `Target` adapters (GitHub HTTP, email, sync) behind the trait; backoff + dead-letter for
-perpetually-failing effects; the multi-relay atomic claim; FIFO-per-target ordering; the LIVE-query
-relay reactor; item `meta` for richer payloads; retention/compaction. See `scope/inbox-outbox/`
+Email / sync-publish `Target` adapters behind the trait + search-before-create dedup; the producer
+payload enrichment a live PR needs; the multi-relay atomic claim; FIFO-per-target ordering; the
+LIVE-query relay reactor; a resolution reactor that auto-starts the job on approval; item `meta` for
+richer payloads; retention/compaction. See `scope/inbox-outbox/`
 (`outbox-scope.md`) open questions.

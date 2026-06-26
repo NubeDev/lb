@@ -67,6 +67,39 @@ workspace (`installed` reads it back, workspace-isolated). A signed artifact fro
 **capability** gate (`mcp:*` , workspace-first) and the **signature** gate (`verify_artifact`).
 Granted ≠ trusted; trusted ≠ granted. See `registry/registry.md`.
 
+## A worked Tier-1 example: the `github-bridge`
+
+The S6 coding workflow's inbound edge ships as an installed Tier-1 wasm extension (resolving the S6
+deferral) — the second real extension after `hello`. It is a **pure transform**: its `normalize` tool
+maps a raw GitHub webhook to the canonical `{ issue_id, payload, ts }` triple, holding no state and
+making no host callback (the stable WIT world imports only `log` — there is no host-tool-call import).
+The **host** composes it: `lb_host::ingest_via_bridge` calls the sandboxed `github-bridge.normalize`
+tool, then hands the result to the host's `workflow.ingest_issue` write. Two independent capability
+gates apply in order — `mcp:github-bridge.normalize:call` (the transform) then
+`mcp:workflow.ingest_issue:call` (the must-deliver write) — and neither is widened. The split is the
+point: the untrusted-input transform is sandboxed and swappable (a GitLab/Gitea bridge sharing the same
+output contract drops in), while the state-mutating inbox write stays a host seam. The orchestrator
+(triage → approval → job → outbox) remains a host service — it drives host-internal seams a guest can
+only reach *through* MCP, never *be*. See `../../scope/extensions/github-bridge-scope.md`.
+
+### The live ingress: the `github-webhook` role crate
+
+`ingest_via_bridge` is a host helper; **`lb-role-github-webhook`** is the real HTTP edge that drives it
+from an actual GitHub delivery (beside `lb-role-registry-host`; roles depend on host, never the
+reverse). It is a node that also exposes one route, `POST /webhook`, and adds no authority. Two layers
+guard it, in order:
+
+1. **Transport authenticity** — `HMAC-SHA256(secret, raw-body)` against `X-Hub-Signature-256`, compared
+   in **constant time** over the **raw bytes** GitHub signed (verifying re-serialized JSON would never
+   match). A failure is an opaque `401` — no oracle, and the secret (mediated, crate-private) is never
+   logged. The legacy SHA-1 `X-Hub-Signature` is deliberately not accepted.
+2. **Capability + workspace** — a verified delivery calls `ingest_via_bridge` under a fixed
+   principal/workspace, so the SAME two gates above and the workspace wall apply. An authentic delivery
+   that lacks the grants is `403` (is GitHub, but unauthorized) — distinct from the `401` forgery case.
+
+Idempotency on the normalized issue id makes GitHub's re-delivery one inbox item. `axum`/`hmac` live in
+the role crate, never core. See `../../scope/extensions/github-webhook-scope.md`.
+
 ## Placement & targets
 
 `placement` (`local-only`/`cloud-only`/`either`) is matched against a node's **role** as data, never

@@ -3,6 +3,74 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S7 — platform maturity: the outbox egress — real GitHub `Target` + backoff/dead-letter)
+
+The transactional outbox's **outbound** edge, completed and hardened (two of its listed follow-ups):
+
+- **A real GitHub `Target`** — `lb-role-github-target` delivers `create_pr` / `comment` effects to the
+  GitHub REST API over `reqwest` (the in-test target was the only stub; the egress counterpart to the
+  webhook ingress, `reqwest` in the role crate, never core). `create_pr` is idempotent via GitHub's
+  own `422 "already exists"` — a re-delivery is acknowledged, never a second PR. The token is mediated,
+  never logged. A permanent mapping fault (unknown action, bad payload) is distinguished from a
+  transient transport failure.
+- **Backoff + dead-letter** in `lb-outbox` + the host relay (the outbox scope's top open question,
+  answered): each `Effect` carries `max_attempts` (default 5) and `next_attempt_ts`; on failure the
+  relay applies an exponential, capped backoff, and at the cap moves the effect to a terminal
+  `DeadLettered` status (parked, off the schedulable set, readable via `dead_lettered`). The relay
+  scans `due` (schedulable AND past the backoff gate), not `pending`.
+
+**11 new** tests green — +2 outbox (backoff gate · dead-letter at the cap) + 9 github-target (5 unit
+action-mapping/permanent-error + 4 integration over a real socket: happy 201 · 422-idempotency ·
+dead-letter through the adapter · transport-failure-then-recovery). 8 host workflow tests updated to
+the new `relay_outbox(.., now)` / `mark_failed(.., now)` signatures and green. No SDK/WIT or
+capability-grammar change. See `inbox-outbox/inbox-outbox.md` and
+`../sessions/coding-workflow/outbox-egress-session.md`.
+
+## Shipped (S7 — platform maturity: the GitHub webhook-receiver role crate)
+
+The live HTTP ingress for the coding workflow's inbound edge — resolving the explicit follow-up the
+`github-bridge` slice left (it shipped `ingest_via_bridge` as a host helper a test/UI drove). New:
+**`lb-role-github-webhook`** (beside `lb-role-registry-host`; roles depend on host, never the reverse),
+a node that also exposes `POST /webhook`. It adds no authority; two layers guard it, in order:
+
+- **Transport authenticity** — `HMAC-SHA256(secret, raw-body)` against `X-Hub-Signature-256`, compared
+  in **constant time** over the **raw bytes** GitHub signed (verifying re-serialized JSON never
+  matches). A failure is an opaque `401`; the mediated, crate-private secret is never logged. The legacy
+  SHA-1 header is not accepted.
+- **Capability + workspace** — a verified delivery calls `ingest_via_bridge` under a fixed
+  principal/workspace, so the SAME two gates (`mcp:github-bridge.normalize:call`, then
+  `mcp:workflow.ingest_issue:call`) and the workspace wall apply. An authentic-but-ungranted delivery is
+  `403`, distinct from the `401` forgery case. Re-delivery is idempotent (one inbox item).
+
+**12 new** tests green — bad-signature (forged / tampered / absent → `401`, ingests nothing),
+capability-deny (`403`), workspace-isolation (a ws-A receiver never writes ws-B), idempotent
+re-delivery, the happy path over both `tower::oneshot` and a real socket, malformed→`422`, plus the
+HMAC verifier units — all through the real `github_bridge_ext.wasm`. `axum`/`hmac` live in the role
+crate, never core. No SDK/WIT or capability-grammar change. See `extensions/extensions.md` and
+`../sessions/extensions/github-webhook-session.md`.
+
+## Shipped (S7 — platform maturity: the `github-bridge` as an installed wasm artifact)
+
+The S6 `github-bridge` deferral, resolved: the coding workflow's inbound edge ships as an installable,
+signed **Tier-1 wasm extension** — the second real extension proving the registry install lifecycle end
+to end (the first was `hello`). The shape was decided deliberately (with the user) against two walls:
+
+- **The orchestrator stays a host service.** It drives host-internal seams (`caps::check`, the S5 agent
+  loop, durable jobs, the outbox) a sandboxed guest reaches only *through* MCP — so only the inbound
+  *normalizer* is packaged, not the workflow engine.
+- **A pure-transform bridge, no ABI change.** The stable WIT world imports only `host.log` (no
+  host-tool-call import — adding one is a major-bump-class change to the forever ABI, README §11.2). So
+  the wasm guest only **normalizes** a raw GitHub webhook → `{ issue_id, payload, ts }` over the existing
+  `tool.call` export; the **host** (`ingest_via_bridge`) composes that with `workflow.ingest_issue`. The
+  split lands on the trust line: pure transform → sandbox; must-deliver state write → host.
+
+New: `rust/extensions/github-bridge/` (the wasm crate) + `lb_host::ingest_via_bridge` (the host
+composition; two independent gates — `mcp:github-bridge.normalize:call`, then
+`mcp:workflow.ingest_issue:call`). **7 new + 19 regression** tests green — install-deny, workspace
+isolation (the node-global stateless instance is shared; the wall is caps + store — see the debugging
+entry), offline-from-cache, rollback, and the transform branches, all through the real
+`github_bridge_ext.wasm`. See `extensions/extensions.md` and `../sessions/extensions/github-bridge-session.md`.
+
 ## Shipped (S7 — platform maturity: the native Tier-2 supervisor)
 
 The second S7 vertical slice — the **remaining half of the S7 exit gate**: a native OS-process

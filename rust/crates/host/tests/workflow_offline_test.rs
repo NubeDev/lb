@@ -106,16 +106,17 @@ async fn an_effect_survives_an_outage_and_is_delivered_at_least_once() {
 
     let target = FlakyGithub::new(1); // first attempt fails (the outage)
 
-    // Pass 1: the target is down → the effect stays schedulable (failed), not lost.
-    let p1 = relay_outbox(&node.store, ws, &target).await.unwrap();
+    // Pass 1 at now=1: the target is down → the effect stays schedulable (failed), not lost.
+    let p1 = relay_outbox(&node.store, ws, &target, 1).await.unwrap();
     assert_eq!(p1.failed, 1);
     assert_eq!(p1.delivered, 0);
     let still = lb_outbox::pending(&node.store, ws).await.unwrap();
     assert_eq!(still.len(), 1, "the effect survived the outage");
     assert_eq!(still[0].status, EffectStatus::Failed);
 
-    // Pass 2: the target is back → delivered. Never lost.
-    let p2 = relay_outbox(&node.store, ws, &target).await.unwrap();
+    // Pass 2 once the backoff has elapsed: the target is back → delivered. Never lost.
+    let now2 = 1 + lb_outbox::backoff(1);
+    let p2 = relay_outbox(&node.store, ws, &target, now2).await.unwrap();
     assert_eq!(p2.delivered, 1);
     assert!(
         lb_outbox::pending(&node.store, ws)
@@ -140,7 +141,7 @@ async fn a_duplicate_delivery_is_a_no_op_on_the_receiver() {
     let target = FlakyGithub::new(0);
 
     // Pass 1 delivers and marks the effect.
-    relay_outbox(&node.store, ws, &target).await.unwrap();
+    relay_outbox(&node.store, ws, &target, 1).await.unwrap();
     // Re-enqueue the SAME effect id + key (the crash-before-mark replay): it is pending again.
     let replay = Effect::new("job-pr", "github", "create_pr", "{}", "pr:key", 9);
     lb_outbox::enqueue(
@@ -154,7 +155,7 @@ async fn a_duplicate_delivery_is_a_no_op_on_the_receiver() {
     .await
     .unwrap();
     // Pass 2 delivers again — the target is hit twice but the key lands once (dedup).
-    relay_outbox(&node.store, ws, &target).await.unwrap();
+    relay_outbox(&node.store, ws, &target, 10).await.unwrap();
 
     assert_eq!(
         *target.attempts.lock().unwrap(),

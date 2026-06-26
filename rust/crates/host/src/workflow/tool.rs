@@ -113,6 +113,7 @@ fn wf_to_tool(e: WorkflowError) -> ToolError {
         WorkflowError::NotFound => ToolError::NotFound,
         WorkflowError::AwaitingApproval => ToolError::BadInput("awaiting approval".into()),
         WorkflowError::Agent(a) => ToolError::Extension(a.to_string()),
+        WorkflowError::Bridge(m) => ToolError::Extension(m),
         WorkflowError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }

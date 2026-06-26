@@ -2861,6 +2861,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-role-github-target"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "lb-host",
+ "lb-outbox",
+ "lb-store",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "lb-role-github-webhook"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "ed25519-dalek",
+ "hmac",
+ "lb-auth",
+ "lb-host",
+ "lb-inbox",
+ "lb-registry",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tower",
+]
+
+[[package]]
 name = "lb-role-registry-host"
 version = "0.1.0"
 dependencies = [
