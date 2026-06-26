@@ -23,8 +23,8 @@ use crate::state::WebhookState;
 use crate::verify::verify_signature;
 
 /// GitHub's signature header (the SHA-256 variant; the legacy `X-Hub-Signature` SHA-1 header is
-/// deliberately NOT accepted — SHA-1 is broken for this purpose).
-const SIGNATURE_HEADER: &str = "x-hub-signature-256";
+/// deliberately NOT accepted — SHA-1 is broken for this purpose). Shared with the multi-tenant route.
+pub(crate) const SIGNATURE_HEADER: &str = "x-hub-signature-256";
 
 /// Handle one webhook delivery. The body is taken as raw [`Bytes`] (not parsed JSON) so the
 /// signature is verified over the EXACT bytes GitHub signed.

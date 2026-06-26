@@ -22,3 +22,9 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 # in-memory store; no Node/bus needed (the relay is pure store + the `Target` seam).
 axum.workspace = true
 lb-store.workspace = true
+# The close-the-loop test drives the host reactor (`react_to_approvals`) end to end into this
+# adapter, so it needs to mint a principal, approve, and read the job back. Test-only — the adapter
+# itself depends only on the host `Target` trait + `lb-outbox`.
+lb-auth.workspace = true
+lb-inbox.workspace = true
+lb-jobs.workspace = true

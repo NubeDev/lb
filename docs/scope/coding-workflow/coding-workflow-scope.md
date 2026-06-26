@@ -161,11 +161,16 @@ Mandatory categories (testing §2) — the S6 gate:
 - **Resolution richness:** does `Resolution` carry just `{decision, actor, ts}`, or also a comment
   / a required-approver-count? S6 ships the minimal triple; quorum/multi-approver is a follow-up.
 - **Who calls `start_coding_job`** — the approver's UI action directly, or a workflow reactor
-  watching the inbox for a resolution? S6 exposes the verb (UI/test drives it); the LIVE-query
-  reactor is the latency optimization (deferred, same as the outbox relay's LIVE push).
+  watching the inbox for a resolution? **RESOLVED (S7):** both. The verb stays (the UI can drive it),
+  and `react_to_approvals` — a **durable-scan reactor** over `lb_inbox::approved` — auto-starts the
+  job on `Approved`, closing the loop with no manual step. The **LIVE-query** reactor (instant pickup)
+  stays the latency optimization (deferred, same as the outbox relay's LIVE push). See
+  `../../sessions/coding-workflow/close-the-loop-session.md`.
 - **Idempotency-key derivation** for effects — convention (`<action>:<issue>`) vs explicit caller
-  arg. S6 takes it as an explicit arg (the caller owns the key's stability); a derivation helper is
-  a follow-up.
+  arg. S6 takes it as an explicit arg (the caller owns the key's stability). **S7 follow-up:** the
+  resolution reactor *derives* the key by convention (`pr:{approval_id}`) + a deterministic job id
+  (`job:{approval_id}`), so an unattended auto-start is stable across re-scans without a caller arg —
+  the derivation helper, for the reactor path.
 - **Packaging as wasm extensions** — when `coding-workflow`/`github-bridge` move from host services
   to installed artifacts (S7 registry). The host-service shape is the S6 decision; revisit at S7.
   **RESOLVED (S7) for the `github-bridge`:** packaged as a pure-transform Tier-1 wasm artifact

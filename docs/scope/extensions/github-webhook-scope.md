@@ -86,11 +86,18 @@ shared `common/mod.rs`, to stay under 400 lines), plus unit tests of the HMAC ve
 
 ## Open questions
 
-- **Multi-tenant front door.** Routing a delivery to a workspace by repository (a repo→ws directory +
-  per-repo secrets) — needed before one receiver fronts many tenants. (Open.)
-- **`lb-secrets` backing.** Move the secret behind `lb-secrets` when that crate lands. (Open.)
-- **Auto-start on approval.** The receiver lands a `needs:triage` item; the triage→approval→job chain
-  still needs the resolution reactor (a separate outbox follow-up). (Open, cross-linked.)
+- ~~**Multi-tenant front door.**~~ **RESOLVED (S7):** `tenant_router` (`POST /webhook/{tenant}`) +
+  a `TenantRegistry` (slug → `{ws, principal, secret}`) front many workspaces from one process, each
+  with its own secret. Routing is by URL slug (chosen before the HMAC check, so authenticity-before-
+  parse holds); a delivery signed with one tenant's secret can't cross into another's workspace, and
+  an unknown tenant is an opaque `401` (no enumeration oracle). See
+  `../../sessions/extensions/github-webhook-multitenant-session.md`. *Still open here:* a **dynamic**
+  tenant directory (the registry is built at boot — onboarding without a restart, a durable repo→ws
+  directory, is the next step).
+- **`lb-secrets` backing.** Move the (now per-tenant) secret behind `lb-secrets` when that crate lands
+  — the registry would hold a secret *handle*, not the bytes. (Open.)
+- ~~**Auto-start on approval.**~~ **RESOLVED (S7):** the triage→approval→job chain now auto-closes via
+  `react_to_approvals` (the resolution reactor). See `../../sessions/coding-workflow/close-the-loop-session.md`.
 
 ## Status
 

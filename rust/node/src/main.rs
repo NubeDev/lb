@@ -5,14 +5,18 @@
 //! at S3; the UI at S2. Kept to one verb (FILE-LAYOUT): everything substantive is in `lb-host`.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_extension, Node};
 
+mod github;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Boot the spine (solo node).
-    let node = Node::boot().await?;
+    // Boot the spine (solo node). `Arc` so the env-gated background roles (webhook + workflow driver)
+    // can share it with the demo path below.
+    let node = Arc::new(Node::boot().await?);
 
     // Locate the built hello component. Override with HELLO_WASM; default to the cargo target.
     let wasm_path = std::env::var("HELLO_WASM")
@@ -28,6 +32,10 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("read {}: {e}", wasm_path.display()))?;
 
     let loaded = load_extension(&node, &manifest, &wasm, &[]).await?;
+
+    // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
+    // environment configures them. A no-op otherwise — the binary stays the solo demo below.
+    github::mount(node.clone()).await;
     println!(
         "loaded hello: tools={:?} granted_caps={:?}",
         loaded.tools, loaded.granted_caps

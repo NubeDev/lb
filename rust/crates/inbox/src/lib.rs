@@ -11,11 +11,13 @@
 //! Authorization is *not* here — these are raw verbs run after `caps::check`; the host's
 //! channel service is the capability chokepoint (capability-first, §3.5).
 
+mod approved;
 mod item;
 mod list;
 mod record;
 mod resolution;
 
+pub use approved::approved;
 pub use item::Item;
 pub use list::list;
 pub use record::{record, record_id, TABLE};

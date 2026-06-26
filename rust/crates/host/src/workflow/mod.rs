@@ -13,8 +13,10 @@
 //!   - `ingest_via_bridge`— compose the installed `github-bridge` wasm `normalize` tool with
 //!     `ingest_issue` (S7: the bridge is a sandboxed transform artifact; the host owns the write).
 //!   - `triage`           — drive the S5 agent to draft + share a scope doc (vision steps 2–4).
-//!   - `request_approval` — write the `needs:approval` inbox item (the gate's subject).
+//!   - `request_approval` — write the `needs:approval` inbox item + record its `PrSpec`.
 //!   - `resolve_approval` — a reviewer's resolution (approve/reject/defer).
+//!   - `react`            — the resolution reactor: durable-scan `approved` → auto-`start_coding_job`.
+//!   - `pr_spec`          — the durable `{repo,head,base,title,body}` the producer emits + reactor reads.
 //!   - `start_coding_job` — THE GATE: start the durable job only on `Approved`; effects via outbox.
 //!   - `emit_effect`      — the transactional must-deliver write (job step + outbox row, one tx).
 //!   - `relay_outbox`     — deliver pending effects at-least-once with retry, through a `Target`.
@@ -24,10 +26,13 @@
 //! as fire-and-forget motion. The two message classes are kept distinct (§6.2).
 
 mod authorize;
+mod directory;
 mod effect;
 mod error;
 mod ingest;
 mod ingest_via_bridge;
+mod pr_spec;
+mod react;
 mod relay;
 mod request_approval;
 mod resolve_approval;
@@ -36,10 +41,15 @@ mod target;
 mod tool;
 mod triage;
 
+pub use directory::{
+    deregister, enabled_workspaces, register, EntryStatus, WorkspaceEntry, DIRECTORY_NS,
+};
 pub use effect::emit_effect;
 pub use error::WorkflowError;
 pub use ingest::{ingest_issue, TRIAGE_CHANNEL};
 pub use ingest_via_bridge::ingest_via_bridge;
+pub use pr_spec::{pr_spec, record_pr_spec, PrSpec};
+pub use react::{react_to_approvals, reactor_job_id, ReactorPass};
 pub use relay::{relay_outbox, RelayPass};
 pub use request_approval::{request_approval, APPROVAL_CHANNEL};
 pub use resolve_approval::resolve_approval;

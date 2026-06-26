@@ -13,7 +13,8 @@ use std::sync::Mutex;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    relay_outbox, request_approval, resolve_approval, start_coding_job, CodingJob, Node, Target,
+    relay_outbox, request_approval, resolve_approval, start_coding_job, CodingJob, Node, PrSpec,
+    Target,
 };
 use lb_inbox::Decision;
 use lb_outbox::{Effect, EffectStatus};
@@ -72,7 +73,8 @@ impl Target for FlakyGithub {
 
 /// Drive the gated flow to the point where a PR effect is pending in the outbox.
 async fn queue_a_pr(node: &Node, user: &Principal, ws: &str) {
-    request_approval(&node.store, user, ws, "ap", "scope", "rev", 1)
+    let pr = PrSpec::new("acme/api", "fix", "main", "scope", "");
+    request_approval(&node.store, user, ws, "ap", "scope", "rev", &pr, 1)
         .await
         .unwrap();
     resolve_approval(&node.store, user, ws, "ap", Decision::Approved, 2)
@@ -87,6 +89,7 @@ async fn queue_a_pr(node: &Node, user: &Principal, ws: &str) {
             approval_id: "ap",
             scope_doc: "scope",
             channel: "c",
+            pr: &pr,
             pr_key: "pr:key",
             ts: 3,
         },

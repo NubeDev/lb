@@ -15,7 +15,7 @@ use std::sync::Arc;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     ingest_issue, relay_outbox, request_approval, resolve_approval, start_coding_job, triage,
-    CodingJob, Node, Target, WorkflowError, APPROVAL_CHANNEL, TRIAGE_CHANNEL,
+    CodingJob, Node, PrSpec, Target, WorkflowError, APPROVAL_CHANNEL, TRIAGE_CHANNEL,
 };
 use lb_inbox::Decision;
 use lb_outbox::Effect;
@@ -32,6 +32,11 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
         exp: u64::MAX,
     };
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
+}
+
+/// A throwaway PR spec for the approval/job tests — the structured payload the producer now emits.
+fn pr() -> PrSpec {
+    PrSpec::new("acme/api", "fix/2451", "main", "Fix race", "the body")
 }
 
 // The full workflow grant + the substrate caps the agent needs at triage.
@@ -146,6 +151,7 @@ async fn the_full_coding_workflow_runs_end_to_end() {
     assert_eq!(triaged.scope_doc, "scope-2451");
 
     // Step 5 — an approval inbox item is created, routed to `reviewers`.
+    let pr = pr();
     let approval = request_approval(
         &node.store,
         &user,
@@ -153,6 +159,7 @@ async fn the_full_coding_workflow_runs_end_to_end() {
         "approve-2451",
         "scope-2451",
         "reviewers",
+        &pr,
         3,
     )
     .await
@@ -169,6 +176,7 @@ async fn the_full_coding_workflow_runs_end_to_end() {
             approval_id: "approve-2451",
             scope_doc: "scope-2451",
             channel: "issue-2451",
+            pr: &pr,
             pr_key: "pr:2451",
             ts: 4,
         },
@@ -208,6 +216,7 @@ async fn the_full_coding_workflow_runs_end_to_end() {
             approval_id: "approve-2451",
             scope_doc: "scope-2451",
             channel: "issue-2451",
+            pr: &pr,
             pr_key: "pr:2451",
             ts: 6,
         },
@@ -258,7 +267,8 @@ async fn each_workflow_verb_is_denied_without_its_grant() {
     let ingest = ingest_issue(&node.store, &nobody, ws, "i", "p", 1).await;
     assert!(matches!(ingest, Err(WorkflowError::Denied)));
 
-    let req = request_approval(&node.store, &nobody, ws, "a", "d", "t", 1).await;
+    let pr = pr();
+    let req = request_approval(&node.store, &nobody, ws, "a", "d", "t", &pr, 1).await;
     assert!(matches!(req, Err(WorkflowError::Denied)));
 
     let res = resolve_approval(&node.store, &nobody, ws, "a", Decision::Approved, 1).await;
@@ -273,6 +283,7 @@ async fn each_workflow_verb_is_denied_without_its_grant() {
             approval_id: "a",
             scope_doc: "d",
             channel: "c",
+            pr: &pr,
             pr_key: "k",
             ts: 1,
         },
@@ -291,7 +302,8 @@ async fn a_rejected_approval_never_starts_the_job() {
     let node = Arc::new(Node::boot().await.unwrap());
     let user = principal("user:ada", ws, &full_caps());
 
-    request_approval(&node.store, &user, ws, "a", "scope", "rev", 1)
+    let pr = pr();
+    request_approval(&node.store, &user, ws, "a", "scope", "rev", &pr, 1)
         .await
         .unwrap();
     resolve_approval(&node.store, &user, ws, "a", Decision::Rejected, 2)
@@ -307,6 +319,7 @@ async fn a_rejected_approval_never_starts_the_job() {
             approval_id: "a",
             scope_doc: "scope",
             channel: "c",
+            pr: &pr,
             pr_key: "k",
             ts: 3,
         },

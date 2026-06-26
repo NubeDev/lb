@@ -29,7 +29,19 @@ The S6 **github-bridge** is now packaged as an installed Tier-1 wasm artifact (t
 orchestrator stays a host service by design), with a **live HTTP ingress** (**`lb-role-github-webhook`**,
 HMAC-verify the `X-Hub-Signature-256` → `ingest_via_bridge`) and a **live HTTP egress** (the outbox's
 **`lb-role-github-target`**, delivering `create_pr`/`comment` over GitHub REST) — the relay now hardened
-with **backoff + dead-letter**. No doc-site build and no native desktop window (webkit toolchain) yet.
+with **backoff + dead-letter**. The ingress and egress now **connect end to end into a live PR**: the
+producer emits the structured `{repo,head,base,title,body}` payload the GitHub target maps, and a
+durable-scan **resolution reactor** (`react_to_approvals`) auto-starts the coding job the moment its
+approval lands `Approved` — closing webhook → triage → approval → JOB → outbox → GitHub with no manual
+step. The ingress is now **multi-tenant** (`tenant_router`: `POST /webhook/{tenant}` over a
+`TenantRegistry`), one process fronting many workspaces, each authenticated by its own secret with the
+workspace wall held at the front door. And the whole loop now **runs as a service**: `lb-role-github-workflow`
+ticks the reactor + the outbox relay per workspace (`run_workflow_loop`), mounted into the `node` binary
+by config (`node/src/github.rs`) alongside the webhook front door — so a real webhook delivery flows
+issue → triage → approval → JOB → PR end to end in a running process — and the set of serviced
+workspaces is a **durable directory** (`register_workspace`/`deregister_workspace`) the driver re-reads
+each tick, so a workspace is onboarded/retired **without a restart**. No doc-site build and no native
+desktop window (webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
 build wasm guest + test + fmt); the four forever decisions (SDK/WIT, capability grammar +
@@ -124,6 +136,10 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | github-bridge as wasm | extensions | S7 | **shipped** | [github-bridge](scope/extensions/github-bridge-scope.md) | [github-bridge](sessions/extensions/github-bridge-session.md) | the S6 deferral resolved — the workflow's inbound edge ships as an installed **Tier-1 wasm** artifact (2nd real ext after `hello`). **Pure-transform** guest (`github-bridge.normalize`: webhook → `{issue_id,payload,ts}`, no host callback — WIT unchanged) + host **`ingest_via_bridge`** composing normalize→`ingest_issue` (2 gates). Orchestrator stays a host service. +7 Rust (install-deny · isolation · offline · rollback · transform branches, all through real wasm); finding: node-global stateless instance, wall is caps+store ([debug](debugging/extensions/loaded-extension-instance-is-node-global.md)); ~175+26+2 green |
 | github-webhook ingress | extensions | S7 | **shipped** | [github-webhook](scope/extensions/github-webhook-scope.md) | [github-webhook](sessions/extensions/github-webhook-session.md) | the github-bridge follow-up resolved — the **live HTTP ingress**. `lb-role-github-webhook` (beside `lb-role-registry-host`): `POST /webhook` → **constant-time HMAC-SHA256** verify of `X-Hub-Signature-256` over the **raw body** (mediated secret, never logged) → `ingest_via_bridge`. Two-layer boundary: authenticity (`401` forgery) *before* authority (`403` ungranted). +12 Rust (bad-sig · deny · isolation · idempotent re-delivery · happy/real-socket · malformed→`422` · HMAC units, through real wasm). `axum`/`hmac` in the role crate, no core/WIT/cap-grammar change; ~187+26+2 green |
 | outbox egress + hardening | coding-workflow | S7 | **shipped** | [outbox](scope/inbox-outbox/outbox-scope.md) | [outbox-egress](sessions/coding-workflow/outbox-egress-session.md) | the outbox's **live HTTP egress** + relay hardening (2 scope follow-ups). `lb-role-github-target` delivers `create_pr`/`comment` over GitHub REST (`reqwest` in the role crate; `422 already-exists` = idempotent success, no double-PR; token mediated). **Backoff + dead-letter** in `lb-outbox`+relay: `Effect` gains `max_attempts`/`next_attempt_ts`, new `DeadLettered` status, relay scans `due` (backoff-gated) + tallies dead-letters. +11 Rust (2 outbox backoff/dead-letter + 9 github-target: mapping units + happy·422·dead-letter·transport over real socket); 8 workflow regression updated; no core/WIT/cap change; ~198+26+2 green |
+| close the loop | coding-workflow | S7 | **shipped** | [outbox](scope/inbox-outbox/outbox-scope.md) + [coding-workflow](scope/coding-workflow/coding-workflow-scope.md) | [close-the-loop](sessions/coding-workflow/close-the-loop-session.md) | ingress+egress **connected end to end into a live PR** (2 scope follow-ups). **Producer enrichment**: `PrSpec{repo,head,base,title,body}` record keyed by approval → `start_coding_job` emits the structured `create_pr` payload github-target maps (was `{scope_doc}`; also fixes a `format!` escaping bug). **Resolution reactor**: `react_to_approvals` = durable scan over `lb_inbox::approved` → auto-`start_coding_job` on `Approved` (relay's altitude; LIVE-query version a follow-up); idempotent on a deterministic job id (re-resolve/re-scan → ONE job/PR). +8 Rust (5 reactor: deny·isolation·idempotency·skip + 1 **full-loop over a real socket** (reactor→real GithubTarget opens PR) + 2 pr_spec units); no core/WIT/cap change; ~206+26+2 green |
+| webhook front door | extensions | S7 | **shipped** | [github-webhook](scope/extensions/github-webhook-scope.md) | [github-webhook-multitenant](sessions/extensions/github-webhook-multitenant-session.md) | the webhook ingress went **multi-tenant**: `tenant_router` (`POST /webhook/{tenant}`) over a `TenantRegistry` (opaque slug → `{ws, principal, secret}`) fronts many workspaces from one process, each with its own secret. Routing by URL slug (chosen BEFORE the HMAC check → authenticity-before-parse holds); the **workspace wall holds at the front door** — A's secret on B's slug → `401`, never crosses; unknown tenant = opaque `401` (no enumeration oracle). Single-tenant `/webhook` untouched. +4 Rust (per-tenant routing · cross-tenant-secret isolation · unknown-tenant 401 · capability-deny); no core/WIT/cap change; ~210+26+2 green |
+| workflow driver + node wiring | coding-workflow | S7 | **shipped** | [workflow-driver](scope/coding-workflow/workflow-driver-scope.md) | [workflow-driver](sessions/coding-workflow/workflow-driver-session.md) | the loop now **runs in a process**, not just tests. New `lb-role-github-workflow`: `drive_once`/`run_workflow_loop` tick the **reactor then the relay** per workspace (reactor-first → same-tick PR), over a list of `WorkflowBinding`s (isolation structural), with an **injected clock** (no wall-clock in the crate). Env-gated **node wiring** (`node/src/github.rs`): mounts the webhook front door + the driver loop by config (`LB_WORKFLOW_WS`/`LB_WEBHOOK_*`/`LB_GITHUB_*`), no `if cloud`; `node` is now `Arc<Node>`. The host owns the verbs, the role owns the cadence; GitHub `Target` behind the trait, no net dep in core. +4 Rust (one-tick close · idempotent re-tick · per-ws isolation · injected-clock); no core/WIT/cap change; ~214+26+2 green |
+| dynamic workspace directory | coding-workflow | S7 | **shipped** | [workflow-driver](scope/coding-workflow/workflow-driver-scope.md) | [dynamic-directory](sessions/coding-workflow/dynamic-directory-session.md) | onboard/retire a workspace **without a restart**. New host **directory** (`register_workspace`/`deregister_workspace`/`enabled_workspaces`, `WorkspaceEntry{ws,channel,status,ts}`) in a **reserved namespace** `_lb_workflow_directory` (node-level config, secret-free, no MCP surface). Driver `run_directory_loop`/`drive_directory_once` re-reads the directory **each tick** (binding via an injected `principal_for`), so a runtime `register` is picked up next tick; `node` seeds the directory from `LB_WORKFLOW_WS` then drives it. +8 Rust (5 host: register/deregister/idempotent/durable/ns-isolation + 3 driver: register-mid-loop · deregister-drops · multi-ws isolation); no core/WIT/cap change; ~222+26+2 green |
 
 ---
 
@@ -131,7 +147,8 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 
 The `scope/<topic>/` docs exist for all areas (see `scope/README.md`). **Fully authored:** core,
 auth-caps, mcp, crate-layout, extensions (+ **native-tier**, new this slice), jobs, bus, inbox-outbox
-(+ outbox), tenancy, frontend, sync, testing, debugging, ai-gateway, agent, coding-workflow, registry,
+(+ outbox), tenancy, frontend, sync, testing, debugging, ai-gateway, agent, coding-workflow (+ the
+**workflow-driver**, new this slice), registry,
 **node-roles** + **platform-targets** (filled this slice — placement × role + the native target tag).
 **Promoted to `public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox (+ outbox + the
 resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-workflow, registry,
@@ -148,9 +165,11 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
    **(github-bridge SHIPPED** — a pure-transform Tier-1 wasm artifact; the orchestrator deliberately
    stays a host service since it drives host-internal seams a guest can't reach). ~~Open follow-up here: a
    **webhook-receiver role crate** that drives `ingest_via_bridge` on a real HTTP POST~~ **(SHIPPED —
-   `lb-role-github-webhook`: HMAC-verify → `ingest_via_bridge`)**; remaining webhook opens — a
-   **multi-tenant front door** (route by repo to a workspace; per-repo secrets), an `lb-secrets`-backed
-   secret, and a **resolution reactor** that auto-starts the job on approval. And the `host.call_tool`
+   `lb-role-github-webhook`: HMAC-verify → `ingest_via_bridge`)**; remaining webhook opens — ~~a
+   **multi-tenant front door**~~ **(SHIPPED — `tenant_router` + `TenantRegistry`, route-by-slug,
+   per-tenant secret)**, a **dynamic** tenant directory (onboard without a restart) and an
+   `lb-secrets`-backed secret (~~a **resolution reactor** that auto-starts the job on approval~~ **SHIPPED** — `react_to_approvals`).
+   And the `host.call_tool`
    WIT question if a guest ever needs to call a host tool (a forever-ABI change, its own scope). **Native-tier follow-ups:** a boot reconciler (re-spawn `lifecycle=started`
    from records), OS-level hardening (cgroups/seccomp/userns), a background health-poll reactor (the
    slice restarts on-demand at the call boundary), the child→host MCP callback transport, and native
@@ -163,10 +182,16 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
    ship now); `registry.update` semantics; gateway/Tauri wiring for `registry_*`.
 2. **Outbox `Target` adapters + relay hardening** — ~~GitHub HTTP~~ **(SHIPPED — `lb-role-github-target`)**
    and ~~backoff + dead-letter~~ **(SHIPPED — `max_attempts`/`next_attempt_ts`/`DeadLettered` + `due`
-   scan)** are done. Remaining: **email / sync-publish** adapters behind the `Target` trait + the
-   **producer payload enrichment** a live PR needs + **search-before-create** dedup; the **multi-relay
-   atomic claim**, FIFO-per-target ordering, and the **LIVE-query relay reactor** (S6/S7 use durable
-   scans + an explicit `start_job`); plus a **resolution reactor** that auto-starts the job on approval.
+   scan)**, the **producer payload enrichment** a live PR needs **(SHIPPED — `PrSpec` + structured
+   `create_pr`)**, and a **resolution reactor** that auto-starts the job on approval **(SHIPPED —
+   `react_to_approvals`, a durable scan)** are all done. Remaining: **email / sync-publish** adapters
+   behind the `Target` trait + **search-before-create** dedup; the **multi-relay atomic claim**,
+   FIFO-per-target ordering, and the **LIVE-query** driver (the **poll-tick driver SHIPPED** —
+   `lb-role-github-workflow`'s `run_workflow_loop` ticks reactor+relay per ws, mounted in the `node`
+   binary by config; the LIVE push is the latency optimization on top). The **dynamic workspace
+   directory** (hot-add without a restart) **SHIPPED** (`register_workspace`/`deregister_workspace`,
+   reserved-namespace record, re-read each tick); remaining: the **webhook tenant directory** (paired
+   with `lb-secrets` for per-tenant secrets), an admin/MCP surface for the register verbs, and GC.
 3. **Real model provider + streaming** behind the S5 gateway contract — the mock is the only stub;
    add an OpenAI-compatible / local adapter and stream tokens as Zenoh motion. Agent/job progress can
    now also ride the durable outbox for the must-deliver transcript.

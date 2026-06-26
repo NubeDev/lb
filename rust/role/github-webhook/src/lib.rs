@@ -14,15 +14,26 @@
 //!      `mcp:workflow.ingest_issue:call`) and the workspace wall guard a webhook as guard every
 //!      other caller. Idempotency on the issue id (the inbox upsert) makes re-delivery one item.
 //!
+//! Two front-door shapes share that boundary: the single-tenant [`router`] (`POST /webhook`, one
+//! fixed `(ws, principal, secret)`) for a one-repo deployment, and the **multi-tenant**
+//! [`tenant_router`] (`POST /webhook/{tenant}`, a [`TenantRegistry`] of slug → `(ws, principal,
+//! secret)`) so one process fronts many workspaces, each with its own secret. Routing is by URL slug,
+//! not by the unverified body, so the per-tenant secret is chosen *before* the HMAC check — and a
+//! delivery signed with one tenant's secret can never cross into another's workspace (an unknown
+//! tenant is an opaque `401`, no enumeration oracle). See [`tenant`].
+//!
 //! Why a role crate (not core `lb-host`): a webhook receiver pulls in `axum` (an HTTP server) and
 //! `hmac` — neither belongs compiled into every node. It lives beside `lb-role-registry-host`, the
 //! same way the registry's HTTP server does. Roles depend on host, never the reverse.
 
+mod route_tenant;
 mod routes;
 mod server;
 mod state;
+mod tenant;
 mod verify;
 
-pub use server::{router, serve};
+pub use server::{router, serve, serve_tenants, tenant_router};
 pub use state::WebhookState;
+pub use tenant::{TenantRegistry, WebhookTenant};
 pub use verify::{verify_signature, SignatureError};

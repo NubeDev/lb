@@ -9,7 +9,7 @@ use std::sync::Arc;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     call_workflow_tool, ingest_issue, relay_outbox, request_approval, resolve_approval,
-    start_coding_job, CodingJob, Node, Target,
+    start_coding_job, CodingJob, Node, PrSpec, Target,
 };
 use lb_inbox::Decision;
 use lb_outbox::Effect;
@@ -53,7 +53,8 @@ async fn workspace_b_never_sees_workspace_a_workflow_state() {
     ingest_issue(&node.store, &a, "wf-iso-a", "i1", "secret issue", 1)
         .await
         .unwrap();
-    request_approval(&node.store, &a, "wf-iso-a", "ap1", "doc1", "rev", 2)
+    let pr = PrSpec::new("acme/api", "fix", "main", "doc1", "");
+    request_approval(&node.store, &a, "wf-iso-a", "ap1", "doc1", "rev", &pr, 2)
         .await
         .unwrap();
     resolve_approval(&node.store, &a, "wf-iso-a", "ap1", Decision::Approved, 3)
@@ -68,6 +69,7 @@ async fn workspace_b_never_sees_workspace_a_workflow_state() {
             approval_id: "ap1",
             scope_doc: "doc1",
             channel: "c",
+            pr: &pr,
             pr_key: "pr:a",
             ts: 4,
         },

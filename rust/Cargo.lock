@@ -2865,7 +2865,10 @@ name = "lb-role-github-target"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "lb-auth",
  "lb-host",
+ "lb-inbox",
+ "lb-jobs",
  "lb-outbox",
  "lb-store",
  "reqwest",
@@ -2890,6 +2893,19 @@ dependencies = [
  "sha2",
  "tokio",
  "tower",
+]
+
+[[package]]
+name = "lb-role-github-workflow"
+version = "0.1.0"
+dependencies = [
+ "lb-auth",
+ "lb-host",
+ "lb-inbox",
+ "lb-jobs",
+ "lb-outbox",
+ "lb-store",
+ "tokio",
 ]
 
 [[package]]
@@ -3329,6 +3345,9 @@ dependencies = [
  "lb-host",
  "lb-mcp",
  "lb-role-gateway",
+ "lb-role-github-target",
+ "lb-role-github-webhook",
+ "lb-role-github-workflow",
  "tokio",
 ]
 

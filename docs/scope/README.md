@@ -17,6 +17,8 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
+- `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
+  ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
 - `jobs/` — the SurrealDB-native durable job queue / resumable session (S5).
 - `sync/` — multi-node sync + authority (S3).
 - `frontend/` — the React/Tauri UI shell.

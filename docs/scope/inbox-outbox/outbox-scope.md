@@ -170,6 +170,16 @@ Mandatory categories (testing §2) — these are the S6 gate, not extras:
   `comment` effects to the GitHub REST API over `reqwest` (the in-test target was the only stub).
   Idempotency rides GitHub's `422 "already exists"` for `create_pr`. Email / sync-publish adapters +
   search-before-create dedup stay open.
+- ~~**Producer payload enrichment:**~~ **RESOLVED (S7):** the `create_pr` effect now carries the
+  structured `{repo, head, base, title, body}` payload `github-target` maps (was `{scope_doc}`),
+  emitted verbatim from a `PrSpec` record keyed by the approval. So a **real PR** is opened end to
+  end. See `../../sessions/coding-workflow/close-the-loop-session.md`.
+- ~~**Resolution reactor (auto-start on approval):**~~ **RESOLVED (S7):** `react_to_approvals` — a
+  **durable scan** (the relay's altitude) over `lb_inbox::approved` that auto-starts the coding job
+  the moment its approval lands `Approved`, closing webhook → triage → approval → JOB → outbox →
+  GitHub with no manual `start_job`. Idempotent on a deterministic job id (re-resolve/re-scan → ONE
+  job, ONE PR). The **LIVE-query reactor** (instant pickup) stays the layered-on optimization, like
+  the relay's. Same session.
 - **Atomic claim for multi-relay:** the `UPDATE … WHERE status='pending' RETURN BEFORE` primitive
   (same as the jobs queue) — recorded, deferred (one hub relay at S6).
 - **FIFO-per-target ordering:** some targets need ordered delivery (comment-before-close). Not

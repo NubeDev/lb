@@ -78,10 +78,32 @@ The relay went from "retry every pass forever, deliver to an in-test target" to 
 **Tested:** happy delivery + 422-idempotency through the real adapter over a socket; backoff (owed but
 not yet `due`); dead-letter at the cap; a transport failure stays schedulable and delivers on recovery.
 
+## The loop closed (shipped S7 — enriched payload + resolution reactor)
+
+The ingress (`github-webhook`) and egress (`github-target`) now connect end to end into a live PR,
+with no manual step between approval and the job:
+
+- **Enriched `create_pr` payload.** The producer (`start_coding_job`) emits the structured
+  `{repo, head, base, title, body}` the GitHub `Target` maps (was `{scope_doc}`, which it could not).
+  The PR coordinates are **state** — a `PrSpec` record keyed by the approval id (the same sibling-
+  record pattern as `Resolution`), recorded at `request_approval` time and emitted verbatim via
+  `PrSpec::create_pr_payload()`. So a **real, openable PR** rides the outbox.
+- **The resolution reactor.** `react_to_approvals` — a **durable scan** (the same altitude as the
+  relay: a stateless function over a durable set) over `lb_inbox::approved`. For each approval that
+  resolved `Approved` and whose job has not yet started, it auto-starts the durable coding job —
+  closing webhook → triage → approval → **JOB** → outbox → GitHub. It runs under the workflow service
+  principal and re-checks `mcp:workflow.start_job:call`, so the capability + workspace walls hold.
+- **Idempotent.** A deterministic `job_id`/`pr_key` derived from the approval + a job-existence skip
+  make a re-scan (or a deferred→approved re-resolve) a no-op: **one job, one PR**, never a double.
+
+**Tested:** the enriched payload auto-starts + relays out; capability-deny (no `start_job` grant →
+refused, no job); workspace-isolation (a ws-B reactor can't start a ws-A job); idempotency; and **the
+full loop over a real socket** — approval → reactor → real `GithubTarget` opens the PR against a fake
+GitHub on an ephemeral port, the enriched body intact, a second pass opening no second PR.
+
 ## Not yet built
 
-Email / sync-publish `Target` adapters behind the trait + search-before-create dedup; the producer
-payload enrichment a live PR needs; the multi-relay atomic claim; FIFO-per-target ordering; the
-LIVE-query relay reactor; a resolution reactor that auto-starts the job on approval; item `meta` for
-richer payloads; retention/compaction. See `scope/inbox-outbox/`
-(`outbox-scope.md`) open questions.
+Email / sync-publish `Target` adapters behind the trait + search-before-create dedup; the multi-relay
+atomic claim; FIFO-per-target ordering; the **LIVE-query** relay/resolution reactor (the durable scans
+ship now — the LIVE push is the latency optimization); item `meta` for richer payloads;
+retention/compaction. See `scope/inbox-outbox/` (`outbox-scope.md`) open questions.

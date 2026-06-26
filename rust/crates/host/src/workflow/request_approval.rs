@@ -12,13 +12,17 @@ use lb_inbox::{record, Item};
 
 use super::authorize::authorize_workflow;
 use super::error::WorkflowError;
+use super::pr_spec::{record_pr_spec, PrSpec};
 
 /// The channel approval items land in; members of the routed team watch it.
 pub const APPROVAL_CHANNEL: &str = "approvals";
 
 /// Request approval `approval_id` for the proposed coding job on `scope_doc`, routed to `team`, in
-/// workspace `ws` as `principal`. Idempotent on `approval_id`. Returns the stored item; its id is
-/// the key `resolve_approval` and the job-start gate use.
+/// workspace `ws` as `principal`. The PR the job will open (`pr`) is persisted alongside the
+/// approval, keyed by `approval_id`, so the resolution reactor can open a real PR with no caller
+/// input at react time (coding-workflow scope, the producer enrichment). Idempotent on `approval_id`
+/// (the item and the spec both upsert). Returns the stored item; its id is the key `resolve_approval`,
+/// the job-start gate, and the reactor all use.
 pub async fn request_approval(
     store: &lb_store::Store,
     principal: &Principal,
@@ -26,6 +30,7 @@ pub async fn request_approval(
     approval_id: &str,
     scope_doc: &str,
     team: &str,
+    pr: &PrSpec,
     ts: u64,
 ) -> Result<Item, WorkflowError> {
     authorize_workflow(principal, ws, "request_approval")?;
@@ -38,5 +43,8 @@ pub async fn request_approval(
         ts,
     );
     record(store, ws, &item).await?;
+    // The PR coordinates are state the reactor reads back on approval — persisted in the same
+    // workspace, keyed by the approval id (the gate before the transaction already passed above).
+    record_pr_spec(store, ws, approval_id, pr).await?;
     Ok(item)
 }

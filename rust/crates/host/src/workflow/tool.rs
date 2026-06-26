@@ -17,6 +17,7 @@ use lb_inbox::Decision;
 use lb_mcp::{authorize_tool, ToolError};
 use serde_json::{json, Value};
 
+use super::pr_spec::{pr_spec, PrSpec};
 use super::{
     ingest_issue, request_approval, resolve_approval, start_coding_job, CodingJob, WorkflowError,
 };
@@ -62,6 +63,7 @@ pub async fn call_workflow_tool(
                 str_arg(input, "approval_id")?,
                 str_arg(input, "scope_doc")?,
                 str_arg(input, "team")?,
+                &pr_arg(input)?,
                 u64_arg(input, "ts")?,
             )
             .await
@@ -82,15 +84,24 @@ pub async fn call_workflow_tool(
             json!({ "ok": true })
         }
         "start_job" => {
+            // The PR coordinates were persisted at `request_approval` time, keyed by approval_id —
+            // the manual start reads them back, exactly like the reactor (no redundant PR args on
+            // the wire). Missing spec = this approval was never a coding-job request → BadInput.
+            let approval_id = str_arg(input, "approval_id")?;
+            let spec = pr_spec(&node.store, ws, approval_id)
+                .await
+                .map_err(|e| wf_to_tool(WorkflowError::Store(e)))?
+                .ok_or_else(|| ToolError::BadInput("no PR spec for approval".into()))?;
             let id = start_coding_job(
                 node,
                 principal,
                 ws,
                 CodingJob {
                     job_id: str_arg(input, "job_id")?,
-                    approval_id: str_arg(input, "approval_id")?,
+                    approval_id,
                     scope_doc: str_arg(input, "scope_doc")?,
                     channel: str_arg(input, "channel")?,
+                    pr: &spec,
                     pr_key: str_arg(input, "pr_key")?,
                     ts: u64_arg(input, "ts")?,
                 },
@@ -116,6 +127,22 @@ fn wf_to_tool(e: WorkflowError) -> ToolError {
         WorkflowError::Bridge(m) => ToolError::Extension(m),
         WorkflowError::Store(s) => ToolError::Extension(s.to_string()),
     }
+}
+
+/// Read the structured `pr` object (`{repo, head, base, title, body?}`) from a `request_approval`
+/// call. The reactor and the manual `start_job` both read this spec back by approval id, so it is
+/// supplied once, here, when approval is requested.
+fn pr_arg(input: &Value) -> Result<PrSpec, ToolError> {
+    let pr = input
+        .get("pr")
+        .ok_or_else(|| ToolError::BadInput("missing object arg: pr".into()))?;
+    Ok(PrSpec::new(
+        str_arg(pr, "repo")?,
+        str_arg(pr, "head")?,
+        str_arg(pr, "base")?,
+        str_arg(pr, "title")?,
+        pr.get("body").and_then(|v| v.as_str()).unwrap_or(""),
+    ))
 }
 
 fn decision_arg(input: &Value) -> Result<Decision, ToolError> {

@@ -67,6 +67,35 @@ approval).
   nothing.
 - **Every external effect through the outbox with retry** — see `../inbox-outbox/inbox-outbox.md`.
 
+## Running it end to end (S7)
+
+The flow runs as a live process, not just a sequence of verbs a test drives:
+
+- **Ingress.** `lb-role-github-webhook` (`POST /webhook/{tenant}`) HMAC-verifies a real GitHub
+  delivery and drives `ingest_via_bridge` → the `needs:triage` item. Multi-tenant: one process fronts
+  many workspaces, each with its own secret (see `../extensions/extensions.md`).
+- **Auto-start on approval.** `react_to_approvals` — a durable scan over approved resolutions — starts
+  the coding job the moment its approval lands `Approved`, with no manual `start_job`. The PR effect it
+  queues carries the structured `{repo, head, base, title, body}` payload (a `PrSpec` recorded at
+  approval), so a real PR can open. Idempotent on a deterministic job id (re-scan → one job, one PR).
+- **The driver.** `lb-role-github-workflow` ticks the reactor + the outbox relay per workspace on an
+  interval (`run_workflow_loop` / `drive_once`) — reactor first, so a freshly-approved job's PR ships
+  the same tick. The host owns the verbs; the role owns the cadence; the GitHub HTTP `Target`
+  (`lb-role-github-target`) is supplied behind the trait. `now` is injected (wall-clock only at the
+  binary). A tick over one workspace never touches another.
+- **Dynamic workspaces.** The set of serviced workspaces is a durable **directory**
+  (`register_workspace` / `deregister_workspace`, a reserved-namespace record) the driver re-reads each
+  tick (`run_directory_loop`) — a workspace is onboarded or retired **without restarting the node**, and
+  the set survives a restart. The directory is secret-free; per-tenant webhook secrets ride `lb-secrets`
+  (the paired follow-up).
+- **Mounted by config.** The `node` binary spawns the webhook server + the driver loop when the
+  environment configures them (`LB_WORKFLOW_WS`, `LB_WEBHOOK_ADDR/SECRET`, `LB_GITHUB_API/TOKEN`) —
+  config, never an `if cloud`. Absent config, the binary is the solo node.
+
+So a webhook delivery now flows **issue → triage → approval → JOB → PR** as a running service, end to
+end. Open follow-ups: a dynamic workspace/tenant directory (hot-add without a restart), a LIVE-query
+driver (instant pickup), `lb-secrets`-backed secrets, and a real login→principal session.
+
 ## UI
 
 A `WorkflowView` + `workflow.api` client mirroring the verbs, with a faithful in-memory fake

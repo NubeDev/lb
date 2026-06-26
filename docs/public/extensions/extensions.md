@@ -100,6 +100,17 @@ guard it, in order:
 Idempotency on the normalized issue id makes GitHub's re-delivery one inbox item. `axum`/`hmac` live in
 the role crate, never core. See `../../scope/extensions/github-webhook-scope.md`.
 
+**The multi-tenant front door (S7).** One process fronts many workspaces: `tenant_router` exposes
+`POST /webhook/{tenant}` over a `TenantRegistry` (an opaque slug → `{ws, principal, secret}` map), so
+each repo points its Payload URL at its own `/webhook/{tenant}` with its **own** secret. Routing is by
+the URL slug — chosen *before* the HMAC check, never by reading the unverified body — so
+authenticity-before-parse holds and the **workspace wall holds at the front door**: a delivery signed
+with one tenant's secret but sent to another's slug fails that tenant's HMAC (`401`) and never crosses
+into its workspace. An **unknown tenant is the same opaque `401`** (not a `404`) — no enumeration
+oracle. The single-tenant `/webhook` route stays for one-repo deployments; the front door is layered
+beside it (no `if cloud`, one tenant per map row). `lb-secrets`-backed secrets + a dynamic tenant
+directory (onboard without a restart) are the open follow-ups.
+
 ## Placement & targets
 
 `placement` (`local-only`/`cloud-only`/`either`) is matched against a node's **role** as data, never

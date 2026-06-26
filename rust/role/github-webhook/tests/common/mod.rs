@@ -16,7 +16,7 @@ use hmac::{Hmac, Mac};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{install_from_registry, Loaded, Node, RegistryServiceError, Source};
 use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
-use lb_role_github_webhook::{router, WebhookState};
+use lb_role_github_webhook::{router, tenant_router, TenantRegistry, WebhookState, WebhookTenant};
 use sha2::Sha256;
 use tower::ServiceExt; // for `oneshot`
 
@@ -186,4 +186,34 @@ pub fn signed_req(body: &str) -> Request<Body> {
 /// Drive the router and return the response status (the inbox is the side-effect under test).
 pub async fn status(state: WebhookState, req: Request<Body>) -> StatusCode {
     router(state).oneshot(req).await.unwrap().status()
+}
+
+// --- multi-tenant front-door helpers -----------------------------------------------------------
+
+/// Build a `WebhookTenant` for `ws` with the given `caps` and `secret` (its own webhook key).
+pub fn tenant(ws: &str, caps: &[&str], secret: &[u8]) -> WebhookTenant {
+    WebhookTenant::new(principal("user:hook", ws, caps), ws, secret.to_vec())
+}
+
+/// A `POST /webhook/{slug}` request with the given body and (optional) signature header.
+pub fn tenant_req(slug: &str, body: &str, signature: Option<&str>) -> Request<Body> {
+    let mut b = Request::builder()
+        .method("POST")
+        .uri(format!("/webhook/{slug}"))
+        .header("content-type", "application/json");
+    if let Some(sig) = signature {
+        b = b.header("x-hub-signature-256", sig);
+    }
+    b.body(Body::from(body.to_string())).unwrap()
+}
+
+/// A `POST /webhook/{slug}` request correctly signed under `secret`.
+pub fn signed_tenant_req(slug: &str, body: &str, secret: &[u8]) -> Request<Body> {
+    let sig = signature_for(secret, body.as_bytes());
+    tenant_req(slug, body, Some(&sig))
+}
+
+/// Drive the multi-tenant router and return the response status.
+pub async fn tenant_status(registry: TenantRegistry, req: Request<Body>) -> StatusCode {
+    tenant_router(registry).oneshot(req).await.unwrap().status()
 }

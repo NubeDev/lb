@@ -21,6 +21,7 @@ use lb_outbox::Effect;
 use super::authorize::authorize_workflow;
 use super::effect::emit_effect;
 use super::error::WorkflowError;
+use super::pr_spec::PrSpec;
 use crate::boot::Node;
 use crate::channel::post;
 
@@ -30,10 +31,14 @@ pub struct CodingJob<'a> {
     pub job_id: &'a str,
     /// The approval inbox item id whose resolution gates this job.
     pub approval_id: &'a str,
-    /// The scope doc the job implements (recorded in the job payload + the PR effect).
+    /// The scope doc the job implements (recorded in the job payload).
     pub scope_doc: &'a str,
     /// The channel progress streams to.
     pub channel: &'a str,
+    /// The pull request to open — the structured coordinates `github-target` needs (`{repo, head,
+    /// base, title, body}`). The producer emits this verbatim as the `create_pr` payload; the
+    /// adapter maps it without a shaping step (coding-workflow scope, the producer enrichment).
+    pub pr: &'a PrSpec,
     /// The stable idempotency key for the PR effect (the receiver dedups on it).
     pub pr_key: &'a str,
     pub ts: u64,
@@ -79,12 +84,14 @@ pub async fn start_coding_job(
     .await?;
 
     // MUST-DELIVER: open the PR through the transactional outbox — the job step + the effect in one
-    // transaction. The job NEVER calls GitHub directly (outbox scope).
+    // transaction. The job NEVER calls GitHub directly (outbox scope). The payload is the structured
+    // `{repo, head, base, title, body}` shape `github-target` maps — emitted verbatim from the spec,
+    // so a real PR can be opened (was `{scope_doc}`, which the adapter could not map).
     let pr = Effect::new(
         format!("{}-pr", job.job_id),
         "github",
         "create_pr",
-        format!(r#"{{"scope_doc":"{}"}}"#, job.scope_doc),
+        job.pr.create_pr_payload(),
         job.pr_key,
         job.ts,
     );

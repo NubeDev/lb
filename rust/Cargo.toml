@@ -34,6 +34,7 @@ members = [
     "role/registry-host",
     "role/github-webhook",
     "role/github-target",
+    "role/github-workflow",
     "role/bootstrap-ui",
 ]
 exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge"]
@@ -72,6 +73,7 @@ lb-sdk = { path = "sdk" }
 lb-role-ai-gateway = { path = "role/ai-gateway" }
 lb-role-github-webhook = { path = "role/github-webhook" }
 lb-role-github-target = { path = "role/github-target" }
+lb-role-github-workflow = { path = "role/github-workflow" }
 
 # the stack (docs/key-stack.md)
 surrealdb = { version = "2", default-features = false, features = ["kv-mem"] }
