@@ -246,22 +246,24 @@ paths. Real embedded SurrealDB + in-proc Zenoh everywhere else. Each test that b
 
 ## Open questions
 
-- **Boot reconciler.** Re-spawn `lifecycle=started` sidecars from durable records on node boot
-  (the rubix reconciler analogue). Deferred — single-process lifetime this slice; the records exist
-  so it is additive. *Decision to record in the session: scope it out, note the record shape
-  supports it.*
-- **OS-level hardening depth** (cgroups/seccomp/userns) — deferred (non-goal). Which to add first
-  when it lands?
+- ~~**`restart` as a first-class verb vs. only the crash policy.**~~ **RESOLVED:** ships both —
+  the operator `native.restart` (cooperative stop→start) and the automatic `RestartPolicy` crash path
+  (`call_sidecar` restarts-on-fault). Different triggers, distinct as intended.
+- ~~**Where the native manifest fields live.**~~ **RESOLVED:** the `[native]` block (exec/args/target/
+  restart), required for and exclusive to `tier="native"`, validated at parse (ext-loader).
+- **Boot reconciler.** Re-spawn `lifecycle=started` sidecars from durable records on node boot (the
+  rubix reconciler analogue). Deferred — single-process lifetime this slice; the `native_status`
+  record shape supports it (additive). *Recorded in the session: scoped out, records ready.*
+- **OS-level hardening depth** (cgroups/seccomp/userns) — deferred (non-goal of the minimal-sidecar
+  posture). Which to add first when it lands?
+- **Background health-poll reactor.** This slice restarts **on-demand at the call boundary**; a
+  periodic `health` timer (+ the supervision events on the bus for observability) is the natural next
+  step — a sidecar that crashes between calls is only noticed on the next call today.
 - **The child→host callback transport.** This slice's sidecar uses only the control line; a sidecar
   that calls host MCP tools needs the routed-MCP callback wired (the deferred gateway/Tauri work).
-  Does the child speak MCP over a local socket, or proxy through the supervisor's control line?
   *Default: proxy through the control line (one transport), revisit if a firehose needs its own.*
-- **Native artifact platform tagging.** A native binary is platform-specific; the catalog entry
-  needs a target triple so a node pulls the right binary. Resolved minimally in
-  platform-targets-scope (the field exists); enforcement is a follow-up.
-- **`restart` as a first-class verb vs. only the crash policy.** This slice ships both (operator
-  `native.restart` = cooperative stop→start; the `RestartPolicy` is the crash path). Confirm the
-  operator verb stays distinct from the automatic policy (it does — different triggers).
+- **Native artifact platform-target enforcement.** The `[native] target` field exists (carried into
+  the catalog); refusing a binary built for the wrong target on install is the follow-up.
 
 ## Related
 

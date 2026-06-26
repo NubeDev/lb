@@ -74,7 +74,10 @@ fn handle_call(req: &Request, ws: &str) -> (Reply, bool) {
     match params.tool.as_str() {
         "crash" => (Reply::ok(req.id, r#""crashing""#), true),
         "echo" => (
-            Reply::ok(req.id, format!(r#"{{"echo":{},"ws":"{ws}"}}"#, params.input)),
+            Reply::ok(
+                req.id,
+                format!(r#"{{"echo":{},"ws":"{ws}"}}"#, params.input),
+            ),
             false,
         ),
         other => (Reply::err(req.id, format!("unknown tool: {other}")), false),

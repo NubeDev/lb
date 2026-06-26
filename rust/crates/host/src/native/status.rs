@@ -9,8 +9,8 @@
 //! how many times has it crashed" — the supervision intent + a counter. Two small records, one per
 //! concern (FILE-LAYOUT), both workspace-namespaced.
 
-use serde::{Deserialize, Serialize};
 use lb_store::{read, write, Store, StoreError};
+use serde::{Deserialize, Serialize};
 
 /// The cache table within a workspace namespace. One place owns the name.
 pub(crate) const TABLE: &str = "native_status";
@@ -48,7 +48,11 @@ impl NativeStatus {
 }
 
 /// Persist `status` for its extension in workspace `ws` (upsert, keyed by `ext_id`).
-pub async fn record_status(store: &Store, ws: &str, status: &NativeStatus) -> Result<(), StoreError> {
+pub async fn record_status(
+    store: &Store,
+    ws: &str,
+    status: &NativeStatus,
+) -> Result<(), StoreError> {
     let value = serde_json::to_value(status).map_err(|e| StoreError::Decode(e.to_string()))?;
     write(store, ws, TABLE, &status.ext_id, &value).await
 }

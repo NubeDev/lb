@@ -3,6 +3,46 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S7 — platform maturity: the native Tier-2 supervisor)
+
+The second S7 vertical slice — the **remaining half of the S7 exit gate**: a native OS-process
+sidecar is **supervised and restarts cleanly**, beside the wasm tier, under one control plane and one
+identity model. Built by composing the supervisor seam with the S4 install + the capability model,
+not by forking a second extension system.
+
+- **`lb-supervisor`** — the OS plumbing + supervision policy, behind a `Launcher` seam (the registry's
+  `Source` analogue): spawn a child, frame `Content-Length` JSON-RPC over its stdio, handshake
+  (`init`), health-poll, cooperative `shutdown` (escalating to a process-group kill), and `restart`
+  (kill + relaunch from the spec, bounded by exponential `Backoff` + a `max_restarts` budget). Holds
+  no store/auth/identity — the host drives it. See `extensions/extensions.md`.
+- **The host `native` service** (beside `agent`/`channel`/`assets`/`workflow`/`registry`) —
+  `install_native` (persist the S4 `Install` record → spawn → record status), `stop`/`restart`/
+  `status`, and `call_sidecar` (dispatch a child tool, **restart-on-fault** and retry — the
+  supervision crash-path). The live `Sidecar` (PID, stdio) lives in a **runtime-only** `SidecarMap`
+  keyed `(ws, ext_id)`; the durable truth is the `Install` record + a `native_status` projection
+  (lifecycle intent + restart count) in the workspace namespace — so a restart re-derives from the
+  record and **loses no durable state** (the stateless-extension guarantee carried into Tier 2).
+- **The `[native]` manifest block** — `tier="native"` carries exec/args/target/restart (closing the
+  extensions-scope deferral); the host turns it into a supervisor `Spec` and injects the child's
+  **scoped identity token** (`requested ∩ admin_approved`, the same intersection the wasm tier grants).
+- **Two gates, unchanged** — the **capability** gate (`mcp:native.<verb>:call`, workspace-first, the
+  proven host-service gate — **no `process:` grammar change**) and, for a registry-installed sidecar,
+  the **signature** gate (`verify_artifact`). A signed `tier="native"` artifact installs through the
+  same pull→verify→cache flow a wasm one does (`install_native_from_registry`); a tampered native
+  artifact is rejected before the binary touches disk.
+- **A reference sidecar** (`echo-sidecar`) — a real host-platform binary (a workspace member, unlike
+  the wasm `hello`) speaking the supervisor's wire types verbatim (the child↔host ABI cannot drift).
+- **UI** — a `NativeView` + `native.api` client mirroring the verbs, surfacing the **restart count +
+  running flag** (the supervision, visible), with a faithful in-memory fake. See `frontend/frontend.md`.
+
+**Exit gate — fully MET.** A native sidecar is supervised and restarts cleanly: a killed child is
+respawned (proven with a **real OS process**), resumes answering, and **no durable workspace state is
+lost** (a channel message posted before the crash is intact after); install/lifecycle are
+capability-gated (no spawn without `mcp:native.install:call`); ws-B can never see or control ws-A's
+sidecar (store + MCP + the runtime map); a signed native artifact installs through the registry and a
+tampered one is rejected. Posture: process-group isolation + scoped identity + bounded restart;
+OS-level hardening (cgroups/seccomp/userns) and a boot reconciler are noted follow-ups.
+
 ## Shipped (S7 — platform maturity: the signed extension registry)
 
 The first S7 vertical slice: a node installs an extension from a **signed registry**, runs it
@@ -36,7 +76,7 @@ a tampered/unsigned/foreign-key artifact is rejected before caching, even with t
 across **store + MCP** (a ws-B caller sees no ws-A cache/catalog and cannot ride its cache offline),
 offline (install succeeds with the source unreachable once cached), rollback/hot-reload (durable state
 preserved), and signing/verification (the new crypto surface). The native Tier-2 sidecar — the exit
-gate's second half — remains.
+gate's second half — **shipped** next (above); the S7 exit gate is now fully met.
 
 ## Shipped (S6 — coding workflow)
 
@@ -212,9 +252,13 @@ invisible. 35 tests pass (mandatory capability-deny + workspace-isolation includ
 
 ## Not yet built
 
-The **native Tier-2 sidecar** tier (S7 exit gate's second half) and **packaging the S6
-workflow/github-bridge as installed wasm artifacts** (now that the registry exists to install them
-through). For the registry itself: a **real HTTP `Source`/`registry-host` server** (the in-memory test
+**Packaging the S6 workflow/github-bridge as installed wasm artifacts** (now that the registry exists
+to install them through). For the **native tier** (now shipped): a **boot reconciler** (re-spawn
+`lifecycle=started` sidecars from records on boot), **OS-level hardening** (cgroups/seccomp/userns —
+the slice ships process-group isolation + scoped identity + bounded restart), a **background
+health-poll reactor** (the slice restarts on-demand at the call boundary), the **child→host MCP
+callback transport**, and **native artifact platform-target enforcement** remain. For the registry: a
+**real HTTP `Source`/`registry-host` server** (the in-memory test
 source is the only stub), a **durable publisher-key allow-list** + the admin trust-management flow,
 **key rotation/revocation** (needs the hub identity directory), **cache eviction/GC**, the **public
 catalog read-only union** (S7 ships per-workspace catalog entries), and **`registry.update`** semantics.

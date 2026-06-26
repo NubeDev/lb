@@ -103,9 +103,18 @@ async fn killed_sidecar_restarts_cleanly_with_no_durable_state_lost() {
     assert_eq!(supervised.tools, vec!["echo".to_string()]);
 
     // It answers, tagged with the injected workspace identity (the scoped env reached the child).
-    let out = call_sidecar(&node, &launcher, &admin, ws, "echo-sidecar", "echo", r#""hi""#, 1)
-        .await
-        .expect("echo answers");
+    let out = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""hi""#,
+        1,
+    )
+    .await
+    .expect("echo answers");
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["echo"], "hi");
     assert_eq!(v["ws"], ws, "the injected LB_EXT_WS reached the child");
@@ -124,17 +133,38 @@ async fn killed_sidecar_restarts_cleanly_with_no_durable_state_lost() {
 
     // --- 3. CRASH: the `crash` tool replies then exits the child process (deterministic). The call
     //        itself succeeds (the reply landed before the exit) — the child dies AFTER. ---
-    call_sidecar(&node, &launcher, &admin, ws, "echo-sidecar", "crash", "null", 2)
-        .await
-        .expect("crash tool replied before the child exited");
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "crash",
+        "null",
+        2,
+    )
+    .await
+    .expect("crash tool replied before the child exited");
 
     // --- 3b. the NEXT call finds the dead child, restarts it cleanly, and answers (the supervision
     //         proof: a killed sidecar is restarted and the call still succeeds). ---
-    let after = call_sidecar(&node, &launcher, &admin, ws, "echo-sidecar", "echo", r#""after""#, 3)
-        .await
-        .expect("echo answers after the crash+restart");
+    let after = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""after""#,
+        3,
+    )
+    .await
+    .expect("echo answers after the crash+restart");
     let av: serde_json::Value = serde_json::from_str(&after).unwrap();
-    assert_eq!(av["echo"], "after", "the restarted sidecar resumes answering");
+    assert_eq!(
+        av["echo"], "after",
+        "the restarted sidecar resumes answering"
+    );
     assert_eq!(av["ws"], ws, "identity re-injected on respawn");
 
     // restart_count advanced in the durable status (the supervisor restarted the child).
@@ -224,10 +254,7 @@ async fn native_artifact_installs_through_registry() {
     let dir = std::env::temp_dir().join(format!("lb-native-{ws}"));
     let dir = dir.to_string_lossy().into_owned();
 
-    let admin = principal(
-        ws,
-        &["mcp:native.install:call", "mcp:native.call:call"],
-    );
+    let admin = principal(ws, &["mcp:native.install:call", "mcp:native.call:call"]);
 
     let supervised = install_native_from_registry(
         &node,
@@ -247,9 +274,18 @@ async fn native_artifact_installs_through_registry() {
     assert_eq!(supervised.version, "0.1.0");
 
     // It is supervised and answers — the pulled+verified binary is live.
-    let out = call_sidecar(&node, &launcher, &admin, ws, "echo-sidecar", "echo", r#""reg""#, 1)
-        .await
-        .expect("the registry-installed native sidecar answers");
+    let out = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""reg""#,
+        1,
+    )
+    .await
+    .expect("the registry-installed native sidecar answers");
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["echo"], "reg");
 
@@ -276,7 +312,17 @@ async fn native_artifact_installs_through_registry() {
             .collect(),
     );
     let err = install_native_from_registry(
-        &node, &bad_source, &launcher, &admin, ws, "echo-sidecar", "9.9.9", &dir, &trusted, &[], 2,
+        &node,
+        &bad_source,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "9.9.9",
+        &dir,
+        &trusted,
+        &[],
+        2,
     )
     .await
     .expect_err("a tampered native artifact must be rejected");
@@ -286,8 +332,14 @@ async fn native_artifact_installs_through_registry() {
     );
 
     // cleanup
-    stop_native(&node, &principal(ws, &["mcp:native.stop:call"]), ws, "echo-sidecar", 3)
-        .await
-        .ok();
+    stop_native(
+        &node,
+        &principal(ws, &["mcp:native.stop:call"]),
+        ws,
+        "echo-sidecar",
+        3,
+    )
+    .await
+    .ok();
     let _ = std::fs::remove_dir_all(&dir);
 }

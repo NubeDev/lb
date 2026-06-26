@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{install_native, status_native, stop_native, Node, NativeServiceError};
+use lb_host::{install_native, status_native, stop_native, NativeServiceError, Node};
 use lb_supervisor::{
     read_frame, write_frame, Channel, Kill, Launcher, Method, Reply, Request, SupervisorError,
 };

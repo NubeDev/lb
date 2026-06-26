@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use lb_supervisor::{
-    read_frame, write_frame, Backoff, CallParams, Channel, Kill, Launcher, Method, Reply,
-    RestartPolicy, Request, Sidecar, Spec,
+    read_frame, write_frame, Backoff, CallParams, Channel, Kill, Launcher, Method, Reply, Request,
+    RestartPolicy, Sidecar, Spec,
 };
 use tokio::io::duplex;
 

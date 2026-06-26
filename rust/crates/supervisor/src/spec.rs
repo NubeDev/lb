@@ -32,7 +32,10 @@ impl Backoff {
     /// The delay before restart number `n` (1-based): `base * 2^(n-1)`, capped at `max_delay`.
     pub fn delay_for(&self, restart_number: u32) -> Duration {
         let shift = restart_number.saturating_sub(1).min(16);
-        let scaled = self.base.checked_mul(1u32 << shift).unwrap_or(self.max_delay);
+        let scaled = self
+            .base
+            .checked_mul(1u32 << shift)
+            .unwrap_or(self.max_delay);
         scaled.min(self.max_delay)
     }
 }

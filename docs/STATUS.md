@@ -16,13 +16,15 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**In S7 — platform maturity** (see `STAGES.md`); the **signed extension registry** (the first S7 slice)
-has shipped. The Rust workspace + a React/Tauri UI exist and build; messaging, a second node + sync,
+**In S7 — platform maturity** (see `STAGES.md`); **both** S7 exit-gate slices have shipped — the
+**signed extension registry** and the **native Tier-2 supervisor** — so the **S7 exit gate is fully
+MET**. The Rust workspace + a React/Tauri UI exist and build; messaging, a second node + sync,
 cross-node routed tool calls, the browser SSE/HTTP path, shared workspace assets, the **AI core**
 (central agent + AI-gateway sidecar + durable jobs), the **coding workflow** (issue → triage →
-approval-gated job → progress → transactional outbox), and now the **signed registry** (pull · verify ·
-cache · install · offline · rollback) are all proven end to end. The native Tier-2 sidecar tier and
-packaging the S6 workflow as installed artifacts remain. No doc-site build and no native desktop window
+approval-gated job → progress → transactional outbox), the **signed registry** (pull · verify · cache ·
+install · offline · rollback), and now the **native Tier-2 supervisor** (a supervised OS-process
+sidecar that restarts cleanly with no durable state lost) are all proven end to end. Packaging the S6
+workflow as installed artifacts remains (S7 follow-up). No doc-site build and no native desktop window
 (webkit toolchain) yet.
 
 **S0 exit gate — MET.** `cargo build --workspace` green; CI runs (FILE-LAYOUT size check +
@@ -78,19 +80,25 @@ the gate), `workflow.*` MCP bridge, UI `WorkflowView`. **124 Rust + 18 Vitest + 
 offline/sync (the outbox delivers at-least-once, idempotently). See
 `sessions/coding-workflow/coding-workflow-session.md` and `public/SCOPE.md`.
 
-**S7 exit gate — FIRST HALF MET (registry); native-sidecar half remains.** An extension installs from
-the **signed** registry → pull · **verify** (Ed25519 over a digest binding manifest+wasm) · cache ·
-install through the existing S4 flow; it runs **offline** once cached (zero source calls on the cached
-path); it **rolls back** to a prior version with **no durable workspace state lost** (a channel message
-+ job step survive an N→N−1 install through real wasm); a tampered/unsigned/foreign-key artifact is
-**rejected before caching, even with the grant** (the signature gate is independent of the capability
-gate). New: `lb-registry` (artifact identity + `verify_artifact` + the `VerifiedArtifact` newtype that
-makes verify-before-cache a compile-time guarantee), the host `registry` service (pull/cache/catalog/
-install behind a `Source` fetch seam), `registry.*` MCP bridge, UI `RegistryView`. **145 Rust + 22
-Vitest + 2 shell tests** pass — incl. capability-deny (each registry verb), workspace-isolation across
-**store + MCP**, offline, rollback/hot-reload, and signing/verification (the new crypto surface). The
-**native Tier-2 supervisor** is the remaining half of the gate. See
-`sessions/registry/registry-session.md` and `public/SCOPE.md`.
+**S7 exit gate — FULLY MET.** *Registry half:* an extension installs from the **signed** registry →
+pull · **verify** (Ed25519 over a digest binding manifest+wasm) · cache · install through the existing
+S4 flow; runs **offline** once cached; **rolls back** with **no durable state lost**; a tampered/
+unsigned/foreign-key artifact is **rejected before caching, even with the grant**. *Native half:* a
+**native Tier-2 sidecar is supervised and restarts cleanly** — a killed child (a **real OS process**)
+is respawned, resumes answering, and **no durable workspace state is lost** (a channel message posted
+before the crash is intact after); install/lifecycle are capability-gated (no spawn without
+`mcp:native.install:call`); ws-B can never see or control ws-A's sidecar (store + MCP + the runtime
+map); a signed `tier="native"` artifact installs through the registry and a tampered one is rejected.
+New (registry): `lb-registry` + the host `registry` service + `registry.*` MCP bridge + UI
+`RegistryView`. New (native): `lb-supervisor` (spawn/frame/health/restart behind a `Launcher` seam) +
+the `echo-sidecar` reference binary + the `[native]` manifest block + the host `native` service
+(supervision stateless: live PID in a runtime `SidecarMap`, durable truth in `Install` + `native_status`
+records) + `native.*` MCP bridge + UI `NativeView`. **~163 Rust + 26 Vitest + 2 shell tests** pass —
+incl. capability-deny, workspace-isolation across **store + MCP**, offline, rollback/hot-reload,
+signing/verification, and the **supervision/restart** category (real process, no durable state lost).
+Posture: process-group isolation + scoped identity + bounded restart; OS hardening + a boot reconciler
+are noted follow-ups. See `sessions/registry/registry-session.md`,
+`sessions/extensions/native-tier-session.md`, and `public/SCOPE.md`.
 
 ---
 
@@ -107,29 +115,33 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | AI core | agent | S5 | **shipped** | [agent](scope/agent/agent-scope.md) + [ai-gateway](scope/ai-gateway/ai-gateway-scope.md) + [jobs](scope/jobs/jobs-scope.md) | [ai-core](sessions/agent/ai-core-session.md) | central agent (owns the loop) + routed edge→hub invoke + grant delegation (`agent ∩ caller`) + `lb-jobs` resumable session + `lb-role-ai-gateway` (mock + idempotency cache) + `agent.*` MCP bridge + UI AgentView; 105+14+2 green |
 | Coding workflow | coding-workflow | S6 | **shipped** | [coding-workflow](scope/coding-workflow/coding-workflow-scope.md) + [outbox](scope/inbox-outbox/outbox-scope.md) | [coding-workflow](sessions/coding-workflow/coding-workflow-session.md) | `lb-outbox` (transactional `Effect` + at-least-once relay) + `lb_store::write_tx` + `lb_inbox::Resolution` + host `workflow` service (ingest→triage→approval-GATE→job→outbox) + `workflow.*` MCP bridge + UI WorkflowView; 124+18+2 green |
 | Signed registry | registry | S7 | **shipped** | [registry](scope/registry/registry-scope.md) | [registry](sessions/registry/registry-session.md) | `lb-registry` (digest binds manifest+wasm + `verify_artifact` + `VerifiedArtifact` newtype → verify-before-cache) + host `registry` service (pull·verify·cache·catalog·install behind a `Source` seam; rollback = install prior ver) + `registry.*` MCP bridge + UI RegistryView; 145+22+2 green |
+| Native Tier-2 | extensions | S7 | **shipped** | [native-tier](scope/extensions/native-tier-scope.md) | [native-tier](sessions/extensions/native-tier-session.md) | `lb-supervisor` (spawn·frame·health·shutdown·restart behind a `Launcher` seam) + `echo-sidecar` reference binary + `[native]` manifest block + host `native` service (stateless: runtime `SidecarMap` + durable `Install`/`native_status`; `mcp:native.<verb>:call` gate; crash-restart-on-fault) + `install_native_from_registry` + `native.*` MCP bridge + UI NativeView; ~163+26+2 green (real-process restart proof) |
 
 ---
 
 ## Scopes authored (ready to build)
 
 The `scope/<topic>/` docs exist for all areas (see `scope/README.md`). **Fully authored:** core,
-auth-caps, mcp, crate-layout, extensions, jobs, bus, inbox-outbox (+ outbox), tenancy, frontend, sync,
-testing, debugging, ai-gateway, agent, coding-workflow, **registry** (new this slice). **Promoted to
-`public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox (+ outbox + the resolution facet),
-tenancy, store, frontend, sync, files, skills, agent, coding-workflow, **registry** (+ `public/SCOPE.md`).
-Still stubs until their slice ships: `node-roles`, `platform-targets` (S7, the native-tier slice).
+auth-caps, mcp, crate-layout, extensions (+ **native-tier**, new this slice), jobs, bus, inbox-outbox
+(+ outbox), tenancy, frontend, sync, testing, debugging, ai-gateway, agent, coding-workflow, registry,
+**node-roles** + **platform-targets** (filled this slice — placement × role + the native target tag).
+**Promoted to `public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox (+ outbox + the
+resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-workflow, registry,
+**extensions** (the runtime + two tiers, filled this slice) (+ `public/SCOPE.md`).
 
 ---
 
 ## Next up
 
-1. **S7 platform maturity** (`STAGES.md`): the **extension registry** (pull/verify/cache, signing) is
-   **shipped** (this slice). Remaining: the **native Tier-2** tier (a `process` PID supervisor proven
-   with an IDE-style extension — author `scope/extensions/` for the control plane/supervisor first via
-   SCOPE-WRITTING, re-based onto our primitives), and **packaging the S6 workflow/github-bridge as
-   installed wasm artifacts** (they are host services today; the registry now exists to install them
-   through). Exit gate: ~~install from a signed registry, run offline once cached, roll back a
-   version~~ (MET); a native sidecar is supervised and restarts cleanly (remaining).
+1. **S7 platform maturity** (`STAGES.md`): the **extension registry** AND the **native Tier-2
+   supervisor** are **shipped** — the **S7 exit gate is fully MET** (~~install from a signed registry,
+   run offline once cached, roll back~~; ~~a native sidecar is supervised and restarts cleanly~~).
+   Remaining S7 work: **packaging the S6 workflow/github-bridge as installed wasm artifacts** (they are
+   host services today; the registry now exists to install them through — author `scope/extensions/`
+   for the packaging first). **Native-tier follow-ups:** a boot reconciler (re-spawn `lifecycle=started`
+   from records), OS-level hardening (cgroups/seccomp/userns), a background health-poll reactor (the
+   slice restarts on-demand at the call boundary), the child→host MCP callback transport, and native
+   platform-target enforcement.
 1b. **Registry follow-ups** (deferred from this slice, all in `scope/registry/`): a real HTTP
    `Source`/`registry-host` server (the in-memory source is the only stub); a durable publisher-key
    allow-list + admin trust-management flow; key rotation/revocation (needs the hub identity directory);

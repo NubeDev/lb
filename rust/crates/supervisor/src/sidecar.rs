@@ -61,7 +61,9 @@ impl Sidecar {
     /// Send a `health` request; `Ok(())` if the child replied in time. A transport/timeout error
     /// means the child is unhealthy (the host triggers the restart policy).
     pub async fn health(&mut self) -> Result<(), SupervisorError> {
-        self.request(Method::Health, String::new()).await.map(|_| ())
+        self.request(Method::Health, String::new())
+            .await
+            .map(|_| ())
     }
 
     /// Cooperatively stop the child: send `shutdown`, then kill the process group (the launcher's
@@ -117,7 +119,8 @@ impl Sidecar {
         self.next_id += 1;
 
         let req = Request { id, method, params };
-        let bytes = serde_json::to_vec(&req).map_err(|e| SupervisorError::Transport(e.to_string()))?;
+        let bytes =
+            serde_json::to_vec(&req).map_err(|e| SupervisorError::Transport(e.to_string()))?;
         write_frame(&mut channel.write, &bytes).await?;
 
         loop {
