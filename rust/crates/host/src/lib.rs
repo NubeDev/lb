@@ -29,6 +29,7 @@ mod outbox;
 mod registry;
 mod reload;
 mod remote;
+mod render_templates;
 mod role;
 mod serve;
 mod sync;
@@ -63,8 +64,8 @@ pub use channel::{
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
     call_dashboard_tool, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
-    dashboard_share, seed_iot_demo, Cell, Dashboard, DashboardError, DashboardSummary, SeedReport,
-    Visibility as DashboardVisibility,
+    dashboard_share, seed_iot_demo, Action, Cell, Dashboard, DashboardError, DashboardSummary,
+    SeedReport, Source as CellSource, Visibility as DashboardVisibility,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
@@ -97,6 +98,11 @@ pub use registry::{
 };
 pub use reload::reload_extension;
 pub use remote::register_remote_extension;
+pub use render_templates::{
+    call_template_tool, template_delete, template_get, template_list, template_save, Engine,
+    RenderTemplate, RenderTemplateError, RenderTemplateSummary, INLINE_MAX_BYTES,
+    TEMPLATE_MAX_BYTES,
+};
 pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
 pub use sync::{replay_history, sync_channel, ChannelSync};

@@ -96,6 +96,15 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // widget-builder scope (the tool-driven widget builder): the four `template.*` verbs the
+        // builder reaches over the `POST /mcp/call` bridge to persist/load durable scripted-view
+        // (Plot/D3/JSX) snippets. Member-level — any member may author their own templates
+        // (author-ownership decides which *specific* template they may update/delete). A token without
+        // a given verb is refused server-side per verb (the deny-per-verb test).
+        "mcp:template.save:call",
+        "mcp:template.get:call",
+        "mcp:template.list:call",
+        "mcp:template.delete:call",
         // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
         // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
         // resolve it, and start the gated coding job from the browser; the gateway re-checks each

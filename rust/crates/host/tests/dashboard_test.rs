@@ -47,8 +47,12 @@ fn chart_cell(series: &str) -> Cell {
         y: 0,
         w: 4,
         h: 3,
+        v: 0,
         widget_type: "chart".into(),
+        view: String::new(),
         binding: json!({ "series": series }),
+        source: Default::default(),
+        action: Default::default(),
         options: json!({}),
     }
 }

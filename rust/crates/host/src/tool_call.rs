@@ -40,6 +40,8 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("ingest.")
         || qualified_tool.starts_with("outbox.")
         || qualified_tool.starts_with("inbox.")
+        || qualified_tool.starts_with("dashboard.")
+        || qualified_tool.starts_with("template.")
 }
 
 /// Call `qualified_tool` as `principal` in `ws` with a JSON input string, returning the tool's JSON
@@ -81,6 +83,10 @@ pub async fn call_tool_at_depth(
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("dashboard.") {
+            crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("template.") {
+            crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else {
             call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?
         };
