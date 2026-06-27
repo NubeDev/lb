@@ -1,13 +1,22 @@
+import { useEffect } from "react";
 import { RefreshCw } from "lucide-react";
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { useOutboxStatus } from "@/data/useOutboxStatus";
 
 /** The durable-motion section: a card of `outbox.status` counts (pending / delivered / dead-lettered)
- *  with a Refresh button. Read-only, no args. Honest states — a denied call shows the error, an empty
- *  outbox shows zeros (the truth), never fabricated counts. */
-export function OutboxSection() {
+ *  with a Refresh button. Read-only, no args. `refreshKey` lets the page re-read after the guest's
+ *  `proof.simulate` enqueues an effect (so the user SEES the pending count rise). Honest states — a
+ *  denied call shows the error, an empty outbox shows zeros (the truth), never fabricated counts. */
+export function OutboxSection({ refreshKey }: { refreshKey?: number }) {
   const { state, refresh } = useOutboxStatus();
+
+  // Re-read when the page bumps `refreshKey` (the simulation enqueued an effect). The hook loads on
+  // mount; this fires only on subsequent bumps.
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   return (
     <Card>

@@ -14,6 +14,10 @@ because existing session docs point at them; new dashboard notes should live her
    extension widget tiles that surface through `ext.list`, and the remaining grid-cell renderer work.
 3. [`../dashboard-widgets-scope.md`](../dashboard-widgets-scope.md) - the deeper federation contract:
    `[[widget]]`, bridge rules, trust tiers, and the no-token/no-db invariant.
+3b. [`widget-builder-scope.md`](widget-builder-scope.md) - the **v2 generalization**: a widget binds any
+   *view* (chart/table/stat/gauge/Observable Plot/D3/JSX template/control) to any *MCP tool* the install
+   grant allows (read **or** write), authored in a rubix-cube-style builder, plus extension-shipped
+   `[[widget]]` tiles. Supersedes the read-only/four-verb stance of (3).
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 

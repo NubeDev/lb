@@ -40,7 +40,10 @@ const DEMO_SCOPE = [
   "outbox.status",
   "inbox.list",
   "inbox.resolve",
+  "inbox.record",
+  "outbox.enqueue",
   "proof-panel.proof.derive",
+  "proof-panel.proof.simulate",
 ];
 /** One facet the page searches by (parsed from its `key:value` search box). */
 const TEMP_FACET = [{ key: "kind", value: "temperature" }];
@@ -226,6 +229,47 @@ describe("proof-panel page data path (real gateway)", () => {
       if (payload === null) await new Promise((r) => setTimeout(r, 100));
     }
     expect(payload).toBe(42);
+  });
+
+  it("workflow-sim: proof.simulate PRODUCES an inbox item + outbox effect the page then reads, live", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Install + LOAD the real wasm guest so its proof.simulate tool is callable over the bridge.
+    await seedProofPanel();
+
+    const bridge = makeBridge(DEMO_SCOPE);
+
+    // The guest DRIVES the full round-trip host-side under `caller ∩ install-grant`: it records an inbox
+    // item on `proof-triage`, resolves it Approved, and enqueues an outbox effect — all through the host
+    // callback. The page just invokes the ext tool and gets the summary back.
+    const out = await bridge.call<{ inbox_id: string; resolved: boolean; outbox_pending: number }>(
+      "proof-panel.proof.simulate",
+      {},
+    );
+    expect(out.resolved).toBe(true);
+    expect(out.inbox_id).toBe("proof-sim-item");
+
+    // The load-bearing proof: read the produced motion back over SEPARATE bridge calls — the guest's
+    // callbacks really committed to the real store (page → guest → host → store → page).
+    const listed = await bridge.call<{ items: { id: string; author: string }[] }>("inbox.list", {
+      channel: "proof-triage",
+    });
+    expect(listed.items.some((i) => i.id === "proof-sim-item")).toBe(true);
+    expect(listed.items.find((i) => i.id === "proof-sim-item")?.author).toBe("ext:proof-panel");
+
+    const status = await bridge.call<{ pending: { id: string }[] }>("outbox.status", {});
+    expect(status.pending.some((e) => e.id === "proof-sim-effect")).toBe(true);
+  });
+
+  it("workflow-sim: proof.simulate is denied for an out-of-scope page (deny per verb)", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedProofPanel();
+    // A page NOT granted the simulate verb: the bridge scope filter rejects it locally (defense in
+    // depth); the host would 403 it too. The deny-per-DIRECTION for the new write verbs (inbox.record,
+    // outbox.enqueue) is proven in the Rust host test (rust/crates/host/tests/proof_panel_test.rs).
+    const narrowed = makeBridge(["series.find", "series.latest"]);
+    await expect(narrowed.call("proof-panel.proof.simulate", {})).rejects.toThrow(/out_of_scope/);
   });
 
   it("host-callback: proof.derive is denied for an out-of-scope page (deny per verb)", async () => {

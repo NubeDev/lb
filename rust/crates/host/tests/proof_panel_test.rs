@@ -35,6 +35,7 @@ use lb_mcp::ToolError;
 use lb_outbox::{enqueue, Effect};
 use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
 use lb_tags::{Provenance, Source, Tag, DEFAULT_TAG_NODE_CAP};
+use std::sync::Arc;
 
 const MANIFEST: &str = include_str!("../../../extensions/proof-panel/extension.toml");
 
@@ -46,6 +47,9 @@ const WRITE: &str = "mcp:ingest.write:call";
 const OUTBOX: &str = "mcp:outbox.status:call";
 const INBOX_LIST: &str = "mcp:inbox.list:call";
 const INBOX_RESOLVE: &str = "mcp:inbox.resolve:call";
+const INBOX_RECORD: &str = "mcp:inbox.record:call";
+const OUTBOX_ENQUEUE: &str = "mcp:outbox.enqueue:call";
+const SIMULATE: &str = "mcp:proof-panel.proof.simulate:call";
 
 /// The built Tier-1 component. Panics with the build hint if missing (the real wasm, not a mock).
 fn proof_panel_wasm() -> Vec<u8> {
@@ -814,4 +818,396 @@ async fn hello_v0_1_guest_still_loads_alongside_a_v0_2_callback_guest() {
         serde_json::from_str::<serde_json::Value>(&out).unwrap()["derived"],
         6.0
     );
+}
+
+// ============================================================================================
+// proof-workflow-sim slice (proof-workflow-sim scope): a wasm GUEST DRIVES a full
+// inbox→approval→outbox round-trip through the host callback — it PRODUCES the workflow motion
+// (inbox.record → inbox.resolve → outbox.enqueue), instead of only reading something else seeded.
+// New write verbs over the bridge: `inbox.record`, `outbox.enqueue`. Real wasm + store + caps.
+// ============================================================================================
+
+/// The caps `proof.simulate` exercises end to end: the sim tool itself + every inner workflow verb it
+/// calls back into. A FULL grant installs with all of them, so a deny-test changes ONLY one variable.
+fn full_sim_grant() -> Vec<String> {
+    [
+        SIMULATE,
+        INBOX_RECORD,
+        INBOX_LIST,
+        INBOX_RESOLVE,
+        OUTBOX_ENQUEUE,
+        OUTBOX,
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
+/// The caller caps to run `proof.simulate` happily — the same set (the intersection needs BOTH sides).
+fn sim_caller_caps() -> Vec<&'static str> {
+    vec![
+        SIMULATE,
+        INBOX_RECORD,
+        INBOX_LIST,
+        INBOX_RESOLVE,
+        OUTBOX_ENQUEUE,
+        OUTBOX,
+    ]
+}
+
+/// Happy round-trip: the guest's `proof.simulate` records an inbox item, resolves it Approved, and
+/// enqueues an outbox effect — ALL through the host callback. We assert EACH step via SEPARATE host
+/// reads (`inbox.list` / `outbox.status` / the resolution), never the guest's return value.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn proof_simulate_drives_the_full_workflow_round_trip() {
+    let ws = "sim-happy";
+    let node = Arc::new(Node::boot().await.unwrap());
+    install_extension(
+        &node,
+        ws,
+        MANIFEST,
+        &proof_panel_wasm(),
+        &full_sim_grant(),
+        1,
+    )
+    .await
+    .expect("install with the full sim grant");
+
+    let caller = principal(ws, &sim_caller_caps());
+    let out = call_tool(&node, &caller, ws, "proof-panel.proof.simulate", "{}")
+        .await
+        .expect("proof.simulate runs the full round-trip through the callback");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        v["resolved"], true,
+        "the guest reports it resolved, got {v}"
+    );
+    assert_eq!(v["inbox_id"], "proof-sim-item");
+
+    // 1. The inbox item really committed — read it back over a SEPARATE inbox.list.
+    let lister = principal(ws, &[INBOX_LIST]);
+    let listed = call_tool(
+        &node,
+        &lister,
+        ws,
+        "inbox.list",
+        r#"{"channel":"proof-triage"}"#,
+    )
+    .await
+    .expect("inbox.list");
+    let lv: serde_json::Value = serde_json::from_str(&listed).unwrap();
+    let items = lv["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1, "the guest produced one item, got {lv}");
+    assert_eq!(items[0]["id"], "proof-sim-item");
+    assert_eq!(
+        items[0]["author"], "ext:proof-panel",
+        "author is host-forced to the guest's effective principal (the ext acting for the caller), \
+         not guest-supplied, got {lv}"
+    );
+
+    // 2. The outbox effect really committed pending — read it back over a SEPARATE outbox.status.
+    let watcher = principal(ws, &[OUTBOX]);
+    let status = call_tool(&node, &watcher, ws, "outbox.status", "{}")
+        .await
+        .expect("outbox.status");
+    let sv: serde_json::Value = serde_json::from_str(&status).unwrap();
+    let pending = sv["pending"].as_array().unwrap();
+    assert_eq!(pending.len(), 1, "the guest enqueued one effect, got {sv}");
+    assert_eq!(pending[0]["id"], "proof-sim-effect");
+    assert_eq!(pending[0]["target"], "demo");
+}
+
+/// `inbox.record` deny direction (i): the guest calls it but the INSTALL GRANT omits it (caller HOLDS
+/// it). The callback must be DENIED — delegation narrowing — surfaced as a guest failure, nothing written.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn simulate_inbox_record_denied_when_grant_omits_it() {
+    let ws = "sim-rec-grant-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // Grant omits inbox.record.
+    let grant: Vec<String> = [SIMULATE, INBOX_LIST, INBOX_RESOLVE, OUTBOX_ENQUEUE, OUTBOX]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    install_extension(&node, ws, MANIFEST, &proof_panel_wasm(), &grant, 1)
+        .await
+        .expect("install without inbox.record in the grant");
+
+    // The CALLER holds inbox.record — but the intersection narrows it away.
+    let caller = principal(ws, &sim_caller_caps());
+    let err = call_tool(&node, &caller, ws, "proof-panel.proof.simulate", "{}")
+        .await
+        .expect_err("the guest's inbox.record callback is denied (grant omits it)");
+    assert!(
+        matches!(err, ToolError::Extension(ref m) if m.contains("denied")),
+        "guest surfaced the host deny, got {err:?}"
+    );
+
+    // Nothing was recorded.
+    let lister = principal(ws, &[INBOX_LIST]);
+    let listed = call_tool(
+        &node,
+        &lister,
+        ws,
+        "inbox.list",
+        r#"{"channel":"proof-triage"}"#,
+    )
+    .await
+    .unwrap();
+    let lv: serde_json::Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!(
+        lv["items"].as_array().unwrap().len(),
+        0,
+        "the denied record wrote nothing, got {lv}"
+    );
+}
+
+/// `inbox.record` deny direction (ii): the guest calls it but the CALLER lacks it (install INCLUDES it).
+/// The callback must be DENIED — intersection both ways.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn simulate_inbox_record_denied_when_caller_lacks_it() {
+    let ws = "sim-rec-caller-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    install_extension(
+        &node,
+        ws,
+        MANIFEST,
+        &proof_panel_wasm(),
+        &full_sim_grant(),
+        1,
+    )
+    .await
+    .expect("install with the full grant (includes inbox.record)");
+
+    // The caller can invoke simulate but does NOT hold inbox.record.
+    let caller = principal(
+        ws,
+        &[SIMULATE, INBOX_LIST, INBOX_RESOLVE, OUTBOX_ENQUEUE, OUTBOX],
+    );
+    let err = call_tool(&node, &caller, ws, "proof-panel.proof.simulate", "{}")
+        .await
+        .expect_err("the guest's inbox.record callback is denied (caller lacks it)");
+    assert!(
+        matches!(err, ToolError::Extension(ref m) if m.contains("denied")),
+        "guest surfaced the host deny, got {err:?}"
+    );
+}
+
+/// `outbox.enqueue` deny direction (i): the INSTALL GRANT omits it (caller HOLDS it). The simulation
+/// gets past record/resolve, then the enqueue callback is DENIED — and no effect lands.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn simulate_outbox_enqueue_denied_when_grant_omits_it() {
+    let ws = "sim-enq-grant-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // Grant omits outbox.enqueue.
+    let grant: Vec<String> = [SIMULATE, INBOX_RECORD, INBOX_LIST, INBOX_RESOLVE, OUTBOX]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    install_extension(&node, ws, MANIFEST, &proof_panel_wasm(), &grant, 1)
+        .await
+        .expect("install without outbox.enqueue in the grant");
+
+    let caller = principal(ws, &sim_caller_caps());
+    let err = call_tool(&node, &caller, ws, "proof-panel.proof.simulate", "{}")
+        .await
+        .expect_err("the guest's outbox.enqueue callback is denied (grant omits it)");
+    assert!(
+        matches!(err, ToolError::Extension(ref m) if m.contains("denied")),
+        "guest surfaced the host deny, got {err:?}"
+    );
+
+    // No effect was enqueued (the record/resolve before it may have landed; the enqueue did not).
+    let watcher = principal(ws, &[OUTBOX]);
+    let status = call_tool(&node, &watcher, ws, "outbox.status", "{}")
+        .await
+        .unwrap();
+    let sv: serde_json::Value = serde_json::from_str(&status).unwrap();
+    assert_eq!(
+        sv["pending"].as_array().unwrap().len(),
+        0,
+        "the denied enqueue staged nothing, got {sv}"
+    );
+}
+
+/// `outbox.enqueue` deny direction (ii): the CALLER lacks it (install INCLUDES it). Denied.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn simulate_outbox_enqueue_denied_when_caller_lacks_it() {
+    let ws = "sim-enq-caller-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    install_extension(
+        &node,
+        ws,
+        MANIFEST,
+        &proof_panel_wasm(),
+        &full_sim_grant(),
+        1,
+    )
+    .await
+    .expect("install with the full grant (includes outbox.enqueue)");
+
+    // The caller can invoke simulate but does NOT hold outbox.enqueue.
+    let caller = principal(
+        ws,
+        &[SIMULATE, INBOX_RECORD, INBOX_LIST, INBOX_RESOLVE, OUTBOX],
+    );
+    let err = call_tool(&node, &caller, ws, "proof-panel.proof.simulate", "{}")
+        .await
+        .expect_err("the guest's outbox.enqueue callback is denied (caller lacks it)");
+    assert!(
+        matches!(err, ToolError::Extension(ref m) if m.contains("denied")),
+        "guest surfaced the host deny, got {err:?}"
+    );
+}
+
+/// Workspace isolation: `proof.simulate` in ws-B records/enqueues into ws-B ONLY; a ws-A reader (granted
+/// in ws-A) sees NONE of it. The host-set ws — never guest-supplied — walls every callback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn simulate_is_workspace_isolated() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    install_extension(
+        &node,
+        "sim-iso-a",
+        MANIFEST,
+        &proof_panel_wasm(),
+        &full_sim_grant(),
+        1,
+    )
+    .await
+    .expect("install ws-A");
+    install_extension(
+        &node,
+        "sim-iso-b",
+        MANIFEST,
+        &proof_panel_wasm(),
+        &full_sim_grant(),
+        1,
+    )
+    .await
+    .expect("install ws-B");
+
+    // Run the simulation in ws-B.
+    let b = principal("sim-iso-b", &sim_caller_caps());
+    call_tool(&node, &b, "sim-iso-b", "proof-panel.proof.simulate", "{}")
+        .await
+        .expect("ws-B simulates");
+
+    // ws-B sees its own item + effect.
+    let b_list = call_tool(
+        &node,
+        &b,
+        "sim-iso-b",
+        "inbox.list",
+        r#"{"channel":"proof-triage"}"#,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&b_list).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1,
+        "ws-B has its produced item"
+    );
+
+    // ws-A, granted in ws-A, sees NONE of ws-B's produced motion — the hard wall.
+    let a = principal("sim-iso-a", &[INBOX_LIST, OUTBOX]);
+    let a_list = call_tool(
+        &node,
+        &a,
+        "sim-iso-a",
+        "inbox.list",
+        r#"{"channel":"proof-triage"}"#,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&a_list).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0,
+        "ws-A sees none of ws-B's inbox items — the hard wall"
+    );
+    let a_status = call_tool(&node, &a, "sim-iso-a", "outbox.status", "{}")
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&a_status).unwrap()["pending"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0,
+        "ws-A sees none of ws-B's outbox effects — the hard wall"
+    );
+}
+
+/// The two new write verbs are gated DIRECTLY over the bridge too (defense in depth, independent of the
+/// guest): a caller without the cap is denied; with it, the write lands and a separate read confirms it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn inbox_record_and_outbox_enqueue_are_gated_over_the_bridge() {
+    let ws = "wf-writes";
+    let node = Arc::new(Node::boot().await.unwrap());
+
+    // inbox.record deny (no grant) then allow (granted) — confirmed via inbox.list.
+    let err = call_tool(
+        &node,
+        &principal(ws, &[]),
+        ws,
+        "inbox.record",
+        r#"{"channel":"c","id":"x1","body":"hi","ts":1}"#,
+    )
+    .await
+    .expect_err("inbox.record without the grant is denied");
+    assert!(matches!(err, ToolError::Denied), "opaque deny, got {err:?}");
+
+    let writer = principal(ws, &[INBOX_RECORD, INBOX_LIST]);
+    call_tool(
+        &node,
+        &writer,
+        ws,
+        "inbox.record",
+        r#"{"channel":"c","id":"x1","body":"hi","ts":1}"#,
+    )
+    .await
+    .expect("inbox.record is granted");
+    let listed = call_tool(&node, &writer, ws, "inbox.list", r#"{"channel":"c"}"#)
+        .await
+        .unwrap();
+    let lv: serde_json::Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!(lv["items"].as_array().unwrap()[0]["id"], "x1");
+    assert_eq!(
+        lv["items"].as_array().unwrap()[0]["author"],
+        "user:test",
+        "author host-forced to the principal's sub"
+    );
+
+    // outbox.enqueue deny then allow — confirmed via outbox.status.
+    let err = call_tool(
+        &node,
+        &principal(ws, &[]),
+        ws,
+        "outbox.enqueue",
+        r#"{"id":"e1","target":"demo","action":"comment","payload":"p","ts":1}"#,
+    )
+    .await
+    .expect_err("outbox.enqueue without the grant is denied");
+    assert!(matches!(err, ToolError::Denied), "opaque deny, got {err:?}");
+
+    let enq = principal(ws, &[OUTBOX_ENQUEUE, OUTBOX]);
+    call_tool(
+        &node,
+        &enq,
+        ws,
+        "outbox.enqueue",
+        r#"{"id":"e1","target":"demo","action":"comment","payload":"p","ts":1}"#,
+    )
+    .await
+    .expect("outbox.enqueue is granted");
+    let status = call_tool(&node, &enq, ws, "outbox.status", "{}")
+        .await
+        .unwrap();
+    let sv: serde_json::Value = serde_json::from_str(&status).unwrap();
+    assert_eq!(sv["pending"].as_array().unwrap()[0]["id"], "e1");
+    assert_eq!(sv["pending"].as_array().unwrap()[0]["target"], "demo");
 }

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Check, RefreshCw, X } from "lucide-react";
 
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
@@ -5,16 +6,25 @@ import { useInboxList } from "@/data/useInboxList";
 import { useInboxResolve } from "@/data/useInboxResolve";
 import type { Decision } from "@/data/workflow.types";
 
-/** The channel this demo triages. The node may produce no items for it — section shows an HONEST empty
- *  list rather than fabricating workflow state (proof-panel scope open question 1, option (a)). */
-const TRIAGE_CHANNEL = "triage";
+/** The channel this demo triages. The guest's `proof.simulate` PRODUCES items here, so a click of "Run
+ *  workflow simulation" makes a real item appear in this list. Absent a simulation the node may produce
+ *  none — the section shows an HONEST empty list rather than fabricating workflow state. */
+const TRIAGE_CHANNEL = "proof-triage";
 
 /** The durable-workflow section: `inbox.list { channel }` items, each with Approve/Reject calling
  *  `inbox.resolve { item_id, decision }` — the page's first WRITE that mutates durable workflow state.
- *  Honest empty/error states throughout. */
-export function InboxSection() {
+ *  `refreshKey` lets the page re-read after the guest's `proof.simulate` produces a new item (so the
+ *  user SEES it appear). Honest empty/error states throughout. */
+export function InboxSection({ refreshKey }: { refreshKey?: number }) {
   const list = useInboxList(TRIAGE_CHANNEL);
   const resolver = useInboxResolve();
+
+  // Re-read when the page bumps `refreshKey` (the simulation produced a new item). The hook's own effect
+  // already loads on mount; this fires only on subsequent bumps.
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) list.refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
   async function decide(itemId: string, decision: Decision) {
     // A monotone-ish logical ts for ordering; the resolution is idempotent on the item id regardless.

@@ -85,6 +85,19 @@ test("proof-panel federated page mounts in the built shell with the host's singl
   // And the committed proof.derived series read back over the bridge.
   await expect(host.getByTestId("derived-latest")).toContainText(/value \d/, { timeout: 15_000 });
 
+  // 7b) Workflow simulation (proof-workflow-sim scope): "Run workflow simulation" invokes the ext's OWN
+  //     wasm tool `proof-panel.proof.simulate`, which DRIVES a full inbox→approval→outbox round-trip
+  //     through the host callback (inbox.record → inbox.resolve → outbox.enqueue). The summary shows
+  //     each step landed, and the Inbox/Outbox sections below refresh so the PRODUCED item + effect
+  //     become visible — the "I can finally see it work" payoff, end to end in the browser.
+  await host.getByLabel("run workflow simulation").click();
+  const simResult = host.getByTestId("simulate-result");
+  await expect(simResult).toBeVisible({ timeout: 15_000 });
+  await expect(simResult).toContainText(/proof-sim-item/);
+  // The produced inbox item appears in the (refreshed) inbox list, and the outbox pending count rose.
+  await expect(host.getByTestId("inbox-list")).toContainText(/please approve/i, { timeout: 15_000 });
+  await expect(host.getByTestId("outbox-pending")).toContainText(/[1-9]/, { timeout: 15_000 });
+
   // 8) The shell's honest error wrapper ("Could not load proof-panel: …") must NOT be present.
   await expect(page.getByText(/Could not load/i)).toHaveCount(0);
 

@@ -8,6 +8,13 @@ gets its data" must be specified as carefully as a WIT boundary. It is the **nar
 `scope/extensions/ui-federation-scope.md` to the widget-in-a-cell case** — same host-mediated bridge,
 but the smallest possible surface (one cell, read-only series, nothing else).
 
+> **Superseded to v2 by [`dashboard/widget-builder-scope.md`](dashboard/widget-builder-scope.md).** This
+> doc froze a `v:1` widget contract — read-only, four series verbs, no writes, no DB. The shipped page
+> bridge (`proof-panel`) already forwards *writes* under the grant, so v2 generalizes the widget to "any
+> view bound to any MCP tool the install grant allows (read **or** write)," leashed by `cell.tools ∩
+> grant` and re-checked at the host. The token-less / workspace-from-token / iframe-untrusted invariants
+> below are **unchanged**; only the forwardable tool set widens. Read v2 for the current direction.
+
 We want a **widget to be an installable extension**: a signed artifact, installed per workspace with an
 admin-approved scope, that declares a `[widget]` block and **renders inside one dashboard grid cell**,
 reading the series it is bound to and **nothing else**. A trusted (first-party, allow-listed publisher)

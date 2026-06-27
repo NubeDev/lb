@@ -32,6 +32,10 @@ request = [
     "mcp:outbox.status:call",
     "mcp:inbox.list:call",
     "mcp:inbox.resolve:call",
+    # proof-workflow-sim: the guest's `proof.simulate` DRIVES a full inbox→approval→outbox round-trip,
+    # so its intersected grant must permit the two durable-workflow WRITE verbs it produces motion with.
+    "mcp:inbox.record:call",
+    "mcp:outbox.enqueue:call",
     # The page's "Run derive" card invokes the ext's OWN backend tool `proof.derive` over the bridge,
     # so the cap must be in the grant — otherwise the `[ui] scope` projection (ui_decl::narrow) drops
     # `proof-panel.proof.derive` and the page's bridge filter rejects it `out_of_scope` before it ever
@@ -40,6 +44,11 @@ request = [
     # The self-recursive depth-guard tool calls its OWN ext tool through the callback, so the grant
     # must include that cap (an ext tool the guest invokes is gated like any other).
     "mcp:proof-panel.proof.recurse:call",
+    # The page's "Run workflow simulation" card invokes the ext's OWN backend tool `proof.simulate`
+    # over the bridge, so the cap must be in the grant — otherwise `ui_decl::narrow` drops
+    # `proof-panel.proof.simulate` from the `[ui] scope` and the page's bridge filter rejects it
+    # `out_of_scope` before it ever reaches the host (the same bug that bit `proof.derive`).
+    "mcp:proof-panel.proof.simulate:call",
 ]
 
 # The tool the WASM component serves (proves the backend half is a real, reachable Tier-1 MCP tool).
@@ -52,6 +61,13 @@ description = "A workspace-tagged snapshot served by the WASM component — prov
 [[tools]]
 name        = "proof.derive"
 description = "Reads the latest proof.demo (series.latest) and writes proof.derived = value*2 (ingest.write) through the host-mediated callback — proves a wasm guest can read/write the platform."
+
+# The workflow-simulation proof tool: drives a full inbox→approval→outbox round-trip through the host
+# callback — the guest PRODUCES the motion (inbox.record → inbox.resolve → outbox.enqueue) the page then
+# sees, instead of only reading something else seeded.
+[[tools]]
+name        = "proof.simulate"
+description = "Drives a full inbox→approval→outbox round-trip through the host callback (inbox.record → inbox.resolve → outbox.enqueue) — proves a wasm guest can PRODUCE durable workflow motion, visible on the page."
 
 # A self-recursive tool — calls itself via the host callback to prove the re-entrancy depth guard
 # fires ("call depth exceeded"). Not a UI verb; exists for the depth-guard regression test only.
@@ -75,7 +91,10 @@ scope = [
     "outbox.status",
     "inbox.list",
     "inbox.resolve",
+    "inbox.record",
+    "outbox.enqueue",
     "proof-panel.proof.derive",
+    "proof-panel.proof.simulate",
 ]
 
 [visibility]

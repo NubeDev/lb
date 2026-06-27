@@ -27,13 +27,14 @@ use serde_json::{json, Value};
 use crate::boot::Node;
 use crate::callback::Bridge;
 use crate::ingest::call_ingest_tool;
-use crate::{list_inbox, outbox_status, resolve_inbox};
+use crate::{enqueue_outbox, list_inbox, outbox_status, record_inbox, resolve_inbox};
 
 /// The host-native verb prefixes the bridge dispatches over the embedded store (not the runtime
 /// registry). Kept narrow on purpose — the read-only series surface a federated page reads, `ingest.*`
-/// for symmetry, plus the durable-workflow surface (`outbox.status`, `inbox.list`, `inbox.resolve`)
-/// the proof-panel demo exercises. Each still passes the per-verb MCP gate first (the bridge scope
-/// filter is only defense in depth).
+/// for symmetry, plus the durable-workflow surface (reads `outbox.status`, `inbox.list`; writes that
+/// PRODUCE motion `inbox.record`, `outbox.enqueue`; resolve `inbox.resolve`) the proof-panel demo
+/// exercises. Each still passes the per-verb MCP gate first (the bridge scope filter is only defense in
+/// depth).
 fn is_host_native(qualified_tool: &str) -> bool {
     qualified_tool.starts_with("series.")
         || qualified_tool.starts_with("ingest.")
@@ -131,11 +132,16 @@ async fn build_call_context(
     })
 }
 
-/// Dispatch the durable-workflow host verbs a federated page reaches through the bridge:
-/// `outbox.status` (read), `inbox.list` (read), `inbox.resolve` (the page's first workflow write).
+/// Dispatch the durable-workflow host verbs a federated page (or a wasm guest, via the host callback)
+/// reaches through the bridge. Two families:
+///   - **reads/resolve:** `outbox.status`, `inbox.list`, `inbox.resolve`.
+///   - **writes that PRODUCE motion** (proof-workflow-sim scope): `inbox.record` (create an item),
+///     `outbox.enqueue` (stage a pending effect) — so a guest can drive a full inbox→approval→outbox
+///     round-trip, not just read one something else seeded.
 /// Each host verb re-authorizes internally (workspace-first, then `mcp:<verb>:call`); a denial is
-/// opaque (`ToolError::Denied`), indistinguishable from a missing tool. The `actor` of a resolve is
-/// forced to the principal's `sub` inside `resolve_inbox` — never caller-supplied.
+/// opaque (`ToolError::Denied`), indistinguishable from a missing tool. Both `inbox.record`'s author
+/// and `inbox.resolve`'s actor are forced to the principal's `sub` — never caller-supplied (a guest
+/// cannot forge another source's authorship/sign-off).
 async fn call_workflow_tool(
     node: &Node,
     principal: &Principal,
@@ -159,6 +165,52 @@ async fn call_workflow_tool(
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "items": items }))
+        }
+        "inbox.record" => {
+            let channel = input
+                .get("channel")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: channel".into()))?;
+            let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
+            // The item id is caller-supplied for idempotency; default to a channel-scoped stable id so
+            // a guest that omits one still upserts deterministically (no wall-clock in core).
+            let id = input
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
+            let ts = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            // author is FORCED to the principal's sub inside record_inbox — `author` in the input is
+            // ignored (never caller-spoofable).
+            record_inbox(&node.store, principal, ws, channel, id, body, ts)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "ok": true }))
+        }
+        "outbox.enqueue" => {
+            let id = input
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
+            let target = input
+                .get("target")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: target".into()))?;
+            let action = input
+                .get("action")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: action".into()))?;
+            // payload is opaque to the host (the relay's target adapter interprets it); accept a string
+            // or stringify a JSON value so a guest can pass either.
+            let payload = match input.get("payload") {
+                Some(Value::String(s)) => s.clone(),
+                Some(v) => v.to_string(),
+                None => String::new(),
+            };
+            let ts = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            enqueue_outbox(&node.store, principal, ws, id, target, action, &payload, ts)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "ok": true }))
         }
         "inbox.resolve" => {
             let item_id = input

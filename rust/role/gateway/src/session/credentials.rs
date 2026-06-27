@@ -21,6 +21,12 @@ fn member_caps() -> Vec<String> {
         "mcp:inbox.list:call",
         "mcp:inbox.resolve:call",
         "mcp:outbox.status:call",
+        // proof-workflow-sim scope: the two durable-workflow WRITE verbs a guest drives over the host
+        // callback to PRODUCE motion — create an inbox item, stage an outbox effect. Member-level, like
+        // the other workflow verbs (the author/actor is host-forced to the principal's sub; the gateway
+        // re-checks each server-side). `proof.simulate` calls these inside `caller ∩ install-grant`.
+        "mcp:inbox.record:call",
+        "mcp:outbox.enqueue:call",
         "mcp:workspace.list:call",
         "mcp:workspace.create:call",
         // admin-crud: the dev principal is a workspace admin so the console can exercise every
@@ -57,6 +63,10 @@ fn member_caps() -> Vec<String> {
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.
         "mcp:proof-panel.proof.derive:call",
+        // proof-workflow-sim scope: the guest sim tool the page's "Run workflow simulation" card
+        // invokes over the live bridge. Its INNER callbacks (inbox.record/list/resolve,
+        // outbox.enqueue/status) authorize against `caller ∩ install-grant` — all held here.
+        "mcp:proof-panel.proof.simulate:call",
         // tag a series entity (member-level): the discovery edges `series.find` intersects. A member
         // may tag their own series; the test gateway's `/_seed/series` route uses this real write path.
         "mcp:tags.add:call",

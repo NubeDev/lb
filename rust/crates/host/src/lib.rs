@@ -74,7 +74,7 @@ pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
     reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
 };
-pub use inbox::{list_inbox, resolve_inbox, InboxError};
+pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
     series_latest_value, series_list, series_read_range, subscribe_series, DrainPass, IngestError,
@@ -89,7 +89,7 @@ pub use native::{
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
     SidecarMap, Supervised,
 };
-pub use outbox::{outbox_status, OutboxError, OutboxStatus};
+pub use outbox::{enqueue_outbox, outbox_status, OutboxError, OutboxStatus};
 pub use registry::{
     authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
     install_native_from_registry, list_catalog, pull, read_cached, record_catalog,

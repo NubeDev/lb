@@ -218,6 +218,28 @@ wasm guest does real platform work, not just echo input. A guest never holds a `
 card invokes it over the bridge and reads the committed `proof.derived` back. See
 `../../scope/extensions/host-callback-scope.md` and `../../sessions/extensions/host-callback-session.md`.
 
+**Producing workflow motion — the two write verbs + `proof.simulate`.** The callback initially exposed
+only the READ/RESOLVE half of the durable-workflow surface (`outbox.status`, `inbox.list`,
+`inbox.resolve`), so a guest could read motion but not PRODUCE it. Two write verbs now complete the
+chokepoint (proof-workflow-sim scope), each gated identically (workspace-first, then `mcp:<verb>:call`,
+against `caller ∩ install-grant`), reusing the real durable write paths — never a guest store handle:
+
+- **`inbox.record`** `{channel, id, body, ts} -> {ok}` — create a durable inbox item (`lb_inbox::record`).
+  The **author is host-forced** to the effective principal's `sub` (= `ext:<id>` for a guest callback —
+  the extension acting on the caller's behalf), never caller-spoofable, like `inbox.resolve`'s actor.
+- **`outbox.enqueue`** `{id, target, action, payload, ts} -> {ok}` — stage a must-deliver effect
+  (`lb_outbox::enqueue`'s transactional change+effect, so the effect is never orphaned). Staged
+  **Pending** — delivery stays the relay's job.
+
+The reference guest's **`proof.simulate`** drives a full round-trip through these: `inbox.record` →
+`inbox.list` (read it back) → `inbox.resolve` Approved → `outbox.enqueue` → `outbox.status`, returning
+`{ inbox_id, resolved, outbox_pending }`. The `[ui]` page's "Run workflow simulation" card invokes it,
+then refreshes the Inbox/Outbox sections so the produced item + effect become VISIBLE — the "I can finally
+see it work" payoff. Each step authorizes per direction: a grant (or caller) missing `inbox.record` /
+`outbox.enqueue` is denied at the host even when the other side holds it. See
+`../../scope/extensions/proof-workflow-sim-scope.md` and
+`../../sessions/extensions/proof-workflow-sim-session.md`.
+
 ## The frontend half: a federated UI page + dashboard widgets (S10)
 
 An extension's manifest may declare a **`[ui]`** block (a full sidebar page) and zero or more

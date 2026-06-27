@@ -106,6 +106,63 @@ describe("Panel — the all-features demo", () => {
     expect(await screen.findByText(/Could not derive: out_of_scope/i)).toBeInTheDocument();
   });
 
+  it("workflow simulation: Run produces an inbox item + outbox effect the sections then SHOW", async () => {
+    const user = userEvent.setup();
+    // The guest sim PRODUCES motion: before the click the inbox/outbox are empty; after it, the
+    // produced item + effect appear (the resolvers flip once simulate runs — proving the page refreshes
+    // the sections after the guest produces motion, the "I can finally see it work" payoff).
+    let simulated = false;
+    const bridge = demoBridge({
+      "proof-panel.proof.simulate": () => {
+        simulated = true;
+        return { inbox_id: "proof-sim-item", resolved: true, outbox_pending: 1 };
+      },
+      "inbox.list": () =>
+        simulated
+          ? {
+              items: [
+                {
+                  id: "proof-sim-item",
+                  channel: "proof-triage",
+                  author: "ext:proof-panel",
+                  body: "proof.simulate: please approve this simulated request",
+                  ts: 1,
+                },
+              ],
+            }
+          : { items: [] },
+      "outbox.status": () =>
+        simulated
+          ? { pending: [{ id: "proof-sim-effect", target: "demo" }], delivered: [], dead_lettered: [] }
+          : { pending: [], delivered: [], dead_lettered: [] },
+    });
+    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+
+    // Empty before: the inbox shows its honest empty state.
+    expect(await screen.findByTestId("inbox-empty")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("run workflow simulation"));
+
+    // The page invoked the EXTENSION's own sim tool (not a host-native verb).
+    await waitFor(() =>
+      expect(bridge.call).toHaveBeenCalledWith("proof-panel.proof.simulate", {}),
+    );
+    // The summary shows each step landed.
+    expect(await screen.findByTestId("simulate-result")).toHaveTextContent("proof-sim-item");
+
+    // And the sections refreshed: the produced inbox item + outbox effect are now VISIBLE.
+    expect(await screen.findByTestId("inbox-list")).toHaveTextContent(/please approve/i);
+    await waitFor(() => expect(screen.getByTestId("outbox-pending")).toHaveTextContent("1"));
+  });
+
+  it("workflow simulation denied → honest error, no fabricated summary", async () => {
+    const user = userEvent.setup();
+    // proof.simulate absent from the stub → rejected `out_of_scope` (the deny path).
+    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    await user.click(screen.getByLabelText("run workflow simulation"));
+    expect(await screen.findByTestId("simulate-error")).toHaveTextContent(/out_of_scope/i);
+  });
+
   it("outbox status: renders the lifecycle counts and Refresh re-reads", async () => {
     const user = userEvent.setup();
     const bridge = demoBridge({

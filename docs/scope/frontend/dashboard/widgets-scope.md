@@ -5,6 +5,12 @@ Status: scope plus shipped-state reconciliation. Promotes to
 narrows the original [`dashboard-scope.md`](../dashboard-scope.md) and
 [`dashboard-widgets-scope.md`](../dashboard-widgets-scope.md) to the widget surface.
 
+> **Generalized by [`widget-builder-scope.md`](widget-builder-scope.md) (v2).** The "read-only,
+> series-only, no-write, no extension renderer" lines below describe the **shipped v1** state. The v2 scope
+> supersedes them: a widget binds any *view* to any *MCP tool* in the install grant (read **or** write),
+> and the `ext:<id>/<widget>` renderer is built there. Read this for what shipped; read the builder scope
+> for where it's going.
+
 Dashboard widgets are the small, repeatable unit inside a persisted dashboard grid cell. A cell stores
 geometry, a `widget_type`, a data `binding`, and widget `options`; the host persists the cell in the
 workspace-scoped `dashboard:{id}` record. Built-in widgets render today. Extension widget tiles are

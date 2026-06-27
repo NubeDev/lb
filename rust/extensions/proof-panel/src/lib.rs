@@ -87,6 +87,10 @@ impl exports::lazybones::ext::tool::Guest for ProofPanel {
             // The host-callback proof: read a real series and write a derived one, ALL through the
             // host-mediated `host.call-tool` import (host-callback scope). No store handle, no token.
             "proof.derive" => derive(),
+            // The workflow-simulation proof (proof-workflow-sim scope): the guest DRIVES a full
+            // inbox→approval→outbox round-trip ENTIRELY through the host callback — it PRODUCES the
+            // motion the page then sees, instead of only reading something else seeded.
+            "proof.simulate" => simulate(),
             // A self-recursive tool: it calls ITSELF through the host callback. Exists ONLY to prove
             // the host's re-entrancy depth guard fires (the chain is refused with "call depth
             // exceeded" before any stack blow-up or lock deadlock). It never terminates on its own —
@@ -168,6 +172,114 @@ fn derive() -> Result<String, exports::lazybones::ext::tool::ToolError> {
     serde_json::to_string(&DeriveOut {
         derived,
         source_seq,
+    })
+    .map_err(|e| ToolError::Failed(e.to_string()))
+}
+
+/// The channel `proof.simulate` produces its triage item on. Dedicated to the simulation so its items
+/// are self-contained; the page's InboxSection reads this same channel so the produced item is visible.
+const TRIAGE_CHANNEL: &str = "proof-triage";
+/// A stable item id — re-running the simulation upserts the SAME inbox item (idempotent, no duplicate
+/// pile-up). The host commits on `(channel, id)`.
+const SIM_ITEM_ID: &str = "proof-sim-item";
+/// A stable outbox effect id — re-running upserts the same pending effect (idempotent on the id).
+const SIM_EFFECT_ID: &str = "proof-sim-effect";
+/// A logical ordering ts the guest injects (no wall-clock in a wasm guest — the host has no clock for
+/// it either; the inbox/outbox ts is logical, testing §3). Fixed because the ids are idempotent.
+const SIM_TS: u64 = 1;
+
+/// Output of `proof.simulate` — a summary the page renders to show EACH step landed: the inbox item's
+/// id, that it was resolved Approved, and the resulting outbox pending count.
+#[derive(Serialize)]
+struct SimulateOut {
+    inbox_id: String,
+    resolved: bool,
+    outbox_pending: u64,
+}
+
+/// `proof.simulate` — the guest drives a full inbox→approval→outbox round-trip through the host callback
+/// (proof-workflow-sim scope). It PRODUCES the workflow motion the page then sees:
+///
+/// 1. `inbox.record` an item on `proof-triage` (author host-forced to the effective principal's sub).
+/// 2. `inbox.list` it back, find the item by id (proving the host committed it — not the guest's word).
+/// 3. `inbox.resolve` that id Approved (the durable workflow WRITE).
+/// 4. `outbox.enqueue` an effect keyed off the approval (a pending must-deliver intent).
+/// 5. `outbox.status` to read the resulting pending count.
+///
+/// Each callback authorizes host-side against `caller ∩ install-grant`. If the install grant omits (or
+/// the caller lacks) any verb, that step is DENIED at the host and surfaces here as a `Failed` — never
+/// a silent skip or a fabricated summary.
+fn simulate() -> Result<String, exports::lazybones::ext::tool::ToolError> {
+    use exports::lazybones::ext::tool::ToolError;
+    use lazybones::ext::host::{call_tool, ToolError as HostErr};
+
+    fn host_err(e: HostErr) -> ToolError {
+        match e {
+            HostErr::BadInput(m) => ToolError::BadInput(format!("host: {m}")),
+            HostErr::Failed(m) => ToolError::Failed(format!("host: {m}")),
+        }
+    }
+
+    // 1. Record an inbox item (the host forces the author to the principal's sub; we pass a body + ts).
+    let record_in = serde_json::json!({
+        "channel": TRIAGE_CHANNEL,
+        "id": SIM_ITEM_ID,
+        "body": "proof.simulate: please approve this simulated request",
+        "ts": SIM_TS,
+    })
+    .to_string();
+    call_tool("inbox.record", &record_in).map_err(host_err)?;
+
+    // 2. List the channel back and find our item (a SEPARATE host read confirms the write committed).
+    let list_in = serde_json::json!({ "channel": TRIAGE_CHANNEL }).to_string();
+    let list_out = call_tool("inbox.list", &list_in).map_err(host_err)?;
+    let listed: serde_json::Value =
+        serde_json::from_str(&list_out).map_err(|e| ToolError::Failed(e.to_string()))?;
+    let found = listed
+        .get("items")
+        .and_then(|v| v.as_array())
+        .map(|items| items.iter().any(|i| i.get("id").and_then(|x| x.as_str()) == Some(SIM_ITEM_ID)))
+        .unwrap_or(false);
+    if !found {
+        return Err(ToolError::Failed(format!(
+            "recorded item '{SIM_ITEM_ID}' did not appear in '{TRIAGE_CHANNEL}'"
+        )));
+    }
+
+    // 3. Resolve it Approved — the durable workflow write.
+    let resolve_in = serde_json::json!({
+        "item_id": SIM_ITEM_ID,
+        "decision": "approved",
+        "ts": SIM_TS + 1,
+    })
+    .to_string();
+    call_tool("inbox.resolve", &resolve_in).map_err(host_err)?;
+
+    // 4. Enqueue an outbox effect keyed off the approval (a pending must-deliver intent).
+    let enqueue_in = serde_json::json!({
+        "id": SIM_EFFECT_ID,
+        "target": "demo",
+        "action": "comment",
+        "payload": format!("approved {SIM_ITEM_ID} via proof.simulate"),
+        "ts": SIM_TS + 2,
+    })
+    .to_string();
+    call_tool("outbox.enqueue", &enqueue_in).map_err(host_err)?;
+
+    // 5. Read the resulting pending count (a SEPARATE host read).
+    let status_out = call_tool("outbox.status", "{}").map_err(host_err)?;
+    let status: serde_json::Value =
+        serde_json::from_str(&status_out).map_err(|e| ToolError::Failed(e.to_string()))?;
+    let outbox_pending = status
+        .get("pending")
+        .and_then(|v| v.as_array())
+        .map(|p| p.len() as u64)
+        .unwrap_or(0);
+
+    serde_json::to_string(&SimulateOut {
+        inbox_id: SIM_ITEM_ID.to_string(),
+        resolved: true,
+        outbox_pending,
     })
     .map_err(|e| ToolError::Failed(e.to_string()))
 }
