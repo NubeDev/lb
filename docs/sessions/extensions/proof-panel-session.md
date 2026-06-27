@@ -147,6 +147,25 @@ Test Files  2 passed (2)   Tests  6 passed (6)
 - **Open questions resolved:** live feed → request/response only this slice (no `series.watch`);
   `proof.ping` host-side cap → none (caller convention); keep `hello`/`hello-v2` as-is; no widget tiles.
 
+## Load-and-test pass (2026-06-27, follow-up)
+
+Re-ran the loadable-artifact path to confirm the extension still builds and loads:
+
+- `build.sh` → emits a valid `proof_panel_ext.wasm` component (WebAssembly binary module
+  `0x1000d`) + `ui/dist/assets/remoteEntry.js` (exit 0). The wasm target needs no `cc`.
+- Proof-panel **UI in-memory tests green again** — `mount.test.tsx` (1) + `pages/Panel.test.tsx`
+  (5) = **6 passed**.
+  - **Fix:** `ui/package.json` declared `@testing-library/user-event` but it was missing from
+    `node_modules` (an earlier `pnpm install || true` had swallowed the failure), so
+    `Panel.test.tsx` failed to resolve the import and collected 0 tests. Ran `pnpm install` to
+    sync; the dep installs and the lockfile now carries it. No source change needed.
+
+**Sandbox limitation (not a code defect):** the native-target tests — `cargo test -p lb-host`
+(incl. `proof_panel_test`), `cargo test --workspace`, and `pnpm test:gateway` (spawns the native
+`test_gateway` bin) — cannot be re-run in this environment: no system C compiler (`cc`) and no
+sudo to install one, so any test/binary *link* step fails (library builds succeed; only the final
+link is blocked). These were run green in the build session above and are unchanged here.
+
 ## Replaces the earlier draft
 
 An earlier session draft described a `proof.status` tool with no grant-intersection or real-gateway
