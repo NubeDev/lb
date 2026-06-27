@@ -1,7 +1,7 @@
 # Frontend dashboard scope — the tool-driven widget builder (any MCP tool → any view)
 
-Status: scope (the ask). Promotes to [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md)
-once shipped. Target stage: **S9+ collaboration UI**, **after** `dashboard-scope.md` Phase 1 (the grid +
+Status: **SHIPPED** (2026-06-27) — promoted to [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md);
+session [`widget-builder-session.md`](../../../sessions/frontend/widget-builder-session.md). Originally: Target stage: **S9+ collaboration UI**, **after** `dashboard-scope.md` Phase 1 (the grid +
 cell record) and the shipped federated-page bridge (`proof-panel` proves it end to end). This scope is the
 **generalization** of [`dashboard-widgets-scope.md`](../../dashboard-widgets-scope.md) and
 [`widgets-scope.md`](widgets-scope.md): it widens the widget from *"a read-only renderer bound to one
@@ -351,19 +351,20 @@ Decisions made so the build has no blocking open question; residuals are named f
 - **Author never types MCP** — the source picker maps friendly labels (via `ext.list`/`series.find`) to
   tools. Decided.
 
-**Named follow-ups / to resolve in build:**
+**Named follow-ups — RESOLVED in build (2026-06-27, the `lean` taken in each case). See
+[widget-builder-session.md](../../../sessions/frontend/widget-builder-session.md).**
 
-1. **The `ext:<id>/<widget>` cell key** — `ext:<extension-id>/<widget-id>` (multiple `[[widget]]` per ext →
-   the key must name the *tile*, not just the ext). Lean: `ext:<id>/<widget-id>`; confirm against the
-   shipped `Install.widgets` shape (`widgets-scope.md` open Q).
-2. **Widget expose for extensions** — a dedicated `./widget` remote export vs. reusing the page
-   `remoteEntry.js` with a named `mountWidget`. Lean: a named export on the same remote (one build).
-3. **`render_templates` vs inline** threshold — at what size does an inline `cell.options` snippet have to
-   become a `render_template:{id}` row? Lean: a small inline cap (e.g. a few KB); larger ⇒ a row.
-4. **Argument templating for controls** — how a slider value / switch state fills `action.args` (a small
-   `{{value}}` substitution vs a typed mapping). Lean: a typed `argsTemplate` with one `value` slot.
-5. **Does a control read its own state?** (a switch reflecting `mqtt.status`) — optional `source` on a
-   control view. Lean: yes, optional.
+1. **The `ext:<id>/<widget>` cell key** — RESOLVED `ext:<extension-id>/<widget-id>`
+   (`ui/src/features/dashboard/builder/ExtWidget.tsx` `parseExtKey`); the key names the tile.
+2. **Widget expose for extensions** — RESOLVED a named **`mountWidget`** export on the SAME
+   `remoteEntry.js` as the page (one build). Proven by `proof-panel` (`ui/src/mount.tsx` +
+   `remoteEntry.ts`).
+3. **`render_templates` vs inline** threshold — RESOLVED a small inline cap **`INLINE_MAX_BYTES = 4 KB`**
+   in `cell.options.code`; larger ⇒ a `render_template:{id}` row (hard cap `TEMPLATE_MAX_BYTES = 64 KB`).
+4. **Argument templating for controls** — RESOLVED a typed **`args_template`/`argsTemplate`** with one
+   `{{value}}` slot, type-preserving (`views/argsTemplate.ts`).
+5. **Does a control read its own state?** — RESOLVED **yes, optional**: a control view carries an optional
+   `source` it reads (`SwitchControl` reflects it into the toggle).
 
 ## Related
 
