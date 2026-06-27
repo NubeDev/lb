@@ -19,18 +19,18 @@ export function WorkspaceSwitcher({ current, onSwitch }: Props) {
   const [newWs, setNewWs] = useState("");
 
   return (
-    <div className="border-b border-border px-3 py-2">
-      <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted">
-        <Building2 size={12} /> Workspace
+    <div className="border-b border-border px-3 py-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-muted">
+        <Building2 size={13} /> Workspace
       </div>
       {error && (
-        <div role="alert" className="mb-1 text-xs text-accent">
+        <div role="alert" className="mb-2 rounded-md border border-red-500/25 bg-red-500/10 px-2 py-1.5 text-xs text-red-600 dark:text-red-300">
           {error}
         </div>
       )}
       <select
         aria-label="workspace"
-        className="w-full rounded bg-panel px-2 py-1 text-sm"
+        className="control-field w-full"
         value={current}
         onChange={(e) => onSwitch(e.target.value)}
       >
@@ -43,7 +43,7 @@ export function WorkspaceSwitcher({ current, onSwitch }: Props) {
         ))}
       </select>
       <form
-        className="mt-1 flex gap-1"
+        className="mt-2 flex gap-1.5"
         onSubmit={(e) => {
           e.preventDefault();
           const ws = newWs.trim();
@@ -55,12 +55,12 @@ export function WorkspaceSwitcher({ current, onSwitch }: Props) {
       >
         <input
           aria-label="new workspace"
-          className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-xs"
+          className="control-field-sm min-w-0 flex-1"
           placeholder="new workspace…"
           value={newWs}
           onChange={(e) => setNewWs(e.target.value)}
         />
-        <button aria-label="create workspace" className="rounded bg-accent/15 px-2 text-accent">
+        <button aria-label="create workspace" className="soft-button-sm px-2">
           <Plus size={14} />
         </button>
       </form>

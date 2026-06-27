@@ -1,5 +1,5 @@
-// The nav rail — the vertical icon strip selecting which surface is open (collaboration scope). One
-// button per surface; markup + wiring only. Kept out of App.tsx so the shell file stays small.
+// The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. Floating + icon-collapsible like
+// shadcn-admin, with cap-gated entries supplied by App.tsx.
 
 import {
   Activity,
@@ -14,6 +14,21 @@ import {
   Shield,
   Users,
 } from "lucide-react";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
@@ -60,35 +75,80 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
 ];
 
 export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }: Props) {
-  const item = (key: Surface, label: string, Icon: typeof Hash) => (
-    <button
-      key={key}
-      aria-label={label}
-      title={label}
-      className={`rounded-md p-2 ${
-        active === key ? "bg-accent/15 text-accent" : "text-muted hover:bg-bg"
-      }`}
-      onClick={() => onSelect(key)}
-    >
-      <Icon size={18} />
-    </button>
-  );
+  const item = (key: Surface, label: string, Icon: typeof Hash) => {
+    const selected = active === key;
+    return (
+      <SidebarMenuItem key={key}>
+        <SidebarMenuButton
+          aria-label={label}
+          aria-current={selected ? "page" : undefined}
+          isActive={selected}
+          tooltip={label}
+          onClick={() => onSelect(key)}
+        >
+          <Icon />
+          <span>{label}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  };
 
   return (
-    <nav className="flex w-12 flex-col items-center gap-3 border-r border-border bg-panel py-3">
-      {SURFACES.filter((s) => allowed.includes(s.key)).map(({ key, icon, label }) =>
-        item(key, label, icon),
-      )}
-      {extSlots.length > 0 && <div className="my-1 h-px w-6 bg-border" aria-hidden />}
-      {extSlots.map((s) => item(`ext:${s.ext}`, s.label, Puzzle))}
-      <button
-        aria-label="Sign out"
-        title="Sign out"
-        className="mt-auto rounded-md p-2 text-muted hover:bg-bg"
-        onClick={onSignOut}
-      >
-        <LogOut size={18} />
-      </button>
-    </nav>
+    <Sidebar collapsible="icon" variant="floating">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" tooltip="Lazybones" aria-label="Lazybones">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-[11px] font-semibold text-sidebar-primary-foreground">
+                lb
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">Lazybones</span>
+                <span className="truncate text-xs text-sidebar-foreground/70">workspace ops</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+        <div className="flex items-center justify-end px-1">
+          <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" />
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Core</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {SURFACES.filter((s) => allowed.includes(s.key)).map(({ key, icon, label }) =>
+                item(key, label, icon),
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {extSlots.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Extensions</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {extSlots.map((s) => item(`ext:${s.ext}`, s.label, Puzzle))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton aria-label="Sign out" tooltip="Sign out" onClick={onSignOut}>
+              <LogOut />
+              <span>Sign out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 }

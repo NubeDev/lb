@@ -6,6 +6,7 @@
 // hiding a tab is convenience, never the security boundary. Markup + tab state only.
 
 import { useState } from "react";
+import { Shield } from "lucide-react";
 
 import { CAP, hasCap } from "@/lib/session";
 import { PeopleAdmin } from "./PeopleAdmin";
@@ -34,15 +35,30 @@ export function AdminView({ ws, caps }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <nav className="flex gap-1 border-b border-border bg-panel px-2 py-1" role="tablist">
+      <header className="page-header">
+        <div className="page-header-icon">
+          <Shield size={16} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="page-title">Admin</h1>
+          <p className="page-subtitle">Capability-gated people, teams, roles, and workspace controls.</p>
+        </div>
+        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+          <span className="truncate">{ws}</span>
+        </span>
+      </header>
+      <nav className="flex gap-1 border-b border-border bg-panel px-2 py-2" role="tablist">
         {visible.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={active === t.key}
             aria-label={t.label}
-            className={`rounded px-3 py-1 text-xs ${
-              active === t.key ? "bg-accent/15 text-accent" : "text-muted hover:bg-bg"
+            className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 ${
+              active === t.key
+                ? "border-accent/25 bg-accent/15 text-accent"
+                : "border-transparent text-muted hover:border-border hover:bg-bg hover:text-fg"
             }`}
             onClick={() => setTab(t.key)}
           >

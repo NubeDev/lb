@@ -6,35 +6,44 @@ import { useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
 interface Props {
+  channel: string;
   onSend: (body: string) => void | Promise<void>;
 }
 
-export function MessageComposer({ onSend }: Props) {
+export function MessageComposer({ channel, onSend }: Props) {
   const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const text = body;
+    const text = body.trim();
+    if (!text || busy) return;
     setBody("");
-    await onSend(text);
+    setBusy(true);
+    try {
+      await onSend(text);
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <form
       onSubmit={submit}
-      className="flex items-center gap-2 border-t border-border p-3"
+      className="flex items-center gap-2 border-t border-border bg-panel/70 p-3"
     >
       <input
         aria-label="message"
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder="Message #general"
-        className="flex-1 rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+        placeholder={`Message #${channel}`}
+        className="control-field min-w-0 flex-1"
       />
       <button
         type="submit"
         aria-label="send"
-        className="rounded-md border border-border bg-panel p-2 text-accent hover:border-accent"
+        disabled={!body.trim() || busy}
+        className="soft-button h-9 px-3"
       >
         <SendHorizontal size={16} />
       </button>

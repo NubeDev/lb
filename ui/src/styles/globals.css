@@ -11,6 +11,25 @@
   --fg: 30 12% 14%;
   --muted: 30 6% 44%;
   --accent: 32 95% 48%;
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg);
+  --secondary: var(--panel);
+  --secondary-foreground: var(--fg);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--bg);
+  --destructive: 0 72% 46%;
+  --input: var(--border);
+  --ring: var(--accent);
+  --sidebar: 36 18% 94%;
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--bg);
+  --sidebar-accent: 36 18% 88%;
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--accent);
 }
 
 .dark {
@@ -20,6 +39,25 @@
   --fg: 36 16% 90%;
   --muted: 30 5% 56%;
   --accent: 32 95% 56%;
+  --background: var(--bg);
+  --foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--bg);
+  --secondary: var(--panel);
+  --secondary-foreground: var(--fg);
+  --muted-foreground: var(--muted);
+  --accent-foreground: var(--bg);
+  --destructive: 0 65% 58%;
+  --input: var(--border);
+  --ring: var(--accent);
+  --sidebar: 24 7% 10%;
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--accent);
+  --sidebar-primary-foreground: var(--bg);
+  --sidebar-accent: 24 6% 16%;
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--accent);
 }
 
 html,
@@ -31,6 +69,80 @@ body,
 body {
   @apply bg-bg text-fg;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  ::selection {
+    @apply bg-accent/20 text-fg;
+  }
+
+  button,
+  select {
+    @apply disabled:cursor-not-allowed;
+  }
+
+  input,
+  textarea,
+  select {
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
+  }
+}
+
+@layer components {
+  .control-field {
+    @apply rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm text-fg shadow-sm shadow-black/0 transition-colors placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20;
+  }
+
+  .control-field-sm {
+    @apply rounded-md border border-border bg-bg px-2 py-1 text-xs text-fg shadow-sm shadow-black/0 transition-colors placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20;
+  }
+
+  .icon-button {
+    @apply inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted transition-colors hover:bg-bg hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 active:bg-accent/10 disabled:opacity-50;
+  }
+
+  .soft-button {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/20 bg-accent/10 px-3 py-1.5 text-sm font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 active:bg-accent/25 disabled:opacity-50;
+  }
+
+  .soft-button-sm {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-md border border-accent/20 bg-accent/10 px-2.5 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 active:bg-accent/25 disabled:opacity-50;
+  }
+
+  .danger-button-sm {
+    @apply inline-flex items-center justify-center rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25 dark:text-red-300;
+  }
+
+  .scope-pill {
+    @apply inline-flex max-w-[18rem] items-center gap-1.5 truncate rounded-full border border-border bg-bg px-2.5 py-1 text-xs text-muted shadow-sm;
+  }
+
+  .page-header {
+    @apply flex min-h-[3.75rem] items-center gap-3 border-b border-border bg-panel/55 px-4 py-2.5;
+  }
+
+  .page-header-icon {
+    @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent;
+  }
+
+  .page-title {
+    @apply text-sm font-semibold text-fg;
+  }
+
+  .page-subtitle {
+    @apply mt-0.5 truncate text-xs text-muted;
+  }
+
+  .state-alert {
+    @apply border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-300;
+  }
 }
 
 /* Create-series wizard entrance — a quiet fade + lift, reduced-motion safe. */

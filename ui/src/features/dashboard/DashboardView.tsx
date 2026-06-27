@@ -27,27 +27,28 @@ export function DashboardView({ ws }: { ws: string }) {
       />
 
       <section className="flex min-w-0 flex-1 flex-col">
-        {dash.error && (
-          <div role="alert" className="border-b border-border bg-red-500/10 px-4 py-2 text-sm text-red-400">
-            {dash.error}
+        <header className="page-header">
+          <div className="page-header-icon">
+            <LayoutGrid size={16} />
           </div>
-        )}
-
-        {!current ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted">
-            <LayoutGrid size={28} />
-            <p className="text-sm">Select or create a dashboard.</p>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="page-title">{current?.title ?? "Dashboards"}</h1>
+              {current && (
+                <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-[10px] uppercase text-muted">
+                  {current.visibility}
+                </span>
+              )}
+            </div>
+            <p className="page-subtitle">Live workspace dashboards and series widgets.</p>
           </div>
-        ) : (
-          <>
-            <header className="flex items-center gap-3 border-b border-border px-4 py-2">
-              <h2 className="text-sm font-semibold text-fg">{current.title}</h2>
-              <span className="text-[10px] uppercase text-muted">{current.visibility}</span>
-              <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-2">
+            {current && (
+              <>
                 <Share2 size={13} className="text-muted" />
                 <select
                   aria-label="dashboard visibility"
-                  className="rounded border border-border bg-bg px-1.5 py-0.5 text-xs"
+                  className="control-field-sm"
                   value={current.visibility}
                   onChange={(e) => void dash.share(e.target.value as Visibility)}
                 >
@@ -59,14 +60,40 @@ export function DashboardView({ ws }: { ws: string }) {
                 </select>
                 <button
                   aria-label="delete dashboard"
-                  className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                  className="danger-button-sm"
                   onClick={() => void dash.remove(current.id)}
                 >
                   Delete
                 </button>
-              </div>
-            </header>
+              </>
+            )}
+            <span className="scope-pill" title={`Workspace ${ws}`}>
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+              <span className="truncate">{ws}</span>
+            </span>
+          </div>
+        </header>
 
+        {dash.error && (
+          <div role="alert" className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-300">
+            {dash.error}
+          </div>
+        )}
+
+        {!current ? (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <div className="flex max-w-sm flex-col items-center rounded-lg border border-dashed border-border bg-panel/70 px-6 py-7 text-center shadow-sm shadow-black/5">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-bg text-muted">
+                <LayoutGrid size={20} />
+              </div>
+              <p className="text-sm font-medium text-fg">Select or create a dashboard.</p>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                Dashboards stay scoped to the current workspace and can be shared when needed.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
             <AddWidget
               existing={current.cells}
               onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}

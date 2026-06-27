@@ -80,18 +80,18 @@ export function DataView({ ws }: Props) {
 
   return (
     <section className="flex h-full flex-col bg-bg">
-      <header className="flex min-h-[3.75rem] items-center gap-3 border-b border-border bg-panel/55 px-4 py-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg">
+      <header className="page-header">
+        <div className="page-header-icon">
           <Database size={16} className="text-accent" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold">Data</h1>
+            <h1 className="page-title">Data</h1>
             <span className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] text-muted">
               read-only
             </span>
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted">
+          <p className="page-subtitle">
             Browse raw workspace records, inspect JSON, and follow relation edges.
           </p>
         </div>
@@ -103,17 +103,22 @@ export function DataView({ ws }: Props) {
           </div>
         )}
 
-        {selected && (
-          <div
-            className="ml-auto flex rounded-md border border-border bg-bg p-0.5"
-            role="tablist"
-            aria-label="view mode"
-          >
-            <ModeTab mode="grid" active={mode === "grid"} onClick={() => setMode("grid")} />
-            <ModeTab mode="graph" active={mode === "graph"} onClick={showGraph} />
-          </div>
-        )}
-        {!selected && <span className="ml-auto text-xs text-muted">{ws}</span>}
+        <div className="ml-auto flex items-center gap-2">
+          {selected && (
+            <div
+              className="flex rounded-md border border-border bg-bg p-0.5"
+              role="tablist"
+              aria-label="view mode"
+            >
+              <ModeTab mode="grid" active={mode === "grid"} onClick={() => setMode("grid")} />
+              <ModeTab mode="graph" active={mode === "graph"} onClick={showGraph} />
+            </div>
+          )}
+          <span className="scope-pill" title={`Workspace ${ws}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+            <span className="truncate">{ws}</span>
+          </span>
+        </div>
       </header>
 
       {error && (

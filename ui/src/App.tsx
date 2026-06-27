@@ -6,6 +6,7 @@
 import { useState } from "react";
 
 import { useSession, CAP, hasCap, isAdmin } from "@/lib/session";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { LoginView } from "./features/session";
 import { NavRail, type Surface, type CoreSurface } from "./features/shell";
 import { WorkspaceSwitcher } from "./features/workspace";
@@ -19,6 +20,11 @@ import { DataView } from "./features/data";
 import { IngestView } from "./features/ingest";
 import { DashboardView } from "./features/dashboard";
 import { ExtHost, useExtensionPages } from "./features/ext-host";
+
+function sidebarDefaultOpen() {
+  if (typeof document === "undefined") return true;
+  return !document.cookie.split("; ").includes("sidebar_state=false");
+}
 
 export function App() {
   const { session, signIn, signOut } = useSession();
@@ -67,7 +73,7 @@ export function App() {
       : "channels";
 
   return (
-    <div className="flex h-full">
+    <SidebarProvider defaultOpen={sidebarDefaultOpen()} className="h-full bg-bg">
       <NavRail
         active={active}
         onSelect={setSurface}
@@ -76,29 +82,33 @@ export function App() {
         extSlots={extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
       />
 
-      {active === "channels" && (
-        <aside className="flex w-56 flex-col border-r border-border bg-panel">
-          <WorkspaceSwitcher current={workspace} onSwitch={switchWorkspace} />
-          <ChannelList ws={workspace} selected={channel} onSelect={setChannel} />
-        </aside>
-      )}
+      <SidebarInset className="min-w-0 overflow-hidden">
+        <div className="flex h-full min-w-0 overflow-hidden">
+          {active === "channels" && (
+            <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-panel shadow-sm shadow-black/5">
+              <WorkspaceSwitcher current={workspace} onSwitch={switchWorkspace} />
+              <ChannelList ws={workspace} selected={channel} onSelect={setChannel} />
+            </aside>
+          )}
 
-      <main className="flex-1">
-        {active === "channels" && (
-          <ChannelView ws={workspace} channel={channel} author={principal} />
-        )}
-        {active === "members" && <MembersView ws={workspace} />}
-        {active === "dashboards" && <DashboardView ws={workspace} />}
-        {active === "ingest" && <IngestView ws={workspace} />}
-        {active === "data" && <DataView ws={workspace} />}
-        {active === "inbox" && <InboxView ws={workspace} />}
-        {active === "outbox" && <OutboxView ws={workspace} />}
-        {active === "admin" && <AdminView ws={workspace} caps={caps} />}
-        {active === "extensions" && <ExtensionsView ws={workspace} />}
-        {activeExtPage && (
-          <ExtHost ext={activeExtPage.ext} ui={activeExtPage.ui} workspace={workspace} />
-        )}
-      </main>
-    </div>
+          <div className="min-w-0 flex-1 overflow-hidden">
+            {active === "channels" && (
+              <ChannelView ws={workspace} channel={channel} author={principal} />
+            )}
+            {active === "members" && <MembersView ws={workspace} />}
+            {active === "dashboards" && <DashboardView ws={workspace} />}
+            {active === "ingest" && <IngestView ws={workspace} />}
+            {active === "data" && <DataView ws={workspace} />}
+            {active === "inbox" && <InboxView ws={workspace} />}
+            {active === "outbox" && <OutboxView ws={workspace} />}
+            {active === "admin" && <AdminView ws={workspace} caps={caps} />}
+            {active === "extensions" && <ExtensionsView ws={workspace} />}
+            {activeExtPage && (
+              <ExtHost ext={activeExtPage.ext} ui={activeExtPage.ui} workspace={workspace} />
+            )}
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

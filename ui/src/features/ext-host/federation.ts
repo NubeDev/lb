@@ -49,8 +49,13 @@ export async function loadRemoteMount(ext: string, remoteEntryUrl: string): Prom
   const fed = await runtime();
   const registered = (window.__FEDERATION_SHELL_REGISTERED__ ??= new Set<string>());
   if (!registered.has(ext)) {
+    // `url` MUST return a Promise: the federation runtime calls `e.url().then(...)` on the result
+    // (see the emitted `_virtual___federation__` runtime). Returning a bare string makes the runtime
+    // do `"<url>".then(...)` → `getUrl(...).then is not a function`, and the page never mounts. The
+    // type already says `() => Promise<string> | string`, but the 1.4.x runtime only handles the
+    // Promise form, so we always resolve one.
     fed.__federation_method_setRemote(ext, {
-      url: () => remoteEntryUrl,
+      url: () => Promise.resolve(remoteEntryUrl),
       format: "esm",
       from: "vite",
     });

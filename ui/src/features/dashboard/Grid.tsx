@@ -53,7 +53,7 @@ export function Grid({ cells, editable, onLayout, onRemove }: Props) {
   };
 
   return (
-    <div ref={ref} className="h-full overflow-auto" aria-label="dashboard grid">
+    <div ref={ref} className="h-full overflow-auto bg-bg p-2" aria-label="dashboard grid">
       <GridLayout
         className="layout"
         layout={layout}
@@ -69,14 +69,14 @@ export function Grid({ cells, editable, onLayout, onRemove }: Props) {
         {cells.map((c) => (
           <div
             key={c.i}
-            className="flex flex-col rounded-md border border-border bg-panel p-2"
+            className="flex flex-col rounded-lg border border-border bg-panel p-2 shadow-sm shadow-black/5 transition-shadow hover:shadow-md hover:shadow-black/10"
             aria-label={`cell ${c.i}`}
           >
             {editable && (
               <button
                 aria-label={`remove cell ${c.i}`}
                 title="Remove widget"
-                className="widget-no-drag absolute right-1 top-1 z-10 rounded p-0.5 text-muted hover:text-red-400"
+                className="widget-no-drag absolute right-1.5 top-1.5 z-10 rounded-md p-1 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25"
                 onClick={() => onRemove(c.i)}
               >
                 <X size={12} />

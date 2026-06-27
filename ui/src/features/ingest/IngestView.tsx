@@ -34,14 +34,22 @@ export function IngestView({ ws }: Props) {
 
   return (
     <section className="flex h-full flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Activity size={16} className="text-muted" />
-        <h1 className="text-sm font-medium">Ingest</h1>
-        <span className="ml-auto text-xs text-muted">{ws}</span>
+      <header className="page-header">
+        <div className="page-header-icon">
+          <Activity size={16} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="page-title">Ingest</h1>
+          <p className="page-subtitle">Explore series, inspect samples, and write typed payloads.</p>
+        </div>
+        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+          <span className="truncate">{ws}</span>
+        </span>
       </header>
 
       {error && (
-        <div role="alert" className="border-b border-border bg-red-500/10 px-4 py-2 text-sm text-red-400">
+        <div role="alert" className="state-alert">
           {error}
         </div>
       )}

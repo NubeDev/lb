@@ -9,15 +9,28 @@ import path from "node:path";
 // Module Federation HOST (ui-federation scope): the shell shares its `react`/`react-dom` as
 // SINGLETONS so a federated extension remote (e.g. `fleet-monitor/ui`) renders in-process against
 // the SAME React — no second copy, no hook-dispatcher mismatch, native-feeling. Remotes are loaded
-// at RUNTIME by gateway URL (not known at build time), so we declare no static `remotes` here; the
-// shell registers each remote dynamically via the federation runtime (see `ext-host/federation.ts`).
-// `shared` must still be declared at build time for the host to expose its singletons to remotes.
+// at RUNTIME by gateway URL (not known at build time); the shell registers each remote dynamically
+// via the federation runtime (see `ext-host/federation.ts`). `shared` must be declared at build time
+// for the host to expose its singletons to remotes.
+//
+// IMPORTANT — why a placeholder remote is declared:
+// `@originjs/vite-plugin-federation` decides a build is a federation HOST with
+// `isHost = !!prodRemote.length && !prodExpose.length` (dist/index.js). With `remotes: {}` the host
+// classification is FALSE, so the plugin never replaces the `__rf_placeholder__shareScope` marker in
+// the emitted runtime → an extension page fails at mount with
+// `__rf_placeholder__shareScope is not defined`. The plugin assumes remotes are known at build time;
+// our remotes are gateway-served and dynamic, so we declare ONE never-resolved placeholder remote to
+// flip `isHost` true and get the share scope wired. The real remotes are still added at runtime; this
+// entry is never loaded. See debugging/extensions/federated-remote-fails-in-dev-server.md.
 export default defineConfig({
   plugins: [
     react(),
     federation({
       name: "shell",
-      remotes: {},
+      remotes: {
+        // Never loaded — exists only so the plugin treats this build as a federation host (above).
+        __placeholder__: "/__federation_placeholder_never_loaded__/remoteEntry.js",
+      },
       shared: ["react", "react-dom"],
     }),
   ],

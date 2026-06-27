@@ -93,9 +93,15 @@ EXT          ?= hello-v2
 EXT_MANIFEST := $(BE_DIR)/extensions/$(EXT)/extension.toml
 EXT_WASM     := $(BE_DIR)/extensions/$(EXT)/target/$(WASM_TARGET)/release/$(subst -,_,$(EXT))_ext.wasm
 EXT_ARTIFACT := $(ART_DIR)/$(EXT).artifact.json
+# The extension's built federated UI bundle (the half the signed artifact does NOT carry) and the dir
+# the running node serves it from (LB_EXT_UI_DIR default = `extensions-ui/` relative to BE_DIR, i.e.
+# where the node is launched). `publish-ext` copies the dist here so the page's `remoteEntry.js` is
+# reachable — publishing the wasm tool alone leaves the UI 404ing.
+EXT_UI_DIST  := $(BE_DIR)/extensions/$(EXT)/ui/dist
+EXT_UI_SERVE := $(BE_DIR)/extensions-ui/$(EXT)
 
 .PHONY: setup build build-be build-wasm build-ui \
-        dev edge cloud ui pack publish-ext trusted-pubkey \
+        dev edge cloud ui ui-preview pack publish-ext trusted-pubkey \
         test test-be test-ui lint fmt fmt-check size clean kill
 
 # One-time setup: install the UI deps and make sure the wasm target is installed (the
@@ -198,6 +204,24 @@ publish-ext: pack
 	echo "← HTTP $$code"; \
 	if [ "$$code" = "204" ]; then echo "published + installed + loaded: $(EXT)"; \
 	else echo "FAILED ($$code): $$(cat /tmp/lb-publish-resp)"; exit 1; fi
+	@# Deploy the federated UI bundle. The signed artifact carries ONLY the wasm + manifest; the node
+	@# serves the page from LB_EXT_UI_DIR ($(EXT_UI_SERVE)). Without this the sidebar entry appears but
+	@# `remoteEntry.js` 404s. Skipped (with a note) when the extension ships no `ui/dist` (backend-only).
+	@if [ -d "$(EXT_UI_DIST)" ]; then \
+		echo "-> deploy UI bundle -> $(EXT_UI_SERVE)"; \
+		rm -rf "$(EXT_UI_SERVE)"; mkdir -p "$(EXT_UI_SERVE)"; \
+		cp -r "$(EXT_UI_DIST)"/* "$(EXT_UI_SERVE)"/; \
+		echo "  UI deployed ($(GW_URL)/extensions/$(EXT)/ui/assets/remoteEntry.js)"; \
+		echo "  NOTE: extension pages load only in the BUILT shell -- use 'make ui-preview', not 'make ui'."; \
+	else echo "-> no ui/dist for $(EXT) -- skipping UI deploy"; fi
+
+# Serve the BUILT shell so extension pages actually load. The `dev`/`ui` targets run the Vite DEV
+# server, where @originjs/vite-plugin-federation's host runtime is absent -- every federated remote
+# fails with `getUrl(...).then is not a function`. A federated remote needs a production build.
+# See debugging/extensions/federated-remote-fails-in-dev-server.md.
+ui-preview:
+	cd $(UI_DIR) && pnpm install && VITE_GATEWAY_URL=$(GW_URL) pnpm exec vite build
+	cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm exec vite preview --host 127.0.0.1 --port 4173
 
 test: test-be test-ui
 

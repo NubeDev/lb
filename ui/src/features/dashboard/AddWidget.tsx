@@ -48,10 +48,11 @@ export function AddWidget({ existing, onAdd }: Props) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-2 text-xs">
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-panel px-3 py-3 text-xs">
+      <span className="font-medium text-muted">Add widget</span>
       <select
         aria-label="widget type"
-        className="rounded border border-border bg-bg px-2 py-1"
+        className="control-field-sm"
         value={type}
         onChange={(e) => setType(e.target.value as WidgetType)}
       >
@@ -64,7 +65,7 @@ export function AddWidget({ existing, onAdd }: Props) {
       <input
         aria-label="widget series"
         placeholder="series (e.g. cooler.temp)"
-        className="w-48 rounded border border-border bg-bg px-2 py-1"
+        className="control-field-sm w-48"
         value={series}
         onChange={(e) => setSeries(e.target.value)}
       />
@@ -72,13 +73,13 @@ export function AddWidget({ existing, onAdd }: Props) {
       <input
         aria-label="widget tags"
         placeholder="kind:temperature, store:downtown-0421"
-        className="w-56 rounded border border-border bg-bg px-2 py-1"
+        className="control-field-sm w-64"
         value={tags}
         onChange={(e) => setTags(e.target.value)}
       />
       <button
         aria-label="add widget"
-        className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-accent"
+        className="soft-button-sm"
         onClick={add}
       >
         <Plus size={12} /> Add

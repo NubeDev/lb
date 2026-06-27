@@ -25,17 +25,25 @@ export function ExtensionsView({ ws }: Props) {
 
   return (
     <section className="flex h-full flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Boxes size={16} className="text-muted" />
-        <h1 className="text-sm font-medium">Extensions</h1>
+      <header className="page-header">
+        <div className="page-header-icon">
+          <Boxes size={16} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="page-title">Extensions</h1>
+          <p className="page-subtitle">Installed extension tiers, health, and lifecycle actions.</p>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           <UploadArtifact onUpload={upload} />
-          <span className="text-xs text-muted">{ws}</span>
+          <span className="scope-pill" title={`Workspace ${ws}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+            <span className="truncate">{ws}</span>
+          </span>
         </div>
       </header>
 
       {error && (
-        <div role="alert" className="bg-panel px-4 py-2 text-xs text-accent">
+        <div role="alert" className="state-alert">
           {error}
         </div>
       )}

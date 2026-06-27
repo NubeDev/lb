@@ -19,20 +19,28 @@ export function MembersView({ ws }: Props) {
 
   return (
     <section className="flex h-full flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Users size={16} className="text-muted" />
-        <h1 className="text-sm font-medium">Members</h1>
+      <header className="page-header">
+        <div className="page-header-icon">
+          <Users size={16} />
+        </div>
+        <div className="min-w-0">
+          <h1 className="page-title">Members</h1>
+          <p className="page-subtitle">Team membership inside the current workspace.</p>
+        </div>
         <input
           aria-label="team"
-          className="ml-2 rounded bg-panel px-2 py-1 text-xs"
+          className="control-field-sm ml-2 w-28"
           value={team}
           onChange={(e) => setTeam(e.target.value)}
         />
-        <span className="ml-auto text-xs text-muted">{ws}</span>
+        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+          <span className="truncate">{ws}</span>
+        </span>
       </header>
 
       {error && (
-        <div role="alert" className="bg-panel px-4 py-2 text-xs text-accent">
+        <div role="alert" className="state-alert">
           {error}
         </div>
       )}
@@ -62,12 +70,12 @@ export function MembersView({ ws }: Props) {
       >
         <input
           aria-label="add member"
-          className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+          className="control-field min-w-0 flex-1"
           placeholder="user:… to add to the team"
           value={newUser}
           onChange={(e) => setNewUser(e.target.value)}
         />
-        <button aria-label="add" className="flex items-center gap-1 rounded bg-accent/15 px-3 text-accent">
+        <button aria-label="add" className="soft-button">
           <UserPlus size={14} /> Add
         </button>
       </form>
