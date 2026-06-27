@@ -5,6 +5,17 @@
 
 import { invoke } from "@/lib/ipc/invoke";
 
+/** A page or widget an extension contributes to the shell (ui-federation / dashboard-widgets scopes).
+ *  Mirrors `lb_assets::ExtUi`. `entry` is the ESM bundle file under the gateway's
+ *  `/extensions/{ext}/ui/` dir; `scope` is the read-only MCP tools the page may call through the
+ *  host bridge (already narrowed to the install grant server-side). */
+export interface ExtUi {
+  entry: string;
+  label: string;
+  icon: string;
+  scope: string[];
+}
+
 export interface ExtRow {
   ext: string;
   version: string;
@@ -13,6 +24,10 @@ export interface ExtRow {
   running: boolean;
   health: string;
   restart_count: number;
+  /** A full sidebar page this extension contributes, or null. */
+  ui?: ExtUi | null;
+  /** A dashboard widget tile this extension contributes, or null. */
+  widget?: ExtUi | null;
 }
 
 /** A signed extension artifact — the wire shape the host `ext_publish` / registry-host `POST

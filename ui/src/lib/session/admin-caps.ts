@@ -21,6 +21,15 @@ export const CAP = {
   extList: "mcp:ext.list:call",
   extDisable: "mcp:ext.disable:call",
   extUninstall: "mcp:ext.uninstall:call",
+  // data-console (Data page, the DB browser): admin-only — these relax the per-record membership
+  // gate (gate 3), so the Data nav entry is shown only for a session holding `store.scan`.
+  storeTables: "mcp:store.tables:call",
+  storeScan: "mcp:store.scan:call",
+  storeGraph: "mcp:store.graph:call",
+  // data-console (Ingest page): member-level series verbs — the Ingest nav entry shows for any
+  // session that may read/list series.
+  seriesList: "mcp:series.list:call",
+  ingestWrite: "mcp:ingest.write:call",
 } as const;
 
 /** The full dev-admin cap grant (the gateway's `member_caps()` admin half + the ext caps). */
@@ -47,6 +56,15 @@ export const ADMIN_CAPS: string[] = [
   CAP.extList,
   CAP.extDisable,
   CAP.extUninstall,
+  // data-console: the dev admin carries both the admin DB-browser caps and the member series caps.
+  CAP.storeTables,
+  CAP.storeScan,
+  CAP.storeGraph,
+  CAP.seriesList,
+  CAP.ingestWrite,
+  "mcp:series.read:call",
+  "mcp:series.latest:call",
+  "mcp:series.find:call",
 ];
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

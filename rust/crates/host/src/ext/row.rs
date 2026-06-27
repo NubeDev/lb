@@ -4,7 +4,7 @@
 //! the live runtime truth the host joins in (the `SidecarMap` for native; wasm has no separate
 //! process so it `running == enabled`).
 
-use lb_assets::{Install, Tier};
+use lb_assets::{ExtUi, Install, Tier};
 use serde::{Deserialize, Serialize};
 
 /// A single installed extension as the admin console sees it — durable intent joined with live state.
@@ -22,6 +22,14 @@ pub struct ExtRow {
     pub health: String,
     /// Live restart count (native only; `0` for wasm).
     pub restart_count: u32,
+    /// The full **page** this extension contributes to the sidebar — `Some` iff it declared `[ui]`
+    /// (ui-federation scope). The shell builds a cap-gated nav slot + mounts the page from this.
+    #[serde(default)]
+    pub ui: Option<ExtUi>,
+    /// The dashboard **widget** this extension contributes — `Some` iff it declared `[widget]`
+    /// (dashboard-widgets scope). The shell adds it to the widget palette.
+    #[serde(default)]
+    pub widget: Option<ExtUi>,
 }
 
 impl ExtRow {
@@ -46,6 +54,8 @@ impl ExtRow {
             running,
             health: health.to_string(),
             restart_count,
+            ui: install.ui.clone(),
+            widget: install.widget.clone(),
         }
     }
 }

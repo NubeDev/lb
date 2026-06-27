@@ -8,6 +8,7 @@ import { useState } from "react";
 import { Building2 } from "lucide-react";
 
 import { ConfirmDestructive } from "@/features/confirm";
+import { AdminPanel } from "./AdminPanel";
 import { useWorkspacesAdmin } from "./useWorkspacesAdmin";
 
 type Pending = { kind: "archive" | "purge"; ws: string } | null;
@@ -21,45 +22,46 @@ export function WorkspacesAdmin({ ws }: Props) {
   const [pending, setPending] = useState<Pending>(null);
 
   return (
-    <section className="flex h-full flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <Building2 size={16} className="text-muted" />
-        <h1 className="text-sm font-medium">Workspaces</h1>
-        <span className="ml-auto text-xs text-muted">{ws}</span>
-      </header>
-
-      {error && (
-        <div role="alert" className="bg-panel px-4 py-2 text-xs text-accent">
-          {error}
-        </div>
+    <AdminPanel icon={Building2} title="Workspaces" ws={ws} error={error}>
+      {workspaces.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-muted">No workspaces in the directory.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs text-muted">
+              <th className="px-3 py-1.5 font-medium">Workspace</th>
+              <th className="px-3 py-1.5 font-medium">Name</th>
+              <th className="px-3 py-1.5" />
+            </tr>
+          </thead>
+          <tbody>
+            {workspaces.map((w) => (
+              <tr key={w.ws} className="border-b border-border/50" role="listitem">
+                <td className="px-3 py-1.5">{w.ws}</td>
+                <td className="px-3 py-1.5 text-xs text-muted">{w.name}</td>
+                <td className="px-3 py-1.5">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      aria-label={`archive ${w.ws}`}
+                      className="rounded bg-panel px-2 py-0.5 text-xs"
+                      onClick={() => setPending({ kind: "archive", ws: w.ws })}
+                    >
+                      Archive
+                    </button>
+                    <button
+                      aria-label={`purge ${w.ws}`}
+                      className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                      onClick={() => setPending({ kind: "purge", ws: w.ws })}
+                    >
+                      Purge
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
-
-      <ul className="flex-1 overflow-y-auto px-4 py-2">
-        {workspaces.length === 0 ? (
-          <li className="text-sm text-muted">No workspaces in the directory.</li>
-        ) : (
-          workspaces.map((w) => (
-            <li key={w.ws} className="flex items-center gap-2 py-1 text-sm" role="listitem">
-              <span>{w.ws}</span>
-              <span className="text-xs text-muted">{w.name}</span>
-              <button
-                aria-label={`archive ${w.ws}`}
-                className="ml-auto rounded bg-panel px-2 py-0.5 text-xs"
-                onClick={() => setPending({ kind: "archive", ws: w.ws })}
-              >
-                Archive
-              </button>
-              <button
-                aria-label={`purge ${w.ws}`}
-                className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
-                onClick={() => setPending({ kind: "purge", ws: w.ws })}
-              >
-                Purge
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
 
       {pending?.kind === "archive" && (
         <ConfirmDestructive
@@ -90,6 +92,6 @@ export function WorkspacesAdmin({ ws }: Props) {
           onCancel={() => setPending(null)}
         />
       )}
-    </section>
+    </AdminPanel>
   );
 }

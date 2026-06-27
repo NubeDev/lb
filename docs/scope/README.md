@@ -37,8 +37,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
 - `sync/` — multi-node sync + authority (S3).
-- `frontend/` — the React/Tauri UI shell; `collaboration-scope.md` (the real multi-user app) and
-  `admin-console-scope.md` (the management UI for workspaces·teams·users·members·extensions).
+- `frontend/` — the React/Tauri UI shell; `collaboration-scope.md` (the real multi-user app),
+  `admin-console-scope.md` (the management UI for workspaces·teams·users·members·extensions), and
+  `dashboard-scope.md` (the grid-of-widgets dashboard over real series — Phase 1 first-party/seeded,
+  with the full asset-sharing authz model; Phase 3 the real edge fleet; the `vision/0003` IoT dashboard
+  made buildable), and `dashboard-widgets-scope.md` (Phase 2 — widgets as installed extensions: how a
+  widget accesses data through the host-mediated read-only bridge without ever holding the token or
+  touching the DB, trust tiers, the `[widget]` manifest), and `data-console-scope.md` (the workspace
+  data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
+  with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL).
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

@@ -34,6 +34,8 @@ mod tests {
             tools: vec![],
             visibility: Visibility::Private,
             native: None,
+            ui: None,
+            widget: None,
         }
     }
 

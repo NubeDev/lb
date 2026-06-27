@@ -90,6 +90,15 @@ in every doc and (later) every PR:
    file; folder-of-verbs over file-of-nouns. Never `utils.rs`/`helpers.ts`/
    `common`/`misc`. See `docs/FILE-LAYOUT.md` — it applies to `.rs`, `.ts`, and
    `.tsx` alike.
+9. **No mocks, no fake backends.** Nothing that can run in-process gets mocked.
+   SurrealDB (`mem://`), Zenoh, capabilities, the gateway, and extensions are
+   exercised **for real** — in tests and demos alike. Need data? **Seed real
+   records into the real store.** A parallel `*.fake.ts` (or any hand-written
+   re-implementation of node behavior) is banned: it lets work *look* done while
+   the real path is unbuilt, and an AI can't tell the fake from the truth. Fakes
+   are allowed **only** for a true external you cannot run locally (a provider
+   HTTP API, GitHub) — behind one trait, in one clearly-named file. See
+   `docs/scope/testing/testing-scope.md` §0.
 
 ## Conventions for editing docs
 

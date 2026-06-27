@@ -17,6 +17,26 @@ pub enum Tier {
     Native,
 }
 
+/// A durable copy of an extension's UI contribution — a **page** (`ui`) or a dashboard **widget**
+/// (`widget`), as declared in the manifest's `[ui]`/`[widget]` block and persisted on the install so
+/// `ext.list` can tell the shell what to mount without re-reading the manifest (ui-federation +
+/// dashboard-widgets scopes). Structurally identical for both surfaces; one shape, two install fields.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct ExtUi {
+    /// The ESM bundle entry (relative to the extension's served UI dir) exposing `mount(el, ctx,
+    /// bridge)` in-process, or the iframe document for the sandboxed tier.
+    pub entry: String,
+    /// The nav-slot / palette label.
+    pub label: String,
+    /// A lucide icon name (empty = default).
+    #[serde(default)]
+    pub icon: String,
+    /// The read-only MCP tool scope the page/widget may call through the host bridge — already
+    /// intersected against the install grant when written.
+    #[serde(default)]
+    pub scope: Vec<String>,
+}
+
 /// The constant `kind` discriminant so `list_installs` can equality-filter every install row in a
 /// workspace (the union both tiers share — lifecycle-management scope's `ext.list`).
 pub(crate) const KIND: &str = "install";
@@ -42,6 +62,13 @@ pub struct Install {
     /// Constant discriminant so `list_installs` selects every row.
     #[serde(default = "install_kind")]
     pub kind: String,
+    /// A full **page** this extension contributes to the shell sidebar — `Some` iff it declared
+    /// `[ui]`. Serde-defaulted: records written before this field deserialize as `None`.
+    #[serde(default)]
+    pub ui: Option<ExtUi>,
+    /// A dashboard **widget** this extension contributes — `Some` iff it declared `[widget]`.
+    #[serde(default)]
+    pub widget: Option<ExtUi>,
     pub ts: u64,
 }
 
@@ -69,6 +96,8 @@ impl Install {
             tier: Tier::Wasm,
             enabled: true,
             kind: KIND.to_string(),
+            ui: None,
+            widget: None,
             ts,
         }
     }
@@ -76,6 +105,14 @@ impl Install {
     /// Set the tier (builder-style) — native installs call this so `ext.list` reports the row's tier.
     pub fn with_tier(mut self, tier: Tier) -> Self {
         self.tier = tier;
+        self
+    }
+
+    /// Attach the extension's UI contributions (builder-style) — the page and/or widget the manifest
+    /// declared, so `ext.list` tells the shell what to mount (ui-federation + dashboard-widgets scopes).
+    pub fn with_ui(mut self, ui: Option<ExtUi>, widget: Option<ExtUi>) -> Self {
+        self.ui = ui;
+        self.widget = widget;
         self
     }
 }

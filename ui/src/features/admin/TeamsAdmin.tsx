@@ -1,100 +1,199 @@
-// Teams administration (admin-console scope): list team records; create; rename; delete (showing the
-// member count + the cascade consequence). Delete routes through the shared ConfirmDestructive. The
-// member count is read live (listMembers) when the confirm opens so the consequence text is accurate
-// — stale cascade copy misleads admins (a scope risk). Markup + wiring only; data lives in
-// useTeamsAdmin. The gateway re-checks every verb; the UI gate is convenience.
+// Teams administration (admin-console redesign) — folds in the old separate MembersAdmin so you no
+// longer type a team id to see who's in it. Left: a selectable table of teams (member count). Right:
+// the selected team's members (add/remove inline) + the shared AccessEditor for the team's roles &
+// caps (team-inherited access). Create is a header action; delete shows the cascade consequence and
+// routes through ConfirmDestructive. Data lives in useDirectory (one refresh source); the gateway
+// re-checks every verb.
 
 import { useState } from "react";
-import { UsersRound } from "lucide-react";
+import { UserMinus, UserPlus, UsersRound } from "lucide-react";
 
 import { ConfirmDestructive } from "@/features/confirm";
-import { listMembers } from "@/lib/members/members.api";
-import { useTeamsAdmin } from "./useTeamsAdmin";
+import { AdminPanel } from "./AdminPanel";
+import { AccessEditor } from "./AccessEditor";
+import { useDirectory } from "./useDirectory";
+import { useRoles } from "./useRoles";
+
+type Pending =
+  | { kind: "deleteTeam"; team: string; count: number }
+  | { kind: "removeMember"; team: string; user: string }
+  | null;
 
 interface Props {
   ws: string;
 }
 
-export function TeamsAdmin({ ws }: Props) {
-  const { teams, error, create, rename, remove } = useTeamsAdmin();
-  const [newTeam, setNewTeam] = useState("");
-  const [pending, setPending] = useState<{ team: string; count: number } | null>(null);
+/** Strip the `user:` prefix the members api returns. */
+function bare(id: string): string {
+  return id.startsWith("user:") ? id.slice("user:".length) : id;
+}
 
-  async function openDelete(team: string) {
-    let count = 0;
-    try {
-      count = (await listMembers(team)).length;
-    } catch {
-      count = 0;
-    }
-    setPending({ team, count });
-  }
+export function TeamsAdmin({ ws }: Props) {
+  const {
+    teams,
+    membersByTeam,
+    error,
+    createTeamRecord,
+    removeTeamRecord,
+    addTeamMember,
+    removeTeamMember,
+  } = useDirectory();
+  const { roles } = useRoles();
+  const [selected, setSelected] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newTeam, setNewTeam] = useState("");
+  const [newMember, setNewMember] = useState("");
+  const [pending, setPending] = useState<Pending>(null);
+
+  const members = selected ? membersByTeam[selected] ?? [] : [];
+  const roleNames = roles.map((r) => r.name);
+
+  const action = (
+    <button
+      aria-label="new team"
+      className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-xs text-accent"
+      onClick={() => setCreating((c) => !c)}
+    >
+      <UsersRound size={13} /> New team
+    </button>
+  );
 
   return (
-    <section className="flex h-full flex-col bg-bg">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <UsersRound size={16} className="text-muted" />
-        <h1 className="text-sm font-medium">Teams</h1>
-        <span className="ml-auto text-xs text-muted">{ws}</span>
-      </header>
-
-      {error && (
-        <div role="alert" className="bg-panel px-4 py-2 text-xs text-accent">
-          {error}
+    <AdminPanel icon={UsersRound} title="Teams" ws={ws} action={action} error={error}>
+      <div className="flex h-full">
+        <div className="w-1/2 min-w-0 border-r border-border">
+          {creating && (
+            <form
+              className="flex gap-1 border-b border-border px-3 py-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const team = newTeam.trim();
+                if (team) {
+                  void createTeamRecord(team);
+                  setNewTeam("");
+                  setCreating(false);
+                }
+              }}
+            >
+              <input
+                autoFocus
+                aria-label="new team id"
+                className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+                placeholder="team id"
+                value={newTeam}
+                onChange={(e) => setNewTeam(e.target.value)}
+              />
+              <button className="rounded bg-accent/15 px-3 text-xs text-accent">Create</button>
+            </form>
+          )}
+          {teams.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-muted">No teams yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted">
+                  <th className="px-3 py-1.5 font-medium">Team</th>
+                  <th className="px-3 py-1.5 font-medium">Members</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teams.map((t) => (
+                  <tr
+                    key={t.team}
+                    aria-label={`select ${t.team}`}
+                    aria-selected={selected === t.team}
+                    className={`cursor-pointer border-b border-border/50 ${
+                      selected === t.team ? "bg-accent/10" : "hover:bg-panel"
+                    }`}
+                    onClick={() => setSelected(t.team)}
+                  >
+                    <td className="px-3 py-1.5">{t.team}</td>
+                    <td className="px-3 py-1.5 text-xs text-muted">
+                      {(membersByTeam[t.team] ?? []).length}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
-      )}
 
-      <ul className="flex-1 overflow-y-auto px-4 py-2">
-        {teams.length === 0 ? (
-          <li className="text-sm text-muted">No teams yet.</li>
-        ) : (
-          teams.map((t) => (
-            <li key={t.team} className="flex items-center gap-2 py-1 text-sm" role="listitem">
-              <span>{t.team}</span>
-              <span className="text-xs text-muted">{t.name}</span>
-              <button
-                aria-label={`rename ${t.team}`}
-                className="ml-auto rounded bg-panel px-2 py-0.5 text-xs"
-                onClick={() => void rename(t.team, `${t.name}*`)}
-              >
-                Rename
-              </button>
-              <button
-                aria-label={`delete ${t.team}`}
-                className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
-                onClick={() => void openDelete(t.team)}
-              >
-                Delete
-              </button>
-            </li>
-          ))
-        )}
-      </ul>
+        <div className="w-1/2 min-w-0 overflow-y-auto px-4 py-3">
+          {!selected ? (
+            <p className="text-sm text-muted">Select a team to see its members and access.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-medium">{selected}</h2>
+                <button
+                  aria-label={`delete team ${selected}`}
+                  className="ml-auto rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                  onClick={() =>
+                    setPending({ kind: "deleteTeam", team: selected, count: members.length })
+                  }
+                >
+                  Delete team
+                </button>
+              </div>
 
-      <form
-        className="flex gap-1 border-t border-border px-4 py-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const team = newTeam.trim();
-          if (team) {
-            void create(team, team);
-            setNewTeam("");
-          }
-        }}
-      >
-        <input
-          aria-label="new team"
-          className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
-          placeholder="team id to create"
-          value={newTeam}
-          onChange={(e) => setNewTeam(e.target.value)}
-        />
-        <button aria-label="create team" className="rounded bg-accent/15 px-3 text-accent">
-          Create
-        </button>
-      </form>
+              <div>
+                <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+                  Members
+                </h3>
+                {members.length === 0 ? (
+                  <p className="text-xs text-muted">No members yet.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {members.map((m) => (
+                      <li key={m} className="flex items-center gap-2 text-sm">
+                        <span>{bare(m)}</span>
+                        <button
+                          aria-label={`remove ${bare(m)}`}
+                          className="ml-auto flex items-center gap-1 rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                          onClick={() =>
+                            setPending({ kind: "removeMember", team: selected, user: bare(m) })
+                          }
+                        >
+                          <UserMinus size={12} /> Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <form
+                  className="mt-2 flex gap-1"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const user = newMember.trim();
+                    if (user) {
+                      void addTeamMember(selected, user);
+                      setNewMember("");
+                    }
+                  }}
+                >
+                  <input
+                    aria-label="add member"
+                    className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+                    placeholder="user id to add"
+                    value={newMember}
+                    onChange={(e) => setNewMember(e.target.value)}
+                  />
+                  <button
+                    aria-label="add member to team"
+                    className="flex items-center gap-1 rounded bg-accent/15 px-3 text-xs text-accent"
+                  >
+                    <UserPlus size={13} /> Add
+                  </button>
+                </form>
+              </div>
 
-      {pending && (
+              <AccessEditor subject={`team:${selected}`} availableRoles={roleNames} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {pending?.kind === "deleteTeam" && (
         <ConfirmDestructive
           title={`Delete team ${pending.team}`}
           consequence={`Removes ${pending.count} member${pending.count === 1 ? "" : "s"} and revokes the team's inherited caps (cascade). Team-shared docs become unreadable for former members immediately; their inherited caps drop on next sign-in.`}
@@ -102,12 +201,27 @@ export function TeamsAdmin({ ws }: Props) {
           escalation="none"
           confirmLabel="Delete team"
           onConfirm={() => {
-            void remove(pending.team);
+            void removeTeamRecord(pending.team);
+            if (selected === pending.team) setSelected(null);
             setPending(null);
           }}
           onCancel={() => setPending(null)}
         />
       )}
-    </section>
+      {pending?.kind === "removeMember" && (
+        <ConfirmDestructive
+          title={`Remove ${pending.user} from ${pending.team}`}
+          consequence={`Team-shared docs become unreadable immediately; ${pending.user}'s inherited caps drop on next sign-in.`}
+          reversible
+          escalation="none"
+          confirmLabel="Remove"
+          onConfirm={() => {
+            void removeTeamMember(pending.team, pending.user);
+            setPending(null);
+          }}
+          onCancel={() => setPending(null)}
+        />
+      )}
+    </AdminPanel>
   );
 }

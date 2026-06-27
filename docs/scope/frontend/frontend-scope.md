@@ -11,9 +11,11 @@ shell (dashboard/extensions/workspaces/settings) below is still the P0 plan.
 - The **api client mirrors the Rust verbs** `post`/`history` and the Tauri command names
   one-to-one (`channel_post`/`channel_history`) — a verb has the same name in the host, the shell
   command, and the client.
-- **One IPC seam** (`lib/ipc/invoke.ts`): Tauri `invoke` in the desktop shell; an in-memory
-  *faithful* node fake (`lib/ipc/fake.ts`) in the browser/tests until SSE lands (S3). Feature code
-  never branches on "am I in Tauri".
+- **One IPC seam** (`lib/ipc/invoke.ts`): Tauri `invoke` in the desktop shell; HTTP/SSE to a
+  real node in the browser. Feature code never branches on "am I in Tauri".
+  > **Superseded (CLAUDE §9 / testing §0):** the S2/S3 `lib/ipc/fake.ts` in-memory node was a
+  > mock backend and is on the retirement list — tests move onto a real in-process gateway seeded
+  > with real records. Don't add to the fake; don't copy the pattern for new surfaces.
 - `ui/src-tauri/` — a Tauri v2 shell; the node runs **in-process** (the shell IS a node, §3.1).
   Command logic is a library (headlessly unit-tested — no webkit toolchain needed); the window is
   behind a `desktop` feature.
@@ -74,7 +76,11 @@ been adapted to the reusable core-stack product.
 - Prefer React, TypeScript, Tailwind, and the same component shape used by the
   reference app unless the local repo already establishes something else.
 - Copy component ideas selectively instead of importing the whole UI.
-- Keep mock data local and obvious until real endpoints exist.
+- **No mock data, no fake backend** (CLAUDE §9, `scope/testing/testing-scope.md` §0).
+  Build UI against a **real node** — the in-process gateway over its real transport,
+  seeded with real records. Where an endpoint isn't built yet, build the endpoint (or
+  show an honest empty/loading state) rather than faking its response. A page wired to
+  fake data is not a shipped page.
 - Keep the navigation small; add deeper pages only when the backend surface
   exists.
 - Extension UI slots can be placeholders in P0, but the shell should leave room
@@ -83,9 +89,11 @@ been adapted to the reusable core-stack product.
 ## What shipped in S3 (the real browser transport)
 
 - **IPC vs SSE — resolved, the one-file-change promise held.** `lib/ipc/invoke.ts` now picks Tauri
-  IPC (shell) → real HTTP (`http.ts`, when `VITE_GATEWAY_URL` is set) → the fake (tests). The fake
-  is kept ONLY for tests; the browser hits a real node. `ChannelView`/`channel.api`/verb names
+  IPC (shell) → real HTTP (`http.ts`, when `VITE_GATEWAY_URL` is set) → the fake (tests). The
+  browser hits a real node; the fake is tests-only. `ChannelView`/`channel.api`/verb names
   unchanged. The new files are `lib/ipc/http.ts` and `lib/channel/channel.stream.ts`.
+  > **Now superseded:** even the tests-only fake is a mock backend (CLAUDE §9 / testing §0). It
+  > stays only until the real in-process-gateway test harness lands, then it's deleted.
 - **Live updates — shipped.** `channel.stream.ts` opens the gateway's SSE stream; `useChannel`
   folds OTHERS' `message` events into its existing `setItems` sink (idempotent merge by id). The
   event shape is the gateway's: `event: message` (an `Item`) and `event: presence`

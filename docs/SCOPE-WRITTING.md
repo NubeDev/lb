@@ -138,6 +138,11 @@ A scope for *this* platform isn't done until it has considered the principles in
 - [ ] **Capability-first** — what grant is required; what the deny looks like.
 - [ ] **Symmetric nodes** — no `if cloud {…}`; differences are config/role only.
 - [ ] **One datastore** — SurrealDB only; no new persistence layer sneaking in.
+- [ ] **No mocks / no fake backend** (CLAUDE §9, `scope/testing/testing-scope.md` §0) —
+  the testing plan proves this feature against the **real** store/bus/gateway, seeded
+  with real records. No `*.fake.ts` or in-memory re-implementation. A fake is allowed
+  only for a true external (provider HTTP, GitHub), behind one trait in one named file —
+  if the scope needs one, name it here.
 - [ ] **State vs motion** — SurrealDB for state, Zenoh for messages; not mixed.
 - [ ] **Stateless extensions** — no durable state in an instance (hot-reload safe).
 - [ ] **MCP is the contract** — capabilities exposed as MCP tools.

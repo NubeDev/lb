@@ -10,6 +10,7 @@ lb-host.workspace = true
 lb-auth.workspace = true
 lb-registry.workspace = true
 lb-inbox.workspace = true
+lb-assets.workspace = true
 axum.workspace = true
 tower-http.workspace = true
 tokio.workspace = true

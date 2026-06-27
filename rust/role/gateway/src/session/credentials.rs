@@ -45,6 +45,22 @@ fn member_caps() -> Vec<String> {
         // admin-console: publish (upload) a signed extension artifact over POST /extensions. The host
         // verb verify-before-stores; the gateway re-checks this cap server-side.
         "mcp:ext.publish:call",
+        // data-console (Ingest page): the S8 ingest/series verbs, surfaced over the gateway. These
+        // are **member-level** — any member may explore + manually write their own series (the
+        // producer is the authenticated principal, un-spoofable).
+        "mcp:ingest.write:call",
+        "mcp:series.read:call",
+        "mcp:series.latest:call",
+        "mcp:series.find:call",
+        "mcp:series.list:call",
+        // data-console (Data page, the DB browser): the raw-store lens verbs. **ADMIN-ONLY** by
+        // decision — they relax the per-record membership gate (gate 3): a raw scan answers "every
+        // record in the workspace". The dev principal is a workspace admin (it holds the destructive
+        // verbs above), so it carries them; a true member role must NOT. The gateway re-checks each
+        // server-side, and a deny-test asserts a token without the cap is refused (data-console risk).
+        "mcp:store.tables:call",
+        "mcp:store.scan:call",
+        "mcp:store.graph:call",
     ]
     .iter()
     .map(|s| s.to_string())

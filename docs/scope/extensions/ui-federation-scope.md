@@ -208,6 +208,20 @@ Plus this slice's cases:
   before depending on it; the untrusted iframe path must work even if federation tooling is absent
   (graceful: an extension with no federated remote falls back to iframe).
 
+## First consumer — widget-in-a-cell (the tractable narrowing)
+
+The **dashboard** (`scope/frontend/dashboard-scope.md`, Phase 2) is this bridge's **first and narrowest
+consumer**, and it is the right one to build first. A federated *widget* is far smaller than a federated
+*page*: it gets **one grid cell**, a **read-only** data binding (`series.read` / `series.latest` /
+`series.watch` within its bound scope), and **nothing else** — no nav slot, no token, no arbitrary tool
+set. That shrinks the load-bearing trust surface (the #1 risk below) to "render the data it was bound to,
+call nothing else." So the recommended build order is: prove the bridge on the **widget** case (read-only
+series in a cell), then generalize to full extension **pages**. The dashboard ships its widget binding
+contract **first-party** in Phase 1 (`{widget_type, binding, options}` + the three read verbs) precisely
+so Phase 2 is a *renderer* swap (first-party component → federated remote / iframe) behind this bridge,
+not a contract redesign. The `[ui]` manifest block gains a narrowed `[widget]` sibling (entry, label,
+the read-only series scope it may bind) for this case.
+
 ## Open questions
 
 - **Federation tooling** — native Vite module federation vs. a hand-rolled dynamic-`import()` of an ESM

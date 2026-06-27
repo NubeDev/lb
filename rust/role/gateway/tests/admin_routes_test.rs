@@ -119,6 +119,78 @@ async fn login_refuses_a_disabled_user_over_the_real_route() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
+// ── roles editor route (admin-console redesign) — POST /admin/roles, the real role-define path ──
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn admin_can_define_and_list_a_role_and_no_widening_is_enforced() {
+    let (gw, key) = gateway().await;
+    // An admin who may define/list roles AND holds the cap they want to bundle.
+    let admin = token(
+        &key,
+        "user:alice",
+        "acme",
+        &[
+            "mcp:roles.define:call",
+            "mcp:roles.list:call",
+            "mcp:user.manage:call",
+        ],
+    );
+
+    // Define a role bundling a cap the definer holds → 204.
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            json_post(
+                "/admin/roles",
+                json!({ "name": "user-admin", "caps": ["mcp:user.manage:call"] }),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT, "define a role → 204");
+
+    // It comes back from GET /admin/roles.
+    let resp = router(gw.clone())
+        .oneshot(bearer(common::get_req("/admin/roles"), &admin))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // No-widening: bundling a cap the definer does NOT hold is refused server-side.
+    let resp = router(gw.clone())
+        .oneshot(bearer(
+            json_post(
+                "/admin/roles",
+                json!({ "name": "super", "caps": ["mcp:workspace.purge:call"] }),
+            ),
+            &admin,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "cannot bundle a cap you don't hold (no-widening)"
+    );
+
+    // A non-admin (no roles caps) is denied on both verbs — the forged-call boundary.
+    let none = token(&key, "user:mallory", "acme", &["bus:chan/*:pub"]);
+    for req in [
+        common::get_req("/admin/roles"),
+        json_post("/admin/roles", json!({ "name": "x", "caps": [] })),
+    ] {
+        let resp = router(gw.clone())
+            .oneshot(bearer(req, &none))
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::FORBIDDEN,
+            "roles route must deny non-admin"
+        );
+    }
+}
+
 // ── extension lifecycle routes (lifecycle-management scope) — the browser surface that was missing ──
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

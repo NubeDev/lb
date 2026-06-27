@@ -1,0 +1,31 @@
+# The reference UI extension (ui-federation scope) — proves an extension can contribute a FULL PAGE to
+# the shell sidebar. It is a Tier-1 wasm extension (it reuses the `hello` component for its runtime half)
+# that ALSO declares a `[ui]` block: a page is independent of the runtime tier, so a wasm or native
+# extension may ship one. The page's bundle is served by the gateway from `LB_EXT_UI_DIR/hello-ui/`.
+[extension]
+id          = "hello-ui"
+version     = "0.1.0"
+name        = "Hello UI"
+description = "A first-party page mounted in the shell — the ui-federation reference extension."
+
+[runtime]
+tier        = "wasm"
+world       = "lazybones:ext/extension@0.1.0"
+placement   = "either"
+
+[capabilities]
+# The page reaches data only through these read-only series verbs (host re-checks each). Requested
+# here, intersected with admin approval at install; the page's effective scope = the granted subset.
+request = ["mcp:series.find:call", "mcp:series.latest:call"]
+
+# The full page this extension contributes to the sidebar (ui-federation scope). `entry` is resolved
+# under the gateway's `/extensions/hello-ui/ui/` route; `scope` is the read-only tools the page may
+# call through the host-mediated bridge (narrowed to the grant at install).
+[ui]
+entry = "entry.mjs"
+label = "Hello UI"
+icon  = "puzzle"
+scope = ["series.find", "series.latest"]
+
+[visibility]
+class = "public"

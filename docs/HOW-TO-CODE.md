@@ -65,10 +65,26 @@ the exception, not the norm. If you wrote code, you wrote tests and you moved ST
 4. **Slice vertically.** Build one capability through all layers (store → caps → bus → MCP
    → UI), not one crate in isolation (`STAGES.md` cross-cutting rule). Respect FILE-LAYOUT
    as you write: one verb per file, ≤400 lines hard, no `utils`/`helpers`/`common`.
-5. **Test in the same session.** Ship tests with the behavior change — never "tests
-   later". Add the mandatory categories that apply (capability deny, workspace isolation,
-   and offline/sync or hot-reload where relevant). Run them; **paste the green output**
-   into the session doc.
+4a. **Build the whole contract, not the easy half.** The scope's **MCP surface** (the full
+   CRUD + get/list + live-feed + batch it named — `SCOPE-WRITTING §6.1`) is the deliverable.
+   Ship **every verb the scope named**, wired end to end (store → cap → MCP → `http.ts` → UI),
+   each with its own deny-test. Do **not** ship `get` and call it done because update/delete/
+   list were "more work" — a half-wired surface is the thing that *looks* finished, then
+   doesn't work and confuses everyone later. If a verb genuinely shouldn't exist yet, it is an
+   explicit **scope non-goal** with a reason — never a silent gap. When in doubt, **do what's
+   best long-term: the complete surface**, not the easiest subset. If building it all reveals
+   the scope was wrong, fix the scope (step 8) — don't quietly trim it.
+5. **Test in the same session — backend AND frontend.** Ship tests with the behavior
+   change, never "tests later". **Both sides get tested, no exceptions:** Rust crate +
+   integration tests for the backend, Vitest for the frontend. Add the mandatory
+   categories that apply (capability deny, workspace isolation, and offline/sync or
+   hot-reload where relevant) — and a deny-test **per verb** you built in step 4a. Run
+   them; **paste the green output** into the session doc.
+   - **Real infra, seeded data — never mock data** (`testing-scope.md` §0/§3.1, CLAUDE §9).
+     Tests run against the real store (`mem://`), real bus, real caps, real gateway. When a
+     test needs existing data, **seed real records through the real write path** — a DB seed,
+     not a mocked response and not a `*.fake.ts`. This holds for frontend tests too: drive the
+     UI against a real in-process node seeded with real rows, not a hand-written fake backend.
 6. **Debug in the open.** If something non-trivially breaks, open a
    `debugging/<area>/<symptom>.md` entry and keep it as you investigate. On resolution:
    root cause + fix + a regression test that fails-before/passes-after, then update
@@ -95,8 +111,8 @@ The scope doc and the code map one-to-one. Use it as a worksheet, not background
 | How it fits the core → Tenancy/isolation | A **workspace-isolation** test (mandatory). |
 | How it fits the core → Data / Bus | The SurrealDB records + Zenoh subjects to implement. |
 | How it fits the core → Sync/authority | An offline/sync test, if synced. |
-| MCP surface | The MCP tool(s) to expose + their contract snapshot. |
-| Testing plan | The test files to write — start here, not last. |
+| MCP surface | **Every** MCP tool the scope named (full CRUD + get/list + batch) — built end to end, not a subset (§3 step 4a) + their contract snapshot. |
+| Testing plan | The test files to write (backend **and** frontend, real infra + DB seed) — start here, not last. |
 | Open questions | Decisions to make *and record* in the session doc. |
 | SDK/WIT impact (if flagged) | Stop and confirm before touching the stable boundary. |
 
@@ -108,10 +124,14 @@ Hand back only when **all** are true (this consolidates the scattered checklists
 `ABOUT-DOCS.md`, `testing-scope.md` §5, `debugging-scope.md` §5 into one):
 
 - [ ] The work satisfies the **scope** and the stage's **exit gate**.
+- [ ] The **full API surface** the scope named is built end to end (every CRUD/get-list/batch
+      verb wired store→cap→MCP→UI) — no easy-subset, no silently-dropped verb (§3 step 4a).
 - [ ] Code respects **FILE-LAYOUT** (one verb/file, ≤400 lines, named concepts).
 - [ ] No `if cloud {…}` — role differences are config only (symmetric nodes).
-- [ ] Tests exist, including the **mandatory categories** that apply, and the **green
-      output is pasted** in the session doc.
+- [ ] **No mock data / no fake backend** — tests run on real infra, seeded via the real write
+      path (CLAUDE §9, `testing-scope.md` §0).
+- [ ] Tests exist on **both backend and frontend**, including the **mandatory categories** and
+      a **deny-test per verb**, and the **green output is pasted** in the session doc.
 - [ ] Every bug fixed this session has a **regression test** and a closed **debug entry**.
 - [ ] `sessions/<topic>/<name>-session.md` is filled in (not a stub).
 - [ ] Anything shipped is in **`public/`** and `public/SCOPE.md`.
@@ -133,8 +153,13 @@ Read docs/HOW-TO-CODE.md and follow it.
 Scope: docs/scope/<topic>/<name>-scope.md
 Stage: <e.g. S1 — the spine> (or: "read STATUS.md to find where we are")
 
-Build this slice end to end: write the code within FILE-LAYOUT, ship the tests
-(including the mandatory capability-deny and workspace-isolation tests) and paste the
-green output, log any debugging, promote what shipped to public/, update the scope's
-open questions, and move STATUS.md. Then show me the session doc and the test output.
+Build this slice end to end and COMPLETE — every verb the scope's MCP surface named
+(full CRUD + get/list + batch), wired store→cap→MCP→http.ts→UI, not just the easy
+subset. Write the code within FILE-LAYOUT. Ship tests on BOTH backend and frontend
+(including the mandatory capability-deny and workspace-isolation tests, plus a deny-test
+per verb) — real infra seeded via the real write path, NO mock data and NO fake backend
+— and paste the green output. Log any debugging, promote what shipped to public/, update
+the scope's open questions, and move STATUS.md. Then show me the session doc and the test
+output. Do what's best long-term, not what's easiest now; if you must defer a verb, say so
+explicitly as a scope non-goal — never leave a silent gap.
 ```

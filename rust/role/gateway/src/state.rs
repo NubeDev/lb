@@ -34,6 +34,11 @@ pub struct Gateway {
     /// (no publishers wired yet), seeded by tests; durable storage + rotation are deferred (registry
     /// scope open questions). Held behind `Arc` so axum clones it cheaply per request.
     pub trusted: Arc<TrustedKeys>,
+    /// The directory extension UI bundles are served from — `{ext_ui_dir}/{ext}/{file}` (ui-federation
+    /// scope). The bundle is **non-secret static code** (the session token is held by the shell, never
+    /// the page; data access is gated at the host bridge), so it is served like any web asset. Seeded
+    /// from `LB_EXT_UI_DIR` (default `extensions-ui` beside the cwd); tests point it at a fixture dir.
+    pub ext_ui_dir: Arc<std::path::PathBuf>,
 }
 
 impl Gateway {
@@ -58,7 +63,18 @@ impl Gateway {
             key: Arc::new(key),
             now,
             trusted: Arc::new(TrustedKeys::new()),
+            ext_ui_dir: Arc::new(
+                std::env::var("LB_EXT_UI_DIR")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("extensions-ui")),
+            ),
         }
+    }
+
+    /// Point the extension-UI serve dir at `dir` (builder-style) — tests serve a fixture bundle.
+    pub fn with_ext_ui_dir(mut self, dir: impl Into<std::path::PathBuf>) -> Self {
+        self.ext_ui_dir = Arc::new(dir.into());
+        self
     }
 
     /// Seed the publisher allow-list the upload verifies against (the `POST /extensions` write path).

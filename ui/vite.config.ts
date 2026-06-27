@@ -16,5 +16,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // The real-gateway tests (`*.gateway.test.tsx`) need a spawned node; they run under their own
+    // `vitest.gateway.config.ts` (`pnpm test:gateway`), not this fake-backed default suite.
+    exclude: ["**/node_modules/**", "**/*.gateway.test.tsx"],
   },
 });

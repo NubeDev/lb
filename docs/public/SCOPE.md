@@ -3,6 +3,30 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S9+ — data console: DB browser + ingest explorer)
+
+Two workspace-scoped, capability-gated shell pages for non-SQL users, on the shipped S8 data plane
+(`public/frontend/data-console.md`):
+
+- **Data page — the admin, READ-ONLY DB browser.** A new, deliberately small generic store-read surface
+  (`lb_store::{tables,scan,graph}`, host `dbview` service): `store.tables` (tables + exact counts),
+  `store.scan(table, limit, cursor)` (a **hard-capped** id-cursor page of raw rows), `store.graph(table?,
+  id?, depth)` (depth-1, fan-out-bounded nodes + real relation edges for react-flow). Over `/store/*`
+  gateway routes. UI: table picker → paged row grid (row-expand→JSON) → a **code-split** react-flow
+  relation graph (`@xyflow/react`). **The security decision:** these verbs relax the per-record membership
+  gate (gate 3) — a raw scan answers "every record in the workspace" — so they are **admin-only**
+  (`mcp:store.*:call` to the ws-admin role, never `member_caps`) and **read-only**. The workspace wall and
+  the capability still hold hard; a member never sees the Data nav entry.
+- **Ingest page — the series explorer.** The S8 `ingest.*`/`series.*` verbs finally reachable over the
+  gateway, plus a new small `series.list(prefix)`: list/search series, latest + recent samples (rendered
+  by payload type), and a manual `ingest.write` form (`POST /ingest` writes-then-drains so the sample is
+  instantly visible; producer = the authenticated principal).
+- **The real-gateway test harness.** Both the Rust route tests and the UI tests run against a **real node**
+  (`mem://`), seeded with real rows through the real write path — **no fake backend** (CLAUDE §9). The
+  slice built the first real-node Vitest harness (`test_gateway` bin + `vitest.gateway.config.ts`,
+  `pnpm test:gateway`), the start of retiring the `*.fake.ts` layer. 7 Rust route tests (deny-per-verb +
+  ws-isolation) + 7 UI real-gateway tests green.
+
 ## Shipped (S8 — data plane: durable store · generic ingest · typed tag graph)
 
 The first stage that **writes to disk**, in three gated slices (`public/{store,ingest,tags}/`):

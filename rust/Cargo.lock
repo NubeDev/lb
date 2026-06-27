@@ -2876,6 +2876,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "http-body-util",
+ "lb-assets",
  "lb-auth",
  "lb-host",
  "lb-inbox",

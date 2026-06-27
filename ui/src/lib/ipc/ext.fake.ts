@@ -5,6 +5,13 @@
 
 import { getSession } from "@/lib/session/session.store";
 
+export interface ExtUi {
+  entry: string;
+  label: string;
+  icon: string;
+  scope: string[];
+}
+
 export interface ExtRow {
   ext: string;
   version: string;
@@ -13,6 +20,8 @@ export interface ExtRow {
   running: boolean;
   health: string;
   restart_count: number;
+  ui?: ExtUi | null;
+  widget?: ExtUi | null;
 }
 
 const installs = new Map<string, Map<string, ExtRow>>(); // ws → (ext → row)
@@ -73,6 +82,15 @@ export function extFakeInvoke<T>(cmd: string, args?: Record<string, unknown>): T
       });
       return undefined as T;
     }
+    // The host-mediated bridge endpoint, mirrored minimally so an extension page renders in the
+    // no-backend dev build (the real path runs `lb_mcp::call`). Read-only series verbs return empty —
+    // honest "no data yet" rather than a fabricated value (no mock data). A real gateway returns real
+    // rows. Anything else is not the ext fake's to answer.
+    case "mcp_call": {
+      const { tool } = (args ?? {}) as { tool?: string };
+      if (tool && tool.startsWith("series.")) return [] as unknown as T;
+      return null;
+    }
     default:
       return null;
   }
@@ -123,5 +141,20 @@ export function seedDevExtensions(): void {
     enabled: true,
     running: true,
     restart_count: 0,
+  });
+  // The reference UI extension (ui-federation scope): it declares a `[ui]` page, so the shell shows a
+  // cap-gated sidebar slot and mounts its bundle (served from `public/extensions/hello-ui/ui/` in this
+  // no-backend dev build; from the gateway in production). Proves extension pages end to end.
+  __seedExt({
+    ext: "hello-ui",
+    version: "v1",
+    tier: "wasm",
+    enabled: true,
+    ui: {
+      entry: "entry.mjs",
+      label: "Hello UI",
+      icon: "puzzle",
+      scope: ["series.find", "series.latest"],
+    },
   });
 }

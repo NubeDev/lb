@@ -1,17 +1,24 @@
 # Build tuning to stop the machine freezing during Rust builds.
 #
-# Why: 15 GB RAM + 14 cores means cargo's default of 14 parallel jobs can hit
-# the (RAM-heavy) link step on several big crates at once, blow past RAM, and
-# thrash into swap -> frozen desktop. Capping jobs caps peak memory.
+# Why: this box has 31 GB RAM + 28 cores. cargo's default = one build job per
+# core (28). The RAM-heavy LINK step (`rust-lld`) can run on several big crates
+# at once at ~4 GB each, blow past 31 GB RAM, fill the tiny 2 GB swap, and
+# thrash into a frozen desktop. The knobs below cap peak memory.
 [build]
 # Number of parallel codegen/build jobs. Lower = less peak RAM.
-# 6 is a safe start for 15 GB RAM; drop to 4 if you still see freezes.
-jobs = 6
+# With debug info trimmed (see [profile.dev] in Cargo.toml) 8 is comfortable on
+# 31 GB. Drop back to 6 or 4 if you still see freezes during big rebuilds.
+jobs = 8
 
-# --- Faster, lower-memory linker (uncomment AFTER installing mold) ---
-# mold links big binaries far faster and with much less RAM than the default
-# `ld`. Install it first:  sudo apt install mold
+# --- Faster, lower-memory linker (mold, ENABLED) ---
+# mold links big binaries far faster and with FAR less RAM than the default
+# linker (the ~4 GB-per-link spikes effectively disappear). This is the single
+# biggest fix for the freezes.
 #
-# [target.x86_64-unknown-linux-gnu]
-# linker = "clang"
-# rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+# NOTE: VSCode here is a Flatpak sandbox, so the host's mold lives at
+# /run/host/usr/bin/mold and is NOT on PATH under its real name. We link it as
+# `ld.mold` into ~/.local/bin (on PATH) so gcc's `-fuse-ld=mold` finds it:
+#     ln -sf /run/host/usr/bin/mold ~/.local/bin/ld.mold
+# Using gcc (cc) as the link driver because there is no clang in the sandbox.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]

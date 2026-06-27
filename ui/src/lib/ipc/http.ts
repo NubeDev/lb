@@ -36,6 +36,15 @@ function authHeaders(): Record<string, string> {
 
 const enc = encodeURIComponent;
 
+/** The node's `Effect` wire shape (a subset) — flattened into the workflow `Effect` view by
+ *  `workflow_list_effects` (the node has no per-workflow list; the outbox is the durable truth). */
+interface RawEffect {
+  target: string;
+  action: string;
+  idempotency_key: string;
+  status: string;
+}
+
 export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const base = gatewayUrl();
   switch (cmd) {
@@ -147,6 +156,10 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
     case "roles_list":
       return getJson<T>(`${base}/admin/roles`);
+    case "roles_define": {
+      const { name, caps } = args as { name: string; caps: string[] };
+      return postJson<T>(`${base}/admin/roles`, { name, caps });
+    }
 
     // ── extension lifecycle (lifecycle-management scope): the browser's `ext.*` surface, finally
     //    reachable over the gateway (was Tauri-desktop-only → `unknown command` in the browser). ──
@@ -170,6 +183,158 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       // workspace from the token and verify-before-stores. `204` ok / `422` verification failure.
       const { artifact } = args as { artifact: unknown };
       return postJson<T>(`${base}/extensions`, artifact as Record<string, unknown>);
+    }
+
+    // ── the host-mediated bridge endpoint (ui-federation scope): an extension page/widget reaches a
+    //    granted MCP tool through here. The shell holds the token; the host re-checks cap + workspace.
+    case "mcp_call": {
+      const { tool, args: toolArgs } = args as { tool: string; args?: unknown };
+      return postJson<T>(`${base}/mcp/call`, { tool, args: toolArgs ?? {} });
+    }
+
+    // ── shared assets (files/skills scope): the browser's `assets.*` surface over the gateway (was
+    //    Tauri-only → `unknown command` in the browser). The `ws`/`author` the fake passes are
+    //    DROPPED here — the gateway derives both from the token (the hard wall, §7). The host
+    //    re-runs the S4 gates server-side. ──
+    case "assets_put_doc": {
+      const { id, title, content } = args as Record<string, string>;
+      return postJson<T>(`${base}/docs`, { id, title, content });
+    }
+    case "assets_get_doc": {
+      const { id } = args as Record<string, string>;
+      return getJson<T>(`${base}/docs/${enc(id)}`);
+    }
+    case "assets_list_docs":
+      return getJson<T>(`${base}/docs`);
+    case "assets_share_doc": {
+      const { id, team } = args as Record<string, string>;
+      return postJson<T>(`${base}/docs/${enc(id)}/share`, { team });
+    }
+    case "assets_link_doc": {
+      const { id, channel } = args as Record<string, string>;
+      return postJson<T>(`${base}/docs/${enc(id)}/link`, { channel });
+    }
+    case "assets_put_skill": {
+      const { id, version, description, body } = args as Record<string, string>;
+      return postJson<T>(`${base}/skills`, { id, version, description: description ?? "", body });
+    }
+    case "assets_grant_skill": {
+      const { id } = args as Record<string, string>;
+      return postJson<T>(`${base}/skills/${enc(id)}/grant`, {});
+    }
+    case "assets_load_skill": {
+      const { id, version } = args as Record<string, string>;
+      const q = version ? `?version=${enc(version)}` : "";
+      return getJson<T>(`${base}/skills/${enc(id)}${q}`);
+    }
+
+    // ── coding workflow (coding-workflow scope): the browser's `workflow.*` surface over the
+    //    gateway. The PR coordinates are recorded at `request` and read back by `start` (no PR args
+    //    on the start wire). The headline S6 approval gate runs server-side. ──
+    case "workflow_request_approval": {
+      const { approvalId, scopeDoc, team, pr } = args as {
+        approvalId: string;
+        scopeDoc: string;
+        team: string;
+        pr: Record<string, unknown>;
+      };
+      return postJson<T>(`${base}/approvals/${enc(approvalId)}/request`, {
+        scope_doc: scopeDoc,
+        team,
+        pr,
+      });
+    }
+    case "workflow_resolve_approval": {
+      const { approvalId, decision } = args as { approvalId: string; decision: string };
+      return postJson<T>(`${base}/approvals/${enc(approvalId)}/resolve`, { decision });
+    }
+    case "workflow_start_job": {
+      const { approvalId, jobId, scopeDoc, channel, prKey } = args as {
+        approvalId: string;
+        jobId: string;
+        scopeDoc: string;
+        channel: string;
+        prKey: string;
+      };
+      return postJson<T>(`${base}/approvals/${enc(approvalId)}/start`, {
+        job_id: jobId,
+        scope_doc: scopeDoc,
+        channel,
+        pr_key: prKey,
+      });
+    }
+    case "workflow_list_effects": {
+      // The real node has no per-workflow effect list — the durable truth is the workspace outbox.
+      // Map onto `GET /outbox` and flatten the lifecycle groups into the workflow `Effect[]` shape
+      // the UI renders (target/action/idempotencyKey/status). `dead-lettered` collapses to `failed`.
+      const status = await getJson<{
+        pending: RawEffect[];
+        delivered: RawEffect[];
+        dead_lettered: RawEffect[];
+      }>(`${base}/outbox`);
+      const all = [...status.pending, ...status.delivered, ...status.dead_lettered];
+      return all.map((e) => ({
+        target: e.target,
+        action: e.action,
+        idempotencyKey: e.idempotency_key,
+        status: e.status === "delivered" ? "delivered" : e.status === "pending" ? "pending" : "failed",
+      })) as T;
+    }
+
+    // ── DB browser (data-console scope): the browser's admin, READ-ONLY `store.*` lens. Each maps
+    //    1:1 to a `/store/*` route; the gateway re-checks the **admin** cap server-side (these verbs
+    //    relax gate 3, so they are admin-only). No write commands by design. ──
+    case "store_tables":
+      return getJson<T>(`${base}/store/tables`);
+    case "store_scan": {
+      const { table, limit, cursor } = args as {
+        table: string;
+        limit?: number;
+        cursor?: string;
+      };
+      const q = new URLSearchParams();
+      if (limit !== undefined) q.set("limit", String(limit));
+      if (cursor) q.set("cursor", cursor);
+      const qs = q.toString();
+      return getJson<T>(`${base}/store/tables/${enc(table)}/rows${qs ? `?${qs}` : ""}`);
+    }
+    case "store_graph": {
+      const { table, id, depth } = args as { table?: string; id?: string; depth?: number };
+      const q = new URLSearchParams();
+      if (table) q.set("table", table);
+      if (id) q.set("id", id);
+      if (depth !== undefined) q.set("depth", String(depth));
+      const qs = q.toString();
+      return getJson<T>(`${base}/store/graph${qs ? `?${qs}` : ""}`);
+    }
+
+    // ── ingest / series (data-console scope): the browser's `ingest.*`/`series.*` surface (the S8
+    //    verbs over the gateway). The producer is the token's principal (un-spoofable); the write
+    //    route drains the workspace so a manual sample is visible on the next read. ──
+    case "ingest_write": {
+      const { samples } = args as { samples: unknown[] };
+      return postJson<T>(`${base}/ingest`, { samples });
+    }
+    case "series_list": {
+      const { prefix } = args as { prefix?: string };
+      const qs = prefix ? `?prefix=${enc(prefix)}` : "";
+      return getJson<T>(`${base}/series${qs}`);
+    }
+    case "series_find": {
+      const { facets } = args as { facets: unknown[] };
+      return postJson<T>(`${base}/series/find`, { facets });
+    }
+    case "series_latest": {
+      const { series } = args as { series: string };
+      return getJson<T>(`${base}/series/${enc(series)}/latest`);
+    }
+    case "series_read": {
+      const { series, from, to } = args as { series: string; from?: number; to?: number };
+      const q = new URLSearchParams();
+      if (from !== undefined) q.set("from", String(from));
+      if (to !== undefined) q.set("to", String(to));
+      const qs = q.toString();
+      return getJson<T>(`${base}/series/${enc(series)}/samples${qs ? `?${qs}` : ""}`);
     }
 
     default:

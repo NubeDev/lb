@@ -208,6 +208,15 @@ Plus this slice's cases:
 > read + assign/revoke only (no role editor this slice); `RegistryView`/`NativeView` retired into the
 > unified console with coverage ported. The originals are kept below for the record.
 
+> **SUPERSEDED (redesign, 2026-06-27 — see [admin-console-redesign session](../../sessions/frontend/admin-console-redesign-session.md)):**
+> the slice-4 console was rebuilt **relationship-first**. The five flat sub-views collapsed to **four
+> tabs** (People · Teams · Roles · Workspaces): Members folds inline under a selected Team, and
+> grant/role assignment lives in each subject's master-detail panel — so "who belongs to who" is
+> browsable, not typed. The **role editor is now BUILT** (resolving the open question below): added a
+> real gateway `POST /admin/roles` (`define_role`, no-widening server-side), `roles.list` keeps each
+> role's caps, and the UI builds a role by **checking caps** (the admin's own session caps = the
+> no-widening set). The chat-style bottom composer was removed everywhere (create = a header action).
+
 - **Where the extensions console lives** — `features/admin/extensions` vs a top-level `features/extensions/`
   reachable from admin. Lean: top-level `features/extensions/` (it's substantial), linked from the admin
   nav, cap-gated the same way.
@@ -218,8 +227,10 @@ Plus this slice's cases:
   type-the-name **and** rely on the backend's second gate (`workspace.purge`) — defense in depth.
 - **Live table refresh** — subscribe to a host "admin changed" motion vs poll-on-action vs refetch-on-focus.
   Lean: refetch after each mutation (simple, correct) + optional subscription later for multi-admin liveness.
-- **Roles/grants depth in v1** — full role editor vs read + assign/revoke only. Lean: read + assign/revoke
-  only this slice (the model + define lives in `authz-grants`); a role editor is a follow-up.
+- **Roles/grants depth in v1** — full role editor vs read + assign/revoke only. ~~Lean: read +
+  assign/revoke only this slice~~ **RESOLVED (redesign):** the **full role editor shipped** — define a
+  role by checking caps (no-widening), assign named roles from a dropdown. Remaining: `roles.delete` and
+  union-resolved *effective* caps in the People detail (needs a `resolve_caps` gateway verb).
 - **Graceful degradation when a backend verb is absent** — hide the control vs show-disabled-with-reason.
   Lean: show-disabled-with-reason during the build-out so the console is honest about what's wired.
 

@@ -52,6 +52,44 @@ pub struct Native {
     pub restart: String,
 }
 
+/// The `[ui]` block — an extension that contributes a **full page** to the shell's sidebar
+/// (ui-federation scope, README §6.13). Frozen v1 fields. Serde-defaulted: an extension without a
+/// `[ui]` block contributes no page (the lifecycle/console story is unchanged). The **trust tier is
+/// NOT here** — it is the publisher key's allow-list status (the registry `TrustedKeys`), never the
+/// manifest's claim. A trusted page is module-federated in-process; an untrusted one sandboxes.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct UiPage {
+    /// The ESM bundle entry (relative to the extension's served UI dir) exposing `mount(el, ctx,
+    /// bridge)` for the in-process tier, or the iframe entry document for the sandboxed tier.
+    pub entry: String,
+    /// The sidebar nav-slot label.
+    pub label: String,
+    /// A lucide icon name for the nav slot (empty = a default).
+    #[serde(default)]
+    pub icon: String,
+    /// The read-only MCP tool scope the page may call through the host-mediated bridge — bounded by
+    /// the install's `granted` (= `requested ∩ admin_approved`). Empty = the page calls nothing.
+    #[serde(default)]
+    pub scope: Vec<String>,
+}
+
+/// The `[widget]` block — an extension that contributes a **dashboard tile** droppable into a grid
+/// cell (dashboard-widgets scope). Frozen v1 fields. Serde-defaulted. A widget is read-only on series
+/// and far more constrained than a page; the `scope` here is a subset of the four series read verbs.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
+pub struct Widget {
+    /// The ESM bundle entry exposing `mount(el, ctx, bridge)` (in-process) / iframe doc (sandboxed).
+    pub entry: String,
+    /// The widget-palette label.
+    pub label: String,
+    #[serde(default)]
+    pub icon: String,
+    /// The read-only series verbs the widget may call (subset of `series.read|latest|find|watch`),
+    /// bounded by the install grant. Validated at install: a non-series/write verb is rejected.
+    #[serde(default)]
+    pub scope: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
     pub id: String,
@@ -66,6 +104,11 @@ pub struct Manifest {
     /// The native supervision recipe — `Some` iff `tier="native"` (validated at parse). `None` for a
     /// wasm extension (it has no child process).
     pub native: Option<Native>,
+    /// A full page contributed to the shell's sidebar — `Some` iff the manifest declares `[ui]`
+    /// (ui-federation scope). Independent of `tier`: a wasm/native extension may also ship a page.
+    pub ui: Option<UiPage>,
+    /// A dashboard widget tile — `Some` iff the manifest declares `[widget]` (dashboard-widgets scope).
+    pub widget: Option<Widget>,
 }
 
 // Raw TOML shape, mapped to the flat `Manifest` after validation.
@@ -80,6 +123,10 @@ struct Raw {
     visibility: RawVisibility,
     #[serde(default)]
     native: Option<Native>,
+    #[serde(default)]
+    ui: Option<UiPage>,
+    #[serde(default)]
+    widget: Option<Widget>,
 }
 #[derive(Deserialize)]
 struct RawExt {
@@ -135,6 +182,8 @@ impl Manifest {
             tools: raw.tools,
             visibility: raw.visibility.class,
             native,
+            ui: raw.ui.filter(|u| !u.entry.is_empty()),
+            widget: raw.widget.filter(|w| !w.entry.is_empty()),
         })
     }
 }
@@ -211,5 +260,63 @@ class = "private"
         let toml = with_runtime("wasm", "");
         let m = Manifest::parse(&toml).expect("wasm manifest parses");
         assert!(m.native.is_none());
+    }
+
+    #[test]
+    fn no_ui_or_widget_by_default() {
+        // An extension that declares neither block contributes no page and no widget.
+        let m = Manifest::parse(&with_runtime("wasm", "")).expect("parses");
+        assert!(m.ui.is_none());
+        assert!(m.widget.is_none());
+    }
+
+    #[test]
+    fn parses_ui_page_block() {
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"entry.mjs\"\nlabel = \"Reports\"\nicon = \"chart-bar\"\nscope = [\"channel.list\"]",
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        let ui = m.ui.expect("a [ui] block yields Some");
+        assert_eq!(ui.entry, "entry.mjs");
+        assert_eq!(ui.label, "Reports");
+        assert_eq!(ui.icon, "chart-bar");
+        assert_eq!(ui.scope, vec!["channel.list".to_string()]);
+        assert!(m.widget.is_none());
+    }
+
+    #[test]
+    fn parses_widget_block() {
+        let toml = with_runtime(
+            "wasm",
+            "[widget]\nentry = \"widget.mjs\"\nlabel = \"Temp\"\nscope = [\"series.read\", \"series.watch\"]",
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        let w = m.widget.expect("a [widget] block yields Some");
+        assert_eq!(w.entry, "widget.mjs");
+        assert_eq!(w.label, "Temp");
+        assert_eq!(
+            w.scope,
+            vec!["series.read".to_string(), "series.watch".to_string()]
+        );
+    }
+
+    #[test]
+    fn ui_and_widget_together() {
+        // One extension may ship BOTH a page and a widget.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"p.mjs\"\nlabel = \"Page\"\n[widget]\nentry = \"w.mjs\"\nlabel = \"Tile\"",
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        assert!(m.ui.is_some());
+        assert!(m.widget.is_some());
+    }
+
+    #[test]
+    fn empty_entry_is_treated_as_absent() {
+        // A `[ui]` block with no entry is not a contribution (defensive against a half-written block).
+        let toml = with_runtime("wasm", "[ui]\nentry = \"\"\nlabel = \"x\"");
+        assert!(Manifest::parse(&toml).expect("parses").ui.is_none());
     }
 }

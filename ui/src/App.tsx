@@ -7,7 +7,7 @@ import { useState } from "react";
 
 import { useSession, CAP, hasCap, isAdmin } from "@/lib/session";
 import { LoginView } from "./features/session";
-import { NavRail, type Surface } from "./features/shell";
+import { NavRail, type Surface, type CoreSurface } from "./features/shell";
 import { WorkspaceSwitcher } from "./features/workspace";
 import { ChannelList, ChannelView } from "./features/channel";
 import { MembersView } from "./features/members";
@@ -15,11 +15,22 @@ import { InboxView } from "./features/inbox";
 import { OutboxView } from "./features/outbox";
 import { AdminView } from "./features/admin";
 import { ExtensionsView } from "./features/extensions";
+import { DataView } from "./features/data";
+import { IngestView } from "./features/ingest";
+import { ExtHost, useExtensionPages } from "./features/ext-host";
 
 export function App() {
   const { session, signIn, signOut } = useSession();
   const [surface, setSurface] = useState<Surface>("channels");
   const [channel, setChannel] = useState("general");
+
+  // Extension PAGES (ui-federation scope): installed extensions that declare a `[ui]` block contribute
+  // a cap-gated sidebar slot. Discovered from `ext.list` (only visible to a session that can list
+  // extensions — the gateway re-checks the page's bridged calls regardless). Called unconditionally
+  // (before the logged-out early return) so the hook order is stable; the empty `ws` disables it.
+  const extPages = useExtensionPages(
+    session && hasCap(session.caps, CAP.extList) ? session.workspace : "",
+  );
 
   if (!session) {
     return <LoginView onSignIn={signIn} />;
@@ -32,14 +43,34 @@ export function App() {
   // Cap-gate the admin surfaces' VISIBILITY (admin-console scope). This is convenience only — the
   // gateway re-checks every verb server-side, so a forged call by a non-admin is denied regardless
   // (proven in role/gateway/tests/admin_routes_test.rs). Hiding the controls just avoids dead buttons.
-  const allowed: Surface[] = ["channels", "members", "inbox", "outbox"];
+  const allowed: CoreSurface[] = ["channels", "members", "inbox", "outbox"];
+  // data-console: the Ingest page shows for any session that may list series (member-level); the Data
+  // page (the admin DB browser) shows only for a session holding `store.scan` — it relaxes gate 3, so
+  // it is admin-only. The gateway re-checks every verb server-side regardless.
+  if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
+  if (hasCap(caps, CAP.storeScan)) allowed.push("data");
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
-  const active = allowed.includes(surface) ? surface : "channels";
+
+  // The active surface may be a core one or an extension page (`ext:<id>`). Fall back to channels if
+  // the selected core surface isn't allowed or the selected extension page no longer exists.
+  const activeExt = surface.startsWith("ext:") ? surface.slice(4) : null;
+  const activeExtPage = activeExt ? extPages.find((p) => p.ext === activeExt) : undefined;
+  const active: Surface = activeExtPage
+    ? surface
+    : allowed.includes(surface as CoreSurface)
+      ? surface
+      : "channels";
 
   return (
     <div className="flex h-full">
-      <NavRail active={active} onSelect={setSurface} onSignOut={signOut} allowed={allowed} />
+      <NavRail
+        active={active}
+        onSelect={setSurface}
+        onSignOut={signOut}
+        allowed={allowed}
+        extSlots={extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
+      />
 
       {active === "channels" && (
         <aside className="flex w-56 flex-col border-r border-border bg-panel">
@@ -53,10 +84,15 @@ export function App() {
           <ChannelView ws={workspace} channel={channel} author={principal} />
         )}
         {active === "members" && <MembersView ws={workspace} />}
+        {active === "ingest" && <IngestView ws={workspace} />}
+        {active === "data" && <DataView ws={workspace} />}
         {active === "inbox" && <InboxView ws={workspace} />}
         {active === "outbox" && <OutboxView ws={workspace} />}
         {active === "admin" && <AdminView ws={workspace} caps={caps} />}
         {active === "extensions" && <ExtensionsView ws={workspace} />}
+        {activeExtPage && (
+          <ExtHost ext={activeExtPage.ext} ui={activeExtPage.ui} workspace={workspace} />
+        )}
       </main>
     </div>
   );

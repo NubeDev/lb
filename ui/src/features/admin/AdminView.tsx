@@ -1,19 +1,19 @@
-// The admin console shell (admin-console scope): a tabbed section over the five entity sub-views
-// (workspaces · users · teams · members · roles/grants). Each tab is cap-gated for DISPLAY ONLY — the
-// gateway re-checks every verb server-side, so hiding a tab is convenience, never the security
-// boundary (the forged-call deny is proven in Rust: role/gateway/tests/admin_routes_test.rs). Markup
-// + tab state only; each sub-view owns its data.
+// The admin console shell (admin-console redesign) — a tabbed section over FOUR relationship-first
+// surfaces: People (users + their teams/roles/access), Teams (records + inline members + access),
+// Roles (the real cap-bundle editor), and Workspaces (lifecycle). The old separate Users / Members /
+// Grants tabs are folded in (members live under Teams; grant/role assignment lives in each subject's
+// detail). Each tab is cap-gated for DISPLAY ONLY — the gateway re-checks every verb server-side, so
+// hiding a tab is convenience, never the security boundary. Markup + tab state only.
 
 import { useState } from "react";
 
 import { CAP, hasCap } from "@/lib/session";
-import { WorkspacesAdmin } from "./WorkspacesAdmin";
-import { UsersAdmin } from "./UsersAdmin";
+import { PeopleAdmin } from "./PeopleAdmin";
 import { TeamsAdmin } from "./TeamsAdmin";
-import { MembersAdmin } from "./MembersAdmin";
-import { GrantsAdmin } from "./GrantsAdmin";
+import { RolesAdmin } from "./RolesAdmin";
+import { WorkspacesAdmin } from "./WorkspacesAdmin";
 
-type Tab = "workspaces" | "users" | "teams" | "members" | "grants";
+type Tab = "people" | "teams" | "roles" | "workspaces";
 
 interface Props {
   ws: string;
@@ -22,17 +22,14 @@ interface Props {
 }
 
 export function AdminView({ ws, caps }: Props) {
-  // Each tab shows only if the session carries the controlling cap (per-control gating, the scope's
-  // lean). The server re-checks regardless.
   const tabs: { key: Tab; label: string; show: boolean }[] = [
-    { key: "workspaces", label: "Workspaces", show: hasCap(caps, CAP.workspaceDelete) },
-    { key: "users", label: "Users", show: hasCap(caps, CAP.userManage) },
+    { key: "people", label: "People", show: hasCap(caps, CAP.userManage) },
     { key: "teams", label: "Teams", show: hasCap(caps, CAP.teamsManage) },
-    { key: "members", label: "Members", show: hasCap(caps, CAP.teamsManage) },
-    { key: "grants", label: "Roles & grants", show: hasCap(caps, CAP.grantsAssign) },
+    { key: "roles", label: "Roles", show: hasCap(caps, CAP.grantsAssign) },
+    { key: "workspaces", label: "Workspaces", show: hasCap(caps, CAP.workspaceDelete) },
   ];
   const visible = tabs.filter((t) => t.show);
-  const [tab, setTab] = useState<Tab>(visible[0]?.key ?? "users");
+  const [tab, setTab] = useState<Tab>(visible[0]?.key ?? "people");
   const active = visible.some((t) => t.key === tab) ? tab : visible[0]?.key;
 
   return (
@@ -54,11 +51,10 @@ export function AdminView({ ws, caps }: Props) {
         ))}
       </nav>
       <div className="min-h-0 flex-1">
-        {active === "workspaces" && <WorkspacesAdmin ws={ws} />}
-        {active === "users" && <UsersAdmin ws={ws} />}
+        {active === "people" && <PeopleAdmin ws={ws} />}
         {active === "teams" && <TeamsAdmin ws={ws} />}
-        {active === "members" && <MembersAdmin ws={ws} />}
-        {active === "grants" && <GrantsAdmin ws={ws} />}
+        {active === "roles" && <RolesAdmin ws={ws} caps={caps} />}
+        {active === "workspaces" && <WorkspacesAdmin ws={ws} />}
       </div>
     </div>
   );

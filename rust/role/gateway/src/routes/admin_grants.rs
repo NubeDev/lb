@@ -44,6 +44,27 @@ pub async fn list_roles(
     Ok(Json(roles))
 }
 
+/// The `POST /admin/roles` (define) body: a role name and the caps it bundles.
+#[derive(Debug, Deserialize)]
+pub struct RoleBody {
+    pub name: String,
+    pub caps: Vec<String>,
+}
+
+/// `POST /admin/roles` — define (or replace) a custom role bundling `caps`. No-widening is enforced
+/// server-side (`roles_define`): the definer may only bundle caps they themselves hold.
+pub async fn define_role(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<RoleBody>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    lb_host::roles_define(&gw.node.store, &p, p.ws(), &body.name, &body.caps)
+        .await
+        .map_err(forbid)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// The `POST /admin/grants` (assign) / `DELETE`-style revoke body: subject + cap.
 #[derive(Debug, Deserialize)]
 pub struct GrantBody {

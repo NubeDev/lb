@@ -5,6 +5,16 @@
 /** A reviewer's decision on a `needs:approval` inbox item (mirrors `lb_inbox::Decision`). */
 export type Decision = "approved" | "rejected" | "deferred";
 
+/** The pull-request coordinates a coding job opens (mirrors the Rust `PrSpec` / `github-target`'s
+ *  `create_pr` payload). Recorded at `requestApproval` and read back when the job starts. */
+export interface PrSpec {
+  repo: string;
+  head: string;
+  base: string;
+  title: string;
+  body?: string;
+}
+
 /** The result of starting a coding job: the durable job id, and whether the approval gate let it
  *  through. `started: false` means the gate refused (awaiting approval) — the genuine S6 gate. */
 export interface StartResult {

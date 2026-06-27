@@ -14,6 +14,7 @@ mod authz;
 mod boot;
 mod channel;
 mod channel_registry;
+mod dbview;
 mod ext;
 mod inbox;
 mod ingest;
@@ -31,6 +32,7 @@ mod serve;
 mod sync;
 mod tags;
 mod teams;
+mod tool_call;
 mod users;
 mod workflow;
 mod workspaces;
@@ -55,6 +57,10 @@ pub use channel::{
     PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
+pub use dbview::{
+    authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
+    DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
+};
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, reconcile,
     ExtError, ExtRow, ReconcileAction, ReconcilePlan,
@@ -62,8 +68,8 @@ pub use ext::{
 pub use inbox::{list_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_find,
-    series_latest_value, series_read_range, DrainPass, IngestError, Qos, Sample, COMMIT_BATCH,
-    DEFAULT_STAGING_BOUND,
+    series_latest_value, series_list, series_read_range, DrainPass, IngestError, Qos, Sample,
+    COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
 };
 pub use install::install_extension;
 pub use installed::installed;
@@ -90,6 +96,7 @@ pub use tags::{
     Provenance, Source as TagSource, Tag, TagsError,
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
+pub use tool_call::call_tool;
 pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
     user_login_check, UserView, UsersError,

@@ -59,6 +59,14 @@ pub async fn call_ingest_tool(
                 .map_err(ingest_to_tool)?;
             Ok(json!({ "series": hits }))
         }
+        "series.list" => {
+            // Prefix is optional — absent/empty lists every series.
+            let prefix = input.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
+            let names = super::series_list(store, principal, ws, prefix)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "series": names }))
+        }
         _ => Err(ToolError::NotFound),
     }
 }

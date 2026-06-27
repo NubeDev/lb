@@ -9,12 +9,36 @@
 //! component into the runtime. Persist-before-load mirrors the channel persist-before-publish
 //! discipline — the durable approval is the source of truth, the running instance follows it.
 
-use lb_assets::{record_install, Install};
-use lb_ext_loader::{grant, Manifest};
+use lb_assets::{record_install, ExtUi, Install};
+use lb_ext_loader::{grant, Manifest, UiPage, Widget};
 use lb_store::StoreError;
 
 use crate::boot::Node;
 use crate::load::{load_extension, LoadError, Loaded};
+
+/// Project a manifest `[ui]`/`[widget]` contribution onto the durable [`ExtUi`] stored on the
+/// install, **narrowing its declared `scope` to the granted caps** — a page/widget can never claim
+/// a tool the admin didn't approve (ui-federation: "a gated caller, never a trusted decider"). The
+/// bridge re-filters and the host re-checks regardless; this is the durable, narrowed truth.
+fn ui_from(
+    scope: &[String],
+    granted: &[String],
+    entry: String,
+    label: String,
+    icon: String,
+) -> ExtUi {
+    let allowed: Vec<String> = scope
+        .iter()
+        .filter(|t| granted.iter().any(|g| g == &format!("mcp:{t}:call")))
+        .cloned()
+        .collect();
+    ExtUi {
+        entry,
+        label,
+        icon,
+        scope: allowed,
+    }
+}
 
 /// Install `wasm_bytes` (described by `manifest_toml`) into `node` for workspace `ws`: persist
 /// the `requested ∩ admin_approved` grant set as a durable install record, then load. `ts` is a
@@ -31,13 +55,34 @@ pub async fn install_extension(
         Manifest::parse(manifest_toml).map_err(|e| LoadError::Manifest(e.to_string()))?;
     let granted = grant(&manifest, admin_approved);
 
+    // Project the manifest's page/widget contributions onto the install, scope-narrowed to `granted`.
+    let ui = manifest.ui.as_ref().map(|u: &UiPage| {
+        ui_from(
+            &u.scope,
+            &granted,
+            u.entry.clone(),
+            u.label.clone(),
+            u.icon.clone(),
+        )
+    });
+    let widget = manifest.widget.as_ref().map(|w: &Widget| {
+        ui_from(
+            &w.scope,
+            &granted,
+            w.entry.clone(),
+            w.label.clone(),
+            w.icon.clone(),
+        )
+    });
+
     // STATE: persist the approved grant set first — the durable record of what was allowed.
     let install = Install::new(
         manifest.id.clone(),
         manifest.version.clone(),
         granted.clone(),
         ts,
-    );
+    )
+    .with_ui(ui, widget);
     record_install(&node.store, ws, &install)
         .await
         .map_err(store_to_load)?;

@@ -20,9 +20,15 @@ interface TeamView {
   name: string;
 }
 
+interface RoleView {
+  name: string;
+  caps: string[];
+}
+
 const users = new Map<string, Map<string, UserView>>(); // ws → (user → view)
 const teamRecords = new Map<string, Map<string, TeamView>>(); // ws → (team → record)
 const grants = new Map<string, Map<string, Set<string>>>(); // ws → (subject → caps)
+const roles = new Map<string, Map<string, RoleView>>(); // ws → (role name → role)
 const archived = new Set<string>(); // `${ws}/${workspaceId}` soft-deleted
 const purged = new Set<string>(); // `${ws}/${workspaceId}` hard-deleted
 
@@ -115,7 +121,12 @@ export function adminFakeInvoke<T>(cmd: string, args?: Record<string, unknown>):
       return undefined as T;
     }
     case "roles_list":
-      return [] as T;
+      return [...map(roles).values()].sort((a, b) => a.name.localeCompare(b.name)) as T;
+    case "roles_define": {
+      const { name, caps } = args as { name: string; caps: string[] };
+      map(roles).set(name, { name, caps: [...caps] });
+      return undefined as T;
+    }
 
     default:
       return null;
@@ -135,6 +146,7 @@ export function __resetAdminFake(): void {
   users.clear();
   teamRecords.clear();
   grants.clear();
+  roles.clear();
   archived.clear();
   purged.clear();
 }
