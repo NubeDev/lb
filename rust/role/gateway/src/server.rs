@@ -17,8 +17,8 @@ use crate::routes::{
     list_dashboards, list_docs, list_extensions, list_grants, list_inbox, list_roles, list_series,
     list_tables, list_team_members, list_teams, list_users, list_workspaces, load_skill, login,
     mcp_call, post_message, publish_extension, purge_workspace, put_doc, put_skill, read_graph,
-    read_samples, remove_team_member, rename_team, rename_workspace, request_approval,
-    resolve_inbox, resolve_workflow_approval, revoke_grant, save_dashboard, scan_table,
+    read_samples, read_schema, remove_team_member, rename_team, rename_workspace, request_approval,
+    resolve_inbox, resolve_workflow_approval, revoke_grant, run_query, save_dashboard, scan_table,
     series_stream, serve_ext_ui, share_dashboard, share_doc, start_job, system_overview,
     system_subsystem, system_topology, uninstall_extension, write_samples,
 };
@@ -96,6 +96,12 @@ pub fn router(gw: Gateway) -> Router {
         .route("/store/tables", get(list_tables))
         .route("/store/tables/{table}/rows", get(scan_table))
         .route("/store/graph", get(read_graph))
+        // Read-only SQL (widget-builder Slice A) — the "direct SurrealDB" widget source + the visual
+        // SQL builder's schema feed. `POST /store/query` runs a parse-allowlisted, bounded SELECT;
+        // `GET /store/schema` lists the workspace's tables + columns. Each re-checks its cap
+        // server-side; ws from the token; the SQL can never name a namespace (read-only, walled).
+        .route("/store/query", post(run_query))
+        .route("/store/schema", get(read_schema))
         // System map (system-map scope) — the admin, READ-ONLY workspace topology + status console:
         // a per-subsystem status grid + a react-flow wiring graph, both from one live snapshot. Each
         // route re-checks the **admin** cap server-side; ws + principal from the token. No writes.

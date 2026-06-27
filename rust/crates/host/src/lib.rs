@@ -32,6 +32,7 @@ mod remote;
 mod render_templates;
 mod role;
 mod serve;
+mod store_query;
 mod sync;
 mod system;
 mod tags;
@@ -105,6 +106,11 @@ pub use render_templates::{
 };
 pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
+pub use store_query::{
+    authorize_store_query, call_store_query_tool, ensure_read_only, store_query_run,
+    store_schema_read, QueryResult, Schema, SchemaColumn, SchemaTable, StoreQueryError,
+    MAX_QUERY_ROWS, QUERY_TIMEOUT_SECS,
+};
 pub use sync::{replay_history, sync_channel, ChannelSync};
 pub use system::{
     authorize_system, call_system_tool, system_overview, system_subsystem, system_topology, Health,

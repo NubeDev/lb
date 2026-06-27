@@ -22,6 +22,11 @@ lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
 lb-supervisor.workspace = true
+# The read-only SQL surface (`store.query`, widget-builder Slice A) parses the statement with
+# SurrealDB's own parser to allowlist a single SELECT by KIND (never a substring check). We use only
+# the parser (`surrealdb::syn::parse` + `surrealdb::sql::Statement`); the store engine stays behind
+# `lb-store`. Same pinned version + feature set as the workspace store crate (symmetric build).
+surrealdb.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true

@@ -78,6 +78,14 @@ fn member_caps() -> Vec<String> {
         "mcp:store.tables:call",
         "mcp:store.scan:call",
         "mcp:store.graph:call",
+        // widget-builder Slice A (the "direct SurrealDB" widget source): the read-only SQL verbs the
+        // `/store/query` + `/store/schema` routes check, and a widget cell reaches over the bridge.
+        // `store.query` is a parse-allowlisted, bounded, workspace-walled SELECT (the parse gate +
+        // wall + row-cap are the boundary; the cap grant is convenience). `store.schema` feeds the
+        // visual SQL builder's dropdowns. The gateway re-checks each server-side; a token without the
+        // cap is refused (the deny test). Granted here like the other raw-store lenses.
+        "mcp:store.query:call",
+        "mcp:store.schema:call",
         // system-map scope: the two read verbs the `/system/*` routes check. Admin-only by grant
         // convention — a system snapshot reads across every subsystem of the workspace (like the
         // `store.*` lens), so the cap rides the workspace-admin role, NOT the member set. The gateway
