@@ -59,7 +59,9 @@ export function useSource(source: Source | undefined, tools: string[]): SourceSt
     loading: true,
     denied: false,
   });
-  const bridge = useMemo(() => makeWidgetBridge(tools), [tools.join("|")]);
+  const toolsKey = tools.join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
+  const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
   const key = JSON.stringify(source ?? null);
   const unwatchRef = useRef<(() => void) | null>(null);
 

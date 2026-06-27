@@ -18,7 +18,9 @@ interface Props {
 }
 
 export function ScriptedView({ engine, tools, options }: Props) {
-  const bridge = useMemo(() => makeWidgetBridge(tools), [tools.join("|")]);
+  const toolsKey = tools.join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
+  const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
   const inline = typeof options?.code === "string" ? (options.code as string) : null;
   const templateId = typeof options?.templateId === "string" ? (options.templateId as string) : null;
   const [code, setCode] = useState<string | null>(inline);

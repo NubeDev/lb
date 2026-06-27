@@ -19,7 +19,9 @@ interface Props {
 }
 
 export function ButtonControl({ action, tools, options, label }: Props) {
-  const bridge = useMemo(() => makeWidgetBridge(tools), [tools.join("|")]);
+  const toolsKey = tools.join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
+  const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
   const [status, setStatus] = useState<"idle" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 

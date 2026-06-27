@@ -78,8 +78,8 @@ description = "Calls itself through host.call-tool; exists to prove the host bou
 # The PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the ESM remote
 # entry, resolved under the gateway's `/extensions/proof-panel/ui/` route. The shell dynamic-imports it
 # (sharing its React via the host import map) and mounts it in a cap-gated nav slot. The lib build emits
-# `dist/remoteEntry.js` (no `assets/` subdir), so the served path is `…/ui/remoteEntry.js`. NO [[widget]]
-# tables — widget tiles are deferred to the dashboard scope (proof-panel scope open question).
+# `dist/remoteEntry.js` (no `assets/` subdir), so the served path is `…/ui/remoteEntry.js`. The
+# `[[widget]]` tile below (a SECOND `mountWidget` export on the same remote) is the dashboard widget.
 [ui]
 entry = "remoteEntry.js"
 label = "Proof Panel"
@@ -96,6 +96,19 @@ scope = [
     "proof-panel.proof.derive",
     "proof-panel.proof.simulate",
 ]
+
+# A dashboard WIDGET tile this extension contributes (widget-builder scope, follow-up 1 — the
+# `widgets-scope.md` "render ext:<id> in a cell" item, built there). The dashboard palette surfaces it
+# (Gate 1 install + Gate 2 edit cap); dragging it creates an `ext:proof-panel/proof-ping` cell. It is
+# trust-tiered by publisher key (non-allow-listed → sandboxed iframe). The remote exposes a named
+# `mountWidget(el, ctx, bridge, widgetId)` export on the SAME `remoteEntry.js` (follow-up 2, one build).
+# Its reachable tools = this `scope ∩ install grant`, re-checked at the host per call — the same leash
+# the page rides. This resolves the proof-panel scope's "[[widget]] deferred to dashboard" open question.
+[[widget]]
+entry = "remoteEntry.js"
+label = "Proof Ping"
+icon  = "shield-check"
+scope = ["series.latest", "series.find"]
 
 [visibility]
 class = "public"

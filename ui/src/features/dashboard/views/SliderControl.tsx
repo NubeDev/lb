@@ -17,7 +17,9 @@ interface Props {
 }
 
 export function SliderControl({ action, tools, options, label }: Props) {
-  const bridge = useMemo(() => makeWidgetBridge(tools), [tools.join("|")]);
+  const toolsKey = tools.join("|");
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
+  const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
   const min = typeof options?.min === "number" ? (options.min as number) : 0;
   const max = typeof options?.max === "number" ? (options.max as number) : 100;
   const [value, setValue] = useState(min);

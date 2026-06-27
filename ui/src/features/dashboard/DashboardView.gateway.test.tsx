@@ -34,14 +34,18 @@ describe("DashboardView (real gateway)", () => {
     render(<DashboardView ws={ws} />);
     await createDashboard(user, "Ops");
 
-    // Bind a chart to the seeded `cooler.temp` series and add it.
-    await user.type(await screen.findByLabelText("widget series"), "cooler.temp");
+    // v2 builder: source-pick the seeded `cooler.temp` series (a friendly label, NOT a tool name),
+    // keep the default `chart` view, and add it. The source picker resolves the label to
+    // `{tool:"series.read", args:{series:"cooler.temp"}}` behind the scenes. Wait for the async
+    // `series.list` to populate the picker options first.
+    const source = await screen.findByLabelText("widget source");
+    await screen.findByRole("option", { name: "cooler.temp" });
+    await user.selectOptions(source, "series:cooler.temp");
     await user.click(screen.getByLabelText("add widget"));
 
-    // The cell renders the chart over real samples (the SVG line + a latest value). `findBy*` waits
-    // for the async backfill (`series.read`) to complete and the widget to leave its loading state.
+    // The cell renders the chart over real rows read through the bridge (the SVG line + a latest value).
     await screen.findByLabelText("cell w1");
-    expect(await screen.findByLabelText("series cooler.temp line")).toBeInTheDocument();
+    expect(await screen.findByLabelText("chart line")).toBeInTheDocument();
     expect((await screen.findByLabelText("chart latest")).textContent).not.toBe("");
 
     // Persisted: a fresh render of the same workspace re-loads the dashboard from the store.
@@ -50,7 +54,7 @@ describe("DashboardView (real gateway)", () => {
     expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
   });
 
-  it("resolves a tag-bound widget via series.find", async () => {
+  it("renders a stat view over a bridged source", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
@@ -59,13 +63,14 @@ describe("DashboardView (real gateway)", () => {
     render(<DashboardView ws={ws} />);
     await createDashboard(user, "Tagged");
 
-    // A stat widget bound by tags (no explicit series) resolves to series:cooler.temp via series.find.
-    await user.selectOptions(await screen.findByLabelText("widget type"), "stat");
-    await user.type(screen.getByLabelText("widget tags"), "kind:temperature");
+    // Source-pick the seeded series, choose the `stat` view, add it.
+    await screen.findByRole("option", { name: "cooler.temp" });
+    await user.selectOptions(await screen.findByLabelText("widget source"), "series:cooler.temp");
+    await user.selectOptions(screen.getByLabelText("widget view"), "stat");
     await user.click(screen.getByLabelText("add widget"));
 
     await screen.findByLabelText("cell w1");
-    // The stat value renders a real (numeric) latest value, not a fake (await the find→read chain).
+    // The stat value renders a real (numeric) latest value, not a fake (await the bridged read).
     expect((await screen.findByLabelText("stat value")).textContent).not.toBe("");
   });
 
