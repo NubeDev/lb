@@ -9,6 +9,7 @@ import { X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
 import type { Cell } from "@/lib/dashboard";
+import type { ExtRow } from "@/lib/ext/ext.api";
 import type { DashboardSearch } from "@/features/routing/search";
 
 // react-grid-layout owns positioning; react-resizable owns the visible + hittable resize handle.
@@ -22,12 +23,16 @@ interface Props {
   /** Called with the new cell geometry on a drag/resize stop (the persistence seam). */
   onLayout: (cells: Cell[]) => void;
   onRemove: (i: string) => void;
+  /** Installed extensions (from `ext.list`) — needed to mount `ext:<id>/<widget>` cells. */
+  installed?: ExtRow[];
+  /** The current workspace (passed to widgets; the hard wall is enforced by the token server-side). */
+  workspace?: string;
 }
 
 const COLS = 12;
 const ROW_H = 56;
 
-export function Grid({ cells, editable, range, onLayout, onRemove }: Props) {
+export function Grid({ cells, editable, range, onLayout, onRemove, installed, workspace }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
 
@@ -94,7 +99,7 @@ export function Grid({ cells, editable, range, onLayout, onRemove }: Props) {
               </button>
             )}
             <div className="min-h-0 flex-1">
-              <WidgetHost cell={c} range={range} />
+              <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} />
             </div>
           </div>
         ))}

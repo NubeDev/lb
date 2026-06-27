@@ -7,8 +7,9 @@ import { LayoutGrid, Share2 } from "lucide-react";
 
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
-import { AddWidget } from "./AddWidget";
+import { WidgetBuilder } from "./builder/WidgetBuilder";
 import { useDashboard } from "./useDashboard";
+import { useSourcePicker } from "./builder/useSourcePicker";
 import type { Cell, Visibility } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
 
@@ -22,6 +23,7 @@ interface Props {
 
 export function DashboardView({ ws, range, onRangeChange }: Props) {
   const dash = useDashboard(ws);
+  const picker = useSourcePicker(ws);
   const current = dash.current;
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -132,7 +134,8 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
           </div>
         ) : (
           <>
-            <AddWidget
+            <WidgetBuilder
+              ws={ws}
               existing={current.cells}
               onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
             />
@@ -142,6 +145,8 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
                 cells={current.cells}
                 editable
                 range={range}
+                installed={picker.installed}
+                workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
               />

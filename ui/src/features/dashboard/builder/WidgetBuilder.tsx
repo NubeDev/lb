@@ -1,0 +1,193 @@
+// The widget builder (widget-builder scope, "Goals") — the tool-driven "add a tile" experience that
+// supersedes the v1 series-only `AddWidget`. The author: (1) picks a SOURCE by friendly label (the
+// source picker over `series.list` + `ext.list` — never a raw tool name), (2) chooses a VIEW from the
+// vocabulary valid for that source (read views for a read source; controls for an action; scripted
+// views always available), (3) previews it live through the real bridge, and (4) clicks "Add to
+// dashboard" — which builds a v2 `{view, source, action, options}` cell appended to the layout and
+// persisted via `dashboard.save`. Author code (Plot/D3/JSX) is entered inline and renders sandboxed.
+//
+// The builder is wiring + layout; each preview/view owns its data (through the bridge). No tool name is
+// ever shown to the author; the resolved `{tool,args}` lives only in the cell.
+
+import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import type { Cell, View } from "@/lib/dashboard";
+import { WidgetView } from "../views/WidgetView";
+import { cellTools } from "../views/WidgetView";
+import { useSourcePicker } from "./useSourcePicker";
+import type { SourceEntry } from "./sourcePicker";
+
+interface Props {
+  ws: string;
+  existing: Cell[];
+  onAdd: (cell: Cell) => void;
+}
+
+// No shadcn Select/Textarea primitive exists in this repo yet (only Button/Input/Badge/Card/…), so the
+// source/view pickers and the code editor use native elements with this Input-matching class. The lint
+// rule is suppressed per element with this justification — generating full Radix Select/Textarea
+// primitives is out of this slice's scope; the controls are token-bound and keyboard-operable.
+const FIELD =
+  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
+
+/** Read views render a source's result; control views call an action; scripted views run author code. */
+const READ_VIEWS: View[] = ["chart", "stat", "gauge", "table"];
+const SCRIPTED_VIEWS: View[] = ["plot", "d3", "template"];
+const CONTROL_VIEWS: View[] = ["switch", "slider", "button"];
+
+/** A fresh cell key that doesn't collide with the existing ones. */
+function nextKey(existing: Cell[]): string {
+  let n = existing.length + 1;
+  const keys = new Set(existing.map((c) => c.i));
+  while (keys.has(`w${n}`)) n += 1;
+  return `w${n}`;
+}
+
+/** The views valid for a chosen source. A write action ⇒ controls; a read source ⇒ read + scripted. */
+function viewsFor(entry: SourceEntry | null): View[] {
+  if (!entry) return [...READ_VIEWS, ...SCRIPTED_VIEWS, ...CONTROL_VIEWS];
+  if (entry.writes) return [...CONTROL_VIEWS];
+  return [...READ_VIEWS, ...SCRIPTED_VIEWS];
+}
+
+export function WidgetBuilder({ ws, existing, onAdd }: Props) {
+  const { entries, installed, loading } = useSourcePicker(ws);
+  const [entryId, setEntryId] = useState<string>("");
+  const [view, setView] = useState<View>("chart");
+  const [code, setCode] = useState<string>("");
+
+  const entry = useMemo(() => entries.find((e) => e.id === entryId) ?? null, [entries, entryId]);
+  const validViews = viewsFor(entry);
+  const isScripted = SCRIPTED_VIEWS.includes(view);
+
+  // Build the candidate cell from the current selection — also the preview's input.
+  const candidate: Cell | null = useMemo(() => {
+    if (!entry && !isScripted) return null;
+    const options: Record<string, unknown> = {};
+    if (isScripted && code.trim()) options.code = code;
+    return {
+      i: "preview",
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      v: 2,
+      widget_type: "chart",
+      view,
+      binding: { series: "" },
+      source: entry?.source,
+      action: entry?.action,
+      options,
+    };
+  }, [entry, view, code, isScripted]);
+
+  const add = () => {
+    if (!candidate) return;
+    const y = existing.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+    onAdd({ ...candidate, i: nextKey(existing), y });
+    setCode("");
+  };
+
+  return (
+    <div className="border-b border-border bg-panel px-3 py-3 text-xs" aria-label="widget builder">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-muted">Add widget</span>
+
+        {/* Source picker — friendly labels grouped by origin; the author never sees a tool name. */}
+        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; see FIELD note */}
+        <select
+          aria-label="widget source"
+          className={`${FIELD} w-64`}
+          value={entryId}
+          onChange={(e) => {
+            setEntryId(e.target.value);
+            const next = entries.find((x) => x.id === e.target.value) ?? null;
+            const vs = viewsFor(next);
+            if (!vs.includes(view)) setView(vs[0]);
+          }}
+        >
+          <option value="">{loading ? "loading sources…" : "— pick a source —"}</option>
+          <PickerGroup entries={entries} group="series" label="Series" />
+          <PickerGroup entries={entries} group="live" label="Live (Zenoh)" />
+          <PickerGroup entries={entries} group="extension" label="Installed extension" />
+          <PickerGroup entries={entries} group="action" label="Action (control)" />
+        </select>
+
+        {/* View chooser — only the views valid for the chosen source. */}
+        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; see FIELD note */}
+        <select
+          aria-label="widget view"
+          className={FIELD}
+          value={view}
+          onChange={(e) => setView(e.target.value as View)}
+        >
+          {validViews.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+
+        <Button aria-label="add widget" size="sm" onClick={add}>
+          <Plus size={12} /> Add
+        </Button>
+      </div>
+
+      {/* Scripted views: an inline code editor (renders sandboxed; may write a granted tool). */}
+      {isScripted && (
+        // eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive; see FIELD note
+        <textarea
+          aria-label="widget code"
+          placeholder={
+            view === "template"
+              ? 'JSX/HTML template — a button can write: <button data-call="mqtt.publish" data-args=\'{"topic":"x"}\'>Defrost</button>'
+              : "Plot/D3 snippet — async (bridge, el, engine) => { const {samples} = await bridge.call('series.read', {series:'cooler.temp'}); ... }"
+          }
+          className={`${FIELD} mt-2 h-24 w-full py-1.5 font-mono`}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+      )}
+
+      {/* Live preview through the REAL bridge — never a fake render. */}
+      {candidate && (
+        <div
+          className="mt-2 h-40 w-64 rounded-md border border-border bg-bg p-2"
+          aria-label="widget preview"
+        >
+          <WidgetView
+            cell={{ ...candidate, i: "preview" }}
+            installed={installed}
+            workspace={ws}
+          />
+          <span className="sr-only" data-preview-tools={cellTools(candidate).join(",")} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Render one `<optgroup>` of the picker for a source group, empty-tolerant. */
+function PickerGroup({
+  entries,
+  group,
+  label,
+}: {
+  entries: SourceEntry[];
+  group: SourceEntry["group"];
+  label: string;
+}) {
+  const items = entries.filter((e) => e.group === group);
+  if (items.length === 0) return null;
+  return (
+    <optgroup label={label}>
+      {items.map((e) => (
+        <option key={e.id} value={e.id}>
+          {e.label}
+        </option>
+      ))}
+    </optgroup>
+  );
+}
