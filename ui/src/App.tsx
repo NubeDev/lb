@@ -17,6 +17,7 @@ import { AdminView } from "./features/admin";
 import { ExtensionsView } from "./features/extensions";
 import { DataView } from "./features/data";
 import { IngestView } from "./features/ingest";
+import { DashboardView } from "./features/dashboard";
 import { ExtHost, useExtensionPages } from "./features/ext-host";
 
 export function App() {
@@ -44,6 +45,9 @@ export function App() {
   // gateway re-checks every verb server-side, so a forged call by a non-admin is denied regardless
   // (proven in role/gateway/tests/admin_routes_test.rs). Hiding the controls just avoids dead buttons.
   const allowed: CoreSurface[] = ["channels", "members", "inbox", "outbox"];
+  // dashboard: the Dashboards page shows for any session that may list dashboards (member-level —
+  // gate 3 / ownership still decides which specific dashboards they see). Gateway re-checks each verb.
+  if (hasCap(caps, CAP.dashboardList)) allowed.push("dashboards");
   // data-console: the Ingest page shows for any session that may list series (member-level); the Data
   // page (the admin DB browser) shows only for a session holding `store.scan` — it relaxes gate 3, so
   // it is admin-only. The gateway re-checks every verb server-side regardless.
@@ -84,6 +88,7 @@ export function App() {
           <ChannelView ws={workspace} channel={channel} author={principal} />
         )}
         {active === "members" && <MembersView ws={workspace} />}
+        {active === "dashboards" && <DashboardView ws={workspace} />}
         {active === "ingest" && <IngestView ws={workspace} />}
         {active === "data" && <DataView ws={workspace} />}
         {active === "inbox" && <InboxView ws={workspace} />}

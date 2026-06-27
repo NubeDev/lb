@@ -25,7 +25,10 @@ export async function signInReal(user: string, workspace: string) {
 /** POST to a test-only `/_seed/*` route on the spawned gateway, authenticated by the current session
  *  token (so the seed lands in the session's workspace — the real write path, behind the workspace
  *  wall). For surfaces with no public create route (inbox item / outbox effect / extension install). */
-async function seed(kind: "inbox" | "outbox" | "extension", body: unknown): Promise<void> {
+async function seed(
+  kind: "inbox" | "outbox" | "extension" | "iot_demo",
+  body: unknown,
+): Promise<void> {
   const url = inject("gatewayUrl");
   const token = sessionToken();
   const res = await fetch(`${url}/_seed/${kind}`, {
@@ -34,6 +37,12 @@ async function seed(kind: "inbox" | "outbox" | "extension", body: unknown): Prom
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`seed ${kind} failed: ${res.status} ${await res.text()}`);
+}
+
+/** Seed the dashboard demo series (`cooler.temp`/`fryer.state`) + tags into the session workspace,
+ *  through the real ingest path (dashboard scope). Lets a dashboard test bind widgets to real series. */
+export function seedIotDemo(): Promise<void> {
+  return seed("iot_demo", {});
 }
 
 /** Seed a real durable inbox item into the session workspace. */

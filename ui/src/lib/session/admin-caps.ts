@@ -30,6 +30,10 @@ export const CAP = {
   // session that may read/list series.
   seriesList: "mcp:series.list:call",
   ingestWrite: "mcp:ingest.write:call",
+  // dashboard (Dashboards page): member-level — the nav entry shows for any session that may list
+  // dashboards; gate 3 / ownership still decides which specific ones they see/edit.
+  dashboardList: "mcp:dashboard.list:call",
+  dashboardSave: "mcp:dashboard.save:call",
 } as const;
 
 /** The full dev-admin cap grant (the gateway's `member_caps()` admin half + the ext caps). */
@@ -62,6 +66,11 @@ export const ADMIN_CAPS: string[] = [
   CAP.storeGraph,
   CAP.seriesList,
   CAP.ingestWrite,
+  CAP.dashboardList,
+  CAP.dashboardSave,
+  "mcp:dashboard.get:call",
+  "mcp:dashboard.delete:call",
+  "mcp:dashboard.share:call",
   "mcp:series.read:call",
   "mcp:series.latest:call",
   "mcp:series.find:call",

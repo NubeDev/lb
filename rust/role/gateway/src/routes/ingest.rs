@@ -36,6 +36,18 @@ pub async fn write_samples(
     Json(body): Json<WriteSamples>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    // Keep a stamped copy to publish as live motion after the durable write — the producer is the
+    // authenticated principal (matching what `ingest_write` stamps), so a live frame is consistent
+    // with the committed `series` row.
+    let live: Vec<Sample> = body
+        .samples
+        .iter()
+        .map(|s| {
+            let mut s = s.clone();
+            s.producer = p.sub().to_string();
+            s
+        })
+        .collect();
     let accepted = lb_host::ingest_write(&gw.node.store, &p, p.ws(), body.samples)
         .await
         .map_err(ingest_status)?;
@@ -44,6 +56,12 @@ pub async fn write_samples(
     let pass = lb_host::drain_workspace(&gw.node.store, p.ws())
         .await
         .map_err(ingest_status)?;
+    // Publish each committed sample onto its series motion subject so a live dashboard widget sees
+    // it advance without polling (state vs motion, rule 3). Best-effort — a publish failure never
+    // fails the durable write the read path already reflects.
+    for s in &live {
+        let _ = lb_host::publish_sample(&gw.node.bus, p.ws(), s).await;
+    }
     Ok(Json(
         json!({ "accepted": accepted, "committed": pass.committed }),
     ))

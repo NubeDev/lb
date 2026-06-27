@@ -344,6 +344,28 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return getJson<T>(`${base}/series/${enc(series)}/samples${qs ? `?${qs}` : ""}`);
     }
 
+    // ── dashboard (dashboard scope): the browser's `dashboard.*` CRUD over the gateway. The owner +
+    //    workspace come from the token (§7); visibility is set via the `/share` route, never on save.
+    //    The gateway re-checks the three gates (workspace → cap → membership/visibility) server-side. ──
+    case "dashboard_list":
+      return getJson<T>(`${base}/dashboards`);
+    case "dashboard_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/dashboards/${enc(id)}`);
+    }
+    case "dashboard_save": {
+      const { id, title, cells } = args as { id: string; title: string; cells: unknown[] };
+      return postJson<T>(`${base}/dashboards`, { id, title, cells });
+    }
+    case "dashboard_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/dashboards/${enc(id)}`);
+    }
+    case "dashboard_share": {
+      const { id, visibility, team } = args as { id: string; visibility: string; team?: string };
+      return postJson<T>(`${base}/dashboards/${enc(id)}/share`, { visibility, team });
+    }
+
     default:
       throw new Error(`unknown command: ${cmd}`);
   }

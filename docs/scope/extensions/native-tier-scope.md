@@ -251,14 +251,17 @@ paths. Real embedded SurrealDB + in-proc Zenoh everywhere else. Each test that b
   (`call_sidecar` restarts-on-fault). Different triggers, distinct as intended.
 - ~~**Where the native manifest fields live.**~~ **RESOLVED:** the `[native]` block (exec/args/target/
   restart), required for and exclusive to `tier="native"`, validated at parse (ext-loader).
-- **Boot reconciler.** Re-spawn `lifecycle=started` sidecars from durable records on node boot (the
-  rubix reconciler analogue). Deferred — single-process lifetime this slice; the `native_status`
-  record shape supports it (additive). *Recorded in the session: scoped out, records ready.*
+- ~~**Boot reconciler.**~~ **PROMOTED** to its own slice — re-spawn `lifecycle=started` sidecars
+  from durable records on node boot (the rubix reconciler analogue). Deferred here (single-process
+  lifetime this slice; the `native_status` record shape supports it, additive); now scoped in
+  [`supervision-reactor-scope.md`](supervision-reactor-scope.md).
 - **OS-level hardening depth** (cgroups/seccomp/userns) — deferred (non-goal of the minimal-sidecar
   posture). Which to add first when it lands?
-- **Background health-poll reactor.** This slice restarts **on-demand at the call boundary**; a
-  periodic `health` timer (+ the supervision events on the bus for observability) is the natural next
-  step — a sidecar that crashes between calls is only noticed on the next call today.
+- ~~**Background health-poll reactor.**~~ **PROMOTED** to its own slice. This slice restarts
+  **on-demand at the call boundary**; a periodic `health` timer (+ supervision events on the bus for
+  observability) is the natural next step — a sidecar that crashes between calls is only noticed on
+  the next call today, and a hung-but-alive child is not noticed at all. Scoped in
+  [`supervision-reactor-scope.md`](supervision-reactor-scope.md).
 - **The child→host callback transport.** This slice's sidecar uses only the control line; a sidecar
   that calls host MCP tools needs the routed-MCP callback wired (the deferred gateway/Tauri work).
   *Default: proxy through the control line (one transport), revisit if a firehose needs its own.*

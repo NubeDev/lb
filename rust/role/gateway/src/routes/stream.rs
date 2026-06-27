@@ -24,7 +24,7 @@ use crate::state::Gateway;
 #[derive(Debug, Deserialize)]
 pub struct StreamAuth {
     #[serde(default)]
-    token: String,
+    pub token: String,
 }
 
 /// Open the SSE stream for channel `cid`. `401` if the token is missing/bad; `403` if the session

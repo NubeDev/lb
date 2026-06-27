@@ -26,6 +26,24 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/inbox", post(seed_inbox))
         .route("/_seed/outbox", post(seed_outbox))
         .route("/_seed/extension", post(seed_extension))
+        .route("/_seed/iot_demo", post(seed_iot_demo))
+}
+
+/// `POST /_seed/iot_demo` — seed the dashboard demo series (`cooler.temp`/`fryer.state`) + their tags
+/// into the token's workspace through the **real ingest path** (dashboard scope, build step 1). Lets
+/// the dashboard Vitest bind widgets to real, tagged series (incl. the `{find:{tags}}` binding).
+async fn seed_iot_demo(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = auth(&gw, &headers)?;
+    let report = lb_host::seed_iot_demo(&gw.node.store, p.ws(), 1)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::json!({
+        "series": report.series,
+        "committed": report.samples_committed,
+    })))
 }
 
 fn auth(gw: &Gateway, headers: &HeaderMap) -> Result<lb_auth::Principal, (StatusCode, String)> {

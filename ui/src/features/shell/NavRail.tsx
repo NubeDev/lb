@@ -7,6 +7,7 @@ import {
   Database,
   Hash,
   Inbox,
+  LayoutDashboard,
   LogOut,
   Puzzle,
   Send,
@@ -18,6 +19,7 @@ import {
 export type CoreSurface =
   | "channels"
   | "members"
+  | "dashboards"
   | "ingest"
   | "data"
   | "inbox"
@@ -48,6 +50,7 @@ interface Props {
 const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "channels", icon: Hash, label: "Channels" },
   { key: "members", icon: Users, label: "Members" },
+  { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
   { key: "inbox", icon: Inbox, label: "Inbox" },

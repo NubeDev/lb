@@ -11,15 +11,16 @@ use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_team_member, archive_workspace, assign_grant, channel_stream, create_channel, create_team,
-    create_user, create_workspace, define_role, delete_team, delete_user, disable_extension,
-    disable_user, enable_extension, enable_user, find_series, get_doc, get_history,
-    get_outbox_status, grant_skill, latest_sample, link_doc, list_channels, list_docs,
-    list_extensions, list_grants, list_inbox, list_roles, list_series, list_tables,
-    list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
-    post_message, publish_extension, purge_workspace, put_doc, put_skill, read_graph, read_samples,
-    remove_team_member, rename_team, rename_workspace, request_approval, resolve_inbox,
-    resolve_workflow_approval, revoke_grant, scan_table, serve_ext_ui, share_doc, start_job,
-    uninstall_extension, write_samples,
+    create_user, create_workspace, define_role, delete_dashboard, delete_team, delete_user,
+    disable_extension, disable_user, enable_extension, enable_user, find_series, get_dashboard,
+    get_doc, get_history, get_outbox_status, grant_skill, latest_sample, link_doc, list_channels,
+    list_dashboards, list_docs, list_extensions, list_grants, list_inbox, list_roles, list_series,
+    list_tables, list_team_members, list_teams, list_users, list_workspaces, load_skill, login,
+    mcp_call, post_message, publish_extension, purge_workspace, put_doc, put_skill, read_graph,
+    read_samples, remove_team_member, rename_team, rename_workspace, request_approval,
+    resolve_inbox, resolve_workflow_approval, revoke_grant, save_dashboard, scan_table,
+    series_stream, serve_ext_ui, share_dashboard, share_doc, start_job, uninstall_extension,
+    write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -102,6 +103,16 @@ pub fn router(gw: Gateway) -> Router {
         .route("/series/find", post(find_series))
         .route("/series/{series}/latest", get(latest_sample))
         .route("/series/{series}/samples", get(read_samples))
+        // dashboard (dashboard scope) — the browser's `dashboard.*` CRUD + the live **series** SSE
+        // feed widgets watch. Each route re-checks the three gates server-side; ws+owner from the
+        // token. `GET /series/{series}/stream` is the motion analog of the channel stream.
+        .route("/dashboards", get(list_dashboards).post(save_dashboard))
+        .route(
+            "/dashboards/{id}",
+            get(get_dashboard).delete(delete_dashboard),
+        )
+        .route("/dashboards/{id}/share", post(share_dashboard))
+        .route("/series/{series}/stream", get(series_stream))
         .layer(CorsLayer::permissive())
         .with_state(gw)
 }

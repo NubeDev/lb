@@ -10,6 +10,7 @@ mod admin_users;
 mod admin_workspaces;
 mod assets;
 mod channel_registry;
+mod dashboard;
 mod dbview;
 mod ext;
 mod ext_ui;
@@ -21,7 +22,8 @@ mod mcp;
 mod members;
 mod outbox;
 mod post;
-mod stream;
+mod series_stream;
+pub(crate) mod stream;
 mod workflow;
 mod workspace;
 
@@ -34,6 +36,9 @@ pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
 pub use channel_registry::{create_channel, list_channels};
+pub use dashboard::{
+    delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,
+};
 pub use dbview::{list_tables, read_graph, scan_table};
 pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, uninstall_extension,
@@ -47,6 +52,7 @@ pub use mcp::mcp_call;
 pub use members::{add_team_member, list_team_members};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
+pub use series_stream::series_stream;
 pub use stream::channel_stream;
 pub use workflow::{request_approval, resolve_approval as resolve_workflow_approval, start_job};
 pub use workspace::{create_workspace, list_workspaces};

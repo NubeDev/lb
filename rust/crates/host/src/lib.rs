@@ -14,6 +14,7 @@ mod authz;
 mod boot;
 mod channel;
 mod channel_registry;
+mod dashboard;
 mod dbview;
 mod ext;
 mod inbox;
@@ -58,6 +59,11 @@ pub use channel::{
     PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
+pub use dashboard::{
+    call_dashboard_tool, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
+    dashboard_share, seed_iot_demo, Cell, Dashboard, DashboardError, DashboardSummary, SeedReport,
+    Visibility as DashboardVisibility,
+};
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
@@ -68,9 +74,9 @@ pub use ext::{
 };
 pub use inbox::{list_inbox, resolve_inbox, InboxError};
 pub use ingest::{
-    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_find,
-    series_latest_value, series_list, series_read_range, DrainPass, IngestError, Qos, Sample,
-    COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
+    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
+    series_latest_value, series_list, series_read_range, subscribe_series, DrainPass, IngestError,
+    Qos, Sample, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
 };
 pub use install::install_extension;
 pub use installed::installed;

@@ -61,6 +61,15 @@ fn member_caps() -> Vec<String> {
         "mcp:store.tables:call",
         "mcp:store.scan:call",
         "mcp:store.graph:call",
+        // dashboard scope (the grid-of-widgets surface): the five `dashboard.*` verbs the dashboard
+        // routes check. Member-level — any member may build/share their own dashboards over real
+        // series (gate 3 / ownership still decides which *specific* dashboard they read/edit). The
+        // gateway re-checks each cap server-side; a token without them is refused per verb.
+        "mcp:dashboard.get:call",
+        "mcp:dashboard.list:call",
+        "mcp:dashboard.save:call",
+        "mcp:dashboard.delete:call",
+        "mcp:dashboard.share:call",
         // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
         // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
         // resolve it, and start the gated coding job from the browser; the gateway re-checks each
