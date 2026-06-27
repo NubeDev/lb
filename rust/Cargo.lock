@@ -2853,6 +2853,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-pack"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ed25519-dalek",
+ "lb-registry",
+ "rand_core 0.6.4",
+ "serde_json",
+]
+
+[[package]]
 name = "lb-registry"
 version = "0.1.0"
 dependencies = [

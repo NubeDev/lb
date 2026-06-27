@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use lb_auth::{mint, Claims, Role, SigningKey};
-use lb_host::{load_extension, Node};
+use lb_host::{load_enabled, load_extension, Node};
 
 mod github;
 
@@ -32,6 +32,23 @@ async fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("read {}: {e}", wasm_path.display()))?;
 
     let loaded = load_extension(&node, &manifest, &wasm, &[]).await?;
+
+    // BOOT BRING-UP (lifecycle-management): re-load every previously-published-and-enabled wasm
+    // extension for the configured workspace from the durable cache, so an upload survives a restart
+    // (the durable Install record + the digest-keyed verified cache are the source of truth). A no-op
+    // on a fresh store. The workspace comes from `LB_WORKSPACE` (the dev launch sets it; default "acme").
+    let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
+    match load_enabled(&node, &ws).await {
+        Ok(loaded_exts) => {
+            for e in loaded_exts.iter().filter(|e| e.loaded) {
+                println!(
+                    "boot-loaded extension: {}@{} ({})",
+                    e.ext, e.version, e.reason
+                );
+            }
+        }
+        Err(e) => eprintln!("boot extension load for ws={ws} failed: {e}"),
+    }
 
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
@@ -73,11 +90,14 @@ async fn main() -> anyhow::Result<()> {
         let addr: std::net::SocketAddr = addr
             .parse()
             .map_err(|e| anyhow::anyhow!("bad LB_GATEWAY_ADDR: {e}"))?;
-        // The gateway boots its own node; the workspace now comes from each request's bearer token
-        // (the hard wall, §7), not from a gateway-wide setting.
-        let gw = lb_role_gateway::Gateway::boot()
-            .await
-            .map_err(|e| anyhow::anyhow!("gateway boot: {e}"))?;
+        // The gateway fronts THIS node. Do not call `Gateway::boot()` here: that would open a second
+        // embedded store handle, and with `LB_STORE_PATH` set both handles would point at the same
+        // SurrealKV directory.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let gw = lb_role_gateway::Gateway::new(node.clone(), SigningKey::generate(), now);
         println!("gateway: serving on http://{addr}");
         lb_role_gateway::serve(gw, addr).await?;
     }

@@ -3,6 +3,38 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S10 — extension UX: a self-contained extension over real Module Federation)
+
+An extension is now **one folder = backend + frontend**, each part optional (`public/extensions/extensions.md`).
+The reference `fleet-monitor` (`rust/extensions/fleet-monitor/`) ships **both** halves together:
+
+- **Backend** — a **native Tier-2 sidecar** with its own PID, supervised over `Content-Length` stdio via
+  the shared `lb-supervisor` wire types (no ABI drift), exposing the `fleet.summary` MCP tool. Stateless;
+  the injected `LB_EXT_WS` identity reaches the child (proven by a real `OsLauncher` e2e test).
+- **Frontend (co-located, `<id>/ui/`)** — a **real Vite Module Federation remote**
+  (`@originjs/vite-plugin-federation`) exposing `mount(el, ctx, bridge)` and sharing the shell's
+  `react`/`react-dom` **singletons** (not a hand-rolled `import()` of a self-bundled ESM — so it renders
+  in-process against the *same* React, native-feeling). Real **shadcn/ui + Tailwind** (token-matched to the
+  shell). A cap-gated sidebar **page with 3 nested routes** + **2 declared dashboard widgets**.
+- **The seam** — the shell is the federation **host** (`ui/vite.config.ts` shares React; `ext-host/federation.ts`
+  loads a remote by gateway URL; `ExtHost` mounts the federated container). Data reaches the UI ONLY through
+  the host-mediated `bridge.call → POST /mcp/call`, cap + workspace re-checked per call; the page never holds
+  the token/DB. The gateway serves the remote at `GET /extensions/{ext}/ui/{*path}` (traversal-guarded).
+- **Contract** — the manifest `[widget]` block became **`[[widget]]`** (`widgets: Vec` end to end — manifest →
+  `Install` → `ExtRow` → `ext.api`); the **native** install path now persists `[ui]`/`[[widget]]` (shared
+  `crates/host/src/ui_decl.rs`, scope-narrowed to the grant) — it silently didn't before. The wrong split
+  `ui/extensions/hello-ui` was deleted; the fake dependency was removed from page discovery (real `ext.list`
+  only). A pre-existing `cargo build --workspace` failure (`test_gateway_seed` stray-bin) was fixed.
+
+**Tests (real infra, no mock node):** 3 backend + 12 manifest + 2 `ui_decl` + 3 `ext_ui` + **2 native e2e**
+(real child spawns + page/2-widgets surface in `ext.list`, scope-narrowed) + **6 extension-UI Vitest** + 20
+shell + **50 real-gateway** (incl. the `fleet-monitor` page slot + both widget tiles round-tripping through a
+real `Install`). `cargo build/test --workspace` + fmt + FILE-LAYOUT size check green. Capability-deny and
+workspace-isolation categories covered (the bridge denies an ungranted tool; the page/widget scope is narrowed
+to the grant; the ws comes from the token, never the page). Widget *rendering* in a cell + the untrusted iframe
+tier are explicit follow-ups. See `extensions/extensions.md` and
+`../sessions/extensions/fleet-monitor-federation-session.md`.
+
 ## Shipped (S9+ — data console: DB browser + ingest explorer)
 
 Two workspace-scoped, capability-gated shell pages for non-SQL users, on the shipped S8 data plane

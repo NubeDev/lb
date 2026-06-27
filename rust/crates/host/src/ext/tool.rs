@@ -51,6 +51,7 @@ fn ext_to_tool(e: ExtError) -> ToolError {
         ExtError::Unverified => ToolError::BadInput("artifact failed verification".into()),
         ExtError::Store(s) => ToolError::Extension(s.to_string()),
         ExtError::Native(m) => ToolError::Extension(m),
+        ExtError::Manifest(m) => ToolError::Extension(m),
     }
 }
 

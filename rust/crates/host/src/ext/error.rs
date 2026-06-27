@@ -19,4 +19,8 @@ pub enum ExtError {
     /// A native lifecycle step (stop/unload) failed during uninstall/disable.
     #[error("native lifecycle error: {0}")]
     Native(String),
+    /// The artifact's manifest could not be parsed, or loading the verified component into the
+    /// runtime failed during publish-then-install. The bytes verified; bringing them online did not.
+    #[error("install error: {0}")]
+    Manifest(String),
 }

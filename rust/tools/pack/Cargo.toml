@@ -1,0 +1,22 @@
+# lb-pack — the dev **artifact packager** (the missing piece between `build.sh` and `POST /extensions`).
+# It turns a built `*.wasm` + its `extension.toml` into the SIGNED `Artifact` JSON the gateway's
+# upload route and the UI's UploadArtifact accept. It reuses the SAME digest + Ed25519 idiom the node
+# verifies with (`lb-registry`, `ed25519-dalek`) — there is no second crypto stack, so a packaged
+# artifact verifies by construction. A dev tool, not a runtime crate: it never compiles into a node.
+[package]
+name = "lb-pack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "lb-pack"
+path = "src/main.rs"
+
+[dependencies]
+lb-registry.workspace = true
+ed25519-dalek.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+rand_core = { version = "0.6", features = ["getrandom"] }

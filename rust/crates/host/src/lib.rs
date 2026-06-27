@@ -63,8 +63,8 @@ pub use dbview::{
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
 };
 pub use ext::{
-    call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, reconcile,
-    ExtError, ExtRow, ReconcileAction, ReconcilePlan,
+    call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
+    reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
 };
 pub use inbox::{list_inbox, resolve_inbox, InboxError};
 pub use ingest::{

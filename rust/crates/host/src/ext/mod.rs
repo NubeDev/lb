@@ -15,6 +15,7 @@
 //! (`mcp:ext.publish:call` — upload a signed artifact, verify-before-store), plus the un-gated boot
 //! `reconcile` the node calls on start. The MCP bridge ([`call_ext_tool`]) exposes the gated verbs.
 
+mod boot_load;
 mod enable;
 mod error;
 mod list;
@@ -24,6 +25,7 @@ mod row;
 mod tool;
 mod uninstall;
 
+pub use boot_load::{load_enabled, LoadedExt};
 pub use enable::{ext_disable, ext_enable};
 pub use error::ExtError;
 pub use list::ext_list;

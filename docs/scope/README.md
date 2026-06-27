@@ -26,7 +26,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
   exposed over the gateway, not Tauri-only) and `ui-federation-scope.md` (mount an extension's OWN
   pages inside the shell — module federation for trusted publishers, iframe/Web Component sandbox for
-  untrusted, host-mediated MCP bridge; the deferred counterpart to the admin console).
+  untrusted, host-mediated MCP bridge; the deferred counterpart to the admin console), and
+  `proof-panel-scope.md` (one self-contained **Tier-1 WASM** reference extension — a real MCP tool +
+  a federated page reading real series through the bridge — proving the basics end-to-end with no
+  placeholders; the wasm sibling of the native `fleet-monitor`).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).

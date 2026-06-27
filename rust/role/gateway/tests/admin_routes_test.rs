@@ -6,12 +6,9 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{bearer, delete_req, gateway, json_post, post_empty, token, NOW};
-use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
-use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys};
-use lb_role_gateway::{router, Gateway};
+use common::{bearer, delete_req, gateway, json_post, post_empty, token};
+use lb_role_gateway::router;
 use serde_json::json;
-use std::sync::Arc;
 use tower::ServiceExt;
 
 const ADMIN_CAPS: &[&str] = &[

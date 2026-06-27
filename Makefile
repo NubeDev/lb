@@ -31,6 +31,10 @@
 #   make cloud       run JUST the node with the SSE gateway (LB_GATEWAY_ADDR) — cloud
 #   make ui          run JUST the UI dev server (browser build, points at the gateway)
 #
+#   make pack        build+sign an extension into .lazybones/extensions (EXT=hello-v2 by default)
+#   make publish-ext pack + upload it to a RUNNING node (make cloud first) → installed + loaded live
+#   make trusted-pubkey  print the dev publisher's LB_TRUSTED_PUBKEYS value (key auto-generated)
+#
 #   make test        cargo test (host) + vitest (UI)
 #   make test-be     cargo test --workspace
 #   make test-ui     pnpm test (vitest)
@@ -67,14 +71,31 @@ UI_PORT ?= 5173
 # The workspace the node serves. One workspace is enough for the demo (= tenant).
 WS ?= acme
 
-# Persistent local node store. The Rust boot path uses `Store::memory()` when LB_STORE_PATH is
-# unset, so the dev launch targets set it explicitly. Override with:
-#   make dev STORE_PATH=/path/to/lb-store
-STORE_DIR ?= $(CURDIR)/.data
+# All persistent local dev state lives under ONE root: `.lazybones/` (renamed from the too-generic
+# `.data/`). The node store, the dev publisher key, and packaged artifacts are subdirs of it, so a
+# single `rm -rf .lazybones` resets a dev box and one `.gitignore` line covers everything.
+#   .lazybones/data/dev-store      the SurrealKV node store (LB_STORE_PATH)
+#   .lazybones/keys/dev-publisher  the dev publisher Ed25519 seed (lb-pack reads/creates it)
+#   .lazybones/extensions          packaged signed artifacts (lb-pack --out)
+# Override the root with: make dev LB_DIR=/path/to/state
+LB_DIR     ?= $(CURDIR)/.lazybones
+STORE_DIR  ?= $(LB_DIR)/data
 STORE_PATH ?= $(STORE_DIR)/dev-store
+KEY_DIR    ?= $(LB_DIR)/keys
+KEY_FILE   ?= $(KEY_DIR)/dev-publisher.key
+ART_DIR    ?= $(LB_DIR)/extensions
+
+# The dev publisher key id paired with KEY_FILE (must match what lb-pack stamps into the artifact).
+PUBLISHER_ID ?= dev-publisher
+# The extension the dev pack/publish targets operate on (the hot-reload swap demo). Its manifest +
+# built wasm.
+EXT          ?= hello-v2
+EXT_MANIFEST := $(BE_DIR)/extensions/$(EXT)/extension.toml
+EXT_WASM     := $(BE_DIR)/extensions/$(EXT)/target/$(WASM_TARGET)/release/$(subst -,_,$(EXT))_ext.wasm
+EXT_ARTIFACT := $(ART_DIR)/$(EXT).artifact.json
 
 .PHONY: setup build build-be build-wasm build-ui \
-        dev edge cloud ui \
+        dev edge cloud ui pack publish-ext trusted-pubkey \
         test test-be test-ui lint fmt fmt-check size clean kill
 
 # One-time setup: install the UI deps and make sure the wasm target is installed (the
@@ -105,11 +126,12 @@ build-ui:
 # it, in ONE foreground process group so Ctrl-C (or `make kill`) stops both. The trap
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
-dev: build-wasm
+dev: build-wasm trusted-pubkey
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@trap 'kill 0' EXIT INT TERM; \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) cargo run -p $(NODE_BIN) ) & \
+	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED cargo run -p $(NODE_BIN) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -123,15 +145,59 @@ edge: build-wasm
 
 # CLOUD posture: the SAME binary with the SSE/HTTP gateway mounted (LB_GATEWAY_ADDR).
 # A browser can now reach it. Run `make ui` (or `make dev`) against this.
-cloud: build-wasm
+cloud: build-wasm trusted-pubkey
 	@mkdir -p $(STORE_DIR)
 	@echo "cloud: node + gateway → $(GW_URL)   (ws=$(WS), store=$(STORE_PATH))"
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) cargo run -p $(NODE_BIN)
+	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.
 ui:
 	cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev
+
+# ---------------------------------------------------------------------------------------------------
+# Extension dev flow: build → pack (sign) → publish (upload, which installs + loads on the server).
+# `lb-pack` is the bridge build.sh never had: it turns a built *.wasm + extension.toml into the SIGNED
+# Artifact JSON the gateway's `POST /extensions` and the UI's UploadArtifact accept. The dev publisher
+# key lives at $(KEY_FILE) (generated on first use); its public half is trusted by the node via
+# LB_TRUSTED_PUBKEYS (the `dev`/`cloud` targets wire it from `lb-pack pubkey`). Trust is the
+# environment, never the upload — that split is the whole point.
+
+# Build the lb-pack tool (the dev packager). Cheap once built; the run targets depend on it.
+$(BE_DIR)/target/debug/lb-pack:
+	cd $(BE_DIR) && cargo build -p lb-pack
+
+# Print the dev publisher's `key_id=hexpubkey` (generating the key on first run). This IS the value
+# the node wants in LB_TRUSTED_PUBKEYS; the `dev`/`cloud` targets capture it automatically.
+trusted-pubkey: $(BE_DIR)/target/debug/lb-pack
+	@$(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)
+
+# Build $(EXT)'s wasm and package it into a signed artifact at $(EXT_ARTIFACT). Pure local: produces
+# the file the UI can upload OR `make publish-ext` can POST. Override the target ext with EXT=<name>.
+pack: $(BE_DIR)/target/debug/lb-pack
+	@echo "→ building wasm guest: $(EXT)"
+	@( cd $(BE_DIR)/extensions/$(EXT) && cargo build --target $(WASM_TARGET) --release )
+	@mkdir -p $(ART_DIR)
+	$(BE_DIR)/target/debug/lb-pack $(EXT_MANIFEST) $(EXT_WASM) $(KEY_FILE) \
+		--key-id $(PUBLISHER_ID) --out $(EXT_ARTIFACT)
+
+# Publish $(EXT) to a RUNNING node ($(GW_URL)): pack it, log in for a session token (the dev-login
+# grants ext.publish), then POST the artifact. `204` ⇒ verified, installed, and LOADED live — the
+# extension is reachable immediately (no restart). Needs `make cloud`/`make dev` running first, plus
+# curl + jq. The node must trust this publisher key (the run targets set LB_TRUSTED_PUBKEYS for you).
+publish-ext: pack
+	@command -v jq >/dev/null || { echo "publish-ext needs jq"; exit 1; }
+	@echo "→ login $(GW_URL) as dev/$(WS)"
+	@TOKEN=$$(curl -fsS -X POST $(GW_URL)/login -H 'content-type: application/json' \
+		-d '{"user":"dev","workspace":"$(WS)"}' | jq -r .token); \
+	echo "→ POST $(GW_URL)/extensions ($(EXT))"; \
+	code=$$(curl -sS -o /tmp/lb-publish-resp -w '%{http_code}' -X POST $(GW_URL)/extensions \
+		-H "authorization: Bearer $$TOKEN" -H 'content-type: application/json' \
+		--data-binary @$(EXT_ARTIFACT)); \
+	echo "← HTTP $$code"; \
+	if [ "$$code" = "204" ]; then echo "published + installed + loaded: $(EXT)"; \
+	else echo "FAILED ($$code): $$(cat /tmp/lb-publish-resp)"; exit 1; fi
 
 test: test-be test-ui
 

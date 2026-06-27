@@ -1,0 +1,18 @@
+# The `proof-panel` WASM extension — the Tier-1 counterpart to the native `fleet-monitor`.
+# A wasm32-wasip2 component, EXCLUDED from the host workspace (it targets wasm, not the host),
+# built in its own target/. It ships ONE real MCP tool (`proof.status`) alongside a federated
+# UI page, proving a single Tier-1 extension can carry both a backend tool and a frontend.
+# Build: cargo build --target wasm32-wasip2 --release
+[package]
+name = "proof-panel-ext"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.40"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

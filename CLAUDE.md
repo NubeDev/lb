@@ -10,13 +10,28 @@ extension runtime, a capability system, durable workflow primitives, and a share
 UI shell. *Everything else is an extension* — chat app, coding-agent workplace,
 flow tool, document store, etc.
 
-## Current status: architecture scope, no implementation yet
+## Current status: S8 shipped, building on a real workspace
 
-The code directories exist but are **empty scaffolding** — there is no Rust
-workspace, no frontend, no doc-site build yet. Work right now means **writing and
-refining the architecture/scope docs**, not shipping code. Do not invent build
-commands or claim code exists. When the coding phase starts, update this file (and
-the per-directory READMEs) with the real `cargo`/frontend/Nextra commands.
+The platform is **built and green**, not scaffolding. The Rust workspace
+(`rust/`) and the React/Tauri UI (`ui/`) both compile and are exercised by real
+tests. As of **S8 (data plane)** the following are shipped end to end: identity +
+signed tokens, the SurrealDB store with workspace isolation, the Zenoh bus, the
+WASM + native (Tier-2) extension runtime with a signed registry, the capability
+system, durable workflow primitives (inbox/outbox/jobs), generic ingest + tagging,
+the AI core (central agent + AI-gateway sidecar), the coding workflow
+(issue → triage → approval → job → PR), and the collaboration UI over a real
+session. `docs/STATUS.md` is the authoritative "where are we" — **read it first**;
+this paragraph is a summary, not the source of truth.
+
+**Real build/test commands** (no longer "do not invent"):
+- Rust: `cd rust && cargo build --workspace`, `cargo test --workspace`, `cargo fmt`.
+- UI unit: `cd ui && pnpm test`.
+- UI against a **real** spawned gateway node: `cd ui && pnpm test:gateway`
+  (`test_gateway` bin + `vitest.gateway.config.ts` — no `*.fake.ts`, per rule 9).
+- Extensions ship their own `build.sh` (native sidecar + federated UI bundle).
+
+The doc-site (Nextra) and the native desktop window (webkit toolchain) are the
+remaining un-built pieces.
 
 ## Repository layout
 

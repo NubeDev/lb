@@ -9,6 +9,8 @@
 
 mod authenticate;
 mod credentials;
+mod trusted;
 
 pub use authenticate::{authenticate, verify_token, AuthRejection};
 pub use credentials::dev_claims;
+pub use trusted::trusted_from_env;

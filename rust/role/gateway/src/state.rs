@@ -62,7 +62,10 @@ impl Gateway {
             node,
             key: Arc::new(key),
             now,
-            trusted: Arc::new(TrustedKeys::new()),
+            // Trust is environment, never the upload body: seed the publisher allow-list from
+            // `LB_TRUSTED_PUBKEYS` (empty if unset → every upload 422s). Tests override via
+            // `with_trusted`.
+            trusted: Arc::new(crate::session::trusted_from_env()),
             ext_ui_dir: Arc::new(
                 std::env::var("LB_EXT_UI_DIR")
                     .map(std::path::PathBuf::from)

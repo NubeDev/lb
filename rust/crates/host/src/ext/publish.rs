@@ -11,17 +11,29 @@
 //! success), exactly like the registry-host `ArtifactStore::publish`.
 
 use lb_auth::Principal;
+use lb_ext_loader::Manifest;
 use lb_mcp::authorize_tool;
 use lb_registry::{verify_artifact, Artifact, TrustedKeys, Visibility};
 
 use super::error::ExtError;
 use crate::boot::Node;
+use crate::install::install_extension;
 use crate::registry::{cache_artifact, record_catalog};
 
-/// Publish `artifact` into workspace `ws`'s catalog for `caller`: gate, then **verify against
-/// `trusted` BEFORE storing**, then cache the verified bytes + record the catalog entry with
-/// `visibility` at logical time `ts`. Idempotent — re-publishing the same bytes upserts. A
+/// Publish `artifact` into workspace `ws`'s catalog for `caller`, then **install + load it live**:
+/// gate, **verify against `trusted` BEFORE storing**, cache the verified bytes + record the catalog
+/// entry with `visibility`, then run the S4 install (persist the durable `Install` grant record and
+/// `load_extension` the component into the running runtime) so an uploaded extension is *reachable
+/// immediately*, not merely cataloged (lifecycle-management scope: "publish then install" — the gap
+/// where publish previously stopped at the catalog and nothing brought the component online).
+///
+/// Idempotent — re-publishing the same bytes upserts every record and reloads the component. A
 /// tampered/unsigned/foreign-key upload is rejected and **nothing is stored** ([`ExtError::Unverified`]).
+///
+/// The grant set is the manifest's **requested** caps: the `ext.publish` caller IS the workspace admin
+/// approving the install (the admin-console action), so `admin_approved = requested` here. The grant
+/// is still computed as `requested ∩ admin_approved` in `install_extension`, so the trust model is
+/// unchanged — a real review step narrows `admin_approved` later without touching this seam.
 pub async fn ext_publish(
     node: &Node,
     caller: &Principal,
@@ -42,5 +54,21 @@ pub async fn ext_publish(
     // `cache_artifact` accepts only a `VerifiedArtifact`, so the unverified bytes never had a path here.
     cache_artifact(&node.store, ws, &verified).await?;
     record_catalog(&node.store, ws, verified.artifact(), visibility, ts).await?;
+
+    // Bring it online: persist the durable install grant, then load the component into the runtime.
+    // The publisher (this caller) is the approver, so admin_approved = the manifest's requested caps.
+    let artifact = verified.artifact();
+    let manifest =
+        Manifest::parse(&artifact.manifest_toml).map_err(|e| ExtError::Manifest(e.to_string()))?;
+    install_extension(
+        node,
+        ws,
+        &artifact.manifest_toml,
+        &artifact.wasm,
+        &manifest.requested_caps,
+        ts,
+    )
+    .await
+    .map_err(|e| ExtError::Manifest(e.to_string()))?;
     Ok(())
 }

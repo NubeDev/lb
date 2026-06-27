@@ -39,8 +39,9 @@ members = [
     "role/github-target",
     "role/github-workflow",
     "role/bootstrap-ui",
+    "tools/pack",
 ]
-exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge"]
+exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel"]
 
 [workspace.package]
 version = "0.1.0"

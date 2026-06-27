@@ -11,6 +11,7 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-27 | build | the whole desktop hard-freezes (forced reboot) during Rust builds; no OOM log (suspected swap death-spiral from parallel `rust-lld`) | mitigated | [build/host-freezes-during-rust-build.md](build/host-freezes-during-rust-build.md) |
 | 2026-06-27 | tags | `DEFINE TABLE … AS SELECT … GROUP` defines but never populates on SurrealKV (tag_counts empty) → per-query | resolved | [tags/materialized-view-does-not-populate.md](tags/materialized-view-does-not-populate.md) |
 | 2026-06-27 | tags | HNSW `<\|K\|>` knn returns nothing; the two-arg `<\|K,EF\|>` form is required | resolved | [tags/hnsw-knn-needs-ef-arg.md](tags/hnsw-knn-needs-ef-arg.md) |
 | 2026-06-27 | tags | `type::thing("series:node.cpu_temp")` mis-parses a dotted entity id (tag add fails) | resolved | [tags/dotted-entity-id-needs-two-arg.md](tags/dotted-entity-id-needs-two-arg.md) |

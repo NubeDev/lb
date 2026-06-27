@@ -11,6 +11,14 @@ capability set, and exposes through the one MCP contract. It holds no durable st
 instance — its state lives in the store or on the bus, which is what makes hot-reload (S2) and
 restart (S7) safe (§3.4). It is reached as `<id>.<tool>` MCP calls, gated `mcp:<id>.<tool>:call`.
 
+**One extension = one folder; a backend and a frontend are each optional parts of it.** An extension
+lives in a single directory (e.g. `rust/extensions/<id>/`) that may contain a **backend** (a wasm or
+native runtime half) and/or a **frontend** (its own UI under `<id>/ui/`), in any combination: just a
+backend (`echo-sidecar`), just a UI, wasm+UI, or native+UI (`fleet-monitor`). There is **no** separate
+top-level `ui/extensions/` tree — a frontend is a part of its extension, beside its backend, not a
+thing that lives apart from it. The reference `fleet-monitor` is the canonical native-backend +
+federated-frontend example.
+
 ## The manifest (`extension.toml`)
 
 The §13 forever contract — TOML, parsed before anything is instantiated (so a denied call is refused
@@ -110,6 +118,37 @@ into its workspace. An **unknown tenant is the same opaque `401`** (not a `404`)
 oracle. The single-tenant `/webhook` route stays for one-repo deployments; the front door is layered
 beside it (no `if cloud`, one tenant per map row). `lb-secrets`-backed secrets + a dynamic tenant
 directory (onboard without a restart) are the open follow-ups.
+
+## The frontend half: a federated UI page + dashboard widgets (S10)
+
+An extension's manifest may declare a **`[ui]`** block (a full sidebar page) and zero or more
+**`[[widget]]`** tables (dashboard palette tiles) — each frozen-field, serde-defaulted, independent of
+the runtime tier (a wasm OR native extension may ship them). The host **projects** these onto the
+durable `Install` (`crates/host/src/ui_decl.rs`, used by **both** the wasm and native install paths),
+narrowing each declared `scope` to the install grant — a page/widget can never claim a tool the admin
+didn't approve. `ext.list` surfaces them (`ExtRow.ui` / `ExtRow.widgets`), so the shell builds a
+cap-gated nav slot + palette entries without re-reading the manifest.
+
+**Trusted tier = real Module Federation (shared React).** A first-party page ships a Vite Module
+Federation **remote** (`@originjs/vite-plugin-federation`) exposing `mount(el, ctx, bridge)` and
+declaring `react`/`react-dom` as shared singletons. The shell is the federation **host**: it shares its
+React, loads the remote's `remoteEntry.js` (served by the gateway at `GET /extensions/{ext}/ui/{*path}`,
+traversal-guarded) via the federation runtime (`ui/src/features/ext-host/federation.ts`), and mounts it
+**in-process** against the *same* React — so the page is native-feeling, not a bundled second copy. The
+untrusted iframe-sandbox tier (same `mount` contract, postMessage transport) is the planned follow-up.
+
+**The bridge is the only data path.** A page/widget reaches platform data ONLY through the
+host-mediated `bridge.call(tool, args)` → `POST /mcp/call` → `lb_host::call_tool`, where the capability
+and workspace are **re-checked per call**. The page never holds the session token, a DB handle, or
+`invoke`; its reachable set is its install grant (for widgets, the frozen read-only series verbs). The
+shell pre-filters out-of-scope tools (defense in depth); the host is the boundary.
+
+**Reference extension: `fleet-monitor`** — a native Tier-2 sidecar (its own PID, `fleet.summary` MCP
+tool) **plus** a co-located federated frontend (`rust/extensions/fleet-monitor/ui/`, real shadcn/ui +
+Tailwind) that mounts a sidebar page with **3 nested routes** and declares **2 widget** tiles, all
+reaching data through the bridge. See `../../scope/extensions/ui-federation-scope.md`,
+`../../scope/frontend/dashboard-widgets-scope.md`, and
+`../../sessions/extensions/fleet-monitor-federation-session.md`.
 
 ## Placement & targets
 

@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The SAME quiet control-surface tokens the shell defines, mirrored here so the federated page looks
+   native whether served by the gateway or in dev. Dark = near-black panels, hairline borders, ONE warm
+   amber accent; light = warm paper. A theme is a `.dark` class swap. */
+:root {
+  --bg: 40 30% 96%;
+  --panel: 40 24% 92%;
+  --border: 40 12% 82%;
+  --fg: 30 12% 14%;
+  --muted: 30 6% 44%;
+  --accent: 32 95% 48%;
+}
+
+.dark {
+  --bg: 24 8% 8%;
+  --panel: 24 7% 11%;
+  --border: 24 6% 18%;
+  --fg: 36 16% 90%;
+  --muted: 30 5% 56%;
+  --accent: 32 95% 56%;
+}
