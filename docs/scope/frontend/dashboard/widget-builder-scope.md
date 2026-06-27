@@ -335,6 +335,142 @@ Plus this slice's cases:
 - **Cell/record growth.** Inline template code in `cell.options` bloats the dashboard record; bound inline
   size and push durable templates to `render_templates` (roster stays metadata-only).
 
+## Follow-up slices (post-ship, additive — 2026-06-28)
+
+**Status: ALL THREE SHIPPED (2026-06-28).** See
+[widget-builder-followups-session.md](../../../sessions/frontend/widget-builder-followups-session.md);
+promoted to [public/frontend/dashboard.md](../../../public/frontend/dashboard.md). Additive over the
+shipped v2 surface — no contract change. Backend `store_query_test` 6/6, frontend `toSurrealQL` 8/8
+unit + `sqlSource.gateway` 8/8 real-gateway, all green.
+
+- **Slice A — `store.query` + `store.schema`** — SHIPPED: `rust/crates/host/src/store_query/`
+  (parse-allowlist by statement kind, workspace-walled, 10k/5s bound) + gateway `POST /store/query` /
+  `GET /store/schema` + `ui/.../sql.api.ts` + a "Direct SurrealDB" source-picker entry.
+- **Slice B — the CodeMirror editor** — SHIPPED: `ui/.../builder/editors/` (CodeEditor, PlotCodeField,
+  TemplateSourceField reading `template.list` over the bridge, SqlEditor) on `@uiw/react-codemirror`;
+  `WidgetBuilder` uses them instead of a raw textarea.
+- **Slice C — the Grafana-style Builder⇄Code SQL editor** — SHIPPED: `ui/.../builder/sql/`
+  (`SqlBuilderQuery` + `toSurrealQL` + SqlQueryEditor/Header/VisualEditor/RawEditor); the cell stores
+  both the raw string and the builder query; Builder only generates SELECT, Code stays
+  parse-allowlisted by `store.query`.
+
+The shipped truth is below for reference; the original ask text is unchanged.
+
+### Slice A — `store.query`: a read-only SQL-to-SurrealDB host tool (the "direct SurrealDB" source)
+
+The scope always said "direct SurrealDB = a read-only `store.query`-style tool **if one exists**." Build it.
+It is a normal host MCP verb (like `series.read`/`ingest.write`), so the dashboard needs **zero** new
+binding — the source picker gains a **"SQL query"** entry that produces `{ tool: "store.query", args: { sql,
+vars? } }`, and every existing view (table/chart/stat/plot/template) renders its rows unchanged.
+
+- **Host service:** `crates/host/src/store_query/{mod,authorize,run,tool}.rs` (one verb per file,
+  FILE-LAYOUT). `store.query(sql, vars?) -> { columns, rows }`, gated **`mcp:store.query:call`**.
+- **READ-ONLY, enforced — load-bearing.** The handler MUST reject anything but a single read. Enforce by
+  **parsing the statement** (SurrealDB's parser / `surrealdb::sql::parse`) and allowing **only** `SELECT`
+  (and `INFO`/`SHOW`-class introspection if needed) — reject `CREATE/UPDATE/DELETE/DEFINE/REMOVE/RELATE/
+  INSERT/UPSERT`, multiple statements, and any transaction control. A string `LIKE '%delete%'` check is NOT
+  acceptable — parse and allowlist the statement kind. Mutation goes through real typed write tools, never
+  this verb.
+- **Workspace wall (rule 6):** the query runs **inside the caller's workspace namespace**, set host-side
+  from the session token — never a `USE NS/DB` or a workspace named in the SQL. A ws-B caller's
+  `store.query` can reach only ws-B records, structurally (the same namespacing every other store read
+  uses). The SQL cannot escape the namespace; reject any statement that names one.
+- **Bounded (rule §6.1 / §6.10):** a hard **row cap** and a **statement timeout** (config, e.g. 10k rows /
+  5 s); the handler injects/enforces a `LIMIT` ceiling. An unbounded analytical scan MUST be a **job**, not
+  this synchronous verb — `store.query` is for interactive, bounded reads. Stated, with the bound.
+- **It's just a tool for the widget bridge.** A scripted template/control may call `store.query` only if
+  `mcp:store.query:call ∈ cell.tools ∩ install-grant`, re-checked at the host per call — same leash as every
+  other tool. No special widget path.
+- **The SQL editor** (below) gets a `@codemirror/lang-sql` mode; the SurrealQL dialect is close enough to
+  SQL for highlighting (a SurrealQL grammar refinement is a named follow-up, not a blocker).
+- **Tests (mandatory):** deny without `mcp:store.query:call`; **a write statement is rejected** (parse-level,
+  per kind — `CREATE/UPDATE/DELETE/DEFINE/RELATE/INSERT` each denied); **two-session isolation** (ws-B SQL
+  cannot read ws-A rows; a workspace-naming statement is rejected); row-cap + timeout enforced; a `SELECT`
+  round-trips real seeded rows into a `table`/`chart` widget end to end.
+
+### Slice B — the in-app code editor (port rubix-cube's CodeMirror editor for scripted views)
+
+The shipped `plot`/`d3`/`template` views render code, but the builder needs the **authoring editor**. Port
+it from rubix-cube — it is **CodeMirror**, not Monaco (lighter, already the rubix-cube choice):
+
+- **Library:** `@uiw/react-codemirror` + `@codemirror/lang-javascript` (`javascript({ jsx: true })`) for the
+  JSX/Plot/D3 editor, `@codemirror/lang-sql` for the `store.query` SQL editor, `EditorView.lineWrapping`, a
+  shared theme. Add these deps to `ui/package.json` (mirror rubix-cube versions: `@uiw/react-codemirror`
+  `^4.25.x`, the `@codemirror/*` `^6.x` set).
+- **Port these components** (data layer swapped to `bridge.call`, REST/SWR/`next` removed):
+  - `components/ui/template-renderer/manage-template-dialog/code-editor.tsx` → the JSX template editor
+    (`Controller`-free; wire to the builder store, not react-hook-form unless already present).
+  - `components/dashboards/editor/fields/PlotCodeField.tsx` → the **Plot** editor (snippet convention
+    `({ data, Plot, d3 }) => element`, bindings hint shown; `DEFAULT_PLOT_CODE` carried over).
+  - `components/dashboards/editor/fields/TemplateSourceField.tsx` → the **template** source field
+    (inline-code tab **or** a saved `render_templates` pick; `DEFAULT_INLINE_CODE = ({ data }) => <jsx>`),
+    its "saved template" list reading the new `template.list` verb instead of REST.
+  - `components/sql/sql-editor.tsx` → the **raw SQL** CodeMirror editor used as the **Code** half of the
+    Grafana-style Builder⇄Code SQL source (Slice C). Drop the `/api/.../sql/generate` AI button (re-pointing
+    it at an MCP `sql.generate` tool is a named follow-up, out of scope here).
+- **Where it lives:** `ui/src/features/dashboard/builder/editors/{CodeEditor,PlotCodeField,TemplateSource
+  Field,SqlEditor}.tsx` — one component per file (FILE-LAYOUT). The editor only edits the snippet string
+  that goes into `cell.options.code` (≤4 KB inline) or a `render_template:{id}` row (≤64 KB); it holds no
+  data and no token (the iframe runtime, not the editor, calls the bridge).
+- **Trust unchanged:** the editor authors code; that code still executes **only** in the sandboxed iframe
+  (or trusted-key in-process). Editing is in the trusted shell; running is sandboxed. No change to the v2
+  contract.
+- **Tests:** the editor round-trips a snippet into `cell.options.code` / a `render_template` row and the
+  saved snippet renders in the iframe (reuse the shipped scripted-template e2e); the SQL editor's text
+  drives a `store.query` source that renders a `table` widget (Slice A integration).
+
+### Slice C — the SQL source as a Grafana-style **Builder ⇄ Code** editor (not a bare textarea)
+
+Slice B alone gives the *raw SQL* (Code) half. The SQL source must match **Grafana's `grafana-sql` model**:
+a **visual query Builder** with a toggle to **Code** (raw SQL), the two kept in sync. A non-SQL user builds
+`Table → Column/Aggregation → Filter → Group by → Order/Limit → Preview`; a power user flips to Code and
+edits raw SurrealQL. This is the missing "query builder" — what we ported from rubix-cube was a *chart*
+builder (map x/y over already-fetched rows), **not** a *query* builder.
+
+**Port from Grafana `grafana-sql`** (pinned `940590ff56f730534c715299f2d4386a42e24368`) — copy the
+structure, strip `@grafana/*` runtime/`@grafana/ui` deps, render with our shadcn primitives, and emit a
+SurrealQL string + run via `store.query`:
+
+| Grafana file | Port to `ui/src/features/dashboard/builder/sql/` | Role |
+|---|---|---|
+| `packages/grafana-sql/src/components/QueryEditor.tsx` | `SqlQueryEditor.tsx` | switches Builder vs Code by `editorMode` |
+| `packages/grafana-sql/src/components/QueryHeader.tsx` | `SqlQueryHeader.tsx` | the **Builder / Code** toggle + confirm-on-switch-back (don't silently clobber hand-edited raw SQL) |
+| `packages/grafana-sql/src/components/visual-query-builder/VisualEditor.tsx` | `VisualEditor.tsx` | the rows: select, filter (where), group by, order by, limit, preview |
+| `packages/grafana-sql/src/components/query-editor-raw/RawEditor.tsx` | `RawEditor.tsx` | wraps the raw CodeMirror SQL editor (Slice B's `SqlEditor.tsx`) |
+| `packages/grafana-sql/src/components/query-editor-raw/QueryEditorRaw.tsx` | folded into `RawEditor.tsx` | writes the raw string back into the source args |
+
+(The **Loki** builder/raw files are the same pattern for a non-SQL query language — keep them as the
+reference for a *future* LogQL-style source; do **not** port them now. Named follow-up.)
+
+- **The query model → a SurrealQL string.** The visual builder edits a typed `SqlBuilderQuery`
+  (`{ table, columns:[{name, aggregation?}], filters:[…], groupBy:[…], orderBy?, limit? }`); a
+  `toSurrealQL(query)` renderer (one file, the analog of Grafana's SQL `expressionBuilder`) emits the
+  `SELECT … FROM … WHERE … GROUP BY … ORDER BY … LIMIT …` string. The cell stores **both** the raw string
+  (what `store.query` runs) and, when in Builder mode, the `SqlBuilderQuery` (so reopening returns to the
+  builder). Switching Builder→Code regenerates the string; Code→Builder asks to confirm (Grafana's
+  behavior) because hand-edited SQL may not round-trip.
+- **The builder needs a schema source — extend Slice A.** The Table/Column dropdowns need the workspace's
+  tables and their columns. Add a tiny read-only host verb **`store.schema() -> { tables:[{name,
+  columns:[{name,type}]}] }`** (gated `mcp:store.schema:call`, workspace-walled from the token, derived
+  from SurrealDB `INFO FOR DB`/`INFO FOR TABLE`). The source picker's "SQL query" entry calls `store.schema`
+  to populate the builder; `store.query` runs the result. Both are just tools on the bridge (leashed by the
+  grant), no special path.
+- **Format toggle (Grafana's "Format: Table"):** keep a small `format` on the SQL source (`table` |
+  `time-series`) that shapes the result for the chosen view — `table` passes rows through; `time-series`
+  asserts a time column. Map it to the existing view selection rather than a parallel concept.
+- **Trust/bounds unchanged:** Builder mode can only generate `SELECT` (it has no syntax for a write), and
+  Code mode is still parsed + allowlisted to `SELECT` by `store.query` (Slice A). The row-cap/timeout and
+  the workspace wall apply to whatever string runs, builder- or hand-authored. The builder is convenience;
+  `store.query`'s parse gate is the boundary.
+- **Tests (mandatory):** `store.schema` deny + isolation (ws-B sees only ws-B tables); a built query renders
+  to the expected SurrealQL string (`toSurrealQL` unit cases: columns, aggregation, filter, group-by,
+  order, limit); Builder→Code→Builder round-trips a builder-authored query; a Code-mode write is still
+  rejected by `store.query`; an end-to-end "build a query in the visual editor → Run → rows render in a
+  `table`/`chart` widget" on real seeded tables.
+
+Both/all slices write a session doc, promote shipped truth to `public/frontend/dashboard.md`, and keep the
+mandatory deny + isolation tests green. They do **not** touch the frozen v2 widget/bridge contract.
+
 ## Open questions
 
 Decisions made so the build has no blocking open question; residuals are named follow-ups, not gaps.

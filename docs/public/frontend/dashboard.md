@@ -84,12 +84,45 @@ needed series read grant sees a denied widget state rather than leaked or fake d
 Extension widget declarations add one more gate: the widget's declared `scope` is intersected with the
 admin-approved install grant, and bridge calls are host-checked again.
 
+## The "Direct SurrealDB" source + the in-app editors (widget-builder follow-ups A/B/C)
+
+A SQL source and the authoring editors, additive over the v2 contract — a SQL source is just another
+`{ tool, args }`; a code editor is just the authoring UI for the shipped `plot`/`d3`/`template` views.
+
+- **`store.query` / `store.schema` (read-only SurrealDB).** Two host MCP verbs:
+  - `store.query(sql, vars?) -> { columns, rows }`, gated `mcp:store.query:call`. **Read-only is
+    enforced by PARSING** the statement (SurrealDB's own parser) and allowlisting by **kind** — a single
+    `SELECT` (plus `INFO`/`SHOW`); `CREATE`/`UPDATE`/`UPSERT`/`DELETE`/`INSERT`/`RELATE`/`DEFINE`/
+    `REMOVE`/multi-statement/`USE` are each refused **before** the SQL reaches the store. Never a
+    substring check. Runs inside the caller's workspace namespace (from the token, never the SQL), bounded
+    to 10k rows / 5s. Mutation goes through the typed write tools, never this verb.
+  - `store.schema() -> { tables:[{name, columns:[{name,type}]}] }`, gated `mcp:store.schema:call`,
+    workspace-walled — the visual SQL builder's dropdown source.
+  - Both are reached over the **one bridge** (`POST /mcp/call`) like any tool, leashed by
+    `cell.tools ∩ grant`; the source picker's "Direct SurrealDB" entry produces
+    `{ tool: "store.query", args: { sql } }`, and every existing view renders its rows unchanged.
+- **The in-app CodeMirror editors** (`@uiw/react-codemirror`): a JSX `CodeEditor`, a Plot/D3
+  `PlotCodeField`, a `TemplateSourceField` (inline OR a saved `render_templates` pick via `template.list`
+  over the bridge), and a raw-SQL `SqlEditor`. They author a code **string** into `cell.options.code` /
+  a `render_template` reference — the string runs only in the sandboxed iframe (trust unchanged).
+- **The Grafana-style Builder⇄Code SQL editor:** a typed `SqlBuilderQuery` (table, columns +
+  aggregation, filters, group-by, order, limit) + a `toSurrealQL` renderer, with a Builder/Code toggle
+  (confirm-on-switch-back). The cell stores **both** the raw string (what `store.query` runs) and the
+  builder query (so reopening returns to the builder). Builder mode can only generate a `SELECT`; Code
+  mode is still parse-allowlisted by `store.query`.
+
 ## Tests
 
 The shipped tests cover dashboard CRUD, per-verb denial, team-shared member/non-member behavior,
 workspace isolation, seed integrity, gateway routes, live series streaming, built-in widget rendering
 against a real gateway, tag-bound widgets, persistence after reload, and multi-`[[widget]]` extension
 metadata round-tripping through `ext.list`.
+
+The SQL source + editors add: `store.query` deny / parse-rejection-per-write-kind / two-session
+isolation / row-cap / SELECT round-trip and `store.schema` deny + isolation (real store, seeded via the
+real ingest path); `toSurrealQL` unit cases + a Builder→Code→Builder round-trip; and an end-to-end
+"build a query in the visual editor → Run → rows render in a table AND a chart widget" over the real
+gateway.
 
 ## Follow-ups
 
@@ -98,9 +131,15 @@ metadata round-tripping through `ext.list`.
 - ~~Add the untrusted iframe widget tier.~~ **Shipped** (opaque-origin sandbox + postMessage bridge).
 - Add a multiplexed series stream for dashboards with many live widgets (each `watch` opens its own SSE).
 - Add paged dashboard rosters and multi-editor live layout refresh.
-- Generate shadcn `Select`/`Textarea` primitives so the builder's picker/code-editor drop the native
-  elements (currently justified `eslint-disable`d).
-- A `store.query`-style read tool as just another source the picker can name (no dashboard change needed).
+- Generate shadcn `Select`/`Textarea` primitives so the builder's picker drops the native `<select>`
+  (the code editors now use CodeMirror; the picker still uses a justified `eslint-disable`d `<select>`).
+- ~~A `store.query`-style read tool as just another source the picker can name.~~ **Shipped** (the
+  "Direct SurrealDB" source — `store.query`/`store.schema`, parse-allowlisted + workspace-walled).
+- ~~An in-app code editor for the scripted `plot`/`d3`/`template` views.~~ **Shipped** (CodeMirror).
+- ~~A Grafana-style Builder⇄Code visual SQL query builder.~~ **Shipped** (`SqlBuilderQuery` + `toSurrealQL`).
+- A SurrealQL CodeMirror grammar (the SQL editor currently uses the close-enough `@codemirror/lang-sql`).
+- An MCP `sql.generate` tool to restore the (dropped) AI "generate SQL" button.
+- A LogQL-style source (port the Grafana Loki builder/raw files, kept as the reference).
 
 ## Related
 
@@ -109,4 +148,5 @@ metadata round-tripping through `ext.list`.
 - Widget-builder (v2) scope: [`../../scope/frontend/dashboard/widget-builder-scope.md`](../../scope/frontend/dashboard/widget-builder-scope.md)
 - Phase 1 session: [`../../sessions/frontend/dashboard-session.md`](../../sessions/frontend/dashboard-session.md)
 - Widget-builder (v2) session: [`../../sessions/frontend/widget-builder-session.md`](../../sessions/frontend/widget-builder-session.md)
+- Widget-builder follow-ups (SQL source + editors) session: [`../../sessions/frontend/widget-builder-followups-session.md`](../../sessions/frontend/widget-builder-followups-session.md)
 - Federation session: [`../../sessions/extensions/fleet-monitor-federation-session.md`](../../sessions/extensions/fleet-monitor-federation-session.md)
