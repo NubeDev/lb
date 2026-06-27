@@ -7,8 +7,9 @@ IPC) AND in a plain browser against a real node over **SSE/HTTP** (S3). Promoted
 
 > **UI standard:** every surface is held to `scope/frontend/ui-standards-scope.md` — shadcn/ui
 > primitives only (`components/ui/*`), the Members page + NavRail sidebar as the canonical look,
-> and responsive/mobile auto-resize. `features/members/MembersView.tsx` and
-> `features/shell/NavRail.tsx` are the reference implementations; the rest are migrating onto it.
+> and responsive/mobile auto-resize. `features/members/MembersView.tsx`,
+> `features/extensions/ExtensionsView.tsx`, and `features/shell/NavRail.tsx` are migrated
+> references; the rest are moving onto it incrementally.
 
 ## Layout (FILE-LAYOUT §4 — one component/hook per file)
 

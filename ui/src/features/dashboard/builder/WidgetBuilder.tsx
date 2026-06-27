@@ -27,6 +27,11 @@ interface Props {
   ws: string;
   existing: Cell[];
   onAdd: (cell: Cell) => void;
+  /** Whether the viewer may edit the dashboard — `mcp:dashboard.save:call` for this workspace, sourced
+   *  from the session grant the shell already holds (the same source the nav gates editing on). When
+   *  false the whole "Add widget" surface is hidden; the host re-check on `dashboard.save` is the
+   *  authoritative backstop regardless. */
+  canEdit: boolean;
 }
 
 // No shadcn Select/Textarea primitive exists in this repo yet (only Button/Input/Badge/Card/…), so the
@@ -49,14 +54,17 @@ function nextKey(existing: Cell[]): string {
   return `w${n}`;
 }
 
-/** The views valid for a chosen source. A write action ⇒ controls; a read source ⇒ read + scripted. */
+/** The views valid for a chosen source. A packaged widget tile IS its own view (the single
+ *  `ext:<id>/<widget>` key — no view chooser); a write action ⇒ controls; a read source ⇒ read +
+ *  scripted. */
 function viewsFor(entry: SourceEntry | null): View[] {
   if (!entry) return [...READ_VIEWS, ...SCRIPTED_VIEWS, ...CONTROL_VIEWS];
+  if (entry.group === "widget" && entry.viewKey) return [entry.viewKey as View];
   if (entry.writes) return [...CONTROL_VIEWS];
   return [...READ_VIEWS, ...SCRIPTED_VIEWS];
 }
 
-export function WidgetBuilder({ ws, existing, onAdd }: Props) {
+export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
   const { entries, installed, loading } = useSourcePicker(ws);
   const [entryId, setEntryId] = useState<string>("");
   const [view, setView] = useState<View>("chart");
@@ -73,6 +81,9 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
   const validViews = viewsFor(entry);
   const isScripted = SCRIPTED_VIEWS.includes(view);
   const isSqlSource = entry?.id === SQL_SOURCE_ID;
+  // A packaged extension tile: the cell is a v2 `{ v:2, view:"ext:<id>/<widget>" }` — no source/action,
+  // no view chooser (the tile owns its renderer + data). Its scope is re-checked at the host per call.
+  const isWidget = entry?.group === "widget";
 
   // Build the candidate cell from the current selection — also the preview's input.
   const candidate: Cell | null = useMemo(() => {
@@ -105,6 +116,9 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
       w: 4,
       h: 3,
       v: 2,
+      // `widget_type` is the v1 fallback (chart/stat/gauge); v2 render is driven by `view`. A packaged
+      // tile's `view` is its `ext:<id>/<widget>` key — `cellView` reads `view` first, so the fallback
+      // stays a harmless "chart" exactly as every other v2 cell does.
       widget_type: "chart",
       view,
       binding: { series: "" },
@@ -122,6 +136,10 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
     setTemplateValue({ mode: "inline", code: DEFAULT_INLINE_CODE });
     setSqlState(emptySqlSource());
   };
+
+  // Gate the whole add surface on the edit cap (rule 5: capability-first). A read-only viewer sees the
+  // dashboard without any add affordance; the host re-check on `dashboard.save` is the real backstop.
+  if (!canEdit) return null;
 
   return (
     <div className="border-b border-border bg-panel px-3 py-3 text-xs" aria-label="widget builder">
@@ -147,28 +165,32 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
           <PickerGroup entries={entries} group="sql" label="Direct SurrealDB" />
           <PickerGroup entries={entries} group="extension" label="Installed extension" />
           <PickerGroup entries={entries} group="action" label="Action (control)" />
+          <PickerGroup entries={entries} group="widget" label="Extension widgets" />
         </select>
 
-        {/* View chooser — only the views valid for the chosen source. */}
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; see FIELD note */}
-        <select
-          aria-label="widget view"
-          className={FIELD}
-          value={view}
-          onChange={(e) => {
-            const v = e.target.value as View;
-            setView(v);
-            // Seed a working default snippet when an empty Plot/D3 editor first appears.
-            if (v === "plot" && !plotCode.trim()) setPlotCode(DEFAULT_PLOT_CODE);
-            if (v === "d3" && !plotCode.trim()) setPlotCode(DEFAULT_D3_CODE);
-          }}
-        >
-          {validViews.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
+        {/* View chooser — only the views valid for the chosen source. Hidden for a packaged extension
+            tile: it IS its own view (the single `ext:<id>/<widget>` key), so there is nothing to pick. */}
+        {!isWidget && (
+          /* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; see FIELD note */
+          <select
+            aria-label="widget view"
+            className={FIELD}
+            value={view}
+            onChange={(e) => {
+              const v = e.target.value as View;
+              setView(v);
+              // Seed a working default snippet when an empty Plot/D3 editor first appears.
+              if (v === "plot" && !plotCode.trim()) setPlotCode(DEFAULT_PLOT_CODE);
+              if (v === "d3" && !plotCode.trim()) setPlotCode(DEFAULT_D3_CODE);
+            }}
+          >
+            {validViews.map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
+        )}
 
         <Button aria-label="add widget" size="sm" onClick={add}>
           <Plus size={12} /> Add

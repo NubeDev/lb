@@ -6,15 +6,22 @@
 
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { Source, Action } from "@/lib/dashboard";
+import { widgetIdOf } from "./ExtWidget";
 
 /** A friendly source entry the picker offers. `kind` groups it; `resolve()` gives the `{tool, args}`. */
 export interface SourceEntry {
   /** Stable id for the option element. */
   id: string;
-  /** The grouping origin (the picker's left-rail sections). */
-  group: "series" | "live" | "extension" | "action" | "sql";
+  /** The grouping origin (the picker's left-rail sections). `widget` is a packaged extension tile (a
+   *  finished `[[widget]]` the developer shipped — distinct from `extension`, which offers raw tools). */
+  group: "series" | "live" | "extension" | "action" | "sql" | "widget";
   /** What the author sees — never a raw tool name. */
   label: string;
+  /** For a `widget` entry: the icon name the tile declared (lucide id), carried onto the option. */
+  icon?: string;
+  /** For a `widget` entry: the `ext:<id>/<widget>` view key the selected tile resolves to (a packaged
+   *  tile IS its own view — no view chooser; the cell's `view`/`widget_type` is set to this). */
+  viewKey?: string;
   /** The resolved read source `{tool, args}` (for read/scripted views + a control's optional self-read). */
   source?: Source;
   /** The resolved write action (for control views) — `argsTemplate` gets a `{{value}}` slot filled later. */
@@ -83,6 +90,31 @@ export function extensionEntries(rows: ExtRow[]): SourceEntry[] {
   return out;
 }
 
+/** Build the packaged-tile entries from `ext.list` — ONE entry per `row.widgets[]` `[[widget]]` tile.
+ *  Unlike `extensionEntries` (which harvests a tile's *tools* as build-your-own sources), this emits the
+ *  *finished tile* itself: selecting it produces a `view: "ext:<id>/<widget>"` cell (no view chooser, no
+ *  tool wiring — the tile owns its data via `scope ∩ grant`, re-checked at the host). The widget id is
+ *  derived with the SAME `widgetIdOf` slug the renderer parses, so the key the picker builds == the key
+ *  `ExtWidget` mounts. A disabled extension contributes no tiles. */
+export function extWidgetEntries(rows: ExtRow[]): SourceEntry[] {
+  const out: SourceEntry[] = [];
+  for (const row of rows) {
+    if (!row.enabled) continue;
+    for (const tile of row.widgets ?? []) {
+      const widgetId = widgetIdOf(tile);
+      out.push({
+        id: `widget:${row.ext}/${widgetId}`,
+        group: "widget",
+        label: `${row.ext} · ${tile.label}`,
+        icon: tile.icon,
+        viewKey: `ext:${row.ext}/${widgetId}`,
+        writes: false,
+      });
+    }
+  }
+  return out;
+}
+
 /** The id the picker uses for the "SQL query" entry — the visual SQL builder + raw-SQL Code source
  *  (widget-builder Slice C). Selecting it opens the Builder⇄Code editor, which resolves to a
  *  `{ tool: "store.query", args: { sql, vars? } }` source (Slice A). */
@@ -111,6 +143,7 @@ export function buildSourceEntries(seriesNames: string[], rows: ExtRow[]): Sourc
     ...seriesEntries(seriesNames),
     ...liveEntries(seriesNames),
     ...extensionEntries(rows),
+    ...extWidgetEntries(rows),
     sqlSourceEntry(),
   ];
 }

@@ -11,6 +11,7 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-28 | frontend | an installed extension's `[[widget]]` tile renders blank — the iframe tier can't resolve its bare `react` imports (`Failed to resolve module specifier "react"`); the remote externalizes React to the shell import map, which only exists in-process | resolved | [frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md](frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md) |
 | 2026-06-27 | frontend | a render-time `<Navigate to={dynamicHref}>` (the tenant-less `/t/<ws>` redirect fallback) re-navigates every commit → "Maximum update depth exceeded" (~370 warnings; tests still pass) | resolved | [frontend/navigate-dynamic-href-render-loop.md](frontend/navigate-dynamic-href-render-loop.md) |
 | 2026-06-27 | extensions | a WIT `@0.2.0` minor bump breaks every `@0.1.0` guest at instantiation (wasmtime treats a `0.x` minor as semver-incompatible at link time, though the loader's major-check passes) | resolved | [extensions/wit-minor-bump-breaks-0_1-guest-linking.md](extensions/wit-minor-bump-breaks-0_1-guest-linking.md) |
 | 2026-06-27 | store | SurrealKV "Invalid revision N for type Value" on the SECOND ingest drain (persistent store only; `mem://` is fine) — durable on-disk ingest unreliable past one write/ws | documented (engine-level; demo runs on `mem://`) | [store/surrealkv-invalid-revision-on-drain-reread.md](store/surrealkv-invalid-revision-on-drain-reread.md) |

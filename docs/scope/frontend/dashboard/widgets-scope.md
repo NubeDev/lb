@@ -129,15 +129,17 @@ Rejected alternatives:
 
 ## Open questions
 
-- What is the exact `widget_type` key for a declared extension tile: `ext:<extension-id>` or
-  `ext:<extension-id>/<widget-label-or-id>`? Multiple `[[widget]]` blocks mean the cell key must identify
-  a specific tile, not only an extension.
-- Does the next slice add a dedicated widget expose, for example `./widget`, or reuse the existing page
-  remote entry with a named exported mount?
-- Should widget palette entries appear only to dashboard editors with `mcp:dashboard.save:call`, or also
-  read-only users as disabled discoverable tiles?
-- Do federated widgets get `series.watch` immediately, or start with `series.read`/`series.latest` and add
-  streaming after teardown tests are in place?
+- ~~What is the exact `widget_type` key for a declared extension tile?~~ RESOLVED (widget-builder):
+  `ext:<extension-id>/<widget-id>` — the key names a specific tile (`ExtWidget.parseExtKey`).
+- ~~Does the next slice add a dedicated widget expose, or reuse the page remote entry?~~ RESOLVED
+  (widget-builder): a named **`mountWidget`** export on the SAME `remoteEntry.js` (one build), proven by
+  `proof-panel`.
+- ~~Should widget palette entries appear only to dashboard editors with `mcp:dashboard.save:call`?~~
+  **SHIPPED** — yes, editors only; the add affordance is gated on the edit cap (server re-checks `dashboard.save`).
+  Surfacing the packaged tile in the palette + this gate shipped in
+  [`widget-palette-scope.md`](widget-palette-scope.md) (the "Extension widgets" group + the `canEdit` gate).
+- ~~Do federated widgets get `series.watch` immediately?~~ RESOLVED (widget-builder v2): the v2 bridge ships
+  both `call` and `watch`; `watch` rides the shipped series SSE.
 
 ## Related
 

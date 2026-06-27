@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { buildSourceEntries, extensionEntries } from "./sourcePicker";
+import { buildSourceEntries, extensionEntries, extWidgetEntries } from "./sourcePicker";
 import { fillArgs } from "../views/argsTemplate";
 import { extWidgetTier, scriptedTier, isTrustedKey } from "./trust";
 import type { ExtRow } from "@/lib/ext/ext.api";
@@ -57,6 +57,46 @@ describe("source picker", () => {
   });
 });
 
+describe("packaged-tile entries (extWidgetEntries)", () => {
+  // A two-tile extension proves "one entry per [[widget]] tile" — the cell key already carries
+  // `/<widget>`, so N tiles generalize from proof-panel's one.
+  const twoTileExt: ExtRow = {
+    ...mqttExt,
+    ext: "proof-panel",
+    widgets: [
+      { entry: "remoteEntry.js", label: "Proof Ping", icon: "shield-check", scope: ["series.latest"] },
+      { entry: "remoteEntry.js", label: "Proof Trend", icon: "activity", scope: ["series.find"] },
+    ],
+  };
+
+  it("emits ONE widget entry per [[widget]] tile, keyed by the renderer's widgetIdOf slug", () => {
+    const entries = extWidgetEntries([twoTileExt]);
+    expect(entries).toHaveLength(2);
+    const ping = entries[0];
+    expect(ping.group).toBe("widget");
+    expect(ping.label).toBe("proof-panel · Proof Ping"); // `<ext> · <tile.label>`, not a tool name
+    expect(ping.icon).toBe("shield-check");
+    // The view key MUST match the key ExtWidget parses (slug = lowercase, non-alnum → '-').
+    expect(ping.viewKey).toBe("ext:proof-panel/proof-ping");
+    expect(ping.writes).toBe(false);
+    // A widget entry resolves to a view, not a `{tool,args}` source/action — the tile owns its data.
+    expect(ping.source).toBeUndefined();
+    expect(ping.action).toBeUndefined();
+    expect(entries[1].viewKey).toBe("ext:proof-panel/proof-trend");
+  });
+
+  it("contributes no tiles from a disabled extension", () => {
+    expect(extWidgetEntries([{ ...twoTileExt, enabled: false }])).toHaveLength(0);
+  });
+
+  it("is folded into buildSourceEntries alongside the tool entries (both are offered)", () => {
+    const entries = buildSourceEntries([], [twoTileExt]);
+    // The same extension contributes BOTH a packaged-tile entry (group 'widget') and its tool entries.
+    expect(entries.some((e) => e.group === "widget" && e.label === "proof-panel · Proof Ping")).toBe(true);
+    expect(entries.some((e) => e.group === "extension")).toBe(true);
+  });
+});
+
 describe("control argsTemplate fill (typed {{value}})", () => {
   it("substitutes only the exact {{value}} leaf, preserving type", () => {
     const filled = fillArgs({ topic: "acme/cooler/defrost", payload: "{{value}}" }, true);
@@ -73,12 +113,20 @@ describe("control argsTemplate fill (typed {{value}})", () => {
 });
 
 describe("trust-tier routing", () => {
-  it("iframes a non-allow-listed extension widget by default (in-process is opt-in)", () => {
-    expect(extWidgetTier("some-untrusted-key")).toBe("iframe");
-    expect(isTrustedKey("some-untrusted-key")).toBe(false);
+  it("renders an INSTALLED extension widget in-process (the install is the trust gate)", () => {
+    // An installed extension passed the publish/install capability gate, so its widget federates
+    // in-process — the tier its bundle is built for (bare `react` resolves via the shell import map).
+    // (Was iframe-by-default; that tier can't load a federated remote — see the debug entry.)
+    expect(extWidgetTier("proof-panel")).toBe("in-process");
+    expect(extWidgetTier("any-installed-ext")).toBe("in-process");
+    expect(extWidgetTier(undefined)).toBe("in-process");
   });
 
-  it("always sandboxes a scripted view (author code never in-process)", () => {
+  it("always sandboxes a scripted view (author code typed into a cell never runs in-process)", () => {
     expect(scriptedTier()).toBe("iframe");
+  });
+
+  it("keeps the allow-list helper for a future restrict-which-publisher tier (empty by default)", () => {
+    expect(isTrustedKey("some-key")).toBe(false);
   });
 });

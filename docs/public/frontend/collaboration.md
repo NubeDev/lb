@@ -4,7 +4,8 @@ What shipped when the UI stopped being a single-screen demo on fakes and became 
 collaboration app over a real node**. Built as five repetitions of the channel's proven move
 (`lib/<x>/<x>.api.ts` → a gateway route → an already-capability-checked host verb → a
 `features/<x>/` view + hook), identity first. Source of truth: `scope/frontend/collaboration-scope.md`
-and `sessions/frontend/collaboration-session.md`.
+and `sessions/frontend/collaboration-session.md`. Standalone shipped docs now split the two core
+surfaces out at `../workspace/workspace.md` and `../channels/channels.md`.
 
 ## The session (identity is the keystone)
 

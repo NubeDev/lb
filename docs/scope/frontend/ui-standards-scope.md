@@ -142,7 +142,7 @@ Incremental, highest-traffic first; the gate is "no new debt," not "convert ever
 The mechanical loop: migrate a view → **remove its path from `LEGACY_VIEWS`** in
 `ui/eslint.config.js` (it now errors on regression) → re-run `pnpm lint`. When `LEGACY_VIEWS`
 is empty, flip the `lint` script to `eslint src --max-warnings 0` so the standard is fully
-build-breaking. Today: `pnpm lint` exits 0 with 153 warnings across 27 legacy views.
+build-breaking. Today: `pnpm lint` exits 0 with 141 warnings across 25 legacy views.
 
 ## Testing plan
 

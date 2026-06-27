@@ -18,6 +18,10 @@ because existing session docs point at them; new dashboard notes should live her
    *view* (chart/table/stat/gauge/Observable Plot/D3/JSX template/control) to any *MCP tool* the install
    grant allows (read **or** write), authored in a rubix-cube-style builder, plus extension-shipped
    `[[widget]]` tiles. Supersedes the read-only/four-verb stance of (3).
+3c. [`widget-palette-scope.md`](widget-palette-scope.md) - the **last-mile discovery slice**: surface a
+   packaged `[[widget]]` tile (e.g. `proof-panel`'s Proof Ping) in the builder's source picker, gated to
+   editors with `mcp:dashboard.save:call`. The renderer + bridge ship in (3b); this adds the palette entry
+   + the permission gate so a user actually *gets a new option when adding a widget*.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -32,10 +36,17 @@ because existing session docs point at them; new dashboard notes should live her
 
 ## What is not shipped yet
 
-- Federated extension widgets do not yet render inside dashboard grid cells. `WidgetHost` still renders
-  only the built-in widget types; `ext:<id>` cells show an honest unsupported state until the widget
-  renderer slice lands.
-- The untrusted iframe tier remains a follow-up to the trusted module-federation page path.
+- Federated extension widgets **render** inside dashboard grid cells (`WidgetView` → `ExtWidget` mounts an
+  `ext:<id>/<widget>` cell through the v2 bridge, in-process by trusted publisher key or in a sandboxed
+  iframe otherwise — widget-builder v2) **and are now addable from the builder palette** — the discovery
+  gap is **closed**: [`widget-palette-scope.md`](widget-palette-scope.md) **shipped** the "Extension
+  widgets" picker group (one entry per `[[widget]]` tile) + the editor-only (`mcp:dashboard.save:call`)
+  add gate. See [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md) → "Extension
+  widgets in the palette".
+- The external-data **reference extensions** whose tools/tiles a widget would call (timescale, mqtt-bridge)
+  are blocked on separate platform fixes (native host-callback, `net:*`, `kv.*`, secrets) —
+  [`../../extensions/reference-extensions-scope.md`](../../extensions/reference-extensions-scope.md). The
+  dashboard is ready for them; they are not yet built.
 
 ## Authoring rule
 

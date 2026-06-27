@@ -8,6 +8,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 ## Topics
 
 - `agent/` — the central, workspace-scoped AI agent (S5).
+- `agent-run/` — the agent **run** as a first-class object: a canonical `RunEvent` stream, an ACP
+  stdio adapter (Zed/Cursor drive the agent), per-tool-call Allow/Deny/Ask with **durable
+  suspend/resume**, and **model-activated skills** (the model picks from a granted catalog). Opens up
+  the S5 black-box loop; ideas reviewed from the Awaken framework, its plugin framework rejected.
 - `ai-gateway/` — the swappable model-access sidecar (S5).
 - `observability/`, `audit/`, `undo/` — the **three cross-cutting projections of the host dispatch
   chokepoint** (README §6.5/§6.6), scoped together as the S10 retrofit: `observability/` (structured
@@ -39,6 +43,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   per-extension **`kv.*`** store, and a binary-blob asset path; the doctrine that a native Tier-2
   extension is the sanctioned escape hatch that may own external resources without breaking rule 2).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
+- `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
+  lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
+  selected from the signed token.
+- `channels/` — the collaboration channel surface: durable inbox-backed history, bus motion, channel
+  registry, SSE stream, and presence.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side

@@ -60,8 +60,6 @@ const LEGACY_VIEWS = [
   "src/features/dashboard/DashboardView.tsx",
   "src/features/dashboard/Grid.tsx",
   "src/features/data/DataView.tsx",
-  "src/features/extensions/ExtensionsView.tsx",
-  "src/features/extensions/UploadArtifact.tsx",
   "src/features/inbox/InboxView.tsx",
   "src/features/ingest/CreateSeriesWizard.tsx",
   "src/features/ingest/IngestView.tsx",

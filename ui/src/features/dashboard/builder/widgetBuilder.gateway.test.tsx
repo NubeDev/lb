@@ -8,11 +8,12 @@
 //   - token never crosses the bridge boundary (no token in any bridge arg / payload);
 //   - write-control e2e (a button bound to a real write tool actually writes; side effect asserted);
 //   - scripted-template write deny when the tool is ungranted;
-//   - trust-tier routing (a non-allow-listed ext widget renders sandboxed, never in-process);
+//   - trust-tier routing (an installed ext widget federates in-process; scripted code stays sandboxed);
 //   - extension-widget e2e (install with a [[widget]] → palette tile → uninstall evicts).
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import {
   useRealGateway,
@@ -20,6 +21,7 @@ import {
   signInWithCaps,
   seedIotDemo,
   seedExtension,
+  seedSeries,
 } from "@/test/gateway-session";
 import { invoke } from "@/lib/ipc/invoke";
 import {
@@ -28,11 +30,23 @@ import {
   listTemplates,
   deleteTemplate,
 } from "@/lib/dashboard/template.api";
+import { saveDashboard, getDashboard } from "@/lib/dashboard/dashboard.api";
 import { listExtensions, uninstallExtension } from "@/lib/ext/ext.api";
+import type { Cell } from "@/lib/dashboard";
+import { WidgetBuilder } from "./WidgetBuilder";
 import { makeWidgetBridge } from "./widgetBridge";
 import { ExtWidget } from "./ExtWidget";
 import { extWidgetTier } from "./trust";
-import { buildSourceEntries } from "./sourcePicker";
+import { buildSourceEntries, extWidgetEntries } from "./sourcePicker";
+
+/** proof-panel's packaged `[[widget]]` tile, exactly as `extension.toml` declares it (Proof Ping,
+ *  scope = series.latest/series.find). Seeded into `ext.list` so the palette surfaces it for real. */
+const PROOF_PING = {
+  entry: "remoteEntry.js",
+  label: "Proof Ping",
+  icon: "shield-check",
+  scope: ["series.latest", "series.find"],
+};
 
 let n = 0;
 const nextWs = () => `wb-${n++}`;
@@ -205,10 +219,12 @@ describe("scripted-template write deny (real gateway)", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------
-// Trust-tier routing
+// Trust-tier routing — an INSTALLED extension widget federates in-process (the install is the trust
+// gate). The iframe tier is reserved for scripted author code, never an installed widget (which the
+// sandbox can't load: the remote externalizes React to the shell import map — see the debug entry).
 // ---------------------------------------------------------------------------------------------------
 describe("trust-tier routing (real gateway)", () => {
-  it("a non-allow-listed extension widget renders in a sandboxed iframe, never in-process", async () => {
+  it("an installed extension widget renders in-process, never in a sandboxed iframe", async () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
     await seedExtension({
@@ -222,18 +238,20 @@ describe("trust-tier routing (real gateway)", () => {
     });
     const installed = await listExtensions();
 
-    // The publisher key (== ext id here) is NOT on the allow-list → iframe tier.
-    expect(extWidgetTier("mqtt-bridge")).toBe("iframe");
+    // Installed ⇒ in-process, for any key (the install passed the publish/install cap gate).
+    expect(extWidgetTier("mqtt-bridge")).toBe("in-process");
 
     render(
       <ExtWidget viewKey="ext:mqtt-bridge/cooler-switch" installed={installed} workspace={ws} />,
     );
-    // The cell mounts the iframe host (sandboxed), not an in-process div. Wait for the iframe element.
-    await waitFor(() =>
-      expect(document.querySelector("[data-widget-iframe]")).toBeInTheDocument(),
-    );
-    const host = document.querySelector('[data-ext-widget="mqtt-bridge"]');
-    expect(host?.getAttribute("data-tier")).toBe("iframe");
+    // The cell mounts the in-process federation host, NOT a sandboxed iframe.
+    const host = await waitFor(() => {
+      const h = document.querySelector('[data-ext-widget="mqtt-bridge"]');
+      expect(h).toBeInTheDocument();
+      return h;
+    });
+    expect(host?.getAttribute("data-tier")).toBe("in-process");
+    expect(document.querySelector("[data-widget-iframe]")).not.toBeInTheDocument();
   });
 });
 
@@ -265,5 +283,164 @@ describe("extension-widget e2e (real gateway)", () => {
     installed = await listExtensions();
     entries = buildSourceEntries([], installed);
     expect(entries.some((e) => e.label.includes("mqtt"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Packaged-tile PALETTE round-trip — the slice's headline. Install proof-panel's [[widget]] → the
+// "Extension widgets" group lists "Proof Ping" → select → preview routes to the real ExtWidget over the
+// real bridge → Add persists a `view:"ext:proof-panel/proof-ping"` cell via real dashboard.save → reload
+// re-reads it. (The data the tile reads is real: proof.demo's latest is asserted over the bridge.)
+// ---------------------------------------------------------------------------------------------------
+describe("packaged-tile palette round-trip (real gateway)", () => {
+  it("lists Proof Ping → select previews the real ExtWidget → Add persists the cell → reload re-reads it", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Install proof-panel's packaged tile (real ext.list row) + seed the REAL series the tile reads.
+    await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
+    await seedSeries({ series: "proof.demo", seq: 1, payload: 21, key: "kind", value: "temperature" });
+
+    // The tile's data is REAL: its scope reads proof.demo's latest over the live bridge (the same call
+    // the mounted widget makes). Not a fake preview — the value the tile would show is the seeded 21.
+    const tileBridge = makeWidgetBridge(PROOF_PING.scope);
+    const latest = await tileBridge.call<{ sample: { payload: unknown } | null }>("series.latest", {
+      series: "proof.demo",
+    });
+    expect(latest.sample?.payload).toBe(21);
+
+    // Render the REAL builder as an editor. Capture the cell it adds.
+    let added: Cell | null = null;
+    render(<WidgetBuilder ws={ws} existing={[]} onAdd={(c) => (added = c)} canEdit />);
+
+    // The "Extension widgets" group lists the packaged tile by `<ext> · <tile.label>`.
+    const sourceSelect = await screen.findByLabelText<HTMLSelectElement>("widget source");
+    await waitFor(() =>
+      expect(
+        [...sourceSelect.options].some((o) => o.textContent === "proof-panel · Proof Ping"),
+      ).toBe(true),
+    );
+
+    // Select it. The view chooser disappears (a packaged tile is its own view) and the preview mounts
+    // the real ExtWidget for the ext key, in-process (an installed extension federates in-process).
+    const option = [...sourceSelect.options].find((o) => o.textContent === "proof-panel · Proof Ping")!;
+    await userEvent.selectOptions(sourceSelect, option.value);
+    expect(screen.queryByLabelText("widget view")).not.toBeInTheDocument();
+    await waitFor(() => {
+      const host = document.querySelector('[data-ext-widget="proof-panel"]');
+      expect(host).toBeInTheDocument();
+      expect(host?.getAttribute("data-tier")).toBe("in-process");
+    });
+
+    // Add → the builder emits a v2 cell whose view is the packaged key. Persist it for REAL.
+    await userEvent.click(screen.getByLabelText("add widget"));
+    expect(added).not.toBeNull();
+    expect(added!.v).toBe(2);
+    expect(added!.view).toBe("ext:proof-panel/proof-ping");
+    expect(added!.source).toBeUndefined(); // a packaged tile carries no source — it owns its data
+
+    await saveDashboard("dash-1", "Ops", [added!]);
+
+    // Reload: the persisted cell comes back identical — the round-trip is real, not in-memory.
+    const reloaded = await getDashboard("dash-1");
+    const cell = reloaded.cells.find((c) => c.view === "ext:proof-panel/proof-ping");
+    expect(cell).toBeDefined();
+    expect(cell!.v).toBe(2);
+  });
+
+  it("emits one palette entry per [[widget]] tile from a REAL ext.list row", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
+
+    const installed = await listExtensions();
+    const widgetEntries = extWidgetEntries(installed);
+    const ping = widgetEntries.find((e) => e.label === "proof-panel · Proof Ping");
+    expect(ping).toBeDefined();
+    expect(ping!.group).toBe("widget");
+    expect(ping!.viewKey).toBe("ext:proof-panel/proof-ping"); // the key ExtWidget parses
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// The edit GATE (the slice's mandatory capability-deny headline). A viewer WITHOUT
+// `mcp:dashboard.save:call` gets NO add affordance, AND a direct dashboard.save from such a principal
+// is denied server-side (the host is the real backstop even if the UI gate were bypassed).
+// ---------------------------------------------------------------------------------------------------
+describe("edit-cap gate (real gateway)", () => {
+  it("hides the whole add surface from a read-only viewer (canEdit=false)", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
+
+    const { container } = render(
+      <WidgetBuilder ws={ws} existing={[]} onAdd={() => {}} canEdit={false} />,
+    );
+    // No builder surface at all — no source picker, no add button (the affordance is gated).
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByLabelText("widget source")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("add widget")).not.toBeInTheDocument();
+  });
+
+  it("denies dashboard.save server-side for a principal lacking the cap (UI gate is not the boundary)", async () => {
+    const ws = nextWs();
+    // A session holding only the READ caps — NO mcp:dashboard.save:call.
+    await signInWithCaps("user:ada", ws, ["mcp:dashboard.list:call", "mcp:dashboard.get:call"]);
+    // Even bypassing the hidden UI, the host denies the write — the authoritative backstop.
+    await expect(
+      saveDashboard("dash-x", "X", [{
+        i: "w1", x: 0, y: 0, w: 4, h: 3, v: 2, widget_type: "chart",
+        view: "ext:proof-panel/proof-ping", binding: { series: "" },
+      } as Cell]),
+    ).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Workspace isolation — a ws-B editor's picker lists only ws-B tiles; a ws-A tile never leaks across.
+// ---------------------------------------------------------------------------------------------------
+describe("packaged-tile workspace isolation (real gateway)", () => {
+  it("a ws-B editor's picker lists only ws-B's installed tiles", async () => {
+    // ws-A installs proof-panel.
+    const wsA = nextWs();
+    await signInReal("user:ada", wsA);
+    await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
+    expect(extWidgetEntries(await listExtensions()).some((e) => e.label.includes("Proof Ping"))).toBe(true);
+
+    // ws-B installs a DIFFERENT tile; its picker sees its own, never ws-A's proof-panel.
+    const wsB = nextWs();
+    await signInReal("user:ben", wsB);
+    await seedExtension({
+      ext: "mqtt-bridge", version: "0.1.0", tier: "wasm", enabled: true,
+      widgets: [{ entry: "remoteEntry.js", label: "Cooler Switch", icon: "x", scope: ["mqtt.status"] }],
+    });
+    const bEntries = extWidgetEntries(await listExtensions());
+    expect(bEntries.some((e) => e.label === "mqtt-bridge · Cooler Switch")).toBe(true);
+    expect(bEntries.some((e) => e.label.includes("Proof Ping"))).toBe(false); // ws-A's tile is behind the wall
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Trust-tier routing RE-ASSERTED FROM THE PALETTE PATH — a packaged tile added from the palette
+// federates IN-PROCESS (the install is the trust gate; the iframe sandbox is for scripted author code
+// only, and can't load a federated remote anyway — see the debug entry).
+// ---------------------------------------------------------------------------------------------------
+describe("palette trust-tier routing (real gateway)", () => {
+  it("a packaged tile from the palette renders in-process, never sandboxed", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
+    const installed = await listExtensions();
+
+    // The palette resolves the tile to its ext key; an installed widget always federates in-process.
+    const entry = extWidgetEntries(installed).find((e) => e.label.includes("Proof Ping"))!;
+    expect(extWidgetTier("proof-panel")).toBe("in-process");
+
+    render(<ExtWidget viewKey={entry.viewKey!} installed={installed} workspace={ws} />);
+    await waitFor(() => {
+      const host = document.querySelector('[data-ext-widget="proof-panel"]');
+      expect(host).toBeInTheDocument();
+      expect(host?.getAttribute("data-tier")).toBe("in-process");
+    });
+    expect(document.querySelector("[data-widget-iframe]")).not.toBeInTheDocument();
   });
 });

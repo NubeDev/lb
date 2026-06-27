@@ -105,7 +105,8 @@ The UI became a **real collaboration app over a real session** (the channel's 4-
 - **Two real sessions** make the workspace-isolation test real — ws-B sees none of ws-A.
 - Tested: `crates/host/tests/collaboration_test.rs` + the gateway suite (session / deny / two-session
   isolation / registry / real inbox / outbox pending→delivered / live SSE) + a Vitest view per
-  surface. See `frontend/collaboration.md`.
+  surface. See `frontend/collaboration.md`, plus the standalone shipped docs
+  `workspace/workspace.md` and `channels/channels.md`.
 
 ## Shipped (S7 — platform maturity: the outbox egress — real GitHub `Target` + backoff/dead-letter)
 

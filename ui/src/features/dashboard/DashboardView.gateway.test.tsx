@@ -12,11 +12,36 @@ import userEvent from "@testing-library/user-event";
 
 import { DashboardView } from "./DashboardView";
 import { useRealGateway, signInReal, seedIotDemo } from "@/test/gateway-session";
+import { RoutingContextProvider } from "@/features/routing/RoutingContextProvider";
+import { getSession } from "@/lib/session";
 
 let n = 0;
 const nextWs = () => `dash-ui-${n++}`;
 
 beforeAll(() => useRealGateway());
+
+/** Render `DashboardView` inside the shell's routing context, fed the REAL signed session's caps (the
+ *  same source the live shell uses to gate the edit affordance — no mock, the caps are real). The dev
+ *  login carries `mcp:dashboard.save:call`, so the builder is shown; a deny case would pass fewer caps. */
+function renderDashboard(ws: string) {
+  const s = getSession();
+  return render(
+    <RoutingContextProvider
+      value={{
+        workspace: ws,
+        principal: s?.principal ?? "",
+        caps: s?.caps,
+        allowed: ["dashboards"],
+        extPages: [],
+        extPagesLoading: false,
+        onSignOut: () => {},
+        switchWorkspace: () => {},
+      }}
+    >
+      <DashboardView ws={ws} />
+    </RoutingContextProvider>,
+  );
+}
 
 /** Create a dashboard titled `title` in the freshly-rendered view (it auto-selects on create). */
 async function createDashboard(user: ReturnType<typeof userEvent.setup>, title: string) {
@@ -31,7 +56,7 @@ describe("DashboardView (real gateway)", () => {
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
-    render(<DashboardView ws={ws} />);
+    renderDashboard(ws);
     await createDashboard(user, "Ops");
 
     // v2 builder: source-pick the seeded `cooler.temp` series (a friendly label, NOT a tool name),
@@ -49,7 +74,7 @@ describe("DashboardView (real gateway)", () => {
     expect((await screen.findByLabelText("chart latest")).textContent).not.toBe("");
 
     // Persisted: a fresh render of the same workspace re-loads the dashboard from the store.
-    render(<DashboardView ws={ws} />);
+    renderDashboard(ws);
     await user.click(await screen.findByLabelText("select dashboard ops"));
     expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
   });
@@ -60,7 +85,7 @@ describe("DashboardView (real gateway)", () => {
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
-    render(<DashboardView ws={ws} />);
+    renderDashboard(ws);
     await createDashboard(user, "Tagged");
 
     // Source-pick the seeded series, choose the `stat` view, add it.
@@ -80,14 +105,14 @@ describe("DashboardView (real gateway)", () => {
     // Ada creates a dashboard in her workspace.
     const wsA = nextWs();
     await signInReal("user:ada", wsA);
-    render(<DashboardView ws={wsA} />);
+    renderDashboard(wsA);
     await createDashboard(user, "Ops A");
     expect(await screen.findByLabelText("select dashboard ops-a")).toBeInTheDocument();
 
     // Ben, in a different workspace, sees an empty roster (the hard wall).
     const wsB = nextWs();
     await signInReal("user:ben", wsB);
-    render(<DashboardView ws={wsB} />);
+    renderDashboard(wsB);
     expect(await screen.findByText("No dashboards yet.")).toBeInTheDocument();
   });
 });

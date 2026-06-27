@@ -12,6 +12,8 @@ import { useDashboard } from "./useDashboard";
 import { useSourcePicker } from "./builder/useSourcePicker";
 import type { Cell, Visibility } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
+import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
+import { CAP, hasCap } from "@/lib/session";
 
 const VISIBILITIES: Visibility[] = ["private", "team", "workspace"];
 
@@ -25,6 +27,10 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
   const dash = useDashboard(ws);
   const picker = useSourcePicker(ws);
   const current = dash.current;
+  // The edit cap, sourced from the session grant the shell already holds (the same `caps` the nav gates
+  // editing surfaces on) — no new backend read. The host re-checks `dashboard.save` regardless.
+  const { caps } = useAppRoutingContext();
+  const canEdit = hasCap(caps, CAP.dashboardSave);
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(window.location.href);
@@ -138,6 +144,7 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
               ws={ws}
               existing={current.cells}
               onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
+              canEdit={canEdit}
             />
 
             <div className="min-h-0 flex-1">

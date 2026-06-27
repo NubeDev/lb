@@ -63,12 +63,41 @@ block, and bridge message carries a `v` field.
   author-owned `render_template:{id}` row via `template.save`/`get`/`list`/`delete` (gated
   `mcp:template.<verb>:call`); smaller snippets live inline in `cell.options.code`. Code is state →
   SurrealDB, never `localStorage`.
-- **Trust tiers:** an allow-listed publisher key federates a widget in-process; everything else and all
-  scripted views render in an opaque-origin iframe (`sandbox="allow-scripts"`, CSP, postMessage bridge).
-  The allow-list defaults empty — in-process is opt-in.
+- **Trust tiers:** an **installed extension widget** federates **in-process** (against the shell's React
+  singleton) — installing an extension already passes the publish/install capability gate, so the install
+  *is* the trust decision, and a federated remote externalizes React to the shell import map, which only
+  exists in-process. **Scripted views** (`plot`/`d3`/`template`) — author code typed into a cell — render
+  in an opaque-origin iframe (`sandbox="allow-scripts"`, CSP, postMessage bridge); that sandbox is for
+  untrusted author code only, never an installed widget. (Earlier the iframe tier also tried to host
+  non-allow-listed extension widgets; it couldn't — see
+  [`../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md`](../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md).)
 
 The reference extension `proof-panel` ships a `[[widget]]` tile via a second `mountWidget` export on the
 same remote — the model for an extension-shipped widget.
+
+## Extension widgets in the palette (the last mile)
+
+A packaged `[[widget]]` tile is now **addable from the builder**, not only renderable from a hand-authored
+cell key:
+
+- **A new "Extension widgets" picker group.** The builder's source picker emits **one entry per installed
+  extension's `[[widget]]` tile** (`extWidgetEntries` over the shipped `ext.list.widgets[]`), labelled
+  `<ext> · <tile.label>` (e.g. `proof-panel · Proof Ping`) and carrying the tile's icon. This is distinct
+  from the extension's *tool* entries (build-your-own views) — a tile is a finished widget the developer
+  shipped, a different author intent and a different cell shape.
+- **Selecting a tile is a one-click placement.** A packaged tile *is its own view* — the view chooser is
+  hidden, and selecting it produces a v2 cell `{ v:2, view:"ext:<id>/<widget>" }` (no `source`/`action`;
+  the tile owns its data via its `scope ∩ grant`). The widget id is the renderer's own `widgetIdOf` slug,
+  so the key the picker builds is exactly the key `ExtWidget` parses. Preview routes through the shipped
+  `WidgetView → ExtWidget` over the real bridge, rendering the tile **in-process** (the install is the
+  trust gate — see Trust tiers below).
+- **The add affordance is gated to editors.** The whole "Add widget" surface renders only when the session
+  holds `mcp:dashboard.save:call` for the active workspace (`canEdit`, sourced from the routing-context
+  caps the shell already holds — the same source the nav gates editing on; no new backend read). A
+  read-only viewer sees the dashboard with **no add surface**. The host re-check on `dashboard.save`
+  remains the authoritative backstop — the UI gate is convenience, never the security boundary.
+
+No backend, no v2 contract, no `mountWidget`/`[[widget]]` change — a frontend discovery-and-gating slice.
 
 ## Authorization
 
@@ -118,6 +147,18 @@ workspace isolation, seed integrity, gateway routes, live series streaming, buil
 against a real gateway, tag-bound widgets, persistence after reload, and multi-`[[widget]]` extension
 metadata round-tripping through `ext.list`.
 
+The extension-widget palette adds (real gateway, real installed `proof-panel`, no fake): one `widget`
+entry per `[[widget]]` tile (unit + real `ext.list`); a full builder round-trip (palette lists `Proof
+Ping` → select hides the view chooser → preview mounts the real `ExtWidget` over the bridge, its
+`proof.demo` latest asserted live → **Add** persists a `view:"ext:proof-panel/proof-ping"` cell →
+`getDashboard` re-reads it); the edit-cap gate (a `canEdit=false` viewer renders an empty add surface
+**and** `dashboard.save` is denied server-side for a principal lacking the cap); workspace isolation (a
+ws-B editor's picker lists only ws-B tiles); and trust-tier routing re-asserted from the palette path (an
+installed tile renders **in-process**, never sandboxed). A **live Playwright e2e**
+(`ui/e2e/dashboard-widget.spec.ts`, built shell + real node) adds the tile from the palette and asserts
+it mounts in-process with the host's single React and renders the real `proof.demo` value — the failure
+mode (`Failed to resolve module specifier "react"`) only shows in a real browser.
+
 The SQL source + editors add: `store.query` deny / parse-rejection-per-write-kind / two-session
 isolation / row-cap / SELECT round-trip and `store.schema` deny + isolation (real store, seeded via the
 real ingest path); `toSurrealQL` unit cases + a Builder→Code→Builder round-trip; and an end-to-end
@@ -129,6 +170,10 @@ gateway.
 - ~~Mount federated extension widgets in dashboard cells.~~ **Shipped** (`ext:<id>/<widget>` renderer).
 - ~~Define the per-widget cell key for multi-widget extensions.~~ **Shipped** (`ext:<id>/<widget-id>`).
 - ~~Add the untrusted iframe widget tier.~~ **Shipped** (opaque-origin sandbox + postMessage bridge).
+- ~~Surface packaged `[[widget]]` tiles in the builder palette, gated to dashboard editors.~~ **Shipped**
+  (the "Extension widgets" group + the `mcp:dashboard.save:call` edit gate;
+  [`widget-palette-scope.md`](../../scope/frontend/dashboard/widget-palette-scope.md)).
+- Show a read-only viewer a ghosted "ask an editor to add" tile instead of hiding the add surface entirely.
 - Add a multiplexed series stream for dashboards with many live widgets (each `watch` opens its own SSE).
 - Add paged dashboard rosters and multi-editor live layout refresh.
 - Generate shadcn `Select`/`Textarea` primitives so the builder's picker drops the native `<select>`

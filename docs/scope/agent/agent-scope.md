@@ -1,6 +1,7 @@
 # Agent scope — the central, workspace-scoped AI agent
 
-Status: scope (the ask). Promotes to `public/agent/` once the S5 slice ships.
+Status: scope (the ask). `public/agent/agent.md` is the stub that gets *filled* when the S5 slice
+ships (the file already exists as a placeholder — it is not created on ship, only completed).
 
 A **central AI agent** is a workspace-scoped service actor hosted on the hub and callable by
 edge users over the routed MCP namespace (README §6.16). It is *not* a special core mode and

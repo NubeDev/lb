@@ -34,13 +34,15 @@ effective access is still workspace-first (§6.6, §7).
 ### How it maps to the tenancy model
 
 - **Workspace** `acme` = the tenant = the hard wall. One SurrealDB namespace, one
-  `ws/acme/**` bus prefix, its own secrets. Every artifact below lives inside it.
+  `ws/acme/**` bus prefix, its own secrets. Every artifact below lives inside it. The shipped
+  workspace directory/session behavior is documented in `../public/workspace/workspace.md`.
 - **Teams** `backend`, `reviewers` = membership groups used for assignment, mentions, and
   approval routing. Flat and overlapping (§7).
 - **Users** = global identities who are members of `acme`. Some are on **edge** nodes
   (laptops, offline-capable); the agent and workflow run on the **cloud hub**.
 - **Channels** `#issue-2451`, `#backend` = bus subjects (`ws/acme/chan/{cid}/**`) with
-  messages persisted to SurrealDB. The agent posts progress here; humans discuss here.
+  messages persisted to SurrealDB. The agent posts progress here; humans discuss here. The shipped
+  channel registry/history/stream behavior is documented in `../public/channels/channels.md`.
 
 ---
 
@@ -303,5 +305,5 @@ that this walkthrough makes concrete:
 - Core stack scope — `../../README.md` (§6.5 MCP, §6.9 jobs, §6.10 inbox/outbox,
   §6.12 files/docs/skills, §6.15 shared AI agents, §7 tenancy).
 - `0001-platform-north-star.md` — why the platform exists and where it's going.
-- Per-area scope docs under `../scope/` — `inbox-outbox`, `jobs`, `mcp`, `auth-caps`,
-  `files`, `ai-plane` — the home for the findings in §5.
+- Per-area scope docs under `../scope/` — `workspace`, `channels`, `inbox-outbox`, `jobs`, `mcp`,
+  `auth-caps`, `files`, `ai-plane` — the home for the findings in §5.

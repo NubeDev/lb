@@ -7,6 +7,8 @@
 import { useRef, useState } from "react";
 import { Upload } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { Artifact } from "@/lib/ext/ext.api";
 
 interface Props {
@@ -60,7 +62,7 @@ export function UploadArtifact({ onUpload }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         ref={inputRef}
         type="file"
         accept="application/json,.json"
@@ -72,16 +74,17 @@ export function UploadArtifact({ onUpload }: Props) {
           e.target.value = ""; // allow re-selecting the same file
         }}
       />
-      <button
+      <Button
         type="button"
         aria-label="upload artifact"
-        className="flex items-center gap-1 rounded bg-accent/15 px-3 py-1 text-xs text-accent"
+        size="sm"
         onClick={() => inputRef.current?.click()}
       >
-        <Upload size={14} /> Upload signed artifact
-      </button>
+        <Upload size={14} />
+        <span className="hidden sm:inline">Upload signed artifact</span>
+      </Button>
       {error && (
-        <span role="alert" className="text-xs text-red-400">
+        <span role="alert" className="max-w-56 text-xs text-destructive">
           {error}
         </span>
       )}
