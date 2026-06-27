@@ -2770,6 +2770,7 @@ name = "lb-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "ed25519-dalek",
  "lb-assets",
  "lb-auth",
@@ -2980,6 +2981,7 @@ name = "lb-runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "lb-sdk",
  "thiserror 2.0.18",
  "wasmtime",

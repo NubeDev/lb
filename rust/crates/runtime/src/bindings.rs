@@ -3,22 +3,37 @@
 //!
 //! `bindgen!` reads the *same* WIT the guest uses, so the host and guest sides of the ABI are
 //! generated from one source — they cannot drift (crate-layout scope, the SDK/WIT decision).
+//!
+//! `@0.2.0` adds the `host.call-tool` import — the host-mediated call-back (host-callback scope).
+//! It is generated **async** (it forwards to the host's async `call_tool` chokepoint) and reads the
+//! per-call [`CallContext`] the host sets into `HostState` before each guest run and clears after.
 
 use wasmtime::component::ResourceTable;
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
+use crate::bridge::CallContext;
+
 wasmtime::component::bindgen!({
     path: "../../sdk/wit",
     world: "extension",
+    // The export (`tool.call`) AND the `host.call-tool` import are async: the callback forwards to
+    // the host's async dispatch chokepoint, so its host impl must be allowed to `.await`.
     exports: { default: async },
+    imports: { default: async },
 });
 
-/// Per-instance host state. Holds the WASI context (the component is a WASI 0.2 command) and
-/// a sink for the guest's `log` import. Tool calls capture logs for the host to surface.
+
+/// Per-instance host state. Holds the WASI context (the component is a WASI 0.2 command), a sink for
+/// the guest's `log` import, and — for the duration of one `tool.call` — the [`CallContext`] the host
+/// callback dispatches through. The context is set BEFORE the guest runs and CLEARED after (per-call,
+/// never instance-sticky): the loaded instance is node-global, so identity on the instance would leak
+/// across workspaces (see `debugging/extensions/loaded-extension-instance-is-node-global.md`).
 pub struct HostState {
     wasi: WasiCtx,
     table: ResourceTable,
     pub logs: Vec<String>,
+    /// `Some` only while a host-initiated `tool.call` is in flight. `None` between calls.
+    pub call_ctx: Option<CallContext>,
 }
 
 impl HostState {
@@ -27,6 +42,7 @@ impl HostState {
             wasi: WasiCtxBuilder::new().build(),
             table: ResourceTable::new(),
             logs: Vec::new(),
+            call_ctx: None,
         }
     }
 }
@@ -46,10 +62,48 @@ impl WasiView for HostState {
     }
 }
 
-// The world's `import host;` — the host functions a guest may call. Each would be
-// capability-gated host-side before doing anything real; `log` is harmless and just captured.
+// The world's `import host;` — the host functions a guest may call. `log` is harmless audit and
+// just captured. `call-tool` dispatches through the host bridge under the per-call identity, with
+// the host enforcing caps/workspace/depth (importing the function grants no capability).
+// The `host` interface's `use tool.{tool-error}` pulls `tool` in as an imported interface for the
+// shared error type. It declares no functions, so its `Host` trait is empty — but the linker still
+// requires the impl to exist.
+impl lazybones::ext::tool::Host for HostState {
+    async fn call(
+        &mut self,
+        _name: String,
+        _input_json: String,
+    ) -> Result<String, lazybones::ext::tool::ToolError> {
+        // `tool` is imported only for its shared `tool-error` type (via `host`'s `use`). A guest
+        // never CALLS an imported `tool.call` on the host — the guest is the one that EXPORTS it.
+        // Unreachable in practice; fail closed if the toolchain ever wires it.
+        Err(lazybones::ext::tool::ToolError::Failed(
+            "host does not provide tool.call".into(),
+        ))
+    }
+}
+
 impl lazybones::ext::host::Host for HostState {
-    fn log(&mut self, message: String) {
+    async fn log(&mut self, message: String) {
         self.logs.push(message);
+    }
+
+    async fn call_tool(
+        &mut self,
+        name: String,
+        input_json: String,
+    ) -> Result<String, lazybones::ext::host::ToolError> {
+        use lazybones::ext::host::ToolError as HostToolError;
+        // No context set => no host call is in flight (or the host forgot to inject identity). Fail
+        // closed — never panic, never dispatch unauthenticated.
+        let ctx = self
+            .call_ctx
+            .clone()
+            .ok_or_else(|| HostToolError::Failed("host callback unavailable (no identity)".into()))?;
+        match ctx.bridge.call_tool(&name, &input_json, ctx.depth).await {
+            Ok(out) => Ok(out),
+            Err(crate::bridge::BridgeError::BadInput(m)) => Err(HostToolError::BadInput(m)),
+            Err(crate::bridge::BridgeError::Failed(m)) => Err(HostToolError::Failed(m)),
+        }
     }
 }

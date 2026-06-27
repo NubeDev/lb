@@ -95,4 +95,23 @@ impl Registry {
             Some(Target::Local(_))
         )
     }
+
+    /// A live count of reachable extensions and the total tools they expose — the real numbers a
+    /// system map shows for the MCP/runtime card (it answers "how big is the tool surface right
+    /// now", not "does the registry handle exist"). Cheap: a read-locked walk of the routing map.
+    pub fn summary(&self) -> RegistrySummary {
+        let map = self.reachable.read().unwrap();
+        let tools = map.values().map(|t| t.tools().len()).sum();
+        RegistrySummary {
+            extensions: map.len(),
+            tools,
+        }
+    }
+}
+
+/// A live rollup of the registry: how many extensions are reachable and how many tools they expose.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegistrySummary {
+    pub extensions: usize,
+    pub tools: usize,
 }

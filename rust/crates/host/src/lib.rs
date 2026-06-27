@@ -12,6 +12,7 @@ mod agent;
 mod assets;
 mod authz;
 mod boot;
+mod callback;
 mod channel;
 mod channel_registry;
 mod dashboard;
@@ -31,6 +32,7 @@ mod remote;
 mod role;
 mod serve;
 mod sync;
+mod system;
 mod tags;
 mod teams;
 mod tool_call;
@@ -98,6 +100,10 @@ pub use remote::register_remote_extension;
 pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
 pub use sync::{replay_history, sync_channel, ChannelSync};
+pub use system::{
+    authorize_system, call_system_tool, system_overview, system_topology, Health, Metric,
+    ServiceStatus, SystemError, SystemOverview, SystemTopology, TopoEdge, TopoNode,
+};
 pub use tags::{
     authorize_tags, call_tags_tool, tags_add, tags_find, tags_of, tags_remove, Applied, Facet,
     Provenance, Source as TagSource, Tag, TagsError,

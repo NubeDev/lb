@@ -1,6 +1,10 @@
 //! Ingest at the host layer: the MCP-surface round-trip + the mandatory deny test. The producer is
 //! stamped from the authenticated principal (un-spoofable), and the durable exactly-once round-trip
-//! is proven end to end (write → drain → read) through `call_ingest_tool` + `drain_workspace`.
+//! is proven end to end through `call_ingest_tool`. The `ingest.write` MCP verb drains staging →
+//! `series` synchronously (there is no background drain worker; the gateway's `POST /ingest` route
+//! drains for the same reason), so a write is visible to the very next read over the same bridge — the
+//! round-trip the proof-panel page proves. A subsequent explicit `drain_workspace` is then a no-op
+//! (exactly-once per `(series, producer, seq)`), which this test asserts.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{call_ingest_tool, drain_workspace};
@@ -51,9 +55,13 @@ async fn write_drain_read_round_trip_via_mcp() {
     .unwrap();
     assert_eq!(out["accepted"], 2);
 
-    // The ingest role drains staging → series (one tx per batch).
+    // `ingest.write` already drained staging → series synchronously, so a SECOND explicit drain finds
+    // nothing left to commit — exactly-once, never a double-commit.
     let pass = drain_workspace(&store, "acme").await.unwrap();
-    assert_eq!(pass.committed, 2);
+    assert_eq!(
+        pass.committed, 0,
+        "the write already committed; the drain is a no-op"
+    );
 
     let read = call_ingest_tool(
         &store,

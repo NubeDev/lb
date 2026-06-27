@@ -6,6 +6,7 @@ import {
   Boxes,
   Database,
   Hash,
+  Network,
   Inbox,
   LayoutDashboard,
   LogOut,
@@ -37,6 +38,7 @@ export type CoreSurface =
   | "dashboards"
   | "ingest"
   | "data"
+  | "system"
   | "inbox"
   | "outbox"
   | "admin"
@@ -68,6 +70,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
+  { key: "system", icon: Network, label: "System" },
   { key: "inbox", icon: Inbox, label: "Inbox" },
   { key: "outbox", icon: Send, label: "Outbox" },
   { key: "admin", icon: Shield, label: "Admin" },
@@ -96,7 +99,12 @@ export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }:
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader>
-        <SidebarMenu>
+        <div className="hidden h-8 w-full items-center justify-center group-data-[collapsible=icon]:flex">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">
+            lb
+          </div>
+        </div>
+        <SidebarMenu className="group-data-[collapsible=icon]:hidden">
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Lazybones" aria-label="Lazybones">
               <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">

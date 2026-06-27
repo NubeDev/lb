@@ -23,6 +23,7 @@ lb-outbox.workspace = true
 lb-registry.workspace = true
 lb-supervisor.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true

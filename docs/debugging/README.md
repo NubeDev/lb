@@ -11,6 +11,8 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-27 | store | SurrealKV "Invalid revision N for type Value" on the SECOND ingest drain (persistent store only; `mem://` is fine) — durable on-disk ingest unreliable past one write/ws | documented (engine-level; demo runs on `mem://`) | [store/surrealkv-invalid-revision-on-drain-reread.md](store/surrealkv-invalid-revision-on-drain-reread.md) |
+| 2026-06-27 | build | Rust build fails `linker 'cc' not found` — no C compiler on the box and no root to apt-install one (`ring` also needs to compile C) | resolved | [build/no-c-compiler-linker-cc-not-found.md](build/no-c-compiler-linker-cc-not-found.md) |
 | 2026-06-27 | extensions | the host-mediated bridge (`/mcp/call`) can't dispatch a host-native `series.*` verb — a federated page's reads `NotFound`/403 | resolved | [extensions/bridge-cannot-dispatch-host-native-series.md](extensions/bridge-cannot-dispatch-host-native-series.md) |
 | 2026-06-27 | extensions | `series.find` can't discover a series seeded with `labels` — the ingest write path never tags it | documented | [extensions/series-find-needs-tag-edges-not-labels.md](extensions/series-find-needs-tag-edges-not-labels.md) |
 | 2026-06-27 | build | the whole desktop hard-freezes (forced reboot) during Rust builds; no OOM log (suspected swap death-spiral from parallel `rust-lld`) | mitigated | [build/host-freezes-during-rust-build.md](build/host-freezes-during-rust-build.md) |

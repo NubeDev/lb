@@ -5,7 +5,10 @@
 
 /// The WIT world every extension targets. The loader refuses a component whose world major
 /// does not match this (crate-layout scope: the SDK/WIT boundary decision).
-pub const WORLD: &str = "lazybones:ext/extension@0.1.0";
+///
+/// `@0.2.0`: a minor bump that ADDED the `host.call-tool` import (host-callback scope). Major is
+/// unchanged (0), so existing `@0.1.0` guests still load — a minor addition is backward safe.
+pub const WORLD: &str = "lazybones:ext/extension@0.2.0";
 
 /// Major version of the world. Bumping this breaks every extension — a deliberate, rare act.
 pub const WORLD_MAJOR: u64 = 0;
@@ -28,7 +31,10 @@ mod tests {
 
     #[test]
     fn matches_same_major() {
+        // Both the original @0.1.0 guests AND the @0.2.0 host-callback guests load: a MINOR bump is
+        // backward safe (the loader checks major only). This is the ABI-compat guarantee in one line.
         assert!(world_major_matches("lazybones:ext/extension@0.1.0"));
+        assert!(world_major_matches("lazybones:ext/extension@0.2.0"));
         assert!(world_major_matches("lazybones:ext/extension@0.9.4"));
     }
 

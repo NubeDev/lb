@@ -13,22 +13,36 @@ import path from "node:path";
 // in-process against the host's SINGLE React. No build-time federation plugin is needed; this replaces
 // `@originjs/vite-plugin-federation`, whose dynamic-remote share scope shipped a second React and broke
 // hooks ("Invalid hook call"). See debugging/extensions/federated-remote-fails-in-dev-server.md.
-export default defineConfig({
-  plugins: [react()],
-  // esnext: extension remotes may use top-level await; keep the host build modern to match.
-  build: { target: "esnext" },
-  resolve: {
-    alias: { "@": path.resolve(__dirname, "src") },
-  },
-  // Tauri expects a fixed dev port and no clearing of the screen.
-  clearScreen: false,
-  server: { port: 5173, strictPort: true },
-  test: {
-    environment: "jsdom",
-    globals: true,
-    setupFiles: ["./src/test/setup.ts"],
-    // The real-gateway tests (`*.gateway.test.ts[x]`) need a spawned node; they run under their own
-    // `vitest.gateway.config.ts` (`pnpm test:gateway`), not this default suite.
-    exclude: ["**/node_modules/**", "**/*.gateway.test.ts", "**/*.gateway.test.tsx"],
-  },
+export default defineConfig(({ command }) => {
+  const nodeEnv = JSON.stringify(command === "build" ? "production" : "development");
+
+  return {
+    plugins: [react()],
+    define: {
+      "process.env.NODE_ENV": nodeEnv,
+    },
+    optimizeDeps: {
+      esbuildOptions: {
+        define: {
+          "process.env.NODE_ENV": nodeEnv,
+        },
+      },
+    },
+    // esnext: extension remotes may use top-level await; keep the host build modern to match.
+    build: { target: "esnext" },
+    resolve: {
+      alias: { "@": path.resolve(__dirname, "src") },
+    },
+    // Tauri expects a fixed dev port and no clearing of the screen.
+    clearScreen: false,
+    server: { port: 5173, strictPort: true },
+    test: {
+      environment: "jsdom",
+      globals: true,
+      setupFiles: ["./src/test/setup.ts"],
+      // The real-gateway tests (`*.gateway.test.ts[x]`) need a spawned node; they run under their own
+      // `vitest.gateway.config.ts` (`pnpm test:gateway`), not this default suite.
+      exclude: ["**/node_modules/**", "**/*.gateway.test.ts", "**/*.gateway.test.tsx"],
+    },
+  };
 });

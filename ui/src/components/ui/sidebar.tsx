@@ -224,7 +224,7 @@ function SidebarTrigger({
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn("h-7 w-7", className)}
+      className={cn("h-8 w-8 text-muted hover:bg-bg hover:text-fg", className)}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
@@ -267,25 +267,52 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
 }
 
 function SidebarHeader({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-sidebar="header" className={cn("flex flex-col gap-2 p-2", className)} {...props} />;
+  const { state } = useSidebar();
+
+  return (
+    <div
+      data-sidebar="header"
+      className={cn("flex flex-col gap-2 p-2", state === "collapsed" && "items-center px-0", className)}
+      {...props}
+    />
+  );
 }
 
 function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-sidebar="footer" className={cn("flex flex-col gap-2 p-2", className)} {...props} />;
+  const { state } = useSidebar();
+
+  return (
+    <div
+      data-sidebar="footer"
+      className={cn("flex flex-col gap-2 p-2", state === "collapsed" && "items-center px-0", className)}
+      {...props}
+    />
+  );
 }
 
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-sidebar="content"
-      className={cn("flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden", className)}
+      className={cn(
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+        className,
+      )}
       {...props}
     />
   );
 }
 
 function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-sidebar="group" className={cn("relative flex w-full min-w-0 flex-col p-2", className)} {...props} />;
+  const { state } = useSidebar();
+
+  return (
+    <div
+      data-sidebar="group"
+      className={cn("relative flex w-full min-w-0 flex-col p-2", state === "collapsed" && "items-center px-0", className)}
+      {...props}
+    />
+  );
 }
 
 function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">) {
@@ -308,7 +335,15 @@ function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div"
 }
 
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
-  return <ul data-sidebar="menu" className={cn("flex w-full min-w-0 flex-col gap-1", className)} {...props} />;
+  const { state } = useSidebar();
+
+  return (
+    <ul
+      data-sidebar="menu"
+      className={cn("flex w-full min-w-0 flex-col gap-1", state === "collapsed" && "items-center", className)}
+      {...props}
+    />
+  );
 }
 
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {

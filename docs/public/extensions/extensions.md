@@ -154,11 +154,21 @@ reaching data through the bridge. See `../../scope/extensions/ui-federation-scop
 that proves the whole basics composed end-to-end on the in-process path: one self-contained folder
 (`rust/extensions/proof-panel/`) carrying **both** a real MCP tool served from the wasm guest
 (`proof.ping`, stateless, returns a workspace-tagged `{"ok","ws","node":"proof-panel","tier":"wasm"}`
-snapshot) **and** a co-located federated page that reads **real workspace series** through the bridge
-(`series.find` to list by a tag facet, `series.latest` to read a selected one). Installing it exercises
-publish → grant-intersection → mount → cap-checked call → workspace-scoped result in one motion, with
-**no placeholders** (the gap `fleet-monitor`'s widgets left). It ships **no `[[widget]]`** (deferred to
-the dashboard scope). Two guarantees it pins down that nothing else did:
+snapshot) **and** a co-located federated page that proves the platform **end to end from one cap-gated
+page** through the bridge — the "whole platform, one page" demo. The page now exercises the full
+round-trip, not just the read half:
+
+- **Ingest → read round-trip (the page creates its own data):** a "Write sample" button →
+  `ingest.write { samples }` → `series.latest` reads it back live (write → stage → drain → read, in the
+  browser).
+- **Outbox status:** a card of `outbox.status` `{pending,delivered,dead_lettered}` + Refresh.
+- **Inbox triage:** `inbox.list { channel }` items with Approve/Reject → `inbox.resolve { item_id,
+  decision }` (the page's first durable-workflow WRITE; the actor is host-forced to the principal).
+- **Browse series:** the original `series.find`/`series.latest` read half.
+
+Installing it exercises publish → grant-intersection → mount → cap-checked call → workspace-scoped
+result in one motion, with **no placeholders** (the gap `fleet-monitor`'s widgets left). It ships **no
+`[[widget]]`** (deferred to the dashboard scope). Three guarantees it pins down that nothing else did:
 
 - **Grant intersection is enforced at call time, not just displayed.** Install with an approval that
   omits `series.latest` → the persisted page scope drops it AND a bridge `series.latest` call by the
@@ -166,13 +176,23 @@ the dashboard scope). Two guarantees it pins down that nothing else did:
 - **The bridge actually reaches host-native verbs.** `proof-panel` surfaced (and fixed) that
   `POST /mcp/call` → `lb_host::call_tool` resolved only the runtime **registry**, so host-native
   `series.*`/`ingest.*` verbs `NotFound`-ed — a federated page could never read a series through the
-  bridge. `call_tool` now authorizes (same MCP gate) then dispatches host-native verbs via
-  `call_ingest_tool`; extension `<ext>.<tool>` calls still route through the registry unchanged. No new
-  verb, no WIT change. See `debugging/extensions/bridge-cannot-dispatch-host-native-series.md`.
+  bridge. `call_tool` now authorizes (same MCP gate) then dispatches host-native verbs:
+  `series.*`/`ingest.*` via `call_ingest_tool`, and the durable-workflow surface
+  (`outbox.status`/`inbox.list`/`inbox.resolve`) via a workflow dispatcher; extension `<ext>.<tool>`
+  calls still route through the registry unchanged. No new verb, no WIT change. See
+  `debugging/extensions/bridge-cannot-dispatch-host-native-series.md`.
+- **A federated page can WRITE, not just read — through the same gate.** `ingest.write` over the bridge
+  drains staging synchronously (mirroring `POST /ingest`; there is no background drain worker), so the
+  page reads back what it just wrote in one motion. `inbox.resolve` mutates durable workflow state with
+  the actor host-forced. Every write verb has its own deny-test and the workflow surface is
+  workspace-isolated (ws-B sees none of ws-A's items/effects).
 
-The wasm tool is proven through the real `lb-runtime` component (`crates/host/tests/proof_panel_test.rs`);
-the page's data path is proven against a **real spawned gateway** (`ui/src/features/ext-host/ProofPanel.gateway.test.tsx`,
-seeding real series via the test gateway's `/_seed/series` route). See
+The wasm tool is proven through the real `lb-runtime` component (`crates/host/tests/proof_panel_test.rs`,
+9 tests incl. the ingest/outbox/inbox round-trips + per-verb deny + isolation); the page's data path is
+proven against a **real spawned gateway** (`ui/src/features/ext-host/ProofPanel.gateway.test.tsx`, 9
+tests, seeding real series/inbox/outbox via the test gateway's `/_seed/*` routes) and end-to-end in a
+real browser (`ui/e2e/proof-panel.spec.ts`: click Write sample → the committed value renders; Refresh
+outbox → counts render; no hook/console errors). See
 `../../scope/extensions/proof-panel-scope.md` and `../../sessions/extensions/proof-panel-session.md`.
 
 ## Placement & targets

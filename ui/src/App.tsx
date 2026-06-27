@@ -17,6 +17,7 @@ import { OutboxView } from "./features/outbox";
 import { AdminView } from "./features/admin";
 import { ExtensionsView } from "./features/extensions";
 import { DataView } from "./features/data";
+import { SystemView } from "./features/system";
 import { IngestView } from "./features/ingest";
 import { DashboardView } from "./features/dashboard";
 import { ExtHost, useExtensionPages } from "./features/ext-host";
@@ -59,6 +60,9 @@ export function App() {
   // it is admin-only. The gateway re-checks every verb server-side regardless.
   if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
   if (hasCap(caps, CAP.storeScan)) allowed.push("data");
+  // system-map: the System page (the topology + status console) reads across every subsystem, so it
+  // is admin-only — shown for a session holding `system.overview`. The gateway re-checks regardless.
+  if (hasCap(caps, CAP.systemOverview)) allowed.push("system");
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
 
@@ -99,6 +103,9 @@ export function App() {
             {active === "dashboards" && <DashboardView ws={workspace} />}
             {active === "ingest" && <IngestView ws={workspace} />}
             {active === "data" && <DataView ws={workspace} />}
+            {active === "system" && (
+              <SystemView ws={workspace} onNavigate={setSurface} allowedSurfaces={allowed} />
+            )}
             {active === "inbox" && <InboxView ws={workspace} />}
             {active === "outbox" && <OutboxView ws={workspace} />}
             {active === "admin" && <AdminView ws={workspace} caps={caps} />}

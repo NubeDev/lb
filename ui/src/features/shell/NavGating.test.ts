@@ -31,4 +31,14 @@ describe("data-console nav cap-gating", () => {
   it("shows the Data entry to an admin (store.scan present)", () => {
     expect(hasCap(ADMIN, CAP.storeScan)).toBe(true);
   });
+
+  // system-map: the System page reads across every subsystem, so it is admin-only (same convention as
+  // the Data lens) — a member without `system.overview` never sees the System nav entry.
+  it("HIDES the System entry from a member (no system.overview)", () => {
+    expect(hasCap(MEMBER, CAP.systemOverview)).toBe(false);
+  });
+
+  it("shows the System entry to a session holding system.overview", () => {
+    expect(hasCap([...ADMIN, CAP.systemOverview], CAP.systemOverview)).toBe(true);
+  });
 });

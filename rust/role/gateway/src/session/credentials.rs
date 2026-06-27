@@ -64,6 +64,12 @@ fn member_caps() -> Vec<String> {
         "mcp:store.tables:call",
         "mcp:store.scan:call",
         "mcp:store.graph:call",
+        // system-map scope: the two read verbs the `/system/*` routes check. Admin-only by grant
+        // convention — a system snapshot reads across every subsystem of the workspace (like the
+        // `store.*` lens), so the cap rides the workspace-admin role, NOT the member set. The gateway
+        // re-checks server-side; a token without the cap is refused (system_verb_without_cap_denied).
+        "mcp:system.overview:call",
+        "mcp:system.topology:call",
         // dashboard scope (the grid-of-widgets surface): the five `dashboard.*` verbs the dashboard
         // routes check. Member-level — any member may build/share their own dashboards over real
         // series (gate 3 / ownership still decides which *specific* dashboard they read/edit). The

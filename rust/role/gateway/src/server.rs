@@ -19,8 +19,8 @@ use crate::routes::{
     mcp_call, post_message, publish_extension, purge_workspace, put_doc, put_skill, read_graph,
     read_samples, remove_team_member, rename_team, rename_workspace, request_approval,
     resolve_inbox, resolve_workflow_approval, revoke_grant, save_dashboard, scan_table,
-    series_stream, serve_ext_ui, share_dashboard, share_doc, start_job, uninstall_extension,
-    write_samples,
+    series_stream, serve_ext_ui, share_dashboard, share_doc, start_job, system_overview,
+    system_topology, uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -96,6 +96,11 @@ pub fn router(gw: Gateway) -> Router {
         .route("/store/tables", get(list_tables))
         .route("/store/tables/{table}/rows", get(scan_table))
         .route("/store/graph", get(read_graph))
+        // System map (system-map scope) — the admin, READ-ONLY workspace topology + status console:
+        // a per-subsystem status grid + a react-flow wiring graph, both from one live snapshot. Each
+        // route re-checks the **admin** cap server-side; ws + principal from the token. No writes.
+        .route("/system/overview", get(system_overview))
+        .route("/system/topology", get(system_topology))
         // ingest / series (data-console scope) — the browser's `ingest.*`/`series.*` surface (the S8
         // verbs, finally reachable over the gateway). Manual write + series list/find + latest/recent.
         .route("/ingest", post(write_samples))

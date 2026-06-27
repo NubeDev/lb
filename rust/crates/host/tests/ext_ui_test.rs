@@ -131,7 +131,7 @@ async fn ui_scope_is_narrowed_to_the_grant() {
 async fn bridge_denies_an_ungranted_tool() {
     // The bridge endpoint (`call_tool`) re-checks the capability: a page whose principal lacks the cap
     // is denied server-side, regardless of what its bundle posts. This is the load-bearing guarantee.
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let ws = "acme";
     let ungranted = principal("user:page", ws, &[]); // holds NO caps
     let res = call_tool(&node, &ungranted, ws, "series.find", "{\"tags\":[]}").await;

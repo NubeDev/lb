@@ -1,5 +1,11 @@
 # The whole desktop hard-freezes (forced reboot) during Rust builds — no OOM log
 
+> **Superseded note (2026-06-27):** the mold `-fuse-ld=mold` / gcc-driver bits below
+> no longer apply — this box later turned out to have **no `cc`/gcc at all** and no root.
+> The linker is now `zig cc`, wired in `rust/.cargo/config.toml`. See
+> [build/no-c-compiler-linker-cc-not-found.md](no-c-compiler-linker-cc-not-found.md).
+> The memory/freeze mitigations (jobs cap, debug-info trim, `cargo safe`, earlyoom) still stand.
+
 - Area: build / dev-environment
 - Status: mitigated (awaiting flight-recorder confirmation of root cause)
 - First seen: 2026-06-27

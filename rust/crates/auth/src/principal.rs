@@ -81,7 +81,14 @@ impl Principal {
             ws: self.ws.clone(), // inherited — delegation cannot cross workspaces
             role: Role::Member,  // a delegated actor is never more privileged than a member
             caps: agent_caps,
-            constraint: Some(self.caps.clone()),
+            // The delegation bound. When `self` is ALREADY a derived (on-behalf-of) principal — e.g. a
+            // re-entrant host-callback chain `caller → ext-A → ext-B` (host-callback scope) — keep the
+            // ORIGINAL caller's constraint, NOT `self.caps`. Otherwise a nested derive would re-bound
+            // against the agent's own (possibly wider) caps and could widen across hops. Preserving the
+            // root constraint guarantees the effective grant never exceeds the original caller at ANY
+            // depth. For a first (non-delegated) derive, `self.constraint` is `None`, so the bound is
+            // `self.caps` — the caller's own caps, as before.
+            constraint: Some(self.constraint.clone().unwrap_or_else(|| self.caps.clone())),
         }
     }
 

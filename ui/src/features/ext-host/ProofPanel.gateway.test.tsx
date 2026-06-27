@@ -18,13 +18,28 @@
 import { describe, expect, it, beforeAll } from "vitest";
 
 import { makeBridge } from "./bridge";
-import { useRealGateway, signInReal, seedSeries } from "@/test/gateway-session";
+import {
+  useRealGateway,
+  signInReal,
+  seedSeries,
+  seedInbox,
+  seedOutbox,
+} from "@/test/gateway-session";
 
 let n = 0;
 const nextWs = () => `proof-panel-${n++}`;
 
 /** The page's granted read-only scope (the manifest's `[ui] scope`, intersected with the approval). */
 const PAGE_SCOPE = ["series.find", "series.latest"];
+/** The full all-features demo scope (the manifest `[ui] scope`): reads + the write/workflow verbs. */
+const DEMO_SCOPE = [
+  "series.find",
+  "series.latest",
+  "ingest.write",
+  "outbox.status",
+  "inbox.list",
+  "inbox.resolve",
+];
 /** One facet the page searches by (parsed from its `key:value` search box). */
 const TEMP_FACET = [{ key: "kind", value: "temperature" }];
 
@@ -94,5 +109,107 @@ describe("proof-panel page data path (real gateway)", () => {
     await expect(
       claimsLatest.call("proof-panel.proof.ping", { ws }),
     ).rejects.toThrow();
+  });
+
+  // ── The all-features demo, live: the page CREATES the data it shows and drives the durable workflow,
+  // all over the real `POST /mcp/call` bridge → `lb_host::call_tool`, behind the real caps + ws gates.
+
+  it("ingest.write → series.latest round-trips live (the page creates its own data)", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    const bridge = makeBridge(DEMO_SCOPE);
+
+    // Write a sample through the bridge — the exact shape the page's useIngestWrite sends.
+    const wrote = await bridge.call<{ accepted: number }>("ingest.write", {
+      samples: [
+        { series: "proof.demo", producer: "", ts: 1, seq: 1, payload: 21, labels: null, qos: "best-effort" },
+      ],
+    });
+    expect(wrote.accepted).toBe(1);
+
+    // The node's drain commits staging → `series`. Poll series.latest until the committed value shows
+    // (the commit worker is asynchronous; this is write → stage → drain → read, end to end, live).
+    let payload: unknown = null;
+    for (let i = 0; i < 50 && payload === null; i++) {
+      const latest = await bridge.call<{ sample: { payload: unknown } | null }>("series.latest", {
+        series: "proof.demo",
+      });
+      payload = latest.sample?.payload ?? null;
+      if (payload === null) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(payload).toBe(21);
+  });
+
+  it("ingest.write is denied for an out-of-scope page (local filter) — deny per verb", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // A page NOT granted ingest.write: the bridge scope filter rejects it locally (defense in depth);
+    // the host would 403 it too. (The dev token holds the cap, so the SERVER deny is proven for the
+    // ext-tool case above + in the Rust host test; here we assert the bridge's own per-verb gate.)
+    const readOnly = makeBridge(["series.find", "series.latest"]);
+    await expect(
+      readOnly.call("ingest.write", { samples: [] }),
+    ).rejects.toThrow(/out_of_scope/);
+  });
+
+  it("outbox.status reads real effects live, and denies an out-of-scope page", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Seed a real outbox effect through the real enqueue path.
+    await seedOutbox({ id: "e1", target: "github", action: "comment", ts: 1 });
+
+    const bridge = makeBridge(DEMO_SCOPE);
+    const status = await bridge.call<{ pending: unknown[] }>("outbox.status", {});
+    expect(status.pending.length).toBe(1);
+
+    // Deny per verb: an out-of-scope page is rejected at the bridge.
+    const narrowed = makeBridge(["series.find"]);
+    await expect(narrowed.call("outbox.status", {})).rejects.toThrow(/out_of_scope/);
+  });
+
+  it("inbox.list → inbox.resolve round-trips live, and denies an out-of-scope page", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Seed a real durable inbox item on the `triage` channel.
+    await seedInbox({ id: "i1", channel: "triage", author: "ext:demo", body: "please review", ts: 1 });
+
+    const bridge = makeBridge(DEMO_SCOPE);
+    const listed = await bridge.call<{ items: { id: string }[] }>("inbox.list", {
+      channel: "triage",
+    });
+    expect(listed.items.some((it) => it.id === "i1")).toBe(true);
+
+    // The first WRITE that mutates workflow state — approve the item.
+    const ok = await bridge.call<{ ok: boolean }>("inbox.resolve", {
+      item_id: "i1",
+      decision: "approved",
+      ts: 2,
+    });
+    expect(ok.ok).toBe(true);
+
+    // Deny per verb (both list and resolve) for an out-of-scope page.
+    const narrowed = makeBridge(["series.find"]);
+    await expect(narrowed.call("inbox.list", { channel: "triage" })).rejects.toThrow(/out_of_scope/);
+    await expect(
+      narrowed.call("inbox.resolve", { item_id: "i1", decision: "rejected", ts: 3 }),
+    ).rejects.toThrow(/out_of_scope/);
+  });
+
+  it("the workflow surface is workspace-isolated — ws-B sees none of ws-A's items/effects", async () => {
+    // Seed ws-A with an inbox item + an outbox effect, then read as a FRESH ws-B over the same node.
+    const wsA = nextWs();
+    await signInReal("user:ada", wsA);
+    await seedInbox({ id: "i1", channel: "triage", author: "ext:demo", body: "secret", ts: 1 });
+    await seedOutbox({ id: "e1", target: "github", action: "comment", ts: 1 });
+
+    const wsB = nextWs();
+    await signInReal("user:eve", wsB);
+    const bridge = makeBridge(DEMO_SCOPE);
+
+    const inbox = await bridge.call<{ items: unknown[] }>("inbox.list", { channel: "triage" });
+    expect(inbox.items).toEqual([]); // the hard wall on the inbox read
+
+    const outbox = await bridge.call<{ pending: unknown[] }>("outbox.status", {});
+    expect(outbox.pending).toEqual([]); // the hard wall on the outbox read
   });
 });

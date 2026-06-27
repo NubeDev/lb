@@ -14,7 +14,7 @@ description = "A Tier-1 WASM component (one real MCP tool) plus a federated shad
 
 [runtime]
 tier        = "wasm"                            # Tier 1: a WASM component in the host runtime (§6.3)
-world       = "lazybones:ext/extension@0.1.0"   # WIT major checked at load (ABI gate) — same as hello/fleet-monitor
+world       = "lazybones:ext/extension@0.2.0"   # uses the @0.2.0 `host.call-tool` import; major still 0 so the loader accepts it
 placement   = "either"
 
 [capabilities]
@@ -22,12 +22,37 @@ placement   = "either"
 # Requested here; intersected with admin approval at install. The effective UI scope = the granted
 # subset. The component's own `proof.ping` tool needs no host-side cap requested here — the grant lives
 # on the CALLER's token (the hello convention; verified in crates/host/tests/proof_panel_test.rs).
-request = ["mcp:series.find:call", "mcp:series.latest:call", "mcp:series.read:call"]
+# The all-features demo also writes the data it shows (`ingest.write`) and drives the durable-workflow
+# surface (`outbox.status`, `inbox.list`, `inbox.resolve`). Each is re-checked by the host per call.
+request = [
+    "mcp:series.find:call",
+    "mcp:series.latest:call",
+    "mcp:series.read:call",
+    "mcp:ingest.write:call",
+    "mcp:outbox.status:call",
+    "mcp:inbox.list:call",
+    "mcp:inbox.resolve:call",
+    # The self-recursive depth-guard tool calls its OWN ext tool through the callback, so the grant
+    # must include that cap (an ext tool the guest invokes is gated like any other).
+    "mcp:proof-panel.proof.recurse:call",
+]
 
 # The tool the WASM component serves (proves the backend half is a real, reachable Tier-1 MCP tool).
 [[tools]]
 name        = "proof.ping"
 description = "A workspace-tagged snapshot served by the WASM component — proves the Tier-1 backend tool is reachable through the cap gate."
+
+# The host-callback proof tool: reads `proof.demo` and writes `proof.derived = value*2` via the
+# `host.call-tool` import — a guest doing real platform work under its delegated `caller ∩ grant`.
+[[tools]]
+name        = "proof.derive"
+description = "Reads the latest proof.demo (series.latest) and writes proof.derived = value*2 (ingest.write) through the host-mediated callback — proves a wasm guest can read/write the platform."
+
+# A self-recursive tool — calls itself via the host callback to prove the re-entrancy depth guard
+# fires ("call depth exceeded"). Not a UI verb; exists for the depth-guard regression test only.
+[[tools]]
+name        = "proof.recurse"
+description = "Calls itself through host.call-tool; exists to prove the host bounds re-entrant guest->host->guest recursion with a depth guard."
 
 # The PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the ESM remote
 # entry, resolved under the gateway's `/extensions/proof-panel/ui/` route. The shell dynamic-imports it
@@ -38,7 +63,15 @@ description = "A workspace-tagged snapshot served by the WASM component — prov
 entry = "remoteEntry.js"
 label = "Proof Panel"
 icon  = "shield-check"
-scope = ["series.find", "series.latest"]
+scope = [
+    "series.find",
+    "series.latest",
+    "ingest.write",
+    "outbox.status",
+    "inbox.list",
+    "inbox.resolve",
+    "proof-panel.proof.derive",
+]
 
 [visibility]
 class = "public"

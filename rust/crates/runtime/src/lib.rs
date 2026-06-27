@@ -11,8 +11,10 @@
 //! Tier-2 native sidecars (§6.3 escape hatch) land at S7; this crate is Tier-1 only for now.
 
 mod bindings;
+mod bridge;
 mod engine;
 mod instance;
 
+pub use bridge::{BridgeError, CallContext, HostBridge};
 pub use engine::{Engine, RuntimeError};
 pub use instance::Instance;

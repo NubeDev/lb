@@ -1,90 +1,134 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { App } from "@/App";
-import { rejectingBridge, stubBridge } from "@/test/bridge.stub";
+import { stubBridge } from "@/test/bridge.stub";
 
 // The page reaches real platform data ONLY through the bridge. These tests pass the bridge INTERFACE
-// the shell provides (test double, not a fake node — testing-scope §0) with the REAL verb shapes
-// (`series.find` → `{ series: string[] }`, `series.latest` → `{ sample }`), and prove the page lists
-// the series the bridge returns, shows the selected series' latest value, and surfaces a denied /
-// out-of-scope call as an HONEST error — never a fabricated list or value. The end-to-end proof against
-// a REAL spawned gateway lives in `ui/src/features/ext-host/ProofPanel.gateway.test.tsx`.
+// the shell provides (a test double, not a fake node — testing-scope §0) with the REAL verb shapes, and
+// prove the "whole platform, one page" demo: the ingest→read round-trip (the page CREATES its data),
+// the outbox status card, the inbox triage write, and the original series browse — each surfacing
+// HONEST loading/empty/error/data states. The end-to-end proof against a REAL spawned gateway lives in
+// `ui/src/features/ext-host/ProofPanel.gateway.test.tsx`; the load-bearing host gate is proven in
+// rust/crates/host/tests/proof_panel_test.rs.
 
-describe("Panel", () => {
-  it("starts idle, then lists the series series.find returns for a facet search", async () => {
-    const user = userEvent.setup();
-    const bridge = stubBridge({
-      "series.find": () => ({ series: ["edge.temp", "edge.power"] }),
-    });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+type Resolver = (a?: Record<string, unknown>) => unknown;
 
-    // Idle until the user constrains the query (empty series.find returns nothing — honest prompt).
-    expect(screen.getByText(/Search a tag facet to list/i)).toBeInTheDocument();
+/** A bridge with sane empty defaults for the auto-loading verbs, so a section under test isn't noise. */
+function demoBridge(overrides: Record<string, Resolver> = {}) {
+  return stubBridge({
+    "outbox.status": () => ({ pending: [], delivered: [], dead_lettered: [] }),
+    "inbox.list": () => ({ items: [] }),
+    "series.find": () => ({ series: [] }),
+    "series.latest": () => ({ sample: null }),
+    ...overrides,
+  });
+}
+
+describe("Panel — the all-features demo", () => {
+  it("renders the header with the workspace badge from the host ctx", () => {
+    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    expect(screen.getByRole("heading", { name: "Proof Panel" })).toBeInTheDocument();
     expect(screen.getByLabelText("workspace")).toHaveTextContent("acme");
-
-    await user.type(screen.getByLabelText("series facet"), "kind:temperature");
-    await user.click(screen.getByLabelText("run search"));
-
-    expect(await screen.findByText("edge.temp")).toBeInTheDocument();
-    expect(screen.getByText("edge.power")).toBeInTheDocument();
-    // The bridge was called with the REAL host arg shape: a facets array, not `{ tags }`.
-    expect(bridge.call).toHaveBeenCalledWith("series.find", {
-      facets: [{ key: "kind", value: "temperature" }],
-    });
   });
 
-  it("shows the latest value of a selected series via series.latest", async () => {
+  it("ingest → read round-trip: Write sample calls ingest.write then re-reads series.latest", async () => {
     const user = userEvent.setup();
-    const bridge = stubBridge({
-      "series.find": () => ({ series: ["edge.temp"] }),
-      "series.latest": () => ({ sample: { series: "edge.temp", seq: 7, payload: 61.4 } }),
+    // The latest read returns null first, then the just-written value after the write (so the page
+    // shows write → read live). We flip the resolver after the write lands.
+    let written = false;
+    const bridge = demoBridge({
+      "ingest.write": () => {
+        written = true;
+        return { accepted: 1 };
+      },
+      "series.latest": () => (written ? { sample: { seq: 1, payload: 21 } } : { sample: null }),
     });
     render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
 
-    await user.type(screen.getByLabelText("series facet"), "kind:temperature");
-    await user.click(screen.getByLabelText("run search"));
-    await user.click(await screen.findByLabelText("select edge.temp"));
+    await user.click(screen.getByLabelText("write sample"));
 
-    const latest = await screen.findByTestId("latest-payload");
-    expect(latest).toHaveTextContent("61.4");
-    expect(bridge.call).toHaveBeenCalledWith("series.latest", { series: "edge.temp" });
-  });
-
-  it("renders an honest empty state when the query matches no series", async () => {
-    const user = userEvent.setup();
-    const bridge = stubBridge({ "series.find": () => ({ series: [] }) });
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
-
-    await user.type(screen.getByLabelText("series facet"), "kind:nothing");
-    await user.click(screen.getByLabelText("run search"));
-
-    expect(await screen.findByText(/No series match this query/i)).toBeInTheDocument();
-  });
-
-  it("surfaces a denied/out-of-scope find as an error, not a fabricated list", async () => {
-    const user = userEvent.setup();
-    const bridge = rejectingBridge("out_of_scope: series.find");
-    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
-
-    await user.type(screen.getByLabelText("series facet"), "kind:temperature");
-    await user.click(screen.getByLabelText("run search"));
-
+    // The page wrote a real `Sample` shape (producer forced empty; the host stamps the real principal).
     await waitFor(() =>
-      expect(screen.getByText(/Could not load series: out_of_scope/i)).toBeInTheDocument(),
+      expect(bridge.call).toHaveBeenCalledWith(
+        "ingest.write",
+        expect.objectContaining({
+          samples: [expect.objectContaining({ series: "proof.demo", seq: 1, payload: 21 })],
+        }),
+      ),
+    );
+    // And the read-back rendered the value it just wrote.
+    expect(await screen.findByTestId("demo-latest")).toHaveTextContent("value 21");
+  });
+
+  it("ingest write denied → honest error, no fabricated value", async () => {
+    const user = userEvent.setup();
+    // ingest.write absent from the stub → rejected `out_of_scope`.
+    const bridge = demoBridge();
+    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+
+    await user.click(screen.getByLabelText("write sample"));
+    expect(await screen.findByText(/Could not write: out_of_scope/i)).toBeInTheDocument();
+  });
+
+  it("outbox status: renders the lifecycle counts and Refresh re-reads", async () => {
+    const user = userEvent.setup();
+    const bridge = demoBridge({
+      "outbox.status": () => ({
+        pending: [{ id: "e1" }],
+        delivered: [{ id: "e2" }, { id: "e3" }],
+        dead_lettered: [],
+      }),
+    });
+    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+
+    expect(await screen.findByTestId("outbox-pending")).toHaveTextContent("1");
+    expect(screen.getByTestId("outbox-delivered")).toHaveTextContent("2");
+    expect(screen.getByTestId("outbox-dead")).toHaveTextContent("0");
+
+    await user.click(screen.getByLabelText("refresh outbox"));
+    await waitFor(() =>
+      expect(
+        (bridge.call as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "outbox.status")
+          .length,
+      ).toBeGreaterThanOrEqual(2),
     );
   });
 
-  it("surfaces a denied series.latest (grant-intersection narrowed) as an honest error", async () => {
-    // The page is granted series.find but NOT series.latest (the admin approval narrowed it). The list
-    // works; selecting a series and calling the ungranted verb is denied at the bridge — and the page
-    // shows the error, never a blank or a fabricated value. This mirrors the real grant-intersection
-    // deny path asserted end-to-end in the gateway test + the Rust host test.
+  it("inbox triage: lists items and Approve writes a resolution via inbox.resolve", async () => {
     const user = userEvent.setup();
-    const bridge = stubBridge({
+    const bridge = demoBridge({
+      "inbox.list": () => ({
+        items: [{ id: "i1", channel: "triage", author: "ext:demo", body: "please review", ts: 1 }],
+      }),
+      "inbox.resolve": () => ({ ok: true }),
+    });
+    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+
+    const list = await screen.findByTestId("inbox-list");
+    expect(within(list).getByText("please review")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("approve i1"));
+    await waitFor(() =>
+      expect(bridge.call).toHaveBeenCalledWith(
+        "inbox.resolve",
+        expect.objectContaining({ item_id: "i1", decision: "approved" }),
+      ),
+    );
+  });
+
+  it("inbox triage: honest empty state when the channel has no items", async () => {
+    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    expect(await screen.findByTestId("inbox-empty")).toBeInTheDocument();
+  });
+
+  it("series browse: search lists the series series.find returns, select shows latest", async () => {
+    const user = userEvent.setup();
+    const bridge = demoBridge({
       "series.find": () => ({ series: ["edge.temp"] }),
-      // series.latest intentionally absent → the stub rejects it `out_of_scope`.
+      "series.latest": (a) =>
+        a?.series === "edge.temp" ? { sample: { seq: 7, payload: 61.4 } } : { sample: null },
     });
     render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
 
@@ -92,7 +136,6 @@ describe("Panel", () => {
     await user.click(screen.getByLabelText("run search"));
     await user.click(await screen.findByLabelText("select edge.temp"));
 
-    expect(await screen.findByText(/Could not read latest: out_of_scope/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("latest-payload")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("latest-payload")).toHaveTextContent("61.4");
   });
 });

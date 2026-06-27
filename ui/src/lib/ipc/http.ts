@@ -315,6 +315,14 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return getJson<T>(`${base}/store/graph${qs ? `?${qs}` : ""}`);
     }
 
+    // ── System map (system-map scope): the browser's admin, READ-ONLY `system.*` lens. Each maps
+    //    1:1 to a `/system/*` route; the gateway re-checks the **admin** cap server-side. The
+    //    workspace comes from the token, never the request. No write commands by design. ──
+    case "system_overview":
+      return getJson<T>(`${base}/system/overview`);
+    case "system_topology":
+      return getJson<T>(`${base}/system/topology`);
+
     // ── ingest / series (data-console scope): the browser's `ingest.*`/`series.*` surface (the S8
     //    verbs over the gateway). The producer is the token's principal (un-spoofable); the write
     //    route drains the workspace so a manual sample is visible on the next read. ──

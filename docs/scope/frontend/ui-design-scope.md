@@ -2,6 +2,11 @@
 
 Status: draft brief for the first frontend build.
 
+> **The "how" lives in `ui-standards-scope.md`.** This doc is the *look* (tokens, density,
+> mood). The enforceable conventions — **shadcn/ui primitives only**, the Members/NavRail
+> canonical layout, and **responsive/mobile auto-resize** — are in
+> `ui-standards-scope.md`. New UI work follows that standard.
+
 The UI should copy the look and density of
 `/home/user/code/rust/lazybones/ui` while staying simple for now. Treat that app
 as the source reference for tokens, layout rhythm, component proportions, icons,

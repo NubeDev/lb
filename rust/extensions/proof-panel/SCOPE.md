@@ -104,15 +104,25 @@ New hooks: `ui/src/data/useIngestWrite.ts`, `useOutboxStatus.ts`, `useInboxList.
   the latest line; click Refresh outbox → assert counts render; assert still NO "Invalid hook call" /
   console errors. Capture an updated screenshot.
 
-## Open questions
+## Open questions — RESOLVED (2026-06-27, see session doc)
 
-1. **Inbox producer.** If the running node emits no inbox items, section 3 shows an honest empty list.
-   Decide: (a) ship empty-state only, (b) have "Write sample" also enqueue a demo inbox item so
-   Approve/Reject is exercisable. Lean (a) first (don't fabricate workflow state), revisit if a real
-   producer exists.
-2. **`seq` source.** Auto-increment client-side from the last `series.latest` seq, or let the user
-   type it? Lean: auto from latest + 1, fall back to 1, so the demo is one click.
-3. **Build order.** Ship ingest + outbox first (guaranteed green live round-trip), then inbox.
+1. **Inbox producer.** RESOLVED → **(a)** honest empty state when the node emits no items (no
+   fabricated workflow state). Approve/Reject is exercised by seeding a real inbox item in the host +
+   gateway tests, not by faking one in the page.
+2. **`seq` source.** RESOLVED → auto from `series.latest`'s last seq + 1, fall back to 1 — one-click.
+3. **Build order.** RESOLVED → shipped ingest + outbox first (green live round-trip), then inbox.
+
+## Status — SHIPPED (Session 2, 2026-06-27)
+
+The all-features demo is built and green. Backend: `call_tool` dispatches the new workflow verbs +
+`ingest.write` drains synchronously for instant read-back. Manifest carries the four verbs in both
+`[capabilities] request` and `[ui] scope`. Frontend: one hook per verb + section components +
+thin `Panel.tsx`. Tests (real infra, seeded via the real write path): 9 host (5 new), 8 proof-panel
+unit, 9 real-gateway (5 new), full shell gateway suite 65, Playwright e2e (click Write sample → value
+renders; Refresh outbox → counts render; no hook/console errors). **Finding:** the persistent SurrealKV
+store throws `Invalid revision` on the 2nd ingest drain (pre-existing engine bug, reproduced on the
+untouched `POST /ingest`); the live demo runs on the in-memory engine. See the session doc + the
+debugging entry.
 
 ## How to run / verify (servers already up in dev)
 

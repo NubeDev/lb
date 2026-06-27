@@ -13,6 +13,7 @@ pub use error::ToolError;
 
 use lb_auth::Principal;
 use lb_bus::Bus;
+use lb_runtime::CallContext;
 
 use crate::registry::Registry;
 
@@ -43,6 +44,32 @@ pub async fn call(
     qualified_tool: &str,
     input_json: &str,
 ) -> Result<String, ToolError> {
+    call_with_ctx(
+        registry,
+        bus,
+        principal,
+        ws,
+        qualified_tool,
+        input_json,
+        None,
+    )
+    .await
+}
+
+/// Like [`call`], but carries an optional host-callback [`CallContext`] for a **local wasm guest**:
+/// the host installs it into the instance so the guest's `host.call-tool` import can re-enter the
+/// host MCP surface under the guest's delegated authority (host-callback scope). `None` (and any
+/// routed/remote target) means the guest gets no callback — a routed guest's identity would have to
+/// ride the wire (a separate scope), and a host-native verb carries no guest at all.
+pub async fn call_with_ctx(
+    registry: &Registry,
+    bus: &Bus,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    ctx: Option<CallContext>,
+) -> Result<String, ToolError> {
     // 1. authorize FIRST — the DENY gate. Workspace isolation, then the
     //    mcp:<ext>.<tool>:call capability. Running it before resolve guarantees a denied
     //    caller cannot distinguish "not allowed" from "tool doesn't exist": both paths that
@@ -53,7 +80,8 @@ pub async fn call(
     //    reached once authorized.
     let target = resolve::resolve(registry, qualified_tool)?;
 
-    // 3. dispatch: call the local instance, or route over the bus to the hosting node. The
-    //    seam is identical whether the ext is local or remote — that is the S3 point.
-    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json).await
+    // 3. dispatch: call the local instance (with the callback context), or route over the bus to
+    //    the hosting node. The seam is identical whether the ext is local or remote — that is the
+    //    S3 point.
+    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json, ctx).await
 }

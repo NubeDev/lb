@@ -10,4 +10,5 @@ lb-sdk.workspace = true
 wasmtime.workspace = true
 wasmtime-wasi.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 thiserror.workspace = true

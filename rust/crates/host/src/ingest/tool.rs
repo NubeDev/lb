@@ -14,7 +14,7 @@ use lb_store::Store;
 use lb_tags::Facet;
 use serde_json::{json, Value};
 
-use super::{ingest_write, series_latest_value, series_read_range, IngestError};
+use super::{drain_workspace, ingest_write, series_latest_value, series_read_range, IngestError};
 
 /// Dispatch an ingest/series MCP call. `input` is the verb's JSON arguments; the return is the
 /// verb's JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
@@ -32,6 +32,12 @@ pub async fn call_ingest_tool(
             let n = ingest_write(store, principal, ws, samples)
                 .await
                 .map_err(ingest_to_tool)?;
+            // Drain staging → the committed `series` table so the just-written sample is visible to the
+            // very next `series.latest`/`read` over THIS same bridge — the round-trip the proof-panel
+            // page proves. There is no background drain worker; the gateway's own `POST /ingest` route
+            // drains synchronously for the same reason. The drain is exactly-once per
+            // `(series, producer, seq)`, so a write-then-read never double-commits.
+            drain_workspace(store, ws).await.map_err(ingest_to_tool)?;
             Ok(json!({ "accepted": n }))
         }
         "series.read" => {

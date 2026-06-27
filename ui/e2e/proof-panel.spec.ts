@@ -62,10 +62,22 @@ test("proof-panel federated page mounts in the built shell with the host's singl
   await expect(host).toContainText("acme"); // the workspace badge — host ctx reached the remote
   await expect(host.getByLabel("search series")).toBeVisible(); // the page's own interactive UI
 
-  // 5) The shell's honest error wrapper ("Could not load proof-panel: …") must NOT be present.
+  // 5) The all-features demo, live: the page CREATES the data it shows. Click "Write sample" →
+  //    ingest.write stages + drains + series.latest reads it back → the committed value renders.
+  await host.getByLabel("write sample").click();
+  const demoLatest = host.getByTestId("demo-latest");
+  await expect(demoLatest).toBeVisible({ timeout: 15_000 });
+  await expect(demoLatest).toContainText(/value \d/); // a real committed value, not a placeholder
+
+  // 6) Outbox status: Refresh re-reads outbox.status and the three lifecycle counts render.
+  await host.getByLabel("refresh outbox").click();
+  await expect(host.getByTestId("outbox-counts")).toBeVisible({ timeout: 15_000 });
+  await expect(host.getByTestId("outbox-pending")).toContainText(/^\d+$/);
+
+  // 7) The shell's honest error wrapper ("Could not load proof-panel: …") must NOT be present.
   await expect(page.getByText(/Could not load/i)).toHaveCount(0);
 
-  // 6) Screenshot the mounted page for the session doc.
+  // 8) Screenshot the mounted page for the session doc.
   await page.screenshot({ path: "e2e/__screenshots__/proof-panel-mounted.png", fullPage: true });
 
   // 7) No "Invalid hook call" / "more than one copy of React" and no uncaught errors at all.

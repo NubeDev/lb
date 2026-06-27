@@ -10,15 +10,26 @@
 # 31 GB. Drop back to 6 or 4 if you still see freezes during big rebuilds.
 jobs = 8
 
-# --- Faster, lower-memory linker (mold, ENABLED) ---
-# mold links big binaries far faster and with FAR less RAM than the default
-# linker (the ~4 GB-per-link spikes effectively disappear). This is the single
-# biggest fix for the freezes.
+# --- C compiler + linker: zig cc ---
+# This box has NO system C compiler / `cc` / gcc on PATH and no root to
+# apt-install one. `ring` (and other C deps) need a real C compiler to build
+# their C+asm, and rustc needs a `cc`-style driver to link. We use a
+# self-contained zig toolchain (~/.local/zig-linux-x86_64-0.13.0) whose
+# clang-based `zig cc` both compiles C and links — no system toolchain required.
 #
-# NOTE: VSCode here is a Flatpak sandbox, so the host's mold lives at
-# /run/host/usr/bin/mold and is NOT on PATH under its real name. We link it as
-# `ld.mold` into ~/.local/bin (on PATH) so gcc's `-fuse-ld=mold` finds it:
-#     ln -sf /run/host/usr/bin/mold ~/.local/bin/ld.mold
-# Using gcc (cc) as the link driver because there is no clang in the sandbox.
+#   ~/.local/bin/zigcc  ->  `zig cc`  (also rewrites the gnu target triple
+#                           x86_64-unknown-linux-gnu -> zig's x86_64-linux-gnu)
+#   ~/.local/bin/zigar  ->  `zig ar`
+#
+# zig's bundled lld does the linking, so the old mold `-fuse-ld=mold` flag is
+# gone. If you install a real gcc/clang later, delete this block and the [env]
+# CC/AR below to fall back to the system toolchain.
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+linker = "/home/user/.local/bin/zigcc"
+
+# cc-rs (for C deps like ring) reads CC/AR from the environment. Setting them
+# here means `cargo build` Just Works with no shell exports.
+[env]
+CC = "/home/user/.local/bin/zigcc"
+AR = "/home/user/.local/bin/zigar"
+CC_x86_64_unknown_linux_gnu = "/home/user/.local/bin/zigcc"

@@ -1,0 +1,40 @@
+# Dashboard scope index
+
+Status: scope index. Durable shipped behavior lives in
+[`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md).
+
+This directory groups the dashboard-specific frontend scopes. The older flat scope files remain linked
+because existing session docs point at them; new dashboard notes should live here.
+
+## Read order
+
+1. [`../dashboard-scope.md`](../dashboard-scope.md) - the original build-ready Phase 1 scope: dashboard
+   records, `dashboard.*` verbs, grid layout, built-in widgets, and live series streams.
+2. [`widgets-scope.md`](widgets-scope.md) - the widget-focused scope: built-in widgets that render today,
+   extension widget tiles that surface through `ext.list`, and the remaining grid-cell renderer work.
+3. [`../dashboard-widgets-scope.md`](../dashboard-widgets-scope.md) - the deeper federation contract:
+   `[[widget]]`, bridge rules, trust tiers, and the no-token/no-db invariant.
+4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
+   extension UI page/federation model that widgets narrow down to one dashboard cell.
+
+## What is shipped
+
+- The first-party dashboard surface exists in the shell: roster, create/select/delete, visibility, grid
+  layout, drag/resize persistence, and built-in chart/stat/gauge widgets.
+- Built-in widgets bind to real series either by explicit series name or by tag query. They backfill via
+  store reads and receive live samples through the series SSE stream.
+- Extension manifests may declare several `[[widget]]` tiles. Those tiles persist on the `Install`,
+  are narrowed to the approved grant, and surface in `ext.list`.
+
+## What is not shipped yet
+
+- Federated extension widgets do not yet render inside dashboard grid cells. `WidgetHost` still renders
+  only the built-in widget types; `ext:<id>` cells show an honest unsupported state until the widget
+  renderer slice lands.
+- The untrusted iframe tier remains a follow-up to the trusted module-federation page path.
+
+## Authoring rule
+
+Keep new docs in this directory focused on dashboard scope. When a slice ships, promote the stable facts
+to [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md) and leave session-specific
+debugging and command output in `docs/sessions/`.

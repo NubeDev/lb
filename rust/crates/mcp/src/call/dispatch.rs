@@ -12,7 +12,7 @@
 //! for the workspace in the key, which is the authorized principal's own workspace).
 
 use lb_bus::{query, Bus};
-use lb_runtime::RuntimeError;
+use lb_runtime::{CallContext, RuntimeError};
 
 use crate::registry::Target;
 use crate::route::{call_key, CallReply, CallRequest};
@@ -22,20 +22,38 @@ use super::error::ToolError;
 /// Dispatch `qualified_tool`'s call to `target`. Local targets call the instance directly;
 /// remote targets route over the bus to the hosting node. `bus` and `ws` are needed only for
 /// the remote path (the workspace scopes the routing key).
+///
+/// `ctx` (the host-callback context) is installed into a **local** instance only — for the duration
+/// of this one call, then cleared (`instance.call_tool_with`). A remote target gets none: the guest
+/// runs on the other node and its callback identity would have to ride the wire (a separate scope).
 pub async fn dispatch(
     target: &Target,
     bus: &Bus,
     ws: &str,
     qualified_tool: &str,
     input_json: &str,
+    ctx: Option<CallContext>,
 ) -> Result<String, ToolError> {
     match target {
         Target::Local(hosted) => {
             // The guest receives the *unqualified* tool name (the `<ext>.` prefix is the host's
             // routing concern, not the extension's).
             let tool = unqualify(qualified_tool);
-            let mut instance = hosted.instance.lock().await;
-            instance.call_tool(tool, input_json).await.map_err(map_err)
+            // Borrow discipline (host-callback scope, the re-entrancy hazard): there is ONE instance
+            // per ext behind this mutex. A guest whose `host.call-tool` re-enters its OWN ext would
+            // try to lock the instance its in-flight call already holds — a deadlock. `try_lock`
+            // turns that into a clean error instead of a hang; the caller's depth guard bounds
+            // legitimate cross-instance chains. (A concurrent *unrelated* call momentarily contending
+            // the lock is rare and also surfaces as this transient error rather than blocking — an
+            // acceptable trade for never deadlocking on self-re-entry.)
+            let mut instance = hosted
+                .instance
+                .try_lock()
+                .map_err(|_| ToolError::Extension("extension busy (re-entrant call)".into()))?;
+            instance
+                .call_tool_with(tool, input_json, ctx)
+                .await
+                .map_err(map_err)
         }
         Target::Remote { .. } => route(bus, ws, qualified_tool, input_json).await,
     }

@@ -178,3 +178,116 @@ the grant-intersection + real-gateway page-data tests are now real and green.
   IngestView faceted-search assertion.
 - A `series.watch` (bus-backed SSE through the bridge) upgrade once that verb exists.
 - Wire `fleet-monitor`'s two placeholder widgets to real series verbs (the remaining native-side gap).
+
+---
+
+# Session 2 — the "whole platform, one page" all-features demo (2026-06-27)
+
+**Status:** shipped — code + real tests (backend + frontend + live e2e) + docs; all green.
+**Debugging (new):** [../../debugging/store/surrealkv-invalid-revision-on-drain-reread.md](../../debugging/store/surrealkv-invalid-revision-on-drain-reread.md)
+
+## Goal
+
+The page proved only the READ half (`series.find`/`series.latest`). This slice makes it prove the
+**full round-trip** from inside the one cap-gated federated page, through the host-mediated bridge:
+1. **Ingest → read round-trip (headline):** a "Write sample" button → `ingest.write { samples }` →
+   `series.latest` reads it back live (write → stage → drain → read, in the browser). The page CREATES
+   the data it shows.
+2. **Outbox status:** a card of `outbox.status {}` → `{pending,delivered,dead_lettered}` + Refresh.
+3. **Inbox triage:** `inbox.list { channel }` items with Approve/Reject → `inbox.resolve { item_id,
+   decision }` — the page's first WRITE that mutates durable workflow state.
+
+## What shipped
+
+**Backend (the load-bearing bit).** The bridge entry `lb_host::call_tool` (the gateway's `POST
+/mcp/call`) could dispatch only `series.*`/`ingest.*`. Extended `is_host_native` + added a
+`call_workflow_tool` dispatcher so `outbox.status` / `inbox.list` / `inbox.resolve` reach their host
+verbs (`outbox_status`/`list_inbox`/`resolve_inbox`) — same MCP gate first (opaque `Denied`), workspace
+from the token. `inbox.resolve` forces the actor to the principal's `sub` (un-spoofable). **No new core
+verb, no WIT change.**
+
+**Write-then-read visibility.** There is no background drain worker (the gateway's own `POST /ingest`
+route drains synchronously for exactly this reason). So the bridge's `ingest.write` now **drains
+staging → `series` after staging** (`call_ingest_tool`'s `ingest.write` arm), so a write is visible to
+the very next `series.latest` over the same bridge — the round-trip the page proves. Drain is
+exactly-once, so write-then-read never double-commits. Updated `ingest_test`'s round-trip to assert the
+second explicit drain is now a no-op.
+
+**Manifest.** `extension.toml` `[capabilities] request` AND `[ui] scope` gained the four verbs
+(`ingest.write`, `outbox.status`, `inbox.list`, `inbox.resolve`). Verified the persisted page scope
+carries all six over `GET /extensions` after publish.
+
+**Frontend (FILE-LAYOUT: one hook per verb, thin Panel).**
+- Hooks: `data/useIngestWrite.ts`, `useOutboxStatus.ts`, `useInboxList.ts`, `useInboxResolve.ts` +
+  `data/workflow.types.ts` (the view types).
+- Sections: `pages/IngestSection.tsx` (headline write→read), `OutboxSection.tsx`, `InboxSection.tsx`,
+  and the READ half extracted to `pages/SeriesSection.tsx`. `Panel.tsx` is now a thin composition
+  (header + four sections). Frozen `app/contract.ts` untouched. Dev bridge (`dev.tsx`) extended with
+  honest empty defaults for the new verbs.
+
+## Tests — all real infra, seeded via the real write path (CLAUDE §9), green
+
+**Rust host — `crates/host/tests/proof_panel_test.rs` (9 passed, 5 new):**
+```
+running 9 tests
+test ingest_write_then_latest_round_trips_through_the_bridge ... ok
+test ingest_write_is_denied_without_the_grant ... ok
+test outbox_status_reads_real_effects_and_denies_without_the_grant ... ok
+test inbox_list_then_resolve_round_trips_and_denies_per_verb ... ok
+test workflow_surface_is_workspace_isolated ... ok
+test grant_intersection_denies_the_unapproved_verb_at_the_bridge ... ok
+test proof_ping_is_callable_after_publish ... ok
+test proof_ping_is_denied_without_the_grant ... ok
+test workspace_isolation_series_and_ping ... ok
+test result: ok. 9 passed; 0 failed
+```
+`cargo test -p lb-host` → all suites green (incl. the updated `ingest_test`). `cargo test --workspace`
+green (144 test-result lines, 0 failures). `cargo fmt` clean.
+
+**Proof-panel UI unit — `vitest run` (8 passed):** the demo composition — header/ws-badge,
+ingest→read round-trip (asserts the real `Sample` shape + the read-back value), write-denied honest
+error, outbox counts + Refresh re-read, inbox list + Approve→`inbox.resolve`, inbox honest empty,
+series browse. Remote `vite build` → `dist/remoteEntry.js` (92.76 kB) green.
+
+**Live real-gateway — `ProofPanel.gateway.test.tsx` (9 passed, 5 new)** against a REAL spawned
+gateway node, seeded via the real write path:
+```
+✓ ingest.write → series.latest round-trips live (the page creates its own data)
+✓ ingest.write is denied for an out-of-scope page (local filter) — deny per verb
+✓ outbox.status reads real effects live, and denies an out-of-scope page
+✓ inbox.list → inbox.resolve round-trips live, and denies an out-of-scope page
+✓ the workflow surface is workspace-isolated — ws-B sees none of ws-A's items/effects
+(+ the 4 pre-existing read-half / grant-intersection cases)
+```
+Full shell `test:gateway` suite: **65 passed (21 files)**, no regressions.
+
+**Live Playwright e2e — `e2e/proof-panel.spec.ts` (1 passed):** built shell on :4173 → real node on
+:8080 → login `user:ada`/`acme` → open Proof Panel → **click Write sample → `demo-latest` renders the
+committed value** → **Refresh outbox → counts render** → NO "Invalid hook call" / two-React / console
+errors. Fresh screenshot at `ui/e2e/__screenshots__/proof-panel-mounted.png` (all four sections live).
+
+## Finding — SurrealKV "Invalid revision" on the persistent store (engine bug, not ours)
+
+The live demo's write path failed on the **persistent SurrealKV** store with `Invalid revision N for
+type Value` on the SECOND ingest write to a workspace (the drain that re-reads staging over an
+already-committed `series` table). Proven **pre-existing and independent of this slice** by reproducing
+it on the untouched `POST /ingest` route. The in-memory engine (every automated test) is unaffected.
+**Worked around:** ran the live-demo node on the in-memory engine (unset `LB_STORE_PATH`) — still a
+real node (caps/bus/ingest/federation), just ephemeral. Logged in
+[../../debugging/store/surrealkv-invalid-revision-on-drain-reread.md](../../debugging/store/surrealkv-invalid-revision-on-drain-reread.md);
+durable on-disk ingest is a store-owner follow-up. (The user reset the corrupt dev-store this session.)
+
+## Decisions (open questions resolved)
+
+- **Build order (Q3):** ingest + outbox first (guaranteed-green live round-trip), then inbox — followed.
+- **`seq` source (Q2):** auto from `series.latest`'s last seq + 1, fall back to 1 — one-click demo.
+- **Inbox producer (Q1):** option (a) — honest empty state when the node emits no items. No fabricated
+  workflow state; Approve/Reject is exercised by seeding a real item in the host + gateway tests.
+- **Drain on `ingest.write`:** the bridge verb drains synchronously (mirrors `POST /ingest`); rejected
+  the alternative of a background worker (none exists; the demo needs immediate read-back).
+
+## Follow-ups (this slice)
+
+- The SurrealKV persistent-store revision bug (above) — store owner.
+- `fleet-monitor`'s matching rework (its widgets/page to the same surface) — the deliberately-deferred
+  separate slice; untouched here per the scope.

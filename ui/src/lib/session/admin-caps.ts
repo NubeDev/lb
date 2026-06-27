@@ -26,6 +26,11 @@ export const CAP = {
   storeTables: "mcp:store.tables:call",
   storeScan: "mcp:store.scan:call",
   storeGraph: "mcp:store.graph:call",
+  // system-map (System page, the topology + status console): admin-only — a system snapshot reads
+  // across every subsystem of the workspace, so the nav entry shows only for a session holding
+  // `system.overview`. The gateway re-checks every verb server-side regardless.
+  systemOverview: "mcp:system.overview:call",
+  systemTopology: "mcp:system.topology:call",
   // data-console (Ingest page): member-level series verbs — the Ingest nav entry shows for any
   // session that may read/list series.
   seriesList: "mcp:series.list:call",

@@ -5,6 +5,11 @@ IPC) AND in a plain browser against a real node over **SSE/HTTP** (S3). Promoted
 `scope/frontend/` after the messaging slice; the S3 transport swap is in
 `../../sessions/sync/multi-node-sync-session.md`.
 
+> **UI standard:** every surface is held to `scope/frontend/ui-standards-scope.md` — shadcn/ui
+> primitives only (`components/ui/*`), the Members page + NavRail sidebar as the canonical look,
+> and responsive/mobile auto-resize. `features/members/MembersView.tsx` and
+> `features/shell/NavRail.tsx` are the reference implementations; the rest are migrating onto it.
+
 ## Layout (FILE-LAYOUT §4 — one component/hook per file)
 
 ```
