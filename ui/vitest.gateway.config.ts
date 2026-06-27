@@ -9,14 +9,13 @@
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import federation from "@originjs/vite-plugin-federation";
 import path from "node:path";
 
 export default defineConfig({
-  // The federation HOST plugin must be present (mirroring `vite.config.ts`) so the `__federation__`
-  // virtual module that `ext-host/federation.ts` imports resolves — `App` pulls in ExtHost → that
-  // import transitively, even though jsdom never invokes the runtime loader.
-  plugins: [react(), federation({ name: "shell", remotes: {}, shared: ["react", "react-dom"] })],
+  // No federation plugin: `ext-host/federation.ts` is now a plain ESM dynamic import (the rubix-style
+  // import-map pattern), so there is no `__federation__` virtual module to resolve. jsdom never invokes
+  // the runtime loader anyway — these tests exercise the bridge + slot, not the in-browser remote load.
+  plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },
   test: {
     environment: "jsdom",

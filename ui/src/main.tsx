@@ -1,3 +1,8 @@
+// Publish the shell's React singletons onto `globalThis.__lb*` FIRST (before App renders and before any
+// extension remote is dynamic-imported) so the importmap shims can re-export them. The side-effect
+// import must precede everything else. See features/ext-host/singletons.ts.
+import "./features/ext-host/singletons";
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 

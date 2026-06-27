@@ -1,5 +1,5 @@
-// The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. Floating + icon-collapsible like
-// shadcn-admin, with cap-gated entries supplied by App.tsx.
+// The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. It uses the same global
+// Lazybones tokens as the rest of the shell, with cap-gated entries supplied by App.tsx.
 
 import {
   Activity,
@@ -94,22 +94,22 @@ export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }:
   };
 
   return (
-    <Sidebar collapsible="icon" variant="floating">
+    <Sidebar collapsible="icon" variant="sidebar">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Lazybones" aria-label="Lazybones">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-[11px] font-semibold text-sidebar-primary-foreground">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">
                 lb
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
                 <span className="truncate font-semibold">Lazybones</span>
-                <span className="truncate text-xs text-sidebar-foreground/70">workspace ops</span>
+                <span className="truncate text-xs text-muted">workspace ops</span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="flex items-center justify-end px-1">
+        <div className="flex items-center justify-end px-1 group-data-[collapsible=icon]:justify-center">
           <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" />
         </div>
       </SidebarHeader>

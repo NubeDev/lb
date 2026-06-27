@@ -29,12 +29,13 @@ request = ["mcp:series.find:call", "mcp:series.latest:call", "mcp:series.read:ca
 name        = "proof.ping"
 description = "A workspace-tagged snapshot served by the WASM component — proves the Tier-1 backend tool is reachable through the cap gate."
 
-# The PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the module-
-# federation remote entry, resolved under the gateway's `/extensions/proof-panel/ui/` route. The shell
-# loads it as a federated remote (shared React) and mounts it in a cap-gated nav slot. NO [[widget]]
+# The PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the ESM remote
+# entry, resolved under the gateway's `/extensions/proof-panel/ui/` route. The shell dynamic-imports it
+# (sharing its React via the host import map) and mounts it in a cap-gated nav slot. The lib build emits
+# `dist/remoteEntry.js` (no `assets/` subdir), so the served path is `…/ui/remoteEntry.js`. NO [[widget]]
 # tables — widget tiles are deferred to the dashboard scope (proof-panel scope open question).
 [ui]
-entry = "assets/remoteEntry.js"
+entry = "remoteEntry.js"
 label = "Proof Panel"
 icon  = "shield-check"
 scope = ["series.find", "series.latest"]

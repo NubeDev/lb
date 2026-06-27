@@ -1,69 +1,49 @@
-// Load a federated extension remote at RUNTIME and return its `mount` export (ui-federation scope).
-// This is the REAL Module Federation seam: the extension ships a `remoteEntry.js` container that
-// declares `react`/`react-dom` as shared singletons; the shell (the federation HOST, see
-// `vite.config.ts`) provides those singletons, so the remote's `mount` renders in-process against
-// the shell's SAME React — no bundled second copy, no hook-dispatcher mismatch. The remote looks
-// native because it literally shares the host's runtime.
+// Load an extension UI remote at RUNTIME and return its `mount` export (ui-federation scope).
 //
-// Remotes are not known at build time (an extension is installed later, served by the gateway), so
-// we register each one DYNAMICALLY via the federation runtime that `@originjs/vite-plugin-federation`
-// injects into the host bundle (`__federation_method_*`). One remote name per extension id.
+// The seam is a plain ESM dynamic import — NOT `@originjs/vite-plugin-federation`. The gateway serves
+// the extension's `remoteEntry.js` as a static ESM module; we `import(url)` it directly. The remote
+// externalises `react`/`react-dom`/`react-dom/client`/`react/jsx-runtime`, so its bare imports resolve
+// through the host import map (index.html) to the shims, which re-export the shell's SINGLE React
+// (published on `globalThis.__lb*` by `singletons.ts`). The remote therefore renders in-process against
+// the host's SAME React — no bundled second copy, no hook-dispatcher mismatch. This is the rubix-cube
+// import-map pattern; it replaces the @originjs plugin, whose dynamic-remote share scope shipped a
+// second React and broke hooks ("Invalid hook call"). See
+// debugging/extensions/federated-remote-fails-in-dev-server.md.
 
-// The runtime helpers the federation plugin emits into the host. Declared here (not imported) because
-// the plugin injects a virtual module resolved only in a real Vite build; this keeps the types local.
-type FederationShared = Record<string, unknown>;
-declare global {
-  interface Window {
-    __FEDERATION_SHELL_REGISTERED__?: Set<string>;
-  }
-}
-
-interface FederationRuntime {
-  __federation_method_setRemote: (
-    name: string,
-    remote: { url: () => Promise<string> | string; format: "esm"; from: "vite" },
-  ) => void;
-  __federation_method_getRemote: (name: string, expose: string) => Promise<FederationShared>;
-}
-
-/** The mount contract every extension remote must expose as `./mount` (ui-federation scope). */
+/** The mount contract every extension remote must expose from its `remoteEntry.js` (ui-federation
+ *  scope) — frozen, byte-for-byte the extension's `app/contract.ts`. */
 export type RemoteMount = (
   el: HTMLElement,
   ctx: { workspace: string },
   bridge: { call: <T = unknown>(tool: string, args?: Record<string, unknown>) => Promise<T> },
 ) => void | (() => void);
 
-/** Import the federation runtime the host bundle carries. Isolated behind a function so a jsdom/test
- *  environment (where the virtual module is absent) fails loudly rather than at module-eval time. */
-async function runtime(): Promise<FederationRuntime> {
-  // @ts-expect-error — virtual module injected by @originjs/vite-plugin-federation at build time.
-  return (await import("__federation__")) as FederationRuntime;
+/** A loaded remote module. The remote exports `mount` (named); some bundlers also surface it as the
+ *  default export, so we accept either shape. */
+interface RemoteModule {
+  mount?: RemoteMount;
+  default?: RemoteMount | { mount?: RemoteMount };
+}
+
+/** Resolve the `mount` function from a loaded remote module, tolerating named or default placement. */
+function pickMount(mod: RemoteModule): RemoteMount | undefined {
+  if (typeof mod.mount === "function") return mod.mount;
+  const d = mod.default;
+  if (typeof d === "function") return d;
+  if (d && typeof d === "object" && typeof d.mount === "function") return d.mount;
+  return undefined;
 }
 
 /**
- * Register `ext`'s remote (served at `remoteEntryUrl`) and return its `./mount`. Idempotent per
- * extension id — re-opening the same page reuses the already-registered container (the federation
- * runtime caches it), so React stays a single shared instance across mounts.
+ * Dynamic-import `ext`'s remote (served at `remoteEntryUrl`) and return its `mount`. The browser caches
+ * the module by URL, so re-opening the same page reuses the already-evaluated remote — React stays a
+ * single shared instance across mounts. `@vite-ignore` keeps Vite from trying to bundle a runtime URL.
  */
 export async function loadRemoteMount(ext: string, remoteEntryUrl: string): Promise<RemoteMount> {
-  const fed = await runtime();
-  const registered = (window.__FEDERATION_SHELL_REGISTERED__ ??= new Set<string>());
-  if (!registered.has(ext)) {
-    // `url` MUST return a Promise: the federation runtime calls `e.url().then(...)` on the result
-    // (see the emitted `_virtual___federation__` runtime). Returning a bare string makes the runtime
-    // do `"<url>".then(...)` → `getUrl(...).then is not a function`, and the page never mounts. The
-    // type already says `() => Promise<string> | string`, but the 1.4.x runtime only handles the
-    // Promise form, so we always resolve one.
-    fed.__federation_method_setRemote(ext, {
-      url: () => Promise.resolve(remoteEntryUrl),
-      format: "esm",
-      from: "vite",
-    });
-    registered.add(ext);
+  const mod = (await import(/* @vite-ignore */ remoteEntryUrl)) as RemoteModule;
+  const mount = pickMount(mod);
+  if (typeof mount !== "function") {
+    throw new Error(`${ext}: remote does not export a \`mount\` function`);
   }
-  const mod = (await fed.__federation_method_getRemote(ext, "./mount")) as { mount?: RemoteMount };
-  if (typeof mod.mount !== "function") {
-    throw new Error(`${ext}: federated remote does not expose ./mount`);
-  }
-  return mod.mount;
+  return mount;
 }

@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lazybones</title>
+    <!-- Extension federation import map (ui-federation scope). Extension `remoteEntry.js` bundles
+         externalise react/react-dom/react-dom/client/react/jsx-runtime; their bare imports resolve
+         here to the host shims (`/shims/*.mjs`), which re-export the shell's SINGLE React published on
+         `globalThis.__lb*` (src/features/ext-host/singletons.ts). One React across host↔extension — no
+         second copy, no "Invalid hook call". Must precede the app module script so it is in the DOM
+         before any remote is dynamic-imported. Replaces @originjs/vite-plugin-federation. -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "/shims/react.mjs",
+          "react-dom": "/shims/react-dom.mjs",
+          "react-dom/client": "/shims/react-dom-client.mjs",
+          "react/jsx-runtime": "/shims/react-jsx-runtime.mjs"
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

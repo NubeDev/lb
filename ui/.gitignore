@@ -2,3 +2,11 @@ node_modules/
 dist/
 src-tauri/target/
 *.log
+
+# Playwright e2e machine output (regenerated each run — the spec + config are tracked, the artifacts
+# are not). The mounted-page screenshot is captured under e2e/__screenshots__ for the session doc.
+test-results/
+playwright-report/
+blob-report/
+.last-run.json
+e2e/__screenshots__/

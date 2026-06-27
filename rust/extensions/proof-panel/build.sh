@@ -2,7 +2,7 @@
 # Build the `proof-panel` Tier-1 WASM extension — a wasm32-wasip2 component (excluded from the host
 # workspace, built in its own target/) plus its federated UI bundle. Emits:
 #   target/wasm32-wasip2/release/proof_panel_ext.wasm   (the component the host loads)
-#   ui/dist/assets/remoteEntry.js                        (the federation remote the shell mounts)
+#   ui/dist/remoteEntry.js                               (the ESM remote the shell dynamic-imports)
 set -e
 cd "$(dirname "$0")"
 
@@ -20,5 +20,5 @@ if [ -d ui ]; then
   # the bundle builds fine. The federation remote is what we need; build it without that gate.
   ./node_modules/.bin/vite build
   cd ..
-  echo "built: $(pwd)/ui/dist/assets/remoteEntry.js"
+  echo "built: $(pwd)/ui/dist/remoteEntry.js"
 fi

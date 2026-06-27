@@ -5,6 +5,9 @@
 import { useState } from "react";
 import { UserPlus, Users } from "lucide-react";
 
+import { AppPageHeader } from "@/components/app/page-header";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useMembers } from "./useMembers";
 
 interface Props {
@@ -18,39 +21,40 @@ export function MembersView({ ws }: Props) {
   const [newUser, setNewUser] = useState("");
 
   return (
-    <section className="flex h-full flex-col bg-bg">
-      <header className="page-header">
-        <div className="page-header-icon">
-          <Users size={16} />
-        </div>
-        <div className="min-w-0">
-          <h1 className="page-title">Members</h1>
-          <p className="page-subtitle">Team membership inside the current workspace.</p>
-        </div>
-        <input
-          aria-label="team"
-          className="control-field-sm ml-2 w-28"
-          value={team}
-          onChange={(e) => setTeam(e.target.value)}
-        />
-        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
-          <span className="truncate">{ws}</span>
-        </span>
-      </header>
+    <section className="flex h-full min-w-0 flex-col bg-bg text-fg">
+      <AppPageHeader
+        icon={Users}
+        title="Members"
+        description="Team membership inside the current workspace."
+        workspace={ws}
+        actions={
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <span>Team</span>
+            <Input
+              aria-label="team"
+              className="h-8 w-28 px-2 text-xs"
+              value={team}
+              onChange={(e) => setTeam(e.target.value)}
+            />
+          </label>
+        }
+      />
 
       {error && (
-        <div role="alert" className="state-alert">
+        <div
+          role="alert"
+          className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+        >
           {error}
         </div>
       )}
 
-      <ul className="flex-1 overflow-y-auto px-4 py-2">
+      <ul className="min-h-0 flex-1 overflow-y-auto px-4 py-2">
         {members.length === 0 ? (
           <li className="text-sm text-muted">No members in {team} yet.</li>
         ) : (
           members.map((m) => (
-            <li key={m} className="py-1 text-sm" role="listitem">
+            <li key={m} className="border-b border-border py-2 text-sm last:border-b-0" role="listitem">
               {m}
             </li>
           ))
@@ -68,16 +72,16 @@ export function MembersView({ ws }: Props) {
           }
         }}
       >
-        <input
+        <Input
           aria-label="add member"
-          className="control-field min-w-0 flex-1"
+          className="min-w-0 flex-1"
           placeholder="user:… to add to the team"
           value={newUser}
           onChange={(e) => setNewUser(e.target.value)}
         />
-        <button aria-label="add" className="soft-button">
+        <Button aria-label="add">
           <UserPlus size={14} /> Add
-        </button>
+        </Button>
       </form>
     </section>
   );

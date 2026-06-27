@@ -19,6 +19,10 @@ target
 .lazybones/
 .data/
 
+# `make publish-ext` deploy target: the extension UI bundle the running node serves from
+# LB_EXT_UI_DIR. Pure build/deploy output (copied from each ext's ui/dist), never source.
+rust/extensions-ui/
+
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore

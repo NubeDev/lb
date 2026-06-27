@@ -9,12 +9,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-accent text-bg hover:bg-accent/90",
-        outline: "border border-border bg-bg hover:bg-panel hover:text-fg",
+        default:
+          "border border-accent/20 bg-accent/10 text-accent hover:bg-accent/20 active:bg-accent/25",
+        solid: "bg-accent text-bg hover:bg-accent/90",
+        outline: "border border-border bg-bg text-fg hover:bg-panel",
         ghost: "hover:bg-panel hover:text-fg",
       },
       size: {
-        default: "h-9 px-4 py-2",
+        default: "h-9 px-3 py-2",
         sm: "h-8 px-3 text-xs",
         icon: "h-9 w-9",
       },

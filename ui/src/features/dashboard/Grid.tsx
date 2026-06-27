@@ -1,7 +1,7 @@
 // The grid host — a `react-grid-layout` of widget cells (dashboard scope). The layout maps 1:1 to the
 // dashboard's `cells[]` record; drag/resize stops persist the new geometry via `onLayout` (→
-// `dashboard.save`, the SurrealDB record — never localStorage). A fixed `width` (measured, with a
-// sane fallback) keeps it deterministic in tests. Read-only viewers get a non-draggable grid.
+// `dashboard.save`, the SurrealDB record — never localStorage). A measured width (with a sane
+// fallback) keeps it deterministic in tests. Read-only viewers get a non-draggable grid.
 
 import { useEffect, useRef, useState } from "react";
 import GridLayout, { type Layout } from "react-grid-layout";
@@ -10,9 +10,9 @@ import { X } from "lucide-react";
 import { WidgetHost } from "./WidgetHost";
 import type { Cell } from "@/lib/dashboard";
 
-// react-grid-layout's stylesheet (the resize-handle styles it bundles from react-resizable are
-// included here; react-resizable is a transitive dep, not directly resolvable under pnpm).
+// react-grid-layout owns positioning; react-resizable owns the visible + hittable resize handle.
 import "react-grid-layout/css/styles.css";
+import "react-resizable/css/styles.css";
 
 interface Props {
   cells: Cell[];
@@ -34,9 +34,18 @@ export function Grid({ cells, editable, onLayout, onRemove }: Props) {
       const w = ref.current?.offsetWidth ?? 0;
       if (w > 0) setWidth(w);
     };
+
     measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
   }, []);
 
   const layout: Layout[] = cells.map((c) => ({ i: c.i, x: c.x, y: c.y, w: c.w, h: c.h }));

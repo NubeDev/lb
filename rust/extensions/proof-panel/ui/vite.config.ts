@@ -1,26 +1,33 @@
 /// <reference types="vitest" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import federation from "@originjs/vite-plugin-federation";
 import path from "node:path";
 
-// Module Federation REMOTE (ui-federation scope) — the FRONTEND half of the `proof-panel` extension.
-// Exposes exactly one module, `./mount`, and declares `react`/`react-dom` as SHARED singletons so the
-// remote renders against the shell HOST's SAME React (no second copy bundled). The federation
-// `filename` is `remoteEntry.js`, so the served container is `dist/assets/remoteEntry.js` — the path
-// the manifest's `[ui] entry = "assets/remoteEntry.js"` and the shell loader expect.
+// Build the proof-panel UI as a single ESM `remoteEntry.js` the shell dynamic-imports (ui-federation
+// scope) — the rubix-cube import-map pattern, NOT `@originjs/vite-plugin-federation`. The crux is
+// `external`: `react`/`react-dom`/`react-dom/client`/`react/jsx-runtime` are NOT bundled; their bare
+// imports survive into the output and the shell's import map (index.html + /shims/*.mjs) resolves them
+// to the host's SINGLE React. So the page renders in-process against the SAME React — no second copy,
+// no "Invalid hook call". The bundle ships only its own page logic + compiled Tailwind CSS, which
+// `remoteEntry.ts` injects at runtime via a `?inline` import (cssCodeSplit off → one CSS string).
+//
+// Output is `dist/remoteEntry.js` (lib `fileName`); `make publish-ext` copies `dist/*` into the node's
+// `extensions-ui/proof-panel/`, so the shell loads it at `/extensions/proof-panel/ui/remoteEntry.js` —
+// the path the manifest's `[ui] entry = "remoteEntry.js"` names.
 export default defineConfig({
-  plugins: [
-    react(),
-    federation({
-      name: "proof_panel",
-      filename: "remoteEntry.js",
-      exposes: { "./mount": "./src/mount.tsx" },
-      shared: ["react", "react-dom"],
-    }),
-  ],
-  // Federation container init uses top-level await; esnext is required (matches the shell host).
-  build: { target: "esnext" },
+  plugins: [react()],
+  build: {
+    target: "esnext",
+    cssCodeSplit: false,
+    lib: {
+      entry: "src/remoteEntry.ts",
+      formats: ["es"],
+      fileName: () => "remoteEntry.js",
+    },
+    rollupOptions: {
+      external: ["react", "react-dom", "react-dom/client", "react/jsx-runtime"],
+    },
+  },
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },

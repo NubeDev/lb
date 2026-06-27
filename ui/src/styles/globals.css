@@ -5,6 +5,8 @@
 /* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper; one
    warm amber accent; hairline borders. A theme is a `.dark` class swap on <html>. */
 :root {
+  color-scheme: light;
+  --radius: 0.5rem;
   --bg: 40 30% 96%;
   --panel: 40 24% 92%;
   --border: 40 12% 82%;
@@ -13,26 +15,24 @@
   --accent: 32 95% 48%;
   --background: var(--bg);
   --foreground: var(--fg);
+  --card: var(--panel);
+  --card-foreground: var(--fg);
+  --popover: var(--panel);
+  --popover-foreground: var(--fg);
   --primary: var(--accent);
   --primary-foreground: var(--bg);
   --secondary: var(--panel);
   --secondary-foreground: var(--fg);
+  --muted-bg: 40 18% 90%;
   --muted-foreground: var(--muted);
   --accent-foreground: var(--bg);
   --destructive: 0 72% 46%;
   --input: var(--border);
   --ring: var(--accent);
-  --sidebar: 36 18% 94%;
-  --sidebar-foreground: var(--fg);
-  --sidebar-primary: var(--accent);
-  --sidebar-primary-foreground: var(--bg);
-  --sidebar-accent: 36 18% 88%;
-  --sidebar-accent-foreground: var(--fg);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--accent);
 }
 
 .dark {
+  color-scheme: dark;
   --bg: 24 8% 8%;
   --panel: 24 7% 11%;
   --border: 24 6% 18%;
@@ -41,23 +41,20 @@
   --accent: 32 95% 56%;
   --background: var(--bg);
   --foreground: var(--fg);
+  --card: var(--panel);
+  --card-foreground: var(--fg);
+  --popover: var(--panel);
+  --popover-foreground: var(--fg);
   --primary: var(--accent);
   --primary-foreground: var(--bg);
   --secondary: var(--panel);
   --secondary-foreground: var(--fg);
+  --muted-bg: 24 6% 15%;
   --muted-foreground: var(--muted);
   --accent-foreground: var(--bg);
   --destructive: 0 65% 58%;
   --input: var(--border);
   --ring: var(--accent);
-  --sidebar: 24 7% 10%;
-  --sidebar-foreground: var(--fg);
-  --sidebar-primary: var(--accent);
-  --sidebar-primary-foreground: var(--bg);
-  --sidebar-accent: 24 6% 16%;
-  --sidebar-accent-foreground: var(--fg);
-  --sidebar-border: var(--border);
-  --sidebar-ring: var(--accent);
 }
 
 html,
@@ -77,6 +74,24 @@ body {
 @layer base {
   * {
     @apply border-border;
+    scrollbar-color: hsl(var(--border)) transparent;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    width: 0.625rem;
+    height: 0.625rem;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border: 0.1875rem solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
   }
 
   ::selection {
