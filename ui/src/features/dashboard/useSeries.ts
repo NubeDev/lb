@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { bindingSeries, bindingTags, openSeriesStream, type Binding } from "@/lib/dashboard";
 import { findSeries, readSamples } from "@/lib/ingest/ingest.api";
 import type { Facet, Sample } from "@/lib/ingest/ingest.types";
+import type { DashboardSearch } from "@/features/routing/search";
 
 /** The most recent samples a widget renders, plus the resolved series + status. */
 export interface SeriesState {
@@ -31,7 +32,7 @@ function tagFacet(tag: string): Facet {
 const BACKFILL = 200;
 
 /** Resolve `binding`, backfill its history, and keep it live. Re-runs when the binding changes. */
-export function useSeries(binding: Binding): SeriesState {
+export function useSeries(binding: Binding, range?: DashboardSearch): SeriesState {
   const [state, setState] = useState<SeriesState>({
     series: bindingSeries(binding),
     samples: [],
@@ -40,7 +41,7 @@ export function useSeries(binding: Binding): SeriesState {
     denied: false,
   });
   // Stable key so the effect re-runs only when the binding's meaning changes (not its identity).
-  const key = JSON.stringify(binding);
+  const key = JSON.stringify({ binding, range });
   const liveRef = useRef<{ close: () => void } | null>(null);
 
   useEffect(() => {

@@ -4,7 +4,7 @@
 // **admin-gated** server-side (`mcp:system.overview/topology:call`, granted to the workspace-admin
 // role only) and READ-ONLY. The workspace comes from the session token, never an argument (§7).
 
-import type { SystemOverview, SystemTopology } from "./system.types";
+import type { SubsystemDetail, SystemOverview, SystemTopology } from "./system.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The per-subsystem status grid for the session workspace. Mirrors `system.overview`. */
@@ -15,4 +15,10 @@ export function systemOverview(): Promise<SystemOverview> {
 /** Nodes + wiring edges for the react-flow graph. Mirrors `system.topology`. */
 export function systemTopology(): Promise<SystemTopology> {
   return invoke<SystemTopology>("system_topology");
+}
+
+/** The full detail of one subsystem `id` (its card + a subsystem-specific `extra` blob). The detail
+ *  view a no-page card drills into. Mirrors `system.subsystem`. */
+export function systemSubsystem(id: string): Promise<SubsystemDetail> {
+  return invoke<SubsystemDetail>("system_subsystem", { id });
 }

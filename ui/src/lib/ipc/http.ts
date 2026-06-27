@@ -322,6 +322,10 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return getJson<T>(`${base}/system/overview`);
     case "system_topology":
       return getJson<T>(`${base}/system/topology`);
+    case "system_subsystem": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/system/subsystem/${enc(id)}`);
+    }
 
     // ── ingest / series (data-console scope): the browser's `ingest.*`/`series.*` surface (the S8
     //    verbs over the gateway). The producer is the token's principal (un-spoofable); the write

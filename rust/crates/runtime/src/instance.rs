@@ -5,18 +5,39 @@
 
 use crate::bindings::{Extension, HostState};
 use crate::bridge::CallContext;
+use crate::compat_v0_1::ExtensionV1;
 use crate::engine::RuntimeError;
 use wasmtime::Store as WtStore;
+
+/// Which WIT-world generation a loaded guest speaks. The `tool.call` export is byte-identical across
+/// 0.1.0 and 0.2.0 — only the imported `host` interface grew — so the only difference here is which
+/// generated `call_call` we dispatch through. A 0.1.0 guest never imports `host.call-tool`, so its
+/// `CallContext` (if any) is simply unused.
+enum Bindings {
+    V2(Extension),
+    V1(ExtensionV1),
+}
 
 /// A loaded, instantiated component ready to answer tool calls.
 pub struct Instance {
     store: WtStore<HostState>,
-    bindings: Extension,
+    bindings: Bindings,
 }
 
 impl Instance {
     pub(crate) fn new(store: WtStore<HostState>, bindings: Extension) -> Self {
-        Self { store, bindings }
+        Self {
+            store,
+            bindings: Bindings::V2(bindings),
+        }
+    }
+
+    /// Construct from a legacy `@0.1.0` guest (the ABI back-compat path).
+    pub(crate) fn new_v1(store: WtStore<HostState>, bindings: ExtensionV1) -> Self {
+        Self {
+            store,
+            bindings: Bindings::V1(bindings),
+        }
     }
 
     /// Invoke `name` with a JSON input string; return the JSON output string. Maps the WIT
@@ -43,16 +64,24 @@ impl Instance {
         ctx: Option<CallContext>,
     ) -> Result<String, RuntimeError> {
         self.store.data_mut().call_ctx = ctx;
-        let result = self
-            .bindings
-            .lazybones_ext_tool()
-            .call_call(&mut self.store, name, input_json)
-            .await
-            .map_err(|e| RuntimeError::Call(e.to_string()));
+        let result = match &self.bindings {
+            Bindings::V2(b) => b
+                .lazybones_ext_tool()
+                .call_call(&mut self.store, name, input_json)
+                .await
+                .map_err(|e| RuntimeError::Call(e.to_string()))
+                .map(|r| r.map_err(|e| format!("{e:?}"))),
+            Bindings::V1(b) => b
+                .lazybones_ext_tool()
+                .call_call(&mut self.store, name, input_json)
+                .await
+                .map_err(|e| RuntimeError::Call(e.to_string()))
+                .map(|r| r.map_err(|e| format!("{e:?}"))),
+        };
         // Clear identity regardless of how the call ended — no bleed into the next call.
         self.store.data_mut().call_ctx = None;
 
-        result?.map_err(|tool_err| RuntimeError::Tool(format!("{tool_err:?}")))
+        result?.map_err(RuntimeError::Tool)
     }
 
     /// Drain the guest's captured `log` messages (for the host to surface/audit).

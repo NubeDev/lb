@@ -10,18 +10,18 @@ use lb_auth::Principal;
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
 
-use super::{system_overview, system_topology, SystemError};
+use super::{system_overview, system_subsystem, system_topology, SystemError};
 use crate::boot::Node;
 
-/// Dispatch a system-observability MCP call. `input` is ignored (both verbs are whole-workspace
-/// snapshots with no arguments); the return is the verb's JSON result. Each verb authorizes first;
-/// denials are opaque.
+/// Dispatch a system-observability MCP call. `input` is ignored for the two whole-workspace snapshots
+/// (`overview`/`topology`); for `system.subsystem` it carries the `{"id": "<subsystem>"}` to detail.
+/// The return is the verb's JSON result. Each verb authorizes first; denials are opaque.
 pub async fn call_system_tool(
     node: &Node,
     principal: &Principal,
     ws: &str,
     qualified_tool: &str,
-    _input: &Value,
+    input: &Value,
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "system.overview" => {
@@ -35,6 +35,15 @@ pub async fn call_system_tool(
                 .await
                 .map_err(system_to_tool)?;
             Ok(json!(topo))
+        }
+        "system.subsystem" => {
+            // The id selects which subsystem to detail; a missing/blank id is an opaque Denied (the
+            // same answer an unknown id gets — no "which ids exist" signal).
+            let id = input.get("id").and_then(Value::as_str).unwrap_or("");
+            let detail = system_subsystem(node, principal, ws, id)
+                .await
+                .map_err(system_to_tool)?;
+            Ok(json!(detail))
         }
         _ => Err(ToolError::NotFound),
     }

@@ -11,6 +11,8 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-27 | frontend | a render-time `<Navigate to={dynamicHref}>` (the tenant-less `/t/<ws>` redirect fallback) re-navigates every commit → "Maximum update depth exceeded" (~370 warnings; tests still pass) | resolved | [frontend/navigate-dynamic-href-render-loop.md](frontend/navigate-dynamic-href-render-loop.md) |
+| 2026-06-27 | extensions | a WIT `@0.2.0` minor bump breaks every `@0.1.0` guest at instantiation (wasmtime treats a `0.x` minor as semver-incompatible at link time, though the loader's major-check passes) | resolved | [extensions/wit-minor-bump-breaks-0_1-guest-linking.md](extensions/wit-minor-bump-breaks-0_1-guest-linking.md) |
 | 2026-06-27 | store | SurrealKV "Invalid revision N for type Value" on the SECOND ingest drain (persistent store only; `mem://` is fine) — durable on-disk ingest unreliable past one write/ws | documented (engine-level; demo runs on `mem://`) | [store/surrealkv-invalid-revision-on-drain-reread.md](store/surrealkv-invalid-revision-on-drain-reread.md) |
 | 2026-06-27 | build | Rust build fails `linker 'cc' not found` — no C compiler on the box and no root to apt-install one (`ring` also needs to compile C) | resolved | [build/no-c-compiler-linker-cc-not-found.md](build/no-c-compiler-linker-cc-not-found.md) |
 | 2026-06-27 | extensions | the host-mediated bridge (`/mcp/call`) can't dispatch a host-native `series.*` verb — a federated page's reads `NotFound`/403 | resolved | [extensions/bridge-cannot-dispatch-host-native-series.md](extensions/bridge-cannot-dispatch-host-native-series.md) |

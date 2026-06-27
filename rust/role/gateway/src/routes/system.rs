@@ -9,10 +9,10 @@
 //! A denied caller is `403`-opaque (no existence signal). There are **no write routes here by
 //! design** (read-only; control verbs live in their own scopes).
 
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{SystemError, SystemOverview, SystemTopology};
+use lb_host::{SubsystemDetail, SystemError, SystemOverview, SystemTopology};
 
 use crate::session::authenticate;
 use crate::state::Gateway;
@@ -39,6 +39,21 @@ pub async fn system_topology(
         .await
         .map_err(system_status)?;
     Ok(Json(topo))
+}
+
+/// `GET /system/subsystem/{id}` — the full detail of one subsystem (the same card the grid shows,
+/// plus a subsystem-specific `extra` blob; for `bus`, its live peer/router zid lists). The detail
+/// view a no-page card drills into. Admin cap; an unknown id is `403`-opaque, like a denial.
+pub async fn system_subsystem(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<SubsystemDetail>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let detail = lb_host::system_subsystem(gw.node.as_ref(), &p, p.ws(), &id)
+        .await
+        .map_err(system_status)?;
+    Ok(Json(detail))
 }
 
 /// Map the system gate's outcome onto an HTTP status. `Denied` is `403` (opaque — no existence

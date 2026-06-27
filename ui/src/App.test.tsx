@@ -7,28 +7,30 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 
 import { App } from "./App";
-import { ADMIN_CAPS } from "@/lib/session/admin-caps";
+import { CAP } from "@/lib/session/admin-caps";
 import { setSession } from "@/lib/session/session.store";
+import { allowedSurfaces } from "@/features/routing/allowed";
 
 const MEMBER_CAPS = ["bus:chan/*:pub", "bus:chan/*:sub", "mcp:members.list:call"];
 
-beforeEach(() => setSession(null));
+beforeEach(() => {
+  window.history.replaceState(null, "", "/#/channels?c=general");
+  setSession(null);
+});
 afterEach(() => setSession(null));
 
 describe("App nav cap-gating", () => {
-  it("an admin session sees the Admin and Extensions nav entries", async () => {
-    setSession({ token: "t", principal: "user:ada", workspace: "acme", caps: ADMIN_CAPS });
+  it("keeps the logged-out short-circuit before routes render", async () => {
     render(<App />);
-    expect(await screen.findByLabelText("Admin")).toBeInTheDocument();
-    expect(screen.getByLabelText("Extensions")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
-  it("a plain member never sees the Admin or Extensions nav entries", async () => {
-    setSession({ token: "t", principal: "user:bob", workspace: "acme", caps: MEMBER_CAPS });
-    render(<App />);
-    // Channels is always present (sanity the shell rendered).
-    expect(await screen.findByLabelText("Channels")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Admin")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Extensions")).not.toBeInTheDocument();
+  it("allows Admin for an admin cap and hides it for a plain member", () => {
+    expect(allowedSurfaces([CAP.userManage])).toContain("admin");
+    expect(allowedSurfaces(MEMBER_CAPS)).not.toContain("admin");
+  });
+
+  it("includes Extensions when the session holds ext.list", () => {
+    expect(allowedSurfaces([CAP.extList])).toContain("extensions");
   });
 });

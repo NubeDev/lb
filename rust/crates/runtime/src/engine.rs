@@ -48,12 +48,26 @@ impl Engine {
             .map_err(|e| RuntimeError::Instantiate(e.to_string()))?;
         Extension::add_to_linker::<_, HasSelf<_>>(&mut linker, |s| s)
             .map_err(|e| RuntimeError::Instantiate(e.to_string()))?;
-
-        let mut store = WtStore::new(&self.engine, HostState::new());
-        let bindings = Extension::instantiate_async(&mut store, &component, &linker)
-            .await
+        // ABI back-compat: also link the frozen `@0.1.0` `host` interface so existing 0.1.0 guests
+        // (whose import wasmtime treats as semver-incompatible with 0.2.0) still instantiate.
+        crate::compat_v0_1::add_to_linker(&mut linker)
             .map_err(|e| RuntimeError::Instantiate(e.to_string()))?;
 
-        Ok(Instance::new(store, bindings))
+        let mut store = WtStore::new(&self.engine, HostState::new());
+        // Try the current `@0.2.0` world first. A guest built against `@0.1.0` exports `tool@0.1.0`,
+        // which the 0.2.0 bindings can't find ("no exported instance `tool@0.2.0`"); fall back to the
+        // frozen 0.1.0 bindings so it still loads (the ABI-compat promise). The `host` imports for
+        // BOTH versions are already in the linker, so either guest's imports resolve.
+        match Extension::instantiate_async(&mut store, &component, &linker).await {
+            Ok(bindings) => Ok(Instance::new(store, bindings)),
+            Err(_) => {
+                let v1 = crate::compat_v0_1::ExtensionV1::instantiate_async(
+                    &mut store, &component, &linker,
+                )
+                .await
+                .map_err(|e| RuntimeError::Instantiate(e.to_string()))?;
+                Ok(Instance::new_v1(store, v1))
+            }
+        }
     }
 }

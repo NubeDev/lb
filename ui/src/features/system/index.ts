@@ -2,3 +2,5 @@
 
 export { SystemView } from "./SystemView";
 export { useSystem } from "./useSystem";
+export { SubsystemDetailSheet } from "./SubsystemDetailSheet";
+export { useSubsystemDetail } from "./useSubsystemDetail";

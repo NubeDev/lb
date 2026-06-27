@@ -33,6 +33,18 @@ export interface SystemOverview {
   services: ServiceStatus[];
 }
 
+/** The full detail of ONE subsystem — the same card the grid shows, plus a subsystem-specific `extra`
+ *  blob the grid has no room for. The detail view a no-page card (gateway/bus/mcp) drills into. For
+ *  `bus`, `extra` carries the live peer/router zid lists; `{}` otherwise. Mirrors
+ *  `lb_host::SubsystemDetail`. */
+export interface SubsystemDetail {
+  ws: string;
+  role: string;
+  service: ServiceStatus;
+  /** Subsystem-specific detail. For `bus`: `{ peer_zids: string[]; router_zids: string[] }`. */
+  extra: Record<string, unknown>;
+}
+
 /** A topology node — a projection of a `ServiceStatus` minus the metrics. Mirrors `lb_host::TopoNode`. */
 export interface TopoNode {
   id: string;

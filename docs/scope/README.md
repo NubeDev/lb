@@ -32,7 +32,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   placeholders; the wasm sibling of the native `fleet-monitor`), and `host-callback-scope.md` (the
   **forever-ABI** addition that lets a WASM **guest** call host MCP tools — inbox/outbox/db/other tools —
   under its delegated `caller ∩ grant` authority, the symmetric backend dual of the page bridge; without
-  it a guest is a one-way box that can't reach the platform).
+  it a guest is a one-way box that can't reach the platform), and `reference-extensions-scope.md`
+  (five **native-first** reference extensions — markdown doc-store+PDF, todo, MQTT bridge, Timescale
+  connector, Zenoh appliance gateway — plus the four platform fixes they need: the **native**
+  host-callback transport, a **`net:*`** capability family for owned external sockets/DB/mesh, a generic
+  per-extension **`kv.*`** store, and a binary-blob asset path; the doctrine that a native Tier-2
+  extension is the sanctioned escape hatch that may own external resources without breaking rule 2).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
@@ -58,7 +63,9 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   touching the DB, trust tiers, the `[widget]` manifest); `frontend/dashboard/` now holds the dashboard
   subtopic index plus the widget-focused reconciliation scope, `ui-standards-scope.md` (the cross-cutting UI
   standard: shadcn-first primitives, the Members/NavRail canonical look, and responsive/mobile
-  auto-resize — what every surface here must obey), and `data-console-scope.md` (the workspace
+  auto-resize — what every surface here must obey), `routing-scope.md` (shareable, deep-linkable
+  URLs with typed search-param args — @tanstack/router in hash mode, working in both the Tauri
+  desktop webview and the browser; e.g. a dashboard scoped to a date range), and `data-console-scope.md` (the workspace
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
   with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL).
 - `testing/`, `debugging/` — the standards every session follows.

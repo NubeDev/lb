@@ -124,6 +124,41 @@ describe("SystemView (real gateway)", () => {
     expect(screen.queryByLabelText("open bus")).toBeNull();
   });
 
+  it("opens the subsystem detail sheet when a no-page card is clicked", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:root", ws);
+
+    render(<SystemView ws={ws} />);
+
+    // The bus card has no owning page → clicking it opens the in-place detail sheet (not a navigation).
+    await user.click(await screen.findByLabelText("subsystem bus"));
+    const sheet = await screen.findByLabelText("bus detail");
+    // The detail renders the subsystem's metrics and — for the bus — the live peer/router zid lists.
+    const peersList = within(sheet).getByLabelText("bus peers list");
+    expect(peersList).toBeInTheDocument();
+    expect(within(sheet).getByLabelText("bus routers list")).toBeInTheDocument();
+    // The list reflects the live mesh count from the real session — and must agree with the card's
+    // own `peers` metric (both read the same `system.subsystem` snapshot).
+    const peerCount = within(sheet).getByLabelText("bus peers").textContent?.match(/\d+/)?.[0];
+    expect(peersList).toHaveTextContent(`peers (${peerCount})`);
+  });
+
+  it("does not overflow the detail sheet at a narrow (phone) viewport", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:root", ws);
+
+    render(
+      <div style={{ width: 360 }}>
+        <SystemView ws={ws} />
+      </div>,
+    );
+    await user.click(await screen.findByLabelText("subsystem mcp"));
+    const sheet = await screen.findByLabelText("mcp detail");
+    expect(sheet.scrollWidth).toBeLessThanOrEqual(360);
+  });
+
   it("renders the react-flow topology on toggle", async () => {
     const user = userEvent.setup();
     const ws = nextWs();

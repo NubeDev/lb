@@ -3,7 +3,7 @@
 // and clear the session after each test (the next test logs in fresh against the real gateway).
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 
 import { setSession } from "@/lib/session/session.store";
@@ -16,6 +16,7 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverStub as never);
+window.scrollTo = vi.fn();
 if (!("DOMMatrixReadOnly" in globalThis)) {
   (globalThis as Record<string, unknown>).DOMMatrixReadOnly = class {
     m22 = 1;
@@ -26,6 +27,10 @@ if (!("DOMMatrixReadOnly" in globalThis)) {
 Element.prototype.getBoundingClientRect =
   Element.prototype.getBoundingClientRect ??
   (vi.fn(() => ({ x: 0, y: 0, width: 800, height: 600, top: 0, left: 0, right: 0, bottom: 0 })) as never);
+
+beforeEach(() => {
+  window.history.replaceState(null, "", "/#/channels?c=general");
+});
 
 afterEach(() => {
   // Unmount any rendered tree (the default suite gets this from vitest's auto-cleanup via globals; we

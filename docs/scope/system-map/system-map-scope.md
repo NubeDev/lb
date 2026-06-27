@@ -196,8 +196,13 @@ From `scope/testing/testing-scope.md`, the mandatory categories that apply:
 - **Typed subsystem status vs. name-matching.** Is it worth each crate exposing a small `status()` so
   the overview stops inferring counts from table names? (Leaning: ship name-matching now, revisit if it
   bites.)
-- **Deep liveness probes.** Worth a real Zenoh peer count / store ping, or is handle-presence enough
-  until the `observability/` metrics land and this view can read *those* instead of re-deriving?
+- **Deep liveness probes.** *(refreshed S10 Session 3)* The bus now reports a real Zenoh peer/router
+  count **and** the connected peer/router **zid identities** (surfaced in the `system.subsystem` detail
+  view), so "who is on the mesh" is answered, not just "how many". Still open: a real round-trip probe
+  (a pub→sub echo, a store ping) for true reachability vs. transport-presence, and whether to read the
+  `observability/` metrics once they land instead of re-deriving here. **Control actions inline** stays
+  deferred — the detail view is read-only by design (a `Degraded` card shows *why*, but restart/enable
+  verbs stay in their own scopes).
 - **Relationship to `observability/`.** Once telemetry ships, should this page read the metrics
   pipeline (deny rate, tool-call latency) rather than derive its own snapshot — i.e. become the *read
   UI* for observability? Likely yes; keep the verbs stable so the data source can swap underneath.

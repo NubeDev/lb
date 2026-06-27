@@ -129,3 +129,97 @@ left untouched. The system-map backend was verified green by running its tests i
 at `HEAD`** (intact runtime) — `cargo test -p lb-host --test system_map_test` → 5/5, and
 `cargo build -p lb-role-gateway` clean. The earlier in-session `cargo build --workspace` (before the
 other session broke runtime) was also green. The UI gateway suite passed against the real spawned gateway.
+
+## Session 3 — subsystem detail view (no-page cards stop being dead ends)
+
+**Goal.** The cards with **no owning page** (`gateway`/`bus`/`mcp`) were static dead ends. Make every
+card clickable: a card with a page still navigates (Session 2 behavior); a card without one opens a real
+**detail view** — the Zenoh bus getting the richest one (a live peer/router zid list).
+
+**What changed (files).**
+
+- **`rust/crates/bus/src/stats.rs`** — `BusStats` now also carries `peer_zids: Vec<String>` +
+  `router_zids: Vec<String>` (the actual connected ZIDs from `peers_zid()`/`routers_zid()`, not just
+  counts). Still one cheap local `session.info()` read, no round-trip. `peer_count`/`router_count` are
+  now derived from the list lengths so they can't disagree with the lists.
+- **`rust/crates/host/src/system/`** — a third read verb:
+  - `model.rs` — new `SubsystemDetail { ws, role, service: ServiceStatus, extra: Value }`.
+  - `collect.rs` — `collect_extra(node, id)` → the subsystem-specific blob (`bus` → `{peer_zids,
+    router_zids}`; `{}` for everything else).
+  - `subsystem.rs` (new, one verb/file) — `system_subsystem(node, p, ws, id)`: the EXISTING
+    `authorize_system` gate (new cap `mcp:system.subsystem:call`), then reuse `collect_services`, pick
+    the requested card, attach `collect_extra`. An unknown id → opaque `Denied` (no "which ids exist"
+    signal, never a panic).
+  - `tool.rs` — `call_system_tool` dispatches `system.subsystem` (reads `{"id":…}` from input).
+  - `mod.rs` + `lib.rs` — export the verb + type.
+- **`rust/role/gateway/`** — `GET /system/subsystem/{id}` in `routes/system.rs`, registered in
+  `server.rs`, exported in `routes/mod.rs`; cap `mcp:system.subsystem:call` granted beside the other
+  system caps in `session/credentials.rs`.
+- **`ui/`** — `lib/system/system.types.ts` (+`SubsystemDetail`), `system.api.ts` (`systemSubsystem(id)`),
+  `lib/ipc/http.ts` (`system_subsystem` → `GET /system/subsystem/{id}`), `lib/session/admin-caps.ts`
+  (`CAP.systemSubsystem`). New `features/system/SubsystemDetailSheet.tsx` (shadcn `Sheet` drawer:
+  health, group, role, all metrics, and the bus peer/router zid lists) + `useSubsystemDetail.ts` (loads
+  on open, read-only). `SystemView.tsx` now makes **every** card a control — page cards navigate
+  (`open <id>`, ↗), no-page cards open the sheet (`subsystem <id>`, +).
+
+**Decisions + the alternative rejected.**
+
+- **A side drawer (`Sheet`), not a separate route or an inline expanding panel.** A route would make a
+  read-only console feel like navigation away from the map (and need its own nav/cap plumbing); an
+  inline panel would push the grid around on a phone. A `Sheet` keeps the grid in place, is shadcn-first
+  and responsive out of the box, and reads as "peek at this subsystem", which is exactly the altitude.
+- **One new verb (`system.subsystem`) reusing `collect_services`, not a per-subsystem read path.**
+  Mirrors the dbview/system shape exactly (one verb/file, single gate, opaque error) and guarantees the
+  detail card is byte-identical to the grid card (same gather) — rejected adding bespoke per-id readers,
+  which would let the detail drift from the grid.
+- **Unknown id → opaque `Denied`, not `NotFound`.** Keeps the no-existence-signal posture of the rest of
+  the map; an id probe learns nothing.
+
+**Tests (green output pasted).**
+
+- Rust — `system_map_test.rs` grew **5 → 9** (real `Node`, real seeds): subsystem returns the right
+  card + a `{}` extra for gateway and zid-string arrays for bus; unknown/blank id is opaque (not a
+  panic); **cap-deny** (no cap, and overview/topology do NOT grant subsystem); **2-ws isolation** (B's
+  outbox detail never reflects A's dead-letter).
+
+  ```
+  cargo test -p lb-bus -p lb-host -p lb-role-gateway
+  … running 9 tests (system_map_test) … test result: ok. 9 passed; 0 failed
+  (lb-bus 2/2, lb-role-gateway suites all ok)
+  ```
+
+- UI — `SystemView.gateway.test.tsx` grew **7 → 9** (real spawned gateway): clicking the no-page `bus`
+  card opens the detail sheet showing the live peer/router zid lists (count agrees with the card's own
+  `peers` metric — both read one `system.subsystem` snapshot); a ≤360px narrow-viewport sheet
+  responsive smoke (no horizontal overflow).
+
+  ```
+  pnpm test:gateway
+  ✓ src/features/system/SystemView.gateway.test.tsx (9 tests)
+  Test Files  23 passed (23)   Tests  82 passed (82)
+  ```
+
+- `npx tsc --noEmit` 0 errors; `pnpm lint` 0 errors (pre-existing warnings only, none in new files).
+
+**Debugging.** None needed. One test-authoring correction (not a product bug): an initial Rust assertion
+demanded the bus card's `peers` metric exactly equal the `peer_zids` length, and a UI assertion expected
+`peers (0)` on a "solo" node. Both are wrong against the **shared in-proc test mesh**, where sibling test
+nodes are real peers and the live count drifts between two independent `session.info()` reads. Relaxed to
+assert the invariant that actually holds (extra is present zid-string arrays for `bus`, `{}` elsewhere;
+the UI list count matches the card's own metric read within the same snapshot). No `docs/debugging/`
+entry — no product defect, no regression to guard.
+
+**Build/test caveat.** Unlike Session 2, the full `cargo build --workspace` + `cargo test --workspace`
+were **green in-tree this session** — the concurrent `lb-runtime` refactor that previously blocked the
+whole-workspace build had landed/compiled by the time this slice built, so no clean-worktree workaround
+was needed.
+
+**Public/scope updates.** `docs/public/system-map/system-map.md` gains the third verb + its JSON shape,
+the cap, the `/system/subsystem/{id}` route, the detail view, and the bus peer list. The scope's "deep
+liveness probes / control actions inline" open question is refreshed (the bus now exposes its live peer
+*identities*, not just a count; control-actions-inline stays deferred — still read-only). `STATUS.md`
+system-map row gets a Session 3 note.
+
+**Follow-ups (unchanged).** Live `system.watch` feed; a pub→sub echo probe for a true round-trip
+liveness; typed per-crate `status()` to retire table-name matching; control actions inline (still
+deferred — read-only by design).

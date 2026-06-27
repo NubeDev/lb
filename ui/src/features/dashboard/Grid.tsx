@@ -9,6 +9,7 @@ import { X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
 import type { Cell } from "@/lib/dashboard";
+import type { DashboardSearch } from "@/features/routing/search";
 
 // react-grid-layout owns positioning; react-resizable owns the visible + hittable resize handle.
 import "react-grid-layout/css/styles.css";
@@ -17,6 +18,7 @@ import "react-resizable/css/styles.css";
 interface Props {
   cells: Cell[];
   editable: boolean;
+  range?: DashboardSearch;
   /** Called with the new cell geometry on a drag/resize stop (the persistence seam). */
   onLayout: (cells: Cell[]) => void;
   onRemove: (i: string) => void;
@@ -25,7 +27,7 @@ interface Props {
 const COLS = 12;
 const ROW_H = 56;
 
-export function Grid({ cells, editable, onLayout, onRemove }: Props) {
+export function Grid({ cells, editable, range, onLayout, onRemove }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
 
@@ -92,7 +94,7 @@ export function Grid({ cells, editable, onLayout, onRemove }: Props) {
               </button>
             )}
             <div className="min-h-0 flex-1">
-              <WidgetHost cell={c} />
+              <WidgetHost cell={c} range={range} />
             </div>
           </div>
         ))}

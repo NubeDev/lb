@@ -28,8 +28,16 @@ verb it summarizes (the same way `dbview` runs its admin gate once, then calls t
 
 - **`system.overview`** → `SystemOverview { ws, role, services: ServiceStatus[] }` — the status grid.
 - **`system.topology`** → `SystemTopology { ws, role, nodes, edges }` — the react-flow wiring.
+- **`system.subsystem`** → `SubsystemDetail { ws, role, service: ServiceStatus, extra }` — the detail
+  of **one** subsystem (the `id` arg), so a card with no owning page (`gateway`/`bus`/`mcp`) drills into
+  a real view instead of dead-ending. The `service` is the **same** card the grid shows (one gather);
+  `extra` is a subsystem-specific JSON blob — for `bus`, `{ peer_zids: [...], router_zids: [...] }` (the
+  live identities behind its peer/router counts); `{}` for every other subsystem. Authorizes once via
+  the **same** gate as the other two (cap `mcp:system.subsystem:call`, admin-only). An **unknown id** is
+  opaque `Denied` (no "which ids exist" signal, never a panic) — the only verb that takes an id.
 
-Both are whole-workspace snapshots (no id arg — the workspace is the scope). **Read-only by design**:
+`overview`/`topology` are whole-workspace snapshots (no id arg — the workspace is the scope); only
+`subsystem` takes a single subsystem id. **Read-only by design**:
 the map mutates nothing; control verbs (`ext.enable`/`disable`, lifecycle) stay in their own scopes.
 
 ### Wire shapes
@@ -39,6 +47,8 @@ ServiceStatus { id, label, group, health, detail, metrics: [{label, value}] }
 SystemOverview { ws, role, services: ServiceStatus[] }
 TopoNode { id, label, group, health }   TopoEdge { from, to, label }
 SystemTopology { ws, role, nodes: TopoNode[], edges: TopoEdge[] }
+SubsystemDetail { ws, role, service: ServiceStatus, extra }
+  // extra for `bus`: { peer_zids: string[], router_zids: string[] }; {} otherwise
 ```
 
 - **`id`** — the stable key topology edges reference: `gateway`, `bus`, `mcp`, `extensions`, `registry`,
@@ -83,6 +93,8 @@ A REST route pair in the gateway, exactly like `/store/*`:
 
 - `GET /system/overview` → `SystemOverview`
 - `GET /system/topology` → `SystemTopology`
+- `GET /system/subsystem/{id}` → `SubsystemDetail` (the only route with a path arg; an unknown id is
+  `403`-opaque, like a denial)
 
 Each re-runs the host gate server-side; the **workspace + principal come from the token, never the
 request** (the hard wall, §7). A denied caller gets an opaque `403`. The verbs are *also* reachable
@@ -91,7 +103,8 @@ a human. The UI's default path is the convenience REST route.
 
 ## Capabilities
 
-Gated `mcp:system.overview:call` / `mcp:system.topology:call`, **admin-only by grant convention** — a
+Gated `mcp:system.overview:call` / `mcp:system.topology:call` / `mcp:system.subsystem:call`,
+**admin-only by grant convention** — a
 system snapshot reads across the whole workspace, so the caps ride the workspace-admin role (beside the
 `store.*` lens), not the member set. Deny is opaque (`Denied → 403`, no existence/detail signal). The
 shell hides the **System** nav entry for a session lacking the cap; the gateway re-checks regardless.
@@ -105,9 +118,14 @@ responsive):
   one-line detail, and the live metrics; **degraded cards sort first**. Reflows 1 → 2 → 3 columns. A
   card whose subsystem has a first-class page (`store`/`ingest`→data·ingest, `inbox`/`outbox`,
   `extensions`/`registry`→Extensions) is **clickable** — it drills into that page (keyboard-operable,
-  hover ring, an ↗ affordance), so the map is an entry point, not a dead end. `gateway`/`bus`/`mcp`
-  have no dedicated page and stay static (honest, not a broken link). The link is gated to surfaces the
-  session is allowed; the gateway re-checks regardless. Mapping lives in `features/system/navigate.ts`.
+  hover ring, an ↗ affordance), so the map is an entry point, not a dead end. The link is gated to
+  surfaces the session is allowed; the gateway re-checks regardless. Mapping lives in
+  `features/system/navigate.ts`. A card with **no owning page** (`gateway`/`bus`/`mcp`) is **also**
+  clickable (a `+` affordance, `aria-label "subsystem <id>"`): it opens an in-place **detail sheet**
+  (`SubsystemDetailSheet`, a shadcn side drawer) loading `system.subsystem` — health, group, role, every
+  metric, and for the Zenoh `bus` the **live peer/router zid lists** (the identities behind the counts;
+  honest "none connected (solo on the mesh)" when the mesh is empty). So **every** card now leads
+  somewhere — a page if it has one, the detail sheet otherwise.
 - **Topology** (Grid/Graph toggle, lazy-loaded `@xyflow/react`): each subsystem a node coloured by live
   health, banded by group, with the fixed wiring as edges; degrades to pan/zoom on a phone.
 - **Refresh** re-fetches on demand — poll-on-open, honest for a debugging console you open deliberately
@@ -128,7 +146,8 @@ responsive):
 ## Limits / follow-ups (honest v1 boundaries)
 
 - **Liveness depth varies, honestly.** The **bus** card now reports *real* connectivity (live Zenoh
-  peer/router counts + zid), and **mcp** reports the live extension/tool surface — not handle-presence.
+  peer/router counts + zid), and its detail view lists the **actual connected peer/router zids** (the
+  identities, not just a count); **mcp** reports the live extension/tool surface — not handle-presence.
   `gateway`/`store` are still "the handle is up to answer at all" (no round-trip probe); that's labelled,
   not oversold. A pub→sub echo probe is a noted follow-up.
 - **Table-name coupling.** Ingest/inbox/jobs/registry counts are inferred by table-name substring match;
@@ -139,13 +158,14 @@ responsive):
 ## Source
 
 - Host service: `rust/crates/host/src/system/` (`model`/`error`/`authorize`/`collect`/`overview`/
-  `topology`/`tool`/`mod`), exported from `rust/crates/host/src/lib.rs`.
+  `topology`/`subsystem`/`tool`/`mod`), exported from `rust/crates/host/src/lib.rs`.
 - Gateway: `rust/role/gateway/src/routes/system.rs` (+ `server.rs`, `routes/mod.rs`,
   `session/credentials.rs`).
 - Real stats: `rust/crates/bus/src/stats.rs` (`bus_stats`/`BusStats`),
   `rust/crates/mcp/src/registry.rs` (`Registry::summary`/`RegistrySummary`).
 - UI: `ui/src/lib/system/`, `ui/src/features/system/` (incl. `navigate.ts` — the id→surface drill-in
-  map), `ui/src/components/ui/card.tsx`, and the `NavRail`/`App`/`admin-caps` registration.
+  map; `SubsystemDetailSheet.tsx` + `useSubsystemDetail.ts` — the no-page detail drawer),
+  `ui/src/components/ui/card.tsx` + `sheet.tsx`, and the `NavRail`/`App`/`admin-caps` registration.
 - Tests: `rust/crates/host/tests/system_map_test.rs`,
   `ui/src/features/system/SystemView.gateway.test.tsx`.
 - Scope + rationale: [`../../scope/system-map/system-map-scope.md`](../../scope/system-map/system-map-scope.md).

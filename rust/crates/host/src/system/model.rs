@@ -7,6 +7,7 @@
 //! embedded store at call time), so a node restart loses nothing — re-deriving is the whole design.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// A coarse health rollup for one subsystem. `Idle` is *up but nothing flowing* (an empty queue is
 /// healthy, not broken) — kept distinct from `Ok` so the UI can grey it rather than green it, and
@@ -67,6 +68,22 @@ pub struct SystemOverview {
     pub ws: String,
     pub role: String,
     pub services: Vec<ServiceStatus>,
+}
+
+/// `system.subsystem` — the full status of ONE subsystem plus a subsystem-specific `extra` blob.
+/// The detail view a no-page card (gateway/bus/mcp) opens: the same [`ServiceStatus`] the grid shows,
+/// plus opaque extra detail the grid has no room for. For `bus` the extra carries the live peer/router
+/// zid lists (`{ "peer_zids": [...], "router_zids": [...] }`); for every other subsystem it is an empty
+/// object. Read-only and derived, like the rest of the map.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubsystemDetail {
+    pub ws: String,
+    pub role: String,
+    /// The full card for this subsystem (same shape the overview grid renders).
+    pub service: ServiceStatus,
+    /// Subsystem-specific detail the card has no room for. `{}` unless the subsystem has extra to
+    /// show (today: `bus` → its connected peer/router zids).
+    pub extra: Value,
 }
 
 /// A node in the topology graph — a 1:1 projection of a [`ServiceStatus`] minus the metrics (the

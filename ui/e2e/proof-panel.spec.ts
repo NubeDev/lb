@@ -74,10 +74,21 @@ test("proof-panel federated page mounts in the built shell with the host's singl
   await expect(host.getByTestId("outbox-counts")).toBeVisible({ timeout: 15_000 });
   await expect(host.getByTestId("outbox-pending")).toContainText(/^\d+$/);
 
-  // 7) The shell's honest error wrapper ("Could not load proof-panel: …") must NOT be present.
+  // 7) Host-callback derive (host-callback scope): "Run derive" invokes the extension's OWN wasm tool
+  //    `proof-panel.proof.derive`, which reads proof.demo (written in step 5) and writes
+  //    proof.derived = value*2 — ALL through the host-mediated `host.call-tool` callback. The card
+  //    shows the derived value, proving a wasm GUEST did real platform work end to end in the browser.
+  await host.getByLabel("run derive").click();
+  const deriveResult = host.getByTestId("derive-result");
+  await expect(deriveResult).toBeVisible({ timeout: 15_000 });
+  await expect(deriveResult).toContainText(/Derived \d/); // a real committed derived value
+  // And the committed proof.derived series read back over the bridge.
+  await expect(host.getByTestId("derived-latest")).toContainText(/value \d/, { timeout: 15_000 });
+
+  // 8) The shell's honest error wrapper ("Could not load proof-panel: …") must NOT be present.
   await expect(page.getByText(/Could not load/i)).toHaveCount(0);
 
-  // 8) Screenshot the mounted page for the session doc.
+  // 9) Screenshot the mounted page for the session doc.
   await page.screenshot({ path: "e2e/__screenshots__/proof-panel-mounted.png", fullPage: true });
 
   // 7) No "Invalid hook call" / "more than one copy of React" and no uncaught errors at all.

@@ -12,13 +12,24 @@ export interface ExtPage {
   ui: ExtUi;
 }
 
+export interface ExtensionPagesResult {
+  pages: ExtPage[];
+  loading: boolean;
+}
+
 /** Fetch the workspace's extension pages. Re-runs when the workspace changes. */
-export function useExtensionPages(ws: string): ExtPage[] {
+export function useExtensionPages(ws: string): ExtensionPagesResult {
   const [pages, setPages] = useState<ExtPage[]>([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     let live = true;
-    if (!ws) return;
+    if (!ws) {
+      setPages([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     // Reads the real node's installed extensions; no demo seed (the fake is gone).
     listExtensions()
       .then((rows: ExtRow[]) => {
@@ -29,11 +40,12 @@ export function useExtensionPages(ws: string): ExtPage[] {
             .map((r) => ({ ext: r.ext, ui: r.ui as ExtUi })),
         );
       })
-      .catch(() => live && setPages([]));
+      .catch(() => live && setPages([]))
+      .finally(() => live && setLoading(false));
     return () => {
       live = false;
     };
   }, [ws]);
 
-  return pages;
+  return { pages, loading };
 }

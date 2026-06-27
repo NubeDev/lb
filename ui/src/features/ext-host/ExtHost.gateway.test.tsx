@@ -17,7 +17,8 @@ import { render, screen } from "@testing-library/react";
 import { App } from "../../App";
 import { makeBridge } from "./bridge";
 import { listExtensions } from "@/lib/ext/ext.api";
-import { useRealGateway, signInReal, seedExtension } from "@/test/gateway-session";
+import { CAP } from "@/lib/session";
+import { useRealGateway, signInReal, signInWithCaps, seedExtension } from "@/test/gateway-session";
 
 let n = 0;
 const nextWs = () => `ext-host-${n++}`;
@@ -46,7 +47,7 @@ beforeAll(() => useRealGateway());
 describe("extension pages (ui-federation, real gateway)", () => {
   it("shows a sidebar slot for an extension that declares a [ui] page", async () => {
     const ws = nextWs();
-    await signInReal("user:ada", ws);
+    await signInWithCaps("user:ada", ws, [CAP.extList]);
     await seedExtension(FLEET_MONITOR);
     render(<App />);
     // The page's label becomes a cap-gated nav slot built from the real ext.list.

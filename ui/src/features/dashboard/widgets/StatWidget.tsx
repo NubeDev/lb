@@ -6,15 +6,17 @@ import { useSeries } from "../useSeries";
 import { asNumber } from "./num";
 import { WidgetHeader, WidgetMessage } from "./chrome";
 import type { Binding } from "@/lib/dashboard";
+import type { DashboardSearch } from "@/features/routing/search";
 
 interface Props {
   binding: Binding;
   options?: Record<string, unknown>;
+  range?: DashboardSearch;
   label?: string;
 }
 
-export function StatWidget({ binding, options, label }: Props) {
-  const { series, latest, loading, denied } = useSeries(binding);
+export function StatWidget({ binding, options, range, label }: Props) {
+  const { series, latest, loading, denied } = useSeries(binding, range);
   const unit = typeof options?.unit === "string" ? (options.unit as string) : "";
 
   if (denied) return <WidgetMessage tone="denied">no access to this series</WidgetMessage>;

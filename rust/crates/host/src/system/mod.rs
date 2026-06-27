@@ -14,21 +14,26 @@
 //! The verbs (one per file, FILE-LAYOUT):
 //!   - `system.overview` ([`system_overview`]) — the per-subsystem status grid.
 //!   - `system.topology` ([`system_topology`]) — nodes + fixed wiring edges for react-flow.
-//!   - the MCP bridge ([`call_system_tool`]) — the one MCP contract over both.
+//!   - `system.subsystem` ([`system_subsystem`]) — the detail of ONE subsystem (+ a `bus` zid blob),
+//!     so a no-page card drills into a real view instead of dead-ending.
+//!   - the MCP bridge ([`call_system_tool`]) — the one MCP contract over all three.
 
 mod authorize;
 mod collect;
 mod error;
 mod model;
 mod overview;
+mod subsystem;
 mod tool;
 mod topology;
 
 pub use authorize::authorize_system;
 pub use error::SystemError;
 pub use model::{
-    Health, Metric, ServiceStatus, SystemOverview, SystemTopology, TopoEdge, TopoNode,
+    Health, Metric, ServiceStatus, SubsystemDetail, SystemOverview, SystemTopology, TopoEdge,
+    TopoNode,
 };
 pub use overview::system_overview;
+pub use subsystem::system_subsystem;
 pub use tool::call_system_tool;
 pub use topology::system_topology;

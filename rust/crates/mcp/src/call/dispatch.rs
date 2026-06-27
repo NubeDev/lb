@@ -33,6 +33,7 @@ pub async fn dispatch(
     qualified_tool: &str,
     input_json: &str,
     ctx: Option<CallContext>,
+    reentrant: bool,
 ) -> Result<String, ToolError> {
     match target {
         Target::Local(hosted) => {
@@ -40,16 +41,20 @@ pub async fn dispatch(
             // routing concern, not the extension's).
             let tool = unqualify(qualified_tool);
             // Borrow discipline (host-callback scope, the re-entrancy hazard): there is ONE instance
-            // per ext behind this mutex. A guest whose `host.call-tool` re-enters its OWN ext would
-            // try to lock the instance its in-flight call already holds — a deadlock. `try_lock`
-            // turns that into a clean error instead of a hang; the caller's depth guard bounds
-            // legitimate cross-instance chains. (A concurrent *unrelated* call momentarily contending
-            // the lock is rare and also surfaces as this transient error rather than blocking — an
-            // acceptable trade for never deadlocking on self-re-entry.)
-            let mut instance = hosted
-                .instance
-                .try_lock()
-                .map_err(|_| ToolError::Extension("extension busy (re-entrant call)".into()))?;
+            // per ext behind this mutex. A top-level call simply awaits the lock (the normal path,
+            // unchanged — concurrent calls to the same ext serialize fairly). But a RE-ENTRANT call
+            // (a guest's `host.call-tool` dispatching back in) must NOT block on the lock: if it
+            // targets its OWN ext it would await the instance its in-flight call already holds — a
+            // deadlock. So a re-entrant call `try_lock`s and fails fast as "extension busy" instead
+            // of hanging. The depth guard bounds legitimate cross-instance re-entrant chains.
+            let mut instance = if reentrant {
+                hosted
+                    .instance
+                    .try_lock()
+                    .map_err(|_| ToolError::Extension("extension busy (re-entrant call)".into()))?
+            } else {
+                hosted.instance.lock().await
+            };
             instance
                 .call_tool_with(tool, input_json, ctx)
                 .await

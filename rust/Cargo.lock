@@ -2900,6 +2900,7 @@ dependencies = [
  "http-body-util",
  "lb-assets",
  "lb-auth",
+ "lb-ext-loader",
  "lb-host",
  "lb-inbox",
  "lb-outbox",

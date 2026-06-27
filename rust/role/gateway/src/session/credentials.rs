@@ -53,6 +53,10 @@ fn member_caps() -> Vec<String> {
         "mcp:series.latest:call",
         "mcp:series.find:call",
         "mcp:series.list:call",
+        // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
+        // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
+        // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.
+        "mcp:proof-panel.proof.derive:call",
         // tag a series entity (member-level): the discovery edges `series.find` intersects. A member
         // may tag their own series; the test gateway's `/_seed/series` route uses this real write path.
         "mcp:tags.add:call",
@@ -70,6 +74,9 @@ fn member_caps() -> Vec<String> {
         // re-checks server-side; a token without the cap is refused (system_verb_without_cap_denied).
         "mcp:system.overview:call",
         "mcp:system.topology:call",
+        // system-map subsystem detail: the per-subsystem detail verb a no-page card (gateway/bus/mcp)
+        // drills into. Admin-only by the same convention — it reads one subsystem's full live state.
+        "mcp:system.subsystem:call",
         // dashboard scope (the grid-of-widgets surface): the five `dashboard.*` verbs the dashboard
         // routes check. Member-level — any member may build/share their own dashboards over real
         // series (gate 3 / ownership still decides which *specific* dashboard they read/edit). The

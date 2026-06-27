@@ -3,9 +3,11 @@
 // node under `vitest.gateway.config.ts` (see `src/test/setup-gateway.ts`). This suite only loads the
 // jest-dom matchers and clears the session between tests.
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 
 import { setSession } from "@/lib/session/session.store";
+
+window.scrollTo = vi.fn();
 
 afterEach(() => {
   setSession(null);

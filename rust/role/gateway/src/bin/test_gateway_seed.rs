@@ -14,11 +14,13 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::post;
 use axum::{Json, Router};
 use lb_assets::{record_install, ExtUi, Install, Tier};
+use lb_auth::{mint, Claims, Role};
 use lb_host::{Provenance, Qos, Sample, Tag, TagSource};
 use lb_inbox::Item;
 use lb_outbox::{enqueue, Effect};
 use lb_role_gateway::{authenticate, Gateway};
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 /// Mount the `/_seed/*` routes onto a router (test gateway only).
@@ -29,6 +31,88 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/extension", post(seed_extension))
         .route("/_seed/iot_demo", post(seed_iot_demo))
         .route("/_seed/series", post(seed_series))
+        .route("/_seed/proof_panel", post(seed_proof_panel))
+        .route("/_seed/session", post(seed_session))
+}
+
+/// `POST /_seed/proof_panel` — install AND LOAD the REAL `proof-panel` wasm component into the token's
+/// workspace, so its `proof-panel.proof.derive` tool is callable over the live `POST /mcp/call` bridge
+/// (the host-callback slice). Unlike `/_seed/extension` (which only writes an Install RECORD for the UI
+/// to list), this calls the real `install_extension` — persisting the grant AND loading the component
+/// into the runtime, so the guest tool actually runs. The grant is the manifest's full requested set
+/// (publisher = approver), so the guest's `caller ∩ grant` callbacks (`series.latest`/`ingest.write`)
+/// are authorized. The real wasm bytes are read from the build output (built by build.sh).
+async fn seed_proof_panel(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = auth(&gw, &headers)?;
+    const MANIFEST: &str = include_str!("../../../../extensions/proof-panel/extension.toml");
+    let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../extensions/proof-panel/target/wasm32-wasip2/release/proof_panel_ext.wasm");
+    let wasm = std::fs::read(&wasm_path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "proof-panel wasm missing at {} ({e}) — build it: bash rust/extensions/proof-panel/build.sh",
+                wasm_path.display()
+            ),
+        )
+    })?;
+    // The manifest's full requested cap set = the admin approval (publisher-as-approver). The guest's
+    // callback authority is `caller ∩ this grant`; the dev session token holds the same caps.
+    let approved = lb_ext_loader::Manifest::parse(MANIFEST)
+        .map(|m| m.requested_caps)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    lb_host::install_extension(&gw.node, p.ws(), MANIFEST, &wasm, &approved, 0)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct SeedSessionRequest {
+    user: String,
+    workspace: String,
+    #[serde(default)]
+    caps: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct SeedSessionReply {
+    token: String,
+    principal: String,
+    workspace: String,
+    caps: Vec<String>,
+}
+
+/// `POST /_seed/session` — mint a real signed token with an explicit cap set for frontend deny
+/// tests. This does not fake a route or backend response; it only supplies a narrower authenticated
+/// caller than the broad dev-login principal.
+async fn seed_session(
+    State(gw): State<Gateway>,
+    Json(req): Json<SeedSessionRequest>,
+) -> Result<Json<SeedSessionReply>, (StatusCode, String)> {
+    if req.user.is_empty() || req.workspace.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user and workspace required".into(),
+        ));
+    }
+    let claims = Claims {
+        sub: req.user.clone(),
+        ws: req.workspace.clone(),
+        role: Role::Member,
+        caps: req.caps.clone(),
+        iat: gw.now.saturating_sub(1),
+        exp: gw.now.saturating_add(10_000),
+    };
+    Ok(Json(SeedSessionReply {
+        token: mint(&gw.key, &claims),
+        principal: req.user,
+        workspace: req.workspace,
+        caps: req.caps,
+    }))
 }
 
 /// `POST /_seed/iot_demo` — seed the dashboard demo series (`cooler.temp`/`fryer.state`) + their tags

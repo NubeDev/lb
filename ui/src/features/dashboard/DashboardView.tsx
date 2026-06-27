@@ -10,12 +10,24 @@ import { Grid } from "./Grid";
 import { AddWidget } from "./AddWidget";
 import { useDashboard } from "./useDashboard";
 import type { Cell, Visibility } from "@/lib/dashboard";
+import type { DashboardSearch } from "@/features/routing/search";
 
 const VISIBILITIES: Visibility[] = ["private", "team", "workspace"];
 
-export function DashboardView({ ws }: { ws: string }) {
+interface Props {
+  ws: string;
+  range?: DashboardSearch;
+  onRangeChange?: (range: DashboardSearch) => void;
+}
+
+export function DashboardView({ ws, range, onRangeChange }: Props) {
   const dash = useDashboard(ws);
   const current = dash.current;
+  const copyLink = () => {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(window.location.href);
+    }
+  };
 
   return (
     <div className="flex h-full">
@@ -43,9 +55,35 @@ export function DashboardView({ ws }: { ws: string }) {
             <p className="page-subtitle">Live workspace dashboards and series widgets.</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {range && (
+              <div className="hidden items-center gap-1 text-xs text-muted md:flex">
+                <input
+                  aria-label="dashboard range from"
+                  className="control-field-sm w-[8.5rem]"
+                  type="date"
+                  value={range.from}
+                  onChange={(e) => onRangeChange?.({ ...range, from: e.target.value })}
+                />
+                <span>to</span>
+                <input
+                  aria-label="dashboard range to"
+                  className="control-field-sm w-[8.5rem]"
+                  type="date"
+                  value={range.to}
+                  onChange={(e) => onRangeChange?.({ ...range, to: e.target.value })}
+                />
+              </div>
+            )}
             {current && (
               <>
-                <Share2 size={13} className="text-muted" />
+                <button
+                  aria-label="copy dashboard link"
+                  className="icon-button"
+                  title="Copy link"
+                  onClick={copyLink}
+                >
+                  <Share2 size={13} />
+                </button>
                 <select
                   aria-label="dashboard visibility"
                   className="control-field-sm"
@@ -103,6 +141,7 @@ export function DashboardView({ ws }: { ws: string }) {
               <Grid
                 cells={current.cells}
                 editable
+                range={range}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
               />

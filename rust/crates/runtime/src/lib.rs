@@ -12,6 +12,7 @@
 
 mod bindings;
 mod bridge;
+mod compat_v0_1;
 mod engine;
 mod instance;
 

@@ -28,7 +28,7 @@ use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     call_tool, drain_workspace, ext_list, ext_publish, ingest_write, install_extension, installed,
-    Node, Qos, Sample,
+    load_extension, Node, Qos, Sample,
 };
 use lb_inbox::{record, Item};
 use lb_mcp::ToolError;
@@ -711,7 +711,9 @@ async fn re_entrancy_is_bounded_never_hangs() {
 
     let err = call_tool(&node, &caller, ws, "proof-panel.proof.recurse", "{}")
         .await
-        .expect_err("unbounded self-recursion must be stopped (busy or depth-exceeded), never hang");
+        .expect_err(
+            "unbounded self-recursion must be stopped (busy or depth-exceeded), never hang",
+        );
     assert!(
         matches!(err, ToolError::Extension(ref m)
             if m.contains("extension busy") || m.contains("call depth exceeded")),
@@ -766,5 +768,50 @@ async fn identity_does_not_leak_between_calls_on_the_node_global_instance() {
     assert!(
         matches!(err_b, ToolError::Extension(ref m) if m.contains("proof.demo")),
         "no identity leak: B saw none of A's data, got {err_b:?}"
+    );
+}
+
+/// ABI compat: a `@0.1.0` guest (`hello`, built BEFORE this slice — it exports `tool@0.1.0` and
+/// imports only `host@0.1.0`'s `log`) STILL loads and answers on a host whose WIT is now `@0.2.0`,
+/// SIDE BY SIDE with a `@0.2.0` callback guest. The world MAJOR is unchanged (0), and the runtime
+/// links BOTH host-interface versions + falls back to the 0.1.0 export bindings, so the minor bump is
+/// backward safe. (Before the compat shim, the 0.1.0 guest failed to instantiate against the 0.2.0
+/// linker — see debugging/extensions/wit-minor-bump-breaks-0_1-guest-linking.md.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn hello_v0_1_guest_still_loads_alongside_a_v0_2_callback_guest() {
+    const HELLO_MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
+    fn hello_wasm() -> Vec<u8> {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../extensions/hello/target/wasm32-wasip2/release/hello_ext.wasm");
+        std::fs::read(&path).expect("hello_ext.wasm (build: bash rust/extensions/hello/build.sh)")
+    }
+
+    let ws = "abi-compat";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    // Load the legacy 0.1.0 guest (no caps requested) AND the 0.2.0 callback guest on the SAME node.
+    load_extension(&node, HELLO_MANIFEST, &hello_wasm(), &[])
+        .await
+        .expect("the @0.1.0 hello guest still loads on a @0.2.0 host");
+    install_extension(&node, ws, MANIFEST, &proof_panel_wasm(), &full_grant(), 1)
+        .await
+        .expect("the @0.2.0 proof-panel callback guest installs");
+
+    // The 0.1.0 guest answers (its `tool@0.1.0` export dispatched through the compat bindings).
+    let echoer = principal(ws, &["mcp:hello.echo:call"]);
+    let echoed = call_tool(&node, &echoer, ws, "hello.echo", r#"{"msg":"hi"}"#)
+        .await
+        .expect("the legacy 0.1.0 echo tool still answers");
+    let ev: serde_json::Value = serde_json::from_str(&echoed).unwrap();
+    assert_eq!(ev["echo"], "hi", "0.1.0 guest round-trips, got {ev}");
+
+    // And the 0.2.0 callback guest works on the same node, proving the two ABI generations coexist.
+    seed_series(&node, ws, "proof.demo", 1, 3.0).await;
+    let caller = principal(ws, &[DERIVE, LATEST, WRITE, FIND]);
+    let out = call_tool(&node, &caller, ws, "proof-panel.proof.derive", "{}")
+        .await
+        .expect("the 0.2.0 callback guest derives on the same node");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&out).unwrap()["derived"],
+        6.0
     );
 }

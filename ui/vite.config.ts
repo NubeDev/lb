@@ -42,7 +42,8 @@ export default defineConfig(({ command }) => {
       setupFiles: ["./src/test/setup.ts"],
       // The real-gateway tests (`*.gateway.test.ts[x]`) need a spawned node; they run under their own
       // `vitest.gateway.config.ts` (`pnpm test:gateway`), not this default suite.
-      exclude: ["**/node_modules/**", "**/*.gateway.test.ts", "**/*.gateway.test.tsx"],
+      include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+      exclude: ["**/node_modules/**", "e2e/**", "**/*.gateway.test.ts", "**/*.gateway.test.tsx"],
     },
   };
 });

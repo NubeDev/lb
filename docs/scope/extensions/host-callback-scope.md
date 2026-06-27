@@ -1,6 +1,10 @@
 # extensions scope — the host-callback ABI: a guest can call host tools (inbox/outbox/db/MCP)
 
-Status: scope (the ask). Promotes to `public/extensions/extensions.md` once shipped.
+Status: **SHIPPED** (2026-06-27). Built per this scope — see
+[`sessions/extensions/host-callback-session.md`](../../sessions/extensions/host-callback-session.md) and
+the promoted truth in [`public/extensions/extensions.md`](../../public/extensions/extensions.md) ("The
+host-callback ABI"). All five open questions resolved (below). Debug:
+[`debugging/extensions/wit-minor-bump-breaks-0_1-guest-linking.md`](../../debugging/extensions/wit-minor-bump-breaks-0_1-guest-linking.md).
 
 Today a Tier-1 WASM extension is a **one-way box**: the WIT world (`sdk/wit/world.wit`) lets the host
 *call into* a guest (`tool.call(name, input) -> json`) and lets the guest only `host.log(msg)`. A guest
@@ -167,20 +171,23 @@ component + real store + real caps (no mocks, CLAUDE §9):
   The intersection + per-call ws is what makes an untrusted/AI-generated guest safe; the tests must prove
   the deny path is real, not displayed.
 
-## Open questions
+## Open questions — RESOLVED (2026-06-27)
 
-1. **Re-entrancy depth limit** — fixed constant (e.g. 8) or configurable? Lean: a small fixed constant,
-   surfaced as a `tool-error::failed("call depth exceeded")`.
-2. **Effective principal = `caller ∩ grant`, or `grant` alone?** Lean: the intersection (a guest acts on
-   behalf of its caller AND within its install — the strictest, matching the agent's `agent ∩ caller`).
-   Confirm against the agent precedent.
-3. **`watch`/motion from a guest** — out of scope here; does a guest ever need to *subscribe*? Likely a
-   later scope (a guest reactor would more naturally be host-ticked). Record the decision.
-4. **Does `host.log` stay separate** or fold into the callback? Keep separate — `log` is fire-and-forget
-   audit, not an authorized tool call.
-5. **Which `node` handle does `HostState` hold** — `Arc<Node>` directly, or a narrow callback trait to
-   keep `lb-runtime` from depending on `lb-host` (layering)? Lean: a trait object (`HostBridge`) the host
-   supplies, so `runtime` stays below `host` in the dep graph (crate-layout). Resolve at implementation.
+1. **Re-entrancy depth limit** → **fixed constant `MAX_CALL_DEPTH = 8`**, surfaced as
+   `tool-error::failed("call depth exceeded")`. Found a second hazard not in the original lean: a guest
+   re-entering its OWN node-global instance would *deadlock* on the instance lock before the depth guard
+   could fire — so a re-entrant call `try_lock`s and fails fast as "extension busy" (a top-level call
+   blocks normally). The depth guard bounds cross-instance chains; the try-lock bounds self-re-entry.
+2. **Effective principal = `caller ∩ grant`, or `grant` alone?** → **the intersection** (both ways),
+   via `Principal::derive` (the agent's `agent ∩ caller`). Proven by the deny-per-direction tests.
+   Implementation also hardened `derive` so a NESTED delegation (re-entrant chain) preserves the
+   *original* caller's constraint — it can never widen at depth ≥2.
+3. **`watch`/motion from a guest** → **out of scope here** (request/response only). A guest reactor is
+   more naturally host-ticked; guest-initiated motion is a separate later scope.
+4. **Does `host.log` stay separate?** → **yes, separate.** `log` is fire-and-forget audit, not an
+   authorized tool call; folding it in would conflate the two.
+5. **`Arc<Node>` or a narrow trait in `HostState`?** → **a `HostBridge` trait object** the host supplies,
+   so `lb-runtime` stays below `lb-host` in the dep graph (no inversion/cycle). The lean held.
 
 ## Related
 

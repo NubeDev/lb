@@ -24,6 +24,7 @@ import {
   seedSeries,
   seedInbox,
   seedOutbox,
+  seedProofPanel,
 } from "@/test/gateway-session";
 
 let n = 0;
@@ -39,6 +40,7 @@ const DEMO_SCOPE = [
   "outbox.status",
   "inbox.list",
   "inbox.resolve",
+  "proof-panel.proof.derive",
 ];
 /** One facet the page searches by (parsed from its `key:value` search box). */
 const TEMP_FACET = [{ key: "kind", value: "temperature" }];
@@ -193,6 +195,48 @@ describe("proof-panel page data path (real gateway)", () => {
     await expect(
       narrowed.call("inbox.resolve", { item_id: "i1", decision: "rejected", ts: 3 }),
     ).rejects.toThrow(/out_of_scope/);
+  });
+
+  it("host-callback: proof.derive reads proof.demo and writes proof.derived = value*2, live", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Install + LOAD the real wasm guest so its proof.derive tool is callable over the bridge.
+    await seedProofPanel();
+    // Seed a real source sample: proof.demo = 21 (through the real ingest+drain path).
+    await seedSeries({ series: "proof.demo", seq: 1, payload: 21, key: "kind", value: "temperature" });
+
+    const bridge = makeBridge(DEMO_SCOPE);
+
+    // The guest reads proof.demo and writes proof.derived via the host callback, ALL host-side under
+    // `caller ∩ install-grant`. The page just invokes the ext tool and gets the committed value back.
+    const out = await bridge.call<{ derived: number; source_seq: number }>(
+      "proof-panel.proof.derive",
+      {},
+    );
+    expect(out.derived).toBe(42);
+
+    // The load-bearing proof: read proof.derived back over a SEPARATE bridge call — the guest's
+    // callback WRITE really committed to the real store (page → guest → host → store → page).
+    let payload: unknown = null;
+    for (let i = 0; i < 50 && payload === null; i++) {
+      const latest = await bridge.call<{ sample: { payload: unknown } | null }>("series.latest", {
+        series: "proof.derived",
+      });
+      payload = latest.sample?.payload ?? null;
+      if (payload === null) await new Promise((r) => setTimeout(r, 100));
+    }
+    expect(payload).toBe(42);
+  });
+
+  it("host-callback: proof.derive is denied for an out-of-scope page (deny per verb)", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedProofPanel();
+    // A page NOT granted the derive verb: the bridge scope filter rejects it locally (defense in
+    // depth); the host would 403 it too. The deny-per-DIRECTION at the callback (caller/grant) is
+    // proven in the Rust host test (rust/crates/host/tests/proof_panel_test.rs).
+    const narrowed = makeBridge(["series.find", "series.latest"]);
+    await expect(narrowed.call("proof-panel.proof.derive", {})).rejects.toThrow(/out_of_scope/);
   });
 
   it("the workflow surface is workspace-isolated — ws-B sees none of ws-A's items/effects", async () => {

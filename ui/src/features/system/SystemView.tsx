@@ -6,7 +6,7 @@
 // phone surface; the graph degrades to pan/zoom). Layout + wiring only; data lives in `useSystem`.
 
 import { Suspense, lazy, useState, type KeyboardEvent } from "react";
-import { Activity, ArrowUpRight, LayoutGrid, Network, RefreshCw } from "lucide-react";
+import { Activity, ArrowUpRight, LayoutGrid, Network, Plus, RefreshCw } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import type { CoreSurface } from "@/features/shell";
 import { useSystem } from "./useSystem";
 import { HEALTH_STYLES, healthRank } from "./health";
 import { surfaceForSubsystem } from "./navigate";
+import { SubsystemDetailSheet } from "./SubsystemDetailSheet";
 import type { ServiceStatus } from "@/lib/system/system.types";
 
 // Code-split the graph (and `@xyflow/react`) so it only loads when the user flips to the topology.
@@ -43,6 +44,8 @@ type Mode = "grid" | "graph";
 export function SystemView({ ws, onNavigate, allowedSurfaces = [] }: Props) {
   const { overview, topology, error, loading, refresh, loadTopology } = useSystem();
   const [mode, setMode] = useState<Mode>("grid");
+  // The subsystem whose detail sheet is open (a no-page card was clicked), or null when closed.
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   // A card drills into the page that owns its subsystem, when that page exists and is allowed.
   const linkFor = (id: string): CoreSurface | null => {
@@ -136,12 +139,16 @@ export function SystemView({ ws, onNavigate, allowedSurfaces = [] }: Props) {
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {services.map((s) => {
+                  // Every card is a control: one with an owning page navigates there (existing
+                  // behavior); one without (gateway/bus/mcp) opens the in-page detail sheet instead
+                  // of being a dead end.
                   const target = linkFor(s.id);
                   return (
                     <StatusCard
                       key={s.id}
                       service={s}
-                      onOpen={target ? () => onNavigate?.(target) : undefined}
+                      hasPage={target !== null}
+                      onOpen={target ? () => onNavigate?.(target) : () => setDetailId(s.id)}
                     />
                   );
                 })}
@@ -150,6 +157,8 @@ export function SystemView({ ws, onNavigate, allowedSurfaces = [] }: Props) {
           </div>
         )}
       </div>
+
+      <SubsystemDetailSheet subsystemId={detailId} onClose={() => setDetailId(null)} />
     </section>
   );
 }
@@ -176,40 +185,44 @@ function ModeTab({ mode, active, onClick }: { mode: Mode; active: boolean; onCli
 }
 
 /** One subsystem card: label + health dot, the one-line detail, and the live metrics as a flat row.
- *  When `onOpen` is given the whole card is a control that drills into the page owning the subsystem
- *  (keyboard-operable, with a hover ring + an open affordance) — otherwise it is static. */
-function StatusCard({ service, onOpen }: { service: ServiceStatus; onOpen?: () => void }) {
+ *  Every card is a control. `hasPage` cards drill into the page owning the subsystem (the `open <id>`
+ *  affordance, an ↗ glyph); the rest open the in-page detail sheet (the `subsystem <id>` affordance, a
+ *  + glyph) instead of dead-ending. Both are keyboard-operable with a hover ring. */
+function StatusCard({
+  service,
+  hasPage,
+  onOpen,
+}: {
+  service: ServiceStatus;
+  hasPage: boolean;
+  onOpen: () => void;
+}) {
   const style = HEALTH_STYLES[service.health];
-  const interactive = !!onOpen;
+  // Page cards announce as "open <id>" (they navigate away); detail-sheet cards keep "subsystem <id>"
+  // (they open a panel in place) — both still clickable.
+  const Affordance = hasPage ? ArrowUpRight : Plus;
   return (
     <Card
       className={cn(
         style.border,
-        interactive &&
-          "cursor-pointer transition-colors hover:border-accent/40 hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
+        "cursor-pointer transition-colors hover:border-accent/40 hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
       )}
-      aria-label={interactive ? `open ${service.id}` : `subsystem ${service.id}`}
-      {...(interactive
-        ? {
-            role: "button",
-            tabIndex: 0,
-            onClick: onOpen,
-            onKeyDown: (e: KeyboardEvent) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onOpen?.();
-              }
-            },
-          }
-        : {})}
+      aria-label={hasPage ? `open ${service.id}` : `subsystem ${service.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
     >
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="flex min-w-0 items-center gap-1.5">
             <span className="truncate">{service.label}</span>
-            {interactive && (
-              <ArrowUpRight size={13} className="shrink-0 text-muted" aria-hidden />
-            )}
+            <Affordance size={13} className="shrink-0 text-muted" aria-hidden />
           </CardTitle>
           <span className="inline-flex shrink-0 items-center gap-1.5">
             <span className={`h-2 w-2 rounded-full ${style.dot}`} aria-hidden />

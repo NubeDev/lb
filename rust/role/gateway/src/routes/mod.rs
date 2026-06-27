@@ -55,6 +55,6 @@ pub use outbox::get_outbox_status;
 pub use post::post_message;
 pub use series_stream::series_stream;
 pub use stream::channel_stream;
-pub use system::{system_overview, system_topology};
+pub use system::{system_overview, system_subsystem, system_topology};
 pub use workflow::{request_approval, resolve_approval as resolve_workflow_approval, start_job};
 pub use workspace::{create_workspace, list_workspaces};

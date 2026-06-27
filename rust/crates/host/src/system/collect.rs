@@ -63,6 +63,23 @@ async fn collect_bus(node: &Node) -> ServiceStatus {
     }
 }
 
+/// The subsystem-specific `extra` detail blob for `system.subsystem` — the per-subsystem facts the
+/// status grid has no room for. Today only `bus` has any: the live zids of the peers/routers it is
+/// connected to (the detail behind its `peers`/`routers` counts). Every other subsystem returns an
+/// empty object. Read from the same live session as the bus card, so the counts and the lists agree.
+pub(crate) async fn collect_extra(node: &Node, id: &str) -> serde_json::Value {
+    match id {
+        "bus" => {
+            let stats = bus_stats(&node.bus).await;
+            serde_json::json!({
+                "peer_zids": stats.peer_zids,
+                "router_zids": stats.router_zids,
+            })
+        }
+        _ => serde_json::json!({}),
+    }
+}
+
 /// Trim a Zenoh id to a short, readable prefix for the card (the full id is long hex).
 fn short_zid(zid: &str) -> String {
     if zid.len() > 12 {

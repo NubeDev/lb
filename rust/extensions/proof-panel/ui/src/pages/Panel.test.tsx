@@ -72,6 +72,40 @@ describe("Panel — the all-features demo", () => {
     expect(await screen.findByText(/Could not write: out_of_scope/i)).toBeInTheDocument();
   });
 
+  it("host-callback derive: Run derive calls proof.derive then re-reads proof.derived", async () => {
+    const user = userEvent.setup();
+    // The guest's `proof.derive` returns the value it committed; the read-back of `proof.derived`
+    // shows it after the call lands. We flip the latest resolver once derive runs.
+    let derived = false;
+    const bridge = demoBridge({
+      "proof-panel.proof.derive": () => {
+        derived = true;
+        return { derived: 42, source_seq: 7 };
+      },
+      "series.latest": (a) =>
+        a?.series === "proof.derived" && derived ? { sample: { seq: 7, payload: 42 } } : { sample: null },
+    });
+    render(<App ctx={{ workspace: "acme" }} bridge={bridge} />);
+
+    await user.click(screen.getByLabelText("run derive"));
+
+    // The page invoked the EXTENSION's own backend tool (not a host-native verb).
+    await waitFor(() =>
+      expect(bridge.call).toHaveBeenCalledWith("proof-panel.proof.derive", {}),
+    );
+    expect(await screen.findByTestId("derive-result")).toHaveTextContent("Derived 42 from seq 7");
+    // And the committed derived series read back through the bridge.
+    expect(await screen.findByTestId("derived-latest")).toHaveTextContent("value 42");
+  });
+
+  it("host-callback derive denied → honest error, no fabricated value", async () => {
+    const user = userEvent.setup();
+    // proof.derive absent from the stub → rejected `out_of_scope` (the deny path).
+    render(<App ctx={{ workspace: "acme" }} bridge={demoBridge()} />);
+    await user.click(screen.getByLabelText("run derive"));
+    expect(await screen.findByText(/Could not derive: out_of_scope/i)).toBeInTheDocument();
+  });
+
   it("outbox status: renders the lifecycle counts and Refresh re-reads", async () => {
     const user = userEvent.setup();
     const bridge = demoBridge({

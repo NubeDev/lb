@@ -52,6 +52,7 @@ pub async fn call(
         qualified_tool,
         input_json,
         None,
+        false,
     )
     .await
 }
@@ -69,6 +70,7 @@ pub async fn call_with_ctx(
     qualified_tool: &str,
     input_json: &str,
     ctx: Option<CallContext>,
+    reentrant: bool,
 ) -> Result<String, ToolError> {
     // 1. authorize FIRST — the DENY gate. Workspace isolation, then the
     //    mcp:<ext>.<tool>:call capability. Running it before resolve guarantees a denied
@@ -83,5 +85,5 @@ pub async fn call_with_ctx(
     // 3. dispatch: call the local instance (with the callback context), or route over the bus to
     //    the hosting node. The seam is identical whether the ext is local or remote — that is the
     //    S3 point.
-    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json, ctx).await
+    dispatch::dispatch(&target, bus, ws, qualified_tool, input_json, ctx, reentrant).await
 }

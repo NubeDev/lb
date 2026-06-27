@@ -32,6 +32,11 @@ request = [
     "mcp:outbox.status:call",
     "mcp:inbox.list:call",
     "mcp:inbox.resolve:call",
+    # The page's "Run derive" card invokes the ext's OWN backend tool `proof.derive` over the bridge,
+    # so the cap must be in the grant — otherwise the `[ui] scope` projection (ui_decl::narrow) drops
+    # `proof-panel.proof.derive` and the page's bridge filter rejects it `out_of_scope` before it ever
+    # reaches the host. (The host then re-checks it server-side regardless.)
+    "mcp:proof-panel.proof.derive:call",
     # The self-recursive depth-guard tool calls its OWN ext tool through the callback, so the grant
     # must include that cap (an ext tool the guest invokes is gated like any other).
     "mcp:proof-panel.proof.recurse:call",

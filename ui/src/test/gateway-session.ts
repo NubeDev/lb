@@ -7,6 +7,7 @@ import { inject, vi } from "vitest";
 
 import { login } from "@/lib/session/session.api";
 import { setSession, sessionToken } from "@/lib/session/session.store";
+import type { Session } from "@/lib/session/session.types";
 
 /** Make `invoke` take the real HTTP path to the spawned gateway (stub `VITE_GATEWAY_URL` to its URL).
  *  Call once per test file (idempotent). */
@@ -22,11 +23,26 @@ export async function signInReal(user: string, workspace: string) {
   return session;
 }
 
+/** Mint and store a real signed session from the test gateway with an explicit cap set. This is used
+ *  for deny tests where dev-login's broad cap set would be too privileged. */
+export async function signInWithCaps(user: string, workspace: string, caps: string[]): Promise<Session> {
+  const url = inject("gatewayUrl");
+  const res = await fetch(`${url}/_seed/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ user, workspace, caps }),
+  });
+  if (!res.ok) throw new Error(`seed session failed: ${res.status} ${await res.text()}`);
+  const session = (await res.json()) as Session;
+  setSession(session);
+  return session;
+}
+
 /** POST to a test-only `/_seed/*` route on the spawned gateway, authenticated by the current session
  *  token (so the seed lands in the session's workspace — the real write path, behind the workspace
  *  wall). For surfaces with no public create route (inbox item / outbox effect / extension install). */
 async function seed(
-  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series",
+  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series" | "proof_panel",
   body: unknown,
 ): Promise<void> {
   const url = inject("gatewayUrl");
@@ -94,6 +110,13 @@ export function seedSeries(s: {
   value: unknown;
 }): Promise<void> {
   return seed("series", s);
+}
+
+/** Install AND LOAD the REAL proof-panel wasm component into the session workspace, so its
+ *  `proof-panel.proof.derive` tool is callable over the live bridge (host-callback scope). Unlike
+ *  `seedExtension` (which only writes an Install record), this loads the component into the runtime. */
+export function seedProofPanel(): Promise<void> {
+  return seed("proof_panel", {});
 }
 
 /** Seed a real extension install into the session workspace. */

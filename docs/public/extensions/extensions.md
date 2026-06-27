@@ -80,7 +80,8 @@ Granted ≠ trusted; trusted ≠ granted. See `registry/registry.md`.
 The S6 coding workflow's inbound edge ships as an installed Tier-1 wasm extension (resolving the S6
 deferral) — the second real extension after `hello`. It is a **pure transform**: its `normalize` tool
 maps a raw GitHub webhook to the canonical `{ issue_id, payload, ts }` triple, holding no state and
-making no host callback (the stable WIT world imports only `log` — there is no host-tool-call import).
+making no host callback (it is a `@0.1.0` guest — it imports only `log`; the host-callback import
+described below landed later and is opt-in, so a pure-transform guest never uses it).
 The **host** composes it: `lb_host::ingest_via_bridge` calls the sandboxed `github-bridge.normalize`
 tool, then hands the result to the host's `workflow.ingest_issue` write. Two independent capability
 gates apply in order — `mcp:github-bridge.normalize:call` (the transform) then
@@ -89,6 +90,60 @@ point: the untrusted-input transform is sandboxed and swappable (a GitLab/Gitea 
 output contract drops in), while the state-mutating inbox write stays a host seam. The orchestrator
 (triage → approval → job → outbox) remains a host service — it drives host-internal seams a guest can
 only reach *through* MCP, never *be*. See `../../scope/extensions/github-bridge-scope.md`.
+
+## The host-callback ABI: a guest calls host MCP tools (`@0.2.0`)
+
+A guest used to be a **one-way box** — the host called *into* it (`tool.call`), but it could only
+`host.log` back. So a backend that reads/writes the platform (a producer, a reactor, a "read a series →
+derive another" tool) couldn't be a guest; it had to be a host service. The `@0.2.0` WIT minor bump adds
+the **one** missing primitive — a host-mediated call-back — making a wasm extension a first-class
+platform citizen:
+
+```wit
+// world extension's `host` interface, @0.2.0
+call-tool: func(name: string, input-json: string) -> result<string, tool-error>;
+```
+
+This is the **symmetric backend dual of the page bridge**. The page reaches the MCP surface via `POST
+/mcp/call` → `lb_host::call_tool`; a guest now reaches the *same* `call_tool`, the *same* verbs
+(`series.*`, `ingest.write`, `outbox.status`, `inbox.list`/`resolve`, other extensions' `<ext>.<tool>`),
+denied identically. One chokepoint, two front doors — **zero new trust surface**.
+
+**Delegated, intersected authority.** Before running the guest the host derives its **effective
+principal** = `caller ∩ install-grant`: the caller's caps INTERSECTED with the install's
+`admin_approved` set (the S5 `Principal::derive` / caps gate 2b, the same `agent ∩ caller` the agent
+loop uses). Every callback runs the full authorize gate (workspace-first, then `mcp:<tool>:call`)
+against it. So a guest can reach **at most** what BOTH its caller and its install allow — never wider:
+
+- a verb the **install grant omits** → denied, even when the caller holds it (delegation narrowing);
+- a verb the **caller lacks** → denied, even when the install requested it (intersection both ways).
+
+**Identity is per-call, never instance-sticky.** The host sets the effective principal + workspace + a
+`HostBridge` handle into the instance's `HostState` *before* the guest runs and *clears it after*. The
+loaded instance is node-global (one instance serves many workspaces — see
+`../../debugging/extensions/loaded-extension-instance-is-node-global.md`), so a sticky identity would
+leak across the wall; per-call is the only safe choice. The workspace is host-set from the caller's
+token — never guest-supplied.
+
+**Layering.** `lb-runtime` defines a narrow `HostBridge` trait + `CallContext`; `lb-host` implements it
+over `call_tool`. So `runtime` stays *below* `host` in the dep graph — the forever-ABI addition doesn't
+leak the host's shape into the SDK layer.
+
+**Re-entrancy is bounded.** A guest→host→guest chain carries a depth counter; past a fixed
+`MAX_CALL_DEPTH` (8) the callback returns `tool-error::failed("call depth exceeded")`. The callback
+dispatches through `call_tool` (a *fresh* instance/route, `try_lock`ed) — it never re-borrows the
+in-flight instance, so a self-re-entrant guest fails fast ("extension busy") instead of deadlocking.
+
+**ABI compat.** World MAJOR stays `0`, so the loader still accepts `@0.1.0` guests — but a minor bump
+turned out to break them at *instantiation* (wasmtime treats a `0.x` minor as semver-incompatible at
+link time). The runtime links BOTH `host` versions and falls back to the frozen `@0.1.0` export bindings
+(`sdk/wit-compat-0_1/`), so `hello`/`github-bridge` (`@0.1.0`) and a `@0.2.0` callback guest coexist on
+one node. See `../../debugging/extensions/wit-minor-bump-breaks-0_1-guest-linking.md`.
+
+**Reference.** `proof-panel`'s `proof.derive` reads the latest `proof.demo` (`series.latest`) and writes
+`proof.derived = value*2` (`ingest.write`), entirely through the callback — a guest doing real platform
+work, proven live (page → guest → host → store → page). See
+`../../scope/extensions/host-callback-scope.md` and `../../sessions/extensions/host-callback-session.md`.
 
 ### The live ingress: the `github-webhook` role crate
 
@@ -118,6 +173,50 @@ into its workspace. An **unknown tenant is the same opaque `401`** (not a `404`)
 oracle. The single-tenant `/webhook` route stays for one-repo deployments; the front door is layered
 beside it (no `if cloud`, one tenant per map row). `lb-secrets`-backed secrets + a dynamic tenant
 directory (onboard without a restart) are the open follow-ups.
+
+## The host-callback ABI: a guest calls host tools (WIT `@0.2.0`)
+
+A Tier-1 guest is no longer a one-way box. The WIT world's `host` interface gained **one** import —
+`host.call-tool(name, input-json) -> result<string, tool-error>` — so a guest can invoke the **same**
+MCP tool surface the page bridge reaches (`series.*`, `ingest.write`, `outbox.status`,
+`inbox.list`/`resolve`, and other extensions' `<ext>.<tool>`), getting JSON back, exactly as the
+browser's `bridge.call(tool, args)` does. This is the §11.2 forever-ABI change — done once, behind the
+existing `lb_host::call_tool` chokepoint, so it adds **zero** new trust surface beyond the browser bridge.
+
+How the security holds, on every callback:
+
+- **Identity is per-call, never instance-sticky.** Before running a guest, the host sets
+  `{ effective_principal, ws, bridge }` into the instance's `HostState`; it is CLEARED after the call
+  returns. The loaded instance is node-global (one instance serves many workspaces), so a sticky
+  identity would leak across the wall — hence per-call. The runtime holds a narrow `HostBridge` trait
+  object the host supplies (not an `Arc<Node>`), so `lb-runtime` stays below `lb-host` in the dep graph.
+- **Effective principal = `caller ∩ install-grant`.** The host derives a principal whose caps are the
+  intersection of the caller's caps and the extension's persisted install grant (`Principal::derive`,
+  the S5 `agent ∩ caller` delegation primitive). A guest can reach **at most** what BOTH its caller and
+  its install allow — a tool the install grant omitted is denied even if the caller holds it, and one
+  the caller lacks is denied even if the install requested it. No widening, ever, at any re-entrancy
+  depth.
+- **The callback dispatches through the chokepoint.** `host.call-tool` →
+  `lb_host::call_tool(node, &effective_principal, ws, name, input)` → the same authorize-then-dispatch
+  any bridged caller runs, denied identically (opaque). The workspace is the host-set caller's, never
+  guest-supplied. A re-entrant guest→host→guest chain is bounded by a fixed **depth guard** (8 →
+  `tool-error::failed("call depth exceeded")`), and the callback resolves a FRESH instance/route
+  (`try_lock` — a self-re-entry fails fast as "extension busy" rather than deadlocking on its own
+  in-flight instance), never re-borrowing the in-flight `&mut Instance`.
+
+**Versioning.** The WIT package bumped `@0.1.0` → `@0.2.0` (a MINOR add); the world MAJOR stays `0`. A
+guest that *uses* the callback declares `@0.2.0`; existing `@0.1.0` guests (`hello`, `github-bridge`)
+keep loading. (One subtlety: wasmtime's component linker treats a `0.x` minor as semver-incompatible at
+*link* time, so the runtime links BOTH `host` versions and falls back to the frozen 0.1.0 export
+bindings — see `../../debugging/extensions/wit-minor-bump-breaks-0_1-guest-linking.md`.)
+
+**Worked example — `proof-panel.proof.derive`.** The reference guest's backend tool reads the latest
+`proof.demo` (`series.latest`) and writes `proof.derived = value*2` (`ingest.write`), returning
+`{ derived }` — entirely through the callback, under `caller ∩ grant`. It is the visible proof that a
+wasm guest does real platform work, not just echo input. A guest never holds a `Store`/bus handle (rules
+4/5); all platform access is through these host-mediated, gated MCP calls. The `[ui]` page's "Run derive"
+card invokes it over the bridge and reads the committed `proof.derived` back. See
+`../../scope/extensions/host-callback-scope.md` and `../../sessions/extensions/host-callback-session.md`.
 
 ## The frontend half: a federated UI page + dashboard widgets (S10)
 

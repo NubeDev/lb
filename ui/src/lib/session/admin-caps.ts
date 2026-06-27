@@ -31,6 +31,9 @@ export const CAP = {
   // `system.overview`. The gateway re-checks every verb server-side regardless.
   systemOverview: "mcp:system.overview:call",
   systemTopology: "mcp:system.topology:call",
+  // system-map subsystem detail: the per-subsystem detail verb a no-page card drills into. Gated as
+  // the others — the detail view only opens when the session holds this cap.
+  systemSubsystem: "mcp:system.subsystem:call",
   // data-console (Ingest page): member-level series verbs — the Ingest nav entry shows for any
   // session that may read/list series.
   seriesList: "mcp:series.list:call",
@@ -79,6 +82,9 @@ export const ADMIN_CAPS: string[] = [
   "mcp:series.read:call",
   "mcp:series.latest:call",
   "mcp:series.find:call",
+  CAP.systemOverview,
+  CAP.systemTopology,
+  CAP.systemSubsystem,
 ];
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

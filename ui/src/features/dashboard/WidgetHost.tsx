@@ -7,15 +7,16 @@ import { ChartWidget } from "./widgets/ChartWidget";
 import { StatWidget } from "./widgets/StatWidget";
 import { GaugeWidget } from "./widgets/GaugeWidget";
 import type { Cell } from "@/lib/dashboard";
+import type { DashboardSearch } from "@/features/routing/search";
 
-export function WidgetHost({ cell }: { cell: Cell }) {
+export function WidgetHost({ cell, range }: { cell: Cell; range?: DashboardSearch }) {
   switch (cell.widget_type) {
     case "chart":
-      return <ChartWidget binding={cell.binding} options={cell.options} />;
+      return <ChartWidget binding={cell.binding} options={cell.options} range={range} />;
     case "stat":
-      return <StatWidget binding={cell.binding} options={cell.options} />;
+      return <StatWidget binding={cell.binding} options={cell.options} range={range} />;
     case "gauge":
-      return <GaugeWidget binding={cell.binding} options={cell.options} />;
+      return <GaugeWidget binding={cell.binding} options={cell.options} range={range} />;
     default:
       // Phase 2 (federated widgets) renders `ext:<id>` here through the bridge; Phase 1 shows an
       // honest "not available" placeholder rather than a blank cell.

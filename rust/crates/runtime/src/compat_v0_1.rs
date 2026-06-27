@@ -1,0 +1,41 @@
+//! ABI back-compat for `@0.1.0` guests (host-callback scope, the `@0.2.0` minor bump).
+//!
+//! wasmtime's component linker treats a `0.x` MINOR difference as semver-incompatible, so a guest
+//! importing `lazybones:ext/host@0.1.0` is NOT satisfied by the host's `@0.2.0` `host` instance.
+//! To keep existing `@0.1.0` guests (e.g. `hello`, `github-bridge`) loading, the host ALSO links the
+//! verbatim `@0.1.0` `host` interface here — just `log`. New guests resolve `@0.2.0`; old guests
+//! resolve this. The `add_to_linker` below is invoked alongside the `@0.2.0` one in `engine.rs`.
+
+use crate::bindings::HostState;
+
+// A separate, full bindgen against the FROZEN 0.1.0 world snapshot. Used both to LINK the 0.1.0
+// `host` import AND — when a guest exports `tool@0.1.0` rather than `@0.2.0` — to instantiate and
+// call the guest through the 0.1.0 export view. The `tool` export is byte-identical across 0.1/0.2,
+// so calling it through either generation is the same wasm call.
+mod gen {
+    wasmtime::component::bindgen!({
+        path: "../../sdk/wit-compat-0_1",
+        world: "extension",
+        exports: { default: async },
+    });
+}
+
+/// The 0.1.0-world bindings handle (a guest that exports `tool@0.1.0`). Re-exported so `Instance`
+/// can hold it as the legacy variant.
+pub use gen::Extension as ExtensionV1;
+
+// The 0.1.0 `host` interface had exactly one function: `log`. Same sink as the 0.2.0 impl. (The
+// 0.1.0 `tool` interface is EXPORTED by the guest, not imported, so it needs no host impl here.)
+impl gen::lazybones::ext::host::Host for HostState {
+    fn log(&mut self, message: String) {
+        self.logs.push(message);
+    }
+}
+
+/// Add the `@0.1.0` `host` interface to the linker so a 0.1.0 guest's import resolves. Idempotent
+/// with the 0.2.0 registration — they are distinct versioned names in the linker map.
+pub fn add_to_linker(
+    linker: &mut wasmtime::component::Linker<HostState>,
+) -> Result<(), wasmtime::Error> {
+    gen::lazybones::ext::host::add_to_linker::<_, wasmtime::component::HasSelf<_>>(linker, |s| s)
+}

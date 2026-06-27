@@ -22,7 +22,6 @@ wasmtime::component::bindgen!({
     imports: { default: async },
 });
 
-
 /// Per-instance host state. Holds the WASI context (the component is a WASI 0.2 command), a sink for
 /// the guest's `log` import, and — for the duration of one `tool.call` — the [`CallContext`] the host
 /// callback dispatches through. The context is set BEFORE the guest runs and CLEARED after (per-call,
@@ -96,10 +95,9 @@ impl lazybones::ext::host::Host for HostState {
         use lazybones::ext::host::ToolError as HostToolError;
         // No context set => no host call is in flight (or the host forgot to inject identity). Fail
         // closed — never panic, never dispatch unauthenticated.
-        let ctx = self
-            .call_ctx
-            .clone()
-            .ok_or_else(|| HostToolError::Failed("host callback unavailable (no identity)".into()))?;
+        let ctx = self.call_ctx.clone().ok_or_else(|| {
+            HostToolError::Failed("host callback unavailable (no identity)".into())
+        })?;
         match ctx.bridge.call_tool(&name, &input_json, ctx.depth).await {
             Ok(out) => Ok(out),
             Err(crate::bridge::BridgeError::BadInput(m)) => Err(HostToolError::BadInput(m)),

@@ -9,7 +9,7 @@
 
 use lb_assets::{record_install, Install, Tier};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{system_overview, system_topology, Health, Node, ServiceStatus};
+use lb_host::{system_overview, system_subsystem, system_topology, Health, Node, ServiceStatus};
 use lb_outbox::{enqueue, mark_failed, Effect};
 use lb_store::write;
 use serde_json::json;
@@ -30,7 +30,8 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 
 const OVERVIEW: &str = "mcp:system.overview:call";
 const TOPOLOGY: &str = "mcp:system.topology:call";
-const ALL: &[&str] = &[OVERVIEW, TOPOLOGY];
+const SUBSYSTEM: &str = "mcp:system.subsystem:call";
+const ALL: &[&str] = &[OVERVIEW, TOPOLOGY, SUBSYSTEM];
 
 /// The fixed subsystem set every workspace must always report (a missing card means "we forgot it",
 /// never "it happens to be empty").
@@ -203,4 +204,92 @@ async fn workspace_isolation_b_never_sees_a() {
     assert_ne!(card(&ov.services, "extensions").health, Health::Degraded);
     assert_ne!(card(&ov.services, "outbox").health, Health::Degraded);
     assert_eq!(card(&ov.services, "inbox").metrics[0].value, "0");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn subsystem_returns_the_right_card_and_bus_extra_lists_zids() {
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+    let ada = principal("user:ada", ws, ALL);
+
+    // A no-page card with no extra: gateway returns its own card and an empty `extra` object.
+    let gw = system_subsystem(&node, &ada, ws, "gateway").await.unwrap();
+    assert_eq!(gw.service.id, "gateway");
+    assert_eq!(gw.ws, "acme");
+    assert_eq!(gw.extra, json!({}));
+
+    // The bus card's extra carries the live peer/router zid lists (the detail behind the counts) —
+    // present as arrays of zid strings. We assert the *shape* (present arrays of strings), NOT exact
+    // equality with the card's count: the metric and the extra are two independent live-session reads,
+    // and the shared in-proc test mesh's peer count drifts between them as sibling test nodes join and
+    // leave. The single-node guarantee (the extra exists for `bus`, `{}` elsewhere) is the invariant.
+    let bus = system_subsystem(&node, &ada, ws, "bus").await.unwrap();
+    assert_eq!(bus.service.id, "bus");
+    let peer_zids = bus.extra["peer_zids"].as_array().expect("peer_zids array");
+    let router_zids = bus.extra["router_zids"]
+        .as_array()
+        .expect("router_zids array");
+    for z in peer_zids.iter().chain(router_zids) {
+        assert!(z.is_string(), "each zid is a string, got {z:?}");
+    }
+    // The bus card exposes its own peer/router count metrics (the summary the detail expands on).
+    assert!(bus.service.metrics.iter().any(|m| m.label == "peers"));
+    assert!(bus.service.metrics.iter().any(|m| m.label == "routers"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn subsystem_unknown_id_is_opaque_not_a_panic() {
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+    let ada = principal("user:ada", ws, ALL);
+
+    // An id that is not a subsystem is refused opaquely (the same answer a no-cap caller gets), never
+    // a panic / 500.
+    assert!(system_subsystem(&node, &ada, ws, "nope").await.is_err());
+    assert!(system_subsystem(&node, &ada, ws, "").await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn subsystem_denied_without_its_own_cap() {
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+
+    // No caps at all → denied.
+    let nobody = principal("user:mallory", ws, &[]);
+    assert!(system_subsystem(&node, &nobody, ws, "bus").await.is_err());
+
+    // Holding overview/topology does NOT grant subsystem — its own cap is required.
+    let no_sub = principal("user:ov", ws, &[OVERVIEW, TOPOLOGY]);
+    assert!(system_subsystem(&node, &no_sub, ws, "bus").await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn subsystem_workspace_isolation_b_never_sees_a() {
+    let node = Node::boot().await.unwrap();
+
+    // Seed ws-A with a dead-lettered effect → A's outbox detail is Degraded.
+    dead_letter(&node, "ws-a").await;
+    let ada = principal("user:ada", "ws-a", ALL);
+    let a_outbox = system_subsystem(&node, &ada, "ws-a", "outbox")
+        .await
+        .unwrap();
+    assert_eq!(a_outbox.service.health, Health::Degraded);
+
+    // B's outbox detail reflects only B's (empty) namespace — none of A's dead-letter leaks.
+    let ben = principal("user:ben", "ws-b", ALL);
+    let b_outbox = system_subsystem(&node, &ben, "ws-b", "outbox")
+        .await
+        .unwrap();
+    assert_eq!(b_outbox.ws, "ws-b");
+    assert_ne!(b_outbox.service.health, Health::Degraded);
+    assert_eq!(
+        b_outbox
+            .service
+            .metrics
+            .iter()
+            .find(|m| m.label == "dead-letter")
+            .unwrap()
+            .value,
+        "0"
+    );
 }

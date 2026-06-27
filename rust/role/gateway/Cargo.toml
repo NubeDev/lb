@@ -19,6 +19,9 @@ lb-assets.workspace = true
 # Only the `test_gateway` harness binary uses lb-outbox (to seed real effects). It is optional and
 # pulled in by the `test-harness` feature, so the production crate doesn't carry it.
 lb-outbox = { workspace = true, optional = true }
+# Only the `test_gateway` harness uses lb-ext-loader (to parse the proof-panel manifest's requested
+# caps when it installs+loads the real wasm for the host-callback live test). Optional, test-only.
+lb-ext-loader = { workspace = true, optional = true }
 axum.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
@@ -28,7 +31,7 @@ futures.workspace = true
 
 [features]
 # Enables the test-only `test_gateway` binary (the UI real-gateway Vitest harness) + its seed deps.
-test-harness = ["dep:lb-outbox"]
+test-harness = ["dep:lb-outbox", "dep:lb-ext-loader"]
 
 # The real-node harness binary the UI's `vitest.gateway.config.ts` spawns. Test-only: build it with
 # `cargo build -p lb-role-gateway --features test-harness --bin test_gateway`.

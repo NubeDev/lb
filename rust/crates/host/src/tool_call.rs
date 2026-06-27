@@ -90,6 +90,8 @@ pub async fn call_tool_at_depth(
     // host tools under its DELEGATED, INTERSECTED authority (host-callback scope).
     let ctx = build_call_context(node, principal, ws, qualified_tool, depth).await;
 
+    // depth > 0 means this call ORIGINATED from a guest's host-callback (re-entrant): dispatch must
+    // not block on the instance lock (it may be the in-flight guest's own) — fail fast instead.
     lb_mcp::call_with_ctx(
         &node.registry,
         &node.bus,
@@ -98,6 +100,7 @@ pub async fn call_tool_at_depth(
         qualified_tool,
         input_json,
         ctx,
+        depth > 0,
     )
     .await
 }

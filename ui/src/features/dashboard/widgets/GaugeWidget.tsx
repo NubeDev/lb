@@ -6,10 +6,12 @@ import { useSeries } from "../useSeries";
 import { asNumber } from "./num";
 import { WidgetHeader, WidgetMessage } from "./chrome";
 import type { Binding } from "@/lib/dashboard";
+import type { DashboardSearch } from "@/features/routing/search";
 
 interface Props {
   binding: Binding;
   options?: Record<string, unknown>;
+  range?: DashboardSearch;
   label?: string;
 }
 
@@ -18,8 +20,8 @@ function opt(options: Record<string, unknown> | undefined, key: string, fallback
   return typeof v === "number" && Number.isFinite(v) ? v : fallback;
 }
 
-export function GaugeWidget({ binding, options, label }: Props) {
-  const { series, latest, loading, denied } = useSeries(binding);
+export function GaugeWidget({ binding, options, range, label }: Props) {
+  const { series, latest, loading, denied } = useSeries(binding, range);
   const min = opt(options, "min", 0);
   const max = opt(options, "max", 100);
   const unit = typeof options?.unit === "string" ? (options.unit as string) : "";

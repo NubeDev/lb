@@ -18,18 +18,26 @@ pub struct BusStats {
     pub peer_count: usize,
     /// How many routers this session is currently connected to (0 on a pure peer-to-peer mesh).
     pub router_count: usize,
+    /// The actual zids of the connected peers (the detail behind `peer_count` — for the system-map
+    /// subsystem detail view, which lists *who* is on the mesh, not just how many).
+    pub peer_zids: Vec<String>,
+    /// The actual zids of the connected routers (the detail behind `router_count`).
+    pub router_zids: Vec<String>,
 }
 
 /// Read the live transport stats from the Zenoh session. Enumerates the established peer/router
-/// transports — a real count, gathered from local session bookkeeping (no round-trip).
+/// transports — a real count *and* the actual connected zids, gathered from local session
+/// bookkeeping (no round-trip).
 pub async fn bus_stats(bus: &Bus) -> BusStats {
     let info = bus.session().info();
     let zid = bus.session().zid().to_string();
-    let peer_count = info.peers_zid().await.count();
-    let router_count = info.routers_zid().await.count();
+    let peer_zids: Vec<String> = info.peers_zid().await.map(|z| z.to_string()).collect();
+    let router_zids: Vec<String> = info.routers_zid().await.map(|z| z.to_string()).collect();
     BusStats {
         zid,
-        peer_count,
-        router_count,
+        peer_count: peer_zids.len(),
+        router_count: router_zids.len(),
+        peer_zids,
+        router_zids,
     }
 }
