@@ -1,2 +1,5 @@
 node_modules
 dist
+# pnpm writes this stub when prompting about a dependency's build scripts (e.g. esbuild); it is a
+# local install artifact, not part of the extension.
+pnpm-workspace.yaml

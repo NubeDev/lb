@@ -26,7 +26,7 @@ export async function signInReal(user: string, workspace: string) {
  *  token (so the seed lands in the session's workspace — the real write path, behind the workspace
  *  wall). For surfaces with no public create route (inbox item / outbox effect / extension install). */
 async function seed(
-  kind: "inbox" | "outbox" | "extension" | "iot_demo",
+  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series",
   body: unknown,
 ): Promise<void> {
   const url = inject("gatewayUrl");
@@ -81,6 +81,19 @@ export function seedOutbox(effect: {
       ...effect,
     },
   });
+}
+
+/** Seed ONE discoverable series into the session workspace through the REAL write path: a committed
+ *  sample value (so `series.latest` reads it) + a `key:value` tag edge on the `series:<name>` entity
+ *  (so `series.find` discovers it). Used by the proof-panel real-gateway test — never a fake row. */
+export function seedSeries(s: {
+  series: string;
+  seq: number;
+  payload: unknown;
+  key: string;
+  value: unknown;
+}): Promise<void> {
+  return seed("series", s);
 }
 
 /** Seed a real extension install into the session workspace. */
