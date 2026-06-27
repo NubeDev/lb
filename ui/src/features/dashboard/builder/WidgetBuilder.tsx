@@ -17,7 +17,11 @@ import type { Cell, View } from "@/lib/dashboard";
 import { WidgetView } from "../views/WidgetView";
 import { cellTools } from "../views/WidgetView";
 import { useSourcePicker } from "./useSourcePicker";
-import type { SourceEntry } from "./sourcePicker";
+import { SQL_SOURCE_ID, type SourceEntry } from "./sourcePicker";
+import { PlotCodeField, DEFAULT_PLOT_CODE, DEFAULT_D3_CODE } from "./editors/PlotCodeField";
+import { TemplateSourceField, type TemplateValue, DEFAULT_INLINE_CODE } from "./editors/TemplateSourceField";
+import { SqlQueryEditor, emptySqlSource } from "./sql/SqlQueryEditor";
+import type { SqlSourceState } from "./sql/query";
 
 interface Props {
   ws: string;
@@ -56,17 +60,44 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
   const { entries, installed, loading } = useSourcePicker(ws);
   const [entryId, setEntryId] = useState<string>("");
   const [view, setView] = useState<View>("chart");
-  const [code, setCode] = useState<string>("");
+  // Slice B authoring state — Plot/D3 share an inline code string; `template` has its own
+  // inline-or-saved value; the SQL source has the Builder⇄Code state.
+  const [plotCode, setPlotCode] = useState<string>("");
+  const [templateValue, setTemplateValue] = useState<TemplateValue>({
+    mode: "inline",
+    code: DEFAULT_INLINE_CODE,
+  });
+  const [sqlState, setSqlState] = useState<SqlSourceState>(emptySqlSource);
 
   const entry = useMemo(() => entries.find((e) => e.id === entryId) ?? null, [entries, entryId]);
   const validViews = viewsFor(entry);
   const isScripted = SCRIPTED_VIEWS.includes(view);
+  const isSqlSource = entry?.id === SQL_SOURCE_ID;
 
   // Build the candidate cell from the current selection — also the preview's input.
   const candidate: Cell | null = useMemo(() => {
     if (!entry && !isScripted) return null;
     const options: Record<string, unknown> = {};
-    if (isScripted && code.trim()) options.code = code;
+
+    // Scripted-view code goes into cell.options (inline) or a templateId reference.
+    if (view === "plot" || view === "d3") {
+      if (plotCode.trim()) options.code = plotCode;
+    } else if (view === "template") {
+      if (templateValue.mode === "inline") {
+        if (templateValue.code.trim()) options.code = templateValue.code;
+      } else if (templateValue.templateId) {
+        options.templateId = templateValue.templateId;
+      }
+    }
+
+    // The SQL source resolves to `{ tool: "store.query", args: { sql } }` from the editor state, and
+    // stows the full SQL source state (builder query + format) so reopening returns to the builder.
+    let source = entry?.source;
+    if (isSqlSource) {
+      source = { tool: "store.query", args: { sql: sqlState.rawSql } };
+      options.sql = sqlState;
+    }
+
     return {
       i: "preview",
       x: 0,
@@ -77,17 +108,19 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
       widget_type: "chart",
       view,
       binding: { series: "" },
-      source: entry?.source,
+      source,
       action: entry?.action,
       options,
     };
-  }, [entry, view, code, isScripted]);
+  }, [entry, view, plotCode, templateValue, sqlState, isScripted, isSqlSource]);
 
   const add = () => {
     if (!candidate) return;
     const y = existing.reduce((m, c) => Math.max(m, c.y + c.h), 0);
     onAdd({ ...candidate, i: nextKey(existing), y });
-    setCode("");
+    setPlotCode("");
+    setTemplateValue({ mode: "inline", code: DEFAULT_INLINE_CODE });
+    setSqlState(emptySqlSource());
   };
 
   return (
@@ -111,6 +144,7 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
           <option value="">{loading ? "loading sources…" : "— pick a source —"}</option>
           <PickerGroup entries={entries} group="series" label="Series" />
           <PickerGroup entries={entries} group="live" label="Live (Zenoh)" />
+          <PickerGroup entries={entries} group="sql" label="Direct SurrealDB" />
           <PickerGroup entries={entries} group="extension" label="Installed extension" />
           <PickerGroup entries={entries} group="action" label="Action (control)" />
         </select>
@@ -121,7 +155,13 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
           aria-label="widget view"
           className={FIELD}
           value={view}
-          onChange={(e) => setView(e.target.value as View)}
+          onChange={(e) => {
+            const v = e.target.value as View;
+            setView(v);
+            // Seed a working default snippet when an empty Plot/D3 editor first appears.
+            if (v === "plot" && !plotCode.trim()) setPlotCode(DEFAULT_PLOT_CODE);
+            if (v === "d3" && !plotCode.trim()) setPlotCode(DEFAULT_D3_CODE);
+          }}
         >
           {validViews.map((v) => (
             <option key={v} value={v}>
@@ -135,20 +175,17 @@ export function WidgetBuilder({ ws, existing, onAdd }: Props) {
         </Button>
       </div>
 
-      {/* Scripted views: an inline code editor (renders sandboxed; may write a granted tool). */}
-      {isScripted && (
-        // eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive; see FIELD note
-        <textarea
-          aria-label="widget code"
-          placeholder={
-            view === "template"
-              ? 'JSX/HTML template — a button can write: <button data-call="mqtt.publish" data-args=\'{"topic":"x"}\'>Defrost</button>'
-              : "Plot/D3 snippet — async (bridge, el, engine) => { const {samples} = await bridge.call('series.read', {series:'cooler.temp'}); ... }"
-          }
-          className={`${FIELD} mt-2 h-24 w-full py-1.5 font-mono`}
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-        />
+      {/* The SQL source: the Grafana-style Builder⇄Code editor (Slice C). Resolves to a
+          `{tool:"store.query", args:{sql}}` source; the rows render in the chosen view. */}
+      {isSqlSource && <SqlQueryEditor value={sqlState} onChange={setSqlState} />}
+
+      {/* Scripted views: the ported CodeMirror editors (Slice B) — author code that renders sandboxed
+          and may call a granted tool. Plot/D3 share the code editor; `template` has inline-or-saved. */}
+      {(view === "plot" || view === "d3") && (
+        <PlotCodeField engine={view} value={plotCode} onChange={setPlotCode} />
+      )}
+      {view === "template" && (
+        <TemplateSourceField value={templateValue} onChange={setTemplateValue} />
       )}
 
       {/* Live preview through the REAL bridge — never a fake render. */}

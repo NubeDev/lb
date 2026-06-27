@@ -12,7 +12,7 @@ export interface SourceEntry {
   /** Stable id for the option element. */
   id: string;
   /** The grouping origin (the picker's left-rail sections). */
-  group: "series" | "live" | "extension" | "action";
+  group: "series" | "live" | "extension" | "action" | "sql";
   /** What the author sees — never a raw tool name. */
   label: string;
   /** The resolved read source `{tool, args}` (for read/scripted views + a control's optional self-read). */
@@ -83,12 +83,34 @@ export function extensionEntries(rows: ExtRow[]): SourceEntry[] {
   return out;
 }
 
+/** The id the picker uses for the "SQL query" entry — the visual SQL builder + raw-SQL Code source
+ *  (widget-builder Slice C). Selecting it opens the Builder⇄Code editor, which resolves to a
+ *  `{ tool: "store.query", args: { sql, vars? } }` source (Slice A). */
+export const SQL_SOURCE_ID = "sql:query";
+
+/** The single "SQL query" picker entry. Its `source.tool` is `store.query` so the cell's tool set
+ *  includes it (the bridge's leash); the concrete `sql` is filled in by the Builder⇄Code editor and
+ *  written back onto `source.args` before the cell is added. The schema dropdowns the visual builder
+ *  needs come from `store.schema` (also leashed, read at authoring time in the trusted shell). */
+export function sqlSourceEntry(): SourceEntry {
+  return {
+    id: SQL_SOURCE_ID,
+    group: "sql",
+    label: "SQL query (direct SurrealDB)",
+    source: { tool: "store.query", args: { sql: "" } },
+    writes: false,
+  };
+}
+
 /** Assemble the whole picker from the shipped surfaces. `seriesNames` from `series.list`/`series.find`;
- *  `rows` from `ext.list`. The author sees labels grouped by origin; the cell gets the resolved tools. */
+ *  `rows` from `ext.list`. The author sees labels grouped by origin; the cell gets the resolved tools.
+ *  The "SQL query" entry is always offered (the parse gate + workspace wall + row cap at the host make
+ *  it safe regardless of which tables exist). */
 export function buildSourceEntries(seriesNames: string[], rows: ExtRow[]): SourceEntry[] {
   return [
     ...seriesEntries(seriesNames),
     ...liveEntries(seriesNames),
     ...extensionEntries(rows),
+    sqlSourceEntry(),
   ];
 }
