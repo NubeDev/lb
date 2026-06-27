@@ -81,9 +81,108 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
     case "outbox_status":
       return getJson<T>(`${base}/outbox`);
+
+    // ── admin-crud: the destructive/admin surface (admin-console scope). Each maps 1:1 to an
+    //    /admin/* (or members) gateway route; the gateway re-checks the capability server-side,
+    //    so the UI cap-gate is convenience only. No more `unknown command` in the browser. ──
+    case "members_remove": {
+      const { team, user } = args as { team: string; user: string };
+      return delJson<T>(`${base}/teams/${enc(team)}/members/${enc(user)}`);
+    }
+    case "user_list":
+      return getJson<T>(`${base}/admin/users`);
+    case "user_create": {
+      const { user, role } = args as { user: string; role?: string };
+      return postJson<T>(`${base}/admin/users`, { user, role });
+    }
+    case "user_disable": {
+      const { user } = args as { user: string };
+      return postJson<T>(`${base}/admin/users/${enc(user)}/disable`, {});
+    }
+    case "user_enable": {
+      const { user } = args as { user: string };
+      return postJson<T>(`${base}/admin/users/${enc(user)}/enable`, {});
+    }
+    case "user_delete": {
+      const { user } = args as { user: string };
+      return delJson<T>(`${base}/admin/users/${enc(user)}`);
+    }
+    case "teams_list":
+      return getJson<T>(`${base}/admin/teams`);
+    case "teams_create": {
+      const { team, name } = args as { team: string; name: string };
+      return postJson<T>(`${base}/admin/teams`, { team, name });
+    }
+    case "teams_rename": {
+      const { team, name } = args as { team: string; name: string };
+      return postJson<T>(`${base}/admin/teams/${enc(team)}/rename`, { name });
+    }
+    case "teams_delete": {
+      const { team } = args as { team: string };
+      return delJson<T>(`${base}/admin/teams/${enc(team)}`);
+    }
+    case "workspace_rename": {
+      const { ws, name } = args as { ws: string; name: string };
+      return postJson<T>(`${base}/admin/workspaces/${enc(ws)}/rename`, { name });
+    }
+    case "workspace_archive": {
+      const { ws } = args as { ws: string };
+      return postJson<T>(`${base}/admin/workspaces/${enc(ws)}/archive`, {});
+    }
+    case "workspace_purge": {
+      const { ws, confirm } = args as { ws: string; confirm: string };
+      return postJson<T>(`${base}/admin/workspaces/${enc(ws)}/purge`, { confirm });
+    }
+    case "grants_list": {
+      const { subject } = args as { subject: string };
+      return getJson<T>(`${base}/admin/grants?subject=${enc(subject)}`);
+    }
+    case "grants_assign": {
+      const { subject, cap } = args as { subject: string; cap: string };
+      return postJson<T>(`${base}/admin/grants`, { subject, cap });
+    }
+    case "grants_revoke": {
+      const { subject, cap } = args as { subject: string; cap: string };
+      return postJson<T>(`${base}/admin/grants/revoke`, { subject, cap });
+    }
+    case "roles_list":
+      return getJson<T>(`${base}/admin/roles`);
+
+    // ── extension lifecycle (lifecycle-management scope): the browser's `ext.*` surface, finally
+    //    reachable over the gateway (was Tauri-desktop-only → `unknown command` in the browser). ──
+    case "ext_list":
+      return getJson<T>(`${base}/extensions`);
+    case "ext_enable": {
+      const { ext } = args as { ext: string };
+      return postJson<T>(`${base}/extensions/${enc(ext)}/enable`, {});
+    }
+    case "ext_disable": {
+      const { ext } = args as { ext: string };
+      return postJson<T>(`${base}/extensions/${enc(ext)}/disable`, {});
+    }
+    case "ext_uninstall": {
+      const { ext } = args as { ext: string };
+      return delJson<T>(`${base}/extensions/${enc(ext)}`);
+    }
+    case "ext_publish": {
+      // Upload a signed extension artifact. The body is the `Artifact` verbatim (the same wire shape
+      // the host's `ext_publish` / the registry-host `POST /artifacts` accept); the gateway derives the
+      // workspace from the token and verify-before-stores. `204` ok / `422` verification failure.
+      const { artifact } = args as { artifact: unknown };
+      return postJson<T>(`${base}/extensions`, artifact as Record<string, unknown>);
+    }
+
     default:
       throw new Error(`unknown command: ${cmd}`);
   }
+}
+
+/** DELETE a route. Returns undefined for `204`, else the JSON body (e.g. the revoked/removed count). */
+async function delJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(await errorText(res));
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
 async function getJson<T>(url: string): Promise<T> {

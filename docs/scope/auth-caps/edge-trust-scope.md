@@ -211,5 +211,7 @@ choice).
   decision).
 - `scope/secrets/` — the CA signing key + node private keys.
 - `scope/node-roles/` — the CA / enrollment role (a stub today).
+- `scope/node-roles/node-connection-scope.md` — **consumes** this scope's node credential as the
+  **appliance API token** and wires it into the edge→hub connect (config + bus + sync).
 - README **§6.2** (Zenoh — the link mTLS rides), **§6.6** (identity/auth; offline verify), **§6.8** (sync),
   **§7** (tenancy / the workspace wall), **§13** (the token forever-decision).

@@ -23,6 +23,28 @@ fn member_caps() -> Vec<String> {
         "mcp:outbox.status:call",
         "mcp:workspace.list:call",
         "mcp:workspace.create:call",
+        // admin-crud: the dev principal is a workspace admin so the console can exercise every
+        // destructive verb. The gateway re-checks each on the server — the UI cap-gate is only a
+        // convenience (admin-console scope). `workspace.purge` is the higher hard-delete ceiling.
+        "mcp:workspace.delete:call",
+        "mcp:workspace.purge:call",
+        "mcp:user.manage:call",
+        "mcp:user.disable:call",
+        "mcp:teams.manage:call",
+        "mcp:teams.list:call",
+        "mcp:grants.assign:call",
+        "mcp:grants.list:call",
+        "mcp:roles.define:call",
+        "mcp:roles.list:call",
+        // admin-console slice 4: the extensions console lifecycle verbs, so the dev admin can list +
+        // enable/disable/uninstall extensions from the browser. The gateway re-checks each on the
+        // server; the UI cap-gate (showing the Extensions section) is convenience.
+        "mcp:ext.list:call",
+        "mcp:ext.disable:call",
+        "mcp:ext.uninstall:call",
+        // admin-console: publish (upload) a signed extension artifact over POST /extensions. The host
+        // verb verify-before-stores; the gateway re-checks this cap server-side.
+        "mcp:ext.publish:call",
     ]
     .iter()
     .map(|s| s.to_string())

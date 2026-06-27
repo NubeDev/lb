@@ -2718,6 +2718,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-authz"
+version = "0.1.0"
+dependencies = [
+ "lb-assets",
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "lb-bus"
 version = "0.1.0"
 dependencies = [
@@ -2751,6 +2763,7 @@ dependencies = [
  "ed25519-dalek",
  "lb-assets",
  "lb-auth",
+ "lb-authz",
  "lb-bus",
  "lb-caps",
  "lb-ext-loader",
@@ -2860,12 +2873,14 @@ name = "lb-role-gateway"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "ed25519-dalek",
  "futures",
  "http-body-util",
  "lb-auth",
  "lb-host",
  "lb-inbox",
  "lb-outbox",
+ "lb-registry",
  "reqwest",
  "serde",
  "serde_json",

@@ -36,6 +36,7 @@ mod tool;
 pub use authorize::authorize_native;
 pub use error::NativeServiceError;
 pub use install::{install_native, Supervised};
+pub(crate) use lifecycle::stop_sidecar_internal;
 pub use lifecycle::{restart_native, status_native, stop_native};
 pub use registry::SidecarMap;
 pub use spec::build_spec;

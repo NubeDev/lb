@@ -10,4 +10,8 @@ export interface Session {
   principal: string;
   /** The current workspace (from the token) — the hard wall every verb scopes to. */
   workspace: string;
+  /** The capabilities the token carries (gateway `LoginReply.caps`). The UI reads these to decide
+   *  which admin controls to *show* — a convenience only. The gateway re-checks every verb
+   *  server-side; the UI cap-gate is never the security boundary (admin-console scope). */
+  caps?: string[];
 }

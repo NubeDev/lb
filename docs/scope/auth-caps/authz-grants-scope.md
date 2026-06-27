@@ -187,6 +187,19 @@ Plus this slice's cases:
 
 ## Open questions
 
+> **Resolved & shipped (slice 1, 2026-06-27 — see `sessions/auth-caps/authz-grants-session.md`):**
+> - *Custom-role scope / no-widening:* per-workspace `role` table; a definer/assigner may grant only
+>   caps **they themselves hold** (`host/src/authz/hold.rs::holds_cap`, enforced at `roles.define` and
+>   at `grants.assign` of a plain cap). **Decided yes** to no-widening.
+> - *Where authz verbs live:* a dedicated host **`authz`** service over a new **`lb-authz`** crate (not
+>   tangled into `assets`).
+> - *Team-inherited caps — computed at mint or live:* **computed at mint** (`resolve_caps` is the
+>   cached projection); only Gate-3 membership/visibility stays live (S4, unchanged).
+> - *Resource-grant grammar:* **kept** S4 relations for docs/channels; `grants.assign` is for
+>   surface/tool caps. Role-assignment is modeled as a grant of the synthetic cap `role:<name>`.
+> Still open below: the TTL/revocation staleness window (owned by `edge-trust`), and built-in role
+> precedence (the seeding lands in slice 2 with the login projection).
+
 - **Token TTL + revocation strategy:** short-lived tokens (revocation-by-expiry) vs a revocation list /
   per-check freshness. Lean: short TTL + re-mint; align with `edge-trust`.
 - **Team-inherited caps — computed at mint or resolved live?** Lean: computed at mint (the token is the
@@ -206,6 +219,8 @@ Plus this slice's cases:
 - `scope/auth-caps/auth-caps-scope.md` — the three gates + token/grammar this feeds (closes its deferred
   "RBAC beyond three roles").
 - `scope/auth-caps/edge-trust-scope.md` — verifies the token this produces across the wire (sibling).
+- `scope/node-roles/node-connection-scope.md` — names an **appliance** as a grant target: a user/team
+  gets **restricted access to specific appliances** as an ordinary resource grant in this model.
 - `scope/files/files-scope.md` + `scope/skills/skills-scope.md` — the S4 membership/visibility model
   (`add_member`, `visibility`, grant-gated skills) this generalizes and gives an admin surface.
 - `scope/frontend/collaboration-scope.md` — the S9 session that *mints* the token from these grants, and

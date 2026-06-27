@@ -13,11 +13,17 @@
 //! the verb in its own workspace to read/extend the directory. One verb per file (FILE-LAYOUT §3).
 
 mod create;
+mod delete;
 mod error;
 mod list;
 mod model;
+mod rename;
+mod tool;
 
 pub use create::workspace_create;
+pub use delete::{workspace_delete, workspace_purge};
 pub use error::WorkspacesError;
 pub use list::workspace_list;
-pub use model::WorkspaceRecord;
+pub use model::{WorkspaceRecord, WorkspaceStatus};
+pub use rename::workspace_rename;
+pub use tool::call_workspaces_tool;

@@ -13,7 +13,9 @@
 mod add;
 mod error;
 mod list;
+mod remove;
 
 pub use add::add_member as add_team_member;
 pub use error::MembersError;
 pub use list::list_members;
+pub use remove::remove_member;

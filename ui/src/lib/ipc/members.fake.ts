@@ -26,6 +26,12 @@ export function membersFakeInvoke<T>(cmd: string, args?: Record<string, unknown>
       teams.set(ws(), byTeam);
       return undefined as T;
     }
+    case "members_remove": {
+      // Idempotent: removing an absent membership is a success (mirrors the host verb).
+      const { team, user } = args as { team: string; user: string };
+      teams.get(ws())?.get(team)?.delete(user);
+      return undefined as T;
+    }
     default:
       return null;
   }
@@ -34,4 +40,14 @@ export function membersFakeInvoke<T>(cmd: string, args?: Record<string, unknown>
 /** Test helper: clear the fake teams between tests. */
 export function __resetMembersFake(): void {
   teams.clear();
+}
+
+/** The members of `team` in `wsId` (for the admin fake's teams.delete cascade count). */
+export function __teamMembers(wsId: string, team: string): string[] {
+  return [...(teams.get(wsId)?.get(team) ?? new Set<string>())];
+}
+
+/** Drop every member edge of `team` in `wsId` (the teams.delete cascade, mirrored). */
+export function __removeAllMembers(wsId: string, team: string): void {
+  teams.get(wsId)?.get(team)?.clear();
 }

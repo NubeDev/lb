@@ -7,11 +7,15 @@
 //! It is a workspace asset like any other: namespace-scoped (README §7), addressed by the
 //! extension id, raw verbs the host loader reads. One verb per file (FILE-LAYOUT §3).
 
+mod delete;
+mod list;
 mod model;
 mod read;
 mod record;
 
-pub use model::Install;
+pub use delete::delete_install;
+pub use list::list_installs;
+pub use model::{Install, Tier};
 pub use read::read_install;
 pub use record::record_install;
 

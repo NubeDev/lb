@@ -34,6 +34,11 @@ pub struct LoginReply {
     pub token: String,
     pub principal: String,
     pub workspace: String,
+    /// The capabilities the token carries — surfaced so the UI can cap-gate which admin controls
+    /// it *shows*. This is a CONVENIENCE only: the gateway re-checks every verb server-side (the UI
+    /// gate is never the security boundary — admin-console scope). Hiding a control the caller lacks
+    /// avoids dead buttons; a forged call is still denied at the route.
+    pub caps: Vec<String>,
 }
 
 /// The dev session lifetime — long enough for a working session, short enough that a leaked token
@@ -52,7 +57,13 @@ pub async fn login(
             "user and workspace required".into(),
         ));
     }
+    // admin-crud: a disabled/deleted user record refuses to mint a session (disable bites login).
+    // An un-administered workspace (no user record) still mints — the dev-login auto-seeds.
+    lb_host::user_login_check(&gw.node.store, &req.workspace, &req.user)
+        .await
+        .map_err(|_| (StatusCode::FORBIDDEN, "user is disabled".into()))?;
     let claims = dev_claims(&req.user, &req.workspace, gw.now, SESSION_TTL_SECS);
+    let caps = claims.caps.clone();
     let token = mint(&gw.key, &claims);
 
     // Best-effort: make this workspace listable in the switcher. Never fails the login.
@@ -69,6 +80,7 @@ pub async fn login(
         token,
         principal: req.user,
         workspace: req.workspace,
+        caps,
     }))
 }
 

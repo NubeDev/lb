@@ -24,3 +24,19 @@ pub(crate) async fn get_artifact(
         .map(Json)
         .ok_or(StatusCode::NOT_FOUND)
 }
+
+/// `POST /artifacts` — the **publish** endpoint (lifecycle-management scope). Verify the uploaded
+/// artifact against the publisher allow-list **before** storing it (authenticity before authority):
+/// a tampered/unsigned/foreign-key upload is `403` and **nothing is stored**. `204` on success;
+/// idempotent on `(ext_id, version)`. This is the producer side the registry never had — install
+/// then proceeds through the existing verified pull, unchanged.
+pub(crate) async fn post_artifact(
+    State(store): State<ArtifactStore>,
+    Json(artifact): Json<Artifact>,
+) -> StatusCode {
+    match store.publish(artifact) {
+        Ok(()) => StatusCode::NO_CONTENT,
+        // Opaque: an unverified upload learns nothing about the allow-list (mirrors the read miss).
+        Err(_) => StatusCode::FORBIDDEN,
+    }
+}

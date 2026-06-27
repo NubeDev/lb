@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use lb_auth::SigningKey;
 use lb_host::Node;
+use lb_registry::TrustedKeys;
 
 /// The live node + the node's token-signing key, shared across handlers (`Arc` so axum can clone
 /// it into each request). The key never leaves the node — the UI only ever holds the *issued*
@@ -27,6 +28,12 @@ pub struct Gateway {
     /// The logical "now" (unix seconds) used for mint `iat`/`exp` and verify expiry. Injected so
     /// tests are deterministic (testing §3 — no wall-clock); `boot` seeds it from the real clock.
     pub now: u64,
+    /// The publisher allow-list the `POST /extensions` upload verifies an artifact against BEFORE
+    /// storing it (verify-before-store, lifecycle-management scope). Trust is environment, never the
+    /// upload body — an attacker cannot self-trust. S7-first: an empty dev fixture in production
+    /// (no publishers wired yet), seeded by tests; durable storage + rotation are deferred (registry
+    /// scope open questions). Held behind `Arc` so axum clones it cheaply per request.
+    pub trusted: Arc<TrustedKeys>,
 }
 
 impl Gateway {
@@ -50,6 +57,15 @@ impl Gateway {
             node,
             key: Arc::new(key),
             now,
+            trusted: Arc::new(TrustedKeys::new()),
         }
+    }
+
+    /// Seed the publisher allow-list the upload verifies against (the `POST /extensions` write path).
+    /// Tests use this to install a known dev publisher; production leaves it empty until real
+    /// publishers are wired. Returns `self` for builder-style construction.
+    pub fn with_trusted(mut self, trusted: TrustedKeys) -> Self {
+        self.trusted = Arc::new(trusted);
+        self
     }
 }

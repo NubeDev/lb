@@ -39,11 +39,14 @@ joins*, and *exit gate* spelled out for each stage.
 | **S7** | Platform maturity: registry, native Tier-2, optional SpiceAI | both | yes | 7, 8, 9 |
 | **S8** | Data plane: durable on-disk store + generic ingest + tagging | both | yes | 6.1 |
 | **S9** | Real collaboration UI: identity, workspaces, channels, messaging, inbox/outbox | both | **yes** | 6.13 |
+| **S10** | Cross-cutting retrofit: observability, audit ledger, undo/redo | both | yes | 6.17–6.19 |
 
 > **S0–S7 are MET** (see `STATUS.md`). **S8** is the active stage (the persistent store + ingest + tags
 > slices); **S9** finishes the UI from an S2 demo into a real multi-user app. These two are independent
 > tracks — S8 deepens the platform (data), S9 finishes the existing surfaces (collaboration) — so they
-> can proceed in either order; numbered by when they were scoped, not a hard dependency.
+> can proceed in either order; numbered by when they were scoped, not a hard dependency. **S10** is the
+> **cross-cutting retrofit** of three concerns that should have ridden the chokepoint from S1 but were
+> missed (observability, audit, undo); scoped 2026-06-27, not yet built.
 
 ---
 
@@ -177,6 +180,36 @@ principals in two workspaces — one cannot see the other's channels/inbox/membe
 demonstrable end-to-end); messaging between people works live with presence; the real inbox's approval
 gate is a UI action; an expired/forged token is rejected. Capability-deny over real routes +
 two-session isolation + offline-replay pass.
+
+## S10 — Cross-cutting retrofit: observability, audit, undo
+
+Three concerns that should have ridden the host chokepoint since S1 but were **missed**: there is no
+correlated operational telemetry, no durable record of capability decisions, and no platform
+reversibility. All three are **projections of the one event the host already mediates** (§6.5 dispatch
++ §6.6 cap check), so they are scoped together and share the existing `write_tx` seam — not three
+bolt-ons (`scope/observability/`, `scope/audit/`, `scope/undo/`).
+
+- **Observability** (README §6.17) — `tracing`-based spans/logs/metrics on every node, with a
+  `trace_id` that **propagates across the routed Zenoh hop** and into jobs/outbox; secret-safe by
+  construction; export to an external collector (the platform emits, it is not the dashboard).
+- **Audit** (§6.18) — an immutable, hash-chained, workspace-walled ledger of **every allow and deny**,
+  appended at the chokepoint (so it is complete by construction) and as durable as the action it
+  records (same-`write_tx`). Generalizes §6.14's model-call audit.
+- **Undo** (§6.19) — a before-image reversible-command journal whose hard line is **reverse state,
+  compensate motion**: the host *derives* irreversibility from reaching the outbox, so undo can't
+  diverge from the world. Single-actor, sync-safe-by-refusal; collaborative/OT undo stays a CRDT
+  extension concern.
+
+**Node posture:** both (symmetric emission/append/journal; sink and aggregation are config). **Build
+order:** observability first (foundational + cheapest, makes the rest debuggable), then audit
+(security-critical, reuses the same capture + `write_tx`), then undo (the most feature-shaped, depends
+on the before-image at `write_tx`). Each can ship as its own vertical slice.
+
+**Exit gate:** a single cross-node tool call produces **one** trace spanning the edge→hub hop with no
+secret in any span/log/metric; **both** an allow and a deny append a tamper-evident audit entry that
+`audit.verify` confirms (and a direct edit is detected); a reversible state mutation undoes/redoes
+correctly while an **irreversible** (outbox-effect) action is **refused** by undo and offers its
+declared compensation. Capability-deny + two-workspace-isolation + offline/sync pass for all three.
 
 ---
 

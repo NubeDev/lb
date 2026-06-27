@@ -11,9 +11,11 @@ use lb_mcp::authorize_tool;
 use lb_store::{list as store_list, Store};
 
 use super::error::WorkspacesError;
-use super::model::{WorkspaceRecord, KIND, TABLE, WORKSPACES_NS};
+use super::model::{WorkspaceRecord, WorkspaceStatus, KIND, TABLE, WORKSPACES_NS};
 
-/// Return every workspace in the node directory for `principal`, oldest→newest by `ts`.
+/// Return every **active** workspace in the node directory for `principal`, oldest→newest by `ts`.
+/// Archived (soft-deleted) workspaces are hidden from this default view (admin-crud scope) — the
+/// `kind`-equality filter already excludes purged tombstones (`kind` ≠ `workspace`).
 pub async fn workspace_list(
     store: &Store,
     principal: &Principal,
@@ -28,6 +30,7 @@ pub async fn workspace_list(
                 .map_err(|e| lb_store::StoreError::Decode(e.to_string()).into())
         })
         .collect::<Result<_, WorkspacesError>>()?;
+    records.retain(|r| r.status == WorkspaceStatus::Active);
     records.sort_by_key(|r| r.ts);
     Ok(records)
 }

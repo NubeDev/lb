@@ -102,7 +102,8 @@ Address each that applies (delete the rest) — see the checklist in SCOPE-WRITT
 - **Tenancy / isolation:** how workspace-first isolation holds.
 - **Capabilities:** what grants gate this; the deny path.
 - **Placement:** local-only | cloud-only | either, and why.
-- **MCP surface:** tools exposed/consumed.
+- **MCP surface:** tools exposed/consumed — the **API shape** (§6.1): which of CRUD /
+  get-list / live-feed (SSE/watch) / batch apply, and long batches as **jobs**.
 - **Data (SurrealDB):** records/tables/buckets touched; state vs motion.
 - **Bus (Zenoh):** subjects, message class (fire-and-forget | must-deliver | replay).
 - **Sync / authority:** node-local vs cloud-authoritative; offline behavior.
@@ -140,11 +141,45 @@ A scope for *this* platform isn't done until it has considered the principles in
 - [ ] **State vs motion** — SurrealDB for state, Zenoh for messages; not mixed.
 - [ ] **Stateless extensions** — no durable state in an instance (hot-reload safe).
 - [ ] **MCP is the contract** — capabilities exposed as MCP tools.
+- [ ] **API shape** — the right verbs for *this* feature (see §6.1): CRUD + get, a live
+  feed (SSE/watch), and/or batch — with batch backed by a **job** when it can run long.
 - [ ] **Durability** — must-deliver effects go through the outbox, not raw pub/sub.
 - [ ] **One responsibility per file** — the implementation plan respects FILE-LAYOUT.
 - [ ] **SDK/WIT impact** — does this touch the stable plugin boundary? Flag it loudly.
 
 If a scope violates a principle, that's a finding to surface — not something to paper over.
+
+### 6.1 API shape — use judgment, don't default to one verb
+
+Most features expose an API. Decide *which shapes it actually needs* — don't reflexively
+ship a single `get`, and don't ship CRUD you have no caller for. Walk the four, name the
+ones that apply in the scope's **MCP surface** section, and say why the rest are N/A:
+
+- **CRUD (create / update / delete)** — the write verbs. Include only the mutations a
+  caller really makes; a read-only roster (e.g. fleet presence) has *no* write verbs and
+  should say so. Each write is its own MCP tool + capability (`...:create`, `...:update`,
+  `...:delete`), one responsibility per file (FILE-LAYOUT).
+- **Get / list** — the read verbs. Single-`get` by id and a `list` (with filter/paging)
+  are usually distinct tools. State the workspace-scoped query and the read capability.
+- **Live feed (SSE / watch)** — when a caller needs *changes*, not a snapshot. Prefer the
+  bus (Zenoh sub / liveliness) for motion and surface it as a `watch` tool + the gateway's
+  SSE route (§6.13); don't poll `list` on a timer. State vs motion (§3 rule 3) decides
+  whether something is a record read or a stream.
+- **Batch** — one call acting on many items (bulk create/update/delete, an import/export,
+  a re-index). Decide the **partial-failure** contract (all-or-nothing vs. per-item
+  results) up front.
+  - **A batch that can run long MUST be a job, not a blocking call.** Enqueue a durable
+    job (README §6.10, `jobs/jobs-scope.md`); the API returns a **job id**, and the caller
+    watches progress via the job's status/feed. This keeps the request fast, survives a
+    node restart mid-batch, and gives retries/backoff for free. A blocking loop over N
+    items in a tool handler is a smell — it ties up the call, has no resume, and silently
+    breaks past some N.
+  - Small, bounded, always-fast batches (a handful of items, no I/O fan-out) may stay
+    synchronous — but say so explicitly, with the bound.
+
+If a write verb has a must-deliver side effect (it has to reach another node/service), it
+goes through the **outbox** (§3 rule "Durability"), not raw pub/sub — the batch-job and
+the outbox compose: the job does the work, the outbox delivers the effects.
 
 ---
 

@@ -7,10 +7,10 @@
 
 use lb_auth::Principal;
 use lb_mcp::authorize_tool;
-use lb_store::{write, Store};
+use lb_store::{read, write, Store};
 
 use super::error::WorkspacesError;
-use super::model::{WorkspaceRecord, TABLE, WORKSPACES_NS};
+use super::model::{WorkspaceRecord, TABLE, TOMBSTONE, WORKSPACES_NS};
 
 /// Register workspace `ws` with display `name` in the directory, as `principal`. Returns the record.
 pub async fn workspace_create(
@@ -22,6 +22,13 @@ pub async fn workspace_create(
 ) -> Result<WorkspaceRecord, WorkspacesError> {
     authorize_tool(principal, principal.ws(), "workspace.create")
         .map_err(|_| WorkspacesError::Denied)?;
+    // A purged (tombstoned) workspace must never resurrect via a re-create (admin-crud: tombstone
+    // wins over a stale edge or a re-issue). Return the would-be record without overwriting.
+    if let Some(existing) = read(store, WORKSPACES_NS, TABLE, ws).await? {
+        if existing.get("kind").and_then(|k| k.as_str()) == Some(TOMBSTONE) {
+            return Ok(WorkspaceRecord::new(ws, name, ts));
+        }
+    }
     let record = WorkspaceRecord::new(ws, name, ts);
     let value =
         serde_json::to_value(&record).map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;

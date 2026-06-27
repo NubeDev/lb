@@ -11,6 +11,7 @@ resolver = "2"
 members = [
     "crates/assets",
     "crates/auth",
+    "crates/authz",
     "crates/bus",
     "crates/caps",
     "crates/ext-loader",
@@ -51,6 +52,7 @@ rust-version = "1.90"
 # core platform crates (path deps; the §9 crate map)
 lb-assets = { path = "crates/assets" }
 lb-auth = { path = "crates/auth" }
+lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
 lb-ext-loader = { path = "crates/ext-loader" }

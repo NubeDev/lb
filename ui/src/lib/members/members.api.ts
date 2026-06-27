@@ -13,3 +13,10 @@ export function listMembers(team: string): Promise<string[]> {
 export function addMember(team: string, user: string): Promise<void> {
   return invoke<void>("members_add", { team, user });
 }
+
+/** Remove `user` from `team` (idempotent). Mirrors `members_remove` / the gateway
+ *  `DELETE /teams/{team}/members/{user}` (admin-crud scope). The destructive verb the collaboration
+ *  `MembersView` lacked; the admin console routes it through `ConfirmDestructive`. */
+export function removeMember(team: string, user: string): Promise<void> {
+  return invoke<void>("members_remove", { team, user });
+}

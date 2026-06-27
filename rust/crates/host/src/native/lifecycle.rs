@@ -26,13 +26,28 @@ pub async fn stop_native(
     ts: u64,
 ) -> Result<(), NativeServiceError> {
     authorize_native(caller, ws, "stop")?;
+    // The OPERATOR stop requires a live child — a missing sidecar is `NotRunning` (the contract the
+    // native-tier isolation/lifecycle tests rely on). The host-internal cascade uses the idempotent
+    // variant below.
+    if !node.sidecars.is_running(ws, ext_id) {
+        return Err(NativeServiceError::NotRunning);
+    }
+    stop_sidecar_internal(node, ws, ext_id, ts).await
+}
 
-    let handle = node
-        .sidecars
-        .remove(ws, ext_id)
-        .ok_or(NativeServiceError::NotRunning)?;
-    handle.lock().await.shutdown().await;
-
+/// Stop the live native sidecar `ext_id` in `ws` and record `Stopped` — WITHOUT a capability gate
+/// and **idempotently** (a missing sidecar is a no-op success). For host-internal cascades
+/// (`ext.disable`/`ext.uninstall`) where the caller was already authorized by the ext gate and a
+/// not-running extension must not error; reuses the one shutdown+status path.
+pub(crate) async fn stop_sidecar_internal(
+    node: &Node,
+    ws: &str,
+    ext_id: &str,
+    ts: u64,
+) -> Result<(), NativeServiceError> {
+    if let Some(handle) = node.sidecars.remove(ws, ext_id) {
+        handle.lock().await.shutdown().await;
+    }
     if let Some(mut status) = read_status(&node.store, ws, ext_id).await? {
         status.lifecycle = Lifecycle::Stopped;
         status.ts = ts;

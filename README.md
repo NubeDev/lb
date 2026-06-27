@@ -78,6 +78,18 @@ There is one node. A node plays one or more roles, chosen by config:
 
 The same binary covers all three; configuration selects the role(s). See §8 for the precise shared-vs-different split.
 
+**Deployment personas (naming, not new roles).** A *role* is the architectural axis above (`edge` / `hub` / `solo`); a **persona** is a named, well-known *deployment* of a role — the labels used for docs, compose files, and end-to-end test fixtures. Personas never add a code branch (§3, rule 1); two personas of the same role differ only by config. The canonical four:
+
+| Persona | Role | UI | Notes |
+|---|---|---|---|
+| **`hub`** | hub | **serves the full app to browsers** (SSE/HTTP) + first-run bootstrap | Zenoh router, many workspaces, shared-data authority, AI gateway, registry. Multi-user: clients log in and the hub serves them dashboards/extensions scoped to their workspace + capabilities. |
+| **`appliance`** | edge | none | Full vertical stack (embedded SurrealDB + Zenoh peer) on a headless device (Raspberry-Pi class). Offline-capable; connects up to a `hub`. |
+| **`workstation`** | edge | Tauri (§6.12), talks to **local** host | The same stack as `appliance` plus the local desktop UI. Single user, local data, offline-capable. |
+| **`browser`** | *client, not a node* | the app in a browser, served by a `hub` | No local store; logs in to a `hub` over SSE/HTTP and sees only what its token's workspace + capabilities grant. The standard multi-user surface (e.g. an IoT dashboard). |
+| **`mobile`** | *client, not a node* | Flutter (§6.12), served by a `hub` | Same thin-client pattern as `browser`, on a phone/tablet. Depends on a hub being online. |
+
+So `appliance` and `workstation` are the two full **edge nodes** (what was loosely called "edge") — same edge role, differing only by whether the UI mounts. The **`hub`** is the server *and* a UI host: it runs the **same** React/TS app the `workstation` runs, but **served to `browser`/`mobile` clients** over SSE/HTTP instead of bundled in Tauri — same app, same MCP tools, same capability + workspace wall; the difference is delivery (Tauri-local vs. browser-remote) and where the data lives (the user's own node vs. the hub). `browser` and `mobile` are thin **clients** that ride the hub, not nodes. A standard end-to-end fixture is **two edge nodes + one `hub`, with `browser`/`mobile` clients logging in** — the symmetric-node story with no role-specific code. (We avoid "node" and "station" as persona names: "node" is the role-neutral word for *any* running binary, and "station" collides with established building-automation tooling.)
+
 ---
 
 ## 6. Core stack components
@@ -227,6 +239,50 @@ Example coding workflow:
 5. On approval, the workflow starts a remote coding session as a durable job.
 6. The coding agent calls models through the shared AI gateway, uses granted MCP tools and skills, streams progress to a channel, and writes durable external actions through outbox.
 7. Results are saved back as docs, messages, files, GitHub updates, or follow-up inbox items.
+
+### 6.17 Observability (logs, traces, metrics)
+
+Every node **emits** structured operational signal via the Rust `tracing` ecosystem, exported in
+OpenTelemetry shape. The host wraps every mediated tool call (§6.5) in a span carrying `ws`, `actor`,
+`tool`, and a `trace_id`; store transactions, bus routes, job steps, and outbox deliveries are child
+spans. The `trace_id` is minted at each ingress and **propagated across the routed Zenoh hop** and
+into jobs/outbox effects, so one id ties an edge click → hub tool → job → external effect. Metrics
+cover tool latency/outcome, the capability-deny rate, sync lag, and outbox retries. Secret material is
+never emitted (a `Secret<T>` redaction type + a params-digest discipline). Sink is config (file on
+edge, OTLP to a collector on the hub); collection and dashboards are **external** — the platform's job
+is to emit cleanly, not to be the observability store. This is operational signal: sampled and
+droppable, **not** the audit log (§6.18). See `docs/scope/observability/`.
+
+### 6.18 Audit ledger
+
+The durable, **immutable** record of who did what. At the same dispatch chokepoint that makes the
+capability decision (§6.6), the host appends one `AuditEntry` per mediated action — **allow and deny**
+— so the record is complete by construction (a guest cannot act un-audited). The ledger is append-only
+(no caller write/update/delete verb) and **tamper-evident** via a per-(workspace, node) hash chain;
+it records references and digests, never secrets or raw payloads (§6.7). It is as durable as the
+action: a mutating allow's entry rides the **same transaction** as its change; a deny is a standalone
+chained append. Workspace-walled, plus a reserved system ledger for cross-tenant super-admin actions.
+Read-only MCP surface (`audit.query` / `audit.get` / `audit.verify`, gated; reads are themselves
+audited). This **generalizes** the AI gateway's per-model-call audit (§6.14) into one ledger. See
+`docs/scope/audit/`.
+
+### 6.19 Undo / reversible commands
+
+Platform-level reversibility for state mutations. The host journals a record **before-image** at the
+store-write transaction seam, so a change and its undo data commit atomically; undo restores it as a
+normal, audited, sync-safe forward write. The load-bearing line: **undo reverses reversible *state*
+mutations; irreversible *motion* (outbox-delivered effects, §6.10) is never undone — it is
+*compensated*** by a declared compensating action. The host *derives* a tool's reversibility class
+(reaching the outbox ⇒ irreversible; the max over a mixed action's parts), so undo can never silently
+diverge from the outside world. Per-(workspace, actor) bounded undo/redo stacks (opt-in per-surface
+for editor-style extensions); workspace-walled, capability-gated (no escalation via undo), and made
+sync-safe by an optimistic version check that **refuses** a stale undo rather than clobbering a
+concurrent write. Real-time collaborative/OT undo stays a per-extension CRDT concern (§6.8). See
+`docs/scope/undo/`.
+
+> §6.17–6.19 are **three projections of one chokepoint** (§6.5 dispatch + §6.6 cap check): operational
+> signal, the security record, and reversibility. They share the capture point, not a store — different
+> retention, immutability, and visibility — and none owns the others.
 
 ---
 

@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 lb-assets.workspace = true
 lb-auth.workspace = true
+lb-authz.workspace = true
 lb-caps.workspace = true
 lb-store.workspace = true
 lb-bus.workspace = true

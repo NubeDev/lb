@@ -80,3 +80,20 @@ pub async fn json_body<T: serde::de::DeserializeOwned>(resp: axum::response::Res
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
 }
+
+pub fn delete_req(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap()
+}
+
+/// A `POST` with no body (the disable/enable/archive verbs take none).
+pub fn post_empty(uri: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .body(Body::empty())
+        .unwrap()
+}

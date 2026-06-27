@@ -10,9 +10,11 @@
 
 mod agent;
 mod assets;
+mod authz;
 mod boot;
 mod channel;
 mod channel_registry;
+mod ext;
 mod inbox;
 mod ingest;
 mod install;
@@ -28,6 +30,8 @@ mod role;
 mod serve;
 mod sync;
 mod tags;
+mod teams;
+mod users;
 mod workflow;
 mod workspaces;
 
@@ -40,12 +44,21 @@ pub use assets::{
     add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc,
     put_skill, revoke_skill, share_doc, AssetError,
 };
+pub use authz::{
+    call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps, revoke_subject,
+    roles_define, roles_list, teams_create, teams_list, AuthzError, AuthzRole, Grant, Subject,
+    Team,
+};
 pub use boot::{Node, NodeError};
 pub use channel::{
     history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
     PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
+pub use ext::{
+    call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, reconcile,
+    ExtError, ExtRow, ReconcileAction, ReconcilePlan,
+};
 pub use inbox::{list_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_find,
@@ -55,7 +68,7 @@ pub use ingest::{
 pub use install::install_extension;
 pub use installed::installed;
 pub use load::{load_extension, LoadError, Loaded};
-pub use members::{add_team_member, list_members, MembersError};
+pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
@@ -76,6 +89,11 @@ pub use tags::{
     authorize_tags, call_tags_tool, tags_add, tags_find, tags_of, tags_remove, Applied, Facet,
     Provenance, Source as TagSource, Tag, TagsError,
 };
+pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
+pub use users::{
+    call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
+    user_login_check, UserView, UsersError,
+};
 pub use workflow::{
     call_workflow_tool, emit_effect, enabled_workspaces, ingest_issue, ingest_via_bridge, pr_spec,
     react_to_approvals, reactor_job_id, record_pr_spec, relay_outbox, request_approval,
@@ -83,7 +101,10 @@ pub use workflow::{
     RelayPass, Target, Triaged, WorkflowError, WorkspaceEntry, APPROVAL_CHANNEL, DIRECTORY_NS,
     TRIAGE_CHANNEL,
 };
-pub use workspaces::{workspace_create, workspace_list, WorkspaceRecord, WorkspacesError};
+pub use workspaces::{
+    call_workspaces_tool, workspace_create, workspace_delete, workspace_list, workspace_purge,
+    workspace_rename, WorkspaceRecord, WorkspaceStatus, WorkspacesError,
+};
 // The workflow **directory** register/deregister verbs — prefixed at the crate boundary so the public
 // API names the concept (a bare `register` would be ambiguous next to `register_remote_extension`).
 pub use workflow::{deregister as deregister_workspace, register as register_workspace};

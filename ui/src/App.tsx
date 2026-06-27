@@ -5,7 +5,7 @@
 
 import { useState } from "react";
 
-import { useSession } from "@/lib/session";
+import { useSession, CAP, hasCap, isAdmin } from "@/lib/session";
 import { LoginView } from "./features/session";
 import { NavRail, type Surface } from "./features/shell";
 import { WorkspaceSwitcher } from "./features/workspace";
@@ -13,6 +13,8 @@ import { ChannelList, ChannelView } from "./features/channel";
 import { MembersView } from "./features/members";
 import { InboxView } from "./features/inbox";
 import { OutboxView } from "./features/outbox";
+import { AdminView } from "./features/admin";
+import { ExtensionsView } from "./features/extensions";
 
 export function App() {
   const { session, signIn, signOut } = useSession();
@@ -23,15 +25,23 @@ export function App() {
     return <LoginView onSignIn={signIn} />;
   }
 
-  const { workspace, principal } = session;
+  const { workspace, principal, caps } = session;
   // Switching workspace is a re-login (the workspace is the token's hard wall §7), keeping identity.
   const switchWorkspace = (ws: string) => void signIn(principal, ws);
 
+  // Cap-gate the admin surfaces' VISIBILITY (admin-console scope). This is convenience only — the
+  // gateway re-checks every verb server-side, so a forged call by a non-admin is denied regardless
+  // (proven in role/gateway/tests/admin_routes_test.rs). Hiding the controls just avoids dead buttons.
+  const allowed: Surface[] = ["channels", "members", "inbox", "outbox"];
+  if (isAdmin(caps)) allowed.push("admin");
+  if (hasCap(caps, CAP.extList)) allowed.push("extensions");
+  const active = allowed.includes(surface) ? surface : "channels";
+
   return (
     <div className="flex h-full">
-      <NavRail active={surface} onSelect={setSurface} onSignOut={signOut} />
+      <NavRail active={active} onSelect={setSurface} onSignOut={signOut} allowed={allowed} />
 
-      {surface === "channels" && (
+      {active === "channels" && (
         <aside className="flex w-56 flex-col border-r border-border bg-panel">
           <WorkspaceSwitcher current={workspace} onSwitch={switchWorkspace} />
           <ChannelList ws={workspace} selected={channel} onSelect={setChannel} />
@@ -39,12 +49,14 @@ export function App() {
       )}
 
       <main className="flex-1">
-        {surface === "channels" && (
+        {active === "channels" && (
           <ChannelView ws={workspace} channel={channel} author={principal} />
         )}
-        {surface === "members" && <MembersView ws={workspace} />}
-        {surface === "inbox" && <InboxView ws={workspace} />}
-        {surface === "outbox" && <OutboxView ws={workspace} />}
+        {active === "members" && <MembersView ws={workspace} />}
+        {active === "inbox" && <InboxView ws={workspace} />}
+        {active === "outbox" && <OutboxView ws={workspace} />}
+        {active === "admin" && <AdminView ws={workspace} caps={caps} />}
+        {active === "extensions" && <ExtensionsView ws={workspace} />}
       </main>
     </div>
   );

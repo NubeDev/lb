@@ -18,6 +18,8 @@ import { channelRegistryFakeInvoke, registerOnPost } from "./channelRegistry.fak
 import { membersFakeInvoke } from "./members.fake";
 import { inboxFakeInvoke } from "./inbox.fake";
 import { outboxFakeInvoke } from "./outbox.fake";
+import { adminFakeInvoke } from "./admin.fake";
+import { extFakeInvoke } from "./ext.fake";
 
 const store = new Map<string, Item[]>(); // key: `${ws}/${channel}`
 
@@ -49,6 +51,10 @@ export function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   if (channelReg !== null) return Promise.resolve(channelReg);
   const members = membersFakeInvoke<T>(cmd, args);
   if (members !== null) return Promise.resolve(members);
+  const admin = adminFakeInvoke<T>(cmd, args);
+  if (admin !== null) return Promise.resolve(admin);
+  const ext = extFakeInvoke<T>(cmd, args);
+  if (ext !== null) return Promise.resolve(ext);
   const inbox = inboxFakeInvoke<T>(cmd, args);
   if (inbox !== null) return Promise.resolve(inbox);
   const outbox = outboxFakeInvoke<T>(cmd);
