@@ -5,8 +5,6 @@
 import { useEffect, useState } from "react";
 
 import { listExtensions, type ExtRow, type ExtUi } from "@/lib/ext/ext.api";
-import { gatewayUrl } from "@/lib/ipc/http";
-import { seedDevExtensions } from "@/lib/ipc/ext.fake";
 
 /** One extension page available in the sidebar. */
 export interface ExtPage {
@@ -20,10 +18,8 @@ export function useExtensionPages(ws: string): ExtPage[] {
 
   useEffect(() => {
     let live = true;
-    // No-backend dev build: ensure the reference extensions (incl. the UI one) exist so the slot shows
-    // out of the box, exactly as the Extensions console does. The gateway path ignores this.
     if (!ws) return;
-    if (gatewayUrl() === "" && import.meta.env.MODE !== "test") seedDevExtensions();
+    // Reads the real node's installed extensions; no demo seed (the fake is gone).
     listExtensions()
       .then((rows: ExtRow[]) => {
         if (!live) return;

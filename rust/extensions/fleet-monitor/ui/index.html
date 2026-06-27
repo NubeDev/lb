@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fleet Monitor — dev</title>
+  </head>
+  <body>
+    <!-- Dev-only harness. In production the shell loads `assets/remoteEntry.js` and calls `mount`.
+         This page lets `pnpm dev` render the remote standalone. -->
+    <div id="root"></div>
+    <script type="module" src="/src/dev.tsx"></script>
+  </body>
+</html>

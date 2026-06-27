@@ -13,9 +13,6 @@ import {
   type Artifact,
   type ExtRow,
 } from "@/lib/ext/ext.api";
-import { gatewayUrl } from "@/lib/ipc/http";
-import { seedDevExtensions } from "@/lib/ipc/ext.fake";
-
 export interface ExtensionsState {
   rows: ExtRow[];
   error: string | null;
@@ -31,11 +28,8 @@ export function useExtensions(): ExtensionsState {
 
   const refresh = useCallback(async () => {
     try {
-      // DEV-only: in the no-gateway browser/demo build, seed the reference extensions so the console
-      // isn't empty. The gateway path (real node) ignores this — `seedDevExtensions` only touches the
-      // in-memory fake, and the gateway transport never calls the fake. Skipped under test (where the
-      // suites seed explicit fixtures and assert the empty state).
-      if (gatewayUrl() === "" && import.meta.env.MODE !== "test") seedDevExtensions();
+      // Always reads the real node — an empty list means the workspace has no extensions installed
+      // (honest), never a fabricated demo set (the fake seed is gone).
       setRows(await listExtensions());
       setError(null);
     } catch (e) {

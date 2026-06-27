@@ -224,9 +224,16 @@ the read-only series scope it may bind) for this case.
 
 ## Open questions
 
-- **Federation tooling** — native Vite module federation vs. a hand-rolled dynamic-`import()` of an ESM
-  remote vs. webpack Module Federation. Lean: dynamic `import()` of a published ESM remote (least build
-  magic, works with Vite), with a `mount(el, bridge, tokens)` contract.
+- **Federation tooling** — **RESOLVED → real Vite Module Federation** (`@originjs/vite-plugin-federation`).
+  Shipped (2026-06-27, `fleet-monitor`, see `sessions/extensions/fleet-monitor-federation-session.md`):
+  the shell is the federation **host** sharing `react`/`react-dom` as singletons; an extension ships a
+  `remoteEntry.js` container exposing `./mount` and the shell loads it in-process via the federation
+  runtime (`features/ext-host/federation.ts`). This *upgrades* the earlier lean ("dynamic `import()` of
+  a published ESM remote"): a raw `import()` bundles a second React copy → hook-dispatcher mismatch, not
+  native. The `mount(el, ctx, bridge)` contract is unchanged; only the loader is now true MF.
+  **Native extensions also ship pages** — the install path now projects `[ui]`/`[[widget]]` onto the
+  `Install` for BOTH tiers (`crates/host/src/ui_decl.rs`), so a native extension's page surfaces in
+  `ext.list` (it did not before — the load-bearing fix this slice).
 - **The bridge protocol shape** — a thin `{id, tool, args}` request/`{id, ok|err, result}` reply over
   `postMessage`, vs. a richer typed channel (Comlink-style). Lean: the thin explicit protocol (auditable;
   every field is reviewable) — this is a trust boundary, not ergonomics.

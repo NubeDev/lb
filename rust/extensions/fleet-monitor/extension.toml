@@ -1,0 +1,59 @@
+# `fleet-monitor` — a SINGLE self-contained extension: backend + frontend in ONE folder.
+#   • BACKEND  → this native Tier-2 sidecar (`src/`), supervised over stdio, its own PID.
+#   • FRONTEND → the module-federated shadcn page + two widgets co-located under `ui/`.
+# An extension is one thing; its backend and frontend are each optional parts of it. This one ships
+# both. The `[ui]` block contributes a sidebar PAGE (3 nested routes); the two `[[widget]]` tables
+# contribute two dashboard PALETTE tiles. All three reach data ONLY through the host-mediated bridge.
+[extension]
+id          = "fleet-monitor"
+version     = "0.1.0"
+name        = "Fleet Monitor"
+description = "A native sidecar + a federated shadcn page (3 nested routes) and two dashboard widgets — the self-contained reference extension."
+
+[runtime]
+tier        = "native"                          # Tier 2: an OS child with its own PID (§6.3)
+world       = "lazybones:ext/extension@0.1.0"   # WIT major still checked at load (ABI gate)
+placement   = "either"
+
+# The native supervision recipe the host turns into an `lb_supervisor::Spec`.
+[native]
+exec        = "fleet-monitor"                   # resolved by the host against the install/target dir
+args        = []
+restart     = "on-crash"
+
+[capabilities]
+# The page/widgets reach data only through these read-only series verbs (host re-checks each per call).
+# Requested here; intersected with admin approval at install. The effective UI scope = the granted
+# subset. The sidecar's own `fleet.summary` tool needs no host-side cap (the grant lives on the caller).
+request = ["mcp:series.find:call", "mcp:series.latest:call", "mcp:series.read:call"]
+
+# The native tool the sidecar serves (proves the backend half is a real, reachable MCP tool).
+[[tools]]
+name        = "fleet.summary"
+description = "A workspace-tagged fleet snapshot, served by the supervised native child."
+
+# The full PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the
+# module-federation remote entry, resolved under the gateway's `/extensions/fleet-monitor/ui/` route.
+# The shell loads it as a federated remote (shared React) and mounts it in a cap-gated nav slot.
+[ui]
+entry = "assets/remoteEntry.js"
+label = "Fleet Monitor"
+icon  = "radar"
+scope = ["series.find", "series.latest", "series.read"]
+
+# Two dashboard widget tiles (dashboard-widgets scope) — they appear in the palette / `ext.list`.
+# Read-only series scope, each a subset of the four series read verbs. Placeholders this slice.
+[[widget]]
+entry = "assets/remoteEntry.js"
+label = "Fleet Status"
+icon  = "activity"
+scope = ["series.latest"]
+
+[[widget]]
+entry = "assets/remoteEntry.js"
+label = "Fleet Sparkline"
+icon  = "trending-up"
+scope = ["series.read"]
+
+[visibility]
+class = "public"

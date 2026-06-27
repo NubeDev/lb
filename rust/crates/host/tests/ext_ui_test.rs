@@ -40,10 +40,15 @@ label = "Hello UI"
 icon = "puzzle"
 scope = ["series.find", "series.latest"]
 
-[widget]
+[[widget]]
 entry = "widget.mjs"
 label = "Latest"
 scope = ["series.latest"]
+
+[[widget]]
+entry = "spark.mjs"
+label = "Spark"
+scope = ["series.find"]
 
 [visibility]
 class = "public"
@@ -85,9 +90,14 @@ async fn install_persists_ui_and_widget_then_ext_list_surfaces_them() {
         vec!["series.find".to_string(), "series.latest".to_string()]
     );
 
-    let widget = row.widget.as_ref().expect("widget contribution surfaced");
-    assert_eq!(widget.entry, "widget.mjs");
-    assert_eq!(widget.scope, vec!["series.latest".to_string()]);
+    // Both `[[widget]]` tiles surface, in declaration order, each scope-narrowed to the grant.
+    assert_eq!(row.widgets.len(), 2, "both widget tiles surfaced");
+    assert_eq!(row.widgets[0].entry, "widget.mjs");
+    assert_eq!(row.widgets[0].label, "Latest");
+    assert_eq!(row.widgets[0].scope, vec!["series.latest".to_string()]);
+    assert_eq!(row.widgets[1].entry, "spark.mjs");
+    assert_eq!(row.widgets[1].label, "Spark");
+    assert_eq!(row.widgets[1].scope, vec!["series.find".to_string()]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

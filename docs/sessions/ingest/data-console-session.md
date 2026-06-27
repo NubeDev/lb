@@ -137,8 +137,16 @@ Promoted to `public/frontend/data-console.md`. Scope open questions resolved in 
 - Live "watch this table/series" updates — ride the existing bus/SSE path (the dashboard's motion job), not a poll.
 - Member "read-your-own" curated browser (gate-3-enforced) — deferred; start admin-only raw.
 - `store.graph` richer relation set (team→member, doc→channel) as those ship as edge records.
-- Migrate the rest of the UI suite onto the real-gateway harness + delete the `*.fake.ts` (STATUS #00 —
-  this slice built the harness; the migration of the legacy surfaces is the remaining work).
+- ~~Migrate the rest of the UI suite onto the real-gateway harness + delete the `*.fake.ts`~~ **DONE
+  (2026-06-27, same session, follow-on):** all 14 fakes + the dispatcher deleted; `invoke` throws with
+  no real node (no fake fallback); test-only `/_seed/*` routes added to the `test_gateway` bin
+  (feature-gated `test-harness`) for surfaces with no public create route (real
+  `lb_inbox::record`/`lb_outbox::enqueue`/`lb_assets::record_install` writes — seeding, not faking).
+  **All 16 fake-backed suites migrated** to `*.gateway.test.ts[x]` (or unit-tested for `agent`, which
+  needs a real model provider). Vitest: **6 default + 18 real-gateway = 70 tests green**. The migration
+  surfaced real gaps the fakes hid — missing dev-login caps (`store:doc/*`, `store:skill/*`,
+  `mcp:workflow.*`) and an empty-channel bus-key bug in `useWorkflow.start()`, both fixed. See
+  STATUS.md #00.
 
 ---
 

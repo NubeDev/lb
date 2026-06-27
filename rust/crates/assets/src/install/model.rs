@@ -66,9 +66,11 @@ pub struct Install {
     /// `[ui]`. Serde-defaulted: records written before this field deserialize as `None`.
     #[serde(default)]
     pub ui: Option<ExtUi>,
-    /// A dashboard **widget** this extension contributes — `Some` iff it declared `[widget]`.
+    /// The dashboard **widget** tiles this extension contributes — one per `[[widget]]` table.
+    /// Empty if it declared none. Serde-defaulted: records written before this field deserialize
+    /// as an empty vec.
     #[serde(default)]
-    pub widget: Option<ExtUi>,
+    pub widgets: Vec<ExtUi>,
     pub ts: u64,
 }
 
@@ -97,7 +99,7 @@ impl Install {
             enabled: true,
             kind: KIND.to_string(),
             ui: None,
-            widget: None,
+            widgets: Vec::new(),
             ts,
         }
     }
@@ -108,11 +110,12 @@ impl Install {
         self
     }
 
-    /// Attach the extension's UI contributions (builder-style) — the page and/or widget the manifest
-    /// declared, so `ext.list` tells the shell what to mount (ui-federation + dashboard-widgets scopes).
-    pub fn with_ui(mut self, ui: Option<ExtUi>, widget: Option<ExtUi>) -> Self {
+    /// Attach the extension's UI contributions (builder-style) — the page and/or widget tiles the
+    /// manifest declared, so `ext.list` tells the shell what to mount (ui-federation +
+    /// dashboard-widgets scopes).
+    pub fn with_ui(mut self, ui: Option<ExtUi>, widgets: Vec<ExtUi>) -> Self {
         self.ui = ui;
-        self.widget = widget;
+        self.widgets = widgets;
         self
     }
 }

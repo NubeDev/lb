@@ -1,61 +1,64 @@
-// The S5 invoke gate, at the UI level: a user WITH `mcp:agent.invoke:call` gets the agent's
-// answer; a user WITHOUT it sees the node's "denied"; and an ungranted substrate skill is denied —
-// the same gates the Rust `agent_test` proves on the backend, surfaced through the real api client
-// + the faithful in-memory fake.
+// AgentView is unit-tested (not real-gateway) because agent_invoke needs a real model provider the
+// gateway does not mock — documented deferral (the gateway has no /agent route; see
+// src/lib/agent/agent.api.ts and the workflow/data real-gateway tests for the spawned-node pattern).
 //
-// We drive the actual `agent.api` → `invoke` → fake path (no mock of the api): the fake mirrors the
-// node's invoke + grant gates, so this exercises the allow/deny branches the user actually hits.
+// So this is a PURE UNIT test of AgentView's rendering + wiring: we mock the view's OWN data hook
+// (`./useAgent`) — not a backend fake — to drive each render branch (answer / denied / empty) and to
+// assert the form invokes `run` with the typed goal. No `@/lib/ipc/*.fake` is imported.
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AgentView } from "./AgentView";
-import { __grantAgentSkill, __resetAgentFake } from "@/lib/ipc/agent.fake";
+import type { AgentState } from "./useAgent";
 
-const WS = "acme";
-const INVOKE = "mcp:agent.invoke:call";
+// Mock the hook module; each test sets the return value before rendering.
+const run = vi.fn();
+let state: AgentState;
+vi.mock("./useAgent", () => ({
+  useAgent: () => state,
+}));
 
-beforeEach(() => __resetAgentFake());
-afterEach(() => __resetAgentFake());
+function setState(over: Partial<AgentState>) {
+  state = { result: null, running: false, error: null, run, ...over };
+}
 
-describe("AgentView invoke gate", () => {
-  it("a user with the invoke grant gets the agent's answer", async () => {
-    render(<AgentView ws={WS} jobId="s1" author="user:ada" caps={[INVOKE]} />);
+afterEach(() => {
+  cleanup();
+  run.mockReset();
+});
+
+describe("AgentView (unit)", () => {
+  it("renders the agent's answer when the invoke succeeds", () => {
+    setState({ result: { answer: "agent: summarize the spec", jobId: "s1" } });
+    render(<AgentView ws="acme" jobId="s1" author="user:ada" caps={[]} />);
+    expect(screen.getByText("agent: summarize the spec")).toBeInTheDocument();
+  });
+
+  it("surfaces the node's denial to the user (the invoke gate)", () => {
+    setState({ error: "denied" });
+    render(<AgentView ws="acme" jobId="s1" author="user:cleo" caps={[]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("You don't have access to the agent.");
+  });
+
+  it("prompts when there is no result yet", () => {
+    setState({});
+    render(<AgentView ws="acme" jobId="s1" author="user:ada" caps={[]} />);
+    expect(screen.getByText("Ask the agent something.")).toBeInTheDocument();
+  });
+
+  it("submitting the goal invokes run with the trimmed goal", async () => {
+    setState({});
+    render(<AgentView ws="acme" jobId="s1" author="user:ada" caps={[]} />);
     await userEvent.type(screen.getByLabelText("goal"), "summarize the spec");
     await userEvent.click(screen.getByRole("button", { name: "Run" }));
-    await waitFor(() =>
-      expect(screen.getByText("agent: summarize the spec")).toBeInTheDocument(),
-    );
+    expect(run).toHaveBeenCalledWith("summarize the spec");
   });
 
-  it("a user WITHOUT the invoke grant is denied (the gate surfaced to the user)", async () => {
-    render(<AgentView ws={WS} jobId="s1" author="user:cleo" caps={[]} />);
-    await userEvent.type(screen.getByLabelText("goal"), "do a thing");
-    await userEvent.click(screen.getByRole("button", { name: "Run" }));
-    await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "You don't have access to the agent.",
-      ),
-    );
-  });
-
-  it("invoking with a granted skill succeeds; an ungranted skill is denied", async () => {
-    // A small wrapper to invoke with a skill: the AgentView form only sets the goal, so we drive
-    // the gate through the hook's surface by granting (or not) the skill in the fake.
-    __grantAgentSkill(WS, "summarize");
-    const { invokeAgent } = await import("@/lib/agent/agent.api");
-
-    const ok = await invokeAgent(WS, "s2", "go", {
-      skill: "summarize",
-      author: "user:ada",
-      caps: [INVOKE],
-    });
-    expect(ok.answer).toBe("agent: go");
-
-    // An ungranted skill is invisible to the agent → denied (the S4 grant gate it inherits).
-    await expect(
-      invokeAgent(WS, "s3", "go", { skill: "secret", author: "user:ada", caps: [INVOKE] }),
-    ).rejects.toThrow("denied");
+  it("disables Run while a turn is in flight", () => {
+    setState({ running: true });
+    render(<AgentView ws="acme" jobId="s1" author="user:ada" caps={[]} />);
+    expect(screen.getByRole("button", { name: "Running…" })).toBeDisabled();
   });
 });

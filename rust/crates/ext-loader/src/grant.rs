@@ -35,7 +35,7 @@ mod tests {
             visibility: Visibility::Private,
             native: None,
             ui: None,
-            widget: None,
+            widgets: Vec::new(),
         }
     }
 

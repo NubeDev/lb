@@ -11,6 +11,11 @@
 
 use std::net::SocketAddr;
 
+use axum::Router;
+
+#[path = "test_gateway_seed.rs"]
+mod test_gateway_seed;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let port: u16 = std::env::var("PORT")
@@ -30,6 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The harness greps this line to learn the URL.
     println!("LISTENING http://{addr}");
 
-    axum::serve(listener, lb_role_gateway::router(gw)).await?;
+    // Mount the production router PLUS the test-only `/_seed/*` routes (real host writes for surfaces
+    // with no public create route — seeding, not faking). These exist only in this test binary. The
+    // seed routes carry their own state; merge them with the production router (state already applied).
+    let seed = test_gateway_seed::seed_routes(Router::new()).with_state(gw.clone());
+    let app = lb_role_gateway::router(gw).merge(seed);
+    axum::serve(listener, app).await?;
     Ok(())
 }

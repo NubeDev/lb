@@ -8,7 +8,7 @@
 // hand-written fake. Tests that opt into it import `gatewayUrl()` (below) and drive the real `invoke`
 // HTTP path by pointing the session + `VITE_GATEWAY_URL` at the spawned server.
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { GlobalSetupContext } from "vitest/node";
@@ -16,11 +16,21 @@ import type { GlobalSetupContext } from "vitest/node";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The workspace root is three levels up from ui/src/test.
 const REPO = path.resolve(__dirname, "../../..");
-const BIN = path.join(REPO, "rust/target/debug/test_gateway");
+const RUST = path.join(REPO, "rust");
+const BIN = path.join(RUST, "target/debug/test_gateway");
 
 let child: ChildProcess | null = null;
 
 export default async function setup({ provide }: GlobalSetupContext) {
+  // Build the test-only harness binary first (gated behind the `test-harness` feature so its seed
+  // deps don't touch the production crate). Cheap when already built.
+  const build = spawnSync(
+    "cargo",
+    ["build", "-p", "lb-role-gateway", "--features", "test-harness", "--bin", "test_gateway"],
+    { cwd: RUST, stdio: "inherit" },
+  );
+  if (build.status !== 0) throw new Error("failed to build test_gateway harness binary");
+
   const url = await new Promise<string>((resolve, reject) => {
     child = spawn(BIN, [], { env: { ...process.env, PORT: "0" } });
     const timer = setTimeout(() => reject(new Error("gateway did not start in time")), 20_000);

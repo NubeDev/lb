@@ -1699,6 +1699,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fleet-monitor"
+version = "0.1.0"
+dependencies = [
+ "lb-supervisor",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "float_next_after"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -32,3 +32,25 @@ body {
   @apply bg-bg text-fg;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
+
+/* Create-series wizard entrance — a quiet fade + lift, reduced-motion safe. */
+@keyframes wizard-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes wizard-panel-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.wizard-backdrop {
+  animation: wizard-backdrop-in 160ms ease-out both;
+}
+.wizard-panel {
+  animation: wizard-panel-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wizard-backdrop,
+  .wizard-panel {
+    animation: none;
+  }
+}

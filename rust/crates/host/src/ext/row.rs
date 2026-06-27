@@ -26,10 +26,10 @@ pub struct ExtRow {
     /// (ui-federation scope). The shell builds a cap-gated nav slot + mounts the page from this.
     #[serde(default)]
     pub ui: Option<ExtUi>,
-    /// The dashboard **widget** this extension contributes — `Some` iff it declared `[widget]`
-    /// (dashboard-widgets scope). The shell adds it to the widget palette.
+    /// The dashboard **widget** tiles this extension contributes — one per `[[widget]]` table it
+    /// declared (dashboard-widgets scope). The shell adds each to the widget palette. Empty if none.
     #[serde(default)]
-    pub widget: Option<ExtUi>,
+    pub widgets: Vec<ExtUi>,
 }
 
 impl ExtRow {
@@ -55,7 +55,7 @@ impl ExtRow {
             health: health.to_string(),
             restart_count,
             ui: install.ui.clone(),
-            widget: install.widget.clone(),
+            widgets: install.widgets.clone(),
         }
     }
 }

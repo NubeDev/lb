@@ -1,0 +1,29 @@
+# `fleet-monitor` — a self-contained extension whose BACKEND half is a native Tier-2 sidecar
+# (native-tier scope): a real host-platform binary the supervisor spawns over stdio, with its OWN
+# PID. The extension's FRONTEND half lives beside it under `ui/` (a module-federated shadcn page +
+# two widgets) — one folder, backend + frontend together. This crate is only the backend.
+#
+# Like `echo-sidecar`, it is a host-target binary AND a workspace member (it builds for the host,
+# not wasm), so it shares the workspace lockfile + target dir.
+[package]
+name = "fleet-monitor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "fleet-monitor"
+path = "src/main.rs"
+
+[dependencies]
+# Reuses the supervisor wire protocol + framing verbatim — the child and host agree on the ABI by
+# sharing the crate, exactly as the wasm tier shares the WIT world (no drift).
+lb-supervisor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Own tokio (not `workspace = true`): the child reads/writes its OWN stdio, so it needs `io-std`.
+tokio = { version = "1", features = ["rt", "macros", "io-util", "io-std"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

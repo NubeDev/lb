@@ -23,9 +23,16 @@
 import type { Item } from "@/lib/channel/channel.types";
 import { sessionToken } from "@/lib/session/session.store";
 
-/** The gateway base URL, e.g. `http://127.0.0.1:8080`. Empty string = same origin. */
+/** The gateway base URL, e.g. `http://127.0.0.1:8080`. In the browser this defaults to the local dev
+ *  node so the app always talks to a REAL gateway out of the box (override with `VITE_GATEWAY_URL`;
+ *  the real-gateway test harness stubs it to the spawned node's URL). Empty only when there is no
+ *  `window` (a non-browser context that isn't the harness) — `invoke` then throws rather than fake. */
 export function gatewayUrl(): string {
-  return (import.meta.env.VITE_GATEWAY_URL as string | undefined) ?? "";
+  const configured = import.meta.env.VITE_GATEWAY_URL as string | undefined;
+  if (configured !== undefined) return configured;
+  // Browser with no explicit config → the local dev gateway.
+  if (typeof window !== "undefined") return "http://127.0.0.1:8080";
+  return "";
 }
 
 /** The Authorization header for the current session, or none when logged out. */

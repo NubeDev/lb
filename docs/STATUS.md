@@ -132,6 +132,7 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 
 | Slice | Topic | Stage | State | Scope | Session | Notes |
 |---|---|---|---|---|---|---|
+| self-contained extension over real Module Federation (`fleet-monitor`) | extensions | S10 | **shipped** | [ui-federation](scope/extensions/ui-federation-scope.md) + [dashboard-widgets](scope/frontend/dashboard-widgets-scope.md) | [fleet-monitor-federation](sessions/extensions/fleet-monitor-federation-session.md) | an extension is now **one folder = backend + frontend** (each optional). New `rust/extensions/fleet-monitor/`: a **native Tier-2 sidecar** (own PID, supervised over stdio, `fleet.summary` MCP tool) **+** its co-located `ui/` built as a **real Vite Module Federation remote** (`@originjs/vite-plugin-federation`, shared React singletons — not a hand-rolled `import()`), real **shadcn/ui + Tailwind**, mounting a cap-gated sidebar **page with 3 nested routes** + declaring **2 dashboard widgets**. Data only via `mount(el,ctx,bridge)` → `POST /mcp/call` (frozen `series.*` reads; never token/DB). Shell is the federation **host** (`ui/vite.config.ts` shares react/react-dom; `ext-host/federation.ts` loads remotes by gateway URL; `ExtHost` rewritten raw-import→federated). **Contract refactor:** `[widget]`→**`[[widget]]`** (`widgets: Vec` end to end). **Load-bearing fix:** the **native** install path now persists `[ui]`/`[[widget]]` (shared `host/src/ui_decl.rs`) — it silently didn't before. **Fake removed** from page discovery. `ui/extensions/hello-ui` + `rust/extensions/hello-ui` **hard-deleted**. **Pre-existing CI red fixed** (`cargo build --workspace`: `test_gateway_seed` stray-bin → `autobins=false`). Tests: 3 backend + 12 manifest + 2 ui_decl + 3 ext_ui + **2 native e2e** (real `OsLauncher` child + page/2-widgets in `ext.list`) + **6 ext-UI Vitest** + 20 shell + **50 real-gateway** (incl. `fleet-monitor` page slot + both widget tiles from a real `Install`); `cargo build/test --workspace` green (1 pre-existing sync flake, untouched). Widget *rendering* + iframe tier = follow-ups |
 | extension UI pages (ui-federation slice 1) | frontend | S9+ | **shipped** | [ui-federation](scope/extensions/ui-federation-scope.md) + [dashboard-widgets](scope/frontend/dashboard-widgets-scope.md) | [extension-pages](sessions/frontend/extension-pages-session.md) | an extension now contributes a **full sidebar page** (and/or a dashboard **widget**) end to end. Frozen manifest `[ui]`/`[widget]` blocks → carried on `Install` (scope-narrowed to the grant) → surfaced via `ext.list` `ExtRow.ui`/`.widget` → shell `features/ext-host/` renders it (trusted **in-process dynamic-import `mount(el,ctx,bridge)`**; iframe tier = follow-up). Data via the **host-mediated bridge** (`POST /mcp/call` → `lb_host::call_tool`, cap+ws re-checked; page never holds the token/DB). Gateway serves bundles (`GET /extensions/{ext}/ui/{*path}`, traversal-guarded). Reference ext `hello-ui` (Vite React, served in both dev + gateway paths). Tests: 6 manifest + 3 host (persist·**scope-narrow**·**bridge-deny**) + 3 gateway (serve·traversal·deny) + 3 Vitest (slot·bridge-filter); 63 Vitest + workspace build + fmt green. **Widgets-on-dashboard (slice 2) deferred** (needs dashboard core) |
 | Spine | core | S1 | **shipped** | [core](scope/core/core-scope.md) | [s0-s1-spine](sessions/core/s0-s1-spine-session.md) | host+store+bus+caps+mcp+runtime+1 WASM ext |
 | Messaging | bus | S2 | **shipped** | [bus](scope/bus/bus-scope.md) | [messaging](sessions/bus/messaging-session.md) | pub/sub + presence + inbox + channel svc + React/Tauri UI + hot-reload |
@@ -189,16 +190,24 @@ pages, this slice) (+ `public/SCOPE.md`).
 
 ## Next up
 
-00. **Retire the `*.fake.ts` mock backend (decided 2026-06-27 — CLAUDE §9, testing §0).** The UI's
-    13 `lib/ipc/*.fake.ts` files + the `fake.ts` dispatcher are a hand-written parallel backend —
-    now banned: they let work *look* shipped on an unbuilt path and an AI can't tell fake from real.
-    Migration (not a delete — the Vitest suite depends on them): **(1) DONE** — the real-node Vitest
-    harness now exists (the data-console slice built it: `role/gateway/src/bin/test_gateway.rs` boots a
-    real gateway-role node; `ui/vitest.gateway.config.ts` + `ui/src/test/real-gateway.ts` spawn it and
-    run `*.gateway.test.tsx` against it, seeded via the real write path; `pnpm test:gateway`). The
-    data-console pages already test this way (7 real-gateway tests, no new fake). **(2)** move the
-    remaining UI surfaces onto it surface by surface; **(3)** delete each fake as its surface migrates.
-    Do NOT bulk-delete the fakes before a surface is migrated or the default suite goes red.
+00. **Retire the `*.fake.ts` mock backend — DONE (2026-06-27, CLAUDE §9, testing §0).** The UI's 14
+    `lib/ipc/*.fake.ts` files + the `fake.ts` dispatcher (a hand-written parallel backend that let work
+    *look* shipped on an unbuilt path) are **deleted**. `src/lib/ipc/` now holds only `invoke.ts` (the
+    seam) + `http.ts` (the real transport); `invoke` **throws** if no real node is reachable (no fake
+    fallback), and the browser defaults `gatewayUrl()` to the local dev node. **Every** UI test now runs
+    against a **real spawned gateway node**: `role/gateway/src/bin/test_gateway.rs` (feature-gated
+    `test-harness`) boots a real gateway-role node + the production router PLUS test-only `/_seed/*`
+    routes (real `lb_inbox::record`/`lb_outbox::enqueue`/`lb_assets::record_install` writes — seeding,
+    not faking, §3.1); `ui/vitest.gateway.config.ts` + `src/test/real-gateway.ts` spawn it and run all
+    `*.gateway.test.ts[x]` against it, seeded through the real write path. **Vitest now: 6 default
+    (pure component/hook/logic) + 18 real-gateway files / 20 + 50 = 70 tests green.** The migration
+    surfaced **real gaps the fakes had hidden**: the dev-login claim set was missing the `store:doc/*`,
+    `store:skill/*`, and `mcp:workflow.*` caps (so those routes 403'd over the real gateway — now fixed
+    in `credentials.rs`), and `useWorkflow.start()` passed an empty channel (invalid bus key — fixed).
+    The two production hooks that imported a fake demo-seed (`useExtensions`/`useExtensionPages`) no
+    longer do. **Follow-up:** the `agent` surface is unit-tested (its data hook mocked), not
+    real-gateway, because `agent_invoke` needs a real model provider the gateway deliberately doesn't
+    mock (documented S5 deferral) — wire it when the real provider lands (#3).
 0. **S10 — cross-cutting retrofit (scoped 2026-06-27, NOT built)**: three concerns missed since S1,
    each a projection of the host dispatch chokepoint (§6.5/§6.6) and reusing the `write_tx` seam.
    **(a) Observability** (`scope/observability/`) — `tracing` spans/logs/metrics on every node, a

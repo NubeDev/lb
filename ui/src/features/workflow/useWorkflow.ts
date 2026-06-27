@@ -48,7 +48,14 @@ export function useWorkflow(
 
   const start = useCallback(async () => {
     try {
-      const result = await startCodingJob(ws, jobId, approvalId, { author, caps });
+      // The node streams "job started"/"PR queued" progress to this channel (motion). It must be
+      // non-empty — an empty channel makes an invalid bus key (`chan//msg/…`). Derive it from the
+      // durable job id so each job's progress has its own stable channel.
+      const result = await startCodingJob(ws, jobId, approvalId, {
+        author,
+        caps,
+        channel: `workflow-${jobId}`,
+      });
       setGated(!result.started);
       setError(null);
       if (result.started) setEffects(await listEffects(ws));

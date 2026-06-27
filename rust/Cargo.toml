@@ -29,6 +29,7 @@ members = [
     "crates/sync",
     "crates/tags",
     "extensions/echo-sidecar",
+    "extensions/fleet-monitor",
     "sdk",
     "node",
     "role/gateway",

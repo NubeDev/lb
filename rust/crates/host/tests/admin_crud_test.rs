@@ -41,6 +41,17 @@ const ADMIN: &[&str] = &[
     "mcp:hvac.setpoint:call",
 ];
 
+fn temp_path(tag: &str) -> String {
+    std::env::temp_dir()
+        .join(format!("lb-host-{tag}-{}", std::process::id()))
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn cleanup(path: &str) {
+    let _ = std::fs::remove_dir_all(path);
+}
+
 // ── Mandatory: capability deny, per destructive verb ──────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -287,4 +298,28 @@ async fn workspace_soft_then_hard_and_tombstone_not_resurrected() {
         !listed.iter().any(|w| w.ws == "pilot"),
         "a purged workspace must not resurrect"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn workspace_directory_survives_store_reopen() {
+    let path = temp_path("workspace-directory-reopen");
+    cleanup(&path);
+
+    {
+        let store = Store::open(&path).await.unwrap();
+        let admin = principal("user:alice", "acme", ADMIN);
+        workspace_create(&store, &admin, "pilot", "Pilot", 1)
+            .await
+            .unwrap();
+    }
+
+    let store = Store::open(&path).await.unwrap();
+    let admin = principal("user:alice", "acme", ADMIN);
+    let listed = workspace_list(&store, &admin).await.unwrap();
+    assert!(
+        listed.iter().any(|w| w.ws == "pilot"),
+        "a workspace created before restart must remain listed after reopening the store"
+    );
+
+    cleanup(&path);
 }

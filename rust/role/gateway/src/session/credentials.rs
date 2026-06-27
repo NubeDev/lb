@@ -61,6 +61,23 @@ fn member_caps() -> Vec<String> {
         "mcp:store.tables:call",
         "mcp:store.scan:call",
         "mcp:store.graph:call",
+        // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
+        // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
+        // resolve it, and start the gated coding job from the browser; the gateway re-checks each
+        // cap server-side (the S6 approval gate itself is enforced regardless of caps). A token
+        // WITHOUT these is still refused server-side (workflow_verb_without_the_cap_is_denied).
+        "mcp:workflow.request_approval:call",
+        "mcp:workflow.resolve_approval:call",
+        "mcp:workflow.start_job:call",
+        // files/skills scope: the shared-asset surface caps the doc/skill routes check directly
+        // (`authorize_doc`/`authorize_skill` gate on `store:doc/{id}` / `store:skill/{id}`, NOT an
+        // MCP verb). The dev member may put/get/share/link their docs and manage skills; gate 3
+        // (membership/ownership) still decides which *specific* asset they may read. `add_team_member`
+        // is gated by `store:doc/*:write` (an admin act at S4), so the dev admin can populate teams.
+        "store:doc/*:read",
+        "store:doc/*:write",
+        "store:skill/*:read",
+        "store:skill/*:write",
     ]
     .iter()
     .map(|s| s.to_string())

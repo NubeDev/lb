@@ -33,6 +33,7 @@ mod sync;
 mod tags;
 mod teams;
 mod tool_call;
+mod ui_decl;
 mod users;
 mod workflow;
 mod workspaces;

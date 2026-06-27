@@ -26,8 +26,9 @@ export interface ExtRow {
   restart_count: number;
   /** A full sidebar page this extension contributes, or null. */
   ui?: ExtUi | null;
-  /** A dashboard widget tile this extension contributes, or null. */
-  widget?: ExtUi | null;
+  /** The dashboard widget tiles this extension contributes — one per `[[widget]]` table it
+   *  declared (dashboard-widgets scope). Empty/absent if none. Mirrors `lb_host::ExtRow::widgets`. */
+  widgets?: ExtUi[];
 }
 
 /** A signed extension artifact — the wire shape the host `ext_publish` / registry-host `POST

@@ -9,13 +9,13 @@
 # That env-flag IS the role selection the thin wiring layer permits — see
 # rust/node/src/main.rs.
 #
-# There are NO dependency containers to bring up: SurrealDB is embedded (kv-mem) and
+# There are NO dependency containers to bring up: SurrealDB is embedded (SurrealKV for
+# the dev/node targets below, kv-mem for tests unless they opt into a path) and
 # Zenoh is embedded. So unlike the sibling rubix-cube Makefile there is deliberately
 # NO `deps-up`/`docker` stack — a bare `make dev` runs against nothing external.
 #
-# New here? The browser-against-the-cloud-node path is the only FULL end-to-end demo
-# today (only the channel/messaging slice is wired through to a live node; the other
-# views run on in-memory fakes until their gateway routes land). The TL;DR:
+# New here? The browser-against-the-cloud-node path is the full live-node demo. The
+# TL;DR:
 #   make setup       one-time: pnpm install + add the wasm target
 #   make dev         the cloud node (gateway) + the UI (browser build) together
 #   make kill        free the dev ports if a previous run was left running
@@ -67,6 +67,12 @@ UI_PORT ?= 5173
 # The workspace the node serves. One workspace is enough for the demo (= tenant).
 WS ?= acme
 
+# Persistent local node store. The Rust boot path uses `Store::memory()` when LB_STORE_PATH is
+# unset, so the dev launch targets set it explicitly. Override with:
+#   make dev STORE_PATH=/path/to/lb-store
+STORE_DIR ?= $(CURDIR)/.data
+STORE_PATH ?= $(STORE_DIR)/dev-store
+
 .PHONY: setup build build-be build-wasm build-ui \
         dev edge cloud ui \
         test test-be test-ui lint fmt fmt-check size clean kill
@@ -100,9 +106,10 @@ build-ui:
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
 dev: build-wasm
-	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS))"
+	@mkdir -p $(STORE_DIR)
+	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@trap 'kill 0' EXIT INT TERM; \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) cargo run -p $(NODE_BIN) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) cargo run -p $(NODE_BIN) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -110,18 +117,19 @@ dev: build-wasm
 # the same binary as `cloud`, just without LB_GATEWAY_ADDR set, so it runs the solo
 # spine demo and exits/serves locally only. No browser reaches it (that's the point).
 edge: build-wasm
-	@echo "edge: solo node (no gateway, offline)   (ws=$(WS))"
-	cd $(BE_DIR) && LB_WORKSPACE=$(WS) cargo run -p $(NODE_BIN)
+	@mkdir -p $(STORE_DIR)
+	@echo "edge: solo node (no gateway, offline)   (ws=$(WS), store=$(STORE_PATH))"
+	cd $(BE_DIR) && LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) cargo run -p $(NODE_BIN)
 
 # CLOUD posture: the SAME binary with the SSE/HTTP gateway mounted (LB_GATEWAY_ADDR).
 # A browser can now reach it. Run `make ui` (or `make dev`) against this.
 cloud: build-wasm
-	@echo "cloud: node + gateway → $(GW_URL)   (ws=$(WS))"
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) cargo run -p $(NODE_BIN)
+	@mkdir -p $(STORE_DIR)
+	@echo "cloud: node + gateway → $(GW_URL)   (ws=$(WS), store=$(STORE_PATH))"
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
-# cloud` in another terminal. Without VITE_GATEWAY_URL the UI falls back to its
-# in-memory fakes (the invoke seam in ui/src/lib/ipc/invoke.ts chooses the transport).
+# cloud` in another terminal.
 ui:
 	cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev
 

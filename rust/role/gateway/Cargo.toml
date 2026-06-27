@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+# `test_gateway_seed.rs` is a `#[path]` MODULE of the `test_gateway` bin, not a bin itself — but it
+# lives under `src/bin/`, where cargo's bin autodiscovery would otherwise compile it as a standalone
+# (featureless) target and fail (it needs the `test-harness`-only `lb-outbox`). Disable autodiscovery
+# and declare the one real bin explicitly below.
+autobins = false
 
 [dependencies]
 lb-host.workspace = true
@@ -11,12 +16,25 @@ lb-auth.workspace = true
 lb-registry.workspace = true
 lb-inbox.workspace = true
 lb-assets.workspace = true
+# Only the `test_gateway` harness binary uses lb-outbox (to seed real effects). It is optional and
+# pulled in by the `test-harness` feature, so the production crate doesn't carry it.
+lb-outbox = { workspace = true, optional = true }
 axum.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 futures.workspace = true
+
+[features]
+# Enables the test-only `test_gateway` binary (the UI real-gateway Vitest harness) + its seed deps.
+test-harness = ["dep:lb-outbox"]
+
+# The real-node harness binary the UI's `vitest.gateway.config.ts` spawns. Test-only: build it with
+# `cargo build -p lb-role-gateway --features test-harness --bin test_gateway`.
+[[bin]]
+name = "test_gateway"
+required-features = ["test-harness"]
 
 [dev-dependencies]
 lb-outbox.workspace = true

@@ -73,9 +73,11 @@ pub struct UiPage {
     pub scope: Vec<String>,
 }
 
-/// The `[widget]` block — an extension that contributes a **dashboard tile** droppable into a grid
-/// cell (dashboard-widgets scope). Frozen v1 fields. Serde-defaulted. A widget is read-only on series
-/// and far more constrained than a page; the `scope` here is a subset of the four series read verbs.
+/// A `[[widget]]` table — an extension that contributes a **dashboard tile** droppable into a grid
+/// cell (dashboard-widgets scope). Frozen v1 fields. An extension may declare **several** widgets
+/// (array-of-tables, `widgets: Vec<Widget>`), each its own palette tile. A widget is read-only on
+/// series and far more constrained than a page; the `scope` here is a subset of the four series read
+/// verbs.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 pub struct Widget {
     /// The ESM bundle entry exposing `mount(el, ctx, bridge)` (in-process) / iframe doc (sandboxed).
@@ -107,8 +109,9 @@ pub struct Manifest {
     /// A full page contributed to the shell's sidebar — `Some` iff the manifest declares `[ui]`
     /// (ui-federation scope). Independent of `tier`: a wasm/native extension may also ship a page.
     pub ui: Option<UiPage>,
-    /// A dashboard widget tile — `Some` iff the manifest declares `[widget]` (dashboard-widgets scope).
-    pub widget: Option<Widget>,
+    /// The dashboard widget tiles — one per `[[widget]]` table the manifest declares (dashboard-widgets
+    /// scope). Empty if the manifest declares none. An extension may ship several palette tiles.
+    pub widgets: Vec<Widget>,
 }
 
 // Raw TOML shape, mapped to the flat `Manifest` after validation.
@@ -125,8 +128,9 @@ struct Raw {
     native: Option<Native>,
     #[serde(default)]
     ui: Option<UiPage>,
+    /// `[[widget]]` array-of-tables — zero or more widget tiles.
     #[serde(default)]
-    widget: Option<Widget>,
+    widget: Vec<Widget>,
 }
 #[derive(Deserialize)]
 struct RawExt {
@@ -183,7 +187,12 @@ impl Manifest {
             visibility: raw.visibility.class,
             native,
             ui: raw.ui.filter(|u| !u.entry.is_empty()),
-            widget: raw.widget.filter(|w| !w.entry.is_empty()),
+            // Drop any half-written tile with no entry (defensive, mirrors `[ui]`).
+            widgets: raw
+                .widget
+                .into_iter()
+                .filter(|w| !w.entry.is_empty())
+                .collect(),
         })
     }
 }
@@ -267,7 +276,7 @@ class = "private"
         // An extension that declares neither block contributes no page and no widget.
         let m = Manifest::parse(&with_runtime("wasm", "")).expect("parses");
         assert!(m.ui.is_none());
-        assert!(m.widget.is_none());
+        assert!(m.widgets.is_empty());
     }
 
     #[test]
@@ -282,17 +291,18 @@ class = "private"
         assert_eq!(ui.label, "Reports");
         assert_eq!(ui.icon, "chart-bar");
         assert_eq!(ui.scope, vec!["channel.list".to_string()]);
-        assert!(m.widget.is_none());
+        assert!(m.widgets.is_empty());
     }
 
     #[test]
     fn parses_widget_block() {
         let toml = with_runtime(
             "wasm",
-            "[widget]\nentry = \"widget.mjs\"\nlabel = \"Temp\"\nscope = [\"series.read\", \"series.watch\"]",
+            "[[widget]]\nentry = \"widget.mjs\"\nlabel = \"Temp\"\nscope = [\"series.read\", \"series.watch\"]",
         );
         let m = Manifest::parse(&toml).expect("parses");
-        let w = m.widget.expect("a [widget] block yields Some");
+        assert_eq!(m.widgets.len(), 1);
+        let w = &m.widgets[0];
         assert_eq!(w.entry, "widget.mjs");
         assert_eq!(w.label, "Temp");
         assert_eq!(
@@ -302,15 +312,28 @@ class = "private"
     }
 
     #[test]
-    fn ui_and_widget_together() {
-        // One extension may ship BOTH a page and a widget.
+    fn parses_multiple_widget_blocks() {
+        // An extension may declare several `[[widget]]` tiles — each its own palette entry.
         let toml = with_runtime(
             "wasm",
-            "[ui]\nentry = \"p.mjs\"\nlabel = \"Page\"\n[widget]\nentry = \"w.mjs\"\nlabel = \"Tile\"",
+            "[[widget]]\nentry = \"a.mjs\"\nlabel = \"A\"\n[[widget]]\nentry = \"b.mjs\"\nlabel = \"B\"",
+        );
+        let m = Manifest::parse(&toml).expect("parses");
+        assert_eq!(m.widgets.len(), 2);
+        assert_eq!(m.widgets[0].label, "A");
+        assert_eq!(m.widgets[1].label, "B");
+    }
+
+    #[test]
+    fn ui_and_widget_together() {
+        // One extension may ship BOTH a page and one-or-more widgets.
+        let toml = with_runtime(
+            "wasm",
+            "[ui]\nentry = \"p.mjs\"\nlabel = \"Page\"\n[[widget]]\nentry = \"w.mjs\"\nlabel = \"Tile\"",
         );
         let m = Manifest::parse(&toml).expect("parses");
         assert!(m.ui.is_some());
-        assert!(m.widget.is_some());
+        assert_eq!(m.widgets.len(), 1);
     }
 
     #[test]

@@ -1,7 +1,9 @@
 // The page host (ui-federation scope) — renders an installed extension's FULL PAGE in a shell surface.
-// Trusted tier (this slice): dynamic-`import()` the extension's ESM bundle from the gateway and call
-// its `mount(el, ctx, bridge)` in-process, so it shares the shell's React/DOM and feels native. The
-// page reaches data ONLY through `bridge` (host-mediated, cap-checked) — it never gets the token.
+// Trusted tier (this slice): load the extension's REAL Module Federation remote (`remoteEntry.js`)
+// served by the gateway and call its `mount(el, ctx, bridge)` in-process. Because the remote shares
+// the shell's `react`/`react-dom` singletons (the federation HOST config in `vite.config.ts`), the
+// page renders against the SAME React — native-feeling, one runtime, no bundled copy. The page reaches
+// data ONLY through `bridge` (host-mediated, cap-checked) — it never gets the token.
 //
 // The untrusted iframe-sandbox tier is the immediate follow-up (same `mount` contract, postMessage
 // transport); a non-allow-listed publisher would render there instead of in-process.
@@ -11,13 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { gatewayUrl } from "@/lib/ipc/http";
 import type { ExtUi } from "@/lib/ext/ext.api";
 import { makeBridge } from "./bridge";
-
-/** The mount contract an extension UI bundle must export. */
-type MountFn = (
-  el: HTMLElement,
-  ctx: { workspace: string },
-  bridge: ReturnType<typeof makeBridge>,
-) => void | (() => void);
+import { loadRemoteMount } from "./federation";
 
 interface Props {
   ext: string;
@@ -25,7 +21,7 @@ interface Props {
   workspace: string;
 }
 
-/** Load + mount extension `ext`'s page. Shows a load/error state honestly (no fake content). */
+/** Load + mount extension `ext`'s federated page. Shows a load/error state honestly (no fake content). */
 export function ExtHost({ ext, ui, workspace }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -38,15 +34,14 @@ export function ExtHost({ ext, ui, workspace }: Props) {
     el.replaceChildren();
     setError(null);
 
-    const url = `${gatewayUrl()}/extensions/${encodeURIComponent(ext)}/ui/${ui.entry}`;
+    // The manifest `entry` (e.g. `assets/remoteEntry.js`) is the federation container, served under
+    // the gateway's per-extension UI route.
+    const remoteUrl = `${gatewayUrl()}/extensions/${encodeURIComponent(ext)}/ui/${ui.entry}`;
     (async () => {
       try {
-        const mod: { mount?: MountFn } = await import(/* @vite-ignore */ url);
+        const mount = await loadRemoteMount(ext, remoteUrl);
         if (cancelled) return;
-        if (typeof mod.mount !== "function") {
-          throw new Error("bundle does not export mount(el, ctx, bridge)");
-        }
-        unmount = mod.mount(el, { workspace }, makeBridge(ui.scope));
+        unmount = mount(el, { workspace }, makeBridge(ui.scope));
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }

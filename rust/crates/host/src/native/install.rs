@@ -20,6 +20,7 @@ use super::error::NativeServiceError;
 use super::spec::{build_spec, native_of, tool_names};
 use super::status::{record_status, NativeStatus};
 use crate::boot::Node;
+use crate::ui_decl::project;
 
 /// What a native install produced — the granted caps and the child's declared tool names (for the
 /// caller to surface/audit), mirroring the wasm `Loaded`.
@@ -57,13 +58,19 @@ pub async fn install_native<L: Launcher>(
     let granted = grant(&manifest, admin_approved);
     let tools = tool_names(&manifest);
 
-    // STATE first: the durable approved-grant record (the same S4 verb, now for native tier).
+    // STATE first: the durable approved-grant record (the same S4 verb, now for native tier). A
+    // native extension may ALSO ship a page + widgets (`fleet-monitor` does), so project its UI
+    // contributions onto the install exactly as the wasm tier does — narrowed to `granted` — so
+    // `ext.list` surfaces the nav slot + palette tiles regardless of tier.
+    let (ui, widgets) = project(&manifest, &granted);
     let install = Install::new(
         manifest.id.clone(),
         manifest.version.clone(),
         granted.clone(),
         ts,
-    );
+    )
+    .with_tier(lb_assets::Tier::Native)
+    .with_ui(ui, widgets);
     record_install(&node.store, ws, &install).await?;
 
     // If a sidecar for this id is already running here, stop it before swapping (re-install in

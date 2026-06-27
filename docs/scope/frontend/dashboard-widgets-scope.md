@@ -214,7 +214,15 @@ an open question; the coding session implements these byte-for-byte.
 ### Contract 1 — the `[widget]` manifest block
 
 Rides the existing extension manifest (TOML, like `[native]`/`[ui]`); a serde-defaulted block, so an
-extension without it provides no widget. **Frozen v1 fields:**
+extension without it provides no widget.
+
+> **Refinement (2026-06-27, shipped):** an extension may declare **several** widgets, so the block is a
+> TOML **array-of-tables `[[widget]]`** (`widgets: Vec<Widget>` end to end — manifest → `Install` →
+> `ExtRow` → `ext.api`), serde-defaulted to empty. The v1 **fields below are unchanged**; only the
+> cardinality (one → many) changed. This is strictly additive (empty default = the old single-widget
+> behavior). See `sessions/extensions/fleet-monitor-federation-session.md`.
+
+**Frozen v1 fields** (per `[[widget]]` tile):
 
 ```toml
 [widget]
