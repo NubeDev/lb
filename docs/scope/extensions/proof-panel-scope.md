@@ -155,19 +155,31 @@ latest shows it → ungranted verb denied).
 - **Placeholder regression.** The entire point is *no placeholders*. A surface that renders "wires to X
   next" is a scope failure here, by definition.
 
-## Open questions
+## Open questions — RESOLVED (shipped 2026-06-27, see `../../sessions/extensions/proof-panel-session.md`)
 
-- **Live feed upgrade?** Should `proof-panel` also prove `series.watch` (bus-backed SSE through the
-  bridge) once that verb exists, or stay request/response? (Recommend: stay request/response this slice;
-  add a `watch` follow-up when the verb ships — keeps the proof minimal.)
-- **Does `proof.ping` need a host-side cap at all,** or does the grant-lives-on-the-caller convention
-  (`hello` requests nothing) make `mcp:proof.ping:call` redundant? Resolve against how `ext_publish_test`
-  grants the caller before calling `hello.echo`.
-- **Retire `hello`/`hello-v2` after this lands?** If `proof-panel` becomes the blessed Tier-1 reference,
-  the trivial echo probes may be redundant — or kept as the absolute-minimum spine probe. Decide at ship.
-- **Widget tiles?** Should `proof-panel` also contribute a `[[widget]]` (wired, not placeholder) to
-  pre-prove the `dashboard-widgets` path? (Recommend: defer to the dashboard scope; one page is enough
-  proof here.)
+- **Live feed upgrade?** → **Stayed request/response.** No `series.watch` this slice; tracked as a
+  follow-up for when the verb ships.
+- **Does `proof.ping` need a host-side cap?** → **No.** It follows the hello convention: the manifest
+  requests no host-side cap for its own tool; `mcp:proof-panel.proof.ping:call` lives on the caller's
+  token (verified against `ext_publish_test.rs`; asserted by the deny test).
+- **Retire `hello`/`hello-v2`?** → **Kept as-is.** They remain the absolute-minimum spine probe;
+  `proof-panel` is the full-stack Tier-1 reference beside them, not a replacement.
+- **Widget tiles?** → **Deferred to the dashboard scope.** No `[[widget]]` shipped; the one page is
+  enough proof here.
+
+### Findings surfaced while building (premise check)
+
+The scope's premise — "the basics are *already* sufficient to build a real extension, no new core verb
+or WIT bump" — held for the **contract** but exposed one **plumbing** gap and one **adjacent** gap, both
+fixed/worked-around without a new verb or WIT change:
+
+- **The bridge couldn't dispatch host-native `series.*`.** `POST /mcp/call` → `call_tool` resolved only
+  the runtime registry, so the series verbs the bridge contract is defined in terms of `NotFound`-ed.
+  Fixed in `crates/host/src/tool_call.rs` (authorize then delegate to the existing `call_ingest_tool`).
+  No new verb, no WIT change. → `../../debugging/extensions/bridge-cannot-dispatch-host-native-series.md`.
+- **`series.find` discovery needs tag edges the ingest path doesn't create from `labels`.** Worked
+  around in tests by seeding the tag edge through the real tag path; root fix tracked. →
+  `../../debugging/extensions/series-find-needs-tag-edges-not-labels.md`.
 
 ## Related
 

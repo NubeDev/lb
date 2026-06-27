@@ -1,7 +1,7 @@
 # `proof-panel` — a SINGLE self-contained Tier-1 WASM extension: backend tool + frontend page in ONE
 # folder. The Tier-1 counterpart to `fleet-monitor` (which is native/Tier-2):
 #   • BACKEND  → the wasm32-wasip2 component (`src/lib.rs`), loaded into the host's component runtime,
-#                serving one real MCP tool (`proof.status`) — no separate process, no PID.
+#                serving one real MCP tool (`proof.ping`) — no separate process, no PID.
 #   • FRONTEND → a module-federated shadcn page co-located under `ui/`, reaching data ONLY through the
 #                host-mediated read-only bridge.
 # An extension is one thing; backend and frontend are each optional parts of it. This one ships both,
@@ -14,27 +14,29 @@ description = "A Tier-1 WASM component (one real MCP tool) plus a federated shad
 
 [runtime]
 tier        = "wasm"                            # Tier 1: a WASM component in the host runtime (§6.3)
-world       = "lazybones:ext/extension@0.1.0"   # WIT major checked at load (ABI gate)
+world       = "lazybones:ext/extension@0.1.0"   # WIT major checked at load (ABI gate) — same as hello/fleet-monitor
 placement   = "either"
 
 [capabilities]
 # The page reaches data only through these read-only series verbs (host re-checks each per call).
 # Requested here; intersected with admin approval at install. The effective UI scope = the granted
-# subset. The component's own `proof.status` tool needs no host-side cap (the grant lives on the caller).
-request = ["mcp:series.find:call", "mcp:series.latest:call"]
+# subset. The component's own `proof.ping` tool needs no host-side cap requested here — the grant lives
+# on the CALLER's token (the hello convention; verified in crates/host/tests/proof_panel_test.rs).
+request = ["mcp:series.find:call", "mcp:series.latest:call", "mcp:series.read:call"]
 
 # The tool the WASM component serves (proves the backend half is a real, reachable Tier-1 MCP tool).
 [[tools]]
-name        = "proof.status"
-description = "Echo a note plus the serving runtime tier — proves the call reached this WASM component."
+name        = "proof.ping"
+description = "A workspace-tagged snapshot served by the WASM component — proves the Tier-1 backend tool is reachable through the cap gate."
 
 # The PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the module-
 # federation remote entry, resolved under the gateway's `/extensions/proof-panel/ui/` route. The shell
-# loads it as a federated remote (shared React) and mounts it in a cap-gated nav slot.
+# loads it as a federated remote (shared React) and mounts it in a cap-gated nav slot. NO [[widget]]
+# tables — widget tiles are deferred to the dashboard scope (proof-panel scope open question).
 [ui]
 entry = "assets/remoteEntry.js"
 label = "Proof Panel"
-icon  = "badge-check"
+icon  = "shield-check"
 scope = ["series.find", "series.latest"]
 
 [visibility]

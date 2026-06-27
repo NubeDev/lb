@@ -150,6 +150,31 @@ reaching data through the bridge. See `../../scope/extensions/ui-federation-scop
 `../../scope/frontend/dashboard-widgets-scope.md`, and
 `../../sessions/extensions/fleet-monitor-federation-session.md`.
 
+**Reference extension: `proof-panel`** — the **Tier-1 WASM** counterpart, the first shipped artifact
+that proves the whole basics composed end-to-end on the in-process path: one self-contained folder
+(`rust/extensions/proof-panel/`) carrying **both** a real MCP tool served from the wasm guest
+(`proof.ping`, stateless, returns a workspace-tagged `{"ok","ws","node":"proof-panel","tier":"wasm"}`
+snapshot) **and** a co-located federated page that reads **real workspace series** through the bridge
+(`series.find` to list by a tag facet, `series.latest` to read a selected one). Installing it exercises
+publish → grant-intersection → mount → cap-checked call → workspace-scoped result in one motion, with
+**no placeholders** (the gap `fleet-monitor`'s widgets left). It ships **no `[[widget]]`** (deferred to
+the dashboard scope). Two guarantees it pins down that nothing else did:
+
+- **Grant intersection is enforced at call time, not just displayed.** Install with an approval that
+  omits `series.latest` → the persisted page scope drops it AND a bridge `series.latest` call by the
+  page's principal is denied server-side (an honest error, never a blank).
+- **The bridge actually reaches host-native verbs.** `proof-panel` surfaced (and fixed) that
+  `POST /mcp/call` → `lb_host::call_tool` resolved only the runtime **registry**, so host-native
+  `series.*`/`ingest.*` verbs `NotFound`-ed — a federated page could never read a series through the
+  bridge. `call_tool` now authorizes (same MCP gate) then dispatches host-native verbs via
+  `call_ingest_tool`; extension `<ext>.<tool>` calls still route through the registry unchanged. No new
+  verb, no WIT change. See `debugging/extensions/bridge-cannot-dispatch-host-native-series.md`.
+
+The wasm tool is proven through the real `lb-runtime` component (`crates/host/tests/proof_panel_test.rs`);
+the page's data path is proven against a **real spawned gateway** (`ui/src/features/ext-host/ProofPanel.gateway.test.tsx`,
+seeding real series via the test gateway's `/_seed/series` route). See
+`../../scope/extensions/proof-panel-scope.md` and `../../sessions/extensions/proof-panel-session.md`.
+
 ## Placement & targets
 
 `placement` (`local-only`/`cloud-only`/`either`) is matched against a node's **role** as data, never

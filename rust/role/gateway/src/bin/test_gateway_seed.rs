@@ -14,6 +14,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::routing::post;
 use axum::{Json, Router};
 use lb_assets::{record_install, ExtUi, Install, Tier};
+use lb_host::{Provenance, Qos, Sample, Tag, TagSource};
 use lb_inbox::Item;
 use lb_outbox::{enqueue, Effect};
 use lb_role_gateway::{authenticate, Gateway};
@@ -26,6 +27,7 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/inbox", post(seed_inbox))
         .route("/_seed/outbox", post(seed_outbox))
         .route("/_seed/extension", post(seed_extension))
+        .route("/_seed/series", post(seed_series))
 }
 
 fn auth(gw: &Gateway, headers: &HeaderMap) -> Result<lb_auth::Principal, (StatusCode, String)> {
@@ -113,6 +115,59 @@ async fn seed_extension(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// Silence the unused-Value import if a future seed route needs it.
-#[allow(dead_code)]
-type _Unused = Value;
+/// `POST /_seed/series` body — one discoverable series: a committed sample value + the tag facet that
+/// makes it findable. `key:value` is the facet the proof-panel page searches by; `payload` is what
+/// `series.latest` returns.
+#[derive(Deserialize)]
+struct SeedSeries {
+    series: String,
+    seq: u64,
+    payload: Value,
+    key: String,
+    value: Value,
+}
+
+/// `POST /_seed/series` — seed ONE discoverable series through the REAL write paths (not a fake):
+///   1. `ingest_write` + `drain_workspace` commit the sample, so `series.latest` reads its value;
+///   2. `lb_tags::add` applies a `key:value` edge on the `series:<name>` entity, so `series.find`
+///      (tag-graph intersection) discovers it.
+/// Step 2 is explicit because the ingest path does not convert a sample's `labels` into tag edges
+/// today (see debugging/extensions/series-find-needs-tag-edges-not-labels.md) — this seeds the edge a
+/// producer's labels *should* eventually produce, behind the same workspace wall as production data.
+async fn seed_series(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SeedSeries>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = auth(&gw, &headers)?;
+    let ws = p.ws();
+    let sample = Sample {
+        series: body.series.clone(),
+        producer: String::new(),
+        ts: body.seq,
+        seq: body.seq,
+        payload: body.payload,
+        labels: Value::Null,
+        qos: Qos::BestEffort,
+    };
+    lb_host::ingest_write(&gw.node.store, &p, ws, vec![sample])
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    lb_host::drain_workspace(&gw.node.store, ws)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let tag = Tag::new(body.key, body.value);
+    let prov = Provenance::new(body.seq, p.sub().to_string(), TagSource::Producer);
+    lb_host::tags_add(
+        &gw.node.store,
+        &p,
+        ws,
+        &format!("series:{}", body.series),
+        &tag,
+        &prov,
+    )
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("tag: {e:?}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
