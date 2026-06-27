@@ -29,7 +29,8 @@ pub async fn read(
     to_seq: Option<u64>,
 ) -> Result<Vec<Sample>, StoreError> {
     let mut clauses = String::from("series = $series");
-    let mut bindings: Vec<(String, Value)> = vec![("series".into(), Value::String(series.to_string()))];
+    let mut bindings: Vec<(String, Value)> =
+        vec![("series".into(), Value::String(series.to_string()))];
     if let Some(from) = from_seq {
         clauses.push_str(" AND seq >= $from");
         bindings.push(("from".into(), Value::Number(from.into())));
@@ -43,6 +44,8 @@ pub async fn read(
          WHERE {clauses} ORDER BY seq ASC"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
-    let rows: Vec<Sample> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<Sample> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows)
 }

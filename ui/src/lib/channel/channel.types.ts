@@ -10,3 +10,15 @@ export interface Item {
   /** Logical ordering timestamp (caller-injected, not wall-clock). */
   ts: number;
 }
+
+/** A registered channel — mirrors the Rust `ChannelRecord` (collaboration scope, slice 2). */
+export interface ChannelRecord {
+  /** The channel id (e.g. `general`). */
+  id: string;
+  /** The principal that first registered it. */
+  created_by: string;
+  /** A constant discriminant (`channel`). */
+  kind: string;
+  /** Logical ordering timestamp. */
+  ts: number;
+}

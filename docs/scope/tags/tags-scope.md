@@ -218,20 +218,26 @@ spike marked available):
 
 ## Open questions
 
-- **Value typing in the composite ID:** `tag:['temp_threshold', 80]` (typed element in the array ID) vs a
-  string-keyed node with a typed `value` field. Which indexes better for range queries in our engine?
-- **Vector dimension declaration:** is the dim (and model id/version) declared per-workspace at
-  index-definition, or per vector-tag key? (Lean: per key, so different embedding spaces don't collide.)
-- **Tag-node cap value:** what per-workspace cap, and deny vs warn when exceeded? (A decision of this
-  slice — see cardinality risk.)
-- **`tags.find` query grammar:** one polymorphic query object (`{region, kind, text, similar_to, range}`)
-  vs distinct verbs per mode. (Lean: one object, dispatched to the right index.)
-- **Cross-entity relationship verbs:** do `produced_by`/`derived_from` get their own thin MCP verbs, or
-  is there one generic `relate(a, edge, b)` with an allow-list of edge types? (Lean: generic + allow-list.)
-- **Materialized-view refresh:** is `tag_counts` a live `AS SELECT` view (always current) or periodically
-  rebuilt? Cost vs freshness in our engine — measure.
-- **Namespace vs shared vocabulary:** confirmed per-workspace (the wall). Is there ever a need for a
-  workspace-admin-curated shared vocabulary? (Defer; out of scope here.)
+**Resolved by the shipped slice (2026-06-27) — see `sessions/tags/tags-session.md`:**
+
+- **Value typing in the composite ID:** typed element in the array id kept (`tag:['temp_threshold', 80]`)
+  — the value rides the composite id; range queries land as a follow-up but the typing is in place.
+- **Vector dimension declaration:** **per vector-tag key**, pinned at index-definition; a mismatched-dim
+  write is rejected. Lean taken.
+- **Tag-node cap value:** **10_000 per workspace, deny** on exceed (a decision of this slice).
+- **`tags.find` query grammar:** **one polymorphic object** (`{ facets: [{key, value?}] }`) dispatched to
+  exact/key-only/faceted. Lean taken.
+- **Materialized-view refresh:** **per-query** — the `AS SELECT … GROUP` view *defines* on SurrealKV but
+  does not *populate* (incremental or backfill), so `count_by_key` computes per-query
+  (debugging/tags/materialized-view-does-not-populate.md); `define_counts_view` is the seam to switch back
+  when an engine populates it.
+
+**Still open (deferred follow-ups):**
+
+- **Cross-entity relationship verbs** (`produced_by`/`derived_from`): generic `relate(a, edge, b)` +
+  allow-list (lean) — not built this slice.
+- **Namespace vs shared vocabulary:** per-workspace confirmed (the wall); a curated shared vocabulary
+  stays out of scope.
 
 Resolved in this doc (no longer open): **edge identity is `(entity, tag, source)`** (multiple
 attributions coexist; same-source re-tag upserts); the slice is **core-unconditional + spike-gated

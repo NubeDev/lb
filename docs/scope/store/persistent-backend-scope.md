@@ -181,13 +181,14 @@ Plus this slice's own cases:
 
 ## Open questions
 
-- **SurrealKV vs RocksDB** — which to pin after the spike? Decided *by* the three-axis rule above
-  (crash-consistency vetoes); this records the measurement, not the criteria.
-- **Config surface** — `LB_STORE_PATH` env only, or a config file field? (Lean: env now, fold into the
-  node config story when it lands.)
-- **Graceful shutdown / flush** — does `open()` need an explicit close/flush on node stop for
-  crash-consistency, or is the engine's WAL sufficient? Verify in the crash test (the unclean-kill case
-  is the proof).
+**All resolved by the shipped slice (2026-06-27) — see `sessions/store/persistent-backend-session.md`:**
+
+- **SurrealKV vs RocksDB** — **SurrealKV pinned.** The spike measured all five LOAD-BEARING features
+  AVAILABLE and the crash set (kill-mid-tx → rollback, flush-burst → last-commit-survives) passed, so the
+  crash-consistency veto is satisfied; RocksDB stays the documented fallback, unused.
+- **Config surface** — **`LB_STORE_PATH` env** (lean taken), to fold into the node config story later.
+- **Graceful shutdown / flush** — **not required for crash-consistency.** The unclean-kill (SIGABRT)
+  crash test recovers via the engine's WAL with no explicit close, proving the WAL is sufficient.
 
 Resolved in this doc (no longer open): the GO/NO-GO matrix (the feature classes + fallbacks), one store
 per node with **node-level** at-rest encryption (§6.7 protects secret values, not the store file), and

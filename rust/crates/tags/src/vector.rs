@@ -58,7 +58,8 @@ pub async fn put_vector(
         .query_ws(
             ws,
             &format!(
-                "UPSERT type::thing('{VECTOR_TABLE}', [$key, $id]) SET key = $key, embedding = $emb"
+                "UPSERT type::thing('{VECTOR_TABLE}', [$key, $id]) \
+                 SET key = $key, vid = $id, embedding = $emb"
             ),
             vec![
                 ("key".into(), Value::String(key.to_string())),
@@ -77,21 +78,24 @@ pub async fn find_similar(
     query: &[f64],
     k: usize,
 ) -> Result<Vec<String>, StoreError> {
+    // HNSW uses the two-arg knn operator `<|K,EF|>` (the single-arg form returns nothing on this
+    // engine — debugging/tags/hnsw-knn-needs-ef-arg.md); EF is the search breadth. Results come back
+    // ordered by ascending distance, so no ORDER BY is needed. We return the caller's logical `vid`.
+    let ef = (k * 4).max(40);
     let mut resp = store
         .query_ws(
             ws,
-            &format!(
-                "SELECT <string>id AS id FROM {VECTOR_TABLE} \
-                 WHERE embedding <|{k}|> $q ORDER BY vector::distance::knn() ASC"
-            ),
+            &format!("SELECT vid FROM {VECTOR_TABLE} WHERE embedding <|{k},{ef}|> $q"),
             vec![("q".into(), json!(query))],
         )
         .await?;
-    let rows: Vec<IdRow> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
-    Ok(rows.into_iter().map(|r| r.id).collect())
+    let rows: Vec<IdRow> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
+    Ok(rows.into_iter().map(|r| r.vid).collect())
 }
 
 #[derive(serde::Deserialize)]
 struct IdRow {
-    id: String,
+    vid: String,
 }

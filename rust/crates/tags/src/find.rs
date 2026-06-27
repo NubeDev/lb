@@ -67,16 +67,19 @@ pub async fn find(store: &Store, ws: &str, facets: &[Facet]) -> Result<Vec<Strin
     let predicate = preds.join(" OR ");
     let n = facets.len();
 
-    // `in` is the entity record link; `<string>in` renders it as a `table:id` string for the host.
-    // We count DISTINCT (key,value) matches per entity so duplicate-source edges don't over-count,
-    // then keep entities that matched all N facets (the intersection).
+    // `ent` is the raw entity string the caller passed at add time — returned verbatim for an exact
+    // round-trip (`<string>in` would backtick-escape a dotted id like `series:`node.cpu_temp``). We
+    // count DISTINCT (tkey,tval) matches per entity so duplicate-source edges don't over-count, then
+    // keep entities that matched all N facets (the intersection).
     let sql = format!(
-        "SELECT <string>in AS entity, count(array::distinct([tkey, tval])) AS m \
+        "SELECT ent AS entity, count(array::distinct([tkey, tval])) AS m \
          FROM {TAGGED_TABLE} WHERE {predicate} \
          GROUP BY entity"
     );
     let mut resp = store.query_ws(ws, &sql, bindings).await?;
-    let rows: Vec<MatchRow> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<MatchRow> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows
         .into_iter()
         .filter(|r| r.m as usize >= n)

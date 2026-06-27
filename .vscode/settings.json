@@ -1,0 +1,25 @@
+{
+  // Keep rust-analyzer from fighting your terminal `cargo` builds and from
+  // pinning all 14 cores during background checks (a top cause of freezes).
+
+  // Build rust-analyzer's artifacts in a SEPARATE target dir so it doesn't
+  // lock/invalidate the artifacts your terminal builds produce (no double builds).
+  "rust-analyzer.cargo.targetDir": true,
+
+  // Only re-check when you SAVE, not on every keystroke.
+  "rust-analyzer.checkOnSave": true,
+
+  // Cap the threads rust-analyzer uses so it can't saturate the machine.
+  "rust-analyzer.numThreads": 4,
+
+  // Limit cargo jobs that rust-analyzer's check spawns (matches .cargo/config.toml).
+  "rust-analyzer.check.extraArgs": ["--jobs", "4"],
+
+  // Don't scan every crate's build scripts/proc-macros more than needed.
+  "rust-analyzer.cargo.buildScripts.enable": true,
+
+  // Exclude the giant target dir from the file watcher (saves CPU + RAM).
+  "files.watcherExclude": {
+    "**/target/**": true
+  }
+}

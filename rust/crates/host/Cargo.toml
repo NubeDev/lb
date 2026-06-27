@@ -16,6 +16,7 @@ lb-ext-loader.workspace = true
 lb-inbox.workspace = true
 lb-ingest.workspace = true
 lb-jobs.workspace = true
+lb-tags.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true

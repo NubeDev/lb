@@ -25,7 +25,15 @@ fn cleanup(path: &str) {
 
 fn crash_at(path: &str, phase: &str) {
     let status = Command::new(env!("CARGO"))
-        .args(["run", "--quiet", "--example", "crash_ingest", "--", path, phase])
+        .args([
+            "run",
+            "--quiet",
+            "--example",
+            "crash_ingest",
+            "--",
+            path,
+            phase,
+        ])
         .status()
         .expect("spawn crash_ingest");
     assert!(!status.success(), "crash_ingest {phase} must die uncleanly");
@@ -56,10 +64,18 @@ async fn restart_redrains_staged_samples_exactly_once() {
     assert_eq!(committed, 5, "all staged samples drain on restart");
 
     let got = read(&store, "acme", "m", None, None).await.unwrap();
-    assert_eq!(got.len(), 5, "exactly-once: five distinct samples, no dupes");
+    assert_eq!(
+        got.len(),
+        5,
+        "exactly-once: five distinct samples, no dupes"
+    );
 
     // A SECOND drain after restart must commit nothing (staging emptied atomically with commit).
-    assert_eq!(drain_all(&store, "acme").await, 0, "no double-commit on re-drain");
+    assert_eq!(
+        drain_all(&store, "acme").await,
+        0,
+        "no double-commit on re-drain"
+    );
     cleanup(&path);
 }
 
@@ -106,16 +122,30 @@ async fn partial_batch_rolls_back_atomically() {
     assert_eq!(staged_count(&store, "acme").await, 3);
     let pass = commit_batch(&store, "acme", 100).await.unwrap();
     assert_eq!(pass.committed, 3);
-    assert_eq!(staged_count(&store, "acme").await, 0, "staging emptied atomically with commit");
+    assert_eq!(
+        staged_count(&store, "acme").await,
+        0,
+        "staging emptied atomically with commit"
+    );
 
     // Re-committing an empty staging is a no-op (idempotent) — never a partial or phantom commit.
-    assert_eq!(commit_batch(&store, "acme", 100).await.unwrap().committed, 0);
-    assert_eq!(read(&store, "acme", "m", None, None).await.unwrap().len(), 3);
+    assert_eq!(
+        commit_batch(&store, "acme", 100).await.unwrap().committed,
+        0
+    );
+    assert_eq!(
+        read(&store, "acme", "m", None, None).await.unwrap().len(),
+        3
+    );
 }
 
 async fn staged_count(store: &Store, ws: &str) -> i64 {
     let mut resp = store
-        .query_ws(ws, &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"), vec![])
+        .query_ws(
+            ws,
+            &format!("SELECT count() FROM {STAGING_TABLE} GROUP ALL"),
+            vec![],
+        )
         .await
         .unwrap();
     resp.take::<Option<i64>>("count").unwrap().unwrap_or(0)

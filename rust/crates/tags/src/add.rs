@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 
 use crate::cap::{check_cap, CapExceeded};
 use crate::edge::{Provenance, TAGGED_TABLE};
+use crate::entity::entity_parts;
 use crate::tag::{Tag, TAG_TABLE};
 
 /// The error of an add: a store failure, or the workspace tag-node cap was hit.
@@ -53,18 +54,21 @@ pub async fn add(
         "BEGIN TRANSACTION;
          UPSERT type::thing('{TAG_TABLE}', [$key, $value]) SET key = $key, value = $value;
          UPSERT type::thing('{TAGGED_TABLE}', [$entity, $key, $value, $source]) SET
-            in = type::thing($entity),
+            in = type::thing($etb, $eid),
             out = type::thing('{TAG_TABLE}', [$key, $value]),
-            tkey = $key, tval = $value,
+            ent = $entity, tkey = $key, tval = $value,
             at = $at, by = $by, source = $source, confidence = $confidence, expires = $expires;
          COMMIT TRANSACTION;"
     );
+    let (etb, eid) = entity_parts(entity);
     store
         .query_ws(
             ws,
             &sql,
             vec![
                 ("entity".into(), Value::String(entity.to_string())),
+                ("etb".into(), Value::String(etb.to_string())),
+                ("eid".into(), Value::String(eid.to_string())),
                 ("key".into(), Value::String(tag.key.clone())),
                 ("value".into(), tag.value.clone()),
                 ("source".into(), json!(provenance.source.as_str())),

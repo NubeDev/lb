@@ -111,11 +111,7 @@ async fn load_bearing_relate_edges_with_properties() {
     .await
     .expect("LOAD-BEARING RELATE w/ props: relate must store edge properties");
     let mut resp = store
-        .query_ws(
-            "spike",
-            "SELECT source FROM series:s1 -> tagged;",
-            vec![],
-        )
+        .query_ws("spike", "SELECT source FROM series:s1 -> tagged;", vec![])
         .await
         .expect("traverse edge");
     let src: Option<String> = resp.take("source").expect("take source");
@@ -134,17 +130,32 @@ async fn load_bearing_namespace_isolation_on_disk() {
     cleanup(&path);
     let store = Store::open(&path).await.expect("open");
     // Same table:id in two namespaces (workspaces) must not bleed — the hard wall on disk.
-    lb_store::write(&store, "ws-a", "secret", "x", &serde_json::json!({"who": "a"}))
-        .await
-        .expect("write ws-a");
-    lb_store::write(&store, "ws-b", "secret", "x", &serde_json::json!({"who": "b"}))
-        .await
-        .expect("write ws-b");
+    lb_store::write(
+        &store,
+        "ws-a",
+        "secret",
+        "x",
+        &serde_json::json!({"who": "a"}),
+    )
+    .await
+    .expect("write ws-a");
+    lb_store::write(
+        &store,
+        "ws-b",
+        "secret",
+        "x",
+        &serde_json::json!({"who": "b"}),
+    )
+    .await
+    .expect("write ws-b");
     let a = lb_store::read(&store, "ws-a", "secret", "x").await.unwrap();
     let b = lb_store::read(&store, "ws-b", "secret", "x").await.unwrap();
     assert_eq!(a, Some(serde_json::json!({"who": "a"})));
     assert_eq!(b, Some(serde_json::json!({"who": "b"})));
-    assert_ne!(a, b, "LOAD-BEARING ns isolation: namespaces must not share rows on disk");
+    assert_ne!(
+        a, b,
+        "LOAD-BEARING ns isolation: namespaces must not share rows on disk"
+    );
     cleanup(&path);
     println!("SPIKE namespace-isolation-on-disk = AVAILABLE (LOAD-BEARING)");
 }
@@ -252,13 +263,7 @@ async fn degradable_feature_matrix() {
     .await;
 
     // LIVE SELECT → a convenience only (motion rides Zenoh); no impact either way.
-    let live = record_degradable(
-        &store,
-        "spike",
-        "live-select",
-        "LIVE SELECT * FROM tag;",
-    )
-    .await;
+    let live = record_degradable(&store, "spike", "live-select", "LIVE SELECT * FROM tag;").await;
 
     cleanup(&path);
 

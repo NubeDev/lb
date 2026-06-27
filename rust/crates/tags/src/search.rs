@@ -29,7 +29,11 @@ pub async fn define_text_index(store: &Store, ws: &str) -> Result<(), StoreError
 
 /// Full-text search tag values in `ws` for `text` via the BM25 index. Returns the matching
 /// `[key, value]` pairs (the tag nodes). Requires `define_text_index` to have run.
-pub async fn find_text(store: &Store, ws: &str, text: &str) -> Result<Vec<(String, Value)>, StoreError> {
+pub async fn find_text(
+    store: &Store,
+    ws: &str,
+    text: &str,
+) -> Result<Vec<(String, Value)>, StoreError> {
     let mut resp = store
         .query_ws(
             ws,
@@ -37,7 +41,9 @@ pub async fn find_text(store: &Store, ws: &str, text: &str) -> Result<Vec<(Strin
             vec![("text".into(), Value::String(text.to_string()))],
         )
         .await?;
-    let rows: Vec<TextRow> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<TextRow> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows.into_iter().map(|r| (r.key, r.value)).collect())
 }
 

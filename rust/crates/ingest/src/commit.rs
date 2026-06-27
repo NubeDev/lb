@@ -90,6 +90,8 @@ async fn drain(store: &Store, ws: &str, batch: usize) -> Result<Vec<Staged>, Sto
             vec![],
         )
         .await?;
-    let rows: Vec<Staged> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<Staged> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows)
 }

@@ -37,8 +37,9 @@ pub async fn create_workspace(
     Json(body): Json<CreateWorkspace>,
 ) -> Result<Json<WorkspaceRecord>, (StatusCode, String)> {
     let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
-    let record = lb_host::workspace_create(&gw.node.store, &principal, &body.ws, &body.name, gw.now)
-        .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    let record =
+        lb_host::workspace_create(&gw.node.store, &principal, &body.ws, &body.name, gw.now)
+            .await
+            .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(record))
 }

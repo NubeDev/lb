@@ -150,6 +150,18 @@ a fleet of producers writes one series without collision (`(series, producer, se
 committed exactly-once; tags classify heterogeneous series and faceted/relationship queries return them;
 the capability-deny + two-workspace-isolation + offline-replay tests pass on the persistent engine.
 
+**Status (2026-06-27): exit gate MET — all three slices shipped.** (0) `Store::open(path)` on the pinned
+**SurrealKV** engine (config by `LB_STORE_PATH`, no code-branch) + the permanent capability-spike matrix
+(all LOAD-BEARING ✓ → GO) + the crash set (kill mid-tx → rollback, flush-burst → last commit survives).
+(1) `lb-ingest` — durable staging append → one-tx-per-batch commit (UPSERT on `[series,producer,seq]`),
+proven exactly-once across a **kill-mid-commit** subprocess test; two-producer collision both survive;
+overflow at both QoS. (2) `lb-tags` — typed `tag:[key,value]` nodes + `(entity,tag,source)` provenance
+edges; `add`/`remove`/`of`/`find` (exact/key/faceted) + the required per-workspace tag-node cap;
+spike-gated add-ons shipped (BM25 full-text ✓, HNSW vector ✓ with pinned dimension, per-dimension counts
+✓ — computed per-query since the materialized view does not populate on SurrealKV). `series.find`
+discovery wired on tags. See `sessions/{store,ingest,tags}/`. Anti-IoT discipline held (no
+device/sensor/MQTT in core).
+
 ## S9 — Real collaboration UI
 
 Take the UI from a single-screen S2 demo bolted to fakes to a **real multi-user collaboration app over a

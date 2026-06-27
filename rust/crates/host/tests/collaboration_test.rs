@@ -47,15 +47,25 @@ async fn each_verb_is_refused_without_its_grant() {
     let node = Node::boot().await.expect("node boots");
     let p = principal(ws, &[]); // no caps at all
 
-    assert!(channel_create(&node.store, &p, ws, "general", 1).await.is_err());
+    assert!(channel_create(&node.store, &p, ws, "general", 1)
+        .await
+        .is_err());
     assert!(channel_list(&node.store, &p, ws).await.is_err());
     assert!(list_members(&node.store, &p, ws, "eng").await.is_err());
-    assert!(add_team_member(&node.store, &p, ws, "eng", "user:x").await.is_err());
+    assert!(add_team_member(&node.store, &p, ws, "eng", "user:x")
+        .await
+        .is_err());
     assert!(list_inbox(&node.store, &p, ws, "triage").await.is_err());
-    assert!(resolve_inbox(&node.store, &p, ws, "i1", Decision::Approved, 1).await.is_err());
+    assert!(
+        resolve_inbox(&node.store, &p, ws, "i1", Decision::Approved, 1)
+            .await
+            .is_err()
+    );
     assert!(outbox_status(&node.store, &p, ws).await.is_err());
     assert!(workspace_list(&node.store, &p).await.is_err());
-    assert!(workspace_create(&node.store, &p, "new-ws", "New", 1).await.is_err());
+    assert!(workspace_create(&node.store, &p, "new-ws", "New", 1)
+        .await
+        .is_err());
 }
 
 // ----- workspace isolation ----------------------------------------------------------------------
@@ -70,10 +80,14 @@ async fn channel_registry_is_workspace_isolated() {
         .await
         .expect("a creates a channel");
 
-    let b_list = channel_list(&node.store, &b, "ws-b").await.expect("b lists");
+    let b_list = channel_list(&node.store, &b, "ws-b")
+        .await
+        .expect("b lists");
     assert!(b_list.is_empty(), "ISO LEAK: ws-b saw ws-a's channel");
 
-    let a_list = channel_list(&node.store, &a, "ws-a").await.expect("a lists");
+    let a_list = channel_list(&node.store, &a, "ws-a")
+        .await
+        .expect("a lists");
     assert_eq!(a_list.len(), 1, "ws-a sees its own channel");
     assert_eq!(a_list[0].id, "secret-room");
 }
@@ -88,10 +102,14 @@ async fn members_are_workspace_isolated() {
         .await
         .expect("a adds a member");
 
-    let b_members = list_members(&node.store, &b, "ws-b", "eng").await.expect("b lists");
+    let b_members = list_members(&node.store, &b, "ws-b", "eng")
+        .await
+        .expect("b lists");
     assert!(b_members.is_empty(), "ISO LEAK: ws-b saw ws-a's member");
 
-    let a_members = list_members(&node.store, &a, "ws-a", "eng").await.expect("a lists");
+    let a_members = list_members(&node.store, &a, "ws-a", "eng")
+        .await
+        .expect("a lists");
     assert_eq!(a_members, vec!["user:ada".to_string()]);
 }
 
@@ -109,10 +127,14 @@ async fn inbox_is_workspace_isolated_and_resolve_records_the_actor() {
     .await
     .expect("seed ws-a item");
 
-    let b_items = list_inbox(&node.store, &b, "ws-b", "approvals").await.expect("b lists");
+    let b_items = list_inbox(&node.store, &b, "ws-b", "approvals")
+        .await
+        .expect("b lists");
     assert!(b_items.is_empty(), "ISO LEAK: ws-b read ws-a's inbox");
 
-    let a_items = list_inbox(&node.store, &a, "ws-a", "approvals").await.expect("a lists");
+    let a_items = list_inbox(&node.store, &a, "ws-a", "approvals")
+        .await
+        .expect("a lists");
     assert_eq!(a_items.len(), 1);
 
     // Resolve forces the actor to the session principal (`user:test`), never caller-supplied.
@@ -134,13 +156,27 @@ async fn outbox_status_is_workspace_isolated() {
     let b = principal("ws-b", ALL);
 
     let effect = lb_outbox::Effect::new("e1", "github", "create_pr", "{}", "idem-1", 1);
-    lb_outbox::enqueue(&node.store, "ws-a", "side", "x", &serde_json::json!({}), &effect)
+    lb_outbox::enqueue(
+        &node.store,
+        "ws-a",
+        "side",
+        "x",
+        &serde_json::json!({}),
+        &effect,
+    )
+    .await
+    .expect("enqueue in ws-a");
+
+    let b_status = outbox_status(&node.store, &b, "ws-b")
         .await
-        .expect("enqueue in ws-a");
+        .expect("b reads");
+    assert!(
+        b_status.pending.is_empty(),
+        "ISO LEAK: ws-b saw ws-a's effect"
+    );
 
-    let b_status = outbox_status(&node.store, &b, "ws-b").await.expect("b reads");
-    assert!(b_status.pending.is_empty(), "ISO LEAK: ws-b saw ws-a's effect");
-
-    let a_status = outbox_status(&node.store, &a, "ws-a").await.expect("a reads");
+    let a_status = outbox_status(&node.store, &a, "ws-a")
+        .await
+        .expect("a reads");
     assert_eq!(a_status.pending.len(), 1, "ws-a sees its own effect");
 }

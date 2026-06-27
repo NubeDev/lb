@@ -37,8 +37,14 @@ pub async fn create_channel(
     Json(body): Json<CreateChannel>,
 ) -> Result<Json<ChannelRecord>, (StatusCode, String)> {
     let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
-    let record = lb_host::channel_create(&gw.node.store, &principal, principal.ws(), &body.channel, gw.now)
-        .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    let record = lb_host::channel_create(
+        &gw.node.store,
+        &principal,
+        principal.ws(),
+        &body.channel,
+        gw.now,
+    )
+    .await
+    .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(record))
 }

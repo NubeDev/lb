@@ -27,6 +27,7 @@ mod remote;
 mod role;
 mod serve;
 mod sync;
+mod tags;
 mod workflow;
 mod workspaces;
 
@@ -40,27 +41,27 @@ pub use assets::{
     put_skill, revoke_skill, share_doc, AssetError,
 };
 pub use boot::{Node, NodeError};
-pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
-pub use inbox::{list_inbox, resolve_inbox, InboxError};
-pub use members::{add_team_member, list_members, MembersError};
-pub use outbox::{outbox_status, OutboxError, OutboxStatus};
-pub use workspaces::{workspace_create, workspace_list, WorkspaceRecord, WorkspacesError};
-pub use ingest::{
-    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_latest_value,
-    series_read_range, DrainPass, IngestError, Qos, Sample, COMMIT_BATCH, DEFAULT_STAGING_BOUND,
-};
 pub use channel::{
     history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
     PresenceFeed,
 };
+pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
+pub use inbox::{list_inbox, resolve_inbox, InboxError};
+pub use ingest::{
+    authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, series_find,
+    series_latest_value, series_read_range, DrainPass, IngestError, Qos, Sample, COMMIT_BATCH,
+    DEFAULT_STAGING_BOUND,
+};
 pub use install::install_extension;
 pub use installed::installed;
 pub use load::{load_extension, LoadError, Loaded};
+pub use members::{add_team_member, list_members, MembersError};
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
     SidecarMap, Supervised,
 };
+pub use outbox::{outbox_status, OutboxError, OutboxStatus};
 pub use registry::{
     authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
     install_native_from_registry, list_catalog, pull, read_cached, record_catalog,
@@ -71,6 +72,10 @@ pub use remote::register_remote_extension;
 pub use role::Role;
 pub use serve::{serve_ext, ToolServer};
 pub use sync::{replay_history, sync_channel, ChannelSync};
+pub use tags::{
+    authorize_tags, call_tags_tool, tags_add, tags_find, tags_of, tags_remove, Applied, Facet,
+    Provenance, Source as TagSource, Tag, TagsError,
+};
 pub use workflow::{
     call_workflow_tool, emit_effect, enabled_workspaces, ingest_issue, ingest_via_bridge, pr_spec,
     react_to_approvals, reactor_job_id, record_pr_spec, relay_outbox, request_approval,
@@ -78,6 +83,7 @@ pub use workflow::{
     RelayPass, Target, Triaged, WorkflowError, WorkspaceEntry, APPROVAL_CHANNEL, DIRECTORY_NS,
     TRIAGE_CHANNEL,
 };
+pub use workspaces::{workspace_create, workspace_list, WorkspaceRecord, WorkspacesError};
 // The workflow **directory** register/deregister verbs — prefixed at the crate boundary so the public
 // API names the concept (a bare `register` would be ambiguous next to `register_remote_extension`).
 pub use workflow::{deregister as deregister_workspace, register as register_workspace};

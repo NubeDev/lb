@@ -1,0 +1,17 @@
+# Build tuning to stop the machine freezing during Rust builds.
+#
+# Why: 15 GB RAM + 14 cores means cargo's default of 14 parallel jobs can hit
+# the (RAM-heavy) link step on several big crates at once, blow past RAM, and
+# thrash into swap -> frozen desktop. Capping jobs caps peak memory.
+[build]
+# Number of parallel codegen/build jobs. Lower = less peak RAM.
+# 6 is a safe start for 15 GB RAM; drop to 4 if you still see freezes.
+jobs = 6
+
+# --- Faster, lower-memory linker (uncomment AFTER installing mold) ---
+# mold links big binaries far faster and with much less RAM than the default
+# `ld`. Install it first:  sudo apt install mold
+#
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]

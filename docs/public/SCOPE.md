@@ -3,6 +3,54 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S8 — data plane: durable store · generic ingest · typed tag graph)
+
+The first stage that **writes to disk**, in three gated slices (`public/{store,ingest,tags}/`):
+
+- **Persistent store + the GO/NO-GO spike (the gate)** — `Store::open(path)` on the pinned **SurrealKV**
+  engine alongside `Store::memory()`; both engines compile into every node, the constructor chosen by
+  `LB_STORE_PATH` (config, **no code-branch** — symmetric nodes). A permanent hermetic
+  **capability-spike matrix** classifies each SurrealDB feature LOAD-BEARING vs DEGRADABLE: all five
+  LOAD-BEARING ✓ → GO; `DEFINE BUCKET` ✗ (→ record-as-content), SEARCH/HNSW ✓, materialized view
+  defines-but-doesn't-populate, LIVE ✓. A subprocess **crash set** (SIGABRT) proves kill-mid-tx →
+  rollback and flush-burst → last-commit-survives. See `store/store.md`.
+- **Generic ingest (`lb-ingest`)** — the read-side analog of the outbox. A `Sample{series,producer,ts,
+  seq,payload,labels,qos}` firehose lands as a cheap durable **append** to staging, then a commit worker
+  drains **one transaction per batch**: UPSERT into `series` on `[series,producer,seq]` + delete-staged
+  in the same tx → **atomic + exactly-once on re-drain** (proven across a kill-mid-commit). Dedup
+  identity is `(series, producer, seq)` with `producer` = the authenticated principal, so a fleet writes
+  one series without collision. Overflow drop-oldest/dead-letter. **No device/sensor/MQTT in core** — a
+  producer is a principal. `ingest.write`/`series.read`/`series.latest`/`series.find` MCP verbs. See
+  `ingest/ingest.md`.
+- **Typed tag graph (`lb-tags`)** — a tag is a shared typed node `tag:[key,value]`; applying it is a
+  `(entity,tag,source)` provenance edge (same-source upserts, different sources coexist).
+  `tags.add/remove/of/find` (exact/key-only/faceted intersection) + a required per-workspace **tag-node
+  cap**. Spike-gated add-ons shipped: **BM25 full-text**, **HNSW vector** (dimension pinned, mismatched
+  dims rejected), **per-dimension counts** (per-query, since the materialized view doesn't populate on
+  SurrealKV). `series.find` discovery is built on it. See `tags/tags.md`.
+
+Mandatory tests across all three: capability-deny, two-workspace isolation (store + MCP; tags uses the
+**identical** `tag:['region','eu']` in both workspaces), offline/restart. 284 workspace tests green.
+
+## Shipped (S7 — frontend: make collaboration real — identity · workspaces · channels · people · inbox/outbox)
+
+The UI became a **real collaboration app over a real session** (the channel's 4-file move, ×5):
+
+- **A real identity session (the keystone)** — the gateway's demo principal is **deleted**. `POST
+  /login` mints a signed `lb_auth` token (a dev credential store, the token path real); **every**
+  route `verify`s the bearer token and derives the principal — **workspace + caps from the token, not
+  the request** (§7). Missing/forged/expired → `401`; ungranted → `403`. SSE authenticates by a
+  `?token=` query param. UI: `lib/session/` + `useSession`; `App.tsx`'s hardcoded identity is gone.
+- **Workspaces / channels / members / inbox / outbox** — five new host services, each gated and
+  workspace-scoped, mirrored 1:1 by a gateway route and a `features/<x>/` view: `channel_registry`
+  (list/create + create-on-post), `workspaces` (directory), `members` (list/add over S4 edges),
+  `inbox` (the **real** `lb_inbox` queue — replaces the workflow fake on the real path; Approve =
+  the S6 gate), `outbox_status` (read-only). **Presence is rendered** (`usePresence` roster).
+- **Two real sessions** make the workspace-isolation test real — ws-B sees none of ws-A.
+- Tested: `crates/host/tests/collaboration_test.rs` + the gateway suite (session / deny / two-session
+  isolation / registry / real inbox / outbox pending→delivered / live SSE) + a Vitest view per
+  surface. See `frontend/collaboration.md`.
+
 ## Shipped (S7 — platform maturity: the outbox egress — real GitHub `Target` + backoff/dead-letter)
 
 The transactional outbox's **outbound** edge, completed and hardened (two of its listed follow-ups):

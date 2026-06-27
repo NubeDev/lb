@@ -9,6 +9,7 @@ use lb_store::{Store, StoreError};
 use serde_json::Value;
 
 use crate::edge::TAGGED_TABLE;
+use crate::entity::entity_parts;
 
 /// Remove `entity`'s edges for `key` (and `value` if given) in `ws`. Drops all source variants of
 /// the matched edges. The tag node is untouched.
@@ -20,10 +21,13 @@ pub async fn remove(
     value: Option<&Value>,
 ) -> Result<(), StoreError> {
     // Filter on the edge's denormalized tkey/tval (the RELATION drops literal key/value fields —
-    // debugging/tags/relation-drops-key-value-fields.md).
-    let mut where_clause = String::from("in = type::thing($entity) AND tkey = $key");
+    // debugging/tags/relation-drops-key-value-fields.md). Entity link is two-arg (dotted ids —
+    // debugging/tags/dotted-entity-id-needs-two-arg.md).
+    let (etb, eid) = entity_parts(entity);
+    let mut where_clause = String::from("in = type::thing($etb, $eid) AND tkey = $key");
     let mut bindings: Vec<(String, Value)> = vec![
-        ("entity".into(), Value::String(entity.to_string())),
+        ("etb".into(), Value::String(etb.to_string())),
+        ("eid".into(), Value::String(eid.to_string())),
         ("key".into(), Value::String(key.to_string())),
     ];
     if let Some(v) = value {

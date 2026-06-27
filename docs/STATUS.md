@@ -16,6 +16,14 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**S8 — data plane (durable store + generic ingest + tagging): exit gate MET** (2026-06-27). All three
+slices shipped on the pinned **SurrealKV** persistent engine — (0) `Store::open` + the capability-spike
+matrix + crash-consistency set, (1) `lb-ingest` durable exactly-once buffer (proven across a
+kill-mid-commit), (2) `lb-tags` typed graph + spike-gated full-text/vector/counts, with `series.find`
+discovery wired on tags. Data survives a node restart; a fleet writes one series without collision;
+isolation/deny/offline tests pass on disk. The S9 collaboration-UI work proceeds in parallel. (Earlier
+context below.)
+
 **In S7 — platform maturity** (see `STAGES.md`); **both** S7 exit-gate slices have shipped — the
 **signed extension registry** and the **native Tier-2 supervisor** — so the **S7 exit gate is fully
 MET**. The Rust workspace + a React/Tauri UI exist and build; messaging, a second node + sync,
@@ -140,6 +148,10 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | webhook front door | extensions | S7 | **shipped** | [github-webhook](scope/extensions/github-webhook-scope.md) | [github-webhook-multitenant](sessions/extensions/github-webhook-multitenant-session.md) | the webhook ingress went **multi-tenant**: `tenant_router` (`POST /webhook/{tenant}`) over a `TenantRegistry` (opaque slug → `{ws, principal, secret}`) fronts many workspaces from one process, each with its own secret. Routing by URL slug (chosen BEFORE the HMAC check → authenticity-before-parse holds); the **workspace wall holds at the front door** — A's secret on B's slug → `401`, never crosses; unknown tenant = opaque `401` (no enumeration oracle). Single-tenant `/webhook` untouched. +4 Rust (per-tenant routing · cross-tenant-secret isolation · unknown-tenant 401 · capability-deny); no core/WIT/cap change; ~210+26+2 green |
 | workflow driver + node wiring | coding-workflow | S7 | **shipped** | [workflow-driver](scope/coding-workflow/workflow-driver-scope.md) | [workflow-driver](sessions/coding-workflow/workflow-driver-session.md) | the loop now **runs in a process**, not just tests. New `lb-role-github-workflow`: `drive_once`/`run_workflow_loop` tick the **reactor then the relay** per workspace (reactor-first → same-tick PR), over a list of `WorkflowBinding`s (isolation structural), with an **injected clock** (no wall-clock in the crate). Env-gated **node wiring** (`node/src/github.rs`): mounts the webhook front door + the driver loop by config (`LB_WORKFLOW_WS`/`LB_WEBHOOK_*`/`LB_GITHUB_*`), no `if cloud`; `node` is now `Arc<Node>`. The host owns the verbs, the role owns the cadence; GitHub `Target` behind the trait, no net dep in core. +4 Rust (one-tick close · idempotent re-tick · per-ws isolation · injected-clock); no core/WIT/cap change; ~214+26+2 green |
 | dynamic workspace directory | coding-workflow | S7 | **shipped** | [workflow-driver](scope/coding-workflow/workflow-driver-scope.md) | [dynamic-directory](sessions/coding-workflow/dynamic-directory-session.md) | onboard/retire a workspace **without a restart**. New host **directory** (`register_workspace`/`deregister_workspace`/`enabled_workspaces`, `WorkspaceEntry{ws,channel,status,ts}`) in a **reserved namespace** `_lb_workflow_directory` (node-level config, secret-free, no MCP surface). Driver `run_directory_loop`/`drive_directory_once` re-reads the directory **each tick** (binding via an injected `principal_for`), so a runtime `register` is picked up next tick; `node` seeds the directory from `LB_WORKFLOW_WS` then drives it. +8 Rust (5 host: register/deregister/idempotent/durable/ns-isolation + 3 driver: register-mid-loop · deregister-drops · multi-ws isolation); no core/WIT/cap change; ~222+26+2 green |
+| persistent store + spike | store | S8 | **shipped** | [persistent-backend](scope/store/persistent-backend-scope.md) | [persistent-backend](sessions/store/persistent-backend-session.md) | slice 0 / the gate. `Store::open(path)` on the pinned **SurrealKV** engine (both engines compiled in; constructor by `LB_STORE_PATH`, no code-branch) + raw `query_ws` seam. Permanent hermetic **capability-spike matrix** (5 LOAD-BEARING ✓ → GO; DEGRADABLE: bucket ✗→record-as-content, SEARCH ✓, HNSW ✓, materialized-view defines-but-doesn't-populate, LIVE ✓). **Crash set** (subprocess SIGABRT): write→reopen, kill-mid-tx→rollback, flush-burst→last-commit-survives. Isolation/parity re-run on disk. 6 spike + 4 crash + 4 parity green |
+| generic ingest | ingest | S8 | **shipped** | [ingest](scope/ingest/ingest-scope.md) | [ingest](sessions/ingest/ingest-session.md) | slice 1. New `lb-ingest`: `Sample{series,producer,ts,seq,payload,labels,qos}`; durable staging **append** (cheap path) → commit worker **one-tx-per-batch** UPSERT on `[series,producer,seq]` + delete-staged same-tx (atomic + exactly-once on re-drain); `series.read/latest`; overflow drop-oldest/dead-letter. Host `ingest` svc (MCP gate, producer=authenticated principal, drain worker = ingest role) + `ingest.write`/`series.read`/`series.latest`/`series.find` bridge. **Anti-IoT held** (no device/sensor/MQTT in core). Tests: deny · ws-iso (store+MCP) · **kill-mid-commit re-drain** · two-producer collision · overflow both QoS; 5 crate + 3 durable + 6 host green |
+| typed tag graph | tags | S8 | **shipped** | [tags](scope/tags/tags-scope.md) | [tags](sessions/tags/tags-session.md) | slice 2. `lb-tags` built from stub: `tag:[key,value]` typed nodes + `(entity,tag,source)` provenance edges; `add`/`remove`/`of`/`find` (exact/key-only/faceted intersection) + required per-workspace **tag-node cap** (deny). Spike-gated add-ons: **BM25 full-text** ✓, **HNSW vector** ✓ (dimension pinned, mismatch rejected), **per-dimension counts** (per-query — view doesn't populate). Host `tags` svc + `tags.*` bridge (no event verb); `series.find` wired on top. Tests: deny-per-verb · **identical-tag two-ws isolation** · idempotent re-tag · index-correctness; 5+1+4 crate + 3+1 host green |
+| make collaboration real | frontend | S7 | **shipped** | [collaboration](scope/frontend/collaboration-scope.md) | [collaboration](sessions/frontend/collaboration-session.md) | the UI went from a 1-screen S2 demo on fakes to a **real collaboration app over a real session**. **Identity keystone:** demo principal DELETED — `POST /login` mints a signed `lb_auth` token (dev credential store); **every** gateway route `verify`s the bearer token → workspace+caps from the **token, not the request** (§7); SSE auth via `?token=` (EventSource can't set a header). New host services: `channel_registry` (`channel_create`/`channel_list` + create-on-post, reuses chan pub/sub gate), `members` (`list_members`/`add_team_member` over S4 edges, `mcp:members.*`), `inbox` (`list_inbox`/`resolve_inbox` over `lb_inbox`, `mcp:inbox.*`), `outbox` (read-only `outbox_status`, `mcp:outbox.status`), `workspaces` (`workspace_list`/`create` in reserved ns). New gateway routes mirror each 1:1. UI: `lib/session/`+`useSession`, workspace switcher, channel list, members view, **rendered presence** (`usePresence` idempotent roster), real inbox view (replaces the workflow fake on the real path — Approve/Reject = S6 gate), read-only outbox view; `App.tsx` hardcoded `WS`/`CHANNEL`/`AUTHOR` gone. **Two real sessions** make the ws-isolation test real (ws-B sees none of ws-A). +5 host collab (cap-deny + ws-iso each verb) +14 gateway (session: issue/verify/forged/expired/ws-from-token · deny · 2-session iso · registry · real inbox · outbox pending→delivered · live SSE) +6 Vitest views; cargo build/fmt/file-size + pnpm build/test green; no core/WIT change |
 
 ---
 
@@ -151,8 +163,9 @@ auth-caps, mcp, crate-layout, extensions (+ **native-tier**, new this slice), jo
 **workflow-driver**, new this slice), registry,
 **node-roles** + **platform-targets** (filled this slice — placement × role + the native target tag).
 **Promoted to `public/`:** core, auth-caps, mcp, crate-layout, bus, inbox-outbox (+ outbox + the
-resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-workflow, registry,
-**extensions** (the runtime + two tiers, filled this slice) (+ `public/SCOPE.md`).
+resolution facet), tenancy, **store** (persistent backend + spike matrix, this slice), **ingest** (this
+slice), **tags** (this slice), frontend, sync, files, skills, agent, coding-workflow, registry,
+**extensions** (the runtime + two tiers) (+ `public/SCOPE.md`).
 
 ---
 
@@ -198,10 +211,14 @@ resolution facet), tenancy, store, frontend, sync, files, skills, agent, coding-
 4. **Gateway/Tauri wiring for `agent_invoke` + `assets_*` + `workflow_*`** (S4/S5/S6 follow-up): the
    host verbs + MCP bridges + UI fakes exist; route them through the SSE/HTTP gateway + Tauri shell to
    a real node (mirrors the S3 channel transport swap).
-5. **Fit-and-finish carryover:** render presence in the UI; a real login→token→principal session
-   (replacing the gateway's demo principal); **token-on-the-bus** so the hub can verify a routed
-   caller's grant (S5/S6 are in-process co-trust); sync the asset/job/outbox tables (all `(table,id)`
-   upserts the channel sync path already covers); explicit edge→hub router endpoints (S7).
+5. **Fit-and-finish carryover:** ~~render presence in the UI~~ **(SHIPPED — `usePresence` roster)**;
+   ~~a real login→token→principal session (replacing the gateway's demo principal)~~ **(SHIPPED — the
+   "make collaboration real" slice: `POST /login` mint + per-route `verify`, demo principal deleted)**;
+   **token-on-the-bus** so the hub can verify a routed caller's grant (S5/S6 are in-process co-trust —
+   still open); sync the asset/job/outbox tables (all `(table,id)` upserts the channel sync path
+   already covers); explicit edge→hub router endpoints (S7); the **Tauri desktop** command layer's
+   session (the collaboration slice wired the browser/gateway path; the desktop shell still fixes its
+   workspace).
 
 ---
 

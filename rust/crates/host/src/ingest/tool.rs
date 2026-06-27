@@ -11,6 +11,7 @@ use lb_auth::Principal;
 use lb_ingest::Sample;
 use lb_mcp::ToolError;
 use lb_store::Store;
+use lb_tags::Facet;
 use serde_json::{json, Value};
 
 use super::{ingest_write, series_latest_value, series_read_range, IngestError};
@@ -51,6 +52,13 @@ pub async fn call_ingest_tool(
                 .map_err(ingest_to_tool)?;
             Ok(json!({ "sample": last }))
         }
+        "series.find" => {
+            let facets = facets(input)?;
+            let hits = super::series_find(store, principal, ws, &facets)
+                .await
+                .map_err(ingest_to_tool)?;
+            Ok(json!({ "series": hits }))
+        }
         _ => Err(ToolError::NotFound),
     }
 }
@@ -79,4 +87,24 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 
 fn u64_arg(input: &Value, key: &str) -> Option<u64> {
     input.get(key).and_then(|v| v.as_u64())
+}
+
+/// Parse the `facets` array of a `series.find` query (value present → exact, absent → key-only).
+fn facets(input: &Value) -> Result<Vec<Facet>, ToolError> {
+    let arr = input
+        .get("facets")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| ToolError::BadInput("missing facets array".into()))?;
+    arr.iter()
+        .map(|f| {
+            let key = f
+                .get("key")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("facet missing key".into()))?;
+            Ok(match f.get("value") {
+                Some(v) => Facet::exact(key, v.clone()),
+                None => Facet::key_only(key),
+            })
+        })
+        .collect()
 }

@@ -12,6 +12,12 @@ import { agentFakeInvoke } from "./agent.fake";
 import { workflowFakeInvoke } from "./workflow.fake";
 import { registryFakeInvoke } from "./registry.fake";
 import { nativeFakeInvoke } from "./native.fake";
+import { sessionFakeInvoke } from "./session.fake";
+import { workspaceFakeInvoke } from "./workspace.fake";
+import { channelRegistryFakeInvoke, registerOnPost } from "./channelRegistry.fake";
+import { membersFakeInvoke } from "./members.fake";
+import { inboxFakeInvoke } from "./inbox.fake";
+import { outboxFakeInvoke } from "./outbox.fake";
 
 const store = new Map<string, Item[]>(); // key: `${ws}/${channel}`
 
@@ -33,6 +39,20 @@ export function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   if (native !== null) return native;
   const asset = assetsFakeInvoke<T>(cmd, args);
   if (asset !== null) return asset;
+  // The collaboration surfaces (session, workspace dir, channel registry, members, inbox, outbox).
+  // Each returns null for anything it doesn't own, so the channel cases below still run.
+  const session = sessionFakeInvoke<T>(cmd, args);
+  if (session !== null) return Promise.resolve(session);
+  const workspace = workspaceFakeInvoke<T>(cmd, args);
+  if (workspace !== null) return Promise.resolve(workspace);
+  const channelReg = channelRegistryFakeInvoke<T>(cmd, args);
+  if (channelReg !== null) return Promise.resolve(channelReg);
+  const members = membersFakeInvoke<T>(cmd, args);
+  if (members !== null) return Promise.resolve(members);
+  const inbox = inboxFakeInvoke<T>(cmd, args);
+  if (inbox !== null) return Promise.resolve(inbox);
+  const outbox = outboxFakeInvoke<T>(cmd);
+  if (outbox !== null) return Promise.resolve(outbox);
   switch (cmd) {
     case "channel_post": {
       const { ws, channel, item } = args as {
@@ -47,6 +67,8 @@ export function fakeInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
       else list.push(stored);
       list.sort((a, b) => a.ts - b.ts);
       store.set(key(ws, channel), list);
+      // Create-on-post: a posted channel becomes listable (mirrors the host's registry upsert).
+      registerOnPost(ws, channel, stored.author);
       return Promise.resolve(stored as T);
     }
     case "channel_history": {

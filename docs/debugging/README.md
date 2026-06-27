@@ -11,6 +11,13 @@ debugged twice. **Append-only and symptom-led.**
 
 | Date | Area | Symptom | Status | Entry |
 |---|---|---|---|---|
+| 2026-06-27 | tags | `DEFINE TABLE … AS SELECT … GROUP` defines but never populates on SurrealKV (tag_counts empty) → per-query | resolved | [tags/materialized-view-does-not-populate.md](tags/materialized-view-does-not-populate.md) |
+| 2026-06-27 | tags | HNSW `<\|K\|>` knn returns nothing; the two-arg `<\|K,EF\|>` form is required | resolved | [tags/hnsw-knn-needs-ef-arg.md](tags/hnsw-knn-needs-ef-arg.md) |
+| 2026-06-27 | tags | `type::thing("series:node.cpu_temp")` mis-parses a dotted entity id (tag add fails) | resolved | [tags/dotted-entity-id-needs-two-arg.md](tags/dotted-entity-id-needs-two-arg.md) |
+| 2026-06-27 | tags | a `tagged` edge silently drops fields literally named `key`/`value` | resolved | [tags/relation-drops-key-value-fields.md](tags/relation-drops-key-value-fields.md) |
+| 2026-06-27 | ingest | `DELETE … ORDER BY … LIMIT 1` unsupported (drop-oldest eviction) | resolved | [ingest/delete-order-by-limit-unsupported.md](ingest/delete-order-by-limit-unsupported.md) |
+| 2026-06-27 | ingest | `series.read(seq <= u64::MAX)` returns nothing (huge int coerces to float) | resolved | [ingest/u64-max-bound-coerces-to-float.md](ingest/u64-max-bound-coerces-to-float.md) |
+| 2026-06-27 | store | workspace fails to build: modules referenced but never declared (`mod …` missing) | resolved | [store/half-wired-modules-block-workspace-build.md](store/half-wired-modules-block-workspace-build.md) |
 | 2026-06-26 | extensions | a ws-B caller can run an extension only ws-A installed (the loaded instance is node-global; the wall is caps + store, not the instance) | resolved | [extensions/loaded-extension-instance-is-node-global.md](extensions/loaded-extension-instance-is-node-global.md) |
 | 2026-06-26 | agent | the agent is `Denied` reading a substrate doc the caller owns (derived-sub vs the S4 membership gate) | resolved | [agent/agent-reads-doc-it-doesnt-own-is-denied.md](agent/agent-reads-doc-it-doesnt-own-is-denied.md) |
 | 2026-06-26 | store | `DEFINE BUCKET` fails to parse on the embedded `kv-mem` store (assets stored as records instead) | resolved | [store/define-bucket-unavailable-in-kv-mem-build.md](store/define-bucket-unavailable-in-kv-mem-build.md) |

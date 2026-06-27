@@ -20,9 +20,15 @@ async fn main() {
 
     match phase.as_str() {
         "commit-then-kill" => {
-            write(&store, "crash", "kv", "committed", &serde_json::json!({"v": 1}))
-                .await
-                .expect("write committed");
+            write(
+                &store,
+                "crash",
+                "kv",
+                "committed",
+                &serde_json::json!({"v": 1}),
+            )
+            .await
+            .expect("write committed");
             // The write returned (committed). Now die hard before any graceful shutdown.
             std::process::abort();
         }

@@ -38,8 +38,7 @@ pub async fn post(
     // REGISTRY: make the channel listable (create-on-first-post). Best-effort and additive — a
     // registry hiccup must never fail a posted message (the durable item is the source of truth),
     // so the result is intentionally ignored. Idempotent: re-posting upserts the same row.
-    let _ =
-        crate::channel_registry::register_on_post(store, ws, cid, &item.author, item.ts).await;
+    let _ = crate::channel_registry::register_on_post(store, ws, cid, &item.author, item.ts).await;
 
     // MOTION: live echo. Serialized item JSON is the payload; subscribers deserialize it.
     let payload = serde_json::to_vec(&item)

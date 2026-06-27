@@ -37,8 +37,14 @@ pub async fn add_team_member(
     Json(body): Json<AddMember>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
-    lb_host::add_team_member(&gw.node.store, &principal, principal.ws(), &team, &body.user)
-        .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    lb_host::add_team_member(
+        &gw.node.store,
+        &principal,
+        principal.ws(),
+        &team,
+        &body.user,
+    )
+    .await
+    .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }

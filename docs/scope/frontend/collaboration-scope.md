@@ -172,20 +172,27 @@ Plus this slice's cases:
 
 ## Open questions
 
-- **Login mechanism for the minimal session:** a dev-login (pick a principal) vs a real credential check?
-  Lean: a credential→token endpoint that is **real** (signed, verified) but starts with a dev credential
-  store; the IdP plugs in behind `verify` later.
-- **Channel model:** a registry record per `(ws, channel)` written on first post + explicit create
-  (lean), vs deriving a list from existing message rows. Lean: the registry record — cheap, explicit,
-  supports metadata (topic, created_by) later.
-- **Token transport to the node's caps check:** the gateway verifies + sets the principal; the in-process
-  node trusts it for now. When does full token-on-the-bus land? (Separate hardening; note, don't build.)
-- **Outbox status visibility:** workspace-scoped read for any member, or admin-gated? Lean: workspace-
-  scoped read, capability-gated like any verb.
-- **Teams vs members granularity:** how much team-management UI beyond list + add-member? Lean: minimal
-  (list members, list teams, add member); full team CRUD is a follow-up.
-- **Where the session lives in the UI:** a `lib/session/` module + a `useSession` hook holding the token
-  + current workspace; every `*.api.ts` reads it. Confirm the shape.
+**All resolved this slice** (see `sessions/frontend/collaboration-session.md`). Each lean was taken:
+
+- **Login mechanism:** ✅ RESOLVED — a real signed-token endpoint (`POST /login` → `lb_auth::mint`,
+  every route `verify`s) with a **dev credential store** (`session/credentials.rs`). The IdP plugs in
+  behind the same `verify` seam later. (Lean taken.)
+- **Channel model:** ✅ RESOLVED — a **registry record per `(ws, channel)`** (`channel_registry/`),
+  upserted on first post (`register_on_post`, additive/best-effort) AND explicit `channel_create`.
+  (Lean taken.)
+- **Token transport to the node's caps check:** ✅ DEFERRED (as scoped) — the gateway verifies + sets
+  the principal; the in-process node trusts it. Full token-on-the-bus for a **routed cross-node**
+  caller is a separate hardening, noted not built.
+- **Outbox status visibility:** ✅ RESOLVED — **workspace-scoped read, capability-gated**
+  (`mcp:outbox.status:call`), read-only. (Lean taken.)
+- **Teams vs members granularity:** ✅ RESOLVED — **minimal** (`list_members` + `add_team_member`),
+  full team CRUD deferred. (Lean taken.)
+- **Where the session lives in the UI:** ✅ RESOLVED — `lib/session/` (`session.store.ts` observable
+  + `useSession`); `http.ts` / `channel.stream.ts` read the token. (Lean taken, shape confirmed.)
+
+New decision recorded in the session doc: the SSE stream authenticates by a `?token=` query param
+(`EventSource` cannot set an `Authorization` header); switching workspace is a re-login (the
+workspace is the token's hard wall, §7).
 
 ## Related
 

@@ -8,6 +8,7 @@
 
 import type { Item } from "./channel.types";
 import { gatewayUrl } from "@/lib/ipc/http";
+import { sessionToken } from "@/lib/session/session.store";
 
 /** Callbacks for the two SSE event kinds the gateway emits. */
 export interface ChannelStreamHandlers {
@@ -31,7 +32,12 @@ export function openChannelStream(
   if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
   if (typeof EventSource === "undefined") return null;
 
-  const url = `${base}/channels/${encodeURIComponent(channel)}/stream`;
+  // The token rides as a query param: `EventSource` cannot set an Authorization header, and the
+  // gateway's stream route authenticates by `?token=` for exactly this reason (the hard wall holds —
+  // workspace + caps come from the verified token).
+  const url = `${base}/channels/${encodeURIComponent(channel)}/stream?token=${encodeURIComponent(
+    sessionToken(),
+  )}`;
   const es = new EventSource(url);
 
   es.addEventListener("message", (e) => {

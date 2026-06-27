@@ -286,14 +286,16 @@ Plus the load/robustness cases specific to this surface:
 
 ## Open questions
 
-- **`ingest.write` acknowledgement:** synchronous ack on durable-accept (staged), or fire-and-forget with
-  the live stream as the only fast path? Recommendation: **ack-on-stage** for must-deliver series,
-  **fire-and-forget motion** for best-effort — the QoS is a per-series property.
-- **Overflow policy default:** drop-oldest vs. drop-newest vs. dead-letter — per-series, with what
-  default? (Lean drop-oldest for best-effort telemetry.) Applies to **both** producer and cloud staging.
-- **Series id grammar:** dotted names (`node.cpu_temp`)? Reserved prefixes? How do grants scope by prefix?
-- **Producer identity in the dedup key:** is `producer` the calling principal, or a producer-declared id
-  the grant authorizes? (Lean: the authenticated principal — un-spoofable, already workspace-scoped.)
+**Resolved by the shipped slice (2026-06-27) — see `sessions/ingest/ingest-session.md`:**
+
+- **`ingest.write` acknowledgement:** QoS is a per-series property on `Sample` (`best-effort` |
+  `must-deliver`); `write` returns the accepted count (durable-accept). The lean is taken.
+- **Overflow policy default:** **drop-oldest** for best-effort, **dead-letter** for must-deliver, bounded
+  at the staging end this slice (producer-side bound deferred — defer-list).
+- **Producer identity in the dedup key:** **the authenticated calling principal** — the host overwrites
+  the wire `producer` before staging (un-spoofable). Lean taken.
+- **Series id grammar (still open):** dotted names work end to end (e.g. `series:node.cpu_temp` via the
+  two-arg `type::thing` in tags); reserved prefixes / grant-by-prefix scoping remain a follow-up.
 
 Resolved in this doc (no longer open): the dedup identity is **`(series, producer, seq)`**; staging is a
 **durable append**, commit is **one-tx-per-batch UPSERT** (not an in-memory ring); the tag-graph is the

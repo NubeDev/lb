@@ -57,7 +57,9 @@ async fn tag_exists(store: &Store, ws: &str, tag: &Tag) -> Result<bool, StoreErr
             ],
         )
         .await?;
-    let n: Option<i64> = resp.take("count").map_err(|e| StoreError::Decode(e.to_string()))?;
+    let n: Option<i64> = resp
+        .take("count")
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(n.unwrap_or(0) > 0)
 }
 
@@ -70,6 +72,8 @@ async fn node_count(store: &Store, ws: &str) -> Result<usize, StoreError> {
             vec![],
         )
         .await?;
-    let n: Option<i64> = resp.take("count").map_err(|e| StoreError::Decode(e.to_string()))?;
+    let n: Option<i64> = resp
+        .take("count")
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(n.unwrap_or(0).max(0) as usize)
 }

@@ -24,6 +24,8 @@ pub async fn latest(store: &Store, ws: &str, series: &str) -> Result<Option<Samp
             vec![("series".into(), Value::String(series.to_string()))],
         )
         .await?;
-    let rows: Vec<Sample> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<Sample> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows.into_iter().next())
 }

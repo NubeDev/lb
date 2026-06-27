@@ -23,8 +23,8 @@ pub async fn workspace_create(
     authorize_tool(principal, principal.ws(), "workspace.create")
         .map_err(|_| WorkspacesError::Denied)?;
     let record = WorkspaceRecord::new(ws, name, ts);
-    let value = serde_json::to_value(&record)
-        .map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;
+    let value =
+        serde_json::to_value(&record).map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;
     write(store, WORKSPACES_NS, TABLE, ws, &value).await?;
     Ok(record)
 }

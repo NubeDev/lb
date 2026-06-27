@@ -30,11 +30,53 @@ namespace from `ws` before the query runs (`use_ns(ws).use_db("main")`). Isolati
 - **`field` in `list` is guarded** to `[a-z0-9_]` — it is interpolated into the query, so it must
   be a code-supplied column identifier, never caller input; `value` is always a bound param.
 
-## Engine
+## Engine — two backends, chosen by config (S9)
 
-S2 uses the in-memory engine (`mem://`); a file/rocksdb engine is the same handle type by config
-(symmetric nodes — the engine is config, not code).
+Every node compiles in **both** embedded engines; which constructor runs is a **config** decision at
+boot, never a role code-branch (symmetric nodes):
+
+| Constructor | Engine | When |
+|---|---|---|
+| `Store::memory()` | `Mem` (in-memory) | tests / dev — ephemeral, gone on drop |
+| `Store::open(path)` | **SurrealKV** (on-disk) | a real node — **durable across restart** |
+
+Boot wiring (`Node::open_store`): `LB_STORE_PATH` set → `open(path)`; unset → `memory()`. No
+`if cloud`. Everything above the open seam (`read`/`write`/`list`/`write_tx`) is unchanged.
+
+**Engine pinned: SurrealKV** — pure-Rust, no C++ toolchain (the "builds anywhere / on a Pi" posture).
+The choice is by the three-axis rule (crash-consistency vetoes → feature coverage → build footprint);
+all LOAD-BEARING features are available and the crash set passes, so RocksDB (the documented fallback)
+was not needed.
+
+A raw `query_ws(ws, sql, bindings)` escape hatch runs `RELATE`/`DEFINE`/composite-id/multi-statement
+statements (used by ingest + tags); it selects the namespace from `ws` first, the same hard wall.
+
+## Durability + crash-consistency (S9)
+
+Proven by a subprocess crash set (`crates/store/tests/crash_test.rs`, SIGABRT — not a graceful drop):
+write→drop→reopen present; **kill mid-`write_tx` → rolled back** (not half-applied); **kill during a
+flush burst → last committed survives**; reopen after an unclean kill recovers, never corrupt. At-rest
+encryption (when added) is **node-level**, whole-store (§6.7 protects secret *values*, not the file).
+
+## Capability spike matrix (the GO/NO-GO deliverable)
+
+A permanent hermetic CI test (`crates/store/tests/capability_spike_test.rs`) defines + exercises each
+feature the S9 scopes assume and classifies it. LOAD-BEARING ✗ would be NO-GO (the test fails);
+DEGRADABLE ✗ is recorded with its fallback. Result on SurrealKV (surreal 2.6):
+
+| Feature | Class | Result / fallback |
+|---|---|---|
+| Durability across restart | LOAD-BEARING | ✓ |
+| Composite/array record IDs | LOAD-BEARING | ✓ |
+| `RELATE` edges with properties | LOAD-BEARING | ✓ |
+| Namespace isolation on disk | LOAD-BEARING | ✓ |
+| Multi-statement transactions | LOAD-BEARING | ✓ |
+| `DEFINE BUCKET` / file storage | DEGRADABLE | ✗ → ingest binary payloads use record-as-content |
+| `SEARCH` / BM25 full-text | DEGRADABLE | ✓ → tags full-text ships |
+| `HNSW` vector | DEGRADABLE | ✓ → tags vector ships |
+| `DEFINE TABLE … AS SELECT … GROUP` | DEGRADABLE | defines ✓ but **does not populate** → tag_counts per-query |
+| `LIVE SELECT` | DEGRADABLE | ✓ (unused; motion rides Zenoh) |
 
 ## Not yet built
 
-A file-backed engine profile, schema/migrations, and operational tuning (per-workspace quotas).
+Schema/migrations, operational tuning (per-workspace quotas), at-rest encryption mechanism.

@@ -40,8 +40,15 @@ pub async fn resolve_inbox(
     Json(body): Json<ResolveInbox>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
-    lb_host::resolve_inbox(&gw.node.store, &principal, principal.ws(), &item, body.decision, gw.now)
-        .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    lb_host::resolve_inbox(
+        &gw.node.store,
+        &principal,
+        principal.ws(),
+        &item,
+        body.decision,
+        gw.now,
+    )
+    .await
+    .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }

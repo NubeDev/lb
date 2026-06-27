@@ -22,7 +22,13 @@ async fn write_commit_read_round_trips_typed() {
     let store = Store::memory().await.unwrap();
     let samples = vec![
         sample("cpu", "pi-7", 1, serde_json::json!(61.4), Qos::BestEffort),
-        sample("cpu", "pi-7", 2, serde_json::json!({"v": 62, "ok": true}), Qos::BestEffort),
+        sample(
+            "cpu",
+            "pi-7",
+            2,
+            serde_json::json!({"v": 62, "ok": true}),
+            Qos::BestEffort,
+        ),
     ];
     let n = write(&store, "acme", &samples, 0).await.unwrap();
     assert_eq!(n, 2);
@@ -30,7 +36,10 @@ async fn write_commit_read_round_trips_typed() {
     let pass = commit_batch(&store, "acme", 100).await.unwrap();
     assert_eq!(pass.committed, 2);
     // Staging is drained after commit (atomic dequeue).
-    assert_eq!(commit_batch(&store, "acme", 100).await.unwrap().committed, 0);
+    assert_eq!(
+        commit_batch(&store, "acme", 100).await.unwrap().committed,
+        0
+    );
 
     let got = read(&store, "acme", "cpu", None, None).await.unwrap();
     assert_eq!(got.len(), 2);
@@ -64,8 +73,20 @@ async fn two_producers_same_seq_both_survive() {
     // producer-B both writing seq=5 to ONE series must BOTH survive.
     let store = Store::memory().await.unwrap();
     let s = vec![
-        sample("shared", "prod-a", 5, serde_json::json!("a"), Qos::MustDeliver),
-        sample("shared", "prod-b", 5, serde_json::json!("b"), Qos::MustDeliver),
+        sample(
+            "shared",
+            "prod-a",
+            5,
+            serde_json::json!("a"),
+            Qos::MustDeliver,
+        ),
+        sample(
+            "shared",
+            "prod-b",
+            5,
+            serde_json::json!("b"),
+            Qos::MustDeliver,
+        ),
     ];
     write(&store, "acme", &s, 0).await.unwrap();
     commit_batch(&store, "acme", 100).await.unwrap();
@@ -82,7 +103,13 @@ async fn best_effort_overflow_drops_oldest() {
     // Bound the staging at 2; a 3rd best-effort sample evicts the oldest. Staging never exceeds bound.
     let store = Store::memory().await.unwrap();
     for seq in 1..=3 {
-        let s = vec![sample("t", "p", seq, serde_json::json!(seq), Qos::BestEffort)];
+        let s = vec![sample(
+            "t",
+            "p",
+            seq,
+            serde_json::json!(seq),
+            Qos::BestEffort,
+        )];
         write(&store, "acme", &s, 2).await.unwrap();
     }
     let mut resp = store
@@ -94,7 +121,11 @@ async fn best_effort_overflow_drops_oldest() {
         .await
         .unwrap();
     let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(n, Some(2), "best-effort staging stays at its bound (drop-oldest)");
+    assert_eq!(
+        n,
+        Some(2),
+        "best-effort staging stays at its bound (drop-oldest)"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -127,5 +158,9 @@ async fn must_deliver_overflow_dead_letters() {
         .await
         .unwrap();
     let n: Option<i64> = resp.take("count").unwrap();
-    assert_eq!(n, Some(1), "the overflowing must-deliver sample is dead-lettered");
+    assert_eq!(
+        n,
+        Some(1),
+        "the overflowing must-deliver sample is dead-lettered"
+    );
 }

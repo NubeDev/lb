@@ -77,9 +77,19 @@ Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, e
 `gateway_test` proves the HTTP/SSE path (incl. a live message pushed to the browser over a real
 socket).
 
+## Make collaboration real (shipped)
+
+The UI is no longer a single-screen demo on fakes. A **real login→token→principal session** (the
+gateway mints + verifies a signed `lb_auth` token per request; the demo principal is gone), a
+**workspace switcher**, a **channel registry** (list / create / create-on-post), **members/teams**,
+**rendered presence**, the **real `lb_inbox` queue** (Approve/Reject = the S6 gate as a UI action),
+and a **read-only outbox status** view. The workspace is the token's hard wall, so the two-session
+isolation test is finally real. See `frontend/collaboration.md`.
+
 ## Not yet built
 
-The operational shell (dashboard / extensions / workspaces / settings, the P0 plan in
-`scope/frontend/`); presence rendered in the UI (the SSE `presence` event is delivered but not yet
-drawn); a real login→token→principal session (the gateway uses a demo principal, fixing the
-workspace per session); the native window packaging build.
+The full operational shell (dashboard / extensions / settings, the rest of the P0 plan in
+`scope/frontend/`); token-on-the-bus for a routed cross-node caller; a real IdP behind the `verify`
+seam (the credential check is a dev-login today); the Tauri **desktop** command layer's session (the
+collaboration slice wired the browser/gateway path; `src-tauri/src/state.rs` still fixes its
+workspace); the native window packaging build.

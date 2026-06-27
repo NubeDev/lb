@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::edge::{Source, TAGGED_TABLE};
+use crate::entity::entity_parts;
 
 /// One tag application on an entity: the typed tag plus its provenance.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,13 +30,22 @@ pub async fn of(store: &Store, ws: &str, entity: &str) -> Result<Vec<Applied>, S
             ws,
             // tkey/tval are the edge's denormalized tag key/value (a RELATION drops fields literally
             // named key/value — debugging/tags/relation-drops-key-value-fields.md); alias them back.
+            // The entity link is built two-arg (dotted ids — debugging/tags/dotted-entity-id-needs-two-arg.md).
             &format!(
                 "SELECT tkey AS key, tval AS value, at, by, source, confidence, expires \
-                 FROM {TAGGED_TABLE} WHERE in = type::thing($entity)"
+                 FROM {TAGGED_TABLE} WHERE in = type::thing($etb, $eid)"
             ),
-            vec![("entity".into(), Value::String(entity.to_string()))],
+            {
+                let (etb, eid) = entity_parts(entity);
+                vec![
+                    ("etb".into(), Value::String(etb.to_string())),
+                    ("eid".into(), Value::String(eid.to_string())),
+                ]
+            },
         )
         .await?;
-    let rows: Vec<Applied> = resp.take(0).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let rows: Vec<Applied> = resp
+        .take(0)
+        .map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(rows)
 }

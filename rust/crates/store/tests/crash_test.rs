@@ -27,7 +27,15 @@ fn cleanup(path: &str) {
 /// i.e. it did NOT exit cleanly — the precondition for an honest crash test.
 fn crash_at(path: &str, phase: &str) {
     let status = Command::new(env!("CARGO"))
-        .args(["run", "--quiet", "--example", "crash_writer", "--", path, phase])
+        .args([
+            "run",
+            "--quiet",
+            "--example",
+            "crash_writer",
+            "--",
+            path,
+            phase,
+        ])
         .status()
         .expect("spawn crash_writer");
     // SIGABRT → no clean exit code; on Unix the process is terminated by signal.
@@ -96,7 +104,9 @@ async fn kill_during_flush_burst_keeps_last_commit() {
     cleanup(&path);
     crash_at(&path, "kill-after-many");
 
-    let store = Store::open(&path).await.expect("reopen after flush-burst kill");
+    let store = Store::open(&path)
+        .await
+        .expect("reopen after flush-burst kill");
     // The high-water mark write returned before the abort, so it must be durable.
     assert_eq!(
         read(&store, "crash", "kv", "hwm").await.unwrap(),

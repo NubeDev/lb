@@ -2764,6 +2764,7 @@ dependencies = [
  "lb-runtime",
  "lb-store",
  "lb-supervisor",
+ "lb-tags",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

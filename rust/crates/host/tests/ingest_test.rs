@@ -30,7 +30,15 @@ fn sample(series: &str, seq: u64, payload: serde_json::Value) -> serde_json::Val
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn write_drain_read_round_trip_via_mcp() {
     let store = Store::memory().await.unwrap();
-    let p = principal("client:pi-7", "acme", &["mcp:ingest.write:call", "mcp:series.read:call", "mcp:series.latest:call"]);
+    let p = principal(
+        "client:pi-7",
+        "acme",
+        &[
+            "mcp:ingest.write:call",
+            "mcp:series.read:call",
+            "mcp:series.latest:call",
+        ],
+    );
 
     let out = call_ingest_tool(
         &store,
@@ -47,17 +55,29 @@ async fn write_drain_read_round_trip_via_mcp() {
     let pass = drain_workspace(&store, "acme").await.unwrap();
     assert_eq!(pass.committed, 2);
 
-    let read = call_ingest_tool(&store, &p, "acme", "series.read", &json!({ "series": "cpu" }))
-        .await
-        .unwrap();
+    let read = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu" }),
+    )
+    .await
+    .unwrap();
     let samples = read["samples"].as_array().unwrap();
     assert_eq!(samples.len(), 2);
     // Producer stamped from the authenticated principal, not the wire value.
     assert_eq!(samples[0]["producer"], "client:pi-7");
 
-    let latest = call_ingest_tool(&store, &p, "acme", "series.latest", &json!({ "series": "cpu" }))
-        .await
-        .unwrap();
+    let latest = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.latest",
+        &json!({ "series": "cpu" }),
+    )
+    .await
+    .unwrap();
     assert_eq!(latest["sample"]["seq"], 2);
 }
 
@@ -79,9 +99,15 @@ async fn denies_write_without_capability() {
 
     // And nothing landed (the deny is before any write).
     let reader = principal("admin", "acme", &["mcp:series.read:call"]);
-    let read = call_ingest_tool(&store, &reader, "acme", "series.read", &json!({ "series": "cpu" }))
-        .await
-        .unwrap();
+    let read = call_ingest_tool(
+        &store,
+        &reader,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu" }),
+    )
+    .await
+    .unwrap();
     assert!(read["samples"].as_array().unwrap().is_empty());
 }
 
@@ -89,8 +115,14 @@ async fn denies_write_without_capability() {
 async fn denies_read_without_capability() {
     let store = Store::memory().await.unwrap();
     let p = principal("client:pi-7", "acme", &["mcp:ingest.write:call"]);
-    let err = call_ingest_tool(&store, &p, "acme", "series.read", &json!({ "series": "cpu" }))
-        .await
-        .unwrap_err();
+    let err = call_ingest_tool(
+        &store,
+        &p,
+        "acme",
+        "series.read",
+        &json!({ "series": "cpu" }),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(err, ToolError::Denied));
 }

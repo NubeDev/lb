@@ -24,7 +24,8 @@ pub async fn workspace_list(
     let mut records: Vec<WorkspaceRecord> = rows
         .into_iter()
         .map(|v| {
-            serde_json::from_value(v).map_err(|e| lb_store::StoreError::Decode(e.to_string()).into())
+            serde_json::from_value(v)
+                .map_err(|e| lb_store::StoreError::Decode(e.to_string()).into())
         })
         .collect::<Result<_, WorkspacesError>>()?;
     records.sort_by_key(|r| r.ts);

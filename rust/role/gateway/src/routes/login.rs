@@ -47,7 +47,10 @@ pub async fn login(
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginReply>, (StatusCode, String)> {
     if req.user.is_empty() || req.workspace.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "user and workspace required".into()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "user and workspace required".into(),
+        ));
     }
     let claims = dev_claims(&req.user, &req.workspace, gw.now, SESSION_TTL_SECS);
     let token = mint(&gw.key, &claims);

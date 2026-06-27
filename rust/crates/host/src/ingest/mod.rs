@@ -16,6 +16,7 @@
 mod authorize;
 mod drain;
 mod error;
+mod find;
 mod read;
 mod tool;
 mod write;
@@ -23,6 +24,7 @@ mod write;
 pub use authorize::authorize_ingest;
 pub use drain::{drain_workspace, DrainPass, COMMIT_BATCH};
 pub use error::IngestError;
+pub use find::series_find;
 pub use read::{series_latest_value, series_read_range};
 pub use tool::call_ingest_tool;
 pub use write::{ingest_write, DEFAULT_STAGING_BOUND};
