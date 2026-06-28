@@ -86,6 +86,53 @@ pub struct SubsystemDetail {
     pub extra: Value,
 }
 
+/// One reachable MCP tool in the catalog (`system.tools`) — its qualified name, a one-line summary of
+/// what it does, where it comes from, and a coarse group for the UI to bucket by. `source` is `"host"`
+/// for a built-in host-native verb or the `ext_id` for an extension-contributed tool; `group` is the
+/// verb-family prefix (`host`, `agent`, `bus`, `store`, …) or the ext id, so the page can collapse a
+/// long list into readable sections. Derived live (registry + a static host catalog) — owns no record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolInfo {
+    /// The qualified MCP name a caller dispatches (`host.net.info`, `<ext>.<tool>`, …).
+    pub tool: String,
+    /// A one-line, human summary of what the tool does. Empty when a routed/remote ext exposes only a
+    /// name with no re-readable manifest (the name still shows — honest, not hidden).
+    pub description: String,
+    /// `"host"` for a built-in host-native verb, else the contributing extension id.
+    pub source: String,
+    /// The verb-family bucket for the UI (`host`, `system`, `agent`, `bus`, `store`, `inbox`, … for
+    /// host verbs; the ext id for an extension's tools).
+    pub group: String,
+}
+
+/// `system.tools` — the full catalog of MCP tools reachable for one workspace: extension-contributed
+/// (from the runtime registry, descriptions joined from manifests) plus the built-in host-native verbs
+/// (from a static host catalog). Read-only and derived live, like the rest of the map.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemTools {
+    pub ws: String,
+    pub role: String,
+    pub tools: Vec<ToolInfo>,
+}
+
+/// `system.acp` — the ACP (Agent Client Protocol) adapter's static capability/protocol facts. ACP is a
+/// per-stdio-session adapter (agent-run Part 4), NOT a polled network server, so this is *reachable
+/// capability info*, not a live health feed. The host owns this truth (mirrors the acp role's
+/// `initialize` handshake + handled methods + error codes) so the UI never imports the role binary.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpInfo {
+    /// The ACP protocol major the adapter speaks (mirrors the `initialize` handshake).
+    pub protocol_version: u32,
+    /// The `session/*` (+ `initialize`) methods the driver handles.
+    pub methods: Vec<String>,
+    /// The advertised agent capabilities (loadSession, image/audio prompt support, client MCP servers).
+    pub capabilities: Vec<Metric>,
+    /// The JSON-RPC error codes the adapter returns, each with what it means.
+    pub error_codes: Vec<Metric>,
+    /// A one-line summary of the auth model + the rejected-client-servers decision.
+    pub notes: Vec<String>,
+}
+
 /// A node in the topology graph — a 1:1 projection of a [`ServiceStatus`] minus the metrics (the
 /// graph shows shape + health; the cards show the numbers).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

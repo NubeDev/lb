@@ -1,7 +1,10 @@
 # Agent-run scope — a streamable, externally-drivable, interactively-gated run
 
-Status: scope (the ask). `public/agent-run/agent-run.md` is a TODO stub; it gets *filled* (not
-created) when the slice ships.
+Status: **shipped** (2026-06-28) — Parts 0–5 built + tested green. See
+`public/agent-run/agent-run.md` (the shipped truth) and `sessions/agent-run/agent-run-session.md`
+(the working log). All "Resolved decisions" below were followed; the open-question deferrals
+(AI-SDK encoder, token deltas, `UseDecisionAsResult`, per-run overrides, decision-reactor, bridging
+client MCP servers) remain as the noted next steps.
 
 > **Peer-reviewed 2026-06-28 (codex).** The review confirmed the direction (MCP internal, one
 > `RunEvent` vocabulary, ACP as an edge adapter, no Awaken plugin framework) but found that **ACP

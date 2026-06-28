@@ -111,7 +111,7 @@ describe("SystemView (real gateway)", () => {
       <SystemView
         ws={ws}
         onNavigate={(s) => navigated.push(s)}
-        allowedSurfaces={["outbox", "extensions", "data"]}
+        allowedSurfaces={["outbox", "extensions", "data", "system-mcp", "system-acp"]}
       />,
     );
 
@@ -119,6 +119,12 @@ describe("SystemView (real gateway)", () => {
     const outbox = await screen.findByLabelText("open outbox");
     await user.click(outbox);
     expect(navigated).toContain("outbox");
+
+    // The MCP + ACP cards now own service pages (tool-catalog scope) → they drill there.
+    await user.click(await screen.findByLabelText("open mcp"));
+    expect(navigated).toContain("system-mcp");
+    await user.click(await screen.findByLabelText("open acp"));
+    expect(navigated).toContain("system-acp");
 
     // The bus card has no dedicated page → it is NOT a link (no "open bus" control).
     expect(screen.queryByLabelText("open bus")).toBeNull();
@@ -154,8 +160,9 @@ describe("SystemView (real gateway)", () => {
         <SystemView ws={ws} />
       </div>,
     );
-    await user.click(await screen.findByLabelText("subsystem mcp"));
-    const sheet = await screen.findByLabelText("mcp detail");
+    // `bus` is a no-page card (gateway/bus have no owning page) → clicking it opens the detail sheet.
+    await user.click(await screen.findByLabelText("subsystem bus"));
+    const sheet = await screen.findByLabelText("bus detail");
     expect(sheet.scrollWidth).toBeLessThanOrEqual(360);
   });
 

@@ -10,7 +10,9 @@ use lb_auth::Principal;
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
 
-use super::{system_overview, system_subsystem, system_topology, SystemError};
+use super::{
+    system_acp, system_overview, system_subsystem, system_tools, system_topology, SystemError,
+};
 use crate::boot::Node;
 
 /// Dispatch a system-observability MCP call. `input` is ignored for the two whole-workspace snapshots
@@ -44,6 +46,16 @@ pub async fn call_system_tool(
                 .await
                 .map_err(system_to_tool)?;
             Ok(json!(detail))
+        }
+        "system.tools" => {
+            let tools = system_tools(node, principal, ws)
+                .await
+                .map_err(system_to_tool)?;
+            Ok(json!(tools))
+        }
+        "system.acp" => {
+            let info = system_acp(principal, ws).await.map_err(system_to_tool)?;
+            Ok(json!(info))
         }
         _ => Err(ToolError::NotFound),
     }

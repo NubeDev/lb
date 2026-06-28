@@ -15,7 +15,8 @@ use lb_bus::bus_stats;
 use lb_outbox::{dead_lettered, delivered, pending};
 use lb_store::{tables, TableCount};
 
-use super::model::{Health, Metric, ServiceStatus};
+use super::catalog::host_catalog;
+use super::model::{Health, Metric, ServiceStatus, ToolInfo};
 use crate::boot::Node;
 use crate::role::Role;
 
@@ -126,6 +127,19 @@ pub(crate) async fn collect_services(
         ],
     });
     out.push(collect_extensions(node, ws).await?);
+    // The ACP (Agent Client Protocol) adapter — a per-stdio-session encoder that lets an editor drive
+    // the central agent (agent-run Part 4). It is a role binary spawned per editor session, not a
+    // resident subsystem polled here, so it reports `Idle` (available, nothing necessarily connected) —
+    // honest, not a fault. Its detail page (`system.acp`) shows the adapter's static capabilities.
+    out.push(ServiceStatus {
+        id: "acp".into(),
+        label: "ACP Service".into(),
+        group: "runtime".into(),
+        health: Health::Idle,
+        detail: "Agent Client Protocol stdio adapter — drives the central agent from Zed/Cursor"
+            .into(),
+        metrics: vec![Metric::new("protocol", "v1")],
+    });
     out.push(table_service(
         "registry",
         "Extension Registry",
@@ -180,6 +194,30 @@ pub(crate) async fn collect_services(
     ));
 
     Ok(out)
+}
+
+/// Build the full tool catalog for workspace `ws`: the built-in host-native verbs (a static host
+/// catalog) plus every extension-contributed tool reachable from this node's runtime registry. The
+/// host half is workspace-agnostic node facts (identical in every workspace); the extension half is
+/// the registry's reachable set (an ext is only registered once installed + loaded, so this physically
+/// can't list a tool from an ext absent from this node). Extension tools carry only a name — their
+/// manifest descriptions are not durably re-readable at call time, so `description` is left empty
+/// (the name still shows — honest, not hidden), and `group`/`source` are the ext id. Sorted by
+/// qualified name so the page renders a stable order.
+pub(crate) fn collect_tools(node: &Node) -> Vec<ToolInfo> {
+    let mut out = host_catalog();
+    for (ext_id, tools) in node.registry.entries() {
+        for tool in tools {
+            out.push(ToolInfo {
+                tool: format!("{ext_id}.{tool}"),
+                description: String::new(),
+                source: ext_id.clone(),
+                group: ext_id.clone(),
+            });
+        }
+    }
+    out.sort_by(|a, b| a.tool.cmp(&b.tool));
+    out
 }
 
 /// Build a card whose only live signal is a count of matching tables (substring match, so the card

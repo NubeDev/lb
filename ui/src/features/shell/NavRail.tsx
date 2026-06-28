@@ -41,6 +41,8 @@ export type CoreSurface =
   | "ingest"
   | "data"
   | "system"
+  | "system-mcp"
+  | "system-acp"
   | "inbox"
   | "outbox"
   | "admin"

@@ -20,6 +20,7 @@ mod dashboard;
 mod dbview;
 mod devkit;
 mod ext;
+mod host_tools;
 mod inbox;
 mod ingest;
 mod install;
@@ -91,6 +92,12 @@ pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
     reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
 };
+pub use host_tools::{
+    call_host_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach, host_time_now,
+    host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress, HostNetInfo,
+    HostNetInterface, HostNetReach, HostTimeNow, HostTimeZones, HOST_FS_LIST_LIMIT,
+    HOST_NET_REACH_DEFAULT_TIMEOUT_MS, HOST_NET_REACH_MAX_TIMEOUT_MS,
+};
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
@@ -129,9 +136,9 @@ pub use store_query::{
 };
 pub use sync::{replay_history, sync_channel, ChannelSync};
 pub use system::{
-    authorize_system, call_system_tool, system_overview, system_subsystem, system_topology, Health,
-    Metric, ServiceStatus, SubsystemDetail, SystemError, SystemOverview, SystemTopology, TopoEdge,
-    TopoNode,
+    authorize_system, call_system_tool, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, AcpInfo, Health, Metric, ServiceStatus, SubsystemDetail,
+    SystemError, SystemOverview, SystemTools, SystemTopology, ToolInfo, TopoEdge, TopoNode,
 };
 pub use tags::{
     authorize_tags, call_tags_tool, tags_add, tags_find, tags_of, tags_remove, Applied, Facet,

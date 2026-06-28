@@ -1,6 +1,7 @@
 # Host-tools scope — built-in `host.*` introspection verbs (networking · timezone · files)
 
-Status: scope (the ask). Promotes to `public/host-tools/host-tools.md` once the first slice ships.
+Status: shipped (2026-06-28). Durable truth is promoted to
+`../../public/host-tools/host-tools.md`.
 
 The agent (and any MCP caller — the UI, another extension) keeps needing **small facts about the node
 it runs on**: what time is it here and in what zone, what is this node's networking posture (its
@@ -282,21 +283,25 @@ exercised on whatever platform CI runs; the **shape** assertions are platform-in
 
 ## Open questions
 
-- **Crate choices.** `if-addrs` vs `local-ip-address` for interface enumeration; `iana-time-zone` +
-  `time` vs `chrono-tz` for the zone read. Decide in the session by which builds cleanly under the
-  zig/no-cc toolchain and is pure-Rust (the Risks build check). Record the chosen rows in `key-stack.md`.
-- **`host.net.reach` timeout cap.** What is the server-enforced maximum (proposed: 2s default, 5s hard
-  cap)? And do we allow UDP at all, or TCP-only in v1 (proposed: TCP-only — UDP "reachability" is
-  ill-defined)?
-- **`host.fs.list` entry cap + ordering.** Max entries before `truncated: true` (proposed: 1000), and
-  do we sort (proposed: name-ascending for determinism) or return OS order?
-- **`readable`/`writable` semantics.** Report as attempted-access booleans (portable, proposed) or omit
-  on Windows? Proposal: always the boolean pair, computed via a real access check, so the DTO is uniform.
-- **Is v1 agent-facing only, or also a UI "node info" panel?** Proposed: backend/agent verbs first; the
-  UI panel is a fast follow once `http.ts` needs it (state it as a non-goal of *this* slice if deferred).
-- **Routing semantics for a remote `host.*` call.** Confirm a call routed to node B returns node B's
-  facts (the natural meaning, via the existing MCP routing seam) and that this is documented so a
-  caller isn't surprised that `host.time.now` isn't "the hub's" time.
+Resolved in the 2026-06-28 implementation session:
+
+- **Crate choices:** `if-addrs` + `hostname` for networking identity, `chrono` + `chrono-tz` +
+  `iana-time-zone` for UTC/local/IANA-zone facts. The filesystem verbs use `std::fs`. The chosen crates
+  were checked with `cargo check -p lb-host` under the repo's zig/no-system-cc Cargo config and recorded
+  in `../../key-stack.md`.
+- **`host.net.reach` timeout cap:** TCP-only in v1. Caller may lower the timeout, but the server caps it
+  at 5 seconds; default is 2 seconds. UDP is out because "UDP reachability" is not a reliable point
+  fact.
+- **`host.fs.list` cap + ordering:** one directory level, at most 1000 entries, name-ascending for a
+  deterministic DTO, with `truncated: true` if the cap is hit.
+- **`readable`/`writable` semantics:** uniform booleans. `readable` is a real attempted access check;
+  `writable` is a real write-open check for files/symlinks and a portable readonly-permission check for
+  directories. The DTO shape does not change across OSes.
+- **UI surface:** v1 is backend/agent-facing only. Callers can already reach the verbs through the
+  generic MCP bridge; a dedicated node-info UI panel is a non-goal of this slice.
+- **Remote routing semantics:** a routed `host.*` call reports the node where the verb executes. If a
+  caller routes to node B, `host.time.now` and `host.net.info` are node B's facts, not necessarily the
+  caller's local node or the hub.
 
 ## Related
 

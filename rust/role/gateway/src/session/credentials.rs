@@ -109,6 +109,12 @@ fn member_caps() -> Vec<String> {
         // system-map subsystem detail: the per-subsystem detail verb a no-page card (gateway/bus/mcp)
         // drills into. Admin-only by the same convention — it reads one subsystem's full live state.
         "mcp:system.subsystem:call",
+        // tool-catalog scope: the reachable MCP tool catalog (host-native + extension, with
+        // descriptions) behind the MCP service page, and the ACP adapter's static facts behind the ACP
+        // service page. Admin-only by the same convention — the catalog reads across the workspace's
+        // whole tool surface. The gateway re-checks server-side; a token without the cap is refused.
+        "mcp:system.tools:call",
+        "mcp:system.acp:call",
         // dashboard scope (the grid-of-widgets surface): the five `dashboard.*` verbs the dashboard
         // routes check. Member-level — any member may build/share their own dashboards over real
         // series (gate 3 / ownership still decides which *specific* dashboard they read/edit). The

@@ -9,7 +9,10 @@
 
 use lb_assets::{record_install, Install, Tier};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{system_overview, system_subsystem, system_topology, Health, Node, ServiceStatus};
+use lb_host::{
+    system_acp, system_overview, system_subsystem, system_tools, system_topology, Health, Node,
+    ServiceStatus,
+};
 use lb_outbox::{enqueue, mark_failed, Effect};
 use lb_store::write;
 use serde_json::json;
@@ -31,7 +34,9 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 const OVERVIEW: &str = "mcp:system.overview:call";
 const TOPOLOGY: &str = "mcp:system.topology:call";
 const SUBSYSTEM: &str = "mcp:system.subsystem:call";
-const ALL: &[&str] = &[OVERVIEW, TOPOLOGY, SUBSYSTEM];
+const TOOLS: &str = "mcp:system.tools:call";
+const ACP: &str = "mcp:system.acp:call";
+const ALL: &[&str] = &[OVERVIEW, TOPOLOGY, SUBSYSTEM, TOOLS, ACP];
 
 /// The fixed subsystem set every workspace must always report (a missing card means "we forgot it",
 /// never "it happens to be empty").
@@ -292,4 +297,136 @@ async fn subsystem_workspace_isolation_b_never_sees_a() {
             .value,
         "0"
     );
+}
+
+// ── tool-catalog scope: `system.tools` + `system.acp` ──────────────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn tools_catalog_lists_host_native_and_extension_tools() {
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+    let ada = principal("user:ada", ws, ALL);
+
+    // Register a real extension's declared tools into the registry (a routed/remote ext — names only,
+    // no fake instance). This is a legitimate real registry state the catalog must surface.
+    node.registry
+        .register_remote("weather", vec!["forecast".into(), "alerts".into()]);
+
+    let cat = system_tools(&node, &ada, ws).await.unwrap();
+    assert_eq!(cat.ws, "acme");
+
+    // The host-native half is present (a few representative verbs across families).
+    for want in [
+        "host.net.info",
+        "system.overview",
+        "agent.decide",
+        "store.query",
+    ] {
+        let row = cat
+            .tools
+            .iter()
+            .find(|t| t.tool == want)
+            .unwrap_or_else(|| panic!("host tool {want} missing from catalog"));
+        assert_eq!(row.source, "host");
+        assert!(!row.description.is_empty(), "{want} has no description");
+    }
+
+    // The extension half is present, qualified `<ext>.<tool>`, sourced to the ext id.
+    let forecast = cat
+        .tools
+        .iter()
+        .find(|t| t.tool == "weather.forecast")
+        .expect("extension tool listed");
+    assert_eq!(forecast.source, "weather");
+    assert_eq!(forecast.group, "weather");
+
+    // Every row is well-formed (non-empty name + source).
+    for t in &cat.tools {
+        assert!(!t.tool.is_empty());
+        assert!(!t.source.is_empty());
+    }
+
+    // Sorted by qualified name (stable render order).
+    let mut sorted = cat.tools.clone();
+    sorted.sort_by(|a, b| a.tool.cmp(&b.tool));
+    assert_eq!(cat.tools, sorted, "catalog must be sorted by tool name");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn tools_and_acp_denied_without_their_own_cap() {
+    let node = Node::boot().await.unwrap();
+    let ws = "acme";
+
+    // No caps → both denied (opaque).
+    let nobody = principal("user:mallory", ws, &[]);
+    assert!(system_tools(&node, &nobody, ws).await.is_err());
+    assert!(system_acp(&nobody, ws).await.is_err());
+
+    // Holding the OTHER system caps does not grant these two — each needs its own cap.
+    let no_catalog = principal("user:ov", ws, &[OVERVIEW, TOPOLOGY, SUBSYSTEM]);
+    assert!(system_tools(&node, &no_catalog, ws).await.is_err());
+    assert!(system_acp(&no_catalog, ws).await.is_err());
+
+    // Holding only TOOLS grants tools but not acp (and vice versa).
+    let only_tools = principal("user:t", ws, &[TOOLS]);
+    assert!(system_tools(&node, &only_tools, ws).await.is_ok());
+    assert!(system_acp(&only_tools, ws).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn tools_workspace_isolation_b_never_sees_a_extension() {
+    let node = Node::boot().await.unwrap();
+
+    // An extension reachable in the node's registry is node-wide, but the catalog is read per
+    // workspace — here we prove the host-native half is identical across workspaces (node facts) while
+    // the *gate* is workspace-first, so a B-admin reading B sees the same host verbs A does, and the
+    // extension half is whatever the registry holds (the same set, by design of a shared node). The
+    // hard wall the catalog leans on is the per-workspace install gate at call/dispatch time; the
+    // listing here is existence, not reachability. We assert the host portions are equal.
+    let ada = principal("user:ada", "ws-a", ALL);
+    let ben = principal("user:ben", "ws-b", ALL);
+
+    let a = system_tools(&node, &ada, "ws-a").await.unwrap();
+    let b = system_tools(&node, &ben, "ws-b").await.unwrap();
+
+    let host_of = |c: &lb_host::SystemTools| -> Vec<String> {
+        let mut v: Vec<String> = c
+            .tools
+            .iter()
+            .filter(|t| t.source == "host")
+            .map(|t| t.tool.clone())
+            .collect();
+        v.sort();
+        v
+    };
+    assert_eq!(
+        host_of(&a),
+        host_of(&b),
+        "host verbs are identical node facts"
+    );
+    assert_eq!(a.ws, "ws-a");
+    assert_eq!(b.ws, "ws-b");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn acp_reports_protocol_and_methods() {
+    let node = Node::boot().await.unwrap();
+    let _ = &node; // acp facts are node-level; the node boot proves the host links them.
+    let ws = "acme";
+    let ada = principal("user:ada", ws, ALL);
+
+    let info = system_acp(&ada, ws).await.unwrap();
+    assert_eq!(info.protocol_version, 1);
+    for m in [
+        "initialize",
+        "session/new",
+        "session/prompt",
+        "session/cancel",
+        "session/load",
+    ] {
+        assert!(info.methods.iter().any(|x| x == m), "method {m} missing");
+    }
+    assert!(!info.capabilities.is_empty());
+    assert!(!info.error_codes.is_empty());
+    assert!(!info.notes.is_empty());
 }

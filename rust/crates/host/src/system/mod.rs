@@ -16,24 +16,34 @@
 //!   - `system.topology` ([`system_topology`]) — nodes + fixed wiring edges for react-flow.
 //!   - `system.subsystem` ([`system_subsystem`]) — the detail of ONE subsystem (+ a `bus` zid blob),
 //!     so a no-page card drills into a real view instead of dead-ending.
-//!   - the MCP bridge ([`call_system_tool`]) — the one MCP contract over all three.
+//!   - `system.tools` ([`system_tools`]) — the full catalog of reachable MCP tools (host-native +
+//!     extension-contributed), with descriptions, for the MCP service page (tool-catalog scope).
+//!   - `system.acp` ([`system_acp`]) — the ACP adapter's static protocol/capability facts, for the
+//!     ACP service page (tool-catalog scope).
+//!   - the MCP bridge ([`call_system_tool`]) — the one MCP contract over all five.
 
+mod acp;
+mod acp_verb;
 mod authorize;
+mod catalog;
 mod collect;
 mod error;
 mod model;
 mod overview;
 mod subsystem;
 mod tool;
+mod tools;
 mod topology;
 
+pub use acp_verb::system_acp;
 pub use authorize::authorize_system;
 pub use error::SystemError;
 pub use model::{
-    Health, Metric, ServiceStatus, SubsystemDetail, SystemOverview, SystemTopology, TopoEdge,
-    TopoNode,
+    AcpInfo, Health, Metric, ServiceStatus, SubsystemDetail, SystemOverview, SystemTools,
+    SystemTopology, ToolInfo, TopoEdge, TopoNode,
 };
 pub use overview::system_overview;
 pub use subsystem::system_subsystem;
 pub use tool::call_system_tool;
+pub use tools::system_tools;
 pub use topology::system_topology;

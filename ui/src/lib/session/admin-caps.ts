@@ -3,9 +3,13 @@
 // admin controls to *show*. The gateway re-checks each verb server-side; this list is a convenience
 // for cap-gating display, NEVER the security boundary (admin-console scope).
 //
-// `ADMIN_CAPS` is the full dev-admin grant the fake hands back at login. `ADMIN_SECTION_CAPS` is the
-// set whose presence (any one) reveals the admin section at all (the scope's lean: show the section
-// if *any* admin cap is present, then gate individual controls per cap).
+// `ADMIN_SECTION_CAPS` is the set whose presence (any one) reveals the admin section at all (the
+// scope's lean: show the section if *any* admin cap is present, then gate individual controls per cap).
+//
+// The real caps a session holds come from the gateway's `POST /login` reply (server-side
+// `credentials.rs`), never a client list — there is deliberately NO client copy of the full grant
+// here (a parallel re-implementation of node behavior is the banned-fake smell, CLAUDE §9). This file
+// only names the cap STRINGS (`CAP`) the UI compares the server-issued caps against to gate display.
 
 export const CAP = {
   workspaceDelete: "mcp:workspace.delete:call",
@@ -39,6 +43,10 @@ export const CAP = {
   // system-map subsystem detail: the per-subsystem detail verb a no-page card drills into. Gated as
   // the others — the detail view only opens when the session holds this cap.
   systemSubsystem: "mcp:system.subsystem:call",
+  // tool-catalog (MCP & ACP service pages, drilled from the System page): the reachable MCP tool
+  // catalog + the ACP adapter's static facts. Admin-only by the same convention as the rest of the map.
+  systemTools: "mcp:system.tools:call",
+  systemAcp: "mcp:system.acp:call",
   // data-console (Ingest page): member-level series verbs — the Ingest nav entry shows for any
   // session that may read/list series.
   seriesList: "mcp:series.list:call",
@@ -48,54 +56,6 @@ export const CAP = {
   dashboardList: "mcp:dashboard.list:call",
   dashboardSave: "mcp:dashboard.save:call",
 } as const;
-
-/** The full dev-admin cap grant (the gateway's `member_caps()` admin half + the ext caps). */
-export const ADMIN_CAPS: string[] = [
-  "bus:chan/*:pub",
-  "bus:chan/*:sub",
-  "mcp:members.list:call",
-  "mcp:members.add:call",
-  "mcp:inbox.list:call",
-  "mcp:inbox.resolve:call",
-  "mcp:outbox.status:call",
-  "mcp:workspace.list:call",
-  "mcp:workspace.create:call",
-  CAP.workspaceDelete,
-  CAP.workspacePurge,
-  CAP.userManage,
-  CAP.userDisable,
-  CAP.teamsManage,
-  CAP.teamsList,
-  CAP.grantsAssign,
-  CAP.grantsList,
-  CAP.rolesDefine,
-  CAP.rolesList,
-  CAP.extList,
-  CAP.extDisable,
-  CAP.extUninstall,
-  CAP.devkitTemplates,
-  CAP.devkitScaffold,
-  CAP.devkitInspect,
-  CAP.devkitBuild,
-  CAP.nativeInstall,
-  // data-console: the dev admin carries both the admin DB-browser caps and the member series caps.
-  CAP.storeTables,
-  CAP.storeScan,
-  CAP.storeGraph,
-  CAP.seriesList,
-  CAP.ingestWrite,
-  CAP.dashboardList,
-  CAP.dashboardSave,
-  "mcp:dashboard.get:call",
-  "mcp:dashboard.delete:call",
-  "mcp:dashboard.share:call",
-  "mcp:series.read:call",
-  "mcp:series.latest:call",
-  "mcp:series.find:call",
-  CAP.systemOverview,
-  CAP.systemTopology,
-  CAP.systemSubsystem,
-];
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */
 export const ADMIN_SECTION_CAPS: string[] = [

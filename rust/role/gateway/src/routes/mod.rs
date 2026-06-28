@@ -61,6 +61,6 @@ pub use run_stream::run_stream;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};
 pub use stream::channel_stream;
-pub use system::{system_overview, system_subsystem, system_topology};
+pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use workflow::{request_approval, resolve_approval as resolve_workflow_approval, start_job};
 pub use workspace::{create_workspace, list_workspaces};

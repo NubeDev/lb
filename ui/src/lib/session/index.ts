@@ -5,4 +5,4 @@ export type { SessionState } from "./useSession";
 export { getSession, sessionToken, setSession, subscribeSession } from "./session.store";
 export { login } from "./session.api";
 export type { Session } from "./session.types";
-export { CAP, ADMIN_CAPS, ADMIN_SECTION_CAPS, hasCap, isAdmin } from "./admin-caps";
+export { CAP, ADMIN_SECTION_CAPS, hasCap, isAdmin } from "./admin-caps";

@@ -16,6 +16,43 @@ Current state: focused devkit/pack tests, host devkit/e2e tests, the focused Stu
 TypeScript, and `pnpm test` are green. The full workspace/gateway gate is blocked by an unrelated
 active `agent/run.rs` compile break (`crate::run_events` unresolved) and is not promoted to shipped yet.
 
+## Shipped (S10 — agent-run: a streamable, externally-drivable, interactively-gated run)
+
+The agent run is now a first-class, observable, interruptible, replayable object (details:
+`agent-run/agent-run.md`). **Durable typed transcript** (`lb_jobs::TranscriptEvent`, versioned) so
+resume *rehydrates* and continues the conversation instead of re-asking from the goal; **one
+`RunEvent` vocabulary** (`lb-run-events`) derived from that transcript (live == replay); **`agent.watch`
++ `GET /runs/{job}/stream`** for a snapshot-then-deltas live feed; **per-tool Allow/Deny/Ask** with a
+durable **first-settle** `agent_decision` record (via `lb_store::create`, not the last-writer-wins
+inbox `Resolution`) settled by `agent.decide`; an **ACP stdio adapter** (`role/acp`/`lb-acp`) with
+trusted-session auth and a durable disconnect-mid-permission contract; and **model-activated skills**
+gated by the S4 grant. All six parts tested against real store/bus/gateway/spawned-ACP (only the LLM
+provider is stubbed). `cargo test --workspace` green except a pre-existing cross-node Zenoh flake.
+
+## Shipped (S10 — host tools: built-in `host.*` node introspection)
+
+The host now exposes a read-only, backend/agent-facing `host.*` MCP family
+(`public/host-tools/host-tools.md`) for structured node-local facts without shelling out:
+`host.net.info`, `host.net.reach`, `host.time.now`, `host.time.zones`, `host.fs.stat`, and
+`host.fs.list`.
+
+Implementation is host-native: one `host.` arm in `tool_call.rs`, delegating to
+`host_tools::call_host_tool`, which mirrors the `agent.*` dispatcher and runs the standard
+`authorize_tool(principal, ws, verb)` gate per verb. There is no registry, no new dispatch path, no store
+or bus state, and no dedicated UI panel in v1. Existing agents, extension callers, and UI bridge callers
+can use the verbs through generic MCP when granted.
+
+Safety boundaries: filesystem verbs return metadata only (no contents, no writes, no workspace doc
+assets); `host.fs.list` is one level, sorted, capped at 1000 entries; `host.net.reach` is TCP-only,
+single-host/single-port, default 2s with a server hard cap of 5s via `connect_timeout`. DTO shape is
+identical across OSes, with interface enumeration isolated in `host_tools/net/platform.rs` and path
+normalization in `host_tools/fs/path.rs`.
+
+Tests use real infra and real OS facts: six capability-deny tests, other/empty-workspace gate denial,
+cross-platform DTO allow-list checks, a real temp directory for `host.fs.*`, a real loopback
+`TcpListener` for `host.net.reach`, bounded-probe assertions, port-range refusal, and leak-nothing
+allow-lists.
+
 ## Shipped (S10 — dashboard: widget config + a Grafana-style variable system + generic bus pub/sub)
 
 The dashboard gains a Grafana-style variable system + widget settings, on a shared interpolation library

@@ -29,6 +29,7 @@ mod rehydrate;
 mod route;
 mod run;
 mod serve;
+mod step;
 mod substrate;
 mod tool;
 

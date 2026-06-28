@@ -45,6 +45,39 @@ export interface SubsystemDetail {
   extra: Record<string, unknown>;
 }
 
+/** One reachable MCP tool in the catalog (`system.tools`): its qualified name, a one-line summary,
+ *  where it comes from (`"host"` or the contributing ext id), and a coarse group for bucketing. An
+ *  extension tool may have an empty `description` (the registry carries only names). Mirrors
+ *  `lb_host::ToolInfo`. */
+export interface ToolInfo {
+  tool: string;
+  description: string;
+  source: string;
+  group: string;
+}
+
+/** The full catalog of MCP tools reachable for the workspace — host-native + extension-contributed.
+ *  Mirrors `lb_host::SystemTools`. */
+export interface SystemTools {
+  ws: string;
+  role: string;
+  tools: ToolInfo[];
+}
+
+/** The ACP (Agent Client Protocol) adapter's static protocol/capability facts. ACP is a per-stdio
+ *  -session adapter (not a polled server), so this is reachable capability info, not a live feed.
+ *  Mirrors `lb_host::AcpInfo`. */
+export interface AcpInfo {
+  protocol_version: number;
+  methods: string[];
+  /** Advertised capabilities, label→value (e.g. `loadSession`→`true`). */
+  capabilities: Metric[];
+  /** JSON-RPC error codes, label→meaning. */
+  error_codes: Metric[];
+  /** One-line notes on the auth model + the rejected-client-servers decision. */
+  notes: string[];
+}
+
 /** A topology node — a projection of a `ServiceStatus` minus the metrics. Mirrors `lb_host::TopoNode`. */
 export interface TopoNode {
   id: string;

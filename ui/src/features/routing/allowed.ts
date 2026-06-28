@@ -10,6 +10,9 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
   if (hasCap(caps, CAP.storeScan)) allowed.push("data");
   if (hasCap(caps, CAP.systemOverview)) allowed.push("system");
+  // The MCP / ACP service pages are drilled from the System page; each shows behind its own cap.
+  if (hasCap(caps, CAP.systemTools)) allowed.push("system-mcp");
+  if (hasCap(caps, CAP.systemAcp)) allowed.push("system-acp");
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
   if (hasCap(caps, CAP.devkitTemplates)) allowed.push("studio");

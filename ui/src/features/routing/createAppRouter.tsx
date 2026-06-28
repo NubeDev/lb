@@ -26,6 +26,8 @@ import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
 import { StudioView } from "@/features/studio";
 import { SystemView } from "@/features/system";
+import { AcpServiceView } from "@/features/system-acp";
+import { McpServiceView } from "@/features/system-mcp";
 import { RoutedShell } from "./RoutedShell";
 import { useAppRoutingContext } from "./RoutingContextProvider";
 import type { RoutingContext } from "./context";
@@ -114,6 +116,8 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
+    coreRoute("/system/mcp", "system-mcp", () => <McpService />),
+    coreRoute("/system/acp", "system-acp", () => <AcpService />),
     coreRoute("/inbox", "inbox", () => <Inbox />),
     coreRoute("/outbox", "outbox", () => <Outbox />),
     coreRoute("/admin", "admin", () => <Admin />),
@@ -235,6 +239,28 @@ function System() {
       onNavigate={(surface) =>
         void navigate({ to: fullPathForSurface(ctx.workspace, surface) })
       }
+    />
+  );
+}
+
+function McpService() {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <McpServiceView
+      ws={ctx.workspace}
+      onBack={() => void navigate({ to: fullPathForSurface(ctx.workspace, "system") })}
+    />
+  );
+}
+
+function AcpService() {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <AcpServiceView
+      ws={ctx.workspace}
+      onBack={() => void navigate({ to: fullPathForSurface(ctx.workspace, "system") })}
     />
   );
 }

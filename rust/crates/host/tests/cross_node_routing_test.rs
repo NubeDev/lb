@@ -5,19 +5,29 @@
 //!   - workspace-isolation across nodes: a node-A principal in workspace B can NEVER reach
 //!     node B's tool acting in workspace A via the routing seam.
 //!
-//! The two nodes are two in-process `Node::boot()`s — separate Zenoh sessions that auto-discover
-//! into one network (that is the multi-node substrate). Each test uses a UNIQUE workspace id:
-//! in-process peers share a workspace's keyspace (debugging/bus/in-process-peers-share-the-
-//! keyspace.md), so a shared id would let concurrent tests cross-talk. Multi-thread flavor is
-//! required (boots a Zenoh peer; debugging/bus/zenoh-needs-multi-thread-runtime.md).
+//! The two nodes are two in-process Zenoh peers, but they are **explicitly linked over a TCP
+//! endpoint** rather than left to ambient multicast scouting (`Bus::peer_with` / `Bus::locators`).
+//! Why: under a full parallel `cargo test --workspace`, hundreds of in-process peers share one
+//! multicast scout domain and gossip between a *specific* pair can stall past any test timeout —
+//! the original flake (debugging/bus/routed-call-races-mesh-discovery.md). A point-to-point
+//! endpoint makes this pair's discovery deterministic, independent of the scout noise, and is the
+//! production-faithful posture (real edge↔hub links are configured endpoints). Each test still uses
+//! a UNIQUE workspace id: in-process peers share a workspace's keyspace (debugging/bus/in-process-
+//! peers-share-the-keyspace.md), so a shared id would let concurrent tests cross-talk. Multi-thread
+//! flavor is required (boots a Zenoh peer; debugging/bus/zenoh-needs-multi-thread-runtime.md).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
+use lb_bus::Bus;
 use lb_host::{
-    load_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, ToolServer,
+    load_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, SidecarMap,
+    ToolServer,
 };
-use lb_mcp::{call, ToolError};
+use lb_mcp::{call, Registry, ToolError};
+use lb_runtime::Engine;
+use lb_store::Store;
 
 const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
 
@@ -47,10 +57,43 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
     verify(&key, &token, 1).expect("token verifies")
 }
 
-/// Stand up an edge (node A, the caller) and a hub (node B, hosting `hello` and serving it).
-/// Returns both nodes and the live tool server (kept alive for the test's duration).
+/// Build a node on an explicit `bus` and `role`. Same wiring as `Node::boot_as`, but we own the
+/// bus so the hub and edge can be **point-to-point linked** (see `edge_and_hub`). Mirrors the
+/// direct-construction pattern in `ext_publish_test.rs` (a custom store handle there; a custom bus
+/// here) — both legitimate, since `Node`'s fields are the booted spine and nothing here is mocked.
+async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
+    Node {
+        store: Store::memory().await.expect("in-mem store"),
+        bus,
+        engine: Engine::new().expect("runtime engine"),
+        registry: Arc::new(Registry::new()),
+        sidecars: Arc::new(SidecarMap::new()),
+        role,
+    }
+}
+
+/// Stand up an edge (node A, the caller) and a hub (node B, hosting `hello` and serving it),
+/// **explicitly linked over a loopback TCP endpoint** so discovery is deterministic regardless of
+/// how many other in-process peers are scouting concurrently (the root-cause fix — see the module
+/// doc and debugging/bus/routed-call-races-mesh-discovery.md). The hub listens on an OS-assigned
+/// loopback port; the edge connects to that exact locator. Returns both nodes and the live tool
+/// server (kept alive for the test's duration).
 async fn edge_and_hub() -> (Node, Node, ToolServer) {
-    let hub = Node::boot_as(NodeRole::Hub).await.expect("hub boots");
+    // Pick a concrete free loopback port up front so the hub LISTENS on it and the edge CONNECTS to
+    // exactly it — a deterministic point-to-point link. (We bind a throwaway socket to `:0`, read
+    // the OS-assigned port, and drop it; Zenoh re-binds the same port on loopback. We choose the
+    // port ourselves rather than read it back from Zenoh because `Session::info().locators()` is
+    // behind zenoh's `unstable` feature, which we don't want to take on the whole workspace.)
+    let port = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("grab a free loopback port");
+        probe.local_addr().expect("probe addr").port()
+    };
+    let endpoint = format!("tcp/127.0.0.1:{port}");
+
+    let hub_bus = Bus::peer_with(&[endpoint.clone()], &[])
+        .await
+        .expect("hub bus listens on the chosen endpoint");
+    let hub = node_on_bus(hub_bus, NodeRole::Hub).await;
     load_extension(&hub, MANIFEST, &hello_wasm(), &[])
         .await
         .expect("hub loads hello");
@@ -58,11 +101,59 @@ async fn edge_and_hub() -> (Node, Node, ToolServer) {
         .await
         .expect("hub serves hello");
 
-    let edge = Node::boot_as(NodeRole::Edge).await.expect("edge boots");
+    // Edge connects straight to the hub's endpoint — discovery is now deterministic, not multicast.
+    let edge_bus = Bus::peer_with(&[], &[endpoint])
+        .await
+        .expect("edge bus connects to hub");
+    let edge = node_on_bus(edge_bus, NodeRole::Edge).await;
     // The edge knows hello lives elsewhere — a routing entry, no local instance.
     register_remote_extension(&edge, "hello", &["echo".to_string()]);
 
     (edge, hub, server)
+}
+
+/// Poll the routed call until the hub's queryable is actually reachable, then return its output.
+///
+/// ROOT CAUSE of the old flake (debugging/bus/routed-call-races-mesh-discovery.md): the two
+/// in-process Zenoh peers used to rely on ambient multicast scouting to find each other, but that
+/// discovery is **asynchronous AND best-effort** — when the edge issues `query` (a Zenoh `get`)
+/// before its peer has learned of the hub's queryable, the query reaches no responder and the reply
+/// channel blocks until Zenoh's default ~10s query timeout; a late-joining queryable does not
+/// retroactively answer an in-flight `get`. Under a full parallel `cargo test --workspace` (hundreds
+/// of peers in one scout domain) that discovery could stall past *any* fixed timeout, so the old
+/// single-call-in-a-5s-`timeout` test hit `Elapsed`. That was a real discovery race, not a tight
+/// number — bumping the timeout did not fix it (verified: a 30s retry loop still failed in the
+/// workspace storm because the two peers never discovered each other at all).
+///
+/// PRIMARY FIX (`edge_and_hub`): link the pair over an explicit loopback TCP endpoint, so discovery
+/// is deterministic and independent of the scout noise — the link forms in milliseconds.
+///
+/// This barrier is the SECONDARY belt-and-suspenders: even with a deterministic link, the
+/// queryable *declaration* still propagates to the edge a beat after the link forms. Retrying the
+/// real call until the first `Ok` converges on actual reachability (nothing mocked) instead of
+/// hoping a fixed sleep was long enough. With the TCP link it returns in well under a second.
+async fn route_until_reachable(edge: &Node, p: &Principal, ws: &str, input_json: &str) -> String {
+    // With the deterministic loopback link this converges in <1s; the deadline only guards against a
+    // genuinely-broken routing path (then it fails loudly), not slow ambient mesh convergence. The
+    // headroom (20s) is free — the loop returns the instant a call succeeds — and covers a CPU-
+    // starved box where even the direct link + queryable propagation is briefly slow to schedule.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let mut last_err = None;
+    while std::time::Instant::now() < deadline {
+        // Bound each individual attempt so a `get` that blocks on the (not-yet-discovered)
+        // queryable's full query timeout doesn't eat the whole budget — we retry instead.
+        match tokio::time::timeout(
+            Duration::from_millis(500),
+            call(&edge.registry, &edge.bus, p, ws, "hello.echo", input_json),
+        )
+        .await
+        {
+            Ok(Ok(out)) => return out,
+            Ok(Err(e)) => last_err = Some(format!("{e:?}")), // reachable but errored: surface it
+            Err(_) => last_err = Some("attempt timed out (queryable not yet reachable)".into()),
+        }
+    }
+    panic!("routed call never became reachable within the deadline; last: {last_err:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -71,22 +162,10 @@ async fn a_call_on_the_edge_routes_to_the_extension_on_the_hub() {
     let (edge, _hub, _server) = edge_and_hub().await;
     let p = principal(ws, &["mcp:hello.echo:call"]);
 
-    // The call site is IDENTICAL to a local call — the edge has no local hello, so dispatch
-    // routes over the bus to the hub, which runs the tool and replies.
-    let out = tokio::time::timeout(
-        Duration::from_secs(5),
-        call(
-            &edge.registry,
-            &edge.bus,
-            &p,
-            ws,
-            "hello.echo",
-            r#"{"msg":"routed"}"#,
-        ),
-    )
-    .await
-    .expect("a routed call returns in time")
-    .expect("routed call succeeds");
+    // The call site is IDENTICAL to a local call — the edge has no local hello, so dispatch routes
+    // over the bus to the hub. We poll until the hub's queryable is reachable (the readiness
+    // barrier above) rather than wrapping one call in a fixed timeout and hoping the mesh converged.
+    let out = route_until_reachable(&edge, &p, ws, r#"{"msg":"routed"}"#).await;
 
     let value: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(

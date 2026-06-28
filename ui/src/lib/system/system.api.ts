@@ -4,7 +4,13 @@
 // **admin-gated** server-side (`mcp:system.overview/topology:call`, granted to the workspace-admin
 // role only) and READ-ONLY. The workspace comes from the session token, never an argument (§7).
 
-import type { SubsystemDetail, SystemOverview, SystemTopology } from "./system.types";
+import type {
+  AcpInfo,
+  SubsystemDetail,
+  SystemOverview,
+  SystemTools,
+  SystemTopology,
+} from "./system.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The per-subsystem status grid for the session workspace. Mirrors `system.overview`. */
@@ -21,4 +27,16 @@ export function systemTopology(): Promise<SystemTopology> {
  *  view a no-page card drills into. Mirrors `system.subsystem`. */
 export function systemSubsystem(id: string): Promise<SubsystemDetail> {
   return invoke<SubsystemDetail>("system_subsystem", { id });
+}
+
+/** The full catalog of MCP tools reachable for the session workspace (host-native + extension), with
+ *  descriptions — the read behind the MCP service page. Mirrors `system.tools`. Admin-gated. */
+export function systemTools(): Promise<SystemTools> {
+  return invoke<SystemTools>("system_tools");
+}
+
+/** The ACP adapter's static protocol/capability facts — the read behind the ACP service page. Mirrors
+ *  `system.acp`. Admin-gated. */
+export function systemAcp(): Promise<AcpInfo> {
+  return invoke<AcpInfo>("system_acp");
 }

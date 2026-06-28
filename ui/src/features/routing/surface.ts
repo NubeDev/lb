@@ -13,6 +13,8 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   ingest: "/ingest",
   data: "/data",
   system: "/system",
+  "system-mcp": "/system/mcp",
+  "system-acp": "/system/acp",
   inbox: "/inbox",
   outbox: "/outbox",
   admin: "/admin",

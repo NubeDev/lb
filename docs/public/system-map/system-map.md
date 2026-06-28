@@ -36,9 +36,39 @@ verb it summarizes (the same way `dbview` runs its admin gate once, then calls t
   the **same** gate as the other two (cap `mcp:system.subsystem:call`, admin-only). An **unknown id** is
   opaque `Denied` (no "which ids exist" signal, never a panic) — the only verb that takes an id.
 
-`overview`/`topology` are whole-workspace snapshots (no id arg — the workspace is the scope); only
-`subsystem` takes a single subsystem id. **Read-only by design**:
-the map mutates nothing; control verbs (`ext.enable`/`disable`, lifecycle) stay in their own scopes.
+- **`system.tools`** → `SystemTools { ws, role, tools: ToolInfo[] }` — the **full catalog of MCP tools
+  reachable for the workspace**, with descriptions (tool-catalog scope). Both halves of the surface:
+  the built-in **host-native** verbs (`host.*`/`system.*`/`agent.*`/`bus.*`/`store.*`/`inbox.*`/
+  `outbox.*`/…, from a static host catalog with hand-written one-liners) **and** every
+  **extension-contributed** tool from the runtime registry (`<ext>.<tool>`, name-only — the registry
+  carries no description). Each `ToolInfo { tool, description, source, group }`; `source` is `"host"` or
+  the ext id. Cap `mcp:system.tools:call`, admin-only. The read behind the **MCP service page**.
+- **`system.acp`** → `AcpInfo` — the **ACP (Agent Client Protocol) adapter's** static protocol/
+  capability facts (protocol version, handled `session/*` methods, advertised capabilities, JSON-RPC
+  error codes, auth notes) — mirrors `role/acp`'s handshake; the host owns the truth so the UI never
+  imports the role binary. ACP is a per-stdio-session adapter, **not a polled server**, so this is
+  *reachable capability info, not a live health feed*. Cap `mcp:system.acp:call`, admin-only. The read
+  behind the **ACP service page**.
+
+`overview`/`topology`/`tools`/`acp` are whole-workspace snapshots (no id arg — the workspace is the
+scope); only `subsystem` takes a single subsystem id. **Read-only by design**: the map mutates nothing
+(the tool catalog lists tools, it never calls them); control verbs (`ext.enable`/`disable`, lifecycle)
+stay in their own scopes.
+
+### Service pages — MCP & ACP (tool-catalog scope)
+
+The `mcp` and `acp` runtime cards now own **dedicated shell pages** (`/system/mcp`, `/system/acp`),
+drilled from the System grid:
+
+- **MCP service page** (`ui/src/features/system-mcp/`) — the live runtime counts plus a **searchable,
+  source-grouped table of every reachable tool** with its description. Extension tools with no stored
+  description show "no description provided" (honest, not hidden).
+- **ACP service page** (`ui/src/features/system-acp/`) — the adapter's facts as labelled sections,
+  honest that it reports capabilities, not a live connection count.
+
+An **`acp` subsystem card** (Idle — available, per-session, not a polled resident) now sits in the grid
+alongside `mcp`, with an `acp → mcp` topology edge ("drives the agent"). Both pages are reached by
+drilling from the System page (not in the sidebar), each cap-gated; the gateway re-checks server-side.
 
 ### Wire shapes
 
@@ -49,11 +79,14 @@ TopoNode { id, label, group, health }   TopoEdge { from, to, label }
 SystemTopology { ws, role, nodes: TopoNode[], edges: TopoEdge[] }
 SubsystemDetail { ws, role, service: ServiceStatus, extra }
   // extra for `bus`: { peer_zids: string[], router_zids: string[] }; {} otherwise
+ToolInfo { tool, description, source, group }   // source: "host" | <ext id>
+SystemTools { ws, role, tools: ToolInfo[] }
+AcpInfo { protocol_version, methods: string[], capabilities: Metric[], error_codes: Metric[], notes: string[] }
 ```
 
 - **`id`** — the stable key topology edges reference: `gateway`, `bus`, `mcp`, `extensions`, `registry`,
-  `store`, `ingest`, `inbox`, `outbox`, `jobs`. This **fixed set is always present** — a missing card
-  means "we forgot it", never "it happens to be empty".
+  `store`, `ingest`, `inbox`, `outbox`, `jobs`, plus `acp` (the Agent Client Protocol adapter). This
+  **fixed set is always present** — a missing card means "we forgot it", never "it happens to be empty".
 - **`group`** — `motion` / `state` / `workflow` / `runtime`, mirroring the core's state-vs-motion split
   (§3.3) and how the grid/graph band the cards.
 - **`health`** — `ok` / `idle` / `degraded` / `down`. **`idle` is up-but-nothing-flowing** (an empty

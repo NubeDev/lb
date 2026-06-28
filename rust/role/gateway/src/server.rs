@@ -20,8 +20,8 @@ use crate::routes::{
     purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_team_member,
     rename_team, rename_workspace, request_approval, resolve_inbox, resolve_workflow_approval,
     revoke_grant, run_query, run_stream, save_dashboard, scan_table, series_stream, serve_ext_ui,
-    share_dashboard, share_doc, start_job, system_overview, system_subsystem, system_topology,
-    uninstall_extension, write_samples,
+    share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -112,6 +112,10 @@ pub fn router(gw: Gateway) -> Router {
         .route("/system/overview", get(system_overview))
         .route("/system/topology", get(system_topology))
         .route("/system/subsystem/{id}", get(system_subsystem))
+        // tool-catalog scope: the reachable MCP tool catalog (host-native + extension) behind the MCP
+        // service page, and the ACP adapter's static facts behind the ACP service page. Same admin gate.
+        .route("/system/tools", get(system_tools))
+        .route("/system/acp", get(system_acp))
         // ingest / series (data-console scope) — the browser's `ingest.*`/`series.*` surface (the S8
         // verbs, finally reachable over the gateway). Manual write + series list/find + latest/recent.
         .route("/ingest", post(write_samples))

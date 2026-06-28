@@ -31,6 +31,7 @@ const WIRING: &[(&str, &str, &str)] = &[
     ("registry", "extensions", "installs artifacts"),
     ("extensions", "mcp", "expose tools"),
     ("outbox", "bus", "delivers effects"),
+    ("acp", "mcp", "drives the agent"),
 ];
 
 /// Read the full system topology for workspace `ws` as `principal`. Same gather as `system_overview`,

@@ -105,6 +105,11 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+if-addrs = "0.13"
+hostname = "0.4"
 # `process` + `io-util` + `time`: the native Tier-2 supervisor spawns and frames JSON-RPC over a
 # child's stdio with health timers (lb-supervisor, native-tier scope). Core crates use only the S1
 # subset; the extra features are additive (one tokio in the workspace).

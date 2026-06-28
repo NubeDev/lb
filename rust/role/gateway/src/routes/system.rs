@@ -12,7 +12,7 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{SubsystemDetail, SystemError, SystemOverview, SystemTopology};
+use lb_host::{AcpInfo, SubsystemDetail, SystemError, SystemOverview, SystemTools, SystemTopology};
 
 use crate::session::authenticate;
 use crate::state::Gateway;
@@ -54,6 +54,34 @@ pub async fn system_subsystem(
         .await
         .map_err(system_status)?;
     Ok(Json(detail))
+}
+
+/// `GET /system/tools` — the full catalog of MCP tools reachable for the caller's workspace
+/// (host-native + extension-contributed), with descriptions. The read behind the MCP service page's
+/// tool table. Admin cap (`mcp:system.tools:call`).
+pub async fn system_tools(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<SystemTools>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let tools = lb_host::system_tools(gw.node.as_ref(), &p, p.ws())
+        .await
+        .map_err(system_status)?;
+    Ok(Json(tools))
+}
+
+/// `GET /system/acp` — the ACP adapter's static protocol/capability facts (the read behind the ACP
+/// service page). Admin cap (`mcp:system.acp:call`). Node-level facts, but gated workspace-first like
+/// its siblings so the page is admin-only.
+pub async fn system_acp(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<AcpInfo>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let info = lb_host::system_acp(&p, p.ws())
+        .await
+        .map_err(system_status)?;
+    Ok(Json(info))
 }
 
 /// Map the system gate's outcome onto an HTTP status. `Denied` is `403` (opaque — no existence

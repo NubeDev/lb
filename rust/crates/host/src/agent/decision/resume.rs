@@ -28,7 +28,7 @@ use lb_jobs::{append_event, SuspensionDecision, TranscriptEvent};
 use super::model::decision_id;
 use super::store::load_decision;
 use crate::agent::model_access::{CallOutcome, ProposedCall};
-use crate::agent::run::run_calls;
+use crate::agent::step::run_calls;
 use crate::boot::Node;
 use crate::AgentError;
 

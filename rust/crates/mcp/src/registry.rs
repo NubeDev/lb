@@ -96,6 +96,19 @@ impl Registry {
         )
     }
 
+    /// Every reachable extension and the tool names it declares, as `(ext_id, tools)` pairs — what a
+    /// tool catalog (`system.tools`) walks to list the extension half of the surface. Cloned out under
+    /// the read lock so the caller holds no lock; ordering is unspecified (the caller sorts). Local and
+    /// remote targets both appear (a routed ext's tools are still reachable from this node).
+    pub fn entries(&self) -> Vec<(String, Vec<String>)> {
+        self.reachable
+            .read()
+            .unwrap()
+            .iter()
+            .map(|(id, target)| (id.clone(), target.tools().to_vec()))
+            .collect()
+    }
+
     /// A live count of reachable extensions and the total tools they expose — the real numbers a
     /// system map shows for the MCP/runtime card (it answers "how big is the tool surface right
     /// now", not "does the registry handle exist"). Cheap: a read-locked walk of the routing map.
