@@ -75,17 +75,11 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
 fn is_read_only(tool: &str) -> bool {
     matches!(
         tool,
-        "outbox.status"
-            | "inbox.list"
-            | "store.schema"
-            | "history.list"
-            | "history.compensations"
+        "outbox.status" | "inbox.list" | "store.schema" | "history.list" | "history.compensations"
     ) || tool.starts_with("series.")
         || tool.starts_with("host.")
-        || tool.starts_with("dashboard.")
-            && tool.ends_with(".get")
-        || tool.starts_with("dashboard.")
-            && tool.ends_with(".list")
+        || tool.starts_with("dashboard.") && tool.ends_with(".get")
+        || tool.starts_with("dashboard.") && tool.ends_with(".list")
 }
 
 fn str_arg<'a>(input: &'a Value, key: &str) -> Option<&'a str> {

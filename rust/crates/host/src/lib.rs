@@ -44,6 +44,7 @@ mod teams;
 mod tool_call;
 mod ui_decl;
 mod undo;
+mod undo_capture;
 mod users;
 mod workflow;
 mod workspaces;

@@ -85,6 +85,50 @@ pub async fn call_tool_at_depth(
     input_json: &str,
     depth: u32,
 ) -> Result<String, ToolError> {
+    // Auto-capture-on-dispatch (undo scope): at the OUTERMOST entry (depth 0), wrap the dispatch in
+    // a runtime taint scope and journal the call into the undo journal — reversible mutations get an
+    // undoable before-image, anything that reaches the outbox is journaled not-undoable (derived
+    // from taint, the max-composition rule). Nested host-callback calls (depth > 0) run as-is: they
+    // contribute their taint to the still-open enclosing scope, but only the outermost call journals
+    // (one tool call = one undoable step). The undo/redo/history verbs are EXEMPT — they journal
+    // their own `kind:undo` entries; auto-capturing them would double-journal and recurse.
+    let is_undo_verb = qualified_tool == "undo"
+        || qualified_tool == "redo"
+        || qualified_tool.starts_with("history.");
+    if depth == 0 && !is_undo_verb {
+        let input: Value = serde_json::from_str(input_json)
+            .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
+        // Optional batch/job group id the caller threads through for grouped-undo groundwork; a
+        // standalone call leaves it None (the step's own seq becomes its group).
+        let group = input
+            .get("undo_group")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        return crate::undo_capture::capture_dispatch(
+            &node.store,
+            principal,
+            ws,
+            qualified_tool,
+            &input,
+            group,
+            None, // declared compensation: a manifest field is a deferred additive ABI change
+            dispatch_at_depth(node, principal, ws, qualified_tool, input_json, depth),
+        )
+        .await;
+    }
+    dispatch_at_depth(node, principal, ws, qualified_tool, input_json, depth).await
+}
+
+/// The raw dispatch (no undo capture) — host-native verbs over the store, or `<ext>.<tool>` routed
+/// through the runtime registry / bus. Wrapped by [`call_tool_at_depth`] at depth 0 for auto-capture.
+async fn dispatch_at_depth(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input_json: &str,
+    depth: u32,
+) -> Result<String, ToolError> {
     if is_host_native(qualified_tool) {
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
         // caller is opaque and indistinguishable from a missing tool — then delegate to the host verb.

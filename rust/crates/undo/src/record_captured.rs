@@ -49,10 +49,7 @@ pub struct RecordCaptured<'a> {
 
 /// Journal a `Do` entry for an already-applied reversible change, reading its after-image + `rev`
 /// from the store, and push the step onto the (ws, actor, surface) undo stack. Returns the seq.
-pub async fn record_captured(
-    store: &Store,
-    rec: RecordCaptured<'_>,
-) -> Result<u64, UndoError> {
+pub async fn record_captured(store: &Store, rec: RecordCaptured<'_>) -> Result<u64, UndoError> {
     // The after-image + produced rev (read post-commit). Absence → a delete (after: None, rev 0).
     let after = read_versioned(store, rec.ws, rec.table, rec.id).await?;
 

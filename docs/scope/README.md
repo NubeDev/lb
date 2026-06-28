@@ -25,6 +25,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   member delete·disable·remove·rename + dev-store user CRUD).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
+- `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
+  sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
+  `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox),
+  plus **rule chains** — a rule DAG whose every step is an `lb-jobs` job, cron via the S6 reactor, event
+  via `bus.watch` (`rule-chains-scope.md`). Exposed as `rules.*` / `chains.*` MCP verbs.
+- `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds
+  DataFusion + connectors to query external SQL sources (MySQL, PostgreSQL/TimescaleDB, …) under `net:*`
+  + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+
+  `datasource.*` admin CRUD and a `federation.mirror` `lb-jobs` batch). SurrealDB stays the authority;
+  external DBs are federated sources reached through the gated extension, never a second authority.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
   `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `extensions/` also holds
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
