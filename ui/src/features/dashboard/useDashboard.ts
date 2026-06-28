@@ -14,6 +14,7 @@ import {
   type Cell,
   type Dashboard,
   type DashboardSummary,
+  type Variable,
   type Visibility,
 } from "@/lib/dashboard";
 
@@ -26,6 +27,8 @@ export interface DashboardState {
   create: (id: string, title: string) => Promise<void>;
   /** Persist the cell set (drag/resize/add/remove all funnel here → `dashboard.save`). */
   saveCells: (cells: Cell[]) => Promise<void>;
+  /** Persist the variable definitions (the variable editor → `dashboard.save`, cells preserved). */
+  saveVariables: (variables: Variable[]) => Promise<void>;
   remove: (id: string) => Promise<void>;
   share: (visibility: Visibility, team?: string) => Promise<void>;
 }
@@ -77,7 +80,23 @@ export function useDashboard(ws: string): DashboardState {
     async (cells: Cell[]) => {
       if (!current) return;
       try {
-        const d = await saveDashboard(current.id, current.title, cells);
+        // Preserve the existing variable definitions across a layout save (variables and cells both
+        // live on the one record; a cell save must not drop the variables).
+        const d = await saveDashboard(current.id, current.title, cells, current.variables ?? []);
+        setCurrent(d);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [current],
+  );
+
+  const saveVariables = useCallback(
+    async (variables: Variable[]) => {
+      if (!current) return;
+      try {
+        const d = await saveDashboard(current.id, current.title, current.cells, variables);
         setCurrent(d);
         setError(null);
       } catch (e) {
@@ -114,5 +133,5 @@ export function useDashboard(ws: string): DashboardState {
     [current, refresh],
   );
 
-  return { roster, current, error, refresh, select, create, saveCells, remove, share };
+  return { roster, current, error, refresh, select, create, saveCells, saveVariables, remove, share };
 }

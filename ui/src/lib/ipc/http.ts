@@ -366,8 +366,15 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return getJson<T>(`${base}/dashboards/${enc(id)}`);
     }
     case "dashboard_save": {
-      const { id, title, cells } = args as { id: string; title: string; cells: unknown[] };
-      return postJson<T>(`${base}/dashboards`, { id, title, cells });
+      // `variables` is additive (widget-config-vars Slice 2) — forwarded so the bar + interpolation
+      // round-trip; a pre-variables caller omits it (the gateway defaults it to []).
+      const { id, title, cells, variables } = args as {
+        id: string;
+        title: string;
+        cells: unknown[];
+        variables?: unknown[];
+      };
+      return postJson<T>(`${base}/dashboards`, { id, title, cells, variables: variables ?? [] });
     }
     case "dashboard_delete": {
       const { id } = args as { id: string };

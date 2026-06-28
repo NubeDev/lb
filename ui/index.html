@@ -1,9 +1,25 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" data-theme-accent="amber">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Lazybones</title>
+    <script>
+      (() => {
+        try {
+          const raw = localStorage.getItem("lb.theme");
+          const parsed = raw ? JSON.parse(raw) : {};
+          const mode = parsed.mode === "light" ? "light" : "dark";
+          const accent = ["amber", "teal", "blue"].includes(parsed.accent) ? parsed.accent : "amber";
+          document.documentElement.classList.toggle("dark", mode === "dark");
+          document.documentElement.dataset.themeAccent = accent;
+          document.documentElement.style.colorScheme = mode;
+        } catch {
+          document.documentElement.dataset.themeAccent = "amber";
+          document.documentElement.style.colorScheme = "dark";
+        }
+      })();
+    </script>
     <!-- Extension federation import map (ui-federation scope). Extension `remoteEntry.js` bundles
          externalise react/react-dom/react-dom/client/react/jsx-runtime; their bare imports resolve
          here to the host shims (`/shims/*.mjs`), which re-export the shell's SINGLE React published on

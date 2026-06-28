@@ -74,9 +74,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   standard: shadcn-first primitives, the Members/NavRail canonical look, and responsive/mobile
   auto-resize — what every surface here must obey), `routing-scope.md` (shareable, deep-linkable
   URLs with typed search-param args — @tanstack/router in hash mode, working in both the Tauri
-  desktop webview and the browser; e.g. a dashboard scoped to a date range), and `data-console-scope.md` (the workspace
+  desktop webview and the browser; e.g. a dashboard scoped to a date range), `data-console-scope.md` (the workspace
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
-  with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL).
+  with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL), and
+  `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes).
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

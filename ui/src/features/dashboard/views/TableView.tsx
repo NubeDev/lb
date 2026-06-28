@@ -4,6 +4,8 @@
 // BACKFILL cap — no unbounded render.
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { useSource } from "../builder/useSource";
 import type { Source } from "@/lib/dashboard";
 
@@ -12,6 +14,8 @@ interface Props {
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
 /** The union of keys across the rows, in first-seen order — the introspected columns. */
@@ -29,8 +33,8 @@ function cell(v: unknown): string {
   return String(v);
 }
 
-export function TableView({ source, tools, label }: Props) {
-  const { rows, loading, denied } = useSource(source, tools);
+export function TableView({ source, tools, label, scope = emptyScope(), refreshKey = 0 }: Props) {
+  const { rows, loading, denied } = useSource(source, tools, scope, refreshKey);
 
   if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;
   if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;

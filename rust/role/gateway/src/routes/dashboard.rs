@@ -49,6 +49,9 @@ pub struct SaveDashboard {
     pub title: String,
     #[serde(default)]
     pub cells: Vec<Cell>,
+    /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
+    #[serde(default)]
+    pub variables: Vec<lb_host::DashboardVariable>,
 }
 
 /// `POST /dashboards` — idempotent UPSERT (create on a fresh id, owner-only update). Gated
@@ -66,6 +69,7 @@ pub async fn save_dashboard(
         &body.id,
         &body.title,
         body.cells,
+        body.variables,
         gw.now,
     )
     .await

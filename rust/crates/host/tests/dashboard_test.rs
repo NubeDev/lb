@@ -49,6 +49,7 @@ fn chart_cell(series: &str) -> Cell {
         h: 3,
         v: 0,
         widget_type: "chart".into(),
+        title: String::new(),
         view: String::new(),
         binding: json!({ "series": series }),
         source: Default::default(),
@@ -71,6 +72,7 @@ async fn crud_round_trip() {
         "ops",
         "Ops",
         vec![chart_cell("cooler.temp")],
+        vec![],
         10,
     )
     .await
@@ -91,6 +93,7 @@ async fn crud_round_trip() {
         "ops",
         "Ops v2",
         vec![chart_cell("cooler.temp"), chart_cell("fryer.state")],
+        vec![],
         20,
     )
     .await
@@ -117,13 +120,101 @@ async fn crud_round_trip() {
     dashboard_delete(&store, &ada, ws, "ops", 40).await.unwrap();
 }
 
+// widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no
+// new verb (additive `#[serde(default)]` on `Cell`). A pre-title cell deserializes with an empty title.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn cell_title_round_trips() {
+    let ws = "ws-dash-title";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    let mut cell = chart_cell("cooler.temp");
+    cell.title = "Web01 CPU".into();
+    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![cell], vec![], 10)
+        .await
+        .unwrap();
+
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.cells.len(), 1);
+    assert_eq!(got.cells[0].title, "Web01 CPU");
+
+    // A cell saved without a title reads back empty (the derived-label fallback is a UI concern).
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![chart_cell("fryer.state")],
+        vec![],
+        20,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.cells[0].title, "");
+}
+
+// widget-config-vars scope, Slice 2: a dashboard's `variables[]` round-trip through `dashboard.save`/
+// `get` with no new verb (additive `#[serde(default)]` on `Dashboard`). The per-viewer SELECTION lives
+// in the URL — only the DEFINITIONS are durable. A pre-variables dashboard reads back an empty list.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn dashboard_variables_round_trip() {
+    use lb_host::DashboardVariable;
+    let ws = "ws-dash-vars";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    let host_var = DashboardVariable {
+        name: "host".into(),
+        label: "Host".into(),
+        r#type: "query".into(),
+        query: json!({ "tool": "store.query", "args": { "sql": "SELECT name FROM host" } }),
+        multi: true,
+        include_all: true,
+        ..Default::default()
+    };
+    let step_var = DashboardVariable {
+        name: "step".into(),
+        r#type: "interval".into(),
+        interval: vec!["1m".into(), "5m".into(), "1h".into()],
+        ..Default::default()
+    };
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![],
+        vec![host_var, step_var],
+        10,
+    )
+    .await
+    .unwrap();
+
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.variables.len(), 2);
+    assert_eq!(got.variables[0].name, "host");
+    assert_eq!(got.variables[0].r#type, "query");
+    assert!(got.variables[0].multi && got.variables[0].include_all);
+    assert_eq!(got.variables[1].interval, vec!["1m", "5m", "1h"]);
+
+    // A save without variables reads back an empty list (additive default; no selection stored).
+    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 20)
+        .await
+        .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert!(got.variables.is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn each_verb_is_denied_without_its_cap() {
     let ws = "ws-dash-deny";
     let store = Store::memory().await.unwrap();
     // Ada owns a dashboard (so get/share have a target); the denied principal holds NO dashboard cap.
     let ada = principal("user:ada", ws, ALL);
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -137,7 +228,7 @@ async fn each_verb_is_denied_without_its_cap() {
         DashboardError::Denied
     ));
     assert!(matches!(
-        dashboard_save(&store, &nobody, ws, "x", "X", vec![], 1)
+        dashboard_save(&store, &nobody, ws, "x", "X", vec![], vec![], 1)
             .await
             .unwrap_err(),
         DashboardError::Denied
@@ -178,7 +269,7 @@ async fn team_shared_member_reads_non_member_denied() {
     let ben = principal("user:ben", ws, &[GET, LIST]); // team member, read only
     let cleo = principal("user:cleo", ws, &[GET, LIST]); // NOT in the team
 
-    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -233,7 +324,7 @@ async fn workspace_isolation() {
     let ada = principal("user:ada", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
 
-    dashboard_save(&store, &ada, "ws-a", "ops", "Ops A", vec![], 1)
+    dashboard_save(&store, &ada, "ws-a", "ops", "Ops A", vec![], vec![], 1)
         .await
         .unwrap();
 
@@ -252,7 +343,7 @@ async fn workspace_isolation() {
     // And a non-owner cannot overwrite the owner's dashboard even within the same workspace.
     let mallory = principal("user:mallory", "ws-a", ALL);
     assert!(matches!(
-        dashboard_save(&store, &mallory, "ws-a", "ops", "hijack", vec![], 2)
+        dashboard_save(&store, &mallory, "ws-a", "ops", "hijack", vec![], vec![], 2)
             .await
             .unwrap_err(),
         DashboardError::Denied

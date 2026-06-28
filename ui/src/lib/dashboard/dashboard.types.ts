@@ -3,6 +3,9 @@
 // and a data binding. The binding is the forever-contract Phase 2 moves behind the federation bridge
 // unchanged: an explicit `series`, OR a tag-facet query resolved via the shipped `series.find`.
 
+import type { Variable } from "@/lib/vars";
+export type { Variable };
+
 /** The Phase-1 built-in widget types (v1). v2's render vocabulary is {@link View}. */
 export type WidgetType = "chart" | "stat" | "gauge";
 
@@ -58,6 +61,9 @@ export interface Cell {
   /** Contract version. Absent/0/1 = a v1 series cell; 2 = a v2 tool-bound cell. */
   v?: number;
   widget_type: WidgetType;
+  /** A human title for the cell (widget-config-vars scope, Slice 1). Optional/additive; the header
+   *  renders it, falling back to a derived label when empty. Persisted via `dashboard.save`. */
+  title?: string;
   /** v2 render vocabulary. Empty on a v1 cell. */
   view?: View;
   /** v1 binding (kept for v1 compatibility). */
@@ -75,13 +81,26 @@ export function cellView(cell: Cell): View {
   return (cell.view as View) || (cell.widget_type as View);
 }
 
-/** A full dashboard record (the layout + sharing metadata). */
+/** A cell's header label: the author `title` when set, else a derived fallback — the source tool, an
+ *  ext-tile name, or the view (widget-config-vars scope, Slice 1: "Header renders title (fallback to
+ *  derived label)"). Never the empty string, so the header always reads something honest. */
+export function cellLabel(cell: Cell): string {
+  if (cell.title?.trim()) return cell.title.trim();
+  if (cell.source?.tool) return cell.source.tool;
+  if (cell.action?.tool) return cell.action.tool;
+  const v = cellView(cell);
+  return v || cell.widget_type || "widget";
+}
+
+/** A full dashboard record (the layout + sharing metadata + variable definitions). */
 export interface Dashboard {
   id: string;
   title: string;
   owner: string;
   visibility: Visibility;
   cells: Cell[];
+  /** Variable definitions (widget-config-vars Slice 2). The per-viewer selection lives in the URL. */
+  variables?: Variable[];
   updated_ts: number;
   deleted?: boolean;
 }

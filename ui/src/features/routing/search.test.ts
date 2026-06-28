@@ -5,6 +5,8 @@ import {
   defaultDashboardSearch,
   validateChannelSearch,
   validateDashboardSearch,
+  varsFromSearch,
+  withVar,
 } from "./search";
 
 describe("route search validation", () => {
@@ -33,5 +35,45 @@ describe("route search validation", () => {
   it("defaults an inverted dashboard range", () => {
     const parsed = validateDashboardSearch({ from: "2026-03-31", to: "2026-01-01" });
     expect(parsed.from <= parsed.to).toBe(true);
+  });
+});
+
+describe("dashboard variable + refresh URL round-trip (widget-config-vars Slices 2/4)", () => {
+  it("parses ?var-host=web01&var-host=web02&refresh=30s (multi repeats + refresh)", () => {
+    const parsed = validateDashboardSearch({
+      from: "2026-01-01",
+      to: "2026-03-31",
+      "var-host": ["web01", "web02"],
+      refresh: "30s",
+    });
+    expect(parsed.refresh).toBe("30s");
+    expect(varsFromSearch(parsed)).toEqual({ host: ["web01", "web02"] });
+  });
+
+  it("a single var param is a string, a repeated one is an array", () => {
+    expect(varsFromSearch(validateDashboardSearch({ from: "2026-01-01", to: "2026-01-02", "var-env": "prod" }))).toEqual({
+      env: "prod",
+    });
+  });
+
+  it("malformed degrades to defaults (unknown refresh dropped, bad var ignored) — never throws", () => {
+    const parsed = validateDashboardSearch({
+      from: "2026-01-01",
+      to: "2026-01-02",
+      refresh: "13s", // not an allowed option → dropped (off)
+      "var-x": 42 as unknown as string, // non-string/array → ignored
+    });
+    expect(parsed.refresh).toBeUndefined();
+    expect(varsFromSearch(parsed)).toEqual({});
+  });
+
+  it("withVar sets, clears (empty/[]), and round-trips through varsFromSearch", () => {
+    const base = validateDashboardSearch({ from: "2026-01-01", to: "2026-01-02" });
+    const set = withVar(base, "host", ["web01", "web02"]);
+    expect(varsFromSearch(set)).toEqual({ host: ["web01", "web02"] });
+    const cleared = withVar(set, "host", []);
+    expect(varsFromSearch(cleared)).toEqual({});
+    const single = withVar(base, "env", "prod");
+    expect(single["var-env"]).toBe("prod");
   });
 });

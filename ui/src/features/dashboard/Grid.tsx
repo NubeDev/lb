@@ -8,7 +8,9 @@ import GridLayout, { type Layout } from "react-grid-layout";
 import { X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
+import { CellSettingsButton } from "./builder/CellSettings";
 import type { Cell } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { DashboardSearch } from "@/features/routing/search";
 
@@ -23,16 +25,36 @@ interface Props {
   /** Called with the new cell geometry on a drag/resize stop (the persistence seam). */
   onLayout: (cells: Cell[]) => void;
   onRemove: (i: string) => void;
+  /** Persist a single edited cell (widget-config-vars Slice 1: the ⚙ settings drawer's write-back). */
+  onEditCell?: (cell: Cell) => void;
+  /** Whether the viewer holds the edit cap — gates the per-cell ⚙ affordance (host re-checks on save). */
+  canEdit?: boolean;
   /** Installed extensions (from `ext.list`) — needed to mount `ext:<id>/<widget>` cells. */
   installed?: ExtRow[];
   /** The current workspace (passed to widgets; the hard wall is enforced by the token server-side). */
   workspace?: string;
+  /** The resolved variable scope (Slice 3) — interpolated into each cell's calls + ctx. */
+  scope?: VarScope;
+  /** Auto-refresh tick (Slice 4) — re-runs read cells on each interval. */
+  refreshKey?: number;
 }
 
 const COLS = 12;
 const ROW_H = 56;
 
-export function Grid({ cells, editable, range, onLayout, onRemove, installed, workspace }: Props) {
+export function Grid({
+  cells,
+  editable,
+  range,
+  onLayout,
+  onRemove,
+  onEditCell,
+  canEdit,
+  installed,
+  workspace,
+  scope,
+  refreshKey,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1200);
 
@@ -98,8 +120,16 @@ export function Grid({ cells, editable, range, onLayout, onRemove, installed, wo
                 <X size={12} />
               </button>
             )}
+            {editable && canEdit && onEditCell && workspace && (
+              <CellSettingsButton
+                ws={workspace}
+                cell={c}
+                existing={cells}
+                onSave={onEditCell}
+              />
+            )}
             <div className="min-h-0 flex-1">
-              <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} />
+              <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} scope={scope} refreshKey={refreshKey} />
             </div>
           </div>
         ))}

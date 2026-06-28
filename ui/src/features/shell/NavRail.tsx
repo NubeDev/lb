@@ -30,6 +30,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { ThemeSwitcher } from "@/features/theme";
 
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
@@ -147,6 +148,7 @@ export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }:
       </SidebarContent>
 
       <SidebarFooter>
+        <ThemeSwitcher />
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton aria-label="Sign out" tooltip="Sign out" onClick={onSignOut}>

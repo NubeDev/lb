@@ -2,8 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper; one
-   warm amber accent; hairline borders. A theme is a `.dark` class swap on <html>. */
+/* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper;
+   accent palettes swap through `data-theme-accent` on <html>. */
 :root {
   color-scheme: light;
   --radius: 0.5rem;
@@ -12,7 +12,10 @@
   --border: 40 12% 82%;
   --fg: 30 12% 14%;
   --muted: 30 6% 44%;
-  --accent: 32 95% 48%;
+  --accent: 32 92% 34%;
+  --theme-swatch-amber: 32 92% 34%;
+  --theme-swatch-teal: 178 70% 28%;
+  --theme-swatch-blue: 216 72% 40%;
   --background: var(--bg);
   --foreground: var(--fg);
   --card: var(--panel);
@@ -31,6 +34,14 @@
   --ring: var(--accent);
 }
 
+:root[data-theme-accent="teal"] {
+  --accent: 178 70% 28%;
+}
+
+:root[data-theme-accent="blue"] {
+  --accent: 216 72% 40%;
+}
+
 .dark {
   color-scheme: dark;
   --bg: 24 8% 8%;
@@ -38,7 +49,10 @@
   --border: 24 6% 18%;
   --fg: 36 16% 90%;
   --muted: 30 5% 56%;
-  --accent: 32 95% 56%;
+  --accent: 34 96% 58%;
+  --theme-swatch-amber: 34 96% 58%;
+  --theme-swatch-teal: 176 68% 50%;
+  --theme-swatch-blue: 216 82% 66%;
   --background: var(--bg);
   --foreground: var(--fg);
   --card: var(--panel);
@@ -55,6 +69,14 @@
   --destructive: 0 65% 58%;
   --input: var(--border);
   --ring: var(--accent);
+}
+
+.dark[data-theme-accent="teal"] {
+  --accent: 176 68% 50%;
+}
+
+.dark[data-theme-accent="blue"] {
+  --accent: 216 82% 66%;
 }
 
 html,

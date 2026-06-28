@@ -10,7 +10,7 @@
 // ever shown to the author; the resolved `{tool,args}` lives only in the cell.
 
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { Cell, View } from "@/lib/dashboard";
@@ -32,6 +32,34 @@ interface Props {
    *  false the whole "Add widget" surface is hidden; the host re-check on `dashboard.save` is the
    *  authoritative backstop regardless. */
   canEdit: boolean;
+  /** Edit-existing-cell mode (widget-config-vars scope, Slice 1): seed the builder fields from a cell.
+   *  When set, the builder shows a title field, the source/view/options seeded from `seed`, and a
+   *  "Save changes" button that calls `onSave` with the rebuilt cell (keeping the cell's `i`/geometry). */
+  seed?: Cell;
+  /** Edit-mode write-back — called with the rebuilt cell (same `i`/x/y/w/h as `seed`). */
+  onSave?: (cell: Cell) => void;
+  /** Render without the surrounding panel chrome (the edit drawer supplies its own). */
+  bare?: boolean;
+}
+
+/** Find the picker entry id that produced a cell's source (for edit-mode seeding). Matches a packaged
+ *  tile by its `ext:` view, the SQL source by `store.query`, else the read/action tool (+ series arg). */
+export function seedEntryId(cell: Cell | undefined, entries: SourceEntry[]): string {
+  if (!cell) return "";
+  const view = cell.view ?? "";
+  if (view.startsWith("ext:")) return entries.find((e) => e.viewKey === view)?.id ?? "";
+  if (cell.source?.tool === "store.query") return SQL_SOURCE_ID;
+  const tool = cell.source?.tool || cell.action?.tool;
+  if (!tool) return "";
+  const series = (cell.source?.args as { series?: string } | undefined)?.series;
+  const match = entries.find(
+    (e) =>
+      (e.source?.tool === tool &&
+        (series === undefined ||
+          (e.source?.args as { series?: string } | undefined)?.series === series)) ||
+      e.action?.tool === tool,
+  );
+  return match?.id ?? "";
 }
 
 // No shadcn Select/Textarea primitive exists in this repo yet (only Button/Input/Badge/Card/…), so the
@@ -64,18 +92,33 @@ function viewsFor(entry: SourceEntry | null): View[] {
   return [...READ_VIEWS, ...SCRIPTED_VIEWS];
 }
 
-export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
+export function WidgetBuilder({ ws, existing, onAdd, canEdit, seed, onSave, bare }: Props) {
   const { entries, installed, loading } = useSourcePicker(ws);
+  const editing = !!seed;
   const [entryId, setEntryId] = useState<string>("");
-  const [view, setView] = useState<View>("chart");
+  const [view, setView] = useState<View>((seed?.view as View) ?? "chart");
+  const [title, setTitle] = useState<string>(seed?.title ?? "");
   // Slice B authoring state — Plot/D3 share an inline code string; `template` has its own
   // inline-or-saved value; the SQL source has the Builder⇄Code state.
-  const [plotCode, setPlotCode] = useState<string>("");
-  const [templateValue, setTemplateValue] = useState<TemplateValue>({
-    mode: "inline",
-    code: DEFAULT_INLINE_CODE,
-  });
-  const [sqlState, setSqlState] = useState<SqlSourceState>(emptySqlSource);
+  const [plotCode, setPlotCode] = useState<string>(
+    typeof seed?.options?.code === "string" ? (seed.options.code as string) : "",
+  );
+  const [templateValue, setTemplateValue] = useState<TemplateValue>(() =>
+    seed?.options?.templateId
+      ? { mode: "saved", templateId: seed.options.templateId as string }
+      : typeof seed?.options?.code === "string"
+        ? { mode: "inline", code: seed.options.code as string }
+        : { mode: "inline", code: DEFAULT_INLINE_CODE },
+  );
+  const [sqlState, setSqlState] = useState<SqlSourceState>(() =>
+    (seed?.options?.sql as SqlSourceState | undefined) ?? emptySqlSource(),
+  );
+  // In edit mode, seed the chosen source from the cell once the picker entries have loaded.
+  const [seeded, setSeeded] = useState(false);
+  if (editing && !seeded && entries.length > 0) {
+    setEntryId(seedEntryId(seed, entries));
+    setSeeded(true);
+  }
 
   const entry = useMemo(() => entries.find((e) => e.id === entryId) ?? null, [entries, entryId]);
   const validViews = viewsFor(entry);
@@ -109,6 +152,8 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
       options.sql = sqlState;
     }
 
+    // A packaged tile's `view` is its `ext:<id>/<widget>` key; otherwise the chosen view.
+    const cellViewKey = (isWidget && entry?.viewKey ? entry.viewKey : view) as View;
     return {
       i: "preview",
       x: 0,
@@ -120,21 +165,34 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
       // tile's `view` is its `ext:<id>/<widget>` key — `cellView` reads `view` first, so the fallback
       // stays a harmless "chart" exactly as every other v2 cell does.
       widget_type: "chart",
-      view,
+      view: cellViewKey,
+      title: title.trim() || undefined,
       binding: { series: "" },
       source,
       action: entry?.action,
       options,
     };
-  }, [entry, view, plotCode, templateValue, sqlState, isScripted, isSqlSource]);
+  }, [entry, view, title, plotCode, templateValue, sqlState, isScripted, isSqlSource, isWidget]);
+
+  const reset = () => {
+    setPlotCode("");
+    setTemplateValue({ mode: "inline", code: DEFAULT_INLINE_CODE });
+    setSqlState(emptySqlSource());
+    setTitle("");
+    setEntryId("");
+  };
 
   const add = () => {
     if (!candidate) return;
     const y = existing.reduce((m, c) => Math.max(m, c.y + c.h), 0);
     onAdd({ ...candidate, i: nextKey(existing), y });
-    setPlotCode("");
-    setTemplateValue({ mode: "inline", code: DEFAULT_INLINE_CODE });
-    setSqlState(emptySqlSource());
+    reset();
+  };
+
+  // Edit mode: rebuild the cell from the seeded fields, keeping the original key + geometry.
+  const save = () => {
+    if (!candidate || !seed || !onSave) return;
+    onSave({ ...candidate, i: seed.i, x: seed.x, y: seed.y, w: seed.w, h: seed.h });
   };
 
   // Gate the whole add surface on the edit cap (rule 5: capability-first). A read-only viewer sees the
@@ -142,9 +200,22 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
   if (!canEdit) return null;
 
   return (
-    <div className="border-b border-border bg-panel px-3 py-3 text-xs" aria-label="widget builder">
+    <div
+      className={bare ? "text-xs" : "border-b border-border bg-panel px-3 py-3 text-xs"}
+      aria-label={editing ? "widget settings" : "widget builder"}
+    >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-muted">Add widget</span>
+        {!editing && <span className="font-medium text-muted">Add widget</span>}
+
+        {/* Title — the cell header label (fallback to a derived label when empty). */}
+        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Input variant used here; see FIELD note */}
+        <input
+          aria-label="widget title"
+          className={`${FIELD} w-44`}
+          placeholder="title (optional)"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
 
         {/* Source picker — friendly labels grouped by origin; the author never sees a tool name. */}
         {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; see FIELD note */}
@@ -192,9 +263,15 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit }: Props) {
           </select>
         )}
 
-        <Button aria-label="add widget" size="sm" onClick={add}>
-          <Plus size={12} /> Add
-        </Button>
+        {editing ? (
+          <Button aria-label="save widget" size="sm" onClick={save}>
+            <Check size={12} /> Save changes
+          </Button>
+        ) : (
+          <Button aria-label="add widget" size="sm" onClick={add}>
+            <Plus size={12} /> Add
+          </Button>
+        )}
       </div>
 
       {/* The SQL source: the Grafana-style Builder⇄Code editor (Slice C). Resolves to a

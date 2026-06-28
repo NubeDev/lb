@@ -3,15 +3,22 @@
 // `dashboard.save` (the SurrealDB record, rule 4); widgets read `series.read`/`series.latest` and go
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
-import { LayoutGrid, Share2 } from "lucide-react";
+import { useState } from "react";
+import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
 import { WidgetBuilder } from "./builder/WidgetBuilder";
+import { VariableBar } from "./vars/VariableBar";
+import { VariableEditor } from "./vars/VariableEditor";
+import { useVarScope } from "./vars/useVarScope";
+import { RefreshControl } from "./RefreshControl";
+import { useAutoRefresh } from "./useAutoRefresh";
 import { useDashboard } from "./useDashboard";
 import { useSourcePicker } from "./builder/useSourcePicker";
-import type { Cell, Visibility } from "@/lib/dashboard";
+import type { Cell, Variable, Visibility } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
+import { varsFromSearch, withVar } from "@/features/routing/search";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
 import { CAP, hasCap } from "@/lib/session";
 
@@ -20,17 +27,31 @@ const VISIBILITIES: Visibility[] = ["private", "team", "workspace"];
 interface Props {
   ws: string;
   range?: DashboardSearch;
-  onRangeChange?: (range: DashboardSearch) => void;
+  /** Update the whole dashboard search (range, refresh, var-* selection) — one router navigate.
+   *  Variable selection + refresh ride here so they round-trip in the URL (Slices 2/4). */
+  onSearchChange?: (search: DashboardSearch) => void;
 }
 
-export function DashboardView({ ws, range, onRangeChange }: Props) {
+export function DashboardView({ ws, range, onSearchChange }: Props) {
   const dash = useDashboard(ws);
   const picker = useSourcePicker(ws);
   const current = dash.current;
+  const [varEditorOpen, setVarEditorOpen] = useState(false);
   // The edit cap, sourced from the session grant the shell already holds (the same `caps` the nav gates
   // editing surfaces on) — no new backend read. The host re-checks `dashboard.save` regardless.
   const { caps } = useAppRoutingContext();
   const canEdit = hasCap(caps, CAP.dashboardSave);
+  // The current variable selection (from the URL) + a writer that updates one variable's URL param.
+  const selectedVars = range ? varsFromSearch(range) : {};
+  const setVar = (name: string, value: string | string[] | undefined) => {
+    if (range) onSearchChange?.(withVar(range, name, value));
+  };
+  // Resolve the variable scope shell-side (Slice 3): the URL selection + the built-ins from the token +
+  // time range. Interpolated into every cell call + handed to extension tiles as ctx.vars/ctx.timeRange.
+  const scope = useVarScope(current?.variables ?? [], range, current?.id ?? "", ws);
+  // Auto-refresh (Slice 4): the URL interval drives a tick that re-resolves query variables + re-runs
+  // each read cell's source (the watch streams compose — motion vs state). Pauses when the tab is hidden.
+  const refreshKey = useAutoRefresh(range?.refresh);
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(window.location.href);
@@ -70,7 +91,7 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
                   className="control-field-sm w-[8.5rem]"
                   type="date"
                   value={range.from}
-                  onChange={(e) => onRangeChange?.({ ...range, from: e.target.value })}
+                  onChange={(e) => onSearchChange?.({ ...range, from: e.target.value })}
                 />
                 <span>to</span>
                 <input
@@ -78,9 +99,15 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
                   className="control-field-sm w-[8.5rem]"
                   type="date"
                   value={range.to}
-                  onChange={(e) => onRangeChange?.({ ...range, to: e.target.value })}
+                  onChange={(e) => onSearchChange?.({ ...range, to: e.target.value })}
                 />
               </div>
+            )}
+            {range && current && (
+              <RefreshControl
+                value={range.refresh}
+                onChange={(refresh) => onSearchChange?.({ ...range, refresh })}
+              />
             )}
             {current && (
               <>
@@ -104,6 +131,16 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
                     </option>
                   ))}
                 </select>
+                {canEdit && (
+                  <button
+                    aria-label="edit variables"
+                    className="icon-button"
+                    title="Dashboard variables"
+                    onClick={() => setVarEditorOpen(true)}
+                  >
+                    <VariableIcon size={13} />
+                  </button>
+                )}
                 <button
                   aria-label="delete dashboard"
                   className="danger-button-sm"
@@ -140,6 +177,19 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
           </div>
         ) : (
           <>
+            <VariableBar
+              variables={current.variables ?? []}
+              selected={selectedVars}
+              onChange={setVar}
+              refreshKey={refreshKey}
+            />
+            <VariableEditor
+              ws={ws}
+              variables={current.variables ?? []}
+              open={varEditorOpen}
+              onOpenChange={setVarEditorOpen}
+              onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
+            />
             <WidgetBuilder
               ws={ws}
               existing={current.cells}
@@ -151,11 +201,19 @@ export function DashboardView({ ws, range, onRangeChange }: Props) {
               <Grid
                 cells={current.cells}
                 editable
+                canEdit={canEdit}
                 range={range}
+                scope={scope}
+                refreshKey={refreshKey}
                 installed={picker.installed}
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
+                onEditCell={(edited) =>
+                  void dash.saveCells(
+                    current.cells.map((c) => (c.i === edited.i ? edited : c)),
+                  )
+                }
               />
             </div>
           </>

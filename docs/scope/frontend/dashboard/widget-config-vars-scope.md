@@ -1,8 +1,16 @@
 # Frontend dashboard scope — widget config + a Grafana-style variable system (vars, refresh, live, JSON payloads)
 
-Status: scope (the ask). Promotes to [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md)
-once shipped. Builds on the **shipped** widget-builder v2 ([`widget-builder-scope.md`](widget-builder-scope.md))
-and the widget-palette slice ([`widget-palette-scope.md`](widget-palette-scope.md)).
+Status: **SHIPPED** (2026-06-28) — all five slices + the bus platform fix built, tested, and promoted to
+[`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md). Sessions:
+[slice1](../../../sessions/frontend/widget-config-vars-slice1-session.md) ·
+[vars-lib](../../../sessions/frontend/widget-config-vars-lib-session.md) ·
+[slice2](../../../sessions/frontend/widget-config-vars-slice2-session.md) ·
+[slice3](../../../sessions/frontend/widget-config-vars-slice3-session.md) ·
+[bus](../../../sessions/frontend/widget-config-vars-bus-session.md) ·
+[slice4](../../../sessions/frontend/widget-config-vars-slice4-session.md) ·
+[slice5](../../../sessions/frontend/widget-config-vars-slice5-session.md). Built on the **shipped**
+widget-builder v2 ([`widget-builder-scope.md`](widget-builder-scope.md)) and the widget-palette slice
+([`widget-palette-scope.md`](widget-palette-scope.md)).
 
 Editing a widget today is "delete it and add a new one" — there is no per-cell settings surface, no
 title, no way to reconfigure a cell after it lands. And every cell is a *fixed* `{tool, args}`: there is

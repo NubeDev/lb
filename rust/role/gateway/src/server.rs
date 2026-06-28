@@ -10,17 +10,18 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
-    add_team_member, archive_workspace, assign_grant, channel_stream, create_channel, create_team,
-    create_user, create_workspace, define_role, delete_dashboard, delete_team, delete_user,
-    disable_extension, disable_user, enable_extension, enable_user, find_series, get_dashboard,
-    get_doc, get_history, get_outbox_status, grant_skill, latest_sample, link_doc, list_channels,
-    list_dashboards, list_docs, list_extensions, list_grants, list_inbox, list_roles, list_series,
-    list_tables, list_team_members, list_teams, list_users, list_workspaces, load_skill, login,
-    mcp_call, post_message, publish_extension, purge_workspace, put_doc, put_skill, read_graph,
-    read_samples, read_schema, remove_team_member, rename_team, rename_workspace, request_approval,
-    resolve_inbox, resolve_workflow_approval, revoke_grant, run_query, save_dashboard, scan_table,
-    series_stream, serve_ext_ui, share_dashboard, share_doc, start_job, system_overview,
-    system_subsystem, system_topology, uninstall_extension, write_samples,
+    add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream, create_channel,
+    create_team, create_user, create_workspace, define_role, delete_dashboard, delete_team,
+    delete_user, disable_extension, disable_user, enable_extension, enable_user, find_series,
+    get_dashboard, get_doc, get_history, get_outbox_status, grant_skill, latest_sample, link_doc,
+    list_channels, list_dashboards, list_docs, list_extensions, list_grants, list_inbox,
+    list_roles, list_series, list_tables, list_team_members, list_teams, list_users,
+    list_workspaces, load_skill, login, mcp_call, post_message, publish_extension, publish_message,
+    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_team_member,
+    rename_team, rename_workspace, request_approval, resolve_inbox, resolve_workflow_approval,
+    revoke_grant, run_query, save_dashboard, scan_table, series_stream, serve_ext_ui,
+    share_dashboard, share_doc, start_job, system_overview, system_subsystem, system_topology,
+    uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -125,6 +126,11 @@ pub fn router(gw: Gateway) -> Router {
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
         .route("/series/{series}/stream", get(series_stream))
+        // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
+        // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe
+        // (the motion analog of the series stream, for non-series subjects). Subject walled from the token.
+        .route("/bus/publish", post(publish_message))
+        .route("/bus/stream", get(bus_stream))
         .layer(CorsLayer::permissive())
         .with_state(gw)
 }

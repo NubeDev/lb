@@ -9,6 +9,7 @@ import { StatWidget } from "./widgets/StatWidget";
 import { GaugeWidget } from "./widgets/GaugeWidget";
 import { WidgetView } from "./views/WidgetView";
 import type { Cell } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { DashboardSearch } from "@/features/routing/search";
 
@@ -22,14 +23,26 @@ export function WidgetHost({
   range,
   installed,
   workspace,
+  scope,
+  refreshKey,
 }: {
   cell: Cell;
   range?: DashboardSearch;
   installed?: ExtRow[];
   workspace?: string;
+  scope?: VarScope;
+  refreshKey?: number;
 }) {
   if (isV2(cell)) {
-    return <WidgetView cell={cell} installed={installed} workspace={workspace ?? ""} />;
+    return (
+      <WidgetView
+        cell={cell}
+        installed={installed}
+        workspace={workspace ?? ""}
+        scope={scope}
+        refreshKey={refreshKey}
+      />
+    );
   }
   switch (cell.widget_type) {
     case "chart":

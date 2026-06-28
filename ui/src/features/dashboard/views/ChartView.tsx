@@ -3,6 +3,8 @@
 // charting dep) keeps it light + trivially testable, matching the v1 ChartWidget.
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { useSource } from "../builder/useSource";
 import { rowNumber } from "./num";
 import type { Source } from "@/lib/dashboard";
@@ -12,10 +14,12 @@ interface Props {
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function ChartView({ source, tools, options, label }: Props) {
-  const { rows, loading, denied } = useSource(source, tools);
+export function ChartView({ source, tools, options, label, scope = emptyScope(), refreshKey = 0 }: Props) {
+  const { rows, loading, denied } = useSource(source, tools, scope, refreshKey);
   const unit = typeof options?.unit === "string" ? (options.unit as string) : "";
 
   if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;

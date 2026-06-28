@@ -59,6 +59,11 @@ fn member_caps() -> Vec<String> {
         "mcp:series.latest:call",
         "mcp:series.find:call",
         "mcp:series.list:call",
+        // bus pub/sub (widget-config-vars "Platform fix") — member-level generic workspace-walled
+        // motion. `bus.publish` (fire-and-forget) + `bus.watch` (subscribe). The subject is walled to
+        // `ws/{id}/ext/{subject}` host-side from the token; a reserved prefix / cross-ws subject is refused.
+        "mcp:bus.publish:call",
+        "mcp:bus.watch:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.

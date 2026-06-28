@@ -81,6 +81,11 @@ pub struct Cell {
     pub v: u32,
     /// Phase 1 built-ins: `chart` | `stat` | `gauge`. Phase 2 adds `ext:<id>` (federated widgets).
     pub widget_type: String,
+    /// A human title for the cell (widget-config-vars scope, Slice 1). Additive `#[serde(default)]` so a
+    /// pre-title cell round-trips unchanged; `dashboard.save`/`get` carry it with no new verb. The header
+    /// renders it, falling back to a derived label when empty.
+    #[serde(default)]
+    pub title: String,
     /// v2 render vocabulary: `chart`/`stat`/`gauge`/`table` (read), `plot`/`d3`/`template` (scripted,
     /// iframe), `switch`/`slider`/`button` (controls), `ext:<id>/<widget>` (extension tiles). Empty on
     /// a v1 cell — `widget_type` is authoritative there.
@@ -102,6 +107,45 @@ pub struct Cell {
     pub options: Value,
 }
 
+/// A dashboard VARIABLE definition (widget-config-vars scope, Slice 2). One model: a `name` bound to a
+/// resolver — `query`/`source` resolve over a granted `{tool,args}` (rows → options), the static forms
+/// (`custom`/`text`/`const`/`interval`) carry their own value. The host stores the DEFINITIONS only; the
+/// per-viewer SELECTION lives in the URL (`?var-<name>=`), never on the record. All fields are
+/// serde-defaulted so a pre-variables dashboard deserializes unchanged; `dashboard.save`/`get` round-trip
+/// it with no new verb. Opaque to the host beyond serde — the resolver tool is leashed by the dashboard's
+/// tool set ∩ grant and re-checked at the host per call (rule 5), exactly like a cell source.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct Variable {
+    /// The reference name — `$name` / `${name}` / `[[name]]`.
+    pub name: String,
+    /// A human label for the bar dropdown (defaults to `name` in the UI).
+    #[serde(default)]
+    pub label: String,
+    /// The resolver kind: `query` | `custom` | `text` | `const` | `interval` | `source`.
+    #[serde(default)]
+    pub r#type: String,
+    /// `query`/`source`: the resolver `{ tool, args }` (opaque; re-checked per call).
+    #[serde(default)]
+    pub query: Value,
+    /// `custom`: a static option list.
+    #[serde(default)]
+    pub custom: Vec<String>,
+    /// `text`: a free-textbox default.
+    #[serde(default)]
+    pub text: String,
+    /// `const`: a hidden fixed value.
+    #[serde(default, rename = "const")]
+    pub const_: String,
+    /// `interval`: a duration list (feeds `$__interval`).
+    #[serde(default)]
+    pub interval: Vec<String>,
+    /// Selection affordances.
+    #[serde(default)]
+    pub multi: bool,
+    #[serde(default, rename = "includeAll")]
+    pub include_all: bool,
+}
+
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Dashboard {
@@ -114,6 +158,10 @@ pub struct Dashboard {
     pub visibility: Visibility,
     #[serde(default)]
     pub cells: Vec<Cell>,
+    /// Variable definitions (widget-config-vars scope, Slice 2). Additive `#[serde(default)]` — a
+    /// pre-variables dashboard round-trips unchanged. The selection lives in the URL, not here.
+    #[serde(default)]
+    pub variables: Vec<Variable>,
     pub updated_ts: u64,
     /// Tombstone (soft-delete, §6.8 idempotent). A deleted dashboard is hidden from `list`/`get`.
     #[serde(default)]

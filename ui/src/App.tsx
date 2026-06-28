@@ -12,6 +12,7 @@ import { useExtensionPages } from "./features/ext-host";
 import { allowedSurfaces } from "./features/routing/allowed";
 import { createAppRouter } from "./features/routing/createAppRouter";
 import { RoutingContextProvider } from "./features/routing/RoutingContextProvider";
+import { ThemeProvider } from "./lib/theme";
 
 export function App() {
   const { session, signIn, signOut } = useSession();
@@ -25,28 +26,34 @@ export function App() {
     session && hasCap(session.caps, CAP.extList) ? session.workspace : "",
   );
 
-  if (!session) {
-    return <LoginView onSignIn={signIn} />;
+  let content = <LoginView onSignIn={signIn} />;
+
+  if (session) {
+    const { workspace, principal, caps } = session;
+    // Switching workspace is a re-login (the workspace is the token's hard wall §7), keeping identity.
+    const switchWorkspace = (ws: string) => void signIn(principal, ws);
+    const allowed = allowedSurfaces(caps);
+    const routingContext = {
+      workspace,
+      principal,
+      caps,
+      allowed,
+      extPages: extPages.pages,
+      extPagesLoading: extPages.loading,
+      onSignOut: signOut,
+      switchWorkspace,
+    };
+
+    content = (
+      <RoutingContextProvider value={routingContext}>
+        <RouterProvider router={router} context={routingContext} />
+      </RoutingContextProvider>
+    );
   }
 
-  const { workspace, principal, caps } = session;
-  // Switching workspace is a re-login (the workspace is the token's hard wall §7), keeping identity.
-  const switchWorkspace = (ws: string) => void signIn(principal, ws);
-  const allowed = allowedSurfaces(caps);
-  const routingContext = {
-    workspace,
-    principal,
-    caps,
-    allowed,
-    extPages: extPages.pages,
-    extPagesLoading: extPages.loading,
-    onSignOut: signOut,
-    switchWorkspace,
-  };
-
   return (
-    <RoutingContextProvider value={routingContext}>
-      <RouterProvider router={router} context={routingContext} />
-    </RoutingContextProvider>
+    <ThemeProvider>
+      {content}
+    </ThemeProvider>
   );
 }

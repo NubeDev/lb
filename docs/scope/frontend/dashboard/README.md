@@ -22,8 +22,8 @@ because existing session docs point at them; new dashboard notes should live her
    packaged `[[widget]]` tile (e.g. `proof-panel`'s Proof Ping) in the builder's source picker, gated to
    editors with `mcp:dashboard.save:call`. The renderer + bridge ship in (3b); this adds the palette entry
    + the permission gate so a user actually *gets a new option when adding a widget*.
-3d. [`widget-config-vars-scope.md`](widget-config-vars-scope.md) - **widget settings/config + a
-   Grafana-style variable system**: per-cell edit (name/options/reconfigure), dashboard **variables**
+3d. [`widget-config-vars-scope.md`](widget-config-vars-scope.md) — **SHIPPED (2026-06-28)**. **widget
+   settings/config + a Grafana-style variable system**: per-cell edit (name/options/reconfigure), dashboard **variables**
    (`$var`/`${var}`/`[[var]]` + built-ins `$__from`/`$__interval`/`${__user.login}`/…, URL-synced
    `?var-host=`), **auto-refresh** + **live events**, a **JSON payload builder** (send to an extension /
    over the bus), all on **one shared interpolation library extensions reuse** and **one variable model**

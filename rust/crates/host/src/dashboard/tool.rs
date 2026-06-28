@@ -44,6 +44,12 @@ pub async fn call_dashboard_tool(
         "dashboard.save" => {
             let cells: Vec<Cell> = serde_json::from_value(arg(input, "cells")?.clone())
                 .map_err(|e| ToolError::BadInput(format!("cells: {e}")))?;
+            // `variables` is additive — a pre-variables caller omits it (defaults to empty).
+            let variables = match input.get("variables") {
+                Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+                    .map_err(|e| ToolError::BadInput(format!("variables: {e}")))?,
+                _ => Vec::new(),
+            };
             let d = dashboard_save(
                 store,
                 principal,
@@ -51,6 +57,7 @@ pub async fn call_dashboard_tool(
                 str_arg(input, "id")?,
                 str_arg(input, "title")?,
                 cells,
+                variables,
                 u64_arg(input, "now")?,
             )
             .await

@@ -12,7 +12,7 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
-use super::model::{Cell, Dashboard, Visibility};
+use super::model::{Cell, Dashboard, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
 
 /// Upsert dashboard `id` in `ws` with `title` + `cells`, as `principal`, at logical time `now`.
@@ -25,6 +25,7 @@ pub async fn dashboard_save(
     id: &str,
     title: &str,
     cells: Vec<Cell>,
+    variables: Vec<Variable>,
     now: u64,
 ) -> Result<Dashboard, DashboardError> {
     authorize_dashboard(principal, ws, "dashboard.save")?;
@@ -50,6 +51,7 @@ pub async fn dashboard_save(
         owner,
         visibility,
         cells,
+        variables,
         updated_ts: now,
         deleted: false,
     };

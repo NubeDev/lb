@@ -18,8 +18,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { gatewayUrl } from "@/lib/ipc/http";
 import type { ExtRow } from "@/lib/ext/ext.api";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { loadRemoteWidgetMount } from "./federationWidget";
 import { makeWidgetBridge, type WidgetBridge } from "./widgetBridge";
+
+/** The additive v2 widget ctx version (widget-config-vars Slice 3). A v1 widget that ignores `vars`/
+ *  `timeRange` is unaffected; a v2 widget reads them. Frozen alongside the shared vars library. */
+const WIDGET_CTX_V = 2;
 
 interface Props {
   /** `ext:<extension-id>/<widget-id>` — the cell view key. */
@@ -27,6 +33,9 @@ interface Props {
   /** The installed extensions (from `ext.list`) — the source of the tile's entry/scope + trust input. */
   installed: ExtRow[];
   workspace: string;
+  /** The shell-resolved variable scope (widget-config-vars Slice 3) — handed to the tile as
+   *  `ctx.vars`/`ctx.timeRange`. The extension NEVER resolves identity or query vars itself. */
+  scope?: VarScope;
 }
 
 /** Parse `ext:<id>/<widget>` into its parts. Returns null for a malformed key. */
@@ -39,7 +48,7 @@ function parseExtKey(viewKey: string): { ext: string; widget: string } | null {
 }
 
 /** Render an installed extension-shipped widget tile, in-process (federated against the shell React). */
-export function ExtWidget({ viewKey, installed, workspace }: Props) {
+export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +56,10 @@ export function ExtWidget({ viewKey, installed, workspace }: Props) {
   const row = parsed ? installed.find((r) => r.ext === parsed.ext) : undefined;
   const tile = row?.widgets?.find((w) => w.entry && (parsed?.widget ? widgetIdOf(w) === parsed.widget : true));
   const bridge: WidgetBridge | null = tile ? makeWidgetBridge(tile.scope) : null;
+  // The resolved time range from the built-ins (epoch ms strings → numbers; absent when no range).
+  const fromMs = scope.builtins["__from"];
+  const toMs = scope.builtins["__to"];
+  const scopeKey = JSON.stringify(scope);
 
   useEffect(() => {
     if (!row || !tile || !bridge) return;
@@ -62,7 +75,21 @@ export function ExtWidget({ viewKey, installed, workspace }: Props) {
       try {
         const mount = await loadRemoteWidgetMount(row.ext, remoteUrl);
         if (cancelled) return;
-        unmount = mount(el, { workspace, binding: {}, options: {} }, bridge, parsed?.widget ?? "");
+        // v2 ctx: additive `vars` (resolved selections) + `timeRange` (the URL range, shell-resolved
+        // from the token — the tile never resolves identity/query vars itself). `v` marks the contract.
+        const ctx = {
+          v: WIDGET_CTX_V,
+          workspace,
+          binding: {},
+          options: {},
+          vars: scope.values,
+          builtins: scope.builtins,
+          timeRange:
+            fromMs !== undefined && toMs !== undefined
+              ? { from: Number(fromMs), to: Number(toMs) }
+              : undefined,
+        };
+        unmount = mount(el, ctx, bridge, parsed?.widget ?? "");
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       }
@@ -73,8 +100,8 @@ export function ExtWidget({ viewKey, installed, workspace }: Props) {
       if (typeof unmount === "function") unmount();
       el.replaceChildren();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [row?.ext, tile?.entry, workspace]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `scopeKey` re-mounts the tile on a var/range change
+  }, [row?.ext, tile?.entry, workspace, scopeKey]);
 
   if (!parsed) return <Fallback>malformed widget key</Fallback>;
   if (!row || !row.enabled) return <Fallback>extension not installed</Fallback>;

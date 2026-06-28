@@ -3,6 +3,50 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S10 — dashboard: widget config + a Grafana-style variable system + generic bus pub/sub)
+
+The dashboard gains a Grafana-style variable system + widget settings, on a shared interpolation library
+extensions reuse, plus the one new backend API the sinks need (`public/frontend/dashboard.md`):
+
+- **Widget settings.** `Cell.title` (additive serde, no new verb) + a per-cell ⚙ drawer reusing the
+  builder fields in edit mode; gated `mcp:dashboard.save:call`.
+- **The shared `vars` library** (`ui/src/lib/vars/`, pure TS, federation-shared, `VARS_LIB_V`):
+  `interpolate` (the three Grafana syntaxes + format hints + multi-value + unknown-left-literal),
+  `interpolateArgs` (deep, type-preserving — generalizes the control `{{value}}`), `resolveBuiltins`
+  (pure, token/range-derived `$__from`/`${__user.*}`/`${__workspace}`/…), `extractVarNames`.
+- **Variables.** `Dashboard.variables[]` (additive serde) + a variable bar + editor; **selection lives in
+  the URL** (`?var-<name>=`), definitions on the record. Query options resolve over the leashed bridge.
+- **Interpolation everywhere + ctx.vars.** Every cell call interpolates its args against the resolved
+  scope; the widget ctx gains `vars`/`timeRange` (additive v2). Identity is shell-resolved (un-spoofable).
+- **Auto-refresh + live.** A URL-synced refresh picker (tab-hidden pause) re-resolves vars + re-runs reads
+  (state); `bus.watch`/`series.watch` stream motion; they compose.
+- **JSON payload builder.** A JSON template with `${var}`/`{{value}}` slots + a target picker → the leashed
+  bridge; a `bus.publish` shows "published", never a fake "delivered".
+- **Generic `bus.publish` / `bus.watch`** (the platform fix): workspace-walled, capability-gated subject
+  pub/sub (`crates/host/src/bus/`, one verb/file), mirroring `series`/`ingest`. The subject is namespaced
+  `ws/{id}/ext/{subject}` host-side from the token; reserved prefixes (`series/`/`channels/`/internal) and
+  cross-ws names are refused. `POST /bus/publish` + `GET /bus/stream?subject=&token=` (auth-first 401/403);
+  `bus.publish` also over `POST /mcp/call`. Fire-and-forget motion (rule 3) — must-deliver goes via the outbox.
+
+Mandatory tests (real infra, no mocks): capability-deny per verb, two-workspace isolation (a ws-B
+`bus.watch`/`bus.publish`/variable query reaches only ws-B; a reserved/cross-ws subject refused),
+identity-un-spoofable, the interpolation contract (every syntax/hint/built-in), URL round-trip, auto-refresh
+cadence, and a live publish→watch SSE round-trip. See `frontend/dashboard.md`.
+
+## Shipped (S9/S10 — frontend: theme switcher)
+
+The React shell now ships a maintained local theme preference layer (`public/frontend/frontend.md`):
+explicit **dark/light** mode plus three token-bound accent palettes (**amber** default, **teal**,
+**blue**) selected from a shadcn-style switcher in the sidebar footer. Preferences are validated,
+stored in browser/webview `localStorage` (`lb.theme`), applied before React mounts to avoid first-paint
+flash, then owned by `ThemeProvider`/`useTheme`.
+
+The theme contract stays CSS-variable based (`bg`/`panel`/`fg`/`muted`/`accent`/`border` and shadcn
+aliases), so existing pages, primitives, graphs, and extension UI inherit the palette without
+component branches. Accent contrast against the base background clears AA in light and dark. Tests:
+`pnpm test` 56/56, `pnpm test:gateway` 110/110, `pnpm build` green, `pnpm lint` 0 errors (legacy
+allowlist warnings remain).
+
 ## Shipped (S10 — extension UX: a self-contained extension over real Module Federation)
 
 An extension is now **one folder = backend + frontend**, each part optional (`public/extensions/extensions.md`).

@@ -14,6 +14,7 @@
 
 import { invoke } from "@/lib/ipc/invoke";
 import { openSeriesStream } from "@/lib/dashboard/series.stream";
+import { openBusStream } from "@/lib/dashboard/bus.stream";
 
 /** The cell's effective tool set = its declared `{source, action}` tools ∩ the install grant. The
  *  builder computes this; the bridge enforces it locally and the host re-enforces it server-side. */
@@ -50,13 +51,18 @@ export function makeWidgetBridge(tools: string[]): WidgetBridge {
     },
     watch: (tool, args, onEvent) => {
       if (!allowed.has(tool) || !WATCH_VERBS.has(tool)) return () => {};
-      // The streamed entity is the series name (series.watch) or the subject (bus.watch) — both ride
-      // the one SSE endpoint, keyed by name. No token crosses here either: openSeriesStream attaches
-      // the token to the EventSource URL server-side, not into any widget-visible payload.
-      const name =
-        (args.series as string | undefined) ?? (args.subject as string | undefined) ?? "";
-      if (!name) return () => {};
-      const stream = openSeriesStream(name, (sample) => onEvent(sample));
+      // `series.watch` streams a named series over `/series/{s}/stream`; `bus.watch` streams a generic
+      // subject over `/bus/stream?subject=` (widget-config-vars "Platform fix"). Both attach the token
+      // to the EventSource URL server-side — no token crosses into any widget-visible payload.
+      if (tool === "bus.watch") {
+        const subject = (args.subject as string | undefined) ?? "";
+        if (!subject) return () => {};
+        const stream = openBusStream(subject, (payload) => onEvent(payload));
+        return () => stream?.close();
+      }
+      const series = (args.series as string | undefined) ?? "";
+      if (!series) return () => {};
+      const stream = openSeriesStream(series, (sample) => onEvent(sample));
       return () => stream?.close();
     },
   };

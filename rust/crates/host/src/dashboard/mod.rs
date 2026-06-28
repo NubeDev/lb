@@ -30,7 +30,7 @@ pub use delete::dashboard_delete;
 pub use error::DashboardError;
 pub use get::dashboard_get;
 pub use list::dashboard_list;
-pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Visibility};
+pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Variable, Visibility};
 pub use save::dashboard_save;
 pub use seed::{seed_iot_demo, SeedReport};
 pub use share::dashboard_share;

@@ -2,6 +2,8 @@
 // bridge (`useSource`); a non-numeric latest degrades to an honest "no value" (never a fake needle).
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { useSource } from "../builder/useSource";
 import { asNumber } from "./num";
 import type { Source } from "@/lib/dashboard";
@@ -11,10 +13,12 @@ interface Props {
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function GaugeView({ source, tools, options, label }: Props) {
-  const { latest, loading, denied } = useSource(source, tools);
+export function GaugeView({ source, tools, options, label, scope = emptyScope(), refreshKey = 0 }: Props) {
+  const { latest, loading, denied } = useSource(source, tools, scope, refreshKey);
   const min = typeof options?.min === "number" ? (options.min as number) : 0;
   const max = typeof options?.max === "number" ? (options.max as number) : 100;
   const unit = typeof options?.unit === "string" ? (options.unit as string) : "";

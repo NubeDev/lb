@@ -6,17 +6,19 @@ import { useMemo, useState } from "react";
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
 import { makeWidgetBridge } from "../builder/widgetBridge";
-import { fillArgs } from "./argsTemplate";
 import type { Action } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
+import { interpolateArgs, emptyScope } from "@/lib/vars";
 
 interface Props {
   action?: Action;
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
 }
 
-export function SliderControl({ action, tools, options, label }: Props) {
+export function SliderControl({ action, tools, options, label, scope = emptyScope() }: Props) {
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
@@ -29,7 +31,10 @@ export function SliderControl({ action, tools, options, label }: Props) {
     if (!action?.tool) return;
     setError(null);
     try {
-      await bridge.call(action.tool, fillArgs(action.argsTemplate, v));
+      await bridge.call(
+        action.tool,
+        interpolateArgs(action.argsTemplate ?? {}, scope, v) as Record<string, unknown>,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

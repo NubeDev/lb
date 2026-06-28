@@ -9,6 +9,7 @@ mod admin_teams;
 mod admin_users;
 mod admin_workspaces;
 mod assets;
+mod bus;
 mod channel_registry;
 mod dashboard;
 mod dbview;
@@ -37,6 +38,7 @@ pub use admin_workspaces::{archive_workspace, purge_workspace, rename_workspace}
 pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
+pub use bus::{bus_stream, publish_message};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,

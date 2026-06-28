@@ -3,6 +3,8 @@
 // never a fake number. The v2 generalization of the v1 StatWidget (source replaces series binding).
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { useSource } from "../builder/useSource";
 import { asNumber } from "./num";
 import type { Source } from "@/lib/dashboard";
@@ -12,10 +14,12 @@ interface Props {
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function StatView({ source, tools, options, label }: Props) {
-  const { latest, loading, denied } = useSource(source, tools);
+export function StatView({ source, tools, options, label, scope = emptyScope(), refreshKey = 0 }: Props) {
+  const { latest, loading, denied } = useSource(source, tools, scope, refreshKey);
   const unit = typeof options?.unit === "string" ? (options.unit as string) : "";
 
   if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;

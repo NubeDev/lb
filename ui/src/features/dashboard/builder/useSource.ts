@@ -11,6 +11,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Source } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
+import { interpolateArgs, emptyScope } from "@/lib/vars";
 import { makeWidgetBridge } from "./widgetBridge";
 
 /** A normalized source result. `rows` for tabular/charted views; `latest` for scalar views. */
@@ -51,8 +53,17 @@ function toLatest(rows: Array<Record<string, unknown>>, result: unknown): unknow
 }
 
 /** Run `source` through a bridge bound to `tools` (the cell's tool set ∩ grant). Streams when the
- *  source tool is a watch verb. Re-runs when the source or tool set changes. */
-export function useSource(source: Source | undefined, tools: string[]): SourceState {
+ *  source tool is a watch verb. Re-runs when the source, tool set, or variable scope changes.
+ *
+ *  Slice 3: `source.args` is interpolated against `scope` (the resolved VarScope) BEFORE the bridge call,
+ *  so a cell re-points by variable. For a `store.query` source, interpolation runs into the bound `vars`
+ *  (and only safe arg leaves) — never string-spliced SQL; the host's parse-allowlist stays the boundary. */
+export function useSource(
+  source: Source | undefined,
+  tools: string[],
+  scope: VarScope = emptyScope(),
+  refreshKey = 0,
+): SourceState {
   const [state, setState] = useState<SourceState>({
     rows: [],
     latest: null,
@@ -62,7 +73,15 @@ export function useSource(source: Source | undefined, tools: string[]): SourceSt
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
-  const key = JSON.stringify(source ?? null);
+  // Interpolate the args against the variable scope BEFORE the call (the Slice-3 payoff). Re-key on the
+  // interpolated args so a variable change (selection/refresh) re-runs the source.
+  const args = useMemo(
+    () => interpolateArgs(source?.args ?? {}, scope) as Record<string, unknown>,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(source?.args ?? null), JSON.stringify(scope)],
+  );
+  // `refreshKey` bumps on an auto-refresh tick (Slice 4) so a non-watch read re-runs (polls state).
+  const key = `${source?.tool ?? ""}:${JSON.stringify(args)}:${refreshKey}`;
   const unwatchRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -81,7 +100,7 @@ export function useSource(source: Source | undefined, tools: string[]): SourceSt
       const isWatch = source.tool === "series.watch" || source.tool === "bus.watch";
       if (!isWatch) {
         try {
-          const result = await bridge.call(source.tool, source.args ?? {});
+          const result = await bridge.call(source.tool, args);
           if (cancelled) return;
           const rows = toRows(result).slice(-BACKFILL);
           setState({ rows, latest: toLatest(rows, result), loading: false, denied: false });
@@ -94,7 +113,7 @@ export function useSource(source: Source | undefined, tools: string[]): SourceSt
 
       // Streaming source: start empty-but-not-denied, fold each event into the tail.
       setState({ rows: [], latest: null, loading: false, denied: false });
-      unwatchRef.current = bridge.watch(source.tool, source.args ?? {}, (event) => {
+      unwatchRef.current = bridge.watch(source.tool, args, (event) => {
         if (cancelled) return;
         setState((s) => {
           const row = (event as Record<string, unknown>) ?? {};
@@ -109,7 +128,7 @@ export function useSource(source: Source | undefined, tools: string[]): SourceSt
       unwatchRef.current?.();
       unwatchRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` already encodes source.tool + interpolated args
   }, [key, bridge]);
 
   return state;

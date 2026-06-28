@@ -74,6 +74,23 @@ Quiet control-surface tokens (CSS variables, themed by a `.dark` class): near-bl
 paper light, one warm amber accent, hairline borders, lucide icons. Tailwind utilities; shadcn-
 style primitives to be pulled in as the component set grows.
 
+## Theme preferences
+
+The shell now has a local theme preference layer (`ui/src/lib/theme/`) and a shadcn-style
+`ThemeSwitcher` in the sidebar footer. Users can choose explicit **dark** or **light** mode and one of
+three accent palettes: **amber** (default), **teal**, or **blue**. The preference is browser/webview
+local under `lb.theme`, validated before use, and applied to `<html>` as `.dark` plus
+`data-theme-accent="<accent>"`.
+
+All palettes flow through the existing CSS-variable contract (`bg`, `panel`, `fg`, `muted`,
+`accent`, `border`, plus the shadcn aliases such as `primary`, `card`, and `ring`) so first-party
+screens, shadcn primitives, graphs, and extension UI inherit the selected palette without per-screen
+branches. A small guarded script in `index.html` applies the saved preference before React mounts to
+avoid a first-paint flash; `ThemeProvider` then owns the live React state.
+
+Contrast was checked for accent text against the base background: light amber 4.66:1, light teal
+4.80:1, light blue 6.38:1, dark amber 8.98:1, dark teal 10.13:1, and dark blue 6.46:1.
+
 ## Tested
 
 Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, empty-message guard);
@@ -82,6 +99,11 @@ Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, e
 `commands_test` proves the IPC path reaches the real capability-checked node; the gateway's
 `gateway_test` proves the HTTP/SSE path (incl. a live message pushed to the browser over a real
 socket).
+
+Theme preference coverage: `theme-storage.test.ts`, `theme-dom.test.ts`, `ThemeProvider.test.tsx`,
+and `ThemeSwitcher.test.tsx` cover validation/fallback, DOM application, persistence, and accessible
+switcher interaction. The shipped slice was verified with `pnpm test` (56 tests), `pnpm test:gateway`
+(110 real-gateway tests), `pnpm build`, and `pnpm lint` (0 errors; legacy allowlist warnings remain).
 
 ## Make collaboration real (shipped)
 

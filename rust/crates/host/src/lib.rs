@@ -12,6 +12,7 @@ mod agent;
 mod assets;
 mod authz;
 mod boot;
+mod bus;
 mod callback;
 mod channel;
 mod channel_registry;
@@ -58,6 +59,9 @@ pub use authz::{
     Team,
 };
 pub use boot::{Node, NodeError};
+pub use bus::{
+    authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
+};
 pub use channel::{
     history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
     PresenceFeed,
@@ -66,7 +70,8 @@ pub use channel_registry::{channel_create, channel_list, register_on_post, Chann
 pub use dashboard::{
     call_dashboard_tool, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
     dashboard_share, seed_iot_demo, Action, Cell, Dashboard, DashboardError, DashboardSummary,
-    SeedReport, Source as CellSource, Visibility as DashboardVisibility,
+    SeedReport, Source as CellSource, Variable as DashboardVariable,
+    Visibility as DashboardVisibility,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,

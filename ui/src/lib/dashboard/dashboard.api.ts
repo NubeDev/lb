@@ -3,7 +3,7 @@
 // named verbs (FILE-LAYOUT frontend rules). Each is capability-gated server-side; the workspace +
 // owner come from the session token (the hard wall, §7), never an argument.
 
-import type { Cell, Dashboard, DashboardSummary, Visibility } from "./dashboard.types";
+import type { Cell, Dashboard, DashboardSummary, Variable, Visibility } from "./dashboard.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The roster the caller can reach (own + team-shared + workspace), summaries only. Mirrors
@@ -18,9 +18,15 @@ export function getDashboard(id: string): Promise<Dashboard> {
 }
 
 /** Create or update a dashboard (idempotent UPSERT on `id`; owner-only update). Mirrors
- *  `dashboard.save`. Returns the persisted record. */
-export function saveDashboard(id: string, title: string, cells: Cell[]): Promise<Dashboard> {
-  return invoke<Dashboard>("dashboard_save", { id, title, cells });
+ *  `dashboard.save`. `variables` is additive (widget-config-vars Slice 2) — omit it for a layout-only
+ *  save. Returns the persisted record. */
+export function saveDashboard(
+  id: string,
+  title: string,
+  cells: Cell[],
+  variables?: Variable[],
+): Promise<Dashboard> {
+  return invoke<Dashboard>("dashboard_save", { id, title, cells, variables: variables ?? [] });
 }
 
 /** Soft-delete a dashboard (idempotent tombstone; owner-only). Mirrors `dashboard.delete`. */

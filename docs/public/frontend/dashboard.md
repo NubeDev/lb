@@ -109,6 +109,120 @@ cell key:
 
 No backend, no v2 contract, no `mountWidget`/`[[widget]]` change — a frontend discovery-and-gating slice.
 
+## Widget settings (edit a cell, not re-add)
+
+A cell can now be **reconfigured after it lands** instead of being deleted and re-added:
+
+- **A cell `title`.** `Cell` gains an additive `title` field (`#[serde(default)]` server-side,
+  `Cell.title?` client-side) that round-trips through the existing `dashboard.save`/`get` — no new verb.
+  The header renders the title, falling back to a derived label (`cellLabel`: source tool → action tool →
+  view) when empty, so an untitled cell still reads honestly.
+- **A per-cell ⚙ settings drawer.** In edit mode, each cell shows a ⚙ button (gated on
+  `mcp:dashboard.save:call`, the same edit gate as the palette add surface) that opens a Sheet hosting the
+  WidgetBuilder in an **edit-existing-cell** mode: the source/view/options/title are seeded from the cell
+  (`seedEntryId` maps the cell back to its picker entry — packaged tile by view key, SQL by `store.query`,
+  else read/action tool + series arg). Saving rebuilds the cell keeping its key + geometry and persists the
+  **whole dashboard** via `saveCells`/`dashboard.save`. The server re-checks the cap on save regardless.
+- **One authoring surface.** Edit mode reuses the exact builder fields (`seed`/`onSave`/`bare`), not a
+  parallel editor — so add and edit share one set of field code and cannot drift.
+
+## The shared vars library (`ui/src/lib/vars/`) — the frozen interpolation spine
+
+A pure-TS module (no React, no `@/` shell imports) that the shell **and** federated extension remotes
+link — a Grafana-style template-variable engine, frozen by `VARS_LIB_V`:
+
+- **One model.** A `Variable` is a name bound to a resolver — `query`/`source` map to one `{tool,args}`,
+  the static forms (`custom`/`text`/`const`/`interval`) carry their own value. The resolved selection +
+  the built-ins form a `VarScope { values, builtins }`.
+- **`interpolate(template, scope)`** handles the three reference syntaxes (`$var`, `${var}`, `[[var]]`),
+  the format hints (`${var:json|csv|singlequote|doublequote|pipe|raw}`), and multi-value selections, and
+  **leaves an unknown variable literal** (Grafana behavior — a shared link always renders, never throws).
+- **`interpolateArgs(argsTree, scope, runtimeValue?)`** deep-substitutes a JSON value tree,
+  **type-preserving**: a sole `${var}` reference returns the raw value (a multi-value becomes a real array
+  for a JSON `IN` sink; a number/bool passes through). It generalizes the control `{{value}}` slot —
+  `views/argsTemplate.ts` `fillArgs` now delegates to it, so there is one substitution engine.
+- **`resolveBuiltins(inputs)`** is pure — the shell supplies `$__from/$__to/$__range*/$__interval*/
+  ${__user.*}/${__dashboard}/${__workspace}/${__value}` from the verified token + the URL time range, never
+  a cell or iframe. A missing input yields no key (the reference stays literal, not a fake empty), and an
+  extension never resolves identity itself — it is handed resolved values in `ctx` (Slice 3).
+- **`extractVarNames` / `extractVarNamesDeep`** give the refresh dependency set + the deny-set.
+
+This is a forever boundary the moment an extension links it; the contract is `interpolate`/
+`interpolateArgs` + `VarScope` + `resolveBuiltins`, versioned by `VARS_LIB_V`.
+
+## Dashboard variables (Grafana-style)
+
+A dashboard can define **variables** — a name bound to a resolver — and reference them across its cells:
+
+- **Definitions on the record.** `Dashboard.variables[]` (additive `#[serde(default)]`, no new verb)
+  holds each variable: a `query`/`source` variable resolves its options over a granted `{tool,args}`; a
+  `custom`/`interval` variable carries a static list; `text`/`const` a single value. The host stores only
+  the definitions — the per-viewer **selection lives in the URL**.
+- **Selection in the URL.** Selected values are flat `?var-<name>=` params (repeated for multi-value),
+  parsed by `validateDashboardSearch` (malformed degrades to defaults, never throws) and translated by
+  `varsFromSearch`/`withVar`. A shared link carries the selection but not authority — the gateway
+  re-derives the workspace from the token, so a URL var value can't cross the wall.
+- **The variable bar.** A dropdown per variable (single / multi / include-all), a text input for `text`,
+  hidden for `const`. Query/source options resolve over the **same leashed bridge** a cell uses
+  (`makeWidgetBridge([tool])`, host re-checks the cap + workspace per call); a denied query is an honest
+  empty list, never a fabricated catalogue.
+- **The variable editor** (gated on the edit cap) adds / edits / reorders variables; a query/source
+  variable picks its resolver via the **source picker** (the author never types a tool name).
+
+## Variable interpolation into cells (+ ctx.vars / ctx.timeRange)
+
+The shell resolves a `VarScope` (`useVarScope`: the URL selection + defaults + token/range-derived
+built-ins) and threads it into every cell:
+
+- **Every cell call is interpolated.** `useSource` runs `interpolateArgs(source.args, scope)` before the
+  bridge call (and the watch args); a control runs `interpolateArgs(action.argsTemplate, scope, value)`.
+  A cell re-points by variable (`series.read {series:"${host}"}` → the selected series). For a
+  `store.query` source the substitution runs over the arg tree (the bound `vars`) — never string-spliced
+  SQL; the host parse-allowlist is the boundary.
+- **The widget ctx gains `vars` + `timeRange` (additive v2, `WIDGET_CTX_V`).** An extension tile is handed
+  the resolved selections + the URL time range + the built-ins; a v1 widget that ignores them is
+  unaffected. The shell resolves the scope from the verified token — the extension/iframe **never**
+  resolves `${__user.*}`/`${__workspace}` itself (un-spoofable), and no token crosses the boundary.
+
+## Auto-refresh + live events
+
+- **A refresh picker** (`RefreshControl`, URL `?refresh=30s`; off/5s/10s/30s/1m/5m/15m). On each tick
+  `useAutoRefresh` bumps a `refreshKey` that re-resolves query variables (`useVariableOptions`) and
+  re-runs each read cell's source (`useSource` re-keys on it) — polling **state**. Pauses when the tab is
+  hidden; in-flight dedupe is the re-keyed effect's job.
+- **Live push** composes with refresh (motion vs state). The WidgetBridge `watch` routes `series.watch` to
+  `/series/{s}/stream` and `bus.watch` to the new `/bus/stream?subject=` SSE (`openBusStream`); a cell folds
+  pushed payloads in live. A cell declares which it uses — refresh polls state, watch streams motion.
+
+## Generic bus pub/sub (bus.publish / bus.watch)
+
+A shared platform surface (not dashboard-private): generic, workspace-walled, capability-gated subject
+pub/sub, mirroring `ingest`/`series` (one verb per file):
+
+- **`bus.publish(subject, payload) -> {ok}`** — fire-and-forget motion. NOT durable (rule 3): `{ok}` means
+  "handed to the bus", never "delivered"; a must-deliver effect still goes through the outbox.
+- **`bus.watch(subject) -> stream`** — subscribe to a walled subject.
+- **The workspace wall is structural.** The caller's `subject` is namespaced to `ws/{id}/ext/{subject}`
+  host-side from the token; reserved prefixes (`series/`, `channels/`, `internal/`, `ws/`, `presence/`)
+  and escape attempts are refused. A caller can never name another workspace's subject nor impersonate
+  platform motion.
+- **Gated `mcp:bus.publish:call` / `mcp:bus.watch:call`**, opaque deny. Reachable via `POST /mcp/call`
+  (`bus.publish`), `POST /bus/publish`, and `GET /bus/stream?subject=&token=` (the SSE feed, auth-first
+  401/403 like the series stream). A widget reaches them only via `cell.tools ∩ grant`, re-checked host-side.
+
+## JSON payload builder
+
+A control cell can author a **JSON payload** sent to a write target on interaction:
+
+- **`JsonPayloadField`** — a CodeMirror JSON editor authoring a template with `${var}`/`{{value}}` slots,
+  a **target picker** (`bus.publish`, `ingest.write`, or an installed extension's write tools), and a
+  subject input for `bus.publish`. On send: `JSON.parse` → `interpolateArgs(template, scope)`
+  (type-preserving, the shared lib) → a leashed `makeWidgetBridge([target]).call(target, payload)`.
+- **No fake delivery.** A `bus.publish` is fire-and-forget — the UI shows "published" (handed to the bus),
+  never "delivered"; a must-deliver effect targets a tool that enqueues to the outbox. The target must be
+  in the cell's tool set ∩ grant (bridge leash + host re-check).
+- Lives in the ⚙ settings drawer for a control cell (button/switch/slider).
+
 ## Authorization
 
 Dashboard access has three gates:

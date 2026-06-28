@@ -23,7 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ConfirmDestructive } from "@/features/confirm";
-import type { ExtRow, ExtUi } from "@/lib/ext/ext.api";
+import type { ExtRow } from "@/lib/ext/ext.api";
 import { useExtensions } from "./useExtensions";
 import { UploadArtifact } from "./UploadArtifact";
 

@@ -191,7 +191,7 @@ function DashboardsRoute() {
     <DashboardView
       ws={ctx.workspace}
       range={range}
-      onRangeChange={(next) => void navigate({ search: next })}
+      onSearchChange={(next) => void navigate({ search: next })}
     />
   );
 }

@@ -7,9 +7,19 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSourceEntries, extensionEntries, extWidgetEntries } from "./sourcePicker";
+import { seedEntryId } from "./WidgetBuilder";
 import { fillArgs } from "../views/argsTemplate";
 import { extWidgetTier, scriptedTier, isTrustedKey } from "./trust";
+import { cellLabel } from "@/lib/dashboard";
+import type { Cell } from "@/lib/dashboard";
 import type { ExtRow } from "@/lib/ext/ext.api";
+
+function v2cell(over: Partial<Cell>): Cell {
+  return {
+    i: "c1", x: 0, y: 0, w: 4, h: 3, v: 2,
+    widget_type: "chart", binding: { series: "" }, ...over,
+  } as Cell;
+}
 
 const mqttExt: ExtRow = {
   ext: "mqtt-bridge",
@@ -94,6 +104,42 @@ describe("packaged-tile entries (extWidgetEntries)", () => {
     // The same extension contributes BOTH a packaged-tile entry (group 'widget') and its tool entries.
     expect(entries.some((e) => e.group === "widget" && e.label === "proof-panel · Proof Ping")).toBe(true);
     expect(entries.some((e) => e.group === "extension")).toBe(true);
+  });
+});
+
+describe("Slice 1 — widget settings/config (title + edit-mode seeding)", () => {
+  it("cellLabel uses the author title when set", () => {
+    expect(cellLabel(v2cell({ title: "Web01 CPU", source: { tool: "series.read" } }))).toBe("Web01 CPU");
+  });
+
+  it("cellLabel falls back to the derived label (source tool) when no title", () => {
+    expect(cellLabel(v2cell({ source: { tool: "series.read" } }))).toBe("series.read");
+  });
+
+  it("cellLabel never returns empty (falls back to view/widget_type)", () => {
+    expect(cellLabel(v2cell({ view: "stat" }))).toBe("stat");
+  });
+
+  it("seedEntryId resolves a series cell back to its picker entry (for edit-mode seeding)", () => {
+    const entries = buildSourceEntries(["cooler.temp", "fryer.state"], []);
+    const cell = v2cell({ source: { tool: "series.read", args: { series: "fryer.state" } } });
+    const id = seedEntryId(cell, entries);
+    expect(entries.find((e) => e.id === id)?.label).toBe("fryer.state");
+  });
+
+  it("seedEntryId resolves a packaged ext tile by its view key", () => {
+    const ext: ExtRow = { ...mqttExt, ext: "proof-panel", widgets: [
+      { entry: "remoteEntry.js", label: "Proof Ping", icon: "x", scope: ["series.latest"] },
+    ] };
+    const entries = buildSourceEntries([], [ext]);
+    const id = seedEntryId(v2cell({ view: "ext:proof-panel/proof-ping" }), entries);
+    expect(entries.find((e) => e.id === id)?.viewKey).toBe("ext:proof-panel/proof-ping");
+  });
+
+  it("seedEntryId resolves a store.query cell to the SQL source", () => {
+    const entries = buildSourceEntries([], []);
+    const id = seedEntryId(v2cell({ source: { tool: "store.query", args: { sql: "SELECT 1" } } }), entries);
+    expect(entries.find((e) => e.id === id)?.group).toBe("sql");
   });
 });
 

@@ -7,10 +7,23 @@ export interface ChannelSearch {
   c: string;
 }
 
+// The dashboard search carries the date range, the auto-refresh interval (Slice 4), and the selected
+// variable values (Slice 2) as flat `var-<name>` URL params (repeated for multi-value). Selection lives
+// in the URL — per-viewer + shareable (Grafana parity); the variable DEFINITIONS live on the record. We
+// keep `var-<name>` as literal keys (not a nested object) so TanStack round-trips them in the URL; the
+// `varsFromSearch`/`withVars` helpers translate to/from a bare-name map.
 export interface DashboardSearch {
   from: string;
   to: string;
+  /** The auto-refresh interval (widget-config-vars Slice 4), URL `?refresh=30s`. Absent/`""` = off. */
+  refresh?: string;
+  /** Flat `var-<name>` selection params (one string, or a string[] for a multi-value selection). */
+  [key: `var-${string}`]: string | string[] | undefined;
 }
+
+/** The accepted refresh intervals (widget-config-vars Slice 4). `""` = off. */
+export const REFRESH_OPTIONS = ["", "5s", "10s", "30s", "1m", "5m", "15m"] as const;
+const REFRESH_SET = new Set<string>(REFRESH_OPTIONS);
 
 function scalar(value: unknown): string | null {
   if (typeof value === "string") return value;
@@ -48,5 +61,53 @@ export function validateDashboardSearch(search: Record<string, unknown>): Dashbo
   const fallback = defaultDashboardSearch();
   const from = isoDate(search.from) ?? fallback.from;
   const to = isoDate(search.to) ?? fallback.to;
-  return from <= to ? { from, to } : fallback;
+  const range = from <= to ? { from, to } : fallback;
+
+  const out: DashboardSearch = { ...range };
+
+  // The refresh interval — keep only a known option; anything else degrades to off (drop the key).
+  const refresh = scalar(search.refresh)?.trim();
+  if (refresh && REFRESH_SET.has(refresh)) out.refresh = refresh;
+
+  // Carry every `var-<name>` param through as-is (string or string[]), dropping empties. Malformed
+  // shapes (a non-string, non-string[] value) are simply ignored — a shared link never throws.
+  for (const [k, v] of Object.entries(search)) {
+    if (!k.startsWith("var-")) continue;
+    if (typeof v === "string") {
+      out[k as `var-${string}`] = v;
+    } else if (Array.isArray(v)) {
+      const list = v.filter((x): x is string => typeof x === "string");
+      if (list.length === 1) out[k as `var-${string}`] = list[0];
+      else if (list.length > 1) out[k as `var-${string}`] = list;
+    }
+  }
+  return out;
+}
+
+/** Extract the selected variable values from a dashboard search, keyed by BARE variable name (drops the
+ *  `var-` prefix). A repeated param is a multi-value `string[]`; a single param is a `string`. */
+export function varsFromSearch(search: DashboardSearch): Record<string, string | string[]> {
+  const out: Record<string, string | string[]> = {};
+  for (const [k, v] of Object.entries(search)) {
+    if (k.startsWith("var-") && v !== undefined) out[k.slice(4)] = v as string | string[];
+  }
+  return out;
+}
+
+/** Return a new search with the variable `name` set to `value` (an empty value / empty array clears it).
+ *  Used by the variable bar's dropdowns to write a selection to the URL. */
+export function withVar(
+  search: DashboardSearch,
+  name: string,
+  value: string | string[] | undefined,
+): DashboardSearch {
+  const key = `var-${name}` as const;
+  const next: DashboardSearch = { ...search };
+  const empty =
+    value === undefined ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0);
+  if (empty) delete next[key];
+  else next[key] = value;
+  return next;
 }

@@ -10,8 +10,9 @@ import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
 import { makeWidgetBridge } from "../builder/widgetBridge";
 import { useSource } from "../builder/useSource";
 import { asNumber } from "./num";
-import { fillArgs } from "./argsTemplate";
 import type { Action, Source } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
+import { interpolateArgs, emptyScope } from "@/lib/vars";
 
 interface Props {
   source?: Source;
@@ -19,13 +20,14 @@ interface Props {
   tools: string[];
   options?: Record<string, unknown>;
   label?: string;
+  scope?: VarScope;
 }
 
-export function SwitchControl({ source, action, tools, label }: Props) {
+export function SwitchControl({ source, action, tools, label, scope = emptyScope() }: Props) {
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
-  const { latest } = useSource(source, tools); // optional self-state read
+  const { latest } = useSource(source, tools, scope); // optional self-state read
   const [on, setOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +44,10 @@ export function SwitchControl({ source, action, tools, label }: Props) {
     setOn(next);
     setError(null);
     try {
-      await bridge.call(action.tool, fillArgs(action.argsTemplate, next));
+      await bridge.call(
+        action.tool,
+        interpolateArgs(action.argsTemplate ?? {}, scope, next) as Record<string, unknown>,
+      );
     } catch (e) {
       setOn(!next); // revert on a denied/failed write — no fake success
       setError(e instanceof Error ? e.message : String(e));
