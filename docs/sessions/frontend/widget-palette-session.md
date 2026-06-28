@@ -156,6 +156,51 @@ questions.
   flipped to **SHIPPED**; its open questions were all pre-decided — added the `widget_type`/`view` note.
 - `STATUS.md` "Slices in flight" updated.
 
+## Follow-up (same session): a 2nd widget that uses the SSE (live tile)
+
+To exercise the **live feed** end to end and to prove the picker's "one entry per `[[widget]]`" with a
+real N>1 extension, `proof-panel` now ships a **second** packaged tile, **Proof Ping Live**. Where the
+first tile reads `proof.demo` once (`bridge.call("series.latest")`), the live tile **subscribes** to its
+motion: `bridge.watch("series.watch", {series:"proof.demo"})` → the shipped `openSeriesStream` → the
+gateway SSE `GET /series/proof.demo/stream` → the workspace motion subject. It backfills with
+`series.latest` (non-empty before the first sample), then updates per live sample with no reload/poll,
+flipping a "live" badge on. The whole SSE plumbing was already shipped (bridge `watch`, the SSE endpoint,
+`openSeriesStream`) — the only gap was that no widget *used* it; this adds the worked example.
+
+Extension changes (NOT the platform/shell): new
+[`WidgetLiveTile.tsx`](../../../rust/extensions/proof-panel/ui/src/app/WidgetLiveTile.tsx);
+`mountWidget` now **dispatches by `widgetId`** (`proof-ping` → static, `proof-ping-live` → live) — proving
+the renderer's `widgetIdOf` slug is the contract between the manifest label and the cell key; a second
+`[[widget]]` block in [`extension.toml`](../../../rust/extensions/proof-panel/extension.toml) with
+`scope = [..., "series.watch"]`, and `mcp:series.watch:call` added to `[capabilities] request` so
+`ui_decl::narrow` keeps `series.watch` in the tile's granted scope (verified live in `ext.list`).
+
+Tests: **+3 proof-panel unit** ([`WidgetLiveTile.test.tsx`](../../../rust/extensions/proof-panel/ui/src/app/WidgetLiveTile.test.tsx):
+backfill → live-tick ×2 → "live" badge; unsubscribe-on-unmount = stateless eviction; deny → "no access")
+over a `watchBridge` test double (the bridge interface, not a fake node — testing-scope §0). **+1 live
+Playwright e2e** [`ui/e2e/dashboard-widget-live.spec.ts`](../../../ui/e2e/dashboard-widget-live.spec.ts):
+built shell + real node — add **Proof Ping Live** from the palette → tile mounts in-process → backfills →
+**write a new `proof.demo` sample over real ingest → the tile ticks to it (then again) with NO reload**,
+"live" badge on. Picker now offers two entries (`proof-panel · Proof Ping` and `· Proof Ping Live`); the
+static e2e was made exact-label to disambiguate. Green:
+
+```
+$ proof-panel/ui vitest run         → 15 passed (WidgetLiveTile.test.tsx: 3)
+$ npx playwright test e2e/dashboard-widget-live.spec.ts  → 1 passed  (live tick, no reload)
+$ npx playwright test (all 3 dashboard/page e2e)         → 3 passed
+$ pnpm test (shell)                 → 48 passed
+$ pnpm test:gateway (shell)         → 110 passed
+```
+
+Live publish confirmed: `make publish-ext EXT=proof-panel` → HTTP 204; `ext.list` shows BOTH widgets,
+the live one carrying `series.watch` in scope.
+
+**Answering "do we have all the plumbing for extension widgets + dashboard?":** yes — the SSE chain
+(bridge `watch` → `openSeriesStream` → `GET /series/{s}/stream` → motion subject) was fully shipped; this
+slice adds the first widget that *uses* it. One nuance recorded for future ext authors: a live tile must
+name `series.watch` in its `[[widget]].scope` AND have `mcp:series.watch:call` in the capability request
+(else `ui_decl::narrow` drops it); the SSE endpoint itself authorizes on `series.read`.
+
 ## Live verification
 
 Not run as a manual `make publish-ext` + browser pass this session — no node was running and the

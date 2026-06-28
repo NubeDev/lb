@@ -28,6 +28,11 @@ request = [
     "mcp:series.find:call",
     "mcp:series.latest:call",
     "mcp:series.read:call",
+    # The LIVE `[[widget]]` tile (proof-ping-live) SUBSCRIBES to proof.demo's motion via
+    # `bridge.watch("series.watch")` → the series SSE. Its `[[widget]].scope` names `series.watch`, so
+    # the grant must include this cap (else `ui_decl::narrow` drops it and the bridge rejects the watch
+    # `out_of_scope`). The host re-checks `series.read` when the SSE opens, workspace-first.
+    "mcp:series.watch:call",
     "mcp:ingest.write:call",
     "mcp:outbox.status:call",
     "mcp:inbox.list:call",
@@ -97,18 +102,29 @@ scope = [
     "proof-panel.proof.simulate",
 ]
 
-# A dashboard WIDGET tile this extension contributes (widget-builder scope, follow-up 1 — the
-# `widgets-scope.md` "render ext:<id> in a cell" item, built there). The dashboard palette surfaces it
-# (Gate 1 install + Gate 2 edit cap); dragging it creates an `ext:proof-panel/proof-ping` cell. It is
-# trust-tiered by publisher key (non-allow-listed → sandboxed iframe). The remote exposes a named
-# `mountWidget(el, ctx, bridge, widgetId)` export on the SAME `remoteEntry.js` (follow-up 2, one build).
-# Its reachable tools = this `scope ∩ install grant`, re-checked at the host per call — the same leash
-# the page rides. This resolves the proof-panel scope's "[[widget]] deferred to dashboard" open question.
+# The dashboard WIDGET tiles this extension contributes (widget-builder scope). The palette surfaces
+# ONE picker entry per `[[widget]]` (Gate 1 install + Gate 2 edit cap); selecting one creates an
+# `ext:proof-panel/<widget-id>` cell, where `<widget-id>` is the label slug. An INSTALLED widget renders
+# IN-PROCESS (the install IS the trust gate; the iframe tier is for scripted author code only — see
+# debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md). The remote exposes ONE named
+# `mountWidget(el, ctx, bridge, widgetId)` export on the SAME `remoteEntry.js` (one build) that dispatches
+# by `widgetId`. Each tile reaches only its `scope ∩ install grant`, re-checked at the host per call.
+
+# (1) The default one-shot tile: reads proof.demo's latest ONCE via `bridge.call` (state, rule 3).
 [[widget]]
 entry = "remoteEntry.js"
 label = "Proof Ping"
 icon  = "shield-check"
 scope = ["series.latest", "series.find"]
+
+# (2) The LIVE tile (the SSE example): backfills with `series.latest`, then SUBSCRIBES to proof.demo's
+# motion via `bridge.watch("series.watch")` → the shipped series SSE, updating per live sample with no
+# reload or polling. `series.watch` is in scope (and in the capability request) so the grant permits it.
+[[widget]]
+entry = "remoteEntry.js"
+label = "Proof Ping Live"
+icon  = "activity"
+scope = ["series.latest", "series.find", "series.watch"]
 
 [visibility]
 class = "public"

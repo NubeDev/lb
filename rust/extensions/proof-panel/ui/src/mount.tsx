@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "@/App";
 import { WidgetTile, type WidgetBridge } from "@/app/WidgetTile";
+import { WidgetLiveTile } from "@/app/WidgetLiveTile";
 import type { Bridge, MountCtx } from "@/app/contract";
 
 /**
@@ -23,23 +24,25 @@ export function mount(el: HTMLElement, ctx: MountCtx, bridge: Bridge): () => voi
 }
 
 /**
- * Mount the dashboard WIDGET tile (widget-builder scope) — the SECOND named export the dashboard's
+ * Mount a dashboard WIDGET tile (widget-builder scope) — the SECOND named export the dashboard's
  * `ext:<id>/<widget>` renderer calls on the SAME remote (follow-up 2: one build, one remoteEntry). The
  * shell passes the v2 widget `ctx`/`bridge` (the bridge may `call` and `watch`) and the `widgetId`
- * naming which `[[widget]]` tile to render (this ext ships one, so it ignores it). Reaches only its
- * `[[widget]].scope ∩ grant`, re-checked at the host — never a token.
+ * selecting which `[[widget]]` tile to render. This ext ships TWO: the default one-shot `proof-ping`
+ * (reads via `bridge.call`) and the SSE `proof-ping-live` (subscribes via `bridge.watch`). The
+ * `widgetId` is the manifest label's slug (`widgetIdOf`), matching the shell's `ext:<id>/<widget>` key.
+ * Each reaches only its `[[widget]].scope ∩ grant`, re-checked at the host — never a token.
  */
 export function mountWidget(
   el: HTMLElement,
   _ctx: { workspace: string; binding: Record<string, unknown>; options: Record<string, unknown> },
   bridge: WidgetBridge,
-  _widgetId: string,
+  widgetId: string,
 ): () => void {
   const root = createRoot(el);
-  root.render(
-    <StrictMode>
-      <WidgetTile bridge={bridge} />
-    </StrictMode>,
-  );
+  // Dispatch by widgetId; default to the live tile's static sibling for an unknown/empty id.
+  const tile = widgetId === "proof-ping-live"
+    ? <WidgetLiveTile bridge={bridge} />
+    : <WidgetTile bridge={bridge} />;
+  root.render(<StrictMode>{tile}</StrictMode>);
   return () => root.unmount();
 }

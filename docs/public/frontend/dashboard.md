@@ -72,8 +72,18 @@ block, and bridge message carries a `v` field.
   non-allow-listed extension widgets; it couldn't — see
   [`../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md`](../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md).)
 
-The reference extension `proof-panel` ships a `[[widget]]` tile via a second `mountWidget` export on the
-same remote — the model for an extension-shipped widget.
+The reference extension `proof-panel` ships **two** `[[widget]]` tiles via one `mountWidget` export
+(dispatched by `widgetId`) on the same remote — the model for an extension-shipped widget, and the proof
+that one extension can ship N tiles:
+
+- **Proof Ping** — reads `proof.demo`'s latest **once** (`bridge.call("series.latest")`; state, rule 3).
+- **Proof Ping Live** — the **SSE example**: backfills with `series.latest`, then **subscribes** to
+  motion via `bridge.watch("series.watch", {series:"proof.demo"})` → the shipped `openSeriesStream` → the
+  gateway SSE `GET /series/{series}/stream` → the workspace motion subject, updating per live sample with
+  no reload or polling. Its `[[widget]].scope` names `series.watch` (and the manifest requests
+  `mcp:series.watch:call`, so `ui_decl::narrow` keeps it in the granted scope); the SSE endpoint itself
+  authorizes on `series.read`. The stream tears down on unmount (stateless eviction). A live Playwright
+  e2e writes a fresh sample and asserts the tile ticks to it in a real browser.
 
 ## Extension widgets in the palette (the last mile)
 

@@ -73,9 +73,11 @@ test("a Proof Ping tile added from the palette mounts in-process with the real p
   //    Pick the packaged tile from the new "Extension widgets" palette group.
   const source = page.getByLabel("widget source");
   await expect(source).toBeVisible({ timeout: 15_000 });
-  await expect(source.locator("option", { hasText: "proof-panel · Proof Ping" })).toHaveCount(1, {
-    timeout: 15_000,
-  });
+  // Exact label — the picker also lists "proof-panel · Proof Ping Live" (the 2nd [[widget]]), so a
+  // substring match would be ambiguous.
+  await expect(
+    source.locator("option").filter({ hasText: /^proof-panel · Proof Ping$/ }),
+  ).toHaveCount(1, { timeout: 15_000 });
   await source.selectOption({ label: "proof-panel · Proof Ping" });
 
   // 4) The view chooser is hidden (a packaged tile is its own view), and the PREVIEW mounts the real
