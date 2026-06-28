@@ -1,0 +1,233 @@
+//! The re-seam — `HostDataSeam` + `HostAiSeam` (rules-engine-scope "Source: ported, not copied"). The
+//! lb-rules engine runs on a blocking thread and calls these SYNCHRONOUS seam methods; each bridges to
+//! the host's async surface via a captured `tokio::runtime::Handle::block_on`:
+//!   - PLATFORM collect → `store.query` (`store_query_run`, SurrealDB, authoritative);
+//!   - FEDERATION collect → the `federation.query` MCP verb on the registry (the datasources ext);
+//!   - AI → the AI-gateway (`ModelAccess`), keeping the budget + the nsql fence (the fence is the
+//!     re-validation through `collect`, enforced inside the lb-rules `ai` verb).
+//!
+//! Every collect re-runs the host gate (workspace pin + `caps::check`) — the chokepoint that replaces
+//! rubix-cube's per-collect SQL validator. The seam is closed over the caller's effective principal +
+//! the pinned workspace, so a rule can read no source a direct query in the same workspace couldn't.
+
+use std::collections::{BTreeMap, HashSet};
+use std::sync::Arc;
+
+use lb_auth::Principal;
+use lb_rules::seam::{AiSeam, DataSeam, SchemaColumn, SourceKind};
+use lb_rules::{AiCompletion, GridJson};
+use serde_json::{json, Value};
+use tokio::runtime::Handle;
+
+use crate::boot::Node;
+
+/// The platform pseudo-source a rule reads the series plane through.
+pub const PLATFORM_SERIES: &str = "series";
+/// The platform pseudo-source a rule reads arbitrary store tables through (via `store.query`).
+pub const PLATFORM_STORE: &str = "store";
+
+/// The host data seam for one run. Resolves a source name to platform vs federation, collects through
+/// the right host path, and lists the workspace's own schemas for `ai.ask`.
+pub struct HostDataSeam {
+    node: Arc<Node>,
+    principal: Principal,
+    ws: String,
+    handle: Handle,
+    /// The federation datasource names registered in this workspace (resolved once at construction).
+    datasources: HashSet<String>,
+}
+
+impl HostDataSeam {
+    pub fn new(
+        node: Arc<Node>,
+        principal: Principal,
+        ws: String,
+        handle: Handle,
+        datasources: HashSet<String>,
+    ) -> Self {
+        Self {
+            node,
+            principal,
+            ws,
+            handle,
+            datasources,
+        }
+    }
+
+    /// The set of source names this run may read — the platform pseudo-sources + the workspace's
+    /// registered federation datasources. Passed to the engine as the allowlist.
+    pub fn allowed_sources(&self) -> HashSet<String> {
+        let mut s = self.datasources.clone();
+        s.insert(PLATFORM_SERIES.to_string());
+        s.insert(PLATFORM_STORE.to_string());
+        s
+    }
+
+    fn collect_platform(&self, query: &str) -> Result<GridJson, String> {
+        let node = self.node.clone();
+        let principal = self.principal.clone();
+        let ws = self.ws.clone();
+        let q = query.to_string();
+        let result = self.handle.block_on(async move {
+            crate::store_query_run(&node.store, &principal, &ws, &q, Vec::new()).await
+        });
+        match result {
+            Ok(r) => Ok(GridJson {
+                columns: r.columns,
+                rows: r.rows,
+            }),
+            // Keep the deny opaque via our "source not allowed" classification upstream.
+            Err(crate::StoreQueryError::Denied) => Err("source not allowed".into()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn collect_federation(&self, source: &str, query: &str) -> Result<GridJson, String> {
+        let node = self.node.clone();
+        let principal = self.principal.clone();
+        let ws = self.ws.clone();
+        let input = json!({ "source": source, "sql": query }).to_string();
+        // Route through the one MCP contract: `federation.query` on the registry (the datasources ext).
+        let result = self.handle.block_on(async move {
+            crate::call_tool(&node, &principal, &ws, "federation.query", &input).await
+        });
+        let out = result.map_err(|_| "source not allowed".to_string())?;
+        let val: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
+        let columns = val
+            .get("columns")
+            .and_then(|c| c.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let rows = val
+            .get("rows")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(GridJson { columns, rows })
+    }
+}
+
+impl DataSeam for HostDataSeam {
+    fn resolve(&self, source: &str) -> Result<(SourceKind, String), String> {
+        if self.datasources.contains(source) {
+            Ok((SourceKind::Federation, source.to_string()))
+        } else if source == PLATFORM_SERIES {
+            // The series plane table — read through store.query.
+            Ok((SourceKind::Platform, lb_ingest::SERIES_TABLE.to_string()))
+        } else if source == PLATFORM_STORE {
+            Ok((SourceKind::Platform, PLATFORM_STORE.to_string()))
+        } else {
+            Err(format!("source not allowed: {source}"))
+        }
+    }
+
+    fn collect(&self, kind: SourceKind, source: &str, query: &str) -> Result<GridJson, String> {
+        match kind {
+            SourceKind::Platform => self.collect_platform(query),
+            SourceKind::Federation => self.collect_federation(source, query),
+        }
+    }
+
+    fn schemas(&self) -> Result<BTreeMap<String, Vec<SchemaColumn>>, String> {
+        // For ai.ask: the workspace's own granted source schemas. v1 lists registered datasources by
+        // name (a coarse schema); platform schema discovery via store.schema is additive later. Never
+        // lists a source outside this workspace (the set is workspace-resolved).
+        let mut out = BTreeMap::new();
+        for ds in &self.datasources {
+            out.insert(ds.clone(), Vec::new());
+        }
+        out.insert(
+            PLATFORM_SERIES.to_string(),
+            vec![
+                SchemaColumn {
+                    name: "ts".into(),
+                    ty: "datetime".into(),
+                },
+                SchemaColumn {
+                    name: "value".into(),
+                    ty: "number".into(),
+                },
+                SchemaColumn {
+                    name: "series".into(),
+                    ty: "string".into(),
+                },
+            ],
+        );
+        Ok(out)
+    }
+}
+
+/// The host AI seam — re-points at the AI-gateway. Held behind a trait object the host builds from its
+/// `ModelAccess` impl; for v1 the rule's `ai.complete`/`ai.ask` route to a single-turn gateway call.
+pub struct HostAiSeam {
+    inner: Arc<dyn RuleModel>,
+}
+
+impl HostAiSeam {
+    pub fn new(inner: Arc<dyn RuleModel>) -> Self {
+        Self { inner }
+    }
+}
+
+/// A minimal model surface the rule engine needs — a single completion + an nsql proposal. Implemented
+/// by the host over the AI-gateway `ModelAccess` (or the deterministic mock provider in tests). This is
+/// the sanctioned external-behind-a-trait boundary (testing §0): the model is the one true external.
+pub trait RuleModel: Send + Sync {
+    fn complete(&self, prompt: &str) -> Result<(String, u32), String>;
+    fn propose_sql(&self, question: &str, schema_hint: &str) -> Result<String, String>;
+}
+
+impl AiSeam for HostAiSeam {
+    fn complete(&self, prompt: &str) -> Result<AiCompletion, String> {
+        let (text, tokens) = self.inner.complete(prompt)?;
+        Ok(AiCompletion { text, tokens })
+    }
+
+    fn propose_sql(
+        &self,
+        question: &str,
+        schemas: &BTreeMap<String, Vec<SchemaColumn>>,
+    ) -> Result<String, String> {
+        let hint = schemas
+            .iter()
+            .map(|(name, cols)| {
+                let c = cols
+                    .iter()
+                    .map(|c| format!("{}:{}", c.name, c.ty))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{name}({c})")
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        self.inner.propose_sql(question, &hint)
+    }
+}
+
+/// Read the workspace's registered federation datasource names (for the allowlist + schema). Empty if
+/// the datasources extension/records aren't present — platform-only rules still run.
+pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
+    let page = match lb_store::scan(
+        &node.store,
+        ws,
+        "datasource",
+        lb_store::MAX_SCAN_LIMIT,
+        None,
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(_) => return HashSet::new(),
+    };
+    let mut out = HashSet::new();
+    for row in page.rows {
+        if let Some(name) = row.data.get("name").and_then(|v| v.as_str()) {
+            out.insert(name.to_string());
+        }
+    }
+    out
+}

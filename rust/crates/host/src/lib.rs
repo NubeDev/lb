@@ -14,12 +14,14 @@ mod authz;
 mod boot;
 mod bus;
 mod callback;
+mod chains;
 mod channel;
 mod channel_registry;
 mod dashboard;
 mod dbview;
 mod devkit;
 mod ext;
+mod federation;
 mod host_tools;
 mod inbox;
 mod ingest;
@@ -34,6 +36,7 @@ mod reload;
 mod remote;
 mod render_templates;
 mod role;
+mod rules;
 mod run_events;
 mod serve;
 mod store_query;
@@ -71,6 +74,10 @@ pub use boot::{Node, NodeError};
 pub use bus::{
     authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
 };
+pub use chains::{
+    call_chains_tool, chains_delete, chains_get, chains_list, chains_resume, chains_run,
+    chains_run_get, chains_save, ChainsError,
+};
 pub use channel::{
     history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
     PresenceFeed,
@@ -93,6 +100,11 @@ pub use devkit::{
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
     reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
+};
+pub use federation::{
+    call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
+    federation_mirror, federation_query, resolve_datasource, Datasource, DatasourceSummary,
+    FederationError,
 };
 pub use host_tools::{
     call_host_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach, host_time_now,
@@ -129,6 +141,11 @@ pub use render_templates::{
     TEMPLATE_MAX_BYTES,
 };
 pub use role::Role;
+pub use rules::{
+    ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
+    rules_get, rules_list, rules_run, rules_save, HostAiSeam, HostDataSeam, RuleModel, RulesError,
+    RunResult, SavedRule,
+};
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};
 pub use store_query::{

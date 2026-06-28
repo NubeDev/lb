@@ -16,6 +16,34 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Rules + chains plane (post-S8 platform capability): SHIPPED** (2026-06-28). The lazybones-native
+**rules engine** (`lb-rules`) + **rule chains** + the **federation datasources** extension landed,
+ported from the `rubix-cube` engine (MIT/Apache-2.0) and **re-seamed onto our chokepoints**.
+- **`lb-rules`** — a sandboxed `rhai` cage (governors + zero I/O surface) + a lazy column-oriented
+  `Grid` + the timeseries plan-builders + the `AiMeter` budget + the nsql fence + the DAG model/binding
+  resolver, linking only `rhai`+`serde`. The three seams the scope named are abstracted as traits the
+  host implements: grid `collect` → `store.query`/`series.*` (platform, SurrealQL) or
+  `federation.query` (external); `ai.*` → the AI-gateway; `alert` → inbox + outbox.
+- **`rules.*`** — `run`/`save`/`get`/`list`/`delete` host verbs over `rule:{ws}:{id}`, each
+  capability-gated, with the per-source `caps::check` inside every collect (`caller ∩ grant`).
+- **`chains.*`** — a rule DAG driven over **`lb-jobs` + a SurrealDB run-store** (rubix-cube's trait
+  shape, our durable backend): `save` (DAG-validated up front), `run`/`resume`, `get`/`list`/
+  `runs.get`. The CAS step-claim makes a restart-`resume` exactly-once.
+- **platform additions:** a `caps` `Net` surface + `Connect` action (the `net:*` grammar), and a
+  capability-mediated **`lb-secrets`** store (was an S0 placeholder) for the federation DSN.
+- **federation extension** — a native (Tier-2) `federation` ext embedding DataFusion as a library,
+  `federation.query` + `datasource.*` CRUD + `federation.mirror` (an `lb-jobs` batch into the series
+  plane), `net:*` + secret-gated, SELECT-only validated, tested against a real spawned DB.
+
+**Tests (the gate, all green):** 28 `lb-rules` unit (cage / grid / **AI fence+budget** / DAG+binding)
++ 12 host integration (6 rules + 6 chains: capability-deny per verb, mid-run source deny, ws-isolation,
+the seed-real-series→rollup+alert→inbox round-trip, AI budget, DAG validation at save, diamond frontier,
+Halt subtree-skip, **restart-resume-exactly-once**) + the federation real-DB suite + `lb-secrets`
+mediation/deny/isolation. No mocks; the only fake is the model provider behind the AI seam (+ the real
+external DB behind the one `Source` trait). Sessions: `sessions/rules/rules-session.md`,
+`sessions/datasources/datasources-session.md`; public: `public/rules/rules.md`,
+`public/datasources/datasources.md`.
+
 **S8 — data plane (durable store + generic ingest + tagging): exit gate MET** (2026-06-27). All three
 slices shipped on the pinned **SurrealKV** persistent engine — (0) `Store::open` + the capability-spike
 matrix + crash-consistency set, (1) `lb-ingest` durable exactly-once buffer (proven across a

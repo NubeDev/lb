@@ -1,0 +1,47 @@
+# The `federation` native (Tier-2) datasources extension (datasources scope). A supervised host
+# binary that embeds DataFusion + its connectors and exposes external SQL sources behind ONE
+# read-first verb, `federation.query`. SurrealDB stays the platform authority; external DBs are
+# federated sources reached only through this gated, net:*-bounded process — never wired into core.
+[extension]
+id          = "federation"
+version     = "0.1.0"
+name        = "Federation"
+description = "Query external SQL datasources (Postgres/Timescale) behind one read-first MCP verb."
+
+[runtime]
+tier        = "native"                  # Tier 2: an OS child owning sockets/pools (§6.3)
+world       = "lazybones:ext/extension@0.1.0"  # WIT major still checked at load (ABI gate)
+placement   = "either"
+
+# The native supervision recipe the host turns into a lb_supervisor::Spec.
+[native]
+exec        = "federation"              # resolved by the host against the install/target dir
+args        = []
+restart     = "on-crash"               # auto-restart on crash; the pool re-derives from the spec
+
+[capabilities]
+# What the extension REQUESTS at install — intersected with admin approval (`grant`). The net:*
+# grant is the per-endpoint approval enforced PRE-CONNECT by the host (a source whose host:port the
+# grant omits is refused, opaque). The secret:* grant lets the host mediate the DSN out of
+# lb-secrets and hand it to the pool — never to a rule, the page, a record, or a log.
+request = [
+  "net:tls:*:*:connect",              # outbound connections to admin-approved host:port endpoints
+  "secret:federation/*:get",          # read the mediated DSN for a registered source
+]
+
+# The verbs the child serves over the control line. Declared so the host can register + authorize
+# them without instantiating the child.
+[[tools]]
+name        = "federation.query"
+description = "Run a SELECT-only query against a registered datasource; returns {columns, rows}."
+
+[[tools]]
+name        = "datasource.test"
+description = "A real connectivity probe against a registered datasource (green/red)."
+
+[[tools]]
+name        = "federation.mirror"
+description = "Enqueue a durable lb-jobs batch mirroring an external range into the series plane."
+
+[visibility]
+class = "private"

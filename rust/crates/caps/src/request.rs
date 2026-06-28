@@ -10,6 +10,10 @@ pub enum Surface {
     Store,
     Bus,
     Secret,
+    /// Outbound network — a native (Tier-2) extension opening a socket to an admin-approved
+    /// `host:port` (datasources scope: `net:tls:tsdb.acme:5432`). Enforced pre-connect by the
+    /// supervisor (`requested ∩ admin_approved`); core crates never open sockets.
+    Net,
 }
 
 impl Surface {
@@ -19,6 +23,7 @@ impl Surface {
             Surface::Store => "store",
             Surface::Bus => "bus",
             Surface::Secret => "secret",
+            Surface::Net => "net",
         }
     }
 
@@ -28,6 +33,7 @@ impl Surface {
             "store" => Some(Surface::Store),
             "bus" => Some(Surface::Bus),
             "secret" => Some(Surface::Secret),
+            "net" => Some(Surface::Net),
             _ => None,
         }
     }
@@ -42,6 +48,8 @@ pub enum Action {
     Pub,
     Sub,
     Get,
+    /// Open an outbound connection (the `net` surface): `net:tls:host:5432:connect`.
+    Connect,
     Any,
 }
 
@@ -54,6 +62,7 @@ impl Action {
             Action::Pub => "pub",
             Action::Sub => "sub",
             Action::Get => "get",
+            Action::Connect => "connect",
             Action::Any => "*",
         }
     }
@@ -66,6 +75,7 @@ impl Action {
             "pub" => Some(Action::Pub),
             "sub" => Some(Action::Sub),
             "get" => Some(Action::Get),
+            "connect" => Some(Action::Connect),
             "*" => Some(Action::Any),
             _ => None,
         }

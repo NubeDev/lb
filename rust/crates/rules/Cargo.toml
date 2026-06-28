@@ -1,0 +1,26 @@
+# lb-rules — the embedded, sandboxed rules engine (rules-engine-scope.md).
+#
+# Ported from rubix-cube's `rbx-server/src/rules/` (MIT/Apache-2.0, same repo lineage). The rhai
+# cage + governors, the lazy Grid + Col plan-builders, the timeseries plan-builders, the AiMeter
+# budget + nsql fence, and the workflow DAG math are lifted; the three seams (data collect, AI,
+# emit) are abstracted as traits the HOST implements against the real store / AI-gateway / inbox-
+# outbox (rule 5/7). This crate links ONLY rhai (+ serde): no DataFusion, no store, no socket — a
+# rule reaches the platform only through host-mediated, capability-checked seam calls.
+[package]
+name = "lb-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# The rule-author's sandboxed language. `sync` makes every registered verb closure Send+Sync (so the
+# engine runs on a blocking thread); `serde` bridges rhai <-> serde_json at the seam boundary.
+rhai = { version = "1.20", features = ["sync", "serde"] }
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

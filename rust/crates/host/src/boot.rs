@@ -46,6 +46,23 @@ impl Node {
         Self::boot_as(Role::Solo).await
     }
 
+    /// Boot a solo node over a CALLER-SUPPLIED store (a persistent one for a restart test, or a
+    /// shared in-memory namespace). Same wiring as [`boot`] — only the store differs, which is a
+    /// config choice (§3.1), never a code branch. Used to prove durable resume across a "restart"
+    /// (re-open the same on-disk store, build a fresh node over it).
+    pub async fn boot_with_store(store: Store) -> Result<Self, NodeError> {
+        let bus = Bus::peer().await?;
+        let engine = Engine::new()?;
+        Ok(Self {
+            store,
+            bus,
+            engine,
+            registry: Arc::new(Registry::new()),
+            sidecars: Arc::new(SidecarMap::new()),
+            role: Role::Solo,
+        })
+    }
+
     /// Boot a node in `role`. Same code, same crates — the role only selects what the wiring
     /// layers mount (sync relay, gateway) and the data-authority axis (README §6.8). Every role
     /// opens the same store + Zenoh peer; the second node in S3 is just a second `boot_as`.

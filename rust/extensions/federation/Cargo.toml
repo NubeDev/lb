@@ -1,0 +1,58 @@
+# `federation` — the native (Tier-2) datasources extension (datasources scope). A supervised host
+# binary that embeds DataFusion + its table providers as a LIBRARY and fronts external SQL sources
+# (Postgres/Timescale, …) behind one read-first `federation.query` verb. Like `echo-sidecar` it is a
+# native binary for the host target, so it IS a workspace member (it builds for the host), and it
+# speaks the SAME `lb-supervisor` wire protocol over stdio.
+#
+# Heavy DB deps (datafusion, datafusion-table-providers, sqlparser) live ONLY here — core crates
+# link no DB driver (datasources scope: the engine + sockets belong in a supervised, admin-approved,
+# net:*-gated process, never the symmetric node binary).
+[package]
+name = "federation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "federation"
+path = "src/main.rs"
+
+[dependencies]
+# Reuse the supervisor's wire protocol + framing verbatim — the child and host agree on the ABI by
+# sharing the crate (no drift), exactly like echo-sidecar.
+lb-supervisor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = "0.1"
+
+# The embedded query engine (datasources scope: embed the crate, never the Spice/Cube product). The
+# `Source` trait fronts it; each source owns a pool behind that trait. Pinned to the major
+# `datafusion-table-providers` is built against (datafusion ^53). The SELECT-only validator uses
+# `datafusion::sql::sqlparser` (re-export) so there is one sqlparser version, never a mismatch.
+#
+# Default = sqlite only (the test fallback engine, real rows on disk). The `postgres` feature adds
+# the Postgres/Timescale connector — it pulls native-tls → openssl-sys, which needs a system OpenSSL
+# (or the `openssl/vendored` build deps) to compile, so it is opt-in and built where TLS is
+# available. The HEADLINE source is Postgres; sqlite is the documented fallback (testing §0).
+datafusion = "53"
+datafusion-table-providers = { version = "0.11", default-features = false, features = ["sqlite-bundled"] }
+# The pool's params type (`HashMap<String, SecretString>`) — same major as table-providers, so the
+# DSN never lands in a plain `String` field the engine logs (secret mediation, datasources scope).
+secrecy = "0.10"
+# Arrow → JSON row conversion for the `{columns, rows}` result (same major as datafusion 53's arrow).
+arrow = "58"
+arrow-json = "58"
+# Only pulled in when the `postgres` feature is on (its connector needs native-tls → openssl). Build
+# OpenSSL from source so no system OpenSSL/pkg-config is required (datasources scope: heavy/native
+# deps live ONLY in this extension). Optional → off by default (sqlite path links no TLS).
+openssl = { version = "0.10", features = ["vendored"], optional = true }
+
+# Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async engine (rt-multi-thread).
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std"] }
+
+[features]
+default = []
+# Enable the Postgres/Timescale source. Requires a TLS toolchain (system OpenSSL or the
+# `openssl/vendored` build deps: a C compiler + ranlib). Build with `--features postgres`.
+postgres = ["datafusion-table-providers/postgres", "dep:openssl"]

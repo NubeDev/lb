@@ -24,7 +24,10 @@ lb-undo.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
+lb-rules.workspace = true
+lb-secrets.workspace = true
 lb-supervisor.workspace = true
+rhai = { version = "1.20", features = ["sync", "serde"] }
 # The read-only SQL surface (`store.query`, widget-builder Slice A) parses the statement with
 # SurrealDB's own parser to allowlist a single SELECT by KIND (never a substring check). We use only
 # the parser (`surrealdb::syn::parse` + `surrealdb::sql::Statement`); the store engine stays behind

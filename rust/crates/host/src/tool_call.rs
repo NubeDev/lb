@@ -45,6 +45,10 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("template.")
         || qualified_tool.starts_with("devkit.")
         || qualified_tool.starts_with("agent.")
+        || qualified_tool.starts_with("rules.")
+        || qualified_tool.starts_with("chains.")
+        || qualified_tool.starts_with("federation.")
+        || qualified_tool.starts_with("datasource.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool == "undo"
@@ -148,6 +152,16 @@ async fn dispatch_at_depth(
             // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)
             // is added inside `call_agent_tool` by that worker — its arm is currently `NotFound`.
             crate::call_agent_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("rules.") {
+            crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("chains.") {
+            crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("federation.")
+            || qualified_tool.starts_with("datasource.")
+        {
+            // datasources scope: the federation host service (resolve source → net:* → mediate DSN →
+            // route to the supervised sidecar). The per-verb gate runs inside the service.
+            crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {

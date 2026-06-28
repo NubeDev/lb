@@ -23,6 +23,7 @@ members = [
     "crates/mcp",
     "crates/outbox",
     "crates/registry",
+    "crates/rules",
     "crates/run-events",
     "crates/runtime",
     "crates/secrets",
@@ -32,6 +33,7 @@ members = [
     "crates/tags",
     "crates/undo",
     "extensions/echo-sidecar",
+    "extensions/federation",
     "extensions/fleet-monitor",
     "sdk",
     "node",
@@ -69,6 +71,7 @@ lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
 lb-registry = { path = "crates/registry" }
+lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
