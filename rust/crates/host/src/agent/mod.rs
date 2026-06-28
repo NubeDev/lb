@@ -16,20 +16,38 @@
 //! Every step re-runs `caps::check` under `agent ∩ caller` (the derived principal) — being allowed
 //! to invoke the agent never implies the tools/skills/docs it may then reach (no widening).
 
+mod activate;
 mod authorize;
+mod catalog;
+mod decision;
 mod error;
 mod invoke;
 mod invoke_remote;
 mod model_access;
+mod policy;
+mod rehydrate;
 mod route;
 mod run;
 mod serve;
 mod substrate;
+mod tool;
 
+pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
+pub use catalog::{format_catalog, render_catalog};
+pub use decision::{
+    decision_id, load_decision, settle_decision, AgentDecision, DecisionState, SettleOutcome,
+    APPROVAL_CHANNEL as DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
+};
 pub use error::AgentError;
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
+pub use policy::{
+    evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,
+    POLICY_TABLE,
+};
+pub use rehydrate::{rehydrate, LoopState};
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
-pub use run::{run_session, MAX_STEPS};
+pub use run::{cancel_run, run_session, MAX_STEPS};
 pub use serve::{serve_agent, AgentServer};
+pub use tool::call_agent_tool;

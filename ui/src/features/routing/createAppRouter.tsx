@@ -24,6 +24,7 @@ import { IngestView } from "@/features/ingest";
 import { MembersView } from "@/features/members";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
+import { StudioView } from "@/features/studio";
 import { SystemView } from "@/features/system";
 import { RoutedShell } from "./RoutedShell";
 import { useAppRoutingContext } from "./RoutingContextProvider";
@@ -117,6 +118,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/outbox", "outbox", () => <Outbox />),
     coreRoute("/admin", "admin", () => <Admin />),
     coreRoute("/extensions", "extensions", () => <Extensions />),
+    coreRoute("/studio", "studio", () => <Studio />),
     extRoute,
   ]),
 ]);
@@ -252,4 +254,8 @@ function Admin() {
 
 function Extensions() {
   return <ExtensionsView ws={useAppRoutingContext().workspace} />;
+}
+
+function Studio() {
+  return <StudioView ws={useAppRoutingContext().workspace} />;
 }

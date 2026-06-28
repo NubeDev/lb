@@ -29,5 +29,5 @@ pub use doc::{get_doc, list_docs, put_doc, Doc, Visibility};
 pub use install::{
     delete_install, list_installs, read_install, record_install, ExtUi, Install, Tier,
 };
-pub use relation::{list_related, relate, related, unrelate, Relation};
+pub use relation::{list_related, list_skill_grants, relate, related, unrelate, Relation};
 pub use skill::{get_skill, list_skills, put_skill, Skill};

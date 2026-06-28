@@ -1,0 +1,16 @@
+[package]
+name = "lb-run-events"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Low-level by design (agent-run scope Part 1): the one internal run-event vocabulary depends ONLY
+# on the transcript record it projects + serde. NO deps on protocols/gateway/wasm — every external
+# wire format (ACP, SSE, AI-SDK) is a thin encoder OVER this crate, never the other way around.
+lb-jobs.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

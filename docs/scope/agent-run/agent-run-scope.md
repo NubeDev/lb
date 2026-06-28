@@ -93,12 +93,12 @@ held connection.
   translations** that drive the run via the start/resume + `agent.watch` path (with `agent.invoke` kept
   as a compatibility wrapper) and encode the `RunEvent` stream back out.
 - **A new model-streaming contract with the gateway.** Whether `ModelAccess::turn` grows a streaming
-  variant is an ai-gateway question; this scope can ship with per-step (non-token-delta) events and
-  add token deltas when the gateway streams (open question).
+  variant is an ai-gateway question; this scope ships per-step events now and adds token deltas behind
+  a gateway feature-detect later, with no `RunEvent` change (Resolved decisions).
 - **Bridging ACP client-provided MCP servers (review point 6).** ACP `session/new` may carry
   `mcpServers` + `cwd` so the agent connects to *client-side* tools. v1 only exposes our already-known
   internal MCP tools; client-provided servers are **explicitly out of scope** (bridging an external
-  server the agent calls would need a `net:*`-style grant — see open questions). Stated as a limitation
+  server the agent calls would need a `net:*`-style grant — Resolved decisions). Stated as a limitation
   so the adapter rejects/ignores them cleanly rather than silently dropping the field.
 
 ## Intent / approach
@@ -359,55 +359,61 @@ boundary, ai-gateway scope §3).
   glob on tool name + a shallow arg-path match; resist regex/JSONPath until a real caller needs it.
 - **Token-delta events depend on the gateway.** If `ModelAccess::turn` stays non-streaming, the run
   emits per-step events, not per-token deltas — still a large UX win, but set expectations. Token
-  deltas are gated on the gateway streaming (open question, ai-gateway scope).
-- **Protocol drift.** ACP (and later AI-SDK) are external specs that move. Containment: the `RunEvent`
-  enum is the stable internal contract; each protocol is a thin, version-pinned encoder in its own
-  role crate. A spec bump touches one file, never the loop.
-- **Authn for a local stdio adapter.** It is tempting to let a local process skip auth. Don't — the
-  adapter must mint/carry a real session token (trusted-session path) bound to one workspace, or the
-  workspace wall has a hole at the editor. This is called out so the implementing session reuses
-  `session/trusted.rs` rather than inventing a bypass.
-- **Policy surface creep.** Allow/Deny/Ask matched on *args* invites a mini query language. Start with
-  glob on tool name + a shallow arg-path match; resist regex/JSONPath until a real caller needs it.
-- **Token-delta events depend on the gateway.** If `ModelAccess::turn` stays non-streaming, the run
-  emits per-step events, not per-token deltas — still a large UX win, but set expectations. Token
-  deltas are gated on the gateway streaming (open question, ai-gateway scope).
+  deltas are gated on the gateway streaming (decided below: per-step v1, token deltas behind the
+  feature-detect when the gateway grows a streaming turn).
 
-## Open questions
+## Resolved decisions
 
-- **Transcript shape + where it lives.** The Part-0 transcript replaces `Step.result: String`
-  (`jobs/src/model.rs`). Does it stay inline on the `job` record (a `Vec<TranscriptEvent>`), or become a
-  child table for large/long runs? Recommendation: inline typed events for v1 (bounded by `MAX_STEPS`),
-  with a child-table escape hatch noted if runs grow. The shape must cover: assistant turn, proposed
-  call + args, tool result, skill activation, suspension-opened/settled, cursor.
-- **The `agent_decision` record vs extending `Resolution`.** Recommendation: a dedicated first-settle
-  `agent_decision:{job}:{tool_call}` (conditional create), surfaced as an inbox item for routing —
-  rather than adding a first-settle mode to `lb_inbox::Resolution` (which the coding workflow relies on
-  being last-writer-wins). Confirm with the inbox-outbox owner; if they'd rather add a settle-mode flag
-  to `Resolution`, that's the alternative.
-- **Where the permission policy lives and who edits it.** A dedicated `agent_policy:{ws}` record edited
-  via an admin-gated verb, or folded into the `authz`/grants surface? Recommendation: a small standalone
-  ws-scoped record + an admin cap to edit, kept beside `caps` conceptually but not *in* the grammar
-  (Allow/Deny/Ask is a runtime policy, not a static capability).
-- **Resume modes to ship.** Confirm Deny + Allow→replay for v1; defer `UseDecisionAsResult` (human
-  hand-writes the tool result) until a caller needs it.
-- **ACP client-provided MCP servers + `cwd` (review point 6).** ACP `session/new` may carry `mcpServers`
-  and a `cwd` for the agent to connect to client-side tools. v1 maps to our *already-known* internal MCP
-  tools and does **not** bridge client-provided servers — documented as a limitation in Non-goals. Open:
-  is bridging them ever in scope, and if so under what capability (a client MCP server is an external
-  the agent would call — it needs a `net:*`-style grant, see reference-extensions scope)?
-- **Does the stream route cross-node, or stay local to the hosting node?** Recommendation: the
-  `RunEvent` subject routes like any bus traffic (a remote `agent.watch` subscribes over Zenoh), but the
-  routed start/resume *reply* stays the final answer — we do not stream the reply itself over the
-  queryable. Confirm against the S3 routing seam.
-- **Which encoder is next after ACP** — AI-SDK v6 (web `useChat`) is the recommendation; confirm before
-  building the second encoder so the `RunEvent` enum covers its needs (it wants explicit tool-call
-  argument deltas).
-- **Catalog injection cost.** Rendering every granted skill's title+description each turn has a token
-  cost; do we cache the catalog per run and only re-inject on change? (Likely yes.)
-- **Per-run policy overrides.** Awaken supports a run-scoped override on top of the ws policy ("allow
-  `shell.run` just for this session"). Ship ws-policy only first, or include the override? Recommend
-  ws-only for v1.
+The peer review's open questions are **resolved here** — these are the long-term answers the build must
+follow (no quick fixes). They are decisions, not options.
+
+- **Transcript shape + location → typed events inline on the `job`, behind a versioned enum.** Replace
+  `Step.result: String` with `Step` carrying a `TranscriptEvent` (a `#[non_exhaustive]`,
+  `#[serde(tag = "kind")]` enum: `AssistantTurn`, `ToolCallProposed{id,name,args}`, `ToolResult{id,ok,
+  err}`, `SkillActivated{id}`, `SuspensionOpened{tool_call_id,decision_id}`, `SuspensionSettled{
+  decision_id,decision}`). Inline on the job record (runs are `MAX_STEPS`-bounded). **Long-term guard:**
+  the enum is versioned from day one (`#[non_exhaustive]` + a `schema_version` field on the job) so a
+  later child-table migration or new variant is additive, never a rewrite. Rationale: one record =
+  one atomic resume read; a child table buys nothing at bounded run length and costs a join + a second
+  write path. The escape hatch is designed-in, not the v1 cost.
+- **Ask settle → a dedicated first-settle `agent_decision` record.** `agent_decision:{job}:{tool_call}`
+  written with a **conditional create** (SurrealDB `CREATE`, which errors on an existing id — first write
+  binds, second is rejected, never an upsert). It surfaces an inbox `needs:approval` item for routing
+  and visibility, but the binding settle is the `agent_decision` record. **Do not** add a settle-mode to
+  `lb_inbox::Resolution` — the coding workflow depends on its last-writer-wins semantics; overloading it
+  couples two consumers with opposite requirements. This is the long-term-correct separation.
+- **Permission policy → a standalone ws-scoped record (`agent_policy:{ws}`) edited by an admin cap.**
+  Not folded into the capability grammar: Allow/Deny/Ask is a *runtime policy over tool calls*, not a
+  static capability, and conflating them would distort `caps`. One record per workspace, a rule list
+  (glob on tool name + a shallow arg-path equality match — **no** regex/JSONPath in v1, the surface is
+  deliberately small), edited via `agent.policy.set` gated by an admin-only cap. The policy layer sits
+  *in front of* `caps::check`, never replacing it (defense in depth).
+- **Resume modes → ship `Deny` + `Allow→replay`; `UseDecisionAsResult` is designed-for but not built.**
+  The resume-mode is an enum field on the `agent_decision` record so adding the human-authored-result
+  mode later is additive. v1 builds the two that the policy gate actually produces.
+- **ACP client-provided MCP servers (`mcpServers`/`cwd`) → explicitly rejected in v1, cleanly.** The
+  adapter parses the field and returns an ACP error (not a silent drop) stating client-provided servers
+  are unsupported. Long-term path noted: bridging them is a *future* scope requiring a `net:*`-style
+  grant (reference-extensions scope) — it is not smuggled in now.
+- **Stream routing → the `RunEvent` subject routes over the bus like any motion; the start/resume reply
+  stays a value, not a stream.** A remote `agent.watch` subscribes to `ws/{ws}/run/{job}/**` over Zenoh
+  (the S3 routing seam); we do **not** stream the run over the queryable reply. State-vs-motion holds:
+  the reply is a result, the stream is motion, the transcript is the record.
+- **Token deltas → per-step events in v1; token-level deltas behind a gateway feature-detect.** The
+  `RunEvent` enum includes `TextDelta` from day one, but the loop emits per-step until `ModelAccess`
+  grows a streaming `turn`; when it does, the loop forwards token deltas with no `RunEvent` change. The
+  enum is designed for the streaming end-state so adding it later touches the gateway, not the contract.
+- **Next encoder after ACP → AI-SDK v6 (web `useChat`), not built in this scope but designed-for.** The
+  `RunEvent` enum carries explicit tool-call **argument deltas** from day one (AI-SDK needs them) so the
+  second encoder is purely additive — a new role crate, no contract change.
+- **Skill-catalog injection → render once per run, cache, re-inject only on change.** The granted-skills
+  catalog (title+description) is computed at run start and cached on the run; it is re-rendered into
+  context only when the granted set changes mid-run (rare). Avoids paying the catalog token cost every
+  turn.
+- **Per-run policy overrides → not in v1; the policy is ws-scoped only.** A run-scoped "allow `shell.run`
+  just this session" override is deliberately deferred. The `agent_policy` evaluation is structured so a
+  per-run override layer can be added above the ws record later without changing the gate — additive, not
+  a rework.
 
 ## Related
 

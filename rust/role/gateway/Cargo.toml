@@ -12,8 +12,10 @@ autobins = false
 
 [dependencies]
 lb-host.workspace = true
+lb-run-events.workspace = true
 lb-auth.workspace = true
 lb-registry.workspace = true
+lb-devkit.workspace = true
 lb-inbox.workspace = true
 lb-assets.workspace = true
 # Only the `test_gateway` harness binary uses lb-outbox (to seed real effects). It is optional and

@@ -32,7 +32,14 @@ export default async function setup({ provide }: GlobalSetupContext) {
   if (build.status !== 0) throw new Error("failed to build test_gateway harness binary");
 
   const url = await new Promise<string>((resolve, reject) => {
-    child = spawn(BIN, [], { env: { ...process.env, PORT: "0" } });
+    child = spawn(BIN, [], {
+      env: {
+        ...process.env,
+        PORT: "0",
+        LB_DEVKIT_ROOT: path.join(RUST, "extensions"),
+        LB_DIR: path.join(RUST, "target", "devkit-gateway-lb"),
+      },
+    });
     const timer = setTimeout(() => reject(new Error("gateway did not start in time")), 20_000);
 
     child.stdout?.on("data", (buf: Buffer) => {

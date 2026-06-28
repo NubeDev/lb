@@ -14,6 +14,7 @@ members = [
     "crates/authz",
     "crates/bus",
     "crates/caps",
+    "crates/devkit",
     "crates/ext-loader",
     "crates/host",
     "crates/inbox",
@@ -22,6 +23,7 @@ members = [
     "crates/mcp",
     "crates/outbox",
     "crates/registry",
+    "crates/run-events",
     "crates/runtime",
     "crates/secrets",
     "crates/store",
@@ -32,6 +34,7 @@ members = [
     "extensions/fleet-monitor",
     "sdk",
     "node",
+    "role/acp",
     "role/gateway",
     "role/ai-gateway",
     "role/registry-host",
@@ -57,6 +60,7 @@ lb-auth = { path = "crates/auth" }
 lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
+lb-devkit = { path = "crates/devkit" }
 lb-ext-loader = { path = "crates/ext-loader" }
 lb-inbox = { path = "crates/inbox" }
 lb-ingest = { path = "crates/ingest" }
@@ -64,6 +68,7 @@ lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
 lb-registry = { path = "crates/registry" }
+lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
 lb-store = { path = "crates/store" }

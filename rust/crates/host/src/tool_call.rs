@@ -42,6 +42,8 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
         || qualified_tool.starts_with("template.")
+        || qualified_tool.starts_with("devkit.")
+        || qualified_tool.starts_with("agent.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool == "store.query"
         || qualified_tool == "store.schema"
@@ -90,6 +92,13 @@ pub async fn call_tool_at_depth(
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("template.") {
             crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("devkit.") {
+            crate::call_devkit_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("agent.") {
+            // agent-run scope Part 2: the policy/decision verbs (`agent.policy.set`, `agent.decide`).
+            // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)
+            // is added inside `call_agent_tool` by that worker — its arm is currently `NotFound`.
+            crate::call_agent_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {

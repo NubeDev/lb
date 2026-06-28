@@ -17,6 +17,7 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   outbox: "/outbox",
   admin: "/admin",
   extensions: "/extensions",
+  studio: "/studio",
 };
 
 /** Prefix a tenant-relative surface path with the workspace segment. */

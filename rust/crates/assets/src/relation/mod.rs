@@ -16,11 +16,13 @@
 //! Workspace-namespaced like every record (README §7); raw verbs, no authorization here.
 //! One verb per file (FILE-LAYOUT §3).
 
+mod grants;
 mod list;
 mod model;
 mod relate;
 mod unrelate;
 
+pub use grants::list_skill_grants;
 pub use list::list_related;
 pub use model::Relation;
 pub use relate::{relate, related};

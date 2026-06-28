@@ -18,6 +18,7 @@ mod channel;
 mod channel_registry;
 mod dashboard;
 mod dbview;
+mod devkit;
 mod ext;
 mod inbox;
 mod ingest;
@@ -32,6 +33,7 @@ mod reload;
 mod remote;
 mod render_templates;
 mod role;
+mod run_events;
 mod serve;
 mod store_query;
 mod sync;
@@ -45,13 +47,17 @@ mod workflow;
 mod workspaces;
 
 pub use agent::{
-    agent_call_key, invoke, invoke_remote, resume, run_session, serve_agent, AgentError,
-    AgentInvokeReply, AgentInvokeRequest, AgentServer, AllowedTool, CallOutcome, Invocation,
-    ModelAccess, ProposedCall, Turn, MAX_STEPS,
+    activate_skill, agent_call_key, call_agent_tool, cancel_run, decision_id, evaluate_policy,
+    format_catalog, invoke, invoke_remote, load_decision, load_policy, rehydrate, render_catalog,
+    resume, run_session, save_policy, serve_agent, settle_decision, Activation, AgentDecision,
+    AgentError, AgentInvokeReply, AgentInvokeRequest, AgentServer, AllowedTool, ArgMatch,
+    CallOutcome, DecisionState, Effect, Invocation, LoopState, ModelAccess, Policy, ProposedCall,
+    Rule, SettleOutcome, Turn, DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
+    MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
 };
 pub use assets::{
-    add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc,
-    put_skill, revoke_skill, share_doc, AssetError,
+    add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, list_granted_skills,
+    load_skill, put_doc, put_skill, revoke_skill, share_doc, AssetError, SkillCatalogEntry,
 };
 pub use authz::{
     call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps, revoke_subject,
@@ -76,6 +82,10 @@ pub use dashboard::{
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
+};
+pub use devkit::{
+    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_scaffold,
+    devkit_templates, BuildStarted, DevkitError,
 };
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
@@ -110,6 +120,7 @@ pub use render_templates::{
     TEMPLATE_MAX_BYTES,
 };
 pub use role::Role;
+pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};
 pub use store_query::{
     authorize_store_query, call_store_query_tool, ensure_read_only, store_query_run,

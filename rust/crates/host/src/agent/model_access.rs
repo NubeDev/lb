@@ -26,7 +26,7 @@ pub struct ProposedCall {
 
 /// The outcome of running a [`ProposedCall`], fed back to the model next turn. A denied call is an
 /// `Err` outcome, NOT a crash — the model is told and can react (agent scope deny path).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallOutcome {
     pub id: String,
     pub ok: Option<String>,

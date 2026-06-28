@@ -19,7 +19,7 @@ use crate::routes::{
     list_workspaces, load_skill, login, mcp_call, post_message, publish_extension, publish_message,
     purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_team_member,
     rename_team, rename_workspace, request_approval, resolve_inbox, resolve_workflow_approval,
-    revoke_grant, run_query, save_dashboard, scan_table, series_stream, serve_ext_ui,
+    revoke_grant, run_query, run_stream, save_dashboard, scan_table, series_stream, serve_ext_ui,
     share_dashboard, share_doc, start_job, system_overview, system_subsystem, system_topology,
     uninstall_extension, write_samples,
 };
@@ -46,6 +46,9 @@ pub fn router(gw: Gateway) -> Router {
             get(get_history).post(post_message),
         )
         .route("/channels/{cid}/stream", get(channel_stream))
+        // agent-run live feed (agent-run scope Part 3) — the SSE analog of the channel stream for a
+        // run: snapshot-then-deltas of the `RunEvent` projection. Auth via `?token=`; ws from token.
+        .route("/runs/{job}/stream", get(run_stream))
         .route(
             "/teams/{team}/members",
             get(list_team_members).post(add_team_member),

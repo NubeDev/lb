@@ -42,6 +42,28 @@ Just produce the artifact for the UI's uploader instead of POSTing it:
 make pack           # → .lazybones/extensions/<EXT>.artifact.json
 ```
 
+## SDK / Studio path
+
+The SDK packages the same chain for local development:
+
+```sh
+# library path used by the host and Studio
+devkit.templates          # list wasm/native templates + feature toggles
+devkit.scaffold           # render under LB_DEVKIT_ROOT (default rust/extensions)
+devkit.build              # durable job + live bus logs on devkit/build/<job_id>
+devkit.inspect            # manifest, tools, caps, build readiness
+POST /extensions {"path":"my-ext"}  # server-side sign from LB_DIR/keys/dev-publisher.key
+```
+
+`LB_DEVKIT_ROOT` is canonicalized; traversal and symlink escapes are rejected before any write or
+process spawn. Builds use the real toolchain only (`cargo` and, if `ui/` exists, `pnpm`) behind the
+SDK's single `Toolchain` trait.
+
+The built-in **Extension Studio** shell view drives that sequence: generate or select a folder, build
+while reading `GET /bus/stream?subject=devkit/build/<job_id>`, then publish through the same
+`POST /extensions` route. The server owns the publisher key; the page never receives key material and
+logs never include it.
+
 ## The packager (`lb-pack`)
 
 `lb-pack` is the bridge `build.sh` never had — it turns a built wasm + manifest into the signed

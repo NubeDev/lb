@@ -145,12 +145,18 @@ async fn an_edge_user_invokes_the_agent_which_calls_the_gateway_and_a_granted_to
         .unwrap()
         .expect("job persisted");
     assert_eq!(job.status, lb_jobs::JobStatus::Done);
-    assert_eq!(job.steps.len(), 1, "one tool-call step landed");
-    assert!(
-        job.steps[0].result.contains("ok:"),
-        "the granted echo tool succeeded inside the loop: {}",
-        job.steps[0].result
-    );
+    // The typed transcript (Part 0) recorded the proposed call WITH its args and an OK result.
+    let ok = job
+        .events()
+        .any(|e| matches!(e, lb_jobs::TranscriptEvent::ToolResult { ok: Some(_), .. }));
+    assert!(ok, "the granted echo tool succeeded inside the loop");
+    let proposed = job.events().any(|e| {
+        matches!(
+            e,
+            lb_jobs::TranscriptEvent::ToolCallProposed { name, .. } if name == "hello.echo"
+        )
+    });
+    assert!(proposed, "the proposed call + args were recorded");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -223,10 +229,12 @@ async fn a_tool_the_caller_cannot_use_is_denied_inside_the_loop_even_if_the_agen
 
     assert_eq!(answer, "done: echoed agent-says-hi");
     let job = lb_jobs::load(&node.store, ws, "s").await.unwrap().unwrap();
+    let denied = job
+        .events()
+        .any(|e| matches!(e, lb_jobs::TranscriptEvent::ToolResult { err: Some(_), .. }));
     assert!(
-        job.steps[0].result.contains("err:"),
-        "the echo call was DENIED inside the loop (intersection), fed back as an error: {}",
-        job.steps[0].result
+        denied,
+        "the echo call was DENIED inside the loop (intersection), fed back as an error"
     );
 }
 

@@ -11,7 +11,7 @@
 //!
 //! Raw-ish verb at the host layer — the caller (`start_job`) has already passed the workflow gate.
 
-use lb_jobs::{load, Job, Step};
+use lb_jobs::{load, Job, Step, TranscriptEvent};
 use lb_outbox::Effect;
 use lb_store::{Store, StoreError};
 
@@ -34,7 +34,9 @@ pub async fn emit_effect(
     // `lb_jobs::append_step`, but the write is deferred into the transaction below.
     let step = Step {
         index,
-        result: note.to_string(),
+        event: TranscriptEvent::AssistantTurn {
+            content: note.to_string(),
+        },
     };
     match job.steps.iter_mut().find(|s| s.index == index) {
         Some(existing) => *existing = step,

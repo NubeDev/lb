@@ -41,8 +41,18 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   connector, Zenoh appliance gateway — plus the four platform fixes they need: the **native**
   host-callback transport, a **`net:*`** capability family for owned external sockets/DB/mesh, a generic
   per-extension **`kv.*`** store, and a binary-blob asset path; the doctrine that a native Tier-2
-  extension is the sanctioned escape hatch that may own external resources without breaking rule 2).
+  extension is the sanctioned escape hatch that may own external resources without breaking rule 2),
+  and `ext-sdk-scope.md` (the **extension SDK** — `lb-devkit` + `devkit.*` MCP verbs + a built-in
+  Extension Studio wizard that **generate** a fresh extension (wasm|native backend + shadcn/Tailwind
+  federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
+  **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
+  behind one `Toolchain` trait).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
+- `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
+  call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
+  `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
+  the workspace doc assets in `files/`). Read-only, one cap per verb, no shell-out; OS differences
+  isolated behind a per-folder `platform`/`path` seam so the verb files carry no `cfg!(windows)`.
 - `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.

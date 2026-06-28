@@ -1,0 +1,36 @@
+[package]
+name = "lb-role-acp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# Two artifacts: the library (the ACP session driver + encoder, unit/integration-testable in-process
+# against a real Node) and the `lb-acp` stdio binary an editor launches. Split so a test can drive the
+# driver directly AND a test can spawn the real binary speaking JSON-RPC over a real stdio pipe (the
+# `pnpm test:gateway` pattern — a real process, no fake; rule 9).
+[lib]
+name = "lb_role_acp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lb-acp"
+path = "src/main.rs"
+
+[dependencies]
+# Roles depend on host, never the reverse (symmetric layering). The adapter is a thin encoder over
+# the host's run primitives + the Part-1 RunEvent vocabulary; it holds no kernel logic.
+lb-host.workspace = true
+lb-auth.workspace = true
+lb-run-events.workspace = true
+lb-role-ai-gateway.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+# The integration test spawns the real `lb-acp` binary and talks JSON-RPC over its stdio.
+futures.workspace = true
+# The driver test asserts on the durable job state (suspend/resume/cancel) directly.
+lb-jobs.workspace = true
+serde_json.workspace = true

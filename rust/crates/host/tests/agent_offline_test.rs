@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{invoke, load_extension, resume, serve_ext, AllowedTool, Invocation, Node};
-use lb_jobs::{append_step, create, Job, JobStatus};
+use lb_jobs::{append_event, create, Job, JobStatus, TranscriptEvent};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider, ToolCall};
 
 const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
@@ -80,18 +80,57 @@ async fn a_session_interrupted_mid_loop_resumes_from_its_cursor() {
     let ws = "agent-offline-resume";
     let (node, caller) = hub_with_hello(&[INVOKE, ECHO], ws).await;
 
-    // 1. The edge ran step 0 and persisted it, THEN disconnected — the loop never reached `done`.
-    //    We model that durable partial state directly: a Running job with one step and cursor=1.
-    let mut job = Job::new("sess", "agent-session", "echo twice", 1);
+    // 1. The edge ran turn 0 (an assistant turn + one tool call + its result) and persisted those
+    //    typed events, THEN disconnected — the loop never reached `done` (status still `Running`).
+    //    We model that durable partial state directly as a real typed transcript (Part 0): three
+    //    events for one completed turn, so the rehydrating resume continues the conversation.
+    let job = Job::new("sess", "agent-session", "echo twice", 1);
     create(&node.store, ws, &job).await.unwrap();
-    append_step(&node.store, ws, "sess", 0, "c0=ok:before-disconnect")
-        .await
-        .unwrap();
-    job = lb_jobs::load(&node.store, ws, "sess")
+    append_event(
+        &node.store,
+        ws,
+        "sess",
+        0,
+        TranscriptEvent::AssistantTurn {
+            content: "I'll echo first.".into(),
+        },
+    )
+    .await
+    .unwrap();
+    append_event(
+        &node.store,
+        ws,
+        "sess",
+        1,
+        TranscriptEvent::ToolCallProposed {
+            id: "c0".into(),
+            name: "hello.echo".into(),
+            args: r#"{"msg":"before-disconnect"}"#.into(),
+        },
+    )
+    .await
+    .unwrap();
+    append_event(
+        &node.store,
+        ws,
+        "sess",
+        2,
+        TranscriptEvent::ToolResult {
+            id: "c0".into(),
+            ok: Some("before-disconnect".into()),
+            err: None,
+        },
+    )
+    .await
+    .unwrap();
+    let job = lb_jobs::load(&node.store, ws, "sess")
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(job.cursor, 1, "step 0 landed before the disconnect");
+    assert_eq!(
+        job.cursor, 3,
+        "one full turn's events landed before the disconnect"
+    );
     assert_eq!(job.status, JobStatus::Running, "the session did not finish");
 
     // 2. RECONNECT + RESUME. The model's script begins at the RESUME turn: one more tool call, then
@@ -121,20 +160,46 @@ async fn a_session_interrupted_mid_loop_resumes_from_its_cursor() {
         .unwrap()
         .unwrap();
     assert_eq!(done.status, JobStatus::Done, "resumed to completion");
-    // Step 0 (pre-disconnect) is intact and NOT re-run; step 1 (post-resume) was appended.
+
+    // The pre-disconnect events survived untouched (NOT re-run, NOT duplicated): the first three
+    // slots are exactly the seeded turn-0 events.
     assert_eq!(
-        done.steps.len(),
-        2,
-        "no double-apply: 1 pre + 1 post = 2 steps"
+        done.steps[0].event,
+        TranscriptEvent::AssistantTurn {
+            content: "I'll echo first.".into()
+        },
+        "the pre-disconnect assistant turn survived untouched"
     );
     assert_eq!(
-        done.steps[0].result, "c0=ok:before-disconnect",
-        "the pre-disconnect step survived untouched"
+        done.steps[2].event,
+        TranscriptEvent::ToolResult {
+            id: "c0".into(),
+            ok: Some("before-disconnect".into()),
+            err: None,
+        },
+        "the pre-disconnect tool result survived untouched"
     );
+
+    // The post-resume echo ran exactly once — there is a NEW `after-resume` tool result that is not
+    // the seeded one (proving the resume continued the conversation, did not re-ask from the goal).
+    let post_results: Vec<_> = done
+        .events()
+        .filter_map(|e| match e {
+            TranscriptEvent::ToolResult { ok: Some(v), .. } => Some(v.clone()),
+            _ => None,
+        })
+        .collect();
     assert!(
-        done.steps[1].result.contains("ok:"),
-        "the post-resume echo ran: {}",
-        done.steps[1].result
+        post_results.iter().any(|v| v.contains("after-resume")),
+        "the post-resume echo ran: {post_results:?}"
+    );
+    assert_eq!(
+        post_results
+            .iter()
+            .filter(|v| *v == "before-disconnect")
+            .count(),
+        1,
+        "the pre-disconnect step was NOT re-run (no double-apply)"
     );
 }
 
@@ -182,6 +247,11 @@ async fn a_duplicated_invocation_does_not_double_apply_or_re_spend() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(job.steps.len(), 1, "the retry did NOT duplicate the step");
+    // Exactly one tool result recorded — the retry did NOT duplicate the turn's events.
+    let tool_results = job
+        .events()
+        .filter(|e| matches!(e, TranscriptEvent::ToolResult { .. }))
+        .count();
+    assert_eq!(tool_results, 1, "the retry did NOT duplicate the step");
     assert_eq!(job.status, JobStatus::Done);
 }

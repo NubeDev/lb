@@ -18,6 +18,11 @@ pub enum StoreError {
     Backend(String),
     #[error("value did not deserialize: {0}")]
     Decode(String),
+    /// A first-write (`create`) hit an existing record at that id — the first write already bound
+    /// (agent-run scope Part 2 first-settle). The caller treats this as "someone else decided
+    /// first", not a backend failure.
+    #[error("record already exists (first-write conflict)")]
+    Conflict,
 }
 
 impl From<surrealdb::Error> for StoreError {

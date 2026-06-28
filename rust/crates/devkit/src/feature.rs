@@ -1,0 +1,46 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Feature {
+    Ui,
+    SeriesRead,
+    Ingest,
+    Kv,
+}
+
+impl Feature {
+    pub fn all() -> Vec<Self> {
+        vec![Self::Ui, Self::SeriesRead, Self::Ingest, Self::Kv]
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ui => "ui",
+            Self::SeriesRead => "series-read",
+            Self::Ingest => "ingest",
+            Self::Kv => "kv",
+        }
+    }
+}
+
+pub fn feature_caps(features: &[Feature]) -> Vec<String> {
+    let mut caps = Vec::new();
+    if features.contains(&Feature::SeriesRead) {
+        caps.extend([
+            "mcp:series.find:call".to_string(),
+            "mcp:series.latest:call".to_string(),
+            "mcp:series.read:call".to_string(),
+        ]);
+    }
+    if features.contains(&Feature::Ingest) {
+        caps.push("mcp:ingest.write:call".to_string());
+    }
+    if features.contains(&Feature::Kv) {
+        caps.push("mcp:template.get:call".to_string());
+        caps.push("mcp:template.save:call".to_string());
+    }
+    caps.sort();
+    caps.dedup();
+    caps
+}

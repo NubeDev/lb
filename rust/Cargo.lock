@@ -2756,6 +2756,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-devkit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ed25519-dalek",
+ "lb-registry",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "lb-ext-loader"
 version = "0.1.0"
 dependencies = [
@@ -2777,6 +2790,7 @@ dependencies = [
  "lb-authz",
  "lb-bus",
  "lb-caps",
+ "lb-devkit",
  "lb-ext-loader",
  "lb-inbox",
  "lb-ingest",
@@ -2785,6 +2799,7 @@ dependencies = [
  "lb-outbox",
  "lb-registry",
  "lb-role-ai-gateway",
+ "lb-run-events",
  "lb-runtime",
  "lb-store",
  "lb-supervisor",
@@ -2859,9 +2874,7 @@ name = "lb-pack"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ed25519-dalek",
- "lb-registry",
- "rand_core 0.6.4",
+ "lb-devkit",
  "serde_json",
 ]
 
@@ -2875,6 +2888,21 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "lb-role-acp"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "lb-auth",
+ "lb-host",
+ "lb-jobs",
+ "lb-role-ai-gateway",
+ "lb-run-events",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -2901,11 +2929,13 @@ dependencies = [
  "http-body-util",
  "lb-assets",
  "lb-auth",
+ "lb-devkit",
  "lb-ext-loader",
  "lb-host",
  "lb-inbox",
  "lb-outbox",
  "lb-registry",
+ "lb-run-events",
  "reqwest",
  "serde",
  "serde_json",
@@ -2976,6 +3006,15 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "lb-run-events"
+version = "0.1.0"
+dependencies = [
+ "lb-jobs",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

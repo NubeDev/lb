@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Puzzle,
+  Wrench,
   Send,
   Shield,
   Users,
@@ -43,7 +44,8 @@ export type CoreSurface =
   | "inbox"
   | "outbox"
   | "admin"
-  | "extensions";
+  | "extensions"
+  | "studio";
 
 /** A selected surface: a core one, or an **extension page** keyed `ext:<id>` (ui-federation scope). */
 export type Surface = CoreSurface | `ext:${string}`;
@@ -76,6 +78,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "outbox", icon: Send, label: "Outbox" },
   { key: "admin", icon: Shield, label: "Admin" },
   { key: "extensions", icon: Boxes, label: "Extensions" },
+  { key: "studio", icon: Wrench, label: "Studio" },
 ];
 
 export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }: Props) {

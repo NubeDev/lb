@@ -12,5 +12,6 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   if (hasCap(caps, CAP.systemOverview)) allowed.push("system");
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
+  if (hasCap(caps, CAP.devkitTemplates)) allowed.push("studio");
   return allowed;
 }

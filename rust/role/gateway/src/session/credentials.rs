@@ -51,6 +51,15 @@ fn member_caps() -> Vec<String> {
         // admin-console: publish (upload) a signed extension artifact over POST /extensions. The host
         // verb verify-before-stores; the gateway re-checks this cap server-side.
         "mcp:ext.publish:call",
+        // extension SDK / Studio: local-only by deployment convention. The gateway dev node grants
+        // these so the built-in Studio can scaffold/build/inspect through the universal MCP bridge.
+        "mcp:devkit.templates:call",
+        "mcp:devkit.scaffold:call",
+        "mcp:devkit.inspect:call",
+        "mcp:devkit.build:call",
+        // Publishing a native devkit build reuses `ext.publish` plus the existing native install
+        // gate before any child process is supervised.
+        "mcp:native.install:call",
         // data-console (Ingest page): the S8 ingest/series verbs, surfaced over the gateway. These
         // are **member-level** — any member may explore + manually write their own series (the
         // producer is the authenticated principal, un-spoofable).
@@ -126,6 +135,23 @@ fn member_caps() -> Vec<String> {
         "mcp:workflow.request_approval:call",
         "mcp:workflow.resolve_approval:call",
         "mcp:workflow.start_job:call",
+        // agent-run scope Part 2: the per-tool-call human gate. `agent.decide` first-settles a
+        // suspended tool call (member-level — the same authority that resolves the surfaced inbox
+        // item). `agent.policy.set` edits the ws Allow/Deny/Ask policy — an ADMIN act (who-may-run-
+        // what), so it rides the workspace-admin role the dev principal already holds, NOT the bare
+        // member set. The gateway re-checks each cap server-side (a token without it is refused).
+        "mcp:agent.decide:call",
+        "mcp:agent.policy.set:call",
+        // agent-run scope Part 3: `agent.watch` gates the live `RunEvent` SSE feed (`GET
+        // /runs/{job}/stream`). Read-only on the run; checked inside `watch_run` (a `403` before any
+        // stream body). Member-level — observing a run is not an admin act.
+        "mcp:agent.watch:call",
+        // agent-run scope Part 5: model-activated skills. `skill.activate` is a LOOP-INTERNAL tool
+        // (the loop intercepts the model's proposed call and loads the body under the S4 grant gate),
+        // so the dev principal does not strictly need this to drive the loop. It is granted for the
+        // catalog/activation surface symmetry and so a future direct-MCP route is reachable; the S4
+        // skill GRANT remains the real wall (an ungranted skill is denied regardless of this cap).
+        "mcp:skill.activate:call",
         // files/skills scope: the shared-asset surface caps the doc/skill routes check directly
         // (`authorize_doc`/`authorize_skill` gate on `store:doc/{id}` / `store:skill/{id}`, NOT an
         // MCP verb). The dev member may put/get/share/link their docs and manage skills; gate 3

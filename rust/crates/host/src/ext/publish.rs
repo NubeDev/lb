@@ -10,14 +10,19 @@
 //! digest + `(ext_id, version)`: re-publishing the same signed bytes upserts the same rows (no-op
 //! success), exactly like the registry-host `ArtifactStore::publish`.
 
+use std::io::Write;
+use std::path::PathBuf;
+
 use lb_auth::Principal;
 use lb_ext_loader::Manifest;
 use lb_mcp::authorize_tool;
 use lb_registry::{verify_artifact, Artifact, TrustedKeys, Visibility};
+use lb_supervisor::OsLauncher;
 
 use super::error::ExtError;
 use crate::boot::Node;
 use crate::install::install_extension;
+use crate::native::install_native;
 use crate::registry::{cache_artifact, record_catalog};
 
 /// Publish `artifact` into workspace `ws`'s catalog for `caller`, then **install + load it live**:
@@ -60,15 +65,76 @@ pub async fn ext_publish(
     let artifact = verified.artifact();
     let manifest =
         Manifest::parse(&artifact.manifest_toml).map_err(|e| ExtError::Manifest(e.to_string()))?;
-    install_extension(
-        node,
-        ws,
-        &artifact.manifest_toml,
-        &artifact.wasm,
-        &manifest.requested_caps,
-        ts,
-    )
-    .await
-    .map_err(|e| ExtError::Manifest(e.to_string()))?;
+    if manifest.tier == "native" {
+        let install_dir = native_install_dir(ws, &manifest.id);
+        let exec = manifest
+            .native
+            .as_ref()
+            .map(|n| n.exec.as_str())
+            .ok_or_else(|| ExtError::Manifest("native manifest missing exec".into()))?;
+        write_executable(&install_dir, exec, &artifact.wasm)?;
+        install_native(
+            node,
+            &OsLauncher,
+            caller,
+            ws,
+            &artifact.manifest_toml,
+            install_dir.to_string_lossy().as_ref(),
+            &manifest.requested_caps,
+            ts,
+        )
+        .await
+        .map_err(|e| ExtError::Native(e.to_string()))?;
+    } else {
+        install_extension(
+            node,
+            ws,
+            &artifact.manifest_toml,
+            &artifact.wasm,
+            &manifest.requested_caps,
+            ts,
+        )
+        .await
+        .map_err(|e| ExtError::Manifest(e.to_string()))?;
+    }
     Ok(())
+}
+
+fn native_install_dir(ws: &str, ext: &str) -> PathBuf {
+    let base = std::env::var("LB_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(".lazybones"));
+    base.join("native")
+        .join(sanitize_component(ws))
+        .join(sanitize_component(ext))
+}
+
+fn sanitize_component(raw: &str) -> String {
+    raw.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+fn write_executable(dir: &PathBuf, name: &str, bytes: &[u8]) -> Result<(), ExtError> {
+    std::fs::create_dir_all(dir).map_err(io_err)?;
+    let path = dir.join(name);
+    let mut f = std::fs::File::create(&path).map_err(io_err)?;
+    f.write_all(bytes).map_err(io_err)?;
+    f.flush().map_err(io_err)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).map_err(io_err)?;
+    }
+    Ok(())
+}
+
+fn io_err(e: std::io::Error) -> ExtError {
+    ExtError::Native(format!("writing native binary: {e}"))
 }

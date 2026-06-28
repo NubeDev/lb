@@ -21,6 +21,11 @@ export const CAP = {
   extList: "mcp:ext.list:call",
   extDisable: "mcp:ext.disable:call",
   extUninstall: "mcp:ext.uninstall:call",
+  devkitTemplates: "mcp:devkit.templates:call",
+  devkitScaffold: "mcp:devkit.scaffold:call",
+  devkitInspect: "mcp:devkit.inspect:call",
+  devkitBuild: "mcp:devkit.build:call",
+  nativeInstall: "mcp:native.install:call",
   // data-console (Data page, the DB browser): admin-only — these relax the per-record membership
   // gate (gate 3), so the Data nav entry is shown only for a session holding `store.scan`.
   storeTables: "mcp:store.tables:call",
@@ -68,6 +73,11 @@ export const ADMIN_CAPS: string[] = [
   CAP.extList,
   CAP.extDisable,
   CAP.extUninstall,
+  CAP.devkitTemplates,
+  CAP.devkitScaffold,
+  CAP.devkitInspect,
+  CAP.devkitBuild,
+  CAP.nativeInstall,
   // data-console: the dev admin carries both the admin DB-browser caps and the member series caps.
   CAP.storeTables,
   CAP.storeScan,
@@ -94,6 +104,7 @@ export const ADMIN_SECTION_CAPS: string[] = [
   CAP.grantsAssign,
   CAP.workspaceDelete,
   CAP.extList,
+  CAP.devkitTemplates,
 ];
 
 /** Does `caps` include `cap`? The single cap-check the UI uses to gate a control's display. */

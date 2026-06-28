@@ -3,6 +3,19 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## In progress (S10 — extensions: SDK / built-in Studio)
+
+The extension SDK is implemented behind `lb-devkit` and the local-only `devkit.*` host bridge:
+shared artifact signing with `lb-pack`, root-safe scaffolding under `LB_DEVKIT_ROOT`, real cargo/pnpm
+builds behind one `Toolchain` trait, durable build jobs streaming logs over the existing generic bus,
+and a built-in Studio page that drives scaffold → build → publish. `POST /extensions` also accepts a
+devkit path and signs server-side from `LB_DIR/keys/dev-publisher.key`, reusing the existing
+`ext.publish` trust/install path.
+
+Current state: focused devkit/pack tests, host devkit/e2e tests, the focused Studio real-gateway test,
+TypeScript, and `pnpm test` are green. The full workspace/gateway gate is blocked by an unrelated
+active `agent/run.rs` compile break (`crate::run_events` unresolved) and is not promoted to shipped yet.
+
 ## Shipped (S10 — dashboard: widget config + a Grafana-style variable system + generic bus pub/sub)
 
 The dashboard gains a Grafana-style variable system + widget settings, on a shared interpolation library
