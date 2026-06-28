@@ -20,6 +20,7 @@ lb-ingest.workspace = true
 lb-jobs.workspace = true
 lb-run-events.workspace = true
 lb-tags.workspace = true
+lb-undo.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true

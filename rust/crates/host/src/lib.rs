@@ -43,6 +43,7 @@ mod tags;
 mod teams;
 mod tool_call;
 mod ui_decl;
+mod undo;
 mod users;
 mod workflow;
 mod workspaces;
@@ -146,6 +147,7 @@ pub use tags::{
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
 pub use tool_call::call_tool;
+pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
     user_login_check, UserView, UsersError,

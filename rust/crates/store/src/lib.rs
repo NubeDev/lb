@@ -12,10 +12,12 @@ mod graph;
 mod list;
 mod open;
 mod read;
+mod read_versioned;
 mod record;
 mod scan;
 mod tables;
 mod write;
+mod write_journaled;
 mod write_tx;
 
 pub use create::create;
@@ -23,7 +25,10 @@ pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, 
 pub use list::list;
 pub use open::{Store, StoreError};
 pub use read::read;
+pub use read_versioned::read_versioned;
+pub use record::{Versioned, FIRST_REV};
 pub use scan::{scan, Page, Row, MAX_SCAN_LIMIT};
 pub use tables::{tables, TableCount};
 pub use write::write;
+pub use write_journaled::{write_journaled, JournalWrite};
 pub use write_tx::{write_tx, Upsert};

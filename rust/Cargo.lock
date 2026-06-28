@@ -2840,6 +2840,7 @@ dependencies = [
  "lb-store",
  "lb-supervisor",
  "lb-tags",
+ "lb-undo",
  "serde",
  "serde_json",
  "surrealdb",
@@ -3100,6 +3101,17 @@ version = "0.1.0"
 
 [[package]]
 name = "lb-tags"
+version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "lb-undo"
 version = "0.1.0"
 dependencies = [
  "lb-store",

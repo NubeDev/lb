@@ -14,6 +14,7 @@
 use serde_json::Value;
 
 use crate::open::{Store, StoreError};
+use crate::record::FIRST_REV;
 
 /// One record to upsert: its table, id, and host JSON value.
 pub struct Upsert<'a> {
@@ -23,8 +24,9 @@ pub struct Upsert<'a> {
 }
 
 /// Atomically upsert `change` and `effect` into workspace `ws` in one transaction. Both wrap the
-/// host JSON under `data` (the same envelope as `write`), so the read path is identical. If either
-/// upsert fails the whole transaction rolls back — the durability guarantee the outbox relies on.
+/// host JSON under `data` (the same envelope as `write`) and bump a monotonic `rev` (the same
+/// envelope `write` uses), so the read path is identical. If either upsert fails the whole
+/// transaction rolls back — the durability guarantee the outbox relies on.
 pub async fn write_tx(
     store: &Store,
     ws: &str,
@@ -34,8 +36,14 @@ pub async fn write_tx(
     let db = store.use_ws(ws).await?;
     db.query(
         "BEGIN TRANSACTION;
-         UPSERT type::thing($ct, $cid) CONTENT { data: $cdata };
-         UPSERT type::thing($et, $eid) CONTENT { data: $edata };
+         UPSERT type::thing($ct, $cid) CONTENT { \
+            data: $cdata, \
+            rev: (type::thing($ct, $cid).rev ?? ($first - 1)) + 1 \
+         } RETURN NONE;
+         UPSERT type::thing($et, $eid) CONTENT { \
+            data: $edata, \
+            rev: (type::thing($et, $eid).rev ?? ($first - 1)) + 1 \
+         } RETURN NONE;
          COMMIT TRANSACTION;",
     )
     .bind(("ct", change.table.to_string()))
@@ -44,6 +52,7 @@ pub async fn write_tx(
     .bind(("et", effect.table.to_string()))
     .bind(("eid", effect.id.to_string()))
     .bind(("edata", effect.value.clone()))
+    .bind(("first", FIRST_REV))
     .await?
     .check()?;
     Ok(())

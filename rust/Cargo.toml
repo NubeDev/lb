@@ -30,6 +30,7 @@ members = [
     "crates/supervisor",
     "crates/sync",
     "crates/tags",
+    "crates/undo",
     "extensions/echo-sidecar",
     "extensions/fleet-monitor",
     "sdk",
@@ -75,6 +76,7 @@ lb-store = { path = "crates/store" }
 lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
 lb-tags = { path = "crates/tags" }
+lb-undo = { path = "crates/undo" }
 lb-host = { path = "crates/host" }
 lb-sdk = { path = "sdk" }
 

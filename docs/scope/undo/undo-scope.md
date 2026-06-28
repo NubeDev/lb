@@ -3,7 +3,7 @@
 Status: scope (the ask). Promotes to `public/undo/` once shipped. Stage: **S10 — cross-cutting
 retrofit** (`../../STAGES.md`). The capture chokepoint (host dispatch + the `write_tx` store seam,
 README §6.5/§6.8) already ships; **platform-level reversibility was never scoped** — and unlike audit
-and observability it is also *absent from `key-stack.md`*, the most-missed of the three.
+and observability it was also the *latest into `key-stack.md`* (now row 44), the most-missed of the three.
 
 > Read with: README §6.5 (dispatch — where a tool's reversibility is classified), §6.8 (sync/
 > authority + the explicit *"real-time co-editing is a per-extension CRDT concern"* line that bounds
@@ -24,10 +24,11 @@ the easy part on top of it.
 ## Goals
 
 - **A reversible-command journal at the host.** When a mutating tool runs, the host captures enough
-  to invert it — generically, a **before-image** of the records it changed — as a journal entry
-  `{ ws, actor, tool, trace_id, ts, kind: do|undo|redo, before, after, group }`. Undo restores the
-  before-image; redo re-applies the after-image. Both are themselves mediated, audited, reversible
-  tool calls.
+  to invert it — generically, a **before-image** of the records it changed plus the store-managed
+  `rev` it produced — as a journal entry `{ ws, actor, tool, trace_id, ts, kind: do|undo|redo, before,
+  after, rev, group }`. Undo restores the before-image **conditionally** (only if the live `rev` still
+  matches, enforced at the authoritative node); redo re-applies the after-image. Both are themselves
+  mediated, audited, reversible tool calls.
 - **The hard reversible/irreversible classification, in the platform.** Every tool is classified
   `reversible` (pure state mutation) | `irreversible` (enqueues an outbox effect / external motion) |
   `compensable` (irreversible but ships a declared compensating action). **Undo refuses irreversible
@@ -40,10 +41,17 @@ the easy part on top of it.
 - **Workspace-walled and capability-gated.** You can only undo within a workspace (never across the
   wall) and only an operation you hold the cap to perform; by default you undo **your own** ops, with
   an explicit, audited admin override for others'. Undo is not a capability-escalation backdoor.
-- **Generic before-image as the floor; declared inverse as an opt-in.** Record-level before/after
-  images work for *any* CRUD with **zero per-tool work** — the default. A tool may additionally
-  *declare* a semantic inverse (`create`↔`delete`) for a cleaner/cheaper undo; optional optimization,
-  not required for a tool to be undoable.
+- **Instrumented before-image as the floor; declared inverse as an opt-in.** A before/after image is
+  captured for every record a mutation touches **through the instrumented store seam** — `read`/`write`/
+  `list` upserts go through it for free, so the common upsert-shaped verbs are undoable with **zero
+  per-tool work**. The cases the generic capture cannot see for free are made explicit, not assumed
+  away: **creates** journal a `before: absent` tombstone, **deletes** journal the full prior record
+  with `after: absent`, **`RELATE` edges** journal the edge's existence + properties, and the raw
+  `query_ws` escape hatch (store.md §"Engine") is **not generically capturable** — a tool using it is
+  `non-generic` and must either route its mutation through an instrumented builder or **declare its
+  touched set** to be undoable; otherwise it is marked not-undoable. A tool may additionally *declare* a
+  semantic inverse (`create`↔`delete`) for a cleaner/cheaper undo; optional optimization, not required
+  for an upsert-shaped tool to be undoable.
 
 ## Non-goals
 
@@ -79,15 +87,20 @@ as a `kind:undo` entry, enabling redo). This reuse — one transactional seam se
 audit proof, and undo before-images — is why these three "missed floors" share a foundation rather
 than three bolt-ons.
 
-**Classification lives in tool metadata, read at dispatch.** A tool registers its reversibility class
-(default `reversible` for a pure state verb; `irreversible` the moment it calls the outbox;
-`compensable` + a named compensating tool when it can offer one). Dispatch (§6.5) reads it: a
-`reversible` call journals a before-image; an `irreversible` call journals **nothing undoable** and
-marks the step "external — not undoable" so the UI shows it greyed; a `compensable` call records the
-compensation handle. **The composition rule:** if a single logical action both mutates state and
-enqueues an effect, the *enclosing* action is `irreversible`/`compensable`, never `reversible` — the
-classification is the **max** over its parts. Encoding this wrong (calling such an action reversible)
-is the footgun the whole scope exists to prevent.
+**Classification is runtime transaction taint, not trusted dispatch metadata.** A manifest hint may
+*declare* a class, but the authoritative class is **computed from what the transaction actually did**.
+The host taints the in-flight transaction the moment its path reaches the outbox (§6.10) — even when
+the reaching happens through a *nested* tool call from a tool that declared itself `reversible`. At
+commit the host reads the taint: an untainted, instrumented mutation emits an undoable before-image
+entry; a **tainted** transaction emits **no undoable entry**, marks the step "external — not undoable"
+(greyed in the UI), and records any declared compensation handle. **The composition rule is enforced by
+the taint, not by a manifest field:** if a single logical action both mutates state and enqueues an
+effect — or calls anything that does — the *enclosing* action is tainted `irreversible`/`compensable`,
+never `reversible`; the class is the **max** over everything the transaction touched. A declared
+`compensable` can only *add* a compensation to a derived `irreversible`; it can never *downgrade* one.
+Encoding this wrong (a "reversible" tool whose nested call silently enqueued an effect) is the footgun
+the whole scope exists to prevent, which is why class is derived from runtime taint and not believed
+from a manifest.
 
 **Undo is a forward action, not a magic rewind.** Restoring a before-image is an ordinary
 `(table,id)` upsert — so it **syncs like any write** (§6.8) and is **audited like any action**
@@ -97,9 +110,51 @@ an out-of-band "restore" that writes records without going through dispatch/`wri
 skip the cap check and the audit entry, making undo a hole in exactly the systems this retrofit set
 is closing.
 
-**Bounded, per-actor stacks; redo truncated on new work.** The stack is `(ws, actor[, surface])`
-keyed, depth-capped (config), and a new `do` clears the redo stack — standard, predictable. An
-extension that wants document-scoped undo passes a `surface` key; the platform mechanism is the same.
+**Undo is a *conditional* restore enforced at the authoritative node, not a local LWW upsert.** This is
+the correctness core. A naive optimistic check done only on the edge is unsafe: an offline edge can pass
+its local check, then later sync a now-stale restore that LWW-clobbers a hub-side or intervening change
+(§6.8 — edges read-cache, the hub holds authority for shared data). So every undoable journal entry
+records, per touched record, the **expected `rev`** (a store-managed monotonic revision; see below) of
+the state the undo expects to overwrite — i.e. the `after` it produced. `undo()` submits a **conditional
+restore operation** that carries `{ touched records, expected rev each, before-image, group }`; the
+**authoritative node applies it only if every current record still matches its expected `rev`**, and
+**refuses atomically otherwise** — no record is half-restored. The expected-`rev` predicate travels
+*with* the operation and is checked at the apply point, so an offline-captured undo that arrives stale is
+refused at the hub, not silently merged. A local-only mutation (never shared) is its own authority and
+applies locally under the same predicate.
+
+**A store-managed revision is a prerequisite, not an assumption.** The shipped store wraps host JSON
+under an opaque `data` field with no generic version (store.md §Conventions). This scope therefore
+**requires the store seam to stamp a monotonic `rev`** (or equivalently a canonical `after_hash`) on
+every `write_tx`-applied record, surfaced so the journal can record it and the conditional restore can
+test it. Without this the optimistic check is ad-hoc and the offline-stale guarantee above does not
+hold; adding `rev` at the `write_tx` seam is in-scope for this work.
+
+**Undo restores through the same seam, but is not a privileged rewrite.** The restore is an ordinary
+`(table,id)` write through `write_tx` (so it is capability-checked, audited, and synced like any write)
+**guarded by the conditional predicate** — never an out-of-band write that skips dispatch. **Rejected:**
+a forced restore or an out-of-band "restore" that bypasses the predicate or the seam — it would clobber
+concurrent writers and skip the cap/audit entry, making undo a hole in the systems this retrofit closes.
+The honest limit stands: when the predicate fails, undo **declines** rather than clobbers.
+
+**Generic restore is safe only when the journal captures the full durable invariant surface.** A raw
+record upsert can skip tool-level validation, derived/aggregate records, relation consistency, or
+secondary indexes that the forward tool maintained. Generic before-image undo is therefore the floor
+**only for self-contained record mutations**; an action that maintains derived state must journal that
+derived state in its **group** (so the group restores all-or-nothing) or **declare a semantic inverse**.
+A tool whose durable footprint the generic capture cannot fully see is marked `non-generic` and is
+undoable only via its declared inverse — never by a partial raw restore that leaves invariants broken.
+
+**Bounded, per-actor stacks; redo truncated on new work — immutable events plus a materialized cursor.**
+The journal is **two shapes, not one**: append-only, immutable journal *event* rows (`do`/`undo`/`redo`,
+each with before/after/`rev`/`group`) that sync exactly like audit rows; and a separate **materialized
+stack-state record** per `(ws, actor[, surface])` holding the mutable cursor, the live undo/redo
+position, and prune markers. Redo-truncation, the current cursor, and depth pruning mutate the
+stack-state record (an ordinary LWW state record under §6.8), while history stays immutable and
+append-style — so "stack changed" never rewrites history, and two panes reconcile the cursor as ordinary
+state. The stack is `(ws, actor[, surface])` keyed, depth-capped (config), and a new `do` advances the
+cursor past — and prunes — the redo tail. An extension that wants document-scoped undo passes a
+`surface` key; the platform mechanism is the same.
 
 ## How it fits the core
 
@@ -118,32 +173,42 @@ extension that wants document-scoped undo passes a `surface` key; the platform m
   forgeable "journal.write", same discipline as audit/tags). Reads are gated; the live state of a
   stack is a `list`, not a stream (the stack is state; if a multi-admin UI needs change push, that's a
   later watch).
-- **Data (SurrealDB):** an `undo_journal` table per workspace (`undo:{seq}` with `before`/`after`/
-  `group`/`kind`), bounded per `(actor, surface)`. **State.** The before-image is a record snapshot;
-  for **file/bucket** content the snapshot is **metadata + a copy-on-write content ref**, not an
-  inline blob copy (see Risks). Old entries past the depth/age cap are pruned (unlike the WORM audit
-  ledger — different retention by design).
+- **Data (SurrealDB):** an immutable `undo_journal` event table per workspace (`undo:{seq}` with
+  `before`/`after`/per-record `rev`/`group`/`kind`), plus a mutable `undo_stack:{actor[:surface]}`
+  state record holding the cursor (above). Events are append-style and bounded per `(actor, surface)`;
+  the cursor record is ordinary LWW state. **State.** The before-image is a record snapshot stamped with
+  the store-managed `rev`. **Buckets are degraded on the shipped engine** (`DEFINE BUCKET` ✗,
+  store.md — binary payloads already use record-as-content), so v1 file undo uses the **record-as-content
+  versioned fallback**, not a `DEFINE BUCKET` copy-on-write ref; very large records may opt out of
+  journaling and declare a compensation instead (see Risks). Old entries past the depth/age cap are
+  pruned (unlike the WORM audit ledger — different retention by design).
 - **Bus (Zenoh):** none for the mechanism (the journal is state). A "stack changed" hint, if a
   multi-pane UI needs it, is ordinary fire-and-forget motion published by the caller — not by this
   crate (state vs motion stays clean).
-- **Sync / authority:** undo's restoring write is an `(table,id)` upsert on the existing §6.8 path,
-  last-writer-wins on the rare contested record. The journal entries themselves are append-style and
-  sync like audit rows. **The honest limit:** if the record changed *after* the before-image was
-  captured (a concurrent writer), an undo's LWW restore would clobber that intervening write — so
-  platform undo is single-actor by contract, and a stale undo is **refused** when the record's current
-  version differs from the after-image it expects (optimistic check — see Risks).
+- **Sync / authority:** undo's restoring write is a **conditional** `(table,id)` upsert on the existing
+  §6.8 path — the expected-`rev` predicate travels with the operation and is enforced **at the
+  authoritative node**, so an offline-captured restore that arrives stale is **refused at the hub**, not
+  LWW-merged. The immutable journal *events* are append-style and sync like audit rows; the mutable
+  *cursor* is an ordinary LWW state record. **The honest limit:** if a record changed after its
+  before-image was captured (a concurrent writer), the predicate fails and the undo is **refused**
+  rather than clobbering the intervening write — platform undo is single-actor by contract.
 - **Secrets:** a before-image must never inline a secret value; if a mutation touched a secret it is
-  referenced, not snapshotted (§6.7), and a `Secret<T>` cannot land in `before`/`after`.
+  referenced, not snapshotted (§6.7), and a `Secret<T>` cannot land in `before`/`after`. **This requires
+  secret references to be immutable/versioned** — a bare ref that is later overwritten cannot restore the
+  old value. v1 therefore undoes a secret mutation only when the prior secret *version* is still
+  resolvable by ref; if a secret is non-versioned the touching action is `non-generic` and undoable only
+  via a declared compensation (e.g. re-set the value), never by restoring a dangling ref.
 
 ## Example flow
 
 1. A user calls `doc.rename` (a pure state mutation, class `reversible`). In one `write_tx`, the rename
    commits **and** a journal entry `{ before: {title:"draft"}, after: {title:"v1"}, kind:do }` is
    written, atomically. It is audited (`decision=allow`) and (if synced) replicated like any write.
-2. The user hits undo. `undo()` checks they hold `mcp:doc.rename:call`, confirms the doc's current
-   version still matches the entry's `after` (no intervening writer), restores `before` through
-   `write_tx`, and journals a `kind:undo` entry — which redo can re-apply. The restore is itself
-   audited.
+2. The user hits undo. `undo()` checks they hold `mcp:doc.rename:call` and submits a **conditional
+   restore**; the **authoritative node** confirms the doc's current `rev` still matches the entry's
+   recorded `after` `rev` (no intervening writer), restores `before` through `write_tx`, and journals a
+   `kind:undo` entry — which redo can re-apply. The restore is itself audited. (If the doc lived only on
+   this offline edge, the edge is its own authority and applies the same predicate locally.)
 3. The user calls `workflow.open_pr` — this enqueues an **outbox effect** (§6.10), so it is class
    `irreversible`. The journal records the step as **"external — not undoable"**; `undo()` **refuses**
    to reverse it and `history.list` shows it greyed.
@@ -165,15 +230,27 @@ Mandatory categories from `../testing/testing-scope.md`:
 - **Workspace-isolation (§2.2):** a ws-B actor cannot list, undo, or redo ws-A's journal; the restore
   write lands only in the caller's workspace (store + MCP).
 - **Offline/sync (§2.3):** an offline edge undoes a local mutation; the restore syncs idempotently
-  (deterministic entry/upsert id → applied once across a re-sync, no duplicate restore); the optimistic
-  version check refuses a **stale** undo whose target was changed by an intervening synced write (no
-  silent clobber).
+  (deterministic entry/upsert id → applied once across a re-sync, no duplicate restore). **The
+  authoritative-node conditional check is the load-bearing case:** an offline edge captures an undo,
+  meanwhile the hub's copy changes; on re-sync the conditional restore is **refused at the hub** (its
+  expected `rev` no longer matches), proving the predicate is enforced at the apply point and not only
+  locally — no silent LWW clobber.
+- **Revision predicate (§new):** the store seam stamps a monotonic `rev` on every `write_tx` record;
+  a conditional restore succeeds iff every touched record's current `rev` equals the expected `rev`, and
+  **refuses all-or-nothing** if any one differs (a multi-record group, one record changed → whole undo
+  refused, none restored).
 - **The irreversible boundary (specified — the load-bearing claim):** (a) an `irreversible` tool
   (enqueues an outbox effect) is **journaled as not-undoable** and `undo()` **refuses** it; (b) a
   **mixed** action (state + effect) is classified `irreversible`/`compensable`, never reversible — the
   composition `max` rule; (c) a `compensable` tool surfaces its declared compensation and running it is
-  a *new audited forward action*, leaving the original on the audit ledger. A test that only covers
-  pure-state undo would miss the entire reason this scope exists.
+  a *new audited forward action*, leaving the original on the audit ledger; (d) **runtime taint, not
+  metadata:** a tool that *declares* `reversible` but whose **nested call** reaches the outbox is tainted
+  at commit and emits **no undoable entry** — proving the class is derived from what ran, not believed
+  from the manifest. A test that only covers pure-state undo would miss the entire reason this scope
+  exists.
+- **Non-generic capture:** a tool mutating via the raw `query_ws` escape hatch (or maintaining derived
+  state) without a declared touched-set/inverse is marked **not-undoable** rather than partially
+  restored; a tool that declares its inverse undoes correctly without invariant breakage.
 - **Atomicity:** the before-image and the change commit in **one `write_tx`** — a forced failure leaves
   **neither** (no orphan journal entry, no un-journaled change).
 - **Redo semantics:** undo→redo round-trips a record exactly; a new `do` truncates the redo stack.
@@ -194,10 +271,12 @@ Mandatory categories from `../testing/testing-scope.md`:
   trade for a non-CRDT platform; true collaborative undo stays in the CRDT extension (§6.8). **Do not**
   paper over this with a forced restore.
 - **Before-image size for large records / files.** Snapshotting a large record per mutation is costly;
-  snapshotting **bucket/blob content** inline is prohibitive. So file undo journals **metadata + a
-  copy-on-write content reference** (the prior content version is retained, not re-copied), and very
-  large records may be opt-out of journaling with a declared compensation instead. Naive inline
-  snapshots would balloon the store — a real design constraint, not a tuning note.
+  snapshotting blob content inline is prohibitive. **And `DEFINE BUCKET` is degraded on the shipped
+  engine** (store.md), so the copy-on-write *bucket* ref is not available for v1: file undo uses the
+  **record-as-content versioned fallback** already used for binary ingest (retain the prior content
+  version, don't re-copy), and very large records may opt out of journaling with a declared compensation
+  instead. Naive inline snapshots would balloon the store — a real design constraint, not a tuning note.
+  COW *bucket* refs are a follow-up gated on bucket support landing.
 - **Multi-step / grouped actions.** A job or a batch is many mutations; undo must operate on a
   **group** (a `group` id on entries) so "undo that import" reverses all-or-nothing, in reverse order,
   and refuses if any step is irreversible. Group reversal that hits an irreversible step mid-way must
@@ -209,25 +288,34 @@ Mandatory categories from `../testing/testing-scope.md`:
   it adds a reversing action to it. Conflating "undo" with "delete the audit trail" would be a security
   regression; they are explicitly separate stores with opposite retention.
 
-## Open questions
+## Decisions (v1 — settled)
 
-- **Reversibility metadata + the SDK/WIT boundary (flag loudly).** The class is mostly *derived* by the
-  host (reaches-the-outbox ⇒ irreversible), which needs **no** ABI change. But a guest declaring a
-  `compensable` compensation tool, or an editor-style `surface` key, may want a manifest field /
-  host import — an **additive, forever** WIT change. Lean: derive the class host-side for v1 (no ABI
-  change); add a manifest `compensation` field as a separate scoped ABI change when an extension needs
-  it.
-- **Default stack granularity:** per-(ws, actor) global vs. per-surface required. Lean: per-(ws,actor)
-  default, opt-in `surface` for editor-like extensions.
-- **Group/transaction undo semantics:** confirm "reverse order, all-or-nothing, refuse if any step
-  irreversible" and how a job's steps register as a group.
-- **Optimistic-check granularity:** whole-record version vs. field-level. Lean: whole-record version
-  (`vsn`/updated-at) for v1 — simplest correct refusal.
-- **File/blob undo depth:** how many COW content versions to retain per asset before falling back to
-  "not undoable, here's a compensation."
-- **Admin override (`undo.any`) policy:** when, and how prominently audited.
-- **Compensation registry shape:** how a tool names its compensating tool + how arguments map (the
-  saga-handle design) — bounded here to "declare a handle," the orchestrator deferred.
+These are decided for v1, not open. Each names the rejected alternative so the *why* survives.
+
+- **Reversibility class is derived host-side; no ABI change for v1.** The class is computed from runtime
+  transaction taint (reaches-the-outbox ⇒ irreversible), which needs **no** WIT change. Author-declared
+  `compensable` (naming a compensation tool) and the editor `surface` key *do* want a manifest field —
+  shipped as a **separate, additive, scoped ABI change** when the first extension needs it, not now.
+  *Rejected:* trusting a manifest `reversible` flag — a nested outbox call would make it a lie.
+- **Stack granularity: per-(ws, actor) by default, opt-in `surface`.** Editor-like extensions pass a
+  `surface` key for document-scoped undo; the platform mechanism is identical. *Rejected:* per-surface
+  required — needless ceremony for the common single-stack case.
+- **Group/transaction undo: reverse order, all-or-nothing, pre-checked.** A job/batch registers its
+  mutations under one `group` id; undo reverses them newest-first, and **refuses up front** if the
+  group's **max** class is irreversible — it never half-undoes. The conditional `rev` predicate covers
+  the whole group atomically. *Rejected:* best-effort partial group undo — leaves the world incoherent.
+- **Optimistic check granularity: whole-record `rev`.** A store-managed monotonic `rev` (per
+  `(table,id)`) is the predicate unit — simplest correct refusal. *Rejected:* field-level merge — that
+  is collaborative/CRDT undo, explicitly out of scope (§6.8).
+- **File/blob undo: record-as-content versioned fallback, depth-capped.** Buckets are degraded
+  (store.md), so v1 retains prior content *versions* in-record up to the configured depth, then falls
+  back to "not undoable, here's a compensation." COW bucket refs follow once bucket support lands.
+- **Admin override (`undo.any`): distinct grant, always prominently audited.** Undoing another actor's
+  op requires `mcp:undo.any` and writes an audit entry naming both actors. *Rejected:* implicit admin
+  reach — undo must never be a capability-escalation backdoor.
+- **Compensation registry: declare-a-handle only; orchestrator deferred.** A tool names its compensating
+  tool and a static argument mapping; multi-step saga orchestration is a jobs-adjacent follow-up
+  (`../jobs/`). *Rejected:* building a saga engine here — out of scope, deferred deliberately.
 
 ## Related
 
@@ -240,6 +328,6 @@ Mandatory categories from `../testing/testing-scope.md`:
   effect-delivery path that *defines* irreversibility.
 - `../jobs/jobs-scope.md` — multi-step actions whose undo is a *group*; the saga/compensation
   orchestrator is a jobs-adjacent follow-up.
-- `key-stack.md` — add an `undo` / reversible-command-journal row (currently absent — the most-missed
-  of the three).
+- `key-stack.md` — the `undo` / reversible-command-journal row (row 44; before-image + store-managed
+  `rev` over the `write_tx` seam).
 </content>

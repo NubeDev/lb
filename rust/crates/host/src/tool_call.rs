@@ -27,6 +27,7 @@ use serde_json::{json, Value};
 use crate::boot::Node;
 use crate::callback::Bridge;
 use crate::ingest::call_ingest_tool;
+use crate::undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 use crate::{enqueue_outbox, list_inbox, outbox_status, record_inbox, resolve_inbox};
 
 /// The host-native verb prefixes the bridge dispatches over the embedded store (not the runtime
@@ -46,6 +47,9 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("agent.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("bus.")
+        || qualified_tool == "undo"
+        || qualified_tool == "redo"
+        || qualified_tool.starts_with("history.")
         || qualified_tool == "store.query"
         || qualified_tool == "store.schema"
 }
@@ -106,6 +110,11 @@ pub async fn call_tool_at_depth(
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {
             crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool == "undo"
+            || qualified_tool == "redo"
+            || qualified_tool.starts_with("history.")
+        {
+            call_undo_tool(node, principal, ws, qualified_tool, &input).await?
         } else {
             call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?
         };
@@ -254,5 +263,81 @@ async fn call_workflow_tool(
             Ok(json!({ "ok": true }))
         }
         _ => Err(ToolError::NotFound),
+    }
+}
+
+/// Dispatch the undo-journal verbs (`undo`, `redo`, `history.list`, `history.compensations`) the UI
+/// reaches for its undo/redo affordance (undo scope). Each gates on its own MCP cap, plus the
+/// no-escalation check (the original tool's cap) and `undo.any` for another actor's stack — all
+/// inside the service layer. `actor` defaults to the caller's own `sub` (you undo your own stack);
+/// `surface` defaults to the empty (per-(ws,actor)) stack.
+///
+/// The *surfaced* refusals — `Stale` ("the record changed since this step") and `NotUndoable`
+/// (irreversible, with any declared compensation) — are returned as structured JSON outcomes, NOT
+/// opaque denials: the UI must distinguish "you can't" (denied) from "this step can't be undone
+/// right now" (a normal, explainable result). A true authorization failure stays opaque `Denied`.
+async fn call_undo_tool(
+    node: &Node,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    input: &Value,
+) -> Result<Value, ToolError> {
+    // `actor` defaults to the caller; a different actor triggers the `undo.any` gate in the service.
+    let actor = input
+        .get("actor")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| principal.sub());
+    let surface = input.get("surface").and_then(|v| v.as_str()).unwrap_or("");
+
+    match qualified_tool {
+        "undo" => undo_outcome(undo(&node.store, principal, ws, actor, surface).await),
+        "redo" => undo_outcome(redo(&node.store, principal, ws, actor, surface).await),
+        "history.list" => {
+            let items = history_list(&node.store, principal, ws, actor, surface)
+                .await
+                .map_err(undo_svc_to_tool_err)?;
+            Ok(json!({ "items": items }))
+        }
+        "history.compensations" => {
+            let seq = input
+                .get("step")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| ToolError::BadInput("missing arg: step".into()))?;
+            let comp = history_compensations(&node.store, principal, ws, seq)
+                .await
+                .map_err(undo_svc_to_tool_err)?;
+            Ok(json!({ "compensation_tool": comp }))
+        }
+        _ => Err(ToolError::NotFound),
+    }
+}
+
+/// Turn an `undo`/`redo` result into a UI-shaped JSON outcome. A success reports the reversed step;
+/// the surfaced refusals report `ok:false` with a reason the UI can render; a true denial stays
+/// opaque.
+fn undo_outcome(result: Result<lb_undo::JournalEntry, UndoSvcError>) -> Result<Value, ToolError> {
+    match result {
+        Ok(entry) => Ok(json!({ "ok": true, "step": entry.seq, "tool": entry.tool })),
+        Err(UndoSvcError::Stale) => Ok(
+            json!({ "ok": false, "reason": "stale", "message": "the record changed since this step — undo refused" }),
+        ),
+        Err(UndoSvcError::NotUndoable { compensation_tool }) => Ok(json!({
+            "ok": false,
+            "reason": "not_undoable",
+            "compensation_tool": compensation_tool,
+        })),
+        Err(UndoSvcError::Empty(what)) => {
+            Ok(json!({ "ok": false, "reason": "empty", "message": format!("nothing to {what}") }))
+        }
+        Err(e) => Err(undo_svc_to_tool_err(e)),
+    }
+}
+
+/// Map a service error to the MCP error. `Denied` is opaque; everything else is an extension error.
+fn undo_svc_to_tool_err(e: UndoSvcError) -> ToolError {
+    match e {
+        UndoSvcError::Denied => ToolError::Denied,
+        other => ToolError::Extension(other.to_string()),
     }
 }
