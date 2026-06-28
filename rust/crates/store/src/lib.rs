@@ -16,6 +16,7 @@ mod read_versioned;
 mod record;
 mod scan;
 mod tables;
+mod taint;
 mod write;
 mod write_journaled;
 mod write_tx;
@@ -29,6 +30,10 @@ pub use read_versioned::read_versioned;
 pub use record::{Versioned, FIRST_REV};
 pub use scan::{scan, Page, Row, MAX_SCAN_LIMIT};
 pub use tables::{tables, TableCount};
+pub use taint::{
+    mark_outbox_reached, mark_store_written, outbox_was_reached, store_was_written, taint_scope,
+    TaintVerdict,
+};
 pub use write::write;
 pub use write_journaled::{write_journaled, JournalWrite};
 pub use write_tx::{write_tx, Upsert};

@@ -7,7 +7,7 @@ use tokio::io::{stdin, stdout};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let ws = std::env::var("LB_EXT_WS").unwrap_or_default();
-    let ext_id = std::env::var("LB_EXT_ID").unwrap_or_else(|_| "devkit-build-native-145014".into());
+    let ext_id = std::env::var("LB_EXT_ID").unwrap_or_else(|_| "devkit-build-native-325745".into());
     let mut input = stdin();
     let mut output = stdout();
 
@@ -21,7 +21,7 @@ async fn main() {
             Err(_) => continue,
         };
         let reply = match req.method {
-            Method::Init => Reply::ok(req.id, format!(r#"{{"ready":true,"ext":"devkit-build-native-145014"}}"#)),
+            Method::Init => Reply::ok(req.id, format!(r#"{{"ready":true,"ext":"devkit-build-native-325745"}}"#)),
             Method::Health => Reply::ok(req.id, "ok"),
             Method::Shutdown => {
                 let bytes = serde_json::to_vec(&Reply::ok(req.id, "bye")).unwrap();
@@ -45,7 +45,7 @@ fn handle_call(req: &Request, ws: &str, ext_id: &str) -> Reply {
     match params.tool.as_str() {
         "ping" => Reply::ok(
             req.id,
-            format!(r#"{{"ok":true,"ext":"devkit-build-native-145014","runtime_ext":"{ext_id}","ws":"{ws}","tier":"native"}}"#),
+            format!(r#"{{"ok":true,"ext":"devkit-build-native-325745","runtime_ext":"{ext_id}","ws":"{ws}","tier":"native"}}"#),
         ),
         other => Reply::err(req.id, format!("unknown tool: {other}")),
     }

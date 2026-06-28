@@ -15,11 +15,60 @@
 //! Each test uses a UNIQUE workspace id (in-process peers share a workspace's keyspace) and the
 //! multi-thread flavor (boots a Zenoh peer).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{history, post, replay_history, sync_channel, ChannelSync, Node, Role as NodeRole};
+use lb_bus::Bus;
+use lb_host::{
+    history, post, replay_history, sync_channel, ChannelSync, Node, Role as NodeRole, SidecarMap,
+};
 use lb_inbox::Item;
+use lb_mcp::Registry;
+use lb_runtime::Engine;
+use lb_store::Store;
+
+/// Build a node on an explicit `bus` + `role`. Same wiring as `Node::boot_as`, but we own the bus
+/// so edge and hub can be **point-to-point linked** over loopback TCP (see `linked_edge_and_hub`).
+/// Mirrors the direct-construction pattern in `cross_node_routing_test.rs` / `ext_publish_test.rs`
+/// — nothing mocked, just a real Zenoh peer whose endpoints we chose.
+async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
+    Node {
+        store: Store::memory().await.expect("in-mem store"),
+        bus,
+        engine: Engine::new().expect("runtime engine"),
+        registry: Arc::new(Registry::new()),
+        sidecars: Arc::new(SidecarMap::new()),
+        role,
+    }
+}
+
+/// Stand up an edge and a hub **explicitly linked over a loopback TCP endpoint** so discovery is
+/// deterministic regardless of how many other in-process peers are scouting concurrently. Without
+/// this, the pair relied on ambient multicast scouting which under a full parallel
+/// `cargo test --workspace` could stall past any timeout — the discovery half of the offline-sync
+/// flake (debugging/bus/routed-call-races-mesh-discovery.md is the sibling). The publisher-side
+/// subscription-readiness barrier in `replay_history` handles the *second* half (a live link but a
+/// not-yet-propagated subscription); both are needed for a non-flaky replay.
+async fn linked_edge_and_hub() -> (Node, Node) {
+    let port = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("grab a free loopback port");
+        probe.local_addr().expect("probe addr").port()
+    };
+    let endpoint = format!("tcp/127.0.0.1:{port}");
+
+    let hub_bus = Bus::peer_with(&[endpoint.clone()], &[])
+        .await
+        .expect("hub bus listens on the chosen endpoint");
+    let hub = node_on_bus(hub_bus, NodeRole::Hub).await;
+
+    let edge_bus = Bus::peer_with(&[], &[endpoint])
+        .await
+        .expect("edge bus connects to hub");
+    let edge = node_on_bus(edge_bus, NodeRole::Edge).await;
+
+    (edge, hub)
+}
 
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();
@@ -51,8 +100,7 @@ async fn drain(sync: &ChannelSync, n: usize) -> usize {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn offline_edge_writes_apply_idempotently_on_reconnect() {
     let ws = "sync-offline-reconnect";
-    let edge = Node::boot_as(NodeRole::Edge).await.expect("edge boots");
-    let hub = Node::boot_as(NodeRole::Hub).await.expect("hub boots");
+    let (edge, hub) = linked_edge_and_hub().await;
     let p = principal(ws, &["bus:chan/general:pub", "bus:chan/general:sub"]);
 
     // 1. OFFLINE: the edge posts three messages while the hub is NOT syncing yet. They persist
@@ -113,8 +161,7 @@ async fn replaying_the_same_items_again_does_not_duplicate() {
     // property that makes at-least-once delivery safe — a retried/duplicated replay can never
     // corrupt the merged history.
     let ws = "sync-idempotent-replay";
-    let edge = Node::boot_as(NodeRole::Edge).await.expect("edge boots");
-    let hub = Node::boot_as(NodeRole::Hub).await.expect("hub boots");
+    let (edge, hub) = linked_edge_and_hub().await;
     let p = principal(ws, &["bus:chan/general:pub", "bus:chan/general:sub"]);
 
     post(
@@ -161,8 +208,7 @@ async fn sync_never_crosses_the_workspace_wall() {
     // workspace-scoped, so the hub's ws_b sync subscription cannot match ws_a's replay keys.
     let ws_a = "sync-iso-a";
     let ws_b = "sync-iso-b";
-    let edge = Node::boot_as(NodeRole::Edge).await.expect("edge boots");
-    let hub = Node::boot_as(NodeRole::Hub).await.expect("hub boots");
+    let (edge, hub) = linked_edge_and_hub().await;
     let p_a = principal(ws_a, &["bus:chan/general:pub", "bus:chan/general:sub"]);
 
     // Hub syncs workspace B; edge posts + replays in workspace A.

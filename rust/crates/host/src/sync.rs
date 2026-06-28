@@ -19,7 +19,7 @@
 //! (§6.10) is the next step (still open in the inbox-outbox scope). For append-style channel
 //! items, persist-before-publish + idempotent apply + replay already gives at-least-once.
 
-use lb_bus::{subscribe, Bus, Subscription};
+use lb_bus::{await_subscriber, subscribe, Bus, Subscription};
 use lb_inbox::{list, record, Item};
 use lb_store::{Store, StoreError};
 
@@ -87,6 +87,20 @@ pub async fn replay_history(
 ) -> Result<usize, StoreError> {
     let items = list(store, ws, cid).await?;
     let count = items.len();
+
+    // Subscription-readiness barrier (the fix for the flaky offline-sync replay race,
+    // debugging/host-tools/offline-sync-replay-races-subscription.md). Zenoh pub/sub is
+    // fire-and-forget and a peer's subscription propagates asynchronously, so publishing the
+    // instant after a hub calls `sync_channel` can send before the hub's interest is live —
+    // the replayed items land on the floor and the hub applies 0. Wait until a matching
+    // subscriber for this channel is actually reachable before replaying. The barrier polls
+    // real `matching_status` (no sleep, no mock) and returns the instant a subscriber appears;
+    // if none ever subscribes it falls through after a deadline and we publish anyway (a replay
+    // to nobody is a harmless no-op — apply is idempotent on reconnect).
+    await_subscriber(bus, ws, &sub_key_for(cid))
+        .await
+        .map_err(|e| StoreError::Backend(format!("sync replay readiness: {e}")))?;
+
     for item in &items {
         let payload = serde_json::to_vec(item).map_err(|e| StoreError::Decode(e.to_string()))?;
         lb_bus::publish(

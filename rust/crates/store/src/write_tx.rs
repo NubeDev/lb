@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::open::{Store, StoreError};
 use crate::record::FIRST_REV;
+use crate::taint::mark_store_written;
 
 /// One record to upsert: its table, id, and host JSON value.
 pub struct Upsert<'a> {
@@ -55,5 +56,7 @@ pub async fn write_tx(
     .bind(("first", FIRST_REV))
     .await?
     .check()?;
+    // A two-record transaction also mutates the store (no-op outside a dispatch taint scope).
+    mark_store_written();
     Ok(())
 }

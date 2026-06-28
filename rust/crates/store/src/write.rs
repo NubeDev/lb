@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::open::{Store, StoreError};
 use crate::record::FIRST_REV;
+use crate::taint::mark_store_written;
 
 /// Upsert `value` at `table:id` in workspace `ws`, bumping the record's monotonic `rev`.
 pub async fn write(
@@ -39,5 +40,9 @@ pub async fn write(
     .bind(("first", FIRST_REV))
     .await?
     .check()?;
+    // Taint the in-flight dispatch (if any) as having mutated the store, so the undo seam can tell
+    // a non-capturable *mutation* (not-undoable) from a pure read (don't journal). No-op outside a
+    // taint scope, so the raw store path is unaffected.
+    mark_store_written();
     Ok(())
 }

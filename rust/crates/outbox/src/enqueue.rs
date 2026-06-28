@@ -10,7 +10,7 @@
 //!
 //! Raw verb — the host `workflow` service runs `caps::check` before this (capability-first §3.5).
 
-use lb_store::{write_tx, Store, StoreError, Upsert};
+use lb_store::{mark_outbox_reached, write_tx, Store, StoreError, Upsert};
 
 use super::model::Effect;
 use super::TABLE;
@@ -42,5 +42,11 @@ pub async fn enqueue(
             value: &effect_value,
         },
     )
-    .await
+    .await?;
+    // Taint the in-flight tool call: its transaction reached the outbox (irreversible motion,
+    // §6.10). The undo dispatch seam reads this to classify the action `irreversible` from what it
+    // actually did — derived, never trusted from a manifest (undo scope "runtime transaction
+    // taint"). A no-op outside a dispatch taint scope, so non-dispatch callers are unaffected.
+    mark_outbox_reached();
+    Ok(())
 }

@@ -23,11 +23,11 @@ impl exports::lazybones::ext::tool::Guest for Extension {
         _input_json: String,
     ) -> Result<String, exports::lazybones::ext::tool::ToolError> {
         use exports::lazybones::ext::tool::ToolError;
-        lazybones::ext::host::log(&format!("devkit-build-wasm-85938.{name} called"));
+        lazybones::ext::host::log(&format!("devkit-build-wasm-325745.{name} called"));
         match name.as_str() {
             "ping" => serde_json::to_string(&PingOut {
                 ok: true,
-                ext: "devkit-build-wasm-85938",
+                ext: "devkit-build-wasm-325745",
                 tier: "wasm",
             })
             .map_err(|e| ToolError::Failed(e.to_string())),
