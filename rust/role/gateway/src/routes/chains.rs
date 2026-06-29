@@ -24,7 +24,9 @@ pub async fn list_chains(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     call(&gw, &p, "chains.list", &json!({})).await
 }
 
@@ -34,7 +36,9 @@ pub async fn get_chain(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     call(&gw, &p, "chains.get", &json!({ "id": id })).await
 }
 
@@ -46,7 +50,9 @@ pub async fn save_chain(
     headers: HeaderMap,
     Json(mut body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     // The `Chain` shape carries `workspace`; set it from the token so the body never spoofs it (§7).
     if let Some(obj) = body.as_object_mut() {
         obj.insert("workspace".into(), Value::String(p.ws().to_string()));
@@ -60,7 +66,9 @@ pub async fn delete_chain(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let _ = call(&gw, &p, "chains.delete", &json!({ "id": id })).await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -80,7 +88,9 @@ pub async fn run_chain(
     Path(id): Path<String>,
     Json(body): Json<RunChain>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let input = json!({ "chain_id": id, "params": body.params, "ts": gw.now });
     call(&gw, &p, "chains.run", &input).await
 }
@@ -92,7 +102,9 @@ pub async fn get_chain_run(
     headers: HeaderMap,
     Path((id, run_id)): Path<(String, String)>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     call(
         &gw,
         &p,

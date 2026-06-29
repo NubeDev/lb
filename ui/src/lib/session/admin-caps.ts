@@ -61,6 +61,9 @@ export const CAP = {
   rulesRun: "mcp:rules.run:call",
   chainsGet: "mcp:chains.get:call",
   datasourceList: "mcp:datasource.list:call",
+  // api-keys (api-keys scope): the machine-credential management verb gate. The tab shows for a
+  // session holding `apikey.manage`; the gateway re-checks every verb server-side regardless.
+  apikeyManage: "mcp:apikey.manage:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */
@@ -71,6 +74,7 @@ export const ADMIN_SECTION_CAPS: string[] = [
   CAP.workspaceDelete,
   CAP.extList,
   CAP.devkitTemplates,
+  CAP.apikeyManage,
 ];
 
 /** Does `caps` include `cap`? The single cap-check the UI uses to gate a control's display. */

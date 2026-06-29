@@ -9,12 +9,13 @@ import { useState } from "react";
 import { Shield } from "lucide-react";
 
 import { CAP, hasCap } from "@/lib/session";
+import { ApiKeysAdmin } from "./ApiKeysAdmin";
 import { PeopleAdmin } from "./PeopleAdmin";
 import { TeamsAdmin } from "./TeamsAdmin";
 import { RolesAdmin } from "./RolesAdmin";
 import { WorkspacesAdmin } from "./WorkspacesAdmin";
 
-type Tab = "people" | "teams" | "roles" | "workspaces";
+type Tab = "people" | "teams" | "roles" | "workspaces" | "apikeys";
 
 interface Props {
   ws: string;
@@ -28,6 +29,7 @@ export function AdminView({ ws, caps }: Props) {
     { key: "teams", label: "Teams", show: hasCap(caps, CAP.teamsManage) },
     { key: "roles", label: "Roles", show: hasCap(caps, CAP.grantsAssign) },
     { key: "workspaces", label: "Workspaces", show: hasCap(caps, CAP.workspaceDelete) },
+    { key: "apikeys", label: "API Keys", show: hasCap(caps, CAP.apikeyManage) },
   ];
   const visible = tabs.filter((t) => t.show);
   const [tab, setTab] = useState<Tab>(visible[0]?.key ?? "people");
@@ -71,6 +73,7 @@ export function AdminView({ ws, caps }: Props) {
         {active === "teams" && <TeamsAdmin ws={ws} />}
         {active === "roles" && <RolesAdmin ws={ws} caps={caps} />}
         {active === "workspaces" && <WorkspacesAdmin ws={ws} />}
+        {active === "apikeys" && <ApiKeysAdmin ws={ws} />}
       </div>
     </div>
   );

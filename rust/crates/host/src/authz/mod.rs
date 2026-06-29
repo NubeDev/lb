@@ -20,6 +20,7 @@ mod tool;
 
 pub use error::AuthzError;
 pub use grants::{grants_assign, grants_list, grants_revoke};
+pub use hold::holds_cap;
 pub use roles::{roles_define, roles_list};
 pub use teams::{teams_create, teams_list};
 pub use tool::call_authz_tool;

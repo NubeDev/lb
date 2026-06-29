@@ -24,7 +24,9 @@ pub async fn rename_workspace(
     Path(ws): Path<String>,
     Json(body): Json<RenameWorkspace>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::workspace_rename(&gw.node.store, &p, &ws, &body.name, gw.now)
         .await
         .map_err(forbid)?;
@@ -37,7 +39,9 @@ pub async fn archive_workspace(
     headers: HeaderMap,
     Path(ws): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::workspace_delete(&gw.node.store, &p, &ws)
         .await
         .map_err(forbid)?;
@@ -57,7 +61,9 @@ pub async fn purge_workspace(
     Path(ws): Path<String>,
     Json(body): Json<PurgeWorkspace>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::workspace_purge(&gw.node.store, &p, &ws, &body.confirm)
         .await
         .map_err(forbid)?;

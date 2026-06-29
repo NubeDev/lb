@@ -167,6 +167,30 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { name, caps } = args as { name: string; caps: string[] };
       return postJson<T>(`${base}/admin/roles`, { name, caps });
     }
+    case "apikey_list":
+      return getJson<T>(`${base}/admin/apikeys`);
+    case "apikey_create": {
+      const { label, kind, role, caps, expires_at } = args as {
+        label: string;
+        kind?: string;
+        role?: string;
+        caps?: string[];
+        expires_at?: number;
+      };
+      return postJson<T>(`${base}/admin/apikeys`, { label, kind, role, caps, expires_at });
+    }
+    case "apikey_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/admin/apikeys/${enc(id)}`);
+    }
+    case "apikey_revoke": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/admin/apikeys/${enc(id)}/revoke`, {});
+    }
+    case "apikey_rotate": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/admin/apikeys/${enc(id)}/rotate`, {});
+    }
 
     // ── extension lifecycle (lifecycle-management scope): the browser's `ext.*` surface, finally
     //    reachable over the gateway (was Tauri-desktop-only → `unknown command` in the browser). ──

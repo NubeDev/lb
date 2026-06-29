@@ -18,7 +18,9 @@ pub async fn list_extensions(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ExtRow>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let rows = lb_host::ext_list(&gw.node, &p, p.ws())
         .await
         .map_err(forbid)?;
@@ -31,7 +33,9 @@ pub async fn enable_extension(
     headers: HeaderMap,
     Path(ext): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::ext_enable(&gw.node, &p, p.ws(), &ext, gw.now)
         .await
         .map_err(forbid)?;
@@ -44,7 +48,9 @@ pub async fn disable_extension(
     headers: HeaderMap,
     Path(ext): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::ext_disable(&gw.node, &p, p.ws(), &ext, gw.now)
         .await
         .map_err(forbid)?;
@@ -57,7 +63,9 @@ pub async fn uninstall_extension(
     headers: HeaderMap,
     Path(ext): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::ext_uninstall(&gw.node, &p, p.ws(), &ext, gw.now)
         .await
         .map_err(forbid)?;
@@ -75,7 +83,9 @@ pub async fn publish_extension(
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let publish = publish_body(body, &gw.trusted)?;
     lb_host::ext_publish(
         &gw.node,

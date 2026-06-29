@@ -33,7 +33,9 @@ pub async fn run_rule(
     headers: HeaderMap,
     Json(body): Json<RunRule>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let mut input = json!({});
     if let Some(b) = body.body {
         input["body"] = Value::String(b);
@@ -64,7 +66,9 @@ pub async fn save_rule(
     headers: HeaderMap,
     Json(body): Json<SaveRule>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let mut input = json!({ "id": body.id, "body": body.body });
     if let Some(name) = body.name {
         input["name"] = Value::String(name);
@@ -81,7 +85,9 @@ pub async fn get_rule(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     call(&gw, &p, "rules.get", &json!({ "id": id })).await
 }
 
@@ -90,7 +96,9 @@ pub async fn list_rules(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     call(&gw, &p, "rules.list", &json!({})).await
 }
 
@@ -100,7 +108,9 @@ pub async fn delete_rule(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let _ = call(&gw, &p, "rules.delete", &json!({ "id": id })).await?;
     Ok(StatusCode::NO_CONTENT)
 }

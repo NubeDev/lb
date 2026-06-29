@@ -18,7 +18,9 @@ pub async fn list_inbox(
     headers: HeaderMap,
     Path(channel): Path<String>,
 ) -> Result<Json<Vec<Item>>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let items = lb_host::list_inbox(&gw.node.store, &principal, principal.ws(), &channel)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
@@ -39,7 +41,9 @@ pub async fn resolve_inbox(
     Path(item): Path<String>,
     Json(body): Json<ResolveInbox>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::resolve_inbox(
         &gw.node.store,
         &principal,

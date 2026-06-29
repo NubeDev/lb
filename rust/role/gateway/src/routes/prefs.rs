@@ -30,7 +30,9 @@ pub async fn get_prefs(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let prefs = prefs_get(&gw.node.store, &p, p.ws())
         .await
         .map_err(svc_status)?;
@@ -43,7 +45,9 @@ pub async fn set_prefs(
     headers: HeaderMap,
     Json(patch): Json<Prefs>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     prefs_set(&gw.node.store, &p, p.ws(), &patch)
         .await
         .map_err(svc_status)?;
@@ -63,7 +67,9 @@ pub async fn resolve_prefs(
     headers: HeaderMap,
     Json(body): Json<ResolveBody>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let resolved = prefs_resolve(&gw.node.store, &p, p.ws(), body.r#override)
         .await
         .map_err(svc_status)?;
@@ -76,7 +82,9 @@ pub async fn set_default_prefs(
     headers: HeaderMap,
     Json(patch): Json<Prefs>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     prefs_set_default(&gw.node.store, &p, p.ws(), &patch)
         .await
         .map_err(svc_status)?;
@@ -89,7 +97,7 @@ pub async fn format_datetime(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    util(&gw, &headers, "format.datetime", body)
+    util(&gw, &headers, "format.datetime", body).await
 }
 
 /// `POST /format/number`.
@@ -98,7 +106,7 @@ pub async fn format_number(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    util(&gw, &headers, "format.number", body)
+    util(&gw, &headers, "format.number", body).await
 }
 
 /// `POST /format/quantity` — the chart-formatting bridge.
@@ -107,7 +115,7 @@ pub async fn format_quantity(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    util(&gw, &headers, "format.quantity", body)
+    util(&gw, &headers, "format.quantity", body).await
 }
 
 /// `POST /convert/unit` — raw same-dimension conversion.
@@ -116,18 +124,20 @@ pub async fn convert_unit(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    util(&gw, &headers, "convert.unit", body)
+    util(&gw, &headers, "convert.unit", body).await
 }
 
 /// Shared dispatch for the grant-free utility tier: authenticate (identity only), then call the
 /// pure host formatter. A bad input is a 400; there is no capability to deny.
-fn util(
+async fn util(
     gw: &Gateway,
     headers: &HeaderMap,
     verb: &str,
     body: Value,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    authenticate(gw, headers).map_err(|e| e.into_response())?;
+    authenticate(gw, headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let out = lb_host::call_format_tool(verb, &body).map_err(tool_status)?;
     Ok(Json(out))
 }

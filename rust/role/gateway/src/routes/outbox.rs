@@ -16,7 +16,9 @@ pub async fn get_outbox_status(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<OutboxStatus>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let status = lb_host::outbox_status(&gw.node.store, &principal, principal.ws())
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;

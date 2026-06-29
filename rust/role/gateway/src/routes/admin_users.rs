@@ -17,7 +17,9 @@ pub async fn list_users(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<UserView>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let users = lb_host::user_list(&gw.node.store, &p, p.ws())
         .await
         .map_err(forbid)?;
@@ -38,7 +40,9 @@ pub async fn create_user(
     headers: HeaderMap,
     Json(body): Json<CreateUser>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let role = body.role.as_deref().unwrap_or("member");
     lb_host::user_create(&gw.node.store, &p, p.ws(), &body.user, role, "dev", gw.now)
         .await
@@ -52,7 +56,9 @@ pub async fn disable_user(
     headers: HeaderMap,
     Path(user): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::user_disable(&gw.node.store, &p, p.ws(), &user)
         .await
         .map_err(forbid)?;
@@ -65,7 +71,9 @@ pub async fn enable_user(
     headers: HeaderMap,
     Path(user): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::user_enable(&gw.node.store, &p, p.ws(), &user)
         .await
         .map_err(forbid)?;
@@ -78,7 +86,9 @@ pub async fn delete_user(
     headers: HeaderMap,
     Path(user): Path<String>,
 ) -> Result<Json<usize>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let revoked = lb_host::user_delete(&gw.node.store, &p, p.ws(), &user)
         .await
         .map_err(forbid)?;

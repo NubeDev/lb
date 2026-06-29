@@ -35,7 +35,9 @@ pub async fn put_doc(
     headers: HeaderMap,
     Json(body): Json<PutDoc>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let d = lb_host::put_doc(
         &gw.node.store,
         &p,
@@ -55,7 +57,9 @@ pub async fn list_docs(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Value>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let docs = lb_host::list_docs(&gw.node.store, &p, p.ws())
         .await
         .map_err(asset_status)?;
@@ -73,7 +77,9 @@ pub async fn get_doc(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Doc>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let d = lb_host::get_doc(&gw.node.store, &p, p.ws(), &id)
         .await
         .map_err(asset_status)?;
@@ -93,7 +99,9 @@ pub async fn share_doc(
     Path(id): Path<String>,
     Json(body): Json<ShareDoc>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::share_doc(&gw.node.store, &p, p.ws(), &id, &body.team)
         .await
         .map_err(asset_status)?;
@@ -113,7 +121,9 @@ pub async fn link_doc(
     Path(id): Path<String>,
     Json(body): Json<LinkDoc>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::link_doc(&gw.node.store, &p, p.ws(), &id, &body.channel)
         .await
         .map_err(asset_status)?;
@@ -136,7 +146,9 @@ pub async fn put_skill(
     headers: HeaderMap,
     Json(body): Json<PutSkill>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let s = lb_host::put_skill(
         &gw.node.store,
         &p,
@@ -158,7 +170,9 @@ pub async fn grant_skill(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::grant_skill(&gw.node.store, &p, p.ws(), &id)
         .await
         .map_err(asset_status)?;
@@ -178,7 +192,9 @@ pub async fn load_skill(
     Path(id): Path<String>,
     axum::extract::Query(q): axum::extract::Query<LoadSkillQuery>,
 ) -> Result<Json<Skill>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let s = lb_host::load_skill(&gw.node.store, &p, p.ws(), &id, q.version.as_deref())
         .await
         .map_err(asset_status)?;

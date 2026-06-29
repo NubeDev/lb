@@ -33,23 +33,29 @@ pub async fn resolve_caps(store: &Store, ws: &str, user: &str) -> Result<Vec<Str
     let mut caps: BTreeSet<String> = BTreeSet::new();
 
     // Direct user grants (+ any roles they name).
-    add_subject_caps(store, ws, &Subject::User(user.to_string()), &mut caps).await?;
+    resolve_subject_caps(store, ws, &Subject::User(user.to_string()), &mut caps).await?;
 
     // Team-inherited: for every team the user is a member of, fold the team's grants + roles.
     for team in team_list(store, ws).await? {
         let members = list_related(store, ws, MEMBER, &team.team).await?;
         if members.iter().any(|m| m == user) {
-            add_subject_caps(store, ws, &Subject::Team(team.team.clone()), &mut caps).await?;
+            resolve_subject_caps(store, ws, &Subject::Team(team.team.clone()), &mut caps).await?;
         }
     }
 
     Ok(caps.into_iter().collect())
 }
 
-/// Fold `subject`'s direct grants into `caps`, expanding any `role:<name>` grant into that role's
-/// bundled caps. Role caps are themselves plain cap strings (a role cannot name another role here —
-/// no recursive role nesting, which also bounds the expansion).
-async fn add_subject_caps(
+/// Resolve an arbitrary `subject`'s **direct** caps in workspace `ws` — direct grants plus the
+/// expansion of any `role:<name>` grant into that role's bundled caps — into `caps` (api-keys
+/// scope). This is the generalized inner of [`resolve_caps`]: a user folds this for itself AND its
+/// teams (team membership is a *user* concept); an API key (`Subject::Key`) calls this directly — it
+/// has direct grants + roles but **no team-membership edge** (a key joins no teams in v1).
+///
+/// **Why a key must call THIS and not `resolve_caps(&str)`:** `resolve_caps` wraps its `user` arg in
+/// `Subject::User`, so passing `"key:…"` would build `Subject::User("key:…")` → resolve to **zero**
+/// caps → silently deny everything. A key passes its own `Subject::Key(id)` here.
+pub async fn resolve_subject_caps(
     store: &Store,
     ws: &str,
     subject: &Subject,

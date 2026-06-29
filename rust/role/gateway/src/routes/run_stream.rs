@@ -33,7 +33,9 @@ pub async fn run_stream(
     Path(job): Path<String>,
     Query(auth): Query<StreamAuth>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    let principal = verify_token(&gw, &auth.token).map_err(|e| e.into_response())?;
+    let principal = verify_token(&gw, &auth.token)
+        .await
+        .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
 
     // Authorize + read the snapshot + declare the live feed up front (workspace-first). A denial here

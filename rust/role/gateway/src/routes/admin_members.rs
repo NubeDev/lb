@@ -14,7 +14,9 @@ pub async fn remove_team_member(
     headers: HeaderMap,
     Path((team, user)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::remove_member(&gw.node.store, &p, p.ws(), &team, &user)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;

@@ -34,7 +34,9 @@ pub async fn channel_stream(
     Path(cid): Path<String>,
     Query(auth): Query<StreamAuth>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    let principal = verify_token(&gw, &auth.token).map_err(|e| e.into_response())?;
+    let principal = verify_token(&gw, &auth.token)
+        .await
+        .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
 
     // Authorize + declare both feeds up front (workspace-first). A denial here is a 403, before

@@ -47,4 +47,18 @@ describe("AdminView cap-gated tab visibility (real gateway)", () => {
     expect(screen.getByRole("tab", { name: "Roles" })).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "People" })).not.toBeInTheDocument();
   });
+
+  it("the API Keys tab is gated on apikey.manage (hidden without it)", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // A session with only workspace.delete — no apikey.manage → API Keys hidden.
+    render(<AdminView ws={ws} caps={[CAP.workspaceDelete]} />);
+    expect(screen.queryByRole("tab", { name: "API Keys" })).not.toBeInTheDocument();
+    // With apikey.manage it shows.
+    const ws2 = nextWs();
+    await signInReal("user:ada", ws2);
+    render(<AdminView ws={ws2} caps={[CAP.apikeyManage]} />);
+    expect(screen.getByRole("tab", { name: "API Keys" })).toBeInTheDocument();
+  });
 });
+

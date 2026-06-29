@@ -9,6 +9,7 @@ use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
 use thiserror::Error;
 
+use crate::apikey::ApiKeyCache;
 use crate::native::SidecarMap;
 use crate::role::Role;
 
@@ -37,6 +38,10 @@ pub struct Node {
     /// Runtime-only — the PID is motion; the durable truth is the `Install` + `native_status`
     /// records. Shared (`Arc`) like `registry` so the native service drives it with `&Node`.
     pub sidecars: Arc<SidecarMap>,
+    /// The API-key verification cache (api-keys scope) — a small hash→`Principal` cache the auth
+    /// path reads and `revoke`/`rotate` bust. Shared so the gateway auth path and the management
+    /// verbs see one cache; a revoke bites on this node's next request (instant local revoke).
+    pub apikeys: Arc<ApiKeyCache>,
     pub role: Role,
 }
 
@@ -59,6 +64,7 @@ impl Node {
             engine,
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
+            apikeys: Arc::new(ApiKeyCache::new()),
             role: Role::Solo,
         })
     }
@@ -76,6 +82,7 @@ impl Node {
             engine,
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
+            apikeys: Arc::new(ApiKeyCache::new()),
             role,
         })
     }

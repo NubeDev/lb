@@ -206,6 +206,20 @@ fn member_caps() -> Vec<String> {
         "store:doc/*:write",
         "store:skill/*:read",
         "store:skill/*:write",
+        // api-keys scope: the management verb gate, plus the built-in role cap bundles. The dev admin
+        // HOLDS the read-only/read-write cap sets so the no-widening guard lets it mint keys under
+        // either built-in role (a key created by this admin never widens beyond it). The write role's
+        // caps are action-named (not `*.*`) so a data key can never reach `apikey.manage`.
+        "mcp:apikey.manage:call",
+        "store:*:read",
+        "store:*:write",
+        "mcp:*.get:call",
+        "mcp:*.list:call",
+        "mcp:*.write:call",
+        "mcp:*.create:call",
+        "mcp:*.update:call",
+        "mcp:*.delete:call",
+        "mcp:*.post:call",
     ]
     .iter()
     .map(|s| s.to_string())

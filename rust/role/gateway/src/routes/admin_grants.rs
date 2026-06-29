@@ -24,7 +24,9 @@ pub async fn list_grants(
     headers: HeaderMap,
     Query(q): Query<SubjectQuery>,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let subject = parse_subject(&q.subject)?;
     let caps = lb_host::grants_list(&gw.node.store, &p, p.ws(), &subject)
         .await
@@ -37,7 +39,9 @@ pub async fn list_roles(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<AuthzRole>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let roles = lb_host::roles_list(&gw.node.store, &p, p.ws())
         .await
         .map_err(forbid)?;
@@ -58,7 +62,9 @@ pub async fn define_role(
     headers: HeaderMap,
     Json(body): Json<RoleBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::roles_define(&gw.node.store, &p, p.ws(), &body.name, &body.caps)
         .await
         .map_err(forbid)?;
@@ -78,7 +84,9 @@ pub async fn assign_grant(
     headers: HeaderMap,
     Json(body): Json<GrantBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
     lb_host::grants_assign(&gw.node.store, &p, p.ws(), &subject, &body.cap)
         .await
@@ -92,7 +100,9 @@ pub async fn revoke_grant(
     headers: HeaderMap,
     Json(body): Json<GrantBody>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
     lb_host::grants_revoke(&gw.node.store, &p, p.ws(), &subject, &body.cap)
         .await

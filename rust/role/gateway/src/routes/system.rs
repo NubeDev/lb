@@ -22,7 +22,9 @@ pub async fn system_overview(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<SystemOverview>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let ov = lb_host::system_overview(gw.node.as_ref(), &p, p.ws())
         .await
         .map_err(system_status)?;
@@ -34,7 +36,9 @@ pub async fn system_topology(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<SystemTopology>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let topo = lb_host::system_topology(gw.node.as_ref(), &p, p.ws())
         .await
         .map_err(system_status)?;
@@ -49,7 +53,9 @@ pub async fn system_subsystem(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<SubsystemDetail>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let detail = lb_host::system_subsystem(gw.node.as_ref(), &p, p.ws(), &id)
         .await
         .map_err(system_status)?;
@@ -63,7 +69,9 @@ pub async fn system_tools(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<SystemTools>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let tools = lb_host::system_tools(gw.node.as_ref(), &p, p.ws())
         .await
         .map_err(system_status)?;
@@ -77,7 +85,9 @@ pub async fn system_acp(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<AcpInfo>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let info = lb_host::system_acp(&p, p.ws())
         .await
         .map_err(system_status)?;

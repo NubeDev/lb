@@ -10,6 +10,7 @@
 resolver = "2"
 members = [
     "crates/assets",
+    "crates/apikey",
     "crates/auth",
     "crates/authz",
     "crates/bus",
@@ -61,6 +62,7 @@ rust-version = "1.90"
 [workspace.dependencies]
 # core platform crates (path deps; the §9 crate map)
 lb-assets = { path = "crates/assets" }
+lb-apikey = { path = "crates/apikey" }
 lb-auth = { path = "crates/auth" }
 lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }

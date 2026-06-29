@@ -35,7 +35,9 @@ pub async fn write_samples(
     headers: HeaderMap,
     Json(body): Json<WriteSamples>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     // Keep a stamped copy to publish as live motion after the durable write — the producer is the
     // authenticated principal (matching what `ingest_write` stamps), so a live frame is consistent
     // with the committed `series` row.
@@ -79,7 +81,9 @@ pub async fn list_series(
     headers: HeaderMap,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let names = lb_host::series_list(
         &gw.node.store,
         &p,
@@ -112,7 +116,9 @@ pub async fn find_series(
     headers: HeaderMap,
     Json(body): Json<FindFacets>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let facets: Vec<lb_host::Facet> = body
         .facets
         .into_iter()
@@ -133,7 +139,9 @@ pub async fn latest_sample(
     headers: HeaderMap,
     Path(series): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let last = lb_host::series_latest_value(&gw.node.store, &p, p.ws(), &series)
         .await
         .map_err(ingest_status)?;
@@ -155,7 +163,9 @@ pub async fn read_samples(
     Path(series): Path<String>,
     Query(q): Query<ReadQuery>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let rows = lb_host::series_read_range(&gw.node.store, &p, p.ws(), &series, q.from, q.to)
         .await
         .map_err(ingest_status)?;

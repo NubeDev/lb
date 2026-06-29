@@ -17,6 +17,12 @@ use lb_auth::SigningKey;
 use lb_host::Node;
 use lb_registry::TrustedKeys;
 
+/// The env var a deployment sets to the API-key hash pepper (api-keys scope). The pepper keys the
+/// HMAC over a key's secret field; it lives in env (a node secret), NEVER in the DB or a committed
+/// constant. Unset in dev → a per-process random pepper (so API keys work locally but do not survive
+/// a restart, like the dev-login). Tests inject a known pepper via [`Gateway::with_pepper`].
+pub const PEPPER_ENV: &str = "LB_APIKEY_PEPPER";
+
 /// The live node + the node's token-signing key, shared across handlers (`Arc` so axum can clone
 /// it into each request). The key never leaves the node — the UI only ever holds the *issued*
 /// token (scope: "Secrets").
@@ -39,6 +45,11 @@ pub struct Gateway {
     /// the page; data access is gated at the host bridge), so it is served like any web asset. Seeded
     /// from `LB_EXT_UI_DIR` (default `extensions-ui` beside the cwd); tests point it at a fixture dir.
     pub ext_ui_dir: Arc<std::path::PathBuf>,
+    /// The API-key hash pepper (`HMAC-SHA256(pepper, secret_field)`), api-keys scope. A node secret
+    /// from `LB_APIKEY_PEPPER` (never the DB, never committed); the dev default is a per-process
+    /// random pepper so API keys work locally without a configured one. Held behind `Arc` so axum
+    /// clones it cheaply per request.
+    pub pepper: Arc<[u8]>,
 }
 
 impl Gateway {
@@ -52,7 +63,7 @@ impl Gateway {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        Ok(Self::new(Arc::new(node), SigningKey::generate(), now))
+        Ok(Self::new(Arc::new(node), SigningKey::generate(), now).with_pepper_from_env())
     }
 
     /// Build a gateway around an existing node + an explicit signing key + clock. Lets the tests
@@ -71,6 +82,8 @@ impl Gateway {
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|_| std::path::PathBuf::from("extensions-ui")),
             ),
+            // Dev default: a per-process random pepper (no committed constant). Tests override.
+            pepper: Arc::from(random_pepper().as_slice()),
         }
     }
 
@@ -87,4 +100,28 @@ impl Gateway {
         self.trusted = Arc::new(trusted);
         self
     }
+
+    /// Set a known API-key pepper (tests). Production reads it from `LB_APIKEY_PEPPER` in [`boot`].
+    pub fn with_pepper(mut self, pepper: impl Into<Arc<[u8]>>) -> Self {
+        self.pepper = pepper.into();
+        self
+    }
+
+    /// Read the API-key pepper from `LB_APIKEY_PEPPER`, or fall back to a per-process random pepper
+    /// (dev — API keys work locally but don't survive a restart). Builder-style, used by [`boot`].
+    fn with_pepper_from_env(mut self) -> Self {
+        match std::env::var(PEPPER_ENV) {
+            Ok(p) if !p.is_empty() => self.pepper = Arc::from(p.into_bytes().into_boxed_slice()),
+            _ => self.pepper = Arc::from(random_pepper().as_slice()),
+        }
+        self
+    }
+}
+
+/// 32 random bytes for the dev-default pepper (`rand`'s thread CSPRNG).
+fn random_pepper() -> [u8; 32] {
+    use rand::RngCore;
+    let mut buf = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut buf);
+    buf
 }
