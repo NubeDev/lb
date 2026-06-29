@@ -23,7 +23,6 @@ import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
-import { MembersView } from "@/features/members";
 import { RulesView } from "@/features/rules";
 import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
@@ -121,7 +120,6 @@ const routeTree = rootRoute.addChildren([
   tenantRoute.addChildren([
     tenantIndexRoute,
     channelsRoute,
-    coreRoute("/members", "members", () => <Members />),
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/chains", "chains", () => <Chains />),
@@ -230,10 +228,6 @@ function ExtRoute() {
   }
   if (!page) return <DefaultRedirect />;
   return <ExtHost ext={page.ext} ui={page.ui} workspace={ctx.workspace} />;
-}
-
-function Members() {
-  return <MembersView ws={useAppRoutingContext().workspace} />;
 }
 
 function Rules() {

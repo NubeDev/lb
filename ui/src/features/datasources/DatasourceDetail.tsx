@@ -46,7 +46,7 @@ type Mode = "builder" | "sql";
 const PREVIEW_LIMIT = 100;
 
 export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
-  const q = useDatasourceQuery(source.name, source.kind);
+  const q = useDatasourceQuery(source.name);
   const [mode, setMode] = useState<Mode>("builder");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [sql, setSql] = useState("");

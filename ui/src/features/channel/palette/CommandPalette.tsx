@@ -258,7 +258,6 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
       {tool && isSqlArg && (
         <SqlArg
           source={source}
-          kind="sqlite"
           value={sql}
           onChange={setSql}
           onSubmit={() => void submit()}

@@ -48,7 +48,12 @@ required-features = ["test-harness"]
 [dev-dependencies]
 lb-outbox.workspace = true
 lb-registry.workspace = true
+lb-supervisor.workspace = true
 ed25519-dalek.workspace = true
+# The federation happy-path gateway test seeds a REAL on-disk SQLite file with real rows (the
+# sanctioned sqlite test source — testing §0), then queries it through the real federation sidecar.
+# `bundled` compiles its own SQLite C (links via zigcc here) so no system sqlite/toolchain is needed.
+rusqlite = { version = "0.37", features = ["bundled"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }

@@ -18,7 +18,6 @@ import {
   Wrench,
   Send,
   Shield,
-  Users,
 } from "lucide-react";
 
 import {
@@ -40,7 +39,6 @@ import { ThemeSwitcher } from "@/features/theme";
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
   | "channels"
-  | "members"
   | "dashboards"
   | "rules"
   | "chains"
@@ -79,7 +77,6 @@ interface Props {
 
 const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "channels", icon: Hash, label: "Channels" },
-  { key: "members", icon: Users, label: "Members" },
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "rules", icon: ScrollText, label: "Rules" },
   { key: "chains", icon: GitBranch, label: "Chains" },

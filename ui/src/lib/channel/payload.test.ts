@@ -46,6 +46,16 @@ describe("parsePayload", () => {
     }
   });
 
+  it("a query_result with POSITIONAL array rows is zipped into keyed objects", () => {
+    const body = `{"kind":"query_result","source":"s","sql":"x","columns":["id","meter_id","name"],"rows":[["pt-001","meter-001","Energy kWh"],["pt-002","meter-001","Demand kW"]]}`;
+    const p = parsePayload(body);
+    if (p?.kind !== "query_result") throw new Error("expected query_result");
+    expect(p.rows).toEqual([
+      { id: "pt-001", meter_id: "meter-001", name: "Energy kWh" },
+      { id: "pt-002", meter_id: "meter-001", name: "Demand kW" },
+    ]);
+  });
+
   it("a query_error parses its message", () => {
     const p = parsePayload(`{"kind":"query_error","source":"s","sql":"x","error":"not permitted"}`);
     expect(p).toEqual({ kind: "query_error", source: "s", sql: "x", error: "not permitted" });

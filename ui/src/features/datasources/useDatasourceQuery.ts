@@ -1,53 +1,25 @@
 // The datasource query hook (datasources-ux scope) — the one place the detail page assembles table
-// discovery, column discovery, and ad-hoc query results from the real `federation.query` verb. No
-// fake/demo data — every call goes through the real `invoke` seam to the gateway/host sidecar. The
-// generated discovery SELECTs are IDENTIFIER-QUOTED (double quotes, embedded quotes escaped) so a
-// picked table name can't break out of the identifier; SELECT-only is also re-validated host-side.
-// One hook per file (FILE-LAYOUT).
+// discovery, column discovery, and ad-hoc query results. Table/column DISCOVERY goes through the
+// native `federation.schema` verb (NOT catalog SQL): the federation engine only registers the tables
+// a query references as DataFusion providers, so an `information_schema`/`pg_class` SELECT is
+// unplannable ("table not found"). Dialect knowledge lives backend-side in the sidecar — the UI must
+// not hand-write catalog SQL. Ad-hoc/preview queries still run through `federation.query`. Every call
+// goes through the real `invoke` seam to the gateway/host sidecar; no fake/demo data. One hook per
+// file (FILE-LAYOUT).
 
 import { useCallback, useState } from "react";
 
-import { runFederationQuery } from "@/lib/datasources";
+import {
+  describeTable as describeTableApi,
+  discoverTables as discoverTablesApi,
+  runFederationQuery,
+} from "@/lib/datasources";
 import type { DbColumn, DbTable, FederationQueryResult } from "@/lib/datasources";
 
 /** Quote a SQL identifier (double-quoted, with embedded `"` doubled) so a table name can never break
- *  out of the identifier position. Trusted shell code generating the discovery SELECTs — but quoted
- *  regardless, defense in depth (SELECT-only is re-validated host-side too). */
+ *  out of the identifier position in the preview SELECT (SELECT-only is re-validated host-side too). */
 function ident(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
-}
-
-/** The `SELECT` that lists user tables in the source, by kind. Postgres uses `information_schema`
- *  (+ a cheap `reltuples` estimate); sqlite uses `sqlite_master`. */
-function listTablesSql(kind: string): string {
-  if (kind === "sqlite") {
-    return (
-      "SELECT name AS name FROM sqlite_master " +
-      "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-    );
-  }
-  return (
-    "SELECT t.table_name AS name, COALESCE(c.reltuples::bigint, 0) AS rows " +
-    "FROM information_schema.tables t " +
-    "LEFT JOIN pg_class c ON c.relname = t.table_name " +
-    "WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE' " +
-    "ORDER BY t.table_name"
-  );
-}
-
-/** The `SELECT` that describes one table's columns, by kind. */
-function describeTableSql(kind: string, table: string): string {
-  if (kind === "sqlite") {
-    return (
-      `SELECT name AS name, type AS data_type, "notnull" = 0 AS nullable ` +
-      `FROM pragma_table_info(${ident(table)}) ORDER BY cid`
-    );
-  }
-  return (
-    "SELECT column_name AS name, data_type AS data_type, is_nullable = 'YES' AS nullable " +
-    `FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ${ident(table)} ` +
-    "ORDER BY ordinal_position"
-  );
 }
 
 /** A bounded `SELECT *` preview of one table — the no-SQL "just show me the rows" affordance. */
@@ -73,30 +45,9 @@ export interface DatasourceQuery {
   reset: () => void;
 }
 
-/** Map a federation row-set onto `DbTable[]` (tolerant of missing `rows`). */
-function toTables(rows: Record<string, unknown>[]): DbTable[] {
-  return rows.map((r) => {
-    const name = String(r.name ?? "");
-    const raw = r.rows;
-    return {
-      name,
-      rows: typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : undefined,
-    };
-  });
-}
-
-/** Map a federation row-set onto `DbColumn[]`. */
-function toColumns(rows: Record<string, unknown>[]): DbColumn[] {
-  return rows.map((r) => ({
-    name: String(r.name ?? ""),
-    dataType: String(r.data_type ?? ""),
-    nullable: Boolean(r.nullable),
-  }));
-}
-
-/** The hook. `source` is the registered datasource name (workspace-pinned host-side); `kind` selects
- *  the discovery SQL dialect (postgres vs sqlite). */
-export function useDatasourceQuery(source: string, kind: string): DatasourceQuery {
+/** The hook. `source` is the registered datasource name (workspace-pinned host-side). Discovery picks
+ *  no dialect: the backend `federation.schema` verb owns per-kind catalog access. */
+export function useDatasourceQuery(source: string): DatasourceQuery {
   const [tables, setTables] = useState<DbTable[] | null>(null);
   const [columns, setColumns] = useState<DbColumn[] | null>(null);
   const [result, setResult] = useState<FederationQueryResult | null>(null);
@@ -133,23 +84,31 @@ export function useDatasourceQuery(source: string, kind: string): DatasourceQuer
     setColumns(null);
     setResult(null);
     setLastSql(null);
-    await exec(
-      listTablesSql(kind),
-      (r) => setTables(toTables(r.rows)),
-      { keepResult: false },
-    );
-  }, [exec, kind]);
+    setLoading(true);
+    setError(null);
+    try {
+      setTables(await discoverTablesApi(source));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [source]);
 
   const describeTable = useCallback(
     async (table: string) => {
       setColumns(null);
-      await exec(
-        describeTableSql(kind, table),
-        (r) => setColumns(toColumns(r.rows)),
-        { keepResult: false },
-      );
+      setLoading(true);
+      setError(null);
+      try {
+        setColumns(await describeTableApi(source, table));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
     },
-    [exec, kind],
+    [source],
   );
 
   const previewTable = useCallback(

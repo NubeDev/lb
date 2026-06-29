@@ -51,7 +51,13 @@ pub async fn run_if_query(node: &Node, poster: &Principal, ws: &str, cid: &str, 
     let ts = item.ts.saturating_add(1);
     match run_query(node, poster, ws, &source, &sql).await {
         Ok((columns, rows, truncated)) => {
-            let chart = pick_chart(&columns, &rows);
+            // The sidecar returns rows as column-aligned ARRAYS (the `federation.query` wire shape);
+            // the chart picker keys cells by column NAME, so zip a keyed view of the (already-capped)
+            // rows just for picking. The PERSISTED payload keeps the compact array rows — the UI maps
+            // a chart series' field name back to its column index. Without this zip every result
+            // plotted as `chart: null` (the array cells never matched the picker's `row.get(col)`).
+            let keyed = keyed_rows(&columns, &rows);
+            let chart = pick_chart(&columns, &keyed);
             let body = result_body(&source, &sql, columns, rows, chart, truncated);
             let _ = post_worker_item(node, ws, cid, &item.id, body, ts).await;
         }
@@ -132,6 +138,24 @@ fn cap_result(columns: Vec<String>, mut rows: Vec<Value>) -> (Vec<String>, Vec<V
     (columns, rows, truncated)
 }
 
+/// Zip column-aligned ARRAY rows into JSON OBJECTS keyed by column name — the shape the chart
+/// picker reads (`row.get(col)`). The `federation.query` wire shape is `rows: [[c0, c1, …], …]`;
+/// the picker needs `{col0: c0, col1: c1, …}`. Pure, allocation-light, used only to feed the picker
+/// (the persisted payload keeps the compact arrays). A non-array row (defensive) is passed through
+/// as-is so a row that is already an object still works.
+fn keyed_rows(columns: &[String], rows: &[Value]) -> Vec<Value> {
+    rows.iter()
+        .map(|row| match row.as_array() {
+            Some(cells) => {
+                let obj: serde_json::Map<String, Value> =
+                    columns.iter().cloned().zip(cells.iter().cloned()).collect();
+                Value::Object(obj)
+            }
+            None => row.clone(),
+        })
+        .collect()
+}
+
 /// The serialized size of the result body for the byte cap check (the columns + rows envelope,
 /// without the chart — the chart is negligible and computed after capping).
 fn serialized_size(columns: &[String], rows: &[Value]) -> usize {
@@ -195,6 +219,31 @@ mod tests {
         let rows = vec![json!({"v": 1}), json!({"v": 2})];
         let (_, _, truncated) = cap_result(cols, rows);
         assert!(!truncated);
+    }
+
+    // Regression (debugging/channels/query-result-chart-always-null.md): `federation.query` returns
+    // rows as column-aligned ARRAYS, but the chart picker keys by column name. `keyed_rows` zips them
+    // so a temporal/numeric result actually plots; before this the picker saw array cells, matched
+    // nothing, and EVERY query_result came back `chart: null`.
+    #[test]
+    fn keyed_rows_zips_arrays_into_objects_so_the_picker_plots() {
+        let cols = vec!["day".to_string(), "signups".to_string()];
+        let rows = vec![
+            json!(["2024-01-01", 3]),
+            json!(["2024-01-02", 5]),
+            json!(["2024-01-03", 7]),
+        ];
+        let keyed = keyed_rows(&cols, &rows);
+        assert_eq!(keyed[0], json!({"day": "2024-01-01", "signups": 3}));
+        // The whole point: the picker now yields a chart (it returned None on the raw arrays).
+        assert!(
+            pick_chart(&cols, &rows).is_none(),
+            "raw array rows do not plot"
+        );
+        assert!(
+            pick_chart(&cols, &keyed).is_some(),
+            "keyed rows plot a chart"
+        );
     }
 
     #[test]

@@ -3,7 +3,7 @@
 - Date: 2026-06-29
 - Scope: ../../scope/channels/channels-command-palette-scope.md
 - Stage: post-S8 (channels surface; building on the shipped MCP bridge + capability system)
-- Status: in-progress
+- Status: done
 
 ## Goal
 
@@ -77,11 +77,34 @@ catalog surfaces no ws-A tool). Plus a `tools.catalog` unit (authorized subset +
 `*.gateway.test.tsx` (catalog from one fetch, 0ms open, keyboard round-trip, reduced palette for a
 no-cap principal).
 
-Green output: _pasted below once the backend test agent + UI test agent report._
+Green output:
 
 ```
-(cargo test -p lb-host / -p lb-role-gateway and pnpm test / pnpm test:gateway output here)
+$ cargo test -p lb-host --lib            # incl. tools::* + channel::query_worker units
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+$ cargo test -p lb-host --test tools_catalog_test
+test result: ok. 4 passed; 0 failed                       # authorized subset · deny · ws-isolation
+
+$ cargo test -p lb-role-gateway --test gateway_routes_test
+running 8 tests … test result: ok. 8 passed; 0 failed
+  # mcp_catalog_returns_ws_and_tools_for_a_holder_and_403s_without_the_cap
+  # mcp_catalog_is_capability_filtered_over_http  (+ the query_error round-trip + SSE)
+
+$ ( cd ui && npx tsc --noEmit )          # exit 0, clean
+$ ( cd ui && pnpm test )                 # Test Files 24 passed, Tests 167 passed (parsePalette.test.ts ×11)
+$ ( cd ui && pnpm test:gateway )         # Test Files 39 passed, Tests 175 passed
+  # CommandPalette.gateway.test.tsx ×6: catalog ONE fetch + 0ms open · capability-filtered
+  #   (two seeded principals — the no-cap one has NO /query, no existence leak) · keyboard
+  #   round-trip emits the structured payload · query_result table+chart · chart:null → table-only
+  #   · query_error → inline alert — all against the REAL spawned gateway, no fakes.
 ```
+
+The UI was found already built and correct against the Rust contract; this session audited it,
+verified every acceptance criterion is tested against the real gateway, and confirmed all green
+(no UI source changes were needed). The one backend gap closed this session is documented in the
+[query-charts session](channels-query-charts-session.md) (the happy-path query round-trip + the
+chart-row zip fix).
 
 ## Debugging
 

@@ -11,8 +11,6 @@ import { useSqlSchema } from "./useSqlSchema";
 interface Props {
   /** The chosen source name (its schema drives autocomplete); null disables suggestions. */
   source: string | null;
-  /** The source kind (postgres/sqlite) — selects the discovery dialect. */
-  kind: string;
   value: string;
   onChange: (sql: string) => void;
   /** Ctrl/⌘+Enter — submit the whole command. */
@@ -27,8 +25,8 @@ function trailingWord(sql: string): string {
   return m ? m[1] : "";
 }
 
-export function SqlArg({ source, kind, value, onChange, onSubmit, onCancel }: Props) {
-  const { tables, columns, ensureColumns } = useSqlSchema(source, kind);
+export function SqlArg({ source, value, onChange, onSubmit, onCancel }: Props) {
+  const { tables, columns, ensureColumns } = useSqlSchema(source);
   const [open, setOpen] = useState(true);
 
   // Candidates = every table + every already-discovered column, filtered by the trailing word.

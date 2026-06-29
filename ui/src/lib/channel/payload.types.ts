@@ -61,6 +61,22 @@ export type ItemPayload = QueryPayload | QueryResultPayload | QueryErrorPayload;
 
 const KINDS = new Set(["query", "query_result", "query_error"]);
 
+/** Detect whether a `query_result` carries POSITIONAL array rows (one value per column, in
+ *  `columns` order — the compact shape the worker PERSISTS) and zip them into the keyed objects the
+ *  renderers expect. Rows that are already keyed objects pass through untouched (so a hand-seeded
+ *  `query_result` with object rows still works). */
+function normalizeResultRows(payload: QueryResultPayload): void {
+  if (payload.rows.length === 0) return;
+  if (!Array.isArray(payload.rows[0])) return;
+  payload.rows = (payload.rows as unknown as unknown[][]).map((row) => {
+    const obj: Record<string, unknown> = {};
+    payload.columns.forEach((c, i) => {
+      obj[c] = row[i];
+    });
+    return obj;
+  });
+}
+
 /** Parse an item `body` into a kind-tagged payload, or `null` if it is chat (not JSON, or JSON
  *  without a recognized `kind`). Tolerant by design — mirrors the host's `parse_payload`. */
 export function parsePayload(body: string): ItemPayload | null {
@@ -73,7 +89,9 @@ export function parsePayload(body: string): ItemPayload | null {
   if (typeof value !== "object" || value === null) return null;
   const kind = (value as { kind?: unknown }).kind;
   if (typeof kind !== "string" || !KINDS.has(kind)) return null;
-  return value as ItemPayload;
+  const payload = value as ItemPayload;
+  if (payload.kind === "query_result") normalizeResultRows(payload);
+  return payload;
 }
 
 /** Encode a `query` request into the body string the channel `post` carries. The UI builds this —

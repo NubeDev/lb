@@ -7,6 +7,8 @@
 import type {
   AddDatasource,
   DatasourceSummary,
+  DbColumn,
+  DbTable,
   FederationQueryResult,
   ProbeResult,
 } from "./datasource.types";
@@ -56,6 +58,27 @@ export async function testDatasource(name: string): Promise<ProbeResult> {
   }
 }
 
+/** The raw `{columns, rows}` the sidecar returns. Rows are POSITIONAL arrays (one value per column,
+ *  in `columns` order) — NOT keyed objects — so callers must zip them against `columns` themselves. */
+interface RawQueryResult {
+  columns: string[];
+  rows: unknown[][];
+}
+
+/** Zip the sidecar's positional rows into the keyed `FederationQueryResult` the UI expects. */
+function toQueryResult(r: RawQueryResult): FederationQueryResult {
+  return {
+    columns: r.columns,
+    rows: r.rows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      r.columns.forEach((c, i) => {
+        obj[c] = row[i];
+      });
+      return obj;
+    }),
+  };
+}
+
 /** Run a read-only SELECT against the registered external `source` via the host-mediated `mcp/call`
  *  bridge → `federation.query`. SELECT-only is enforced host-side AND in the sidecar; the workspace
  *  + principal come from the session token (the wall, §7). Returns the sidecar's `{columns, rows}`. */
@@ -63,8 +86,38 @@ export function runFederationQuery(
   source: string,
   sql: string,
 ): Promise<FederationQueryResult> {
-  return invoke<FederationQueryResult>("mcp_call", {
+  return invoke<RawQueryResult>("mcp_call", {
     tool: "federation.query",
     args: { source, sql },
-  });
+  }).then(toQueryResult);
+}
+
+/** The sidecar's discovery wire shapes (snake_case `data_type`). */
+interface RawTables {
+  tables: { name: string; rows?: number }[];
+}
+interface RawColumns {
+  columns: { name: string; data_type: string; nullable: boolean }[];
+}
+
+/** List a source's user tables via the NATIVE `federation.schema` verb (no `table` arg). Discovery
+ *  must NOT go through `federation.query`: the engine only registers the tables a query references, so
+ *  an `information_schema`/`pg_class` catalog SELECT is unplannable ("table not found"). This reads the
+ *  source's real catalog through the sidecar. Authorized under the same read cap as a query. */
+export function discoverTables(source: string): Promise<DbTable[]> {
+  return invoke<RawTables>("mcp_call", {
+    tool: "federation.schema",
+    args: { source },
+  }).then((r) => r.tables.map((t) => ({ name: t.name, rows: t.rows })));
+}
+
+/** Describe one table's columns via the NATIVE `federation.schema` verb (with a `table` arg). Same
+ *  rationale as {@link discoverTables}: read the real Arrow schema, never `information_schema.columns`. */
+export function describeTable(source: string, table: string): Promise<DbColumn[]> {
+  return invoke<RawColumns>("mcp_call", {
+    tool: "federation.schema",
+    args: { source, table },
+  }).then((r) =>
+    r.columns.map((c) => ({ name: c.name, dataType: c.data_type, nullable: c.nullable })),
+  );
 }

@@ -3,7 +3,7 @@
 - Date: 2026-06-29
 - Scope: ../../scope/channels/channels-query-charts-scope.md
 - Stage: post-S8 (channels surface; builds on the shipped `federation.query` verb)
-- Status: in-progress
+- Status: done
 
 ## Goal
 
@@ -43,6 +43,14 @@ construction; no bus-redelivery dedup). It runs `federation.query` **under the p
 `POST /channels/{cid}/messages` route already calls `lb_host::post`, so the worker runs end to end
 over HTTP with no route change.
 
+**Chart-row zip fix** (`query_worker.rs::keyed_rows`, this final session) — `federation.query`
+returns `rows` as column-aligned **arrays** (`[[c0,c1,…],…]`), but `pick_chart` keys cells by column
+**name** (`row.get(col)`). The worker now zips a keyed view of the (already-capped) rows *just for
+the picker*; the persisted payload keeps the compact array rows (the UI maps a chart series' field
+name back to its column index). Without this, the happy-path round-trip showed every `query_result`
+coming back `chart:null` — the deny-path test never reached real rows, so the bug hid until the
+sqlite happy-path test ran. See Debugging.
+
 **UI**: result items render as cards in the channel view — chart-first with a ⊞ table toggle,
 `chart:null` → table-only, a "showing first N rows" caption when `truncated`, an inline human error
 on `query_error`. Shared TS types mirror the Rust payload + chart shapes. (Built this session — see
@@ -71,15 +79,59 @@ gate; pub-without-datasource-grant → opaque `query_error`; non-SELECT rejected
 federation path) and **workspace-isolation** (ws-B can't post into / read a ws-A channel; a ws-A
 source name from ws-B resolves to nothing). Plus the chart-picker unit (table-driven fixed row-sets,
 in `chart.rs`), the payload round-trip unit (`payload.rs`), the cap unit (`query_worker.rs`), and the
-real-gateway integration (post a `query` item → `query_result` in history AND over SSE), gated to
-SKIP cleanly when the federation sidecar can't build in the environment. UI `*.gateway.test.tsx`
-renders the query chip → result table + chart; `chart:null` → table-only; `query_error` → inline
-error.
+real-gateway integration. The **deny-path** round-trip lives in `gateway_routes_test.rs`
+(`posting_a_query_item_without_the_grant_…`); the **happy-path** round-trip (this session) is the new
+`gateway_query_test.rs`: it builds the sqlite-only federation sidecar
+(`FEDERATION_NO_POSTGRES=1 cargo build --release -p federation`), seeds a REAL on-disk SQLite file
+with real rows (a `daily(day, signups)` table via `rusqlite` bundled — no Docker/TLS toolchain),
+installs the sidecar + `datasource.add` of the sqlite source, posts a `kind:"query"` item over the
+real gateway, and asserts the `query_result` item carries `columns:["day","signups"]`, 4 rows, and a
+**non-null line chart**, AND that the result **streams live over SSE**. A second test covers the
+**workspace-isolation** query path: a ws-B poster naming a ws-A source resolves to nothing → an
+opaque `query_error`, and no ws-A column/value ever appears in ws-B history. Both SKIP cleanly (with
+a message) if the sidecar binary is absent. UI `CommandPalette.gateway.test.tsx` renders the query
+chip → result table + chart; `chart:null` → table-only; `query_error` → inline error.
 
-Green output: _pasted below once the backend test agent + UI test agent report._
+Green output (backend):
 
 ```
-(cargo test -p lb-host / -p lb-role-gateway and pnpm test / pnpm test:gateway output here)
+$ cargo test -p lb-role-gateway --test gateway_query_test --test gateway_routes_test
+running 2 tests
+test ws_b_cannot_query_a_ws_a_source_name ... ok
+test posting_a_query_item_round_trips_a_result_with_columns_rows_and_chart ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+running 8 tests
+test the_sse_stream_without_a_token_is_401 ... ok
+test mcp_catalog_is_capability_filtered_over_http ... ok
+test the_sse_stream_authenticates_by_query_token_and_pushes_a_live_message ... ok
+test posting_a_query_item_without_the_grant_round_trips_an_opaque_query_error ... ok
+test mcp_catalog_returns_ws_and_tools_for_a_holder_and_403s_without_the_cap ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+
+$ cargo test -p lb-host --lib       # incl. channel::query_worker::keyed_rows_… regression
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+$ cargo test -p lb-role-gateway      # whole gateway suite green (datasources, rules, prefs, …)
+test result: ok. (all gateway integration binaries pass)
+
+$ cargo build --workspace            # Finished `dev` profile … in 1m 05s
+$ cargo fmt                          # clean, no diff
+```
+
+Pre-existing, unrelated failures (NOT this slice): `lb-host`'s `fleet_monitor_test` (needs a
+prebuilt `fleet-monitor` binary) and `github_bridge_normalize_test` (missing prebuilt `.wasm`) —
+both fail only because an artifact isn't built, same class as noted in the task.
+
+Green output (UI — from the real spawned gateway harness):
+
+```
+$ npx tsc --noEmit            # exit 0, clean
+$ pnpm test                   # Test Files 24 passed (24), Tests 167 passed (167)  (incl. parsePalette.test.ts ×11)
+$ pnpm test:gateway           # Test Files 39 passed (39), Tests 175 passed (175)
+                              # CommandPalette.gateway.test.tsx ×6: catalog one-fetch + 0ms open,
+                              # capability-filtered (two seeded principals), structured kind:"query"
+                              # round-trip, query_result → table+chart, chart:null → table-only,
+                              # query_error → inline alert — all against the REAL gateway, no fakes.
 ```
 
 ## Debugging
@@ -90,6 +142,14 @@ Green output: _pasted below once the backend test agent + UI test agent report._
 no matching `#[serde(default)]`, so the reader rejected the omitted field and `parse_payload`
 swallowed it to `None`. Fixed by adding `#[serde(default)]`; round-trip regression tests
 fail-before/pass-after.
+
+[channels/query-result-chart-always-null.md](../../debugging/channels/query-result-chart-always-null.md)
+— every `query_result` came back `chart:null` even for a clean temporal/numeric shape. Root cause:
+`federation.query` returns column-aligned **array** rows but `pick_chart` keys cells by column name,
+so the picker matched nothing. Fixed with `query_worker::keyed_rows` (zip arrays→objects for the
+picker only); regression unit test `keyed_rows_zips_arrays_into_objects_so_the_picker_plots` asserts
+the raw arrays do NOT plot while the keyed rows DO, and the new happy-path gateway test asserts a
+real non-null line chart end to end.
 
 ## Public / scope updates
 

@@ -157,7 +157,11 @@ streams over the existing SSE route.
 - **Chart spec** (`{ type: "line"|"bar"|"histogram", x, series:[{field}], bins? }`) is host-computed
   into the payload so every subscriber renders identically: temporal x → line; categorical x +
   numeric → bar; single numeric column, many rows → histogram; nothing plottable → `chart:null`
-  (table-only). Conservative — fails safe to the table.
+  (table-only). Conservative — fails safe to the table. **Row shape note:** `federation.query`
+  returns `rows` as column-aligned **arrays** (`[[c0,c1,…],…]`); the persisted `query_result` keeps
+  that compact form (the UI maps a chart series' `field` name to its column index). The worker zips a
+  keyed view of the rows only to feed the picker (`query_worker::keyed_rows`) — the picker keys cells
+  by column name, so without the zip every result plotted as `chart:null`.
 
 The UI renders result items as cards: chart-first with a table toggle, `chart:null` → table-only, a
 "showing first N rows" caption when truncated, an inline human error on `query_error`.
@@ -168,7 +172,10 @@ The shipped behavior is covered by host, gateway, and real-browser-path tests:
 
 - `rust/crates/host/tests/collaboration_test.rs`
 - `rust/role/gateway/tests/gateway_test.rs`
-- `rust/role/gateway/tests/gateway_routes_test.rs` (incl. `GET /mcp/catalog` + query round-trip)
+- `rust/role/gateway/tests/gateway_routes_test.rs` (incl. `GET /mcp/catalog` + the `query_error` deny round-trip)
+- `rust/role/gateway/tests/gateway_query_test.rs` (the **happy-path** query round-trip against a real
+  seeded sqlite federation source: a `query_result` with columns/rows + a non-null line chart in
+  history AND over SSE, plus the workspace-isolation query path)
 - `rust/crates/host/tests/tools_catalog_test.rs` (catalog: authorized subset, deny, ws-isolation)
 - `rust/crates/host/src/channel/{payload,chart,query_worker}.rs` unit tests (round-trip, chart
   picker, cap, opaque deny, re-entrancy)

@@ -7,6 +7,8 @@ export {
   removeDatasource,
   testDatasource,
   runFederationQuery,
+  discoverTables,
+  describeTable,
 } from "./datasource.api";
 export type {
   DatasourceSummary,
