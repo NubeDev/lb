@@ -53,9 +53,11 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("prefs.")
         || qualified_tool.starts_with("bus.")
+        || qualified_tool.starts_with("reminder.")
         || qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")
+        || qualified_tool.starts_with("tools.")
         || qualified_tool == "store.query"
         || qualified_tool == "store.schema"
 }
@@ -147,10 +149,35 @@ async fn dispatch_at_depth(
         return serde_json::to_string(&out).map_err(|e| ToolError::Extension(e.to_string()));
     }
 
+    // Defense-in-depth arg validation (channels-command-palette scope): validate `input` against the
+    // tool's declared JSON Schema BEFORE dispatch — a structurally bad request is a clean
+    // `BadInput`, never a panic deep in a handler. The handler still does its own checks; this is
+    // the early, schema-driven gate. A tool without a declared schema passes (additive) — so verbs
+    // without a schema (the majority, incl. undo) are unaffected. Skipped for the format/convert
+    // tier above (no tenant data, no schema).
+    {
+        let input: Value = serde_json::from_str(input_json)
+            .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
+        if let Some(schema) = descriptor_schema(node, qualified_tool) {
+            crate::tools::validate_args(Some(&schema), &input)?;
+        }
+    }
+
     if is_host_native(qualified_tool) {
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
         // caller is opaque and indistinguishable from a missing tool — then delegate to the host verb.
-        authorize_tool(principal, ws, qualified_tool)?;
+        //
+        // `federation.schema` (the no-SQL discovery verb) is the SAME read privilege as a live query
+        // and introduces no new capability (datasources-ux scope): gate it under the query cap, the
+        // same cap its service layer re-checks. Without this alias the outer gate demanded a
+        // `mcp:federation.schema:call` grant no role carries, so the Datasources browse panel was
+        // denied (opaque) even for a caller holding `mcp:federation.query:call`.
+        let gate_tool = if qualified_tool == "federation.schema" {
+            "federation.query"
+        } else {
+            qualified_tool
+        };
+        authorize_tool(principal, ws, gate_tool)?;
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
@@ -171,6 +198,11 @@ async fn dispatch_at_depth(
             // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)
             // is added inside `call_agent_tool` by that worker — its arm is currently `NotFound`.
             crate::call_agent_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("tools.") {
+            // channels-command-palette scope: the `tools.catalog` read, reached over the same MCP
+            // bridge as any verb (rule 7). The verb re-runs its own `authorize_tool` gate inside the
+            // service, so the outer gate above and the inner one agree (one gate, two callers).
+            crate::call_tools_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("chains.") {
@@ -189,6 +221,8 @@ async fn dispatch_at_depth(
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {
             crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("reminder.") {
+            crate::call_reminder_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "undo"
             || qualified_tool == "redo"
             || qualified_tool.starts_with("history.")
@@ -419,4 +453,25 @@ fn undo_svc_to_tool_err(e: UndoSvcError) -> ToolError {
         UndoSvcError::Denied => ToolError::Denied,
         other => ToolError::Extension(other.to_string()),
     }
+}
+
+/// Look up the declared JSON-Schema `input_schema` for `qualified_tool`, for the defense-in-depth
+/// arg validation the dispatcher runs (channels-command-palette scope). Host-native verbs are read
+/// from the in-code descriptor table (`tools::host_descriptors`); extension tools from the runtime
+/// registry. `None` when the tool declares no schema (validation is then skipped — additive).
+fn descriptor_schema(node: &Node, qualified_tool: &str) -> Option<serde_json::Value> {
+    for d in crate::tools::host_descriptors() {
+        if d.name == qualified_tool {
+            return d.input_schema;
+        }
+    }
+    let (ext_id, tool) = qualified_tool.split_once('.')?;
+    for (id, descriptors) in node.registry.descriptor_entries() {
+        if id == ext_id {
+            if let Some(d) = descriptors.into_iter().find(|d| d.name == tool) {
+                return d.input_schema;
+            }
+        }
+    }
+    None
 }

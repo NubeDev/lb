@@ -35,6 +35,7 @@ mod outbox;
 mod prefs;
 mod registry;
 mod reload;
+mod reminder;
 mod remote;
 mod render_templates;
 mod role;
@@ -47,6 +48,7 @@ mod system;
 mod tags;
 mod teams;
 mod tool_call;
+mod tools;
 mod ui_decl;
 mod undo;
 mod undo_capture;
@@ -148,6 +150,12 @@ pub use registry::{
     resolve as resolve_catalog, RegistryServiceError, Source,
 };
 pub use reload::reload_extension;
+pub use reminder::{
+    call_reminder_tool, fire_job_id, fire_reminder, react_to_reminders, reminder_create,
+    reminder_delete, reminder_get, reminder_list, reminder_update, Action as ReminderAction,
+    ReactorPass as ReminderReactorPass, Reminder, ReminderError, ReminderPatch, ReminderStatus,
+    FIRE_KIND as REMINDER_FIRE_KIND,
+};
 pub use remote::register_remote_extension;
 pub use render_templates::{
     call_template_tool, template_delete, template_get, template_list, template_save, Engine,
@@ -157,8 +165,8 @@ pub use render_templates::{
 pub use role::Role;
 pub use rules::{
     ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
-    rules_get, rules_list, rules_run, rules_save, HostAiSeam, HostDataSeam, RuleModel, RulesError,
-    RunResult, SavedRule, workspace_datasources,
+    rules_get, rules_list, rules_run, rules_save, workspace_datasources, HostAiSeam, HostDataSeam,
+    RuleModel, RulesError, RunResult, SavedRule,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};
@@ -179,6 +187,7 @@ pub use tags::{
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
 pub use tool_call::call_tool;
+pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,

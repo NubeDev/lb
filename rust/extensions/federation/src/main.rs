@@ -109,18 +109,18 @@ async fn federation_schema(id: u64, input: &Value) -> Reply {
     };
     let table = str_of(input, "table");
     let result = match table {
-        None => query::discover_tables(kind, dsn)
-            .await
-            .map(|tables| json!({ "tables": tables.iter().map(|t| {
+        None => query::discover_tables(kind, dsn).await.map(|tables| {
+            json!({ "tables": tables.iter().map(|t| {
                 let mut o = json!({ "name": t.name });
                 if let Some(rows) = t.rows { o["rows"] = json!(rows); }
                 o
-            }).collect::<Vec<_>>() })),
-        Some(table) => query::describe_table(kind, dsn, table)
-            .await
-            .map(|cols| json!({ "columns": cols.iter().map(|c| json!({
+            }).collect::<Vec<_>>() })
+        }),
+        Some(table) => query::describe_table(kind, dsn, table).await.map(|cols| {
+            json!({ "columns": cols.iter().map(|c| json!({
                 "name": c.name, "data_type": c.data_type, "nullable": c.nullable
-            })).collect::<Vec<_>>() })),
+            })).collect::<Vec<_>>() })
+        }),
     };
     match result {
         Ok(value) => Reply::ok(id, value.to_string()),

@@ -27,6 +27,7 @@ lb-viz.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
+lb-reminders.workspace = true
 lb-rules.workspace = true
 lb-secrets.workspace = true
 lb-supervisor.workspace = true

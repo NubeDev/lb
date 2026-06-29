@@ -82,7 +82,7 @@ pub async fn triage<M: ModelAccess>(
         format!("Triaged issue {issue_id} → scope doc {doc_id} shared to {team}"),
         ts,
     );
-    let _ = post(&node.store, &node.bus, caller, ws, channel, summary)
+    let _ = post(node, caller, ws, channel, summary)
         .await
         .map_err(channel_err)?;
 

@@ -72,8 +72,7 @@ async fn swapping_an_extension_version_keeps_durable_state() {
     // Durable STATE: three posted messages, persisted to the store.
     for (i, body) in ["a", "b", "c"].iter().enumerate() {
         post(
-            &node.store,
-            &node.bus,
+            &node,
             &p,
             ws,
             "general",
@@ -132,8 +131,7 @@ async fn swapping_an_extension_version_keeps_durable_state() {
 
     // 3. The channel still works after the swap — post + read another message.
     post(
-        &node.store,
-        &node.bus,
+        &node,
         &p,
         ws,
         "general",

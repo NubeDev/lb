@@ -26,11 +26,19 @@ pub enum Visibility {
     Private,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Tool {
     pub name: String,
     #[serde(default)]
     pub description: String,
+    /// An optional standard **JSON Schema** (`type:"object"`, `properties`, `required`) declaring
+    /// the tool's input, surfaced to the command palette via `tools.catalog` (channels-command-
+    /// palette scope). Additive + versioned: a tool that omits it is still registered and callable —
+    /// the palette renders a single free-text arg, so an old extension needs no rebuild. Per-property
+    /// vendor hints live under an `x-lb` key (`x-lb-entity`, `x-lb-widget`). Deserialized straight
+    /// from the TOML `[tools]` table (TOML ↔ JSON values are compatible for schema shapes).
+    #[serde(default)]
+    pub input_schema: Option<serde_json::Value>,
 }
 
 /// The `[native]` block — present iff `tier="native"` (native-tier scope, the extensions-scope
@@ -92,7 +100,7 @@ pub struct Widget {
     pub scope: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Manifest {
     pub id: String,
     pub version: String,

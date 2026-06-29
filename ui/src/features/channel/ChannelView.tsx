@@ -7,7 +7,7 @@ import { Hash } from "lucide-react";
 import { useChannel } from "./useChannel";
 import { usePresence } from "./usePresence";
 import { MessageList } from "./MessageList";
-import { MessageComposer } from "./MessageComposer";
+import { CommandPalette } from "./palette/CommandPalette";
 
 interface Props {
   ws: string;
@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function ChannelView({ ws, channel, author, now }: Props) {
-  const { items, loading, error, send } = useChannel(ws, channel, author, now);
+  const { items, loading, error, send, postQuery, callTool } = useChannel(ws, channel, author, now);
   const online = usePresence(ws, channel);
 
   return (
@@ -68,7 +68,12 @@ export function ChannelView({ ws, channel, author, now }: Props) {
         <MessageList items={items} />
       )}
 
-      <MessageComposer channel={channel} onSend={send} />
+      <CommandPalette
+        channel={channel}
+        onPostQuery={postQuery}
+        onCallTool={callTool}
+        onSendChat={send}
+      />
     </section>
   );
 }

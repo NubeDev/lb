@@ -121,8 +121,7 @@ async fn killed_sidecar_restarts_cleanly_with_no_durable_state_lost() {
 
     // --- 2. durable STATE: a channel message posted before the crash ---
     post(
-        &node.store,
-        &node.bus,
+        &node,
         &admin,
         ws,
         "general",

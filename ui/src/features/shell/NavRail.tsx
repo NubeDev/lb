@@ -4,6 +4,7 @@
 import {
   Activity,
   Boxes,
+  CalendarClock,
   Database,
   GitBranch,
   Hash,
@@ -44,6 +45,7 @@ export type CoreSurface =
   | "rules"
   | "chains"
   | "datasources"
+  | "reminders"
   | "ingest"
   | "data"
   | "system"
@@ -82,6 +84,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "rules", icon: ScrollText, label: "Rules" },
   { key: "chains", icon: GitBranch, label: "Chains" },
   { key: "datasources", icon: Plug, label: "Datasources" },
+  { key: "reminders", icon: CalendarClock, label: "Reminders" },
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
   { key: "system", icon: Network, label: "System" },

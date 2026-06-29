@@ -24,15 +24,8 @@ pub async fn post_message(
     let principal = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let stored = lb_host::post(
-        &gw.node.store,
-        &gw.node.bus,
-        &principal,
-        principal.ws(),
-        &cid,
-        item,
-    )
-    .await
-    .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    let stored = lb_host::post(gw.node.as_ref(), &principal, principal.ws(), &cid, item)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(stored))
 }

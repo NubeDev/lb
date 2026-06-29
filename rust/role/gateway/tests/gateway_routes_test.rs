@@ -208,8 +208,7 @@ async fn the_sse_stream_authenticates_by_query_token_and_pushes_a_live_message()
     )
     .expect("poster verifies");
     lb_host::post(
-        &node.store,
-        &node.bus,
+        node.as_ref(),
         &poster,
         ws,
         "general",
@@ -249,4 +248,134 @@ async fn the_sse_stream_without_a_token_is_401() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "no ?token= → 401");
+}
+
+// ----- tools.catalog over HTTP (channels-command-palette scope) ---------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn mcp_catalog_returns_ws_and_tools_for_a_holder_and_403s_without_the_cap() {
+    let (gw, key) = gateway().await;
+
+    // A token holding the verb gate gets 200 + `{ ws, tools }`.
+    let tok = token(&key, "user:ada", "acme", &["mcp:tools.catalog:call"]);
+    let resp = router(gw.clone())
+        .oneshot(bearer(get_req("/mcp/catalog"), &tok))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cat: serde_json::Value = json_body(resp).await;
+    assert_eq!(
+        cat["ws"], "acme",
+        "the catalog reports the token's workspace"
+    );
+    assert!(cat["tools"].is_array(), "the catalog has a tools array");
+
+    // A token WITHOUT the gate is 403-opaque.
+    let no_cap = token(&key, "user:eve", "acme", &["mcp:inbox.list:call"]);
+    let resp = router(gw)
+        .oneshot(bearer(get_req("/mcp/catalog"), &no_cap))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "no mcp:tools.catalog:call → 403"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn mcp_catalog_is_capability_filtered_over_http() {
+    let (gw, key) = gateway().await;
+
+    // With the federation grant, `federation.query` appears in the catalog.
+    let with = token(
+        &key,
+        "user:ada",
+        "acme",
+        &["mcp:tools.catalog:call", "mcp:federation.query:call"],
+    );
+    let resp = router(gw.clone())
+        .oneshot(bearer(get_req("/mcp/catalog"), &with))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cat: serde_json::Value = json_body(resp).await;
+    let names: Vec<&str> = cat["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        names.contains(&"federation.query"),
+        "the grant holder sees federation.query: {names:?}"
+    );
+
+    // Without it, the same tool is ABSENT (capability-filtered, no existence leak).
+    let without = token(&key, "user:ada", "acme", &["mcp:tools.catalog:call"]);
+    let resp = router(gw)
+        .oneshot(bearer(get_req("/mcp/catalog"), &without))
+        .await
+        .unwrap();
+    let cat: serde_json::Value = json_body(resp).await;
+    let names: Vec<&str> = cat["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        !names.contains(&"federation.query"),
+        "without the grant the tool is absent: {names:?}"
+    );
+}
+
+// ----- post → query_error round-trip over HTTP (channels-query-charts scope) --------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn posting_a_query_item_without_the_grant_round_trips_an_opaque_query_error() {
+    // The post→worker→history round-trip over the real gateway, needing NO datasource: a poster who
+    // can pub/sub the channel but lacks `mcp:federation.query:call` posts a `kind:"query"` Item; the
+    // inline worker denies host-side (before any sidecar) and posts a `query_error` whose message is
+    // the opaque "query not permitted". History (GET) then shows BOTH items.
+    let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
+    let key = SigningKey::generate();
+    let cid = "analytics";
+    let tok = token(
+        &key,
+        "user:ada",
+        "acme",
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+        ],
+    );
+
+    let body = serde_json::json!({
+        "kind": "query", "source": "pg", "sql": "SELECT 1"
+    })
+    .to_string();
+    let item = Item::new("q1", cid, "user:ada", body, 1);
+    let resp = router(gateway_on(node.clone(), &key))
+        .oneshot(bearer(post_req(cid, &item), &tok))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "the query item posts");
+
+    let resp = router(gateway_on(node, &key))
+        .oneshot(bearer(get_req(&format!("/channels/{cid}/messages")), &tok))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let items: Vec<Item> = json_body(resp).await;
+    let err = items
+        .iter()
+        .find(|i| i.author == "system:query-worker")
+        .expect("history shows the worker's query_error answer");
+    let payload: serde_json::Value = serde_json::from_str(&err.body).unwrap();
+    assert_eq!(payload["kind"], "query_error");
+    assert_eq!(
+        payload["error"], "query not permitted",
+        "opaque deny over HTTP: {payload}"
+    );
 }

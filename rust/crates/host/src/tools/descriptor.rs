@@ -1,0 +1,145 @@
+//! The **host-native tool descriptors** + JSON-Schema arg validation (channels-command-palette
+//! scope). Each host-native verb the palette drives declares its [`ToolDescriptor`] — `{ name,
+//! title, group, input_schema }` where `input_schema` is a standard JSON Schema (`type:"object"`,
+//! `properties`, `required`) with per-property `x-lb-entity` / `x-lb-widget` vendor hints. The
+//! descriptors for host-native verbs live in code next to the verb (one `descriptor()` per verb
+//! file, FILE-LAYOUT); this file is the collector `tools.catalog` walks, plus the defense-in-depth
+//! arg validator the dispatcher runs before delegating to a handler.
+//!
+//! Why a JSON Schema and not a bespoke form model: standard JSON Schema composes with off-the-shelf
+//! validators/tooling, and the two vendor hints are all the UI needs to drive a guided rail without
+//! reinventing a form engine (scope "Arg-schema expressiveness"). `input_schema = None` is valid —
+//! the palette degrades to a single free-text arg and the validator skips.
+
+use lb_mcp::{ToolDescriptor, ToolError};
+use serde_json::{json, Value};
+
+/// The host-native descriptors the catalog serves alongside the extension half (read from the
+/// registry). Today the palette's first tenant is `federation.query`; as more verbs gain a guided
+/// rail their `descriptor()` is added here. Each carries its qualified name (the catalog does NOT
+/// re-prefix host-native verbs) and a title/group for the menu.
+pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
+    vec![crate::federation::query_descriptor()]
+}
+
+/// Validate a tool-call `input` against its declared JSON Schema `input_schema` (defense in depth
+/// — the per-verb handler still does its own checks). A request failing validation is a clean
+/// [`ToolError::BadInput`], never a panic. `None` schema → pass (the tool declares nothing, so any
+/// object is accepted; the handler remains authoritative). Implements the small JSON-Schema subset
+/// the palette's verbs use (`type: object`, `properties.<name>.type`, `required`); an unknown
+/// schema facet is ignored (fail-open on structure, the handler is the real gate).
+pub(crate) fn validate_args(schema: Option<&Value>, input: &Value) -> Result<(), ToolError> {
+    let Some(schema) = schema else {
+        return Ok(());
+    };
+    let obj = schema
+        .as_object()
+        .ok_or_else(|| ToolError::BadInput("input_schema must be a JSON object".to_string()))?;
+    // `type: "object"` — the input must be a JSON object (the MCP call envelope).
+    if matches!(obj.get("type").and_then(Value::as_str), Some("object")) && !input.is_object() {
+        return Err(ToolError::BadInput("expected an object".to_string()));
+    }
+    // `required` — each listed property must be present and non-null.
+    if let Some(required) = obj.get("required").and_then(Value::as_array) {
+        let input_obj = input
+            .as_object()
+            .ok_or_else(|| ToolError::BadInput("expected an object".to_string()))?;
+        for key in required.iter().filter_map(Value::as_str) {
+            match input_obj.get(key) {
+                None | Some(Value::Null) => {
+                    return Err(ToolError::BadInput(format!("missing required arg: {key}")));
+                }
+                _ => {}
+            }
+        }
+    }
+    // `properties.<name>.type` — a shallow type check per present property.
+    if let Some(props) = obj.get("properties").and_then(Value::as_object) {
+        let input_obj = input
+            .as_object()
+            .ok_or_else(|| ToolError::BadInput("expected an object".to_string()))?;
+        for (name, prop) in props {
+            if let Some(value) = input_obj.get(name) {
+                if let Some(want) = prop.get("type").and_then(Value::as_str) {
+                    if !type_matches(want, value) {
+                        return Err(ToolError::BadInput(format!("arg `{name}` must be {want}")));
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Does `value` satisfy the JSON-Schema `type` keyword `want`?
+fn type_matches(want: &str, value: &Value) -> bool {
+    match want {
+        "string" => value.is_string(),
+        "number" | "integer" => value.is_number(),
+        "boolean" => value.is_boolean(),
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "null" => value.is_null(),
+        _ => true, // unknown type keyword → don't fail (the handler is the real gate)
+    }
+}
+
+/// Build the canonical JSON Schema for `federation.query`'s input — `{source, sql}` — shared by
+/// the host descriptor and mirrored by the UI type. `x-lb-entity: datasource` drives the `@`-picker;
+/// `x-lb-widget: sql` selects the mini SQL editor.
+pub(crate) fn federation_query_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "source": { "type": "string", "x-lb": { "entity": "datasource" } },
+            "sql": { "type": "string", "x-lb": { "widget": "sql" } }
+        },
+        "required": ["source", "sql"]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn federation_query_schema_is_well_formed() {
+        let s = federation_query_schema();
+        assert_eq!(s["type"], "object");
+        assert_eq!(s["properties"]["source"]["x-lb"]["entity"], "datasource");
+        assert_eq!(s["properties"]["sql"]["x-lb"]["widget"], "sql");
+        let required = s["required"].as_array().unwrap();
+        assert!(required.contains(&json!("source")));
+        assert!(required.contains(&json!("sql")));
+    }
+
+    #[test]
+    fn none_schema_passes_anything() {
+        validate_args(None, &json!({})).unwrap();
+        validate_args(None, &json!("whatever")).unwrap();
+    }
+
+    #[test]
+    fn missing_required_arg_is_bad_input() {
+        let s = federation_query_schema();
+        let err = validate_args(Some(&s), &json!({ "source": "warehouse" })).unwrap_err();
+        assert!(matches!(err, ToolError::BadInput(m) if m.contains("sql")));
+    }
+
+    #[test]
+    fn wrong_type_is_bad_input() {
+        let s = federation_query_schema();
+        let err = validate_args(Some(&s), &json!({ "source": 5, "sql": "SELECT 1" })).unwrap_err();
+        assert!(matches!(err, ToolError::BadInput(m) if m.contains("source")));
+    }
+
+    #[test]
+    fn valid_args_pass() {
+        let s = federation_query_schema();
+        validate_args(
+            Some(&s),
+            &json!({ "source": "warehouse", "sql": "SELECT 1" }),
+        )
+        .unwrap();
+    }
+}

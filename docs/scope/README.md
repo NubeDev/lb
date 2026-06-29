@@ -70,12 +70,21 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   selected from the signed token.
 - `channels/` — the collaboration channel surface: durable inbox-backed history, bus motion, channel
   registry, SSE stream, and presence. Also `channels-query-charts-scope.md`: in-channel SQL queries
-  (via `federation.query`) whose results post back as durable items and auto-plot a chart.
+  (via `federation.query`) whose results post back as durable items and auto-plot a chart; and
+  `channels-command-palette-scope.md`: the `/` + `@` command surface (catalog-driven, capability-
+  filtered MCP tools — the menu *is* the permission model) that composes those queries.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
 - `jobs/` — the SurrealDB-native durable job queue / resumable session (S5).
+- `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
+  (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
+  `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6
+  relay/approval reactors) that enqueues one `lb-jobs` job per firing. Three v1 action kinds —
+  **channel post** (inbox), **MCP tool call** (any capability, under a stored principal re-checked
+  at fire time), and **must-deliver effect** (outbox). Cron is the storage format; the UI authors
+  it with a best-in-class React cron-builder. The single-action sibling of a rule chain.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.

@@ -3,6 +3,43 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S8 — reminders: a scheduled trigger that fires one action)
+
+A durable, workspace-scoped **reminder** — a `reminder:{id}` record + a dedicated durable scan over
+the shipped `lb-jobs` + outbox, **not** a new scheduler (`reminders/reminders.md`):
+
+- **The record (`lb-reminders`).** A 5-field cron `schedule` (the storage format), `max_runs`/`runs`
+  (one-shot/counted/recurring), an `enabled` on/off switch, a `next_attempt_ts`, a stored
+  `principal_sub`, and an `action` tagged union — **one** action: channel post / MCP tool call /
+  must-deliver outbox effect. The store crate holds no authorization (like `lb_inbox`/`lb_outbox`);
+  the one new mechanical piece is cron "next after T" on the **injected logical clock** via `croner`
+  (`find_next_occurrence` on a supplied time — deterministic, never wall-clock).
+- **CRUD `reminder.*`** — `create`/`update`/`delete`/`get`/`list`, one tool + capability + file each
+  (`mcp:reminder.<verb>:call`), bounded single-record writes → **synchronous, not jobs** (the firing
+  is the job). `update` covers pause/resume (`enabled`) and reschedule (re-anchoring `next_attempt_ts`
+  to the next future slot — no backfill on resume).
+- **The reactor (`react_to_reminders`).** A dedicated scan in its own file (same altitude/cadence as
+  `react_to_approvals`/`relay_outbox`): finds every enabled+due reminder, enqueues ONE
+  `kind="reminder-fire"` `lb-jobs` job per firing (**deterministic per-firing id** on
+  `(reminder_id, scheduled_ts)` → idempotent, one instant → one job → one effect), dispatches the
+  action against its real seam, and advances (`max_runs` countdown to `Done`, else next future slot).
+  Missed-firing policy is **fire-once-then-skip-to-next** (no backfill storm after an outage).
+- **The security model — principal capture at fire time.** The record stores `principal_sub`, not a
+  frozen cap set; the firing **re-resolves** caps from the durable grant store and re-checks the
+  action's own capability (`bus:chan/{c}:pub` / `mcp:{tool}:call` under the live schema /
+  `mcp:outbox.enqueue:call`). A grant revoked after create turns the firing into a **logged deny**
+  with no effect; the reminder is left scheduled, the existing job id keeps a re-scan from re-firing.
+- **UI** — a `react-js-cron` visual cron builder (antd scoped to its own subtree, never the global
+  Tailwind/shadcn theme), an action editor, and a `reminder.*` api client over the host-mediated
+  `POST /mcp/call` bridge (ws + principal from the token).
+
+**Tests (real store/bus/jobs/inbox/outbox, no mocks):** `lb-reminders` cron-math units +
+`reminders_mcp_test.rs` (CRUD round-trip, **deny-per-verb**, **ws-isolation** at list/get, bad-cron =
+`BadInput`) + `reminders_reactor_test.rs` (each action kind against its real seam, **idempotent**
+re-scan, `max_runs`→`Done`, disable/resume, **offline catch-up exactly-once**, **deny at firing** on a
+revoked grant, **ws-isolation** across store + reactor, multi-day cron on the injected clock). See
+`reminders/reminders.md` + `../sessions/reminders/reminders-session.md`.
+
 ## Shipped (core crate — `lb-prefs`: canonical-in / localized-out preferences, units & formatting)
 
 The boundary that renders canonical data per a principal's resolved preferences (domain data stays

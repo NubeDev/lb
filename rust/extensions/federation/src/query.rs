@@ -10,8 +10,6 @@
 //! only the tables a query references, so a virtual catalog is unreachable); it goes through the real
 //! remote engine the provider pushes down to.
 
-use std::sync::Arc;
-
 use arrow::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
@@ -123,8 +121,11 @@ async fn catalog_rows(
 ) -> Result<Vec<Value>, String> {
     let ctx = SessionContext::new();
     for (alias, remote) in bindings {
+        // `parse_str` for the remote: catalog names are dotted (`pg_catalog.pg_tables`) and must
+        // split into schema + table so the provider introspects the real catalog (a `bare` dotted
+        // name reports an empty schema). The alias is a single bare identifier the SQL references.
         let provider = source
-            .table_provider(&TableReference::bare(*remote))
+            .table_provider(&TableReference::parse_str(remote))
             .await
             .map_err(|e| e.to_string())?;
         ctx.register_table(TableReference::bare(*alias), provider)
@@ -195,17 +196,21 @@ pub fn table_meta_from_rows(rows: Vec<Value>) -> Vec<TableMeta> {
 
 // Provide the per-kind list query so each `Source` impl stays small and the catalog SQL lives in one
 // place. Returns `(sql, bindings)`.
-pub(crate) fn list_tables_plan(kind: &str) -> Result<(&'static str, Vec<(&'static str, &'static str)>), String> {
+pub(crate) fn list_tables_plan(
+    kind: &str,
+) -> Result<(&'static str, Vec<(&'static str, &'static str)>), String> {
     match kind {
         "sqlite" => Ok((
             "SELECT name AS name FROM __sm__ WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
             vec![("__sm__", "sqlite_master")],
         )),
+        // List names from `pg_tables` only. The earlier `reltuples` estimate joined `pg_class`, but
+        // the pushed-down `pg_class` provider doesn't expose `relname` to the DataFusion plan
+        // (`No field named c.relname`), which broke the whole listing. Names are what the browse panel
+        // needs; a row estimate is a nice-to-have we drop rather than fail the list over.
         "postgres" | "timescale" => Ok((
-            "SELECT t.tablename AS name, COALESCE(c.reltuples::bigint, 0) AS rows \
-             FROM __pg_tables__ t LEFT JOIN __pg_class__ c ON c.relname = t.tablename \
-             WHERE t.schemaname = 'public' ORDER BY t.tablename",
-            vec![("__pg_tables__", "pg_catalog.pg_tables"), ("__pg_class__", "pg_catalog.pg_class")],
+            "SELECT tablename AS name FROM __pg_tables__ WHERE schemaname = 'public' ORDER BY tablename",
+            vec![("__pg_tables__", "pg_catalog.pg_tables")],
         )),
         other => Err(format!("unknown source kind: {other}")),
     }
@@ -213,7 +218,10 @@ pub(crate) fn list_tables_plan(kind: &str) -> Result<(&'static str, Vec<(&'stati
 
 /// Run the per-kind list query via the shared catalog runner. Used by `Source::list_tables` impls so
 /// they share one orchestration path.
-pub async fn run_list_tables(source: &dyn Source, kind: &str) -> Result<Vec<TableMeta>, SourceError> {
+pub async fn run_list_tables(
+    source: &dyn Source,
+    kind: &str,
+) -> Result<Vec<TableMeta>, SourceError> {
     let (sql, bindings) = list_tables_plan(kind).map_err(SourceError)?;
     let rows = catalog_rows(source, sql, &bindings)
         .await

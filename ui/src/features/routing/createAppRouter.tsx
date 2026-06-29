@@ -25,6 +25,7 @@ import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
 import { MembersView } from "@/features/members";
 import { RulesView } from "@/features/rules";
+import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
 import { StudioView } from "@/features/studio";
@@ -126,6 +127,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/chains", "chains", () => <Chains />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
+    coreRoute("/reminders", "reminders", () => <Reminders />),
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
@@ -240,6 +242,10 @@ function Rules() {
 
 function Chains() {
   return <ChainsView ws={useAppRoutingContext().workspace} />;
+}
+
+function Reminders() {
+  return <RemindersView ws={useAppRoutingContext().workspace} />;
 }
 
 function Datasources() {

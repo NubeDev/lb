@@ -253,14 +253,21 @@ async fn registered_datasource_is_in_the_rule_allowlist() {
     let node = Arc::new(Node::boot().await.unwrap());
     let p = principal(
         ws,
-        &[
-            "mcp:datasource.add:call",
-            "secret:federation/*:write",
-        ],
+        &["mcp:datasource.add:call", "secret:federation/*:write"],
     );
-    lb_host::datasource_add(&node, &p, ws, "tsdb", "postgres", "db.host:5432", None, None, 1)
-        .await
-        .unwrap();
+    lb_host::datasource_add(
+        &node,
+        &p,
+        ws,
+        "tsdb",
+        "postgres",
+        "db.host:5432",
+        None,
+        None,
+        1,
+    )
+    .await
+    .unwrap();
 
     let sources = lb_host::workspace_datasources(&node, ws).await;
     assert!(

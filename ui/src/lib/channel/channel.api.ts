@@ -3,7 +3,15 @@
 // `invoke` directly; it goes through these named verbs (FILE-LAYOUT frontend rules).
 
 import type { ChannelRecord, Item } from "./channel.types";
+import type { ToolsCatalog } from "./palette.types";
 import { invoke } from "@/lib/ipc/invoke";
+
+/** Read the calling principal's authorized tool catalog for their workspace (the command-palette's
+ *  one read). Reached over the same MCP bridge as any verb (rule 7): `tools.catalog` returns
+ *  `{ ws, tools }` — registered tools ∩ caps held. Mirrors `lb_host::tools_catalog`. */
+export function toolsCatalog(): Promise<ToolsCatalog> {
+  return invoke<ToolsCatalog>("mcp_call", { tool: "tools.catalog", args: {} });
+}
 
 /** Post `item` to `channel` in workspace `ws`. Returns the stored item (channel filled in).
  *  Mirrors `lb_host::post`. */

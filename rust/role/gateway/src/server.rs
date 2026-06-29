@@ -19,12 +19,12 @@ use crate::routes::{
     list_apikeys, list_chains, list_channels, list_dashboards, list_datasources, list_docs,
     list_extensions, list_grants, list_inbox, list_roles, list_rules, list_series, list_tables,
     list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
-    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
-    read_graph, read_samples, read_schema, remove_datasource, remove_team_member, rename_team,
-    rename_workspace, request_approval, resolve_inbox, resolve_prefs, resolve_workflow_approval,
-    revoke_apikey, revoke_grant, rotate_apikey, run_chain, run_query, run_rule, run_stream,
-    save_chain, save_dashboard, save_rule, scan_table, series_stream, serve_ext_ui,
-    set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    mcp_catalog, post_message, publish_extension, publish_message, purge_workspace, put_doc,
+    put_skill, read_graph, read_samples, read_schema, remove_datasource, remove_team_member,
+    rename_team, rename_workspace, request_approval, resolve_inbox, resolve_prefs,
+    resolve_workflow_approval, revoke_apikey, revoke_grant, rotate_apikey, run_chain, run_query,
+    run_rule, run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream,
+    serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, test_datasource,
     uninstall_extension, write_samples,
 };
@@ -99,6 +99,7 @@ pub fn router(gw: Gateway) -> Router {
         .route("/extensions/{ext}", delete(uninstall_extension))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))
         .route("/mcp/call", post(mcp_call))
+        .route("/mcp/catalog", get(mcp_catalog))
         .route("/extensions/{ext}/enable", post(enable_extension))
         .route("/extensions/{ext}/disable", post(disable_extension))
         // shared assets (files/skills scope) — the browser's `assets.*` surface, finally reachable

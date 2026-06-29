@@ -50,8 +50,7 @@ async fn subscriber_in_ws_b_never_receives_a_publish_in_ws_a() {
 
     // A posts in WS_A.
     post(
-        &node.store,
-        &node.bus,
+        &node,
         &a,
         ws_a,
         "general",
@@ -80,8 +79,7 @@ async fn history_in_ws_b_never_returns_ws_a_items() {
     let b = principal(ws_b, &["bus:chan/general:sub"]);
 
     post(
-        &node.store,
-        &node.bus,
+        &node,
         &a,
         ws_a,
         "general",

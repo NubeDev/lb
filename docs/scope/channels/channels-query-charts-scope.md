@@ -167,21 +167,25 @@ seeded datasource (sqlite `mem://` source is enough for the federation path).
 
 ## Open questions
 
-- **Worker trigger:** inline inside `channel.post` (when it sees a `kind:"query"` item) vs. a separate
-  bus-subscribed worker. Inline is simpler and idempotent by construction (one item → one execution in
-  the post path); the subscriber is more decoupled but needs the dedup key. **Lean inline** for this
-  slice — resolve in the session.
-- **Row/byte cap value** for the result payload (proposed ≤500 rows / ≤256 KB) — pin the number.
-- **`kind` field placement:** a top-level `Item` field vs. a reserved key inside the existing payload.
-  Prefer reusing the existing payload with a `kind` key so no `Item` schema change is needed — confirm
-  the `Item` shape allows it without a migration.
-- **Chart payload schema:** the minimal `{ type, x, series, ... }` shape — finalize the fields so the UI
-  renderer and the host picker agree (shared TS type in `ui/src/lib/channel/`).
-- **Slash-command parsing** (`/query source | sql`) lives in the UI only; confirm we don't want a
-  host-side parser (we don't — the UI builds the structured payload; the host never parses chat text).
+All resolved in the build session ([channels-query-charts-session.md](../../sessions/channels/channels-query-charts-session.md)):
+
+- **Worker trigger — DECIDED: inline inside `channel.post`.** One post → one execution, idempotent by
+  construction; no bus-redelivery dedup key needed. (The decoupled bus subscriber was rejected — more
+  moving parts for no gain this slice.)
+- **Row/byte cap — DECIDED: ≤500 rows / ≤256 KB**, truncated with a `truncated:true` flag
+  (`query_worker.rs::MAX_ROWS`/`MAX_BYTES`).
+- **`kind` field placement — DECIDED: a key inside the existing `body` payload**, no `Item` schema
+  migration. An untagged body stays chat (purely additive).
+- **Chart payload schema — DECIDED: `{ type, x, series:[{field}], bins? }`** (`channel/chart.rs`
+  `ChartSpec`), mirrored as a shared TS type in `ui/src/lib/channel/`.
+- **Slash-command parsing — DECIDED: UI-only, no host parser.** The UI builds the structured
+  `kind:"query"` payload; the host never parses chat text. The `/` + `@` surface is
+  `channels-command-palette-scope.md`; this feature is its first tenant.
 
 ## Related
 
+- `scope/channels/channels-command-palette-scope.md` — the `/` + `@` input surface that composes the
+  `kind:"query"` item this feature runs; this is its first tenant.
 - `scope/channels/channels-scope.md` — the channel registry/history/stream surface this builds on.
 - `scope/datasources/datasources-scope.md` — the `federation.query` verb and SELECT-only/secret rules.
 - `ui/src/features/datasources/useDatasourceQuery.ts` — the existing real `federation.query` client seam.

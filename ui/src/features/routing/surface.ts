@@ -13,6 +13,7 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   rules: "/rules",
   chains: "/chains",
   datasources: "/datasources",
+  reminders: "/reminders",
   ingest: "/ingest",
   data: "/data",
   system: "/system",

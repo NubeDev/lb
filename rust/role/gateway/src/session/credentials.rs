@@ -78,6 +78,11 @@ fn member_caps() -> Vec<String> {
         // `ws/{id}/ext/{subject}` host-side from the token; a reserved prefix / cross-ws subject is refused.
         "mcp:bus.publish:call",
         "mcp:bus.watch:call",
+        // command-palette catalog (channels-command-palette scope): the `/` palette's read. Member-
+        // level — every UI-capable principal holds it; `tools.catalog` leaks only the tool *shapes*
+        // the caller may already run (a denied tool is absent), never data. Without it the UI has no
+        // palette at all.
+        "mcp:tools.catalog:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.

@@ -45,9 +45,11 @@ pub async fn reload_extension(
 
     let tools: Vec<String> = manifest.tools.iter().map(|t| t.name.clone()).collect();
     // Overwrites the existing entry — the live swap. The store is untouched (durable state
-    // survives), which is exactly the stateless-extension guarantee.
+    // survives), which is exactly the stateless-extension guarantee. Reuses the same descriptor
+    // mapping as the initial load so the palette's schema stays consistent across a reload.
+    let descriptors = crate::load::descriptors_from(&manifest);
     node.registry
-        .register(manifest.id.clone(), tools.clone(), instance);
+        .register_descriptors(manifest.id.clone(), descriptors, instance);
 
     Ok(Loaded {
         granted_caps: granted,

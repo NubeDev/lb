@@ -333,6 +333,54 @@ async fn federation_end_to_end_postgres() {
         "query result leaked the DSN"
     );
 
+    // --- DISCOVERY (federation.schema) — the no-SQL browse path the Datasources page drives ---
+    // Regression: discovery registers the source's own catalog (`pg_catalog.pg_tables`) as a table
+    // provider. That dotted name MUST be built with `TableReference::parse_str` (schema + table),
+    // not `bare` — a `bare` dotted name resolves to a provider with an EMPTY schema, so the catalog
+    // SELECT failed with `No field named …` and the page's first load crash-looped the sidecar until
+    // the supervisor restart budget was exhausted. Assert both discovery shapes return real data.
+    // Driven through the real MCP dispatch (`call` → `call_tool` → `call_federation_tool`), the same
+    // path the Datasources page takes — not the internal fn — so the routing is covered too.
+    let tables = call(
+        &node,
+        &admin,
+        ws,
+        "federation.schema",
+        json!({"source":"pg","ts":3}),
+    )
+    .await
+    .expect("federation.schema lists tables");
+    let names: Vec<&str> = tables["tables"]
+        .as_array()
+        .expect("tables array")
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        names.contains(&"readings"),
+        "discovery lists the seeded `readings` table (not an empty/failed catalog read): {tables}"
+    );
+
+    let cols = call(
+        &node,
+        &admin,
+        ws,
+        "federation.schema",
+        json!({"source":"pg","table":"readings","ts":3}),
+    )
+    .await
+    .expect("federation.schema describes a table's columns");
+    let col_names: Vec<&str> = cols["columns"]
+        .as_array()
+        .expect("columns array")
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        col_names.contains(&"seq") && col_names.contains(&"temp"),
+        "describe returns the real Arrow columns of `readings`: {cols}"
+    );
+
     // --- DASHBOARD WIDGET PATH: viz.query over a federation target returns NAMED rows ---
     // A table/chart widget bound to a federation source dispatches `federation.query` THROUGH
     // `viz.query`, whose frame converter must zip the columnar `{columns, rows}` result into named
