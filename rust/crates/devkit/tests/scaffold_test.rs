@@ -58,6 +58,19 @@ fn rejects_traversal_before_writing() {
     assert!(!root.join("../escape").exists());
 }
 
+#[test]
+fn rejects_ids_reusing_the_build_job_namespace() {
+    let root = temp_root("reserved");
+    for reserved in ["devkit-build", "devkit-build-native-1047202"] {
+        let err = scaffold_extension(Some(&root), &request(reserved, Tier::Native)).unwrap_err();
+        assert!(
+            err.to_string().contains("reserved"),
+            "{reserved} should be rejected: {err}"
+        );
+        assert!(!root.join(reserved).exists());
+    }
+}
+
 #[cfg(unix)]
 #[test]
 fn rejects_symlink_escape_before_writing() {

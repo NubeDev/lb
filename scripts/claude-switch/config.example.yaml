@@ -1,0 +1,38 @@
+# Example claude-switch config.
+# Copy to ~/.config/claude-switch/config.yaml and edit (or run `claude-switch edit`).
+# Add as many providers as you like — `claude-switch use <name>` works for any block here.
+#
+active: glm
+providers:
+  # --- Official Anthropic Claude API --------------------------------------
+  claude:
+    description: Official Anthropic Claude API
+    base_url: https://api.anthropic.com
+    env:
+      ANTHROPIC_AUTH_TOKEN: REPLACE_WITH_YOUR_ANTHROPIC_API_KEY
+      ANTHROPIC_BASE_URL: https://api.anthropic.com
+
+  # --- Z.AI GLM coding plan (GLM-5.2, 1M context) -------------------------
+  glm:
+    description: Z.AI GLM coding plan (GLM-5.2, 1M context)
+    base_url: https://api.z.ai/api/anthropic
+    env:
+      ANTHROPIC_AUTH_TOKEN: REPLACE_WITH_YOUR_ZAI_API_KEY
+      ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.7
+      ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5.2[1m]
+      ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5.2[1m]
+      API_TIMEOUT_MS: '3000000'
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: '1000000'
+
+  # --- DeepSeek (Anthropic-compatible endpoint) ---------------------------
+  # Any provider that speaks Claude's /v1/messages API can be added as a block.
+  deepseek:
+    description: DeepSeek V3 via Anthropic-compatible endpoint
+    base_url: https://api.deepseek.com/anthropic
+    env:
+      ANTHROPIC_AUTH_TOKEN: REPLACE_WITH_YOUR_DEEPSEEK_API_KEY
+      ANTHROPIC_BASE_URL: https://api.deepseek.com/anthropic
+      ANTHROPIC_DEFAULT_SONNET_MODEL: deepseek-chat
+      ANTHROPIC_DEFAULT_OPUS_MODEL: deepseek-chat
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: deepseek-chat

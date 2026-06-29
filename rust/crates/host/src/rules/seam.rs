@@ -89,9 +89,18 @@ impl HostDataSeam {
         let input = json!({ "source": source, "sql": query }).to_string();
         // Route through the one MCP contract: `federation.query` on the registry (the datasources ext).
         let result = self.handle.block_on(async move {
-            crate::call_tool(&node, &principal, &ws, "federation.query", &input).await
-        });
-        let out = result.map_err(|_| "source not allowed".to_string())?;
+        crate::call_tool(&node, &principal, &ws, "federation.query", &input).await
+    });
+    // A capability/workspace deny stays opaque ("source not allowed" → SourceNotAllowed → the MCP
+    // Denied). Any OTHER fault — a sidecar SQL/planning error, a bad input — is AUTHOR FEEDBACK and
+    // must surface verbatim (the workbench "BadInput verbatim, Denied opaque" honesty rule), never
+    // masked as a permission deny. The message deliberately avoids the "source not allowed" substring
+    // so the engine's `map_eval_error` classifies it as `Eval` (shown) rather than a deny.
+    let out = match result {
+        Ok(o) => o,
+        Err(lb_mcp::ToolError::Denied) => return Err("source not allowed".to_string()),
+        Err(e) => return Err(format!("federation query failed: {e}")),
+    };
         let val: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
         let columns = val
             .get("columns")
@@ -210,13 +219,18 @@ impl AiSeam for HostAiSeam {
 
 /// Read the workspace's registered federation datasource names (for the allowlist + schema). Empty if
 /// the datasources extension/records aren't present — platform-only rules still run.
+/// The federation datasource names registered in this workspace — the allowlist a rule's
+/// `source(...)`/`query(...)` resolves against. Reads the unwrapped record `data` values via
+/// `lb_store::list` (NOT raw `lb_store::scan`, whose `Row.data` is the Versioned `{rev, data:{…}}`
+/// envelope — reading `row.data.name` there always misses, emptying the allowlist and making every
+/// federation source resolve as `SourceNotAllowed` → opaque `Denied`). Mirrors `federation/list.rs`.
 pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
-    let page = match lb_store::scan(
+    let rows = match lb_store::list(
         &node.store,
         ws,
-        "datasource",
-        lb_store::MAX_SCAN_LIMIT,
-        None,
+        crate::federation::TABLE,
+        "tag",
+        &crate::federation::datasource_tag(),
     )
     .await
     {
@@ -224,9 +238,13 @@ pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
         Err(_) => return HashSet::new(),
     };
     let mut out = HashSet::new();
-    for row in page.rows {
-        if let Some(name) = row.data.get("name").and_then(|v| v.as_str()) {
-            out.insert(name.to_string());
+    for value in rows {
+        if let Some(ds) =
+            serde_json::from_value::<crate::federation::Datasource>(value).ok()
+        {
+            if !ds.removed {
+                out.insert(ds.name);
+            }
         }
     }
     out

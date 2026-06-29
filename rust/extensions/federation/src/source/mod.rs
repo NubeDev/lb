@@ -23,9 +23,27 @@ use datafusion::sql::TableReference;
 pub use postgres::PostgresSource;
 pub use sqlite::SqliteSource;
 
+/// A discovered table in an external source (the `federation.schema` list result).
+#[derive(Debug, Clone)]
+pub struct TableMeta {
+    pub name: String,
+    /// A row-count estimate when the source exposes one (Postgres `reltuples`); `None` otherwise.
+    pub rows: Option<i64>,
+}
+
+/// A discovered column on a table (the `federation.schema` describe result).
+#[derive(Debug, Clone)]
+pub struct ColumnMeta {
+    pub name: String,
+    /// The source's reported type, rendered as a string (e.g. `integer`, `text`).
+    pub data_type: String,
+    pub nullable: bool,
+}
+
 /// A connected external SQL source. The pool lives inside the impl; the orchestrator asks only for a
 /// `TableProvider` per referenced table name (the validator collected them), then runs the query
-/// through a DataFusion `SessionContext`.
+/// through a DataFusion `SessionContext`. Discovery (`list_tables`/`describe_table`) reuses the same
+/// provider path — it never reaches for an `information_schema` the engine doesn't expose.
 #[async_trait::async_trait]
 pub trait Source: Send + Sync {
     /// A real connectivity probe — open the pool and run a trivial query. `Ok(())` is green.
@@ -37,6 +55,10 @@ pub trait Source: Send + Sync {
         &self,
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError>;
+
+    /// List the user tables in the source (per-impl: each knows its own catalog query). Used by the
+    /// `federation.schema` discovery verb so a non-SQL UI can browse without writing a query.
+    async fn list_tables(&self) -> Result<Vec<TableMeta>, SourceError>;
 }
 
 /// A source-layer error. The DSN is NEVER included in the message (secret mediation — datasources

@@ -18,7 +18,7 @@ import { ChainsView } from "@/features/chains";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
-import { DatasourcesAdmin } from "@/features/datasources";
+import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { InboxView } from "@/features/inbox";
@@ -95,6 +95,12 @@ const dashboardsRoute = createRoute({
   component: DashboardsRoute,
 });
 
+const datasourceDetailRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/datasources/$name",
+  component: DatasourceDetailRoute,
+});
+
 const extRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/ext/$id",
@@ -119,6 +125,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/chains", "chains", () => <Chains />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
+    datasourceDetailRoute,
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
@@ -236,7 +243,30 @@ function Chains() {
 }
 
 function Datasources() {
-  return <DatasourcesAdmin ws={useAppRoutingContext().workspace} />;
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <DatasourcesAdmin
+      ws={ctx.workspace}
+      onOpen={(name) =>
+        void navigate({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/datasources/${encodeURIComponent(name)}`,
+        })
+      }
+    />
+  );
+}
+
+function DatasourceDetailRoute() {
+  const ctx = useAppRoutingContext();
+  const { name } = datasourceDetailRoute.useParams();
+  if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
+  return (
+    <DatasourceDetailPage
+      ws={ctx.workspace}
+      name={decodeURIComponent(name)}
+    />
+  );
 }
 
 function Ingest() {

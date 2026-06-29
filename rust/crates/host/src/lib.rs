@@ -158,7 +158,7 @@ pub use role::Role;
 pub use rules::{
     ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
     rules_get, rules_list, rules_run, rules_save, HostAiSeam, HostDataSeam, RuleModel, RulesError,
-    RunResult, SavedRule,
+    RunResult, SavedRule, workspace_datasources,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};

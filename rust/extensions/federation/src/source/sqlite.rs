@@ -54,4 +54,9 @@ impl Source for SqliteSource {
             .await
             .map_err(|e| SourceError(format!("table {table}: {e}")))
     }
+
+    async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
+        // Read the source's own catalog via the shared discovery runner (SQLite `sqlite_master`).
+        crate::query::run_list_tables(self, "sqlite").await
+    }
 }

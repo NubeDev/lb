@@ -282,21 +282,28 @@ Real store + real gateway + real `caps::check`, seeded with real records — **n
 
 ## Open questions
 
-- **Cache TTL value** — start at a few seconds and measure, or make it config? Recommend a
-  small fixed TTL + explicit bust-on-revoke for v1; revisit if the store read shows on a flame
-  graph.
-- **`last_used_at` write-through cost** — updating it on every auth is a write per request.
-  Throttle (write at most every N seconds per key) or defer the field to a phase-2? Recommend
-  **defer `last_used_at` to phase 2** so v1 ships without a per-request write; add it throttled
-  once the auth path is proven.
-- **Rotation grace window** — does `rotate` kill the old secret instantly (recommended,
-  simplest, instant) or allow a short overlap for zero-downtime appliance updates? Recommend
-  instant for v1; a grace window is a later enhancement if a real appliance needs it.
-- **Where the `apikey-read`/`apikey-write` built-in roles are seeded** — at workspace creation
-  (like other built-ins) vs lazily on first key. Resolve against how existing built-in roles
-  are seeded in `authz`.
-- **Cap summary in `list`** — show the resolved cap set, the assigned role names, or both?
-  Recommend role names + a "read-only / read-write / custom" badge, with full caps on `get`.
+> **RESOLVED & SHIPPED (session 2026-06-29 — see `sessions/auth-caps/api-keys-session.md`):**
+> - *Cache TTL value:* a small fixed **5s** TTL + explicit bust-on-revoke. Not configurable in v1.
+> - *`last_used_at` write-through cost:* **deferred** to a later phase — v1 does NO per-request write.
+> - *Rotation grace window:* **INSTANT** — `apikey.rotate` kills the old secret immediately, no overlap.
+> - *Where the built-in roles are seeded:* ensured idempotently on first `apikey.create`
+>   (`host/src/apikey/seed.rs`) — there is no central authz-role seed point, so the create verb ensures
+>   `apikey-read`/`apikey-write` if absent (mirrors the "seeded by the caller" pattern).
+> - *Cap summary in `list`:* role names + a `"read-only" | "read-write" | "custom"` badge (never a
+>   hash/secret); `apikey.get` returns the full resolved cap set.
+> - *Key format + Principal seam:* the **scope doc's** `lbk_{ws}.{keyid}.{secret}` (dot-delimited) +
+>   `Principal::for_key` won over a looser `_`-delimited/`routed` paraphrase (id-collision safety +
+>   the co-trust caveat does not apply to an untrusted appliance).
+>
+> Still open below: the multi-node cross-gateway revoke is the documented sync+TTL floor (the bus
+> cache-bust broadcast is a v1 nicety, not built this slice — local bust + lazy expiry are the
+> security floor and are tested).
+
+- **Cache TTL value** — ~~start at a few seconds and measure, or make it config?~~ **DECIDED:** fixed 5s + bust-on-revoke, not configurable in v1.
+- **`last_used_at` write-through cost** — ~~throttle or defer?~~ **DECIDED:** defer to a later phase; v1 ships no per-request write.
+- **Rotation grace window** — ~~instant or short overlap?~~ **DECIDED:** instant.
+- **Where the `apikey-read`/`apikey-write` built-in roles are seeded** — ~~at workspace creation vs lazily?~~ **DECIDED:** ensured idempotently on first `apikey.create`.
+- **Cap summary in `list`** — ~~resolved caps, role names, or both?~~ **DECIDED:** role names + a read-only/read-write/custom badge; full caps on `get`.
 
 ## Related
 

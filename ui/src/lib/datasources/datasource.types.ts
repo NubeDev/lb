@@ -27,3 +27,24 @@ export interface ProbeResult {
   /** The error message when the probe is red (a sidecar fault / refused endpoint / missing source). */
   error?: string;
 }
+
+/** A `federation.query` result — column names + rows (JSON objects keyed by column). Mirrors the
+ *  sidecar's `{columns, rows}` shape (the same frame `store.query`/`series.read` use). */
+export interface FederationQueryResult {
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+/** One discovered table in an external source (from the `information_schema` discovery SELECT). */
+export interface DbTable {
+  name: string;
+  /** Row count estimate when the discovery query returned one, else undefined. */
+  rows?: number;
+}
+
+/** One discovered column on a table (from `information_schema.columns`). */
+export interface DbColumn {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+}

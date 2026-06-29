@@ -14,9 +14,10 @@ import { DatasourceRoster } from "./DatasourceRoster";
 
 interface Props {
   ws: string;
+  onOpen: (name: string) => void;
 }
 
-export function DatasourcesAdmin({ ws }: Props) {
+export function DatasourcesAdmin({ ws, onOpen }: Props) {
   const { sources, error, probes, add, remove, probe } = useDatasources();
 
   return (
@@ -25,6 +26,7 @@ export function DatasourcesAdmin({ ws }: Props) {
       <DatasourceRoster
         sources={sources}
         probes={probes}
+        onOpen={onOpen}
         onTest={(name) => void probe(name)}
         onRemove={(name) => void remove(name)}
       />

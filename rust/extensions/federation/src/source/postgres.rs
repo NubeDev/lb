@@ -66,4 +66,9 @@ impl Source for PostgresSource {
             .await
             .map_err(|e| SourceError(format!("table {table}: {e}")))
     }
+
+    async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
+        // Read the source's own catalog via the shared discovery runner (Postgres `pg_catalog`).
+        crate::query::run_list_tables(self, "postgres").await
+    }
 }

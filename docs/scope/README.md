@@ -69,7 +69,8 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.
 - `channels/` — the collaboration channel surface: durable inbox-backed history, bus motion, channel
-  registry, SSE stream, and presence.
+  registry, SSE stream, and presence. Also `channels-query-charts-scope.md`: in-channel SQL queries
+  (via `federation.query`) whose results post back as durable items and auto-plot a chart.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side

@@ -93,6 +93,9 @@ pub async fn rules_run(
         Ok(o) => o,
         Err(RuleError::SourceNotAllowed(_)) => return Err(RulesError::Denied),
         Err(RuleError::Eval(m)) => return Err(RulesError::Eval(m)),
+        // A seam fault surfacing from a grid materialization (a source SQL/planning error, a sidecar
+        // fault) is AUTHOR FEEDBACK — show it verbatim (BadInput/400), not an opaque deny or a blank.
+        Err(RuleError::Seam(m)) => return Err(RulesError::BadInput(m)),
         Err(e) => return Err(RulesError::Internal(e.to_string())),
     };
 

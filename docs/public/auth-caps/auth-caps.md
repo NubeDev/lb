@@ -60,6 +60,21 @@ Grant delegation (S5), OIDC + RBAC hierarchy + key rotation/custody (S3+), store
 grant-sets at scale (measure at S2). Negative/deny caps: rejected for v1 (deny-by-default +
 explicit grants).
 
-**API keys** — machine principals (appliance/cli/api/agent) as a non-human `Subject` over
-this same grant model, authenticated by a hashed bearer secret and authorized through the one
-chokepoint above. Scoped, not yet shipped: `../../scope/auth-caps/api-keys-scope.md`.
+**API keys** — machine principals (appliance/cli/api/agent) as a non-human `Subject::Key("{id}")`
+over this same grant model, authenticated by a **peppered bearer secret** and authorized through the
+one chokepoint above. **Shipped** (`lb-apikey` + host `apikey` service + gateway bearer-auth + admin
+"API Keys" tab). The credential is the bearer — verified per request, never exchanged for a token —
+with the grammar `lbk_{ws}.{keyid}.{secret}` (dot-delimited Crockford base32 fields; the `{ws}.{keyid}`
+prefix is an O(1) ws-scoped lookup). The secret is `HMAC-SHA256(pepper, secret_field)` (input is the
+secret field **alone**, never the full bearer; pepper from env, never the DB), compared constant-time.
+A small hash→`Principal` cache (5s TTL) keeps the hot path cheap and is **busted on revoke**, so a
+revoked key is refused on the very next request on the revoking node (the multi-node floor is sync +
+TTL). `Principal::for_key` builds the verified principal (NOT the co-trust `routed` path — a bearer
+key from an untrusted appliance is a different trust context). Read-only vs read-write and tool/page
+limits are just *which caps the key resolves to* (two built-in roles, `apikey-read`/`apikey-write`,
+seeded idempotently; custom caps are an ordinary grant on `key:{id}`). Expiry is a **lazy check at
+authentication** (security never depends on a scheduler); the outbox only tombstones + notifies. The
+privilege-escalation guard runs in `apikey.create`: the key's effective resolved caps must be ⊆ the
+creator's own (covering the built-in-role path the grant path's `role:` exemption would otherwise
+miss). Scope + session: `../../scope/auth-caps/api-keys-scope.md`,
+`../../sessions/auth-caps/api-keys-session.md`.

@@ -4,7 +4,12 @@
 // workspace + principal come from the session token (the hard wall, §7), never an argument. The DSN is
 // supplied ONLY on `addDatasource` and never read back — no response carries it (§6.7 / redaction rule).
 
-import type { AddDatasource, DatasourceSummary, ProbeResult } from "./datasource.types";
+import type {
+  AddDatasource,
+  DatasourceSummary,
+  FederationQueryResult,
+  ProbeResult,
+} from "./datasource.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The list-row wire shape the gateway returns (snake_case `secret_ref`, NEVER a `dsn`). */
@@ -49,4 +54,17 @@ export async function testDatasource(name: string): Promise<ProbeResult> {
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Run a read-only SELECT against the registered external `source` via the host-mediated `mcp/call`
+ *  bridge → `federation.query`. SELECT-only is enforced host-side AND in the sidecar; the workspace
+ *  + principal come from the session token (the wall, §7). Returns the sidecar's `{columns, rows}`. */
+export function runFederationQuery(
+  source: string,
+  sql: string,
+): Promise<FederationQueryResult> {
+  return invoke<FederationQueryResult>("mcp_call", {
+    tool: "federation.query",
+    args: { source, sql },
+  });
 }

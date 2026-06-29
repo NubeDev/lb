@@ -52,8 +52,14 @@ export function surfaceForPath(pathname: string): Surface {
   if (rel.startsWith("/ext/")) {
     return `ext:${decodeURIComponent(rel.slice("/ext/".length))}`;
   }
-  const found = (Object.entries(CORE_PATHS) as [CoreSurface, string][]).find(
+  // Match exact, else a surface path that this URL lives under (e.g. `/datasources/timescale` →
+  // `datasources`, so the detail route keeps the same nav-active + capability gate as the list).
+  const exact = (Object.entries(CORE_PATHS) as [CoreSurface, string][]).find(
     ([, path]) => path === rel,
   );
-  return found?.[0] ?? "channels";
+  if (exact) return exact[0];
+  const prefix = (Object.entries(CORE_PATHS) as [CoreSurface, string][])
+    .filter(([, path]) => path !== "/")
+    .find(([, path]) => rel.startsWith(`${path}/`));
+  return prefix?.[0] ?? "channels";
 }

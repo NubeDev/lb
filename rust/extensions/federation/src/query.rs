@@ -3,13 +3,21 @@
 //! referenced table as a DataFusion `TableProvider`, runs the query through a `SessionContext`, and
 //! returns `{columns, rows}` bounded by the row cap. The pattern (embed the engine, register
 //! per-table providers, run validated SQL) is adapted from rubix-cube (MIT/Apache-2.0).
+//!
+//! `discover_*` — the `federation.schema` discovery path: reuses the SAME table-provider factory to
+//! read each source's own catalog (Postgres `pg_catalog` / SQLite `sqlite_master`) and to read a
+//! table's Arrow schema for columns. It does NOT issue `information_schema` SQL (the engine registers
+//! only the tables a query references, so a virtual catalog is unreachable); it goes through the real
+//! remote engine the provider pushes down to.
+
+use std::sync::Arc;
 
 use arrow::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
 use datafusion::sql::TableReference;
 use serde_json::Value;
 
-use crate::source::{connect, Source};
+use crate::source::{connect, ColumnMeta, Source, SourceError, TableMeta};
 use crate::validate::{validate_select, ROW_CAP};
 
 /// The result of a federated query: the column names and the rows (each an array of JSON cells,
@@ -100,4 +108,115 @@ fn shape(batches: Vec<RecordBatch>) -> Result<QueryResult, String> {
         .collect();
 
     Ok(QueryResult { columns, rows })
+}
+
+// ───────────────────────────── discovery (`federation.schema`) ─────────────────────────────
+
+/// Run a discovery SELECT that reads catalog tables, returning JSON OBJECT rows (keyed by column
+/// name). Each `(alias, remote)` binding builds a provider for the remote catalog table (the same
+/// factory `probe` uses) and registers it under the bare `alias`, so the SQL references the alias —
+/// this decouples DataFusion's name resolution from the remote catalog's dotted names.
+async fn catalog_rows(
+    source: &dyn Source,
+    sql: &str,
+    bindings: &[(&str, &str)],
+) -> Result<Vec<Value>, String> {
+    let ctx = SessionContext::new();
+    for (alias, remote) in bindings {
+        let provider = source
+            .table_provider(&TableReference::bare(*remote))
+            .await
+            .map_err(|e| e.to_string())?;
+        ctx.register_table(TableReference::bare(*alias), provider)
+            .map_err(|e| format!("register {alias}: {e}"))?;
+    }
+    let df = ctx.sql(sql).await.map_err(|e| format!("plan: {e}"))?;
+    let df = df.limit(0, Some(ROW_CAP)).map_err(|e| e.to_string())?;
+    let batches = df.collect().await.map_err(|e| format!("execute: {e}"))?;
+    rows_as_objects(batches)
+}
+
+/// Collect Arrow batches into JSON OBJECT rows keyed by column name (the discovery result shape).
+fn rows_as_objects(batches: Vec<RecordBatch>) -> Result<Vec<Value>, String> {
+    let mut buf = Vec::new();
+    {
+        let mut writer = arrow_json::ArrayWriter::new(&mut buf);
+        for batch in &batches {
+            writer.write(batch).map_err(|e| e.to_string())?;
+        }
+        writer.finish().map_err(|e| e.to_string())?;
+    }
+    if buf.is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_slice(&buf).map_err(|e| e.to_string())
+}
+
+/// Discover the user tables in the source via its own catalog. The list SQL + bindings are
+/// per-source-kind; the orchestration is shared.
+pub async fn discover_tables(kind: &str, dsn: &str) -> Result<Vec<TableMeta>, String> {
+    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    source.list_tables().await.map_err(|e| e.to_string())
+}
+
+/// Discover one table's columns by reading its `TableProvider` Arrow schema — engine-agnostic (works
+/// for Postgres and SQLite alike; the provider pushes down and reports the real remote schema).
+pub async fn describe_table(kind: &str, dsn: &str, table: &str) -> Result<Vec<ColumnMeta>, String> {
+    let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
+    let provider = source
+        .table_provider(&TableReference::bare(table))
+        .await
+        .map_err(|e| e.to_string())?;
+    let schema = provider.schema();
+    let cols = schema
+        .fields()
+        .iter()
+        .map(|f| ColumnMeta {
+            name: f.name().clone(),
+            data_type: f.data_type().to_string(),
+            nullable: f.is_nullable(),
+        })
+        .collect();
+    Ok(cols)
+}
+
+/// Build `TableMeta` rows from JSON objects (a `{name, rows?}` shape, tolerant of missing rows).
+pub fn table_meta_from_rows(rows: Vec<Value>) -> Vec<TableMeta> {
+    rows.into_iter()
+        .filter_map(|obj| {
+            let name = obj.get("name")?.as_str()?.to_string();
+            let rows = obj
+                .get("rows")
+                .and_then(|v| v.as_i64().or_else(|| v.as_f64().map(|n| n as i64)));
+            Some(TableMeta { name, rows })
+        })
+        .collect()
+}
+
+// Provide the per-kind list query so each `Source` impl stays small and the catalog SQL lives in one
+// place. Returns `(sql, bindings)`.
+pub(crate) fn list_tables_plan(kind: &str) -> Result<(&'static str, Vec<(&'static str, &'static str)>), String> {
+    match kind {
+        "sqlite" => Ok((
+            "SELECT name AS name FROM __sm__ WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+            vec![("__sm__", "sqlite_master")],
+        )),
+        "postgres" | "timescale" => Ok((
+            "SELECT t.tablename AS name, COALESCE(c.reltuples::bigint, 0) AS rows \
+             FROM __pg_tables__ t LEFT JOIN __pg_class__ c ON c.relname = t.tablename \
+             WHERE t.schemaname = 'public' ORDER BY t.tablename",
+            vec![("__pg_tables__", "pg_catalog.pg_tables"), ("__pg_class__", "pg_catalog.pg_class")],
+        )),
+        other => Err(format!("unknown source kind: {other}")),
+    }
+}
+
+/// Run the per-kind list query via the shared catalog runner. Used by `Source::list_tables` impls so
+/// they share one orchestration path.
+pub async fn run_list_tables(source: &dyn Source, kind: &str) -> Result<Vec<TableMeta>, SourceError> {
+    let (sql, bindings) = list_tables_plan(kind).map_err(SourceError)?;
+    let rows = catalog_rows(source, sql, &bindings)
+        .await
+        .map_err(SourceError)?;
+    Ok(table_meta_from_rows(rows))
 }
