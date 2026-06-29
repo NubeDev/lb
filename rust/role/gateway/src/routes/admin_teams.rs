@@ -17,7 +17,9 @@ pub async fn list_teams(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<Team>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let teams = lb_host::teams_list(&gw.node.store, &p, p.ws())
         .await
         .map_err(forbid)?;
@@ -37,7 +39,9 @@ pub async fn create_team(
     headers: HeaderMap,
     Json(body): Json<CreateTeam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::teams_create(&gw.node.store, &p, p.ws(), &body.team, &body.name)
         .await
         .map_err(forbid)?;
@@ -57,7 +61,9 @@ pub async fn rename_team(
     Path(team): Path<String>,
     Json(body): Json<RenameTeam>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::teams_rename(&gw.node.store, &p, p.ws(), &team, &body.name)
         .await
         .map_err(forbid)?;
@@ -70,7 +76,9 @@ pub async fn delete_team(
     headers: HeaderMap,
     Path(team): Path<String>,
 ) -> Result<Json<usize>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let removed = lb_host::teams_delete(&gw.node.store, &p, p.ws(), &team)
         .await
         .map_err(forbid)?;

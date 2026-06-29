@@ -21,7 +21,9 @@ pub async fn post_message(
     Path(cid): Path<String>,
     Json(item): Json<Item>,
 ) -> Result<Json<Item>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let stored = lb_host::post(
         &gw.node.store,
         &gw.node.bus,

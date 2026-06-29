@@ -20,7 +20,9 @@ pub async fn list_dashboards(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let rows = lb_host::dashboard_list(&gw.node.store, &p, p.ws())
         .await
         .map_err(status)?;
@@ -34,7 +36,9 @@ pub async fn get_dashboard(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let d = lb_host::dashboard_get(&gw.node.store, &p, p.ws(), &id)
         .await
         .map_err(status)?;
@@ -61,7 +65,9 @@ pub async fn save_dashboard(
     headers: HeaderMap,
     Json(body): Json<SaveDashboard>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let d = lb_host::dashboard_save(
         &gw.node.store,
         &p,
@@ -83,7 +89,9 @@ pub async fn delete_dashboard(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::dashboard_delete(&gw.node.store, &p, p.ws(), &id, gw.now)
         .await
         .map_err(status)?;
@@ -106,7 +114,9 @@ pub async fn share_dashboard(
     Path(id): Path<String>,
     Json(body): Json<ShareDashboard>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let visibility = parse_visibility(&body.visibility).ok_or((
         StatusCode::BAD_REQUEST,
         format!("bad visibility: {}", body.visibility),

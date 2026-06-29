@@ -24,7 +24,9 @@ pub async fn list_datasources(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let out = lb_host::call_tool(&gw.node, &p, p.ws(), "datasource.list", "{}")
         .await
         .map_err(status)?;
@@ -48,7 +50,9 @@ pub async fn add_datasource(
     headers: HeaderMap,
     Json(body): Json<AddDatasource>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let input = json!({
         "name": body.name,
         "kind": body.kind,
@@ -68,7 +72,9 @@ pub async fn remove_datasource(
     headers: HeaderMap,
     Path(name): Path<String>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let input = json!({ "name": name });
     lb_host::call_tool(
         &gw.node,
@@ -91,7 +97,9 @@ pub async fn test_datasource(
     headers: HeaderMap,
     Path(name): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let input = json!({ "source": name, "ts": gw.now });
     let out = lb_host::call_tool(&gw.node, &p, p.ws(), "datasource.test", &input.to_string())
         .await

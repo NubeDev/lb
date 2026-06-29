@@ -40,7 +40,9 @@ pub async fn request_approval(
     Path(id): Path<String>,
     Json(body): Json<RequestApproval>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let item = lb_host::request_approval(
         &gw.node.store,
         &p,
@@ -70,7 +72,9 @@ pub async fn resolve_approval(
     Path(id): Path<String>,
     Json(body): Json<ResolveApproval>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::resolve_approval(&gw.node.store, &p, p.ws(), &id, body.decision, gw.now)
         .await
         .map_err(wf_status)?;
@@ -97,7 +101,9 @@ pub async fn start_job(
     Path(id): Path<String>,
     Json(body): Json<StartJob>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     // The PR coordinates were persisted at `request` time, keyed by approval_id — read them back
     // (the same contract as the MCP bridge's `start_job`). A missing spec means this approval was
     // never a coding-job request → a `400`, distinct from the approval gate's `started: false`.

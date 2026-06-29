@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+lb-apikey.workspace = true
 lb-assets.workspace = true
 lb-auth.workspace = true
 lb-authz.workspace = true

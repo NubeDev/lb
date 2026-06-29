@@ -24,7 +24,9 @@ pub async fn list_tables(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<TableCount>>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let tables = lb_host::store_tables_view(&gw.node.store, &p, p.ws())
         .await
         .map_err(dbview_status)?;
@@ -46,7 +48,9 @@ pub async fn scan_table(
     Path(table): Path<String>,
     Query(q): Query<ScanQuery>,
 ) -> Result<Json<Page>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let page = lb_host::store_scan_view(
         &gw.node.store,
         &p,
@@ -75,7 +79,9 @@ pub async fn read_graph(
     headers: HeaderMap,
     Query(q): Query<GraphQuery>,
 ) -> Result<Json<Graph>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let g = lb_host::store_graph_view(
         &gw.node.store,
         &p,

@@ -3,6 +3,7 @@
 //! guarded route authenticates the session token first (`session::authenticate`) — the workspace +
 //! caps come from the token, never the request (the hard wall, §7).
 
+mod admin_apikeys;
 mod admin_grants;
 mod admin_members;
 mod admin_teams;
@@ -35,6 +36,7 @@ mod system;
 mod workflow;
 mod workspace;
 
+pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, rotate_apikey};
 pub use admin_grants::{assign_grant, define_role, list_grants, list_roles, revoke_grant};
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};

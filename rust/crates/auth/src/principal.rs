@@ -68,6 +68,25 @@ impl Principal {
         }
     }
 
+    /// Build a verified principal for a **machine/API-key** actor (api-keys scope). A bearer key
+    /// from an untrusted appliance is a different trust context from [`routed`]'s co-trust path: here
+    /// the gateway has ALREADY verified the secret (constant-time HMAC) and resolved the key's caps
+    /// server-side from the durable grant store, so the principal's inputs are trusted even though
+    /// the caller is not. This dedicated constructor states that invariant loudly, rather than
+    /// silently inheriting `routed`'s caveat whose justification (in-process co-trust) does not
+    /// apply. `role` is `Member` in v1 (a key is never more privileged than a member); a future
+    /// admin key could set it explicitly here. No `constraint` — a key is bounded only by its own
+    /// resolved caps (it delegates nothing).
+    pub fn for_key(sub: impl Into<String>, ws: impl Into<String>, caps: Vec<String>) -> Principal {
+        Principal {
+            sub: sub.into(),
+            ws: ws.into(),
+            role: Role::Member,
+            caps,
+            constraint: None,
+        }
+    }
+
     /// Derive a **narrower** principal that acts on behalf of `self` (the caller). The result has:
     /// a distinct `sub` (e.g. `agent:summarize`) so audit shows the agent acted; the **agent's own
     /// caps** as its caps; and `self`'s caps as the `constraint` — so the check layer enforces

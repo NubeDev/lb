@@ -9,6 +9,7 @@
 //! and `load_extension` to bring a component online. Tool calls go through `lb_mcp::call`.
 
 mod agent;
+mod apikey;
 mod assets;
 mod authz;
 mod boot;
@@ -62,6 +63,12 @@ pub use agent::{
     CallOutcome, DecisionState, Effect, Invocation, LoopState, ModelAccess, Policy, ProposedCall,
     Rule, SettleOutcome, Turn, DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
     MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
+};
+pub use apikey::{
+    apikey_authenticate, apikey_create, apikey_get, apikey_list, apikey_revoke, apikey_rotate,
+    ensure_builtin_roles, is_auth_failure, ApiKeyCache, ApiKeyError, ApiKeyFull, ApiKeyView,
+    KINDS as APIKEY_KINDS, KIND_DISCRIM as APIKEY_KIND_DISCRIM, TABLE as APIKEY_TABLE,
+    TOMBSTONE_STATUS as APIKEY_TOMBSTONE_STATUS,
 };
 pub use assets::{
     add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, list_granted_skills,

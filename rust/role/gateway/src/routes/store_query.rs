@@ -35,7 +35,9 @@ pub async fn run_query(
     headers: HeaderMap,
     Json(body): Json<RunQuery>,
 ) -> Result<Json<QueryResult>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let vars = body
         .vars
         .unwrap_or_default()
@@ -53,7 +55,9 @@ pub async fn read_schema(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Schema>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let schema = lb_host::store_schema_read(&gw.node.store, &p, p.ws())
         .await
         .map_err(status)?;

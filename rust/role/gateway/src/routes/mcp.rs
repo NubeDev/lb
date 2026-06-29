@@ -33,7 +33,9 @@ pub async fn mcp_call(
     headers: HeaderMap,
     Json(body): Json<McpCall>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let input = if body.args.is_null() {
         "{}".to_string()
     } else {

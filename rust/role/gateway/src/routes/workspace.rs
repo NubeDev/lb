@@ -16,7 +16,9 @@ pub async fn list_workspaces(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<WorkspaceRecord>>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let records = lb_host::workspace_list(&gw.node.store, &principal)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
@@ -36,7 +38,9 @@ pub async fn create_workspace(
     headers: HeaderMap,
     Json(body): Json<CreateWorkspace>,
 ) -> Result<Json<WorkspaceRecord>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let record =
         lb_host::workspace_create(&gw.node.store, &principal, &body.ws, &body.name, gw.now)
             .await

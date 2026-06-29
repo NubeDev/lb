@@ -17,7 +17,9 @@ pub async fn get_history(
     headers: HeaderMap,
     Path(cid): Path<String>,
 ) -> Result<Json<Vec<Item>>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let items = lb_host::history(&gw.node.store, &principal, principal.ws(), &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;

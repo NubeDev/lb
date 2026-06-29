@@ -34,7 +34,7 @@ mod subject;
 mod team;
 
 pub use grant::{grant_assign, grant_list, grant_revoke, granted, Grant, GRANT_TABLE};
-pub use resolve::resolve_caps;
+pub use resolve::{resolve_caps, resolve_subject_caps};
 pub use revoke::revoke_subject;
 pub use role::{role_caps, role_define, role_list, Role, ROLE_TABLE};
 pub use subject::Subject;

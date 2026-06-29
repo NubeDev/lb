@@ -39,6 +39,7 @@ async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
         engine: Engine::new().expect("runtime engine"),
         registry: Arc::new(Registry::new()),
         sidecars: Arc::new(SidecarMap::new()),
+        apikeys: Arc::new(lb_host::ApiKeyCache::new()),
         role,
     }
 }

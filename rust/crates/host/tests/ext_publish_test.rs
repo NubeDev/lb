@@ -161,6 +161,7 @@ async fn boot_on_path(path: &str) -> Node {
         engine: Engine::new().expect("runtime engine"),
         registry: Arc::new(Registry::new()),
         sidecars: Arc::new(lb_host::SidecarMap::new()),
+        apikeys: Arc::new(lb_host::ApiKeyCache::new()),
         role: NodeRole::Solo,
     }
 }

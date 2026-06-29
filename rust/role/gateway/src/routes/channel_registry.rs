@@ -17,7 +17,9 @@ pub async fn list_channels(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ChannelRecord>>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let records = lb_host::channel_list(&gw.node.store, &principal, principal.ws())
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
@@ -36,7 +38,9 @@ pub async fn create_channel(
     headers: HeaderMap,
     Json(body): Json<CreateChannel>,
 ) -> Result<Json<ChannelRecord>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let record = lb_host::channel_create(
         &gw.node.store,
         &principal,

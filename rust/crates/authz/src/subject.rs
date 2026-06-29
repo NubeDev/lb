@@ -1,8 +1,11 @@
-//! [`Subject`] — what a grant is *for*: a user, a team, or a role. The grant store's `subject`
-//! column (authz-grants scope: `grant(subject -> cap)` where `subject ∈ {user, team, role}`).
+//! [`Subject`] — what a grant is *for*: a user, a team, a role, or an API key. The grant store's
+//! `subject` column (authz-grants scope: `grant(subject -> cap)` where
+//! `subject ∈ {user, team, role, key}`; the `key:` prefix was reserved by auth-caps-scope and is
+//! fulfilled by the api-keys scope).
 //!
-//! Wire form is a single `kind:name` string (`user:ada`, `team:facilities`, `role:operator`) so a
-//! grant record is flat and the store filters on it directly. One concept, three constructors.
+//! Wire form is a single `kind:name` string (`user:ada`, `team:facilities`, `role:operator`,
+//! `key:k7f3a`) so a grant record is flat and the store filters on it directly. One concept, four
+//! constructors.
 
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +19,9 @@ pub enum Subject {
     Team(String),
     /// A role — `role:operator`. A cap bundle; assigning a role to a user/team is itself a grant.
     Role(String),
+    /// An API key — `key:k7f3a` (api-keys scope). A machine principal whose caps resolve from its
+    /// direct grants + roles (NO team-membership edge — keys join no teams in v1).
+    Key(String),
 }
 
 impl Subject {
@@ -25,6 +31,7 @@ impl Subject {
             Subject::User(n) => format!("user:{n}"),
             Subject::Team(n) => format!("team:{n}"),
             Subject::Role(n) => format!("role:{n}"),
+            Subject::Key(n) => format!("key:{n}"),
         }
     }
 
@@ -39,6 +46,7 @@ impl Subject {
             "user" => Some(Subject::User(name.to_string())),
             "team" => Some(Subject::Team(name.to_string())),
             "role" => Some(Subject::Role(name.to_string())),
+            "key" => Some(Subject::Key(name.to_string())),
             _ => None,
         }
     }
@@ -67,6 +75,7 @@ mod tests {
             Subject::User("ada".into()),
             Subject::Team("facilities".into()),
             Subject::Role("operator".into()),
+            Subject::Key("k7f3a".into()),
         ] {
             assert_eq!(Subject::parse(&s.as_key()), Some(s));
         }
@@ -77,5 +86,16 @@ mod tests {
         assert_eq!(Subject::parse("org:acme"), None);
         assert_eq!(Subject::parse("user:"), None);
         assert_eq!(Subject::parse("nope"), None);
+    }
+
+    #[test]
+    fn key_subject_has_the_reserved_prefix() {
+        // A stored `key:…` grant MUST deserialize back to `Subject::Key` — a missed `"key"` arm in
+        // `Subject::parse` would silently resolve every key to no caps (deny everything). Pinned.
+        assert_eq!(
+            Subject::parse("key:k7f3a"),
+            Some(Subject::Key("k7f3a".into()))
+        );
+        assert_eq!(Subject::Key("k7f3a".into()).as_key(), "key:k7f3a");
     }
 }

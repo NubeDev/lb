@@ -133,7 +133,9 @@ async fn seed_iot_demo(
 }
 
 fn auth(gw: &Gateway, headers: &HeaderMap) -> Result<lb_auth::Principal, (StatusCode, String)> {
-    authenticate(gw, headers).map_err(|_| (StatusCode::UNAUTHORIZED, "bad token".into()))
+    authenticate(gw, headers)
+        .await
+        .map_err(|_| (StatusCode::UNAUTHORIZED, "bad token".into()))
 }
 
 /// `POST /_seed/inbox` — write a real durable inbox `Item` into the token's workspace.

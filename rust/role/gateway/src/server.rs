@@ -11,19 +11,20 @@ use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_datasource, add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream,
-    convert_unit, create_channel, create_team, create_user, create_workspace, define_role,
-    delete_chain, delete_dashboard, delete_rule, delete_team, delete_user, disable_extension,
-    disable_user, enable_extension, enable_user, find_series, format_datetime, format_number,
-    format_quantity, get_chain, get_chain_run, get_dashboard, get_doc, get_history,
-    get_outbox_status, get_prefs, get_rule, grant_skill, latest_sample, link_doc, list_chains,
-    list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_grants,
-    list_inbox, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
-    list_users, list_workspaces, load_skill, login, mcp_call, post_message, publish_extension,
-    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
-    remove_datasource, remove_team_member, rename_team, rename_workspace, request_approval,
-    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_grant, run_chain, run_query,
-    run_rule, run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    convert_unit, create_apikey, create_channel, create_team, create_user, create_workspace,
+    define_role, delete_chain, delete_dashboard, delete_rule, delete_team, delete_user,
+    disable_extension, disable_user, enable_extension, enable_user, find_series, format_datetime,
+    format_number, format_quantity, get_apikey, get_chain, get_chain_run, get_dashboard, get_doc,
+    get_history, get_outbox_status, get_prefs, get_rule, grant_skill, latest_sample, link_doc,
+    list_apikeys, list_chains, list_channels, list_dashboards, list_datasources, list_docs,
+    list_extensions, list_grants, list_inbox, list_roles, list_rules, list_series, list_tables,
+    list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
+    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
+    read_graph, read_samples, read_schema, remove_datasource, remove_team_member, rename_team,
+    rename_workspace, request_approval, resolve_inbox, resolve_prefs, resolve_workflow_approval,
+    revoke_apikey, revoke_grant, rotate_apikey, run_chain, run_query, run_rule, run_stream,
+    save_chain, save_dashboard, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, test_datasource,
     uninstall_extension, write_samples,
 };
@@ -85,6 +86,14 @@ pub fn router(gw: Gateway) -> Router {
         .route("/admin/grants", get(list_grants).post(assign_grant))
         .route("/admin/grants/revoke", post(revoke_grant))
         .route("/admin/roles", get(list_roles).post(define_role))
+        // api-keys (api-keys scope) — the machine-credential admin surface: list (no hash/secret),
+        // create (returns the one-time bearer), get (full resolved caps), revoke (instant local
+        // revoke), rotate (new secret, old dead). Each re-checks `mcp:apikey.manage:call`
+        // server-side; ws + principal from the token.
+        .route("/admin/apikeys", get(list_apikeys).post(create_apikey))
+        .route("/admin/apikeys/{id}", get(get_apikey))
+        .route("/admin/apikeys/{id}/revoke", post(revoke_apikey))
+        .route("/admin/apikeys/{id}/rotate", post(rotate_apikey))
         // extension lifecycle (lifecycle-management scope) — the browser's `ext.*` surface.
         .route("/extensions", get(list_extensions).post(publish_extension))
         .route("/extensions/{ext}", delete(uninstall_extension))

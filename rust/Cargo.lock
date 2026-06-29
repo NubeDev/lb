@@ -4190,6 +4190,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-apikey"
+version = "0.1.0"
+dependencies = [
+ "hmac 0.12.1",
+ "rand 0.8.6",
+ "serde",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "lb-assets"
 version = "0.1.0"
 dependencies = [
@@ -4276,6 +4286,7 @@ dependencies = [
  "hostname",
  "iana-time-zone",
  "if-addrs",
+ "lb-apikey",
  "lb-assets",
  "lb-auth",
  "lb-authz",
@@ -4438,6 +4449,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "http-body-util",
+ "lb-apikey",
  "lb-assets",
  "lb-auth",
  "lb-devkit",
@@ -4449,6 +4461,7 @@ dependencies = [
  "lb-prefs",
  "lb-registry",
  "lb-run-events",
+ "rand 0.8.6",
  "reqwest",
  "serde",
  "serde_json",

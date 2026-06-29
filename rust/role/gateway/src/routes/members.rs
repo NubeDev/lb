@@ -16,7 +16,9 @@ pub async fn list_team_members(
     headers: HeaderMap,
     Path(team): Path<String>,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let members = lb_host::list_members(&gw.node.store, &principal, principal.ws(), &team)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
@@ -36,7 +38,9 @@ pub async fn add_team_member(
     Path(team): Path<String>,
     Json(body): Json<AddMember>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let principal = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     lb_host::add_team_member(
         &gw.node.store,
         &principal,

@@ -55,7 +55,9 @@ pub async fn publish_message(
     headers: HeaderMap,
     Json(body): Json<PublishBody>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = authenticate(&gw, &headers).map_err(|e| e.into_response())?;
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
     let bytes =
         serde_json::to_vec(&body.payload).map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     lb_host::bus_publish(&gw.node.bus, &p, p.ws(), &body.subject, &bytes)
@@ -72,7 +74,9 @@ pub async fn bus_stream(
     State(gw): State<Gateway>,
     Query(q): Query<BusStreamQuery>,
 ) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
-    let principal = verify_token(&gw, &q.token).map_err(|e| e.into_response())?;
+    let principal = verify_token(&gw, &q.token)
+        .await
+        .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
 
     let sub = lb_host::bus_watch(&gw.node.bus, &principal, &ws, &q.subject)
