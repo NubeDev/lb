@@ -46,7 +46,7 @@ async fn seed_proof_panel(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     const MANIFEST: &str = include_str!("../../../../extensions/proof-panel/extension.toml");
     let wasm_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../extensions/proof-panel/target/wasm32-wasip2/release/proof_panel_ext.wasm");
@@ -122,7 +122,7 @@ async fn seed_iot_demo(
     State(gw): State<Gateway>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     let report = lb_host::seed_iot_demo(&gw.node.store, p.ws(), 1)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -132,7 +132,10 @@ async fn seed_iot_demo(
     })))
 }
 
-fn auth(gw: &Gateway, headers: &HeaderMap) -> Result<lb_auth::Principal, (StatusCode, String)> {
+async fn auth(
+    gw: &Gateway,
+    headers: &HeaderMap,
+) -> Result<lb_auth::Principal, (StatusCode, String)> {
     authenticate(gw, headers)
         .await
         .map_err(|_| (StatusCode::UNAUTHORIZED, "bad token".into()))
@@ -144,7 +147,7 @@ async fn seed_inbox(
     headers: HeaderMap,
     Json(item): Json<Item>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     lb_inbox::record(&gw.node.store, p.ws(), &item)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -164,7 +167,7 @@ async fn seed_outbox(
     headers: HeaderMap,
     Json(body): Json<SeedEffect>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     // The effect tracks a synthetic change row (the relay never reads it for a seeded effect).
     let change = serde_json::json!({ "seeded": true });
     enqueue(
@@ -203,7 +206,7 @@ async fn seed_extension(
     headers: HeaderMap,
     Json(body): Json<SeedExt>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     let tier = match body.tier.as_deref() {
         Some("native") => Tier::Native,
         _ => Tier::Wasm,
@@ -243,7 +246,7 @@ async fn seed_series(
     headers: HeaderMap,
     Json(body): Json<SeedSeries>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    let p = auth(&gw, &headers)?;
+    let p = auth(&gw, &headers).await?;
     let ws = p.ws();
     let sample = Sample {
         series: body.series.clone(),

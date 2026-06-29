@@ -1,13 +1,15 @@
 // API Keys administration (api-keys scope) — create / list / revoke / rotate long-lived machine
 // credentials. The raw secret is shown EXACTLY ONCE on create/rotate (a banner with a copy button +
 // "you won't see this again"), then discarded from UI state; the list NEVER renders a hash or secret
-// (the Rust test pins the wire; here we assert the rendered DOM too). Read-only/read-write is just
-// the badge from the key's assigned built-in role. All verbs re-check `mcp:apikey.manage:call`
-// server-side — the tab's presence is display convenience only.
+// (the Rust test pins the wire; here we assert the rendered DOM too). Read-only/read-write is the
+// badge from the key's assigned built-in role. All verbs re-check `mcp:apikey.manage:call` server-side
+// — the tab's presence is display convenience only. Uses the shadcn primitives (ui-standards scope).
 
 import { useState } from "react";
 import { Copy, KeyRound, RotateCw, Trash2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AdminPanel } from "./AdminPanel";
 import { useApiKeys } from "./useApiKeys";
 
@@ -34,100 +36,85 @@ export function ApiKeysAdmin({ ws }: Props) {
   }
 
   const action = (
-    <button
-      aria-label="new key"
-      className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-xs text-accent"
-      onClick={() => setCreating((c) => !c)}
-    >
+    <Button variant="default" size="sm" aria-label="new key" onClick={() => setCreating((c) => !c)}>
       <KeyRound size={13} /> New key
-    </button>
+    </Button>
   );
 
   return (
     <AdminPanel icon={KeyRound} title="API Keys" ws={ws} action={action} error={error}>
       <div className="space-y-3 px-4 py-3">
         {newSecret && (
-          <div
-            role="alert"
-            className="space-y-2 rounded border border-accent/25 bg-accent/10 px-3 py-2"
-          >
+          <div role="alert" className="space-y-2 rounded border border-accent/25 bg-accent/10 px-3 py-2">
             <p className="text-xs font-medium text-accent">
               Copy the key now — you won&apos;t see this secret again.
             </p>
-            <code className="block break-all rounded bg-bg px-2 py-1 font-mono text-xs">
-              {newSecret}
-            </code>
+            <code className="block break-all rounded bg-bg px-2 py-1 font-mono text-xs">{newSecret}</code>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 aria-label="copy secret"
-                className="flex items-center gap-1 rounded bg-panel px-2 py-1 text-xs"
                 onClick={() => void navigator.clipboard?.writeText(newSecret)}
               >
                 <Copy size={12} /> Copy
-              </button>
-              <button
-                aria-label="dismiss secret"
-                className="rounded bg-panel px-2 py-1 text-xs text-muted"
-                onClick={clearSecret}
-              >
+              </Button>
+              <Button variant="ghost" size="sm" aria-label="dismiss secret" onClick={clearSecret}>
                 Dismiss
-              </button>
+              </Button>
             </div>
           </div>
         )}
 
         {creating && (
-          <div className="space-y-2 rounded border border-border bg-panel px-3 py-2">
-            <div className="grid grid-cols-2 gap-2">
-              <label className="text-xs text-muted">
-                Label
-                <input
-                  aria-label="key label"
-                  className="mt-1 w-full rounded bg-bg px-2 py-1 text-sm"
-                  placeholder="e.g. rooftop-hvac"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                />
-              </label>
-              <label className="text-xs text-muted">
-                Kind
-                <select
-                  aria-label="key kind"
-                  className="mt-1 w-full rounded bg-bg px-2 py-1 text-sm"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value)}
-                >
-                  {KINDS.map((k) => (
-                    <option key={k} value={k}>
-                      {k}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="text-xs text-muted">
-              Role
-              <select
-                aria-label="key role"
-                className="mt-1 w-full rounded bg-bg px-2 py-1 text-sm"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
+          <div className="space-y-3 rounded border border-border bg-panel px-3 py-3">
+            <label className="block text-xs text-muted">
+              Label
+              <Input
+                aria-label="key label"
+                className="mt-1"
+                placeholder="e.g. rooftop-hvac"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+              />
             </label>
-            <button
-              aria-label="create key"
-              className="rounded bg-accent/15 px-3 py-1 text-xs text-accent disabled:opacity-40"
-              disabled={!label.trim()}
-              onClick={() => void save()}
-            >
+            <fieldset className="text-xs text-muted">
+              <legend className="mb-1">Kind</legend>
+              <div className="flex flex-wrap gap-1">
+                {KINDS.map((k) => (
+                  <Button
+                    key={k}
+                    variant={kind === k ? "solid" : "outline"}
+                    size="sm"
+                    aria-label={`kind ${k}`}
+                    aria-pressed={kind === k}
+                    onClick={() => setKind(k)}
+                  >
+                    {k}
+                  </Button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="text-xs text-muted">
+              <legend className="mb-1">Role</legend>
+              <div className="flex flex-wrap gap-1">
+                {ROLES.map((r) => (
+                  <Button
+                    key={r}
+                    variant={role === r ? "solid" : "outline"}
+                    size="sm"
+                    aria-label={`role ${r}`}
+                    aria-pressed={role === r}
+                    onClick={() => setRole(r)}
+                  >
+                    {r}
+                  </Button>
+                ))}
+              </div>
+            </fieldset>
+            <Button variant="default" size="sm" aria-label="create key" disabled={!label.trim()} onClick={() => void save()}>
               Create key
-            </button>
+            </Button>
           </div>
         )}
 
@@ -152,27 +139,29 @@ export function ApiKeysAdmin({ ws }: Props) {
                   <td className="px-2 py-1.5 text-xs text-muted">{k.kind}</td>
                   <td className="px-2 py-1.5 font-mono text-xs text-muted">{k.prefix}</td>
                   <td className="px-2 py-1.5 text-xs">{k.badge}</td>
-                  <td className="px-2 py-1.5 text-xs">{k.status === "__revoked__" ? "revoked" : k.status}</td>
+                  <td className="px-2 py-1.5 text-xs">
+                    {k.status === "__revoked__" ? "revoked" : k.status}
+                  </td>
                   <td className="px-2 py-1.5 text-right">
                     {k.status !== "__revoked__" && (
-                      <>
-                        <button
+                      <span className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           aria-label={`rotate key ${k.id}`}
-                          className="mx-1 text-muted hover:text-fg"
-                          title="Rotate secret"
                           onClick={() => void rotate(k.id)}
                         >
-                          <RotateCw size={13} />
-                        </button>
-                        <button
+                          <RotateCw size={13} /> Rotate
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
                           aria-label={`revoke key ${k.id}`}
-                          className="mx-1 text-red-400 hover:text-red-300"
-                          title="Revoke"
                           onClick={() => void revoke(k.id)}
                         >
-                          <Trash2 size={13} />
-                        </button>
-                      </>
+                          <Trash2 size={13} /> Revoke
+                        </Button>
+                      </span>
                     )}
                   </td>
                 </tr>
