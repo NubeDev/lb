@@ -130,12 +130,18 @@ The user's instinct is right: prove the spine on **one** chart before fanning ou
   [`dashboard-viz-phase2`](../../../../sessions/frontend/dashboard-viz-phase2-session.md). The remaining
   panels (`histogram`, `state-timeline`/`status-history`, `heatmap`, `text` — the visx/markdown family)
   move to Phase 3. ([`chart-types`](chart-types-scope.md).)
-- **Phase 3 — backend resolve (`viz.query` + `lb-viz`) + multi-datasource targets.** The transformation
-  pipeline as a host verb and the datasource dropdown. ([`transformations`](transformations-scope.md) +
-  [`datasource-binding`](datasource-binding-scope.md).) Phase 1–2 keep the shipped client fetch for a
-  no-transform panel, but **behind one data hook** (`useSource`/`usePanelData`) so swapping its body to
-  `viz.query` in Phase 3 is a one-file change — and Phase 1 must **never** add a client-side transform lib
-  (there are no transforms yet; the pipeline is born backend in `lb-viz`).
+- **Phase 3 — backend resolve (`viz.query` + `lb-viz`) + multi-datasource targets. ✅ SHIPPED
+  (2026-06-29).** The transformation pipeline as a host verb (`viz.query(panel) -> {frames, rows}`, gated
+  `mcp:viz.query:call`, dispatching each target under `caller ∩ grant` by re-entering the host dispatcher)
+  + the pure `lb-viz` crate (Grafana's transformer set, one per file, verbatim ids/options) + the
+  datasource dropdown + a real Transform-tab pipeline editor. The one-file client swap landed in
+  `usePanelData` (`builder/useVizQuery.ts`); invariants A (one hook) + B (backend-only pipeline) held.
+  ([`transformations`](transformations-scope.md) + [`datasource-binding`](datasource-binding-scope.md).)
+  Promoted to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+  [`dashboard-viz-phase3`](../../../../sessions/frontend/dashboard-viz-phase3-session.md). Named
+  follow-ups (deferred, not silent): `viz.stream` (live frames), `federation.datasource.schema` (federation
+  SQL-builder dropdowns), the `format.ts`→`format.*` swap. Phases 1–2 kept the shipped client fetch
+  **behind the one data hook** so this swap was confined to one file.
 - **Phase 4 — Grafana JSON import/export** + `schemaVersion` migration.
   ([`import-export`](import-export-scope.md).)
 

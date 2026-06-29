@@ -22,6 +22,7 @@ lb-prefs.workspace = true
 lb-run-events.workspace = true
 lb-tags.workspace = true
 lb-undo.workspace = true
+lb-viz.workspace = true
 lb-mcp.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true

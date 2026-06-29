@@ -54,7 +54,7 @@ describe("usePanelData via viz.query (real gateway)", () => {
   it("a non-watch stat panel resolves rows through viz.query and renders the seeded value", async () => {
     const ws = nextWs();
     // Grant the viz.query cap + the underlying series.read (the backend target tool).
-    await signInWithCaps("user:ada", ws, ["mcp:viz.query:call", "mcp:series.read:call", "mcp:dashboard.save:call", "mcp:dashboard.get:call"]);
+    await signInWithCaps("user:ada", ws, ["mcp:viz.query:call", "mcp:series.read:call", "mcp:ingest.write:call", "mcp:tags.add:call", "mcp:dashboard.save:call", "mcp:dashboard.get:call"]);
     await seedSamples("p3.temp", 1, 7); // one sample → scalar value 7
 
     const cell = statCell("s", "p3.temp");

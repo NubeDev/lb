@@ -1,6 +1,6 @@
 # Session — dashboard viz Phase 3 (backend-resolved transforms + datasource binding)
 
-Status: **in-progress**
+Status: **shipped (2026-06-29)**
 
 Scope: [`viz/README.md`](../../scope/frontend/dashboard/viz/README.md) Phase 3 —
 [`transformations-scope.md`](../../scope/frontend/dashboard/viz/transformations-scope.md) (Part 1) +
@@ -74,10 +74,57 @@ Invariant A: `usePanelData` stays the one hook. Invariant B: the transform pipel
   ids + option editors — NOT an executor; invariant B).
 - Follow-up (unblocked): `fieldconfig/format.ts` → real `format.*` MCP call behind the `viaPrefs` guardrail.
 
-## Tests (green output pasted below on completion)
+## Tests
 
-(pending)
+Real infra, seeded real rows, no mocks/no `*.fake.ts` (testing-scope §0/§3.1).
+
+- **lb-viz units (49)** — each transformer over canonical frames incl. the mandatory empty/non-numeric →
+  honest `Null` (never a fabricated 0); the Matcher (byName/byType/byRegexp) cases.
+- **`crates/host/tests/viz_query_test.rs` (7, real Node + store + caps):**
+  - `store_target_with_pipeline_returns_expected_frames` — store target + `filterByValue`→`sortBy` → exact frame.
+  - `no_transform_panel_parity` — viz.query rows EQUAL a direct `store.query` (the swap is invisible).
+  - `multi_target_join_assembles` — two targets + `joinByField` → one joined frame.
+  - `viz_query_denied_without_cap` — MANDATORY: no `mcp:viz.query:call` → opaque `Denied`.
+  - `denied_target_is_honest_empty_not_a_bypass` — viz.query granted but `store.query` not → empty, no bypass.
+  - `workspace_isolation` — ws-B sees none of ws-A's rows; ws-A sees its own (token-derived wall).
+  - `federation_bound_target_resolves_through_federation_query` — a federation-bound target routes through
+    the gated `federation.query`; an unregistered source → honest empty (no cross-tenant leak).
+- **Gateway `viz.phase3.gateway.test.tsx`** — usePanelData renders a seeded panel via viz.query identically
+  to Phase 2; Transform-tab authoring; viz.query-deny stays denied. (Required `mcp:viz.query:call` in the
+  dev-session `member_caps` — the new member-level render path; see the debug entry.)
+- **UI unit (147)** unchanged green; **dashboard_test (10)** + **gateway lib (2)** unchanged green.
+
+### Bug found + fixed this session
+
+The `usePanelData`→`viz.query` swap moved rendering onto a new gated verb absent from the dev session's
+`member_caps()` → dashboard gateway panels rendered empty. Fixed by adding `mcp:viz.query:call` to
+`member_caps` (+ granting the seed caps in the new test). Regression-covered by the host deny/isolation
+tests + the gateway render test.
+[`debugging/frontend/gateway-seed-series-500-denied-preexisting.md`](../../debugging/frontend/gateway-seed-series-500-denied-preexisting.md).
 
 ## Green output
 
-(pending)
+```
+### lb-viz ###            test result: ok. 49 passed; 0 failed
+### lb-host viz_query ###  test result: ok. 7 passed; 0 failed
+### lb-host dashboard ###  test result: ok. 10 passed; 0 failed
+### gateway lib ###        test result: ok. 2 passed; 0 failed
+### cargo build --workspace ### Finished (clean)
+### cargo fmt --check (lb-viz, lb-host, lb-role-gateway) ### clean
+### UI pnpm test ###       Test Files 22 passed (22) · Tests 147 passed (147)
+### UI tsc --noEmit ###    clean (exit 0)
+### UI pnpm test:gateway ### 161 passed | 1 failed (the pre-existing SystemView sheet flake — passes 9/9
+                             isolated; every viz/dashboard/editor case green)
+```
+
+The one full-run gateway failure (`SystemView > opens the subsystem detail sheet`) is the pre-existing
+flake named in the Phase-3 brief — it passes 9/9 isolated and is not this slice.
+
+## Deferred (named, not silent)
+
+- **`viz.stream`** — live frames over SSE (so live panels don't re-transform client-side either). Phase 3
+  ships the snapshot `viz.query`; a `series.watch`/`bus.watch` panel keeps the shipped live path meanwhile.
+- **`federation.datasource.schema`** — SQL-builder column dropdowns for an external source (a federation-
+  plane add, needs a spawned container). The Query tab uses the raw-SQL editor for a federation source now.
+- **`format.ts` → real `format.*` MCP call** — its own session ([`format-prefs-swap-followup.md`](format-prefs-swap-followup.md))
+  because `formatValue` is synchronous at ~13 render callsites (sync→async cascade).

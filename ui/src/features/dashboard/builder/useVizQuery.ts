@@ -12,11 +12,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import type { Cell } from "@/lib/dashboard";
-import { cellPrimaryTarget } from "@/lib/dashboard";
+import type { Cell, Target } from "@/lib/dashboard";
+import { cellPrimaryTarget, cellSources } from "@/lib/dashboard";
 import { cellTools } from "../views/WidgetView";
 import type { VarScope } from "@/lib/vars";
-import { emptyScope } from "@/lib/vars";
+import { emptyScope, interpolateArgs } from "@/lib/vars";
 import { makeWidgetBridge } from "./widgetBridge";
 import type { SourceState } from "./useSource";
 
@@ -67,10 +67,23 @@ export function useVizQuery(panel: Cell, scope: VarScope = emptyScope(), refresh
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge([...tools, VIZ_QUERY_TOOL]), [toolsKey]);
 
-  // Re-key on the WHOLE panel spec + scope + refresh tick — a transform/target/var edit re-runs the query.
+  // Interpolate each target's args against the resolved scope BEFORE the call — a `${host}` in a target
+  // repoints the series exactly as the shipped `useSource` did pre-call (the host's parse-allowlist stays
+  // the boundary; only safe arg leaves are substituted, never string-spliced SQL). The host still gets
+  // `scope` too, so `lb-viz` can interpolate TRANSFORM option values. The panel sent over carries the
+  // interpolated `sources[]` so the resolver dispatches the resolved query.
+  const resolvedPanel = useMemo(() => {
+    const sources: Target[] = cellSources(panel).map((t) => ({
+      ...t,
+      args: interpolateArgs(t.args ?? {}, scope) as Record<string, unknown>,
+    }));
+    return { ...panel, sources };
+  }, [panel, scope]);
+
+  // Re-key on the RESOLVED panel spec + scope + refresh tick — a transform/target/var edit re-runs it.
   const key = useMemo(
-    () => JSON.stringify({ panel, scope, refreshKey }),
-    [panel, scope, refreshKey],
+    () => JSON.stringify({ resolvedPanel, scope, refreshKey }),
+    [resolvedPanel, scope, refreshKey],
   );
 
   // A panel with no resolvable primary target has nothing to query — an honest empty/denied state, no
@@ -88,7 +101,7 @@ export function useVizQuery(panel: Cell, scope: VarScope = emptyScope(), refresh
     const timer = setTimeout(() => {
       (async () => {
         try {
-          const result = await bridge.call<VizQueryResult>(VIZ_QUERY_TOOL, { panel, scope });
+          const result = await bridge.call<VizQueryResult>(VIZ_QUERY_TOOL, { panel: resolvedPanel, scope });
           if (cancelled) return;
           const rows = Array.isArray(result?.rows) ? result.rows : [];
           setState({ rows, latest: toLatest(rows), loading: false, denied: false });

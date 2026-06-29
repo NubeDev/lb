@@ -399,10 +399,66 @@ renders unit/decimals/threshold-color computed at render — no stored formatted
 **workspace isolation**. Plus the extended pure `cellEditorState` round-trip (full stat/gauge/bargauge/
 table/barchart/piechart cells) and `viz.phase2` reduce/shape unit tests.
 
-Phase 3 (backend `viz.query`/`lb-viz` + multi-datasource) and Phase 4 (Grafana JSON import/export) remain
-the scoped follow-ups on this spine. Deferred Phase-3 panels (`histogram`, `state-timeline`,
-`status-history`, `heatmap`, `text` — the visx/markdown family) and the named exotic panels degrade
-honestly on import.
+Phase 4 (Grafana JSON import/export) remains the scoped follow-up on this spine. Deferred Phase-3 panels
+(`histogram`, `state-timeline`, `status-history`, `heatmap`, `text` — the visx/markdown family) and the
+named exotic panels degrade honestly on import.
+
+## Grafana-compatible visualization — Phase 3 (backend-resolved transforms + datasource binding)
+
+Phase 3 moves panel-data resolution into the backend and adds the transformation pipeline + multi-
+datasource targets — **one implementation for every client** (web shell, React Native, email, webhook),
+the same doctrine as `format.*`.
+
+- **`lb-viz` — the pure transform lib (`rust/crates/viz/`).** The structural twin of `lb-prefs`: a pure
+  Rust crate (no store/bus/I/O) compiled into every node, the ONE implementation of Grafana's transformer
+  set over a canonical columnar `Frame` (`fields[]`, one typed column each). One transformer per file:
+  `reduce`, `organize`, `filterFieldsByName`, `filterByValue`, `groupBy`, `joinByField`
+  (`seriesToColumns`), `calculateField`, `sortBy`, `limit`, `merge`, `seriesToRows` — Grafana ids +
+  option shapes **verbatim** (so a Phase-4 import is a near-identity). Empty/non-numeric input yields an
+  honest result, **never a fabricated 0** (the no-mock rule, in the math). A `Matcher` (`byName`/`byType`/
+  `byRegexp`/`byFrameRefID`) is mirrored in Rust here + TS for the editor.
+- **`viz.query(panel) -> { frames, rows }` — the host resolver verb** (gated `mcp:viz.query:call`,
+  member-level). For each non-hidden target in the panel's `sources[]` (falling back to the v2 `source`),
+  it **re-enters the host MCP dispatcher** under the CALLER's principal + workspace — so each target tool's
+  OWN cap and the workspace wall are re-checked, with **no render-path bypass**. A denied/failed target
+  degrades to an **honest empty frame** (never a fabricated value, never a host-privilege read). It then
+  assembles canonical frames, runs the `transformations[]` pipeline via `lb-viz`, and returns the frames
+  (canonical) plus the primary frame flattened to `rows` — the SAME row shape the shipped renderers
+  consume, so the swap changes nothing visible. The workspace comes from the **token**, never the panel.
+  The cell still stores `transformations[]`/`fieldConfig` OPAQUELY; `viz.query` interprets them at run time
+  (no record fork). A per-panel frame budget caps the assembled set.
+- **Datasource binding.** A `DataSourceRef {type, uid}` selects the target's tool — native `surreal` →
+  `store.query`, `series` → `series.*`, a registered `federation` source (`datasource:{ws}:{name}`) →
+  `federation.query`. `viz.query` dispatches whichever tool the target names, leashed by that tool's cap +
+  the workspace wall (a ws-B panel can never resolve a ws-A datasource — the federation gate is ws-pinned).
+  No per-kind binding on the cell; no DSN at the panel.
+- **The one-file client swap (invariant A).** `usePanelData`'s body now resolves a non-watch panel through
+  `viz.query` (`builder/useVizQuery.ts`, debounced) returning the same `SourceState` — renderers + the
+  editor preview are unchanged. A `series.watch`/`bus.watch` panel keeps the shipped live SSE path until
+  the named `viz.stream` follow-up. Target args are interpolated against the resolved `VarScope` before the
+  call (a `${host}` repoints the series exactly as before); the host also gets `scope` for transform
+  options. No scattered `bridge.call` in any renderer (invariant A held); no client-side transform library
+  (invariant B held — `views/reduce.ts` stays the per-viz frame→value reducer, NOT the pipeline).
+- **The editor.** The Query tab gains a **datasource dropdown** (native + series + federation sources via
+  `datasource.list`); a federation source uses the raw-SQL editor (the `federation.datasource.schema`
+  column-dropdown verb is a named, deferred federation-plane follow-up). The Transform tab is now a **real
+  pipeline editor** (add/reorder/disable/remove + per-id option fields) writing `transformations[]` config
+  that `viz.query` runs — no client execution.
+- **Tested (real infra, no mocks).** `lb-viz` units (49) cover each transformer incl. empty/non-numeric
+  honesty. `crates/host/tests/viz_query_test.rs` (7) drives `viz.query` over a real node + store + caps: a
+  store target + multi-transform pipeline returns the expected frames; **no-transform parity** with a
+  direct `store.query`; a multi-target `joinByField` assembles; **`viz.query` deny without the cap**
+  (opaque); a **denied target → honest empty, not a bypass**; **workspace isolation** (ws-B sees none of
+  ws-A's rows); a **federation-bound target routes through `federation.query`** and an unregistered source
+  resolves to an honest empty frame. Gateway: `viz.phase3.gateway.test.tsx` renders a seeded panel via
+  `viz.query` identically to Phase 2 + authors a real pipeline. (`mcp:viz.query:call` was added to the dev
+  session's `member_caps` — the new render path is member-level; see
+  [`../../debugging/frontend/gateway-seed-series-500-denied-preexisting.md`](../../debugging/frontend/gateway-seed-series-500-denied-preexisting.md).)
+- **Named follow-ups (deferred, not silent):** `viz.stream` (live frames over SSE, so live panels don't
+  re-transform client-side); `federation.datasource.schema` (SQL-builder column dropdowns for an external
+  source — a federation-plane add); and the `format.ts` → real `format.*` MCP swap (deferred: `formatValue`
+  is synchronous at 13 render callsites, so the sync→async change is its own session — see
+  [`../../sessions/frontend/format-prefs-swap-followup.md`](../../sessions/frontend/format-prefs-swap-followup.md)).
 
 ## Follow-ups
 

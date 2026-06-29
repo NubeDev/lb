@@ -50,6 +50,7 @@ mod ui_decl;
 mod undo;
 mod undo_capture;
 mod users;
+mod viz;
 mod workflow;
 mod workspaces;
 
@@ -176,6 +177,7 @@ pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,
     user_login_check, UserView, UsersError,
 };
+pub use viz::{call_viz_tool, viz_query, VizError};
 pub use workflow::{
     call_workflow_tool, emit_effect, enabled_workspaces, ingest_issue, ingest_via_bridge, pr_spec,
     react_to_approvals, reactor_job_id, record_pr_spec, relay_outbox, request_approval,

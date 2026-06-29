@@ -42,6 +42,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("outbox.")
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
+        || qualified_tool.starts_with("viz.")
         || qualified_tool.starts_with("template.")
         || qualified_tool.starts_with("devkit.")
         || qualified_tool.starts_with("agent.")
@@ -156,6 +157,11 @@ async fn dispatch_at_depth(
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("viz.") {
+            // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
+            // under the caller's authority — so `depth` is threaded through to re-enter at depth+1
+            // (no render-path cap bypass; the workspace wall + each target tool's own cap re-checked).
+            crate::call_viz_tool(node, principal, ws, qualified_tool, &input, depth).await?
         } else if qualified_tool.starts_with("template.") {
             crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("devkit.") {

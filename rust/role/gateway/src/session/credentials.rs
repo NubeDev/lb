@@ -124,6 +124,11 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // viz Phase 3 (backend-resolved panel data): `viz.query(panel) -> { frames }` is THE render
+        // path every panel now reads through (usePanelData). Member-level like `dashboard.get` — it
+        // dispatches each target under `caller ∩ grant` (composing the target tool's own cap), so a
+        // token still cannot read a target it lacks. A token without it is refused per verb.
+        "mcp:viz.query:call",
         // widget-builder scope (the tool-driven widget builder): the four `template.*` verbs the
         // builder reaches over the `POST /mcp/call` bridge to persist/load durable scripted-view
         // (Plot/D3/JSX) snippets. Member-level — any member may author their own templates

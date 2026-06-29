@@ -1,6 +1,14 @@
 # Viz scope — the transformation pipeline (Grafana's transforms, backend-resolved, canonical frames)
 
-Status: scope (the ask). Part of the [`viz/`](README.md) slice — owns the `Transformation` shape the
+Status: **SHIPPED (2026-06-29)** — Phase 3 of the [`viz/`](README.md) slice. `lb-viz` (the pure transform
+lib, one transformer per file) + the `viz.query(panel) -> {frames, rows}` host verb (gated
+`mcp:viz.query:call`, dispatching each target under `caller ∩ grant` by re-entering the host dispatcher,
+running the pipeline server-side) shipped end to end. Promoted to
+[`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session
+[`dashboard-viz-phase3`](../../../../sessions/frontend/dashboard-viz-phase3-session.md). `viz.stream` (live
+frames) remains the named follow-up. Original ask below.
+
+Part of the [`viz/`](README.md) slice — owns the `Transformation` shape the
 [spine](panel-model-scope.md) declares, **and** the backend panel-data resolver (`viz.query` + the `lb-viz`
 lib). Promotes to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
 

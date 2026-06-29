@@ -163,6 +163,7 @@ export function QueryTab({ ws, state, patch }: Props) {
       {isFederation && (
         <label className="grid gap-1 text-xs text-muted">
           SQL ({fedSource || "no source"})
+          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive in this repo (see WidgetBuilder.tsx) */}
           <textarea
             aria-label="federation sql"
             className={`${FIELD} h-24 w-full resize-y py-1.5 font-mono`}

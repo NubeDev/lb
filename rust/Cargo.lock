@@ -4299,6 +4299,7 @@ dependencies = [
  "lb-supervisor",
  "lb-tags",
  "lb-undo",
+ "lb-viz",
  "rhai",
  "serde",
  "serde_json",

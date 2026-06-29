@@ -1,6 +1,15 @@
 # Viz scope — datasource binding (charts beyond native SurrealDB)
 
-Status: scope (the ask). Part of the [`viz/`](README.md) slice (sub-scope 5); owns the `DataSourceRef`
+Status: **SHIPPED (2026-06-29)** — Phase 3 of the [`viz/`](README.md) slice. A `DataSourceRef` selects a
+target's tool (native `surreal`→`store.query`, `series`→`series.*`, registered `federation`→
+`federation.query`); `viz.query` dispatches each through the gated tool under the workspace wall (a ws-B
+panel can never resolve a ws-A datasource). The datasource dropdown shipped in the editor's Query tab.
+**Deferred (named, not silent):** `federation.datasource.schema` (SQL-builder column dropdowns for an
+external source — a federation-plane add); a federation target uses the raw-SQL editor until it lands.
+Session [`dashboard-viz-phase3`](../../../../sessions/frontend/dashboard-viz-phase3-session.md). Original
+ask below.
+
+Part of the [`viz/`](README.md) slice (sub-scope 5); owns the `DataSourceRef`
 → `(tool, args)` resolution that the spine ([`panel-model-scope.md`](panel-model-scope.md)) only declares
 in shape. Promotes to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
 
