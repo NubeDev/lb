@@ -9,8 +9,10 @@
 //   workspace_create → POST /workspaces
 //   channel_list     → GET  /channels
 //   channel_create   → POST /channels
-//   channel_post     → POST /channels/{cid}/messages
-//   channel_history  → GET  /channels/{cid}/messages
+//   channel_post     → POST   /channels/{cid}/messages
+//   channel_history  → GET    /channels/{cid}/messages
+//   channel_edit     → PATCH  /channels/{cid}/messages/{id}
+//   channel_delete   → DELETE /channels/{cid}/messages/{id}
 //   members_list     → GET  /teams/{team}/members
 //   members_add      → POST /teams/{team}/members
 //   inbox_list       → GET  /inbox/{channel}
@@ -78,6 +80,21 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "channel_history": {
       const { channel } = args as { channel: string };
       return getJson<T>(`${base}/channels/${enc(channel)}/messages`);
+    }
+    case "channel_edit": {
+      // Edit the body of one of the caller's own messages. The id + channel are in the path; the
+      // new body + logical ts ride in the PATCH body. The host re-checks author ownership.
+      const { channel, id, body, ts } = args as {
+        channel: string;
+        id: string;
+        body: string;
+        ts: number;
+      };
+      return patchJson<T>(`${base}/channels/${enc(channel)}/messages/${enc(id)}`, { body, ts });
+    }
+    case "channel_delete": {
+      const { channel, id } = args as { channel: string; id: string };
+      return delJson<T>(`${base}/channels/${enc(channel)}/messages/${enc(id)}`);
     }
     case "members_list": {
       const { team } = args as { team: string };
@@ -504,6 +521,18 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
 /** DELETE a route. Returns undefined for `204`, else the JSON body (e.g. the revoked/removed count). */
 async function delJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(await errorText(res));
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/** PATCH a JSON body. Returns the JSON response (the stored item). */
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(await errorText(res));
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

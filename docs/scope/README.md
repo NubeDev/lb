@@ -24,7 +24,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/
   member delete·disable·remove·rename + dev-store user CRUD), and `api-keys-scope.md` (machine
   principals — appliance/cli/api/agent keys as a non-human `Subject` over the same grant model,
-  a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab).
+  a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab), and
+  `access-console-scope.md` (the **Access console** — the access-first evolution of the `/admin` UI:
+  an overview of who-can-do-what, resolved effective caps per subject with provenance, a guided
+  no-widening capability picker, a force-re-mint/end-sessions lever for the freshness asymmetry, and
+  `roles.delete` — closes the `resolve_caps`/`invalidate`/`roles.delete` backend gaps; not a new page).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
@@ -88,6 +92,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
+- `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
+  **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
+  (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.
+  A pure `lb-prql` crate wraps `prqlc`; `query.run` composes the target's existing capability (no
+  widening); a rule reuses a saved query via `source("query:<name>")`. No new engine, no second
+  authority — PRQL is the authoring layer, SurrealDB stays the one datastore.
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

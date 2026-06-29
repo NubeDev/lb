@@ -10,9 +10,11 @@ import type { Item } from "./channel.types";
 import { gatewayUrl } from "@/lib/ipc/http";
 import { sessionToken } from "@/lib/session/session.store";
 
-/** Callbacks for the two SSE event kinds the gateway emits. */
+/** Callbacks for the SSE event kinds the gateway emits. */
 export interface ChannelStreamHandlers {
   onMessage: (item: Item) => void;
+  /** A message was deleted by its author — drop the id from the local view. */
+  onDelete?: (id: string) => void;
   onPresence?: (member: string, present: boolean) => void;
 }
 
@@ -47,6 +49,17 @@ export function openChannelStream(
       // a malformed frame never breaks the stream
     }
   });
+
+  if (handlers.onDelete) {
+    es.addEventListener("delete", (e) => {
+      try {
+        const { id } = JSON.parse((e as MessageEvent).data) as { id: string };
+        handlers.onDelete?.(id);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
 
   if (handlers.onPresence) {
     es.addEventListener("presence", (e) => {

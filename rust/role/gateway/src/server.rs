@@ -5,31 +5,30 @@
 //! CORS is permissive here for the dev UI (the Vite browser app on a different origin). A real
 //! deployment tightens this to the served origin — config, not code.
 
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_datasource, add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream,
     convert_unit, create_apikey, create_channel, create_team, create_user, create_workspace,
-    define_role, delete_chain, delete_dashboard, delete_rule, delete_team, delete_user,
-    disable_extension, disable_user, enable_extension, enable_user, find_series, format_datetime,
-    format_number, format_quantity, get_apikey, get_chain, get_chain_run, get_dashboard, get_doc,
-    get_history, get_outbox_status, get_prefs, get_rule, grant_skill, latest_sample, link_doc,
-    list_apikeys, list_chains, list_channels, list_dashboards, list_datasources, list_docs,
-    list_extensions, list_grants, list_inbox, list_roles, list_rules, list_series, list_tables,
-    list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
-    mcp_catalog, post_message, publish_extension, publish_message, purge_workspace, put_doc,
-    put_skill, read_graph, read_samples, read_schema, remove_datasource, remove_team_member,
-    rename_team, rename_workspace, request_approval, resolve_inbox, resolve_prefs,
-    resolve_workflow_approval, revoke_apikey, revoke_grant, rotate_apikey, run_chain, run_query,
-    run_rule, run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, test_datasource,
-    uninstall_extension, write_samples,
+    define_role, delete_chain, delete_dashboard, delete_message, delete_rule, delete_team,
+    delete_user, disable_extension, disable_user, edit_message, enable_extension, enable_user,
+    find_series, format_datetime, format_number, format_quantity, get_apikey, get_chain,
+    get_chain_run, get_dashboard, get_doc, get_history, get_outbox_status, get_prefs, get_rule,
+    grant_skill, latest_sample, link_doc, list_apikeys, list_chains, list_channels,
+    list_dashboards, list_datasources, list_docs, list_extensions, list_grants, list_inbox,
+    list_roles, list_rules, list_series, list_tables, list_team_members, list_teams, list_users,
+    list_workspaces, load_skill, login, mcp_call, mcp_catalog, post_message, publish_extension,
+    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
+    remove_datasource, remove_team_member, rename_team, rename_workspace, request_approval,
+    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
+    rotate_apikey, run_chain, run_query, run_rule, run_stream, save_chain, save_dashboard,
+    save_rule, scan_table, series_stream, serve_ext_ui, set_default_prefs, set_prefs,
+    share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, test_datasource, uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
-use axum::routing::delete;
 
 /// The gateway router: every browser verb, mirroring the host one-to-one. Each guarded route reads
 /// the session token (the `login` route issues it); the workspace + caps come from the token.
@@ -49,6 +48,10 @@ pub fn router(gw: Gateway) -> Router {
         .route(
             "/channels/{cid}/messages",
             get(get_history).post(post_message),
+        )
+        .route(
+            "/channels/{cid}/messages/{id}",
+            patch(edit_message).delete(delete_message),
         )
         .route("/channels/{cid}/stream", get(channel_stream))
         // agent-run live feed (agent-run scope Part 3) — the SSE analog of the channel stream for a

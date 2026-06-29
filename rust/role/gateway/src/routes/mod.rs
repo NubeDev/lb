@@ -25,6 +25,7 @@ mod login;
 mod mcp;
 mod mcp_catalog;
 mod members;
+mod message;
 mod outbox;
 mod post;
 mod prefs;
@@ -65,6 +66,7 @@ pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;
 pub use members::{add_team_member, list_team_members};
+pub use message::{delete_message, edit_message};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
 pub use prefs::{

@@ -218,6 +218,9 @@ Plus this slice's cases:
 
 - `scope/auth-caps/auth-caps-scope.md` — the three gates + token/grammar this feeds (closes its deferred
   "RBAC beyond three roles").
+- `scope/auth-caps/access-console-scope.md` — the access-first admin UI that *displays* this model's
+  resolved projection (effective caps + provenance) and adds the re-mint lever for the freshness
+  asymmetry defined here.
 - `scope/auth-caps/edge-trust-scope.md` — verifies the token this produces across the wire (sibling).
 - `scope/node-roles/node-connection-scope.md` — names an **appliance** as a grant target: a user/team
   gets **restricted access to specific appliances** as an ordinary resource grant in this model.

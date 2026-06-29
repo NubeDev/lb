@@ -10,6 +10,11 @@ pub enum ChannelError {
     /// Authorization failed (workspace isolation or missing capability). Opaque by design.
     #[error("denied")]
     Denied,
+    /// The caller is authorized and is the owner, but no item lives at the requested id in this
+    /// workspace. Surfaced (not collapsed to `Denied`) only AFTER the ownership check passes, so a
+    /// non-author caller still learns nothing — their miss resolves to `Denied` first.
+    #[error("not found")]
+    NotFound,
     /// The durable store rejected the operation.
     #[error("store error: {0}")]
     Store(#[from] StoreError),

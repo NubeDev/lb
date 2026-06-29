@@ -25,6 +25,25 @@ export function history(ws: string, channel: string): Promise<Item[]> {
   return invoke<Item[]>("channel_history", { ws, channel });
 }
 
+/** Edit the body of one of the caller's own messages in `channel`. Only the message's author may
+ *  edit it (the host re-checks ownership against the stored author). `ts` is the new logical
+ *  ordering timestamp (caller-injected, like `Item.ts`). Mirrors `lb_host::edit`. */
+export function edit(
+  ws: string,
+  channel: string,
+  id: string,
+  body: string,
+  ts: number,
+): Promise<Item> {
+  return invoke<Item>("channel_edit", { ws, channel, id, body, ts });
+}
+
+/** Delete one of the caller's own messages in `channel`. Only the message's author may delete it.
+ *  Mirrors `lb_host::delete`. */
+export function remove(ws: string, channel: string, id: string): Promise<void> {
+  return invoke<void>("channel_delete", { ws, channel, id });
+}
+
 /** List the registered channels in workspace `ws` (for the switcher). Mirrors `channel_list`. */
 export function listChannels(ws: string): Promise<ChannelRecord[]> {
   return invoke<ChannelRecord[]>("channel_list", { ws });

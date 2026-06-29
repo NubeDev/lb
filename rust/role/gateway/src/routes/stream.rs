@@ -1,6 +1,8 @@
 //! `GET /channels/{cid}/stream?token=<jwt>` — the **server→browser** push the whole live-UI story
 //! rides on (README §6.13). The browser opens this once and receives:
-//!   - `event: message` — each live channel [`Item`] as it is posted (others' messages appear);
+//!   - `event: message` — each live channel [`Item`] as it is posted OR edited (others' messages
+//!     appear; edits update in place via the UI's id-keyed merge);
+//!   - `event: delete` — `{ id }` as one of the channel's messages is deleted by its author;
 //!   - `event: presence` — `{member, present}` as members join/leave (Zenoh liveliness).
 //!
 //! Authentication is by a `?token=` **query param**, not a bearer header: the browser opens SSE with
@@ -39,17 +41,20 @@ pub async fn channel_stream(
         .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
 
-    // Authorize + declare both feeds up front (workspace-first). A denial here is a 403, before
-    // any stream body is produced.
+    // Authorize + declare all three feeds up front (workspace-first). A denial here is a 403,
+    // before any stream body is produced.
     let sub = lb_host::subscribe_channel(&gw.node.bus, &principal, &ws, &cid)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    let deletions = lb_host::watch_deletions(&gw.node.bus, &principal, &ws, &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     let presence = lb_host::watch(&gw.node.bus, &principal, &ws, &cid)
         .await
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
 
-    // Merge the two feeds into one SSE event stream.
-    let stream = futures::stream::unfold((sub, presence), |(sub, presence)| async move {
+    // Merge the three feeds into one SSE event stream.
+    let stream = futures::stream::unfold((sub, deletions, presence), |(sub, deletions, presence)| async move {
         let event = tokio::select! {
             item = sub.recv() => item.map(|i| {
                 Event::default()
@@ -57,13 +62,18 @@ pub async fn channel_stream(
                     .json_data(&i)
                     .unwrap_or_else(|_| Event::default().comment("encode error"))
             }),
+            id = deletions.recv() => id.map(|id| {
+                Event::default()
+                    .event("delete")
+                    .data(json!({ "id": id }).to_string())
+            }),
             change = presence.recv() => change.map(|(member, present)| {
                 Event::default()
                     .event("presence")
                     .data(json!({ "member": member, "present": present }).to_string())
             }),
         };
-        event.map(|e| (Ok(e), (sub, presence)))
+        event.map(|e| (Ok(e), (sub, deletions, presence)))
     });
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))

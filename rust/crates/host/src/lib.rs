@@ -90,8 +90,8 @@ pub use chains::{
     chains_run_get, chains_save, ChainsError,
 };
 pub use channel::{
-    history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
-    PresenceFeed,
+    delete, edit, history, join, post, subscribe_channel, watch, watch_deletions, ChannelError,
+    ChannelPresence, ChannelSub, DeletionFeed, PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{

@@ -12,12 +12,16 @@
 //! channel service is the capability chokepoint (capability-first, §3.5).
 
 mod approved;
+mod delete;
+mod get;
 mod item;
 mod list;
 mod record;
 mod resolution;
 
 pub use approved::approved;
+pub use delete::delete;
+pub use get::get;
 pub use item::Item;
 pub use list::list;
 pub use record::{record, record_id, TABLE};

@@ -8,6 +8,8 @@
 
 mod authorize;
 mod chart;
+mod delete;
+mod edit;
 mod error;
 mod history;
 mod key;
@@ -24,6 +26,8 @@ mod subscribe;
 #[allow(unused_imports)]
 pub(crate) use chart::{pick_chart, ChartKind, ChartSeries, ChartSpec};
 pub use error::ChannelError;
+pub use delete::{delete, watch_deletions, DeletionFeed};
+pub use edit::edit;
 pub use history::history;
 #[allow(unused_imports)]
 pub(crate) use payload::{
