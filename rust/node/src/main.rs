@@ -10,6 +10,7 @@ use std::sync::Arc;
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_enabled, load_extension, Node};
 
+mod federation;
 mod github;
 
 #[tokio::main]
@@ -53,6 +54,8 @@ async fn main() -> anyhow::Result<()> {
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
     github::mount(node.clone()).await;
+    // datasources role (federation native sidecar), env-gated by LB_FEDERATION_ENDPOINTS.
+    federation::mount(node.clone()).await;
     println!(
         "loaded hello: tools={:?} granted_caps={:?}",
         loaded.tools, loaded.granted_caps

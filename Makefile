@@ -71,6 +71,20 @@ UI_PORT ?= 5173
 # The workspace the node serves. One workspace is enough for the demo (= tenant).
 WS ?= acme
 
+# Datasources (federation native extension). Setting FED_ENDPOINTS installs + supervises the
+# `federation` sidecar at boot and pre-approves these `host:port` endpoints (`net:tls:host:port`).
+# The seed pre-registers one source so the Datasources page works on first boot. Defaults target the
+# dev TimescaleDB from docker/postgres/docker-compose.yml (port 5433). Override or clear to disable:
+#   make dev FED_ENDPOINTS=         (no federation sidecar)
+# Requires the postgres-featured sidecar binary — built by the `federation` target below.
+FED_ENDPOINTS  ?= 127.0.0.1:5433
+FED_SEED_NAME  ?= timescale
+FED_SEED_KIND  ?= postgres
+FED_SEED_EP    ?= 127.0.0.1:5433
+FED_SEED_DSN   ?= host=127.0.0.1 port=5433 user=lb password=lb_secret dbname=lb sslmode=disable
+# The env block passed to the node for the federation role (empty when FED_ENDPOINTS is cleared).
+FED_ENV = $(if $(FED_ENDPOINTS),LB_FEDERATION_ENDPOINTS="$(FED_ENDPOINTS)" LB_FEDERATION_SEED_NAME="$(FED_SEED_NAME)" LB_FEDERATION_SEED_KIND="$(FED_SEED_KIND)" LB_FEDERATION_SEED_ENDPOINT="$(FED_SEED_EP)" LB_FEDERATION_SEED_DSN="$(FED_SEED_DSN)",)
+
 # All persistent local dev state lives under ONE root: `.lazybones/` (renamed from the too-generic
 # `.data/`). The node store, the dev publisher key, and packaged artifacts are subdirs of it, so a
 # single `rm -rf .lazybones` resets a dev box and one `.gitignore` line covers everything.
@@ -132,14 +146,22 @@ build-ui:
 # it, in ONE foreground process group so Ctrl-C (or `make kill`) stops both. The trap
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
-dev: build-wasm trusted-pubkey
+dev: build-wasm trusted-pubkey federation
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
+	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED cargo run -p $(NODE_BIN) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
+
+# Build the federation sidecar with the Postgres connector (the headline datasource). The node's
+# federation role spawns this binary at boot; it links a heavy DB engine + vendored OpenSSL, so it is
+# its own target (a no-op when current). `make dev` depends on it; build alone with `make federation`.
+.PHONY: federation
+federation:
+	cd $(BE_DIR) && cargo build -p federation --features postgres
 
 # EDGE posture: a solo node — its own authority, fully offline, NO gateway. This is
 # the same binary as `cloud`, just without LB_GATEWAY_ADDR set, so it runs the solo
@@ -151,11 +173,12 @@ edge: build-wasm
 
 # CLOUD posture: the SAME binary with the SSE/HTTP gateway mounted (LB_GATEWAY_ADDR).
 # A browser can now reach it. Run `make ui` (or `make dev`) against this.
-cloud: build-wasm trusted-pubkey
+cloud: build-wasm trusted-pubkey federation
 	@mkdir -p $(STORE_DIR)
 	@echo "cloud: node + gateway → $(GW_URL)   (ws=$(WS), store=$(STORE_PATH))"
+	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.

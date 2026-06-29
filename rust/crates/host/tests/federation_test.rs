@@ -50,6 +50,7 @@ fn admin(ws: &str) -> Principal {
             "mcp:native.status:call",
             "mcp:federation.query:call",
             "mcp:federation.mirror:call",
+            "mcp:viz.query:call",
             "mcp:datasource.add:call",
             "mcp:datasource.remove:call",
             "mcp:datasource.list:call",
@@ -82,15 +83,19 @@ fn federation_dir() -> Option<String> {
     let target = manifest_dir.join("../../target/debug");
     let bin = target.join("federation");
     // Build (or rebuild) with the postgres feature. Cheap if already current.
-    let status = Command::new("cargo")
-        .args(["build", "-p", "federation", "--features", "postgres"])
-        .current_dir(manifest_dir.join("../.."))
-        .env("RANLIB", "/home/user/.local/bin/zigranlib")
-        .env(
-            "RANLIB_x86_64_unknown_linux_gnu",
-            "/home/user/.local/bin/zigranlib",
-        )
-        .status();
+    let mut cmd = Command::new("cargo");
+    cmd.args(["build", "-p", "federation", "--features", "postgres"])
+        .current_dir(manifest_dir.join("../.."));
+    // The postgres feature pulls native-tls → vendored OpenSSL, which needs a working `ranlib`. On a
+    // box without a system toolchain we point at the zig wrapper; where a system `ranlib` exists the
+    // default works, so only override when the wrapper is actually present (else the bad path breaks
+    // the build).
+    let zigranlib = "/home/user/.local/bin/zigranlib";
+    if std::path::Path::new(zigranlib).exists() {
+        cmd.env("RANLIB", zigranlib)
+            .env("RANLIB_x86_64_unknown_linux_gnu", zigranlib);
+    }
+    let status = cmd.status();
     match status {
         Ok(s) if s.success() && bin.exists() => Some(target.to_string_lossy().into_owned()),
         _ => None,
@@ -326,6 +331,41 @@ async fn federation_end_to_end_postgres() {
     assert!(
         !q.to_string().contains("password=pw"),
         "query result leaked the DSN"
+    );
+
+    // --- DASHBOARD WIDGET PATH: viz.query over a federation target returns NAMED rows ---
+    // A table/chart widget bound to a federation source dispatches `federation.query` THROUGH
+    // `viz.query`, whose frame converter must zip the columnar `{columns, rows}` result into named
+    // row-objects (the regression: it used to pass the column-aligned arrays through as `rows`,
+    // yielding empty `{}` rows / no fields — a widget showing no data). Assert real fields + rows.
+    let viz = call(
+        &node,
+        &admin,
+        ws,
+        "viz.query",
+        json!({"panel":{"sources":[{
+            "refId":"A","tool":"federation.query",
+            "args":{"source":"pg","sql":"SELECT seq, temp FROM readings ORDER BY seq"}
+        }]},"ts":3}),
+    )
+    .await
+    .expect("viz.query over a federation target");
+    let vframes = viz["frames"].as_array().expect("frames");
+    let fields = vframes[0]["fields"]
+        .as_array()
+        .expect("the frame has named fields");
+    assert_eq!(
+        fields.len(),
+        2,
+        "viz frame exposes both columns as fields: {viz}"
+    );
+    assert_eq!(fields[0]["name"], "seq");
+    assert_eq!(fields[1]["name"], "temp");
+    let vrows = viz["rows"].as_array().expect("rows");
+    assert_eq!(vrows.len(), 5, "viz returns the five seeded rows: {viz}");
+    assert!(
+        vrows[0].get("seq").is_some() && vrows[0].get("temp").is_some(),
+        "each viz row is a NAMED object, not an empty {{}}: {viz}"
     );
 
     // --- SELECT-ONLY ENFORCEMENT: a write/DDL is rejected (host-side gate, before the sidecar) ---
