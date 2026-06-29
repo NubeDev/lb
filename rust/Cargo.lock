@@ -4618,6 +4618,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-viz"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "leb128"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

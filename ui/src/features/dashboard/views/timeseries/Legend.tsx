@@ -7,28 +7,7 @@
 import type { FieldOptions } from "@/lib/dashboard";
 import type { VizLegendOptions } from "./options";
 import { formatValue } from "../../fieldconfig/format";
-
-/** A reducer calc over the field's points (the legend's `calcs`). Pure; formatting happens after. */
-function reduceCalc(calc: string, points: number[]): number | null {
-  if (points.length === 0) return null;
-  switch (calc) {
-    case "mean":
-      return points.reduce((a, b) => a + b, 0) / points.length;
-    case "max":
-      return Math.max(...points);
-    case "min":
-      return Math.min(...points);
-    case "sum":
-      return points.reduce((a, b) => a + b, 0);
-    case "first":
-      return points[0];
-    case "last":
-    case "lastNotNull":
-      return points[points.length - 1];
-    default:
-      return null;
-  }
-}
+import { reduceCalc } from "../reduce";
 
 interface Props {
   legend: VizLegendOptions;

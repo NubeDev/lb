@@ -66,8 +66,50 @@ export interface EditorState {
   };
 }
 
-/** Option keys the editor models as typed per-view groups (so they're NOT duplicated into `carry`). */
-const OWNED_OPTION_KEYS = new Set(["legend", "tooltip", "sql"]);
+/** Option keys the editor models as typed per-view groups (so they're NOT duplicated into `carry`).
+ *  Phase 1: legend/tooltip (timeseries) + sql. Phase 2 adds the single-stat + table + barchart per-viz
+ *  option keys (Grafana names verbatim) so a fully-populated Phase-2 cell round-trips through the typed
+ *  groups, not `extraOptions`. A stale v2 key (`unit`/`min`/`max`) stays in `extraOptions` (carry). */
+const OWNED_OPTION_KEYS = new Set([
+  "sql",
+  // timeseries / barchart / piechart shared
+  "legend",
+  "tooltip",
+  // single-stat family (stat/gauge/bargauge/piechart) frame→value bridge
+  "reduceOptions",
+  // stat
+  "graphMode",
+  "colorMode",
+  "justifyMode",
+  "textMode",
+  "showPercentChange",
+  // gauge / bargauge
+  "orientation",
+  "showThresholdLabels",
+  "showThresholdMarkers",
+  "sizing",
+  "minVizWidth",
+  "minVizHeight",
+  "displayMode",
+  "valueMode",
+  "showUnfilled",
+  // barchart
+  "stacking",
+  "showValue",
+  "barWidth",
+  "groupWidth",
+  "xTickLabelRotation",
+  "xField",
+  "colorByField",
+  // piechart
+  "pieType",
+  "displayLabels",
+  // table
+  "showHeader",
+  "cellHeight",
+  "enablePagination",
+  "sortBy",
+]);
 
 /** Rebuild the full editor state from a cell. ADD passes `defaultCell(view)`; EDIT passes the saved
  *  cell — identical code path. */

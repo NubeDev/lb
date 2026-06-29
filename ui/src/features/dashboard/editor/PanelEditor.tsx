@@ -24,6 +24,7 @@ import { cellToEditorState, editorStateToCell, type EditorState } from "./cellEd
 import { defaultOptionsForView } from "./viewOptions";
 import { EditorTabs } from "./Tabs";
 import { VizPicker } from "./VizPicker";
+import { usePanelShape } from "./usePanelShape";
 import { OptionsSearch } from "./OptionsSearch";
 import { PreviewPane } from "./PreviewPane";
 import { QueryTab } from "./tabs/QueryTab";
@@ -77,6 +78,11 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   // The draft cell = what save would persist (also the preview's input). Built from the SAME serializer.
   const draft = useMemo(() => editorStateToCell(state, cell), [state, cell]);
 
+  // The draft's data shape — drives which views the picker offers (result-shape ↔ type validation).
+  // Read through the ONE data hook (invariant A), so no separate fetch and the Phase-3 swap stays
+  // one-file.
+  const shape = usePanelShape(draft, scope, refreshKey);
+
   const save = () => {
     onSave(editorStateToCell(state, cell));
     onOpenChange(false);
@@ -111,7 +117,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             <div className="h-56 shrink-0">
               <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} />
             </div>
-            <VizPicker view={viewC} onChange={switchView} />
+            <VizPicker view={viewC} onChange={switchView} shape={shape} />
           </div>
 
           {/* Right: the options rail — search + tabs + the active tab body. */}

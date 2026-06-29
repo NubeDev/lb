@@ -83,6 +83,39 @@ describe("cell ↔ editorState round-trip", () => {
     expect(back).toEqual(v3);
   });
 
+  it("full Phase-2 cells (stat/gauge/bargauge/table/barchart/piechart) round-trip with typed options", () => {
+    // Each carries a fully-populated typed `options` for its view — proving the Phase-2 option keys are
+    // owned by the editor (typed groups), not dropped into `extraOptions`, and round-trip identically.
+    const base = (i: string, view: string, options: Record<string, unknown>): Cell => ({
+      i,
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+      v: 3,
+      widget_type: "stat",
+      view: view as Cell["view"],
+      binding: { series: "" },
+      sources: [{ refId: "A", tool: "store.query", args: { sql: "SELECT value FROM r" }, datasource: { type: "surreal" } }],
+      fieldConfig: { defaults: { unit: "celsius", decimals: 1, thresholds: { mode: "absolute", steps: [{ value: null, color: "green" }, { value: 30, color: "red" }] } }, overrides: [] },
+      options,
+    });
+    const cells: Cell[] = [
+      base("s1", "stat", { reduceOptions: { calcs: ["lastNotNull"] }, orientation: "auto", graphMode: "area", colorMode: "value", justifyMode: "auto", textMode: "auto", showPercentChange: false }),
+      base("g1", "gauge", { reduceOptions: { calcs: ["mean"] }, orientation: "auto", showThresholdLabels: true, showThresholdMarkers: true, sizing: "auto", minVizWidth: 75, minVizHeight: 75 }),
+      base("bg1", "bargauge", { reduceOptions: { calcs: [], values: true, limit: 5 }, orientation: "horizontal", displayMode: "gradient", valueMode: "color", showUnfilled: true, minVizWidth: 8, minVizHeight: 16 }),
+      base("t1", "table", { showHeader: true, cellHeight: "md", enablePagination: false, sortBy: [{ displayName: "value", desc: true }] }),
+      base("bc1", "barchart", { legend: { showLegend: true, displayMode: "list", placement: "bottom", calcs: [] }, tooltip: { mode: "single", sort: "none" }, orientation: "horizontal", stacking: "none", showValue: "auto", barWidth: 0.97, groupWidth: 0.7, xTickLabelRotation: 0 }),
+      base("p1", "piechart", { reduceOptions: { calcs: [] }, pieType: "donut", displayLabels: ["name", "percent"], legend: { showLegend: true, displayMode: "list", placement: "right", calcs: [] }, tooltip: { mode: "single", sort: "none" } }),
+    ];
+    for (const c of cells) {
+      const back = roundTrip(c);
+      expect(back).toEqual(c);
+      // The typed option keys round-tripped under `options`, not lost.
+      expect(back.options).toEqual(c.options);
+    }
+  });
+
   it("a fresh default cell (ADD) serializes losslessly through the editor", () => {
     const fresh = defaultCell("timeseries", "w3");
     const back = roundTrip(fresh);

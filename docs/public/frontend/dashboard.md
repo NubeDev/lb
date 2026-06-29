@@ -348,10 +348,67 @@ unchanged), the format-bridge "no stored formatted string" assertion, live previ
 Phases 2–4 (the rest of the chart set, the backend `viz.query`/`lb-viz` transform pipeline + multi-
 datasource targets, and Grafana JSON import/export) are scoped follow-ups on this same spine.
 
+## Grafana-compatible visualization — Phase 2 (the rest of the everyday chart set)
+
+Phase 2 fills in the standard chart vocabulary on the **same v3 spine** — six new panel renderers wired
+end to end, each with its typed per-viz `options` (Grafana names + defaults verbatim) and the fieldConfig
+render path through the **one** user-prefs bridge. **No backend change** (the host already stores
+`fieldConfig`/`options` opaquely and bounds the record); **no new datastore, no new render capability, no
+client-side transform** (invariant B holds — there are still no transforms; the pipeline is born backend
+in Phase 3). All panel data still flows through the one `usePanelData` hook (invariant A).
+
+- **Six new views: `stat`, `gauge`, `bargauge`, `table`, `barchart`, `piechart`** — one renderer file per
+  view under `features/dashboard/views/<type>/`, recharts-based (extending the shipped SVG helpers; no
+  visx — that's Phase 3). The shipped v2 `stat`/`gauge`/`table` views are **retired and replaced** by the
+  new panels (a v2 cell renders through the new renderer unchanged — the canonical id is itself).
+- **Typed per-viz `options`, Grafana-verbatim.** Each view has its own `options.ts` mirroring
+  `timeseries`: `stat` (graphMode/colorMode/justifyMode/textMode/orientation + reduceOptions), `gauge`
+  (showThresholdMarkers/Labels/orientation/reduceOptions), `bargauge` (displayMode basic|lcd|gradient /
+  valueMode/showUnfilled/orientation + reduceOptions), `table` (showHeader/cellHeight/sortBy/pagination),
+  `barchart` (orientation/stacking/showValue/barWidth/groupWidth + legend/tooltip), `piechart` (pieType
+  pie|donut / displayLabels/legend/tooltip + reduceOptions). Names + defaults copied from
+  `/tmp/grafana/public/app/plugins/panel/<type>/panelcfg.cue`.
+- **`reduceOptions` — the one shared frame→value bridge.** `views/reduce.ts` owns
+  `reduceFrame`/`reduceFrameValues`/`frameCategories` + the calc set (shared with the timeseries legend).
+  It is the **explicit, visible** collapse of a frame to the single value(s) a single-stat panel draws
+  (stat/gauge/bargauge/piechart) — never an implicit "guess a number", and **not** the transform pipeline.
+  An empty/non-numeric frame reduces to `null` → an honest "no value", never a fabricated 0.
+- **Per-field options via the existing bridge.** `views/field.ts` resolves the value field's effective
+  `FieldOptions` + its threshold/fixed/palette color once; every value is formatted through
+  `fieldconfig/format.ts` (unit/decimals) and colored through `fieldconfig/thresholds.ts` — no local
+  `toFixed` or color string in any renderer. Thresholds **color**, never alert.
+- **Result-shape ↔ type validation.** `views/shape.ts` classifies a target's rows
+  (`scalar`/`series`/`table`/`unknown`, conservatively) and `usePanelShape` reads them through the one
+  data hook; the **viz picker offers only the views a shape can honestly fill** (a scalar can't be a
+  table; tabular rows can't be a gauge) — disabled with a reason, not hidden. `reduceOptions` is the
+  visible bridge for the scalar/series → single-value collapse.
+- **The editor extends, doesn't fork.** `editor/viewOptions.ts` adds the six defaults; `VizPicker` moves
+  them from the disabled "Phase 2" list to buildable + shape-filters them; `tabs/PanelOptionsTab.tsx`
+  becomes a thin dispatcher routing by canonical view to one per-view options editor under
+  `tabs/options/` (the timeseries editor extracted there too). The add≡edit guarantee is unchanged —
+  the new typed option keys are owned by the editor groups, so a fully-populated Phase-2 cell round-trips
+  through the pinned `cell ↔ editorState` identity.
+
+Tested against the real gateway/store (no mocks): **alias fidelity** (a seeded v2 stat/gauge/table cell
+renders through the new renderer and re-saves identically), **options round-trip** (each view's typed
+`options` survives `dashboard.save`/`get`), **result-shape↔type validation** over real seeded samples
+(1-sample scalar offers stat/gauge not timeseries; multi-sample series offers timeseries + the single-stat
+family; reduceOptions collapses a frame to one value), **fieldConfig through the one bridge** (a value
+renders unit/decimals/threshold-color computed at render — no stored formatted string), and the mandatory
+**capability-deny** (a denied target → honest denied state across stat/gauge/table, never a fake value) +
+**workspace isolation**. Plus the extended pure `cellEditorState` round-trip (full stat/gauge/bargauge/
+table/barchart/piechart cells) and `viz.phase2` reduce/shape unit tests.
+
+Phase 3 (backend `viz.query`/`lb-viz` + multi-datasource) and Phase 4 (Grafana JSON import/export) remain
+the scoped follow-ups on this spine. Deferred Phase-3 panels (`histogram`, `state-timeline`,
+`status-history`, `heatmap`, `text` — the visx/markdown family) and the named exotic panels degrade
+honestly on import.
+
 ## Follow-ups
 
-- **Grafana-compatible visualization (`viz/`) — Phase 1 shipped (above); Phases 2–4 scoped.** Phase 2:
-  the rest of the standard chart set. Phase 3: `viz.query` + `lb-viz` (swap `usePanelData`'s body), the
+- **Grafana-compatible visualization (`viz/`) — Phases 1–2 shipped (above); Phases 3–4 scoped.** Phase 2
+  shipped the rest of the everyday chart set (stat/gauge/bargauge/table/barchart/piechart). Phase 3:
+  `viz.query` + `lb-viz` (swap `usePanelData`'s body), the
   transform pipeline, datasource binding beyond native SurrealDB. Phase 4: Grafana dashboard JSON
   import/export + `schemaVersion` migration. When `lb-prefs` ships, swap `fieldconfig/format.ts`'s
   fallback for the real `format.*` call (no schema change, no re-save). Scope:

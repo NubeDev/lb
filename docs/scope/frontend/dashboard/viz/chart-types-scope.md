@@ -1,7 +1,10 @@
 # Viz scope — the standard visualization set (chart types)
 
-Status: **Phase 1 shipped (2026-06-29)** — `timeseries` ships end to end (renderer + the full per-viz
-`options` surface: legend/tooltip; the `chart` alias resolves to it). Phase 2+ panel types remain scoped.
+Status: **Phases 1–2 shipped (2026-06-29)** — `timeseries` (Phase 1) + `stat`/`gauge`/`bargauge`/`table`/
+`barchart`/`piechart` (Phase 2) ship end to end (renderer + the full per-viz `options` surface,
+Grafana-verbatim; the `chart` alias resolves to `timeseries`; the shared `reduceOptions` frame→value
+bridge for the single-stat family; result-shape↔type validation in the picker). Phase 3+ panel types
+(`histogram`, `state-timeline`/`status-history`, `heatmap`, `text`) remain scoped.
 Part of the [`viz/`](README.md) slice — the **standard visualization set** that fills in the `view`
 vocabulary the spine ([`panel-model-scope.md`](panel-model-scope.md)) defines. Shipped truth in
 [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
@@ -89,9 +92,10 @@ render identically; new cells write the canonical id.
 - **Phase 1 — `timeseries` end to end** (the "start with one chart"). One renderer, the full
   `timeseries` `options` surface (legend/tooltip + the timeseries custom draw fields), the alias from
   `chart`, with `fieldConfig` ([`field-config-scope.md`](field-config-scope.md)) doing units/thresholds.
-- **Phase 2 — the rest of the everyday set**: `stat`, `gauge`, `bargauge`, `table`, `barchart`,
-  `piechart`. All recharts-able; all single-frame or reduceable. This is where the user's "options are bad"
-  complaint is fully answered across the common panels.
+- **Phase 2 — the rest of the everyday set. ✅ SHIPPED (2026-06-29).** `stat`, `gauge`, `bargauge`,
+  `table`, `barchart`, `piechart` — all recharts-able; all single-frame or reduceable. This is where the
+  user's "options are bad" complaint is fully answered across the common panels. The shared
+  `reduceOptions` reducer lives in `views/reduce.ts`; the shape detector in `views/shape.ts`.
 - **Phase 3 — `histogram`, `state-timeline`, `status-history`, `heatmap`, `text`**. Introduces the visx
   dependency (heatmap/state-timeline) and the markdown `text` panel.
 - **Deferred (named follow-ups)** — `geomap`, `nodeGraph`, `flamegraph`, `traces`, `candlestick`,

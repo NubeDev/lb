@@ -120,8 +120,16 @@ The user's instinct is right: prove the spine on **one** chart before fanning ou
   of [`chart-types`](chart-types-scope.md).) Promoted to
   [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
   [`dashboard-viz-phase1`](../../../../sessions/frontend/dashboard-viz-phase1-session.md).
-- **Phase 2 — the rest of the standard set** (`barchart`, `stat`, `gauge`, `bargauge`, `table`,
-  `piechart`, `histogram`, `state-timeline`, `text`, …) on the same spine. ([`chart-types`](chart-types-scope.md).)
+- **Phase 2 — the rest of the everyday set. ✅ SHIPPED (2026-06-29).** `stat`, `gauge`, `bargauge`,
+  `table`, `barchart`, `piechart` on the same spine — one renderer + typed per-viz `options`
+  (Grafana-verbatim) per view, the shared `reduceOptions` frame→value bridge for the single-stat family,
+  the fieldConfig render path through the one user-prefs bridge, the editor extended (viewOptions +
+  shape-filtered VizPicker + per-view PanelOptions editors), and result-shape↔type validation. No backend
+  change, no client transform (invariant B), all data through the one hook (invariant A). Promoted to
+  [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+  [`dashboard-viz-phase2`](../../../../sessions/frontend/dashboard-viz-phase2-session.md). The remaining
+  panels (`histogram`, `state-timeline`/`status-history`, `heatmap`, `text` — the visx/markdown family)
+  move to Phase 3. ([`chart-types`](chart-types-scope.md).)
 - **Phase 3 — backend resolve (`viz.query` + `lb-viz`) + multi-datasource targets.** The transformation
   pipeline as a host verb and the datasource dropdown. ([`transformations`](transformations-scope.md) +
   [`datasource-binding`](datasource-binding-scope.md).) Phase 1–2 keep the shipped client fetch for a

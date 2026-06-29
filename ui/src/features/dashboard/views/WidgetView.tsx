@@ -15,9 +15,12 @@ import { emptyScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import { ChartView } from "./ChartView";
 import { TimeseriesView } from "./timeseries/TimeseriesView";
-import { StatView } from "./StatView";
-import { GaugeView } from "./GaugeView";
-import { TableView } from "./TableView";
+import { StatPanel } from "./stat/StatPanel";
+import { GaugePanel } from "./gauge/GaugePanel";
+import { BarGaugePanel } from "./bargauge/BarGaugePanel";
+import { TablePanel } from "./table/TablePanel";
+import { BarChartPanel } from "./barchart/BarChartPanel";
+import { PieChartPanel } from "./piechart/PieChartPanel";
 import { ScriptedView } from "./ScriptedView";
 import { SwitchControl } from "./SwitchControl";
 import { SliderControl } from "./SliderControl";
@@ -82,11 +85,19 @@ export function WidgetView({
       // still renders the v2 chart rather than the unsupported-view fallback.
       return <ChartView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
     case "stat":
-      return <StatView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
+      // v3 stat (also the canonical id for a v2 `stat` cell): the reduceOptions frame→value bridge +
+      // the full Grafana stat option surface + the fieldConfig render path; data through `usePanelData`.
+      return <StatPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "gauge":
-      return <GaugeView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
+      return <GaugePanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "bargauge":
+      return <BarGaugePanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "table":
-      return <TableView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
+      return <TablePanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "barchart":
+      return <BarChartPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "piechart":
+      return <PieChartPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "plot":
       return <ScriptedView engine="plot" tools={tools} options={options} />;
     case "d3":
