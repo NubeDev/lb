@@ -59,3 +59,7 @@ never reveals whether the tool exists.
 Grant delegation (S5), OIDC + RBAC hierarchy + key rotation/custody (S3+), store-backed
 grant-sets at scale (measure at S2). Negative/deny caps: rejected for v1 (deny-by-default +
 explicit grants).
+
+**API keys** — machine principals (appliance/cli/api/agent) as a non-human `Subject` over
+this same grant model, authenticated by a hashed bearer secret and authorized through the one
+chokepoint above. Scoped, not yet shipped: `../../scope/auth-caps/api-keys-scope.md`.

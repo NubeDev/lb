@@ -22,6 +22,7 @@ members = [
     "crates/jobs",
     "crates/mcp",
     "crates/outbox",
+    "crates/prefs",
     "crates/registry",
     "crates/rules",
     "crates/run-events",
@@ -32,6 +33,7 @@ members = [
     "crates/sync",
     "crates/tags",
     "crates/undo",
+    "crates/viz",
     "extensions/echo-sidecar",
     "extensions/federation",
     "extensions/fleet-monitor",
@@ -70,6 +72,7 @@ lb-ingest = { path = "crates/ingest" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
+lb-prefs = { path = "crates/prefs" }
 lb-registry = { path = "crates/registry" }
 lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
@@ -80,6 +83,7 @@ lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
 lb-tags = { path = "crates/tags" }
 lb-undo = { path = "crates/undo" }
+lb-viz = { path = "crates/viz" }
 lb-host = { path = "crates/host" }
 lb-sdk = { path = "sdk" }
 

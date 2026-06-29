@@ -18,6 +18,7 @@ lb-auth.workspace = true
 lb-registry.workspace = true
 lb-devkit.workspace = true
 lb-inbox.workspace = true
+lb-prefs.workspace = true
 lb-assets.workspace = true
 # Only the `test_gateway` harness binary uses lb-outbox (to seed real effects). It is optional and
 # pulled in by the `test-harness` feature, so the production crate doesn't carry it.

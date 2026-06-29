@@ -4,15 +4,31 @@
 // unchanged: an explicit `series`, OR a tag-facet query resolved via the shipped `series.find`.
 
 import type { Variable } from "@/lib/vars";
+import type { FieldConfig } from "./fieldconfig.types";
 export type { Variable };
+export type {
+  FieldConfig,
+  FieldOptions,
+  FieldOverride,
+  Matcher,
+  ValueMapping,
+  ValueMappingResult,
+  ThresholdsConfig,
+  FieldColor,
+  FieldColorModeId,
+} from "./fieldconfig.types";
 
 /** The Phase-1 built-in widget types (v1). v2's render vocabulary is {@link View}. */
 export type WidgetType = "chart" | "stat" | "gauge";
 
-/** The v2 render vocabulary (widget-builder scope, "The widget taxonomy"). Read views render a
- *  tool's result; scripted views run author code in a sandboxed iframe (and MAY write); control views
- *  call a write tool; `ext:<id>/<widget>` mounts an extension-shipped tile. */
+/** The v2/v3 render vocabulary. v2 (widget-builder scope): read views render a tool's result;
+ *  scripted views run author code in a sandboxed iframe (and MAY write); control views call a write
+ *  tool; `ext:<id>/<widget>` mounts an extension-shipped tile. v3 (viz chart-types scope) ADDS
+ *  Grafana's panel-type ids as the canonical vocabulary (`timeseries`, `barchart`, `bargauge`,
+ *  `piechart`, …); the shipped views remain valid ALIASES (`chart` → `timeseries`). New cells write
+ *  the canonical id; old cells still read through {@link canonicalView}. */
 export type View =
+  // shipped v2 views (kept as aliases / escape-hatch views)
   | "chart"
   | "stat"
   | "gauge"
@@ -23,7 +39,56 @@ export type View =
   | "switch"
   | "slider"
   | "button"
+  // v3 Grafana panel-type ids (the canonical vocabulary)
+  | "timeseries"
+  | "barchart"
+  | "bargauge"
+  | "piechart"
+  | "histogram"
+  | "state-timeline"
+  | "status-history"
+  | "heatmap"
+  | "text"
   | `ext:${string}`;
+
+/** A datasource reference (viz datasource-binding scope; Phase 1 is always native `surreal`). `uid`
+ *  names a registered `datasource:{ws}:{name}` for federation; absent for native. */
+export interface DataSourceRef {
+  type: "surreal" | "series" | "federation" | string;
+  uid?: string;
+}
+
+/** A Grafana "target" — one query against one datasource (viz panel-model scope). Generalizes the
+ *  single {@link Source}; `refId` (A,B,…) is referenced by transformations + overrides. A v2
+ *  single-`source` cell reads as `sources[0]` through {@link cellSources}. */
+export interface Target {
+  refId: string;
+  datasource?: DataSourceRef;
+  tool: string;
+  args?: Record<string, unknown>;
+  hide?: boolean;
+}
+
+/** A client-side transformation (viz transformations scope; shape only in Phase 1). */
+export interface Transformation {
+  id: string;
+  options?: Record<string, unknown>;
+  disabled?: boolean;
+  filter?: import("./fieldconfig.types").Matcher;
+}
+
+/** The alias map (viz chart-types scope, "The alias map"): a shipped v2 `view` → its canonical
+ *  Grafana panel-type id. A v2 `chart` cell IS a `timeseries` panel. Views not listed are their own
+ *  canonical id (the Grafana ids, the scripted/control views, and `ext:` tiles pass through). */
+const VIEW_ALIASES: Partial<Record<string, View>> = {
+  chart: "timeseries",
+};
+
+/** Resolve a view to its canonical Grafana panel-type id (so `view:"chart"` and `view:"timeseries"`
+ *  render identically). Non-aliased views (scripted/control/ext/already-canonical) pass through. */
+export function canonicalView(view: View | string): View {
+  return (VIEW_ALIASES[view] ?? view) as View;
+}
 
 /** A cell's data binding: an explicit series name, OR a tag-facet query (resolved via `series.find`). */
 export type Binding = { series: string } | { find: { tags: string[] } };
@@ -74,11 +139,49 @@ export interface Cell {
   action?: Action;
   /** Widget-type-specific options (unit label, thresholds, range, inline template code). */
   options?: Record<string, unknown>;
+
+  // --- v3 (viz panel-model scope) — all additive/optional; absent on a v1/v2 cell ---
+  /** Panel description (Grafana parity). */
+  description?: string;
+  /** v3 targets — supersedes the single `source`. `sources[0]` === `source` for v2 compat (read
+   *  through {@link cellSources}, which falls back to `source` when `sources` is absent). */
+  sources?: Target[];
+  /** The client-side transformation pipeline (shape only in Phase 1). */
+  transformations?: Transformation[];
+  /** Per-field option defaults + overrides (units/decimals/thresholds/mappings/color). The render
+   *  bridge (`features/dashboard/fieldconfig/*`) formats values through it via user-prefs. */
+  fieldConfig?: FieldConfig;
+  /** Plugin version, for import/export round-trip fidelity. */
+  pluginVersion?: string;
 }
 
-/** Resolve a cell's effective render view — `view` (v2) when present, else `widget_type` (v1). */
+/** A cell's targets, v3 — `sources[]` when present, else the v2 single `source` as a one-element
+ *  `[A]`, else `[]`. The ONE adapter that lets the whole render/edit path treat a v2 cell as a v3
+ *  one-target cell (panel-model scope, Risks: "treat a single `source` as `sources[0]` everywhere"). */
+export function cellSources(cell: Cell): Target[] {
+  if (cell.sources && cell.sources.length > 0) return cell.sources;
+  if (cell.source?.tool) {
+    return [{ refId: "A", tool: cell.source.tool, args: cell.source.args, datasource: { type: "surreal" } }];
+  }
+  return [];
+}
+
+/** A cell's primary (first non-hidden) target — what a single-source view reads. */
+export function cellPrimaryTarget(cell: Cell): Target | undefined {
+  return cellSources(cell).find((t) => !t.hide) ?? cellSources(cell)[0];
+}
+
+/** Resolve a cell's effective render view — `view` (v2) when present, else `widget_type` (v1) —
+ *  CANONICALIZED through the alias map so `chart`/`timeseries` render via the one timeseries renderer.
+ *  `ext:`/scripted/control views pass through unchanged. */
 export function cellView(cell: Cell): View {
-  return (cell.view as View) || (cell.widget_type as View);
+  return canonicalView((cell.view as View) || (cell.widget_type as View));
+}
+
+/** A cell's effective field-config, defaulted to empty (so a v1/v2 cell renders with no field options
+ *  — today's behavior, the user-prefs fallback). The render bridge consumes this. */
+export function cellFieldConfig(cell: Cell): FieldConfig {
+  return cell.fieldConfig ?? { defaults: {}, overrides: [] };
 }
 
 /** A cell's header label: the author `title` when set, else a derived fallback — the source tool, an
@@ -101,6 +204,9 @@ export interface Dashboard {
   cells: Cell[];
   /** Variable definitions (widget-config-vars Slice 2). The per-viewer selection lives in the URL. */
   variables?: Variable[];
+  /** OUR panel-model document version (viz panel-model scope) — pinned at save, used by import/export
+   *  + migration. Distinct from `Cell.v` (the cell contract version) and NOT Grafana's `schemaVersion`. */
+  schemaVersion?: number;
   updated_ts: number;
   deleted?: boolean;
 }

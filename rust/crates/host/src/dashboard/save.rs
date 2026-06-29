@@ -32,6 +32,10 @@ pub async fn dashboard_save(
     if id.is_empty() {
         return Err(DashboardError::BadInput("empty dashboard id".into()));
     }
+    // v3 record bounds — reject an over-cap fieldConfig/transform list rather than store it unbounded
+    // (panel-model scope: keep the dashboard record small for the roster/list read). The host is the
+    // boundary; the editor mirrors the caps for a friendly error.
+    super::bounds::check_cells_bounds(&cells)?;
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
@@ -52,6 +56,9 @@ pub async fn dashboard_save(
         visibility,
         cells,
         variables,
+        // Pin our panel-model document version at save (viz panel-model scope). v3 is the current
+        // shape; an older saved doc keeps its lower value until the migration path reads it.
+        schema_version: super::model::SCHEMA_VERSION,
         updated_ts: now,
         deleted: false,
     };

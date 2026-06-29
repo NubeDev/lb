@@ -92,7 +92,7 @@ async function createDashboard(user: ReturnType<typeof userEvent.setup>, title: 
 }
 
 describe("DashboardView (real gateway)", () => {
-  it("creates a dashboard, adds a chart bound to a real series, and persists it", async () => {
+  it("creates a dashboard, adds a timeseries panel bound to a real series, and persists it", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
@@ -101,19 +101,20 @@ describe("DashboardView (real gateway)", () => {
     renderDashboard(ws);
     await createDashboard(user, "Ops");
 
-    // v2 builder: source-pick the seeded `cooler.temp` series (a friendly label, NOT a tool name),
-    // keep the default `chart` view, and add it. The source picker resolves the label to
-    // `{tool:"series.read", args:{series:"cooler.temp"}}` behind the scenes. Wait for the async
-    // `series.list` to populate the picker options first.
-    const source = await screen.findByLabelText("widget source");
+    // The ONE panel editor (panel-editor scope): click "Add panel" → the editor sheet opens on a fresh
+    // default timeseries cell. In the Query tab, source-pick the seeded `cooler.temp` series (a friendly
+    // label, NOT a tool name; resolves to `series.read` behind the scenes), then Save. Wait for the
+    // async `series.list` to populate the picker options first.
+    await user.click(await screen.findByLabelText("add panel"));
+    const source = await screen.findByLabelText("panel source");
     await screen.findByRole("option", { name: "cooler.temp" });
     await user.selectOptions(source, "series:cooler.temp");
-    await user.click(screen.getByLabelText("add widget"));
+    await user.click(screen.getByLabelText("save panel"));
 
-    // The cell renders the chart over real rows read through the bridge (the SVG line + a latest value).
+    // The cell renders the timeseries over real rows read through the bridge (the SVG line + latest).
     await screen.findByLabelText("cell w1");
-    expect(await screen.findByLabelText("chart line")).toBeInTheDocument();
-    expect((await screen.findByLabelText("chart latest")).textContent).not.toBe("");
+    expect(await screen.findByLabelText("timeseries line")).toBeInTheDocument();
+    expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
 
     // Persisted: a fresh render of the same workspace re-loads the dashboard from the store.
     renderDashboard(ws);
@@ -121,7 +122,7 @@ describe("DashboardView (real gateway)", () => {
     expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
   });
 
-  it("renders a stat view over a bridged source", async () => {
+  it("renders a timeseries panel over a bridged source with the full option surface", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
@@ -130,18 +131,20 @@ describe("DashboardView (real gateway)", () => {
     renderDashboard(ws);
     await createDashboard(user, "Tagged");
 
-    // Source-pick the seeded series, choose the `stat` view, add it.
+    // Add a timeseries panel; set a unit in the Field tab (the fieldConfig surface) before saving.
+    await user.click(await screen.findByLabelText("add panel"));
     await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(await screen.findByLabelText("widget source"), "series:cooler.temp");
-    await user.selectOptions(screen.getByLabelText("widget view"), "stat");
-    await user.click(screen.getByLabelText("add widget"));
+    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
+    await user.click(screen.getByLabelText("tab Field"));
+    await user.selectOptions(await screen.findByLabelText("field unit"), "celsius");
+    await user.click(screen.getByLabelText("save panel"));
 
     await screen.findByLabelText("cell w1");
-    // The stat value renders a real (numeric) latest value, not a fake (await the bridged read).
-    expect((await screen.findByLabelText("stat value")).textContent).not.toBe("");
+    // The latest value renders a real (numeric) value formatted through the bridge — not a fake.
+    expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
   });
 
-  it("Slice 1 — ⚙ settings: add → rename + change view → save → reload re-renders with edits", async () => {
+  it("one editor for add AND edit: add → reopen the editor → rename → save → reload shows the edit", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
@@ -150,32 +153,29 @@ describe("DashboardView (real gateway)", () => {
     renderDashboard(ws);
     await createDashboard(user, "Cfg");
 
-    // Add a chart bound to the seeded series.
+    // Add a timeseries panel bound to the seeded series.
+    await user.click(await screen.findByLabelText("add panel"));
     await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(await screen.findByLabelText("widget source"), "series:cooler.temp");
-    await user.click(screen.getByLabelText("add widget"));
+    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
+    await user.click(screen.getByLabelText("save panel"));
     await screen.findByLabelText("cell w1");
 
-    // Open the ⚙ settings drawer for the cell, rename it + switch the view to stat, save. Scope queries
-    // to the drawer (the add-builder also has a title/view field — the drawer is the `widget settings`
-    // region).
-    await user.click(screen.getByLabelText("settings cell w1"));
-    const drawer = within(await screen.findByLabelText("widget settings"));
-    const titleField = await drawer.findByLabelText("widget title");
+    // Reopen the SAME editor on the saved cell (the ⚙ edit button) — add and edit are one component, one
+    // path. Rename the panel and save; the title shows in the header.
+    await user.click(screen.getByLabelText("edit cell w1"));
+    const titleField = await screen.findByLabelText("panel title");
     await user.clear(titleField);
     await user.type(titleField, "Web01 CPU");
-    // The drawer seeded the source; switch the view to stat and save.
-    await user.selectOptions(drawer.getByLabelText("widget view"), "stat");
-    await user.click(drawer.getByLabelText("save widget"));
+    await user.click(screen.getByLabelText("save panel"));
+    // The renamed title shows in the cell header (≥1 match — the editor sheet may still be closing).
+    expect((await screen.findAllByText("Web01 CPU")).length).toBeGreaterThan(0);
 
-    // The renamed title shows in the header (the derived label is replaced).
-    expect(await screen.findByText("Web01 CPU")).toBeInTheDocument();
-
-    // Persisted: reload re-renders the cell with the new title + view (stat value, not a chart line).
+    // Persisted: reload re-renders the cell with the new title (the round-trip the slice guarantees).
     renderDashboard(ws);
     await user.click(await screen.findByLabelText("select dashboard cfg"));
-    expect(await screen.findByText("Web01 CPU")).toBeInTheDocument();
-    expect((await screen.findByLabelText("stat value")).textContent).not.toBe("");
+    // The title renders in the cell header AND (as the series displayName) the legend — ≥1 is the point.
+    expect((await screen.findAllByText("Web01 CPU")).length).toBeGreaterThan(0);
+    expect(await screen.findByLabelText("timeseries line")).toBeInTheDocument();
   });
 
   it("Slice 2 — define a variable, it persists on the record, its selection syncs to the URL + reloads", async () => {
@@ -246,10 +246,12 @@ describe("DashboardView (real gateway)", () => {
     renderDashboardWithSearch(ws, searchRef);
     await user.click(await screen.findByLabelText("select dashboard interp"));
 
-    // The chart resolves `${host}` → `cooler.temp` and renders real rows read through the bridge.
+    // The panel resolves `${host}` → `cooler.temp` and renders real rows read through the bridge. The
+    // v2 `chart` view aliases to the v3 `timeseries` renderer (canonicalView), so the labels are
+    // `timeseries *` — proving a shipped v2 cell renders through the new path unchanged.
     await screen.findByLabelText("cell w1");
-    expect(await screen.findByLabelText("chart line")).toBeInTheDocument();
-    expect((await screen.findByLabelText("chart latest")).textContent).not.toBe("");
+    expect(await screen.findByLabelText("timeseries line")).toBeInTheDocument();
+    expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
   });
 
   it("is workspace isolated — a fresh workspace shows no dashboards", async () => {

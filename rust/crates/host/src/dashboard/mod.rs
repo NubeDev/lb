@@ -14,6 +14,7 @@
 //!   - the demo seed ([`seed_iot_demo`]) — real `Sample`s + tags via the real ingest path.
 
 mod authorize;
+mod bounds;
 mod delete;
 mod error;
 mod get;
@@ -26,11 +27,12 @@ mod store;
 mod tool;
 mod visibility;
 
+pub use bounds::{MAX_OVERRIDES, MAX_TRANSFORMS};
 pub use delete::dashboard_delete;
 pub use error::DashboardError;
 pub use get::dashboard_get;
 pub use list::dashboard_list;
-pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Variable, Visibility};
+pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Target, Variable, Visibility};
 pub use save::dashboard_save;
 pub use seed::{seed_iot_demo, SeedReport};
 pub use share::dashboard_share;

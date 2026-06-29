@@ -21,8 +21,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   state, compensate motion*). See "The shared seam" in `observability/observability-scope.md`.
 - `auth-caps/` — the capability grammar, token, and grant delegation; plus `edge-trust-scope.md` (node
   enrollment/cert + mTLS + token-on-the-bus), `authz-grants-scope.md` (durable roles/grants/teams —
-  restricted user/team access), and `admin-crud-scope.md` (the destructive half — workspace/user/team/
-  member delete·disable·remove·rename + dev-store user CRUD).
+  restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/
+  member delete·disable·remove·rename + dev-store user CRUD), and `api-keys-scope.md` (machine
+  principals — appliance/cli/api/agent keys as a non-human `Subject` over the same grant model,
+  a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
@@ -83,6 +85,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   extensions·registry) from the booted `Node`'s handles + the store, holding nothing durable. The
   **read/visualization** complement of `observability/` (which *emits* telemetry); the `dbview`-shaped
   observer that — unlike an extension — can see the runtime that supervises extensions.
+- `cli/` — the **operator CLI** (`operator-cli-scope.md`): `lb`, the terminal twin of the React shell —
+  a fourth client (besides browser/Tauri/mobile) of the gateway surface, holding no authority of its own.
+  Two modes mirroring symmetric nodes: **remote** (over the gateway, the browser path) and **local**
+  (`lb local …` embeds the host, the offline/solo posture), both funneling through the one
+  `lb_host::call_tool` chokepoint. A universal `lb call <tool> <json>` escape hatch over `POST /mcp/call`
+  plus typed commands for the common operator verbs (`ws`/`members`/`channels`/`inbox`/`outbox`/`ext`/
+  `registry`/`system`/`agent`/`store`/`tags`), tables + `-o json`, the workspace/principal header always
+  legible, denies surfaced honestly. It is only ever as authorized as the token it presents. v1 auth = the dev-login token; it is the **named first consumer** of
+  `auth-caps/api-keys-scope.md` when API keys ship. Adds **no new MCP verbs, capabilities, or tables**;
+  retires the `curl + jq` publish flow and folds `lb-pack` into `lb devkit sign` over the `lb-devkit` lib.
 - `frontend/` — the React/Tauri UI shell; `collaboration-scope.md` (the real multi-user app),
   `admin-console-scope.md` (the management UI for workspaces·teams·users·members·extensions), and
   `dashboard-scope.md` (the grid-of-widgets dashboard over real series — Phase 1 first-party/seeded,

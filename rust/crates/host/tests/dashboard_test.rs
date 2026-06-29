@@ -11,7 +11,8 @@
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_delete, dashboard_get, dashboard_list, dashboard_save, dashboard_share,
-    seed_iot_demo, series_find, series_read_range, Cell, DashboardError, DashboardVisibility,
+    seed_iot_demo, series_find, series_read_range, Cell, CellSource, CellTarget, DashboardError,
+    DashboardVisibility, DASHBOARD_MAX_OVERRIDES, DASHBOARD_MAX_TRANSFORMS,
 };
 use lb_store::Store;
 use lb_tags::Facet;
@@ -39,7 +40,7 @@ const DELETE: &str = "mcp:dashboard.delete:call";
 const SHARE: &str = "mcp:dashboard.share:call";
 const ALL: &[&str] = &[GET, LIST, SAVE, DELETE, SHARE];
 
-/// One chart cell bound to `series`.
+/// One chart cell bound to `series` (a v1 cell — all v2/v3 fields defaulted/absent).
 fn chart_cell(series: &str) -> Cell {
     Cell {
         i: "c1".into(),
@@ -55,6 +56,11 @@ fn chart_cell(series: &str) -> Cell {
         source: Default::default(),
         action: Default::default(),
         options: json!({}),
+        description: String::new(),
+        sources: Vec::new(),
+        transformations: Vec::new(),
+        field_config: json!(null),
+        plugin_version: String::new(),
     }
 }
 
@@ -380,4 +386,183 @@ async fn seed_writes_real_tagged_series() {
     .await
     .unwrap();
     assert_eq!(hits, vec!["series:cooler.temp"]);
+}
+
+// ---------------------------------------------------------------------------------------------------
+// viz panel-model scope (Phase 1): the additive v3 cell shape round-trips through dashboard.save/get,
+// a v1/v2 cell still loads unchanged, schemaVersion is pinned at save, and the record bounds reject an
+// over-cap fieldConfig/transforms list (the host is the boundary, not the editor).
+// ---------------------------------------------------------------------------------------------------
+
+/// A full v3 timeseries cell: targets[], fieldConfig (unit/decimals/min/max/thresholds), per-view
+/// options, transformations config — every additive field set.
+fn v3_timeseries_cell() -> Cell {
+    Cell {
+        i: "p1".into(),
+        x: 0,
+        y: 0,
+        w: 8,
+        h: 4,
+        v: 3,
+        widget_type: "chart".into(),
+        title: "Cooler °C".into(),
+        view: "timeseries".into(),
+        binding: json!({ "series": "" }),
+        source: Default::default(),
+        action: Default::default(),
+        options: json!({ "legend": { "showLegend": true, "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] }, "tooltip": { "mode": "single", "sort": "none" } }),
+        description: "panel desc".into(),
+        sources: vec![CellTarget {
+            ref_id: "A".into(),
+            datasource: json!({ "type": "surreal" }),
+            tool: "store.query".into(),
+            args: json!({ "sql": "SELECT value FROM reading" }),
+            hide: false,
+        }],
+        transformations: vec![json!({ "id": "reduce", "options": { "reducers": ["last"] } })],
+        field_config: json!({
+            "defaults": {
+                "unit": "celsius",
+                "decimals": 1,
+                "min": 0,
+                "max": 50,
+                "thresholds": { "mode": "absolute", "steps": [ { "value": null, "color": "green" }, { "value": 5, "color": "red" } ] }
+            },
+            "overrides": []
+        }),
+        plugin_version: "lb-viz@1".into(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn v3_cell_round_trips() {
+    let ws = "ws-dash-v3";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    let cell = v3_timeseries_cell();
+    let saved = dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![cell.clone()],
+        vec![],
+        10,
+    )
+    .await
+    .unwrap();
+    // schemaVersion is pinned to the panel-model document version at save.
+    assert_eq!(saved.schema_version, 3);
+
+    // get re-reads every additive v3 field (the round-trip the editor's add≡edit relies on). The store
+    // normalizes an explicit JSON `null` away (the base threshold step's `value:null` ⇒ key absent),
+    // which the UI treats as -∞ — so we assert FIELD-LEVEL fidelity, not byte equality, for the parts
+    // that carry a null. Everything else is identical.
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    let back = &got.cells[0];
+    assert_eq!(back.v, 3);
+    assert_eq!(back.view, "timeseries");
+    assert_eq!(back.title, "Cooler °C");
+    assert_eq!(back.description, "panel desc");
+    assert_eq!(back.plugin_version, "lb-viz@1");
+    assert_eq!(back.options, cell.options, "per-view options round-trip");
+    assert_eq!(back.sources, cell.sources, "targets round-trip");
+    assert_eq!(back.sources[0].ref_id, "A");
+    assert_eq!(
+        back.transformations, cell.transformations,
+        "transform config round-trips"
+    );
+    // fieldConfig: unit/decimals/min/max + the threshold step colors survive (the base step's null
+    // value is dropped by the store, recognized as -∞ by the UI).
+    let fc = &back.field_config["defaults"];
+    assert_eq!(fc["unit"], json!("celsius"));
+    assert_eq!(fc["decimals"], json!(1));
+    assert_eq!(fc["min"], json!(0));
+    assert_eq!(fc["max"], json!(50));
+    let steps = fc["thresholds"]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["color"], json!("green"));
+    assert_eq!(steps[1]["color"], json!("red"));
+    assert_eq!(steps[1]["value"], json!(5));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn v1_and_v2_cells_still_load_after_v3() {
+    let ws = "ws-dash-compat";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // A v1 series cell (no view/source) and a v2 chart+store.query cell both save + re-read unchanged —
+    // the v3 fields stay absent/defaulted, never injected.
+    let v1 = chart_cell("cooler.temp");
+    let mut v2 = chart_cell("");
+    v2.i = "c2".into();
+    v2.v = 2;
+    v2.view = "chart".into();
+    v2.source = CellSource {
+        tool: "store.query".into(),
+        args: json!({ "sql": "SELECT 1" }),
+    };
+
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![v1.clone(), v2.clone()],
+        vec![],
+        10,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.cells[0], v1, "v1 cell round-trips byte-identical");
+    assert_eq!(got.cells[1], v2, "v2 cell round-trips byte-identical");
+    // The additive v3 fields are absent/defaulted on both (no spurious data).
+    assert!(got.cells[0].sources.is_empty());
+    assert_eq!(got.cells[0].field_config, json!(null));
+    assert!(got.cells[1].sources.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn over_cap_v3_record_is_rejected() {
+    let ws = "ws-dash-bounds";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // Too many transformations → rejected (the host is the boundary, not the editor).
+    let mut cell = v3_timeseries_cell();
+    cell.transformations = (0..(DASHBOARD_MAX_TRANSFORMS + 1))
+        .map(|_| json!({ "id": "reduce" }))
+        .collect();
+    assert!(matches!(
+        dashboard_save(&store, &ada, ws, "ops", "Ops", vec![cell], vec![], 10)
+            .await
+            .unwrap_err(),
+        DashboardError::BadInput(_)
+    ));
+
+    // Too many fieldConfig overrides → rejected.
+    let mut cell = v3_timeseries_cell();
+    let overrides: Vec<_> = (0..(DASHBOARD_MAX_OVERRIDES + 1))
+        .map(|i| json!({ "matcher": { "id": "byName", "options": format!("f{i}") }, "properties": [] }))
+        .collect();
+    cell.field_config = json!({ "defaults": {}, "overrides": overrides });
+    assert!(matches!(
+        dashboard_save(&store, &ada, ws, "ops2", "Ops", vec![cell], vec![], 10)
+            .await
+            .unwrap_err(),
+        DashboardError::BadInput(_)
+    ));
+
+    // A within-cap v3 cell is accepted (the bound is a ceiling, not a block).
+    let cell = v3_timeseries_cell();
+    assert!(
+        dashboard_save(&store, &ada, ws, "ops3", "Ops", vec![cell], vec![], 10)
+            .await
+            .is_ok()
+    );
 }

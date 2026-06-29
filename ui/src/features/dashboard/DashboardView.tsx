@@ -8,7 +8,7 @@ import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
-import { WidgetBuilder } from "./builder/WidgetBuilder";
+import { AddPanel } from "./editor/AddPanel";
 import { VariableBar } from "./vars/VariableBar";
 import { VariableEditor } from "./vars/VariableEditor";
 import { useVarScope } from "./vars/useVarScope";
@@ -190,11 +190,12 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
               onOpenChange={setVarEditorOpen}
               onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
             />
-            <WidgetBuilder
+            <AddPanel
               ws={ws}
               existing={current.cells}
-              onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
               canEdit={canEdit}
+              scope={scope}
+              onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
             />
 
             <div className="min-h-0 flex-1">

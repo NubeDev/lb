@@ -254,10 +254,15 @@ async fn seed_series(
     };
     lb_host::ingest_write(&gw.node.store, &p, ws, vec![sample])
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("ingest_write: {e:?}"),
+            )
+        })?;
     lb_host::drain_workspace(&gw.node.store, ws)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("drain: {e:?}")))?;
 
     let tag = Tag::new(body.key, body.value);
     let prov = Provenance::new(body.seq, p.sub().to_string(), TagSource::Producer);

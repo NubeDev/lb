@@ -289,14 +289,186 @@ real ingest path); `toSurrealQL` unit cases + a Builder→Code→Builder round-t
 "build a query in the visual editor → Run → rows render in a table AND a chart widget" over the real
 gateway.
 
+## Grafana-compatible visualization — Phase 1 (`timeseries` end to end)
+
+The viz slice adopts Grafana's panel model as an **additive superset** of the shipped v2 cell. Phase 1
+ships the spine + the `timeseries` panel + the one editor. No v1/v2 cell breaks; every new field is
+serde-default; no new datastore, no new verb (it rides `dashboard.save`/`get`).
+
+- **The additive v3 cell shape.** `Cell` gains (all optional/serde-default): `description`, `sources[]`
+  (Grafana *targets* — each `{ refId, datasource, tool, args, hide }`, superseding the single `source`;
+  a v2 single-`source` cell reads as `sources[0]` via the `cellSources` adapter), `transformations[]`
+  (**config only** in Phase 1 — the pipeline runs in the backend `viz.query`/`lb-viz` in Phase 3, never
+  client-side), `fieldConfig` (per-field option defaults + overrides), and `pluginVersion`. `Dashboard`
+  gains `schemaVersion` (our panel-model **document** version, pinned `=3` at save — distinct from
+  `Cell.v`, the cell *contract* version, and not Grafana's interchange `schemaVersion`). The host stores
+  `fieldConfig`/`transformations` opaquely (the UI owns the typed shape) and **bounds** the record:
+  ≤32 transforms, ≤64 overrides/mappings/threshold-steps — an over-cap `save` is rejected server-side.
+- **The `view` vocabulary adopts Grafana panel-type ids.** `timeseries`, `barchart`, `stat`, `gauge`,
+  `bargauge`, `table`, `piechart`, … The shipped views are **aliases** (`chart` → `timeseries`); a v2
+  `chart` cell renders unchanged through the new `timeseries` renderer. New cells write the canonical id;
+  `canonicalView` resolves aliases at render.
+- **The `timeseries` renderer — the full Grafana option surface.** Per-viz `options` (legend
+  `showLegend`/`displayMode` list|table|hidden / `placement` / `calcs`; tooltip `mode`/`sort`) and
+  per-field draw options in `fieldConfig.custom` (`drawStyle` line|bars|points, `lineWidth`,
+  `fillOpacity`, …) — names taken verbatim from Grafana so import maps 1:1. Replaces the bad
+  single-`unit`-string options.
+- **The fieldConfig render path, through ONE user-prefs bridge.** `unit`/`decimals`/`min`/`max`/
+  `thresholds`/`mappings`/`color`/`displayName`/`noValue`, plus `byName`/`byType` overrides. All value
+  formatting goes through **one file** (`features/dashboard/fieldconfig/format.ts`) — never a hard-coded
+  `toFixed` or unit string in a renderer. **Sequencing:** `lb-prefs` (`format.*`) is not shipped yet, so
+  the bridge renders the documented **fallback** (canonical value + static unit label + local decimals)
+  behind a `format.*`-shaped call site; when `lb-prefs` lands, the fallback is swapped for the real call
+  **with no schema change and no re-save** (the `viaPrefs` flag is the swap-point guardrail). Thresholds
+  **color** a value (and the line) — they never fire an alert (that's the rules engine). Grafana semantic
+  color names resolve to `ui-standards` theme tokens; explicit hex passes through.
+- **One data hook.** All panel data flows through `usePanelData` (Phase 1: the primary target over the v2
+  bridge; Phase 3: swapped to `viz.query` in one file). No scattered `bridge.call` in renderers/editor.
+- **One panel editor — add ≡ edit.** A single `PanelEditor` (a shadcn Sheet) mounts on a cell for both
+  **Add panel** (a fresh default cell) and **Edit** (the ⚙ on a cell) — the same component, the same
+  code path. It has the Grafana tab structure from day one (Query / Transform / Panel options / Field /
+  Overrides) + a live preview + a viz picker + options search, reusing the shipped source picker, SQL
+  Builder⇄Code editor, RefreshControl, and the `WidgetView`/`WidgetHost` render dispatch. The headline:
+  **one pure `cell ↔ editorState` (de)serializer** (`cellToEditorState`/`editorStateToCell`) with the
+  pinned identity `editorStateToCell(cellToEditorState(c)) ≡ c` for v1/v2/v3 cells — so reopening the
+  editor reconstructs **every** option (including the SQL **Builder** state in `options.sql`), and add
+  and edit can never drift. This makes the previously-false "add and edit share one field-code path"
+  claim **true**, and fixes the reported "editing loses my SQL options" bug. The retired `WidgetBuilder`
+  add-bar and the `CellSettings` ⚙ drawer are gone from the dashboard path (one surface, by design).
+- **Authorization unchanged.** The editor is gated on `mcp:dashboard.save:call` (no editor entry point
+  without it); the host re-checks `dashboard.save` on save (the authoritative backstop); per-target reads
+  reuse the target tool's cap ∩ grant. Workspace isolation holds for v3 panels.
+
+Tested against the real gateway/store (no mocks): the **ADD ≡ EDIT parity** headline (build → save →
+reopen → every option identical, incl. the SQL Builder state), the `cell ↔ editorState` round-trip
+(v1/v2/v3), backward-compat (a v1 series cell and a v2 chart+store.query cell load/render/re-save
+unchanged), the format-bridge "no stored formatted string" assertion, live preview over real seeded rows
+(honest deny when the source is denied), the edit-cap host save-deny backstop, and workspace isolation.
+
+Phases 2–4 (the rest of the chart set, the backend `viz.query`/`lb-viz` transform pipeline + multi-
+datasource targets, and Grafana JSON import/export) are scoped follow-ups on this same spine.
+
+## Grafana-compatible visualization — Phase 2 (the rest of the everyday chart set)
+
+Phase 2 fills in the standard chart vocabulary on the **same v3 spine** — six new panel renderers wired
+end to end, each with its typed per-viz `options` (Grafana names + defaults verbatim) and the fieldConfig
+render path through the **one** user-prefs bridge. **No backend change** (the host already stores
+`fieldConfig`/`options` opaquely and bounds the record); **no new datastore, no new render capability, no
+client-side transform** (invariant B holds — there are still no transforms; the pipeline is born backend
+in Phase 3). All panel data still flows through the one `usePanelData` hook (invariant A).
+
+- **Six new views: `stat`, `gauge`, `bargauge`, `table`, `barchart`, `piechart`** — one renderer file per
+  view under `features/dashboard/views/<type>/`, recharts-based (extending the shipped SVG helpers; no
+  visx — that's Phase 3). The shipped v2 `stat`/`gauge`/`table` views are **retired and replaced** by the
+  new panels (a v2 cell renders through the new renderer unchanged — the canonical id is itself).
+- **Typed per-viz `options`, Grafana-verbatim.** Each view has its own `options.ts` mirroring
+  `timeseries`: `stat` (graphMode/colorMode/justifyMode/textMode/orientation + reduceOptions), `gauge`
+  (showThresholdMarkers/Labels/orientation/reduceOptions), `bargauge` (displayMode basic|lcd|gradient /
+  valueMode/showUnfilled/orientation + reduceOptions), `table` (showHeader/cellHeight/sortBy/pagination),
+  `barchart` (orientation/stacking/showValue/barWidth/groupWidth + legend/tooltip), `piechart` (pieType
+  pie|donut / displayLabels/legend/tooltip + reduceOptions). Names + defaults copied from
+  `/tmp/grafana/public/app/plugins/panel/<type>/panelcfg.cue`.
+- **`reduceOptions` — the one shared frame→value bridge.** `views/reduce.ts` owns
+  `reduceFrame`/`reduceFrameValues`/`frameCategories` + the calc set (shared with the timeseries legend).
+  It is the **explicit, visible** collapse of a frame to the single value(s) a single-stat panel draws
+  (stat/gauge/bargauge/piechart) — never an implicit "guess a number", and **not** the transform pipeline.
+  An empty/non-numeric frame reduces to `null` → an honest "no value", never a fabricated 0.
+- **Per-field options via the existing bridge.** `views/field.ts` resolves the value field's effective
+  `FieldOptions` + its threshold/fixed/palette color once; every value is formatted through
+  `fieldconfig/format.ts` (unit/decimals) and colored through `fieldconfig/thresholds.ts` — no local
+  `toFixed` or color string in any renderer. Thresholds **color**, never alert.
+- **Result-shape ↔ type validation.** `views/shape.ts` classifies a target's rows
+  (`scalar`/`series`/`table`/`unknown`, conservatively) and `usePanelShape` reads them through the one
+  data hook; the **viz picker offers only the views a shape can honestly fill** (a scalar can't be a
+  table; tabular rows can't be a gauge) — disabled with a reason, not hidden. `reduceOptions` is the
+  visible bridge for the scalar/series → single-value collapse.
+- **The editor extends, doesn't fork.** `editor/viewOptions.ts` adds the six defaults; `VizPicker` moves
+  them from the disabled "Phase 2" list to buildable + shape-filters them; `tabs/PanelOptionsTab.tsx`
+  becomes a thin dispatcher routing by canonical view to one per-view options editor under
+  `tabs/options/` (the timeseries editor extracted there too). The add≡edit guarantee is unchanged —
+  the new typed option keys are owned by the editor groups, so a fully-populated Phase-2 cell round-trips
+  through the pinned `cell ↔ editorState` identity.
+
+Tested against the real gateway/store (no mocks): **alias fidelity** (a seeded v2 stat/gauge/table cell
+renders through the new renderer and re-saves identically), **options round-trip** (each view's typed
+`options` survives `dashboard.save`/`get`), **result-shape↔type validation** over real seeded samples
+(1-sample scalar offers stat/gauge not timeseries; multi-sample series offers timeseries + the single-stat
+family; reduceOptions collapses a frame to one value), **fieldConfig through the one bridge** (a value
+renders unit/decimals/threshold-color computed at render — no stored formatted string), and the mandatory
+**capability-deny** (a denied target → honest denied state across stat/gauge/table, never a fake value) +
+**workspace isolation**. Plus the extended pure `cellEditorState` round-trip (full stat/gauge/bargauge/
+table/barchart/piechart cells) and `viz.phase2` reduce/shape unit tests.
+
+Phase 4 (Grafana JSON import/export) remains the scoped follow-up on this spine. Deferred Phase-3 panels
+(`histogram`, `state-timeline`, `status-history`, `heatmap`, `text` — the visx/markdown family) and the
+named exotic panels degrade honestly on import.
+
+## Grafana-compatible visualization — Phase 3 (backend-resolved transforms + datasource binding)
+
+Phase 3 moves panel-data resolution into the backend and adds the transformation pipeline + multi-
+datasource targets — **one implementation for every client** (web shell, React Native, email, webhook),
+the same doctrine as `format.*`.
+
+- **`lb-viz` — the pure transform lib (`rust/crates/viz/`).** The structural twin of `lb-prefs`: a pure
+  Rust crate (no store/bus/I/O) compiled into every node, the ONE implementation of Grafana's transformer
+  set over a canonical columnar `Frame` (`fields[]`, one typed column each). One transformer per file:
+  `reduce`, `organize`, `filterFieldsByName`, `filterByValue`, `groupBy`, `joinByField`
+  (`seriesToColumns`), `calculateField`, `sortBy`, `limit`, `merge`, `seriesToRows` — Grafana ids +
+  option shapes **verbatim** (so a Phase-4 import is a near-identity). Empty/non-numeric input yields an
+  honest result, **never a fabricated 0** (the no-mock rule, in the math). A `Matcher` (`byName`/`byType`/
+  `byRegexp`/`byFrameRefID`) is mirrored in Rust here + TS for the editor.
+- **`viz.query(panel) -> { frames, rows }` — the host resolver verb** (gated `mcp:viz.query:call`,
+  member-level). For each non-hidden target in the panel's `sources[]` (falling back to the v2 `source`),
+  it **re-enters the host MCP dispatcher** under the CALLER's principal + workspace — so each target tool's
+  OWN cap and the workspace wall are re-checked, with **no render-path bypass**. A denied/failed target
+  degrades to an **honest empty frame** (never a fabricated value, never a host-privilege read). It then
+  assembles canonical frames, runs the `transformations[]` pipeline via `lb-viz`, and returns the frames
+  (canonical) plus the primary frame flattened to `rows` — the SAME row shape the shipped renderers
+  consume, so the swap changes nothing visible. The workspace comes from the **token**, never the panel.
+  The cell still stores `transformations[]`/`fieldConfig` OPAQUELY; `viz.query` interprets them at run time
+  (no record fork). A per-panel frame budget caps the assembled set.
+- **Datasource binding.** A `DataSourceRef {type, uid}` selects the target's tool — native `surreal` →
+  `store.query`, `series` → `series.*`, a registered `federation` source (`datasource:{ws}:{name}`) →
+  `federation.query`. `viz.query` dispatches whichever tool the target names, leashed by that tool's cap +
+  the workspace wall (a ws-B panel can never resolve a ws-A datasource — the federation gate is ws-pinned).
+  No per-kind binding on the cell; no DSN at the panel.
+- **The one-file client swap (invariant A).** `usePanelData`'s body now resolves a non-watch panel through
+  `viz.query` (`builder/useVizQuery.ts`, debounced) returning the same `SourceState` — renderers + the
+  editor preview are unchanged. A `series.watch`/`bus.watch` panel keeps the shipped live SSE path until
+  the named `viz.stream` follow-up. Target args are interpolated against the resolved `VarScope` before the
+  call (a `${host}` repoints the series exactly as before); the host also gets `scope` for transform
+  options. No scattered `bridge.call` in any renderer (invariant A held); no client-side transform library
+  (invariant B held — `views/reduce.ts` stays the per-viz frame→value reducer, NOT the pipeline).
+- **The editor.** The Query tab gains a **datasource dropdown** (native + series + federation sources via
+  `datasource.list`); a federation source uses the raw-SQL editor (the `federation.datasource.schema`
+  column-dropdown verb is a named, deferred federation-plane follow-up). The Transform tab is now a **real
+  pipeline editor** (add/reorder/disable/remove + per-id option fields) writing `transformations[]` config
+  that `viz.query` runs — no client execution.
+- **Tested (real infra, no mocks).** `lb-viz` units (49) cover each transformer incl. empty/non-numeric
+  honesty. `crates/host/tests/viz_query_test.rs` (7) drives `viz.query` over a real node + store + caps: a
+  store target + multi-transform pipeline returns the expected frames; **no-transform parity** with a
+  direct `store.query`; a multi-target `joinByField` assembles; **`viz.query` deny without the cap**
+  (opaque); a **denied target → honest empty, not a bypass**; **workspace isolation** (ws-B sees none of
+  ws-A's rows); a **federation-bound target routes through `federation.query`** and an unregistered source
+  resolves to an honest empty frame. Gateway: `viz.phase3.gateway.test.tsx` renders a seeded panel via
+  `viz.query` identically to Phase 2 + authors a real pipeline. (`mcp:viz.query:call` was added to the dev
+  session's `member_caps` — the new render path is member-level; see
+  [`../../debugging/frontend/gateway-seed-series-500-denied-preexisting.md`](../../debugging/frontend/gateway-seed-series-500-denied-preexisting.md).)
+- **Named follow-ups (deferred, not silent):** `viz.stream` (live frames over SSE, so live panels don't
+  re-transform client-side); `federation.datasource.schema` (SQL-builder column dropdowns for an external
+  source — a federation-plane add); and the `format.ts` → real `format.*` MCP swap (deferred: `formatValue`
+  is synchronous at 13 render callsites, so the sync→async change is its own session — see
+  [`../../sessions/frontend/format-prefs-swap-followup.md`](../../sessions/frontend/format-prefs-swap-followup.md)).
+
 ## Follow-ups
 
-- **Grafana-compatible visualization (`viz/`) — scoped, building.** The standard chart set with the full
-  Grafana option surface (`fieldConfig`: units/decimals/thresholds/mappings/color), a transformation
-  pipeline, datasource binding beyond native SurrealDB, user-prefs-driven formatting, Grafana dashboard
-  JSON import/export, and a redesigned panel editor that fixes the add≠edit option-parity gap. Scope:
-  [`../../scope/frontend/dashboard/viz/README.md`](../../scope/frontend/dashboard/viz/README.md). Phase 1
-  is `timeseries` end to end. Promote shipped parts here as they land.
+- **Grafana-compatible visualization (`viz/`) — Phases 1–2 shipped (above); Phases 3–4 scoped.** Phase 2
+  shipped the rest of the everyday chart set (stat/gauge/bargauge/table/barchart/piechart). Phase 3:
+  `viz.query` + `lb-viz` (swap `usePanelData`'s body), the
+  transform pipeline, datasource binding beyond native SurrealDB. Phase 4: Grafana dashboard JSON
+  import/export + `schemaVersion` migration. When `lb-prefs` ships, swap `fieldconfig/format.ts`'s
+  fallback for the real `format.*` call (no schema change, no re-save). Scope:
+  [`../../scope/frontend/dashboard/viz/README.md`](../../scope/frontend/dashboard/viz/README.md).
 - ~~Mount federated extension widgets in dashboard cells.~~ **Shipped** (`ext:<id>/<widget>` renderer).
 - ~~Define the per-widget cell key for multi-widget extensions.~~ **Shipped** (`ext:<id>/<widget-id>`).
 - ~~Add the untrusted iframe widget tier.~~ **Shipped** (opaque-origin sandbox + postMessage bridge).

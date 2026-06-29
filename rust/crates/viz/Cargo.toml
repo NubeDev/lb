@@ -1,0 +1,12 @@
+[package]
+name = "lb-viz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Pure transform lib — NO host/store/bus deps (viz transformations scope: "no I/O, no store, no bus —
+# compiled into every node", the structural twin of lb-prefs). Values are canonical serde_json.
+serde.workspace = true
+serde_json.workspace = true

@@ -35,7 +35,7 @@ keep our **MCP-tool-as-datasource spine**. The map (detailed in
 |---|---|---|
 | `type` (`timeseries`, `barchart`, `gauge`, `stat`, `table`, `piechart`, …) | `view` | Adopt Grafana's panel-type ids as our view vocabulary (expand `chart`→`timeseries`/`barchart`/…). [`chart-types-scope.md`](chart-types-scope.md) |
 | `datasource` + `targets[]` (a query per datasource) | `source { tool, args }` → generalized to `sources[]` (targets) over a **datasource ref** | A target is an MCP tool call; the datasource picks the tool. [`datasource-binding-scope.md`](datasource-binding-scope.md) |
-| `transformations[]` | `transformations[]` (**new**, additive) | A client-side pipeline over the target rows. [`transformations-scope.md`](transformations-scope.md) |
+| `transformations[]` | `transformations[]` (**new**, additive) | A **backend** pipeline (`lb-viz`) the `viz.query` verb runs over the target rows — one impl for every client. [`transformations-scope.md`](transformations-scope.md) |
 | `fieldConfig { defaults, overrides[] }` | `fieldConfig` (**new**, additive) | Unit/decimals/min-max/thresholds/mappings/color — **units render via user-prefs**. [`field-config-scope.md`](field-config-scope.md) |
 | `options` (per-viz) | `options` (structured per `view`) | Legend/tooltip/orientation/stacking/etc. [`chart-types-scope.md`](chart-types-scope.md) |
 | `gridPos { x,y,w,h }` | `x,y,w,h` | Already aligned; Grafana is a 24-col grid (pin our grid to 24). |
@@ -61,10 +61,12 @@ additive-`v` discipline, and couples our store to Grafana's `schemaVersion` chur
    are really bad"). The standardized `fieldConfig` (defaults + per-field overrides + matchers): unit,
    decimals, min/max, thresholds, value mappings, color modes, displayName, noValue — **with the
    user-prefs formatting bridge** (`format.*`/`convert.*`).
-4. [`transformations-scope.md`](transformations-scope.md) — **the transformation pipeline.** Grafana's
-   transformer set (reduce, organize, filterByName, groupBy, joinByField, calculateField, sortBy, limit,
-   merge, …), the `{ id, options, disabled, filter }` config, where it runs, and the bound (heavy work
-   pushes to the query / a job, never an unbounded render loop).
+4. [`transformations-scope.md`](transformations-scope.md) — **the transformation pipeline, backend-resolved.**
+   Grafana's transformer set (reduce, organize, filterByName, groupBy, joinByField, calculateField, sortBy,
+   limit, merge, …) in a pure Rust `lb-viz` lib behind a **`viz.query(panel) -> { frames }`** verb that
+   dispatches the targets and applies the pipeline server-side, returning **canonical** frames — so a React
+   Native app, an email render, and the web shell all get identical data with **zero** re-implementation
+   (the same doctrine as `format.*`). Bound: heavy aggregation pushes to the query/a job.
 5. [`datasource-binding-scope.md`](datasource-binding-scope.md) — **datasources beyond native SurrealDB.**
    The `DataSourceRef` model mapping to native (`store.query`/`series.*`), registered federation sources
    (`datasource:{ws}:{name}` → `federation.query`), and extension tools; the source picker's datasource
@@ -110,14 +112,36 @@ additive-`v` discipline, and couples our store to Grafana's `schemaVersion` chur
 
 The user's instinct is right: prove the spine on **one** chart before fanning out.
 
-- **Phase 1 — `timeseries` end to end.** The panel-model spine (`view:"timeseries"`, a `fieldConfig` with
-  unit/decimals/thresholds rendered through user-prefs, the editor tabs, a real source). One chart, the
-  full option surface, add==edit. ([`panel-model`](panel-model-scope.md) + [`field-config`](field-config-scope.md)
-  + [`panel-editor`](panel-editor-scope.md) + the `timeseries` row of [`chart-types`](chart-types-scope.md).)
-- **Phase 2 — the rest of the standard set** (`barchart`, `stat`, `gauge`, `bargauge`, `table`,
-  `piechart`, `histogram`, `state-timeline`, `text`, …) on the same spine. ([`chart-types`](chart-types-scope.md).)
-- **Phase 3 — transformations + multi-datasource targets.** The pipeline and the datasource dropdown.
+- **Phase 1 — `timeseries` end to end. ✅ SHIPPED (2026-06-29).** The panel-model spine
+  (`view:"timeseries"`, a `fieldConfig` with unit/decimals/thresholds rendered through the one user-prefs
+  bridge + its documented fallback, the editor tabs, a real source). One chart, the full option surface,
+  add==edit (the pinned `cell ↔ editorState` round-trip). ([`panel-model`](panel-model-scope.md) +
+  [`field-config`](field-config-scope.md) + [`panel-editor`](panel-editor-scope.md) + the `timeseries` row
+  of [`chart-types`](chart-types-scope.md).) Promoted to
+  [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+  [`dashboard-viz-phase1`](../../../../sessions/frontend/dashboard-viz-phase1-session.md).
+- **Phase 2 — the rest of the everyday set. ✅ SHIPPED (2026-06-29).** `stat`, `gauge`, `bargauge`,
+  `table`, `barchart`, `piechart` on the same spine — one renderer + typed per-viz `options`
+  (Grafana-verbatim) per view, the shared `reduceOptions` frame→value bridge for the single-stat family,
+  the fieldConfig render path through the one user-prefs bridge, the editor extended (viewOptions +
+  shape-filtered VizPicker + per-view PanelOptions editors), and result-shape↔type validation. No backend
+  change, no client transform (invariant B), all data through the one hook (invariant A). Promoted to
+  [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+  [`dashboard-viz-phase2`](../../../../sessions/frontend/dashboard-viz-phase2-session.md). The remaining
+  panels (`histogram`, `state-timeline`/`status-history`, `heatmap`, `text` — the visx/markdown family)
+  move to Phase 3. ([`chart-types`](chart-types-scope.md).)
+- **Phase 3 — backend resolve (`viz.query` + `lb-viz`) + multi-datasource targets. ✅ SHIPPED
+  (2026-06-29).** The transformation pipeline as a host verb (`viz.query(panel) -> {frames, rows}`, gated
+  `mcp:viz.query:call`, dispatching each target under `caller ∩ grant` by re-entering the host dispatcher)
+  + the pure `lb-viz` crate (Grafana's transformer set, one per file, verbatim ids/options) + the
+  datasource dropdown + a real Transform-tab pipeline editor. The one-file client swap landed in
+  `usePanelData` (`builder/useVizQuery.ts`); invariants A (one hook) + B (backend-only pipeline) held.
   ([`transformations`](transformations-scope.md) + [`datasource-binding`](datasource-binding-scope.md).)
+  Promoted to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+  [`dashboard-viz-phase3`](../../../../sessions/frontend/dashboard-viz-phase3-session.md). Named
+  follow-ups (deferred, not silent): `viz.stream` (live frames), `federation.datasource.schema` (federation
+  SQL-builder dropdowns), the `format.ts`→`format.*` swap. Phases 1–2 kept the shipped client fetch
+  **behind the one data hook** so this swap was confined to one file.
 - **Phase 4 — Grafana JSON import/export** + `schemaVersion` migration.
   ([`import-export`](import-export-scope.md).)
 
@@ -130,13 +154,17 @@ mandatory deny + workspace-isolation tests green.
   a `bridge.call` that derives the workspace from the token; an imported dashboard's datasource refs
   resolve only within the importer's workspace. The two-session test extends to import (a ws-B import can
   never name a ws-A datasource).
-- **Capabilities (rule 5/7):** no new render-path cap for reads (reuse the target tool's cap); import/
-  export get their own verbs + caps (`mcp:dashboard.import:call` / `mcp:dashboard.export:call`). Deny is
+- **Capabilities (rule 5/7):** panel data is resolved by **`viz.query`** (gated `mcp:viz.query:call`),
+  which dispatches each target under `caller ∩ grant` (composing the target tool's own cap) — no render-path
+  bypass. Import/export get their own verbs + caps (`mcp:dashboard.import:call` / `:export:call`). Deny is
   opaque. Detailed per sub-scope.
 - **Placement (rule 1):** one editor, two transports (Tauri `invoke` / gateway SSE+HTTP). No role branch.
 - **One datastore / state vs motion:** cells/dashboards are SurrealDB state; live samples are motion over
   the shipped SSE; no new store. Grafana JSON is interchange, not storage.
 - **MCP is the contract (rule 7):** datasources are MCP tools; the panel is a generic front-end for them.
+  Panel data resolution (`viz.query`) and presentation (`format.*`) are both backend-mediated MCP verbs, so
+  the React web shell, a React Native app, a server-rendered email, and a webhook are all thin and identical
+  — they re-implement neither the transform pipeline nor the unit/date math.
 - **One responsibility per file (FILE-LAYOUT):** the implementation lands one panel type / one transform /
   one mapper-direction / one editor tab per file. Each sub-scope names its files.
 

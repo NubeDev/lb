@@ -25,6 +25,7 @@ mod mcp;
 mod members;
 mod outbox;
 mod post;
+mod prefs;
 mod rules;
 mod run_stream;
 mod series_stream;
@@ -62,6 +63,10 @@ pub use mcp::mcp_call;
 pub use members::{add_team_member, list_team_members};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
+pub use prefs::{
+    convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,
+    set_default_prefs, set_prefs,
+};
 pub use rules::{delete_rule, get_rule, list_rules, run_rule, save_rule};
 pub use run_stream::run_stream;
 pub use series_stream::series_stream;
