@@ -22,6 +22,11 @@ node_modules/
 .lazybones/
 .data/
 
+# lazybones daemon working root: its db and every task's worktree live under `.lazy/`.
+# Must be ignored — otherwise a task's `git add` stages daemon state into its branch and
+# corrupts the merge into `master`.
+.lazy/
+
 # `make publish-ext` deploy target: the extension UI bundle the running node serves from
 # LB_EXT_UI_DIR. Pure build/deploy output (copied from each ext's ui/dist), never source.
 rust/extensions-ui/
