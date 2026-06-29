@@ -60,6 +60,11 @@ fn member_caps() -> Vec<String> {
         // Publishing a native devkit build reuses `ext.publish` plus the existing native install
         // gate before any child process is supervised.
         "mcp:native.install:call",
+        // datasources scope: `federation.query`/`datasource.test` dispatch to the federation sidecar
+        // via `call_sidecar`, which gates on `mcp:native.call:call`. The dev admin (which installs
+        // natives) must also be able to CALL them, else the Datasources page's Test/query path 500s
+        // with an opaque sidecar deny. The host re-checks; a token without it is refused.
+        "mcp:native.call:call",
         // data-console (Ingest page): the S8 ingest/series verbs, surfaced over the gateway. These
         // are **member-level** — any member may explore + manually write their own series (the
         // producer is the authenticated principal, un-spoofable).
@@ -237,5 +242,32 @@ pub fn dev_claims(user: &str, workspace: &str, now: u64, ttl: u64) -> Claims {
         caps: member_caps(),
         iat: now,
         exp: now.saturating_add(ttl),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Datasources page drives `federation.query`/`datasource.test`, which dispatch to the
+    /// federation sidecar via `call_sidecar` (gated `mcp:native.call:call`) after mediating the DSN
+    /// (`secret:federation/*:write` for Add). A dev login missing ANY of these silently 500s the live
+    /// page even though the route-level cap is present — the end-to-end gap this guards against.
+    #[test]
+    fn dev_login_carries_the_full_datasources_chain() {
+        let caps = member_caps();
+        for needed in [
+            "mcp:datasource.add:call",
+            "mcp:datasource.list:call",
+            "mcp:datasource.test:call",
+            "mcp:federation.query:call",
+            "mcp:native.call:call",
+            "secret:federation/*:write",
+        ] {
+            assert!(
+                caps.iter().any(|c| c == needed),
+                "dev login must grant {needed} for the Datasources page to work end to end"
+            );
+        }
     }
 }

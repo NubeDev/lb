@@ -5171,6 +5171,7 @@ dependencies = [
  "lb-role-github-target",
  "lb-role-github-webhook",
  "lb-role-github-workflow",
+ "lb-supervisor",
  "tokio",
 ]
 

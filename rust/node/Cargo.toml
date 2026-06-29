@@ -16,6 +16,9 @@ path = "src/main.rs"
 lb-host.workspace = true
 lb-auth.workspace = true
 lb-mcp.workspace = true
+# The native supervisor's `OsLauncher` — the federation role (datasources) installs + supervises the
+# `federation` sidecar at boot, env-gated in `main.rs` (§3.1), exactly like the github roles below.
+lb-supervisor.workspace = true
 lb-role-gateway = { path = "../role/gateway" }
 # The github workflow roles, mounted by config (§3.1): the webhook front door (ingress), the GitHub
 # HTTP `Target` (egress), and the background driver (the relay + reactor loop). All env-gated in
