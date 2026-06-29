@@ -33,6 +33,7 @@ mod members;
 mod native;
 mod outbox;
 mod prefs;
+mod query;
 mod registry;
 mod reload;
 mod reminder;
@@ -144,6 +145,11 @@ pub use prefs::{
     authorize_prefs, call_format_tool, call_prefs_tool, prefs_get, prefs_resolve, prefs_set,
     prefs_set_default, PrefsSvcError,
 };
+pub use query::{
+    call_query_tool, compile_descriptor, query_compile, query_delete, query_get, query_list,
+    query_run, query_save, resolve_query, run_descriptor, save_descriptor, QueryError,
+    QuerySummary, QueryTarget, RunSource, SavedQuery, TABLE as QUERY_TABLE,
+};
 pub use registry::{
     authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
     install_native_from_registry, list_catalog, pull, read_cached, record_catalog,
@@ -165,8 +171,8 @@ pub use render_templates::{
 pub use role::Role;
 pub use rules::{
     ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
-    rules_get, rules_list, rules_run, rules_save, workspace_datasources, HostAiSeam, HostDataSeam,
-    RuleModel, RulesError, RunResult, SavedRule,
+    rules_get, rules_list, rules_run, rules_save, workspace_datasources, workspace_queries,
+    HostAiSeam, HostDataSeam, RuleModel, RulesError, RunResult, SavedRule,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};

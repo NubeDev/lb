@@ -54,27 +54,30 @@ pub async fn channel_stream(
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
 
     // Merge the three feeds into one SSE event stream.
-    let stream = futures::stream::unfold((sub, deletions, presence), |(sub, deletions, presence)| async move {
-        let event = tokio::select! {
-            item = sub.recv() => item.map(|i| {
-                Event::default()
-                    .event("message")
-                    .json_data(&i)
-                    .unwrap_or_else(|_| Event::default().comment("encode error"))
-            }),
-            id = deletions.recv() => id.map(|id| {
-                Event::default()
-                    .event("delete")
-                    .data(json!({ "id": id }).to_string())
-            }),
-            change = presence.recv() => change.map(|(member, present)| {
-                Event::default()
-                    .event("presence")
-                    .data(json!({ "member": member, "present": present }).to_string())
-            }),
-        };
-        event.map(|e| (Ok(e), (sub, deletions, presence)))
-    });
+    let stream = futures::stream::unfold(
+        (sub, deletions, presence),
+        |(sub, deletions, presence)| async move {
+            let event = tokio::select! {
+                item = sub.recv() => item.map(|i| {
+                    Event::default()
+                        .event("message")
+                        .json_data(&i)
+                        .unwrap_or_else(|_| Event::default().comment("encode error"))
+                }),
+                id = deletions.recv() => id.map(|id| {
+                    Event::default()
+                        .event("delete")
+                        .data(json!({ "id": id }).to_string())
+                }),
+                change = presence.recv() => change.map(|(member, present)| {
+                    Event::default()
+                        .event("presence")
+                        .data(json!({ "member": member, "present": present }).to_string())
+                }),
+            };
+            event.map(|e| (Ok(e), (sub, deletions, presence)))
+        },
+    );
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }

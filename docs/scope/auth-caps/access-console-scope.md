@@ -10,9 +10,10 @@ surface hides that exactness behind raw `mcp:…:call` strings in an "advanced" 
 subject's **resolved effective access**, has no way to act on the **freshness asymmetry** (a revoked
 cap lingers in a live token until re-mint), and can't delete a role. This scope turns the console
 into the **Access console**: one place where a sysadmin *sees* the access graph, *changes* it through
-guided flows, and *understands the consequence and timing* of every change — closing the three
-honest backend gaps that block it (`roles.delete`, resolved effective caps, and a re-mint/kill-session
-lever) and rebuilding the UX access-first.
+guided flows, and *understands the consequence and timing* of every change — closing the backend
+gaps that block it (`roles.delete`, resolved effective caps **with provenance** over the shipped
+resolver, and a **live-token** revoke lever on top of the shipped `revoke_subject` grant-revoke) and
+rebuilding the UX access-first.
 
 It is an **evolution of the existing `features/admin/` console and its verbs**, not a new page. A new
 parallel "Access" page is explicitly rejected (it would recreate exactly the `/members`-vs-`/admin`
@@ -29,7 +30,10 @@ duplication that was just retired).
   **union-resolved effective capability set** (`direct ∪ role ∪ team-inherited`, ∩ workspace), each
   cap tagged with **where it came from** (direct grant / role `r` / inherited via team `t`) — so an
   admin sees not just *that* bob can do X but *why*, and knows which grant to edit to change it.
-  Backed by a new `resolve_caps` host verb + gateway route.
+  This **extends the shipped `resolve_subject_caps` / `resolve_caps` fold** (`crates/authz/resolve.rs`)
+  with a provenance-tagging wrapper — it is not a new resolver. The wrapper runs the same union the
+  session mint computes, so the displayed set and the enforced set cannot drift. Exposed over the
+  gateway as an admin-only read.
 - **Guided grant flows, not raw strings.** Granting a capability is a **picker over the real
   capability catalog** — grouped by surface (`mcp` tools / `store` / `bus` / `secret`), filtered to
   the no-widening set the admin holds, with human labels — not a free-text `mcp:…:call` field. The
@@ -37,8 +41,12 @@ duplication that was just retired).
   shipped `tools.catalog` verb (already capability-filtered) as the source of truth.
 - **Act on the freshness asymmetry.** A destructive/revoking action surfaces the **timing** inline
   ("resource access drops now; cached caps drop on next sign-in / within TTL") AND offers a real
-  lever: **force re-mint / end active sessions** for a subject, so an admin is not left praying at a
-  TTL. Backed by a new session-invalidation host verb (the `edge-trust` revoke path, scope-coordinated).
+  lever: **kill the subject's live tokens** so an admin is not left praying at a TTL. The grant-revoke
+  half already exists (`revoke_subject` — tombstones every grant a subject holds, idempotent,
+  sync-safe, already wired into `users/delete`, `teams/delete`, `apikey/revoke`); it bites on the
+  **next re-mint**. The genuinely-missing piece is the **live-token** half: a token-revocation marker
+  the verify path checks so the *current* token is refused on the next request. This scope adds that
+  live-token kill on top of the existing grant-revoke seam — it is not a greenfield revoke.
 - **Close the `roles.delete` gap.** A role can be defined and assigned but not deleted; add the verb
   + the cascade (un-assign from every subject, idempotent, consequence shown).
 - **Onboarding & honesty by default.** Empty states teach the model ("no teams yet — a team is how a
@@ -89,32 +97,40 @@ destination views you reach by drilling.
  teams / roles            access editor              assignees of this role
  ─ guided grant picker ──── shared ──────────────── across all subjects
  ─ consequence + timing shown inline before every confirm ─
- ─ force re-mint / end sessions lever on revoking actions ─
+ ─ live-token revoke lever (on top of shipped revoke_subject) on revoking actions ─
 ```
 
-- **Effective-caps resolver**: a `resolve_caps(subject) -> { cap, source[] }[]` host verb (gated
-  `mcp:authz.resolve:call`, admin-only) reuses `crates/authz::resolve` (the same union the session
-  mint computes) but tags each cap with its provenance. One verb, one source of truth — the UI never
-  re-derives caps client-side (it would drift from mint).
+- **Effective-caps resolver**: **extend** `crates/authz::resolve_subject_caps` / `resolve_caps`
+  (shipped — the same union the session mint computes) with a **provenance-tagging wrapper** that
+  returns `{ cap, source[] }[]` instead of `Vec<String>`. The wrapper folds the same grants/roles/
+  teams the existing function does, recording which edge contributed each cap (direct grant / role
+  expansion / team-inherited). One shared fold — the UI never re-derives caps client-side (it would
+  drift from mint); provenance is a view over the one resolver, not a parallel implementation. Gated
+  `mcp:authz.resolve:call`, admin-only, exposed over the gateway.
 - **Guided picker**: the grant "advanced" raw-string field is augmented with a **catalog-driven
   picker** built on `tools.catalog` (shipped, already caller-cap-filtered) + the `store`/`bus`/
   `secret` surface grammar, filtered to the **no-widening set** (admin's own session caps). The
   picker offers human labels + grouping; selecting emits the canonical cap string to `grants.assign`.
   Raw-string entry stays as a power-user escape hatch.
-- **The freshness lever**: a `session.invalidate(subject)` host verb (gated
-  `mcp:authz.invalidate:call`, admin-only) marks the subject's live tokens as stale so the next
-  `caps::check`/verify refuses them — coordinated with `edge-trust-scope.md`'s token-on-the-bus
-  revoke. The revoking UI offers it as "Apply now (end their active sessions)" beside the honest
-  default note. Multi-node: the invalidate marker syncs (§6.8) and a short worst-case TTL bounds the
-  window — stated, not hidden.
+- **The freshness lever**: the **grant-revoke** half already exists as `revoke_subject` (tombstones
+  every grant a subject holds — next-re-mint). The **live-token** half is the new work: a
+  `revoke_tokens(subject)` host verb (gated `mcp:authz.revoke-tokens:call`, admin-only) writes a
+  token-revocation marker the verify path checks, so the subject's *current* token is refused on the
+  next request — coordinated with `edge-trust-scope.md`'s token-on-the-bus verify. The revoking UI
+  offers it as "Apply now (end their active sessions)" beside the honest default note, composing with
+  `revoke_subject` (revoke grants + kill live tokens = full, immediate lockout). Multi-node: the
+  marker syncs (§6.8) and a short worst-case TTL bounds the window — stated, not hidden.
 - **`roles.delete`**: new verb (gated `mcp:roles.manage:call`), cascade-removes the `role:<name>`
   grant from every subject (idempotent), shows the affected-subject count before confirm. Built-ins
   are immutable and not deletable.
 - **Overview tiles**: read-only aggregations over `list_users`/`list_teams`/`roles.list`/`apikey.list`
   + the new resolver — e.g. "direct-grant subjects (bypass roles): 3", "keys expiring <7d: 1",
   "subjects holding any admin cap: 2". Honest counts; no fabrication when a verb is absent.
-- **Transport**: `lib/ipc/http.ts` gains the three new route entries (`resolve`, `invalidate`,
-  `roles.delete`); fakes mirror them 1:1 for Vitest. Same four-file move as every admin surface.
+- **Transport**: `lib/ipc/http.ts` gains the new route entries (`resolve`, `revoke_tokens`,
+  `roles.delete`); the in-`http.ts` **transport shim** the existing admin surfaces use for Vitest
+  mirrors them 1:1 (the sanctioned transport-fake pattern, **not** a parallel fake backend — every
+  `*.gateway.test.tsx` still proves the route against the real gateway per CLAUDE §9). Same four-file
+  move as every admin surface.
 
 **Rejected alternatives:**
 - *A new top-level "Access" page.* Rejected — it duplicates the cap-gated `/admin` console and
@@ -130,34 +146,41 @@ destination views you reach by drilling.
 ## How it fits the core
 
 - **Tenancy / isolation:** every view operates within the session's workspace (the token's hard
-  wall); `resolve_caps`, `session.invalidate`, and `roles.delete` are workspace-scoped and a ws-B
-  admin resolves/invalidates/deletes nothing in ws-A. The two-principal isolation test extends to the
+  wall); `resolve_caps`, `revoke_tokens`, and `roles.delete` are workspace-scoped and a ws-B
+  admin resolves/revokes/deletes nothing in ws-A. The two-principal isolation test extends to the
   new verbs.
-- **Capabilities:** the three new verbs are themselves admin-cap-gated (`mcp:authz.resolve:call`,
-  `mcp:authz.invalidate:call`, `mcp:roles.manage:call`); the deny path is real and tested. The guided
-  picker is filtered to the **no-widening** set (admin's own caps), mirroring the server's
+- **Capabilities:** the new verbs are themselves admin-cap-gated (`mcp:authz.resolve:call`,
+  `mcp:authz.revoke-tokens:call`, `mcp:roles.manage:call`); the deny path is real and tested. The
+  guided picker is filtered to the **no-widening** set (admin's own caps), mirroring the server's
   `holds_cap` check — the UI cannot offer a grant the gateway will reject.
 - **Placement:** `either` — core authz/host services compiled into every node; the console runs over
   gateway (browser) or in-process (Tauri), same verbs.
 - **MCP surface / API shape (§6.1):**
-  - **Get/list** — `resolve_caps(subject)` (single-subject resolved read); the existing `list_*` /
+  - **Get/list** — `resolve_caps(subject)` (single-subject resolved read **with provenance**, an
+    extension of the shipped `resolve_subject_caps` fold, not a new resolver); the existing `list_*` /
     `roles.list` / `grants.list` / `apikey.list` power the overview.
   - **CRUD** — `roles.delete` (the one missing write verb this adds). No new create/update beyond it.
+    (`revoke_tokens` below is a destructive action verb, not a record CRUD.)
+  - **Live-token revoke** — `revoke_tokens(subject)` kills the subject's *current* token(s) on the
+    next verify; composes with the shipped `revoke_subject` (grant-revoke, next-re-mint) for a full
+    immediate lockout.
   - **Live feed** — N/A now; the overview refetches on focus and after each mutation. An optional
     `bus.watch` "access changed" hint is a named follow-up, not v1.
   - **Batch** — `roles.delete` cascade (un-assign from N subjects) is a **bounded, same-tx** operation
     (read assignees → revoke the `role:` grant in one `write_tx`); not a long batch, so it stays
     synchronous with the bound stated.
 - **Data (SurrealDB):** no new tables. `resolve_caps` reads the existing `grant`/`role`/`team`/`member`
-  records; `session.invalidate` writes a revoke marker (a record the verify path already reads, per
+  records; `revoke_tokens` writes a revoke marker (a record the verify path already reads, per
   `edge-trust`); `roles.delete` removes the role record + its `role:<name>` grants in one tx. All
-  state, workspace-scoped.
+  state, workspace-scoped. (The shipped `revoke_subject` already tombstones grants — reused, not
+  duplicated.)
 - **Bus (Zenoh):** none required for v1. An optional "access changed" motion for multi-admin liveness
   is a follow-up; mutations are state.
 - **Sync / authority:** the grant store is hub-authoritative and syncs on §6.8; the new verbs are
-  idempotent `(table,id)` writes that replay cleanly. The **invalidate marker** syncs so a stale edge
-  can't keep a revoked token alive beyond TTL — coordinate the tombstone with `sync-scope.md` (same
-  discipline as the `admin-crud` hard-delete tombstone).
+  idempotent `(table,id)` writes that replay cleanly. The **revoke_tokens marker** syncs so a stale
+  edge can't keep a killed token alive beyond TTL — coordinate the tombstone with `sync-scope.md`
+  (same discipline as the `admin-crud` hard-delete tombstone, and the same idempotent-replay shape
+  the shipped `revoke_subject` already uses).
 - **Secrets:** none new. `resolve_caps` never returns a credential; `apikey.list` keeps its
   hash/secret-redaction (shipped). The token-signing key is unchanged.
 
@@ -174,11 +197,12 @@ destination views you reach by drilling.
    `hvac.setpoint` emits `grants.assign(user:alice, mcp:hvac.setpoint:call)`. No string typed.
 4. Admin **removes bob from `facilities`** → the inline confirm states timing honestly ("team-shared
    resources unreadable now; bob's inherited caps drop on next sign-in") and offers **"Apply now —
-   end bob's active sessions"** → `session.invalidate(user:bob)`. Bob's next request is re-mint-gated.
+   end bob's active sessions"** → `revoke_tokens(user:bob)` (the live-token kill), composing with the
+   `revoke_subject` grant-revoke. Bob's next request is refused on the verify path.
 5. Admin **deletes the `operator` role** → `roles.delete` shows "assigned to 4 subjects; un-assigns
    all" → confirm → the role + its `role:operator` grants are removed in one tx; built-in roles are
    not deletable.
-6. **Carol (ws-B admin)** opens her console → sees only ws-B; `resolve_caps`/`invalidate`/`roles.delete`
+6. **Carol (ws-B admin)** opens her console → sees only ws-B; `resolve_caps`/`revoke_tokens`/`roles.delete`
    against ws-A ids deny/empty. The wall holds across the new verbs.
 
 ## Testing plan
@@ -186,14 +210,14 @@ destination views you reach by drilling.
 Mandatory categories from `scope/testing/testing-scope.md`:
 
 - **Capability deny** — over the real gateway + MCP: a non-admin is refused `resolve_caps`,
-  `session.invalidate`, `roles.delete`; a forged direct call is denied server-side (the UI gate is
+  `revoke_tokens`, `roles.delete`; a forged direct call is denied server-side (the UI gate is
   not the boundary). The guided picker offers only caps ⊆ the admin's own (no-widening) — assert a
   cap the admin lacks is **not offered** and a forced `grants.assign` of it is server-rejected.
-- **Workspace isolation** — a ws-B admin's `resolve_caps`/`invalidate`/`roles.delete` against ws-A
+- **Workspace isolation** — a ws-B admin's `resolve_caps`/`revoke_tokens`/`roles.delete` against ws-A
   ids deny/resolve-empty/delete nothing; the overview shows only ws-B. Two real sessions, across
   **gateway + store**.
-- **Offline / sync** — the invalidate marker and `roles.delete` cascade replay idempotently after an
-  offline edit; a tombstoned invalidate is not resurrected by a stale synced edge (coordinate the
+- **Offline / sync** — the revoke_tokens marker and `roles.delete` cascade replay idempotently after an
+  offline edit; a tombstoned revoke marker is not resurrected by a stale synced edge (coordinate the
   tombstone test with `sync`/`edge-trust`).
 
 Plus this slice's cases:
@@ -203,28 +227,30 @@ Plus this slice's cases:
   same subject (no resolver↔mint drift — a shared-code or cross-check test).
 - **`roles.delete` cascade** — deletes the role + un-assigns from all subjects; idempotent on repeat;
   built-in roles rejected; affected-count shown matches reality.
-- **Invalidate lever** — after `session.invalidate(subject)`, the subject's prior token is refused on
+- **Live-token revoke lever** — after `revoke_tokens(subject)`, the subject's prior token is refused on
   the next verify on the revoking node (and after sync, on a peer); a freshly-minted token still
   works; the worst-case multi-node window is bounded by TTL (asserted).
 - **UX** — Vitest per view: overview tiles render honest counts (and empty/absent-verb states); the
   guided picker is filtered to no-widening and emits canonical cap strings; consequence + timing copy
-  is accurate (content-asserted); the invalidate lever appears on revoking actions. Fakes mirror the
-  three new routes 1:1. Real-gateway tests for `resolve`/`invalidate`/`roles.delete` (mirror
+  is accurate (content-asserted); the live-token revoke lever appears on revoking actions. Fakes mirror the
+  three new routes 1:1. Real-gateway tests for `resolve`/`revoke_tokens`/`roles.delete` (mirror
   `admin_routes_test`).
 - **No mocks** — tests run against the real store/bus/gateway seeded via the real write path; the
   only fake permitted is a true external IdP if one is stubbed behind one trait (none required here).
 
 ## Risks & hard problems
 
-- **Resolver↔mint drift is a silent security hole.** If `resolve_caps` and `session.mint` compute
-  caps differently, the admin *sees* one access set while the gate *enforces* another. Mitigation:
-  **one shared resolution function** in `crates/authz` both call; a cross-check test that the two
-  agree for the same subject. Do not re-implement resolution in the UI.
-- **The freshness lever can be weaponized / overused.** "End active sessions" is disruptive; an admin
-  reflex-clicking it logs everyone out. Mitigation: it is a **secondary** action beside the honest
+- **Resolver↔mint drift is a silent security hole.** If the displayed effective caps and the enforced
+  (token) caps diverge, the admin *sees* one access set while the gate *enforces* another. Mitigation:
+  provenance is a **tagging wrapper over the one shipped `resolve_subject_caps`/`resolve_caps` fold**
+  — not a parallel implementation — so the resolver and the mint literally share code; plus a
+  cross-check test that the wrapper's cap set equals `resolve_caps(...)` for the same subject. Do not
+  re-implement resolution in the UI or in a second function.
+- **The live-token lever can be weaponized / overused.** "End active sessions" is disruptive; an admin
+  reflex-clicking it logs the subject out. Mitigation: it is a **secondary** action beside the honest
   default note, confirm-gated, and scoped to one subject (not "end all"). Document that the default
   revocation is already correct for most cases; the lever is for genuine lockout.
-- **Multi-node invalidate window.** A marker that hasn't synced to a peer lets a revoked token live
+- **Multi-node revoke window.** A marker that hasn't synced to a peer lets a revoked token live
   until TTL. This is the same staleness reality `edge-trust` already owns — name it, bound it with
   TTL, and **do not claim instant global revocation**. The single-node case IS instant.
 - **No-widening in the picker must match the server exactly.** If the picker offers a cap the server's
@@ -243,9 +269,12 @@ Plus this slice's cases:
 
 ## Open questions
 
-- **Invalidate mechanism** — a per-subject revoke marker the verify path checks (lean), vs a global
-  token-nonce bump, vs an explicit revocation list. Lean: the per-subject marker coordinated with
-  `edge-trust`'s existing revoke path (smallest blast radius, composes with TTL). Decide with the
+- **Live-token revoke mechanism** — the genuinely-missing piece (the shipped `revoke_subject` already
+  handles grant-revoke/next-re-mint). Options for the live-token kill: a per-subject revoke marker the
+  verify path checks (lean), vs a global token-nonce bump, vs an explicit revocation list. Lean: the
+  per-subject marker coordinated with `edge-trust`'s existing token-on-the-bus verify path (smallest
+  blast radius, composes with TTL). `revoke_tokens` should **compose** with `revoke_subject` (one UI
+  action = grant-revoke + live-token kill) rather than replace it. Decide the marker shape with the
   `edge-trust` owner.
 - **How "who can do X" search works at scale** — client-side filter over per-subject resolved sets
   (re-fetch on demand, bounded workspace size) vs a server-side `who_has(cap)` verb. Lean:
@@ -264,9 +293,9 @@ Plus this slice's cases:
   resolved projection this console displays; the **freshness asymmetry** defined there.
 - `scope/auth-caps/admin-crud-scope.md` — the destructive verbs this console drives and whose
   timing/leverage this surfaces.
-- `scope/auth-caps/auth-caps-scope.md` — the three gates + grammar; `resolve_caps`/`invalidate` feed
+- `scope/auth-caps/auth-caps-scope.md` — the three gates + grammar; `resolve_caps` (provenance)/`revoke_tokens` feed
   Gate 2's inputs/ageing, they add no gate.
-- `scope/auth-caps/edge-trust-scope.md` — the token-on-the-bus verify path the **invalidate lever**
+- `scope/auth-caps/edge-trust-scope.md` — the token-on-the-bus verify path the **live-token revoke lever**
   hooks into; owns the multi-node revocation window.
 - `scope/auth-caps/api-keys-scope.md` — keys as subjects in the same access graph (resolved caps +
   the picker apply identically).
@@ -274,5 +303,5 @@ Plus this slice's cases:
   the "gated callers, never trusted deciders" rule this inherits.
 - `scope/extensions/` (`tools.catalog`) — the capability catalog the guided picker reads.
 - `scope/sync/sync-scope.md` + `scope/audit/audit-scope.md` — the idempotent-apply/tombstone
-  discipline for the invalidate marker, and the later audit view this lightly provenances.
+  discipline for the revoke_tokens marker, and the later audit view this lightly provenances.
 - README **§6.6** (identity/auth/caps), **§3.5** (the chokepoint), **§7** (tenancy).

@@ -25,9 +25,9 @@ mod subscribe;
 // public surface honest (no dead `pub use`).
 #[allow(unused_imports)]
 pub(crate) use chart::{pick_chart, ChartKind, ChartSeries, ChartSpec};
-pub use error::ChannelError;
 pub use delete::{delete, watch_deletions, DeletionFeed};
 pub use edit::edit;
+pub use error::ChannelError;
 pub use history::history;
 #[allow(unused_imports)]
 pub(crate) use payload::{

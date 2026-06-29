@@ -26,7 +26,11 @@ fn principal(ws: &str, sub: &str, caps: &[&str]) -> Principal {
 async fn author_can_delete_their_own_message() {
     let ws = "ws-del-own";
     let node = Node::boot().await.expect("node boots");
-    let alice = principal(ws, "user:alice", &["bus:chan/general:pub", "bus:chan/general:sub"]);
+    let alice = principal(
+        ws,
+        "user:alice",
+        &["bus:chan/general:pub", "bus:chan/general:sub"],
+    );
 
     post(
         &node,
@@ -52,7 +56,11 @@ async fn author_can_delete_their_own_message() {
 async fn a_live_viewer_sees_the_deletion() {
     let ws = "ws-del-live";
     let node = Node::boot().await.expect("node boots");
-    let alice = principal(ws, "user:alice", &["bus:chan/general:pub", "bus:chan/general:sub"]);
+    let alice = principal(
+        ws,
+        "user:alice",
+        &["bus:chan/general:pub", "bus:chan/general:sub"],
+    );
 
     post(
         &node,

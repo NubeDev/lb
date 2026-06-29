@@ -54,6 +54,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("prefs.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool.starts_with("reminder.")
+        || qualified_tool.starts_with("query.")
         || qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")
@@ -217,6 +218,10 @@ async fn dispatch_at_depth(
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("prefs.") {
             crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("query.") {
+            // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
+            // federation.query). query.run adds the no-widening target cap inside its service.
+            crate::call_query_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {

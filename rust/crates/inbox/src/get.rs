@@ -19,6 +19,7 @@ pub async fn get(
     let Some(value) = read(store, ws, TABLE, &record_id(channel, id)).await? else {
         return Ok(None);
     };
-    let item: Item = serde_json::from_value(value).map_err(|e| StoreError::Decode(e.to_string()))?;
+    let item: Item =
+        serde_json::from_value(value).map_err(|e| StoreError::Decode(e.to_string()))?;
     Ok(Some(item))
 }

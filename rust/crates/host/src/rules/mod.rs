@@ -26,7 +26,7 @@ pub use get::{rules_get, rules_list};
 pub use record::SavedRule;
 pub use run::{params_to_rhai, rules_run, RunResult};
 pub use save::rules_save;
-pub use seam::{workspace_datasources, HostAiSeam, HostDataSeam, RuleModel};
+pub use seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
 
 use std::sync::Arc;
 

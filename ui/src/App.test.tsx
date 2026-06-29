@@ -11,7 +11,7 @@ import { CAP } from "@/lib/session/admin-caps";
 import { setSession } from "@/lib/session/session.store";
 import { allowedSurfaces } from "@/features/routing/allowed";
 
-const MEMBER_CAPS = ["bus:chan/*:pub", "bus:chan/*:sub", "mcp:members.list:call"];
+const MEMBER_CAPS = ["bus:chan/*:pub", "bus:chan/*:sub", "mcp:workspace.list:call"];
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/#/channels?c=general");

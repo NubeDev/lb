@@ -24,6 +24,7 @@ members = [
     "crates/mcp",
     "crates/outbox",
     "crates/prefs",
+    "crates/prql",
     "crates/registry",
     "crates/reminders",
     "crates/rules",
@@ -76,6 +77,7 @@ lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
 lb-prefs = { path = "crates/prefs" }
+lb-prql = { path = "crates/prql" }
 lb-reminders = { path = "crates/reminders" }
 lb-registry = { path = "crates/registry" }
 lb-rules = { path = "crates/rules" }
@@ -107,6 +109,9 @@ lb-role-github-workflow = { path = "role/github-workflow" }
 # persistent backend was pinned to SurrealKV by the S9 store spike (pure-Rust, no C++ toolchain —
 # the "builds anywhere / on a Pi" posture); see docs/scope/store/persistent-backend-scope.md.
 surrealdb = { version = "2", default-features = false, features = ["kv-mem", "kv-surrealkv"] }
+# The PRQL authoring layer (query scope): `lb-prql` embeds `prqlc` as a pure compile-only library —
+# PRQL → SQL per dialect, zero I/O. Pinned; a bump is a reviewed change with re-frozen goldens.
+prqlc = { version = "0.13", default-features = false }
 zenoh = "1"
 wasmtime = { version = "39", default-features = false, features = ["runtime", "component-model", "cranelift"] }
 wasmtime-wasi = "39"

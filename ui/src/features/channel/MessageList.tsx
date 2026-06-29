@@ -1,17 +1,19 @@
 // The message list — presentation only (FILE-LAYOUT: one component, no data fetching here; the data
-// comes from useChannel). Renders items oldest→newest. A kind-tagged item body (`query` /
-// `query_result` / `query_error`) is rendered as a CARD (QueryCard), never raw JSON; an untagged
-// body is an ordinary chat message rendered as text.
+// comes from useChannel). Renders items oldest→newest. Each row is a MessageItem; the current
+// viewer's own rows get edit/delete affordances (wired through from useChannel via these props).
 
 import type { Item } from "@/lib/channel/channel.types";
-import { parsePayload } from "@/lib/channel/payload.types";
-import { QueryCard } from "./query/QueryCard";
+import { MessageItem } from "./MessageItem";
 
 interface Props {
   items: Item[];
+  /** The current viewer's identity — own messages are editable/deletable. */
+  author: string;
+  onEdit: (id: string, body: string) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
 }
 
-export function MessageList({ items }: Props) {
+export function MessageList({ items, author, onEdit, onDelete }: Props) {
   if (items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -24,22 +26,9 @@ export function MessageList({ items }: Props) {
   }
   return (
     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto p-4" aria-label="messages">
-      {items.map((m) => {
-        const payload = parsePayload(m.body);
-        return (
-          <li
-            key={m.id}
-            className="rounded-md border border-border bg-panel px-3 py-2 text-sm shadow-sm shadow-black/5"
-          >
-            <div className="mb-1 truncate text-xs font-medium text-accent">{m.author}</div>
-            {payload ? (
-              <QueryCard payload={payload} />
-            ) : (
-              <div className="break-words leading-6 text-fg">{m.body}</div>
-            )}
-          </li>
-        );
-      })}
+      {items.map((m) => (
+        <MessageItem key={m.id} item={m} author={author} onEdit={onEdit} onDelete={onDelete} />
+      ))}
     </ul>
   );
 }

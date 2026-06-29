@@ -8,8 +8,8 @@
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use serde::Deserialize;
 use lb_inbox::Item;
+use serde::Deserialize;
 
 use crate::session::authenticate;
 use crate::state::Gateway;
