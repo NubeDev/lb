@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import GridLayout, { type Layout } from "react-grid-layout";
-import { X } from "lucide-react";
+import { GripHorizontal, X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
 import { CellSettingsButton } from "./builder/CellSettings";
@@ -102,6 +102,7 @@ export function Grid({
         isResizable={editable}
         onDragStop={apply}
         onResizeStop={apply}
+        draggableHandle=".widget-drag-handle"
         draggableCancel=".widget-no-drag"
       >
         {cells.map((c) => (
@@ -110,6 +111,16 @@ export function Grid({
             className="flex flex-col rounded-lg border border-border bg-panel p-2 shadow-sm shadow-black/5 transition-shadow hover:shadow-md hover:shadow-black/10"
             aria-label={`cell ${c.i}`}
           >
+            {editable && (
+              <button
+                type="button"
+                aria-label={`move cell ${c.i}`}
+                title="Move widget"
+                className="widget-drag-handle absolute left-1.5 top-1.5 z-10 inline-flex h-5 w-5 cursor-grab items-center justify-center rounded-md text-muted/70 transition-colors hover:bg-bg hover:text-fg active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+              >
+                <GripHorizontal size={12} />
+              </button>
+            )}
             {editable && (
               <button
                 aria-label={`remove cell ${c.i}`}

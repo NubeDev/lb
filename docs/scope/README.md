@@ -97,7 +97,20 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   desktop webview and the browser; e.g. a dashboard scoped to a date range), `data-console-scope.md` (the workspace
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
   with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL), and
-  `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes).
+  `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
+  and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a
+  React Flow chain canvas that colours steps as they settle, and a datasources admin page — first-party
+  shell driving the shipped `rules.*`/`chains.*`/`datasource.*` verbs over the gateway, mirroring the
+  dashboard pattern; the federation extension stays headless), and `rules-editor-ux-scope.md` (a guided,
+  explorable authoring surface extending that Playground: a searchable function palette mirroring the
+  registered Rhai verbs, click-to-load examples, and a datasource/schema/series data explorer — all
+  click-to-insert, frontend-only over the shipped verbs, with the `store.schema` reader extracted to a
+  shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer).
+  `frontend/dashboard/viz/` holds the
+  **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
+  datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/
+  numbers through `prefs/` user-prefs, query any datasource (not just native SurrealDB), and import/export
+  Grafana dashboard JSON — one scope file per part, additive over the shipped v2 widget contract.
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

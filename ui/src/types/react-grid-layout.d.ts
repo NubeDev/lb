@@ -26,6 +26,7 @@ declare module "react-grid-layout" {
     width?: number;
     isDraggable?: boolean;
     isResizable?: boolean;
+    draggableHandle?: string;
     draggableCancel?: string;
     onLayoutChange?: (layout: Layout[]) => void;
     onDragStop?: (layout: Layout[]) => void;

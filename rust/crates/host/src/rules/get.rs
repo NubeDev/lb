@@ -42,7 +42,15 @@ pub async fn rules_list(
         .map_err(|e| RulesError::Internal(e.to_string()))?;
     let mut out = Vec::new();
     for row in page.rows {
-        if let Ok(rule) = serde_json::from_value::<SavedRule>(row.data) {
+        // Records written via `lb_store::write` carry a `{ data: ... }` envelope (the same one `read`
+        // unwraps for `rules_get`); `scan` returns the whole record, so unwrap it before decoding —
+        // otherwise every row silently fails deser and the roster is always empty (mirrors the
+        // `scan_dashboards` envelope unwrap in `dashboard/store.rs`).
+        let inner = match row.data {
+            serde_json::Value::Object(mut o) => o.remove("data").unwrap_or(serde_json::Value::Null),
+            other => other,
+        };
+        if let Ok(rule) = serde_json::from_value::<SavedRule>(inner) {
             if !rule.deleted {
                 out.push(rule);
             }

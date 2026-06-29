@@ -47,15 +47,22 @@ pub async fn chains_list(
         .map_err(|e| ChainsError::Internal(e.to_string()))?;
     let mut out = Vec::new();
     for row in page.rows {
-        if row
-            .data
+        // Records written via `lb_store::write` carry a `{ data: ... }` envelope; `scan` returns the
+        // whole record, so unwrap it before reading `deleted` / decoding the `Chain` — otherwise the
+        // tombstone check never fires and every chain silently fails deser (the roster is always
+        // empty). Mirrors the `scan_dashboards` envelope unwrap in `dashboard/store.rs`.
+        let inner = match row.data {
+            serde_json::Value::Object(mut o) => o.remove("data").unwrap_or(serde_json::Value::Null),
+            other => other,
+        };
+        if inner
             .get("deleted")
             .and_then(|v| v.as_bool())
             .unwrap_or(false)
         {
             continue;
         }
-        if let Ok(c) = serde_json::from_value::<Chain>(row.data) {
+        if let Ok(c) = serde_json::from_value::<Chain>(inner) {
             out.push(c);
         }
     }

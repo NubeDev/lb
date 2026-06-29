@@ -4428,6 +4428,7 @@ dependencies = [
  "lb-ext-loader",
  "lb-host",
  "lb-inbox",
+ "lb-mcp",
  "lb-outbox",
  "lb-registry",
  "lb-run-events",

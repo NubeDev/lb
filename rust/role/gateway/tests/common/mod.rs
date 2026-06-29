@@ -81,6 +81,12 @@ pub async fn json_body<T: serde::de::DeserializeOwned>(resp: axum::response::Res
     serde_json::from_slice(&bytes).unwrap()
 }
 
+/// The raw response body as a string (for asserting a verbatim error message).
+pub async fn body_text(resp: axum::response::Response) -> String {
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    String::from_utf8_lossy(&bytes).to_string()
+}
+
 pub fn delete_req(uri: &str) -> Request<Body> {
     Request::builder()
         .method("DELETE")

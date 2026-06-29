@@ -14,14 +14,17 @@ import {
 } from "@tanstack/react-router";
 
 import { AdminView } from "@/features/admin";
+import { ChainsView } from "@/features/chains";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
+import { DatasourcesAdmin } from "@/features/datasources";
 import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
 import { MembersView } from "@/features/members";
+import { RulesView } from "@/features/rules";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
 import { StudioView } from "@/features/studio";
@@ -113,6 +116,9 @@ const routeTree = rootRoute.addChildren([
     channelsRoute,
     coreRoute("/members", "members", () => <Members />),
     dashboardsRoute,
+    coreRoute("/rules", "rules", () => <Rules />),
+    coreRoute("/chains", "chains", () => <Chains />),
+    coreRoute("/datasources", "datasources", () => <Datasources />),
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
@@ -219,6 +225,18 @@ function ExtRoute() {
 
 function Members() {
   return <MembersView ws={useAppRoutingContext().workspace} />;
+}
+
+function Rules() {
+  return <RulesView ws={useAppRoutingContext().workspace} />;
+}
+
+function Chains() {
+  return <ChainsView ws={useAppRoutingContext().workspace} />;
+}
+
+function Datasources() {
+  return <DatasourcesAdmin ws={useAppRoutingContext().workspace} />;
 }
 
 function Ingest() {

@@ -389,6 +389,89 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/dashboards/${enc(id)}/share`, { visibility, team });
     }
 
+    // ── datasources (rules-workbench scope, Phase 3): the browser's `datasource.*` admin surface over
+    //    the gateway. Each maps 1:1 to a `/datasources` route; the gateway re-checks
+    //    `mcp:datasource.<verb>:call` server-side. The DSN is sent ONLY on `datasource_add` and never
+    //    returned by any response (the redaction rule, §6.7). ──
+    case "datasource_list":
+      return getJson<T>(`${base}/datasources`);
+    case "datasource_add": {
+      const { name, kind, endpoint, dsn } = args as {
+        name: string;
+        kind: string;
+        endpoint: string;
+        dsn: string;
+      };
+      return postJson<T>(`${base}/datasources`, { name, kind, endpoint, dsn });
+    }
+    case "datasource_remove": {
+      const { name } = args as { name: string };
+      return delJson<T>(`${base}/datasources/${enc(name)}`);
+    }
+    case "datasource_test": {
+      const { name } = args as { name: string };
+      return postJson<T>(`${base}/datasources/${enc(name)}/test`, {});
+    }
+
+    // ── chains (rules-workbench scope, Phase 2): the browser's `chains.*` DAG-canvas CRUD + run +
+    //    the per-step run snapshot poll. Each maps 1:1 to a `/chains/*` route; the gateway re-checks
+    //    `mcp:chains.<verb>:call` server-side and sets the workspace from the token (§7). The `chain`
+    //    body is POSTed verbatim (minus workspace, which the gateway injects). ──
+    case "chains_list":
+      return getJson<T>(`${base}/chains`);
+    case "chains_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/chains/${enc(id)}`);
+    }
+    case "chains_save": {
+      const { chain } = args as { chain: Record<string, unknown> };
+      return postJson<T>(`${base}/chains`, chain);
+    }
+    case "chains_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/chains/${enc(id)}`);
+    }
+    case "chains_run": {
+      const { id, params } = args as { id: string; params?: unknown };
+      return postJson<T>(`${base}/chains/${enc(id)}/run`, { params: params ?? {} });
+    }
+    case "chains_run_get": {
+      const { id, runId } = args as { id: string; runId: string };
+      return getJson<T>(`${base}/chains/${enc(id)}/runs/${enc(runId)}`);
+    }
+
+    // ── rules (rules-workbench scope, Phase 1): the browser's `rules.*` Playground CRUD + run over
+    //    the gateway. The workspace + principal come from the token (§7); each route re-checks
+    //    `mcp:rules.<verb>:call` server-side. A 403 body is a generic "not permitted"; a 400 body is the
+    //    verbatim author feedback (a cage/parse error, an AI-budget / AI-not-configured message). ──
+    case "rules_run": {
+      const { body, rule_id, params } = args as {
+        body?: string;
+        rule_id?: string;
+        params?: Record<string, unknown>;
+      };
+      return postJson<T>(`${base}/rules/run`, { body, rule_id, params: params ?? {} });
+    }
+    case "rules_save": {
+      const { id, name, body, params } = args as {
+        id: string;
+        name?: string;
+        body: string;
+        params?: unknown[];
+      };
+      return postJson<T>(`${base}/rules`, { id, name, body, params: params ?? [] });
+    }
+    case "rules_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/rules/${enc(id)}`);
+    }
+    case "rules_list":
+      return getJson<T>(`${base}/rules`);
+    case "rules_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/rules/${enc(id)}`);
+    }
+
     default:
       throw new Error(`unknown command: ${cmd}`);
   }

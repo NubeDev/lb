@@ -1,0 +1,56 @@
+// The rules wire shapes — mirror the gateway's `rules.*` routes + the host `SavedRule` record and the
+// `rules.run` result (rules-workbench scope, Phase 1). A saved rule is a persisted Rhai body + declared
+// params; a run returns a typed `RuleOutput` (rendered three ways by `kind`) plus findings, log, and a
+// budget readout.
+
+/** A declared parameter of a saved rule — a name + an optional human label. */
+export interface RuleParam {
+  name: string;
+  label?: string;
+}
+
+/** The persisted shape of a saved rule (`rule:{ws}:{id}`). `deleted` is the soft-delete tombstone. */
+export interface SavedRule {
+  id: string;
+  name: string;
+  body: string;
+  params: RuleParam[];
+  deleted?: boolean;
+}
+
+/** The typed result of a run, discriminated on `kind` — rendered one way per kind (FILE-LAYOUT: one
+ *  render component per kind). `scalar` is a single value; `grid` is columns + rows; `findings` means
+ *  the result is the emitted findings list; `nothing` is an empty run. */
+export type RuleOutput =
+  | { kind: "scalar"; value: unknown }
+  | { kind: "grid"; columns: string[]; rows: Record<string, unknown>[] }
+  | { kind: "findings" }
+  | { kind: "nothing" };
+
+/** One emitted finding (`emit`/`alert`). `level` (`info|warning|critical`) is lifted for colouring;
+ *  the whole emitted map rides through as `data`, with `data.alert === true` marking an alert. */
+export interface Finding {
+  level: string;
+  data: Record<string, unknown> & { alert?: boolean };
+}
+
+/** One `log(...)` line collected during a run. */
+export interface LogLine {
+  level: string;
+  message: string;
+}
+
+/** The per-run AI spend, surfaced for observability (calls + tokens). */
+export interface AiBudget {
+  calls: number;
+  tokens: number;
+}
+
+/** The full `rules.run` result: the typed output + findings + log + the budget readout (`ms` + `ai`). */
+export interface RunResult {
+  output: RuleOutput;
+  findings: Finding[];
+  log: LogLine[];
+  ms: number;
+  ai: AiBudget;
+}

@@ -10,8 +10,10 @@ mod admin_users;
 mod admin_workspaces;
 mod assets;
 mod bus;
+mod chains;
 mod channel_registry;
 mod dashboard;
+mod datasources;
 mod dbview;
 mod ext;
 mod ext_ui;
@@ -23,6 +25,7 @@ mod mcp;
 mod members;
 mod outbox;
 mod post;
+mod rules;
 mod run_stream;
 mod series_stream;
 mod store_query;
@@ -40,10 +43,12 @@ pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
 pub use bus::{bus_stream, publish_message};
+pub use chains::{delete_chain, get_chain, get_chain_run, list_chains, run_chain, save_chain};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,
 };
+pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
 pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, uninstall_extension,
@@ -57,6 +62,7 @@ pub use mcp::mcp_call;
 pub use members::{add_team_member, list_team_members};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
+pub use rules::{delete_rule, get_rule, list_rules, run_rule, save_rule};
 pub use run_stream::run_stream;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};

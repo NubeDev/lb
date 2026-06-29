@@ -5,12 +5,15 @@ import {
   Activity,
   Boxes,
   Database,
+  GitBranch,
   Hash,
   Network,
   Inbox,
   LayoutDashboard,
   LogOut,
+  Plug,
   Puzzle,
+  ScrollText,
   Wrench,
   Send,
   Shield,
@@ -38,6 +41,9 @@ export type CoreSurface =
   | "channels"
   | "members"
   | "dashboards"
+  | "rules"
+  | "chains"
+  | "datasources"
   | "ingest"
   | "data"
   | "system"
@@ -73,6 +79,9 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "channels", icon: Hash, label: "Channels" },
   { key: "members", icon: Users, label: "Members" },
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
+  { key: "rules", icon: ScrollText, label: "Rules" },
+  { key: "chains", icon: GitBranch, label: "Chains" },
+  { key: "datasources", icon: Plug, label: "Datasources" },
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
   { key: "system", icon: Network, label: "System" },

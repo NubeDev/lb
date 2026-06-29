@@ -3,6 +3,26 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (S9+ — frontend: the rules workbench — Playground · chain canvas · datasources admin)
+
+Three cap-gated shell pages over the **already-shipped** `rules.*`/`chains.*`/`datasource.*` host verbs,
+mirroring the dashboard surface verb-for-verb — gateway routes + UI api clients + the React surface, no
+host work added (`public/frontend/rules-workbench.md`):
+
+- **Playground** — a CodeMirror editor + `rules.run` rendering the typed `RuleOutput` three ways
+  (scalar/grid/findings) + log + ms/ai budget; full `rules.*` CRUD rail; honest cage/deny/AI-budget/
+  AI-not-configured states (`BadInput` verbatim, `Denied` opaque), never a fake result.
+- **Chain canvas** — a React Flow DAG (nodes=steps, edges=needs) over `chains.*`; a cyclic edge renders
+  the host's validation error inline; Run + a **bounded** `chains.runs.get` settle-poll colours nodes
+  pending/running/ok/err/skipped with the Halt-pruned subtree greyed.
+- **Datasources admin** — first-party shell page over `datasource.*` (the federation extension stays
+  headless): list (redacted, never the DSN), add (DSN write-only, implied grants shown), test (honest
+  green/red probe), remove.
+- The gateway re-checks every cap server-side (via `lb_host::call_tool`); workspace + principal from the
+  token; per-verb deny + two-session isolation + the DSN-redaction assertion all tested on a real
+  in-process gateway. Fixed a shipped host bug along the way (`rules.list`/`chains.list` dropped every
+  row by not unwrapping the store envelope).
+
 ## In progress (S10 — extensions: SDK / built-in Studio)
 
 The extension SDK is implemented behind `lb-devkit` and the local-only `devkit.*` host bridge:

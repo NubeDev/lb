@@ -29,6 +29,19 @@ because existing session docs point at them; new dashboard notes should live her
    over the bus), all on **one shared interpolation library extensions reuse** and **one variable model**
    resolving from SurrealDB / SSE / Zenoh / extensions / JSON. Names the one new backend API: generic
    `bus.publish` / `bus.watch`.
+3e. [`viz/`](viz/README.md) — the **Grafana-compatible visualization** slice (scope, the ask): adopt
+   Grafana's panel/`fieldConfig`/transformation/datasource model and dashboard JSON so charts gain the full
+   standard option surface, render units/numbers/dates through **user-prefs**, query **any** datasource (not
+   just native SurrealDB), and **import/export Grafana dashboard JSON**. One file per part —
+   [`README.md`](viz/README.md) (umbrella + the cell↔panel reconciliation),
+   [`panel-model-scope.md`](viz/panel-model-scope.md) (the additive v3 shape),
+   [`chart-types-scope.md`](viz/chart-types-scope.md) (the standard chart set),
+   [`field-config-scope.md`](viz/field-config-scope.md) (chart options + the user-prefs bridge),
+   [`transformations-scope.md`](viz/transformations-scope.md) (the pipeline),
+   [`datasource-binding-scope.md`](viz/datasource-binding-scope.md) (datasources beyond native SurrealDB),
+   [`import-export-scope.md`](viz/import-export-scope.md) (Grafana JSON in/out), and
+   [`panel-editor-scope.md`](viz/panel-editor-scope.md) (the editor UX + the add≡edit parity fix). Additive
+   over the shipped v2 contract.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -50,6 +63,10 @@ because existing session docs point at them; new dashboard notes should live her
   widgets" picker group (one entry per `[[widget]]` tile) + the editor-only (`mcp:dashboard.save:call`)
   add gate. See [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md) → "Extension
   widgets in the palette".
+- The **Grafana-compatible visualization** layer ([`viz/`](viz/README.md)) is **scoped, not built**: the
+  standard chart set with the full option surface, the `fieldConfig`/transformation/datasource model,
+  user-prefs-driven formatting, and Grafana dashboard JSON import/export. Phase 1 is `timeseries` end to end
+  (the panel-model spine + field-config + the redesigned editor). Additive over the shipped v2 cell.
 - The external-data **reference extensions** whose tools/tiles a widget would call (timescale, mqtt-bridge)
   are blocked on separate platform fixes (native host-callback, `net:*`, `kv.*`, secrets) —
   [`../../extensions/reference-extensions-scope.md`](../../extensions/reference-extensions-scope.md). The

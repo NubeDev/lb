@@ -291,6 +291,12 @@ gateway.
 
 ## Follow-ups
 
+- **Grafana-compatible visualization (`viz/`) — scoped, building.** The standard chart set with the full
+  Grafana option surface (`fieldConfig`: units/decimals/thresholds/mappings/color), a transformation
+  pipeline, datasource binding beyond native SurrealDB, user-prefs-driven formatting, Grafana dashboard
+  JSON import/export, and a redesigned panel editor that fixes the add≠edit option-parity gap. Scope:
+  [`../../scope/frontend/dashboard/viz/README.md`](../../scope/frontend/dashboard/viz/README.md). Phase 1
+  is `timeseries` end to end. Promote shipped parts here as they land.
 - ~~Mount federated extension widgets in dashboard cells.~~ **Shipped** (`ext:<id>/<widget>` renderer).
 - ~~Define the per-widget cell key for multi-widget extensions.~~ **Shipped** (`ext:<id>/<widget-id>`).
 - ~~Add the untrusted iframe widget tier.~~ **Shipped** (opaque-origin sandbox + postMessage bridge).

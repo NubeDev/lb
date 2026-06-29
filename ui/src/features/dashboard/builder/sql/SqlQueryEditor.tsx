@@ -15,7 +15,7 @@
 
 import { useEffect, useState } from "react";
 
-import { readSchema, type Schema } from "@/lib/dashboard/sql.api";
+import { readSchema, type Schema } from "@/lib/schema";
 import { emptyQuery, type SqlSourceState } from "./query";
 import { RawEditor } from "./RawEditor";
 import { SqlQueryHeader } from "./SqlQueryHeader";

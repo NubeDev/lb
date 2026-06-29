@@ -133,6 +133,40 @@ fn member_caps() -> Vec<String> {
         "mcp:template.get:call",
         "mcp:template.list:call",
         "mcp:template.delete:call",
+        // rules-workbench scope (the Playground · chain canvas · datasources admin): the shipped
+        // `rules.*` / `chains.*` / `datasource.*` verbs the rules/chains/datasources gateway routes
+        // check. Member-level — any member may author/run their own rules + chains and (as admin)
+        // register datasources over real series (workspace wall + per-source `caps::check` inside a
+        // run still decide what a rule may actually read). The gateway re-checks each cap server-side;
+        // a token without a given verb is refused per verb (the deny-per-verb test).
+        "mcp:rules.run:call",
+        "mcp:rules.save:call",
+        "mcp:rules.get:call",
+        "mcp:rules.list:call",
+        "mcp:rules.delete:call",
+        "mcp:chains.save:call",
+        "mcp:chains.run:call",
+        "mcp:chains.get:call",
+        "mcp:chains.list:call",
+        "mcp:chains.delete:call",
+        "mcp:chains.runs.get:call",
+        "mcp:datasource.add:call",
+        "mcp:datasource.remove:call",
+        "mcp:datasource.list:call",
+        "mcp:datasource.test:call",
+        "mcp:federation.query:call",
+        // `datasource.add` mediates the DSN into lb-secrets under the caller's authority — the host
+        // requires this secret-write grant alongside `mcp:datasource.add:call` (federation/add.rs).
+        // Member-level for the dev login so the datasources admin page's Add actually persists.
+        "secret:federation/*:write",
+        // rules-workbench: the `rules.*`/`chains.*` verbs add a defense-in-depth Store-surface check
+        // (`store:rule:*` / `store:chain:*`) BELOW the MCP gate — unlike dashboard, which gates on MCP
+        // + the S4 edges only. The dev member needs the store grants so the Playground/canvas
+        // save/get/list/delete actually persist over the live gateway (mirrors `store:doc/*` above).
+        "store:rule:read",
+        "store:rule:write",
+        "store:chain:read",
+        "store:chain:write",
         // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
         // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
         // resolve it, and start the gated coding job from the browser; the gateway re-checks each

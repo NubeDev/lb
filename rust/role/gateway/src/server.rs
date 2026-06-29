@@ -10,18 +10,20 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
-    add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream, create_channel,
-    create_team, create_user, create_workspace, define_role, delete_dashboard, delete_team,
-    delete_user, disable_extension, disable_user, enable_extension, enable_user, find_series,
-    get_dashboard, get_doc, get_history, get_outbox_status, grant_skill, latest_sample, link_doc,
-    list_channels, list_dashboards, list_docs, list_extensions, list_grants, list_inbox,
-    list_roles, list_series, list_tables, list_team_members, list_teams, list_users,
-    list_workspaces, load_skill, login, mcp_call, post_message, publish_extension, publish_message,
-    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_team_member,
-    rename_team, rename_workspace, request_approval, resolve_inbox, resolve_workflow_approval,
-    revoke_grant, run_query, run_stream, save_dashboard, scan_table, series_stream, serve_ext_ui,
+    add_datasource, add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream,
+    create_channel, create_team, create_user, create_workspace, define_role, delete_chain,
+    delete_dashboard, delete_rule, delete_team, delete_user, disable_extension, disable_user,
+    enable_extension, enable_user, find_series, get_chain, get_chain_run, get_dashboard, get_doc,
+    get_history, get_outbox_status, get_rule, grant_skill, latest_sample, link_doc, list_chains,
+    list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_grants,
+    list_inbox, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
+    list_users, list_workspaces, load_skill, login, mcp_call, post_message, publish_extension,
+    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
+    remove_datasource, remove_team_member, rename_team, rename_workspace, request_approval,
+    resolve_inbox, resolve_workflow_approval, revoke_grant, run_chain, run_query, run_rule,
+    run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream, serve_ext_ui,
     share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, uninstall_extension, write_samples,
+    system_tools, system_topology, test_datasource, uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -132,6 +134,24 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.
+        // Each route re-checks `mcp:rules.<verb>:call` server-side; ws + principal from the token.
+        .route("/rules/run", post(run_rule))
+        .route("/rules", get(list_rules).post(save_rule))
+        .route("/rules/{id}", get(get_rule).delete(delete_rule))
+        // datasources (rules-workbench scope, Phase 3) — the browser's `datasource.*` admin surface.
+        // Each route re-checks `mcp:datasource.<verb>:call` server-side via `call_tool`; ws +
+        // principal from the token. The DSN is supplied only on the Add POST and never returned.
+        .route("/datasources", get(list_datasources).post(add_datasource))
+        .route("/datasources/{name}", delete(remove_datasource))
+        .route("/datasources/{name}/test", post(test_datasource))
+        // chains (rules-workbench scope, Phase 2) — the browser's `chains.*` DAG-canvas CRUD + run +
+        // the per-step run snapshot poll. Each route re-checks `mcp:chains.<verb>:call` server-side;
+        // ws + principal from the token. An invalid DAG at save → `400` (the canvas inline error).
+        .route("/chains", get(list_chains).post(save_chain))
+        .route("/chains/{id}", get(get_chain).delete(delete_chain))
+        .route("/chains/{id}/run", post(run_chain))
+        .route("/chains/{id}/runs/{run_id}", get(get_chain_run))
         .route("/series/{series}/stream", get(series_stream))
         // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
         // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe

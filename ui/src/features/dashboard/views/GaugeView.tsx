@@ -1,7 +1,9 @@
 // The v2 `gauge` view — a single value against a min/max + thresholds arc. Reads `source` through the
 // bridge (`useSource`); a non-numeric latest degrades to an honest "no value" (never a fake needle).
+// Recharts owns the arc drawing through the same renderer as the v1 GaugeWidget.
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
+import { GaugeArcChart } from "../widgets/recharts";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 import { useSource } from "../builder/useSource";
@@ -30,25 +32,12 @@ export function GaugeView({ source, tools, options, label, scope = emptyScope(),
   if (n === null) return <WidgetMessage tone="muted">no value yet</WidgetMessage>;
 
   const frac = Math.max(0, Math.min(1, (n - min) / (max - min || 1)));
-  // A 180° arc; the needle sweeps left→right with the fraction.
-  const angle = -90 + frac * 180;
 
   return (
     <div className="flex h-full flex-col" aria-label={`gauge ${source?.tool ?? ""}`}>
       <WidgetHeader label={label ?? source?.tool ?? ""} />
       <div className="flex flex-1 flex-col items-center justify-center">
-        <svg viewBox="0 0 100 60" className="w-full max-w-[140px]" role="img" aria-label="gauge arc">
-          <path d="M5,55 A45,45 0 0 1 95,55" fill="none" stroke="currentColor" strokeWidth={6} className="text-border" />
-          <line
-            x1="50"
-            y1="55"
-            x2={50 + 38 * Math.cos((angle - 90) * (Math.PI / 180))}
-            y2={55 + 38 * Math.sin((angle - 90) * (Math.PI / 180))}
-            stroke="currentColor"
-            strokeWidth={2}
-            className="text-accent"
-          />
-        </svg>
+        <GaugeArcChart fraction={frac} ariaLabel="gauge arc" />
         <span className="text-lg font-semibold text-fg" aria-label="gauge value">
           {n}
           {unit && <span className="ml-1 text-sm text-muted">{unit}</span>}

@@ -9,7 +9,7 @@ import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Schema } from "@/lib/dashboard/sql.api";
+import type { Schema } from "@/lib/schema";
 import type {
   SqlAggregation,
   SqlBuilderQuery,

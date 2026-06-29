@@ -55,6 +55,12 @@ export const CAP = {
   // dashboards; gate 3 / ownership still decides which specific ones they see/edit.
   dashboardList: "mcp:dashboard.list:call",
   dashboardSave: "mcp:dashboard.save:call",
+  // rules workbench (rules-workbench scope): member-level nav gates. The Playground shows for any
+  // session that may run a rule; the chain canvas for chains.get; the datasources admin for
+  // datasource.list. Gate 3 / ownership + the gateway's per-verb re-check are the real boundary.
+  rulesRun: "mcp:rules.run:call",
+  chainsGet: "mcp:chains.get:call",
+  datasourceList: "mcp:datasource.list:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

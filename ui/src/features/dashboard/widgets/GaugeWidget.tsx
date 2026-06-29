@@ -5,6 +5,7 @@
 import { useSeries } from "../useSeries";
 import { asNumber } from "./num";
 import { WidgetHeader, WidgetMessage } from "./chrome";
+import { GaugeArcChart } from "./recharts";
 import type { Binding } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
 
@@ -32,30 +33,13 @@ export function GaugeWidget({ binding, options, range, label }: Props) {
   const value = latest ? asNumber(latest.payload) : null;
   if (value === null) return <WidgetMessage tone="muted">no numeric value</WidgetMessage>;
 
-  // A half-circle gauge: map [min,max] → a 0..1 fraction → a 180° sweep.
   const frac = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
-  const angle = Math.PI * (1 - frac); // π (left) → 0 (right)
-  const cx = 50;
-  const cy = 50;
-  const r = 40;
-  const x = cx + r * Math.cos(angle);
-  const y = cy - r * Math.sin(angle);
 
   return (
     <div className="flex h-full flex-col" aria-label={`gauge ${series ?? ""}`}>
       <WidgetHeader label={label ?? series ?? ""} />
       <div className="flex flex-1 flex-col items-center justify-center">
-        <svg viewBox="0 0 100 60" className="w-full max-w-[160px]" role="img" aria-label="gauge arc">
-          <path d="M10,50 A40,40 0 0 1 90,50" fill="none" stroke="currentColor" strokeWidth={6} className="text-border" />
-          <path
-            d={`M10,50 A40,40 0 0 1 ${x.toFixed(1)},${y.toFixed(1)}`}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={6}
-            strokeLinecap="round"
-            className="text-accent"
-          />
-        </svg>
+        <GaugeArcChart fraction={frac} ariaLabel="gauge arc" />
         <span className="text-xl font-semibold text-fg" aria-label="gauge value">
           {value}
           {unit}
