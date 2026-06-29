@@ -1,7 +1,13 @@
 # Viz scope — the panel editor (one Grafana-style editor, add == edit)
 
-Status: scope (the ask). Part of the [`viz/`](README.md) slice — the **UX surface** that authors the
-[panel model](panel-model-scope.md). Promotes to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
+Status: **Phase 1 shipped (2026-06-29)** — the ONE `PanelEditor` (add ≡ edit, the pinned pure
+`cell ↔ editorState` round-trip) with the full Query/Transform/Panel options/Field/Overrides tab
+structure landed; `WidgetBuilder`+`CellSettings` retired from the dashboard path. The headline "edit
+loses my SQL options / add ≠ edit" bug is fixed (the Transform tab is the Phase-1 config shell — no
+client transforms, per invariant B). Part of the [`viz/`](README.md) slice — the **UX surface** that
+authors the [panel model](panel-model-scope.md). Shipped truth in
+[`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+[`dashboard-viz-phase1`](../../../../sessions/frontend/dashboard-viz-phase1-session.md).
 
 One paragraph: replace the cramped, inconsistent widget builder with **one** Grafana-style panel editor —
 a full-surface editor (live preview + visualization picker + a right-hand options rail of tabs: **Query**,
@@ -29,8 +35,12 @@ look. This is a **frontend-only** slice: no host verb, no capability, no datasto
   `transformations`, and per-view `options` — so reopening the editor shows exactly what was saved.
 - **Adopt Grafana's proven editor layout**, not a new one: preview pane, viz picker, tabbed options rail with
   collapsible groups and an options **search** filter.
-- **Live preview that is the real thing.** The preview runs the real source over the v2 bridge (real rows),
-  applies `transformations` + `fieldConfig`, and renders the chosen `view` — exactly what `save` will persist.
+- **Live preview that is the real thing.** The preview resolves the draft panel through the backend
+  **`viz.query`** verb (real rows + the transformation pipeline applied server-side by `lb-viz`), then
+  applies `fieldConfig` formatting and renders the chosen `view` — exactly what `save` will persist. Preview
+  is a **debounced `viz.query`** on each edit, so the editor uses the *same* resolver as render (no
+  client-side transform copy). (In Phase 1, before `viz.query` ships, a no-transform preview runs the source
+  over the shipped v2 bridge behind the one data hook — see the umbrella phasing.)
 - **shadcn-first, canonical look.** Rebuilt on shadcn primitives per [`ui-standards`](../../ui-standards-scope.md);
   responsive; the Members/NavRail aesthetic. No native `<select>`, no squished inline bar.
 

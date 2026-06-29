@@ -1,8 +1,10 @@
 # Viz scope — the standard visualization set (chart types)
 
-Status: scope (the ask). Part of the [`viz/`](README.md) slice — the **standard visualization set** that
-fills in the `view` vocabulary the spine ([`panel-model-scope.md`](panel-model-scope.md)) defines. Promotes
-to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md) as each panel type ships.
+Status: **Phase 1 shipped (2026-06-29)** — `timeseries` ships end to end (renderer + the full per-viz
+`options` surface: legend/tooltip; the `chart` alias resolves to it). Phase 2+ panel types remain scoped.
+Part of the [`viz/`](README.md) slice — the **standard visualization set** that fills in the `view`
+vocabulary the spine ([`panel-model-scope.md`](panel-model-scope.md)) defines. Shipped truth in
+[`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
 
 One paragraph: this doc owns **which Grafana panel types we render, in what order, with which renderer, and
 with what per-viz `options` shape**. The user's complaint is real — our shipped renderers expose almost no

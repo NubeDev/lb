@@ -5,25 +5,27 @@
 //! CORS is permissive here for the dev UI (the Vite browser app on a different origin). A real
 //! deployment tightens this to the served origin — config, not code.
 
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_datasource, add_team_member, archive_workspace, assign_grant, bus_stream, channel_stream,
-    create_channel, create_team, create_user, create_workspace, define_role, delete_chain,
-    delete_dashboard, delete_rule, delete_team, delete_user, disable_extension, disable_user,
-    enable_extension, enable_user, find_series, get_chain, get_chain_run, get_dashboard, get_doc,
-    get_history, get_outbox_status, get_rule, grant_skill, latest_sample, link_doc, list_chains,
+    convert_unit, create_channel, create_team, create_user, create_workspace, define_role,
+    delete_chain, delete_dashboard, delete_rule, delete_team, delete_user, disable_extension,
+    disable_user, enable_extension, enable_user, find_series, format_datetime, format_number,
+    format_quantity, get_chain, get_chain_run, get_dashboard, get_doc, get_history,
+    get_outbox_status, get_prefs, get_rule, grant_skill, latest_sample, link_doc, list_chains,
     list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_grants,
     list_inbox, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
     list_users, list_workspaces, load_skill, login, mcp_call, post_message, publish_extension,
     publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
     remove_datasource, remove_team_member, rename_team, rename_workspace, request_approval,
-    resolve_inbox, resolve_workflow_approval, revoke_grant, run_chain, run_query, run_rule,
-    run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream, serve_ext_ui,
-    share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, test_datasource, uninstall_extension, write_samples,
+    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_grant, run_chain, run_query,
+    run_rule, run_stream, save_chain, save_dashboard, save_rule, scan_table, series_stream,
+    serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, test_datasource,
+    uninstall_extension, write_samples,
 };
 use crate::state::Gateway;
 use axum::routing::delete;
@@ -59,6 +61,15 @@ pub fn router(gw: Gateway) -> Router {
         .route("/inbox/{channel}", get(list_inbox))
         .route("/inbox/{item}/resolve", post(resolve_inbox))
         .route("/outbox", get(get_outbox_status))
+        // prefs + formatting (prefs scope). `prefs.*` are gated tenant verbs; `format.*`/`convert.*`
+        // are the grant-free utility tier (pure CLDR/unit math, authenticated for identity only).
+        .route("/prefs", get(get_prefs).put(set_prefs))
+        .route("/prefs/resolve", post(resolve_prefs))
+        .route("/prefs/default", put(set_default_prefs))
+        .route("/format/datetime", post(format_datetime))
+        .route("/format/number", post(format_number))
+        .route("/format/quantity", post(format_quantity))
+        .route("/convert/unit", post(convert_unit))
         // admin-crud: the destructive/admin surface (admin-console scope). Every verb re-checks the
         // capability server-side — the UI cap-gate is convenience only.
         .route("/admin/users", get(list_users).post(create_user))

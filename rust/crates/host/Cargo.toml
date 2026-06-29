@@ -18,6 +18,7 @@ lb-ext-loader.workspace = true
 lb-inbox.workspace = true
 lb-ingest.workspace = true
 lb-jobs.workspace = true
+lb-prefs.workspace = true
 lb-run-events.workspace = true
 lb-tags.workspace = true
 lb-undo.workspace = true

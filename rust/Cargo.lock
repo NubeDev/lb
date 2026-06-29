@@ -4288,6 +4288,7 @@ dependencies = [
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
+ "lb-prefs",
  "lb-registry",
  "lb-role-ai-gateway",
  "lb-rules",
@@ -4374,6 +4375,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-prefs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "uom",
+]
+
+[[package]]
 name = "lb-registry"
 version = "0.1.0"
 dependencies = [
@@ -4430,6 +4445,7 @@ dependencies = [
  "lb-inbox",
  "lb-mcp",
  "lb-outbox",
+ "lb-prefs",
  "lb-registry",
  "lb-run-events",
  "reqwest",
@@ -8572,6 +8588,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
+]
+
+[[package]]
+name = "uom"
+version = "0.38.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a739f83872836c82a4f2527d4e54b37007b3de68cafe7edde95fd695968bf4b9"
+dependencies = [
+ "num-traits",
+ "typenum",
 ]
 
 [[package]]

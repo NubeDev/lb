@@ -14,6 +14,7 @@ import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import { ChartView } from "./ChartView";
+import { TimeseriesView } from "./timeseries/TimeseriesView";
 import { StatView } from "./StatView";
 import { GaugeView } from "./GaugeView";
 import { TableView } from "./TableView";
@@ -23,10 +24,13 @@ import { SliderControl } from "./SliderControl";
 import { ButtonControl } from "./ButtonControl";
 import { ExtWidget } from "../builder/ExtWidget";
 
-/** The tools a cell may forward through the bridge = its source + action tools (host ∩ grant). */
+/** The tools a cell may forward through the bridge = its source + action + v3 target tools (host ∩
+ *  grant). v3 cells carry `sources[]` (targets); a v2 cell carries the single `source`. Both are folded
+ *  in so the bridge leash covers every tool the cell can read, regardless of contract version. */
 export function cellTools(cell: Cell): string[] {
   const tools = new Set<string>();
   if (cell.source?.tool) tools.add(cell.source.tool);
+  for (const t of cell.sources ?? []) if (t.tool) tools.add(t.tool);
   if (cell.action?.tool) tools.add(cell.action.tool);
   // A read-only stat/gauge control may also read its own source; covered above. The series read sibling
   // of a watch source is added by the builder when it sets the source.
@@ -68,7 +72,14 @@ export function WidgetView({
   }
 
   switch (view) {
+    case "timeseries":
+      // v3 timeseries (the canonical id `chart` aliases to via `cellView`). The full Grafana option
+      // surface + the fieldConfig render path; data through the one `usePanelData` hook.
+      return <TimeseriesView cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "chart":
+      // Defensive: `cellView` canonicalizes `chart` → `timeseries`, so this is unreachable for a real
+      // cell, but kept so a direct `view:"chart"` (e.g. a hand-built test cell bypassing cellView)
+      // still renders the v2 chart rather than the unsupported-view fallback.
       return <ChartView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
     case "stat":
       return <StatView source={cell.source} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;

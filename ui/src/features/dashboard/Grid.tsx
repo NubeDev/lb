@@ -8,7 +8,7 @@ import GridLayout, { type Layout } from "react-grid-layout";
 import { GripHorizontal, X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
-import { CellSettingsButton } from "./builder/CellSettings";
+import { EditCellButton } from "./editor/EditCellButton";
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
@@ -132,12 +132,7 @@ export function Grid({
               </button>
             )}
             {editable && canEdit && onEditCell && workspace && (
-              <CellSettingsButton
-                ws={workspace}
-                cell={c}
-                existing={cells}
-                onSave={onEditCell}
-              />
+              <EditCellButton ws={workspace} cell={c} scope={scope} onSave={onEditCell} />
             )}
             <div className="min-h-0 flex-1">
               <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} scope={scope} refreshKey={refreshKey} />

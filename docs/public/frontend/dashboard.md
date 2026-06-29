@@ -289,14 +289,73 @@ real ingest path); `toSurrealQL` unit cases + a Builder→Code→Builder round-t
 "build a query in the visual editor → Run → rows render in a table AND a chart widget" over the real
 gateway.
 
+## Grafana-compatible visualization — Phase 1 (`timeseries` end to end)
+
+The viz slice adopts Grafana's panel model as an **additive superset** of the shipped v2 cell. Phase 1
+ships the spine + the `timeseries` panel + the one editor. No v1/v2 cell breaks; every new field is
+serde-default; no new datastore, no new verb (it rides `dashboard.save`/`get`).
+
+- **The additive v3 cell shape.** `Cell` gains (all optional/serde-default): `description`, `sources[]`
+  (Grafana *targets* — each `{ refId, datasource, tool, args, hide }`, superseding the single `source`;
+  a v2 single-`source` cell reads as `sources[0]` via the `cellSources` adapter), `transformations[]`
+  (**config only** in Phase 1 — the pipeline runs in the backend `viz.query`/`lb-viz` in Phase 3, never
+  client-side), `fieldConfig` (per-field option defaults + overrides), and `pluginVersion`. `Dashboard`
+  gains `schemaVersion` (our panel-model **document** version, pinned `=3` at save — distinct from
+  `Cell.v`, the cell *contract* version, and not Grafana's interchange `schemaVersion`). The host stores
+  `fieldConfig`/`transformations` opaquely (the UI owns the typed shape) and **bounds** the record:
+  ≤32 transforms, ≤64 overrides/mappings/threshold-steps — an over-cap `save` is rejected server-side.
+- **The `view` vocabulary adopts Grafana panel-type ids.** `timeseries`, `barchart`, `stat`, `gauge`,
+  `bargauge`, `table`, `piechart`, … The shipped views are **aliases** (`chart` → `timeseries`); a v2
+  `chart` cell renders unchanged through the new `timeseries` renderer. New cells write the canonical id;
+  `canonicalView` resolves aliases at render.
+- **The `timeseries` renderer — the full Grafana option surface.** Per-viz `options` (legend
+  `showLegend`/`displayMode` list|table|hidden / `placement` / `calcs`; tooltip `mode`/`sort`) and
+  per-field draw options in `fieldConfig.custom` (`drawStyle` line|bars|points, `lineWidth`,
+  `fillOpacity`, …) — names taken verbatim from Grafana so import maps 1:1. Replaces the bad
+  single-`unit`-string options.
+- **The fieldConfig render path, through ONE user-prefs bridge.** `unit`/`decimals`/`min`/`max`/
+  `thresholds`/`mappings`/`color`/`displayName`/`noValue`, plus `byName`/`byType` overrides. All value
+  formatting goes through **one file** (`features/dashboard/fieldconfig/format.ts`) — never a hard-coded
+  `toFixed` or unit string in a renderer. **Sequencing:** `lb-prefs` (`format.*`) is not shipped yet, so
+  the bridge renders the documented **fallback** (canonical value + static unit label + local decimals)
+  behind a `format.*`-shaped call site; when `lb-prefs` lands, the fallback is swapped for the real call
+  **with no schema change and no re-save** (the `viaPrefs` flag is the swap-point guardrail). Thresholds
+  **color** a value (and the line) — they never fire an alert (that's the rules engine). Grafana semantic
+  color names resolve to `ui-standards` theme tokens; explicit hex passes through.
+- **One data hook.** All panel data flows through `usePanelData` (Phase 1: the primary target over the v2
+  bridge; Phase 3: swapped to `viz.query` in one file). No scattered `bridge.call` in renderers/editor.
+- **One panel editor — add ≡ edit.** A single `PanelEditor` (a shadcn Sheet) mounts on a cell for both
+  **Add panel** (a fresh default cell) and **Edit** (the ⚙ on a cell) — the same component, the same
+  code path. It has the Grafana tab structure from day one (Query / Transform / Panel options / Field /
+  Overrides) + a live preview + a viz picker + options search, reusing the shipped source picker, SQL
+  Builder⇄Code editor, RefreshControl, and the `WidgetView`/`WidgetHost` render dispatch. The headline:
+  **one pure `cell ↔ editorState` (de)serializer** (`cellToEditorState`/`editorStateToCell`) with the
+  pinned identity `editorStateToCell(cellToEditorState(c)) ≡ c` for v1/v2/v3 cells — so reopening the
+  editor reconstructs **every** option (including the SQL **Builder** state in `options.sql`), and add
+  and edit can never drift. This makes the previously-false "add and edit share one field-code path"
+  claim **true**, and fixes the reported "editing loses my SQL options" bug. The retired `WidgetBuilder`
+  add-bar and the `CellSettings` ⚙ drawer are gone from the dashboard path (one surface, by design).
+- **Authorization unchanged.** The editor is gated on `mcp:dashboard.save:call` (no editor entry point
+  without it); the host re-checks `dashboard.save` on save (the authoritative backstop); per-target reads
+  reuse the target tool's cap ∩ grant. Workspace isolation holds for v3 panels.
+
+Tested against the real gateway/store (no mocks): the **ADD ≡ EDIT parity** headline (build → save →
+reopen → every option identical, incl. the SQL Builder state), the `cell ↔ editorState` round-trip
+(v1/v2/v3), backward-compat (a v1 series cell and a v2 chart+store.query cell load/render/re-save
+unchanged), the format-bridge "no stored formatted string" assertion, live preview over real seeded rows
+(honest deny when the source is denied), the edit-cap host save-deny backstop, and workspace isolation.
+
+Phases 2–4 (the rest of the chart set, the backend `viz.query`/`lb-viz` transform pipeline + multi-
+datasource targets, and Grafana JSON import/export) are scoped follow-ups on this same spine.
+
 ## Follow-ups
 
-- **Grafana-compatible visualization (`viz/`) — scoped, building.** The standard chart set with the full
-  Grafana option surface (`fieldConfig`: units/decimals/thresholds/mappings/color), a transformation
-  pipeline, datasource binding beyond native SurrealDB, user-prefs-driven formatting, Grafana dashboard
-  JSON import/export, and a redesigned panel editor that fixes the add≠edit option-parity gap. Scope:
-  [`../../scope/frontend/dashboard/viz/README.md`](../../scope/frontend/dashboard/viz/README.md). Phase 1
-  is `timeseries` end to end. Promote shipped parts here as they land.
+- **Grafana-compatible visualization (`viz/`) — Phase 1 shipped (above); Phases 2–4 scoped.** Phase 2:
+  the rest of the standard chart set. Phase 3: `viz.query` + `lb-viz` (swap `usePanelData`'s body), the
+  transform pipeline, datasource binding beyond native SurrealDB. Phase 4: Grafana dashboard JSON
+  import/export + `schemaVersion` migration. When `lb-prefs` ships, swap `fieldconfig/format.ts`'s
+  fallback for the real `format.*` call (no schema change, no re-save). Scope:
+  [`../../scope/frontend/dashboard/viz/README.md`](../../scope/frontend/dashboard/viz/README.md).
 - ~~Mount federated extension widgets in dashboard cells.~~ **Shipped** (`ext:<id>/<widget>` renderer).
 - ~~Define the per-widget cell key for multi-widget extensions.~~ **Shipped** (`ext:<id>/<widget-id>`).
 - ~~Add the untrusted iframe widget tier.~~ **Shipped** (opaque-origin sandbox + postMessage bridge).

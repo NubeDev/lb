@@ -50,6 +50,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("federation.")
         || qualified_tool.starts_with("datasource.")
         || qualified_tool.starts_with("host.")
+        || qualified_tool.starts_with("prefs.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool == "undo"
         || qualified_tool == "redo"
@@ -133,6 +134,18 @@ async fn dispatch_at_depth(
     input_json: &str,
     depth: u32,
 ) -> Result<String, ToolError> {
+    // The grant-free utility tier (prefs scope): `format.*` / `convert.unit` are pure CLDR/unit math
+    // over NO tenant data, so they carry NO capability and are dispatched WITHOUT the authorize gate
+    // (the caller passes resolved prefs/axes inline; the host reads no store). This branch sits
+    // BEFORE the gated host-native block on purpose — routing them through `authorize_tool` would
+    // wrongly require a `mcp:format.*:call` grant the scope says must not exist.
+    if qualified_tool.starts_with("format.") || qualified_tool.starts_with("convert.") {
+        let input: Value = serde_json::from_str(input_json)
+            .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
+        let out = crate::call_format_tool(qualified_tool, &input)?;
+        return serde_json::to_string(&out).map_err(|e| ToolError::Extension(e.to_string()));
+    }
+
     if is_host_native(qualified_tool) {
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
         // caller is opaque and indistinguishable from a missing tool — then delegate to the host verb.
@@ -164,6 +177,8 @@ async fn dispatch_at_depth(
             crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("prefs.") {
+            crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {

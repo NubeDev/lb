@@ -58,7 +58,12 @@ render time:
 | `"ext:<id>"` | the extension's own read tool (from `ext.list`) | per its manifest | the ext's arg form |
 
 The author selects a datasource; the builder maps it to the tool + shows the matching editor, then writes a
-plain v2 target. Nothing downstream of the picker knows "what kind" — render is the shipped `bridge.call`.
+plain v2 target. Nothing downstream of the picker knows "what kind." At render the targets are dispatched by
+the backend **`viz.query`** resolver ([`transformations-scope.md`](transformations-scope.md)) — it calls
+each target tool under `caller ∩ grant` (workspace from the token), then applies the transformation pipeline
+and returns canonical frames. (A no-transform Phase-1 panel may still resolve via the shipped client
+`bridge.call` behind one data hook until `viz.query` lands in Phase 3 — the resolution *contract* is the
+same `(tool, args)` either way.)
 
 **Rejected: a per-datasource-kind special binding on the cell** (e.g. `cell.federationSource`,
 `cell.seriesBinding`). That multiplies the contract by the number of kinds, forks the render path, and
@@ -83,9 +88,10 @@ through the gated, workspace-pinned `federation.query` verb — the secret stays
   *offers* sources the caller could resolve; a tampered ref still fails the per-call host check.
 - **Placement (rule 1):** `either` — pure resolution + UI; identical on edge and cloud. The federation
   extension is a native Tier-2 sidecar wherever it runs (§6.3); the panel doesn't know or branch.
-- **MCP surface (§6.1):** **none added by the render path** — each target is a normal bounded `bridge.call`
-  to an already-registered tool. The *one* candidate addition is a federation read verb for the builder
-  (next bullet), and it lives on the federation plane, not the dashboard.
+- **MCP surface (§6.1):** the render path dispatches targets through the **`viz.query`** verb
+  ([`transformations-scope.md`](transformations-scope.md)) — this binding doc adds no datasource verb of its
+  own beyond the federation builder-schema read (next bullet, on the federation plane). Each target stays a
+  bounded call to an already-registered tool, leashed by its own cap inside the resolver.
 - **Data (SurrealDB):** the cell stores only the `DataSourceRef` + `{ tool, args }` — no rows, no DSN. A
   `federation.query` is read-first, SELECT-only validated, row-capped (the shipped 10k/5s class); native
   `store.query` keeps its parse-allowlist. A "mirror to series" target writes through the shipped

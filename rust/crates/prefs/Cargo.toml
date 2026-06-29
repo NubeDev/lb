@@ -1,0 +1,23 @@
+[package]
+name = "lb-prefs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lb-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+# uom — compile-time dimensional analysis (prefs scope: correctness of unit conversion, affine °C↔°F).
+uom = { version = "0.38", default-features = false, features = ["f64", "si", "std"] }
+
+[dev-dependencies]
+tokio.workspace = true
+
+[[bin]]
+name = "gen-prefs-ts"
+path = "src/bin/gen_ts.rs"

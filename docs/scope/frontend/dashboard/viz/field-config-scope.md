@@ -1,8 +1,11 @@
 # Viz scope — the field config (chart options done right, via user-prefs)
 
-Status: scope (the ask). Part of the [`viz/`](README.md) slice; the **option taxonomy** half of the panel
-model ([`panel-model-scope.md`](panel-model-scope.md)). Promotes to
-[`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
+Status: **Phase 1 shipped (2026-06-29)** — `fieldConfig.defaults` (unit/decimals/min-max/thresholds/
+mappings/color) + `byName`/`byType` overrides render through the ONE user-prefs bridge
+(`features/dashboard/fieldconfig/format.ts`) with the documented fallback until `lb-prefs` ships
+(`byRegex`/`byFrameRefID` deferred as named follow-ups). Part of the [`viz/`](README.md) slice; the
+**option taxonomy** half of the panel model ([`panel-model-scope.md`](panel-model-scope.md)). Shipped
+truth in [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
 
 One paragraph: this is the doc that fixes the user's core complaint — *"the options for a chart are really
 bad."* Today a chart carries a single `unit` string, a stat a `unit`, a gauge a `min/max/unit`: no
@@ -79,9 +82,11 @@ plus a forked formatter that drifts from the platform's canonical-in/localized-o
   rides `mcp:dashboard.save:call`, already gated.
 - **Placement:** `either` — the shape is pure data; the same render code runs on edge and cloud, Tauri
   `invoke` or gateway SSE+HTTP. No role branch.
-- **MCP surface (§3.7, §6.5):** **none added** by this scope. Rendering *calls* the prefs tools
-  (`format.quantity` / `format.number` / `format.datetime` / `convert.unit`) — the universal MCP contract is
-  the bridge between viz and prefs. `fieldConfig` is part of the `dashboard.save` UPSERT, not a new verb.
+- **MCP surface (§3.7, §6.5):** **none added** by this scope. Data arrives as **canonical** frames from
+  `viz.query` ([`transformations-scope.md`](transformations-scope.md)); this scope's rendering then *calls*
+  the prefs tools (`format.quantity` / `format.number` / `format.datetime` / `convert.unit`) to localize —
+  data-shape (backend resolver) and presentation (prefs boundary) are distinct MCP verbs. `fieldConfig` is
+  part of the `dashboard.save` UPSERT, not a new verb.
 - **Data (SurrealDB):** one record, more defaulted fields. `overrides[]` is **bounded ≤64/panel** and
   `mappings[]`/`thresholds.steps[]` bounded (e.g. ≤64 each) so a `fieldConfig` cannot bloat the dashboard
   row (panel-model's caps). All fields `#[serde(default)]` — absent on a v1/v2 cell.

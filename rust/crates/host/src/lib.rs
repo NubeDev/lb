@@ -31,6 +31,7 @@ mod load;
 mod members;
 mod native;
 mod outbox;
+mod prefs;
 mod registry;
 mod reload;
 mod remote;
@@ -86,8 +87,9 @@ pub use channel_registry::{channel_create, channel_list, register_on_post, Chann
 pub use dashboard::{
     call_dashboard_tool, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
     dashboard_share, seed_iot_demo, Action, Cell, Dashboard, DashboardError, DashboardSummary,
-    SeedReport, Source as CellSource, Variable as DashboardVariable,
-    Visibility as DashboardVisibility,
+    SeedReport, Source as CellSource, Target as CellTarget, Variable as DashboardVariable,
+    Visibility as DashboardVisibility, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,
@@ -128,6 +130,10 @@ pub use native::{
     SidecarMap, Supervised,
 };
 pub use outbox::{enqueue_outbox, outbox_status, OutboxError, OutboxStatus};
+pub use prefs::{
+    authorize_prefs, call_format_tool, call_prefs_tool, prefs_get, prefs_resolve, prefs_set,
+    prefs_set_default, PrefsSvcError,
+};
 pub use registry::{
     authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
     install_native_from_registry, list_catalog, pull, read_cached, record_catalog,

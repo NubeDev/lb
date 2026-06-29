@@ -14,6 +14,11 @@ use serde_json::Value;
 /// workspace).
 pub const TABLE: &str = "dashboard";
 
+/// Our panel-model document version (viz panel-model scope), pinned on [`Dashboard::schema_version`]
+/// at save. `3` = the Grafana-aligned panel model (v3 cells: `sources[]`/`fieldConfig`/
+/// `transformations`). Bumped only when the stored *document* shape changes (not when `Cell.v` does).
+pub const SCHEMA_VERSION: u32 = 3;
+
 /// A dashboard's visibility tier — the S4 asset-sharing tiers (dashboard scope, "Access").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -60,14 +65,44 @@ pub struct Action {
     pub args_template: Value,
 }
 
+/// A v3 **target** — a Grafana "target": one query against one datasource (viz panel-model scope).
+/// Generalizes the single [`Source`] to an ordered `sources[]`; each carries a `ref_id` (A, B, …)
+/// referenced by transformations + overrides, and an optional `datasource` ref. A v2 single-`source`
+/// cell reads as `sources[0]` through the UI adapter; the host stores whatever the client sends. The
+/// datasource ref is opaque `Value` here — the host does not interpret it (datasource-binding scope
+/// owns its resolution, leashed by the target tool's cap ∩ grant, re-checked per call).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct Target {
+    /// `"A"` | `"B"` | … — referenced by transformations + field overrides.
+    #[serde(default, rename = "refId")]
+    pub ref_id: String,
+    /// Which datasource (native | series | federation | ext). Opaque to the host.
+    #[serde(default)]
+    pub datasource: Value,
+    /// The resolved MCP tool (`store.query` | `series.read` | `federation.query` | ext tool).
+    #[serde(default)]
+    pub tool: String,
+    /// The query args (opaque; re-checked per call, exactly like [`Source::args`]).
+    #[serde(default)]
+    pub args: Value,
+    /// Skip this target's data (Grafana parity).
+    #[serde(default)]
+    pub hide: bool,
+}
+
 /// One grid cell: react-grid-layout geometry + the widget it hosts + its data binding (dashboard
 /// scope, "Data").
 ///
 /// **v1 (frozen):** `widget_type` + `binding` (`{series}` | `{find:{tags}}`) + `options`.
 /// **v2 (widget-builder scope):** adds `view` (the render vocabulary), `source` (`{tool,args}` — any
-/// granted tool, read or write), and `action` (a control's write tool). All v2 fields are
-/// serde-defaulted so a v1 series cell deserializes unchanged (a v1 cell is a v2 cell whose tool set
-/// is the four read verbs). The receiver rejects an unknown major `v`.
+/// granted tool, read or write), and `action` (a control's write tool).
+/// **v3 (viz panel-model scope):** adds the Grafana-aligned panel shape — `description`, `sources[]`
+/// (targets, superseding the single `source`), `transformations[]` (a client-side pipeline, opaque
+/// here), `field_config` (per-field option defaults + overrides, opaque here — the UI owns the typed
+/// shape and the user-prefs render bridge), and `plugin_version` (import/export round-trip fidelity).
+/// All v2/v3 fields are serde-defaulted so a v1 series cell deserializes unchanged (a v1 cell is a v2
+/// cell whose tool set is the four read verbs; a v2 cell is a v3 cell with one target + empty
+/// field-config). The receiver rejects an unknown major `v`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cell {
     /// react-grid-layout item key (stable per cell).
@@ -105,6 +140,25 @@ pub struct Cell {
     /// the host.
     #[serde(default)]
     pub options: Value,
+    /// v3 panel description (Grafana parity). Empty on a v1/v2 cell.
+    #[serde(default)]
+    pub description: String,
+    /// v3 targets — supersedes the single `source`. `sources[0]` === `source` for v2 compat (the UI
+    /// adapter maps a v2 single-`source` cell to a one-element `sources`). Empty on a v1/v2 cell.
+    #[serde(default)]
+    pub sources: Vec<Target>,
+    /// v3 client-side transformation pipeline (transformations scope). Opaque to the host (the UI
+    /// owns the typed `{ id, options, disabled, filter }` shape). Bounded by `save` (record growth).
+    #[serde(default)]
+    pub transformations: Vec<Value>,
+    /// v3 `fieldConfig { defaults, overrides[] }` — per-field option defaults + per-field overrides
+    /// (field-config scope: unit/decimals/min-max/thresholds/mappings/color). Opaque to the host;
+    /// the UI owns the typed shape AND the user-prefs render bridge. Bounded by `save`.
+    #[serde(default, rename = "fieldConfig")]
+    pub field_config: Value,
+    /// v3 plugin version, for import/export round-trip fidelity. Empty on a v1/v2 cell.
+    #[serde(default, rename = "pluginVersion")]
+    pub plugin_version: String,
 }
 
 /// A dashboard VARIABLE definition (widget-config-vars scope, Slice 2). One model: a `name` bound to a
@@ -162,6 +216,12 @@ pub struct Dashboard {
     /// pre-variables dashboard round-trips unchanged. The selection lives in the URL, not here.
     #[serde(default)]
     pub variables: Vec<Variable>,
+    /// OUR panel-model document version (viz panel-model scope) — pinned at save, read by the
+    /// import/export + migration path. Distinct from `Cell.v` (the cell *contract* version): this
+    /// versions the stored *document shape*, that versions what a bridge accepts. Additive/defaulted;
+    /// NOT Grafana's `schemaVersion` (that lives only in the interchange JSON, consumed by the mapper).
+    #[serde(default, rename = "schemaVersion")]
+    pub schema_version: u32,
     pub updated_ts: u64,
     /// Tombstone (soft-delete, §6.8 idempotent). A deleted dashboard is hidden from `list`/`get`.
     #[serde(default)]

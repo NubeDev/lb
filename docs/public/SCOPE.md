@@ -3,6 +3,26 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (core crate — `lb-prefs`: canonical-in / localized-out preferences, units & formatting)
+
+The boundary that renders canonical data per a principal's resolved preferences (domain data stays
+canonical — UTC instants, base units, neutral enums — never a formatted string).
+
+- **`lb-prefs` crate** — the closed axis set (8 dimensions, 29 units), nullable `user_prefs:[ws,user]`
+  + `workspace_prefs:[ws]` SCHEMAFULL records, the pure resolution fold (request → user → ws-default →
+  built-in, each axis independent), `uom`-backed conversion (affine °C↔°F; cross-dimension rejected),
+  and locale/tz formatting (separators + date order + 12/24h from the axes; tz over a UTC instant incl.
+  DST via `chrono-tz`).
+- **MCP surface** — gated `prefs.get/set/resolve/set_default` (OWN self-scoped; `set_default` admin)
+  + a **grant-free** utility tier `format.datetime/number/quantity` + `convert.unit` (pure math, no
+  tenant data). Gateway routes mirror them 1:1. Closed vocabulary generated to the client
+  (`ui/src/lib/prefs/dimensions.generated.ts`).
+- **Deferred (Phase 2, named):** i18n MessageFormat catalogs (server-localized notifications/emails,
+  per-recipient fan-out) — dialect pinned (ICU MF1 / `intl-messageformat`); the `icu4x` swap-in for
+  localized names + the MessageFormat engine + the en/es CLDR data slice; the client settings UI.
+
+See `prefs/prefs.md`, `../scope/prefs/user-prefs-scope.md`, `../sessions/prefs/lb-prefs-session.md`.
+
 ## Shipped (S9+ — frontend: the rules workbench — Playground · chain canvas · datasources admin)
 
 Three cap-gated shell pages over the **already-shipped** `rules.*`/`chains.*`/`datasource.*` host verbs,

@@ -22,6 +22,7 @@ members = [
     "crates/jobs",
     "crates/mcp",
     "crates/outbox",
+    "crates/prefs",
     "crates/registry",
     "crates/rules",
     "crates/run-events",
@@ -70,6 +71,7 @@ lb-ingest = { path = "crates/ingest" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }
+lb-prefs = { path = "crates/prefs" }
 lb-registry = { path = "crates/registry" }
 lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }

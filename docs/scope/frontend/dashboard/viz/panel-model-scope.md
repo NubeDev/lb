@@ -1,7 +1,11 @@
 # Viz scope — the panel model (the Grafana-aligned cell, additive over v2)
 
-Status: scope (the ask). The **spine** of the [`viz/`](README.md) slice — the data shapes every other
-viz sub-scope references. Promotes to [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md).
+Status: **Phase 1 shipped (2026-06-29)** — the additive v3 cell shape (`sources[]`/`fieldConfig`/
+`transformations` config/`schemaVersion`, the 24-col grid alignment, serde-default additive over v1/v2)
+landed end to end; `transformations` is config-only (the pipeline is backend-resolved in Phase 3). The
+**spine** of the [`viz/`](README.md) slice — the data shapes every other viz sub-scope references. Shipped
+truth in [`public/frontend/dashboard.md`](../../../../public/frontend/dashboard.md); session:
+[`dashboard-viz-phase1`](../../../../sessions/frontend/dashboard-viz-phase1-session.md).
 
 One paragraph: extend our durable **cell** record into a **Grafana-aligned panel model** — a `view`
 (Grafana panel type), one or more **targets** (`sources[]`) over a **datasource ref**, a **`fieldConfig`**
@@ -55,7 +59,7 @@ Cell {                                   // existing
   // --- added by this scope (all serde-default / optional) ---
   description?: string                   // panel description (Grafana parity)
   sources?: Target[]       // v3 targets — supersedes single `source`; sources[0] === source for v2 compat
-  transformations?: Transformation[]     // the client-side pipeline (transformations-scope)
+  transformations?: Transformation[]     // the backend-resolved pipeline, run by viz.query/lb-viz (transformations-scope)
   fieldConfig?: FieldConfig              // defaults + per-field overrides (field-config-scope)
   pluginVersion?: string                 // for import/export round-trip fidelity
 }
@@ -105,9 +109,12 @@ the stored *document shape* (what a migration reads). Both are additive and defa
   (`mcp:dashboard.save:call` / `:get`), already gated. A target's data is still leashed by the target
   tool's cap ∩ grant, host-re-checked per call. New caps belong to import/export, not here.
 - **Placement:** `either` — pure record shape; same on edge and cloud.
-- **MCP surface (§6.1):** **none added.** The extended cell is part of the layout UPSERT (one synchronous,
-  bounded write). Multiple targets do **not** mean a batch — each target is a normal `bridge.call` at
-  render time, leashed as today; an unbounded target must itself be a job-backed tool (the shipped rule).
+- **MCP surface (§6.1):** **none added by the shape itself** — the extended cell rides the layout UPSERT
+  (one synchronous, bounded write). Panel *data* is resolved by the **`viz.query`** verb
+  ([`transformations-scope.md`](transformations-scope.md)), which dispatches `sources[]` server-side and
+  applies the pipeline — so multiple targets are not a client fan-out and never a batch; an unbounded target
+  must itself be a job-backed tool (the shipped rule). (Until `viz.query` lands in Phase 3, a no-transform
+  panel may still resolve via the shipped client bridge behind one data hook — see the umbrella phasing.)
 - **Data (SurrealDB):** one record, more defaulted fields. Bounded: `fieldConfig.overrides[]` and
   `transformations[]` are capped (e.g. ≤64 overrides / ≤32 transforms per panel) to keep the dashboard
   record small; inline scripted code stays the shipped ≤4 KB / `render_template:{id}` rule.
@@ -129,7 +136,7 @@ the stored *document shape* (what a migration reads). Both are additive and defa
 2. The editor adds a second target **B** against a federation datasource (`datasource:{type:"federation",
    uid:"datasource:kfc:timescale"}`, `tool:"federation.query"`); both targets render as series.
 3. A `reduce` transformation collapses each series to its last value for a companion `stat` panel — the
-   `transformations[]` array, applied client-side over the targets' rows.
+   `transformations[]` array, applied by the backend `viz.query` resolver (`lb-viz`) over the targets' rows.
 4. The user sets a threshold (`fieldConfig.defaults.thresholds`) coloring the line red over 5 °C.
 5. `dashboard.save` UPSERTs the cell — same verb, same record, more defaulted fields. A reload re-reads it;
    an older client reads it via `source`/`view` fallback (no crash).

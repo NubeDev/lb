@@ -1,6 +1,12 @@
 # User-prefs scope — canonical data in, localized presentation out
 
-Status: scope (the ask). Promotes to `public/prefs/` once shipped. Stage: a **core crate**
+Status: **shipped (units + formatting core)** — `lb-prefs` crate + host verbs + gateway routes +
+generated client constants are built, tested (deny + specified workspace-isolation + offline-replay +
+affine-conversion + axis-independence + resolution-chain + locale-rendering incl. DST + canonical
+guarantee, all on real infra), and promoted to [`public/prefs/prefs.md`](../../public/prefs/prefs.md).
+See [`sessions/prefs/lb-prefs-session.md`](../../sessions/prefs/lb-prefs-session.md). The **i18n
+MessageFormat catalogs** (server-localized notifications/emails) remain deferred — Phase 2 — but the
+MessageFormat **dialect is now resolved/pinned** (see Resolved decisions). Stage: a **core crate**
 (`lb-prefs`) — the preference record + resolution + locale/timezone/date/number formatting lands
 alongside server-generated content (useful from **S2** inbox onward, naturally bundled into the
 **S9** collaboration UI where a real principal can finally *own* a preference); the **unit-conversion
@@ -277,28 +283,43 @@ Key unit/integration cases:
   closed and named (temperature, wind_speed, distance, mass, pressure, …) so it stays a small enum, not
   an open free-text map that drifts.
 
-## Open questions
+## Resolved decisions
 
-- **Crate name and shape:** `lb-prefs` (preference-centric) vs `lb-locale` (formatting-centric)? Lean
-  `lb-prefs` — the record + resolution is the durable part; formatting is its library. Confirm before S8.
-- **Are `format.*`/`convert.*` truly grant-free?** They touch no tenant data (pure CLDR/unit math), so a
-  utility tier with no capability is defensible; but consistency may argue for a blanket `mcp:format:call`
-  grant. Lean: free utility, decide at build.
-- **Catalog storage shape:** one `message_catalog` record per (workspace, locale, key) vs a per-locale
-  asset blob (a file in the doc store)? Lean: per-locale blob asset for built-ins, sparse record
-  overrides for workspace customizations.
-- **Canonical unit per dimension:** store the source unit as a tag and convert on read (chosen), or also
-  normalize ingest to a single canonical unit per dimension at write time? Lean: keep the source unit
-  (tag), convert on read — lossless and honest about provenance. Revisit if read-time conversion cost
-  shows up in ingest dashboards.
-- **Number format as its own axis or derived from language?** A user may want Spanish text but
-  English-style `.` decimals. Lean: independent `number_format` axis, seeded by the base locale (consistent
-  with the decouple-the-axes goal).
-- **First-day-of-week / 12h-default seeding:** purely derived from the region locale, or independently
-  settable? Lean: settable, region-seeded.
-- **Where does the *recipient's* locale come from for server-generated content** when the recipient is a
-  team, not a user? Lean: fan out per member to each member's resolved language; a team has no language of
-  its own.
+No blocking open questions — these are the long-term answers the build follows.
+
+- **Crate name: `lb-prefs`.** The record + resolution is the durable part; formatting (`icu4x`/`uom`) is its
+  library. (Not `lb-locale` — preferences are the spine, formatting the consumer.)
+- **`format.*`/`convert.*` are a grant-free utility tier.** They touch no tenant data (pure CLDR/unit math),
+  so they need no capability; `prefs.get`/`resolve`/`set` (which read/write a tenant record) stay gated.
+  Revisit only if a blanket `mcp:format:call` proves necessary for audit consistency.
+- **Catalog storage: per-locale asset blob for built-ins, sparse record overrides for workspace
+  customizations.** Built-in en/es ship as compiled-in/asset catalogs; a workspace override is a sparse
+  `message_catalog` record shadowing specific keys.
+- **Canonical unit per dimension: store the source unit as a tag and convert on read.** Lossless and honest
+  about provenance; do **not** normalize ingest to one unit at write time. Revisit only if read-time
+  conversion cost shows up in ingest dashboards.
+- **`number_format` is its own axis, seeded by the base locale** (the decouple-the-axes goal) — a user can
+  have Spanish text with English-style `.` decimals.
+- **`first_day_of_week` and the 12h/24h default are settable, region-seeded** — an unset axis derives from
+  the region locale; a set one is honored independently.
+- **Server-generated content fans out per recipient member to each member's resolved language** — a team has
+  no language of its own; a notification to a 2-member team renders twice (once per member's prefs).
+- **Formatting library split, as built (icu4x deferred to Phase 2).** `uom` is the conversion engine
+  exactly as scoped (it carries the affine-temperature correctness). For *rendering*, the shipped core
+  derives number separators + date order + 12/24h **from the closed axes** and applies the timezone over
+  a UTC instant (incl. DST) via **`chrono-tz`** — deterministic, locale-correct for the enabled en/es
+  set, and with **zero CLDR data-size cost**, which satisfies the Pi-profile "compile in only enabled
+  locales" risk directly without any icu data-slicing config yet. `icu4x` is the Phase-2 **swap-in
+  behind the same `format::*` signatures** where it genuinely earns its keep: localized month/day
+  **names** and the ICU MessageFormat plural/select engine. The axis is the contract; the renderer is
+  replaceable.
+- **MessageFormat dialect resolved/pinned (the Risk, closed before catalog work).** The portable
+  dialect is **ICU MessageFormat 1 (MF1)**; the client parser is **`intl-messageformat`** (the de-facto
+  TS MF1 implementation). The host catalog is authored in the same MF1 syntax and rendered with an
+  MF1-compatible Rust parser — **not** icu4x's experimental/MF2-leaning path (which would silently
+  diverge on plural/select). For any key that also appears in server-generated content, the **host
+  catalog is the source of truth**. Catalogs themselves are Phase-2 work, but the dialect is no longer
+  an open risk — Phase 2 starts unblocked.
 
 ## Related
 
