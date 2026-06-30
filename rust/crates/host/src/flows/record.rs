@@ -73,7 +73,6 @@ pub fn step_record_id(run_id: &str, node_id: &str) -> String {
 }
 
 /// Re-export the table constants from `lb-flows` so the host verbs agree on names.
-pub use lb_flows::table as tables;
 pub const FLOW_TABLE: &str = table::FLOW;
 pub const FLOW_RUN_TABLE: &str = table::FLOW_RUN;
 pub const FLOW_STEP_TABLE: &str = table::FLOW_STEP;

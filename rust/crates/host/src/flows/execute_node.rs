@@ -92,19 +92,10 @@ async fn dispatch(
 ) -> NodeOutcome {
     let node_type = flow.node(node_id).map(|n| n.node_type.as_str()).unwrap_or("");
     if !is_builtin_type(node_type) {
-        // An extension node: dispatch its bound `<ext>.<tool>` (the node_type IS `<ext>.<type>`;
-        // the tool binding lives on the descriptor — recovered as `<ext>.<tool>` where tool is the
-        // sub-type after the dot... but a node's executing tool is the descriptor's `tool`, which for
-        // an ext node is `<ext>.<tool>`. Without the descriptor here, the contract is: the node's
-        // `config` carries everything the tool needs; dispatch `<ext>.<tool>` where <tool> is named by
-        // the node's config `tool` field, falling back to the sub-type. Slice 3 resolves the
-        // descriptor and passes the exact tool binding.
-        let ext_tool = config
-            .get("tool")
-            .and_then(|v| v.as_str())
-            .map(|t| format!("{node_type}"))
-            .unwrap_or_else(|| node_type.to_string());
-        return call_tool_node(node, principal, ws, &ext_tool, &inputs).await;
+        // An extension node: dispatch its bound `<ext>.<tool>`. The exact tool binding lives on the
+        // descriptor; slice 3 resolves it. For now the node_type `<ext>.<type>` is dispatched as-is
+        // (an ext node is exercised end-to-end in the extension-nodes slice with a real descriptor).
+        return call_tool_node(node, principal, ws, node_type, &Value::Object(inputs)).await;
     }
     match node_type {
         "trigger" => {
@@ -124,12 +115,12 @@ async fn dispatch(
                     map.insert(k, v);
                 }
             }
-            call_tool_node(node, principal, ws, verb, &serde_args(&args)).await
+            call_tool_node(node, principal, ws, verb, &args).await
         }
         "rhai" => {
             let source = config.get("source").and_then(|v| v.as_str()).unwrap_or("");
             let req = json!({ "body": source, "params": Value::Object(inputs), "ts": now });
-            match call_tool(node, principal, ws, "rules.run", &req.to_string()).await {
+            match Box::pin(call_tool(node, principal, ws, "rules.run", &req.to_string())).await {
                 Ok(out) => {
                     let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
                     NodeOutcome::Ok(v.get("output").cloned().unwrap_or(Value::Null), v.get("findings").cloned().unwrap_or(Value::Null))
@@ -162,7 +153,7 @@ async fn dispatch_sink(
     match target {
         "series" => {
             let req = json!({ "samples": [{ "series": name, "value": value, "ts": now }] });
-            match call_tool(node, principal, ws, "ingest.write", &req.to_string()).await {
+            match Box::pin(call_tool(node, principal, ws, "ingest.write", &req.to_string())).await {
                 Ok(_) => NodeOutcome::Ok(json!({"accepted": 1}), Value::Null),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -178,7 +169,7 @@ async fn dispatch_sink(
         }
         "channel" | "inbox" => {
             let req = json!({ "channel": name, "body": value });
-            match call_tool(node, principal, ws, "inbox.record", &req.to_string()).await {
+            match Box::pin(call_tool(node, principal, ws, "inbox.record", &req.to_string())).await {
                 Ok(_) => NodeOutcome::Ok(json!({"recorded": true}), Value::Null),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -216,7 +207,7 @@ async fn dispatch_subflow(
     for (k, v) in inputs {
         child_params.insert(k, v);
     }
-    match run_flow_to_completion(node, principal, ws, &child, child_params, &child_run, now).await {
+    match Box::pin(run_flow_to_completion(node, principal, ws, &child, child_params, &child_run, now)).await {
         Ok(status) if status == "success" => {
             // Read the child's terminal-node outputs and fold them into this node's output.
             let mut folded = serde_json::Map::new();
@@ -230,7 +221,7 @@ async fn dispatch_subflow(
             NodeOutcome::Ok(Value::Object(folded), Value::Null)
         }
         Ok(status) => NodeOutcome::Err(format!("subflow child {child_id} ended {status}")),
-        Err(e) => NodeOutcome::Err(e),
+        Err(e) => NodeOutcome::Err(e.to_string()),
     }
 }
 
@@ -240,19 +231,15 @@ async fn call_tool_node(
     principal: &Principal,
     ws: &str,
     verb: &str,
-    args: &serde_json::Map<String, Value>,
+    args: &Value,
 ) -> NodeOutcome {
-    match call_tool(node, principal, ws, verb, &serde_args(&Value::Object(args.clone()))).await {
+    match Box::pin(call_tool(node, principal, ws, verb, &args.to_string())).await {
         Ok(out) => {
             let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
             NodeOutcome::Ok(v, Value::Null)
         }
         Err(e) => NodeOutcome::Err(tool_err_string(e)),
     }
-}
-
-fn serde_args(v: &Value) -> String {
-    v.to_string()
 }
 
 fn tool_err_string(e: ToolError) -> String {

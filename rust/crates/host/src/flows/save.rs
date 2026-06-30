@@ -36,11 +36,12 @@ pub async fn flows_save(
     } else if flow.version == 0 {
         flow.version = 1;
     }
-    let value = serde_json::to_value(flow).map_err(|e| FlowsError::Internal(e.to_string()))?;
-    write(store, ws, FLOW_TABLE, &flow.id, &value)
+    let value = serde_json::to_value(&*flow).map_err(|e| FlowsError::Internal(e.to_string()))?;
+    let id = flow.id.clone();
+    write(store, ws, FLOW_TABLE, &id, &value)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
-    Ok(flow.id.clone())
+    Ok(id)
 }
 
 /// Re-validate every node's config against its descriptor's schema at save (the config_version

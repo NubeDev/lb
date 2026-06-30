@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use super::error::FlowsError;
 use super::record::{ClaimState, FLOW_RUN_TABLE};
-use super::run_store::{read_run, read_step};
+use super::run_store::read_run;
 use super::save::authorize_store_read;
 
 /// `flows.runs.get {run_id}` — a snapshot of per-node status + outcomes + the pinned version.
