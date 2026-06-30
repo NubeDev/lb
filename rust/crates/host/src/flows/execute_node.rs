@@ -123,7 +123,7 @@ async fn dispatch(
             match Box::pin(call_tool(node, principal, ws, "rules.run", &req.to_string())).await {
                 Ok(out) => {
                     let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
-                    NodeOutcome::Ok(v.get("output").cloned().unwrap_or(Value::Null), v.get("findings").cloned().unwrap_or(Value::Null))
+                    NodeOutcome::Ok(unwrap_rule_output(v.get("output")), v.get("findings").cloned().unwrap_or(Value::Null))
                 }
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -246,5 +246,16 @@ fn tool_err_string(e: ToolError) -> String {
     match e {
         ToolError::Denied => "denied".into(),
         other => other.to_string(),
+    }
+}
+
+/// Unwrap a serialized `RuleOutput` (`{kind:"scalar", value:v}` / `{kind:"grid", columns, rows}`)
+/// to the JSON a downstream `${steps.x.output}` binding reads — the chain `output_json` convention.
+fn unwrap_rule_output(v: Option<&Value>) -> Value {
+    let Some(v) = v else { return Value::Null };
+    match v.get("kind").and_then(|k| k.as_str()) {
+        Some("scalar") => v.get("value").cloned().unwrap_or(Value::Null),
+        Some("grid") => serde_json::json!({ "columns": v["columns"], "rows": v["rows"] }),
+        _ => v.clone(),
     }
 }

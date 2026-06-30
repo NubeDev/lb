@@ -108,6 +108,7 @@ pub async fn record_outcome(
 }
 
 /// The terminal outcome a node's executor reports.
+#[allow(dead_code)]
 pub enum NodeOutcome {
     Ok(Value, Value),
     Err(String),

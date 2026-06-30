@@ -26,8 +26,9 @@ pub enum ClaimState {
 }
 
 /// The persisted run coordinator: lifecycle + the **pinned `flow_version`** (Decision 1) + params.
+/// Internal record (snake_case, matching the chain convention); `flows.runs.get` builds its own
+/// camelCase JSON for the wire — this struct does not leak directly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FlowRunRecord {
     pub run_id: String,
     pub flow_id: String,
@@ -43,7 +44,6 @@ pub struct FlowRunRecord {
 
 /// One node's durable state + recorded result (mirrors the chain `StepStateRecord`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct FlowStepRecord {
     pub run_id: String,
     pub node_id: String,

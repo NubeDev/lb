@@ -39,7 +39,8 @@ pub async fn flows_run(
         .await
         .map_err(FlowsError::Internal)?;
     let _ = &mut flow; // (flow is read as-is; the run pins its current version below)
-    run_flow_to_completion(node, principal, ws, &flow, params, run_id, now).await
+    run_flow_to_completion(node, principal, ws, &flow, params, run_id, now).await?;
+    Ok(run_id.to_string())
 }
 
 /// Create + drive a flow run to terminal completion. Used by `flows.run` and by a `subflow` node
