@@ -145,6 +145,8 @@ The cloud hub can also host the shared AI gateway and workspace-level AI agents 
 
 Capability-mediated envelope encryption. A master key (env/KMS) wraps **per-workspace** data keys, which wrap **per-extension** secrets. Extensions never touch the store; they request a secret and the host returns it only if the grant allows. OS keychain (`keyring`) on desktop; encrypted at rest in SurrealDB on the server.
 
+A secret is **owned** by the extension (or user) that created it, and the owner controls **visibility** at runtime: **private** (only the owning extension may read it — even an admin holding the capability is denied) or **workspace** (any member with the capability may read it). This owner wall sits *below* the capability gate — the same gate-3 ownership/membership shape the document store uses. Values are exposed only to an authorized direct fetch or a server-side mediated injection (into a connection pool or request); they never reach a log, a rule result, a page, a `federation.query` result, or a `secret.list`. See `docs/scope/secrets/secrets-scope.md`.
+
 ### 6.8 Sync (edge ↔ cloud)
 
 No general multi-master replication. Partition data by authority:
@@ -183,7 +185,9 @@ A cross-cutting tagging service: **key:value tags with search**, usable on any e
 
 Through SurrealDB buckets (§6.1). Application code always talks to the bucket/file API; the physical backing is config (local disk on edge, S3-compatible on cloud). Includes file sharing (bucket permissions scope who can put/get/list).
 
-Docs and skills are shared workspace assets built on the same store/capability model. A document can be private to a user, shared with a team, linked into a channel, attached to an inbox item, or made available to an AI workflow session. Skills are versioned assets that a central or local AI agent can load only when granted by the workspace.
+Docs and skills are shared workspace assets built on the same store/capability model. A document can be private to a user, shared with a team or an individual user, linked into a channel, attached to an inbox item, or made available to an AI workflow session. Skills are versioned assets that a central or local AI agent can load only when granted by the workspace.
+
+The **document store** is the reusable markdown surface over this: a markdown document (raw body + metadata) plus first-class **images and attachments** (binary assets through the bucket/file API above) and a queryable **link graph** (doc→doc links, doc→asset embeds, re-gated at read so a link never widens access). Saves participate in undo/redo (§6.5), and the store carries no domain schema — **extensions** (via the host-callback ABI) and the doc-site consume it identically to the first-party shell. Public/anonymous serving of a published doc is a deliberate, opt-in, read-only break in the workspace wall, scoped separately. See `docs/scope/document-store/document-store-scope.md`.
 
 ### 6.13 Frontend
 

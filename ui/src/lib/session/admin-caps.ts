@@ -71,6 +71,9 @@ export const CAP = {
   rulesRun: "mcp:rules.run:call",
   chainsGet: "mcp:chains.get:call",
   datasourceList: "mcp:datasource.list:call",
+  // flows (flows-canvas scope, Wave 3): member-level nav gate. The canvas shows for any session that
+  // may list flows; the gateway re-checks `mcp:flows.<verb>:call` per verb server-side regardless.
+  flowsList: "mcp:flows.list:call",
   // reminders (reminders scope): the nav gate. The page shows for a session that may list reminders;
   // the gateway re-checks `mcp:reminder.<verb>:call` per verb server-side regardless.
   reminderList: "mcp:reminder.list:call",

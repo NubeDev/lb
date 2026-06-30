@@ -17,6 +17,7 @@ members = [
     "crates/caps",
     "crates/devkit",
     "crates/ext-loader",
+    "crates/flows",
     "crates/host",
     "crates/inbox",
     "crates/ingest",
@@ -71,6 +72,7 @@ lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
 lb-devkit = { path = "crates/devkit" }
 lb-ext-loader = { path = "crates/ext-loader" }
+lb-flows = { path = "crates/flows" }
 lb-inbox = { path = "crates/inbox" }
 lb-ingest = { path = "crates/ingest" }
 lb-jobs = { path = "crates/jobs" }
@@ -123,6 +125,10 @@ thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"
+# JSON-Schema 2020-12 validation (flows node-descriptor scope, Decision 3): the inline `[[node]]`
+# config schema is compiled + instances validated host-side by `jsonschema` (Boon), and editor-side
+# by `ajv`. The one dialect the platform standardizes on for any record carrying a user config.
+jsonschema = "0.30"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`

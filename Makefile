@@ -169,6 +169,35 @@ dev: build-wasm trusted-pubkey federation
 federation:
 	cd $(BE_DIR) && cargo build -p federation --features postgres
 
+# ---------------------------------------------------------------------------------------------------
+# Reproducible Linux (cross) builds in Docker — see docker/build/. Use these when the host C toolchain
+# is broken (e.g. a half-installed zig hijacks the linker: `zigranlib: not found`). The image carries
+# real GCC cross-toolchains so vendored OpenSSL (the federation crate) compiles per target.
+#   make docker-build-image                     build the toolchain image once
+#   make docker-build                           build the node for linux x86_64 (default)
+#   make docker-build TARGET=linux-arm64        aarch64 (64-bit Pi)
+#   make docker-build TARGET=linux-armv7        armv7 (32-bit Pi)
+#   make docker-build TARGET=windows-x86_64     node.exe
+#   make docker-build TARGET=deb                .deb package
+#   make docker-build PKG=federation FEATURES=postgres   the federation sidecar
+DOCKER_BUILD_IMAGE ?= lazybones-build
+TARGET ?= linux-x86_64
+# A named volume keeps the cargo registry/git cache warm across runs (incremental builds).
+DOCKER_CARGO_VOL   ?= lazybones-cargo-cache
+
+.PHONY: docker-build-image docker-build
+docker-build-image:
+	docker build -t $(DOCKER_BUILD_IMAGE) docker/build
+
+# Mounts the rust workspace at /work and a named cargo-cache volume; threads PKG/PROFILE/FEATURES
+# through to build.sh. Output lands in $(BE_DIR)/target/<triple>/<profile>/ on the host.
+docker-build:
+	docker run --rm \
+		-v $(CURDIR)/$(BE_DIR):/work \
+		-v $(DOCKER_CARGO_VOL):/usr/local/cargo/registry \
+		-e PKG="$(PKG)" -e PROFILE="$(PROFILE)" -e FEATURES="$(FEATURES)" \
+		$(DOCKER_BUILD_IMAGE) $(TARGET)
+
 # EDGE posture: a solo node — its own authority, fully offline, NO gateway. This is
 # the same binary as `cloud`, just without LB_GATEWAY_ADDR set, so it runs the solo
 # spine demo and exits/serves locally only. No browser reaches it (that's the point).

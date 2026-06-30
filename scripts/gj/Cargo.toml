@@ -1,0 +1,24 @@
+[package]
+name = "gj"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "git-jobs: scheduled auto-commit-and-push jobs via systemd --user timers"
+publish = false
+
+[[bin]]
+name = "gj"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+dirs = "5"
+serde = { version = "1", features = ["derive"] }
+serde_yml = "0.0.12"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"

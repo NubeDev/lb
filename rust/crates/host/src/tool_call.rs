@@ -49,7 +49,9 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("rules.")
         || qualified_tool.starts_with("chains.")
         || qualified_tool.starts_with("federation.")
+        || qualified_tool.starts_with("flows.")
         || qualified_tool.starts_with("datasource.")
+        || qualified_tool.starts_with("secret.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("prefs.")
         || qualified_tool.starts_with("bus.")
@@ -208,6 +210,8 @@ async fn dispatch_at_depth(
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("chains.") {
             crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("flows.") {
+            crate::call_flows_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("federation.")
             || qualified_tool.starts_with("datasource.")
         {
@@ -216,6 +220,11 @@ async fn dispatch_at_depth(
             crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("secret.") {
+            // secrets scope: the `secret.*` CRUD surface (set/get/set_visibility/delete/list),
+            // reached over the same MCP bridge as any verb. The per-verb MCP gate + the
+            // three-gate secret read run inside `call_secret_tool` / `lb-secrets`.
+            crate::call_secret_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("prefs.") {
             crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("query.") {

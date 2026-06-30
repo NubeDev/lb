@@ -1,0 +1,12 @@
+# This crate lives outside rust/, so it doesn't inherit rust/.cargo/config.toml.
+# This box has no system `cc`/gcc and no root to install one — link via the
+# self-contained zig toolchain, same as the main workspace. See rust/.cargo/config.toml.
+[target.x86_64-unknown-linux-gnu]
+linker = "/home/user/.local/bin/zigcc"
+
+[env]
+CC = "/home/user/.local/bin/zigcc"
+AR = "/home/user/.local/bin/zigar"
+CC_x86_64_unknown_linux_gnu = "/home/user/.local/bin/zigcc"
+RANLIB = "/home/user/.local/bin/zigranlib"
+RANLIB_x86_64_unknown_linux_gnu = "/home/user/.local/bin/zigranlib"

@@ -42,7 +42,8 @@ pub async fn install_extension(
         granted.clone(),
         ts,
     )
-    .with_ui(ui, widgets);
+    .with_ui(ui, widgets)
+    .with_nodes(manifest.nodes.clone());
     record_install(&node.store, ws, &install)
         .await
         .map_err(store_to_load)?;

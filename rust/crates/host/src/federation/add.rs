@@ -7,7 +7,7 @@
 //! pre-connect, `net.rs`); registration here records the endpoint that grant gates.
 
 use lb_auth::Principal;
-use lb_secrets::set as secret_set;
+use lb_secrets::{set_with as secret_set_with, Visibility};
 
 use super::authorize::authorize;
 use super::error::FederationError;
@@ -35,10 +35,14 @@ pub async fn datasource_add(
         .map(str::to_string)
         .unwrap_or_else(|| format!("federation/{name}"));
 
-    // If the admin handed the DSN, mediate it into the secret store now (under the admin's authority)
-    // — the value never returns and never reaches the datasource record.
+    // If the admin handed the DSN, mediate it into the secret store now (under the admin's
+    // authority) — the value never returns and never reaches the datasource record. The secret is
+    // `Workspace`-visible because the mediated pool runs as a DIFFERENT principal (`ext:federation`,
+    // see `secret::mediate_dsn`) than the admin who registered it; gate 3's owner wall would
+    // otherwise deny the pool. The capability grant (`secret:federation/*:get` on the install) is
+    // still required, so this is "shared with the workspace" not "public to the world".
     if let Some(dsn) = dsn {
-        secret_set(&node.store, caller, ws, &secret_ref, dsn)
+        secret_set_with(&node.store, caller, ws, &secret_ref, dsn, Visibility::Workspace)
             .await
             .map_err(|_| FederationError::Denied)?;
     }

@@ -1,0 +1,79 @@
+# The reference `mqtt` extension for the flow engine (extension-nodes-scope). The worked example that
+# proves an extension contributes backend node types to the flow palette via the additive `[[node]]`
+# block — identically for native (this one) and wasm tiers. Owns a long-lived broker socket → Tier-2
+# (native); the descriptor is byte-for-byte tier-agnostic (the host picks transport from the install).
+#
+# `mqtt.in`  — a SOURCE node: host-armed on flow enable (allocates series `flow:{ws}:{flow}:{node}`,
+#              bridges broker messages onto it via `ingest.write`); the event-trigger watches it.
+# `mqtt.out` — a SINK node: a must-deliver publish, staged as an outbox effect (never raw pub/sub).
+#
+# The bound tools (`subscribe`/`publish`/`arm`/`disarm`) are ordinary `[[tools]]`; node execution
+# reuses the frozen `tool.call` / `host.call-tool` (no new WIT world). The broker password is mediated
+# by `lb-secrets` under the extension's grant; the flow never sees it.
+[extension]
+id          = "mqtt"
+version     = "0.1.0"
+name        = "MQTT"
+description = "MQTT source/sink flow nodes — the flow-engine reference extension."
+
+[runtime]
+tier        = "native"                  # owns a long-lived broker socket → Tier-2
+world       = "lazybones:ext/extension@0.1.0"
+placement   = "either"
+
+[native]
+exec        = "mqtt-sidecar"
+args        = []
+restart     = "on-crash"
+
+[capabilities]
+request = [
+  "net:tcp:broker.local:1883",     # own the broker socket (the native net:* escape hatch)
+  "secret:mqtt/password:get",      # broker password, mediated by lb-secrets
+  "mcp:ingest.write:call",         # bridge inbound messages onto the host-allocated series
+]
+
+[[tools]]
+name        = "subscribe"
+description = "Bridge a broker topic onto the host-allocated series (armed by the host on enable)."
+[[tools]]
+name        = "publish"
+description = "Publish a payload to a broker topic (a must-deliver sink stages an outbox effect)."
+[[tools]]
+name        = "arm"
+description = "Open the socket + start bridging (host-called on flow enable)."
+[[tools]]
+name        = "disarm"
+description = "Close the socket (host-called on flow disable — no leaked live socket)."
+
+# --- the flow node types this extension contributes ---
+[[node]]
+type        = "in"
+kind        = "source"                 # long-lived; host arms/disarms on enable/disable (Decision 2)
+tool        = "subscribe"
+title       = "MQTT In"
+category    = "Messaging"
+outputs     = ["sample"]
+[node.config]                         # inline JSON-Schema 2020-12 (Decision 3) — the editor form
+type        = "object"
+required     = ["broker", "topic"]
+properties.broker = { type = "string" }
+properties.topic  = { type = "string" }
+properties.qos    = { type = "integer", enum = [0, 1, 2], default = 0 }
+
+[[node]]
+type        = "out"
+kind        = "sink"                   # must-deliver → staged as an outbox effect, not raw pub/sub
+tool        = "publish"
+title       = "MQTT Out"
+category    = "Messaging"
+inputs      = ["payload"]
+[node.config]
+type        = "object"
+required     = ["broker", "topic"]
+properties.broker = { type = "string" }
+properties.topic  = { type = "string" }
+properties.qos    = { type = "integer", enum = [0, 1, 2], default = 0 }
+
+[visibility]
+class = "private"

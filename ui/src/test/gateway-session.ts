@@ -42,7 +42,7 @@ export async function signInWithCaps(user: string, workspace: string, caps: stri
  *  token (so the seed lands in the session's workspace — the real write path, behind the workspace
  *  wall). For surfaces with no public create route (inbox item / outbox effect / extension install). */
 async function seed(
-  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series" | "proof_panel",
+  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series" | "proof_panel" | "flow_node",
   body: unknown,
 ): Promise<void> {
   const url = inject("gatewayUrl");
@@ -129,4 +129,22 @@ export function seedExtension(ext: {
   widgets?: { entry: string; label: string; icon?: string; scope?: string[] }[];
 }): Promise<void> {
   return seed("extension", ext);
+}
+
+/** Install a real extension that contributes ONE `[[node]]` to the session workspace, so `flows.nodes`
+ *  returns it (the palette + ext-node tests). Writes a real Install record carrying the node block +
+ *  the granted tool cap (exactly the path a real install persists) — seeding, not faking. The body is
+ *  remapped to the host's raw snake_case `SeedFlowNode` shape. */
+export function seedFlowNode(node: {
+  ext: string;
+  /** The `mcp:<ext>.<tool>:call` cap to grant (the node's bound tool). */
+  toolCap: string;
+  /** The `[[node]]` block fields (type/kind/tool + optional title/category/config_version/config). */
+  block: Record<string, unknown>;
+}): Promise<void> {
+  return seed("flow_node", {
+    ext: node.ext,
+    tool_cap: node.toolCap,
+    node: node.block,
+  });
 }

@@ -1,0 +1,124 @@
+// The canvas ⇄ record serialization (flows-canvas scope, Wave 3 — the named-concept file, NOT a
+// utils dump). One responsibility: map a `Flow`'s typed nodes/needs to React Flow nodes/edges and back,
+// 1:1, so a save is a faithful serialization and a load a faithful render (no canvas-only state the
+// record can't hold). Also maps a run snapshot's per-node outcome → the colour each node paints, and
+// derives the executed-node set the editor locks during an active run.
+
+import type { Edge, Node } from "@xyflow/react";
+
+import type { Flow, FlowNode, FlowRunSnapshot, NodeColour } from "@/lib/flows";
+
+/** The data a custom `FlowNodeView` renders: the descriptor type, the live run colour, whether the
+ *  node is executed (locked) during the active run, and whether its underlying tool the caller lacks
+ *  (shown-but-gated, Decision: the palette reflects permissions). */
+export interface FlowNodeData extends Record<string, unknown> {
+  type: string;
+  colour: NodeColour;
+  /** True once the node has executed in the active run → rendered read-only (Decision 1). */
+  locked: boolean;
+  /** True when the caller lacks the node's underlying tool cap (shown-but-marked). */
+  gated: boolean;
+}
+
+export type FlowCanvasNode = Node<FlowNodeData, "flow">;
+
+/** A simple left-to-right grid layout for a node index (the record holds no geometry — the canvas is
+ *  a view of the DAG, not a stored layout). Columns of three keep a small DAG readable. */
+function layout(index: number): { x: number; y: number } {
+  return { x: (index % 3) * 240, y: Math.floor(index / 3) * 130 };
+}
+
+/** Flow → React Flow nodes (one per graph node). `colours`/`locked` override the defaults per id. */
+export function flowToNodes(
+  flow: Flow,
+  opts: { colours?: Record<string, NodeColour>; locked?: Record<string, boolean>; gated?: Record<string, boolean> } = {},
+): FlowCanvasNode[] {
+  return flow.nodes.map((n, i) => ({
+    id: n.id,
+    type: "flow",
+    position: layout(i),
+    data: {
+      type: n.type,
+      colour: opts.colours?.[n.id] ?? "pending",
+      locked: opts.locked?.[n.id] ?? false,
+      gated: opts.gated?.[n.id] ?? false,
+    },
+  }));
+}
+
+/** Flow → React Flow edges (one per `needs`: source = the dependency, target = the dependent node). */
+export function flowToEdges(flow: Flow): Edge[] {
+  const edges: Edge[] = [];
+  for (const node of flow.nodes) {
+    for (const dep of node.needs) {
+      edges.push({ id: `${dep}->${node.id}`, source: dep, target: node.id });
+    }
+  }
+  return edges;
+}
+
+/** React Flow nodes + edges → a flow's `nodes[]` (the inverse — a faithful save). Each canvas node
+ *  becomes a graph node; each edge `source->target` becomes `target.needs += source`. Preserves
+ *  `type`/`config`/`with` from the prior flow (canvas edits topology + node type; the SchemaForm
+ *  edits config). */
+export function nodesToFlowNodes(
+  nodes: FlowCanvasNode[],
+  edges: Edge[],
+  prior: Flow,
+): FlowNode[] {
+  const priorById = new Map(prior.nodes.map((n) => [n.id, n]));
+  const needsById = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
+  for (const e of edges) {
+    const list = needsById.get(e.target);
+    if (list && !list.includes(e.source)) list.push(e.source);
+  }
+  return nodes.map((n) => {
+    const prev = priorById.get(n.id);
+    return {
+      id: n.id,
+      type: n.data.type,
+      needs: needsById.get(n.id) ?? [],
+      with: prev?.with,
+      config: prev?.config,
+    };
+  });
+}
+
+/** A run snapshot → the colour each node paints. A settled node maps by `outcome`
+ *  (ok→green, err→red, skipped→grey); an unsettled node is `running` if claimed past pending, else
+ *  `pending`. A Halt-pruned subtree arrives as `skipped` from the host (greyed). */
+export function snapshotColours(snap: FlowRunSnapshot): Record<string, NodeColour> {
+  const out: Record<string, NodeColour> = {};
+  for (const s of snap.steps ?? []) {
+    out[s.id] = colourOf(s.outcome ?? null, s.claim);
+  }
+  return out;
+}
+
+/** The set of node ids the editor must LOCK during an active run = the nodes already executed
+ *  (`terminal: true` in the snapshot). A config-only `flows.patch_run` may target the rest. */
+export function executedNodeIds(snap: FlowRunSnapshot): Set<string> {
+  return new Set((snap.steps ?? []).filter((s) => s.terminal).map((s) => s.id));
+}
+
+function colourOf(outcome: string | null, claim?: string): NodeColour {
+  switch (outcome) {
+    case "ok":
+      return "ok";
+    case "err":
+      return "err";
+    case "skipped":
+      return "skipped";
+    default:
+      return claim && claim !== "pending" && claim !== "enqueued" ? "running" : "pending";
+  }
+}
+
+/** The CSS colour for a node colour (Tailwind-free so the canvas node can inline it). */
+export const COLOUR_HEX: Record<NodeColour, string> = {
+  ok: "#16a34a",
+  err: "#dc2626",
+  skipped: "#9ca3af",
+  running: "#f59e0b",
+  pending: "#e5e7eb",
+};

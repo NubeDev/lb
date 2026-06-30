@@ -70,7 +70,8 @@ pub async fn install_native<L: Launcher>(
         ts,
     )
     .with_tier(lb_assets::Tier::Native)
-    .with_ui(ui, widgets);
+    .with_ui(ui, widgets)
+    .with_nodes(manifest.nodes.clone());
     record_install(&node.store, ws, &install).await?;
 
     // If a sidecar for this id is already running here, stop it before swapping (re-install in

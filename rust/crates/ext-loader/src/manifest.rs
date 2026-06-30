@@ -17,6 +17,11 @@ pub enum ManifestError {
     /// supervisor has nothing to launch otherwise (native-tier scope). A wasm manifest must NOT.
     #[error("native tier requires a [native] block with exec; wasm tier must omit it")]
     NativeSpec,
+    /// A `[[node]]` block is incoherent: its `tool` binds a non-existent `[[tools]]` entry, or its
+    /// `[node.config]` is not a valid JSON-Schema 2020-12 document (flows node-descriptor scope). A
+    /// node that cannot execute is a load-time reject — the manifest is incoherent.
+    #[error("invalid [[node]] block: {0}")]
+    InvalidNodeBlock(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -120,6 +125,12 @@ pub struct Manifest {
     /// The dashboard widget tiles — one per `[[widget]]` table the manifest declares (dashboard-widgets
     /// scope). Empty if the manifest declares none. An extension may ship several palette tiles.
     pub widgets: Vec<Widget>,
+    /// The flow node types this extension contributes — one validated `[[node]]` block each (flows
+    /// node-descriptor scope, the only manifest addition). Empty if the manifest declares none. Each
+    /// block's `tool` was verified to bind a declared `[[tools]]` entry and its `config` compiled as
+    /// JSON-Schema 2020-12 at parse, so an install carries already-validated node blocks. Additive +
+    /// serde-defaulted: a manifest (or a host) written before this field deserialises as empty.
+    pub nodes: Vec<lb_flows::NodeBlock>,
 }
 
 // Raw TOML shape, mapped to the flat `Manifest` after validation.
@@ -139,6 +150,9 @@ struct Raw {
     /// `[[widget]]` array-of-tables — zero or more widget tiles.
     #[serde(default)]
     widget: Vec<Widget>,
+    /// `[[node]]` array-of-tables — zero or more flow node types (flows node-descriptor scope).
+    #[serde(default)]
+    node: Vec<lb_flows::NodeBlock>,
 }
 #[derive(Deserialize)]
 struct RawExt {
@@ -184,6 +198,16 @@ impl Manifest {
             (false, None) => None,
         };
 
+        // Validate every `[[node]]` block: its `tool` must bind a declared `[[tools]]` entry and its
+        // `config` must compile as JSON-Schema 2020-12 (flows node-descriptor scope). A node that
+        // cannot execute is a load-time reject. The global type is `<ext_id>.<type>`; validation
+        // happens here (where the tools list is known) so an install carries already-trusted blocks.
+        let tool_names: Vec<String> = raw.tools.iter().map(|t| t.name.clone()).collect();
+        for block in &raw.node {
+            lb_flows::validate_node_block(block, &raw.extension.id, &tool_names)
+                .map_err(|e| ManifestError::InvalidNodeBlock(e.to_string()))?;
+        }
+
         Ok(Manifest {
             id: raw.extension.id,
             version: raw.extension.version,
@@ -201,6 +225,7 @@ impl Manifest {
                 .into_iter()
                 .filter(|w| !w.entry.is_empty())
                 .collect(),
+            nodes: raw.node,
         })
     }
 }
@@ -349,5 +374,69 @@ class = "private"
         // A `[ui]` block with no entry is not a contribution (defensive against a half-written block).
         let toml = with_runtime("wasm", "[ui]\nentry = \"\"\nlabel = \"x\"");
         assert!(Manifest::parse(&toml).expect("parses").ui.is_none());
+    }
+
+    #[test]
+    fn parses_node_blocks_and_validates_tool_binding() {
+        let toml = with_runtime(
+            "wasm",
+            r#"
+[[tools]]
+name = "publish"
+[[tools]]
+name = "subscribe"
+
+[[node]]
+type = "out"
+kind = "sink"
+tool = "publish"
+inputs = ["payload"]
+[node.config]
+type = "object"
+required = ["topic"]
+properties.topic = { type = "string" }
+
+[[node]]
+type = "in"
+kind = "source"
+tool = "subscribe"
+[node.config]
+type = "object"
+required = ["broker"]
+properties.broker = { type = "string" }
+"#,
+        );
+        let m = Manifest::parse(&toml).expect("parses node blocks");
+        assert_eq!(m.nodes.len(), 2);
+        assert_eq!(m.nodes[0].r#type, "out");
+        assert_eq!(m.nodes[0].tool, "publish");
+        assert_eq!(m.nodes[1].kind, lb_flows::NodeKind::Source);
+    }
+
+    #[test]
+    fn rejects_node_block_with_dangling_tool() {
+        // A [[node]] whose `tool` names no [[tools]] entry is a load-time reject.
+        let toml = with_runtime(
+            "wasm",
+            "[[tools]]\nname = \"publish\"\n[[node]]\ntype = \"x\"\nkind = \"sink\"\ntool = \"nope\"",
+        );
+        let err = Manifest::parse(&toml).unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidNodeBlock(_)));
+    }
+
+    #[test]
+    fn rejects_node_block_with_non_schema_config() {
+        let toml = with_runtime(
+            "wasm",
+            "[[tools]]\nname = \"publish\"\n[[node]]\ntype = \"x\"\nkind = \"sink\"\ntool = \"publish\"\n[node.config]\ntype = \"not-a-type\"",
+        );
+        let err = Manifest::parse(&toml).unwrap_err();
+        assert!(matches!(err, ManifestError::InvalidNodeBlock(_)));
+    }
+
+    #[test]
+    fn no_nodes_by_default() {
+        let m = Manifest::parse(&with_runtime("wasm", "")).expect("parses");
+        assert!(m.nodes.is_empty());
     }
 }

@@ -19,12 +19,14 @@ use serde_json::{json, Value};
 /// rail their `descriptor()` is added here. Each carries its qualified name (the catalog does NOT
 /// re-prefix host-native verbs) and a title/group for the menu.
 pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
-    vec![
+    let mut out: Vec<ToolDescriptor> = vec![
         crate::federation::query_descriptor(),
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
-    ]
+    ];
+    out.extend(crate::host_tools::secret_descriptors());
+    out
 }
 
 /// Validate a tool-call `input` against its declared JSON Schema `input_schema` (defense in depth

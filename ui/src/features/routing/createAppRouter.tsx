@@ -21,6 +21,7 @@ import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
+import { FlowsView } from "@/features/flows";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
 import { RulesView } from "@/features/rules";
@@ -123,6 +124,7 @@ const routeTree = rootRoute.addChildren([
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/chains", "chains", () => <Chains />),
+    coreRoute("/flows", "flows", () => <Flows />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
     coreRoute("/reminders", "reminders", () => <Reminders />),
@@ -236,6 +238,10 @@ function Rules() {
 
 function Chains() {
   return <ChainsView ws={useAppRoutingContext().workspace} />;
+}
+
+function Flows() {
+  return <FlowsView ws={useAppRoutingContext().workspace} />;
 }
 
 function Reminders() {
