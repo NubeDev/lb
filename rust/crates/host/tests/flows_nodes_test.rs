@@ -36,8 +36,16 @@ fn node_block(r#type: &str, kind: NodeKind, tool: &str) -> NodeBlock {
         tool: tool.into(),
         title: None,
         category: Some("Messaging".into()),
-        inputs: if matches!(kind, NodeKind::Sink) { vec!["payload".into()] } else { vec![] },
-        outputs: if matches!(kind, NodeKind::Sink) { vec![] } else { vec!["sample".into()] },
+        inputs: if matches!(kind, NodeKind::Sink) {
+            vec!["payload".into()]
+        } else {
+            vec![]
+        },
+        outputs: if matches!(kind, NodeKind::Sink) {
+            vec![]
+        } else {
+            vec!["sample".into()]
+        },
         config_version: 1,
         config: json!({"type":"object","properties":{"topic":{"type":"string"}}}),
     }
@@ -86,8 +94,14 @@ async fn registry_reflects_an_installed_extension() {
         &node,
         "ws-a",
         "mqtt",
-        vec![node_block("in", NodeKind::Source, "subscribe"), node_block("out", NodeKind::Sink, "publish")],
-        vec!["mcp:mqtt.subscribe:call".into(), "mcp:mqtt.publish:call".into()],
+        vec![
+            node_block("in", NodeKind::Source, "subscribe"),
+            node_block("out", NodeKind::Sink, "publish"),
+        ],
+        vec![
+            "mcp:mqtt.subscribe:call".into(),
+            "mcp:mqtt.publish:call".into(),
+        ],
     )
     .await;
     let p = principal("ws-a", &[NODES_CAP]);
@@ -96,13 +110,15 @@ async fn registry_reflects_an_installed_extension() {
     // built-ins first, then the ext nodes (global type <ext>.<type>), sorted.
     assert_eq!(
         types,
-        vec![
-            "trigger", "tool", "rhai", "subflow", "sink",
-            "mqtt.in", "mqtt.out"
-        ]
+        vec!["trigger", "tool", "rhai", "subflow", "sink", "mqtt.in", "mqtt.out"]
     );
     // the ext descriptor carries its ports + category from the block.
-    let mqtt_in = out["nodes"].as_array().unwrap().iter().find(|d| d["type"] == "mqtt.in").unwrap();
+    let mqtt_in = out["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["type"] == "mqtt.in")
+        .unwrap();
     assert_eq!(mqtt_in["kind"], "source");
     assert_eq!(mqtt_in["category"], "Messaging");
     assert_eq!(mqtt_in["outputs"], json!(["sample"]));
@@ -126,7 +142,10 @@ async fn workspace_isolation_ext_in_ws_a_absent_in_ws_b() {
     // ws-B (no install) sees only built-ins — the wall holds at the registry.
     let pb = principal("ws-b", &[NODES_CAP]);
     let out_b = call_nodes(&node, &pb, "ws-b").await;
-    assert_eq!(types(&out_b), vec!["trigger", "tool", "rhai", "subflow", "sink"]);
+    assert_eq!(
+        types(&out_b),
+        vec!["trigger", "tool", "rhai", "subflow", "sink"]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -134,7 +153,9 @@ async fn capability_deny_without_flows_nodes_cap() {
     let node = Arc::new(Node::boot().await.unwrap());
     // a principal with NO caps — the bridge gate refuses `mcp:flows.nodes:call`.
     let p = principal("ws-a", &[]);
-    let err = call_tool(&node, &p, "ws-a", "flows.nodes", "{}").await.unwrap_err();
+    let err = call_tool(&node, &p, "ws-a", "flows.nodes", "{}")
+        .await
+        .unwrap_err();
     assert!(matches!(err, lb_mcp::ToolError::Denied));
 }
 
@@ -147,7 +168,10 @@ async fn node_whose_tool_grant_omitted_is_dropped() {
         &node,
         "ws-a",
         "mqtt",
-        vec![node_block("in", NodeKind::Source, "subscribe"), node_block("out", NodeKind::Sink, "publish")],
+        vec![
+            node_block("in", NodeKind::Source, "subscribe"),
+            node_block("out", NodeKind::Sink, "publish"),
+        ],
         vec!["mcp:mqtt.subscribe:call".into()], // publish grant omitted
     )
     .await;

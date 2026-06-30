@@ -99,19 +99,26 @@ mod tests {
 
     #[test]
     fn install_tool_names_extracts_ext_tools() {
-        let install = Install::new("mqtt", "0.1.0", vec![
-            "mcp:mqtt.publish:call".into(),
-            "mcp:mqtt.subscribe:call".into(),
-            "mcp:other.x:call".into(),
-            "store:flow:read".into(),
-        ], 0);
+        let install = Install::new(
+            "mqtt",
+            "0.1.0",
+            vec![
+                "mcp:mqtt.publish:call".into(),
+                "mcp:mqtt.subscribe:call".into(),
+                "mcp:other.x:call".into(),
+                "store:flow:read".into(),
+            ],
+            0,
+        );
         let tools = install_tool_names(&install);
         assert_eq!(tools, vec!["publish".to_string(), "subscribe".to_string()]);
         // a cap without the :call suffix is NOT a tool grant (it is something else) — excluded.
-        let install = Install::new("mqtt", "0.1.0", vec![
-            "mcp:mqtt.publish:call".into(),
-            "mcp:mqtt.subscribe".into(),
-        ], 0);
+        let install = Install::new(
+            "mqtt",
+            "0.1.0",
+            vec!["mcp:mqtt.publish:call".into(), "mcp:mqtt.subscribe".into()],
+            0,
+        );
         let tools = install_tool_names(&install);
         assert_eq!(tools, vec!["publish".to_string()]);
     }

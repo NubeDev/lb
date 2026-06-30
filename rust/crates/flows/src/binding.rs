@@ -64,12 +64,14 @@ fn lookup(
 ) -> Value {
     match reference {
         Reference::Param(name) => params.get(name).cloned().unwrap_or(Value::Null),
-        Reference::StepOutput(id) => {
-            recorded.get(id).map(|r| r.output.clone()).unwrap_or(Value::Null)
-        }
-        Reference::StepFindings(id) => {
-            recorded.get(id).map(|r| r.findings.clone()).unwrap_or(Value::Null)
-        }
+        Reference::StepOutput(id) => recorded
+            .get(id)
+            .map(|r| r.output.clone())
+            .unwrap_or(Value::Null),
+        Reference::StepFindings(id) => recorded
+            .get(id)
+            .map(|r| r.findings.clone())
+            .unwrap_or(Value::Null),
     }
 }
 
@@ -111,7 +113,13 @@ mod tests {
     #[test]
     fn resolves_step_output_reference() {
         let mut rec = HashMap::new();
-        rec.insert("a".to_string(), NodeOutput { output: json!({"v": 1}), findings: json!([1]) });
+        rec.insert(
+            "a".to_string(),
+            NodeOutput {
+                output: json!({"v": 1}),
+                findings: json!([1]),
+            },
+        );
         let v = resolve_value(&json!("${steps.a.output}"), &rec, &Map::new()).unwrap();
         assert_eq!(v, json!({"v": 1}));
         let v = resolve_value(&json!("${steps.a.findings}"), &rec, &Map::new()).unwrap();
@@ -120,7 +128,12 @@ mod tests {
 
     #[test]
     fn missing_upstream_resolves_null() {
-        let v = resolve_value(&json!("${steps.unknown.output}"), &HashMap::new(), &Map::new()).unwrap();
+        let v = resolve_value(
+            &json!("${steps.unknown.output}"),
+            &HashMap::new(),
+            &Map::new(),
+        )
+        .unwrap();
         assert_eq!(v, Value::Null);
     }
 
@@ -135,7 +148,12 @@ mod tests {
     #[test]
     fn rejects_partial_interpolation() {
         // a partial-interpolation string is a literal, NOT a reference (no templating mini-language).
-        let v = resolve_value(&json!("prefix-${steps.a.output}"), &HashMap::new(), &Map::new()).unwrap();
+        let v = resolve_value(
+            &json!("prefix-${steps.a.output}"),
+            &HashMap::new(),
+            &Map::new(),
+        )
+        .unwrap();
         assert_eq!(v, json!("prefix-${steps.a.output}"));
     }
 }

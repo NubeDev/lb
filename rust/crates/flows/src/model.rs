@@ -119,12 +119,18 @@ impl Flow {
     }
     /// In-degree (number of `needs`) per node — the chain math verbatim.
     pub fn indegrees(&self) -> HashMap<String, usize> {
-        self.nodes.iter().map(|n| (n.id.clone(), n.needs.len())).collect()
+        self.nodes
+            .iter()
+            .map(|n| (n.id.clone(), n.needs.len()))
+            .collect()
     }
     /// Reverse edges: node → the nodes that depend on it.
     pub fn dependents(&self) -> HashMap<String, Vec<String>> {
-        let mut map: HashMap<String, Vec<String>> =
-            self.nodes.iter().map(|n| (n.id.clone(), Vec::new())).collect();
+        let mut map: HashMap<String, Vec<String>> = self
+            .nodes
+            .iter()
+            .map(|n| (n.id.clone(), Vec::new()))
+            .collect();
         for n in &self.nodes {
             for dep in &n.needs {
                 if let Some(v) = map.get_mut(dep) {
@@ -243,7 +249,12 @@ pub struct FlowSummary {
 
 impl From<&Flow> for FlowSummary {
     fn from(f: &Flow) -> Self {
-        Self { id: f.id.clone(), name: f.name.clone(), version: f.version, nodes: f.nodes.len() }
+        Self {
+            id: f.id.clone(),
+            name: f.name.clone(),
+            version: f.version,
+            nodes: f.nodes.len(),
+        }
     }
 }
 
@@ -253,11 +264,26 @@ mod tests {
     use serde_json::json;
 
     fn node(id: &str, needs: &[&str]) -> Node {
-        Node { id: id.into(), node_type: "rhai".into(), needs: needs.iter().map(|s| s.to_string()).collect(), with: Default::default(), config: json!({}) }
+        Node {
+            id: id.into(),
+            node_type: "rhai".into(),
+            needs: needs.iter().map(|s| s.to_string()).collect(),
+            with: Default::default(),
+            config: json!({}),
+        }
     }
 
     fn flow(nodes: Vec<Node>) -> Flow {
-        Flow { workspace: "ws".into(), id: "f".into(), name: "f".into(), version: 1, params: Default::default(), nodes, failure_policy: FailurePolicy::Halt, deleted: false }
+        Flow {
+            workspace: "ws".into(),
+            id: "f".into(),
+            name: "f".into(),
+            version: 1,
+            params: Default::default(),
+            nodes,
+            failure_policy: FailurePolicy::Halt,
+            deleted: false,
+        }
     }
 
     #[test]
@@ -276,19 +302,36 @@ mod tests {
     #[test]
     fn rejects_dangling_dep() {
         let f = flow(vec![node("a", &["zzz"])]);
-        assert_eq!(validate_flow(&f, MAX_FLOW_NODES), Err(DagError::UnknownDependency("a".into(), "zzz".into())));
+        assert_eq!(
+            validate_flow(&f, MAX_FLOW_NODES),
+            Err(DagError::UnknownDependency("a".into(), "zzz".into()))
+        );
     }
 
     #[test]
     fn rejects_self_edge_and_dup_and_empty() {
-        assert_eq!(validate_flow(&flow(vec![node("a", &["a"])]), MAX_FLOW_NODES), Err(DagError::SelfDependency("a".into())));
-        assert_eq!(validate_flow(&flow(vec![node("a", &[]), node("a", &[])]), MAX_FLOW_NODES), Err(DagError::DuplicateNode("a".into())));
-        assert_eq!(validate_flow(&flow(vec![]), MAX_FLOW_NODES), Err(DagError::Empty));
+        assert_eq!(
+            validate_flow(&flow(vec![node("a", &["a"])]), MAX_FLOW_NODES),
+            Err(DagError::SelfDependency("a".into()))
+        );
+        assert_eq!(
+            validate_flow(&flow(vec![node("a", &[]), node("a", &[])]), MAX_FLOW_NODES),
+            Err(DagError::DuplicateNode("a".into()))
+        );
+        assert_eq!(
+            validate_flow(&flow(vec![]), MAX_FLOW_NODES),
+            Err(DagError::Empty)
+        );
     }
 
     #[test]
     fn diamond_frontier_orders_correctly() {
-        let f = flow(vec![node("a", &[]), node("b", &["a"]), node("c", &["a"]), node("d", &["b", "c"])]);
+        let f = flow(vec![
+            node("a", &[]),
+            node("b", &["a"]),
+            node("c", &["a"]),
+            node("d", &["b", "c"]),
+        ]);
         validate_flow(&f, MAX_FLOW_NODES).unwrap();
         assert_eq!(f.frontier(), vec!["a"]);
         let deps = f.dependents();

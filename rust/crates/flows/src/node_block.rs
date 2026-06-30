@@ -68,16 +68,18 @@ pub fn validate_node_block(
     manifest_tools: &[String],
 ) -> Result<NodeDescriptor, NodeBlockError> {
     if !manifest_tools.iter().any(|t| t == &block.tool) {
-        return Err(NodeBlockError::UnknownTool(block.r#type.clone(), block.tool.clone()));
+        return Err(NodeBlockError::UnknownTool(
+            block.r#type.clone(),
+            block.tool.clone(),
+        ));
     }
-    compile_schema(&block.config)
-        .map_err(|e| match e {
-            ConfigSchemaError::InvalidSchema(m) => {
-                NodeBlockError::InvalidConfigSchema(block.r#type.clone(), m)
-            }
-            // compile_schema only ever returns InvalidSchema.
-            other => NodeBlockError::InvalidConfigSchema(block.r#type.clone(), other.to_string()),
-        })?;
+    compile_schema(&block.config).map_err(|e| match e {
+        ConfigSchemaError::InvalidSchema(m) => {
+            NodeBlockError::InvalidConfigSchema(block.r#type.clone(), m)
+        }
+        // compile_schema only ever returns InvalidSchema.
+        other => NodeBlockError::InvalidConfigSchema(block.r#type.clone(), other.to_string()),
+    })?;
 
     let global_type = format!("{ext_id}.{}", block.r#type);
     let mut desc = NodeDescriptor::new(global_type, block.kind, ext_tool(ext_id, &block.tool))

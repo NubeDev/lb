@@ -23,6 +23,7 @@
 
 pub mod binding;
 pub mod builtins;
+pub mod coalesce;
 pub mod config_schema;
 pub mod descriptor;
 pub mod model;
@@ -31,6 +32,7 @@ pub mod registry;
 
 pub use binding::resolve_bindings;
 pub use builtins::builtin_descriptors;
+pub use coalesce::{Coalesce, CoalesceStrategy};
 pub use config_schema::{compile_schema, validate_config, ConfigSchemaError};
 pub use descriptor::{NodeDescriptor, NodeKind};
 pub use model::{

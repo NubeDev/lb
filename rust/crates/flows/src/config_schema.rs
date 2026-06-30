@@ -28,7 +28,10 @@ pub fn compile_schema(schema: &serde_json::Value) -> Result<Validator, ConfigSch
 
 /// Validate `instance` against `schema`. A `None` schema (or `{}`) accepts anything (a node with no
 /// config). Returns the precise first failing rule on a mismatch.
-pub fn validate_config(schema: &serde_json::Value, instance: &serde_json::Value) -> Result<(), ConfigSchemaError> {
+pub fn validate_config(
+    schema: &serde_json::Value,
+    instance: &serde_json::Value,
+) -> Result<(), ConfigSchemaError> {
     // `{}` and a missing schema are "accept anything" — a node with no config form. Compile once
     // and let the validator decide; an empty object compiles to a pass-everything schema.
     let validator = compile_schema(schema)?;

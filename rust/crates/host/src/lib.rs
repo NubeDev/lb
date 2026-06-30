@@ -117,12 +117,12 @@ pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
     reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
 };
-pub use flows::call_flows_tool;
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
     federation_mirror, federation_query, resolve_datasource, Datasource, DatasourceSummary,
     FederationError,
 };
+pub use flows::call_flows_tool;
 pub use host_tools::{
     call_host_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach, host_time_now,
     host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress, HostNetInfo,
