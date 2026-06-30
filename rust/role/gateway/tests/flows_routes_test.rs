@@ -60,7 +60,10 @@ async fn flows_nodes_returns_the_built_in_registry() {
         .map(|n| n["type"].as_str().unwrap())
         .collect();
     for builtin in ["trigger", "tool", "rhai", "subflow", "sink"] {
-        assert!(types.contains(&builtin), "built-in {builtin} on the palette");
+        assert!(
+            types.contains(&builtin),
+            "built-in {builtin} on the palette"
+        );
     }
 }
 
@@ -85,7 +88,12 @@ async fn flows_crud_round_trip_over_the_gateway() {
         .await
         .unwrap();
     let list: Value = json_body(resp).await;
-    let ids: Vec<&str> = list["flows"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = list["flows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
     assert!(ids.contains(&"cooler"));
 
     // Get round-trips the graph.
@@ -128,9 +136,15 @@ async fn save_rejects_a_cyclic_dag_with_a_400_inline_error() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body = resp.into_body();
-    let bytes = http_body_util::BodyExt::collect(body).await.unwrap().to_bytes();
+    let bytes = http_body_util::BodyExt::collect(body)
+        .await
+        .unwrap()
+        .to_bytes();
     let text = String::from_utf8_lossy(&bytes);
-    assert!(text.contains("cycle"), "inline error names the cycle: {text}");
+    assert!(
+        text.contains("cycle"),
+        "inline error names the cycle: {text}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -159,7 +173,11 @@ async fn run_then_runs_get_returns_the_snapshot() {
     assert_eq!(snap["flowId"], "rt");
     assert_eq!(snap["runId"], run_id);
     // The trigger node appears as a step (the colour source).
-    assert!(snap["steps"].as_array().unwrap().iter().any(|s| s["id"] == "start"));
+    assert!(snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|s| s["id"] == "start"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -170,7 +188,11 @@ async fn a_token_without_the_save_cap_is_denied() {
         &key,
         "user:ada",
         "acme",
-        &["mcp:flows.list:call", "mcp:flows.nodes:call", "mcp:flows.get:call"],
+        &[
+            "mcp:flows.list:call",
+            "mcp:flows.nodes:call",
+            "mcp:flows.get:call",
+        ],
     );
     let resp = router(gw)
         .oneshot(bearer(json_post("/flows", flow_body("denied")), &tok))
@@ -205,7 +227,12 @@ async fn workspace_b_cannot_read_workspace_a_flow() {
         .await
         .unwrap();
     let list: Value = json_body(resp).await;
-    let ids: Vec<&str> = list["flows"].as_array().unwrap().iter().map(|f| f["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = list["flows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["id"].as_str().unwrap())
+        .collect();
     assert!(!ids.contains(&"secret"));
 }
 
@@ -228,7 +255,10 @@ async fn inject_into_a_retained_node_sets_state_and_starts_no_run() {
 
     let resp = router(gw.clone())
         .oneshot(bearer(
-            json_post("/flows/ret/inject", json!({ "node": "setpoint", "value": 4 })),
+            json_post(
+                "/flows/ret/inject",
+                json!({ "node": "setpoint", "value": 4 }),
+            ),
             &tok,
         ))
         .await

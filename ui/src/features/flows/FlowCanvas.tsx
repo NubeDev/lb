@@ -203,7 +203,6 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     } else {
       setSaveError(res.error ?? "undo failed");
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [undoStack, flow, configs, onSave]);
 
   const handleRun = useCallback(async () => {
@@ -334,6 +333,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
         >
           Import
         </Button>
+        {/* eslint-disable-next-line no-restricted-syntax -- a hidden native file picker; no shadcn equivalent */}
         <input
           ref={importedFile}
           type="file"

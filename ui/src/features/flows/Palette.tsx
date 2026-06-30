@@ -6,6 +6,7 @@
 
 import { useMemo } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { NodeDescriptor } from "@/lib/flows";
 
 interface PaletteProps {
@@ -40,18 +41,19 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
         <div key={g.category} className="flex flex-col gap-1">
           <div className="text-xs font-semibold text-muted">{g.category}</div>
           {g.items.map((n) => (
-            <button
+            <Button
               key={n.type}
               type="button"
-              className="rounded-md border border-border bg-bg px-2 py-1 text-left text-xs text-fg hover:border-accent"
+              variant="outline"
+              className="flex flex-col items-start px-2 py-1 text-left text-xs hover:border-accent"
               aria-label={`add node ${n.type}`}
               draggable
               onDragStart={(e) => e.dataTransfer.setData("application/x-flow-node", n.type)}
               onClick={() => onAdd(n)}
             >
-              <div className="font-medium">{n.title}</div>
-              <div className="text-muted">{n.type}</div>
-            </button>
+              <span className="font-medium">{n.title}</span>
+              <span className="text-muted">{n.type}</span>
+            </Button>
           ))}
         </div>
       ))}

@@ -125,7 +125,10 @@ pub async fn lifecycle_flow(
         "resume" => "flows.resume",
         "cancel" => "flows.cancel",
         other => {
-            return Err((StatusCode::NOT_FOUND, format!("unknown lifecycle op: {other}")));
+            return Err((
+                StatusCode::NOT_FOUND,
+                format!("unknown lifecycle op: {other}"),
+            ));
         }
     };
     let p = authenticate(&gw, &headers)

@@ -133,6 +133,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
   if (type === "boolean") {
     return (
       <Labeled name={name} label={label} required={required} error={error}>
+        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn checkbox primitive; a native checkbox */}
         <input
           type="checkbox"
           aria-label={name}
