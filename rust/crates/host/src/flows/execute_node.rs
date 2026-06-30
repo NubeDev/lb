@@ -180,7 +180,9 @@ async fn dispatch(
         "subflow" => dispatch_subflow(node, principal, ws, config, inputs, now).await,
         "count" => {
             // A pure transform: count the input. An array → its length, an object → its key count,
-            // null → 0, any scalar → 1. Output port `count` carries the integer.
+            // null → 0, any scalar → 1. Output port `count` carries the integer. Stateless: the same
+            // input always yields the same count (this is why "always 4" — it counts THIS firing's
+            // array, it does not accumulate). For a running total use `counter`.
             let items = inputs.get("items").cloned().unwrap_or(Value::Null);
             let n = match items {
                 Value::Array(a) => a.len() as u64,
@@ -189,6 +191,39 @@ async fn dispatch(
                 _ => 1,
             };
             NodeOutcome::Ok(json!({ "count": n }), Value::Null)
+        }
+        "counter" => {
+            // A STATEFUL accumulator (Node-RED / PLC counter): read this node's durable memory and
+            // add to it ATOMICALLY (server-side, so concurrent firings never lose a count), so the
+            // total goes UP across runs and survives a restart. Delta = the input's size when an
+            // `items` input is wired (a throughput counter), else `config.step` (default 1). `reset`
+            // zeroes the total before this firing's add. The new total is the output AND the memory.
+            let step = config.get("step").and_then(|v| v.as_i64()).unwrap_or(1);
+            let reset = config
+                .get("reset")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let by = match inputs.get("items") {
+                Some(Value::Array(a)) => a.len() as i64,
+                Some(Value::Object(m)) => m.len() as i64,
+                // No `items` wired → a plain per-firing tick of `step`.
+                None | Some(Value::Null) => step,
+                Some(_) => 1,
+            };
+            match lb_store::increment(
+                &node.store,
+                ws,
+                super::record::FLOW_NODE_MEMORY_TABLE,
+                &super::record::node_scoped_id(&flow.id, node_id),
+                by,
+                reset,
+                now,
+            )
+            .await
+            {
+                Ok(total) => NodeOutcome::Ok(json!({ "count": total, "ts": now }), Value::Null),
+                Err(e) => NodeOutcome::Err(format!("counter increment failed: {e}")),
+            }
         }
         _ => NodeOutcome::Err(format!("unknown built-in node type: {node_type}")),
     }
@@ -302,6 +337,7 @@ async fn dispatch_subflow(
         child_params,
         &child_run,
         now,
+        None, // a subflow runs its child whole-graph (every root), not from one entry.
     ))
     .await
     {

@@ -13,10 +13,24 @@ ships.
 
 ## Goals
 
-- **Built-ins off, fail-closed.** Each `AgentProfile` declares how its agent disables built-in tools
-  (VT Code: deny-all-builtins policy; dirge: `--no-tools`). At launch, `sandbox.rs` **asserts** the
-  agent will run with no built-in tools and **aborts the run** if it cannot establish that — an open
-  tool surface is never allowed to start.
+- **Built-ins off, fail-closed.** Each `AgentProfile` declares how its agent disables built-in tools.
+  **The strongest lever is the ACP handshake itself** (review-recommended): the client controls which
+  tools it advertises, so the agent is offered *only* our MCP bridge regardless of any CLI flag — this
+  is enforced by us, not trusted to the binary. CLI levers are the belt to that suspenders, and must be
+  **verified per binary, not assumed**:
+  - **VT Code — verified (release `0.133.23`):** `vtcode tool-policy deny-all` denies every tool, and
+    `[automation.full_auto].allowed_tools` is a **fail-closed allow-list** (anything outside it is
+    denied); `vtcode acp` additionally takes `--allowed-tools`/`--disallowed-tools` and a
+    `--max-tool-calls` cap. So "no built-ins" is realizable for VT Code today.
+  - **dirge — TO VERIFY:** dirge's documented modes are `--standard`/`--accept-all`/`--restrictive`/
+    `--yolo` plus a Policy Decision Point with op-rules; a literal `--no-tools` flag is **not confirmed**
+    and may not exist — "no built-ins" would likely be expressed as deny-rules on every op, or relied on
+    the ACP-advertisement lever above. Do not treat `--no-tools` as real until checked against the
+    binary.
+
+  At launch, `sandbox.rs` **asserts** the agent will run with no built-in tools (via whichever lever the
+  profile declares) and **aborts the run** if it cannot establish that — an open tool surface is never
+  allowed to start.
 - **OS sandbox.** The subprocess runs with **no network egress except the gateway socket** and **no
   filesystem except a per-run scratch dir** (and the stdio pipe). A direct provider call, a raw HTTP
   request, or a write outside scratch is impossible at the kernel level, not merely unconfigured.
@@ -42,10 +56,15 @@ ships.
 **Defence in depth, each layer fail-closed.** Three independent layers, any one of which alone would
 mostly hold, and which together leave no path:
 
-1. **Protocol layer** — advertise only the MCP bridge; decline ACP fs/terminal. The agent can't even
-   *ask* for a filesystem the protocol way.
-2. **Config layer** — built-ins disabled via the profile's documented switch, **verified at launch**.
-   If the agent can't be shown to start tool-less, the run aborts (fail-closed, not best-effort).
+1. **Protocol layer (primary tool lever)** — advertise only the MCP bridge; decline ACP fs/terminal,
+   and offer **only** our granted tools. Because the *client* controls advertised tools, this holds even
+   if a profile's CLI switch is wrong or absent — the agent can't even *ask* for a filesystem the
+   protocol way, and is offered no built-in tools to call.
+2. **Config layer (defence-in-depth, verify per binary)** — additionally disable built-ins via the
+   agent's own documented switch (VT Code `tool-policy deny-all` + allow-list — verified; dirge — TBD,
+   see Goals), **verified at launch**. If neither this nor the protocol layer can be shown to leave the
+   agent tool-less, the run aborts (fail-closed, not best-effort). This layer is belt-and-suspenders
+   over layer 1, not the sole guarantee — it depends on the agent honoring its own flags.
 3. **Kernel layer** — an OS sandbox (Linux: namespaces/seccomp/landlock-style egress+fs restriction;
    the exact mechanism is an open question) so that even a misbehaving or compromised agent binary
    physically cannot reach the network (except the gateway socket) or the fs (except scratch).

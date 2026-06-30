@@ -24,8 +24,9 @@ pub async fn start(
     flow: &Flow,
     params: &serde_json::Map<String, Value>,
     now: u64,
+    entry: Option<&str>,
 ) -> Result<(), String> {
-    run_store::create_run(&node.store, ws, run_id, flow, params, now).await
+    run_store::create_run(&node.store, ws, run_id, flow, params, now, entry).await
 }
 
 /// Drive the run toward completion. Idempotent + resumable: re-driving reads the durable per-node

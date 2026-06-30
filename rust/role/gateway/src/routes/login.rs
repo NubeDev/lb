@@ -65,7 +65,7 @@ pub async fn login(
     // global-identity: membership resolves login. An effective member mints; an empty workspace
     // bootstraps the requester as workspace-admin (decision #3); a workspace that has members but not
     // this sub refuses with "not a member" (decision #4). Identity is lazy-created on first touch.
-    lb_host::membership_login_resolve(&gw.node.store, &req.workspace, &req.user, gw.now)
+    lb_host::membership_login_resolve(&gw.node.store, &req.workspace, &req.user, gw.now())
         .await
         .map_err(|_| {
             (
@@ -73,7 +73,7 @@ pub async fn login(
                 "not a member of any workspace".into(),
             )
         })?;
-    let claims = dev_claims(&req.user, &req.workspace, gw.now, SESSION_TTL_SECS);
+    let claims = dev_claims(&req.user, &req.workspace, gw.now(), SESSION_TTL_SECS);
     let caps = claims.caps.clone();
     let token = mint(&gw.key, &claims);
 
@@ -83,7 +83,7 @@ pub async fn login(
         &verify_self(&gw, &token),
         &req.workspace,
         &req.workspace,
-        gw.now,
+        gw.now(),
     )
     .await;
 
@@ -99,5 +99,5 @@ pub async fn login(
 /// session principal, with its `workspace.create` grant). The token was just signed by this key, so
 /// this never fails — but going through `verify` keeps the principal construction in one place.
 fn verify_self(gw: &Gateway, token: &str) -> lb_auth::Principal {
-    lb_auth::verify(&gw.key, token, gw.now).expect("self-minted token verifies")
+    lb_auth::verify(&gw.key, token, gw.now()).expect("self-minted token verifies")
 }

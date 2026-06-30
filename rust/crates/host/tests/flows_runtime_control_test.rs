@@ -41,6 +41,7 @@ const FULL: &[&str] = &[
     "mcp:flows.watch:call",
     "mcp:flows.node.get:call",
     "mcp:flows.node.update:call",
+    "mcp:flows.node_state:call",
     "store:flow:write",
     "store:flow:read",
 ];
@@ -450,7 +451,7 @@ async fn cancel_status_written_before_drive_is_honored_deterministically() {
     };
     let params = serde_json::Map::new();
     // Seed the run, mark it cancelled, THEN drive: the first control check halts it.
-    start(&node, "ws", "det-run", &lf, &params, 1)
+    start(&node, "ws", "det-run", &lf, &params, 1, None)
         .await
         .unwrap();
     set_run_status(&node.store, "ws", "det-run", "cancelled")
@@ -476,4 +477,206 @@ async fn cancel_status_written_before_drive_is_honored_deterministically() {
         .iter()
         .any(|s| s["terminal"] == json!(true));
     assert!(!any_terminal, "a pre-cancelled run drives NO node: {snap}");
+}
+
+// ── flows.node_state (the persistent runtime view) ────────────────────────────────────────────────
+
+/// A count node fed a literal array via `with` (so it produces a real `{count:N}` value the
+/// persistent state captures).
+fn count_with(id: &str, needs: &[&str], items: Value) -> Node {
+    Node {
+        id: id.into(),
+        node_type: "count".into(),
+        needs: needs.iter().map(|s| s.to_string()).collect(),
+        with: serde_json::Map::from_iter([("items".into(), items)]),
+        config: json!({}),
+    }
+}
+
+/// After a run, `flows.node_state` returns each node's CURRENT last-value — and it SURVIVES the run's
+/// completion (it's the persistent record, not a finite run snapshot). A second run updates it IN
+/// PLACE (the rev bumps; the value reflects the latest run). This is the Node-RED/PLC steady state.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn node_state_returns_persistent_last_value_updated_in_place() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let f = flow("ns", vec![count_with("a", &[], json!([1, 2, 3, 4]))]);
+    save_flow(&node, &p, "ws", &f).await;
+
+    // No run yet → the node is present with a null value (the canvas can still render it).
+    let pre = call(&node, &p, "ws", "flows.node_state", json!({ "id": "ns" })).await;
+    let a_pre = pre["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node"] == "a")
+        .unwrap();
+    assert_eq!(a_pre["value"], Value::Null, "no value before any run");
+
+    // Drive a run; node_state now holds the count node's real value — and STILL holds it after the run
+    // is terminal (the steady state is not a frozen run, it's the persistent record).
+    call(
+        &node,
+        &p,
+        "ws",
+        "flows.run",
+        json!({ "id": "ns", "run_id": "ns-1", "ts": 1 }),
+    )
+    .await;
+    await_terminal(&node, &p, "ws", "ns-1").await;
+    let after = call(&node, &p, "ws", "flows.node_state", json!({ "id": "ns" })).await;
+    let a = after["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node"] == "a")
+        .unwrap();
+    assert_eq!(
+        a["value"]["count"], 4,
+        "persistent value present after run settles"
+    );
+    let rev1 = a["rev"].clone();
+
+    // A second run updates the SAME record in place (rev advances; value stays the live one).
+    call(
+        &node,
+        &p,
+        "ws",
+        "flows.run",
+        json!({ "id": "ns", "run_id": "ns-2", "ts": 2 }),
+    )
+    .await;
+    await_terminal(&node, &p, "ws", "ns-2").await;
+    let after2 = call(&node, &p, "ws", "flows.node_state", json!({ "id": "ns" })).await;
+    let a2 = after2["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node"] == "a")
+        .unwrap();
+    assert_eq!(a2["value"]["count"], 4);
+    assert_ne!(
+        a2["rev"], rev1,
+        "the node_state record updated IN PLACE (rev bumped), not appended"
+    );
+}
+
+/// `flows.node_state` is capability-gated and workspace-walled: ws-B cannot read ws-A's node values.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn node_state_denied_and_workspace_walled() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let a = principal("ws-a", FULL);
+    let f = flow("secret", vec![count_with("a", &[], json!([1, 2]))]);
+    save_flow(&node, &a, "ws-a", &f).await;
+
+    // ws-B (full caps in its OWN ws) cannot reach ws-A's flow state → Denied (NotFound collapses).
+    let b = principal("ws-b", FULL);
+    let err = call_tool(
+        &node,
+        &b,
+        "ws-b",
+        "flows.node_state",
+        &json!({ "id": "secret" }).to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, lb_mcp::ToolError::Denied),
+        "ws-isolation: {err:?}"
+    );
+
+    // Missing the cap → Denied.
+    let no_cap: Vec<&str> = FULL
+        .iter()
+        .copied()
+        .filter(|c| *c != "mcp:flows.node_state:call")
+        .collect();
+    let weak = principal("ws-a", &no_cap);
+    let err2 = call_tool(
+        &node,
+        &weak,
+        "ws-a",
+        "flows.node_state",
+        &json!({ "id": "secret" }).to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err2, lb_mcp::ToolError::Denied),
+        "cap-deny: {err2:?}"
+    );
+}
+
+/// N independent cron triggers per flow (the Node-RED model): a flow with TWO cron triggers on
+/// DIFFERENT schedules saves cleanly (no "one schedule" rejection) — each fires on its own cursor.
+/// A malformed cron spec is still rejected at save (a typo surfaces, not a silently-dead trigger).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn multiple_distinct_cron_triggers_are_accepted() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+
+    // A cron trigger + an inject trigger coexist (only cron schedules; inject is a manual fire).
+    let f1 = flow(
+        "mt1",
+        vec![
+            fnode(
+                "cron",
+                "trigger",
+                &[],
+                json!({ "mode": "cron", "cron": "* * * * *" }),
+            ),
+            fnode(
+                "go",
+                "trigger",
+                &[],
+                json!({ "mode": "inject", "inject_mode": "fire" }),
+            ),
+            count_with("a", &["cron"], json!([1, 2, 3])),
+        ],
+    );
+    save_flow(&node, &p, "ws", &f1).await;
+
+    // Two cron triggers with DIFFERENT specs → now ACCEPTED (each is independent).
+    let f2 = flow(
+        "mt2",
+        vec![
+            fnode(
+                "c1",
+                "trigger",
+                &[],
+                json!({ "mode": "cron", "cron": "* * * * *" }),
+            ),
+            fnode(
+                "c2",
+                "trigger",
+                &[],
+                json!({ "mode": "cron", "cron": "*/5 * * * *" }),
+            ),
+        ],
+    );
+    save_flow(&node, &p, "ws", &f2).await; // no rejection — the whole point of this slice
+
+    // A malformed cron spec is still rejected at save (clear error, not a dead trigger).
+    let bad = flow(
+        "mt-bad",
+        vec![fnode(
+            "c1",
+            "trigger",
+            &[],
+            json!({ "mode": "cron", "cron": "not a cron" }),
+        )],
+    );
+    let err = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.save",
+        &serde_json::to_value(&bad).unwrap().to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(err, lb_mcp::ToolError::BadInput(_)),
+        "a malformed cron spec is rejected: {err:?}"
+    );
 }

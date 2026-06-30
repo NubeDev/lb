@@ -65,6 +65,9 @@ export interface Flow {
   startOnBoot?: boolean;
   placement?: "either" | "cloud-only" | "local-only";
   cron?: string | null;
+  /** The next cron firing instant (unix secs), advanced by the reactor (fire-once-then-skip). The
+   *  canvas reads it to show "armed · next fire in N" for a cron/source flow. */
+  nextAttemptTs?: number;
 }
 
 /** The roster row `flows.list` returns (the picker). */
@@ -122,6 +125,27 @@ export interface FlowRunSummary {
   flowId: string;
   flowVersion: number;
   status: string;
+  /** The run's start instant (unix secs). Rows come newest-first, so `runs[0]` is the latest run —
+   *  what the canvas paints + dates ("last fired N ago") for an armed flow with no live run. */
+  ts?: number;
+}
+
+/** One node's current persistent value (Decision 5: `flow_node_state` last-value, updated in place
+ *  each scan). `value` is the node's latest output; `rev` bumps on every in-place update. */
+export interface NodeStateEntry {
+  node: string;
+  value: unknown;
+  rev: number | null;
+}
+
+/** `flows.node_state` — the persistent runtime view: every node's current value + the flow's armed
+ *  fields. This is the steady state the canvas paints, independent of any single run. */
+export interface FlowNodeState {
+  flowId: string;
+  enabled?: boolean;
+  cron?: string | null;
+  nextAttemptTs?: number;
+  nodes: NodeStateEntry[];
 }
 
 /** A per-node colour the canvas paints from a run snapshot's `outcome`/`claim`. */

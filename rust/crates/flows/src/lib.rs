@@ -50,4 +50,16 @@ pub mod table {
     pub const FLOW_STEP: &str = "flow_step_output";
     pub const FLOW_NODE_STATE: &str = "flow_node_state";
     pub const FLOW_INPUT: &str = "flow_input";
+    /// Per-trigger-node reactive cursor (the cron `next_attempt_ts` per source node). This is what
+    /// makes a flow hold N independent triggers — each cron/source node owns its own cursor here,
+    /// instead of one flow-level `cron`/`next_attempt_ts` (the single-schedule wall this slice tears
+    /// out). Keyed `{flow}:{node}`.
+    pub const FLOW_TRIGGER_STATE: &str = "flow_trigger_state";
+    /// Durable **node memory** — the long-lived per-node state a *stateful* node accumulates across
+    /// firings (the counter's running total today; rate/debounce/moving-average/state-machine later).
+    /// Distinct from `flow_node_state` (the last OUTPUT snapshot, rewritten each firing): memory is
+    /// the node's own retained state, mutated atomically (`lb_store::increment`) so concurrent firings
+    /// never lose an update, and it survives a restart (PLC "rung holds its last result"). Keyed
+    /// `{flow}:{node}`. This is the borrowed-from-Node-RED/FBP "a node holds state" seam.
+    pub const FLOW_NODE_MEMORY: &str = "flow_node_memory";
 }

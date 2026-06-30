@@ -8,6 +8,7 @@
 import { invoke } from "@/lib/ipc/invoke";
 import type {
   Flow,
+  FlowNodeState,
   FlowRunSnapshot,
   FlowRunSummary,
   FlowSummary,
@@ -122,6 +123,13 @@ export function listFlowRuns(
     flowId,
     status: status ?? null,
   }).then((r) => r.runs);
+}
+
+/** The persistent runtime view — every node's CURRENT last-value + the flow's armed fields (Decision
+ *  5). The canvas paints this as its steady state (independent of any single run). Mirrors
+ *  `flows.node_state`. */
+export function getFlowNodeState(id: string): Promise<FlowNodeState> {
+  return invoke<FlowNodeState>("flows_node_state", { id });
 }
 
 /** Flip the durable lifecycle flags (enable/disable + start_on_boot). Mirrors `flows.enable`. */

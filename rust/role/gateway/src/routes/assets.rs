@@ -47,7 +47,7 @@ pub async fn put_doc(
         &body.content,
         lb_assets::ContentType::Text,
         &[],
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(asset_status)?;
@@ -159,7 +159,7 @@ pub async fn put_skill(
         &body.version,
         &body.description,
         &body.body,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(asset_status)?;

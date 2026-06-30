@@ -27,7 +27,7 @@ pub async fn rename_workspace(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::workspace_rename(&gw.node.store, &p, &ws, &body.name, gw.now)
+    lb_host::workspace_rename(&gw.node.store, &p, &ws, &body.name, gw.now())
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)

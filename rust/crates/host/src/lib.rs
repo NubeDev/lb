@@ -128,7 +128,8 @@ pub use federation::{
 pub use flows::error::FlowsError;
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, placement_matches, react_to_flows_cron,
-    reconcile_flows, source_series, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
+    reconcile_flows, source_series, spawn_flow_reactors, watch_flow_run, FlowReactorPass,
+    FlowReconcilePass, FlowWatch,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 /// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,

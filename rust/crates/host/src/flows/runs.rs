@@ -32,6 +32,8 @@ pub async fn flows_runs_get(
         "flowId": run.flow_id,
         "flowVersion": run.flow_version,
         "status": run.status,
+        // The trigger this run fired from (per-wire run); `null` for a whole-graph run.
+        "entryNode": run.entry_node,
         "steps": steps,
     }))
 }
@@ -70,8 +72,18 @@ pub async fn flows_runs_list(
             "flowId": flow_id,
             "flowVersion": inner.get("flow_version").cloned().unwrap_or(Value::Null),
             "status": s,
+            // The run's logical start instant — the canvas reads it to find the MOST RECENT run (a
+            // cron flow's runs are each finite, so "is it running" is "armed + recent runs", not a
+            // single live run) and to show "last fired N ago".
+            "ts": inner.get("ts").cloned().unwrap_or(Value::Null),
         }));
     }
+    // Newest first so the canvas's "latest run" is `runs[0]` without a client-side sort.
+    runs.sort_by(|a, b| {
+        let ta = a.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+        let tb = b.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+        tb.cmp(&ta)
+    });
     Ok(json!({ "runs": runs }))
 }
 

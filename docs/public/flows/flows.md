@@ -98,6 +98,86 @@ schema-deny/run-colours/import-export/undo/ws-isolation/cap-deny/patch_run) ·
 read-out) · Rust `flows_routes_test` 7. `cargo build/test/fmt --workspace` green; `pnpm test` 176;
 `pnpm lint` 0 errors.
 
+## What's shipped (PLC reliability — unique run ids + conflict-safe writes)
+
+`flow-plc-reliability-scope` — the run engine is now reliable under concurrency, the property the
+"run like a PLC" ask demanded.
+
+- **Every manual run is its own run.** `flows.run` mints a fresh **ULID** when no `run_id` is given,
+  so two runs of one flow are two distinct `flow_run` records — never a re-drive of a terminal run.
+  A caller-supplied `run_id` is still honored (resume / subflow / idempotent retry).
+- **The gateway clock advances.** `Gateway::now` reads live wall time per request (it used to freeze
+  at boot, which froze every derived run id); tests still inject a fixed clock.
+- **Same-record writes can't corrupt `rev`.** A store-level `lb_store::write_locked` (per-
+  `(ws,table,id)` async lock + bounded retry-on-conflict — the `capped_insert` design) backs the
+  run-store and `lb-jobs`, so concurrent seeds/drives of one run never surface `Invalid revision` /
+  `read or write conflict`. `create_run` seeds create-if-absent (idempotent under a racing `start`).
+
+**Before/after (live, `chain4`):** 8 concurrent `POST /flows/chain4/run` went from *one shared id +
+6 conflict errors* to *8 distinct ULID ids, zero errors, each settling `success`*.
+
+**Tests:** `store::write_locked_test` (concurrent same-record writes, coherent rev) ·
+`host::flows_plc_reliability_test` (concurrent-same-id-settles-once [the mandatory regression],
+unique-id, cap-deny, ws-isolation). Debug history:
+`debugging/flows/frozen-gw-now-collides-run-ids.md`,
+`debugging/flows/run-store-rev-conflict-under-concurrency.md`.
+
+- **Cron triggers fire headless.** A reactor tick (`spawn_flow_reactors`, wired into node boot) scans
+  every `mode:"cron"` **trigger node** of every enabled flow on a live clock and fires each due one from
+  its own durable cursor (`flow_trigger_state:{flow}:{node}`) — so a flow armed in the canvas runs on its
+  own, survives browser close, and resumes from its per-node cursor on restart (fire-once-then-skip, no
+  backfill). Previously the scan existed but **nothing drove it**, and the schedule was a single
+  flow-level field (see "N independent triggers" below — that wall is now gone).
+
+## What's shipped (the persistent runtime view — Node-RED / PLC steady state)
+
+`flow-persistent-runtime-scope` — opening a flow now SHOWS whether it's running and each node's live
+current value, not a frozen last-run snapshot.
+
+- **`flows.node_state {id}`** (gated, ws-walled; `GET /flows/{id}/node_state`) returns every node's
+  **current persistent value** `[{node, value, rev}]` from `flow_node_state` (Decision 5: last-value,
+  updated in place each scan) plus the flow's armed fields. This is the steady state — readable any
+  time, independent of any single run (state, not motion — rule 3). The value was always written by
+  `record_outcome`; it just had no reader.
+- **The canvas paints node_state as the base steady-state**, overlaying a live run snapshot only while
+  watching a run — so an armed cron flow shows each node's current value (refreshing each firing), and
+  a run-in-flight shows live deltas, never a frozen "DONE". An **armed banner** shows "Armed · next
+  fire in N · last fired N ago · N runs".
+**Live (`chain4`):** `node_state` returned each node's value with node `a` on rev 59; the rev advanced
+59→60 on the next cron firing — the persistent value updates in place each scan.
+
+## What's shipped (N independent triggers + per-wire subgraph runs + a real counter)
+
+`flow-multi-trigger-reactive-scope` — a flow is now a Node-RED-style soup of nodes with **any number of
+independent triggers**, and firing one trigger flows only down **its own wires**.
+
+- **N triggers per flow, each independent.** A flow may carry any number of `mode:"cron"` (and source)
+  triggers — multiple crons, MQTT subs, webhooks — each with its **own** schedule and its **own** durable
+  cursor `flow_trigger_state:{ws}:{flow}:{node}`. The reactor scans **trigger nodes**, not flows. The old
+  "a flow has one schedule" rejection is gone (only a *malformed* cron is rejected at save). The
+  flow-level `flow.cron`/`next_attempt_ts` are retired as the source of truth.
+- **A firing runs only the triggered node's reachable subgraph** (`Flow::reachable_from` +
+  `indegrees_within`). `create_run` takes `entry: Option<&str>`: `Some` seeds only that subgraph (a join
+  waits only on its in-subgraph upstreams), `None` keeps the whole-graph run (manual "run all", resume,
+  subflow). The run records `entry_node` (`flows.runs.get` → `entryNode`); cron / inject / boot / `flows.run
+  {entry}` all fire from their node.
+- **A real `counter` node** — the stateful accumulator (Node-RED / PLC "the rung holds its last result").
+  It reads its durable running total and **increments atomically** per firing (delta = input `items` size,
+  or `config.step`; `reset` zeroes it), so the count GOES UP across runs and survives a restart. Backed by
+  durable **node memory** `flow_node_memory:{ws}:{flow}:{node}` + the new atomic `lb_store::increment`
+  (server-side accumulate, per-key serialized — a retry can't double-add). The pure `count` transform is
+  unchanged. This is the foundation for future stateful nodes (rate, debounce, moving-average).
+- **node_state is per-trigger:** each trigger node's entry carries `{cron, nextAttemptTs, armed}`; the
+  flow-level summary is the **soonest** upcoming fire (the armed banner).
+
+Proven: `host::flows_multi_trigger_test` (multi-cron independence, per-trigger subgraph isolation, the
+counter going 1→2→3, cap-deny, ws-isolation), `store::increment_test` (64 concurrent firings → unique
+totals 1..=64, ws-walled), `lb-flows` model helpers. Debug:
+`debugging/flows/flow-level-cron-rejects-multiple-triggers.md`.
+
+*Open (follow-up, not bugs):* UI per-trigger armed chips; per-node enable/disable; orphan-cursor sweep on
+trigger removal; a native http-in/webhook source node (its own scope).
+
 ## Where to read
 - Scope (the ask, Decisions 1–13): `scope/flows/` (`README.md` index + the seven sub-docs).
 - Sessions (the working logs): `sessions/flows/` (node-descriptor · flow-run · extension-triggers ·

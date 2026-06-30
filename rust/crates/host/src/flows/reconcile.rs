@@ -71,20 +71,25 @@ pub async fn reconcile_flows(
                 let _ = arm_source(node, principal, ws, &flow.id, node_id, cfg).await;
                 pass.armed += 1;
             }
-            // Boot trigger: fire once for a start_on_boot flow. (Idempotency: a boot run id is
-            // deterministic per (flow, "boot"); a re-reconcile within the same instant no-ops.)
-            if flow.start_on_boot && !source_nodes.is_empty() {
-                let _ = super::run::flows_run(
-                    node,
-                    principal,
-                    ws,
-                    &flow.id,
-                    serde_json::Map::new(),
-                    &format!("{}-boot-{now}", flow.id),
-                    now,
-                )
-                .await;
-                pass.boot_fired += 1;
+            // Boot trigger: fire once per `mode:"boot"` trigger node for a start_on_boot flow, each
+            // from ITS node (entry → only its subgraph runs). Idempotency: a boot run id is
+            // deterministic per (flow, node); a re-reconcile within the same instant no-ops. A flow
+            // may have several boot triggers (independent), like any other trigger kind.
+            if flow.start_on_boot {
+                for boot_node in boot_trigger_ids(&flow) {
+                    let _ = super::run::flows_run(
+                        node,
+                        principal,
+                        ws,
+                        &flow.id,
+                        serde_json::Map::new(),
+                        &format!("{}-boot-{boot_node}", flow.id),
+                        now,
+                        Some(&boot_node),
+                    )
+                    .await;
+                    pass.boot_fired += 1;
+                }
             }
         } else {
             // Disabled or not owned by this node → disarm any armed source (converge to released).
@@ -95,6 +100,18 @@ pub async fn reconcile_flows(
         }
     }
     Ok(pass)
+}
+
+/// The `mode:"boot"` trigger node ids — fired once each at node start for a `start_on_boot` flow.
+fn boot_trigger_ids(flow: &lb_flows::Flow) -> Vec<String> {
+    flow.nodes
+        .iter()
+        .filter(|n| {
+            n.node_type == "trigger"
+                && n.config.get("mode").and_then(|v| v.as_str()) == Some("boot")
+        })
+        .map(|n| n.id.clone())
+        .collect()
 }
 
 /// The source-node ids in a flow (nodes whose descriptor `kind` is `source`). Resolved from the

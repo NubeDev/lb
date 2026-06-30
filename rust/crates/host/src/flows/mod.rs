@@ -15,9 +15,11 @@ pub mod error;
 pub mod execute_node;
 pub mod lifecycle;
 pub mod node_config;
+pub mod node_state;
 pub mod nodes;
 pub mod patch_run;
 pub mod react_cron;
+pub mod reactor_loop;
 pub mod reconcile;
 pub mod record;
 pub mod run;
@@ -25,12 +27,14 @@ pub mod run_store;
 pub mod runs;
 pub mod save;
 pub mod source;
+pub mod trigger_store;
 pub mod triggers;
 pub mod watch;
 
 pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
+pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use source::{arm_source, disarm_source, source_series};
 pub use watch::{watch_flow_run, FlowWatch};
@@ -44,7 +48,7 @@ use serde_json::{json, Value};
 use crate::boot::Node;
 
 use error::FlowsError;
-use run::{default_run_id, params_map};
+use run::params_map;
 
 /// Dispatch a `flows.*` MCP call (the cap gate already ran in `tool_call`). Each verb re-authorizes
 /// its own store surface where it touches data; the run engine re-checks every node-tool's own gate.
@@ -114,17 +118,32 @@ async fn dispatch(
             let flow_id = str_arg(input, "id")?;
             let params = params_map(input.get("params").unwrap_or(&Value::Null));
             let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            // A manual run with no caller-supplied id mints a fresh, collision-proof ULID — NOT
+            // `default_run_id(flow_id, now)`, which derived a constant id whenever `now` was coarse
+            // or frozen (the live gateway clock froze at boot), so every re-run re-drove the SAME
+            // terminal run and any two overlapping runs raced the run-store's monotonic `rev`
+            // (`debugging/flows/frozen-gw-now-collides-run-ids.md`). Each manual Run is now its own
+            // distinct `flow_run`. A caller-supplied `run_id` is still honored verbatim — that is the
+            // idempotent-retry / resume / subflow path, which WANTS a stable, re-drivable id.
             let run_id = input
                 .get("run_id")
                 .and_then(|v| v.as_str())
                 .map(String::from)
-                .unwrap_or_else(|| default_run_id(flow_id, now));
+                .unwrap_or_else(lb_store::new_ulid);
+            // Optional `entry`/`node`: fire from one specific trigger and run only ITS downstream
+            // subgraph (Node-RED "click the inject node"). Absent → a whole-graph run from every root
+            // (the back-compat "run all"). The canvas passes the clicked trigger's id here.
+            let entry = input
+                .get("entry")
+                .or_else(|| input.get("node"))
+                .and_then(|v| v.as_str());
             // The manual run is a BACKGROUND job (flow-runtime-control-scope): seed synchronously,
             // drive on a detached task, return the run id at once — so the caller is freed before the
             // run is terminal and the canvas can watch/poll/cancel mid-flight. (The cron/boot/inject
             // reactors keep the synchronous `flows_run` — they own their own loop cadence.)
             let id =
-                run::flows_run_async(node, principal, ws, flow_id, params, &run_id, now).await?;
+                run::flows_run_async(node, principal, ws, flow_id, params, &run_id, now, entry)
+                    .await?;
             Ok(json!({ "run_id": id }))
         }
         "flows.resume" => {
@@ -192,6 +211,10 @@ async fn dispatch(
             let config = input.get("config").cloned().unwrap_or(Value::Null);
             node_config::flows_node_update(&node.store, principal, ws, flow_id, node_id, config)
                 .await
+        }
+        "flows.node_state" => {
+            let flow_id = str_arg(input, "id")?;
+            node_state::flows_node_state(&node.store, principal, ws, flow_id).await
         }
         // `flows.watch` is a live SSE stream, not a JSON dispatch — the gateway's
         // `/flows/runs/{run}/stream` route calls `watch_flow_run` directly (its `mcp:flows.watch:call`

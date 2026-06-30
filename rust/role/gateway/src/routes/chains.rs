@@ -91,7 +91,7 @@ pub async fn run_chain(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({ "chain_id": id, "params": body.params, "ts": gw.now });
+    let input = json!({ "chain_id": id, "params": body.params, "ts": gw.now() });
     call(&gw, &p, "chains.run", &input).await
 }
 

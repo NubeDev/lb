@@ -51,7 +51,7 @@ pub async fn request_approval(
         &body.scope_doc,
         &body.team,
         &body.pr,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(wf_status)?;
@@ -75,7 +75,7 @@ pub async fn resolve_approval(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::resolve_approval(&gw.node.store, &p, p.ws(), &id, body.decision, gw.now)
+    lb_host::resolve_approval(&gw.node.store, &p, p.ws(), &id, body.decision, gw.now())
         .await
         .map_err(wf_status)?;
     Ok(Json(json!({ "ok": true })))
@@ -127,7 +127,7 @@ pub async fn start_job(
             channel: &body.channel,
             pr: &spec,
             pr_key: &body.pr_key,
-            ts: gw.now,
+            ts: gw.now(),
         },
     )
     .await

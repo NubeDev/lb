@@ -40,6 +40,11 @@ pub struct FlowRunRecord {
     pub params: Value,
     #[serde(default)]
     pub ts: u64,
+    /// The trigger node this run fired from (Node-RED per-wire semantics): the run executes only the
+    /// subgraph reachable from this node. `None` = a whole-graph run (manual "run all", resume,
+    /// subflow) seeded from every root — the back-compat path.
+    #[serde(default)]
+    pub entry_node: Option<String>,
 }
 
 /// One node's durable state + recorded result (mirrors the chain `StepStateRecord`).
@@ -72,9 +77,31 @@ pub fn step_record_id(run_id: &str, node_id: &str) -> String {
     format!("{run_id}:{node_id}")
 }
 
+/// One trigger node's reactive cursor — the per-node state that lets a flow hold **N independent
+/// triggers** (each cron/source node owns its own schedule + cursor, instead of one flow-level
+/// `cron`/`next_attempt_ts`). The schedule lives on the node's `config.cron`; this record holds only
+/// the advancing cursor + arm marker the reactor reads/writes per node. Keyed `{flow}:{node}`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FlowTriggerState {
+    /// The next firing instant (logical ts) for this trigger node; advanced fire-once-then-skip.
+    #[serde(default)]
+    pub next_attempt_ts: u64,
+    /// The cron spec this cursor was initialised for — so a schedule edit re-seeds the cursor
+    /// (a stale cursor for an old spec never fires the new one).
+    #[serde(default)]
+    pub cron: Option<String>,
+}
+
+/// The id of a per-node trigger-cursor (and node-memory) record within a flow.
+pub fn node_scoped_id(flow_id: &str, node_id: &str) -> String {
+    format!("{flow_id}:{node_id}")
+}
+
 /// Re-export the table constants from `lb-flows` so the host verbs agree on names.
 pub const FLOW_TABLE: &str = table::FLOW;
 pub const FLOW_RUN_TABLE: &str = table::FLOW_RUN;
 pub const FLOW_STEP_TABLE: &str = table::FLOW_STEP;
 pub const FLOW_NODE_STATE_TABLE: &str = table::FLOW_NODE_STATE;
 pub const FLOW_INPUT_TABLE: &str = table::FLOW_INPUT;
+pub const FLOW_TRIGGER_STATE_TABLE: &str = table::FLOW_TRIGGER_STATE;
+pub const FLOW_NODE_MEMORY_TABLE: &str = table::FLOW_NODE_MEMORY;

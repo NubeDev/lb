@@ -44,9 +44,17 @@ pub async fn create_user(
         .await
         .map_err(|e| e.into_response())?;
     let role = body.role.as_deref().unwrap_or("member");
-    lb_host::user_create(&gw.node.store, &p, p.ws(), &body.user, role, "dev", gw.now)
-        .await
-        .map_err(forbid)?;
+    lb_host::user_create(
+        &gw.node.store,
+        &p,
+        p.ws(),
+        &body.user,
+        role,
+        "dev",
+        gw.now(),
+    )
+    .await
+    .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

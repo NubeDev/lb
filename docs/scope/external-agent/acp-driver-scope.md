@@ -9,6 +9,25 @@ bridges **our** MCP server to the agent, and maps the agent's ACP notifications 
 are **`AgentProfile` data**, never per-agent code. The safety wrapping (sandbox, built-ins-off) is #3;
 this sub-scope assumes #3's hooks and focuses on *talking to the agent correctly*.
 
+## Implementation status — the shipped spike vs the ACP target (read this first)
+
+The **integration wire is ACP** (this scope's plan, below). What exists on disk today is a deliberately
+**simpler seam-proof, not the ACP driver**: `rust/crates/external-agent/` drives `vtcode exec --json`
+over **NDJSON stdout lines** (no ACP, no SDK dependency — `Cargo.toml` pulls only `lb-run-events`,
+`serde`, `tokio`, `thiserror`). It validates the two cheap-to-get-wrong halves — the per-agent
+launch/decode seam (`AgentWrapper`) and the wire→`RunEvent` projection — against a **real** binary,
+without paying for the ACP transport before the seam is proven worth it.
+
+**These are different wires, and the spike's transport is throwaway.** Moving to ACP is **net-new
+work**, not a rename: the JSON-RPC stdio transport, the `initialize` handshake + capability
+advertisement, the `-rmcp` MCP bridge, and a decode surface that is `SessionNotification`-based rather
+than line-based are all added, not adapted. What **does** carry over unchanged is the
+`AgentProfile`-as-data design, the `RunEvent` projection target, and the one-encoder discipline. So:
+the stdout `AgentWrapper` layer is the seam-proof; #2 proper **re-points it onto the SDK** and the
+NDJSON decode path is retired (or kept only as a non-ACP fallback if a profile opts out of ACP — an
+open question, not the default). Treat any "becomes the `AcpRuntime` body with no re-think" phrasing in
+the crate's docs as scoped to the *profile + projection*, not the transport.
+
 ## Goals
 
 - `AcpRuntime: AgentRuntime` in `lb-role-external-agent` (feature `external-agent`): given a goal, an
@@ -38,9 +57,11 @@ this sub-scope assumes #3's hooks and focuses on *talking to the agent correctly
   so the agent can pull further granted skills mid-run (the same model-activated-skills path the in-house
   loop already ships, agent-run Part 5). This is the mechanism that makes a *coding* agent general-purpose:
   **tools + persona are granted data, not code** — see `external-agent-scope.md` ("What a profile is").
-- **ACP version negotiation** — pin the profile's expected ACP version range; **refuse to start** on a
-  mismatch rather than guessing (VT Code `0.10.4`, dirge `0.12.0` are different — the SDK client
-  negotiates; we gate).
+- **ACP version negotiation** — pin the profile's expected ACP **protocol** version range; **refuse to
+  start** on a mismatch rather than guessing (the SDK client negotiates; we gate). *To verify per
+  agent:* the exact ACP protocol version each binary advertises at `initialize` — these are **not** the
+  agent's release version (e.g. VT Code's release is `0.133.x`, not an ACP version) and must be read
+  from the real handshake, not assumed. The official ACP Rust SDK is the version source of truth.
 
 ## Non-goals
 
@@ -59,10 +80,17 @@ this sub-scope assumes #3's hooks and focuses on *talking to the agent correctly
 bridge to the very SDK we use). Our original code is small: the `AgentProfile` schema, the ACP→`RunEvent`
 encoder, and the orchestration that ties prompt → tool-bridge → events together.
 
-**One driver, profiles for difference.** The temptation is a `VtCodeRuntime` and a `DirgeRuntime`; reject
-it. Every per-agent difference (binary, args, the flag that disables built-ins, ACP version, resume
-capability) is *data* in an `AgentProfile`. This is what makes the seam swappable and keeps the wall
-test meaningful (the same code path is exercised regardless of agent). New agent = new profile row.
+**One driver, profiles for difference — plus thin per-agent shims, not per-agent runtimes.** The
+temptation is a `VtCodeRuntime` and a `DirgeRuntime` — each its *own loop, own caps handling, own state*;
+**reject that** (it re-imports the second-loop anti-pattern). There is **one** `AgentRuntime` impl.
+Every per-agent difference (binary, args, the lever that disables built-ins, ACP version, resume
+capability) is *data* in an `AgentProfile`, and the small amount that is genuinely *behavioural* — how to
+build this agent's argv, how to decode this agent's notification dialect — lives in a **thin, data-ish
+per-agent shim** (the shipped spike's `AgentWrapper` impls: `wrappers/vtcode.rs`, `wrappers/codex.rs`).
+A shim is **argv + decode only**: no loop, no `caps::check`, no session state, so it does **not**
+reintroduce the rejected per-agent runtime. The driver/runtime is single; the shim is a parser. This is
+what keeps the seam swappable and the wall test meaningful (one code path, regardless of agent). New
+agent = new profile **and** a new ≤1-screen shim file — never a new runtime.
 
 **The encoder is the contract boundary.** Mapping ACP notifications to `RunEvent`s is the one place the
 external loop meets our internals; keep it total (every ACP variant maps or is explicitly dropped with a
@@ -77,9 +105,17 @@ are #3's "everything is MCP" stance). Advertising less is how the wall starts at
 are the *same loop* with a different **persona skill** + **granted tool set**. We do **not** fork the
 agent or rewrite its prompt in code; we load a workspace-granted skill (shipped `load_skill`, grant-gated)
 and feed it as the agent's session instructions, and we grant the data MCP tools (`federation.query`,
-`data.query`, `series.*`, `viz.query`) instead of repo tools. The agent's own built-in persona is
-neutralized along with its built-in tools (#3); ours — the granted skill — is the one that lands. This is
-why "general-purpose" is true *through our seam* even when the agent ships coding-branded.
+`data.query`, `series.*`, `viz.query`) instead of repo tools.
+
+**On "neutralizing" the agent's own persona — best-effort, not a protocol guarantee.** Agents like VT
+Code ship a first-class skills system and baked-in system prompts; feeding our skill as `session/new`
+instructions makes *our* persona the dominant one, but ACP does **not** guarantee the agent discards its
+own system prompt (many agents merge or deprioritize client instructions against their own). So the
+*persona* is best-effort. What is **not** best-effort is the **capability** boundary: regardless of what
+the agent "thinks it is," it can only call the tools the wall (#3) admits — built-ins denied, granted
+MCP tools only, `caps::check` on every call. "General-purpose through our seam" rests on the **tool
+grant + wall**, which is enforced; the persona skill steers, the wall constrains. Do not rely on prompt
+instructions for safety — only on #3.
 
 ## How it fits the core
 
@@ -103,6 +139,22 @@ why "general-purpose" is true *through our seam* even when the agent ships codin
 
 ### File layout (FILE-LAYOUT)
 
+**Shipped today — the stdout seam-proof (leaf crate, not wired, no ACP):**
+
+```
+rust/crates/external-agent/src/
+  lib.rs              ← crate root + re-exports (NOT yet an AgentRuntime impl)
+  driver.rs           ← drive(wrapper, profile, goal, ws, timeout): spawn + read NDJSON stdout + project
+  wrapper.rs          ← trait AgentWrapper { id; command_args; decode_line -> Decoded } (the per-agent seam)
+  profile.rs          ← AgentProfile + ModelEndpoint (data: binary, provider/model, api-key env NAME)
+  wrappers/
+    mod.rs            ← re-exports the shims
+    vtcode.rs         ← VtcodeWrapper: `vtcode exec --json` argv + VtcodeEvent NDJSON decode (the reference)
+    codex.rs          ← CodexWrapper: FUTURE example (not driven), proves the seam takes a 2nd agent
+```
+
+**Integration target — #2 proper, the ACP runtime (role crate, feature-gated, ACP wire):**
+
 ```
 rust/role/external-agent/src/
   lib.rs          ← AcpRuntime: impl lb_host::AgentRuntime (orchestration)
@@ -110,8 +162,15 @@ rust/role/external-agent/src/
   bridge_mcp.rs   ← offer derived-principal MCP tools to the agent (agent-client-protocol-rmcp)
   encode.rs       ← ACP SessionNotification -> RunEvent (inverse of role/acp/src/encode.rs)
   profile.rs      ← AgentProfile schema (binary, granted_tools, persona_skill, model, resume) + built-in profiles
+  wrappers/       ← the per-agent argv/decode shims carry over (re-pointed onto ACP notification decode)
   // sandbox.rs is owned by #3 (capability-wall) and called from spawn.rs
 ```
+
+The `crates/` leaf becomes the `role/` crate when #1's `AgentRuntime` seam + the `external-agent`
+feature land: `driver.rs`'s spawn/collect role is taken over by `spawn.rs`/`lib.rs`, the NDJSON
+`decode_line` in each `wrappers/*.rs` is re-pointed onto `encode.rs`'s ACP decode, and `profile.rs`
+carries over largely intact. Until then the leaf intentionally lives in `crates/` with no feature and
+no dependents (keeps the future feature-OFF build clean — runtime-seam "feature leakage").
 
 ## Example flow
 

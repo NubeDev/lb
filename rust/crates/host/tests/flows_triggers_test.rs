@@ -138,20 +138,146 @@ async fn inject_fire_starts_one_run() {
     assert_eq!(r["fired_run"], true); // fire → one run started
 }
 
+/// A flow authored as the CANVAS authors it: a `mode:"cron"` trigger node carrying the schedule in
+/// `config.cron`, feeding `a`. The reactor scans the trigger NODE (per-node cursor), not a flow-level
+/// `flow.cron`.
+fn cron_node_flow(id: &str, node_id: &str, spec: &str) -> Flow {
+    let trig = Node {
+        id: node_id.into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({ "mode": "cron", "cron": spec }),
+    };
+    let a = Node {
+        id: "a".into(),
+        node_type: "rhai".into(),
+        needs: vec![node_id.to_string()],
+        with: Default::default(),
+        config: json!({"source":"1"}),
+    };
+    let mut f = rhai_flow(id);
+    f.nodes = vec![trig, a];
+    f
+}
+
+/// The per-node cursor `next_attempt_ts` (the reactor's durable per-trigger state), read from the
+/// store (`flow_trigger_state:{flow}:{node}`).
+async fn cursor_next(node: &Arc<HostNode>, ws: &str, flow: &str, node_id: &str) -> u64 {
+    store_read(
+        &node.store,
+        ws,
+        "flow_trigger_state",
+        &format!("{flow}:{node_id}"),
+    )
+    .await
+    .unwrap()
+    .and_then(|v| v["next_attempt_ts"].as_u64())
+    .unwrap_or(0)
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn cron_reactor_fires_once_then_skips() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    let mut f = rhai_flow("cron1");
-    f.cron = Some("*/1 * * * *".into());
-    f.next_attempt_ts = 100;
-    save(&node, &p, "ws", &f).await;
-    // due at now=200 (next_attempt_ts=100 ≤ 200) → fires once, advances next_attempt_ts past 200.
-    let pass = react_to_flows_cron(&node, &p, "ws", 200).await.unwrap();
+    save(
+        &node,
+        &p,
+        "ws",
+        &cron_node_flow("cron1", "t", "*/1 * * * *"),
+    )
+    .await;
+    // First pass primes the per-node cursor (no fire on init).
+    react_to_flows_cron(&node, &p, "ws", 100).await.unwrap();
+    let next = cursor_next(&node, "ws", "cron1", "t").await;
+    assert!(next > 0, "reactor primed the trigger node's cursor");
+    // Due pass → fires once, advances the cursor.
+    let pass = react_to_flows_cron(&node, &p, "ws", next + 1)
+        .await
+        .unwrap();
     assert_eq!(pass.fired, 1);
-    // a re-scan at the same now → idempotent no-op (the job exists) + the firing advanced.
-    let pass2 = react_to_flows_cron(&node, &p, "ws", 200).await.unwrap();
+    // A re-scan at the same now → idempotent no-op (the job exists).
+    let pass2 = react_to_flows_cron(&node, &p, "ws", next + 1)
+        .await
+        .unwrap();
     assert_eq!(pass2.fired, 0);
+}
+
+/// END-TO-END: a canvas-authored cron flow FIRES through the reactor and settles a run with real
+/// values, firing ONLY the trigger's subgraph (entry = the trigger node). This is the path broken
+/// live ("added a cron trigger, count never goes up").
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn cron_trigger_node_fires_its_subgraph() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+
+    let trig = Node {
+        id: "trigger-5".into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: Default::default(),
+        config: json!({ "mode": "cron", "cron": "* * * * *" }),
+    };
+    let counter = Node {
+        id: "a".into(),
+        node_type: "count".into(),
+        needs: vec!["trigger-5".into()],
+        with: serde_json::Map::from_iter([("items".into(), json!([1, 2, 3, 4]))]),
+        config: json!({}),
+    };
+    let mut f = rhai_flow("chain4");
+    f.nodes = vec![trig, counter];
+    save(&node, &p, "ws", &f).await;
+
+    // The reactor primes the trigger node's cursor on first sight, then fires on a due pass.
+    react_to_flows_cron(&node, &p, "ws", 100).await.unwrap();
+    let next = cursor_next(&node, "ws", "chain4", "trigger-5").await;
+    assert!(next > 0, "reactor primed the per-node cursor");
+
+    let pass = react_to_flows_cron(&node, &p, "ws", next + 1)
+        .await
+        .unwrap();
+    assert_eq!(pass.fired, 1, "the cron trigger fired");
+
+    // The fired run is real + settled with values, with the run id keyed per (flow, NODE, instant).
+    let run_id = lb_host::cron_run_id("chain4", "trigger-5", next);
+    let snap = await_terminal(&node, &p, "ws", &run_id).await;
+    assert_eq!(snap["status"], "success");
+    let step_a = snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "a")
+        .expect("count step present");
+    assert_eq!(
+        step_a["output"]["count"], 4,
+        "count node produced a real value"
+    );
+}
+
+/// Poll the durable run until terminal (the cron-fired run is driven synchronously by
+/// `react_to_flows_cron` → `flows_run`, but poll defensively so the assert is on a settled snapshot).
+async fn await_terminal(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id: &str) -> Value {
+    for _ in 0..600 {
+        let out = call_tool(
+            node,
+            p,
+            ws,
+            "flows.runs.get",
+            &json!({ "run_id": run_id }).to_string(),
+        )
+        .await
+        .unwrap();
+        let snap: Value = serde_json::from_str(&out).unwrap();
+        if matches!(
+            snap["status"].as_str().unwrap_or(""),
+            "success" | "partialFailure" | "failed" | "cancelled"
+        ) {
+            return snap;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("cron run {run_id} never settled");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

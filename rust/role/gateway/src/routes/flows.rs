@@ -111,7 +111,7 @@ pub async fn run_flow(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let mut input = json!({ "id": id, "params": body.params, "ts": gw.now });
+    let mut input = json!({ "id": id, "params": body.params, "ts": gw.now() });
     if let Some(rid) = body.run_id {
         input["run_id"] = Value::String(rid);
     }
@@ -139,7 +139,7 @@ pub async fn lifecycle_flow(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({ "run_id": run_id, "ts": gw.now });
+    let input = json!({ "run_id": run_id, "ts": gw.now() });
     call(&gw, &p, verb, &input).await
 }
 
@@ -247,7 +247,7 @@ pub async fn inject_flow(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({ "id": id, "node": body.node, "value": body.value, "ts": gw.now });
+    let input = json!({ "id": id, "node": body.node, "value": body.value, "ts": gw.now() });
     call(&gw, &p, "flows.inject", &input).await
 }
 
@@ -267,6 +267,20 @@ pub async fn get_flow_node(
         &json!({ "id": id, "node": node }),
     )
     .await
+}
+
+/// `GET /flows/{id}/node_state` — the **persistent runtime view**: every node's current last-value
+/// (Decision 5) + the flow's armed fields. Gated `flows.node_state`. This is the steady-state the
+/// canvas paints (the Node-RED "each wire shows its current value"), independent of any single run.
+pub async fn flow_node_state(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    call(&gw, &p, "flows.node_state", &json!({ "id": id })).await
 }
 
 /// `POST /flows/node/{id}/{node}` body — the replacement config for one node.

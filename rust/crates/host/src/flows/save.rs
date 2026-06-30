@@ -36,12 +36,52 @@ pub async fn flows_save(
     } else if flow.version == 0 {
         flow.version = 1;
     }
+    // N independent triggers: a flow may carry ANY number of `mode:"cron"` trigger nodes, each with
+    // its own schedule (its `config.cron`). The reactor scans them per-node (each owns its cursor in
+    // `flow_trigger_state`), so there is no flow-level schedule to derive and no "one schedule"
+    // rejection — we only validate that each spec is a well-formed cron (a bad spec is a clear save
+    // error, not a silently-dead trigger). The reactor self-arms each cursor on its next pass.
+    validate_cron_triggers(flow)?;
     let value = serde_json::to_value(&*flow).map_err(|e| FlowsError::Internal(e.to_string()))?;
     let id = flow.id.clone();
     write(store, ws, FLOW_TABLE, &id, &value)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
     Ok(id)
+}
+
+/// Validate every `mode:"cron"` trigger node's `config.cron` is a well-formed 5-field spec. A flow
+/// may carry **any number** of cron triggers (each fires independently on its own cursor — there is no
+/// "one schedule per flow" wall); we only reject a malformed spec so a typo surfaces at save instead
+/// of silently arming nothing. An empty/absent spec on a cron trigger is rejected too (an armed cron
+/// node with no schedule is a mistake). The reactor (`react_to_flows_cron`) owns the per-node cursor.
+fn validate_cron_triggers(flow: &Flow) -> Result<(), FlowsError> {
+    for n in &flow.nodes {
+        let is_cron = n.node_type == "trigger"
+            && n.config.get("mode").and_then(|v| v.as_str()) == Some("cron");
+        if !is_cron {
+            continue;
+        }
+        let spec = n
+            .config
+            .get("cron")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if spec.is_empty() {
+            return Err(FlowsError::BadInput(format!(
+                "node `{}`: a cron trigger needs a non-empty `config.cron` schedule",
+                n.id
+            )));
+        }
+        if !super::react_cron::cron_is_valid(spec) {
+            return Err(FlowsError::BadInput(format!(
+                "node `{}`: invalid cron schedule `{spec}` (expected a 5-field spec)",
+                n.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Re-validate every node's config against its descriptor's schema at save (the config_version

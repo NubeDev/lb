@@ -94,7 +94,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
         // null → 0, a scalar → 1. Output port `count` carries the integer. No MCP tool — the host
         // resolves it directly (like `trigger`). The plain "how many?" node for a flow.
         NodeDescriptor::new("count", NodeKind::Transform, "")
-            .with_title("Count")
+            .with_title("Count (input size)")
             .with_category("Flow")
             .with_icon("hash")
             .with_ports(vec!["items".into()], vec!["count".into()])
@@ -104,6 +104,28 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {}
+                }),
+            ),
+        // A STATEFUL accumulator — the Node-RED / PLC counter (the "rung holds its last result").
+        // Unlike `count` (a pure transform of THIS firing's input), `counter` reads its own durable
+        // last value (`flow_node_state:{flow}:{node}`) and increments by `step` on every firing, so
+        // the value GOES UP across runs and survives a restart. `reset` zeroes it; an `items` input
+        // increments by the input's size instead of `step` (a throughput counter). Output port
+        // `count` carries the running total. No MCP tool — the host resolves it directly.
+        NodeDescriptor::new("counter", NodeKind::Transform, "")
+            .with_title("Counter (running total)")
+            .with_category("Flow")
+            .with_icon("plus")
+            .with_ports(vec!["items".into()], vec!["count".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "step": {"type": "integer", "default": 1, "description": "increment per firing (when no `items` input)"},
+                        "reset": {"type": "boolean", "default": false, "description": "zero the running total before applying this firing"}
+                    }
                 }),
             ),
         // A node containing a child graph. Bound to host `flows.run` (a pinned child run the node's
@@ -155,7 +177,7 @@ mod tests {
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
         assert_eq!(
             types,
-            vec!["trigger", "tool", "rhai", "count", "subflow", "sink"]
+            vec!["trigger", "tool", "rhai", "count", "counter", "subflow", "sink"]
         );
         // every built-in carries a compilable config schema (load-time contract).
         for desc in &d {

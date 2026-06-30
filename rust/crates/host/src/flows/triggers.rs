@@ -72,7 +72,19 @@ pub async fn flows_inject(
         // The injected value is the trigger payload: stash it as a run param the trigger node emits.
         let mut params = serde_json::Map::new();
         params.insert(node_id.to_string(), value);
-        super::run::flows_run(node, principal, ws, flow_id, params, &run_id, now).await?;
+        // Fire FROM the inject node (entry = node_id): only its downstream subgraph runs (Node-RED
+        // "click the inject node"), never the whole flow.
+        super::run::flows_run(
+            node,
+            principal,
+            ws,
+            flow_id,
+            params,
+            &run_id,
+            now,
+            Some(node_id),
+        )
+        .await?;
         return Ok(true);
     }
     Ok(false)

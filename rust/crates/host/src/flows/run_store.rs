@@ -5,15 +5,32 @@
 //! contend, and a restart resumes from the recorded state (the headline offline/sync property).
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lb_flows::{resolve_bindings, Flow, NodeOutput};
-use lb_store::{read, scan, write, Store};
+use lb_store::{read, scan, write_locked as write, Store};
 use serde_json::{json, Value};
+use tokio::sync::Mutex as AsyncMutex;
 
 use super::record::{
     step_record_id, ClaimState, FlowRunRecord, FlowStepRecord, FLOW_INPUT_TABLE,
     FLOW_NODE_STATE_TABLE, FLOW_RUN_TABLE, FLOW_STEP_TABLE,
 };
+
+/// Per-`(ws,run_id)` lock guarding the create-if-absent seed in [`create_run`], so two concurrent
+/// `start`s of the same run id can't both pass the existence check and double-seed. In-process: a
+/// run is owned + resumed by one node. Cross-record `rev` safety is the store's `write_locked`; this
+/// lock is specifically the check-then-seed window.
+fn seed_lock(ws: &str, run_id: &str) -> Arc<AsyncMutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<String, Arc<AsyncMutex<()>>>>> = OnceLock::new();
+    let map = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let composite = format!("{ws}\u{1}{run_id}");
+    let mut guard = map.lock().expect("flows seed-lock map poisoned");
+    guard
+        .entry(composite)
+        .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+        .clone()
+}
 
 /// Seed a run: the coordinator record (pending, pinned `flow_version`) + a per-node state row (claim
 /// from in-degree). The pinned version is the spine of resume (Decision 1).
@@ -24,7 +41,18 @@ pub async fn create_run(
     flow: &Flow,
     params: &serde_json::Map<String, Value>,
     now: u64,
+    entry: Option<&str>,
 ) -> Result<(), String> {
+    // Idempotent seed (create-if-absent): a second concurrent `start` of the same run id must NOT
+    // re-write the coordinator + step rows — that re-seed is what raced the monotonic `rev` and could
+    // clobber an in-flight run's progress back to `pending`. The seed is keyed on the run record's
+    // existence; the per-record `write_locked` lock makes this check-then-seed safe against a sibling
+    // seeder (one wins the lock, seeds; the other reads the now-present run and no-ops).
+    let lock = seed_lock(ws, run_id);
+    let _guard = lock.lock().await;
+    if read_run(store, ws, run_id).await?.is_some() {
+        return Ok(());
+    }
     let run = FlowRunRecord {
         run_id: run_id.to_string(),
         flow_id: flow.id.clone(),
@@ -32,6 +60,7 @@ pub async fn create_run(
         status: "pending".into(),
         params: json!(params),
         ts: now,
+        entry_node: entry.map(str::to_string),
     };
     write(
         store,
@@ -42,8 +71,20 @@ pub async fn create_run(
     )
     .await
     .map_err(|e| e.to_string())?;
-    let indeg = flow.indegrees();
+    // Per-wire (Node-RED/FBP) seeding: a run fired FROM a trigger seeds only the subgraph reachable
+    // from it, with indegrees counted within that subgraph (a join waits only on its in-subgraph
+    // upstreams). `entry=None` keeps the whole-graph seed (manual "run all", resume, subflow). Nodes
+    // outside the set get NO step record — they are not part of this run (the wire never carried a
+    // message to them), so the drive/finalize loops simply never see them.
+    let set = run_node_set_for(flow, entry);
+    let indeg = match entry {
+        Some(_) => flow.indegrees_within(&set),
+        None => flow.indegrees(),
+    };
     for n in &flow.nodes {
+        if !set.contains(&n.id) {
+            continue;
+        }
         let d = indeg[&n.id];
         let rec = FlowStepRecord {
             run_id: run_id.to_string(),
@@ -65,6 +106,30 @@ pub async fn create_run(
         write_step(store, ws, &rec).await?;
     }
     Ok(())
+}
+
+/// The set of node ids a run executes: the subgraph reachable from `entry` (per-wire firing), or
+/// **every** node when `entry` is `None` (whole-graph run). The single source of truth for which
+/// nodes `create_run` seeds and `finalize_if_complete` waits on — so the two never disagree.
+fn run_node_set_for(flow: &Flow, entry: Option<&str>) -> std::collections::HashSet<String> {
+    match entry {
+        Some(e) => flow.reachable_from(e),
+        None => flow.nodes.iter().map(|n| n.id.clone()).collect(),
+    }
+}
+
+/// The node set of an EXISTING run, recovered from its persisted `entry_node` (so drive/finalize on a
+/// resumed run scope to the same subgraph the seed used).
+pub async fn run_node_set(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+) -> Result<std::collections::HashSet<String>, String> {
+    let entry = read_run(store, ws, run_id)
+        .await?
+        .and_then(|r| r.entry_node);
+    Ok(run_node_set_for(flow, entry.as_deref()))
 }
 
 /// CAS claim a node: `Pending|Enqueued → Running`. Returns true if THIS call won the claim.
@@ -207,7 +272,10 @@ pub async fn finalize_if_complete(
 ) -> Result<Option<String>, String> {
     let mut any_failed = false;
     let mut any_ok = false;
-    for n in &flow.nodes {
+    // Only the run's OWN node set must be terminal — a per-trigger run finalises when ITS subgraph is
+    // done, never waiting on out-of-subgraph nodes (which carry no step record this run).
+    let set = run_node_set(store, ws, flow, run_id).await?;
+    for n in flow.nodes.iter().filter(|n| set.contains(&n.id)) {
         let Some(rec) = read_step(store, ws, run_id, &n.id).await? else {
             return Ok(None);
         };

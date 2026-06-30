@@ -74,7 +74,7 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
         authenticate_apikey(gw, token).await?
     } else {
         // JWT path: verify signature + expiry with the node key at the gateway's clock.
-        verify(&gw.key, token, gw.now).map_err(|_| AuthRejection::Invalid)?
+        verify(&gw.key, token, gw.now()).map_err(|_| AuthRejection::Invalid)?
     };
     // Live-token revoke (access-console scope): a per-(ws, subject) tombstone marker — written by
     // `authz.revoke-tokens` — refuses the subject's *current* (cached) token on the next request,
@@ -114,7 +114,7 @@ async fn authenticate_apikey(gw: &Gateway, token: &str) -> Result<Principal, Aut
         key.ws,
         key.key_id,
         key.secret,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(|_| AuthRejection::Invalid)?;

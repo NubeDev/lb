@@ -91,6 +91,17 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("boot seed for ws={ws} user={seed_user} failed: {e}");
     }
 
+    // FLOW REACTOR TICK: drive the cron/reconcile scans on a cadence so a `mode:"cron"` trigger
+    // actually fires on a running node (the scans were previously only invoked from tests — a flow
+    // armed in the UI never fired). One detached owner per node, scanning the configured workspace.
+    // A few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
+    lb_host::spawn_flow_reactors(
+        node.clone(),
+        vec![ws.clone()],
+        lb_host::Role::Solo,
+        std::time::Duration::from_secs(5),
+    );
+
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
     github::mount(node.clone()).await;
@@ -136,11 +147,10 @@ async fn main() -> anyhow::Result<()> {
         // The gateway fronts THIS node. Do not call `Gateway::boot()` here: that would open a second
         // embedded store handle, and with `LB_STORE_PATH` set both handles would point at the same
         // SurrealKV directory.
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let gw = lb_role_gateway::Gateway::new(node.clone(), SigningKey::generate(), now);
+        // A LIVE clock (not a value frozen here at boot): `Gateway::new_live` reads wall time per
+        // request, so token iat/exp and any derived ts advance. `Gateway::new(.., now)` is the
+        // fixed-clock TEST seam only.
+        let gw = lb_role_gateway::Gateway::new_live(node.clone(), SigningKey::generate());
         println!("gateway: serving on http://{addr}");
         lb_role_gateway::serve(gw, addr).await?;
     }

@@ -76,7 +76,7 @@ pub async fn save_dashboard(
         &body.title,
         body.cells,
         body.variables,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(status)?;
@@ -92,7 +92,7 @@ pub async fn delete_dashboard(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::dashboard_delete(&gw.node.store, &p, p.ws(), &id, gw.now)
+    lb_host::dashboard_delete(&gw.node.store, &p, p.ws(), &id, gw.now())
         .await
         .map_err(status)?;
     Ok(StatusCode::NO_CONTENT)
@@ -128,7 +128,7 @@ pub async fn share_dashboard(
         &id,
         visibility,
         body.team.as_deref(),
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(status)?;

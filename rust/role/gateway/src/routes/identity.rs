@@ -48,7 +48,7 @@ pub async fn create_identity(
         &p,
         &body.sub,
         body.display_name.as_deref(),
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(forbid)?;

@@ -31,9 +31,14 @@ pub struct Gateway {
     pub node: Arc<Node>,
     /// The node's Ed25519 signing key — `login` mints with it, every route verifies with it.
     pub key: Arc<SigningKey>,
-    /// The logical "now" (unix seconds) used for mint `iat`/`exp` and verify expiry. Injected so
-    /// tests are deterministic (testing §3 — no wall-clock); `boot` seeds it from the real clock.
-    pub now: u64,
+    /// A fixed "now" (unix seconds) injected by tests for determinism (testing §3 — no wall-clock):
+    /// `Some(n)` pins the clock; `None` (production, via [`boot`]) reads the **live** wall clock per
+    /// call through [`Gateway::now`]. The clock used to be a frozen field seeded once at boot — that
+    /// froze every derived value (notably the flows run id `ts`) for the node's whole uptime, so
+    /// every `flows.run` collided on one run id and raced the run-store
+    /// (`debugging/flows/frozen-gw-now-collides-run-ids.md`). The test seam is preserved: a test
+    /// constructs `Gateway::new(node, key, fixed_now)` and the clock stays pinned.
+    pub fixed_now: Option<u64>,
     /// The publisher allow-list the `POST /extensions` upload verifies an artifact against BEFORE
     /// storing it (verify-before-store, lifecycle-management scope). Trust is environment, never the
     /// upload body — an attacker cannot self-trust. S7-first: an empty dev fixture in production
@@ -59,20 +64,40 @@ impl Gateway {
         let node = Node::boot_as(lb_host::Role::Hub)
             .await
             .map_err(|e| e.to_string())?;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        Ok(Self::new(Arc::new(node), SigningKey::generate(), now).with_pepper_from_env())
+        // Production reads the live wall clock per request (fixed_now = None) — never a value frozen
+        // at boot. The wall-clock read lives in `Gateway::now`.
+        Ok(Self::new_live(Arc::new(node), SigningKey::generate()).with_pepper_from_env())
     }
 
-    /// Build a gateway around an existing node + an explicit signing key + clock. Lets the tests
-    /// front a node with a known key (so they can forge/expire tokens) and a fixed clock.
+    /// The current unix-seconds clock: the injected fixed clock if a test pinned one, else a live
+    /// wall-clock read. Use this everywhere a route needs "now" — it advances in production.
+    pub fn now(&self) -> u64 {
+        match self.fixed_now {
+            Some(n) => n,
+            None => std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+        }
+    }
+
+    /// Build a gateway with a **live** wall clock (production). The token mint/verify clock advances
+    /// per request via [`Gateway::now`].
+    pub fn new_live(node: Arc<Node>, key: SigningKey) -> Self {
+        Self::build(node, key, None)
+    }
+
+    /// Build a gateway around an existing node + an explicit signing key + a **fixed** clock. Lets
+    /// the tests front a node with a known key (so they can forge/expire tokens) and a pinned clock.
     pub fn new(node: Arc<Node>, key: SigningKey, now: u64) -> Self {
+        Self::build(node, key, Some(now))
+    }
+
+    fn build(node: Arc<Node>, key: SigningKey, fixed_now: Option<u64>) -> Self {
         Self {
             node,
             key: Arc::new(key),
-            now,
+            fixed_now,
             // Trust is environment, never the upload body: seed the publisher allow-list from
             // `LB_TRUSTED_PUBKEYS` (empty if unset → every upload 422s). Tests override via
             // `with_trusted`.

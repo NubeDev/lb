@@ -17,6 +17,7 @@ members = [
     "crates/caps",
     "crates/devkit",
     "crates/ext-loader",
+    "crates/external-agent",
     "crates/flows",
     "crates/host",
     "crates/inbox",

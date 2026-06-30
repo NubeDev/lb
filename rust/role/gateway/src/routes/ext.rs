@@ -36,7 +36,7 @@ pub async fn enable_extension(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::ext_enable(&gw.node, &p, p.ws(), &ext, gw.now)
+    lb_host::ext_enable(&gw.node, &p, p.ws(), &ext, gw.now())
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
@@ -51,7 +51,7 @@ pub async fn disable_extension(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::ext_disable(&gw.node, &p, p.ws(), &ext, gw.now)
+    lb_host::ext_disable(&gw.node, &p, p.ws(), &ext, gw.now())
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
@@ -66,7 +66,7 @@ pub async fn uninstall_extension(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::ext_uninstall(&gw.node, &p, p.ws(), &ext, gw.now)
+    lb_host::ext_uninstall(&gw.node, &p, p.ws(), &ext, gw.now())
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
@@ -94,7 +94,7 @@ pub async fn publish_extension(
         publish.artifact,
         &publish.trusted,
         Visibility::Private,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(publish_status)?;

@@ -1,0 +1,22 @@
+[package]
+name = "lb-external-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# NOT yet wired into the node. This is the standalone driver crate for external-agent sub-scope #2
+# (acp-driver), proven against a REAL vtcode subprocess. It is intentionally absent from the node
+# binary until the #1 `AgentRuntime` seam + the `external-agent` feature land (runtime-seam-scope).
+# Keeping it a leaf crate that nothing depends on is what makes it "an add-on, not integrated yet".
+
+[dependencies]
+lb-run-events.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "process", "io-util", "time"] }

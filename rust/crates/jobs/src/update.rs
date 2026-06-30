@@ -3,7 +3,7 @@
 //! `pub(crate)`: callers mutate a loaded [`Job`] then hand it here; the public verbs are the
 //! intent-named ones (`append_step`, `complete`), not a bare "write whatever".
 
-use lb_store::{write, Store, StoreError};
+use lb_store::{write_locked as write, Store, StoreError};
 
 use super::model::Job;
 use super::TABLE;

@@ -183,3 +183,42 @@ descriptor `kind`), so the button reads "Run" (one-shot) or "Deploy"/"Stop" (con
   `debugging/observability/capped-insert-overgrows-cap-under-concurrency.md`
   (per-key async lock + bounded retry-on-conflict over a SurrealDB rev/trim race).
 - Promotes to `public/flows/flows.md`.
+
+## Resolution (shipped 2026-06-30 — see the session doc)
+
+Backend reliability (Goals/Intent items 1–4 + 6) shipped and **verified live**; session:
+[`sessions/flows/flow-plc-reliability-session.md`](../../sessions/flows/flow-plc-reliability-session.md).
+
+Decisions made:
+- **Conflict-safe write placement:** chose the **store-level** `lb_store::write_locked`
+  (per-`(ws,table,id)` async lock + bounded retry, the `capped_insert` shape) over localizing in
+  `run_store.rs`. Rejected the localized variant because it leaves every other same-record writer
+  (jobs, future callers) exposed — the primitive is the correctness boundary. Adopted by `run_store`
+  + `lb-jobs::{create,update}` (the `job:{run_id}` row races too — found via the regression test).
+- **Frozen clock:** minimal fix — `Gateway::now` accessor (live read / injected `fixed_now`), the 35
+  `gw.now` sites became `gw.now()`. Did **not** introduce a gateway-wide time service (a Non-goal);
+  the fixed-clock test seam (`Gateway::new(..., NOW)`) is intact.
+- **Unique id:** ULID at the `flows.run` dispatch arm; `default_run_id` retained for the deterministic
+  inject/cron path only.
+- **Idempotent seed:** create-if-absent in `create_run` under a per-`(ws,run_id)` lock.
+- **UI hygiene (item 6):** no change required — `reattach` already keys on `[flow.id]` and the SSE
+  effect on `[runId]`; the churn was backend-fueled (the constant id). Verified, not skipped.
+
+**Item 5 (reactive cron firing) — DONE in-session** after a live failure ("added a cron trigger,
+count never goes up"). Root cause was two disconnected gaps + a compounding one:
+- **no production driver** ticked `react_to_flows_cron`/`reconcile_flows` (only tests called them) →
+  added `spawn_flow_reactors` (a detached per-node tick, live clock) wired into node boot;
+- **UI cron ≠ reactor field**: the canvas writes `trigger.config.cron`, the reactor scans
+  `flow.cron` → `flows.save` now **derives** `flow.cron` from a `mode:cron` trigger node
+  (`derive_cron_from_trigger`), resetting `next_attempt_ts` on change (no clobber when absent);
+- **frozen production clock**: the node binary built the gateway with `Gateway::new(.., now)` (the
+  fixed-clock seam) → switched to `Gateway::new_live`.
+
+Verified live: a `* * * * *` trigger fires every minute headless, runs settle `success` with real
+values; `next_attempt_ts` advances per fire. Debug:
+`debugging/flows/cron-trigger-never-fires-no-reactor-driver.md`; e2e test
+`flows_triggers_test::cron_trigger_node_derives_flow_cron_and_fires_a_run`.
+
+**Remaining (UI polish, not a bug):** a canvas *armed-state* affordance — show "armed · next fire" +
+Stop=disarm for a cron/source flow, instead of the last finite run's "DONE"; the full "Run reads
+Deploy/Stop by descriptor kind" presentation rides here. The engine fires headless correctly today.

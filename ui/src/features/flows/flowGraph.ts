@@ -6,7 +6,7 @@
 
 import type { Edge, Node } from "@xyflow/react";
 
-import type { Flow, FlowNode, FlowRunSnapshot, NodeColour } from "@/lib/flows";
+import type { Flow, FlowNode, FlowNodeState, FlowRunSnapshot, NodeColour } from "@/lib/flows";
 
 /** The data a custom `FlowNodeView` renders: the descriptor type, the live run colour, whether the
  *  node is executed (locked) during the active run, and whether its underlying tool the caller lacks
@@ -120,6 +120,22 @@ export function snapshotValues(
   const out: Record<string, { output?: unknown; error?: string | null }> = {};
   for (const s of snap.steps ?? []) {
     out[s.id] = { output: s.output, error: s.error ?? null };
+  }
+  return out;
+}
+
+/** Map the persistent runtime state (`flows.node_state`) to the same per-node `{output}` shape the
+ *  canvas paints — so a node shows its CURRENT last-value (Decision 5) even with no run in flight.
+ *  A null value (a node that never produced one) is omitted, so an un-run node renders blank, not a
+ *  misleading `null`. */
+export function nodeStateValues(
+  state: FlowNodeState,
+): Record<string, { output?: unknown; error?: string | null }> {
+  const out: Record<string, { output?: unknown; error?: string | null }> = {};
+  for (const n of state.nodes ?? []) {
+    if (n.value !== null && n.value !== undefined) {
+      out[n.node] = { output: n.value, error: null };
+    }
   }
   return out;
 }

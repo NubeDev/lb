@@ -46,7 +46,7 @@ pub async fn create_channel(
         &principal,
         principal.ws(),
         &body.channel,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;

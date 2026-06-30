@@ -11,6 +11,7 @@ mod capped;
 mod create;
 mod delete;
 mod graph;
+mod increment;
 mod list;
 mod open;
 mod read;
@@ -22,12 +23,14 @@ mod taint;
 mod write;
 mod write_batch;
 mod write_journaled;
+mod write_locked;
 mod write_tx;
 
 pub use capped::{capped_insert, new_ulid};
 pub use create::create;
 pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};
+pub use increment::increment;
 pub use list::list;
 pub use open::{Store, StoreError};
 pub use read::read;
@@ -42,4 +45,5 @@ pub use taint::{
 pub use write::write;
 pub use write_batch::{write_batch, DeleteBatch, UpsertBatch, MAX_BATCH};
 pub use write_journaled::{write_journaled, JournalWrite};
+pub use write_locked::write_locked;
 pub use write_tx::{write_tx, Upsert};

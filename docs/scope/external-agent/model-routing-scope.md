@@ -100,11 +100,21 @@ alone is weaker; together a direct provider call is impossible.
 - **Real-endpoint integration (rule 9):** real agent → real gateway endpoint → scripted provider; the
   full auth + attribution path with no network.
 
+## Cross-scope prerequisite (BLOCKING — needs an owner before #4 starts)
+
+**The gateway must *serve* an OpenAI-compatible endpoint (agent → gateway). This direction is not yet
+scoped anywhere and has no owner — elevate it from "open question" to a tracked ai-gateway deliverable
+now.** Critical nuance the review surfaced: `ai-gateway-scope.md` defines OpenAI-compatibility only as a
+**consumed** provider contract (gateway → upstream providers), i.e. the gateway *calling* an
+OpenAI-style API. #4 needs the **opposite** direction — the gateway *listening* as an OpenAI-style
+server that the external agent's HTTP client posts `/chat/completions` (etc.) to. That is **new gateway
+surface** (a served route, request/response translation into `ModelAccess`, the scoped-token auth on
+that route), not a reuse of the existing provider-adapter code. Until an ai-gateway slice owns the
+**served** face, #4 cannot integrate. Confirm endpoint coverage against what the chosen agents actually
+call (`/chat/completions`, possibly `/models`, streaming).
+
 ## Risks & hard problems
 
-- **The shim is a prerequisite that lives elsewhere.** If the gateway has no OpenAI-compatible face yet,
-  this sub-scope is blocked — schedule that ai-gateway deliverable first. Confirm coverage of the
-  endpoints the chosen agents actually call (`/chat/completions`, maybe `/models`, streaming).
 - **Token lifetime vs long runs.** A run can outlive a short token; need refresh (or a run-length token
   the gateway can revoke) without widening scope. Get expiry/refresh wrong → either runs break mid-stream
   or tokens live too long.

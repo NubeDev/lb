@@ -5,8 +5,29 @@
 
 import { describe, expect, it } from "vitest";
 
-import { flowToEdges, flowToNodes, nodesToFlowNodes, snapshotValues } from "./flowGraph";
-import type { Flow, FlowRunSnapshot } from "@/lib/flows";
+import {
+  flowToEdges,
+  flowToNodes,
+  nodeStateValues,
+  nodesToFlowNodes,
+  snapshotValues,
+} from "./flowGraph";
+import type { Flow, FlowNodeState, FlowRunSnapshot } from "@/lib/flows";
+
+describe("nodeStateValues (persistent runtime view)", () => {
+  it("maps node_state entries to per-node {output}, omitting null values", () => {
+    const state: FlowNodeState = {
+      flowId: "f",
+      nodes: [
+        { node: "a", value: { count: 4 }, rev: 7 },
+        { node: "b", value: null, rev: null }, // never ran → omitted (renders blank, not null)
+      ],
+    };
+    const v = nodeStateValues(state);
+    expect(v.a).toEqual({ output: { count: 4 }, error: null });
+    expect(v.b).toBeUndefined();
+  });
+});
 
 const FLOW: Flow = {
   id: "f1",

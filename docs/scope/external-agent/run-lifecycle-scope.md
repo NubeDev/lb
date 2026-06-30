@@ -101,6 +101,13 @@ Mandatory categories (`scope/testing/testing-scope.md`):
 - **Supervision:** a scripted hung/looping agent is **killed** at the ceiling and its job ends
   `failed/cancelled`; the subprocess + sandbox + scratch are reaped (no zombie, no leaked fd). A
   `session/cancel` mid-run stops it cleanly.
+- **Terminal-outcome is fail-closed (untrusted agent):** the authoritative run outcome comes from the
+  **job / process exit + ceiling**, never the agent's self-reported terminal word. Assert that a `done`
+  event carrying an **unrecognised status** maps to `Failed`, **not** `Done` — an untrusted agent
+  reporting a status we don't understand must never be read as success. (The motion-side
+  `outcome_of`/`RunFinish` mapping in #2 already fails closed on unknown words; #5 owns making the *job*
+  outcome authoritative over that hint, including a process that exits non-zero after emitting a
+  success-looking line.)
 - **Workspace-isolation (§2.2):** a ws-B principal cannot `agent.watch`/resume a ws-A run; `agent.runtimes`
   lists only this node's config and reveals no cross-ws data.
 - **Capability-deny (§2.1):** `agent.runtimes` denied without its read cap; `agent.watch` denied per its
@@ -129,6 +136,35 @@ Mandatory categories (`scope/testing/testing-scope.md`):
   only where a profile asserts durable support.
 - **Ceiling configuration:** per-workspace policy vs a fixed node default (mirrors the agent-scope open
   question). Slice default: fixed node default.
+- **Per-workspace run concurrency: DECIDED — unbounded per workspace, but ZERO cross-workspace
+  bleed.** A workspace may have as many concurrent external-agent runs as the caller starts (like a
+  user opening 100 `vtcode`/`codex` sessions on a PC). "One agent per workspace" means each run is
+  **bound to** one `ws` (its isolation wall), **not** that a `ws` is capped at one run. The only
+  numeric cap is a node-wide one for host self-protection (don't fork-bomb the machine).
+
+  **The hard invariant: a run launched for `ws=A` can never read, write, or signal `ws=B` — at any
+  concurrency.** Because runs are unbounded and concurrent, isolation must be **structural and
+  per-process**, never "one at a time." Nothing is shared between runs by default; each `drive(...)`
+  constructs its own. The four crossover axes and their seals:
+  - **Data / tools (load-bearing):** the MCP endpoint handed to the subprocess is workspace-walled;
+    every tool re-runs `caps::check` under the `ws=A` derived principal (#3). A literally cannot *name*
+    B's keys. Isolation is this chokepoint, not process-counting.
+  - **Filesystem:** each run gets its **own scratch dir and cwd** (never a shared one), confined by the
+    OS sandbox to that dir + the ws's allowed roots (#3). Two runs in the *same* ws still get separate
+    scratch dirs so they don't stomp each other.
+  - **Model / secrets:** the provider token is handed via a **per-process, run-scoped** env (#4) — no
+    global key A's process could read B's secret from.
+  - **Job / events:** `job:{id}` carries `ws`; `agent.watch`/cancel/resume re-check `ws` (#5), so a
+    ws-A principal can't watch or kill a ws-B run.
+
+  Same-tenant note: two runs in the *same* ws are isolated from *other* workspaces but intentionally
+  share that ws's data (they are one tenant) — separate scratch dirs are the only same-ws separation.
+  (Serialize/queue/cancel-replace, if a product ever wants it, is an *optional* per-profile/per-ws
+  policy on top — never the default and never the isolation mechanism.)
+
+  **Code gap today:** `driver::drive(.., workspace, ..)` treats `workspace` as a plain cwd. The
+  per-run **scratch dir** (filesystem seal) is addable now and locally testable; the walled MCP
+  endpoint + scoped token (data + secret seals) land with #3/#4.
 - **`agent.runtimes` shape:** just ids + default, or include health/version per profile? Start minimal.
 - **Profile CRUD promotion:** keep profiles as deploy config, or add `agent.profile.*` + a UI later
   (ordinary ws-scoped, capability-gated CRUD if so).
@@ -140,4 +176,4 @@ Mandatory categories (`scope/testing/testing-scope.md`):
   token consumed on resume).
 - `scope/jobs/jobs-scope.md` (the durable run job), `scope/agent-run/agent-run-scope.md` (`RunEvent`s +
   `agent.watch`), `scope/outbox/` (idempotent external effects). README `§6.9` (jobs), `§6.10`
-  (inbox/outbox), `§6.13` (SSE), `§7`.
+  (inbox/outbox), `§6.14`/`§6.16` (run-SSE), `§7`.

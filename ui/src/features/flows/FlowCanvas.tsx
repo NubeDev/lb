@@ -39,6 +39,8 @@ import { cn } from "@/lib/utils";
 import {
   cancelFlow,
   deleteFlow,
+  enableFlow,
+  getFlowNodeState,
   patchFlowRun,
   resumeFlow,
   runFlow,
@@ -46,12 +48,14 @@ import {
   updateFlowNode,
   type Flow,
   type FlowNode,
+  type FlowNodeState,
   type NodeDescriptor,
 } from "@/lib/flows";
 import {
   executedNodeIds,
   flowToEdges,
   flowToNodes,
+  nodeStateValues,
   nodesToFlowNodes,
   snapshotColours,
   snapshotValues,
@@ -61,8 +65,15 @@ import { FlowNodeView } from "./FlowNodeView";
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import { Palette } from "./Palette";
 import { useFlowRun } from "./useFlowRun";
+import { deriveArmedState } from "./armedState";
+import { FlowArmedBanner } from "./FlowArmedBanner";
 
 const nodeTypes = { flow: FlowNodeView };
+
+/** How often the canvas re-polls a cron/source flow's runs so a new firing surfaces in the banner
+ *  (the count "going up"). A few seconds matches the reactor tick — frequent enough to feel live,
+ *  cheap enough (one ws-scoped runs scan). Only an ARMED flow polls. */
+const ARMED_REFRESH_MS = 4000;
 
 export interface FlowCanvasProps {
   flow: Flow;
@@ -94,7 +105,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const importedFile = useRef<HTMLInputElement>(null);
 
-  const { snapshot, error: runError, watch, reattach } = useFlowRun();
+  const { snapshot, error: runError, runs, watch, reattach, refreshRuns } = useFlowRun();
 
   // Re-seed the canvas when a different flow opens — a faithful load + reattach to an active run.
   useEffect(() => {
@@ -109,9 +120,73 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.id]);
 
-  // Paint nodes from the live run snapshot + apply the executed-node-lock.
+  // The PERSISTENT runtime view (Decision 5): every node's current last-value from `flow_node_state`,
+  // updated in place each scan. This is the STEADY STATE the canvas paints — the Node-RED "each wire
+  // shows its current value" — independent of any single run. Fetched on open + refreshed on the
+  // armed tick so a cron flow's values track each firing without reopening.
+  const [nodeState, setNodeState] = useState<FlowNodeState | null>(null);
+  const loadNodeState = useCallback(async (flowId: string) => {
+    try {
+      setNodeState(await getFlowNodeState(flowId));
+    } catch {
+      /* a fresh flow with no state yet — leave null, nodes render blank */
+    }
+  }, []);
+  useEffect(() => {
+    void loadNodeState(flow.id);
+  }, [flow.id, loadNodeState]);
+
+  // The flow's runtime posture for the banner — armed (headless trigger, enabled) vs idle (manual) vs
+  // disabled — plus its latest run. The armed/enabled truth comes from the AUTHORITATIVE node_state
+  // (the per-trigger cursors), so it's correct on reload with no run in flight; `runs` drives the
+  // "last fired" + count. (deriveArmedState falls back to the flow record until node_state loads.)
+  const armed = useMemo(() => deriveArmedState(flow, runs, nodeState), [flow, runs, nodeState]);
+
+  // Deploy/Stop a headless flow by flipping the durable `enabled` flag (`flows.enable`). This is the
+  // Stop the user couldn't find for a cron/source flow (which has no live run to cancel) — and because
+  // it's durable, the stopped/running state is correct after a server restart. Re-read node_state +
+  // runs so the banner flips immediately.
+  const handleToggleEnabled = useCallback(async () => {
+    const next = !(nodeState?.enabled ?? flow.enabled ?? true);
+    setSaveError(null);
+    try {
+      await enableFlow(flow.id, next);
+      await loadNodeState(flow.id);
+      await refreshRuns(flow.id);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : String(e));
+    }
+  }, [flow.id, flow.enabled, nodeState, loadNodeState, refreshRuns]);
+
+  // While ARMED, re-poll the runs list AND the persistent node state on a slow tick so a NEW cron
+  // firing surfaces — the banner count + the live per-node values both advance — without reopening
+  // the flow. Idle/disabled flows don't poll. Keys on flow.id + armed.kind so it tears down cleanly.
+  useEffect(() => {
+    if (armed.kind !== "armed") return;
+    const t = setInterval(() => {
+      void refreshRuns(flow.id);
+      void loadNodeState(flow.id);
+    }, ARMED_REFRESH_MS);
+    return () => clearInterval(t);
+  }, [flow.id, armed.kind, refreshRuns, loadNodeState]);
+
+  // A 1s clock so the banner's "next fire in N" / "fired N ago" count down/up live.
+  const [nowSecs, setNowSecs] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => {
+    const t = setInterval(() => setNowSecs(Math.floor(Date.now() / 1000)), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Paint nodes from the persistent node-state as the BASE (steady-state current values), with the
+  // live run snapshot OVERLAID on top while a run is being watched (its in-flight progress + values
+  // take precedence for the nodes it touches). So an armed flow with no live run still shows every
+  // node's current value, and a run-in-progress shows live deltas — never a frozen "DONE".
   const colours = useMemo(() => (snapshot ? snapshotColours(snapshot) : {}), [snapshot]);
-  const values = useMemo(() => (snapshot ? snapshotValues(snapshot) : {}), [snapshot]);
+  const values = useMemo(() => {
+    const base = nodeState ? nodeStateValues(nodeState) : {};
+    const overlay = snapshot ? snapshotValues(snapshot) : {};
+    return { ...base, ...overlay };
+  }, [nodeState, snapshot]);
   const locked = useMemo(
     () => (snapshot ? executedNodeIds(snapshot) : new Set<string>()),
     [snapshot],
@@ -441,6 +516,12 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           </Button>
         </div>
       </div>
+      <FlowArmedBanner
+        armed={armed}
+        nowSecs={nowSecs}
+        runCount={runs.length}
+        onToggle={handleToggleEnabled}
+      />
       {snapshot ? (
         <div aria-label="v-pinned banner" className="bg-accent/10 px-3 py-1 text-xs text-fg">
           This run is on v{snapshot.flowVersion}. Structural edits become a new version for the next

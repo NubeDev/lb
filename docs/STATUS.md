@@ -80,6 +80,104 @@ interrupt it. This slice makes the existing runtime **observable + interruptible
   owner failover for a backgrounded run (restart `flows.resume` re-drives) · per-node step-level
   token streaming.
 
+**Flows — PLC-grade reliability (unique run ids + conflict-safe writes): SHIPPED** (2026-06-30), over
+the flows runtime. Driven by a live `:8080` reproduction: 8 concurrent `POST /flows/chain4/run`
+returned **one shared run id** + a wall of `Invalid revision` / `read or write conflict` store
+errors. Root cause (one bug, three symptoms): the run id was **constant for the node's whole uptime**
+— `gw.now` froze at gateway construction and the manual id was `"{flow_id}-run-{now}"`, so every run
+re-drove the same terminal record (churn + flickering Stop/Resume + "no values") and overlapping runs
+raced the run-store's monotonic `rev` RMW. Fixes:
+- **unique run id** — `flows.run` mints a ULID (`new_ulid`) when no `run_id` is supplied; a
+  caller-supplied id is still honored (resume/subflow/retry); `default_run_id` kept for inject/cron.
+- **live gateway clock** — `Gateway::now` is an accessor (live `SystemTime` in prod, injected
+  `fixed_now` for tests); the 35 `gw.now` sites became `gw.now()`, fixed-clock test seam intact.
+- **conflict-safe store write** — store-level `lb_store::write_locked` (per-`(ws,table,id)` async lock
+  + bounded retry-on-conflict, the `capped_insert` shape) backs `run_store` + `lb-jobs`; `create_run`
+  seeds create-if-absent (idempotent under a racing `start`).
+- **Live verified:** the same 8 concurrent runs now return **8 distinct ULIDs, zero store errors**,
+  each settling `success`. **Tests (real, no mocks):** `store::write_locked_test` (concurrent
+  same-record writes → coherent rev) · `host::flows_plc_reliability_test` (concurrent-same-id-settles-
+  once [mandatory regression] · unique-id · cap-deny · ws-isolation); flows suites + store + jobs +
+  UI unit (186) regression-clean. Session: `sessions/flows/flow-plc-reliability-session.md`; debug:
+  `debugging/flows/{frozen-gw-now-collides-run-ids,run-store-rev-conflict-under-concurrency}.md`;
+  scope/public updated. **Plus reactive cron firing (item 5), shipped same session** after a live
+  "cron trigger never fires" report: `react_to_flows_cron`/`reconcile_flows` had **no production
+  driver** (only tests called them) → added `spawn_flow_reactors` (a detached per-node tick over the
+  configured ws, live clock) wired into node boot; `flows.save` now **derives** the canonical
+  `flow.cron` from a `mode:cron` trigger node's `config.cron` (the canvas wrote the node config, the
+  reactor scanned the flow field — disconnected); and the node binary switched to `Gateway::new_live`
+  (it was still building the gateway with the fixed-clock seam). **Live-verified:** a `* * * * *`
+  trigger fires every minute headless, each run settling `success` with real values. Debug:
+  `debugging/flows/cron-trigger-never-fires-no-reactor-driver.md`; test
+  `flows_triggers_test::cron_trigger_node_derives_flow_cron_and_fires_a_run`.
+
+**Flows — the persistent runtime view (Node-RED / PLC steady state): SHIPPED** (2026-06-30), over the
+reactive-cron slice. Driven by a live report: opening an armed flow showed a **frozen last-run "DONE"
+snapshot** + a contradictory "54 runs / no runs yet" banner ("the count isn't going up"). Deep-review
+root cause (design): the canvas's only runtime view was one **finite `flows.runs.get` snapshot**, but
+the spec's persistent per-node state — **Decision 5: `flow_node_state` last-value, updated in place
+each scan** (the Node-RED "each wire shows its current value"), already WRITTEN by `record_outcome` —
+had **no read verb** and was never painted. Fixes: **`flows.node_state {id}`** verb
+(`crates/host/src/flows/node_state.rs`, gated + ws-walled; `GET /flows/{id}/node_state`) returns every
+node's `{node, value, rev}` + armed fields; the **canvas paints node_state as the base steady-state**
+with the run snapshot overlaid (`nodeStateValues`; `values = {...base, ...overlay}`), refreshed on the
+armed tick; an **honest armed banner** ("next fire / last fired / N runs"); **deterministic
+multi-trigger** cron derivation (conflicting specs reject, identical collapse); `runs.list` gains `ts`
++ newest-first. **Live-verified:** `node_state` rev advanced 59→60 on a cron firing (updated in
+place). **Tests:** host `node_state_*` + `multi_trigger_*` (3) · frontend `nodeStateValues` +
+`armedState` (9) · flows backend (38) + UI unit (195) + flows gateway e2e (24) green. Session:
+`sessions/flows/flow-persistent-runtime-session.md`; debug:
+`debugging/flows/canvas-shows-finite-run-not-persistent-node-state.md`; scope/public updated.
+
+**Flows — N independent triggers per flow + per-wire subgraph runs + a real counter: SHIPPED**
+(2026-06-30), over the persistent-runtime slice. Driven by the user: saving `chain4` with **two cron
+triggers** was rejected ("a flow has one schedule") — "I never said max one trigger; the whole design is
+wrong, it needs to be like Node-RED, unlimited nodes — what about a webhook or MQTT-sub?". Root cause
+(design, two bugs): a flow's reactive state (`flow.cron`/`flow.next_attempt_ts`) was **hoisted to the
+flow** (one schedule/cursor), and `create_run` enqueued **every** indegree-0 node (one run fired the
+whole graph). First evaluated reusing edgelinkd/reflow/phlow/dora as a library on a Pi — chose to **keep
++ evolve our engine** (it has the durable/resumable/capability/ws run-store the in-memory candidates
+lack) and borrow their ideas. Fixes: **per-node trigger cursors** `flow_trigger_state:{flow}:{node}`
+(`trigger_store.rs`; the reactor scans **trigger nodes**, N independent — no single-schedule rejection,
+only malformed-cron rejected); **per-wire subgraph runs** (`Flow::reachable_from`/`indegrees_within` +
+`create_run{entry}` + recorded `entry_node`, `finalize` scoped to the run's node set; wired to
+cron/inject/boot/`flows.run{entry}`); a real **`counter`** builtin backed by durable **node memory**
+`flow_node_memory:{flow}:{node}` + a new **atomic `lb_store::increment`** (server-side accumulate, per-key
+serialized — a retry can't double-add), so the count GOES UP per firing and survives restart (the
+original ask). **Tests (real store/jobs/caps — no mocks):** `store::increment_test` (64 concurrent
+firings → unique totals 1..=64, ws-walled) · `host::flows_multi_trigger_test` (multi-cron independence,
+subgraph isolation + `entryNode`, counter 1→2→3, cap-deny, ws-iso) · `lb-flows` model helpers · full
+host (64) + store + jobs + flows green · `cargo fmt`/`build --workspace` clean · UI `pnpm test` 195.
+Scope: `scope/flows/flow-multi-trigger-reactive-scope.md`; session:
+`sessions/flows/flow-multi-trigger-reactive-session.md`; debug:
+`debugging/flows/flow-level-cron-rejects-multiple-triggers.md`; public updated. **Follow-up (not bugs):**
+UI per-trigger armed chips · per-node enable/disable · orphan-cursor sweep on trigger removal · native
+http-in/webhook source node (its own scope).
+
+**Flows — headless Stop/Deploy + armed-after-restart + Count/Counter clarity: SHIPPED** (2026-06-30),
+over the multi-trigger slice. Three live reports against the canvas: (1) "can't see the Stop button",
+(2) "show whether the flow is running after a server restart + reload", (3) "the count still isn't going
+up". Root causes: the armed banner read the **dormant** `flow.cron`/`next_attempt_ts` (no writer since
+triggers moved to per-node cursors) so a cron flow showed **idle after reload**, and the only Stop (per-
+run Suspend/Resume/Cancel) renders only for a non-terminal **live run** — which a finite-firing headless
+flow never has, so a cron/source flow had **no Stop at all**. The "count" report was **not a bug**: the
+flow used `count` (pure per-firing transform) where it needed `counter` (durable accumulator). Fixes
+(UI; the `flows.enable`/`flows.node_state` backend was already complete): `deriveArmedState(flow, runs,
+nodeState?)` now reads the AUTHORITATIVE `flows.node_state` (`enabled` + soonest cron/nextAttemptTs from
+the per-trigger cursors) with graph-derived "scheduled" (holds when disabled); a durable **Deploy/Stop**
+toggle in `FlowArmedBanner` bound to `flows.enable` (survives restart). Plus a backend clarity fix: the
+two near-identical palette titles became **"Count (input size)"** / **"Counter (running total)"** (type
+ids unchanged; needs node rebuild to surface). **Live-verified on `:8080`/`acme`/`chain4`:** converting
+`count`→`counter` made `count-5` climb headless **3→4→5** at successive minute boundaries (trigger-4 on
+its own clock) and `a` **20→24** (its `[1,2,3,4]` throughput binding) — both with zero manual runs; a
+throwaway `counter(step:1)` ticked 1→2→3. **Tests:** `armedState.test.ts` rewritten to the node_state
+model (incl. armed-after-restart) + new `FlowArmedBanner.test.tsx` (Stop/Deploy fires `onToggle`); UI
+`pnpm test` **203** green; `cargo build -p lb-flows` clean, `lb-flows` 29. Session:
+`sessions/flows/flow-runtime-stop-deploy-and-counter-clarity-session.md`; debug:
+`debugging/flows/armed-banner-reads-dormant-cron-no-stop-for-headless.md`. **Follow-up:** surface a node
+`description` in the palette (the deeper Count/Counter fix; titles are the stopgap) · per-trigger armed
+chip on each trigger node (data in `node_state.nodes[].armed`).
+
 **Saved-PRQL-query surface (`query.*`): SHIPPED** (2026-06-30), layered over the rules + federation
 plane. A workspace authors a query once in **PRQL** (or `lang:"raw"` for dialect-native text), saves
 it as an editable `query:{ws}:{id}` record, and runs it against **any** source through one MCP family.

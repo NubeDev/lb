@@ -4,8 +4,9 @@ Status: scope (the ask, umbrella). Promotes to `public/external-agent/` once the
 
 Lazybones already owns a sound in-house agent loop (`scope/agent/`) and exposes it to editors as an
 ACP **server** (`scope/agent-run/` Part 4 — Zed/Cursor drive *our* loop). This topic is the
-**inverse and an add-on**: let a node *optionally* **drive a third-party agent** (VT Code, dirge,
-Claude Code, Gemini CLI, Goose, Pi, … — any [Agent-Client-Protocol](https://agentclientprotocol.com)
+**inverse and an add-on**: let a node *optionally* **drive a third-party agent** (Open Interpreter,
+VT Code, Codex, dirge, Claude Code, Gemini CLI, Goose, Pi, … — any
+[Agent-Client-Protocol](https://agentclientprotocol.com)
 agent) as a **subprocess**, while every tool that agent can touch is **our** capability-checked MCP
 surface and every model token it spends goes through **our** gateway. It must be a **compile-time
 feature** (build the node with or without it) and **swappable by config** (change which agent runs
@@ -17,8 +18,28 @@ rules; the detail lives in the sub-scopes.
 
 > The unit we adopt is **a protocol (ACP), not an agent.** We implement the ACP *client* once,
 > against the [official Rust SDK](https://github.com/agentclientprotocol/rust-sdk), and the entire
-> ACP agent registry becomes pluggable. VT Code is the *default*; dirge is the documented alternate.
-> Neither is load-bearing — both are config. The default runtime stays the in-house loop.
+> ACP agent registry becomes pluggable. **[Open Interpreter](https://github.com/openinterpreter/openinterpreter)
+> is the default** (Apache-2.0, a Rust *fork of OpenAI Codex* tuned for low-cost models). Documented
+> *alternates*, none load-bearing, all config: **VT Code** (MIT) — the agent exercised earliest and the
+> reference `wrappers/vtcode.rs` shim; **OpenAI Codex** — same family as the default, so it reuses the
+> **same** `wrappers/codex.rs` shim (differs only by `AgentProfile` binary); **dirge** (GPL-3.0) — an
+> ACP alternate (flags unverified). The default runtime stays the in-house loop; Open Interpreter is the
+> default *external* agent when the feature is on and a profile is selected.
+
+> **Why Open Interpreter is the default (evaluated against real binaries, not asserted):**
+> - **License:** Apache-2.0 — clean (vs dirge GPL-3.0); fine to ship against.
+> - **Low-cost-model fit:** explicitly "a coding agent for low-cost models" — matches the platform's posture.
+> - **ACP-native, verified:** `interpreter acp` answered a real `initialize` handshake with
+>   `protocolVersion: 1`, **`loadSession: true`** (resume — eases #5's hardest problem), `mcpCapabilities`,
+>   and session list/close. So the "wire is ACP" thesis holds for the default.
+> - **Exercised end-to-end:** `interpreter exec --json` drove a real agentic coding run against **Z.AI
+>   GLM-4.6** (coding endpoint `https://api.z.ai/api/coding/paas/v4`) — wrote a file, ran it, self-corrected
+>   `python`→`python3`, reported real output. The codex-family wrapper is validated against this real stream.
+> - **Codex-compatible:** shares Codex's `exec --json` (`ThreadEvent` schema verified in
+>   `codex-rs/exec/exec_events.rs`) and ACP surface, so Codex comes "for free" as an alternate.
+>
+> VT Code stays a fully-supported alternate (its `vtcode exec --json` path is also exercised); the
+> *default selection* is the only thing that changes.
 
 ---
 
@@ -120,7 +141,8 @@ The topic is shippable when:
 - #3 green: the **wall test** passes against the **real** default agent binary — a tool the derived
   principal lacks is denied at `caps::check` and never executes; a profile that can't prove built-ins
   are off **aborts at launch**.
-- The **swap test** passes: the same invoke path drives a second agent (dirge) via a second profile with
+- The **swap test** passes: the same invoke path drives a second agent (e.g. VT Code, or Codex via the
+  shared codex-family shim) via a second profile with
   **no code change**.
 - #4 green: the agent reaches a model **only** through the gateway (no key handed out; direct egress
   impossible by sandbox); calls are audited as agent-originated.
@@ -130,9 +152,11 @@ The topic is shippable when:
 ## Related
 
 - README `§6.16` (shared AI agents), `§6.15`/`§6.14` (AI gateway), `§6.9` (jobs), `§6.5` (MCP),
-  `§6.13` (gateway SSE), `§7` (tenancy).
+  `§6.14`/`§6.16` (gateway run-SSE), `§7` (tenancy).
 - `scope/agent/agent-scope.md` (the default runtime), `scope/agent-run/agent-run-scope.md` (the ACP
   *server* mirror + `RunEvent`s), `scope/ai-gateway/ai-gateway-scope.md` (the model contract + shim),
   `scope/jobs/jobs-scope.md`, `scope/auth-caps/auth-caps-scope.md`, `scope/node-roles/node-roles-scope.md`.
 - External: [Agent Client Protocol](https://agentclientprotocol.com) · [official Rust SDK](https://github.com/agentclientprotocol/rust-sdk)
-  · [VT Code](https://github.com/vinhnx/vtcode) (MIT, default) · [dirge](https://github.com/dirge-code/dirge) (GPL-3.0, alternate).
+  · [VT Code](https://github.com/vinhnx/vtcode) (MIT, default) · [dirge](https://github.com/dirge-code/dirge) (GPL-3.0, alternate)
+  · [OpenAI Codex](https://github.com/openai/codex) and [Open Interpreter](https://github.com/openinterpreter/openinterpreter)
+  (Apache-2.0, Codex fork; one shared `wrappers/codex.rs`, both ACP-native — future).

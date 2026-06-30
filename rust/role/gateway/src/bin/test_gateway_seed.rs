@@ -187,8 +187,8 @@ async fn seed_session(
         ws: req.workspace.clone(),
         role: Role::Member,
         caps: req.caps.clone(),
-        iat: gw.now.saturating_sub(1),
-        exp: gw.now.saturating_add(10_000),
+        iat: gw.now().saturating_sub(1),
+        exp: gw.now().saturating_add(10_000),
     };
     Ok(Json(SeedSessionReply {
         token: mint(&gw.key, &claims),
@@ -389,7 +389,7 @@ async fn seed_flow_node(
     // A real install record: the granted cap lets the node's tool run (`caller ∩ install-grant`),
     // and the `nodes` block is the read-time union `flows.nodes` walks. `Manifest::parse` is NOT
     // needed — the block is validated defensively at `flows.nodes` time, exactly as production.
-    let mut install = Install::new(body.ext.clone(), "0.1.0", vec![body.tool_cap], gw.now);
+    let mut install = Install::new(body.ext.clone(), "0.1.0", vec![body.tool_cap], gw.now());
     install.nodes = vec![body.node];
     record_install(&gw.node.store, p.ws(), &install)
         .await

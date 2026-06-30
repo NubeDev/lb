@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getFlowRun, listFlowRuns, openFlowRunStream } from "@/lib/flows";
-import type { FlowRunSnapshot, FlowStreamEvent, NodeSnapshot } from "@/lib/flows";
+import type { FlowRunSnapshot, FlowRunSummary, FlowStreamEvent, NodeSnapshot } from "@/lib/flows";
 
 /** Poll interval while a run is non-terminal (the no-gateway fallback path only). */
 const POLL_MS = 300;
@@ -21,10 +21,15 @@ const MAX_POLLS = 200;
 export interface FlowRunState {
   snapshot: FlowRunSnapshot | null;
   error: string | null;
+  /** The flow's runs, newest-first (the armed-state banner reads `runs[0]` as the latest run). */
+  runs: FlowRunSummary[];
   /** Set the active run id; `null` idles (no stream/poll). */
   watch: (runId: string | null) => void;
-  /** On open: find the active run for `flowId` (if any) and begin watching it. */
+  /** On open: load the flow's runs and begin watching the MOST RECENT one (active or terminal) so an
+   *  armed cron flow shows its latest values + "last fired" even with no live run in flight. */
   reattach: (flowId: string) => Promise<void>;
+  /** Re-poll the runs list (cheap) so a new cron firing surfaces in the banner without reopening. */
+  refreshRuns: (flowId: string) => Promise<void>;
 }
 
 function isTerminal(status: string): boolean {
@@ -56,6 +61,7 @@ export function useFlowRun(): FlowRunState {
   const [runId, setRunId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<FlowRunSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<FlowRunSummary[]>([]);
   const cancelled = useRef(false);
 
   const watch = useCallback((next: string | null) => {
@@ -64,12 +70,29 @@ export function useFlowRun(): FlowRunState {
 
   const reattach = useCallback(async (flowId: string) => {
     try {
-      const runs = await listFlowRuns(flowId, "active");
-      const active = runs.find((r) => r.status === "active" || r.status === "running");
-      setRunId(active?.runId ?? null);
+      // ALL runs, newest-first (host sorts by ts desc). For a cron/source flow each run is finite, so
+      // there is usually no "active" run between firings — but the LATEST run carries the most recent
+      // values and a "fired N ago" timestamp. Watching it paints those values; if it happens to still
+      // be running, the SSE stream folds it live. This is why the canvas no longer looks dead between
+      // cron firings.
+      const all = await listFlowRuns(flowId);
+      setRuns(all);
+      const active = all.find((r) => r.status === "active" || r.status === "running");
+      setRunId((active ?? all[0])?.runId ?? null);
     } catch {
-      // No active run is the common case (the flow was idle) — not an error worth surfacing.
+      setRuns([]);
       setRunId(null);
+    }
+  }, []);
+
+  /** Re-poll the runs list (the armed-state banner's "last fired" + count). Lightweight — used by a
+   *  slow interval while a flow is armed so a new cron firing shows without reopening the flow. */
+  const refreshRuns = useCallback(async (flowId: string) => {
+    try {
+      const all = await listFlowRuns(flowId);
+      if (!cancelled.current) setRuns(all);
+    } catch {
+      /* transient — keep the last list */
     }
   }, []);
 
@@ -121,5 +144,5 @@ export function useFlowRun(): FlowRunState {
     };
   }, [runId]);
 
-  return { snapshot, error, watch, reattach };
+  return { snapshot, error, runs, watch, reattach, refreshRuns };
 }

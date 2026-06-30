@@ -50,7 +50,7 @@ pub async fn resolve_inbox(
         principal.ws(),
         &item,
         body.decision,
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;

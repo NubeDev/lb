@@ -58,7 +58,7 @@ pub async fn add_datasource(
         "kind": body.kind,
         "endpoint": body.endpoint,
         "dsn": body.dsn,
-        "ts": gw.now,
+        "ts": gw.now(),
     });
     let out = lb_host::call_tool(&gw.node, &p, p.ws(), "datasource.add", &input.to_string())
         .await
@@ -100,7 +100,7 @@ pub async fn test_datasource(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({ "source": name, "ts": gw.now });
+    let input = json!({ "source": name, "ts": gw.now() });
     let out = lb_host::call_tool(&gw.node, &p, p.ws(), "datasource.test", &input.to_string())
         .await
         .map_err(status)?;

@@ -585,6 +585,10 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const qs = status ? `?status=${enc(status)}` : "";
       return getJson<T>(`${base}/flows/${enc(flowId)}/runs${qs}`);
     }
+    case "flows_node_state": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/flows/${enc(id)}/node_state`);
+    }
     case "flows_enable": {
       const { id, enabled, startOnBoot } = args as {
         id: string;

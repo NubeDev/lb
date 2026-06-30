@@ -197,6 +197,45 @@ impl Flow {
     pub fn node(&self, id: &str) -> Option<&Node> {
         self.nodes.iter().find(|n| n.id == id)
     }
+    /// The transitive **reachable subgraph** from `entry` (inclusive): `entry` plus every node
+    /// downstream of it via `dependents`. This is the Node-RED "a message injected at a node flows
+    /// only through its downstream wires" — a per-trigger run executes exactly this set. An unknown
+    /// `entry` yields an empty set (the caller treats that as "nothing to run").
+    pub fn reachable_from(&self, entry: &str) -> HashSet<String> {
+        let mut seen: HashSet<String> = HashSet::new();
+        if self.node(entry).is_none() {
+            return seen;
+        }
+        let dependents = self.dependents();
+        let mut stack = vec![entry.to_string()];
+        while let Some(id) = stack.pop() {
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            if let Some(deps) = dependents.get(&id) {
+                for d in deps {
+                    if !seen.contains(d) {
+                        stack.push(d.clone());
+                    }
+                }
+            }
+        }
+        seen
+    }
+    /// In-degree per node counting **only** `needs` whose source is in `set` — the indegree of the
+    /// *induced* subgraph. A per-trigger run uses this so a join fires on its in-subgraph upstreams
+    /// only; a `need` on a node outside the fired subgraph is not counted (it resolves to its
+    /// retained/last value or null at binding time, never an unsatisfiable wait).
+    pub fn indegrees_within(&self, set: &HashSet<String>) -> HashMap<String, usize> {
+        self.nodes
+            .iter()
+            .filter(|n| set.contains(&n.id))
+            .map(|n| {
+                let d = n.needs.iter().filter(|dep| set.contains(*dep)).count();
+                (n.id.clone(), d)
+            })
+            .collect()
+    }
 }
 
 /// The kinds of `node_type` a flow may reference, resolved from its descriptor at validate time.
@@ -390,5 +429,41 @@ mod tests {
         assert!(is_builtin_type("rhai"));
         assert!(is_builtin_type("trigger"));
         assert!(!is_builtin_type("mqtt.publish"));
+    }
+
+    #[test]
+    fn reachable_from_is_the_downstream_subgraph() {
+        // Two independent triggers in one flow: tA→x→z and tB→y→z (z is shared downstream).
+        let f = flow(vec![
+            node("tA", &[]),
+            node("x", &["tA"]),
+            node("tB", &[]),
+            node("y", &["tB"]),
+            node("z", &["x", "y"]),
+        ]);
+        // Firing tA reaches only its own wires (and the shared z) — never tB or y.
+        let from_a = f.reachable_from("tA");
+        assert!(from_a.contains("tA") && from_a.contains("x") && from_a.contains("z"));
+        assert!(!from_a.contains("tB") && !from_a.contains("y"));
+        // An unknown entry reaches nothing.
+        assert!(f.reachable_from("nope").is_empty());
+    }
+
+    #[test]
+    fn indegrees_within_counts_only_in_subset_needs() {
+        let f = flow(vec![
+            node("tA", &[]),
+            node("x", &["tA"]),
+            node("tB", &[]),
+            node("z", &["x", "tB"]), // z needs x (in tA's subgraph) AND tB (NOT in it)
+        ]);
+        let set = f.reachable_from("tA"); // {tA, x, z} — tB excluded
+        let indeg = f.indegrees_within(&set);
+        assert_eq!(indeg["tA"], 0);
+        assert_eq!(indeg["x"], 1);
+        // z's `tB` need is out-of-subset, so it is NOT counted — z fires on its in-subgraph upstream
+        // (x) alone, never waiting forever on a wire that carried no message this firing.
+        assert_eq!(indeg["z"], 1);
+        assert!(!indeg.contains_key("tB"));
     }
 }

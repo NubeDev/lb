@@ -1,0 +1,86 @@
+//! Per-trigger-node reactive state (flow-multi-trigger-reactive-scope). This is the seam that lets a
+//! flow hold **N independent triggers**: each cron/source node owns its own cursor in
+//! `flow_trigger_state:{flow}:{node}`, instead of one flow-level `cron`/`next_attempt_ts`. The
+//! reactor scans nodes, not flows, so two cron triggers on different schedules each fire on their own
+//! clock and never collapse or reject each other (the single-schedule wall this tears out).
+//!
+//! State, not motion (rule 3): the cursor is durable in SurrealDB; the reactor is a stateless scan
+//! over it (never a long-lived in-process timer). Workspace-walled — every read/write is ws-scoped.
+
+use lb_flows::Flow;
+use lb_reminders::is_valid;
+use lb_store::Store;
+
+use super::record::{node_scoped_id, FlowTriggerState, FLOW_TRIGGER_STATE_TABLE};
+
+/// One cron trigger node: its id + its 5-field schedule (from the node's own `config.cron`).
+pub struct CronTrigger {
+    pub node_id: String,
+    pub cron: String,
+}
+
+/// Every `mode:"cron"` trigger node in `flow` that carries a **valid** schedule. A flow may have any
+/// number — they are independent. An invalid/empty spec is skipped (it arms nothing), never an error
+/// that blocks the other triggers (one bad node must not freeze a flow's whole clock).
+pub fn cron_triggers(flow: &Flow) -> Vec<CronTrigger> {
+    flow.nodes
+        .iter()
+        .filter(|n| {
+            n.node_type == "trigger"
+                && n.config.get("mode").and_then(|v| v.as_str()) == Some("cron")
+        })
+        .filter_map(|n| {
+            let cron = n.config.get("cron").and_then(|v| v.as_str())?.to_string();
+            if cron.trim().is_empty() || !is_valid(&cron) {
+                return None;
+            }
+            Some(CronTrigger {
+                node_id: n.id.clone(),
+                cron,
+            })
+        })
+        .collect()
+}
+
+/// Read a trigger node's durable cursor (`None` → never seen / no row yet).
+pub async fn read_cursor(
+    store: &Store,
+    ws: &str,
+    flow_id: &str,
+    node_id: &str,
+) -> Result<Option<FlowTriggerState>, String> {
+    let raw = lb_store::read(
+        store,
+        ws,
+        FLOW_TRIGGER_STATE_TABLE,
+        &node_scoped_id(flow_id, node_id),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    match raw {
+        Some(v) => serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| e.to_string()),
+        None => Ok(None),
+    }
+}
+
+/// Write a trigger node's cursor (conflict-safe: the reactor and a concurrent save can both touch it).
+pub async fn write_cursor(
+    store: &Store,
+    ws: &str,
+    flow_id: &str,
+    node_id: &str,
+    state: &FlowTriggerState,
+) -> Result<(), String> {
+    let value = serde_json::to_value(state).map_err(|e| e.to_string())?;
+    lb_store::write_locked(
+        store,
+        ws,
+        FLOW_TRIGGER_STATE_TABLE,
+        &node_scoped_id(flow_id, node_id),
+        &value,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}

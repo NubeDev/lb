@@ -5,7 +5,7 @@
 //!
 //! Raw verb — authorization is the host's job (the agent service is the caps chokepoint).
 
-use lb_store::{write, Store, StoreError};
+use lb_store::{write_locked as write, Store, StoreError};
 
 use super::model::Job;
 use super::TABLE;

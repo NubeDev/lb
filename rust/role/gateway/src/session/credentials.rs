@@ -196,6 +196,7 @@ fn member_caps() -> Vec<String> {
         "mcp:flows.watch:call",
         "mcp:flows.node.get:call",
         "mcp:flows.node.update:call",
+        "mcp:flows.node_state:call",
         "mcp:flows.enable:call",
         "mcp:flows.inject:call",
         // telemetry console (telemetry-console scope): the read grant the Telemetry page's

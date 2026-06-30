@@ -75,7 +75,7 @@ pub async fn create_apikey(
         role,
         &body.caps,
         body.expires_at.unwrap_or(0),
-        gw.now,
+        gw.now(),
     )
     .await
     .map_err(apikey_status)?;

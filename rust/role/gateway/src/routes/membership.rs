@@ -41,7 +41,7 @@ pub async fn add_member_route(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    lb_host::membership_add(&gw.node.store, &p, p.ws(), &body.sub, gw.now)
+    lb_host::membership_add(&gw.node.store, &p, p.ws(), &body.sub, gw.now())
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)

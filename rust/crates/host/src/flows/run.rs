@@ -31,6 +31,7 @@ pub async fn flows_run(
     params: serde_json::Map<String, Value>,
     run_id: &str,
     now: u64,
+    entry: Option<&str>,
 ) -> Result<String, FlowsError> {
     let mut flow = flows_get_internal(&node.store, ws, flow_id).await?;
     // Merge retained `flow_input` values into params (Decision 9 read-side): a control loop is
@@ -39,7 +40,7 @@ pub async fn flows_run(
         .await
         .map_err(FlowsError::Internal)?;
     let _ = &mut flow; // (flow is read as-is; the run pins its current version below)
-    run_flow_to_completion(node, principal, ws, &flow, params, run_id, now).await?;
+    run_flow_to_completion(node, principal, ws, &flow, params, run_id, now, entry).await?;
     Ok(run_id.to_string())
 }
 
@@ -57,6 +58,7 @@ pub async fn flows_run_async(
     params: serde_json::Map<String, Value>,
     run_id: &str,
     now: u64,
+    entry: Option<&str>,
 ) -> Result<String, FlowsError> {
     let flow = flows_get_internal(&node.store, ws, flow_id).await?;
     let params = run_store::merged_params_with_inputs(&node.store, ws, flow_id, params)
@@ -72,7 +74,7 @@ pub async fn flows_run_async(
     )
     .await
     .map_err(|e| FlowsError::Internal(e.to_string()))?;
-    coordinator::start(node, ws, run_id, &flow, &params, now)
+    coordinator::start(node, ws, run_id, &flow, &params, now, entry)
         .await
         .map_err(FlowsError::Internal)?;
 
@@ -140,6 +142,7 @@ pub async fn run_flow_to_completion(
     params: serde_json::Map<String, Value>,
     run_id: &str,
     now: u64,
+    entry: Option<&str>,
 ) -> Result<String, FlowsError> {
     // The durable job record (status anchor). Idempotent on run_id.
     create(
@@ -150,7 +153,7 @@ pub async fn run_flow_to_completion(
     .await
     .map_err(|e| FlowsError::Internal(e.to_string()))?;
 
-    coordinator::start(node, ws, run_id, flow, &params, now)
+    coordinator::start(node, ws, run_id, flow, &params, now, entry)
         .await
         .map_err(FlowsError::Internal)?;
     // Boxed: this fn is reached from a `subflow` node's drive, so `run_to_completion → drive →
