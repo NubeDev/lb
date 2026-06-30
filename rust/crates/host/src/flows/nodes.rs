@@ -38,18 +38,20 @@ pub async fn flows_nodes(
     ws: &str,
 ) -> Result<Vec<NodeDescriptor>, FlowsNodesError> {
     authorize(principal, ws)?;
-    let installs = list_installs(store, ws)
+    merged_registry_internal(store, ws)
         .await
-        .map_err(|e| FlowsNodesError::Internal(e.to_string()))?;
+        .map_err(|e| FlowsNodesError::Internal(e.to_string()))
+}
+
+/// The merged registry WITHOUT the `mcp:flows.nodes:call` gate — for internal callers (e.g. the
+/// save-time config re-validation) that already hold their own authority. Workspace-scoped by
+/// `list_installs`; never another workspace's nodes.
+pub async fn merged_registry_internal(store: &Store, ws: &str) -> Result<Vec<NodeDescriptor>, String> {
+    let installs = list_installs(store, ws).await.map_err(|e| e.to_string())?;
     let mut ext_descriptors = Vec::new();
     for install in installs {
         for block in &install.nodes {
-            // Re-validate defensively: a corrupted install (a dangling tool binding after an
-            // upgrade) drops THIS node, never the whole registry. The tool list is the install's
-            // own grants' tool names — but the canonical tool list came from the manifest at install;
-            // we only have the install record here, so validate against the block's bound tool name
-            // existing as `<ext>.<tool>` is implicit. We re-check the config schema compiles (a
-            // fast, full guarantee) and trust the tool binding (validated at install).
+            // Re-validate defensively: a corrupted install drops THIS node, never the whole registry.
             if lb_flows::compile_schema(&block.config).is_err() {
                 continue;
             }
