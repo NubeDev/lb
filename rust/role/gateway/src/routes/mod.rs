@@ -18,6 +18,7 @@ mod datasources;
 mod dbview;
 mod ext;
 mod ext_ui;
+mod flows;
 mod history;
 mod identity;
 mod inbox;
