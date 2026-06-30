@@ -10,10 +10,18 @@
 # 31 GB. Drop back to 6 or 4 if you still see freezes during big rebuilds.
 jobs = 8
 
-# NOTE: there used to be a zig-cc block here pinning the linker + CC/AR/RANLIB at
-# ~/.local/bin/zig* — a workaround for when this box had no system C compiler. The
-# box now has a full system toolchain (/usr/bin/{gcc,cc,ar,ranlib}), and a stale
-# zigranlib path broke vendored-OpenSSL builds (`make federation`:
-# `zigranlib: not found`). The block was removed so cargo falls back to the system
-# gcc/cc/ranlib, which Just Works. For reproducible / cross builds use the Docker
-# toolchain in docker/build/ (`make docker-build`).
+# Host C toolchain: this box has NO system C compiler (`cc`/`gcc`/`clang` are all
+# absent), so cargo's default linker `cc` fails with "linker `cc` not found" the
+# moment any crate with a build script or C dependency (serde_json, proc-macro2,
+# zmij, icu_*, …) links. The zig shims in ~/.local/bin provide a drop-in C
+# toolchain; point the host target at them so the linker resolves.
+#
+# Scoped to the host triple (not [build]) so it only affects host artifacts; the
+# wasm32 guest target links with rust-lld and is unaffected.
+[target.x86_64-unknown-linux-gnu]
+linker = "/home/user/.local/bin/zigcc"
+
+[env]
+CC = "/home/user/.local/bin/zigcc"
+AR = "/home/user/.local/bin/zigar"
+RANLIB = "/home/user/.local/bin/zigranlib"
