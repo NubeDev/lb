@@ -1,6 +1,7 @@
 # Auth-caps scope — global identity, many workspaces (the Slack model)
 
-Status: scope (the ask). Promotes to `public/auth-caps/` once shipped.
+Status: **shipped** (2026-06-30). Promoted to `public/auth-caps/auth-caps.md`; session:
+`../../sessions/auth-caps/global-identity-session.md`.
 
 The README's tenancy model (`§7`) and the S0 auth decision (`auth-caps-scope.md`: `sub` = "global
 identity") say **one person is a global identity who belongs to many workspaces and switches between

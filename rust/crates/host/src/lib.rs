@@ -24,12 +24,14 @@ mod devkit;
 mod ext;
 mod federation;
 mod host_tools;
+mod identity;
 mod inbox;
 mod ingest;
 mod install;
 mod installed;
 mod load;
 mod members;
+mod membership;
 mod native;
 mod outbox;
 mod prefs;
@@ -125,6 +127,10 @@ pub use host_tools::{
     HostNetInterface, HostNetReach, HostTimeNow, HostTimeZones, HOST_FS_LIST_LIMIT,
     HOST_NET_REACH_DEFAULT_TIMEOUT_MS, HOST_NET_REACH_MAX_TIMEOUT_MS,
 };
+pub use identity::{
+    call_identity_tool, identity_create, identity_get, identity_list, identity_workspaces,
+    IdentityError, IdentityView, IdentityWorkspace,
+};
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
@@ -135,6 +141,10 @@ pub use install::install_extension;
 pub use installed::installed;
 pub use load::{load_extension, LoadError, Loaded};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
+pub use membership::{
+    call_membership_tool, membership_add, membership_list, membership_login_resolve,
+    membership_remove, MembershipError, MembershipView, WORKSPACE_ADMIN_ROLE_CAP,
+};
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,

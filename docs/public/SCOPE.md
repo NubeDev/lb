@@ -3,6 +3,40 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — global identity / many-workspaces, the Slack model)
+
+One **global identity** per person belonging to many workspaces, linked by a per-workspace
+**membership** roster — the prerequisite that makes the Access console, teams, and the workspace
+switcher behave the way README §7/§6.6 already specify (`auth-caps/auth-caps.md`):
+
+- **Identity directory** — `identity:{sub}` = `{sub, display_name?, created_ts}` in a reserved
+  system namespace `_lb_identity` (mirroring `_lb_workflow_directory`). Hub-writable,
+  resolution-read-only, **no tenant data, no credential** (dev-login behind the seam; OIDC additive
+  later). `sub` stays the human handle (`user:ada`), globally unique — `Subject::User(sub)` grants
+  unchanged. `lb_authz::identity` raw verbs + host `identity` service (`create/get/list/workspaces`,
+  each gated `mcp:identity.manage:call`).
+- **Membership roster** — `membership:{sub}` = `{sub, joined_ts}` in the workspace namespace; the
+  single source of truth for "who is in this workspace" (no `role_hint`). `lb_authz::membership` raw
+  verbs + host `membership` service (`add/remove/list`, gated `mcp:members.manage:call`). `add`
+  system-grants `role:member`; `remove` tombstones + **composes** `revoke_subject` + `token_revoke_mark`
+  (clean exit — live token refused next verify); `list` is the **effective** roster (membership ∪ legacy
+  `user:*` rows, lazy migration).
+- **Login + bootstrap** — login resolves identity → memberships → the existing `(sub, ws, caps)` token;
+  an effective member mints, an empty workspace bootstraps the requester as `workspace-admin`
+  (decision #3), a non-member of a workspace that has members is refused (decision #4).
+  `create_workspace` auto-memberships the creator + grants `workspace-admin`.
+- **Surfaces** — gateway routes (`/admin/identities*`, `/admin/members*`) + `http.ts` entries; the
+  Access console "People" tab re-points `user_list` → `membership.list` (decision #9); the workspace
+  switcher resolves through `identity.workspaces`. The token/cap grammar is unchanged.
+
+**Tests (real store/gateway, no mocks):** host `identity_membership_test` 7 (deny-per-verb ·
+ws-isolation across store+MCP · one-identity-in-N-workspaces · login/zero-memberships ·
+leave-is-a-clean-exit · legacy-migration no-access-change · removed-tombstone-replays-idempotently) +
+gateway `identity_routes_test` 5 (forged-call-denied · create+add+list+workspaces · login
+bootstrap+refuse · clean-exit live-token-refused) + UI `Membership.gateway.test` 4 + the re-pointed
+`PeopleAdmin`/`DocView` suites green. Scope + session: `../scope/auth-caps/global-identity-scope.md`,
+`../sessions/auth-caps/global-identity-session.md`.
+
 ## Shipped (post-S8 — reminders: a scheduled trigger that fires one action)
 
 A durable, workspace-scoped **reminder** — a `reminder:{id}` record + a dedicated durable scan over

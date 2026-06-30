@@ -15,6 +15,7 @@ path = "src/main.rs"
 [dependencies]
 lb-host.workspace = true
 lb-auth.workspace = true
+lb-authz.workspace = true
 lb-mcp.workspace = true
 # The native supervisor's `OsLauncher` — the federation role (datasources) installs + supervises the
 # `federation` sidecar at boot, env-gated in `main.rs` (§3.1), exactly like the github roles below.

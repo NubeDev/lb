@@ -24,5 +24,5 @@ pub use delete::user_delete;
 pub use error::UsersError;
 pub use list::user_list;
 pub use login_check::user_login_check;
-pub use model::UserView;
+pub use model::{UserView, KIND, TABLE, TOMBSTONE};
 pub use tool::call_users_tool;

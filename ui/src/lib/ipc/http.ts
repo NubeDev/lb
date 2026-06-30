@@ -199,6 +199,33 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { name } = args as { name: string };
       return delJson<T>(`${base}/admin/roles/${enc(name)}`);
     }
+    // ── global-identity scope — the global identity directory + per-workspace membership roster.
+    //    The People tab reads `membership_list`; the switcher reads `identity_workspaces`. Each
+    //    re-checks its cap server-side; ws + principal from the token. ──
+    case "identity_list":
+      return getJson<T>(`${base}/admin/identities`);
+    case "identity_create": {
+      const { sub, display_name } = args as { sub: string; display_name?: string };
+      return postJson<T>(`${base}/admin/identities`, { sub, display_name });
+    }
+    case "identity_get": {
+      const { sub } = args as { sub: string };
+      return getJson<T>(`${base}/admin/identities/${enc(sub)}`);
+    }
+    case "identity_workspaces": {
+      const { sub } = args as { sub: string };
+      return getJson<T>(`${base}/admin/identities/${enc(sub)}/workspaces`);
+    }
+    case "membership_list":
+      return getJson<T>(`${base}/admin/members`);
+    case "membership_add": {
+      const { sub } = args as { sub: string };
+      return postJson<T>(`${base}/admin/members`, { sub });
+    }
+    case "membership_remove": {
+      const { sub } = args as { sub: string };
+      return delJson<T>(`${base}/admin/members/${enc(sub)}`);
+    }
     case "apikey_list":
       return getJson<T>(`${base}/admin/apikeys`);
     case "apikey_create": {

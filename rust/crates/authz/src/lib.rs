@@ -27,6 +27,8 @@
 //! per caller.
 
 mod grant;
+mod identity;
+mod membership;
 mod resolve;
 mod resolve_sourced;
 mod revoke;
@@ -36,6 +38,14 @@ mod team;
 mod token_revoke;
 
 pub use grant::{grant_assign, grant_list, grant_revoke, granted, Grant, GRANT_TABLE};
+pub use identity::{
+    identity_create, identity_get, identity_list, Identity, IDENTITY_KIND, IDENTITY_NS,
+    IDENTITY_TABLE,
+};
+pub use membership::{
+    membership_add_raw, membership_get, membership_has_any, membership_is_member, membership_list,
+    membership_remove_raw, Membership, MEMBERSHIP_KIND, MEMBERSHIP_TABLE, MEMBERSHIP_TOMBSTONE,
+};
 pub use resolve::{resolve_caps, resolve_subject_caps};
 pub use resolve_sourced::{
     resolve_caps_sourced, resolve_subject_caps_sourced, CapSource, SourcedCap,

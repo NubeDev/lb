@@ -78,3 +78,40 @@ privilege-escalation guard runs in `apikey.create`: the key's effective resolved
 creator's own (covering the built-in-role path the grant path's `role:` exemption would otherwise
 miss). Scope + session: `../../scope/auth-caps/api-keys-scope.md`,
 `../../sessions/auth-caps/api-keys-session.md`.
+
+**Global identity + membership (the Slack model)** — one global identity per person belonging to many
+workspaces. **Shipped.** Identity lives in a reserved system namespace `_lb_identity` (mirroring the
+shipped `_lb_workflow_directory` reserved-namespace pattern): `identity:{sub}` = `{sub, display_name?,
+created_ts}`, hub-writable and resolution-read-only, carrying **no tenant data** and **no credential**
+(the dev-login sits behind the identity seam; OIDC is an additive later slice). `sub` stays the
+human handle (`user:ada`), **globally unique** — keeping it avoids retrofitting every existing
+`Subject::User(sub)` grant row; `display_name` is a separate non-unique field.
+
+Each workspace gains a per-workspace `membership` roster: `membership:{sub}` = `{sub, joined_ts}` in
+the workspace's own namespace — the single source of truth for "who is in this workspace" (NO
+`role_hint`; role is grant-driven). The verbs (each its own capability + file):
+- **`identity.create/get/list`** + **`identity.workspaces`** — gated `mcp:identity.manage:call`.
+  `identity.workspaces(sub)` is a **hub-only bounded scan**: it reads the node's workspace directory,
+  then checks each workspace's `membership` table for `sub` (runs once at login / when the switcher
+  opens — NOT a hot path; the per-workspace `membership` table IS the index, no denormalized reverse
+  index in v1).
+- **`membership.add/remove/list`** — gated `mcp:members.manage:call`. `add` writes the row AND
+  grants the built-in `member` role (a SYSTEM effect via the raw `grant_assign`, not the gated
+  `grants_assign` — a join is not a caller widening). `remove` tombstones the row AND **composes** the
+  shipped `revoke_subject` + `token_revoke_mark` (it does not duplicate them) for a clean exit — the
+  member's live token is refused on the next verify. `list` returns the **effective** roster =
+  membership rows ∪ legacy `user:*` rows (lazy migration, so an upgraded workspace loses nobody).
+
+**Login** resolves identity → memberships → the EXISTING `(sub, ws, caps)` token: an effective member
+mints; a brand-new **empty** workspace bootstraps the requester as the first `workspace-admin`
+(decision #3 — the dev-login realization of the first-member bootstrap, preserving the auto-seed
+demo); a workspace that already has members but not this sub refuses with "not a member of any
+workspace" (decision #4 — a provisioned identity with zero memberships cannot mint). `create_workspace`
+auto-memberships the creator AND grants `workspace-admin`. The token/cap grammar is **unchanged**; the
+Access console "People" tab re-points from `user_list` → `membership.list` (decision #9, the proving
+surface); the workspace switcher resolves through `identity.workspaces`. Migration is **lazy**: a
+legacy `user:<name>` row with no `membership` is an implicit membership; `identity:{user:<name>}` is
+created idempotently on first resolution — no big-bang upgrade, no access gained or lost (pinned by a
+test). Identity + membership WRITES are hub-only; edges verify tokens offline and cache identity.
+Scope + session: `../../scope/auth-caps/global-identity-scope.md`,
+`../../sessions/auth-caps/global-identity-session.md`.

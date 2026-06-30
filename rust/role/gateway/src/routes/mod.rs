@@ -19,12 +19,14 @@ mod dbview;
 mod ext;
 mod ext_ui;
 mod history;
+mod identity;
 mod inbox;
 mod ingest;
 mod login;
 mod mcp;
 mod mcp_catalog;
 mod members;
+mod membership;
 mod message;
 mod outbox;
 mod post;
@@ -63,12 +65,20 @@ pub use ext::{
 };
 pub use ext_ui::serve_ext_ui;
 pub use history::get_history;
+pub use identity::{
+    create_identity, get_identity, identity_workspaces as identity_workspaces_route,
+    list_identities,
+};
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{find_series, latest_sample, list_series, read_samples, write_samples};
 pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;
 pub use members::{add_team_member, list_team_members};
+pub use membership::{
+    add_member_route as add_member, list_members_route as list_members,
+    remove_member_route as remove_member,
+};
 pub use message::{delete_message, edit_message};
 pub use outbox::get_outbox_status;
 pub use post::post_message;

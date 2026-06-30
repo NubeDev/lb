@@ -67,12 +67,28 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
   behind one `Toolchain` trait).
+- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`): a node-red-style canvas
+  over the shipped plane, not a new engine. Promotes the `chains` rule-DAG `Step` into a typed
+  `Node` (`Trigger | Tool | Rhai | Subflow | Sink`), each carrying a **descriptor** (ports + a
+  config **JSON-Schema** the React Flow editor renders a form from). **Extensions contribute
+  backend node types** via an additive `[[node]]` block in `extension.toml` — **identical for
+  WASM and native**, executed through the existing `caller ∩ install-grant` callback (an `mqtt`
+  extension ships an "MQTT publish" node). A run is a durable `lb-jobs` `flow-run` job
+  (suspend/resume = pause→edit-downstream→resume); triggers `manual|cron|event|inject|boot`;
+  enable/disable + `start_on_boot` + `placement`; **dashboard↔flow** binding (`flows.inject` in,
+  bus-subject out); shared via the grant model; graph edits undo for free. Rejected adopting
+  `open-rmf/crossflow` (in-process Bevy-ECS state breaks rules 1/4, bypasses the cap wall).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
   the workspace doc assets in `files/`). Read-only, one cap per verb, no shell-out; OS differences
   isolated behind a per-folder `platform`/`path` seam so the verb files carry no `cfg!(windows)`.
+- `git-sync/` — periodic, **AI-free** auto-commit-and-push (`autocommit-scope.md`): a `reminder`
+  cron (`Action::McpTool`) fires a `git-sync` `lb-jobs` job that calls a new `git.*` MCP verb family
+  (`git.commit_push`/`git.status`) backed by a ported `lb-gh` crate (the `gh`/`git` CLI wrapper).
+  `systemd` supervises the node so the reactor ticks — it is **not** the scheduler (the cron is a
+  record, symmetric edge↔cloud). The folder-of-verbs sibling of `host-tools/` for CLI-backed tools.
 - `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.

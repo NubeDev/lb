@@ -55,7 +55,11 @@ export function RoutedShell() {
         <div className="flex h-full min-w-0 overflow-hidden">
           {active === "channels" && (
             <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-panel shadow-sm shadow-black/5">
-              <WorkspaceSwitcher current={ctx.workspace} onSwitch={ctx.switchWorkspace} />
+              <WorkspaceSwitcher
+                current={ctx.workspace}
+                principal={ctx.principal}
+                onSwitch={ctx.switchWorkspace}
+              />
               <ChannelList ws={ctx.workspace} selected={channel} onSelect={selectChannel} />
             </aside>
           )}

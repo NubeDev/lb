@@ -62,6 +62,17 @@ pub async fn login(
     lb_host::user_login_check(&gw.node.store, &req.workspace, &req.user)
         .await
         .map_err(|_| (StatusCode::FORBIDDEN, "user is disabled".into()))?;
+    // global-identity: membership resolves login. An effective member mints; an empty workspace
+    // bootstraps the requester as workspace-admin (decision #3); a workspace that has members but not
+    // this sub refuses with "not a member" (decision #4). Identity is lazy-created on first touch.
+    lb_host::membership_login_resolve(&gw.node.store, &req.workspace, &req.user, gw.now)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::FORBIDDEN,
+                "not a member of any workspace".into(),
+            )
+        })?;
     let claims = dev_claims(&req.user, &req.workspace, gw.now, SESSION_TTL_SECS);
     let caps = claims.caps.clone();
     let token = mint(&gw.key, &claims);

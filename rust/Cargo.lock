@@ -5333,6 +5333,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "lb-auth",
+ "lb-authz",
  "lb-host",
  "lb-mcp",
  "lb-role-gateway",

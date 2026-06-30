@@ -1,0 +1,7 @@
+# Workflow: Conventional commit message from staged changes.
+# Run: pq run commit
+desc: Conventional commit message from staged changes
+steps:
+  - tool: git diff --staged    # run shell, capture stdout into {{last}}
+  - role: commit               # render role body; {{input}} = {{last}}
+output: clipboard              # clipboard | stdout

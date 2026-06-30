@@ -4,15 +4,22 @@
 //! the directory record in the reserved namespace; idempotent on the workspace id (re-creating upserts
 //! the display name / ts). This does NOT provision the namespace's data — a workspace's namespace
 //! springs into existence on first write to it; this only makes it *listable*.
+//!
+//! First-member bootstrap (global-identity scope, decision #3): creating a workspace auto-memberships
+//! the creator AND grants them `role:workspace-admin`, so a brand-new workspace always has exactly one
+//! admin and is never orphaned. Idempotent — re-creating a workspace that already has the creator as a
+//! member is a no-op membership-wise.
 
 use lb_auth::Principal;
+use lb_authz as raw;
 use lb_mcp::authorize_tool;
 use lb_store::{read, write, Store};
 
 use super::error::WorkspacesError;
 use super::model::{WorkspaceRecord, TABLE, TOMBSTONE, WORKSPACES_NS};
 
-/// Register workspace `ws` with display `name` in the directory, as `principal`. Returns the record.
+/// Register workspace `ws` with display `name` in the directory, as `principal`, AND bootstrap the
+/// creator as the first `workspace-admin` member. Returns the record.
 pub async fn workspace_create(
     store: &Store,
     principal: &Principal,
@@ -33,5 +40,21 @@ pub async fn workspace_create(
     let value =
         serde_json::to_value(&record).map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;
     write(store, WORKSPACES_NS, TABLE, ws, &value).await?;
+    // First-member bootstrap (decision #3): the creator is the workspace's first admin. Best-effort —
+    // a membership/grant write error never fails the directory write (the workspace existing is the
+    // contract; the bootstrap is the convenience). Idempotent on re-create.
+    let creator = format!("user:{}", principal.sub().trim_start_matches("user:"));
+    if raw::membership_is_member(store, ws, &creator)
+        .await
+        .unwrap_or(false)
+    {
+        return Ok(record);
+    }
+    let _ = raw::membership_add_raw(store, ws, &creator, ts).await;
+    if let Some(name_part) = creator.strip_prefix("user:") {
+        let subject = lb_authz::Subject::User(name_part.to_string());
+        let _ = raw::grant_assign(store, ws, &subject, "role:member").await;
+        let _ = raw::grant_assign(store, ws, &subject, "role:workspace-admin").await;
+    }
     Ok(record)
 }

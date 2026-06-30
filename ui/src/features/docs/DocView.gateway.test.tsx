@@ -17,6 +17,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { DocView } from "./DocView";
 import { putDoc, shareDoc } from "@/lib/assets/assets.api";
 import { addMember } from "@/lib/members/members.api";
+import { addMember as addWorkspaceMember } from "@/lib/membership/membership.api";
 import { useRealGateway, signInReal } from "@/test/gateway-session";
 
 let n = 0;
@@ -28,6 +29,10 @@ beforeAll(() => useRealGateway());
  *  Returns the workspace. Every write is a real route call behind the workspace wall. */
 async function seedSharedDoc(ws: string): Promise<void> {
   await signInReal("user:ada", ws);
+  // global-identity: ben + cleo must be WORKSPACE members to log in (decision #4). Ada (the
+  // bootstrapped workspace-admin) adds them before they sign in below.
+  await addWorkspaceMember("user:ben");
+  await addWorkspaceMember("user:cleo");
   await putDoc(ws, "scope-x", "Scope X", "the draft body", 1, "user:ada");
   await shareDoc(ws, "scope-x", "team:engineering");
   await addMember("team:engineering", "user:ben"); // a REAL `member` edge (gated by store:doc/*:write)

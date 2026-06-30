@@ -48,6 +48,12 @@ fn member_caps() -> Vec<String> {
         "mcp:authz.resolve:call",
         "mcp:authz.revoke-tokens:call",
         "mcp:roles.manage:call",
+        // global-identity scope: the global identity directory + per-workspace membership roster
+        // verbs. The dev admin manages identities and the workspace roster; the gateway re-checks
+        // each server-side. The People tab reads `membership.list`, the switcher reads
+        // `identity.workspaces`.
+        "mcp:identity.manage:call",
+        "mcp:members.manage:call",
         // admin-console slice 4: the extensions console lifecycle verbs, so the dev admin can list +
         // enable/disable/uninstall extensions from the browser. The gateway re-checks each on the
         // server; the UI cap-gate (showing the Extensions section) is convenience.

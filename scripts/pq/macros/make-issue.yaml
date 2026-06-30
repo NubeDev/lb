@@ -1,0 +1,11 @@
+# Workflow: turn a rough idea into a GitHub issue (Markdown), copied to clipboard.
+# Run: pq run make-issue "let users pin channels"
+desc: Turn a rough idea into a GitHub issue
+vars:
+  - name: idea
+    rest: true                 # slurp the remaining args into one var
+    default: Describe the feature here.
+steps:
+  - role: issue
+    input: "{{idea}}"          # feed a var straight into the role
+output: clipboard

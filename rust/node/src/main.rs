@@ -13,6 +13,28 @@ use lb_host::{load_enabled, load_extension, Node};
 mod federation;
 mod github;
 
+/// Seed the dev `user` as a `workspace-admin` member of `ws`: create the global identity (idempotent),
+/// write the membership row (idempotent), and grant the built-in `member` + `workspace-admin` roles
+/// (idempotent). Operator provisioning at boot — the login gate still enforces membership; this just
+/// guarantees the dev user IS a member so a fresh OR previously-seeded store logs in cleanly.
+async fn seed_dev_identity(node: &Node, ws: &str, user: &str) -> anyhow::Result<()> {
+    use lb_authz as raw;
+    let store = &node.store;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    raw::identity_create(store, user, None, ts).await?;
+    raw::membership_add_raw(store, ws, user, ts).await?;
+    if let Some(name) = user.strip_prefix("user:") {
+        let subject = lb_authz::Subject::User(name.to_string());
+        raw::grant_assign(store, ws, &subject, "role:member").await?;
+        raw::grant_assign(store, ws, &subject, "role:workspace-admin").await?;
+    }
+    println!("boot seed: {user} is a workspace-admin member of {ws}");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Boot the spine (solo node). `Arc` so the env-gated background roles (webhook + workflow driver)
@@ -49,6 +71,16 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Err(e) => eprintln!("boot extension load for ws={ws} failed: {e}"),
+    }
+
+    // global-identity seed: ensure the configured dev identity is a `workspace-admin` member of the
+    // configured workspace (provisioning + joining — exactly what the scope says provisioning is, done
+    // by the operator at boot, NOT a login bypass). The login gate still enforces membership; this just
+    // guarantees the dev user IS a member so `make dev` works against a fresh OR a previously-seeded
+    // store. Idempotent (upserts). `LB_SEED_USER` defaults to `user:ada`; clear it to skip.
+    let seed_user = std::env::var("LB_SEED_USER").unwrap_or_else(|_| "user:ada".into());
+    if let Err(e) = seed_dev_identity(&node, &ws, &seed_user).await {
+        eprintln!("boot seed for ws={ws} user={seed_user} failed: {e}");
     }
 
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the

@@ -28,6 +28,10 @@ export const CAP = {
   authzResolve: "mcp:authz.resolve:call",
   authzRevokeTokens: "mcp:authz.revoke-tokens:call",
   rolesManage: "mcp:roles.manage:call",
+  // global-identity scope — the identity directory + per-workspace membership roster. The People tab
+  // reads `membership.list`; the switcher reads `identity.workspaces`. The gateway re-checks each.
+  identityManage: "mcp:identity.manage:call",
+  membersManage: "mcp:members.manage:call",
   extList: "mcp:ext.list:call",
   extDisable: "mcp:ext.disable:call",
   extUninstall: "mcp:ext.uninstall:call",
@@ -84,6 +88,7 @@ export const ADMIN_SECTION_CAPS: string[] = [
   CAP.extList,
   CAP.devkitTemplates,
   CAP.apikeyManage,
+  CAP.membersManage,
 ];
 
 /** Does `caps` include `cap`? The single cap-check the UI uses to gate a control's display. */
