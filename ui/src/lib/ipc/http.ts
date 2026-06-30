@@ -523,6 +523,80 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return getJson<T>(`${base}/chains/${enc(id)}/runs/${enc(runId)}`);
     }
 
+    // ── flows (flows-canvas + dashboard-binding scopes, Wave 3): the browser's `flows.*` typed-node
+    //    canvas CRUD + run + the per-node run snapshot + reattach + enable/inject. Each maps 1:1 to a
+    //    `/flows/*` route; the gateway re-checks `mcp:flows.<verb>:call` server-side and sets the
+    //    workspace from the token (§7). The `flow` body is POSTed verbatim (minus workspace, which the
+    //    gateway injects). `flows.inject` is the one write tool a dashboard control calls. ──
+    case "flows_nodes":
+      return getJson<T>(`${base}/flows/nodes`);
+    case "flows_list":
+      return getJson<T>(`${base}/flows`);
+    case "flows_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/flows/${enc(id)}`);
+    }
+    case "flows_save": {
+      const { flow } = args as { flow: Record<string, unknown> };
+      return postJson<T>(`${base}/flows`, flow);
+    }
+    case "flows_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/flows/${enc(id)}`);
+    }
+    case "flows_run": {
+      const { id, params } = args as { id: string; params?: unknown };
+      return postJson<T>(`${base}/flows/${enc(id)}/run`, { params: params ?? {} });
+    }
+    case "flows_suspend": {
+      const { runId } = args as { runId: string };
+      return postJson<T>(`${base}/flows/runs/${enc(runId)}/suspend`, {});
+    }
+    case "flows_resume": {
+      const { runId } = args as { runId: string };
+      return postJson<T>(`${base}/flows/runs/${enc(runId)}/resume`, {});
+    }
+    case "flows_cancel": {
+      const { runId } = args as { runId: string };
+      return postJson<T>(`${base}/flows/runs/${enc(runId)}/cancel`, {});
+    }
+    case "flows_patch_run": {
+      const { runId, node, config } = args as {
+        runId: string;
+        node: string;
+        config: unknown;
+      };
+      return postJson<T>(`${base}/flows/runs/${enc(runId)}/patch`, { node, config });
+    }
+    case "flows_run_get": {
+      const { runId } = args as { runId: string };
+      return getJson<T>(`${base}/flows/runs/${enc(runId)}`);
+    }
+    case "flows_runs_list": {
+      const { flowId, status } = args as { flowId: string; status?: string | null };
+      const qs = status ? `?status=${enc(status)}` : "";
+      return getJson<T>(`${base}/flows/${enc(flowId)}/runs${qs}`);
+    }
+    case "flows_enable": {
+      const { id, enabled, startOnBoot } = args as {
+        id: string;
+        enabled: boolean;
+        startOnBoot: boolean;
+      };
+      return postJson<T>(`${base}/flows/${enc(id)}/enable`, {
+        enabled,
+        start_on_boot: startOnBoot,
+      });
+    }
+    case "flows_inject": {
+      const { id, node, value } = args as {
+        id: string;
+        node: string;
+        value: unknown;
+      };
+      return postJson<T>(`${base}/flows/${enc(id)}/inject`, { node, value });
+    }
+
     // ── rules (rules-workbench scope, Phase 1): the browser's `rules.*` Playground CRUD + run over
     //    the gateway. The workspace + principal come from the token (§7); each route re-checks
     //    `mcp:rules.<verb>:call` server-side. A 403 body is a generic "not permitted"; a 400 body is the
