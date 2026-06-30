@@ -81,6 +81,7 @@ mod tests {
             native: None,
             ui: None,
             widgets: Vec::new(),
+            nodes: Vec::new(),
         }
     }
 

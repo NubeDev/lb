@@ -23,6 +23,7 @@ mod dbview;
 mod devkit;
 mod ext;
 mod federation;
+mod flows;
 mod host_tools;
 mod identity;
 mod inbox;
@@ -116,6 +117,7 @@ pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
     reconcile, ExtError, ExtRow, LoadedExt, ReconcileAction, ReconcilePlan,
 };
+pub use flows::call_flows_tool;
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
     federation_mirror, federation_query, resolve_datasource, Datasource, DatasourceSummary,

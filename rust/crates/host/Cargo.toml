@@ -30,6 +30,7 @@ lb-prql.workspace = true
 lb-registry.workspace = true
 lb-reminders.workspace = true
 lb-rules.workspace = true
+lb-flows.workspace = true
 lb-secrets.workspace = true
 lb-supervisor.workspace = true
 rhai = { version = "1.20", features = ["sync", "serde"] }

@@ -46,24 +46,29 @@ Three existing slices compose into this with **one new tool family** and **one p
 
 ```
 reminder (cron */10, action = McpTool git.commit_push)   ← lb-reminders (storage + cron math)
-        │  react_to_reminders due-scan
+        │  react_to_reminders due-scan          EXISTS
         ▼
-lb-jobs job (kind "git-sync", one step)                  ← lb-jobs (durable firing, audit, resume)
-        │  host git service runs the tool after caps::check
+lb-jobs job (kind "reminder-fire", deterministic id)     ← host reminder reactor + lb-jobs   EXISTS
+        │  fire_reminder → McpTool → call_tool chokepoint (re-checks mcp:{tool}:call)   EXISTS
         ▼
-git.commit_push  →  lb-gh SyncRepo::commit_and_push(dir, branch, msg)   ← ported lazybones-gh
+git.commit_push  →  lb-gh SyncRepo::commit_and_push(dir, branch, msg)   ← NEW: ported lazybones-gh + verb
         │
         ▼
 git add -A → commit → push   (or Pushed::Clean, a no-op)
 ```
 
 The periodic firing is a **`reminder` whose `Action::McpTool`** (the kind already in
-`lb-reminders::Action`) calls `git.commit_push`. The reactor enqueues **one `lb-jobs` job per
-firing** (exactly as the reminders scope specifies), so each tick is durable, auditable, and
-capability-checked under the reminder's stored principal — re-checked at fire time. The job body is a
-single step: call the `git.commit_push` tool, which drives the ported `lb-gh`. Because
-`commit_and_push` is naturally idempotent (clean tree ⇒ `Pushed::Clean`, no commit, no push), the job
-is safe to re-run on resume — no double-commit.
+`lb-reminders::Action`) calls `git.commit_push`. **Verified against the code (2026-06-30):** the
+whole scheduling→job→tool path *already exists and is generic* — the reactor
+(`host/src/reminder/react.rs`) enqueues **one `lb-jobs` job per firing** of the existing
+`kind="reminder-fire"` with a **deterministic `fire_job_id(reminder_id, scheduled_ts)`** (so a
+re-scan addresses the same job — one scheduled instant ⇒ one job ⇒ one effect, idempotent at the
+reactor), and `fire_reminder` dispatches `Action::McpTool` by **re-entering the `call_tool`
+chokepoint**, which re-checks `mcp:{tool}:call` under the principal's caps re-resolved from the grant
+store at fire time. So this feature needs **no new job kind, no new reactor, and zero changes to
+`lb-reminders` or `lb-jobs`** — only the new `git.*` verb behind `call_tool` and the crate it calls.
+Idempotency is doubly safe: the reactor's stable job id prevents a duplicate firing, and
+`commit_and_push` is itself a no-op on a clean tree (`Pushed::Clean`).
 
 **Why a reminder + job, not a `systemd` timer firing a CLI** (the rejected alternative): a
 `*.timer` + `lb local git commit-push` oneshot would *work* and is tempting for one dev box. But it
@@ -119,10 +124,11 @@ add it to the workspace `members`, and let the `git.*` verbs call it.
    branch: "improverules-ui" } }`, `enabled: true`. Stored as `reminder:{id}` in the workspace.
 2. The `node` runs under `systemd` (`lb-node.service`, `Restart=always`), so `react_to_reminders`
    scans on its tick.
-3. At `T = :10`, the due-scan finds the reminder, re-checks its principal's
-   `mcp:git.commit_push:call` grant, and enqueues `job:{id}` of kind `git-sync` with the args.
-4. The host `git` service claims the job, calls `git.commit_push` through `authorize_tool`
-   (`caps::check` passes), which calls `lb-gh` `SyncRepo::open(dir, branch).commit_and_push(msg)`.
+3. At `T = :10`, the due-scan finds the reminder and enqueues the `kind="reminder-fire"` job at the
+   deterministic id `reminder-fire:{id}:{scheduled_ts}` (existing path — no new kind).
+4. `fire_reminder` re-resolves the principal's caps, dispatches `Action::McpTool` into `call_tool`,
+   which re-checks `mcp:git.commit_push:call` and runs the verb → `lb-gh`
+   `SyncRepo::open(dir, branch).commit_and_push(msg)`.
 5. The tree is dirty (3 files changed) → `git add -A` → commit `chore(autocommit): 3 files @
    2026-06-30T12:10:00Z` → `git push origin improverises-ui` → returns `Pushed::Committed`. Job
    completes `Done`; the reminder's `next` advances to `:20`.
@@ -144,8 +150,9 @@ verbs, and a **real temp git repo + a real bare `file://` remote** (the pattern 
   returns `Clean` (no commit, no push) when the tree matches `HEAD`; `git.status` reports dirty/clean.
 - **Cron math:** `next_after("*/10 * * * *", T)` on the injected logical clock (no wall-clock,
   testing §3).
-- **Idempotent resume:** re-running the single `git-sync` step after a simulated restart does not
-  create a second commit (clean ⇒ no-op).
+- **Idempotent firing:** a re-scan of the same scheduled instant addresses the same
+  `reminder-fire:{id}:{ts}` job (existing reactor behavior); and re-running `commit_push` on a clean
+  tree is a no-op — no second commit.
 - **E2E:** reminder due → reactor → job → tool → the bare remote actually receives the commit.
 
 ## Risks & hard problems

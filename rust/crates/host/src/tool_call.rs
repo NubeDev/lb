@@ -49,6 +49,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("rules.")
         || qualified_tool.starts_with("chains.")
         || qualified_tool.starts_with("federation.")
+        || qualified_tool.starts_with("flows.")
         || qualified_tool.starts_with("datasource.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("prefs.")
@@ -208,6 +209,8 @@ async fn dispatch_at_depth(
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("chains.") {
             crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("flows.") {
+            crate::call_flows_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("federation.")
             || qualified_tool.starts_with("datasource.")
         {

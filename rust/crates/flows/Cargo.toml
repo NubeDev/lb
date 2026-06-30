@@ -1,0 +1,24 @@
+# lb-flows — the node-graph flow model + node descriptor contract (flows scope).
+#
+# The pure, dependency-light crate for the visual flow engine. It owns: the typed node-graph `Flow`
+# model + DAG math (generalised from the chain `Step`, reusing the same binding grammar), the
+# `NodeDescriptor` keystone contract (built-in + extension node shape, the inline JSON-Schema
+# config), the `[[node]]` manifest block parse/validate, the merged `flows.nodes` registry types,
+# and the JSON-Schema config gate. It links ONLY serde + serde_json + thiserror + jsonschema: no
+# store, no bus, no jobs, no host seams — a flow reaches the platform only through host-mediated,
+# capability-checked calls (rule 5/7). The durable run engine + MCP verbs live in the host crate.
+[package]
+name = "lb-flows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+jsonschema.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

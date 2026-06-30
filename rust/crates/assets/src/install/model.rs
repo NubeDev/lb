@@ -71,6 +71,12 @@ pub struct Install {
     /// as an empty vec.
     #[serde(default)]
     pub widgets: Vec<ExtUi>,
+    /// The flow node types this extension contributes — the validated `[[node]]` blocks from its
+    /// manifest (flows node-descriptor scope). The `flows.nodes` registry is a **read-time union**
+    /// of these across a workspace's installs + the built-ins, holding nothing new durable.
+    /// Serde-defaulted: an install written before this field deserializes as empty (no nodes).
+    #[serde(default)]
+    pub nodes: Vec<lb_flows::NodeBlock>,
     pub ts: u64,
 }
 
@@ -100,6 +106,7 @@ impl Install {
             kind: KIND.to_string(),
             ui: None,
             widgets: Vec::new(),
+            nodes: Vec::new(),
             ts,
         }
     }
@@ -116,6 +123,13 @@ impl Install {
     pub fn with_ui(mut self, ui: Option<ExtUi>, widgets: Vec<ExtUi>) -> Self {
         self.ui = ui;
         self.widgets = widgets;
+        self
+    }
+
+    /// Attach the extension's flow node contributions (builder-style) — the validated `[[node]]`
+    /// blocks, so `flows.nodes` is a read-time union over installs + the built-ins (flows scope).
+    pub fn with_nodes(mut self, nodes: Vec<lb_flows::NodeBlock>) -> Self {
+        self.nodes = nodes;
         self
     }
 }
