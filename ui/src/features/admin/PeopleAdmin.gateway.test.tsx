@@ -52,7 +52,7 @@ describe("PeopleAdmin (real gateway)", () => {
       await screen.findByLabelText("assign a role to user:bob"),
       "operator",
     );
-    await user.click(screen.getByLabelText("assign role"));
+    // The Select assigns on change (no separate button).
 
     expect(await screen.findByLabelText("revoke role operator from user:bob")).toBeInTheDocument();
   });

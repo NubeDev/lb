@@ -28,17 +28,23 @@
 
 mod grant;
 mod resolve;
+mod resolve_sourced;
 mod revoke;
 mod role;
 mod subject;
 mod team;
+mod token_revoke;
 
 pub use grant::{grant_assign, grant_list, grant_revoke, granted, Grant, GRANT_TABLE};
 pub use resolve::{resolve_caps, resolve_subject_caps};
+pub use resolve_sourced::{
+    resolve_caps_sourced, resolve_subject_caps_sourced, CapSource, SourcedCap,
+};
 pub use revoke::revoke_subject;
-pub use role::{role_caps, role_define, role_list, Role, ROLE_TABLE};
+pub use role::{role_caps, role_define, role_delete, role_list, Role, ROLE_TABLE};
 pub use subject::Subject;
 pub use team::{team_create, team_delete, team_list, Team, TEAM_TABLE};
+pub use token_revoke::{token_revoke_mark, token_revoked, TOKEN_REVOKE_TABLE};
 
 /// The `member` relation kind — the edge `team -[member]-> user` the S4 `visibility` resolver
 /// reads and `lb_host::members` manages. Named here so the resolver can walk team membership.

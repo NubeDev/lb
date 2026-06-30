@@ -28,7 +28,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `access-console-scope.md` (the **Access console** — the access-first evolution of the `/admin` UI:
   an overview of who-can-do-what, resolved effective caps per subject with provenance, a guided
   no-widening capability picker, a force-re-mint/end-sessions lever for the freshness asymmetry, and
-  `roles.delete` — closes the `resolve_caps`/`invalidate`/`roles.delete` backend gaps; not a new page).
+  `roles.delete` — closes the `resolve_caps`/`invalidate`/`roles.delete` backend gaps; not a new page),
+  and `global-identity-scope.md` (the **Slack model** the README §7/§6.6 name but the code never built:
+  a global, hub-authoritative identity in a system directory linked to workspaces by a `membership`
+  record, login resolving to a person's workspaces, and a real workspace switcher — promotes the
+  stated design to implementation; the gap surfaced in the access-console session).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a

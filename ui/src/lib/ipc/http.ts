@@ -184,6 +184,21 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { name, caps } = args as { name: string; caps: string[] };
       return postJson<T>(`${base}/admin/roles`, { name, caps });
     }
+    // ── access-console scope — the access-graph gaps: resolved effective caps WITH provenance, the
+    //    live-token revoke lever (composes with grant-revoke), and roles.delete cascade. Each re-checks
+    //    its admin cap server-side; ws + principal from the token. ──
+    case "authz_resolve": {
+      const { subject } = args as { subject: string };
+      return getJson<T>(`${base}/admin/authz/resolve?subject=${enc(subject)}`);
+    }
+    case "authz_revoke_tokens": {
+      const { subject } = args as { subject: string };
+      return postJson<T>(`${base}/admin/authz/revoke-tokens`, { subject });
+    }
+    case "roles_delete": {
+      const { name } = args as { name: string };
+      return delJson<T>(`${base}/admin/roles/${enc(name)}`);
+    }
     case "apikey_list":
       return getJson<T>(`${base}/admin/apikeys`);
     case "apikey_create": {

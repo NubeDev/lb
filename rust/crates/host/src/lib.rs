@@ -78,9 +78,9 @@ pub use assets::{
     load_skill, put_doc, put_skill, revoke_skill, share_doc, AssetError, SkillCatalogEntry,
 };
 pub use authz::{
-    call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps, revoke_subject,
-    roles_define, roles_list, teams_create, teams_list, AuthzError, AuthzRole, Grant, Subject,
-    Team,
+    authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
+    revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
+    teams_list, token_revoked, AuthzError, AuthzRole, CapSource, Grant, SourcedCap, Subject, Team,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{

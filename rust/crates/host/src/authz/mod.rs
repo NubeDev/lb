@@ -14,6 +14,8 @@
 mod error;
 mod grants;
 mod hold;
+mod resolve;
+mod revoke_tokens;
 mod roles;
 mod teams;
 mod tool;
@@ -21,10 +23,15 @@ mod tool;
 pub use error::AuthzError;
 pub use grants::{grants_assign, grants_list, grants_revoke};
 pub use hold::holds_cap;
-pub use roles::{roles_define, roles_list};
+pub use resolve::authz_resolve;
+pub use revoke_tokens::revoke_tokens;
+pub use roles::{roles_define, roles_delete, roles_list};
 pub use teams::{teams_create, teams_list};
 pub use tool::call_authz_tool;
 
 // The model types + the two seams admin-crud consumes — re-exported so host callers and the gateway
 // use one set (the same way `tags` re-exports its `lb_tags` value types).
-pub use lb_authz::{resolve_caps, revoke_subject, Grant, Role as AuthzRole, Subject, Team};
+pub use lb_authz::{
+    resolve_caps, revoke_subject, token_revoked, CapSource, Grant, Role as AuthzRole, SourcedCap,
+    Subject, Team,
+};

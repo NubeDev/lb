@@ -22,6 +22,12 @@ export const CAP = {
   grantsList: "mcp:grants.list:call",
   rolesDefine: "mcp:roles.define:call",
   rolesList: "mcp:roles.list:call",
+  // access-console scope — the three verbs that close the access-graph gaps. Admin-only; the
+  // gateway re-checks each server-side. `authzResolve` reveals the effective-caps detail + overview;
+  // `authzRevokeTokens` reveals the live-token revoke lever; `rolesManage` reveals roles.delete.
+  authzResolve: "mcp:authz.resolve:call",
+  authzRevokeTokens: "mcp:authz.revoke-tokens:call",
+  rolesManage: "mcp:roles.manage:call",
   extList: "mcp:ext.list:call",
   extDisable: "mcp:ext.disable:call",
   extUninstall: "mcp:ext.uninstall:call",

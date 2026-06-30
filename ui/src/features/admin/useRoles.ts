@@ -5,13 +5,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { defineRole, listRoles, type RoleView } from "@/lib/admin/roles.api";
+import { defineRole, deleteRole, listRoles, type RoleView } from "@/lib/admin/roles.api";
 
 export interface RolesState {
   roles: RoleView[];
   error: string | null;
   refresh: () => Promise<void>;
   define: (name: string, caps: string[]) => Promise<void>;
+  /** Delete role `name` (cascade-un-assigns it). Resolves to the affected-subject count. */
+  remove: (name: string) => Promise<number>;
 }
 
 export function useRoles(): RolesState {
@@ -41,6 +43,16 @@ export function useRoles(): RolesState {
         await refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    remove: async (name) => {
+      try {
+        const { affected } = await deleteRole(name);
+        await refresh();
+        return affected;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return 0;
       }
     },
   };

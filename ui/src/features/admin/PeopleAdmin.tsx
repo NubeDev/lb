@@ -11,6 +11,7 @@ import { UserPlus, Users } from "lucide-react";
 import { ConfirmDestructive } from "@/features/confirm";
 import { AdminPanel } from "./AdminPanel";
 import { AccessEditor } from "./AccessEditor";
+import { EffectiveCaps } from "./access/EffectiveCaps";
 import { useDirectory } from "./useDirectory";
 import { useRoles } from "./useRoles";
 
@@ -18,9 +19,11 @@ type Pending = { kind: "disable" | "delete"; user: string } | null;
 
 interface Props {
   ws: string;
+  /** The admin's session caps — gates the effective-caps detail + the revoke lever. */
+  caps?: string[] | undefined;
 }
 
-export function PeopleAdmin({ ws }: Props) {
+export function PeopleAdmin({ ws, caps }: Props) {
   const { users, teamsByUser, error, create, setActive, remove } = useDirectory();
   const { roles } = useRoles();
   const [selected, setSelected] = useState<string | null>(null);
@@ -154,7 +157,9 @@ export function PeopleAdmin({ ws }: Props) {
                 )}
               </div>
 
-              <AccessEditor subject={`user:${sel.user}`} availableRoles={roleNames} />
+              <AccessEditor subject={`user:${sel.user}`} availableRoles={roleNames} caps={caps} />
+
+              <EffectiveCaps subject={`user:${sel.user}`} />
             </div>
           )}
         </div>

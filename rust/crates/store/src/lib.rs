@@ -19,6 +19,7 @@ mod scan;
 mod tables;
 mod taint;
 mod write;
+mod write_batch;
 mod write_journaled;
 mod write_tx;
 
@@ -37,5 +38,6 @@ pub use taint::{
     TaintVerdict,
 };
 pub use write::write;
+pub use write_batch::{write_batch, DeleteBatch, UpsertBatch, MAX_BATCH};
 pub use write_journaled::{write_journaled, JournalWrite};
 pub use write_tx::{write_tx, Upsert};

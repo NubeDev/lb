@@ -240,24 +240,27 @@ compilation is pure and tested with golden in/out pairs.
 
 ## Open questions
 
-- **Phase-2 full-Surreal-PRQL mechanism.** Confirm DataFusion-as-compute-over-native-`store.query`-reads
-  (keeps rule 2, adds a host compute dep + a memory bound) vs. staying subset-only on the platform target
-  forever. This decides whether "PRQL for *all* of SurrealDB" is ever fully true or stays "PRQL-subset +
-  `raw`."
-- **Identity & uniqueness.** Is `id` the human name (`store-revenue`, unique per ws) or an opaque id with
-  a separate editable `name`? (Datasources key by `name`; rules key by `id` + a `name` field — pick one
-  and state it.)
-- **Edit history / versioning.** The ask is "save so we can re-edit." Do we keep prior revisions
-  (an append-only `query_rev:{ws}:{id}:{n}`), or is the record overwritten in place (like a datasource)?
-  Decide whether re-edit implies revertable history.
-- **Ad-hoc run.** Does `query.run` accept inline `{lang, text, target}` for an unsaved one-shot (handy
-  for the channel `/query` palette), or only `{id}`? (Recommend: allow both; inline is the not-yet-saved
-  path the editor uses before the first `save`.)
-- **Organization.** Folders/tags for a growing query library (reuse `lb-tags`?), and whether
-  `query.list` filters by target/tag.
-- **Downstream binding.** Should a saved query be a first-class **dashboard widget source** and a channel
-  `/query` palette entry by id (ties to `frontend/dashboard/viz/` and
-  `channels/channels-query-charts-scope.md`)? Likely yes, in a follow-on scope.
+> Resolved 2026-06-30 by the Phase-1 build session (`sessions/query/prql-query-session.md` →
+> `public/query/query.md`). The Phase-2 item is deferred by decision; the rest are settled.
+
+- **Phase-2 full-Surreal-PRQL mechanism.** DEFERRED. Phase 1 shipped subset-only on the platform
+  target (PRQL→`sql.generic` through the existing `store.query` parse-allowlist) + `lang:"raw"` for
+  the rest; Phase 2 (DataFusion-as-compute over native `store.query` reads) is explicitly NOT built
+  this session. Re-open when full PRQL-on-Surreal semantics are needed.
+- **Identity & uniqueness.** DECIDED: `id` is a kebab-case slug unique per workspace (the record
+  key); a separate editable `name` is the display label (mirrors the rules `id`+`name` pattern).
+  `query.save` upserts by `id`.
+- **Edit history / versioning.** DECIDED: overwrite in place (like a datasource). No revision
+  history in v1.
+- **Ad-hoc run.** DECIDED: `query.run` accepts EITHER `{id}` OR an inline `{lang, text, target}`
+  for an unsaved one-shot.
+- **Organization.** DECIDED for v1: no folders/tags. `query.list` returns a flat roster
+  `(id, name, target, lang, ts)` with no result data and no query text dumped.
+- **Params binding (added).** DECIDED for v1: full injection-safe `$var` binding on the platform
+  path (through `store.query` `vars`); the datasource path's `federation.query` sidecar has no
+  bind-param path yet, so a parameterized datasource query is a typed error (loud, never
+  interpolation) until the sidecar grows one.
+- **Downstream binding.** DEFERRED: no dashboard/channel binding this session (follow-on scope).
 
 ## Related
 

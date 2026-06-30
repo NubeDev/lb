@@ -19,3 +19,35 @@ export function assignGrant(subject: string, cap: string): Promise<void> {
 export function revokeGrant(subject: string, cap: string): Promise<void> {
   return invoke<void>("grants_revoke", { subject, cap });
 }
+
+// ── access-console scope — resolved effective caps WITH provenance + the live-token revoke lever. ──
+
+/** Where a resolved cap came from — mirrors `lb_authz::CapSource` (serde `kind`-tagged). */
+export type CapSource =
+  | { kind: "direct" }
+  | { kind: "role"; name: string }
+  | { kind: "team"; name: string };
+
+/** One resolved cap plus the distinct edges that contributed it. Mirrors `lb_authz::SourcedCap`. */
+export interface SourcedCap {
+  cap: string;
+  source: CapSource[];
+}
+
+/**
+ * Resolve `subject`'s effective caps WITH provenance (direct / role:r / via team:t). Mirrors
+ * `authz.resolve` — the sourced twin of the session-mint fold, so the displayed set and the enforced
+ * set cannot drift. Admin-only.
+ */
+export function resolveCaps(subject: string): Promise<SourcedCap[]> {
+  return invoke<SourcedCap[]>("authz_resolve", { subject });
+}
+
+/**
+ * Kill `subject`'s live tokens (the verify-path marker) AND tombstone its grants — a full immediate
+ * lockout. Mirrors `authz.revoke-tokens`. The single-node case is instant; the multi-node worst case
+ * is bounded by the token TTL. Returns the number of grants tombstoned.
+ */
+export function revokeTokens(subject: string): Promise<{ grants_revoked: number }> {
+  return invoke<{ grants_revoked: number }>("authz_revoke_tokens", { subject });
+}

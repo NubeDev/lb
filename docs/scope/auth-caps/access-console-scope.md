@@ -269,23 +269,28 @@ Plus this slice's cases:
 
 ## Open questions
 
-- **Live-token revoke mechanism** — the genuinely-missing piece (the shipped `revoke_subject` already
-  handles grant-revoke/next-re-mint). Options for the live-token kill: a per-subject revoke marker the
-  verify path checks (lean), vs a global token-nonce bump, vs an explicit revocation list. Lean: the
-  per-subject marker coordinated with `edge-trust`'s existing token-on-the-bus verify path (smallest
-  blast radius, composes with TTL). `revoke_tokens` should **compose** with `revoke_subject` (one UI
-  action = grant-revoke + live-token kill) rather than replace it. Decide the marker shape with the
-  `edge-trust` owner.
-- **How "who can do X" search works at scale** — client-side filter over per-subject resolved sets
-  (re-fetch on demand, bounded workspace size) vs a server-side `who_has(cap)` verb. Lean:
-  client-side for v1 (workspaces are small); add `who_has` only if a real workspace proves it slow.
-- **Overview tile set** — which 4–6 tiles earn their place (direct-grant subjects, near-expiry keys,
-  admin-cap holders, unused roles, …). Lean: start with the security-posture tiles (direct grants,
-  expiring keys, admin-cap holders); usage tiles are a follow-up.
-- **`roles.delete` vs "in use" guard** — block if assigned, or cascade-un-assign. Lean: cascade with
-  the affected-count shown (mirrors `teams.delete`'s decided cascade), never a hard block.
-- **Provenance fields** — does the grant record carry `last_changed_by/at` today, or is that an
-  `audit/`-owned addition? Lean: show it only if cheaply present; do not add an audit subsystem here.
+> **All five resolved** in the build session `sessions/auth-caps/access-console-session.md` (2026-06-29) —
+> shipped end to end. Kept here as the recorded decisions.
+
+- **Live-token revoke mechanism** — ✅ RESOLVED → a per-`(ws, subject)` **tombstone RECORD** the
+  verify path checks (`token_revoke:[ws, subject]`), NOT a nonce bump and NOT a global list. `revoke_tokens`
+  **composes** with the shipped `revoke_subject` (marker + grant-revoke = full lockout). Single-node =
+  instant; multi-node worst case bounded by TTL (stated in UI copy + a test comment, never "instant
+  global"). See `crates/authz/src/token_revoke.rs` + the verify-path check in
+  `role/gateway/src/session/authenticate.rs`.
+- **How "who can do X" search works at scale** — ✅ RESOLVED → **client-side only for v1**: the UI
+  filters/aggregates per-subject resolved sets (the overview tiles fold `authz.resolve` per subject).
+  No `who_has` server verb built.
+- **Overview tile set** — ✅ RESOLVED → ship exactly: People / Teams / Roles / Keys counts; direct-grant
+  subjects (bypass roles); keys expiring <7d; subjects holding an admin cap. Provenance/last-changed
+  tiles are OUT (see #5). A tile whose source verb/cap is absent is hidden with a reason, never a fake 0.
+- **`roles.delete` vs "in use" guard** — ✅ RESOLVED → **cascade-un-assign** in ONE store transaction
+  (`write_batch`): read assignees of `role:<name>`, tombstone that grant from each, delete the role.
+  Built-ins (`super-admin`/`workspace-admin`/`member`) immutable — rejected with a clear `400`.
+  Idempotent; affected count shown.
+- **Provenance fields** — ✅ RESOLVED → **do NOT add** audit fields (`last_changed_by/at`) to grant
+  records. The effective-caps view shows cap SOURCE only (direct / `role:r` / via `team:t`) from the
+  resolver fold, not from new stored fields. Audit is owned by `scope/audit/`.
 
 ## Related
 

@@ -39,7 +39,10 @@ mod workflow;
 mod workspace;
 
 pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, rotate_apikey};
-pub use admin_grants::{assign_grant, define_role, list_grants, list_roles, revoke_grant};
+pub use admin_grants::{
+    assign_grant, define_role, delete_role, list_grants, list_roles, resolve_caps, revoke_grant,
+    revoke_tokens_route,
+};
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};
 pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_users};
