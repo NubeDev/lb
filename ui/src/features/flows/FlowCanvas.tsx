@@ -52,9 +52,10 @@ import {
   type NodeDescriptor,
 } from "@/lib/flows";
 import {
-  executedNodeIds,
   flowToEdges,
   flowToNodes,
+  isTerminalStatus,
+  lockedNodeIds,
   nodeStateValues,
   nodesToFlowNodes,
   snapshotColours,
@@ -188,16 +189,11 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     const overlay = snapshot ? snapshotValues(snapshot) : {};
     return { ...base, ...overlay };
   }, [nodeState, snapshot]);
-  const runActive = !!snapshot && !isTerminalSnapshot(snapshot);
-  // The executed-node lock applies ONLY while a run is genuinely IN FLIGHT (`runActive`). A terminal
-  // snapshot — a finished manual run, OR the latest finite firing of an armed cron flow that
-  // `reattach` latched onto for its values — must NOT lock its nodes: there's no live run to protect,
-  // so the operator can edit freely. (The bug: locking on `snapshot` alone left every node read-only
-  // after Stop / between cron firings, forcing a page refresh to edit.)
-  const locked = useMemo(
-    () => (runActive && snapshot ? executedNodeIds(snapshot) : new Set<string>()),
-    [runActive, snapshot],
-  );
+  const runActive = !!snapshot && !isTerminalStatus(snapshot.status);
+  // The executed-node lock — gated on a genuinely in-flight run by `lockedNodeIds`. A terminal
+  // snapshot (a finished manual run, or the latest finite firing of an armed cron flow) locks nothing,
+  // so the operator edits without a page refresh. (See lockedNodeIds for the bug it fixes.)
+  const locked = useMemo(() => lockedNodeIds(snapshot), [snapshot]);
 
   // The merged registry keyed by type — used to resolve a node's `kind` (so a trigger renders no
   // target handle) + the selected node's descriptor for the config panel.
@@ -594,13 +590,4 @@ function indexConfigs(flow: Flow): Record<string, Record<string, unknown>> {
     out[n.id] = (n.config as Record<string, unknown> | null | undefined) ?? {};
   }
   return out;
-}
-
-function isTerminalSnapshot(s: { status: string }): boolean {
-  return (
-    s.status === "success" ||
-    s.status === "partialFailure" ||
-    s.status === "failed" ||
-    s.status === "cancelled"
-  );
 }

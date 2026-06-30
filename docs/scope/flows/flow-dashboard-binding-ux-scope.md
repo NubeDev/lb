@@ -6,6 +6,12 @@ mechanism** this builds on — [`dashboard-binding-scope.md`](dashboard-binding-
 write-in + series read-out) — first. This doc adds **no new transport**: it makes the shipped binding
 **authorable and bidirectional for structured data** with a UX that hides the magic strings.
 
+> **Depends on [`flow-message-envelope-scope.md`](flow-message-envelope-scope.md)** (the Node-RED-style
+> `{payload, topic}` envelope + auto-wire). Build that first. Once it lands, a flow node's primary
+> in/out port is **`payload`** and its routing slot is **`topic`** — this picker offers those by name,
+> controls write `payload`, and read views default to `payload`. Where this doc says "port/slot", read
+> "`payload` / `topic` / any descriptor port".
+
 The bidirectional binding mechanism shipped (Wave 3), but **nobody can author it without knowing internal
 conventions.** Today a user who wants a dashboard switch to drive a flow node must hand-type a control
 action `{tool:"flows.inject", argsTemplate:{id, node, value:"{{value}}"}}`, and to read a node back must
@@ -55,7 +61,7 @@ not just scalars.
   nodes or rewires the flow (that's the canvas). Selecting a port that doesn't exist is a save-time error,
   not a flow mutation.
 - **No bespoke flow read verb beyond what's needed for live.** Read-out reuses `flows.node_state` (last
-  value) for the instant render; the *live* upgrade is a small node-state watch (Open questions), not a
+  value) for the instant render; the *live* upgrade is a small node-state watch (a later slice — see Decisions), not a
   re-implementation of `series.*`.
 - **Not a generic form builder.** The JSON control is a single structured value per node port (validated
   against the port's schema when one exists), not a multi-field form designer.
@@ -117,7 +123,7 @@ not just scalars.
   - **Get/list:** **no new verbs** — the picker composes shipped `flows.list` (flows), `flows.get`
     (nodes), `flows.nodes` (ports), and `flows.node_state` (current values). State the read caps above.
   - **Live feed:** instant + slow-refresh via `flows.node_state` for v1 (matches the canvas); a
-    `flows.node.watch` SSE is the live upgrade (Open questions) — **not** polling `runs.get`.
+    `flows.node.watch` SSE is the live upgrade (a later slice — see Decisions) — **not** polling `runs.get`.
   - **Batch:** N/A — a control fires one inject per interaction (coalesced on drag, below).
 - **One datastore / state vs motion (rule 3):** retained inputs = `flow_input` (state, Decision 9);
   current node value = `flow_node_state` (state, Decision 5); the control write is a gated tool call.
@@ -208,11 +214,11 @@ Plus this slice's cases:
 - **Live read-out is state, not a series.** Arbitrary nodes (counter/transform) update `flow_node_state`
   in place (rev bump) — they do **not** all emit a `series`. Binding a live widget to `series.watch
   flow:…` (the old binding-scope assumption) silently shows nothing for such a node. v1 must read
-  `flows.node_state` (instant + refresh); the live upgrade needs a real node-state watch (Open questions),
+  `flows.node_state` (instant + refresh); the live upgrade needs a real node-state watch (a later slice — see Decisions),
   not a series assumption.
 - **Control current-value drift.** Reading the *output* `flow_node_state` to seed a control that drives an
   *input* conflates two values. A control's "current" must read its **own input's** retained value
-  (`flow_input`), which `flows.node_state` does **not** currently return — see Open questions; getting
+  (`flow_input`), which `flows.node_state` does **not** currently return — extended per Decisions; getting
   this wrong makes a switch show the wrong state.
 - **Drag fan-out / coalesce.** A dragged slider fires many injects; setting a retained value (not a run
   per drag, Decision 9) defuses the worst, but the upserts must coalesce (the canonical `coalesce` enum,
@@ -220,25 +226,24 @@ Plus this slice's cases:
 - **Picker staleness.** A flow re-saved (node renamed/removed) can orphan a cell's `node`/`port`. A
   missing target must render an honest "binding broken — re-pick" state, never a silent no-op.
 
-## Open questions
+## Decisions (resolved — no open questions)
 
-- **Read-back of retained inputs.** A control needs its **input port's** current retained value to show
-  true state. Options: (a) extend `flows.node_state` to also return each node's `flow_input` (and per-port
-  values), or (b) a small `flows.inputs {id}` read. **Recommendation:** (a) — one read already drives the
-  canvas; fold retained inputs into it so the dashboard and canvas share one call. Decide the shape.
-- **Live push for read-out.** Is a `flows.node.watch` SSE (a `flow_node_state` rev stream) worth it for
-  v1, or is the canvas-cadence refresh enough? **Recommendation:** ship v1 on refresh; add the watch when
-  a widget needs sub-second liveness (it's the honest motion answer but its own slice).
-- **Port precedence.** Exact resolution order for a run's input when a static `with`, a node-level
-  retained value, and a per-port retained value all exist. **Recommendation:** per-port > node-level >
-  `with` default; ratify in [`flow-run-scope.md`](flow-run-scope.md) and test it.
-- **Output port → which value.** A node's descriptor may declare multiple `outputs[]`, but
-  `flow_node_state` stores one last value per node. Does an output-port selection read a sub-field of that
-  value, or is read-out node-level for v1? **Recommendation:** node-level value for v1; sub-field
-  selection (a JSON path) is a later refinement of the JSON read view.
-- **Should the JSON control validate against a port schema?** If the node type's descriptor declares an
-  input schema, the JSON control could validate against it (like the canvas config panel). **Recommendation:**
-  validate when a schema exists, free-JSON otherwise.
+- **Read-back of retained inputs → extend `flows.node_state`.** Fold each node's retained `flow_input`
+  value (and per-port values) into the existing `flows.node_state {id}` response so the dashboard and the
+  canvas share one read. A control seeds its current state from the node's retained `payload` (its
+  **input**), not its output. No new verb.
+- **Live read-out → refresh for v1.** Read views render `flows.node_state` instantly and advance on the
+  canvas-cadence refresh tick. A `flows.node.watch` SSE (a `flow_node_state` rev stream) is a **later**
+  slice, added only when a widget needs sub-second liveness — not in this one. Never poll `runs.get`.
+- **Port precedence (run input):** **per-port retained > node-level retained > static `with`**. Ratify
+  and test this in [`flow-run-scope.md`](flow-run-scope.md)'s resolver (it composes with the envelope
+  scope's auto-wire: an explicit retained value always wins over auto-wire).
+- **Output read-out → node-level `payload` for v1.** An output-port selection reads the node's
+  `payload` from `flow_node_state`. Sub-field selection (a JSON path into the envelope) is a later
+  refinement of the JSON read view, not v1.
+- **JSON control validation → validate against the port schema when one exists.** If the node type's
+  descriptor declares an input schema, the JSON control validates against it (reuse the canvas config
+  panel's ajv path); otherwise it accepts free JSON. Never a fake accept.
 
 ## Related
 

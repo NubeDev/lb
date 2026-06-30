@@ -110,6 +110,28 @@ export function executedNodeIds(snap: FlowRunSnapshot): Set<string> {
   return new Set((snap.steps ?? []).filter((s) => s.terminal).map((s) => s.id));
 }
 
+/** A run status that is settled — no live run is in flight. The lock + the Stop button key off the
+ *  negation of this (a run is "active" only while NOT terminal). Single source of that truth so the
+ *  hook, the canvas, and tests agree. */
+export function isTerminalStatus(status: string): boolean {
+  return (
+    status === "success" ||
+    status === "partialFailure" ||
+    status === "failed" ||
+    status === "cancelled"
+  );
+}
+
+/** The node ids the config panel must lock RIGHT NOW. The lock applies ONLY while a run is genuinely
+ *  in flight (a non-terminal snapshot). A terminal snapshot — a finished manual run, OR the latest
+ *  finite firing of an armed cron flow that the canvas latched onto for its values — locks NOTHING:
+ *  there is no live run to protect, so the operator edits freely. (Locking on snapshot presence alone
+ *  was the bug that left every node read-only after Stop / between firings until a page refresh.) */
+export function lockedNodeIds(snap: FlowRunSnapshot | null): Set<string> {
+  if (!snap || isTerminalStatus(snap.status)) return new Set<string>();
+  return executedNodeIds(snap);
+}
+
 /** A run snapshot → each node's recorded `output`/`error` (the value legibility surface). The host
  *  records these as a node settles; the canvas paints them on the node so the run is readable at a
  *  glance. (`flows.watch` SSE is the named follow-up that streams these live; today the bounded

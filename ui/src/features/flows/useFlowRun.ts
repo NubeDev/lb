@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getFlowRun, listFlowRuns, openFlowRunStream } from "@/lib/flows";
 import type { FlowRunSnapshot, FlowRunSummary, FlowStreamEvent, NodeSnapshot } from "@/lib/flows";
+import { isTerminalStatus } from "./flowGraph";
 
 /** Poll interval while a run is non-terminal (the no-gateway fallback path only). */
 const POLL_MS = 300;
@@ -34,15 +35,6 @@ export interface FlowRunState {
    *  run-active lock releases IMMEDIATELY — without waiting on the SSE `run-finished` frame, which
    *  may never arrive if the stream already closed. The host stays the source of truth on next load. */
   markTerminal: (status: string) => void;
-}
-
-function isTerminal(status: string): boolean {
-  return (
-    status === "success" ||
-    status === "partialFailure" ||
-    status === "failed" ||
-    status === "cancelled"
-  );
 }
 
 /** Fold one settle delta into a snapshot (immutably) — updates the named node's outcome/output, or
@@ -137,7 +129,7 @@ export function useFlowRun(): FlowRunState {
           const snap = await getFlowRun(runId as string);
           if (cancelled.current) return;
           setSnapshot(snap);
-          if (isTerminal(snap.status)) return;
+          if (isTerminalStatus(snap.status)) return;
         } catch (e) {
           if (cancelled.current) return;
           setError(e instanceof Error ? e.message : String(e));

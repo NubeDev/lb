@@ -8,6 +8,8 @@ import { describe, expect, it } from "vitest";
 import {
   flowToEdges,
   flowToNodes,
+  isTerminalStatus,
+  lockedNodeIds,
   nodeStateValues,
   nodesToFlowNodes,
   snapshotValues,
@@ -87,5 +89,41 @@ describe("snapshotValues", () => {
     const v = snapshotValues(snap);
     expect(v.a.output).toEqual({ count: 2 });
     expect(v.b.output).toBeNull();
+  });
+});
+
+// Regression (the "must refresh the page to edit a node" report): the editor lock must release the
+// instant a run goes terminal — on Stop, and between an armed cron flow's finite firings. The lock is
+// derived purely from the snapshot, so this is the guard for that derivation.
+describe("lockedNodeIds (the executed-node editor lock)", () => {
+  /** A snapshot with one executed node `a` and one un-run node `b`, at `status`. */
+  const snapAt = (status: string): FlowRunSnapshot => ({
+    runId: "r",
+    flowId: "f",
+    flowVersion: 1,
+    status,
+    steps: [
+      { id: "a", claim: "done", terminal: true, outcome: "ok", output: null, error: null },
+      { id: "b", claim: "pending", terminal: false, outcome: "", output: null, error: null },
+    ],
+  });
+
+  it("locks executed nodes while a run is genuinely IN FLIGHT", () => {
+    expect([...lockedNodeIds(snapAt("running"))]).toEqual(["a"]);
+  });
+
+  it("locks NOTHING once the run is terminal — so Stop/cancel frees editing with no refresh", () => {
+    for (const status of ["success", "partialFailure", "failed", "cancelled"]) {
+      expect(lockedNodeIds(snapAt(status)).size).toBe(0);
+    }
+  });
+
+  it("locks nothing with no snapshot (a fresh canvas, or between cron firings before reattach)", () => {
+    expect(lockedNodeIds(null).size).toBe(0);
+  });
+
+  it("isTerminalStatus classifies the four settled statuses, not a live one", () => {
+    expect(isTerminalStatus("running")).toBe(false);
+    expect(isTerminalStatus("cancelled")).toBe(true);
   });
 });
