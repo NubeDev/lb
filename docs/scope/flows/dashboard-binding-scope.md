@@ -1,6 +1,9 @@
 # Flows scope — dashboard ↔ flow binding (a control drives a flow; a widget reads it)
 
-Status: scope (the ask). Promotes to `public/flows/` once shipped. Read the spine
+Status: **shipped (Wave 3)** — see
+[`sessions/flows/dashboard-binding-session.md`](../../sessions/flows/dashboard-binding-session.md) +
+the Wave 3 section of [`public/flows/flows.md`](../../public/flows/flows.md). This is the ask kept
+as the contract. Read the spine
 [`flows-scope.md`](flows-scope.md) first — it owns the canonical **Decisions (v1) 1–13** this doc
 references by number.
 

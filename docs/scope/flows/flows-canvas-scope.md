@@ -1,6 +1,8 @@
 # Flows scope — the canvas (the editor: author, configure, version, run)
 
-Status: scope (the ask). Promotes to `public/flows/` once shipped. The **editor** sub-doc of the
+Status: **shipped (Wave 3)** — see [`sessions/flows/flows-canvas-session.md`](../../sessions/flows/flows-canvas-session.md)
++ the Wave 3 section of [`public/flows/flows.md`](../../public/flows/flows.md). This is the ask kept
+as the contract. The **editor** sub-doc of the
 `scope/flows/` set — read the spine [`flows-scope.md`](flows-scope.md) first; it owns the canonical
 **Decisions (v1)** this doc references by number. This is the **frontend surface** (cross-linked from
 `../frontend/`): the React Flow canvas where a user authors and edits a flow, renders each node's
