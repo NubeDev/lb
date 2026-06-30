@@ -55,7 +55,12 @@ async fn validate_node_configs(store: &Store, ws: &str, flow: &Flow) -> Result<(
         let desc = registry
             .iter()
             .find(|d| d.r#type == n.node_type)
-            .ok_or_else(|| FlowsError::BadInput(format!("node `{}`: unknown type `{}` (extension not installed in this workspace)", n.id, n.node_type)))?;
+            .ok_or_else(|| {
+                FlowsError::BadInput(format!(
+                    "node `{}`: unknown type `{}` (extension not installed in this workspace)",
+                    n.id, n.node_type
+                ))
+            })?;
         lb_flows::validate_config(&desc.config, &n.config).map_err(|e| {
             FlowsError::BadInput(format!("node `{}` ({ }): {e}", n.id, n.node_type))
         })?;
@@ -105,7 +110,11 @@ pub async fn flows_get_internal(store: &Store, ws: &str, id: &str) -> Result<Flo
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?
         .ok_or(FlowsError::NotFound)?;
-    if val.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if val
+        .get("deleted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return Err(FlowsError::NotFound);
     }
     serde_json::from_value(val).map_err(|e| FlowsError::Internal(e.to_string()))
@@ -127,7 +136,11 @@ pub async fn flows_list(
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,
         };
-        if inner.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) {
+        if inner
+            .get("deleted")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
             continue;
         }
         if let Ok(f) = serde_json::from_value::<Flow>(inner) {
@@ -143,7 +156,9 @@ async fn read_flow_raw(store: &Store, ws: &str, id: &str) -> Result<Option<Flow>
             if v.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) {
                 return Ok(None);
             }
-            serde_json::from_value(v).map(Some).map_err(|e| FlowsError::Internal(e.to_string()))
+            serde_json::from_value(v)
+                .map(Some)
+                .map_err(|e| FlowsError::Internal(e.to_string()))
         }
         Ok(None) => Ok(None),
         Err(e) => Err(FlowsError::Internal(e.to_string())),

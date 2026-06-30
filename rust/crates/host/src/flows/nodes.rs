@@ -46,7 +46,10 @@ pub async fn flows_nodes(
 /// The merged registry WITHOUT the `mcp:flows.nodes:call` gate — for internal callers (e.g. the
 /// save-time config re-validation) that already hold their own authority. Workspace-scoped by
 /// `list_installs`; never another workspace's nodes.
-pub async fn merged_registry_internal(store: &Store, ws: &str) -> Result<Vec<NodeDescriptor>, String> {
+pub async fn merged_registry_internal(
+    store: &Store,
+    ws: &str,
+) -> Result<Vec<NodeDescriptor>, String> {
     let installs = list_installs(store, ws).await.map_err(|e| e.to_string())?;
     let mut ext_descriptors = Vec::new();
     for install in installs {

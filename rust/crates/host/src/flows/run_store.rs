@@ -33,16 +33,26 @@ pub async fn create_run(
         params: json!(params),
         ts: now,
     };
-    write(store, ws, FLOW_RUN_TABLE, run_id, &serde_json::to_value(&run).map_err(|e| e.to_string())?)
-        .await
-        .map_err(|e| e.to_string())?;
+    write(
+        store,
+        ws,
+        FLOW_RUN_TABLE,
+        run_id,
+        &serde_json::to_value(&run).map_err(|e| e.to_string())?,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     let indeg = flow.indegrees();
     for n in &flow.nodes {
         let d = indeg[&n.id];
         let rec = FlowStepRecord {
             run_id: run_id.to_string(),
             node_id: n.id.clone(),
-            claim: if d == 0 { ClaimState::Enqueued } else { ClaimState::Pending },
+            claim: if d == 0 {
+                ClaimState::Enqueued
+            } else {
+                ClaimState::Pending
+            },
             indegree: d,
             outcome: String::new(),
             output: Value::Null,
@@ -58,7 +68,12 @@ pub async fn create_run(
 }
 
 /// CAS claim a node: `Pending|Enqueued → Running`. Returns true if THIS call won the claim.
-pub async fn claim_step(store: &Store, ws: &str, run_id: &str, node_id: &str) -> Result<bool, String> {
+pub async fn claim_step(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    node_id: &str,
+) -> Result<bool, String> {
     let Some(mut rec) = read_step(store, ws, run_id, node_id).await? else {
         return Ok(false);
     };
@@ -92,9 +107,15 @@ pub async fn record_outcome(
             state.output = output.clone();
             state.findings = findings.clone();
             // Decision 5: last-value state for the instant dashboard read.
-            write(store, ws, FLOW_NODE_STATE_TABLE, &format!("{flow_id}:{node_id}"), &output)
-                .await
-                .map_err(|e| e.to_string())?;
+            write(
+                store,
+                ws,
+                FLOW_NODE_STATE_TABLE,
+                &format!("{flow_id}:{node_id}"),
+                &output,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
         }
         NodeOutcome::Err(e) => {
             state.outcome = "err".into();
@@ -146,7 +167,13 @@ pub async fn ready_dependents(
 }
 
 /// Mark the transitive subtree below a failed node as Skipped (Halt policy).
-pub async fn skip_subtree(store: &Store, ws: &str, flow: &Flow, run_id: &str, failed: &str) -> Result<(), String> {
+pub async fn skip_subtree(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+    failed: &str,
+) -> Result<(), String> {
     let dependents = flow.dependents();
     let mut queue: std::collections::VecDeque<String> =
         dependents.get(failed).cloned().unwrap_or_default().into();
@@ -172,7 +199,12 @@ pub async fn skip_subtree(store: &Store, ws: &str, flow: &Flow, run_id: &str, fa
 }
 
 /// If every node is Done, write the terminal run status. Returns the new status string if finalised.
-pub async fn finalize_if_complete(store: &Store, ws: &str, flow: &Flow, run_id: &str) -> Result<Option<String>, String> {
+pub async fn finalize_if_complete(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+) -> Result<Option<String>, String> {
     let mut any_failed = false;
     let mut any_ok = false;
     for n in &flow.nodes {
@@ -213,7 +245,13 @@ pub async fn resolve_node_bindings(
     for n in &flow.nodes {
         if let Some(rec) = read_step(store, ws, run_id, &n.id).await? {
             if rec.claim == ClaimState::Done && rec.outcome == "ok" {
-                recorded.insert(n.id.clone(), NodeOutput { output: rec.output, findings: rec.findings });
+                recorded.insert(
+                    n.id.clone(),
+                    NodeOutput {
+                        output: rec.output,
+                        findings: rec.findings,
+                    },
+                );
             }
         }
     }
@@ -253,37 +291,67 @@ pub async fn merged_params_with_inputs(
 }
 
 /// Read the run coordinator record.
-pub async fn read_run(store: &Store, ws: &str, run_id: &str) -> Result<Option<FlowRunRecord>, String> {
+pub async fn read_run(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+) -> Result<Option<FlowRunRecord>, String> {
     match read(store, ws, FLOW_RUN_TABLE, run_id).await {
-        Ok(Some(v)) => serde_json::from_value(v).map(Some).map_err(|e| e.to_string()),
+        Ok(Some(v)) => serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| e.to_string()),
         Ok(None) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
 
-pub async fn read_step(store: &Store, ws: &str, run_id: &str, node_id: &str) -> Result<Option<FlowStepRecord>, String> {
+pub async fn read_step(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    node_id: &str,
+) -> Result<Option<FlowStepRecord>, String> {
     let id = step_record_id(run_id, node_id);
     match read(store, ws, FLOW_STEP_TABLE, &id).await {
-        Ok(Some(v)) => serde_json::from_value(v).map(Some).map_err(|e| e.to_string()),
+        Ok(Some(v)) => serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| e.to_string()),
         Ok(None) => Ok(None),
         Err(e) => Err(e.to_string()),
     }
 }
 
 /// Set the run's lifecycle status.
-pub async fn set_run_status(store: &Store, ws: &str, run_id: &str, status: &str) -> Result<(), String> {
+pub async fn set_run_status(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    status: &str,
+) -> Result<(), String> {
     let Some(mut run) = read_run(store, ws, run_id).await? else {
         return Ok(());
     };
     run.status = status.to_string();
-    write(store, ws, FLOW_RUN_TABLE, run_id, &serde_json::to_value(&run).map_err(|e| e.to_string())?)
-        .await
-        .map_err(|e| e.to_string())
+    write(
+        store,
+        ws,
+        FLOW_RUN_TABLE,
+        run_id,
+        &serde_json::to_value(&run).map_err(|e| e.to_string())?,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 async fn write_step(store: &Store, ws: &str, rec: &FlowStepRecord) -> Result<(), String> {
     let id = step_record_id(&rec.run_id, &rec.node_id);
-    write(store, ws, FLOW_STEP_TABLE, &id, &serde_json::to_value(rec).map_err(|e| e.to_string())?)
-        .await
-        .map_err(|e| e.to_string())
+    write(
+        store,
+        ws,
+        FLOW_STEP_TABLE,
+        &id,
+        &serde_json::to_value(rec).map_err(|e| e.to_string())?,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }

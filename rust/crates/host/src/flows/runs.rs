@@ -76,9 +76,15 @@ pub async fn flows_runs_list(
 }
 
 async fn node_snapshot(store: &Store, ws: &str, run_id: &str) -> Result<Vec<Value>, FlowsError> {
-    let page = lb_store::scan(store, ws, super::record::FLOW_STEP_TABLE, lb_store::MAX_SCAN_LIMIT, None)
-        .await
-        .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    let page = lb_store::scan(
+        store,
+        ws,
+        super::record::FLOW_STEP_TABLE,
+        lb_store::MAX_SCAN_LIMIT,
+        None,
+    )
+    .await
+    .map_err(|e| FlowsError::Internal(e.to_string()))?;
     let mut steps = Vec::new();
     for row in page.rows {
         let inner = match row.data {
@@ -88,7 +94,10 @@ async fn node_snapshot(store: &Store, ws: &str, run_id: &str) -> Result<Vec<Valu
         if inner.get("run_id").and_then(|v| v.as_str()) != Some(run_id) {
             continue;
         }
-        let claim = inner.get("claim").and_then(|v| v.as_str()).unwrap_or("pending");
+        let claim = inner
+            .get("claim")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending");
         let terminal = claim == "done";
         steps.push(json!({
             "id": inner.get("node_id").cloned().unwrap_or(Value::Null),

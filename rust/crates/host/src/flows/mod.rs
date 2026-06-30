@@ -21,6 +21,7 @@ pub mod run;
 pub mod run_store;
 pub mod runs;
 pub mod save;
+pub mod source;
 
 use std::sync::Arc;
 
@@ -62,8 +63,8 @@ async fn dispatch(
             Ok(json!({ "nodes": registry }))
         }
         "flows.save" => {
-            let mut flow: lb_flows::Flow =
-                serde_json::from_value(input.clone()).map_err(|e| FlowsError::BadInput(e.to_string()))?;
+            let mut flow: lb_flows::Flow = serde_json::from_value(input.clone())
+                .map_err(|e| FlowsError::BadInput(e.to_string()))?;
             let id = save::flows_save(&node.store, principal, ws, &mut flow).await?;
             Ok(json!({ "id": id, "version": flow.version }))
         }
@@ -125,7 +126,9 @@ async fn dispatch(
             let status = input.get("status").and_then(|v| v.as_str());
             runs::flows_runs_list(&node.store, principal, ws, flow_id, status).await
         }
-        _ => Err(FlowsError::BadInput(format!("unknown flows verb: {qualified_tool}"))),
+        _ => Err(FlowsError::BadInput(format!(
+            "unknown flows verb: {qualified_tool}"
+        ))),
     }
 }
 

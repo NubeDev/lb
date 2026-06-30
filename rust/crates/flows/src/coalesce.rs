@@ -41,7 +41,10 @@ pub struct Coalesce {
 
 impl Default for Coalesce {
     fn default() -> Self {
-        Self { strategy: CoalesceStrategy::Latest, window_ms: 0 }
+        Self {
+            strategy: CoalesceStrategy::Latest,
+            window_ms: 0,
+        }
     }
 }
 

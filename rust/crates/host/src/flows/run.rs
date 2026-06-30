@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use lb_auth::Principal;
 use lb_flows::Flow;
-use lb_jobs::{create, complete, Job, JobStatus};
+use lb_jobs::{complete, create, Job, JobStatus};
 use serde_json::{json, Value};
 
 use crate::boot::Node;
@@ -56,9 +56,13 @@ pub async fn run_flow_to_completion(
     now: u64,
 ) -> Result<String, FlowsError> {
     // The durable job record (status anchor). Idempotent on run_id.
-    create(&node.store, ws, &Job::new(run_id, FLOW_RUN_KIND, flow.id.clone(), now))
-        .await
-        .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    create(
+        &node.store,
+        ws,
+        &Job::new(run_id, FLOW_RUN_KIND, flow.id.clone(), now),
+    )
+    .await
+    .map_err(|e| FlowsError::Internal(e.to_string()))?;
 
     coordinator::start(node, ws, run_id, flow, &params, now)
         .await

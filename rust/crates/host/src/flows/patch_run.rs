@@ -62,9 +62,16 @@ pub async fn flows_patch_run(
     let desc = registry
         .iter()
         .find(|d| d.r#type == node_spec.node_type)
-        .ok_or_else(|| FlowsError::BadInput(format!("node `{node_id}`: unknown type `{}`", node_spec.node_type)))?;
+        .ok_or_else(|| {
+            FlowsError::BadInput(format!(
+                "node `{node_id}`: unknown type `{}`",
+                node_spec.node_type
+            ))
+        })?;
     lb_flows::validate_config(&desc.config, &config).map_err(|e| {
-        FlowsError::BadInput(format!("patch for node `{node_id}` violates the pinned schema: {e}"))
+        FlowsError::BadInput(format!(
+            "patch for node `{node_id}` violates the pinned schema: {e}"
+        ))
     })?;
 
     // Persist the patched config on the step record (read back by the executor when the node's turn

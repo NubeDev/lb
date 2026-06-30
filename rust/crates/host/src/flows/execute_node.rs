@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 use crate::boot::Node;
 use crate::tool_call::call_tool;
 
-use super::run::{run_flow_to_completion, child_run_id};
+use super::run::{child_run_id, run_flow_to_completion};
 use super::run_store::{self, NodeOutcome};
 use super::save::flows_get_internal;
 
@@ -47,7 +47,9 @@ pub async fn execute_one(
     if !run_store::claim_step(&node.store, ws, run_id, node_id).await? {
         return Ok(());
     }
-    let node_spec = flow.node(node_id).ok_or_else(|| format!("node {node_id} not in flow"))?;
+    let node_spec = flow
+        .node(node_id)
+        .ok_or_else(|| format!("node {node_id} not in flow"))?;
 
     // Decision 1/12: a config-only `flows.patch_run` on this UNEXECUTED node overrides the flow's
     // node config for this run (the patched value the operator set during a suspend).
@@ -61,8 +63,10 @@ pub async fn execute_one(
         run_store::resolve_node_bindings(&node.store, ws, flow, run_id, &node_spec.with, params)
             .await?;
 
-    let outcome = dispatch(node, principal, ws, run_id, flow, node_id, &config, inputs, params, now)
-        .await;
+    let outcome = dispatch(
+        node, principal, ws, run_id, flow, node_id, &config, inputs, params, now,
+    )
+    .await;
     let failed = matches!(outcome, NodeOutcome::Err(_));
 
     run_store::record_outcome(&node.store, ws, &flow.id, run_id, node_id, outcome).await?;
@@ -90,18 +94,26 @@ async fn dispatch(
     params: &serde_json::Map<String, Value>,
     now: u64,
 ) -> NodeOutcome {
-    let node_type = flow.node(node_id).map(|n| n.node_type.as_str()).unwrap_or("");
+    let node_type = flow
+        .node(node_id)
+        .map(|n| n.node_type.as_str())
+        .unwrap_or("");
     if !is_builtin_type(node_type) {
-        // An extension node: dispatch its bound `<ext>.<tool>`. The exact tool binding lives on the
-        // descriptor; slice 3 resolves it. For now the node_type `<ext>.<type>` is dispatched as-is
-        // (an ext node is exercised end-to-end in the extension-nodes slice with a real descriptor).
-        return call_tool_node(node, principal, ws, node_type, &Value::Object(inputs)).await;
+        // An extension node: dispatch its bound `<ext>.<tool>` (the descriptor's `tool` field), under
+        // `caller ∩ install-grant` via the one `call_tool` chokepoint — `build_call_context` derives
+        // `effective = caller ∩ install.granted` (extension-nodes-scope, two-direction deny). The
+        // descriptor is resolved from the merged registry so the exact tool binding is used.
+        let tool = resolve_ext_tool(&node.store, ws, node_type).await.unwrap_or_else(|| node_type.to_string());
+        return call_tool_node(node, principal, ws, &tool, &Value::Object(inputs)).await;
     }
     match node_type {
         "trigger" => {
             // The entry node: its output is the firing payload (the trigger value), read from params
             // under the node id (set by the firing path), else the resolved `with`.
-            let payload = params.get(node_id).cloned().unwrap_or_else(|| Value::Object(inputs));
+            let payload = params
+                .get(node_id)
+                .cloned()
+                .unwrap_or_else(|| Value::Object(inputs));
             NodeOutcome::Ok(payload, Value::Null)
         }
         "tool" => {
@@ -109,7 +121,10 @@ async fn dispatch(
             if verb.is_empty() {
                 return NodeOutcome::Err("tool node missing config.verb".into());
             }
-            let mut args = config.get("args").cloned().unwrap_or(Value::Object(Default::default()));
+            let mut args = config
+                .get("args")
+                .cloned()
+                .unwrap_or(Value::Object(Default::default()));
             if let Value::Object(map) = &mut args {
                 for (k, v) in inputs {
                     map.insert(k, v);
@@ -120,15 +135,31 @@ async fn dispatch(
         "rhai" => {
             let source = config.get("source").and_then(|v| v.as_str()).unwrap_or("");
             let req = json!({ "body": source, "params": Value::Object(inputs), "ts": now });
-            match Box::pin(call_tool(node, principal, ws, "rules.run", &req.to_string())).await {
+            match Box::pin(call_tool(
+                node,
+                principal,
+                ws,
+                "rules.run",
+                &req.to_string(),
+            ))
+            .await
+            {
                 Ok(out) => {
                     let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
-                    NodeOutcome::Ok(unwrap_rule_output(v.get("output")), v.get("findings").cloned().unwrap_or(Value::Null))
+                    NodeOutcome::Ok(
+                        unwrap_rule_output(v.get("output")),
+                        v.get("findings").cloned().unwrap_or(Value::Null),
+                    )
                 }
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
         }
-        "sink" => dispatch_sink(node, principal, ws, run_id, flow, node_id, config, inputs, now).await,
+        "sink" => {
+            dispatch_sink(
+                node, principal, ws, run_id, flow, node_id, config, inputs, now,
+            )
+            .await
+        }
         "subflow" => dispatch_subflow(node, principal, ws, config, inputs, now).await,
         _ => NodeOutcome::Err(format!("unknown built-in node type: {node_type}")),
     }
@@ -153,7 +184,15 @@ async fn dispatch_sink(
     match target {
         "series" => {
             let req = json!({ "samples": [{ "series": name, "value": value, "ts": now }] });
-            match Box::pin(call_tool(node, principal, ws, "ingest.write", &req.to_string())).await {
+            match Box::pin(call_tool(
+                node,
+                principal,
+                ws,
+                "ingest.write",
+                &req.to_string(),
+            ))
+            .await
+            {
                 Ok(_) => NodeOutcome::Ok(json!({"accepted": 1}), Value::Null),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -162,14 +201,33 @@ async fn dispatch_sink(
             // A must-deliver sink stages an outbox effect (transactional, idempotent on the effect
             // id). The deterministic id from (run, node) makes a resume/retry a no-op (no double-send).
             let effect_id = format!("{run_id}:{node_id}");
-            match crate::outbox::enqueue_outbox(&node.store, principal, ws, &effect_id, name, "write", &value.to_string(), now).await {
+            match crate::outbox::enqueue_outbox(
+                &node.store,
+                principal,
+                ws,
+                &effect_id,
+                name,
+                "write",
+                &value.to_string(),
+                now,
+            )
+            .await
+            {
                 Ok(()) => NodeOutcome::Ok(json!({"enqueued": effect_id}), Value::Null),
                 Err(e) => NodeOutcome::Err(e.to_string()),
             }
         }
         "channel" | "inbox" => {
             let req = json!({ "channel": name, "body": value });
-            match Box::pin(call_tool(node, principal, ws, "inbox.record", &req.to_string())).await {
+            match Box::pin(call_tool(
+                node,
+                principal,
+                ws,
+                "inbox.record",
+                &req.to_string(),
+            ))
+            .await
+            {
                 Ok(_) => NodeOutcome::Ok(json!({"recorded": true}), Value::Null),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -207,12 +265,24 @@ async fn dispatch_subflow(
     for (k, v) in inputs {
         child_params.insert(k, v);
     }
-    match Box::pin(run_flow_to_completion(node, principal, ws, &child, child_params, &child_run, now)).await {
+    match Box::pin(run_flow_to_completion(
+        node,
+        principal,
+        ws,
+        &child,
+        child_params,
+        &child_run,
+        now,
+    ))
+    .await
+    {
         Ok(status) if status == "success" => {
             // Read the child's terminal-node outputs and fold them into this node's output.
             let mut folded = serde_json::Map::new();
             for n in &child.nodes {
-                if let Ok(Some(rec)) = run_store::read_step(&node.store, ws, &child_run, &n.id).await {
+                if let Ok(Some(rec)) =
+                    run_store::read_step(&node.store, ws, &child_run, &n.id).await
+                {
                     if rec.outcome == "ok" {
                         folded.insert(n.id.clone(), rec.output);
                     }
@@ -223,6 +293,14 @@ async fn dispatch_subflow(
         Ok(status) => NodeOutcome::Err(format!("subflow child {child_id} ended {status}")),
         Err(e) => NodeOutcome::Err(e.to_string()),
     }
+}
+
+/// Resolve an extension node's bound MCP tool (`<ext>.<tool>`) from the merged registry by node
+/// type. Falls back to the node type itself if the descriptor is unavailable (an uninstalled ext —
+/// the dispatch then denies at the install-grant gate, honestly).
+async fn resolve_ext_tool(store: &lb_store::Store, ws: &str, node_type: &str) -> Option<String> {
+    let registry = super::nodes::merged_registry_internal(store, ws).await.ok()?;
+    registry.into_iter().find(|d| d.r#type == node_type).map(|d| d.tool)
 }
 
 /// Dispatch a `<verb>` call through the one chokepoint and reduce to a `NodeOutcome`.
