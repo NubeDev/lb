@@ -30,13 +30,14 @@ pub mod model;
 pub mod node_block;
 pub mod registry;
 
-pub use binding::resolve_bindings;
+pub use binding::{resolve_bindings, NodeOutput};
 pub use builtins::builtin_descriptors;
 pub use coalesce::{Coalesce, CoalesceStrategy};
 pub use config_schema::{compile_schema, validate_config, ConfigSchemaError};
 pub use descriptor::{NodeDescriptor, NodeKind};
 pub use model::{
-    validate_flow, DagError, FailurePolicy, Flow, FlowSummary, Node, NodeConfig, BUILTIN_PREFIX,
+    is_builtin_type, validate_flow, DagError, FailurePolicy, Flow, FlowSummary, MAX_FLOW_NODES, Node,
+    NodeConfig, BUILTIN_PREFIX,
 };
 pub use node_block::{validate_node_block, NodeBlock, NodeBlockError};
 pub use registry::merge_registry;

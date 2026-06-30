@@ -61,6 +61,10 @@ pub struct FlowStepRecord {
     pub attempts: u32,
     #[serde(default)]
     pub ms: u64,
+    /// A config-only `flows.patch_run` override for an UNEXECUTED node (Decision 1/12). The executor
+    /// reads this in place of the flow's node config when the node's turn comes; `None` otherwise.
+    #[serde(default)]
+    pub patched_config: Option<Value>,
 }
 
 /// The id of a per-node record within a run.

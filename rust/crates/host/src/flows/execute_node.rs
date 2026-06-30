@@ -49,11 +49,19 @@ pub async fn execute_one(
     }
     let node_spec = flow.node(node_id).ok_or_else(|| format!("node {node_id} not in flow"))?;
 
+    // Decision 1/12: a config-only `flows.patch_run` on this UNEXECUTED node overrides the flow's
+    // node config for this run (the patched value the operator set during a suspend).
+    let step = run_store::read_step(&node.store, ws, run_id, node_id).await?;
+    let config = step
+        .as_ref()
+        .and_then(|s| s.patched_config.clone())
+        .unwrap_or_else(|| node_spec.config.clone());
+
     let inputs =
         run_store::resolve_node_bindings(&node.store, ws, flow, run_id, &node_spec.with, params)
             .await?;
 
-    let outcome = dispatch(node, principal, ws, run_id, flow, node_id, &node_spec.config, inputs, now)
+    let outcome = dispatch(node, principal, ws, run_id, flow, node_id, &config, inputs, params, now)
         .await;
     let failed = matches!(outcome, NodeOutcome::Err(_));
 
@@ -79,6 +87,7 @@ async fn dispatch(
     node_id: &str,
     config: &Value,
     inputs: serde_json::Map<String, Value>,
+    params: &serde_json::Map<String, Value>,
     now: u64,
 ) -> NodeOutcome {
     let node_type = flow.node(node_id).map(|n| n.node_type.as_str()).unwrap_or("");

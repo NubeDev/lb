@@ -44,7 +44,7 @@ pub async fn flows_run(
 
 /// Create + drive a flow run to terminal completion. Used by `flows.run` and by a `subflow` node
 /// (Decision 11). The run pins `flow.version` into `flow_run` (Decision 1); drive is idempotent +
-//! resumable (the CAS claim makes a redelivered node a no-op). Returns the terminal status string.
+/// resumable (the CAS claim makes a redelivered node a no-op). Returns the terminal status string.
 pub async fn run_flow_to_completion(
     node: &Arc<Node>,
     principal: &Principal,

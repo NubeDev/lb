@@ -11,8 +11,8 @@ use lb_store::{read, scan, write, Store};
 use serde_json::{json, Value};
 
 use super::record::{
-    step_record_id, ClaimState, FlowRunRecord, FlowStepRecord, FLOW_NODE_STATE_TABLE, FLOW_RUN_TABLE,
-    FLOW_STEP_TABLE,
+    step_record_id, ClaimState, FlowRunRecord, FlowStepRecord, FLOW_INPUT_TABLE,
+    FLOW_NODE_STATE_TABLE, FLOW_RUN_TABLE, FLOW_STEP_TABLE,
 };
 
 /// Seed a run: the coordinator record (pending, pinned `flow_version`) + a per-node state row (claim
@@ -50,6 +50,7 @@ pub async fn create_run(
             error: None,
             attempts: 0,
             ms: 0,
+            patched_config: None,
         };
         write_step(store, ws, &rec).await?;
     }

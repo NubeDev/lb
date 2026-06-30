@@ -67,11 +67,10 @@ pub async fn flows_patch_run(
         FlowsError::BadInput(format!("patch for node `{node_id}` violates the pinned schema: {e}"))
     })?;
 
-    // Persist the patched config on the step record (read back by the executor). Carried as a side
-    // field so the run reads the patched value at execution time.
+    // Persist the patched config on the step record (read back by the executor when the node's turn
+    // comes). Carried as a dedicated field so it never collides with a recorded output.
     let mut rec = step;
-    rec.output = config; // reused as the "pending config" carrier for an unexecuted node
-    rec.indegree = rec.indegree; // no-op, keeps the field
+    rec.patched_config = Some(config);
     lb_store::write(
         &node.store,
         ws,

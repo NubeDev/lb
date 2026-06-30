@@ -27,7 +27,7 @@ pub async fn flows_save(
 ) -> Result<String, FlowsError> {
     authorize_store_write(principal, ws)?;
     flow.workspace = ws.to_string();
-    validate_flow(flow, MAX_FLOW_NODES)?; // rejected before any run
+    validate_flow(flow, MAX_FLOW_NODES).map_err(|e| FlowsError::BadInput(e.to_string()))?; // rejected before any run
     validate_node_configs(store, ws, flow).await?;
     // Decision 1: editing writes a new version. An existing flow's version bumps; the live run keeps
     // the version it pinned.
