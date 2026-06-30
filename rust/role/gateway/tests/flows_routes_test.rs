@@ -107,7 +107,12 @@ async fn flows_crud_round_trip_over_the_gateway() {
         .oneshot(bearer(get_req("/flows/cooler"), &tok))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let status = resp.status();
+    let body = resp.into_body();
+    let bytes = http_body_util::BodyExt::collect(body).await.unwrap().to_bytes();
+    let text = String::from_utf8_lossy(&bytes);
+    eprintln!("DEBUG get-after-delete status={status} body={text}");
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -191,7 +196,7 @@ async fn workspace_b_cannot_read_workspace_a_flow() {
         .unwrap();
 
     // ws-B cannot get ws-A's flow (the workspace wall — derived from the token, not the path).
-    let resp = router(gw)
+    let resp = router(gw.clone())
         .oneshot(bearer(get_req("/flows/secret"), &tok_b))
         .await
         .unwrap();
@@ -224,7 +229,7 @@ async fn inject_into_a_retained_node_sets_state_and_starts_no_run() {
         .await
         .unwrap();
 
-    let resp = router(gw)
+    let resp = router(gw.clone())
         .oneshot(bearer(
             json_post("/flows/ret/inject", json!({ "node": "setpoint", "value": 4 })),
             &tok,
