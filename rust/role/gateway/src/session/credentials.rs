@@ -177,6 +177,24 @@ fn member_caps() -> Vec<String> {
         "mcp:chains.list:call",
         "mcp:chains.delete:call",
         "mcp:chains.runs.get:call",
+        // flows (flows-canvas + dashboard-binding scopes, Wave 3) — the shipped `flows.*` typed-node
+        // engine verbs the flows gateway routes check. Member-level — any member may author/run their
+        // own flows (workspace wall + the no-widening run gate still decide what a run may do). The
+        // gateway re-checks each cap server-side; a token without a given verb is refused per verb.
+        "mcp:flows.save:call",
+        "mcp:flows.get:call",
+        "mcp:flows.list:call",
+        "mcp:flows.delete:call",
+        "mcp:flows.nodes:call",
+        "mcp:flows.run:call",
+        "mcp:flows.resume:call",
+        "mcp:flows.suspend:call",
+        "mcp:flows.cancel:call",
+        "mcp:flows.patch_run:call",
+        "mcp:flows.runs.get:call",
+        "mcp:flows.runs.list:call",
+        "mcp:flows.enable:call",
+        "mcp:flows.inject:call",
         "mcp:datasource.add:call",
         "mcp:datasource.remove:call",
         "mcp:datasource.list:call",

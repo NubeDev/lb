@@ -12,23 +12,27 @@ use tower_http::cors::CorsLayer;
 use crate::routes::{
     add_datasource, add_member, add_team_member, archive_workspace, assign_grant, bus_stream,
     channel_stream, convert_unit, create_apikey, create_channel, create_identity, create_team,
-    create_user, create_workspace, define_role, delete_chain, delete_dashboard, delete_message,
-    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
-    edit_message, enable_extension, enable_user, find_series, format_datetime, format_number,
-    format_quantity, get_apikey, get_chain, get_chain_run, get_dashboard, get_doc, get_history,
+    create_user, create_workspace, define_role, delete_chain, delete_dashboard, delete_flow,
+    delete_message, delete_role, delete_rule, delete_team, delete_user, disable_extension,
+    disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
+    format_datetime, format_number, format_quantity, get_apikey, get_chain, get_chain_run,
+    get_dashboard, get_doc, get_flow, get_flow_run, get_history,
     get_identity, get_outbox_status, get_prefs, get_rule, grant_skill, identity_workspaces_route,
     latest_sample, link_doc, list_apikeys, list_chains, list_channels, list_dashboards,
-    list_datasources, list_docs, list_extensions, list_grants, list_identities, list_inbox,
+    list_datasources, list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows,
+    list_grants, list_identities, list_inbox,
     list_members, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
     list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog, post_message,
     publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
     read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
     rename_workspace, request_approval, resolve_caps, resolve_inbox, resolve_prefs,
     resolve_workflow_approval, revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey,
-    run_chain, run_query, run_rule, run_stream, save_chain, save_dashboard, save_rule, scan_table,
+    run_chain, run_flow, run_query, run_rule, run_stream, save_chain, save_dashboard, save_flow,
+    save_rule, scan_table,
     series_stream, serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc,
     start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    test_datasource, uninstall_extension, write_samples,
+    test_datasource, uninstall_extension, write_samples, inject_flow, lifecycle_flow,
+    patch_flow_run,
 };
 use crate::state::Gateway;
 
@@ -199,6 +203,21 @@ pub fn router(gw: Gateway) -> Router {
         .route("/chains/{id}", get(get_chain).delete(delete_chain))
         .route("/chains/{id}/run", post(run_chain))
         .route("/chains/{id}/runs/{run_id}", get(get_chain_run))
+        // flows (flows-canvas + dashboard-binding scopes, Wave 3) — the browser's `flows.*` typed-node
+        // canvas CRUD + run + the per-node run snapshot + reattach, plus enable/inject. Each route
+        // re-checks `mcp:flows.<verb>:call` server-side; ws + principal from the token. An invalid DAG
+        // or schema-invalid node config at save → `400` (the canvas inline error). NO new authority:
+        // these are the shipped `flows.*` verbs over the gateway, mirroring the chains routes.
+        .route("/flows", get(list_flows).post(save_flow))
+        .route("/flows/nodes", get(list_flow_nodes))
+        .route("/flows/{id}", get(get_flow).delete(delete_flow))
+        .route("/flows/{id}/run", post(run_flow))
+        .route("/flows/{id}/enable", post(enable_flow))
+        .route("/flows/{id}/inject", post(inject_flow))
+        .route("/flows/{id}/runs", get(list_flow_runs))
+        .route("/flows/runs/{run_id}", get(get_flow_run))
+        .route("/flows/runs/{run_id}/{op}", post(lifecycle_flow))
+        .route("/flows/runs/{run_id}/patch", post(patch_flow_run))
         .route("/series/{series}/stream", get(series_stream))
         // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
         // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe

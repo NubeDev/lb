@@ -65,6 +65,10 @@ pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, uninstall_extension,
 };
 pub use ext_ui::serve_ext_ui;
+pub use flows::{
+    delete_flow, enable_flow, get_flow, get_flow_run, inject_flow, lifecycle_flow,
+    list_flow_nodes, list_flow_runs, list_flows, patch_flow_run, run_flow, save_flow,
+};
 pub use history::get_history;
 pub use identity::{
     create_identity, get_identity, identity_workspaces as identity_workspaces_route,

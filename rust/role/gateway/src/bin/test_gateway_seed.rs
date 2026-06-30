@@ -15,6 +15,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use lb_assets::{record_install, ExtUi, Install, Tier};
 use lb_auth::{mint, Claims, Role};
+use lb_flows::NodeBlock;
 use lb_host::{Provenance, Qos, Sample, Tag, TagSource};
 use lb_inbox::Item;
 use lb_outbox::{enqueue, Effect};
@@ -33,6 +34,7 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/series", post(seed_series))
         .route("/_seed/proof_panel", post(seed_proof_panel))
         .route("/_seed/session", post(seed_session))
+        .route("/_seed/flow_node", post(seed_flow_node))
 }
 
 /// `POST /_seed/proof_panel` — install AND LOAD the REAL `proof-panel` wasm component into the token's
@@ -281,5 +283,35 @@ async fn seed_series(
     )
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("tag: {e:?}")))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `POST /_seed/flow_node` body — install a real extension that contributes ONE `[[node]]` to the
+/// token's workspace, so `flows.nodes` returns it (the palette hot-reload + ext-node tests). This is
+/// **seeding, not faking** (testing-scope §3.1): it writes a real `Install` record carrying a real
+/// `NodeBlock` + the granted cap the node's `tool` resolves to, exactly the path a real install
+/// persists. The node's `tool` MUST be in the granted set or `flows.nodes` drops it (no install grant).
+#[derive(Debug, Deserialize)]
+struct SeedFlowNode {
+    ext: String,
+    /// The `mcp:<ext>.<tool>:call` cap to grant (the node's bound tool). Member-level grant.
+    tool_cap: String,
+    node: NodeBlock,
+}
+
+async fn seed_flow_node(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SeedFlowNode>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = auth(&gw, &headers).await?;
+    // A real install record: the granted cap lets the node's tool run (`caller ∩ install-grant`),
+    // and the `nodes` block is the read-time union `flows.nodes` walks. `Manifest::parse` is NOT
+    // needed — the block is validated defensively at `flows.nodes` time, exactly as production.
+    let mut install = Install::new(body.ext.clone(), "0.1.0", vec![body.tool_cap], gw.now);
+    install.nodes = vec![body.node];
+    record_install(&gw.node.store, p.ws(), &install)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
