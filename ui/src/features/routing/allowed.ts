@@ -5,11 +5,12 @@ import { CAP, hasCap, isAdmin } from "@/lib/session";
 import type { CoreSurface } from "@/features/shell";
 
 export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
-  const allowed: CoreSurface[] = ["channels", "members", "inbox", "outbox"];
+  const allowed: CoreSurface[] = ["channels", "inbox", "outbox"];
   if (hasCap(caps, CAP.dashboardList)) allowed.push("dashboards");
   if (hasCap(caps, CAP.rulesRun)) allowed.push("rules");
   if (hasCap(caps, CAP.chainsGet)) allowed.push("chains");
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");
+  if (hasCap(caps, CAP.reminderList)) allowed.push("reminders");
   if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
   if (hasCap(caps, CAP.storeScan)) allowed.push("data");
   if (hasCap(caps, CAP.systemOverview)) allowed.push("system");

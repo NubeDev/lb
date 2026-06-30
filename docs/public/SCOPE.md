@@ -3,6 +3,77 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — global identity / many-workspaces, the Slack model)
+
+One **global identity** per person belonging to many workspaces, linked by a per-workspace
+**membership** roster — the prerequisite that makes the Access console, teams, and the workspace
+switcher behave the way README §7/§6.6 already specify (`auth-caps/auth-caps.md`):
+
+- **Identity directory** — `identity:{sub}` = `{sub, display_name?, created_ts}` in a reserved
+  system namespace `_lb_identity` (mirroring `_lb_workflow_directory`). Hub-writable,
+  resolution-read-only, **no tenant data, no credential** (dev-login behind the seam; OIDC additive
+  later). `sub` stays the human handle (`user:ada`), globally unique — `Subject::User(sub)` grants
+  unchanged. `lb_authz::identity` raw verbs + host `identity` service (`create/get/list/workspaces`,
+  each gated `mcp:identity.manage:call`).
+- **Membership roster** — `membership:{sub}` = `{sub, joined_ts}` in the workspace namespace; the
+  single source of truth for "who is in this workspace" (no `role_hint`). `lb_authz::membership` raw
+  verbs + host `membership` service (`add/remove/list`, gated `mcp:members.manage:call`). `add`
+  system-grants `role:member`; `remove` tombstones + **composes** `revoke_subject` + `token_revoke_mark`
+  (clean exit — live token refused next verify); `list` is the **effective** roster (membership ∪ legacy
+  `user:*` rows, lazy migration).
+- **Login + bootstrap** — login resolves identity → memberships → the existing `(sub, ws, caps)` token;
+  an effective member mints, an empty workspace bootstraps the requester as `workspace-admin`
+  (decision #3), a non-member of a workspace that has members is refused (decision #4).
+  `create_workspace` auto-memberships the creator + grants `workspace-admin`.
+- **Surfaces** — gateway routes (`/admin/identities*`, `/admin/members*`) + `http.ts` entries; the
+  Access console "People" tab re-points `user_list` → `membership.list` (decision #9); the workspace
+  switcher resolves through `identity.workspaces`. The token/cap grammar is unchanged.
+
+**Tests (real store/gateway, no mocks):** host `identity_membership_test` 7 (deny-per-verb ·
+ws-isolation across store+MCP · one-identity-in-N-workspaces · login/zero-memberships ·
+leave-is-a-clean-exit · legacy-migration no-access-change · removed-tombstone-replays-idempotently) +
+gateway `identity_routes_test` 5 (forged-call-denied · create+add+list+workspaces · login
+bootstrap+refuse · clean-exit live-token-refused) + UI `Membership.gateway.test` 4 + the re-pointed
+`PeopleAdmin`/`DocView` suites green. Scope + session: `../scope/auth-caps/global-identity-scope.md`,
+`../sessions/auth-caps/global-identity-session.md`.
+
+## Shipped (post-S8 — reminders: a scheduled trigger that fires one action)
+
+A durable, workspace-scoped **reminder** — a `reminder:{id}` record + a dedicated durable scan over
+the shipped `lb-jobs` + outbox, **not** a new scheduler (`reminders/reminders.md`):
+
+- **The record (`lb-reminders`).** A 5-field cron `schedule` (the storage format), `max_runs`/`runs`
+  (one-shot/counted/recurring), an `enabled` on/off switch, a `next_attempt_ts`, a stored
+  `principal_sub`, and an `action` tagged union — **one** action: channel post / MCP tool call /
+  must-deliver outbox effect. The store crate holds no authorization (like `lb_inbox`/`lb_outbox`);
+  the one new mechanical piece is cron "next after T" on the **injected logical clock** via `croner`
+  (`find_next_occurrence` on a supplied time — deterministic, never wall-clock).
+- **CRUD `reminder.*`** — `create`/`update`/`delete`/`get`/`list`, one tool + capability + file each
+  (`mcp:reminder.<verb>:call`), bounded single-record writes → **synchronous, not jobs** (the firing
+  is the job). `update` covers pause/resume (`enabled`) and reschedule (re-anchoring `next_attempt_ts`
+  to the next future slot — no backfill on resume).
+- **The reactor (`react_to_reminders`).** A dedicated scan in its own file (same altitude/cadence as
+  `react_to_approvals`/`relay_outbox`): finds every enabled+due reminder, enqueues ONE
+  `kind="reminder-fire"` `lb-jobs` job per firing (**deterministic per-firing id** on
+  `(reminder_id, scheduled_ts)` → idempotent, one instant → one job → one effect), dispatches the
+  action against its real seam, and advances (`max_runs` countdown to `Done`, else next future slot).
+  Missed-firing policy is **fire-once-then-skip-to-next** (no backfill storm after an outage).
+- **The security model — principal capture at fire time.** The record stores `principal_sub`, not a
+  frozen cap set; the firing **re-resolves** caps from the durable grant store and re-checks the
+  action's own capability (`bus:chan/{c}:pub` / `mcp:{tool}:call` under the live schema /
+  `mcp:outbox.enqueue:call`). A grant revoked after create turns the firing into a **logged deny**
+  with no effect; the reminder is left scheduled, the existing job id keeps a re-scan from re-firing.
+- **UI** — a `react-js-cron` visual cron builder (antd scoped to its own subtree, never the global
+  Tailwind/shadcn theme), an action editor, and a `reminder.*` api client over the host-mediated
+  `POST /mcp/call` bridge (ws + principal from the token).
+
+**Tests (real store/bus/jobs/inbox/outbox, no mocks):** `lb-reminders` cron-math units +
+`reminders_mcp_test.rs` (CRUD round-trip, **deny-per-verb**, **ws-isolation** at list/get, bad-cron =
+`BadInput`) + `reminders_reactor_test.rs` (each action kind against its real seam, **idempotent**
+re-scan, `max_runs`→`Done`, disable/resume, **offline catch-up exactly-once**, **deny at firing** on a
+revoked grant, **ws-isolation** across store + reactor, multi-day cron on the injected clock). See
+`reminders/reminders.md` + `../sessions/reminders/reminders-session.md`.
+
 ## Shipped (core crate — `lb-prefs`: canonical-in / localized-out preferences, units & formatting)
 
 The boundary that renders canonical data per a principal's resolved preferences (domain data stays

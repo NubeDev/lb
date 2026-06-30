@@ -243,6 +243,9 @@ Plus this slice's cases:
   principal is rejected across nodes (the staleness window).
 - `scope/frontend/admin-console-scope.md` — the admin UI that drives every verb here (with confirm dialogs
   for the destructive/hard-delete steps).
+- `scope/auth-caps/access-console-scope.md` — the access-first evolution of that UI: surfaces the
+  timing/freshness of these destructive verbs inline and adds the force-re-mint lever over their
+  cached-token effect.
 - `scope/frontend/collaboration-scope.md` — the S9 session/login path `user.disable` amends, and the
   two-principal isolation test these destructive verbs extend.
 - `scope/tenancy/tenancy-scope.md` — the workspace wall every verb holds; workspace delete is its top.

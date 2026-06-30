@@ -40,8 +40,8 @@ name        = "datasource.test"
 description = "A real connectivity probe against a registered datasource (green/red)."
 
 [[tools]]
-name        = "federation.mirror"
-description = "Enqueue a durable lb-jobs batch mirroring an external range into the series plane."
+name        = "federation.schema"
+description = "Discover a source's tables, or one table's columns (the no-SQL browse path)."
 
 [visibility]
 class = "private"

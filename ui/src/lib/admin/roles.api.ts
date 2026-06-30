@@ -20,3 +20,19 @@ export function listRoles(): Promise<RoleView[]> {
 export function defineRole(name: string, caps: string[]): Promise<void> {
   return invoke<void>("roles_define", { name, caps });
 }
+
+/**
+ * Delete role `name`, cascade-un-assigning it from every subject holding a `role:<name>` grant
+ * (access-console scope). Mirrors `roles.delete`. Built-in roles are immutable (server-rejected).
+ * Returns the number of subjects un-assigned (the consequence count to show before confirm).
+ */
+export function deleteRole(name: string): Promise<{ affected: number }> {
+  return invoke<{ affected: number }>("roles_delete", { name });
+}
+
+/** The built-in role names the server refuses to delete (access-console scope). */
+export const BUILTIN_ROLES: ReadonlySet<string> = new Set([
+  "super-admin",
+  "workspace-admin",
+  "member",
+]);

@@ -35,6 +35,9 @@ pub struct HostDataSeam {
     handle: Handle,
     /// The federation datasource names registered in this workspace (resolved once at construction).
     datasources: HashSet<String>,
+    /// The saved-query ids registered in this workspace — the `source("query:<id>")` allowlist (query
+    /// scope: a rule reuses a saved query by name, re-checked under caller ∩ grant at collect).
+    queries: HashSet<String>,
 }
 
 impl HostDataSeam {
@@ -44,6 +47,7 @@ impl HostDataSeam {
         ws: String,
         handle: Handle,
         datasources: HashSet<String>,
+        queries: HashSet<String>,
     ) -> Self {
         Self {
             node,
@@ -51,15 +55,19 @@ impl HostDataSeam {
             ws,
             handle,
             datasources,
+            queries,
         }
     }
 
     /// The set of source names this run may read — the platform pseudo-sources + the workspace's
-    /// registered federation datasources. Passed to the engine as the allowlist.
+    /// registered federation datasources + its saved queries (`query:<id>`).
     pub fn allowed_sources(&self) -> HashSet<String> {
         let mut s = self.datasources.clone();
         s.insert(PLATFORM_SERIES.to_string());
         s.insert(PLATFORM_STORE.to_string());
+        for id in &self.queries {
+            s.insert(format!("query:{id}"));
+        }
         s
     }
 
@@ -82,6 +90,59 @@ impl HostDataSeam {
         }
     }
 
+    /// Collect a SAVED QUERY by id (`source("query:<id>")`, query scope). Routes through the ONE MCP
+    /// contract — `query.run` — so the caller's `mcp:query.run:call` AND the target's underlying cap
+    /// are re-checked inside the call (caller ∩ grant, the existing per-source chokepoint). A saved
+    /// query is thus a centrally-editable data definition a rule composes by name, not re-implements.
+    fn collect_query(&self, id: &str) -> Result<GridJson, String> {
+        let node = self.node.clone();
+        let principal = self.principal.clone();
+        let ws = self.ws.clone();
+        let input = json!({ "id": id }).to_string();
+        let result = self.handle.block_on(async move {
+            crate::call_tool(&node, &principal, &ws, "query.run", &input).await
+        });
+        let out = match result {
+            Ok(o) => o,
+            Err(lb_mcp::ToolError::Denied) => return Err("source not allowed".to_string()),
+            Err(e) => return Err(format!("query.run failed: {e}")),
+        };
+        let val: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
+        let columns = val
+            .get("columns")
+            .and_then(|c| c.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let rows = val
+            .get("rows")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+        Ok(GridJson { columns, rows })
+    }
+
+    /// Resolve a saved query's `SourceKind` from ITS target (host-side, in the caller's workspace). The
+    /// rule author never picks — `source("query:<id>")` reads alike whether the query targets the
+    /// platform store or a datasource. A missing/removed query is "not allowed".
+    fn query_kind(&self, id: &str) -> Result<SourceKind, String> {
+        let node = self.node.clone();
+        let ws = self.ws.clone();
+        let id_owned = id.to_string();
+        let q = self
+            .handle
+            .block_on(async move { crate::query::resolve_query(&node.store, &ws, &id_owned).await })
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("source not allowed: query:{id}"))?;
+        match crate::query::QueryTarget::parse(&q.target) {
+            Ok(crate::query::QueryTarget::Datasource(_)) => Ok(SourceKind::Federation),
+            _ => Ok(SourceKind::Platform),
+        }
+    }
+
     fn collect_federation(&self, source: &str, query: &str) -> Result<GridJson, String> {
         let node = self.node.clone();
         let principal = self.principal.clone();
@@ -91,7 +152,16 @@ impl HostDataSeam {
         let result = self.handle.block_on(async move {
             crate::call_tool(&node, &principal, &ws, "federation.query", &input).await
         });
-        let out = result.map_err(|_| "source not allowed".to_string())?;
+        // A capability/workspace deny stays opaque ("source not allowed" → SourceNotAllowed → the MCP
+        // Denied). Any OTHER fault — a sidecar SQL/planning error, a bad input — is AUTHOR FEEDBACK and
+        // must surface verbatim (the workbench "BadInput verbatim, Denied opaque" honesty rule), never
+        // masked as a permission deny. The message deliberately avoids the "source not allowed" substring
+        // so the engine's `map_eval_error` classifies it as `Eval` (shown) rather than a deny.
+        let out = match result {
+            Ok(o) => o,
+            Err(lb_mcp::ToolError::Denied) => return Err("source not allowed".to_string()),
+            Err(e) => return Err(format!("federation query failed: {e}")),
+        };
         let val: Value = serde_json::from_str(&out).map_err(|e| e.to_string())?;
         let columns = val
             .get("columns")
@@ -113,6 +183,15 @@ impl HostDataSeam {
 
 impl DataSeam for HostDataSeam {
     fn resolve(&self, source: &str) -> Result<(SourceKind, String), String> {
+        if let Some(id) = source.strip_prefix("query:") {
+            // A saved query — kind is decided by ITS target (resolved in the caller's workspace), not
+            // picked by the rule author. collect re-runs query.run under caller ∩ grant.
+            if !self.queries.contains(id) {
+                return Err(format!("source not allowed: {source}"));
+            }
+            let kind = self.query_kind(id)?;
+            return Ok((kind, source.to_string()));
+        }
         if self.datasources.contains(source) {
             Ok((SourceKind::Federation, source.to_string()))
         } else if source == PLATFORM_SERIES {
@@ -126,6 +205,12 @@ impl DataSeam for HostDataSeam {
     }
 
     fn collect(&self, kind: SourceKind, source: &str, query: &str) -> Result<GridJson, String> {
+        // A saved-query source ignores the rule's composed SQL — it runs the saved query verbatim
+        // (the centrally-edited definition), re-checked under caller ∩ grant inside query.run.
+        if let Some(id) = source.strip_prefix("query:") {
+            let _ = (kind, query);
+            return self.collect_query(id);
+        }
         match kind {
             SourceKind::Platform => self.collect_platform(query),
             SourceKind::Federation => self.collect_federation(source, query),
@@ -133,7 +218,6 @@ impl DataSeam for HostDataSeam {
     }
 
     fn schemas(&self) -> Result<BTreeMap<String, Vec<SchemaColumn>>, String> {
-        // For ai.ask: the workspace's own granted source schemas. v1 lists registered datasources by
         // name (a coarse schema); platform schema discovery via store.schema is additive later. Never
         // lists a source outside this workspace (the set is workspace-resolved).
         let mut out = BTreeMap::new();
@@ -210,13 +294,18 @@ impl AiSeam for HostAiSeam {
 
 /// Read the workspace's registered federation datasource names (for the allowlist + schema). Empty if
 /// the datasources extension/records aren't present — platform-only rules still run.
+/// The federation datasource names registered in this workspace — the allowlist a rule's
+/// `source(...)`/`query(...)` resolves against. Reads the unwrapped record `data` values via
+/// `lb_store::list` (NOT raw `lb_store::scan`, whose `Row.data` is the Versioned `{rev, data:{…}}`
+/// envelope — reading `row.data.name` there always misses, emptying the allowlist and making every
+/// federation source resolve as `SourceNotAllowed` → opaque `Denied`). Mirrors `federation/list.rs`.
 pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
-    let page = match lb_store::scan(
+    let rows = match lb_store::list(
         &node.store,
         ws,
-        "datasource",
-        lb_store::MAX_SCAN_LIMIT,
-        None,
+        crate::federation::TABLE,
+        "tag",
+        &crate::federation::datasource_tag(),
     )
     .await
     {
@@ -224,9 +313,37 @@ pub async fn workspace_datasources(node: &Node, ws: &str) -> HashSet<String> {
         Err(_) => return HashSet::new(),
     };
     let mut out = HashSet::new();
-    for row in page.rows {
-        if let Some(name) = row.data.get("name").and_then(|v| v.as_str()) {
-            out.insert(name.to_string());
+    for value in rows {
+        if let Some(ds) = serde_json::from_value::<crate::federation::Datasource>(value).ok() {
+            if !ds.removed {
+                out.insert(ds.name);
+            }
+        }
+    }
+    out
+}
+
+/// Read the workspace's saved-query ids (for the `source("query:<id>")` allowlist). Empty if none —
+/// the rule's other sources still resolve. Mirrors `workspace_datasources` over the query record's tag.
+pub async fn workspace_queries(node: &Node, ws: &str) -> HashSet<String> {
+    let rows = match lb_store::list(
+        &node.store,
+        ws,
+        crate::query::TABLE,
+        "tag",
+        &crate::query::query_tag(),
+    )
+    .await
+    {
+        Ok(p) => p,
+        Err(_) => return HashSet::new(),
+    };
+    let mut out = HashSet::new();
+    for value in rows {
+        if let Some(q) = serde_json::from_value::<crate::query::SavedQuery>(value).ok() {
+            if !q.removed {
+                out.insert(q.id);
+            }
         }
     }
     out

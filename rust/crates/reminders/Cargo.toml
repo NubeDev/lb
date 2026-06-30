@@ -1,0 +1,20 @@
+[package]
+name = "lb-reminders"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lb-store.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+# The cron "next after T" math. Vixie-cron compatible; `find_next_occurrence` takes a SUPPLIED
+# `DateTime`, so it runs on the injected logical clock (testing §3), never wall-clock. The only
+# crate layer that interprets the cron string — everything downstream is shipped machinery.
+croner.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

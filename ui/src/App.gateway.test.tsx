@@ -19,7 +19,6 @@ const nextWs = () => `routing-ui-${n++}`;
 const MEMBER_CAPS = [
   "bus:chan/*:pub",
   "bus:chan/*:sub",
-  "mcp:members.list:call",
   "mcp:workspace.list:call",
 ];
 
@@ -31,12 +30,12 @@ function goHash(hash: string) {
 
 describe("App routing (real gateway)", () => {
   it("renders a route from the hash", async () => {
-    goHash("#/members");
+    goHash("#/outbox");
     await signInReal("user:ada", nextWs());
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Members" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Outbox" })).toBeInTheDocument();
   });
 
   it("validates malformed dashboard search params to defaults", async () => {
@@ -112,14 +111,14 @@ describe("App routing (real gateway)", () => {
     await signInReal("user:ada", nextWs());
     const { unmount } = render(<App />);
 
-    await user.click(await screen.findByLabelText("Members"));
-    expect(await screen.findByRole("heading", { name: "Members" })).toBeInTheDocument();
+    await user.click(await screen.findByLabelText("Inbox"));
+    expect(await screen.findByRole("heading", { name: "Inbox" })).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Dashboards"));
     expect(await screen.findByLabelText("dashboard range from")).toBeInTheDocument();
 
     window.history.back();
-    expect(await screen.findByRole("heading", { name: "Members" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Inbox" })).toBeInTheDocument();
 
     window.history.forward();
     expect(await screen.findByLabelText("dashboard range to")).toBeInTheDocument();

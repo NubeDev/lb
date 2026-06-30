@@ -9,7 +9,9 @@
 // ADD == EDIT: the dropdown reflects the SAVED `target.datasource`. One responsibility: pick/edit the query.
 
 import { useMemo } from "react";
+import { Play } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
 import { useSourcePicker } from "../../builder/useSourcePicker";
@@ -26,6 +28,8 @@ interface Props {
   state: EditorState;
   /** Apply a partial update to the editor state (the editor owns the merge + re-render). */
   patch: (next: Partial<EditorState>) => void;
+  /** Force the live preview to re-run the current query (the "Run" button) even if the spec is unchanged. */
+  onRun?: () => void;
 }
 
 /** Build the primary target from a chosen picker entry (a read source → its `{tool,args}`). */
@@ -55,7 +59,7 @@ function dsValueOf(target: Target | undefined): string {
   return kind;
 }
 
-export function QueryTab({ ws, state, patch }: Props) {
+export function QueryTab({ ws, state, patch, onRun }: Props) {
   const { entries, loading } = useSourcePicker(ws);
   const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
   const primary = state.targets[0];
@@ -161,21 +165,38 @@ export function QueryTab({ ws, state, patch }: Props) {
       {/* Federation — RAW SQL against the chosen source (`federation.query {source, sql}`). The schema
           dropdown verb is deferred this phase, so the author writes SQL directly (honest). */}
       {isFederation && (
-        <label className="grid gap-1 text-xs text-muted">
-          SQL ({fedSource || "no source"})
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive in this repo (see WidgetBuilder.tsx) */}
-          <textarea
-            aria-label="federation sql"
-            className={`${FIELD} h-24 w-full resize-y py-1.5 font-mono`}
-            value={fedSql}
-            placeholder="SELECT …"
-            onChange={(e) =>
-              patch({
-                targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: fedSource, sql: e.target.value }, datasource: primary?.datasource ?? { type: "federation" } }],
-              })
-            }
-          />
-        </label>
+        <div className="grid gap-2">
+          <label className="grid gap-1 text-xs text-muted">
+            SQL ({fedSource || "no source"})
+            {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive in this repo (see WidgetBuilder.tsx) */}
+            <textarea
+              aria-label="federation sql"
+              className={`${FIELD} h-24 w-full resize-y py-1.5 font-mono`}
+              value={fedSql}
+              placeholder="SELECT …"
+              // Cmd/Ctrl+Enter runs the query — the editor convention alongside the Run button.
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onRun?.();
+              }}
+              onChange={(e) =>
+                patch({
+                  targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: fedSource, sql: e.target.value }, datasource: primary?.datasource ?? { type: "federation" } }],
+                })
+              }
+            />
+          </label>
+          <div className="flex justify-end">
+            <Button
+              aria-label="run query"
+              size="sm"
+              variant="solid"
+              disabled={!fedSource || !fedSql.trim()}
+              onClick={() => onRun?.()}
+            >
+              <Play size={12} /> Run
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

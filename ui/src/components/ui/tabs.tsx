@@ -1,0 +1,104 @@
+// The shadcn-style `tabs` primitive, repointed at the Lazybones tokens (`bg`/`fg`/`muted`/`accent`/
+// `border`) the way `sidebar.tsx` binds the upstream component to our palette (ui-standards-scope,
+// component backlog). A controlled, context-based Tabs with `role="tablist"`/`tab`/`tabpanel` and
+// keyboard arrows — no Radix dependency (keeps the bundle lean for a shell control). One primitive
+// per file (FILE-LAYOUT).
+
+import * as React from "react";
+
+import { cn } from "@/lib/utils";
+
+interface TabsCtx {
+  value: string;
+  setValue: (v: string) => void;
+  baseId: string;
+}
+const Ctx = React.createContext<TabsCtx | null>(null);
+
+function useTabsCtx(component: string): TabsCtx {
+  const ctx = React.useContext(Ctx);
+  if (!ctx) throw new Error(`<${component}> must be used inside <Tabs>`);
+  return ctx;
+}
+
+interface TabsProps extends React.ComponentProps<"div"> {
+  value: string;
+  onValueChange: (v: string) => void;
+}
+
+function Tabs({ value, onValueChange, className, ...props }: TabsProps) {
+  const ctx = React.useMemo<TabsCtx>(
+    () => ({ value, setValue: onValueChange, baseId: React.useId() }),
+    [value, onValueChange],
+  );
+  return (
+    <Ctx.Provider value={ctx}>
+      <div data-slot="tabs" className={cn("flex flex-col gap-3", className)} {...props} />
+    </Ctx.Provider>
+  );
+}
+
+function TabsList({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      role="tablist"
+      data-slot="tabs-list"
+      className={cn(
+        "flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card/40 p-1",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+interface TabsTriggerProps extends React.ComponentProps<"button"> {
+  value: string;
+}
+
+function TabsTrigger({ value, className, ...props }: TabsTriggerProps) {
+  const { value: active, setValue, baseId } = useTabsCtx("TabsTrigger");
+  const selected = active === value;
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={`${baseId}-tab-${value}`}
+      aria-selected={selected}
+      aria-controls={`${baseId}-panel-${value}`}
+      data-slot="tabs-trigger"
+      tabIndex={selected ? 0 : -1}
+      onClick={() => setValue(value)}
+      className={cn(
+        "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:pointer-events-none disabled:opacity-50",
+        selected
+          ? "bg-accent/15 text-accent"
+          : "text-muted hover:bg-bg hover:text-fg",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+interface TabsContentProps extends React.ComponentProps<"div"> {
+  value: string;
+}
+
+function TabsContent({ value, className, ...props }: TabsContentProps) {
+  const { value: active, baseId } = useTabsCtx("TabsContent");
+  if (active !== value) return null;
+  return (
+    <div
+      role="tabpanel"
+      id={`${baseId}-panel-${value}`}
+      aria-labelledby={`${baseId}-tab-${value}`}
+      data-slot="tabs-content"
+      className={cn("focus-visible:outline-none", className)}
+      tabIndex={0}
+      {...props}
+    />
+  );
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent };

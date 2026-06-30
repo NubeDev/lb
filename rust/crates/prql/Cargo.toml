@@ -1,0 +1,15 @@
+[package]
+name = "lb-prql"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# `prqlc` is the official PRQL compiler, embedded as a pure compile-only library. The `cli` feature
+# (on by default) only builds the `prqlc` binary; we use the library, so disable default features to
+# shed the CLI's heavy deps (clap, color-eyre, …). Pinned at the workspace root.
+prqlc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

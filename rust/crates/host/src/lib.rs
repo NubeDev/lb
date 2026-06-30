@@ -24,17 +24,21 @@ mod devkit;
 mod ext;
 mod federation;
 mod host_tools;
+mod identity;
 mod inbox;
 mod ingest;
 mod install;
 mod installed;
 mod load;
 mod members;
+mod membership;
 mod native;
 mod outbox;
 mod prefs;
+mod query;
 mod registry;
 mod reload;
+mod reminder;
 mod remote;
 mod render_templates;
 mod role;
@@ -47,6 +51,7 @@ mod system;
 mod tags;
 mod teams;
 mod tool_call;
+mod tools;
 mod ui_decl;
 mod undo;
 mod undo_capture;
@@ -75,9 +80,9 @@ pub use assets::{
     load_skill, put_doc, put_skill, revoke_skill, share_doc, AssetError, SkillCatalogEntry,
 };
 pub use authz::{
-    call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps, revoke_subject,
-    roles_define, roles_list, teams_create, teams_list, AuthzError, AuthzRole, Grant, Subject,
-    Team,
+    authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
+    revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
+    teams_list, token_revoked, AuthzError, AuthzRole, CapSource, Grant, SourcedCap, Subject, Team,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
@@ -88,8 +93,8 @@ pub use chains::{
     chains_run_get, chains_save, ChainsError,
 };
 pub use channel::{
-    history, join, post, subscribe_channel, watch, ChannelError, ChannelPresence, ChannelSub,
-    PresenceFeed,
+    delete, edit, history, join, post, subscribe_channel, watch, watch_deletions, ChannelError,
+    ChannelPresence, ChannelSub, DeletionFeed, PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
@@ -122,6 +127,10 @@ pub use host_tools::{
     HostNetInterface, HostNetReach, HostTimeNow, HostTimeZones, HOST_FS_LIST_LIMIT,
     HOST_NET_REACH_DEFAULT_TIMEOUT_MS, HOST_NET_REACH_MAX_TIMEOUT_MS,
 };
+pub use identity::{
+    call_identity_tool, identity_create, identity_get, identity_list, identity_workspaces,
+    IdentityError, IdentityView, IdentityWorkspace,
+};
 pub use inbox::{list_inbox, record_inbox, resolve_inbox, InboxError};
 pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
@@ -132,6 +141,10 @@ pub use install::install_extension;
 pub use installed::installed;
 pub use load::{load_extension, LoadError, Loaded};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
+pub use membership::{
+    call_membership_tool, membership_add, membership_list, membership_login_resolve,
+    membership_remove, MembershipError, MembershipView, WORKSPACE_ADMIN_ROLE_CAP,
+};
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
@@ -142,12 +155,23 @@ pub use prefs::{
     authorize_prefs, call_format_tool, call_prefs_tool, prefs_get, prefs_resolve, prefs_set,
     prefs_set_default, PrefsSvcError,
 };
+pub use query::{
+    call_query_tool, compile_descriptor, query_compile, query_delete, query_get, query_list,
+    query_run, query_save, resolve_query, run_descriptor, save_descriptor, QueryError,
+    QuerySummary, QueryTarget, RunSource, SavedQuery, TABLE as QUERY_TABLE,
+};
 pub use registry::{
     authorize_registry, cache_artifact, call_registry_tool, install_from_registry,
     install_native_from_registry, list_catalog, pull, read_cached, record_catalog,
     resolve as resolve_catalog, RegistryServiceError, Source,
 };
 pub use reload::reload_extension;
+pub use reminder::{
+    call_reminder_tool, fire_job_id, fire_reminder, react_to_reminders, reminder_create,
+    reminder_delete, reminder_get, reminder_list, reminder_update, Action as ReminderAction,
+    ReactorPass as ReminderReactorPass, Reminder, ReminderError, ReminderPatch, ReminderStatus,
+    FIRE_KIND as REMINDER_FIRE_KIND,
+};
 pub use remote::register_remote_extension;
 pub use render_templates::{
     call_template_tool, template_delete, template_get, template_list, template_save, Engine,
@@ -157,8 +181,8 @@ pub use render_templates::{
 pub use role::Role;
 pub use rules::{
     ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
-    rules_get, rules_list, rules_run, rules_save, HostAiSeam, HostDataSeam, RuleModel, RulesError,
-    RunResult, SavedRule,
+    rules_get, rules_list, rules_run, rules_save, workspace_datasources, workspace_queries,
+    HostAiSeam, HostDataSeam, RuleModel, RulesError, RunResult, SavedRule,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};
@@ -179,6 +203,7 @@ pub use tags::{
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
 pub use tool_call::call_tool;
+pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 pub use users::{
     call_users_tool, user_create, user_delete, user_disable, user_enable, user_list,

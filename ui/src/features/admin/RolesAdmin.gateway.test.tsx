@@ -7,7 +7,7 @@
 // Each test logs into a UNIQUE workspace for isolation on the shared node.
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RolesAdmin } from "./RolesAdmin";
@@ -45,5 +45,29 @@ describe("RolesAdmin (real gateway)", () => {
     expect(
       await screen.findByText("You hold no capabilities to bundle (no-widening)."),
     ).toBeInTheDocument();
+  });
+
+  it("deletes a custom role (cascade) over the real route", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    render(<RolesAdmin ws={ws} caps={[CAP.rolesManage, CAP.userManage, CAP.rolesDefine]} />);
+
+    // Create a role, then delete it.
+    await user.click(screen.getByLabelText("new role"));
+    await user.type(screen.getByLabelText("role name"), "operator");
+    await user.click(screen.getByLabelText(`include ${CAP.userManage}`));
+    await user.click(screen.getByLabelText("save role"));
+    const table = await screen.findByRole("table");
+    expect(await within(table).findByText("operator")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("delete role operator"));
+    await user.click(screen.getByRole("button", { name: "confirm action" }));
+
+    // The role is gone from the table; the result note reports the cascade (0 assignees here).
+    await waitFor(() =>
+      expect(within(table).queryByText("operator")).not.toBeInTheDocument(),
+    );
+    expect(await screen.findByText(/un-assign/i)).toBeInTheDocument();
   });
 });

@@ -18,6 +18,7 @@ use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, StatusCode};
 use lb_apikey::PREFIX;
 use lb_auth::{verify, Principal};
+use lb_host::{token_revoked, Subject};
 
 use crate::state::Gateway;
 
@@ -68,12 +69,37 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
     if token.is_empty() {
         return Err(AuthRejection::Missing);
     }
-    // API-key path: the bearer carries its own workspace + key id, verified against the store.
-    if token.starts_with(PREFIX) {
-        return authenticate_apikey(gw, token).await;
+    let principal = if token.starts_with(PREFIX) {
+        // API-key path: the bearer carries its own workspace + key id, verified against the store.
+        authenticate_apikey(gw, token).await?
+    } else {
+        // JWT path: verify signature + expiry with the node key at the gateway's clock.
+        verify(&gw.key, token, gw.now).map_err(|_| AuthRejection::Invalid)?
+    };
+    // Live-token revoke (access-console scope): a per-(ws, subject) tombstone marker — written by
+    // `authz.revoke-tokens` — refuses the subject's *current* (cached) token on the next request,
+    // closing the freshness-asymmetry gap `revoke_subject` leaves open (that one bites on the next
+    // re-mint). The marker syncs idempotently (§6.8); worst-case multi-node window = TTL. We check
+    // it HERE (the one verify chokepoint) so a marked subject's bearer is treated as expired, as
+    // opaque `Invalid` (indistinguishable from a genuinely expired/revoked credential — no oracle).
+    // A store read error is deny-by-default-false here only to avoid a store outage locking out
+    // everyone; a genuinely revoked subject whose marker read fails is still bounded by TTL/expiry.
+    if is_live_revoked(gw, &principal).await {
+        return Err(AuthRejection::Invalid);
     }
-    // JWT path: verify signature + expiry with the node key at the gateway's clock.
-    verify(&gw.key, token, gw.now).map_err(|_| AuthRejection::Invalid)
+    Ok(principal)
+}
+
+/// Did `authz.revoke-tokens` mark this principal's live token in its workspace? One read of the
+/// `token_revoke` marker, keyed by `(ws, subject)`. `false` if the sub does not parse to a known
+/// subject kind (nothing to revoke) or on a store read error (bounded by TTL — see `verify_token`).
+async fn is_live_revoked(gw: &Gateway, principal: &Principal) -> bool {
+    let Some(subject) = Subject::parse(principal.sub()) else {
+        return false;
+    };
+    token_revoked(&gw.node.store, principal.ws(), &subject)
+        .await
+        .unwrap_or(false)
 }
 
 /// Verify an API-key bearer credential: parse → O(1) ws-scoped lookup → constant-time HMAC compare

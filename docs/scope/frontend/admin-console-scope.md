@@ -237,6 +237,9 @@ Plus this slice's cases:
 ## Related
 
 - `scope/auth-caps/admin-crud-scope.md` — the destructive workspace/user/team/member verbs this UI drives.
+- `scope/auth-caps/access-console-scope.md` — the **access-first evolution** of this console: an
+  overview, resolved effective caps + provenance, a guided no-widening capability picker, a
+  re-mint/end-sessions lever, and `roles.delete`.
 - `scope/auth-caps/authz-grants-scope.md` — the roles/grants/teams model this UI reads and assigns into;
   the **freshness asymmetry** the consequence text must reflect; the "gated callers, never trusted
   deciders" rule this UI inherits.

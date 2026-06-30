@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, federation_mirror,
-    federation_query,
+    federation_query, federation_schema,
 };
 use crate::boot::Node;
 
@@ -36,6 +36,13 @@ pub async fn call_federation_tool(
             let source = str_arg(input, "source")?;
             let sql = str_arg(input, "sql")?;
             let out = federation_query(node, &launcher, principal, ws, source, sql, ts).await?;
+            Ok(out)
+        }
+        "federation.schema" => {
+            let source = str_arg(input, "source")?;
+            // `table` is optional: absent → list tables, present → describe that table.
+            let table = input.get("table").and_then(|v| v.as_str());
+            let out = federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
             Ok(out)
         }
         "federation.mirror" => {

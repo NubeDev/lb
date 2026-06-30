@@ -153,8 +153,7 @@ async fn rolls_back_to_prior_version_preserving_durable_state() {
     // --- 2. durable STATE: posted channel messages ---
     for (i, body) in ["a", "b", "c"].iter().enumerate() {
         post(
-            &node.store,
-            &node.bus,
+            &node,
             &p,
             ws,
             "general",

@@ -7,15 +7,33 @@
 //! skips authorization. One verb per file (FILE-LAYOUT §3).
 
 mod authorize;
+mod chart;
+mod delete;
+mod edit;
 mod error;
 mod history;
 mod key;
+mod payload;
 mod post;
 mod presence;
+mod query_worker;
 mod subscribe;
 
+// The chart picker + kind-tagged payload helpers are crate-internal: the inline query worker
+// (`query_worker.rs`) and `post.rs` are the only consumers today. Exposed `pub(crate)` (not `pub`)
+// so they don't leak from the crate API until a host caller actually needs them — keeping the lib's
+// public surface honest (no dead `pub use`).
+#[allow(unused_imports)]
+pub(crate) use chart::{pick_chart, ChartKind, ChartSeries, ChartSpec};
+pub use delete::{delete, watch_deletions, DeletionFeed};
+pub use edit::edit;
 pub use error::ChannelError;
 pub use history::history;
+#[allow(unused_imports)]
+pub(crate) use payload::{
+    encode_payload, error_body, parse_payload, result_body, ItemPayload, QueryErrorPayload,
+    QueryPayload, QueryResultPayload,
+};
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};
 pub use subscribe::{subscribe_channel, ChannelSub};

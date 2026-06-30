@@ -76,3 +76,16 @@ pub async fn federation_query<L: Launcher>(
 
     serde_json::from_str(&out).map_err(|e| FederationError::Sidecar(e.to_string()))
 }
+
+/// The `tools.catalog` descriptor for `federation.query` — the palette's first tenant
+/// (channels-command-palette scope). Declared in code next to the verb (FILE-LAYOUT); collected by
+/// `tools::host_descriptors`. Carries the JSON-Schema input (`source`, `sql`) with the `x-lb-entity`
+/// / `x-lb-widget` hints the palette renders its guided rail from.
+pub fn query_descriptor() -> lb_mcp::ToolDescriptor {
+    lb_mcp::ToolDescriptor {
+        name: "federation.query".to_string(),
+        title: "Run a read-only SQL query against a registered datasource".to_string(),
+        group: "federation".to_string(),
+        input_schema: Some(crate::tools::federation_query_schema()),
+    }
+}

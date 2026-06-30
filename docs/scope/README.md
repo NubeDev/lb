@@ -24,7 +24,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   restricted user/team access), `admin-crud-scope.md` (the destructive half — workspace/user/team/
   member delete·disable·remove·rename + dev-store user CRUD), and `api-keys-scope.md` (machine
   principals — appliance/cli/api/agent keys as a non-human `Subject` over the same grant model,
-  a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab).
+  a hashed bearer secret verified per request for instant revoke, lazy expiry, and an admin tab), and
+  `access-console-scope.md` (the **Access console** — the access-first evolution of the `/admin` UI:
+  an overview of who-can-do-what, resolved effective caps per subject with provenance, a guided
+  no-widening capability picker, a force-re-mint/end-sessions lever for the freshness asymmetry, and
+  `roles.delete` — closes the `resolve_caps`/`invalidate`/`roles.delete` backend gaps; not a new page),
+  and `global-identity-scope.md` (the **Slack model** the README §7/§6.6 name but the code never built:
+  a global, hub-authoritative identity in a system directory linked to workspaces by a `membership`
+  record, login resolving to a person's workspaces, and a real workspace switcher — promotes the
+  stated design to implementation; the gap surfaced in the access-console session).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
@@ -59,25 +67,57 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
   behind one `Toolchain` trait).
+- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`): a node-red-style canvas
+  over the shipped plane, not a new engine. Promotes the `chains` rule-DAG `Step` into a typed
+  `Node` (`Trigger | Tool | Rhai | Subflow | Sink`), each carrying a **descriptor** (ports + a
+  config **JSON-Schema** the React Flow editor renders a form from). **Extensions contribute
+  backend node types** via an additive `[[node]]` block in `extension.toml` — **identical for
+  WASM and native**, executed through the existing `caller ∩ install-grant` callback (an `mqtt`
+  extension ships an "MQTT publish" node). A run is a durable `lb-jobs` `flow-run` job
+  (suspend/resume = pause→edit-downstream→resume); triggers `manual|cron|event|inject|boot`;
+  enable/disable + `start_on_boot` + `placement`; **dashboard↔flow** binding (`flows.inject` in,
+  bus-subject out); shared via the grant model; graph edits undo for free. Rejected adopting
+  `open-rmf/crossflow` (in-process Bevy-ECS state breaks rules 1/4, bypasses the cap wall).
 - `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
   the workspace doc assets in `files/`). Read-only, one cap per verb, no shell-out; OS differences
   isolated behind a per-folder `platform`/`path` seam so the verb files carry no `cfg!(windows)`.
+- `git-sync/` — periodic, **AI-free** auto-commit-and-push (`autocommit-scope.md`): a `reminder`
+  cron (`Action::McpTool`) fires a `git-sync` `lb-jobs` job that calls a new `git.*` MCP verb family
+  (`git.commit_push`/`git.status`) backed by a ported `lb-gh` crate (the `gh`/`git` CLI wrapper).
+  `systemd` supervises the node so the reactor ticks — it is **not** the scheduler (the cron is a
+  record, symmetric edge↔cloud). The folder-of-verbs sibling of `host-tools/` for CLI-backed tools.
 - `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.
 - `channels/` — the collaboration channel surface: durable inbox-backed history, bus motion, channel
-  registry, SSE stream, and presence.
+  registry, SSE stream, and presence. Also `channels-query-charts-scope.md`: in-channel SQL queries
+  (via `federation.query`) whose results post back as durable items and auto-plot a chart; and
+  `channels-command-palette-scope.md`: the `/` + `@` command surface (catalog-driven, capability-
+  filtered MCP tools — the menu *is* the permission model) that composes those queries.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
 - `jobs/` — the SurrealDB-native durable job queue / resumable session (S5).
+- `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
+  (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
+  `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6
+  relay/approval reactors) that enqueues one `lb-jobs` job per firing. Three v1 action kinds —
+  **channel post** (inbox), **MCP tool call** (any capability, under a stored principal re-checked
+  at fire time), and **must-deliver effect** (outbox). Cron is the storage format; the UI authors
+  it with a best-in-class React cron-builder. The single-action sibling of a rule chain.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
+- `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
+  **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
+  (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.
+  A pure `lb-prql` crate wraps `prqlc`; `query.run` composes the target's existing capability (no
+  widening); a rule reuses a saved query via `source("query:<name>")`. No new engine, no second
+  authority — PRQL is the authoring layer, SurrealDB stays the one datastore.
 - `sync/` — multi-node sync + authority (S3).
 - `system-map/` — a framework-level **workspace topology + status console**: two admin-gated read
   verbs (`system.overview` status grid · `system.topology` react-flow wiring) that derive a live,

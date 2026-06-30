@@ -20,7 +20,19 @@ pub fn msg_key(cid: &str, id: &str) -> String {
     format!("chan/{cid}/msg/{id}")
 }
 
+/// The workspace-relative bus key a single deleted message `id` publishes its tombstone to.
+/// Distinct from [`msg_key`] because the message feed deserializes to an `Item` and would drop a
+/// tombstone payload — a delete needs its own key so the stream can route it to a `delete` event.
+pub fn del_key(cid: &str, id: &str) -> String {
+    format!("chan/{cid}/del/{id}")
+}
+
 /// The workspace-relative bus key expression that subscribes to every message in `cid`.
 pub fn sub_key(cid: &str) -> String {
     format!("chan/{cid}/msg/**")
+}
+
+/// The workspace-relative bus key expression that subscribes to every deletion in `cid`.
+pub fn del_sub_key(cid: &str) -> String {
+    format!("chan/{cid}/del/**")
 }

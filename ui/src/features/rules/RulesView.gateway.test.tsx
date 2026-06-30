@@ -112,33 +112,61 @@ describe("RulesView (real gateway)", () => {
     expect(screen.getByLabelText("budget")).toBeInTheDocument();
   });
 
-  it("CRUD round-trip: save → save-as → reopen the buffer (via the real path)", async () => {
+  it("CRUD round-trip: create (name-first) → reopen the buffer (via the real path)", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signIn(ws);
 
     render(<RulesView ws={ws} />);
 
-    // Author a fresh rule and Save-as it through the real `rules.save` path.
+    // Author a fresh rule, then create it via the name-first rail form. The id is derived from the
+    // name (a slug) — the user only types the name; "Cooler check" → id "cooler-check".
     await typeBody(user, "1 + 1");
-    await user.click(screen.getByLabelText("save as rule"));
-    await user.type(screen.getByLabelText("new rule id"), "cooler");
+    await user.click(screen.getByLabelText("new rule"));
     await user.type(screen.getByLabelText("new rule name"), "Cooler check");
-    await user.click(screen.getByLabelText("confirm save rule"));
+    await user.click(screen.getByLabelText("create rule"));
 
     // Persisted: re-fetch the saved rule through the real `rules.get` path — the round-trip is faithful.
-    const reopened = await getRule("cooler");
+    const reopened = await getRule("cooler-check");
     expect(reopened.body).toBe("1 + 1");
     expect(reopened.name).toBe("Cooler check");
 
     // Tombstone it through the real `rules.delete` path; a re-get is then NotFound (the wall holds).
-    await deleteRule("cooler");
-    await expect(getRule("cooler")).rejects.toThrow();
+    await deleteRule("cooler-check");
+    await expect(getRule("cooler-check")).rejects.toThrow();
     // NOTE: the left RAIL lists via the shipped host `rules.list`, which currently returns an empty
     // roster even for a saved rule (it deserializes the generic `lb_store::scan` row directly, but
     // `scan` returns the `{data, rev}` envelope — the record is under `row.data["data"]`). Once the
-    // lead lands the one-line host fix, assert `screen.findByLabelText("open rule cooler")` here.
+    // lead lands the one-line host fix, assert `screen.findByLabelText("open rule cooler-check")` here.
     expect(screen.getByLabelText("rule rail")).toBeInTheDocument();
+  });
+
+  it("rename: change the name of an open rule (same id) via the real path", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signIn(ws);
+
+    render(<RulesView ws={ws} />);
+
+    // Create a rule, then rename it through the header rename form.
+    await typeBody(user, "1 + 1");
+    await user.click(screen.getByLabelText("new rule"));
+    await user.type(screen.getByLabelText("new rule name"), "First name");
+    await user.click(screen.getByLabelText("create rule"));
+
+    await user.click(await screen.findByLabelText("rename rule"));
+    const nameField = await screen.findByLabelText("rule name");
+    await user.clear(nameField);
+    await user.type(nameField, "Renamed rule");
+    await user.click(screen.getByLabelText("confirm rename rule"));
+
+    // The id is unchanged (slug of the ORIGINAL name); only the name changed.
+    const reopened = await getRule("first-name");
+    expect(reopened.id).toBe("first-name");
+    expect(reopened.name).toBe("Renamed rule");
+    expect(reopened.body).toBe("1 + 1");
+
+    await deleteRule("first-name");
   });
 
   it("honest cage error: an eval body renders the verbatim cage message, not a fake result", async () => {

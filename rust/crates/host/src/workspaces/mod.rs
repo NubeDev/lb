@@ -24,6 +24,6 @@ pub use create::workspace_create;
 pub use delete::{workspace_delete, workspace_purge};
 pub use error::WorkspacesError;
 pub use list::workspace_list;
-pub use model::{WorkspaceRecord, WorkspaceStatus};
+pub use model::{WorkspaceRecord, WorkspaceStatus, KIND, TABLE, WORKSPACES_NS};
 pub use rename::workspace_rename;
 pub use tool::call_workspaces_tool;

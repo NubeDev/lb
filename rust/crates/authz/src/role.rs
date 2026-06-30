@@ -10,8 +10,12 @@
 //! custom role may only bundle caps the definer themselves holds (the no-widening rule lives in the
 //! host service, which has the principal — this crate is the raw store).
 
-use lb_store::{list as store_list, read, write, Store, StoreError};
+use lb_store::{
+    list as store_list, read, write, write_batch, DeleteBatch, Store, StoreError, UpsertBatch,
+};
 use serde::{Deserialize, Serialize};
+
+use crate::grant::{grant_id, Grant, TOMBSTONE};
 
 /// The store table roles live in, within a workspace namespace.
 pub const ROLE_TABLE: &str = "role";
@@ -71,4 +75,49 @@ pub async fn role_list(store: &Store, ws: &str) -> Result<Vec<Role>, StoreError>
     rows.into_iter()
         .map(|v| serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string())))
         .collect()
+}
+
+/// Delete role `name` from workspace `ws` AND un-assign it from every subject holding a live
+/// `role:<name>` grant — all in ONE store transaction (the access-console `roles.delete` cascade).
+/// Idempotent: a repeat delete (role gone, no assignees) is a no-op success returning 0. Returns
+/// the number of subjects whose `role:<name>` grant was tombstoned (the consequence count the UI
+/// shows before confirm).
+///
+/// The cascade finds assignees by listing the grant rows whose `cap` is exactly `role:<name>`
+/// (tombstoned grants carry `__revoked__`, so they never match), then tombstones each in the same
+/// batch that deletes the role record. Bounded by [`MAX_BATCH`](lb_store::MAX_BATCH); a role with
+/// more assignees than the batch cap fails fast rather than holding an unbounded transaction.
+pub async fn role_delete(store: &Store, ws: &str, name: &str) -> Result<usize, StoreError> {
+    let cap = format!("role:{name}");
+    // The live `role:<name>` grants = every grant row whose stored `cap` equals it.
+    let rows = store_list(store, ws, crate::grant::GRANT_TABLE, "cap", &cap).await?;
+    // Collect the cascade writes as OWNED data first, so the batch can borrow stable storage.
+    // Each entry is the tombstone value + its grant record id (the cascade un-assigns the role).
+    let mut tombstones: Vec<(String, serde_json::Value)> = Vec::with_capacity(rows.len());
+    for v in &rows {
+        let grant: Grant =
+            serde_json::from_value(v.clone()).map_err(|e| StoreError::Decode(e.to_string()))?;
+        let tombstone = serde_json::json!({ "subject": grant.subject.as_key(), "cap": TOMBSTONE });
+        tombstones.push((grant_id(&grant.subject, &cap), tombstone));
+    }
+    let affected = tombstones.len();
+    let upserts: Vec<UpsertBatch<'_>> = tombstones
+        .iter()
+        .map(|(id, tombstone)| UpsertBatch {
+            table: crate::grant::GRANT_TABLE,
+            id: id.as_str(),
+            value: tombstone,
+        })
+        .collect();
+    let deletes = vec![DeleteBatch {
+        table: ROLE_TABLE,
+        id: name,
+    }];
+    // An empty upsert set is fine: write_batch requires total>0, and the role delete keeps it ≥1.
+    if upserts.is_empty() {
+        write_batch(store, ws, &[], &deletes).await?;
+    } else {
+        write_batch(store, ws, &upserts, &deletes).await?;
+    }
+    Ok(affected)
 }

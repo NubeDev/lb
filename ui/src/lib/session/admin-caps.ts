@@ -22,6 +22,16 @@ export const CAP = {
   grantsList: "mcp:grants.list:call",
   rolesDefine: "mcp:roles.define:call",
   rolesList: "mcp:roles.list:call",
+  // access-console scope — the three verbs that close the access-graph gaps. Admin-only; the
+  // gateway re-checks each server-side. `authzResolve` reveals the effective-caps detail + overview;
+  // `authzRevokeTokens` reveals the live-token revoke lever; `rolesManage` reveals roles.delete.
+  authzResolve: "mcp:authz.resolve:call",
+  authzRevokeTokens: "mcp:authz.revoke-tokens:call",
+  rolesManage: "mcp:roles.manage:call",
+  // global-identity scope — the identity directory + per-workspace membership roster. The People tab
+  // reads `membership.list`; the switcher reads `identity.workspaces`. The gateway re-checks each.
+  identityManage: "mcp:identity.manage:call",
+  membersManage: "mcp:members.manage:call",
   extList: "mcp:ext.list:call",
   extDisable: "mcp:ext.disable:call",
   extUninstall: "mcp:ext.uninstall:call",
@@ -61,6 +71,9 @@ export const CAP = {
   rulesRun: "mcp:rules.run:call",
   chainsGet: "mcp:chains.get:call",
   datasourceList: "mcp:datasource.list:call",
+  // reminders (reminders scope): the nav gate. The page shows for a session that may list reminders;
+  // the gateway re-checks `mcp:reminder.<verb>:call` per verb server-side regardless.
+  reminderList: "mcp:reminder.list:call",
   // api-keys (api-keys scope): the machine-credential management verb gate. The tab shows for a
   // session holding `apikey.manage`; the gateway re-checks every verb server-side regardless.
   apikeyManage: "mcp:apikey.manage:call",
@@ -75,6 +88,7 @@ export const ADMIN_SECTION_CAPS: string[] = [
   CAP.extList,
   CAP.devkitTemplates,
   CAP.apikeyManage,
+  CAP.membersManage,
 ];
 
 /** Does `caps` include `cap`? The single cap-check the UI uses to gate a control's display. */

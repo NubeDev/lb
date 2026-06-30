@@ -18,13 +18,13 @@ import { ChainsView } from "@/features/chains";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
-import { DatasourcesAdmin } from "@/features/datasources";
+import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
-import { MembersView } from "@/features/members";
 import { RulesView } from "@/features/rules";
+import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
 import { StudioView } from "@/features/studio";
@@ -95,6 +95,12 @@ const dashboardsRoute = createRoute({
   component: DashboardsRoute,
 });
 
+const datasourceDetailRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/datasources/$name",
+  component: DatasourceDetailRoute,
+});
+
 const extRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/ext/$id",
@@ -114,11 +120,12 @@ const routeTree = rootRoute.addChildren([
   tenantRoute.addChildren([
     tenantIndexRoute,
     channelsRoute,
-    coreRoute("/members", "members", () => <Members />),
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/chains", "chains", () => <Chains />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
+    datasourceDetailRoute,
+    coreRoute("/reminders", "reminders", () => <Reminders />),
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
@@ -223,10 +230,6 @@ function ExtRoute() {
   return <ExtHost ext={page.ext} ui={page.ui} workspace={ctx.workspace} />;
 }
 
-function Members() {
-  return <MembersView ws={useAppRoutingContext().workspace} />;
-}
-
 function Rules() {
   return <RulesView ws={useAppRoutingContext().workspace} />;
 }
@@ -235,8 +238,35 @@ function Chains() {
   return <ChainsView ws={useAppRoutingContext().workspace} />;
 }
 
+function Reminders() {
+  return <RemindersView ws={useAppRoutingContext().workspace} />;
+}
+
 function Datasources() {
-  return <DatasourcesAdmin ws={useAppRoutingContext().workspace} />;
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <DatasourcesAdmin
+      ws={ctx.workspace}
+      onOpen={(name) =>
+        void navigate({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/datasources/${encodeURIComponent(name)}`,
+        })
+      }
+    />
+  );
+}
+
+function DatasourceDetailRoute() {
+  const ctx = useAppRoutingContext();
+  const { name } = datasourceDetailRoute.useParams();
+  if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
+  return (
+    <DatasourceDetailPage
+      ws={ctx.workspace}
+      name={decodeURIComponent(name)}
+    />
+  );
 }
 
 function Ingest() {

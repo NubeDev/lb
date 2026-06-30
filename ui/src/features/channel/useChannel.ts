@@ -10,9 +10,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { history, post } from "@/lib/channel/channel.api";
+import { edit, history, post, remove } from "@/lib/channel/channel.api";
 import { openChannelStream } from "@/lib/channel/channel.stream";
+import { encodeQuery } from "@/lib/channel/payload.types";
 import type { Item } from "@/lib/channel/channel.types";
+import { invoke } from "@/lib/ipc/invoke";
 
 /** Merge one item into a list: upsert by id, keep ordered by `ts` (the node's guarantees). */
 function mergeItem(items: Item[], incoming: Item): Item[] {
@@ -24,11 +26,24 @@ function mergeItem(items: Item[], incoming: Item): Item[] {
   return next;
 }
 
+/** Drop one id from a list (a live deletion reconciles the local view). */
+function removeItem(items: Item[], id: string): Item[] {
+  return items.filter((m) => m.id !== id);
+}
+
 export interface ChannelState {
   items: Item[];
   loading: boolean;
   error: string | null;
   send: (body: string) => Promise<void>;
+  /** Edit the body of one of the caller's own messages (only the author may). */
+  edit: (id: string, body: string) => Promise<void>;
+  /** Delete one of the caller's own messages (only the author may). */
+  remove: (id: string) => Promise<void>;
+  /** Post a `kind:"query"` channel Item — the structured payload the host query worker answers. */
+  postQuery: (source: string, sql: string) => Promise<void>;
+  /** Dispatch any other catalog tool via the host-mediated bridge (no channel Item). */
+  callTool: (tool: string, args: Record<string, unknown>) => Promise<void>;
 }
 
 /** Drive a channel view for `(ws, channel)` as `author`. `now` injects the logical
@@ -63,22 +78,16 @@ export function useChannel(
   useEffect(() => {
     const stream = openChannelStream(ws, channel, {
       onMessage: (item) => setItems((prev) => mergeItem(prev, item)),
+      onDelete: (id) => setItems((prev) => removeItem(prev, id)),
     });
     return () => stream?.close();
   }, [ws, channel]);
 
-  const send = useCallback(
+  // Post one item body (chat text OR a structured payload JSON) then reconcile against history.
+  const postBody = useCallback(
     async (body: string) => {
-      const trimmed = body.trim();
-      if (!trimmed) return;
       const ts = now();
-      const item: Item = {
-        id: `${author}-${ts}`,
-        channel,
-        author,
-        body: trimmed,
-        ts,
-      };
+      const item: Item = { id: `${author}-${ts}`, channel, author, body, ts };
       try {
         await post(ws, channel, item);
         await refresh(); // reconcile against the durable history — the message appears now.
@@ -89,5 +98,68 @@ export function useChannel(
     [ws, channel, author, now, refresh],
   );
 
-  return { items, loading, error, send };
+  const send = useCallback(
+    async (body: string) => {
+      const trimmed = body.trim();
+      if (!trimmed) return;
+      await postBody(trimmed);
+    },
+    [postBody],
+  );
+
+  // Edit one of the caller's own messages, then reconcile against history. Only the author may
+  // (the host re-checks ownership against the stored author); a denial surfaces as `error`.
+  const editMessage = useCallback(
+    async (id: string, body: string) => {
+      const trimmed = body.trim();
+      if (!trimmed) return;
+      const ts = now();
+      try {
+        await edit(ws, channel, id, trimmed, ts);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [ws, channel, now, refresh],
+  );
+
+  // Delete one of the caller's own messages, then reconcile against history.
+  const removeMessage = useCallback(
+    async (id: string) => {
+      try {
+        await remove(ws, channel, id);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [ws, channel, refresh],
+  );
+
+  // Post a `kind:"query"` Item — the host query worker sees it, runs federation.query, and posts a
+  // `query_result`/`query_error` Item back (which streams in via the same history/SSE feed).
+  const postQuery = useCallback(
+    async (source: string, sql: string) => {
+      if (!source || !sql.trim()) return;
+      await postBody(encodeQuery(source, sql.trim()));
+    },
+    [postBody],
+  );
+
+  // Dispatch a non-query catalog tool through the host-mediated bridge (the same `mcp_call` seam the
+  // federation client uses). The palette routes federation.query to `postQuery` instead.
+  const callTool = useCallback(
+    async (tool: string, args: Record<string, unknown>) => {
+      try {
+        await invoke("mcp_call", { tool, args });
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [refresh],
+  );
+
+  return { items, loading, error, send, edit: editMessage, remove: removeMessage, postQuery, callTool };
 }

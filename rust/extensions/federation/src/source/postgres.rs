@@ -51,7 +51,10 @@ impl Source for PostgresSource {
         // A real connectivity probe: resolve the system catalog as a table provider (forces a live
         // connection). If the pool can build a provider, the endpoint is reachable + authenticated.
         self.factory
-            .table_provider(TableReference::bare("pg_catalog.pg_tables"))
+            // `parse_str`, not `bare`: a dotted catalog name must split into schema=`pg_catalog`,
+            // table=`pg_tables`. `bare` would keep the literal `pg_catalog.pg_tables` as a single
+            // table name, which the provider can't introspect (it reports an empty schema).
+            .table_provider(TableReference::parse_str("pg_catalog.pg_tables"))
             .await
             .map(|_| ())
             .map_err(|e| SourceError(format!("probe: {e}")))
@@ -65,5 +68,10 @@ impl Source for PostgresSource {
             .table_provider(table.clone())
             .await
             .map_err(|e| SourceError(format!("table {table}: {e}")))
+    }
+
+    async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
+        // Read the source's own catalog via the shared discovery runner (Postgres `pg_catalog`).
+        crate::query::run_list_tables(self, "postgres").await
     }
 }

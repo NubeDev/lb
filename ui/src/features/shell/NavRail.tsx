@@ -4,6 +4,7 @@
 import {
   Activity,
   Boxes,
+  CalendarClock,
   Database,
   GitBranch,
   Hash,
@@ -17,7 +18,6 @@ import {
   Wrench,
   Send,
   Shield,
-  Users,
 } from "lucide-react";
 
 import {
@@ -39,11 +39,11 @@ import { ThemeSwitcher } from "@/features/theme";
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
   | "channels"
-  | "members"
   | "dashboards"
   | "rules"
   | "chains"
   | "datasources"
+  | "reminders"
   | "ingest"
   | "data"
   | "system"
@@ -77,11 +77,11 @@ interface Props {
 
 const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "channels", icon: Hash, label: "Channels" },
-  { key: "members", icon: Users, label: "Members" },
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "rules", icon: ScrollText, label: "Rules" },
   { key: "chains", icon: GitBranch, label: "Chains" },
   { key: "datasources", icon: Plug, label: "Datasources" },
+  { key: "reminders", icon: CalendarClock, label: "Reminders" },
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
   { key: "system", icon: Network, label: "System" },

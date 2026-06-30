@@ -1,0 +1,9 @@
+# Workflow: pull open issues via gh and triage them by priority/effort.
+# Run: pq run triage repo=NubeDev/lb
+desc: Pull open issues via gh and triage them
+vars:
+  - name: repo
+steps:
+  - tool: gh issue list --repo {{repo}} --state open --limit 30
+  - role: triage
+output: clipboard

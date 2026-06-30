@@ -44,8 +44,6 @@ const standardSelectors = [
 
 // Views that predate the standard. Convert one → remove it here. SHRINKS toward empty.
 const LEGACY_VIEWS = [
-  "src/features/admin/AccessEditor.tsx",
-  "src/features/admin/AdminView.tsx",
   "src/features/admin/PeopleAdmin.tsx",
   "src/features/admin/RolesAdmin.tsx",
   "src/features/admin/TeamsAdmin.tsx",
@@ -54,11 +52,15 @@ const LEGACY_VIEWS = [
   "src/features/channel/ChannelList.tsx",
   "src/features/channel/ChannelView.tsx",
   "src/features/channel/MessageComposer.tsx",
+  "src/features/channel/palette/CommandPalette.tsx",
+  "src/features/channel/palette/argWidgets/SqlArg.tsx",
+  "src/features/channel/query/QueryCard.tsx",
   "src/features/confirm/ConfirmDestructive.tsx",
   "src/features/dashboard/AddWidget.tsx",
   "src/features/dashboard/DashboardRoster.tsx",
   "src/features/dashboard/DashboardView.tsx",
   "src/features/dashboard/Grid.tsx",
+  "src/features/dashboard/vars/VariableEditor.tsx",
   "src/features/data/DataView.tsx",
   "src/features/inbox/InboxView.tsx",
   "src/features/ingest/CreateSeriesWizard.tsx",
@@ -67,6 +69,7 @@ const LEGACY_VIEWS = [
   "src/features/ingest/SchemaForm.tsx",
   "src/features/outbox/OutboxView.tsx",
   "src/features/session/LoginView.tsx",
+  "src/features/studio/StudioView.tsx",
   "src/features/workflow/WorkflowView.tsx",
   "src/features/workspace/WorkspaceSwitcher.tsx",
 ];

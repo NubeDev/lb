@@ -12,6 +12,7 @@
 //!   - `validate`  — host-side SELECT-only pre-check (the sidecar re-validates with `sqlparser`).
 //!   - `add`/`remove`/`list`/`test` — the admin CRUD + connectivity probe.
 //!   - `query`     — `federation.query` (the read-first verb).
+//!   - `schema`    — `federation.schema` (native table/column discovery for the no-SQL UI).
 //!   - `mirror`    — `federation.mirror` (the durable, resumable `lb-jobs` copy-in).
 //!   - `tool`      — the `federation.*` / `datasource.*` MCP bridge dispatch.
 
@@ -24,6 +25,7 @@ mod net;
 mod query;
 mod record;
 mod remove;
+mod schema;
 mod secret;
 mod test;
 mod tool;
@@ -33,8 +35,9 @@ pub use add::datasource_add;
 pub use error::FederationError;
 pub use list::{datasource_list, DatasourceSummary};
 pub use mirror::federation_mirror;
-pub use query::federation_query;
-pub use record::{resolve as resolve_datasource, Datasource};
+pub use query::{federation_query, query_descriptor};
+pub use record::{datasource_tag, resolve as resolve_datasource, Datasource, TABLE};
 pub use remove::datasource_remove;
+pub use schema::federation_schema;
 pub use test::datasource_test;
 pub use tool::call_federation_tool;

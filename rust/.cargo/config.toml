@@ -33,3 +33,9 @@ linker = "/home/user/.local/bin/zigcc"
 CC = "/home/user/.local/bin/zigcc"
 AR = "/home/user/.local/bin/zigar"
 CC_x86_64_unknown_linux_gnu = "/home/user/.local/bin/zigcc"
+# openssl-src builds vendored OpenSSL via its own Makefile, which calls
+# `ranlib` directly (not through cc-rs). Without RANLIB it falls back to a
+# bare `ranlib` that doesn't exist on this box -> "ranlib: not found". Point
+# it at zig's llvm-ranlib wrapper.
+RANLIB = "/home/user/.local/bin/zigranlib"
+RANLIB_x86_64_unknown_linux_gnu = "/home/user/.local/bin/zigranlib"

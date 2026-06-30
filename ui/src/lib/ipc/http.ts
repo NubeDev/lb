@@ -9,8 +9,10 @@
 //   workspace_create → POST /workspaces
 //   channel_list     → GET  /channels
 //   channel_create   → POST /channels
-//   channel_post     → POST /channels/{cid}/messages
-//   channel_history  → GET  /channels/{cid}/messages
+//   channel_post     → POST   /channels/{cid}/messages
+//   channel_history  → GET    /channels/{cid}/messages
+//   channel_edit     → PATCH  /channels/{cid}/messages/{id}
+//   channel_delete   → DELETE /channels/{cid}/messages/{id}
 //   members_list     → GET  /teams/{team}/members
 //   members_add      → POST /teams/{team}/members
 //   inbox_list       → GET  /inbox/{channel}
@@ -78,6 +80,21 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "channel_history": {
       const { channel } = args as { channel: string };
       return getJson<T>(`${base}/channels/${enc(channel)}/messages`);
+    }
+    case "channel_edit": {
+      // Edit the body of one of the caller's own messages. The id + channel are in the path; the
+      // new body + logical ts ride in the PATCH body. The host re-checks author ownership.
+      const { channel, id, body, ts } = args as {
+        channel: string;
+        id: string;
+        body: string;
+        ts: number;
+      };
+      return patchJson<T>(`${base}/channels/${enc(channel)}/messages/${enc(id)}`, { body, ts });
+    }
+    case "channel_delete": {
+      const { channel, id } = args as { channel: string; id: string };
+      return delJson<T>(`${base}/channels/${enc(channel)}/messages/${enc(id)}`);
     }
     case "members_list": {
       const { team } = args as { team: string };
@@ -166,6 +183,48 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     case "roles_define": {
       const { name, caps } = args as { name: string; caps: string[] };
       return postJson<T>(`${base}/admin/roles`, { name, caps });
+    }
+    // ── access-console scope — the access-graph gaps: resolved effective caps WITH provenance, the
+    //    live-token revoke lever (composes with grant-revoke), and roles.delete cascade. Each re-checks
+    //    its admin cap server-side; ws + principal from the token. ──
+    case "authz_resolve": {
+      const { subject } = args as { subject: string };
+      return getJson<T>(`${base}/admin/authz/resolve?subject=${enc(subject)}`);
+    }
+    case "authz_revoke_tokens": {
+      const { subject } = args as { subject: string };
+      return postJson<T>(`${base}/admin/authz/revoke-tokens`, { subject });
+    }
+    case "roles_delete": {
+      const { name } = args as { name: string };
+      return delJson<T>(`${base}/admin/roles/${enc(name)}`);
+    }
+    // ── global-identity scope — the global identity directory + per-workspace membership roster.
+    //    The People tab reads `membership_list`; the switcher reads `identity_workspaces`. Each
+    //    re-checks its cap server-side; ws + principal from the token. ──
+    case "identity_list":
+      return getJson<T>(`${base}/admin/identities`);
+    case "identity_create": {
+      const { sub, display_name } = args as { sub: string; display_name?: string };
+      return postJson<T>(`${base}/admin/identities`, { sub, display_name });
+    }
+    case "identity_get": {
+      const { sub } = args as { sub: string };
+      return getJson<T>(`${base}/admin/identities/${enc(sub)}`);
+    }
+    case "identity_workspaces": {
+      const { sub } = args as { sub: string };
+      return getJson<T>(`${base}/admin/identities/${enc(sub)}/workspaces`);
+    }
+    case "membership_list":
+      return getJson<T>(`${base}/admin/members`);
+    case "membership_add": {
+      const { sub } = args as { sub: string };
+      return postJson<T>(`${base}/admin/members`, { sub });
+    }
+    case "membership_remove": {
+      const { sub } = args as { sub: string };
+      return delJson<T>(`${base}/admin/members/${enc(sub)}`);
     }
     case "apikey_list":
       return getJson<T>(`${base}/admin/apikeys`);
@@ -504,6 +563,18 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
 /** DELETE a route. Returns undefined for `204`, else the JSON body (e.g. the revoked/removed count). */
 async function delJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(await errorText(res));
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/** PATCH a JSON body. Returns the JSON response (the stored item). */
+async function patchJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(await errorText(res));
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

@@ -38,8 +38,7 @@ async fn posted_message_appears_to_a_live_subscriber() {
         .expect("subscribe");
 
     post(
-        &node.store,
-        &node.bus,
+        &node,
         &p,
         ws,
         "general",
@@ -68,8 +67,7 @@ async fn history_survives_independent_of_the_bus() {
 
     for (i, body) in ["first", "second", "third"].iter().enumerate() {
         post(
-            &node.store,
-            &node.bus,
+            &node,
             &p,
             ws,
             "general",
@@ -99,8 +97,7 @@ async fn re_posting_the_same_id_is_idempotent() {
 
     for _ in 0..3 {
         post(
-            &node.store,
-            &node.bus,
+            &node,
             &p,
             ws,
             "general",

@@ -8,5 +8,5 @@
 mod commands;
 mod state;
 
-pub use commands::{channel_history, channel_post};
+pub use commands::{channel_delete, channel_edit, channel_history, channel_post};
 pub use state::NodeHandle;

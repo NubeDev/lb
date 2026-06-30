@@ -12,6 +12,7 @@
 // Markup + local input state only; the caller owns the actual verb call in `onConfirm`.
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 
 export type Escalation = "none" | "type-name" | "second-gate";
@@ -33,6 +34,8 @@ export interface ConfirmDestructiveProps {
   onConfirm: () => void;
   /** Close without doing anything. */
   onCancel: () => void;
+  /** Optional extra content rendered above the footer (e.g. the live-token revoke lever). */
+  extra?: ReactNode;
 }
 
 export function ConfirmDestructive({
@@ -44,6 +47,7 @@ export function ConfirmDestructive({
   confirmLabel = "Confirm",
   onConfirm,
   onCancel,
+  extra,
 }: ConfirmDestructiveProps) {
   const [typed, setTyped] = useState("");
   const [acked, setAcked] = useState(false);
@@ -100,6 +104,8 @@ export function ConfirmDestructive({
             I understand this cannot be undone.
           </label>
         )}
+
+        {extra && <div className="mt-3">{extra}</div>}
 
         <footer className="mt-4 flex justify-end gap-2">
           <button

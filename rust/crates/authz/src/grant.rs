@@ -16,8 +16,9 @@ use crate::subject::Subject;
 pub const GRANT_TABLE: &str = "grant";
 
 /// The marker a revoked grant carries; [`grant_list`] / [`granted`] treat it as absent. Mirrors
-/// `lb_assets`'s relation tombstone so the sync apply is uniform.
-const TOMBSTONE: &str = "__revoked__";
+/// `lb_assets`'s relation tombstone so the sync apply is uniform. `pub(crate)` so the role-cascade
+/// delete can write the same tombstone shape in its batch.
+pub(crate) const TOMBSTONE: &str = "__revoked__";
 
 /// A durable grant: `subject` holds `cap`, in some workspace. `subject` is denormalized to its
 /// `kind:name` string so listing a subject's grants is one field-equality query.
@@ -39,8 +40,9 @@ impl Grant {
 }
 
 /// Stable record id for `(subject, cap)`. `::` separates the parts; subject keys use a single `:`
-/// and caps use `:`/`.`/`/` — none contain `::`, so the key is unambiguous.
-fn grant_id(subject: &Subject, cap: &str) -> String {
+/// and caps use `:`/`.`/`/` — none contain `::`, so the key is unambiguous. `pub(crate)` so the
+/// role-cascade delete can address the same grant rows in its batch.
+pub(crate) fn grant_id(subject: &Subject, cap: &str) -> String {
     format!("{}::{}", subject.as_key(), cap)
 }
 

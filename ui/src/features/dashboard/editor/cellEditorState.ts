@@ -187,9 +187,16 @@ export function editorStateToCell(state: EditorState, base: Cell): Cell {
   // Serialize targets back through the SAME shape the cell used (so a v2 cell stays single-`source`,
   // byte-identical, while a v3 cell keeps `sources[]`). A target EDIT in the Query tab flows through
   // `state.targets`, so the new query is written back here regardless of representation.
-  if (state.carry.targetRepr === "sources") {
+  // A cell that started with NO target (a fresh ADD) gets the v3 `sources[]` shape once the author picks
+  // a real query — otherwise the authored target is silently dropped and the preview/save see no source
+  // ("no data yet"). An empty/no-tool target stays absent so a truly target-less cell round-trips clean.
+  const repr =
+    state.carry.targetRepr === "none" && state.targets.some((t) => t.tool)
+      ? "sources"
+      : state.carry.targetRepr;
+  if (repr === "sources") {
     cell.sources = state.targets;
-  } else if (state.carry.targetRepr === "source") {
+  } else if (repr === "source") {
     const t = state.targets[0];
     // Reproduce the v2 `{ tool, args }` shape exactly (drop the synthetic refId/datasource cellSources
     // adds), omitting `args` when it was absent so the round-trip is byte-identical.

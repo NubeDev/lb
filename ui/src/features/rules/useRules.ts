@@ -20,6 +20,9 @@ export interface RulesState {
   roster: SavedRule[];
   /** The id of the currently-open saved rule, or null for a fresh ad-hoc buffer. */
   selectedId: string | null;
+  /** The name of the currently-open rule (tracked locally so the header is correct even while
+   *  `rules.list` is stale); null when nothing is open. */
+  name: string | null;
   /** The editor buffer (the Rhai body being authored — may diverge from the saved record). */
   buffer: string;
   /** The buffer's saved body, for the dirty check (null when nothing is open). */
@@ -33,10 +36,15 @@ export interface RulesState {
   refresh: () => Promise<void>;
   open: (id: string) => Promise<void>;
   newRule: () => void;
+  /** Create + save a new named rule from the current buffer. Derives a unique slug id from `name`,
+   *  persists it, and opens it. Returns the new id (or null on failure). */
+  create: (name: string) => Promise<string | null>;
   /** Load an example body into the buffer; if there are unsaved edits, confirm before clobbering. */
   loadExample: (body: string) => void;
   run: () => Promise<void>;
   save: (id: string, name: string) => Promise<void>;
+  /** Rename the currently-open rule (same id, new name). Preserves the persisted body. */
+  rename: (name: string) => Promise<boolean>;
   remove: (id: string) => Promise<void>;
 }
 
@@ -46,9 +54,29 @@ function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Derive a stable, URL-safe id from a human `name`: lowercase, non-alphanumerics → `-`, trimmed.
+ *  The id is the rule's store key (an implementation detail); the user only ever types the name. */
+function slugify(name: string): string {
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "rule";
+}
+
+/** Append `-2`, `-3`, … to `base` until it doesn't collide with an existing id in `taken`. */
+function uniqueId(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base}-${n}`)) n += 1;
+  return `${base}-${n}`;
+}
+
 export function useRules(_ws: string): RulesState {
   const [roster, setRoster] = useState<SavedRule[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(null);
   const [buffer, setBuffer] = useState("");
   const [savedBody, setSavedBody] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
@@ -74,6 +102,7 @@ export function useRules(_ws: string): RulesState {
     try {
       const rule = await getRule(id);
       setSelectedId(rule.id);
+      setName(rule.name);
       setBuffer(rule.body);
       setSavedBody(rule.body);
     } catch (e) {
@@ -83,11 +112,55 @@ export function useRules(_ws: string): RulesState {
 
   const newRule = useCallback(() => {
     setSelectedId(null);
+    setName(null);
     setBuffer("");
     setSavedBody(null);
     setResult(null);
     setError(null);
   }, []);
+
+  const create = useCallback(
+    async (nameArg: string): Promise<string | null> => {
+      const trimmed = nameArg.trim();
+      if (!trimmed) return null;
+      const id = uniqueId(slugify(trimmed), new Set(roster.map((r) => r.id)));
+      setError(null);
+      try {
+        // Save what's currently in the buffer under the new name — "save what I'm working on as a new
+        // rule." Empty buffer is fine (creates a starter rule the user then edits + Saves normally).
+        await saveRule({ id, name: trimmed, body: buffer });
+        setSelectedId(id);
+        setName(trimmed);
+        setSavedBody(buffer);
+        await refresh();
+        return id;
+      } catch (e) {
+        setError(msg(e));
+        return null;
+      }
+    },
+    [buffer, roster, refresh],
+  );
+
+  const rename = useCallback(
+    async (newName: string): Promise<boolean> => {
+      const id = selectedId;
+      const trimmed = newName.trim();
+      if (!id || !trimmed) return false;
+      setError(null);
+      try {
+        // Re-save the SAME id with the new name + the persisted body (rename never edits the body).
+        await saveRule({ id, name: trimmed, body: savedBody ?? buffer });
+        setName(trimmed);
+        await refresh();
+        return true;
+      } catch (e) {
+        setError(msg(e));
+        return false;
+      }
+    },
+    [selectedId, savedBody, buffer, refresh],
+  );
 
   const dirty = savedBody !== null && buffer !== savedBody;
 
@@ -155,6 +228,7 @@ export function useRules(_ws: string): RulesState {
   return {
     roster,
     selectedId,
+    name,
     buffer,
     savedBody,
     result,
@@ -165,6 +239,8 @@ export function useRules(_ws: string): RulesState {
     refresh,
     open,
     newRule,
+    create,
+    rename,
     loadExample,
     run,
     save,

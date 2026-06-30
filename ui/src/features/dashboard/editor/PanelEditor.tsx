@@ -59,8 +59,16 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   }
   const [tab, setTab] = useState<TabId>("query");
   const [search, setSearch] = useState("");
-  // A debounce-ish tick so the preview re-queries when the source changes (cheap: state edits are rare).
-  const refreshKey = useMemo(() => JSON.stringify(state.targets).length + (state.sql?.rawSql.length ?? 0), [state.targets, state.sql]);
+  // An explicit "Run" nonce: the Query tab's Run button bumps it to force a preview re-query even when
+  // the spec is byte-identical (re-running the same SQL). It's folded into the refresh tick below.
+  const [runNonce, setRunNonce] = useState(0);
+  const run = () => setRunNonce((n) => n + 1);
+  // A debounce-ish tick so the preview re-queries when the source changes (cheap: state edits are rare),
+  // plus the explicit Run nonce so pressing Run always re-fires the query.
+  const refreshKey = useMemo(
+    () => JSON.stringify(state.targets).length + (state.sql?.rawSql.length ?? 0) + runNonce,
+    [state.targets, state.sql, runNonce],
+  );
 
   const patch = (next: Partial<EditorState>) => setState((s) => ({ ...s, ...next }));
   // The view canonicalized for DISPLAY (picker highlight + per-view tab branching). The stored
@@ -125,7 +133,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             <OptionsSearch value={search} onChange={setSearch} />
             <EditorTabs tabs={tabs} active={tab} onSelect={(id) => setTab(id as TabId)} />
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} />}
+              {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} onRun={run} />}
               {tab === "transform" && <TransformTab state={state} patch={patch} />}
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} />}
               {tab === "field" && <FieldTab state={stateC} patch={patch} />}

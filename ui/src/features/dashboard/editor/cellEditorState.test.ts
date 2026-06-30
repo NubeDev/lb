@@ -126,6 +126,30 @@ describe("cell ↔ editorState round-trip", () => {
     expect(back.fieldConfig).toEqual({ defaults: {}, overrides: [] });
   });
 
+  it("a target-less cell gains a queryable sources[] once a target is authored (federation 'run the sql')", () => {
+    // Regression: a cell with NO source/sources started as targetRepr:"none". Authoring a federation
+    // target in the Query tab put it in state.targets, but serialize dropped it (none branch) — so the
+    // preview's viz.query saw no source and showed "no data yet", and save persisted an empty panel.
+    const targetless: Cell = {
+      i: "new",
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 4,
+      widget_type: "chart",
+      binding: { series: "" },
+    };
+    const state = cellToEditorState(targetless);
+    expect(state.carry.targetRepr).toBe("none");
+    const fedTarget = { refId: "A", tool: "federation.query", args: { source: "timescale", sql: "select * from sites" }, datasource: { type: "federation" as const } };
+    const out = editorStateToCell({ ...state, targets: [fedTarget] }, targetless);
+    expect(out.sources).toEqual([fedTarget]);
+    // A still-empty (no-tool) target must NOT spawn a spurious source — a blank panel stays blank.
+    const stillEmpty = editorStateToCell({ ...state, targets: [{ refId: "A", tool: "", args: {} }] }, targetless);
+    expect(stillEmpty.sources).toBeUndefined();
+    expect(stillEmpty.source).toBeUndefined();
+  });
+
   it("the cell key + geometry is preserved on serialize (the edit invariant)", () => {
     const base = defaultCell("timeseries", "keep-me", { x: 3, y: 7, w: 5, h: 2 });
     const state = cellToEditorState(base);

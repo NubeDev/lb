@@ -42,6 +42,18 @@ fn member_caps() -> Vec<String> {
         "mcp:grants.list:call",
         "mcp:roles.define:call",
         "mcp:roles.list:call",
+        // access-console scope: the three verbs that close the access-graph gaps — resolved effective
+        // caps WITH provenance (read), the live-token revoke lever, and roles.delete cascade. Admin-
+        // only; the gateway re-checks each server-side.
+        "mcp:authz.resolve:call",
+        "mcp:authz.revoke-tokens:call",
+        "mcp:roles.manage:call",
+        // global-identity scope: the global identity directory + per-workspace membership roster
+        // verbs. The dev admin manages identities and the workspace roster; the gateway re-checks
+        // each server-side. The People tab reads `membership.list`, the switcher reads
+        // `identity.workspaces`.
+        "mcp:identity.manage:call",
+        "mcp:members.manage:call",
         // admin-console slice 4: the extensions console lifecycle verbs, so the dev admin can list +
         // enable/disable/uninstall extensions from the browser. The gateway re-checks each on the
         // server; the UI cap-gate (showing the Extensions section) is convenience.
@@ -78,6 +90,11 @@ fn member_caps() -> Vec<String> {
         // `ws/{id}/ext/{subject}` host-side from the token; a reserved prefix / cross-ws subject is refused.
         "mcp:bus.publish:call",
         "mcp:bus.watch:call",
+        // command-palette catalog (channels-command-palette scope): the `/` palette's read. Member-
+        // level — every UI-capable principal holds it; `tools.catalog` leaks only the tool *shapes*
+        // the caller may already run (a denied tool is absent), never data. Without it the UI has no
+        // palette at all.
+        "mcp:tools.catalog:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.

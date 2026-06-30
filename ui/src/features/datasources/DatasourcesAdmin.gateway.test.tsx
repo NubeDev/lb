@@ -38,7 +38,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
   it("a fresh workspace shows an empty roster", async () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    render(<DatasourcesAdmin ws={ws} />);
+    render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
     expect(await screen.findByText("No datasources yet.")).toBeInTheDocument();
   });
 
@@ -46,7 +46,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    const { container } = render(<DatasourcesAdmin ws={ws} />);
+    const { container } = render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
     await screen.findByText("No datasources yet.");
 
     await addSource(user, {
@@ -71,7 +71,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    render(<DatasourcesAdmin ws={ws} />);
+    render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
 
     await user.type(await screen.findByLabelText("datasource name"), "timescale");
     await user.type(screen.getByLabelText("datasource endpoint"), "tsdb.acme:5432");
@@ -85,7 +85,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    render(<DatasourcesAdmin ws={ws} />);
+    render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
     await screen.findByText("No datasources yet.");
 
     await addSource(user, { name: "ts", kind: "postgres", endpoint: "tsdb.acme:5432", dsn: DSN });
@@ -99,7 +99,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    render(<DatasourcesAdmin ws={ws} />);
+    render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
     await screen.findByText("No datasources yet.");
 
     await addSource(user, { name: "ts", kind: "postgres", endpoint: "tsdb.acme:5432", dsn: DSN });

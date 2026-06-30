@@ -154,6 +154,11 @@ fn tool_name(request: &ScaffoldRequest) -> String {
     format!("{}.ping", request.id.replace('-', "."))
 }
 
+/// Reserved prefixes that a scaffolded extension id must not reuse. `devkit-build` is the build job-id
+/// namespace (see `host::devkit::build`: `format!("devkit-build-{ts}")`); allowing it as a scaffold id
+/// produced stray `devkit-build-<tier>-<ts>` folders indistinguishable from job records.
+const RESERVED_ID_PREFIXES: &[&str] = &["devkit-build"];
+
 fn validate_id(id: &str) -> Result<()> {
     if id.is_empty()
         || !id
@@ -163,6 +168,12 @@ fn validate_id(id: &str) -> Result<()> {
         || id.ends_with('-')
     {
         bail!("extension id must be kebab-case ascii");
+    }
+    if let Some(prefix) = RESERVED_ID_PREFIXES
+        .iter()
+        .find(|p| id == **p || id.starts_with(&format!("{}-", p)))
+    {
+        bail!("extension id must not reuse reserved prefix '{prefix}'");
     }
     Ok(())
 }

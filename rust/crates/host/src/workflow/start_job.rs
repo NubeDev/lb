@@ -139,7 +139,7 @@ async fn stream(
         format!("[{job_id}] {note}"),
         ts,
     );
-    post(&node.store, &node.bus, caller, ws, channel, item)
+    post(node, caller, ws, channel, item)
         .await
         .map(|_| ())
         .map_err(|e| match e {

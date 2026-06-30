@@ -10,8 +10,8 @@ use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::{
-    grants_assign, grants_list, grants_revoke, roles_define, roles_list, teams_create, teams_list,
-    AuthzError,
+    authz_resolve, grants_assign, grants_list, grants_revoke, revoke_tokens, roles_define,
+    roles_delete, roles_list, teams_create, teams_list, AuthzError,
 };
 
 /// Dispatch a `grants.*` / `roles.*` / `teams.*` MCP call. `input` is the verb's JSON arguments.
@@ -83,6 +83,25 @@ pub async fn call_authz_tool(
                 .map_err(authz_to_tool)?;
             Ok(json!({ "teams": teams }))
         }
+        // access-console scope — the three verbs that close the access-graph gaps.
+        "authz.resolve" => {
+            let caps = authz_resolve(store, principal, ws, &subject(input)?)
+                .await
+                .map_err(authz_to_tool)?;
+            Ok(json!({ "caps": caps }))
+        }
+        "authz.revoke-tokens" => {
+            let revoked = revoke_tokens(store, principal, ws, &subject(input)?)
+                .await
+                .map_err(authz_to_tool)?;
+            Ok(json!({ "grants_revoked": revoked }))
+        }
+        "roles.delete" => {
+            let affected = roles_delete(store, principal, ws, str_arg(input, "name")?)
+                .await
+                .map_err(authz_to_tool)?;
+            Ok(json!({ "affected": affected }))
+        }
         _ => Err(ToolError::NotFound),
     }
 }
@@ -112,6 +131,7 @@ fn authz_to_tool(e: AuthzError) -> ToolError {
     match e {
         AuthzError::Denied => ToolError::Denied,
         AuthzError::Widen(c) => ToolError::BadInput(format!("cannot grant a cap you lack: {c}")),
+        AuthzError::Immutable(r) => ToolError::BadInput(format!("built-in role is immutable: {r}")),
         AuthzError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }

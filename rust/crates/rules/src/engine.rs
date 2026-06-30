@@ -104,29 +104,28 @@ impl RuleEngine {
         };
 
         match result {
-            Ok(value) => Ok(classify(value, !run.findings.is_empty())),
+            Ok(value) => classify(value, !run.findings.is_empty()),
             Err(e) => Err(map_eval_error(*e)),
         }
     }
 }
 
-/// Classify the body's last value into a `RuleOutput` (port verbatim).
-fn classify(value: rhai::Dynamic, has_findings: bool) -> RuleOutput {
+/// Classify the body's last value into a `RuleOutput` (port verbatim). A grid materializes via the
+/// seam; a materialization fault (a source SQL/planning error, a sidecar fault) is AUTHOR FEEDBACK —
+/// propagate it verbatim, never swallow it into `Nothing` (the workbench "honest, never blank" rule).
+fn classify(value: rhai::Dynamic, has_findings: bool) -> Result<RuleOutput, RuleError> {
     if value.is_unit() {
-        return if has_findings {
+        return Ok(if has_findings {
             RuleOutput::Findings
         } else {
             RuleOutput::Nothing
-        };
+        });
     }
     // A returned grid materializes; anything else becomes a scalar JSON.
     if let Some(grid) = value.clone().try_cast::<crate::grid::Grid>() {
-        match grid_to_json(&grid) {
-            Ok(g) => return RuleOutput::Grid(g),
-            Err(_) => return RuleOutput::Nothing,
-        }
+        return grid_to_json(&grid).map(RuleOutput::Grid);
     }
-    RuleOutput::Scalar(crate::grid::dynamic_to_json(&value))
+    Ok(RuleOutput::Scalar(crate::grid::dynamic_to_json(&value)))
 }
 
 fn grid_to_json(grid: &crate::grid::Grid) -> Result<GridJson, RuleError> {

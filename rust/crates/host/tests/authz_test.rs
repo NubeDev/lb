@@ -247,3 +247,56 @@ async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
     // Re-running the seam is a harmless no-op (idempotent replay).
     assert_eq!(revoke_subject(&store, "acme", &bob).await.unwrap(), 0);
 }
+
+// ── access-console scope: the three new verbs (authz.resolve, authz.revoke-tokens, roles.delete) —
+//    per-verb deny over the MCP bridge + two-workspace isolation. The verbs compose the seams above
+//    (resolve_caps_sourced / token_revoke + revoke_subject / role_delete), so these prove the GATE. ─
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn denies_each_access_console_verb_without_its_grant() {
+    let store = Store::memory().await.unwrap();
+    // Holds grants.list only — none of the access-console admin caps.
+    let p = principal("user:mallory", "acme", &["mcp:grants.list:call"]);
+    for (verb, input) in [
+        ("authz.resolve", json!({ "subject": "user:bob" })),
+        ("authz.revoke-tokens", json!({ "subject": "user:bob" })),
+        ("roles.delete", json!({ "name": "operator" })),
+    ] {
+        let err = call_authz_tool(&store, &p, "acme", verb, &input)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ToolError::Denied),
+            "{verb} must be denied without its cap"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn access_console_verbs_cannot_cross_the_workspace_wall() {
+    let store = Store::memory().await.unwrap();
+    // A ws-B admin holding every access-console cap, but in workspace `globex`.
+    let ws_b = principal(
+        "user:carol",
+        "globex",
+        &[
+            "mcp:authz.resolve:call",
+            "mcp:authz.revoke-tokens:call",
+            "mcp:roles.manage:call",
+        ],
+    );
+    // Calling into "acme" (gate 1 — the caller's ws is globex) is denied for every verb.
+    for (verb, input) in [
+        ("authz.resolve", json!({ "subject": "user:bob" })),
+        ("authz.revoke-tokens", json!({ "subject": "user:bob" })),
+        ("roles.delete", json!({ "name": "operator" })),
+    ] {
+        let err = call_authz_tool(&store, &ws_b, "acme", verb, &input)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ToolError::Denied),
+            "ws-B → ws-A {verb} must be denied at the workspace wall"
+        );
+    }
+}

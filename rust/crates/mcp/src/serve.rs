@@ -21,7 +21,7 @@ pub async fn serve_call(registry: &Registry, req: &CallRequest) -> CallReply {
         return CallReply::Err("malformed tool name".into());
     };
     let hosted = match registry.get(ext_id) {
-        Some(Target::Local(h)) if h.tools.iter().any(|t| t == tool) => h,
+        Some(Target::Local(h)) if h.tools.iter().any(|t| t.name == tool) => h,
         // We are the serving node but don't host this tool locally — refuse rather than re-route
         // (no routing loops). A remote/absent entry here is a misroute.
         _ => return CallReply::Err("tool not hosted on the serving node".into()),

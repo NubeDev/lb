@@ -13,6 +13,9 @@ pub enum AuthzError {
     /// A `roles.define` tried to bundle a cap the definer does not hold (the no-widening rule).
     #[error("cannot grant a capability you do not hold: {0}")]
     Widen(String),
+    /// A `roles.delete` targeted a built-in role, which is immutable (access-console scope).
+    #[error("built-in role is immutable: {0}")]
+    Immutable(String),
     /// The durable store rejected the operation.
     #[error("store error: {0}")]
     Store(#[from] StoreError),

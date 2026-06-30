@@ -72,6 +72,7 @@ async fn handle_call(req: &Request) -> Reply {
 
     match params.tool.as_str() {
         "federation.query" => federation_query(req.id, &input).await,
+        "federation.schema" => federation_schema(req.id, &input).await,
         "datasource.test" => datasource_test(req.id, &input).await,
         other => Reply::err(req.id, format!("unknown tool: {other}")),
     }
@@ -93,6 +94,36 @@ async fn federation_query(id: u64, input: &Value) -> Reply {
             Reply::ok(id, out.to_string())
         }
         // The error string never includes the DSN (the source layer redacts it).
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.schema` — native discovery (no `information_schema` SQL: the engine only registers
+/// referenced tables). With no `table` arg it lists the source's user tables (each `{name, rows?}`);
+/// with a `table` arg it returns that table's columns (`{columns:[{name,data_type,nullable}]}`),
+/// read from the provider's real Arrow schema. The DSN is mediated by the host, same as query.
+async fn federation_schema(id: u64, input: &Value) -> Reply {
+    let (kind, dsn) = match (str_of(input, "kind"), str_of(input, "dsn")) {
+        (Some(k), Some(d)) => (k, d),
+        _ => return Reply::err(id, "missing kind/dsn"),
+    };
+    let table = str_of(input, "table");
+    let result = match table {
+        None => query::discover_tables(kind, dsn).await.map(|tables| {
+            json!({ "tables": tables.iter().map(|t| {
+                let mut o = json!({ "name": t.name });
+                if let Some(rows) = t.rows { o["rows"] = json!(rows); }
+                o
+            }).collect::<Vec<_>>() })
+        }),
+        Some(table) => query::describe_table(kind, dsn, table).await.map(|cols| {
+            json!({ "columns": cols.iter().map(|c| json!({
+                "name": c.name, "data_type": c.data_type, "nullable": c.nullable
+            })).collect::<Vec<_>>() })
+        }),
+    };
+    match result {
+        Ok(value) => Reply::ok(id, value.to_string()),
         Err(e) => Reply::err(id, e),
     }
 }

@@ -17,7 +17,7 @@ use crate::boot::Node;
 use super::config::{ai_limits, rule_limits};
 use super::error::RulesError;
 use super::get::rules_get;
-use super::seam::{workspace_datasources, HostAiSeam, HostDataSeam, RuleModel};
+use super::seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
 
 /// The JSON-shaped result of a run.
 #[derive(Serialize)]
@@ -58,6 +58,7 @@ pub async fn rules_run(
 
     // Build the host seams, closed over the caller's principal + the pinned workspace.
     let datasources = workspace_datasources(node, ws).await;
+    let queries = workspace_queries(node, ws).await;
     let handle = tokio::runtime::Handle::current();
     let data = Arc::new(HostDataSeam::new(
         node.clone(),
@@ -65,6 +66,7 @@ pub async fn rules_run(
         ws.to_string(),
         handle,
         datasources,
+        queries,
     ));
     let allowed: HashSet<String> = data.allowed_sources();
     let ai = Arc::new(HostAiSeam::new(model));
@@ -93,6 +95,9 @@ pub async fn rules_run(
         Ok(o) => o,
         Err(RuleError::SourceNotAllowed(_)) => return Err(RulesError::Denied),
         Err(RuleError::Eval(m)) => return Err(RulesError::Eval(m)),
+        // A seam fault surfacing from a grid materialization (a source SQL/planning error, a sidecar
+        // fault) is AUTHOR FEEDBACK — show it verbatim (BadInput/400), not an opaque deny or a blank.
+        Err(RuleError::Seam(m)) => return Err(RulesError::BadInput(m)),
         Err(e) => return Err(RulesError::Internal(e.to_string())),
     };
 

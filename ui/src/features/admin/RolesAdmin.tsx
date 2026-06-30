@@ -8,20 +8,29 @@
 import { useEffect, useState } from "react";
 import { KeyRound } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { BUILTIN_ROLES } from "@/lib/admin/roles.api";
+import { hasCap } from "@/lib/session";
+import { CAP } from "@/lib/session/admin-caps";
+import { ConfirmDestructive } from "@/features/confirm";
 import { AdminPanel } from "./AdminPanel";
 import { useRoles } from "./useRoles";
 
 interface Props {
   ws: string;
-  /** The admin's session caps — the set they may bundle into a role (no-widening). */
+  /** The admin's session caps — gates roles.delete (`mcp:roles.manage:call`). */
   caps: string[] | undefined;
 }
 
 export function RolesAdmin({ ws, caps }: Props) {
-  const { roles, error, define } = useRoles();
+  const { roles, error, define, remove } = useRoles();
   const [selected, setSelected] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftCaps, setDraftCaps] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleteResult, setDeleteResult] = useState<string | null>(null);
+
+  const canDelete = hasCap(caps, CAP.rolesManage);
 
   const selRole = roles.find((r) => r.name === selected) ?? null;
 
@@ -81,23 +90,49 @@ export function RolesAdmin({ ws, caps }: Props) {
                 <tr className="border-b border-border text-left text-xs text-muted">
                   <th className="px-3 py-1.5 font-medium">Role</th>
                   <th className="px-3 py-1.5 font-medium">Capabilities</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {roles.map((r) => (
-                  <tr
-                    key={r.name}
-                    aria-label={`select role ${r.name}`}
-                    aria-selected={selected === r.name}
-                    className={`cursor-pointer border-b border-border/50 ${
-                      selected === r.name ? "bg-accent/10" : "hover:bg-panel"
-                    }`}
-                    onClick={() => setSelected(r.name)}
-                  >
-                    <td className="px-3 py-1.5">{r.name}</td>
-                    <td className="px-3 py-1.5 text-xs text-muted">{r.caps.length}</td>
-                  </tr>
-                ))}
+                {roles.map((r) => {
+                  const immutable = BUILTIN_ROLES.has(r.name);
+                  return (
+                    <tr
+                      key={r.name}
+                      aria-label={`select role ${r.name}`}
+                      aria-selected={selected === r.name}
+                      className={`cursor-pointer border-b border-border/50 ${
+                        selected === r.name ? "bg-accent/10" : "hover:bg-panel"
+                      }`}
+                      onClick={() => setSelected(r.name)}
+                    >
+                      <td className="px-3 py-1.5">
+                        {r.name}
+                        {immutable && (
+                          <span className="ml-1.5 text-[0.6875rem] text-muted">(built-in)</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-xs text-muted">{r.caps.length}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        {canDelete && !immutable && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            aria-label={`delete role ${r.name}`}
+                            className="scale-90"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPendingDelete(r.name);
+                            }}
+                          >
+                            Delete
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -158,6 +193,30 @@ export function RolesAdmin({ ws, caps }: Props) {
           </div>
         </div>
       </div>
+
+      {deleteResult && (
+        <p className="px-4 py-2 text-xs text-muted" role="status">
+          {deleteResult}
+        </p>
+      )}
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title={`Delete role ${pendingDelete}`}
+          consequence={`Deletes the role and un-assigns it from every subject holding role:${pendingDelete} (one transaction, idempotent). Built-in roles are not deletable. Not reversible — re-create the role and re-assign to restore.`}
+          reversible={false}
+          escalation="none"
+          confirmLabel="Delete role"
+          onConfirm={async () => {
+            const name = pendingDelete;
+            setPendingDelete(null);
+            const affected = await remove(name);
+            setDeleteResult(`Deleted role ${name} — un-assigned from ${affected} subject${affected === 1 ? "" : "s"}.`);
+            if (selected === name) setSelected(null);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </AdminPanel>
   );
 }

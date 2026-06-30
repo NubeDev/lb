@@ -105,11 +105,28 @@ async fn login_refuses_a_disabled_user_over_the_real_route() {
         "a disabled user cannot mint a session"
     );
 
-    // A fresh (un-administered) user still logs in → 200 (auto-seed preserved).
-    let resp = router(gw)
+    // A fresh user logging into a workspace they are NOT a member of (acme already has bob) is now
+    // refused — global-identity decision #4 (zero memberships → no token). Auto-seed is preserved as
+    // the first-login-to-an-EMPTY-workspace bootstrap (decision #3), shown next.
+    let resp = router(gw.clone())
         .oneshot(json_post(
             "/login",
             json!({ "user": "newcomer", "workspace": "acme" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::FORBIDDEN,
+        "a non-member cannot mint into a workspace that already has members"
+    );
+
+    // The first login to a brand-new (empty) workspace bootstraps the requester (auto-seed preserved
+    // as the first-member bootstrap, global-identity decision #3).
+    let resp = router(gw)
+        .oneshot(json_post(
+            "/login",
+            json!({ "user": "newcomer", "workspace": "brand-new-ws" }),
         ))
         .await
         .unwrap();

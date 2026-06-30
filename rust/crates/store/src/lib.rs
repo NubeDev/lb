@@ -8,6 +8,7 @@
 //! State only (§3.3): the store holds state; motion is the bus's job. No pub/sub here.
 
 mod create;
+mod delete;
 mod graph;
 mod list;
 mod open;
@@ -18,10 +19,12 @@ mod scan;
 mod tables;
 mod taint;
 mod write;
+mod write_batch;
 mod write_journaled;
 mod write_tx;
 
 pub use create::create;
+pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};
 pub use list::list;
 pub use open::{Store, StoreError};
@@ -35,5 +38,6 @@ pub use taint::{
     TaintVerdict,
 };
 pub use write::write;
+pub use write_batch::{write_batch, DeleteBatch, UpsertBatch, MAX_BATCH};
 pub use write_journaled::{write_journaled, JournalWrite};
 pub use write_tx::{write_tx, Upsert};

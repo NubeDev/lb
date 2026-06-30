@@ -28,8 +28,7 @@ async fn post_is_refused_without_a_pub_grant() {
     let p = principal(ws, &[]); // no caps
 
     let err = post(
-        &node.store,
-        &node.bus,
+        &node,
         &p,
         ws,
         "general",
@@ -75,8 +74,7 @@ async fn a_grant_on_a_different_channel_does_not_grant_this_one() {
     let p = principal(ws, &["bus:chan/random:pub"]);
 
     let err = post(
-        &node.store,
-        &node.bus,
+        &node,
         &p,
         ws,
         "general",

@@ -9,14 +9,16 @@
 use std::sync::Arc;
 
 use lazybones_shell::{
-    channel_history as lib_history, channel_post as lib_post, NodeHandle,
+    channel_delete as lib_delete, channel_edit as lib_edit, channel_history as lib_history,
+    channel_post as lib_post, NodeHandle,
 };
 use lb_inbox::Item;
 use tokio::sync::Mutex;
 
 type Shared = Arc<Mutex<NodeHandle>>;
 
-// The command names below MUST match the TS `invoke("channel_post", …)` / `channel_history`.
+// The command names below MUST match the TS `invoke("channel_post", …)` / `channel_history` /
+// `channel_edit` / `channel_delete`.
 #[tauri::command]
 async fn channel_post(
     state: tauri::State<'_, Shared>,
@@ -36,6 +38,28 @@ async fn channel_history(
     lib_history(&handle, &channel).await
 }
 
+#[tauri::command]
+async fn channel_edit(
+    state: tauri::State<'_, Shared>,
+    channel: String,
+    id: String,
+    body: String,
+    ts: u64,
+) -> Result<Item, String> {
+    let handle = state.lock().await;
+    lib_edit(&handle, &channel, &id, &body, ts).await
+}
+
+#[tauri::command]
+async fn channel_delete(
+    state: tauri::State<'_, Shared>,
+    channel: String,
+    id: String,
+) -> Result<(), String> {
+    let handle = state.lock().await;
+    lib_delete(&handle, &channel, &id).await
+}
+
 pub fn run() {
     // Boot the node before the window comes up (the shell IS a node).
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -46,7 +70,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(shared)
-        .invoke_handler(tauri::generate_handler![channel_post, channel_history])
+        .invoke_handler(tauri::generate_handler![
+            channel_post,
+            channel_history,
+            channel_edit,
+            channel_delete
+        ])
         .run(tauri::generate_context!())
         .expect("error running the Lazybones shell");
 }

@@ -7,6 +7,7 @@
 //! flow that persists it lands at S4/S7.
 
 use lb_ext_loader::{grant, Manifest};
+use lb_mcp::ToolDescriptor;
 use thiserror::Error;
 
 use crate::boot::Node;
@@ -47,11 +48,28 @@ pub async fn load_extension(
         .map_err(|e| LoadError::Runtime(e.to_string()))?;
 
     let tools: Vec<String> = manifest.tools.iter().map(|t| t.name.clone()).collect();
+    let descriptors = descriptors_from(&manifest);
     node.registry
-        .register(manifest.id.clone(), tools.clone(), instance);
+        .register_descriptors(manifest.id.clone(), descriptors, instance);
 
     Ok(Loaded {
         granted_caps: granted,
         tools,
     })
+}
+
+/// Build the schema-bearing tool descriptors for `manifest`: name + title (the manifest
+/// description) + group (the ext id) + the optional `input_schema` (channels-command-palette
+/// scope). Shared by `load_extension` and `reload_extension` so the two paths cannot drift.
+pub(crate) fn descriptors_from(manifest: &Manifest) -> Vec<ToolDescriptor> {
+    manifest
+        .tools
+        .iter()
+        .map(|t| ToolDescriptor {
+            name: t.name.clone(),
+            title: t.description.clone(),
+            group: manifest.id.clone(),
+            input_schema: t.input_schema.clone(),
+        })
+        .collect()
 }

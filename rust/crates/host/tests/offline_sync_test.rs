@@ -108,8 +108,7 @@ async fn offline_edge_writes_apply_idempotently_on_reconnect() {
     //    to the edge's store; the hub never sees the live push.
     for (i, body) in ["alpha", "beta", "gamma"].iter().enumerate() {
         post(
-            &edge.store,
-            &edge.bus,
+            &edge,
             &p,
             ws,
             "general",
@@ -166,8 +165,7 @@ async fn replaying_the_same_items_again_does_not_duplicate() {
     let p = principal(ws, &["bus:chan/general:pub", "bus:chan/general:sub"]);
 
     post(
-        &edge.store,
-        &edge.bus,
+        &edge,
         &p,
         ws,
         "general",
@@ -217,8 +215,7 @@ async fn sync_never_crosses_the_workspace_wall() {
         .await
         .expect("hub syncs ws_b");
     post(
-        &edge.store,
-        &edge.bus,
+        &edge,
         &p_a,
         ws_a,
         "general",

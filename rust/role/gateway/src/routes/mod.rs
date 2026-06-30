@@ -19,11 +19,15 @@ mod dbview;
 mod ext;
 mod ext_ui;
 mod history;
+mod identity;
 mod inbox;
 mod ingest;
 mod login;
 mod mcp;
+mod mcp_catalog;
 mod members;
+mod membership;
+mod message;
 mod outbox;
 mod post;
 mod prefs;
@@ -37,7 +41,10 @@ mod workflow;
 mod workspace;
 
 pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, rotate_apikey};
-pub use admin_grants::{assign_grant, define_role, list_grants, list_roles, revoke_grant};
+pub use admin_grants::{
+    assign_grant, define_role, delete_role, list_grants, list_roles, resolve_caps, revoke_grant,
+    revoke_tokens_route,
+};
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};
 pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_users};
@@ -58,11 +65,21 @@ pub use ext::{
 };
 pub use ext_ui::serve_ext_ui;
 pub use history::get_history;
+pub use identity::{
+    create_identity, get_identity, identity_workspaces as identity_workspaces_route,
+    list_identities,
+};
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{find_series, latest_sample, list_series, read_samples, write_samples};
 pub use login::login;
 pub use mcp::mcp_call;
+pub use mcp_catalog::mcp_catalog;
 pub use members::{add_team_member, list_team_members};
+pub use membership::{
+    add_member_route as add_member, list_members_route as list_members,
+    remove_member_route as remove_member,
+};
+pub use message::{delete_message, edit_message};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
 pub use prefs::{
