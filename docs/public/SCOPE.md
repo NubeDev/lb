@@ -140,6 +140,27 @@ trusted-session auth and a durable disconnect-mid-permission contract; and **mod
 gated by the S4 grant. All six parts tested against real store/bus/gateway/spawned-ACP (only the LLM
 provider is stubbed). `cargo test --workspace` green except a pre-existing cross-node Zenoh flake.
 
+## Shipped (S10 — telemetry console: in-store capped sink + in-browser viewer)
+
+The platform is now **self-contained for everyday observability** (details:
+`observability/observability.md`) — no external monitoring stack needed to see what a tool just did.
+A reusable **`lb_store::capped_insert`** primitive keeps the newest *N* rows per a caller-chosen FIFO
+key (per-source or global) in one SurrealDB transaction; it is correct under concurrency via the
+transaction + a per-key in-process lock + a bounded retry on SurrealDB's retryable conflict (the
+concurrency test lands exactly `cap`, deterministically). A **`SurrealCappedLayer`** `tracing`
+subscriber (peer to stderr/OTLP, config-selected by `LB_TELEMETRY_SINK`, no `if cloud`) writes the
+redacted event schema (`params_digest` only — a planted secret reaches zero rows) to a capped
+`telemetry` table and mirrors onto a ws-walled tail subject. A gated **`telemetry:read`** MCP surface
+(`telemetry.query`/`trace`/`tail` + node-admin `telemetry.purge`), **hard-filtered to the caller's
+workspace server-side**, feeds an in-browser **console** with composable filters (source/actor/level/
+outcome/trace_id/text/time), a live tail over `GET /telemetry/stream`, a click-trace→timeline pivot,
+and a second **Audit lane** that reads the immutable mutation ledger as a *separate* store (degrades
+to a labelled empty state until audit ships — never fake rows). There is no `telemetry.write` (writes
+come from the Layer only) and cross-tenant operator reads are a separate, higher capability. Tested
+against real store/bus/gateway (capped FIFO + concurrency, deny-per-verb, workspace-isolation,
+planted-secret redaction, filter narrowing, trace correlation, and a live SSE row over a real spawned
+gateway). The OTLP peer sink + cross-hop trace propagation + metrics (the **emit** half) remain scoped.
+
 ## Shipped (S10 — host tools: built-in `host.*` node introspection)
 
 The host now exposes a read-only, backend/agent-facing `host.*` MCP family

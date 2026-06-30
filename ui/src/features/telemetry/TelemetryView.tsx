@@ -132,14 +132,17 @@ function LaneButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="sm"
       onClick={onClick}
-      className={`rounded px-3 py-1 text-sm ${
-        active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:text-foreground"
+      className={`h-auto rounded px-3 py-1 text-sm ${
+        active
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
-    </button>
+    </Button>
   );
 }

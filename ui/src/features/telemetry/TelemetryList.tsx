@@ -3,6 +3,7 @@
 // (the data + pivot come from `useTelemetry`). Empty state is honest ("no events"), never fake rows.
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { TelemetryRow } from "@/lib/telemetry";
 
 interface Props {
@@ -35,14 +36,15 @@ export function TelemetryList({ rows, onPivotTrace }: Props) {
             {row.msg}
           </span>
           {row.traceId ? (
-            <button
-              type="button"
-              className="shrink-0 text-accent underline-offset-2 hover:underline"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto shrink-0 px-1 py-0 font-mono text-accent underline-offset-2 hover:underline"
               onClick={() => onPivotTrace(row.traceId)}
               title="follow this trace"
             >
               {row.traceId.slice(0, 10)}
-            </button>
+            </Button>
           ) : (
             <span className="shrink-0 text-muted-foreground">—</span>
           )}

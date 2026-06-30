@@ -80,6 +80,7 @@ export function TelemetryFilterBar({ filter, onChange, live, onLive }: Props) {
         onChange={(e) => patch({ text: e.target.value || undefined })}
       />
       <label className="flex select-none items-center gap-1.5 text-sm text-muted-foreground">
+        {/* eslint-disable-next-line no-restricted-syntax -- a checkbox has no shadcn primitive in this repo */}
         <input
           type="checkbox"
           aria-label="live tail"

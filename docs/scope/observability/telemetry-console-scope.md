@@ -241,27 +241,26 @@ Mandatory categories from [`../testing/testing-scope.md`](../testing/testing-sco
   telemetry-only with an honest empty state, and the unified-view code must not hard-depend on audit
   tables existing — flagged so the implementing session sequences it.
 
-## Open questions
+## Open questions — RESOLVED (S10, see [session](../../sessions/observability/telemetry-console-session.md))
 
-- **Default caps + default key granularity per role.** Lean: **per-source** (per extension / per tool)
-  as the default key so a chatty source can't evict a quiet one, with a global per-ws ceiling as a
-  backstop; `cap` ≈ 1000/source on a workstation, smaller on a constrained appliance, larger on a hub.
-  Confirm the numbers and where they live in prefs.
-- **Trim cadence:** trim-on-every-insert (simplest, strict bound) vs. amortized every *m* inserts
-  (cheaper, bounded slack). Lean amortized with a small, **tested** slack bound. Resolve with a
-  benchmark on the ingest path.
-- **Does `telemetry.tail` reuse the agent-run SSE plumbing or get its own route?** Lean: its own
-  `routes/telemetry_stream.rs` modeled on `run_stream.rs` (one responsibility per file), sharing the
-  token-verify + ws-wall helpers.
-- **Cross-node console reads.** v1: the console reads the **local** node's ring (where the page is
-  served). Reading a *remote* node's ring (operator debugging an edge from the hub) is a routed
-  `telemetry.query` — confirm whether that lands in v1 or defers.
-- **Insert sequence source.** A per-`(ws,key)` monotonic counter vs. the record ULID for FIFO
-  ordering. Lean: ULID `id` (monotonic, no clock, no extra counter row) — confirm it orders correctly
-  under concurrent inserts in SurrealDB.
-- **Should `capped` live in `lb-store` or its own tiny crate?** Lean: `lb-store::capped` (one verb
-  file beside `scan.rs`/`write_tx.rs`) — it is a store primitive, reused by `series`/`run-events`, not
-  telemetry-specific.
+- **Default caps + default key granularity per role.** ✅ **Resolved:** per-source default key
+  (`KeySelector::PerSource`), `DEFAULT_CAP = 1000`, with a global per-ws backstop available via
+  `KeySelector::Global`. The cap is config (`SurrealCappedLayer::with_cap`) — smaller on an appliance,
+  larger on a hub. (Prefs-backed per-role override is a trivial follow-up; the mechanism is there.)
+- **Trim cadence:** ✅ **Resolved for v1: strict (trim every insert)** — the table never exceeds the
+  cap, the hard invariant the feature exists for. Amortized (every *m* inserts, a documented/tested
+  slack bound) is a deferred optimization, not needed until a benchmark shows the strict trim costs on
+  a busy ingest path.
+- **Does `telemetry.tail` reuse the agent-run SSE plumbing or get its own route?** ✅ **Resolved: its
+  own `routes/telemetry_stream.rs`** (modelled on `run_stream.rs`, sharing token-verify + ws-wall
+  helpers) — one responsibility per file.
+- **Cross-node console reads.** ✅ **Resolved: v1 reads the local node's ring.** A routed remote-node
+  `telemetry.query` (operator debugging an edge from the hub) is **deferred**.
+- **Insert sequence source.** ✅ **Resolved: the record ULID `id`** (no clock, no counter row). The
+  concurrency test confirms exact-cap ordering under concurrent inserts — *with* the per-key lock +
+  retry (SurrealDB's `kv-mem` raises a retryable conflict the design must handle, not just order on).
+- **Should `capped` live in `lb-store` or its own tiny crate?** ✅ **Resolved: `lb_store::capped`**
+  (one verb file beside `scan.rs`/`write_tx.rs`) — a reusable store primitive, not telemetry-specific.
 
 ## Related
 
