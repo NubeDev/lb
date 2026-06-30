@@ -97,6 +97,11 @@ fn flow(id: &str, nodes: Vec<Node>) -> Flow {
         nodes,
         failure_policy: FailurePolicy::Halt,
         deleted: false,
+        enabled: true,
+        start_on_boot: false,
+        placement: lb_flows::Placement::Either,
+        cron: None,
+        next_attempt_ts: 0,
     }
 }
 
