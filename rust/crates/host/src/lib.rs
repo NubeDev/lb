@@ -77,8 +77,10 @@ pub use apikey::{
     TOMBSTONE_STATUS as APIKEY_TOMBSTONE_STATUS,
 };
 pub use assets::{
-    add_member, call_asset_tool, get_doc, grant_skill, link_doc, list_docs, list_granted_skills,
-    load_skill, put_doc, put_skill, revoke_skill, share_doc, AssetError, SkillCatalogEntry,
+    add_member, backlinks, call_asset_tool, delete_asset, delete_doc, get_asset, get_doc,
+    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill,
+    MAX_ASSET_BYTES, put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc,
+    AssetError, SkillCatalogEntry,
 };
 pub use authz::{
     authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,

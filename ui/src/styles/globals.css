@@ -182,6 +182,49 @@ body {
   }
 }
 
+/* React Flow canvas — token-bound so the flows canvas tracks light/dark + accent (the xyflow
+   stylesheet ships a fixed light chrome that otherwise ignores the theme). */
+.react-flow {
+  background: hsl(var(--bg));
+}
+.react-flow__edge-path {
+  stroke: hsl(var(--border));
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: hsl(var(--accent));
+}
+.react-flow__handle {
+  background: hsl(var(--accent));
+  border: 0;
+}
+.react-flow__attribution {
+  background: transparent;
+  color: hsl(var(--muted));
+  font-size: 9px;
+}
+.react-flow__attribution a {
+  color: hsl(var(--muted));
+}
+.react-flow__controls {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  border: 1px solid hsl(var(--border));
+}
+.react-flow__controls-button {
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+  color: hsl(var(--fg));
+  fill: hsl(var(--fg));
+}
+.react-flow__controls-button:hover {
+  background: hsl(var(--accent) / 0.12);
+}
+.react-flow__controls-button svg {
+  fill: hsl(var(--fg));
+}
+
 /* Create-series wizard entrance — a quiet fade + lift, reduced-motion safe. */
 @keyframes wizard-backdrop-in {
   from { opacity: 0; }

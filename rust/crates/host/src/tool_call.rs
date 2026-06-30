@@ -57,6 +57,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("bus.")
         || qualified_tool.starts_with("reminder.")
         || qualified_tool.starts_with("query.")
+        || qualified_tool.starts_with("assets.")
         || qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")
@@ -206,6 +207,16 @@ async fn dispatch_at_depth(
             // bridge as any verb (rule 7). The verb re-runs its own `authorize_tool` gate inside the
             // service, so the outer gate above and the inner one agree (one gate, two callers).
             crate::call_tools_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("assets.") {
+            // document-store / files scope: the asset verbs (`assets.put_doc`, `assets.get_doc`,
+            // `assets.put_asset`, …) over the SAME MCP bridge every host-native verb uses. The
+            // outer gate already ran `mcp:assets.<verb>:call`; `call_asset_tool` re-runs it
+            // (defense in depth, and it is the tested bridge the UI/gateway calls directly too).
+            // Routing here — rather than leaving `assets.*` as a side call — is what makes a
+            // markdown **save** flow through the undo auto-capture wrapper at depth 0
+            // (document-store scope: "save participates in undo/redo") and lets a guest
+            // extension reach the store over the same dispatch path as everyone else.
+            crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("chains.") {

@@ -8,16 +8,20 @@
 use lb_store::{list as store_list, Store, StoreError};
 
 use super::model::Doc;
-use super::TABLE;
+use super::{TABLE, TOMBSTONE};
 
-/// Return every doc in `ws` owned by `owner`, ordered by `ts` ascending. Empty if none —
-/// never another workspace's docs.
+/// Return every doc in `ws` owned by `owner`, ordered by `ts` ascending. Tombstoned
+/// (soft-deleted) docs are skipped. Empty if none — never another workspace's docs.
 pub async fn list_docs(store: &Store, ws: &str, owner: &str) -> Result<Vec<Doc>, StoreError> {
     let rows = store_list(store, ws, TABLE, "owner", owner).await?;
-    let mut docs: Vec<Doc> = rows
-        .into_iter()
-        .map(|v| serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string())))
-        .collect::<Result<_, _>>()?;
+    let mut docs: Vec<Doc> = Vec::new();
+    for v in rows {
+        if v.get("id").and_then(|k| k.as_str()) == Some(TOMBSTONE) {
+            continue;
+        }
+        let d: Doc = serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?;
+        docs.push(d);
+    }
     docs.sort_by_key(|d| d.ts);
     Ok(docs)
 }

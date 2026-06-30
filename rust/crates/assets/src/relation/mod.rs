@@ -17,12 +17,14 @@
 //! One verb per file (FILE-LAYOUT §3).
 
 mod grants;
+mod inverse;
 mod list;
 mod model;
 mod relate;
 mod unrelate;
 
 pub use grants::list_skill_grants;
+pub use inverse::list_related_inverse;
 pub use list::list_related;
 pub use model::Relation;
 pub use relate::{relate, related};

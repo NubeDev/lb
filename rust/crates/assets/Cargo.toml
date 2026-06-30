@@ -10,6 +10,7 @@ lb-store.workspace = true
 lb-flows.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+base64ct = { version = "1", features = ["alloc"] }
 thiserror.workspace = true
 
 [dev-dependencies]

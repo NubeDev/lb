@@ -45,6 +45,8 @@ pub async fn put_doc(
         &body.id,
         &body.title,
         &body.content,
+        lb_assets::ContentType::Text,
+        &[],
         gw.now,
     )
     .await

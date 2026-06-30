@@ -18,4 +18,9 @@ pub enum AssetError {
     /// The durable store rejected the operation.
     #[error("store error: {0}")]
     Store(#[from] StoreError),
+    /// The payload exceeded the v1 inline-asset size bound (document-store scope risk). Never
+    /// raised silently — a clear, honest rejection so a caller knows streaming/buckets is the
+    /// path for larger blobs.
+    #[error("asset too large")]
+    TooLarge,
 }

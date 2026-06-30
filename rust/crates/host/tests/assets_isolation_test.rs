@@ -4,6 +4,7 @@
 //! the store+MCP isolation the S4 prompt requires; the MCP half is in assets_mcp_test.rs.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
+use lb_assets::ContentType;
 use lb_host::{get_doc, grant_skill, list_docs, load_skill, put_doc, put_skill, AssetError};
 use lb_store::Store;
 
@@ -30,7 +31,7 @@ async fn ws_b_cannot_read_ws_a_doc() {
         "ws-iso-a",
         &["store:doc/*:read", "store:doc/*:write"],
     );
-    put_doc(&store, &ada_a, "ws-iso-a", "scope-x", "T", "secret", 1)
+    put_doc(&store, &ada_a, "ws-iso-a", "scope-x", "T", "secret", ContentType::Text, &[], 1)
         .await
         .unwrap();
 
@@ -61,7 +62,7 @@ async fn ws_b_list_never_returns_ws_a_docs() {
         "ws-iso-list-a",
         &["store:doc/*:read", "store:doc/*:write"],
     );
-    put_doc(&store, &ada_a, "ws-iso-list-a", "d1", "T", "x", 1)
+    put_doc(&store, &ada_a, "ws-iso-list-a", "d1", "T", "x", ContentType::Text, &[], 1)
         .await
         .unwrap();
 

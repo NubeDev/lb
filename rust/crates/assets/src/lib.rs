@@ -20,14 +20,18 @@
 //!   [`unrelate`] / [`list_related`]
 //! - `install` — [`Install`] + [`record_install`] / [`read_install`]
 
+mod asset;
 mod doc;
 mod install;
 mod relation;
 mod skill;
 
-pub use doc::{get_doc, list_docs, put_doc, Doc, Visibility};
+pub use asset::{delete_asset, get_asset, list_assets, put_asset, Asset};
+pub use doc::{delete_doc, get_doc, list_docs, put_doc, ContentType, Doc, Visibility};
 pub use install::{
     delete_install, list_installs, read_install, record_install, ExtUi, Install, Tier,
 };
-pub use relation::{list_related, list_skill_grants, relate, related, unrelate, Relation};
+pub use relation::{
+    list_related, list_related_inverse, list_skill_grants, relate, related, unrelate, Relation,
+};
 pub use skill::{get_skill, list_skills, put_skill, Skill};

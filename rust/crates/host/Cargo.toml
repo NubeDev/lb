@@ -50,6 +50,7 @@ iana-time-zone.workspace = true
 if-addrs.workspace = true
 hostname.workspace = true
 tokio.workspace = true
+base64ct = { version = "1", features = ["alloc"] }
 
 [dev-dependencies]
 tokio.workspace = true

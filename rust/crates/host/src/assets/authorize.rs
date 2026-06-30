@@ -35,6 +35,18 @@ pub fn authorize_skill(
     gate(principal, ws, &format!("skill/{id}"), action)
 }
 
+/// Authorize `action` on the binary-asset surface for asset `id` in workspace `ws`
+/// (document-store scope). `Ok(())` only if gate 1 (ws) and gate 2
+/// (`store:asset/{id}:{action}`) both pass. Membership is checked separately (`may_read_asset`).
+pub fn authorize_asset(
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+    action: Action,
+) -> Result<(), AssetError> {
+    gate(principal, ws, &format!("asset/{id}"), action)
+}
+
 fn gate(principal: &Principal, ws: &str, resource: &str, action: Action) -> Result<(), AssetError> {
     let req = Request::new(ws, Surface::Store, resource, action);
     match check(principal, &req) {

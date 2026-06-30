@@ -102,7 +102,7 @@ export function NodeConfigPanel({
         errors={validity.errors}
       />
       {error ? (
-        <span aria-label="config error" className="text-xs text-denied">
+        <span aria-label="config error" className="text-xs text-destructive">
           {error}
         </span>
       ) : null}
@@ -128,7 +128,7 @@ export function NodeConfigPanel({
         ) : null}
       </div>
       {!validity.ok ? (
-        <span className="text-xs text-denied">Fix the invalid field(s) before saving.</span>
+        <span className="text-xs text-destructive">Fix the invalid field(s) before saving.</span>
       ) : null}
     </div>
   );

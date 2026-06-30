@@ -63,9 +63,14 @@ None owns the others. This scope owns the *operational* projection only.
 
 ## Non-goals
 
-- **We do not build a dashboards/observability UI, log store, or query engine.** The platform's job
-  is to **emit** clean OpenTelemetry-shaped signal; collection and visualization are external and
-  best-of-breed (OTLP → Tempo/Jaeger for traces, Loki for logs, Prometheus/Grafana for metrics).
+- **We do not build a dashboards/observability UI, log store, or query engine *in this scope*.** This
+  scope **emits** clean OpenTelemetry-shaped signal; collection and visualization are external and
+  best-of-breed (OTLP → Tempo/Jaeger for traces, Loki for logs, Prometheus/Grafana for metrics). The
+  **self-contained, no-external-stack** consumer half — a FIFO-capped SurrealDB sink + an in-browser
+  console with filters — is its own sibling scope,
+  [`telemetry-console-scope.md`](telemetry-console-scope.md), which depends on this one. (It does not
+  contradict the export-first posture: the capped sink is *recent* history, OTLP stays the path for
+  long retention.)
   Building an in-core telemetry store would (a) reinvent a second datastore for non-state data
   (against rule #2's spirit) and (b) duplicate mature tools. The `debugging/` history system
   (post-hoc, human-curated) stays the in-repo narrative; this is the machine signal that feeds it.

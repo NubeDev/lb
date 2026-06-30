@@ -4439,6 +4439,7 @@ dependencies = [
 name = "lb-assets"
 version = "0.1.0"
 dependencies = [
+ "base64ct",
  "lb-flows",
  "lb-store",
  "serde",
@@ -4530,6 +4531,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64ct",
  "chrono",
  "chrono-tz",
  "ed25519-dalek",

@@ -6,14 +6,17 @@
 //! capability check (`store:doc/*:…`) and the membership gate (owner / shared-team /
 //! linked-channel) before calling them.
 
+mod delete;
 mod get;
 mod list;
 mod model;
 mod put;
 
+pub use delete::delete_doc;
+pub(crate) use delete::TOMBSTONE;
 pub use get::get_doc;
 pub use list::list_docs;
-pub use model::{Doc, Visibility};
+pub use model::{ContentType, Doc, Visibility};
 pub use put::put_doc;
 
 /// The store table all doc assets live in, within a workspace namespace.

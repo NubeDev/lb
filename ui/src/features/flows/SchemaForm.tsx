@@ -68,7 +68,7 @@ export function SchemaForm({ schema, value, onChange, disabled, errors = {} }: S
   const props = (schema.properties ?? {}) as Record<string, JsonSchema>;
   const required = new Set((schema.required ?? []) as string[]);
   if (schema.type !== undefined && schema.type !== "object") {
-    return <div className="text-xs text-denied">unsupported schema (top-level must be object)</div>;
+    return <div className="text-xs text-destructive">unsupported schema (top-level must be object)</div>;
   }
   return (
     <div className="flex flex-col gap-3" aria-label="node config form">
@@ -214,7 +214,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   // A descriptor that exceeds the covered subset — fail LOUD (Decision 3 guardrail).
   return (
-    <div className="text-xs text-denied">
+    <div className="text-xs text-destructive">
       unsupported schema for `{name}` (type `{type ?? "?"}`)
     </div>
   );
@@ -237,10 +237,10 @@ function Labeled({
     <div className="flex flex-col gap-1">
       <label htmlFor={name} className="text-xs font-medium text-fg">
         {label}
-        {required ? <span className="text-denied"> *</span> : null}
+        {required ? <span className="text-destructive"> *</span> : null}
       </label>
       {children}
-      {error ? <span className="text-xs text-denied">{error}</span> : null}
+      {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>
   );
 }

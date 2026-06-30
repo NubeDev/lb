@@ -16,7 +16,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `observability/`, `audit/`, `undo/` — the **three cross-cutting projections of the host dispatch
   chokepoint** (README §6.5/§6.6), scoped together as the S10 retrofit: `observability/` (structured
   logs + distributed traces + metrics, emitted everywhere with a `trace_id` that survives the routed
-  hop), `audit/` (an immutable, hash-chained, workspace-walled ledger of every allow/deny — generalizes
+  hop — `observability-scope.md` is the **emit** half; `telemetry-console-scope.md` is the **consumer**
+  half: a FIFO-capped SurrealDB sink (reusable `lb-store::capped` ring), a gated workspace-walled
+  `telemetry.query`/`tail` read surface, and an in-browser console with first-class filters that also
+  reads the `audit/` ledger lane — the self-contained, no-external-Grafana-required view), `audit/` (an
+  immutable, hash-chained, workspace-walled ledger of every allow/deny — generalizes
   §6.14's model-call audit), and `undo/` (a reversible-command journal whose hard line is *reverse
   state, compensate motion*). See "The shared seam" in `observability/observability-scope.md`.
 - `auth-caps/` — the capability grammar, token, and grant delegation; plus `edge-trust-scope.md` (node

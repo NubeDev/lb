@@ -1,8 +1,10 @@
 # Observability — structured logs, traces, metrics
 
-> **TODO (stub).** Not shipped yet. The ask lives in
-> [`scope/observability/observability-scope.md`](../../scope/observability/observability-scope.md);
-> this becomes the source-of-truth "as built" doc when the S10 slice ships.
+> **TODO (stub).** Not shipped yet. The ask lives in two scope docs:
+> [`observability-scope.md`](../../scope/observability/observability-scope.md) (the **emit** half) and
+> [`telemetry-console-scope.md`](../../scope/observability/telemetry-console-scope.md) (the **consumer**
+> half — the FIFO-capped SurrealDB sink + in-browser console with filters). This becomes the
+> source-of-truth "as built" doc when the S10 slices ship.
 
 Planned: every node **emits** OpenTelemetry-shaped signal via the Rust `tracing` ecosystem — spans
 around each mediated tool call / store tx / bus route / job step / relay delivery, structured logs

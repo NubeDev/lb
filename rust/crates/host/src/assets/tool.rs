@@ -20,8 +20,8 @@ use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::{
-    get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
-    AssetError,
+    backlinks, delete_asset, delete_doc, get_asset, get_doc, grant_skill, link_doc, list_assets,
+    list_docs, load_skill, put_asset, put_doc, put_skill, share_doc, unshare_doc, AssetError,
 };
 
 /// Dispatch an `assets.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -44,6 +44,8 @@ pub async fn call_asset_tool(
 
     let out = match verb {
         "put_doc" => {
+            let content_type = parse_content_type(input.get("content_type"));
+            let tags = parse_string_list(input.get("tags"));
             let d = put_doc(
                 store,
                 principal,
@@ -51,6 +53,8 @@ pub async fn call_asset_tool(
                 str_arg(input, "id")?,
                 str_arg(input, "title")?,
                 str_arg(input, "content")?,
+                content_type,
+                &tags,
                 u64_arg(input, "ts")?,
             )
             .await
@@ -61,7 +65,14 @@ pub async fn call_asset_tool(
             let d = get_doc(store, principal, ws, str_arg(input, "id")?)
                 .await
                 .map_err(asset_to_tool)?;
-            json!({ "id": d.id, "title": d.title, "content": d.content, "owner": d.owner })
+            json!({ "id": d.id, "title": d.title, "content": d.content, "owner": d.owner,
+                    "content_type": d.content_type, "tags": d.tags })
+        }
+        "delete_doc" => {
+            delete_doc(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "ok": true })
         }
         "list_docs" => {
             let docs = list_docs(store, principal, ws)
@@ -70,15 +81,19 @@ pub async fn call_asset_tool(
             json!({ "docs": docs.iter().map(|d| json!({"id": d.id, "title": d.title})).collect::<Vec<_>>() })
         }
         "share_doc" => {
-            share_doc(
-                store,
-                principal,
-                ws,
-                str_arg(input, "id")?,
-                str_arg(input, "team")?,
-            )
-            .await
-            .map_err(asset_to_tool)?;
+            let subject =
+                str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
+            share_doc(store, principal, ws, str_arg(input, "id")?, subject)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "ok": true })
+        }
+        "unshare_doc" => {
+            let subject =
+                str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
+            unshare_doc(store, principal, ws, str_arg(input, "id")?, subject)
+                .await
+                .map_err(asset_to_tool)?;
             json!({ "ok": true })
         }
         "link_doc" => {
@@ -91,6 +106,46 @@ pub async fn call_asset_tool(
             )
             .await
             .map_err(asset_to_tool)?;
+            json!({ "ok": true })
+        }
+        "backlinks" => {
+            let srcs = backlinks(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "docs": srcs })
+        }
+        "put_asset" => {
+            let bytes = bytes_arg(input, "bytes")?;
+            let a = put_asset(
+                store,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                str_arg(input, "mime")?,
+                bytes,
+                u64_arg(input, "ts")?,
+            )
+            .await
+            .map_err(asset_to_tool)?;
+            json!({ "id": a.id, "size": a.bytes.len() })
+        }
+        "get_asset" => {
+            let a = get_asset(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "id": a.id, "mime": a.mime, "owner": a.owner,
+                    "bytes": serde_json::Value::String(base64_string(&a.bytes)) })
+        }
+        "list_assets" => {
+            let assets = list_assets(store, principal, ws)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "assets": assets.iter().map(|a| json!({"id": a.id, "mime": a.mime, "size": a.bytes.len()})).collect::<Vec<_>>() })
+        }
+        "delete_asset" => {
+            delete_asset(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
             json!({ "ok": true })
         }
         "put_skill" => {
@@ -133,6 +188,7 @@ fn asset_to_tool(e: AssetError) -> ToolError {
     match e {
         AssetError::Denied => ToolError::Denied,
         AssetError::NotFound => ToolError::NotFound,
+        AssetError::TooLarge => ToolError::BadInput("asset too large".into()),
         AssetError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }
@@ -149,4 +205,39 @@ fn u64_arg(input: &Value, key: &str) -> Result<u64, ToolError> {
         .get(key)
         .and_then(|v| v.as_u64())
         .ok_or_else(|| ToolError::BadInput(format!("missing u64 arg: {key}")))
+}
+
+/// Accept `content_type` as a string ("markdown" | "text"); default to `text` (the S4 legacy
+/// opaque content) when absent, so existing `put_doc` callers keep working unmodified.
+fn parse_content_type(v: Option<&Value>) -> lb_assets::ContentType {
+    use lb_assets::ContentType;
+    match v.and_then(|v| v.as_str()) {
+        Some("markdown") => ContentType::Markdown,
+        _ => ContentType::Text,
+    }
+}
+
+/// Accept `tags` as a JSON array of strings; empty when absent.
+fn parse_string_list(v: Option<&Value>) -> Vec<String> {
+    v.and_then(|v| v.as_array())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Accept `bytes` as a base64 string (the asset payload over JSON). Required for `put_asset`.
+fn bytes_arg(input: &Value, key: &str) -> Result<Vec<u8>, ToolError> {
+    use base64ct::Encoding;
+    let s = str_arg(input, key)?;
+    base64ct::Base64::decode_vec(s)
+        .map_err(|e| ToolError::BadInput(format!("invalid base64 for {key}: {e}")))
+}
+
+/// Encode the asset payload back to base64 for the JSON response.
+fn base64_string(bytes: &[u8]) -> String {
+    use base64ct::Encoding;
+    base64ct::Base64::encode_string(bytes)
 }

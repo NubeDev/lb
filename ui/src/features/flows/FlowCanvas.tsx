@@ -22,7 +22,20 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
+import {
+  Download,
+  Play,
+  RotateCcw,
+  Save,
+  Square,
+  Trash2,
+  Upload,
+  Pause,
+} from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   cancelFlow,
   deleteFlow,
@@ -40,6 +53,7 @@ import {
   flowToNodes,
   nodesToFlowNodes,
   snapshotColours,
+  snapshotValues,
   type FlowCanvasNode,
 } from "./flowGraph";
 import { FlowNodeView } from "./FlowNodeView";
@@ -96,6 +110,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
 
   // Paint nodes from the live run snapshot + apply the executed-node-lock.
   const colours = useMemo(() => (snapshot ? snapshotColours(snapshot) : {}), [snapshot]);
+  const values = useMemo(() => (snapshot ? snapshotValues(snapshot) : {}), [snapshot]);
   const locked = useMemo(
     () => (snapshot ? executedNodeIds(snapshot) : new Set<string>()),
     [snapshot],
@@ -104,15 +119,20 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
 
   const paintedNodes = useMemo(
     () =>
-      nodes.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          colour: colours[n.id] ?? "pending",
-          locked: locked.has(n.id),
-        },
-      })),
-    [nodes, colours, locked],
+      nodes.map((n) => {
+        const v = values[n.id];
+        return {
+          ...n,
+          data: {
+            ...n.data,
+            colour: colours[n.id] ?? "pending",
+            locked: locked.has(n.id),
+            output: v?.output,
+            error: v?.error ?? null,
+          },
+        };
+      }),
+    [nodes, colours, values, locked],
   );
 
   const onNodesChange = useCallback(
@@ -296,33 +316,39 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const selectedDescriptor = selectedNode ? descriptorByType.get(selectedNode.type) ?? null : null;
 
   return (
-    <div aria-label="flow canvas" className="flex flex-1 flex-col">
-      <div className="flex items-center gap-2 p-2">
-        <strong className="text-sm text-fg">{flow.name || flow.id}</strong>
-        <span className="text-xs text-muted">v{flow.version}</span>
-        <Button aria-label="save flow" onClick={handleSave} variant="outline" size="sm">
+    <section aria-label="flow canvas" className="flex min-w-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/60 px-3 py-2">
+        <Button aria-label="save flow" onClick={handleSave} variant="outline" size="sm" className="gap-1.5">
+          <Save size={13} />
           Save
         </Button>
-        <Button aria-label="run flow" onClick={handleRun} size="sm">
+        <Button aria-label="run flow" onClick={handleRun} size="sm" className="gap-1.5">
+          <Play size={13} />
           Run
         </Button>
         {runActive ? (
           <>
-            <Button aria-label="suspend run" onClick={() => handleLifecycle("suspend")} variant="outline" size="sm">
+            <Button aria-label="suspend run" onClick={() => handleLifecycle("suspend")} variant="outline" size="sm" className="gap-1.5">
+              <Pause size={13} />
               Suspend
             </Button>
-            <Button aria-label="resume run" onClick={() => handleLifecycle("resume")} variant="outline" size="sm">
+            <Button aria-label="resume run" onClick={() => handleLifecycle("resume")} variant="outline" size="sm" className="gap-1.5">
+              <Play size={13} />
               Resume
             </Button>
-            <Button aria-label="cancel run" onClick={() => handleLifecycle("cancel")} variant="outline" size="sm">
+            <Button aria-label="cancel run" onClick={() => handleLifecycle("cancel")} variant="outline" size="sm" className="gap-1.5">
+              <Square size={13} />
               Cancel
             </Button>
           </>
         ) : null}
-        <Button aria-label="undo" onClick={handleUndo} variant="ghost" size="sm" disabled={undoStack.length === 0}>
+        <div className="mx-1 h-5 w-px bg-border" />
+        <Button aria-label="undo" onClick={handleUndo} variant="ghost" size="sm" disabled={undoStack.length === 0} className="gap-1.5">
+          <RotateCcw size={13} />
           Undo
         </Button>
-        <Button aria-label="export flow" onClick={handleExport} variant="ghost" size="sm">
+        <Button aria-label="export flow" onClick={handleExport} variant="ghost" size="sm" className="gap-1.5">
+          <Download size={13} />
           Export
         </Button>
         <Button
@@ -330,7 +356,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           onClick={() => importedFile.current?.click()}
           variant="ghost"
           size="sm"
+          className="gap-1.5"
         >
+          <Upload size={13} />
           Import
         </Button>
         {/* eslint-disable-next-line no-restricted-syntax -- a hidden native file picker; no shadcn equivalent */}
@@ -345,24 +373,44 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
             e.target.value = "";
           }}
         />
-        <Button aria-label="delete flow" onClick={handleDelete} variant="ghost" size="sm">
-          Delete
-        </Button>
-        {saveError ? (
-          <span aria-label="flow error" className="text-xs text-denied">
-            {saveError}
-          </span>
-        ) : null}
-        {runError ? (
-          <span aria-label="run error" className="text-xs text-denied">
-            {runError}
-          </span>
-        ) : null}
-        {snapshot ? (
-          <span aria-label="run status" data-status={snapshot.status} className="text-xs text-fg">
-            {snapshot.status}
-          </span>
-        ) : null}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {snapshot ? (
+            <Badge
+              variant="outline"
+              data-status={snapshot.status}
+              className={cn(
+                "rounded-full capitalize",
+                snapshot.status === "success" && "border-emerald-500/40 text-emerald-600 dark:text-emerald-400",
+                (snapshot.status === "failed" || snapshot.status === "partialFailure") &&
+                  "border-destructive/40 text-destructive",
+                snapshot.status === "running" && "border-amber-500/50 text-amber-600 dark:text-amber-400",
+              )}
+              aria-label="run status"
+            >
+              {snapshot.status}
+            </Badge>
+          ) : null}
+          {saveError ? (
+            <span aria-label="flow error" className="text-xs text-destructive">
+              {saveError}
+            </span>
+          ) : null}
+          {runError ? (
+            <span aria-label="run error" className="text-xs text-destructive">
+              {runError}
+            </span>
+          ) : null}
+          <Button
+            aria-label="delete flow"
+            onClick={handleDelete}
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted hover:text-destructive"
+          >
+            <Trash2 size={13} />
+            Delete
+          </Button>
+        </div>
       </div>
       {snapshot ? (
         <div aria-label="v-pinned banner" className="bg-accent/10 px-3 py-1 text-xs text-fg">
@@ -392,7 +440,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
             onNodeDoubleClick={(_, n) => onDeleteNode(n.id)}
             fitView
           >
-            <Background />
+            <Background gap={18} size={1} color="hsl(var(--border))" />
             <Controls />
           </ReactFlow>
         </div>
@@ -411,7 +459,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           error={panelError}
         />
       </div>
-    </div>
+    </section>
   );
 }
 

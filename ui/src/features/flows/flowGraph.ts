@@ -18,6 +18,11 @@ export interface FlowNodeData extends Record<string, unknown> {
   locked: boolean;
   /** True when the caller lacks the node's underlying tool cap (shown-but-marked). */
   gated: boolean;
+  /** The node's last settled output value (from `flows.runs.get`) — shown on the node so a run
+   *  is legible without opening the panel. Undefined when the node hasn't run / produced nothing. */
+  output?: unknown;
+  /** The node's recorded error text when its outcome is `err`. */
+  error?: string | null;
 }
 
 export type FlowCanvasNode = Node<FlowNodeData, "flow">;
@@ -101,6 +106,20 @@ export function executedNodeIds(snap: FlowRunSnapshot): Set<string> {
   return new Set((snap.steps ?? []).filter((s) => s.terminal).map((s) => s.id));
 }
 
+/** A run snapshot → each node's recorded `output`/`error` (the value legibility surface). The host
+ *  records these as a node settles; the canvas paints them on the node so the run is readable at a
+ *  glance. (`flows.watch` SSE is the named follow-up that streams these live; today the bounded
+ *  `flows.runs.get` poll delivers them on each tick.) */
+export function snapshotValues(
+  snap: FlowRunSnapshot,
+): Record<string, { output?: unknown; error?: string | null }> {
+  const out: Record<string, { output?: unknown; error?: string | null }> = {};
+  for (const s of snap.steps ?? []) {
+    out[s.id] = { output: s.output, error: s.error ?? null };
+  }
+  return out;
+}
+
 function colourOf(outcome: string | null, claim?: string): NodeColour {
   switch (outcome) {
     case "ok":
@@ -114,11 +133,32 @@ function colourOf(outcome: string | null, claim?: string): NodeColour {
   }
 }
 
-/** The CSS colour for a node colour (Tailwind-free so the canvas node can inline it). */
+/** The CSS colour for a node colour (kept for callers that need a literal; the canvas node itself
+ *  paints via `COLOUR_BORDER` token classes so it tracks the theme). */
 export const COLOUR_HEX: Record<NodeColour, string> = {
   ok: "#16a34a",
   err: "#dc2626",
   skipped: "#9ca3af",
   running: "#f59e0b",
   pending: "#e5e7eb",
+};
+
+/** Token-driven Tailwind classes for each run colour — the node border + a status dot track the
+ *  outcome AND the active theme (light/dark + accent) without hardcoded hex. Body/labels use the
+ *  `bg`/`fg`/`muted` tokens; only the outcome accent is a semantic hue (it carries information). */
+export const COLOUR_BORDER: Record<NodeColour, string> = {
+  ok: "border-emerald-500/70",
+  err: "border-destructive/70",
+  skipped: "border-muted/50",
+  running: "border-amber-500/80",
+  pending: "border-border",
+};
+
+/** A small status dot class per colour (the live indicator on each node header). */
+export const COLOUR_DOT: Record<NodeColour, string> = {
+  ok: "bg-emerald-500",
+  err: "bg-destructive",
+  skipped: "bg-muted",
+  running: "bg-amber-500",
+  pending: "bg-border",
 };

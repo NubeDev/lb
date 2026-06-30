@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
+use lb_assets::ContentType;
 use lb_host::{invoke, put_doc, AllowedTool, Invocation, Node};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 
@@ -48,6 +49,8 @@ async fn an_agent_in_ws_b_cannot_read_ws_a_substrate_doc() {
         "secret",
         "Secret",
         "ws-a only",
+        ContentType::Text,
+        &[],
         1,
     )
     .await

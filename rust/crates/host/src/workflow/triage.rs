@@ -65,11 +65,22 @@ pub async fn triage<M: ModelAccess>(
     )
     .await?;
 
-    // The draft becomes a first-class doc, owned by the caller, shared to the team (S4).
+    // The draft becomes a first-class doc, owned by the caller, shared to the team (S4). The
+    // body is markdown (document-store typed content); an empty tag list is the v1 flat set.
     let title = format!("Scope: issue {issue_id}");
-    put_doc(&node.store, caller, ws, doc_id, &title, &body, ts)
-        .await
-        .map_err(asset_err)?;
+    put_doc(
+        &node.store,
+        caller,
+        ws,
+        doc_id,
+        &title,
+        &body,
+        lb_assets::ContentType::Markdown,
+        &[],
+        ts,
+    )
+    .await
+    .map_err(asset_err)?;
     share_doc(&node.store, caller, ws, doc_id, team)
         .await
         .map_err(asset_err)?;
@@ -95,6 +106,7 @@ fn asset_err(e: crate::assets::AssetError) -> WorkflowError {
     use crate::assets::AssetError;
     match e {
         AssetError::Denied => WorkflowError::Denied,
+        AssetError::TooLarge => WorkflowError::Denied,
         AssetError::NotFound => WorkflowError::NotFound,
         AssetError::Store(s) => WorkflowError::Store(s),
     }

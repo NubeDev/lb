@@ -15,6 +15,11 @@ use serde_json::Value;
 
 use lb_inbox::{record_id, TABLE as INBOX_TABLE};
 
+/// The store table for doc assets (must match `lb_assets::doc::TABLE`).
+const DOC_TABLE: &str = "doc";
+/// The store table for binary assets (must match `lb_assets::asset::TABLE`).
+const ASSET_TABLE: &str = "asset";
+
 /// How the dispatch seam should capture a tool call.
 pub(crate) enum CapturePlan {
     /// A self-contained single-record upsert the seam can snapshot: capture this `(table, id)`'s
@@ -48,6 +53,34 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
             _ => CapturePlan::NotMutating,
         },
 
+        // document-store scope: a markdown **save** is a single-record doc upsert, so it is the
+        // same reversible floor as an inbox record — the before-image is the prior `doc:{id}`
+        // (empty for a first save), captured here and restored by the journal on undo. The
+        // doc-link/embed edges a markdown save ALSO writes are derived index, not part of the
+        // captured record; restoring the body leaves the index slightly ahead until the next
+        // save reconciles — an acceptable v1 trade (orphan-edge pruning is the deferred GC job).
+        "assets.put_doc" | "assets.delete_doc" => match str_arg(input, "id") {
+            Some(id) => CapturePlan::Reversible {
+                table: DOC_TABLE.to_string(),
+                id: id.to_string(),
+            },
+            _ => CapturePlan::NotMutating,
+        },
+        // A binary-asset put/delete is likewise a single-record (tombstone) upsert → reversible.
+        "assets.put_asset" | "assets.delete_asset" => match str_arg(input, "id") {
+            Some(id) => CapturePlan::Reversible {
+                table: ASSET_TABLE.to_string(),
+                id: id.to_string(),
+            },
+            _ => CapturePlan::NotMutating,
+        },
+
+        // document-store sharing/links: these write ONLY relation edges (a different table, and
+        // a `unrelate` is the reverse — not yet a captured verb). Marked non-generic so a save
+        // that also shares is still captured by its doc upsert above; a pure share is journaled
+        // not-undoable (honest: restoring the edge set is a separate concern).
+        "assets.share_doc" | "assets.unshare_doc" | "assets.link_doc" => CapturePlan::NonGeneric,
+
         // Mutating host verbs whose footprint is not a single nameable record (or that produce
         // motion): marked not-undoable. `outbox.enqueue`/`inbox.resolve` reach the outbox and will
         // also taint at runtime; flagging them here keeps the read-vs-write split explicit.
@@ -58,7 +91,9 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
         // future write-capable variant is never silently treated as reversible.
         "store.query" => CapturePlan::NonGeneric,
 
-        // Read-only / non-mutating host verbs: no journal entry.
+        // Read-only / non-mutating host verbs: no journal entry. Includes the document-store
+        // read/list verbs (`assets.get_doc`, `assets.list_docs`, `assets.get_asset`,
+        // `assets.list_assets`, `assets.backlinks`) and the skill load.
         t if is_read_only(t) => CapturePlan::NotMutating,
 
         // Anything else (an `<ext>.<tool>` target, an unrecognised host verb): if it mutates we
@@ -76,6 +111,8 @@ fn is_read_only(tool: &str) -> bool {
     matches!(
         tool,
         "outbox.status" | "inbox.list" | "store.schema" | "history.list" | "history.compensations"
+            | "assets.get_doc" | "assets.list_docs" | "assets.get_asset" | "assets.list_assets"
+            | "assets.backlinks" | "assets.load_skill" | "assets.list_granted_skills"
     ) || tool.starts_with("series.")
         || tool.starts_with("host.")
         || tool.starts_with("dashboard.") && tool.ends_with(".get")

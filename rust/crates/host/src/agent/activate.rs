@@ -85,6 +85,7 @@ pub async fn activate_skill(
                 error: Some(match e {
                     AssetError::Denied => format!("skill.activate denied: {id} is not granted"),
                     AssetError::NotFound => format!("skill.activate: {id} not found"),
+                    AssetError::TooLarge => format!("skill.activate: {id} payload too large"),
                     AssetError::Store(s) => format!("skill.activate failed: {s}"),
                 }),
             },
