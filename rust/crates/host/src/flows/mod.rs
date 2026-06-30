@@ -23,6 +23,8 @@ pub mod runs;
 pub mod save;
 pub mod source;
 
+pub use source::{arm_source, disarm_source, source_series};
+
 use std::sync::Arc;
 
 use lb_auth::Principal;

@@ -48,10 +48,7 @@ pub async fn arm_source(
 ) -> Result<String, ToolError> {
     let series = source_series(ws, flow_id, node_id);
     // Resolve the bound `<ext>.arm` tool from the descriptor (the node type's ext).
-    let node_type = config
-        .get("_type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let node_type = config.get("_type").and_then(|v| v.as_str()).unwrap_or("");
     let arm_tool = resolve_arm_tool(&node.store, ws, node_type).await;
     // Record the armed series as the node's last-value state (stateless flow; the socket is motion
     // owned by the extension). A re-arm overwrites (idempotent).
@@ -82,11 +79,16 @@ pub async fn disarm_source(
     flow_id: &str,
     node_id: &str,
 ) -> Result<(), ToolError> {
-    let node_type = lb_store::read(&node.store, ws, FLOW_NODE_STATE_TABLE, &format!("{flow_id}:{node_id}"))
-        .await
-        .map_err(|e| ToolError::Extension(e.to_string()))?
-        .and_then(|v| v.get("_type").and_then(|t| t.as_str()).map(String::from))
-        .unwrap_or_default();
+    let node_type = lb_store::read(
+        &node.store,
+        ws,
+        FLOW_NODE_STATE_TABLE,
+        &format!("{flow_id}:{node_id}"),
+    )
+    .await
+    .map_err(|e| ToolError::Extension(e.to_string()))?
+    .and_then(|v| v.get("_type").and_then(|t| t.as_str()).map(String::from))
+    .unwrap_or_default();
     if let Some(tool) = resolve_disarm_tool(&node.store, ws, &node_type).await {
         let req = json!({ "series": source_series(ws, flow_id, node_id) }).to_string();
         let _ = crate::tool_call::call_tool(node, principal, ws, &tool, &req).await;

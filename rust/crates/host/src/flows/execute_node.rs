@@ -103,7 +103,9 @@ async fn dispatch(
         // `caller ∩ install-grant` via the one `call_tool` chokepoint — `build_call_context` derives
         // `effective = caller ∩ install.granted` (extension-nodes-scope, two-direction deny). The
         // descriptor is resolved from the merged registry so the exact tool binding is used.
-        let tool = resolve_ext_tool(&node.store, ws, node_type).await.unwrap_or_else(|| node_type.to_string());
+        let tool = resolve_ext_tool(&node.store, ws, node_type)
+            .await
+            .unwrap_or_else(|| node_type.to_string());
         return call_tool_node(node, principal, ws, &tool, &Value::Object(inputs)).await;
     }
     match node_type {
@@ -299,8 +301,13 @@ async fn dispatch_subflow(
 /// type. Falls back to the node type itself if the descriptor is unavailable (an uninstalled ext —
 /// the dispatch then denies at the install-grant gate, honestly).
 async fn resolve_ext_tool(store: &lb_store::Store, ws: &str, node_type: &str) -> Option<String> {
-    let registry = super::nodes::merged_registry_internal(store, ws).await.ok()?;
-    registry.into_iter().find(|d| d.r#type == node_type).map(|d| d.tool)
+    let registry = super::nodes::merged_registry_internal(store, ws)
+        .await
+        .ok()?;
+    registry
+        .into_iter()
+        .find(|d| d.r#type == node_type)
+        .map(|d| d.tool)
 }
 
 /// Dispatch a `<verb>` call through the one chokepoint and reduce to a `NodeOutcome`.

@@ -127,6 +127,12 @@ pub async fn flows_list(
     ws: &str,
 ) -> Result<Vec<FlowSummary>, FlowsError> {
     authorize_store_read(principal, ws)?;
+    Ok(flows_list_internal(store, ws).await?.into_iter().map(FlowSummary::from).collect())
+}
+
+/// Internal list (no auth gate) returning full `Flow`s — for the reactors (cron scan, reconciler)
+/// that hold their own authority. Workspace-scoped by `scan`; never another workspace's flows.
+pub async fn flows_list_internal(store: &Store, ws: &str) -> Result<Vec<Flow>, FlowsError> {
     let page = scan(store, ws, FLOW_TABLE, lb_store::MAX_SCAN_LIMIT, None)
         .await
         .map_err(|e| FlowsError::Internal(e.to_string()))?;
@@ -136,13 +142,15 @@ pub async fn flows_list(
             Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
             other => other,
         };
-        if inner
-            .get("deleted")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
-        {
+        if inner.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) {
             continue;
         }
+        if let Ok(f) = serde_json::from_value::<Flow>(inner) {
+            out.push(f);
+        }
+    }
+    Ok(out)
+}
         if let Ok(f) = serde_json::from_value::<Flow>(inner) {
             out.push(FlowSummary::from(&f));
         }

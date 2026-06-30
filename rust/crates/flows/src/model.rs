@@ -40,6 +40,20 @@ pub enum FailurePolicy {
     Continue,
 }
 
+/// Where a flow may run — the **eligible set**, not replication (Decision 10). Matched **as data**
+/// against the node's role by the reconciler (never an `if cloud` branch). Reuses the extension
+/// placement vocabulary so flows + extensions share one enum.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Placement {
+    #[default]
+    Either,
+    /// A hub-class role only; on an edge node the flow is simply not scheduled.
+    CloudOnly,
+    /// The install node that owns the local hardware a native source reads.
+    LocalOnly,
+}
+
 /// One flow node — a data-driven step. The `node_type` keys into the merged registry; `config` is
 /// the validated instance of that descriptor's schema; `needs` + `with` are the DAG edges + bindings.
 /// `kind`/ports are resolved from the descriptor at validate/run time, not stored here (single
@@ -98,6 +112,29 @@ pub struct Flow {
     pub failure_policy: FailurePolicy,
     #[serde(default)]
     pub deleted: bool,
+    // --- lifecycle / trigger fields (triggers-lifecycle-scope). Additive serde defaults: a flow
+    // written before these deserialises as enabled / not-start-on-boot / either / no cron. ---
+    /// Durable intent: `false` means no trigger fires (the cron scan skips it, the event subscription
+    /// is dropped, boot won't fire).
+    #[serde(default = "enabled_default")]
+    pub enabled: bool,
+    /// Marks a flow `reconcile_flows` should bring up (arm sources + fire boot) at node start.
+    #[serde(default)]
+    pub start_on_boot: bool,
+    /// The eligible set (Decision 10). Matched as data against role by the reconciler.
+    #[serde(default)]
+    pub placement: Placement,
+    /// A 5-field cron spec (the `cron` trigger kind). `None` = not cron-triggered.
+    #[serde(default)]
+    pub cron: Option<String>,
+    /// The next cron firing instant (logical ts); advanced by `react_to_flows_cron` (fire-once-then-
+    /// skip). 0 = not yet computed.
+    #[serde(default)]
+    pub next_attempt_ts: u64,
+}
+
+fn enabled_default() -> bool {
+    true
 }
 
 fn default_version() -> u32 {
@@ -115,6 +152,11 @@ impl Flow {
             nodes: Vec::new(),
             failure_policy: FailurePolicy::Halt,
             deleted: false,
+            enabled: true,
+            start_on_boot: false,
+            placement: Placement::Either,
+            cron: None,
+            next_attempt_ts: 0,
         }
     }
     /// In-degree (number of `needs`) per node — the chain math verbatim.

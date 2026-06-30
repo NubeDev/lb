@@ -123,6 +123,7 @@ pub use federation::{
     FederationError,
 };
 pub use flows::call_flows_tool;
+pub use flows::{arm_source, disarm_source, source_series};
 pub use host_tools::{
     call_host_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach, host_time_now,
     host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress, HostNetInfo,

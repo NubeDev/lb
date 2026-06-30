@@ -36,8 +36,8 @@ pub use coalesce::{Coalesce, CoalesceStrategy};
 pub use config_schema::{compile_schema, validate_config, ConfigSchemaError};
 pub use descriptor::{NodeDescriptor, NodeKind};
 pub use model::{
-    is_builtin_type, validate_flow, DagError, FailurePolicy, Flow, FlowSummary, Node, NodeConfig,
-    BUILTIN_PREFIX, MAX_FLOW_NODES,
+    is_builtin_type, validate_flow, DagError, FailurePolicy, Flow, FlowSummary, Placement, Node,
+    NodeConfig, BUILTIN_PREFIX, MAX_FLOW_NODES,
 };
 pub use node_block::{validate_node_block, NodeBlock, NodeBlockError};
 pub use registry::merge_registry;
