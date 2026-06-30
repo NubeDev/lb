@@ -325,6 +325,11 @@ mod tests {
             nodes,
             failure_policy: FailurePolicy::Halt,
             deleted: false,
+            enabled: true,
+            start_on_boot: false,
+            placement: Placement::Either,
+            cron: None,
+            next_attempt_ts: 0,
         }
     }
 

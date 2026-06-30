@@ -16,13 +16,20 @@ pub mod execute_node;
 pub mod lifecycle;
 pub mod nodes;
 pub mod patch_run;
+pub mod react_cron;
+pub mod reconcile;
 pub mod record;
 pub mod run;
 pub mod run_store;
 pub mod runs;
 pub mod save;
 pub mod source;
+pub mod triggers;
 
+pub use react_cron::{
+    cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
+};
+pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use source::{arm_source, disarm_source, source_series};
 
 use std::sync::Arc;
@@ -111,6 +118,28 @@ async fn dispatch(
             let run_id = str_arg(input, "run_id")?;
             lifecycle::flows_cancel(node, principal, ws, run_id).await?;
             Ok(json!({ "ok": true }))
+        }
+        "flows.enable" => {
+            let id = str_arg(input, "id")?;
+            let enabled = input
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let start_on_boot = input
+                .get("start_on_boot")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            triggers::flows_enable(node, principal, ws, id, enabled, start_on_boot).await?;
+            Ok(json!({ "ok": true }))
+        }
+        "flows.inject" => {
+            let id = str_arg(input, "id")?;
+            let node_id = str_arg(input, "node")?;
+            let value = input.get("value").cloned().unwrap_or(Value::Null);
+            let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            let fired =
+                triggers::flows_inject(node, principal, ws, id, node_id, value, now).await?;
+            Ok(json!({ "fired_run": fired }))
         }
         "flows.patch_run" => {
             let run_id = str_arg(input, "run_id")?;

@@ -60,7 +60,11 @@ pub async fn react_to_flows_cron(
         let scheduled_ts = flow.next_attempt_ts;
         let run_id = cron_run_id(&flow.id, scheduled_ts);
         // Idempotency: a job already exists for this (flow, instant) → no-op (no double-fire).
-        if lb_jobs::load(&node.store, ws, &run_id).await.map_err(|e| FlowsError::Internal(e.to_string()))?.is_some() {
+        if lb_jobs::load(&node.store, ws, &run_id)
+            .await
+            .map_err(|e| FlowsError::Internal(e.to_string()))?
+            .is_some()
+        {
             // Still advance so a re-scan before the next slot doesn't loop on this instant.
             flow.next_attempt_ts = next_after(&schedule, now).unwrap_or(scheduled_ts);
             persist(node, ws, flow).await?;

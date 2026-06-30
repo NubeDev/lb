@@ -53,9 +53,15 @@ pub async fn flows_inject(
     let flow = flows_get_internal(&node.store, ws, flow_id).await?;
     // Persist the retained input (`flow_input:{flow}:{node}`) — the read-side every run consults.
     let rec = serde_json::json!({ "flow": flow_id, "node": node_id, "value": value });
-    lb_store::write(&node.store, ws, FLOW_INPUT_TABLE, &format!("{flow_id}:{node_id}"), &rec)
-        .await
-        .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    lb_store::write(
+        &node.store,
+        ws,
+        FLOW_INPUT_TABLE,
+        &format!("{flow_id}:{node_id}"),
+        &rec,
+    )
+    .await
+    .map_err(|e| FlowsError::Internal(e.to_string()))?;
 
     // Decision 9: fire a run only for a FIRING trigger node. A trigger node's config carries
     // `inject_mode: "fire" | "retain"`; non-trigger nodes are retained (no run). An inject into a
@@ -82,13 +88,25 @@ fn is_firing_trigger(flow: &lb_flows::Flow, node_id: &str) -> bool {
     if n.node_type != "trigger" {
         return false;
     }
-    let mode = n.config.get("inject_mode").and_then(|v| v.as_str()).unwrap_or("fire");
-    let trig_mode = n.config.get("mode").and_then(|v| v.as_str()).unwrap_or("manual");
+    let mode = n
+        .config
+        .get("inject_mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("fire");
+    let trig_mode = n
+        .config
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("manual");
     // Only an `inject`-mode trigger fires on inject; other trigger kinds (cron/event/boot) do not.
     trig_mode == "inject" && mode == "fire"
 }
 
-async fn persist_flow(store: &lb_store::Store, ws: &str, flow: &lb_flows::Flow) -> Result<(), FlowsError> {
+async fn persist_flow(
+    store: &lb_store::Store,
+    ws: &str,
+    flow: &lb_flows::Flow,
+) -> Result<(), FlowsError> {
     lb_store::write(
         store,
         ws,

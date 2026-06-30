@@ -64,7 +64,10 @@ pub async fn reconcile_flows(
         let source_nodes = source_node_ids(&flow);
         if flow.enabled && owned {
             for node_id in &source_nodes {
-                let cfg = flow.node(node_id).map(|n| n.config.clone()).unwrap_or(serde_json::json!({}));
+                let cfg = flow
+                    .node(node_id)
+                    .map(|n| n.config.clone())
+                    .unwrap_or(serde_json::json!({}));
                 let _ = arm_source(node, principal, ws, &flow.id, node_id, cfg).await;
                 pass.armed += 1;
             }
