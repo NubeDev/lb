@@ -19,6 +19,7 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   system: "/system",
   "system-mcp": "/system/mcp",
   "system-acp": "/system/acp",
+  telemetry: "/telemetry",
   inbox: "/inbox",
   outbox: "/outbox",
   admin: "/admin",

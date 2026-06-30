@@ -1,6 +1,6 @@
-//! The five built-in node descriptors (node-descriptor-scope "The five built-in descriptors"). They
-//! ship **with the host** but expose the **identical** [`NodeDescriptor`] shape so the editor renders
-//! them through the same palette path as extension nodes — one registry, one renderer, no "is this
+//! The built-in node descriptors (node-descriptor-scope "The built-in descriptors"). They ship
+//! **with the host** but expose the **identical** [`NodeDescriptor`] shape so the editor renders them
+//! through the same palette path as extension nodes — one registry, one renderer, no "is this
 //! native?" branch. They map onto the spine's node model (`flows-scope.md` "The node model").
 //!
 //! | `type` | `kind` | `tool` binding | ports | config (shape) |
@@ -8,6 +8,7 @@
 //! | `trigger` | trigger | host (no MCP tool) | out: `fire` | `{ mode, ... }` (cron spec / series / inject sub-mode) |
 //! | `tool` | transform | the node's `mcp_verb` config field | in: `args`; out: `output` | `{ verb, args }` |
 //! | `rhai` | transform | host `rules.eval` (the lb-rules cage) | in: `input`; out: `output`,`findings` | `{ source }` |
+//! | `count` | transform | host (no MCP tool) | in: `items`; out: `count` | `{}` (counts its input) |
 //! | `subflow` | transform | host `flows.run` (child, pinned) | in/out by the child's named ports | `{ flow }` |
 //! | `sink` | sink | host write (`inbox\|outbox\|channel\|series`) or an ext-node | in: `value` | `{ target }` |
 //!
@@ -25,11 +26,11 @@ use crate::descriptor::{NodeDescriptor, NodeKind};
 const HOST_RULES_EVAL: &str = "rules.eval";
 const HOST_FLOWS_RUN: &str = "flows.run";
 
-/// The five built-in descriptors, in the one shared shape. The `tool` field for a built-in is a
+/// The built-in descriptors, in the one shared shape. The `tool` field for a built-in is a
 /// host-internal binding the engine interprets (it is not dispatched as an MCP call the way an
-/// extension node's `<ext>.<tool>` is) — `trigger`/`rhai`/`subflow`/`sink` are host-resolved, while
-/// the generic `tool` node carries the verb in its **config** and dispatches it under the caller's
-/// own cap (everything-is-a-node for actions, "no widening").
+/// extension node's `<ext>.<tool>` is) — `trigger`/`rhai`/`subflow`/`sink`/`count` are host-resolved,
+/// while the generic `tool` node carries the verb in its **config** and dispatches it under the
+/// caller's own cap (everything-is-a-node for actions, "no widening").
 pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     vec![
         // The flow entry node. No inputs; one output port `fire`. Its `mode` config selects the
@@ -38,6 +39,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
         NodeDescriptor::new("trigger", NodeKind::Trigger, "")
             .with_title("Trigger")
             .with_category("Flow")
+            .with_icon("zap")
             .with_ports(vec![], vec!["fire".into()])
             .with_config(
                 1,
@@ -58,6 +60,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
         NodeDescriptor::new("tool", NodeKind::Transform, "")
             .with_title("Tool")
             .with_category("Flow")
+            .with_icon("wrench")
             .with_ports(vec!["args".into()], vec!["output".into()])
             .with_config(
                 1,
@@ -76,6 +79,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
         NodeDescriptor::new("rhai", NodeKind::Transform, HOST_RULES_EVAL)
             .with_title("Rhai")
             .with_category("Flow")
+            .with_icon("code")
             .with_ports(vec!["input".into()], vec!["output".into(), "findings".into()])
             .with_config(
                 1,
@@ -86,12 +90,29 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
                     "properties": {"source": {"type": "string"}}
                 }),
             ),
+        // A pure transform that counts its input: an array → its length, an object → its key count,
+        // null → 0, a scalar → 1. Output port `count` carries the integer. No MCP tool — the host
+        // resolves it directly (like `trigger`). The plain "how many?" node for a flow.
+        NodeDescriptor::new("count", NodeKind::Transform, "")
+            .with_title("Count")
+            .with_category("Flow")
+            .with_icon("hash")
+            .with_ports(vec!["items".into()], vec!["count".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {}
+                }),
+            ),
         // A node containing a child graph. Bound to host `flows.run` (a pinned child run the node's
         // step PARKS on, Decision 11). Ports are the child's named ports, mapped by the Decision 4
         // binding grammar — left dynamic (no fixed ports) so a subflow of any shape binds.
         NodeDescriptor::new("subflow", NodeKind::Transform, HOST_FLOWS_RUN)
             .with_title("Subflow")
             .with_category("Flow")
+            .with_icon("git-branch")
             .with_config(
                 1,
                 json!({
@@ -107,6 +128,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
         NodeDescriptor::new("sink", NodeKind::Sink, "")
             .with_title("Sink")
             .with_category("Flow")
+            .with_icon("arrow-down-to-line")
             .with_ports(vec!["value".into()], vec![])
             .with_config(
                 1,
@@ -128,14 +150,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn five_builtins_in_one_shape() {
+    fn builtins_in_one_shape() {
         let d = builtin_descriptors();
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
-        assert_eq!(types, vec!["trigger", "tool", "rhai", "subflow", "sink"]);
+        assert_eq!(
+            types,
+            vec!["trigger", "tool", "rhai", "count", "subflow", "sink"]
+        );
         // every built-in carries a compilable config schema (load-time contract).
         for desc in &d {
             crate::config_schema::compile_schema(&desc.config)
                 .unwrap_or_else(|e| panic!("builtin {} config does not compile: {e}", desc.r#type));
+        }
+        // every built-in carries a palette icon.
+        for desc in &d {
+            assert!(desc.icon.is_some(), "builtin {} has no icon", desc.r#type);
         }
     }
 
@@ -146,5 +175,14 @@ mod tests {
         let sink = d.iter().find(|x| x.r#type == "sink").unwrap();
         assert!(trig.inputs.is_empty());
         assert!(sink.outputs.is_empty());
+    }
+
+    #[test]
+    fn count_is_a_pure_transform() {
+        let d = builtin_descriptors();
+        let count = d.iter().find(|x| x.r#type == "count").unwrap();
+        assert_eq!(count.kind, NodeKind::Transform);
+        assert_eq!(count.inputs, vec!["items".to_string()]);
+        assert_eq!(count.outputs, vec!["count".to_string()]);
     }
 }

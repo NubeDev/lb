@@ -30,6 +30,9 @@ lb-ext-loader = { workspace = true, optional = true }
 # Only the `test_gateway` harness uses lb-flows (the `NodeBlock` shape the flow_node seed writes so
 # `flows.nodes` returns a real extension node). Optional, test-only.
 lb-flows = { workspace = true, optional = true }
+# Only the `test_gateway` harness uses lb-telemetry (the `TelemetryRecord` shape the telemetry seed
+# writes so the console reads real rows over `telemetry.query`/`tail`). Optional, test-only.
+lb-telemetry = { workspace = true, optional = true }
 axum.workspace = true
 tower-http.workspace = true
 tokio.workspace = true
@@ -40,7 +43,7 @@ rand.workspace = true
 
 [features]
 # Enables the test-only `test_gateway` binary (the UI real-gateway Vitest harness) + its seed deps.
-test-harness = ["dep:lb-outbox", "dep:lb-ext-loader", "dep:lb-flows"]
+test-harness = ["dep:lb-outbox", "dep:lb-ext-loader", "dep:lb-flows", "dep:lb-telemetry"]
 
 # The real-node harness binary the UI's `vitest.gateway.config.ts` spawns. Test-only: build it with
 # `cargo build -p lb-role-gateway --features test-harness --bin test_gateway`.

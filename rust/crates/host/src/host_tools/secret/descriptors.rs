@@ -110,11 +110,7 @@ mod tests {
         let s = set_visibility_schema();
         let err = validate_args(Some(&s), &json!({ "path": "p" })).unwrap_err();
         assert!(matches!(err, lb_mcp::ToolError::BadInput(m) if m.contains("visibility")));
-        validate_args(
-            Some(&s),
-            &json!({ "path": "p", "visibility": "workspace" }),
-        )
-        .unwrap();
+        validate_args(Some(&s), &json!({ "path": "p", "visibility": "workspace" })).unwrap();
     }
 
     #[test]

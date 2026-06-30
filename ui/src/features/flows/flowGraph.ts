@@ -13,6 +13,9 @@ import type { Flow, FlowNode, FlowRunSnapshot, NodeColour } from "@/lib/flows";
  *  (shown-but-gated, Decision: the palette reflects permissions). */
 export interface FlowNodeData extends Record<string, unknown> {
   type: string;
+  /** The descriptor `kind` — the canvas uses it to hide a trigger's target handle (no incoming edge
+   *  on an entry node) and to pick affordances. Resolved from the registry, not stored on the node. */
+  kind?: import("@/lib/flows").NodeKind;
   colour: NodeColour;
   /** True once the node has executed in the active run → rendered read-only (Decision 1). */
   locked: boolean;
@@ -36,7 +39,7 @@ function layout(index: number): { x: number; y: number } {
 /** Flow → React Flow nodes (one per graph node). `colours`/`locked` override the defaults per id. */
 export function flowToNodes(
   flow: Flow,
-  opts: { colours?: Record<string, NodeColour>; locked?: Record<string, boolean>; gated?: Record<string, boolean> } = {},
+  opts: { colours?: Record<string, NodeColour>; locked?: Record<string, boolean>; gated?: Record<string, boolean>; kind?: Record<string, import("@/lib/flows").NodeKind> } = {},
 ): FlowCanvasNode[] {
   return flow.nodes.map((n, i) => ({
     id: n.id,
@@ -44,6 +47,7 @@ export function flowToNodes(
     position: layout(i),
     data: {
       type: n.type,
+      kind: opts.kind?.[n.id],
       colour: opts.colours?.[n.id] ?? "pending",
       locked: opts.locked?.[n.id] ?? false,
       gated: opts.gated?.[n.id] ?? false,

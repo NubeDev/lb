@@ -10,14 +10,19 @@
 //! message VERBATIM — the source of the canvas's inline edge error. `flows.patch_run` against an
 //! executed node or a schema-mismatched config is likewise a `400`.
 
-use axum::extract::{Path, State};
+use std::convert::Infallible;
+
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
+use futures::stream::Stream;
 use lb_mcp::ToolError;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::session::authenticate;
+use crate::routes::stream::StreamAuth;
+use crate::session::{authenticate, verify_token};
 use crate::state::Gateway;
 
 /// `GET /flows` — the workspace's flows (summaries via `flows.list`). Gated `flows.list`.
@@ -244,6 +249,93 @@ pub async fn inject_flow(
         .map_err(|e| e.into_response())?;
     let input = json!({ "id": id, "node": body.node, "value": body.value, "ts": gw.now });
     call(&gw, &p, "flows.inject", &input).await
+}
+
+/// `GET /flows/node/{id}/{node}` — read one node's config from the saved flow. Gated `flows.node.get`.
+pub async fn get_flow_node(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path((id, node)): Path<(String, String)>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    call(
+        &gw,
+        &p,
+        "flows.node.get",
+        &json!({ "id": id, "node": node }),
+    )
+    .await
+}
+
+/// `POST /flows/node/{id}/{node}` body — the replacement config for one node.
+#[derive(Debug, Deserialize)]
+pub struct UpdateFlowNode {
+    pub config: Value,
+}
+
+/// `POST /flows/node/{id}/{node}` — replace one node's config on the SAVED flow (validated against
+/// its descriptor schema, bumps the flow version — flow-runtime-control-scope). Gated
+/// `flows.node.update`. A schema-invalid config → `400` with the host's message (the inline panel
+/// error). This is the per-node write that replaces re-posting the whole `Flow` on a config tweak.
+pub async fn update_flow_node(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path((id, node)): Path<(String, String)>,
+    Json(body): Json<UpdateFlowNode>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let input = json!({ "id": id, "node": node, "config": body.config });
+    call(&gw, &p, "flows.node.update", &input).await
+}
+
+/// `GET /flows/runs/{run_id}/stream?token=` — the **live settle feed** the canvas watches
+/// (flow-runtime-control-scope). Mirrors `run_stream` / `channel_stream`: open once with
+/// `EventSource`, receive a `snapshot` frame (the run as of attach) then `flow` frames (each a
+/// `node-settled` / `run-finished` delta) instead of polling `runs.get`. Auth is the `?token=` query
+/// param (`EventSource` can't set headers); `watch_flow_run` runs the `mcp:flows.watch:call` gate
+/// (a `403` before any body) and the bus subject is workspace-walled, so a ws-B session can never
+/// observe a ws-A run.
+pub async fn flow_run_stream(
+    State(gw): State<Gateway>,
+    Path(run_id): Path<String>,
+    Query(auth): Query<StreamAuth>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let principal = verify_token(&gw, &auth.token)
+        .await
+        .map_err(|e| e.into_response())?;
+    let ws = principal.ws().to_string();
+    // Authorize + read the snapshot + declare the live feed up front (workspace-first). A denial here
+    // is a 403 before any stream body.
+    let watch = lb_host::watch_flow_run(&gw.node.store, &gw.node.bus, &principal, &ws, &run_id)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+
+    // Phase 1: emit the catch-up snapshot as one `snapshot` frame. Phase 2: fold the live settle feed
+    // (`flow` frames) until it closes (a `run-finished` delta tells the client to stop).
+    let stream = futures::stream::unfold(
+        (Some(watch.snapshot), watch.stream),
+        |(snapshot, live)| async move {
+            if let Some(snap) = snapshot {
+                let ev = Event::default()
+                    .event("snapshot")
+                    .json_data(&snap)
+                    .unwrap_or_else(|_| Event::default().comment("encode error"));
+                return Some((Ok(ev), (None, live)));
+            }
+            live.recv().await.map(|event| {
+                let ev = Event::default()
+                    .event("flow")
+                    .json_data(&event)
+                    .unwrap_or_else(|_| Event::default().comment("encode error"));
+                (Ok(ev), (None, live))
+            })
+        },
+    );
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
 /// Forward one `flows.*` MCP call through the host (re-checking the cap), returning its JSON output.

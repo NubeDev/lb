@@ -48,6 +48,12 @@ pub struct NodeDescriptor {
     pub title: String,
     /// Palette group. Defaults to `"General"`.
     pub category: String,
+    /// A lucide icon name the palette + node render (e.g. `"zap"`, `"hash"`). `None` → the editor
+    /// falls back by `kind`. Built-ins carry one; an extension `[[node]]` may declare `icon`
+    /// (persisted on the install) and otherwise gets the kind fallback. Pure palette chrome — the
+    /// engine never reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// Coarse class for palette grouping + wiring affordances.
     pub kind: NodeKind,
     /// The MCP tool this node dispatches when it runs. For a built-in this is a host-internal
@@ -82,6 +88,7 @@ impl NodeDescriptor {
         Self {
             title: r#type.clone(),
             category: "General".into(),
+            icon: None,
             r#type,
             kind,
             tool: tool.into(),
@@ -100,6 +107,11 @@ impl NodeDescriptor {
     /// Builder: set the palette category.
     pub fn with_category(mut self, category: impl Into<String>) -> Self {
         self.category = category.into();
+        self
+    }
+    /// Builder: set the palette icon (a lucide icon name).
+    pub fn with_icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
         self
     }
     /// Builder: set the named ports.

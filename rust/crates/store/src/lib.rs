@@ -7,6 +7,7 @@
 //!
 //! State only (§3.3): the store holds state; motion is the bus's job. No pub/sub here.
 
+mod capped;
 mod create;
 mod delete;
 mod graph;
@@ -23,6 +24,7 @@ mod write_batch;
 mod write_journaled;
 mod write_tx;
 
+pub use capped::{capped_insert, new_ulid};
 pub use create::create;
 pub use delete::delete;
 pub use graph::{graph, Edge as GraphEdge, Graph, Node as GraphNode, MAX_FANOUT, MAX_SEED};

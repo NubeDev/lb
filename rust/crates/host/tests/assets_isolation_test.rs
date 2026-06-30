@@ -3,8 +3,8 @@
 //! B. Gate 1 (workspace isolation) fires before the capability is even consulted (§3.6). This is
 //! the store+MCP isolation the S4 prompt requires; the MCP half is in assets_mcp_test.rs.
 
-use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_assets::ContentType;
+use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{get_doc, grant_skill, list_docs, load_skill, put_doc, put_skill, AssetError};
 use lb_store::Store;
 
@@ -31,9 +31,19 @@ async fn ws_b_cannot_read_ws_a_doc() {
         "ws-iso-a",
         &["store:doc/*:read", "store:doc/*:write"],
     );
-    put_doc(&store, &ada_a, "ws-iso-a", "scope-x", "T", "secret", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada_a,
+        "ws-iso-a",
+        "scope-x",
+        "T",
+        "secret",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
 
     // The SAME identity, but a token scoped to workspace B, holding a doc read cap. The doc id is
     // identical — only the workspace differs. Gate 1 must refuse before anything is read.
@@ -62,9 +72,19 @@ async fn ws_b_list_never_returns_ws_a_docs() {
         "ws-iso-list-a",
         &["store:doc/*:read", "store:doc/*:write"],
     );
-    put_doc(&store, &ada_a, "ws-iso-list-a", "d1", "T", "x", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada_a,
+        "ws-iso-list-a",
+        "d1",
+        "T",
+        "x",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
 
     let ada_b = principal("user:ada", "ws-iso-list-b", &["store:doc/*:read"]);
     assert!(list_docs(&store, &ada_b, "ws-iso-list-b")

@@ -41,6 +41,14 @@ async fn main() -> anyhow::Result<()> {
     // can share it with the demo path below.
     let node = Arc::new(Node::boot().await?);
 
+    // Telemetry sink selection (observability scope, symmetric nodes rule #1): choose the
+    // `tracing-subscriber` layers by config (`LB_TELEMETRY_SINK`), right after boot so every
+    // subsequent instrumented call is captured. The capped SurrealDB ring is the in-product
+    // recent-history sink; it shares the node's OWN store + bus handles (the ring lives in the one
+    // datastore, rule #2; the tail rides the ws-walled bus) — never a second store handle.
+    let sink = lb_telemetry::SinkConfig::from_env();
+    lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), sink);
+
     // Locate the built hello component. Override with HELLO_WASM; default to the cargo target.
     let wasm_path = std::env::var("HELLO_WASM")
         .map(PathBuf::from)

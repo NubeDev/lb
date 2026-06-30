@@ -15,22 +15,22 @@ use crate::routes::{
     create_user, create_workspace, define_role, delete_chain, delete_dashboard, delete_flow,
     delete_message, delete_role, delete_rule, delete_team, delete_user, disable_extension,
     disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
-    format_datetime, format_number, format_quantity, get_apikey, get_chain, get_chain_run,
-    get_dashboard, get_doc, get_flow, get_flow_run, get_history, get_identity, get_outbox_status,
-    get_prefs, get_rule, grant_skill, identity_workspaces_route, inject_flow, latest_sample,
-    lifecycle_flow, link_doc, list_apikeys, list_chains, list_channels, list_dashboards,
-    list_datasources, list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows,
-    list_grants, list_identities, list_inbox, list_members, list_roles, list_rules, list_series,
-    list_tables, list_team_members, list_teams, list_users, list_workspaces, load_skill, login,
-    mcp_call, mcp_catalog, patch_flow_run, post_message, publish_extension, publish_message,
-    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_datasource,
-    remove_member, remove_team_member, rename_team, rename_workspace, request_approval,
-    resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey,
-    revoke_grant, revoke_tokens_route, rotate_apikey, run_chain, run_flow, run_query, run_rule,
-    run_stream, save_chain, save_dashboard, save_flow, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, test_datasource,
-    uninstall_extension, write_samples,
+    flow_run_stream, format_datetime, format_number, format_quantity, get_apikey, get_chain,
+    get_chain_run, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run, get_history,
+    get_identity, get_outbox_status, get_prefs, get_rule, grant_skill, identity_workspaces_route,
+    inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_chains, list_channels,
+    list_dashboards, list_datasources, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
+    list_flows, list_grants, list_identities, list_inbox, list_members, list_roles, list_rules,
+    list_series, list_tables, list_team_members, list_teams, list_users, list_workspaces,
+    load_skill, login, mcp_call, mcp_catalog, patch_flow_run, post_message, publish_extension,
+    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
+    remove_datasource, remove_member, remove_team_member, rename_team, rename_workspace,
+    request_approval, resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval,
+    revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey, run_chain, run_flow,
+    run_query, run_rule, run_stream, save_chain, save_dashboard, save_flow, save_rule, scan_table,
+    series_stream, serve_ext_ui, set_default_prefs, set_prefs, share_dashboard, share_doc,
+    start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -214,9 +214,25 @@ pub fn router(gw: Gateway) -> Router {
         .route("/flows/{id}/inject", post(inject_flow))
         .route("/flows/{id}/runs", get(list_flow_runs))
         .route("/flows/runs/{run_id}", get(get_flow_run))
+        // The live settle feed (flow-runtime-control-scope): `EventSource` opens this and folds a
+        // `snapshot` frame then `flow` deltas as each node settles + a terminal `run-finished` — the
+        // replacement for polling `runs.get`. GET, so it never collides with the POST `{op}` route.
+        .route("/flows/runs/{run_id}/stream", get(flow_run_stream))
         .route("/flows/runs/{run_id}/{op}", post(lifecycle_flow))
         .route("/flows/runs/{run_id}/patch", post(patch_flow_run))
+        // Per-node config CRUD on the SAVED flow (flow-runtime-control-scope) — read/replace one
+        // node's config without re-posting the whole `Flow`. Gated `flows.node.get`/`flows.node.update`.
+        .route(
+            "/flows/node/{id}/{node}",
+            get(get_flow_node).post(update_flow_node),
+        )
         .route("/series/{series}/stream", get(series_stream))
+        // telemetry console (telemetry-console scope) — the live tail the in-browser console watches
+        // scroll. `GET /telemetry/stream?token=` folds a catch-up snapshot then the live ws-walled
+        // feed (`event: snapshot` then `event: telemetry`). 403 before any body if the grant is
+        // missing; the bus subject is ws-walled so a ws-B session never observes ws-A. There is NO
+        // telemetry.write route — writes come from the SurrealCappedLayer only.
+        .route("/telemetry/stream", get(telemetry_stream))
         // bus (widget-config-vars "Platform fix") — generic workspace-walled pub/sub. `POST /bus/publish`
         // is the fire-and-forget motion sink; `GET /bus/{subject}/stream?token=` is the live subscribe
         // (the motion analog of the series stream, for non-series subjects). Subject walled from the token.

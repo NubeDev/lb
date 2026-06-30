@@ -15,6 +15,7 @@ registry + an editor, run on `lb-jobs`, state in SurrealDB, motion on Zenoh (Dec
 | **flow-run** | the durable run engine over `lb-jobs`: `flow_run` coordinator (pins `flow_version`) + one `flow-step` job per node, the `chains` frontier driver ported verbatim, CAS exactly-once (`Enqueued→Running`), `FailurePolicy`, suspend/resume/cancel, `flows.patch_run` (config-only to an unexecuted node, validated against the pinned schema), `ResumePointDrift`, subflow-parks-on-child, the full `flows.*` run MCP surface incl. `flows.runs.list` (reattach), the canonical `coalesce` enum. | host 12 |
 | **extension-nodes** | descriptor-aware ext-node dispatch under `caller ∩ install-grant` (the shipped `build_call_context` chokepoint — two-direction deny, no widening); the source shape (host-owned `flow:{ws}:{flow}:{node}` series, arm/disarm); the worked `mqtt` reference manifest. | host 5 |
 | **triggers-lifecycle** | the five trigger kinds; `flows.enable`; the two lifecycle passes — `react_to_flows_cron` (durable clock-scan, deterministic firing id, fire-once-then-skip) + `reconcile_flows` (single-owner election, arm/disarm, guarded teardown); `flows.inject` (Decision 9 retain-vs-fire); placement matched as data. | host 8 |
+| **runtime-control** (Wave 3) | the manual run is now a **background job** (`flows.run` spawns the drive + returns `run_id` at once); `cancel`/`suspend` **bite mid-run** (the driver checks the durable status between frontier batches — Stop actually stops); a **live SSE watch** (`flows.watch` → `GET /flows/runs/{run}/stream`, snapshot-then-`node-settled`/`run-finished` deltas over a workspace-walled `flow:{ws}:{run}` Zenoh subject — "fire on the eventbus if anyone's listening"); **per-node config CRUD** on the saved flow (`flows.node.get`/`flows.node.update`, schema-validated, version-bumped) so a node tweak isn't a whole-`Flow` post. | host 9 |
 
 **~30 Rust integration tests + 26 lb-flows unit + 16 ext-loader**, all on real `mem://` store + real
 `lb-jobs` + real caps + real outbox + real install records — no mocks. Mandatory categories across the
@@ -24,10 +25,16 @@ ws-scoped), offline/sync (resume/cron-replay exactly-once), and the deny matrix.
 ## The `flows.*` MCP surface (one cap per verb)
 - **CRUD:** `flows.save` (DAG + every node config validated; version bumped on edit) · `get` · `list` ·
   `delete` · `nodes` (the merged registry).
-- **Run:** `flows.run {id,params}→{run_id}` (returns immediately — the run is the durable job) ·
-  `resume` · `suspend` · `cancel` · `patch_run {run_id,node,config}` (config-only, unexecuted).
-- **Inspection:** `flows.runs.get` (per-node snapshot + pinned version, the `ResumePointDrift`
-  surface) · `flows.runs.list` (reattach).
+- **Run:** `flows.run {id,params}→{run_id}` (returns immediately — the run is a **background** durable
+  job) · `resume` · `suspend` · `cancel` (the last two bite **mid-run**, between frontier batches) ·
+  `patch_run {run_id,node,config}` (config-only, unexecuted node of a live run).
+- **Node config (on the saved flow):** `flows.node.get {id,node}` · `flows.node.update {id,node,config}`
+  (schema-validated against the node's descriptor, bumps the flow version) — a per-node edit without
+  re-posting the whole `Flow`. Distinct from `patch_run` (which targets a live run's pinned schema).
+- **Inspection / watch:** `flows.runs.get` (per-node snapshot + pinned version, the `ResumePointDrift`
+  surface) · `flows.runs.list` (reattach) · **`flows.watch {run_id}`** — the live SSE settle feed
+  (snapshot then `node-settled`/`run-finished` deltas; the canvas folds it, falling back to the
+  bounded `runs.get` poll when no stream).
 - **Triggers:** `flows.enable {id,enabled,start_on_boot}` · `flows.inject {id,node,value}`.
 - **Reactors (host-internal, mounted by config):** `react_to_flows_cron` · `reconcile_flows`.
 
@@ -46,8 +53,9 @@ engine, `chains.*` the alias).
 - **The mqtt native sidecar binary** — the manifest `[[node]]` contract + host arm/disarm + series
   bridge ship now; the OS process is the shipped native-tier pattern generalised (a mechanical
   follow-up). Tier-parity holds (host picks transport from the install, no engine branch).
-- **`flows.watch` SSE** — the canvas's preferred live source; the canvas falls back to a bounded
-  `flows.runs.get` poll until it lands.
+- ~~**`flows.watch` SSE**~~ — **shipped** (Wave 3, runtime-control). The canvas's preferred live
+  source; it falls back to the bounded `flows.runs.get` poll only when no gateway stream is available
+  (Tauri/tests).
 - **Host-side `flows.save` journaling** — the canvas undo is client-side (a transient edit history)
   until `flows.save` moves onto the store `write_journaled` seam; then undo rides the undo journal
   for free. Traces to the undo scope.

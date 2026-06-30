@@ -5,12 +5,14 @@
 // canvas lacked. During an active run an EXECUTED node is rendered read-only (Decision 1 — the lock
 // the v-pinned banner promises); a node whose underlying tool the caller lacks is shown-but-marked
 // gated (the palette reflects permissions; the deny still lives at the engine). Handles on both sides
-// wire `needs` dependencies.
+// wire `needs` dependencies — except a `trigger`/`source` (entry) node renders NO target handle, so an
+// author cannot wire an incoming edge to a node that has no inputs.
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
 import { cn } from "@/lib/utils";
 import { COLOUR_BORDER, COLOUR_DOT, type FlowCanvasNode } from "./flowGraph";
+import { nodeIcon } from "./flowIcons";
 
 const STATUS_LABEL: Record<FlowCanvasNode["data"]["colour"], string> = {
   ok: "done",
@@ -35,6 +37,10 @@ function preview(value: unknown): string {
 
 export function FlowNodeView({ id, data }: NodeProps<FlowCanvasNode>) {
   const out = preview(data.output);
+  // Entry nodes (trigger/source) have no input port — render no target handle so they cannot be
+  // wired upstream (the descriptor declares no inputs; the canvas honours it).
+  const isEntry = data.kind === "trigger" || data.kind === "source";
+  const Icon = nodeIcon({ kind: data.kind ?? "transform", icon: undefined });
   return (
     <div
       aria-label={`flow node ${id}`}
@@ -48,13 +54,18 @@ export function FlowNodeView({ id, data }: NodeProps<FlowCanvasNode>) {
         data.gated && "opacity-60",
       )}
     >
-      <Handle
-        type="target"
-        position={Position.Left}
-        className="!h-2.5 !w-2.5 !border-0 !bg-accent"
-      />
+      {isEntry ? null : (
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!h-2.5 !w-2.5 !border-0 !bg-accent"
+        />
+      )}
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-semibold text-fg">{id}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Icon size={13} className="shrink-0 text-accent" />
+          <span className="truncate font-semibold text-fg">{id}</span>
+        </span>
         <span className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted">
           <span className={cn("h-1.5 w-1.5 rounded-full", COLOUR_DOT[data.colour])} aria-hidden />
           {STATUS_LABEL[data.colour]}

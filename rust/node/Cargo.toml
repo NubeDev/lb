@@ -14,6 +14,8 @@ path = "src/main.rs"
 
 [dependencies]
 lb-host.workspace = true
+lb-telemetry.workspace = true
+lb-store.workspace = true
 lb-auth.workspace = true
 lb-authz.workspace = true
 lb-mcp.workspace = true

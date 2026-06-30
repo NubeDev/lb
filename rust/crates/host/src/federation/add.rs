@@ -42,9 +42,16 @@ pub async fn datasource_add(
     // otherwise deny the pool. The capability grant (`secret:federation/*:get` on the install) is
     // still required, so this is "shared with the workspace" not "public to the world".
     if let Some(dsn) = dsn {
-        secret_set_with(&node.store, caller, ws, &secret_ref, dsn, Visibility::Workspace)
-            .await
-            .map_err(|_| FederationError::Denied)?;
+        secret_set_with(
+            &node.store,
+            caller,
+            ws,
+            &secret_ref,
+            dsn,
+            Visibility::Workspace,
+        )
+        .await
+        .map_err(|_| FederationError::Denied)?;
     }
 
     let ds = Datasource::new(name, kind, endpoint, secret_ref, ts);

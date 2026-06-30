@@ -35,9 +35,19 @@ async fn owner_can_read_their_private_doc() {
     let store = Store::memory().await.unwrap();
     let ada = principal("user:ada", ws, &[READ, WRITE]);
 
-    put_doc(&store, &ada, ws, "scope-x", "Scope X", "draft", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada,
+        ws,
+        "scope-x",
+        "Scope X",
+        "draft",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
 
     let got = get_doc(&store, &ada, ws, "scope-x").await.unwrap();
     assert_eq!(got.content, "draft");
@@ -53,9 +63,19 @@ async fn shared_to_a_team_a_member_reads_a_non_member_is_denied() {
     let cleo = principal("user:cleo", ws, &[READ]); // NOT in the team
 
     // Ada writes a private doc and shares it to team:engineering; Ben is a member.
-    put_doc(&store, &ada, ws, "scope-x", "Scope X", "draft", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada,
+        ws,
+        "scope-x",
+        "Scope X",
+        "draft",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
     add_member(&store, &ada, ws, "team:engineering", "user:ben")
         .await
         .unwrap();
@@ -85,9 +105,19 @@ async fn linked_into_a_channel_a_sub_grantee_reads() {
     // Dot is not in any team, but may `sub` the channel the doc is linked into.
     let dot = principal("user:dot", ws, &[READ, "bus:chan/eng-general:sub"]);
 
-    put_doc(&store, &ada, ws, "scope-x", "Scope X", "draft", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada,
+        ws,
+        "scope-x",
+        "Scope X",
+        "draft",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
     link_doc(&store, &ada, ws, "scope-x", "eng-general")
         .await
         .unwrap();
@@ -113,9 +143,19 @@ async fn without_the_read_cap_even_the_owner_is_denied() {
     let ws = "ws-doc-nocap";
     let store = Store::memory().await.unwrap();
     let writer = principal("user:ada", ws, &[WRITE]); // can write, cannot read
-    put_doc(&store, &writer, ws, "scope-x", "T", "draft", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &writer,
+        ws,
+        "scope-x",
+        "T",
+        "draft",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
     assert!(matches!(
         get_doc(&store, &writer, ws, "scope-x").await.unwrap_err(),
         AssetError::Denied
@@ -130,9 +170,19 @@ async fn a_non_owner_cannot_share_someone_elses_doc() {
     let ada = principal("user:ada", ws, &[READ, WRITE]);
     let mallory = principal("user:mallory", ws, &[READ, WRITE]);
 
-    put_doc(&store, &ada, ws, "scope-x", "T", "draft", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &store,
+        &ada,
+        ws,
+        "scope-x",
+        "T",
+        "draft",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
     // Mallory holds write `*` but does not own scope-x.
     assert!(matches!(
         share_doc(&store, &mallory, ws, "scope-x", "team:evil")

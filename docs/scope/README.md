@@ -8,6 +8,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 ## Topics
 
 - `agent/` — the central, workspace-scoped AI agent (S5).
+- `external-agent/` — a **compile-time-optional** (`external-agent` cargo feature, off by default),
+  **swappable** runtime that drives a third-party ACP agent (VT Code default, dirge alternate; any
+  [Agent-Client-Protocol](https://agentclientprotocol.com) agent) as a **subprocess** behind a
+  host-owned `AgentRuntime` trait. The inverse of `agent-run/` (which makes us an ACP *server*): here
+  we are the ACP *client*. The agent's only tools are our caps-checked MCP surface (built-ins off + an
+  OS sandbox, fail-closed); its models route through our gateway. Built once against the official Rust
+  SDK, so the whole ACP registry is pluggable by config; the default runtime stays the in-house loop.
 - `agent-run/` — the agent **run** as a first-class object: a canonical `RunEvent` stream, an ACP
   stdio adapter (Zed/Cursor drive the agent), per-tool-call Allow/Deny/Ask with **durable
   suspend/resume**, and **model-activated skills** (the model picks from a granted catalog). Opens up

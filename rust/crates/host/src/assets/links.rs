@@ -34,7 +34,9 @@ fn collect(body: &str, prefix: &str) -> Vec<String> {
         let rest = &body[start..];
         let end = rest
             .char_indices()
-            .take_while(|(_, c)| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':'))
+            .take_while(|(_, c)| {
+                c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':')
+            })
             .last()
             .map(|(i, c)| i + c.len_utf8())
             .unwrap_or(0);

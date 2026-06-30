@@ -1,19 +1,19 @@
-// The bounded settle-poll hook (flows-canvas scope, Wave 3 — the RESOLVED poll decision, mirroring
-// `useChainRun`). Given a run id, poll `flows.runs.get` on a FIXED interval WHILE the status is
-// non-terminal and STOP on a terminal status (success/partialFailure/failed). It is NEVER an
-// unbounded setInterval: a late open does one snapshot and stops if already terminal. `flows.watch`
-// SSE is the named follow-up that replaces this poll later (flows-canvas-scope non-goal).
+// The live settle hook (flow-runtime-control-scope — supersedes the bounded poll). Given a run id, it
+// prefers the SSE stream (`openFlowRunStream`): one `snapshot` frame seeds the per-node state, then
+// each `node-settled`/`run-finished` delta folds in live — so the canvas paints nodes as they settle
+// AND a run is observably non-terminal while it runs (which is what makes the Stop button appear and
+// live values animate). When no gateway is configured (Tauri/tests) the stream returns null and the
+// hook FALLS BACK to the bounded `flows.runs.get` poll (the prior behavior), so nothing regresses.
 //
 // Also provides `reattach(flowId)` — on open, find the active run via `flows.runs.list
-// {status:"active"}` so a canvas reopened mid-run can rejoin it (the explicit step in the scope's
-// "Reattach to an active run on open" risk).
+// {status:"active"}` so a canvas reopened mid-run can rejoin it.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getFlowRun, listFlowRuns } from "@/lib/flows";
-import type { FlowRunSnapshot } from "@/lib/flows";
+import { getFlowRun, listFlowRuns, openFlowRunStream } from "@/lib/flows";
+import type { FlowRunSnapshot, FlowStreamEvent, NodeSnapshot } from "@/lib/flows";
 
-/** Poll interval while a run is non-terminal. */
+/** Poll interval while a run is non-terminal (the no-gateway fallback path only). */
 const POLL_MS = 300;
 /** A hard ceiling on poll attempts so a stuck/in-progress run can never poll forever. */
 const MAX_POLLS = 200;
@@ -21,14 +21,37 @@ const MAX_POLLS = 200;
 export interface FlowRunState {
   snapshot: FlowRunSnapshot | null;
   error: string | null;
-  /** Set the active run id; `null` idles (no polling). */
+  /** Set the active run id; `null` idles (no stream/poll). */
   watch: (runId: string | null) => void;
   /** On open: find the active run for `flowId` (if any) and begin watching it. */
   reattach: (flowId: string) => Promise<void>;
 }
 
-/** Poll a run until it settles. Re-runs cleanly when the run id changes; cancels its loop on
- *  unmount. Returns the snapshot + a `watch(runId)` setter + a `reattach(flowId)` helper. */
+function isTerminal(status: string): boolean {
+  return (
+    status === "success" ||
+    status === "partialFailure" ||
+    status === "failed" ||
+    status === "cancelled"
+  );
+}
+
+/** Fold one settle delta into a snapshot (immutably) — updates the named node's outcome/output, or
+ *  sets the terminal run status on `run-finished`. */
+function foldEvent(snap: FlowRunSnapshot, ev: FlowStreamEvent): FlowRunSnapshot {
+  if (ev.kind === "run-finished") {
+    return { ...snap, status: ev.status };
+  }
+  const steps: NodeSnapshot[] = snap.steps.map((s) =>
+    s.id === ev.id
+      ? { ...s, claim: "done", terminal: true, outcome: ev.outcome, output: ev.output, error: ev.error ?? null }
+      : s,
+  );
+  return { ...snap, steps };
+}
+
+/** Watch a run until it settles — SSE-first, poll-fallback. Re-runs cleanly when the run id changes;
+ *  closes its stream / cancels its poll on unmount. */
 export function useFlowRun(): FlowRunState {
   const [runId, setRunId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<FlowRunSnapshot | null>(null);
@@ -56,6 +79,25 @@ export function useFlowRun(): FlowRunState {
     setError(null);
     if (!runId) return;
 
+    // Prefer the live SSE stream: a snapshot then folded deltas.
+    const stream = openFlowRunStream(
+      runId,
+      (snap) => {
+        if (!cancelled.current) setSnapshot(snap);
+      },
+      (ev) => {
+        if (cancelled.current) return;
+        setSnapshot((cur) => (cur ? foldEvent(cur, ev) : cur));
+      },
+    );
+    if (stream) {
+      return () => {
+        cancelled.current = true;
+        stream.close();
+      };
+    }
+
+    // Fallback (no gateway — Tauri/tests): the bounded `flows.runs.get` poll.
     let polls = 0;
     async function tick() {
       while (!cancelled.current && polls < MAX_POLLS) {
@@ -64,9 +106,7 @@ export function useFlowRun(): FlowRunState {
           const snap = await getFlowRun(runId as string);
           if (cancelled.current) return;
           setSnapshot(snap);
-          if (snap.status === "success" || snap.status === "partialFailure" || snap.status === "failed") {
-            return;
-          }
+          if (isTerminal(snap.status)) return;
         } catch (e) {
           if (cancelled.current) return;
           setError(e instanceof Error ? e.message : String(e));
@@ -76,7 +116,6 @@ export function useFlowRun(): FlowRunState {
       }
     }
     void tick();
-
     return () => {
       cancelled.current = true;
     };

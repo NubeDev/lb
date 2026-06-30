@@ -43,6 +43,7 @@ import {
   resumeFlow,
   runFlow,
   suspendFlow,
+  updateFlowNode,
   type Flow,
   type FlowNode,
   type NodeDescriptor,
@@ -117,6 +118,13 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   );
   const runActive = !!snapshot && !isTerminalSnapshot(snapshot);
 
+  // The merged registry keyed by type — used to resolve a node's `kind` (so a trigger renders no
+  // target handle) + the selected node's descriptor for the config panel.
+  const descriptorByType = useMemo(
+    () => new Map(palette.map((d) => [d.type, d])),
+    [palette],
+  );
+
   const paintedNodes = useMemo(
     () =>
       nodes.map((n) => {
@@ -125,6 +133,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           ...n,
           data: {
             ...n.data,
+            kind: descriptorByType.get(n.data.type)?.kind ?? n.data.kind,
             colour: colours[n.id] ?? "pending",
             locked: locked.has(n.id),
             output: v?.output,
@@ -132,7 +141,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           },
         };
       }),
-    [nodes, colours, values, locked],
+    [nodes, colours, values, locked, descriptorByType],
   );
 
   const onNodesChange = useCallback(
@@ -249,6 +258,22 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     [snapshot],
   );
 
+  /** Persist JUST the selected node's config (`flows.node.update`) — no whole-flow post
+   *  (flow-runtime-control scope). The host validates against the node's descriptor schema and bumps
+   *  the flow version; a mismatch surfaces as a 400 inline error. */
+  const handleSaveNode = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!selectedId) return { ok: false, error: "no selection" };
+    try {
+      await updateFlowNode(flow.id, selectedId, configs[selectedId] ?? {});
+      setPanelError(null);
+      return { ok: true };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPanelError(msg);
+      return { ok: false, error: msg };
+    }
+  }, [flow.id, selectedId, configs]);
+
   /** Config-only patch to the selected unexecuted node of the live run (Decision 1/12). The host
    *  validates against the run's PINNED schema; a mismatch surfaces as a 400 inline error. */
   const handlePatch = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
@@ -264,9 +289,17 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     }
   }, [snapshot, selectedId, configs]);
 
-  // Import/export the flow JSON (graph + node configs + version). Import re-validates via save.
+  // Import/export the flow JSON (graph + node configs + version). The canonical connection data is
+  // each node's `needs` (the record shape the host stores + import re-validates). For legibility we
+  // ALSO emit a derived top-level `edges: [{from,to}]` so the connections are visible at a glance in
+  // the exported file (the "I can't see the node connections" report) — it is informational; import
+  // ignores it and re-derives the graph from `needs`.
   const handleExport = useCallback(() => {
-    const blob = new Blob([JSON.stringify(buildFlow(), null, 2)], {
+    const exported = buildFlow();
+    const edges = exported.nodes.flatMap((n) =>
+      (n.needs ?? []).map((from) => ({ from, to: n.id })),
+    );
+    const blob = new Blob([JSON.stringify({ ...exported, edges }, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -305,10 +338,6 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   // A node whose underlying tool the caller lacks is shown-but-marked gated. The caller's reachable
   // tools aren't on the palette response (the descriptor declares no caps); we mark a node gated when
   // its descriptor is absent from the merged registry (the type went stale — an uninstalled ext).
-  const descriptorByType = useMemo(
-    () => new Map(palette.map((d) => [d.type, d])),
-    [palette],
-  );
   const selectedNode: FlowNode | null = useMemo(() => {
     if (!selectedId) return null;
     return buildFlow().nodes.find((n) => n.id === selectedId) ?? null;
@@ -336,9 +365,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
               <Play size={13} />
               Resume
             </Button>
-            <Button aria-label="cancel run" onClick={() => handleLifecycle("cancel")} variant="outline" size="sm" className="gap-1.5">
+            <Button aria-label="stop run" onClick={() => handleLifecycle("cancel")} variant="destructive" size="sm" className="gap-1.5">
               <Square size={13} />
-              Cancel
+              Stop
             </Button>
           </>
         ) : null}
@@ -454,6 +483,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
             selectedId && setConfigs((c) => ({ ...c, [selectedId]: next }))
           }
           onSave={handleSave}
+          onSaveNode={handleSaveNode}
           onPatch={handlePatch}
           onClose={() => setSelectedId(null)}
           error={panelError}
@@ -473,5 +503,10 @@ function indexConfigs(flow: Flow): Record<string, Record<string, unknown>> {
 }
 
 function isTerminalSnapshot(s: { status: string }): boolean {
-  return s.status === "success" || s.status === "partialFailure" || s.status === "failed";
+  return (
+    s.status === "success" ||
+    s.status === "partialFailure" ||
+    s.status === "failed" ||
+    s.status === "cancelled"
+  );
 }

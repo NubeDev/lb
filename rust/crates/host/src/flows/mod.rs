@@ -14,6 +14,7 @@ pub mod coordinator;
 pub mod error;
 pub mod execute_node;
 pub mod lifecycle;
+pub mod node_config;
 pub mod nodes;
 pub mod patch_run;
 pub mod react_cron;
@@ -25,12 +26,14 @@ pub mod runs;
 pub mod save;
 pub mod source;
 pub mod triggers;
+pub mod watch;
 
 pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use source::{arm_source, disarm_source, source_series};
+pub use watch::{watch_flow_run, FlowWatch};
 
 use std::sync::Arc;
 
@@ -55,6 +58,22 @@ pub async fn call_flows_tool(
     dispatch(node, principal, ws, qualified_tool, input)
         .await
         .map_err(FlowsError::to_tool)
+}
+
+/// The flows dispatch with a **concrete, boxed** future type — the recursion-cutting entry the host
+/// dispatcher (`tool_call.rs`) and a `tool` node re-entry use. Because the return type is a named
+/// `Pin<Box<dyn Future + Send>>` (not an opaque `impl Future`), the self-referential cycle that arises
+/// when a flow's `tool` node calls `flows.run` (→ background drive → tool → dispatch → here) is
+/// broken: the compiler can size the type and prove it `Send`, which the manual run's `tokio::spawn`
+/// requires. The `Send` bound is honest — `dispatch` touches only `Arc`/`Store`/`Bus`.
+pub fn call_flows_tool_boxed<'a>(
+    node: &'a Arc<Node>,
+    principal: &'a Principal,
+    ws: &'a str,
+    qualified_tool: &'a str,
+    input: &'a Value,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Value, ToolError>> + Send + 'a>> {
+    Box::pin(call_flows_tool(node, principal, ws, qualified_tool, input))
 }
 
 async fn dispatch(
@@ -100,7 +119,12 @@ async fn dispatch(
                 .and_then(|v| v.as_str())
                 .map(String::from)
                 .unwrap_or_else(|| default_run_id(flow_id, now));
-            let id = run::flows_run(node, principal, ws, flow_id, params, &run_id, now).await?;
+            // The manual run is a BACKGROUND job (flow-runtime-control-scope): seed synchronously,
+            // drive on a detached task, return the run id at once — so the caller is freed before the
+            // run is terminal and the canvas can watch/poll/cancel mid-flight. (The cron/boot/inject
+            // reactors keep the synchronous `flows_run` — they own their own loop cadence.)
+            let id =
+                run::flows_run_async(node, principal, ws, flow_id, params, &run_id, now).await?;
             Ok(json!({ "run_id": id }))
         }
         "flows.resume" => {
@@ -157,6 +181,21 @@ async fn dispatch(
             let status = input.get("status").and_then(|v| v.as_str());
             runs::flows_runs_list(&node.store, principal, ws, flow_id, status).await
         }
+        "flows.node.get" => {
+            let flow_id = str_arg(input, "id")?;
+            let node_id = str_arg(input, "node")?;
+            node_config::flows_node_get(&node.store, principal, ws, flow_id, node_id).await
+        }
+        "flows.node.update" => {
+            let flow_id = str_arg(input, "id")?;
+            let node_id = str_arg(input, "node")?;
+            let config = input.get("config").cloned().unwrap_or(Value::Null);
+            node_config::flows_node_update(&node.store, principal, ws, flow_id, node_id, config)
+                .await
+        }
+        // `flows.watch` is a live SSE stream, not a JSON dispatch — the gateway's
+        // `/flows/runs/{run}/stream` route calls `watch_flow_run` directly (its `mcp:flows.watch:call`
+        // gate runs inside). Mirrors `agent.watch`. A JSON call here is therefore not-found.
         _ => Err(FlowsError::BadInput(format!(
             "unknown flows verb: {qualified_tool}"
         ))),

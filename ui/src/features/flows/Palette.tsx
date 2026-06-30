@@ -1,13 +1,20 @@
 // The node palette (flows-canvas scope, Wave 3). Renders the merged `flows.nodes` registry grouped
 // by `category` (built-ins + every installed extension's `[[node]]` descriptors). Dragging a node
 // type onto the canvas (or clicking it) adds a node instance — a `flow` record edit. A node whose
-// underlying tool the caller lacks is SHOWN but marked gated (the menu reflects permissions; the deny
-// lives at the engine, never widened — `caller ∩ grant`).
+// underlying tool the caller lacks is SHOWN but marked gated (the menu reflects permissions; the
+// deny lives at the engine, never widened — `caller ∩ grant`).
+//
+// Styled as a compact, searchable catalog (icon + title + type per entry) using shadcn primitives +
+// tokens — the same look as the rest of the flows surface.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import type { NodeDescriptor } from "@/lib/flows";
+import { nodeIcon } from "./flowIcons";
 
 interface PaletteProps {
   nodes: NodeDescriptor[];
@@ -31,33 +38,72 @@ function byCategory(nodes: NodeDescriptor[]): { category: string; items: NodeDes
 }
 
 export function Palette({ nodes, onAdd }: PaletteProps) {
-  const groups = useMemo(() => byCategory(nodes), [nodes]);
+  const [query, setQuery] = useState("");
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return nodes;
+    return nodes.filter(
+      (n) =>
+        n.title.toLowerCase().includes(q) ||
+        n.type.toLowerCase().includes(q) ||
+        n.category.toLowerCase().includes(q),
+    );
+  }, [nodes, query]);
+  const groups = useMemo(() => byCategory(filtered), [filtered]);
+
   return (
     <div
       aria-label="flow palette"
-      className="flex w-56 flex-col gap-3 overflow-y-auto border-r border-border p-2"
+      className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-panel/50 p-2"
     >
+      <div className="relative">
+        <Search
+          size={13}
+          className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted"
+        />
+        <Input
+          aria-label="search nodes"
+          placeholder="Search nodes…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="h-8 pl-7 text-xs"
+        />
+      </div>
       {groups.map((g) => (
         <div key={g.category} className="flex flex-col gap-1">
-          <div className="text-xs font-semibold text-muted">{g.category}</div>
-          {g.items.map((n) => (
-            <Button
-              key={n.type}
-              type="button"
-              variant="outline"
-              className="flex flex-col items-start px-2 py-1 text-left text-xs hover:border-accent"
-              aria-label={`add node ${n.type}`}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData("application/x-flow-node", n.type)}
-              onClick={() => onAdd(n)}
-            >
-              <span className="font-medium">{n.title}</span>
-              <span className="text-muted">{n.type}</span>
-            </Button>
-          ))}
+          <div className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            {g.category}
+          </div>
+          {g.items.map((n) => {
+            const Icon = nodeIcon(n);
+            return (
+              <Button
+                key={n.type}
+                type="button"
+                variant="outline"
+                aria-label={`add node ${n.type}`}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("application/x-flow-node", n.type)}
+                onClick={() => onAdd(n)}
+                className={cn(
+                  "flex h-auto items-center gap-2 rounded-md border-border bg-card px-2 py-1.5 text-left text-xs shadow-none hover:border-accent/40 hover:bg-accent/5",
+                )}
+              >
+                <Icon size={15} className="shrink-0 text-accent" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-fg">{n.title}</span>
+                  <span className="block truncate text-[10px] text-muted">{n.type}</span>
+                </span>
+              </Button>
+            );
+          })}
         </div>
       ))}
-      {nodes.length === 0 ? <div className="text-xs text-muted">No nodes.</div> : null}
+      {nodes.length === 0 ? (
+        <div className="px-1 text-xs text-muted">No nodes.</div>
+      ) : filtered.length === 0 ? (
+        <div className="px-1 text-xs text-muted">No nodes match “{query}”.</div>
+      ) : null}
     </div>
   );
 }

@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
-use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_assets::ContentType;
+use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{invoke, put_doc, AllowedTool, Invocation, Node};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 

@@ -10,8 +10,8 @@
 
 use std::sync::Arc;
 
-use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_assets::ContentType;
+use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     grant_skill, invoke, load_extension, put_doc, put_skill, serve_ext, AllowedTool, Invocation,
     Node,
@@ -113,9 +113,19 @@ async fn an_edge_user_invokes_the_agent_which_calls_the_gateway_and_a_granted_to
     grant_skill(&node.store, &caller, ws, "summarize")
         .await
         .unwrap();
-    put_doc(&node.store, &caller, ws, "spec", "Spec", "the design", ContentType::Text, &[], 1)
-        .await
-        .unwrap();
+    put_doc(
+        &node.store,
+        &caller,
+        ws,
+        "spec",
+        "Spec",
+        "the design",
+        ContentType::Text,
+        &[],
+        1,
+    )
+    .await
+    .unwrap();
 
     let gw = echo_then_stop();
     // The agent's own caps include echo + the substrate reads; effective grant is caps ∩ caller.

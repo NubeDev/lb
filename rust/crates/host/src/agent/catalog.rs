@@ -42,9 +42,7 @@ pub async fn render_catalog(
     // genuine store error propagates.
     match list_granted_skills(&node.store, actor, ws).await {
         Ok(entries) => Ok(format_catalog(&entries)),
-        Err(AssetError::Denied) | Err(AssetError::NotFound) | Err(AssetError::TooLarge) => {
-            Ok(None)
-        }
+        Err(AssetError::Denied) | Err(AssetError::NotFound) | Err(AssetError::TooLarge) => Ok(None),
         Err(AssetError::Store(s)) => Err(AgentError::Store(s)),
     }
 }

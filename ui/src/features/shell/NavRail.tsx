@@ -15,6 +15,7 @@ import {
   Plug,
   Puzzle,
   ScrollText,
+  Telescope,
   Workflow,
   Wrench,
   Send,
@@ -51,6 +52,7 @@ export type CoreSurface =
   | "system"
   | "system-mcp"
   | "system-acp"
+  | "telemetry"
   | "inbox"
   | "outbox"
   | "admin"
@@ -88,6 +90,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "ingest", icon: Activity, label: "Ingest" },
   { key: "data", icon: Database, label: "Data" },
   { key: "system", icon: Network, label: "System" },
+  { key: "telemetry", icon: Telescope, label: "Telemetry" },
   { key: "inbox", icon: Inbox, label: "Inbox" },
   { key: "outbox", icon: Send, label: "Outbox" },
   { key: "admin", icon: Shield, label: "Admin" },

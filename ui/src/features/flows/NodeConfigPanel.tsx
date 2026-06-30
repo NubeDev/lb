@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { FlowNode, NodeDescriptor } from "@/lib/flows";
 import { SchemaForm, useSchemaValidity, type JsonSchema } from "./SchemaForm";
+import { TriggerConfigFields } from "./TriggerConfigFields";
 
 interface NodeConfigPanelProps {
   node: FlowNode | null;
@@ -22,6 +23,9 @@ interface NodeConfigPanelProps {
   onConfigChange: (next: Record<string, unknown>) => void;
   /** Persist the whole flow (a new version — Decision 1). Returns the host outcome for inline error. */
   onSave: () => Promise<{ ok: boolean; error?: string }>;
+  /** Persist JUST this node's config (`flows.node.update`) — no whole-flow post (flow-runtime-control
+   *  scope). Validated against the node's descriptor schema; bumps the flow version. */
+  onSaveNode: () => Promise<{ ok: boolean; error?: string }>;
   /** Config-only patch to THIS unexecuted node of the live run (validated against the pinned schema). */
   onPatch: () => Promise<{ ok: boolean; error?: string }>;
   /** Clear the selection (close the panel). */
@@ -38,6 +42,7 @@ export function NodeConfigPanel({
   config,
   onConfigChange,
   onSave,
+  onSaveNode,
   onPatch,
   onClose,
   error,
@@ -94,19 +99,37 @@ export function NodeConfigPanel({
           config-only tweak to this unexecuted node of the live run.
         </div>
       ) : null}
-      <SchemaForm
-        schema={schema}
-        value={config}
-        onChange={onConfigChange}
-        disabled={locked || busy}
-        errors={validity.errors}
-      />
+      {descriptor?.type === "trigger" ? (
+        <TriggerConfigFields
+          config={config}
+          onChange={onConfigChange}
+          disabled={locked || busy}
+        />
+      ) : (
+        <SchemaForm
+          schema={schema}
+          value={config}
+          onChange={onConfigChange}
+          disabled={locked || busy}
+          errors={validity.errors}
+        />
+      )}
       {error ? (
         <span aria-label="config error" className="text-xs text-destructive">
           {error}
         </span>
       ) : null}
       <div className="flex gap-2">
+        {/* The common case: persist JUST this node's config (`flows.node.update`) — no whole-flow
+            post. Available when the node isn't run-locked; the live-run patch is offered separately. */}
+        <Button
+          aria-label="save node"
+          onClick={() => run(onSaveNode)}
+          size="sm"
+          disabled={!canSave || busy}
+        >
+          Save node
+        </Button>
         <Button
           aria-label="save flow"
           onClick={() => run(onSave)}
@@ -114,7 +137,7 @@ export function NodeConfigPanel({
           size="sm"
           disabled={!canSave || busy}
         >
-          Save
+          Save flow
         </Button>
         {canPatch ? (
           <Button

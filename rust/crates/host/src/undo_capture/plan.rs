@@ -110,9 +110,18 @@ pub(crate) fn plan_capture(qualified_tool: &str, input: &Value) -> CapturePlan {
 fn is_read_only(tool: &str) -> bool {
     matches!(
         tool,
-        "outbox.status" | "inbox.list" | "store.schema" | "history.list" | "history.compensations"
-            | "assets.get_doc" | "assets.list_docs" | "assets.get_asset" | "assets.list_assets"
-            | "assets.backlinks" | "assets.load_skill" | "assets.list_granted_skills"
+        "outbox.status"
+            | "inbox.list"
+            | "store.schema"
+            | "history.list"
+            | "history.compensations"
+            | "assets.get_doc"
+            | "assets.list_docs"
+            | "assets.get_asset"
+            | "assets.list_assets"
+            | "assets.backlinks"
+            | "assets.load_skill"
+            | "assets.list_granted_skills"
     ) || tool.starts_with("series.")
         || tool.starts_with("host.")
         || tool.starts_with("dashboard.") && tool.ends_with(".get")

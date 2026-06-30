@@ -80,6 +80,12 @@ export const CAP = {
   // api-keys (api-keys scope): the machine-credential management verb gate. The tab shows for a
   // session holding `apikey.manage`; the gateway re-checks every verb server-side regardless.
   apikeyManage: "mcp:apikey.manage:call",
+  // telemetry console (telemetry-console scope): the nav gate. The Telemetry page shows for a session
+  // that may read the capped telemetry ring; the gateway re-checks `mcp:telemetry.read:call` on every
+  // query/tail server-side and hard-filters to the caller's workspace. The audit lane needs its own
+  // grant too (the console requires BOTH to show both lanes — `auditQuery`).
+  telemetryRead: "mcp:telemetry.read:call",
+  auditQuery: "mcp:audit.query:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

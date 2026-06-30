@@ -161,7 +161,10 @@ async fn secret_surface_three_gates_over_mcp() {
     )
     .await
     .unwrap();
-    assert_eq!(shared["value"], "s3cr3t", "sibling reads once Workspace-shared");
+    assert_eq!(
+        shared["value"], "s3cr3t",
+        "sibling reads once Workspace-shared"
+    );
 
     call(
         &node,

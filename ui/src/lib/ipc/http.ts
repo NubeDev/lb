@@ -572,6 +572,14 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { runId } = args as { runId: string };
       return getJson<T>(`${base}/flows/runs/${enc(runId)}`);
     }
+    case "flows_node_get": {
+      const { id, node } = args as { id: string; node: string };
+      return getJson<T>(`${base}/flows/node/${enc(id)}/${enc(node)}`);
+    }
+    case "flows_node_update": {
+      const { id, node, config } = args as { id: string; node: string; config: unknown };
+      return postJson<T>(`${base}/flows/node/${enc(id)}/${enc(node)}`, { config });
+    }
     case "flows_runs_list": {
       const { flowId, status } = args as { flowId: string; status?: string | null };
       const qs = status ? `?status=${enc(status)}` : "";

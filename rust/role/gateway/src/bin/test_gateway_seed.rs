@@ -20,6 +20,7 @@ use lb_host::{Provenance, Qos, Sample, Tag, TagSource};
 use lb_inbox::Item;
 use lb_outbox::{enqueue, Effect};
 use lb_role_gateway::{authenticate, Gateway};
+use lb_telemetry::TelemetryRecord;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -35,6 +36,86 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/proof_panel", post(seed_proof_panel))
         .route("/_seed/session", post(seed_session))
         .route("/_seed/flow_node", post(seed_flow_node))
+        .route("/_seed/telemetry", post(seed_telemetry))
+}
+
+/// `POST /_seed/telemetry` body — one telemetry row to plant into the token's workspace ring. All
+/// fields optional with sensible defaults; `params_digest` is passed already-redacted (a seed never
+/// carries a raw secret). `cap` bounds the ring (defaults to the production per-source cap).
+#[derive(Debug, Deserialize)]
+struct SeedTelemetry {
+    #[serde(default = "default_level")]
+    level: String,
+    #[serde(default = "default_actor")]
+    actor: String,
+    #[serde(default)]
+    tool: String,
+    #[serde(default = "default_source")]
+    source: String,
+    #[serde(default)]
+    trace_id: String,
+    #[serde(default = "default_outcome")]
+    outcome: String,
+    #[serde(default)]
+    ts: u64,
+    #[serde(default)]
+    msg: String,
+    #[serde(default)]
+    params_digest: String,
+    #[serde(default)]
+    fields: Value,
+    #[serde(default = "default_cap")]
+    cap: usize,
+}
+
+fn default_level() -> String {
+    "info".into()
+}
+fn default_actor() -> String {
+    "user:ada".into()
+}
+fn default_source() -> String {
+    "host".into()
+}
+fn default_outcome() -> String {
+    "allow".into()
+}
+fn default_cap() -> usize {
+    1000
+}
+
+/// `POST /_seed/telemetry` — write a real telemetry row into the token's workspace capped ring AND
+/// mirror it onto the ws-walled tail subject, through `lb_host::telemetry_seed` (the same
+/// `capped_insert` + tail publish the `SurrealCappedLayer` performs on a live event). Seeding, not
+/// faking: the console reads it back over the real `telemetry.query`/`tail` path, behind the same
+/// workspace wall. Returns the row's `seq`.
+async fn seed_telemetry(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SeedTelemetry>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = auth(&gw, &headers).await?;
+    let record = TelemetryRecord {
+        level: body.level,
+        ws: p.ws().to_string(),
+        actor: body.actor,
+        tool: body.tool,
+        source: body.source,
+        trace_id: body.trace_id,
+        outcome: body.outcome,
+        ts: body.ts,
+        msg: body.msg,
+        params_digest: body.params_digest,
+        fields: if body.fields.is_null() {
+            serde_json::json!({})
+        } else {
+            body.fields
+        },
+    };
+    let seq = lb_host::telemetry_seed(&gw.node.store, &gw.node.bus, p.ws(), body.cap, &record)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    Ok(Json(serde_json::json!({ "seq": seq })))
 }
 
 /// `POST /_seed/proof_panel` — install AND LOAD the REAL `proof-panel` wasm component into the token's

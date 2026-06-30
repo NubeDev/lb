@@ -58,6 +58,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("reminder.")
         || qualified_tool.starts_with("query.")
         || qualified_tool.starts_with("assets.")
+        || qualified_tool.starts_with("telemetry.")
         || qualified_tool == "undo"
         || qualified_tool == "redo"
         || qualified_tool.starts_with("history.")
@@ -80,7 +81,83 @@ pub async fn call_tool(
     qualified_tool: &str,
     input_json: &str,
 ) -> Result<String, ToolError> {
-    call_tool_at_depth(node, principal, ws, qualified_tool, input_json, 0).await
+    // Observability/audit/undo share this one chokepoint (the "shared seam"). The telemetry emission
+    // (observability scope) records the redacted dispatch decision here: outcome = allow/deny/error,
+    // params as a DIGEST (never raw), a per-call trace_id. Emitted at the OUTERMOST entry only (depth
+    // 0) — nested guest→host callbacks (depth > 0) contribute to the enclosing call's span, not a new
+    // one. A tracing no-op when no layer is installed, so this is free on a node without the sink.
+    let trace_id = lb_store::new_ulid();
+    let source = qualified_tool.split('.').next().unwrap_or("host");
+    let ts = now_ts();
+    let input: Value = serde_json::from_str(input_json).unwrap_or(Value::Null);
+    let result = call_tool_at_depth(node, principal, ws, qualified_tool, input_json, 0).await;
+    emit_dispatch_decision(
+        &result,
+        principal,
+        ws,
+        qualified_tool,
+        source,
+        &trace_id,
+        &input,
+        ts,
+    );
+    result
+}
+
+/// The wall-clock-free logical timestamp the dispatch tags the event with (the same `ts` the caller
+/// threads elsewhere). Uses `SystemTime` ONCE at the chokepoint for the event's `ts` field — the
+/// ordering key is the ULID `seq`, not this; `ts` is only the human-facing time the console filters
+/// on by range. (Core paths stay clock-free; this is the boundary.)
+fn now_ts() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Emit the redacted dispatch decision through the telemetry layer. The outcome is derived from the
+/// call's result (`Denied` → deny, other error → error, ok → allow); the level tracks severity. The
+/// raw params NEVER reach the event — `record_dispatch` digests them.
+fn emit_dispatch_decision(
+    result: &Result<String, ToolError>,
+    principal: &Principal,
+    ws: &str,
+    qualified_tool: &str,
+    source: &str,
+    trace_id: &str,
+    input: &Value,
+    ts: u64,
+) {
+    use lb_telemetry::{Level, Outcome};
+    let (level, outcome, msg) = match result {
+        Ok(_) => (
+            Level::Info,
+            Outcome::Allow,
+            format!("{qualified_tool} allowed"),
+        ),
+        Err(ToolError::Denied) => (
+            Level::Warn,
+            Outcome::Deny,
+            format!("{qualified_tool} denied"),
+        ),
+        Err(_) => (
+            Level::Error,
+            Outcome::Error,
+            format!("{qualified_tool} errored"),
+        ),
+    };
+    lb_telemetry::record_dispatch(
+        level,
+        ws,
+        principal.sub(),
+        qualified_tool,
+        source,
+        trace_id,
+        outcome,
+        input,
+        ts,
+        &msg,
+    );
 }
 
 /// The depth-tracked core of [`call_tool`]. `depth` is 0 for an outermost call and incremented by
@@ -178,6 +255,11 @@ async fn dispatch_at_depth(
         // denied (opaque) even for a caller holding `mcp:federation.query:call`.
         let gate_tool = if qualified_tool == "federation.schema" {
             "federation.query"
+        } else if qualified_tool.starts_with("telemetry.") {
+            // telemetry-console scope: the three read verbs (query/trace/tail) gate on the ONE
+            // `mcp:telemetry.read:call` grant; purge on `mcp:telemetry.purge:call`. Collapsed here
+            // (and re-checked inside the service) so one read grant covers the whole read surface.
+            crate::read_or_admin_cap(qualified_tool)
         } else {
             qualified_tool
         };
@@ -222,7 +304,13 @@ async fn dispatch_at_depth(
         } else if qualified_tool.starts_with("chains.") {
             crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("flows.") {
-            crate::call_flows_tool(node, principal, ws, qualified_tool, &input).await?
+            // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
+            // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through
+            // here; without erasure the opaque future types cycle (`flows_run_async` → drive → tool →
+            // dispatch → `flows_run_async`) and the compiler can neither size them nor prove `Send` —
+            // which the background-run `tokio::spawn` requires. The output type is concrete
+            // (`Result<String, ToolError>`), so the `dyn` cast is clean and cuts the cycle.
+            crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("federation.")
             || qualified_tool.starts_with("datasource.")
         {
@@ -242,6 +330,11 @@ async fn dispatch_at_depth(
             // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
             // federation.query). query.run adds the no-widening target cap inside its service.
             crate::call_query_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("telemetry.") {
+            // telemetry-console scope: the gated, workspace-walled read surface over the capped
+            // telemetry ring (query/trace/purge). Writes come from the SurrealCappedLayer only —
+            // there is no telemetry.write verb; the ws wall is enforced inside each read.
+            crate::call_telemetry_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {

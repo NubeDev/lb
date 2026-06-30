@@ -18,6 +18,7 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   // The MCP / ACP service pages are drilled from the System page; each shows behind its own cap.
   if (hasCap(caps, CAP.systemTools)) allowed.push("system-mcp");
   if (hasCap(caps, CAP.systemAcp)) allowed.push("system-acp");
+  if (hasCap(caps, CAP.telemetryRead)) allowed.push("telemetry");
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
   if (hasCap(caps, CAP.devkitTemplates)) allowed.push("studio");

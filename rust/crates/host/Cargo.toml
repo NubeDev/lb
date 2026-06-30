@@ -22,6 +22,7 @@ lb-jobs.workspace = true
 lb-prefs.workspace = true
 lb-run-events.workspace = true
 lb-tags.workspace = true
+lb-telemetry.workspace = true
 lb-undo.workspace = true
 lb-viz.workspace = true
 lb-mcp.workspace = true
@@ -50,10 +51,13 @@ iana-time-zone.workspace = true
 if-addrs.workspace = true
 hostname.workspace = true
 tokio.workspace = true
+tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
 
 [dev-dependencies]
 tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 # The registry tests sign artifacts with a deterministic publisher key (the same `ed25519-dalek`
 # stack `lb_registry::verify_artifact` checks against). Test-only — the host never build-depends on
 # it directly (verification lives in `lb-registry`).

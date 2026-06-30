@@ -22,6 +22,7 @@ import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { FlowsView } from "@/features/flows";
+import { TelemetryView } from "@/features/telemetry";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
 import { RulesView } from "@/features/rules";
@@ -133,6 +134,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/system", "system", () => <System />),
     coreRoute("/system/mcp", "system-mcp", () => <McpService />),
     coreRoute("/system/acp", "system-acp", () => <AcpService />),
+    coreRoute("/telemetry", "telemetry", () => <Telemetry />),
     coreRoute("/inbox", "inbox", () => <Inbox />),
     coreRoute("/outbox", "outbox", () => <Outbox />),
     coreRoute("/admin", "admin", () => <Admin />),
@@ -246,6 +248,12 @@ function Flows() {
 
 function Reminders() {
   return <RemindersView ws={useAppRoutingContext().workspace} />;
+}
+
+function Telemetry() {
+  // The console reads the session (workspace + caps) directly; no prop needed (the ws wall is the
+  // token, server-side).
+  return <TelemetryView />;
 }
 
 function Datasources() {

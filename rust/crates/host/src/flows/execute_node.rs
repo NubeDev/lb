@@ -5,6 +5,7 @@
 //! - `tool` — the "everything-is-a-node" generic: dispatches the granted MCP verb in its config under
 //!   the caller's own cap (`caller ∩ grant`, no widening — the headline deny test).
 //! - `rhai` — the lb-rules cage, via `rules.run`.
+//! - `count` — a pure transform: counts its input (array length / object keys / scalar→1).
 //! - `sink` — a terminal write: `series`→`ingest.write`, `outbox`→the outbox (must-deliver),
 //!   `channel`/`inbox`→`inbox.record`.
 //! - `subflow` — a pinned child run the node parks on (Decision 11); the child is driven to
@@ -70,6 +71,20 @@ pub async fn execute_one(
     let failed = matches!(outcome, NodeOutcome::Err(_));
 
     run_store::record_outcome(&node.store, ws, &flow.id, run_id, node_id, outcome).await?;
+
+    // Record-THEN-publish (flow-runtime-control-scope): the durable outcome is written above; now
+    // project it onto the run's settle subject so any watcher sees the node go terminal live. The
+    // step is re-read so the event carries exactly what the snapshot would (one projection, no
+    // drift). Fire-and-forget — a publish with no subscriber is a no-op and never fails the run.
+    if let Ok(Some(rec)) = run_store::read_step(&node.store, ws, run_id, node_id).await {
+        let event = super::watch::node_settled_event(
+            node_id,
+            &rec.outcome,
+            &rec.output,
+            rec.error.as_deref(),
+        );
+        super::watch::publish_flow_event(&node.bus, ws, run_id, &event).await;
+    }
 
     if failed && flow.failure_policy == lb_flows::FailurePolicy::Halt {
         run_store::skip_subtree(&node.store, ws, flow, run_id, node_id).await?;
@@ -163,6 +178,18 @@ async fn dispatch(
             .await
         }
         "subflow" => dispatch_subflow(node, principal, ws, config, inputs, now).await,
+        "count" => {
+            // A pure transform: count the input. An array → its length, an object → its key count,
+            // null → 0, any scalar → 1. Output port `count` carries the integer.
+            let items = inputs.get("items").cloned().unwrap_or(Value::Null);
+            let n = match items {
+                Value::Array(a) => a.len() as u64,
+                Value::Object(m) => m.len() as u64,
+                Value::Null => 0,
+                _ => 1,
+            };
+            NodeOutcome::Ok(json!({ "count": n }), Value::Null)
+        }
         _ => NodeOutcome::Err(format!("unknown built-in node type: {node_type}")),
     }
 }

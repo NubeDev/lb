@@ -107,9 +107,11 @@ fn authorize(
 /// Read the record at `path`, if present. Assumes gates 1+2 already passed.
 async fn load(store: &Store, ws: &str, path: &str) -> Result<Option<SecretRecord>, SecretsError> {
     let val = read(store, ws, TABLE, &record_id(path)).await?;
-    val.map(|v| serde_json::from_value::<SecretRecord>(v).map_err(|e| StoreError::Decode(e.to_string())))
-        .transpose()
-        .map_err(SecretsError::from)
+    val.map(|v| {
+        serde_json::from_value::<SecretRecord>(v).map_err(|e| StoreError::Decode(e.to_string()))
+    })
+    .transpose()
+    .map_err(SecretsError::from)
 }
 
 /// Store a secret value at `path` in `ws`, owned by `principal.sub()`, default [`Visibility::Private`].
@@ -257,7 +259,10 @@ async fn store_list_all(store: &Store, ws: &str) -> Result<Vec<Value>, StoreErro
     let rows: Vec<Value> = resp
         .take(0)
         .map_err(|e| StoreError::Decode(e.to_string()))?;
-    Ok(rows.into_iter().filter_map(|r| r.get("data").cloned()).collect())
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| r.get("data").cloned())
+        .collect())
 }
 
 /// A record id derived from the secret path. `/` is flattened to `_`; the original `path` rides on
@@ -292,7 +297,11 @@ mod tests {
     /// An extension principal standing in for the host-stamped `ext:{id}` principal. The owner wall
     /// is proven across two of these (the two-guest deny in the scope's testing plan).
     fn ext(id: &str, ws: &str, caps: &[&str]) -> Principal {
-        Principal::routed(format!("ext:{id}"), ws.to_string(), caps.iter().map(|s| s.to_string()).collect())
+        Principal::routed(
+            format!("ext:{id}"),
+            ws.to_string(),
+            caps.iter().map(|s| s.to_string()).collect(),
+        )
     }
 
     #[tokio::test]
@@ -372,11 +381,7 @@ mod tests {
             .await
             .unwrap();
         // An admin holding the broad secret:**:get grant — still denied the Private secret.
-        let admin = principal_with(
-            "user:admin",
-            "acme",
-            &["secret:**:get", "secret:**:write"],
-        );
+        let admin = principal_with("user:admin", "acme", &["secret:**:get", "secret:**:write"]);
         let err = get(&store, &admin, "acme", "ext/mqtt/broker-pw")
             .await
             .unwrap_err();
@@ -555,9 +560,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            get(&store, &a, "acme", "ext/mqtt/broker-pw")
-                .await
-                .unwrap(),
+            get(&store, &a, "acme", "ext/mqtt/broker-pw").await.unwrap(),
             "secret-a",
             "ws-B's write did NOT clobber ws-A's secret (the namespace wall)"
         );
@@ -636,9 +639,7 @@ mod tests {
         .unwrap();
         let pool = ext("federation", "acme", &["secret:federation/tsdb:get"]);
         assert_eq!(
-            get(&store, &pool, "acme", "federation/tsdb")
-                .await
-                .unwrap(),
+            get(&store, &pool, "acme", "federation/tsdb").await.unwrap(),
             "postgres://pool"
         );
     }

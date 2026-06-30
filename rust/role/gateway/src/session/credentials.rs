@@ -193,8 +193,18 @@ fn member_caps() -> Vec<String> {
         "mcp:flows.patch_run:call",
         "mcp:flows.runs.get:call",
         "mcp:flows.runs.list:call",
+        "mcp:flows.watch:call",
+        "mcp:flows.node.get:call",
+        "mcp:flows.node.update:call",
         "mcp:flows.enable:call",
         "mcp:flows.inject:call",
+        // telemetry console (telemetry-console scope): the read grant the Telemetry page's
+        // `telemetry.query`/`trace` (and the SSE `telemetry.tail`) gate on. Member-level — the read
+        // surface is HARD-filtered to the caller's workspace server-side, so a member sees only their
+        // own ring (the cross-tenant operator console is a SEPARATE, higher capability, not granted
+        // here). Note: `audit.query` is deliberately NOT granted, so the dev session exercises the
+        // console's labelled "audit unavailable / needs-grant" lane (the scope's degraded path).
+        "mcp:telemetry.read:call",
         "mcp:datasource.add:call",
         "mcp:datasource.remove:call",
         "mcp:datasource.list:call",

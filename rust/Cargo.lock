@@ -4564,6 +4564,7 @@ dependencies = [
  "lb-store",
  "lb-supervisor",
  "lb-tags",
+ "lb-telemetry",
  "lb-undo",
  "lb-viz",
  "rhai",
@@ -4572,6 +4573,8 @@ dependencies = [
  "surrealdb",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4741,6 +4744,7 @@ dependencies = [
  "lb-registry",
  "lb-run-events",
  "lb-supervisor",
+ "lb-telemetry",
  "rand 0.8.6",
  "reqwest",
  "rusqlite",
@@ -4874,6 +4878,7 @@ dependencies = [
  "surrealdb",
  "thiserror 2.0.18",
  "tokio",
+ "ulid",
 ]
 
 [[package]]
@@ -4899,6 +4904,21 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "lb-telemetry"
+version = "0.1.0"
+dependencies = [
+ "lb-bus",
+ "lb-store",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5453,7 +5473,9 @@ dependencies = [
  "lb-role-github-target",
  "lb-role-github-webhook",
  "lb-role-github-workflow",
+ "lb-store",
  "lb-supervisor",
+ "lb-telemetry",
  "tokio",
 ]
 

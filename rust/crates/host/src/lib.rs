@@ -51,6 +51,7 @@ mod sync;
 mod system;
 mod tags;
 mod teams;
+mod telemetry;
 mod tool_call;
 mod tools;
 mod ui_decl;
@@ -78,9 +79,9 @@ pub use apikey::{
 };
 pub use assets::{
     add_member, backlinks, call_asset_tool, delete_asset, delete_doc, get_asset, get_doc,
-    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill,
-    MAX_ASSET_BYTES, put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc,
-    AssetError, SkillCatalogEntry,
+    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset,
+    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError, SkillCatalogEntry,
+    MAX_ASSET_BYTES,
 };
 pub use authz::{
     authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
@@ -124,11 +125,19 @@ pub use federation::{
     federation_mirror, federation_query, resolve_datasource, Datasource, DatasourceSummary,
     FederationError,
 };
-pub use flows::call_flows_tool;
+pub use flows::error::FlowsError;
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, placement_matches, react_to_flows_cron,
-    reconcile_flows, source_series, FlowReactorPass, FlowReconcilePass,
+    reconcile_flows, source_series, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
 };
+pub use flows::{call_flows_tool, call_flows_tool_boxed};
+/// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,
+/// set its durable status, and drive it — so a test can prove the drive halts on a pre-written
+/// `cancelled` without a spawn race.
+pub mod flow_engine {
+    pub use crate::flows::coordinator::{drive, start};
+    pub use crate::flows::run_store::set_run_status;
+}
 pub use host_tools::{
     call_host_tool, call_secret_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach,
     host_time_now, host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress,
@@ -210,6 +219,11 @@ pub use tags::{
     Provenance, Source as TagSource, Tag, TagsError,
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
+pub use telemetry::{
+    authorize_telemetry, call_telemetry_tool, read_or_admin_cap, telemetry_purge, telemetry_query,
+    telemetry_seed, telemetry_tail, telemetry_trace, QueryFilter, QueryPage, TailSnapshot, TailSub,
+    TelemetryRow, TelemetrySvcError, TELEMETRY_TABLE,
+};
 pub use tool_call::call_tool;
 pub use tools::{call_tools_tool, tools_catalog, ToolsCatalog};
 pub use undo::{history_compensations, history_list, redo, undo, UndoSvcError};

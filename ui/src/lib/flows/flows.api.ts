@@ -84,6 +84,34 @@ export function getFlowRun(runId: string): Promise<FlowRunSnapshot> {
   return invoke<FlowRunSnapshot>("flows_run_get", { runId });
 }
 
+/** Read one node's config from the SAVED flow (flow-runtime-control-scope). Mirrors `flows.node.get`.
+ *  Returns the node's `{id, type, config}`. */
+export function getFlowNode(
+  id: string,
+  node: string,
+): Promise<{ id: string; type: string; config: Record<string, unknown> }> {
+  return invoke<{ id: string; type: string; config: Record<string, unknown> }>("flows_node_get", {
+    id,
+    node,
+  });
+}
+
+/** Replace one node's config on the SAVED flow without re-posting the whole `Flow`
+ *  (flow-runtime-control-scope). Validates against the node's descriptor schema (a mismatch rejects
+ *  with the host's `400`) and bumps the flow version. Mirrors `flows.node.update`. Returns the new
+ *  `{id, node, version}`. */
+export function updateFlowNode(
+  id: string,
+  node: string,
+  config: Record<string, unknown>,
+): Promise<{ id: string; node: string; version: number }> {
+  return invoke<{ id: string; node: string; version: number }>("flows_node_update", {
+    id,
+    node,
+    config,
+  });
+}
+
 /** The runs of a flow (the reattach surface: a reopened canvas finds the active `run_id`). Mirrors
  *  `flows.runs.list`. Pass `status:"active"` to find an in-flight run. */
 export function listFlowRuns(

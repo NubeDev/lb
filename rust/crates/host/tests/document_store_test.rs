@@ -85,7 +85,10 @@ async fn markdown_save_seeds_backlinks_and_embeds() {
 
     // backlinks(alarm-matrix) names the runbook; the embed edge lets the asset's embedder resolve.
     let bl = backlinks(&store, &ada, ws, "alarm-matrix").await.unwrap();
-    assert!(bl.iter().any(|s| s == "runbook"), "backlink resolves: {bl:?}");
+    assert!(
+        bl.iter().any(|s| s == "runbook"),
+        "backlink resolves: {bl:?}"
+    );
 }
 
 /// The load-bearing deny test: a link/embed NEVER widens access. Ben reads the runbook (shared
@@ -113,9 +116,17 @@ async fn links_and_embeds_never_widen_access() {
     .unwrap();
     // Ada's private asset — embedded ONLY by a doc Ben canNOT read, so the embed path does not
     // gate Ben in (the load-bearing embed deny).
-    put_asset(&store, &ada, ws, "secret-img", "image/png", vec![9, 9, 9], 2)
-        .await
-        .unwrap();
+    put_asset(
+        &store,
+        &ada,
+        ws,
+        "secret-img",
+        "image/png",
+        vec![9, 9, 9],
+        2,
+    )
+    .await
+    .unwrap();
     put_doc(
         &store,
         &ada,
@@ -226,14 +237,19 @@ async fn share_to_user_then_revoke_removes_visibility() {
     share_doc(&store, &ada, ws, "d", "user:ben").await.unwrap();
 
     // Ben (shared user) reads; Cleo (anyone else) is denied.
-    assert_eq!(get_doc(&store, &ben, ws, "d").await.unwrap().content, "body");
+    assert_eq!(
+        get_doc(&store, &ben, ws, "d").await.unwrap().content,
+        "body"
+    );
     assert!(matches!(
         get_doc(&store, &cleo, ws, "d").await.unwrap_err(),
         AssetError::Denied
     ));
 
     // Revoke → Ben is denied on the next read (the relation is re-resolved live).
-    unshare_doc(&store, &ada, ws, "d", "user:ben").await.unwrap();
+    unshare_doc(&store, &ada, ws, "d", "user:ben")
+        .await
+        .unwrap();
     assert!(matches!(
         get_doc(&store, &ben, ws, "d").await.unwrap_err(),
         AssetError::Denied
@@ -356,12 +372,16 @@ async fn markdown_save_participates_in_undo() {
         .await
         .expect("history reads");
     assert!(
-        items.iter().any(|i| i.tool == "assets.put_doc" && i.undoable),
+        items
+            .iter()
+            .any(|i| i.tool == "assets.put_doc" && i.undoable),
         "the markdown save is journaled undoable: {items:?}"
     );
 
     // Undo restores rev1's body through the real journal (no app-side guessing).
-    undo(&node.store, &p, ws, "user:ada", "").await.expect("undo");
+    undo(&node.store, &p, ws, "user:ada", "")
+        .await
+        .expect("undo");
     assert_eq!(
         get_doc(&node.store, &p, ws, "notes").await.unwrap().content,
         "rev1",
@@ -380,7 +400,12 @@ async fn assets_put_doc_is_reachable_over_the_mcp_contract() {
     let p = principal(
         "user:ada",
         ws,
-        &["mcp:assets.put_doc:call", "mcp:assets.get_doc:call", DOC_R, DOC_W],
+        &[
+            "mcp:assets.put_doc:call",
+            "mcp:assets.get_doc:call",
+            DOC_R,
+            DOC_W,
+        ],
     );
 
     let out = call_tool(
@@ -395,15 +420,9 @@ async fn assets_put_doc_is_reachable_over_the_mcp_contract() {
     let v: serde_json::Value = serde_json::from_str(&out).unwrap();
     assert_eq!(v["id"], "release-notes");
 
-    let got = call_tool(
-        &node,
-        &p,
-        ws,
-        "assets.get_doc",
-        r#"{"id":"release-notes"}"#,
-    )
-    .await
-    .expect("assets.get_doc over the bridge");
+    let got = call_tool(&node, &p, ws, "assets.get_doc", r#"{"id":"release-notes"}"#)
+        .await
+        .expect("assets.get_doc over the bridge");
     let g: serde_json::Value = serde_json::from_str(&got).unwrap();
     assert_eq!(g["content"], "# v1");
     assert_eq!(g["content_type"], "markdown");

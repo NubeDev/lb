@@ -81,16 +81,14 @@ pub async fn call_asset_tool(
             json!({ "docs": docs.iter().map(|d| json!({"id": d.id, "title": d.title})).collect::<Vec<_>>() })
         }
         "share_doc" => {
-            let subject =
-                str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
+            let subject = str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
             share_doc(store, principal, ws, str_arg(input, "id")?, subject)
                 .await
                 .map_err(asset_to_tool)?;
             json!({ "ok": true })
         }
         "unshare_doc" => {
-            let subject =
-                str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
+            let subject = str_arg(input, "subject").or_else(|_| str_arg(input, "team"))?;
             unshare_doc(store, principal, ws, str_arg(input, "id")?, subject)
                 .await
                 .map_err(asset_to_tool)?;

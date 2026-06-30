@@ -76,7 +76,29 @@ async fn save_flow(node: &Arc<HostNode>, p: &Principal, ws: &str, flow: &Flow) -
 async fn run_flow(node: &Arc<HostNode>, p: &Principal, ws: &str, id: &str, run_id: &str) -> Value {
     let req = json!({ "id": id, "run_id": run_id, "ts": 1 }).to_string();
     let out = call_tool(node, p, ws, "flows.run", &req).await.unwrap();
-    serde_json::from_str(&out).unwrap()
+    let v: Value = serde_json::from_str(&out).unwrap();
+    // `flows.run` is now a BACKGROUND job (flow-runtime-control-scope): it returns the run id before
+    // the drive finishes. Tests that assert on the terminal snapshot must await completion — poll the
+    // durable run status until it settles (bounded, deterministic on the in-process store).
+    await_terminal(node, p, ws, run_id).await;
+    v
+}
+
+/// Poll `flows.runs.get` until the run reaches a terminal status (the background drive has finished).
+/// Bounded so a stuck run can never hang the test.
+async fn await_terminal(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id: &str) -> Value {
+    for _ in 0..600 {
+        let snap = runs_get(node, p, ws, run_id).await;
+        let status = snap["status"].as_str().unwrap_or("");
+        if matches!(
+            status,
+            "success" | "partialFailure" | "failed" | "cancelled"
+        ) {
+            return snap;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("run {run_id} did not reach a terminal status in time");
 }
 
 async fn runs_get(node: &Arc<HostNode>, p: &Principal, ws: &str, run_id: &str) -> Value {
@@ -138,6 +160,29 @@ async fn linear_rhai_flow_runs_to_success() {
     for step in snap["steps"].as_array().unwrap() {
         assert_eq!(step["outcome"], "ok", "node {} not ok", step["id"]);
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn count_node_counts_its_input() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // A count node fed a literal 4-element array via `with`. The host resolves the literal binding
+    // unchanged; the count transform emits {count: 4}.
+    let count = Node {
+        id: "count".into(),
+        node_type: "count".into(),
+        needs: vec![],
+        with: serde_json::Map::from_iter([("items".into(), json!([1, 2, 3, 4]))]),
+        config: json!({}),
+    };
+    let f = flow("cnt", vec![count]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "cnt", "cnt-run-1").await;
+    let snap = runs_get(&node, &p, "ws", "cnt-run-1").await;
+    assert_eq!(snap["status"], "success");
+    let step = &snap["steps"][0];
+    assert_eq!(step["outcome"], "ok");
+    assert_eq!(step["output"]["count"], 4);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

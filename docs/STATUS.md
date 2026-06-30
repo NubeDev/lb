@@ -49,10 +49,36 @@ work, no new caps).
   flows_triggers 8) — incl. capability-deny per verb, the no-widening run gate, workspace-isolation
   on every record, resume/cron-replay exactly-once, ResumePointDrift, subflow-parks-on-child. Sessions:
   `sessions/flows/{node-descriptor,flow-run,extension-triggers}-session.md`; public:
-  `public/flows/flows.md`. **Deferred:** the mqtt native sidecar binary · `flows.watch` SSE (canvas
-  polls `runs.get` until it lands) · subflow
+  `public/flows/flows.md`. **Deferred:** the mqtt native sidecar binary · subflow
   reactor-driven park · cross-node owner failover (Decision 10) · host-side `flows.save` journaling
   (canvas undo is client-side until it lands).
+
+**Flows — runtime control (Wave 3, observable + interruptible runtime): SHIPPED** (2026-06-30), over
+the flows backend spine. Driven by a live-node reproduction of four user reports ("start but not
+stop", "no live values", "export can't see connections", "node config posts the whole flow"). The
+runtime already ran headless (cron/boot/event reconcilers share `coordinator::drive`) but drove
+**synchronously to terminal inside the call** — so a run was over before any observer could watch or
+interrupt it. This slice makes the existing runtime **observable + interruptible**:
+- **the manual run is a background job** — `flows.run` seeds synchronously, `tokio::spawn`s the drive,
+  returns `run_id` at once (the cron/boot/inject reactors keep the synchronous path).
+- **`cancel`/`suspend` bite mid-run** — the driver re-reads the durable run status between frontier
+  batches and halts on `cancelled`/`suspended` (Stop actually stops; a deterministic test proves a
+  pre-cancelled run drives no node).
+- **a live SSE watch** — `flows.watch` + `GET /flows/runs/{run}/stream` streams a snapshot then
+  `node-settled`/`run-finished` deltas over a workspace-walled `flow:{ws}:{run}` Zenoh subject (a
+  near-verbatim copy of the `run_events` watch trio); the canvas folds it (SSE-primary, poll-fallback).
+- **per-node config CRUD** — `flows.node.get`/`flows.node.update` on the saved flow (schema-validated,
+  version-bumped) so a node tweak isn't a whole-`Flow` post; a **"Save node"** button in the canvas.
+- **Tests (green, real `mem://` + bus/jobs/caps — no mocks):** host **9** new (deny + ws-isolation per
+  node verb · watch deny + ws-isolation + snapshot-then-delta · async run returns-before-terminal ·
+  mid-run cancel stops, deterministic) keeping the flows suites at 49; frontend **6** real-gateway
+  (node.update round-trip + version, schema reject, deny, ws-isolation, async run settles, export
+  `needs` round-trip) + **4** unit (`flowGraph` export round-trip). Session:
+  `sessions/flows/flow-runtime-control-session.md`; debug:
+  `debugging/flows/async-run-not-send-recursion.md`; scope:
+  `scope/flows/flow-runtime-control-scope.md`; public updated. **Deferred (unchanged):** cross-node
+  owner failover for a backgrounded run (restart `flows.resume` re-drives) · per-node step-level
+  token streaming.
 
 **Saved-PRQL-query surface (`query.*`): SHIPPED** (2026-06-30), layered over the rules + federation
 plane. A workspace authors a query once in **PRQL** (or `lang:"raw"` for dialect-native text), saves

@@ -36,6 +36,7 @@ members = [
     "crates/supervisor",
     "crates/sync",
     "crates/tags",
+    "crates/telemetry",
     "crates/undo",
     "crates/viz",
     "extensions/echo-sidecar",
@@ -90,6 +91,7 @@ lb-store = { path = "crates/store" }
 lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
 lb-tags = { path = "crates/tags" }
+lb-telemetry = { path = "crates/telemetry" }
 lb-undo = { path = "crates/undo" }
 lb-viz = { path = "crates/viz" }
 lb-host = { path = "crates/host" }
@@ -118,6 +120,9 @@ zenoh = "1"
 wasmtime = { version = "39", default-features = false, features = ["runtime", "component-model", "cranelift"] }
 wasmtime-wasi = "39"
 
+# Monotonic, lexicographically-sortable ids for the capped-retention rings (telemetry scope). No
+# clock, no counter row — ULID is the FIFO ordering key AND the record id.
+ulid = "1"
 # shared utilities
 anyhow = "1"
 async-trait = "0.1"
@@ -134,6 +139,12 @@ chrono-tz = "0.10"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`
 # runs on the injected logical clock, never wall-clock. Lives only in `lb-reminders`.
 croner = "3"
+# Structured telemetry (observability scope): the one span/event vocabulary every node emits, and the
+# subscriber layers that select the sink (stderr / the capped SurrealDB ring / OTLP) by config — never
+# a code branch on role. The `SurrealCappedLayer` (lb-telemetry) writes the redacted event schema to a
+# FIFO-capped `telemetry` table (telemetry-console scope).
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["smallvec", "std", "fmt", "env-filter"] }
 iana-time-zone = "0.1"
 if-addrs = "0.13"
 hostname = "0.4"

@@ -42,7 +42,15 @@ export async function signInWithCaps(user: string, workspace: string, caps: stri
  *  token (so the seed lands in the session's workspace — the real write path, behind the workspace
  *  wall). For surfaces with no public create route (inbox item / outbox effect / extension install). */
 async function seed(
-  kind: "inbox" | "outbox" | "extension" | "iot_demo" | "series" | "proof_panel" | "flow_node",
+  kind:
+    | "inbox"
+    | "outbox"
+    | "extension"
+    | "iot_demo"
+    | "series"
+    | "proof_panel"
+    | "flow_node"
+    | "telemetry",
   body: unknown,
 ): Promise<void> {
   const url = inject("gatewayUrl");
@@ -53,6 +61,32 @@ async function seed(
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`seed ${kind} failed: ${res.status} ${await res.text()}`);
+}
+
+/** Seed ONE real telemetry row into the session workspace through the REAL write path
+ *  (`lb_host::telemetry_seed` → `capped_insert` + tail publish — the same two ops the
+ *  `SurrealCappedLayer` performs). The console reads it back over `telemetry.query`/`tail`. All fields
+ *  default sensibly; pass what the assertion needs (source/level/outcome/traceId/msg). Never a fake row. */
+export function seedTelemetry(row: {
+  level?: string;
+  actor?: string;
+  tool?: string;
+  source?: string;
+  traceId?: string;
+  outcome?: string;
+  ts?: number;
+  msg?: string;
+}): Promise<void> {
+  return seed("telemetry", {
+    level: row.level,
+    actor: row.actor,
+    tool: row.tool,
+    source: row.source,
+    trace_id: row.traceId,
+    outcome: row.outcome,
+    ts: row.ts,
+    msg: row.msg,
+  });
 }
 
 /** Seed the dashboard demo series (`cooler.temp`/`fryer.state`) + tags into the session workspace,

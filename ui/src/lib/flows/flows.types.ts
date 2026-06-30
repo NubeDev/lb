@@ -21,6 +21,8 @@ export interface NodeDescriptor {
   title: string;
   category: string;
   kind: NodeKind;
+  /** A lucide icon name the palette + node render (e.g. "zap"). Absent → fall back by `kind`. */
+  icon?: string;
   /** The MCP tool this node dispatches (`rules.eval`, `<ext>.<tool>`, …). Engine gates it. */
   tool: string;
   inputs: string[];
