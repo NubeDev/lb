@@ -198,6 +198,27 @@ Installed `interpreter 0.0.17` and drove a real `exec --json` run against **Z.AI
 So the codex-family wrapper is now **exercised against a real binary + real provider**, not just
 source-verified — and the answer to "will it work with Z.AI?" is **yes**, via the coding endpoint.
 
+### Decision: Open Interpreter is now the DEFAULT external agent (+ ACP verified)
+
+Promoted Open Interpreter from "leading candidate" to **the default external agent** across the scope
+(`external-agent-scope.md` thesis/External, `acp-driver-scope.md` example flow + implementation status,
+`run-lifecycle-scope.md` resume note; `profile.rs` doc). Rationale, all evidence-backed:
+
+- Apache-2.0 (clean license); explicitly low-cost-model focused (platform fit).
+- **Ran a real agentic coding task vs Z.AI GLM-4.6** — wrote `hello.py` (disk usage), ran it,
+  self-corrected `python`→`python3`, reported real output. Exercised every `CodexWrapper` branch.
+- **ACP wire VERIFIED:** `interpreter acp` answers a real `initialize` →
+  `{protocolVersion: 1, agentCapabilities: {loadSession: true, mcpCapabilities, sessionCapabilities:
+  {list, close}}, authMethods: […]}`. So the topic's "wire is ACP" thesis holds for the default, and
+  **`loadSession: true`** means ACP `session/load` resume is available for the default (eases #5).
+
+**Does this affect ACP / the scope?** No — it *strengthens* it. ACP stays the integration wire; Open
+Interpreter is ACP-native (verified), so nothing about the ACP plan changes. VT Code and Codex remain
+fully-supported alternates (VT Code = the `wrappers/vtcode.rs` shim; Codex = the same
+`wrappers/codex.rs` as the default). The only change is which profile is selected by default. The
+shipped spike still uses `exec --json` (the seam-proof transport); #2 moves the default onto the ACP
+SDK, now known-reachable.
+
 ## Next
 
 - When a non-throttled provider key is available, run the smoke test and **capture the real NDJSON**;

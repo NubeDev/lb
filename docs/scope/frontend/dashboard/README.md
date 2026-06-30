@@ -71,6 +71,11 @@ because existing session docs point at them; new dashboard notes should live her
   are blocked on separate platform fixes (native host-callback, `net:*`, `kv.*`, secrets) —
   [`../../extensions/reference-extensions-scope.md`](../../extensions/reference-extensions-scope.md). The
   dashboard is ready for them; they are not yet built.
+- The **flow⇄dashboard binding UX** — a flow-aware source picker (pick flow → node → port/slot), switch/
+  slider wired automatically, and **structured JSON in *and* out** — is **scoped, not built**:
+  [`../../flows/flow-dashboard-binding-ux-scope.md`](../../flows/flow-dashboard-binding-ux-scope.md). It
+  extends this dashboard's source picker + control views; the underlying `flows.inject`/`flows.node_state`
+  mechanism already shipped ([`../../flows/dashboard-binding-scope.md`](../../flows/dashboard-binding-scope.md)).
 
 ## Authoring rule
 

@@ -174,7 +174,13 @@ throwaway `counter(step:1)` ticked 1→2→3. **Tests:** `armedState.test.ts` re
 model (incl. armed-after-restart) + new `FlowArmedBanner.test.tsx` (Stop/Deploy fires `onToggle`); UI
 `pnpm test` **203** green; `cargo build -p lb-flows` clean, `lb-flows` 29. Session:
 `sessions/flows/flow-runtime-stop-deploy-and-counter-clarity-session.md`; debug:
-`debugging/flows/armed-banner-reads-dormant-cron-no-stop-for-headless.md`. **Follow-up:** surface a node
+`debugging/flows/armed-banner-reads-dormant-cron-no-stop-for-headless.md`. **Also this session — the
+`sink` node could never write:** its `series` target sent `{series,value,ts}` to `ingest.write` (whose
+`Sample` needs `producer`/`seq`/`payload`) → "missing field `producer`", and its `inbox` target sent
+`{channel,body}` to `inbox.record` (needs `id`) → "missing arg: id"; no sink-execution test existed.
+Fixed `dispatch_sink` to build valid bodies + added `host::flows_sink_test` (3, real ingest/inbox,
+fail-before verified). Debug: `debugging/flows/sink-node-request-shapes-dont-match-target-verbs.md`.
+**Follow-up:** surface a node
 `description` in the palette (the deeper Count/Counter fix; titles are the stopgap) · per-trigger armed
 chip on each trigger node (data in `node_state.nodes[].armed`).
 

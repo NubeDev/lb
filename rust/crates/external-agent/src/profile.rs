@@ -59,11 +59,14 @@ impl AgentProfile {
         }
     }
 
-    /// An **Open Interpreter** profile — `interpreter` is an Apache-2.0 Rust *fork of Codex* ("a coding
-    /// agent for low-cost models"), so it shares Codex's `exec --json` + ACP wire and reuses the **same**
-    /// [`CodexWrapper`](crate::wrappers::CodexWrapper) — *only the binary differs*. This is the cleanest
-    /// demonstration of the seam: a whole second agent for **zero** new code, just a profile row. Also a
-    /// future target (not driven against a real binary here yet).
+    /// The **default external agent** ([scope](../../../docs/scope/external-agent/external-agent-scope.md)).
+    /// `interpreter` is an Apache-2.0 Rust *fork of Codex* ("a coding agent for low-cost models"), so it
+    /// shares Codex's `exec --json` + ACP wire and reuses the **same**
+    /// [`CodexWrapper`](crate::wrappers::CodexWrapper) — *only the binary differs* (Codex is then a
+    /// zero-code alternate). **Exercised against a real binary:** drove an end-to-end agentic run
+    /// (write + run a file) against **Z.AI GLM-4.6** via the coding endpoint, and its `interpreter acp`
+    /// answers a real ACP `initialize` (`protocolVersion 1`, `loadSession: true`). Chosen default for
+    /// license (Apache-2.0), ACP-native + resume, and low-cost-model fit.
     pub fn open_interpreter_default(model: ModelEndpoint) -> Self {
         Self {
             id: "open-interpreter-default".to_string(),

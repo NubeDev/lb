@@ -157,6 +157,6 @@ The topic is shippable when:
   *server* mirror + `RunEvent`s), `scope/ai-gateway/ai-gateway-scope.md` (the model contract + shim),
   `scope/jobs/jobs-scope.md`, `scope/auth-caps/auth-caps-scope.md`, `scope/node-roles/node-roles-scope.md`.
 - External: [Agent Client Protocol](https://agentclientprotocol.com) · [official Rust SDK](https://github.com/agentclientprotocol/rust-sdk)
-  · [VT Code](https://github.com/vinhnx/vtcode) (MIT, default) · [dirge](https://github.com/dirge-code/dirge) (GPL-3.0, alternate)
-  · [OpenAI Codex](https://github.com/openai/codex) and [Open Interpreter](https://github.com/openinterpreter/openinterpreter)
-  (Apache-2.0, Codex fork; one shared `wrappers/codex.rs`, both ACP-native — future).
+  · [Open Interpreter](https://github.com/openinterpreter/openinterpreter) (Apache-2.0, Codex fork — **default**, ACP-native, exercised vs Z.AI GLM-4.6)
+  · [VT Code](https://github.com/vinhnx/vtcode) (MIT, alternate) · [OpenAI Codex](https://github.com/openai/codex) (alternate, shares the codex-family shim)
+  · [dirge](https://github.com/dirge-code/dirge) (GPL-3.0, alternate — flags unverified).

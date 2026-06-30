@@ -133,7 +133,10 @@ Mandatory categories (`scope/testing/testing-scope.md`):
 
 - **Resume default:** is restart-from-goal the universal default, with `session/load` an opt-in per
   profile that supports it durably — or the reverse? Proposal: restart-from-goal default; `session/load`
-  only where a profile asserts durable support.
+  only where a profile asserts durable support. *Note:* the **default agent (Open Interpreter) advertises
+  `loadSession: true`** at `initialize` — so ACP `session/load` resume is available for the default and
+  is the natural opt-in there; restart-from-goal remains the universal fallback for agents that don't
+  advertise it. (Still: our transcript is authority regardless — see Risks.)
 - **Ceiling configuration:** per-workspace policy vs a fixed node default (mirrors the agent-scope open
   question). Slice default: fixed node default.
 - **Per-workspace run concurrency: DECIDED — unbounded per workspace, but ZERO cross-workspace

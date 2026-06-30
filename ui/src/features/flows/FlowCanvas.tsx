@@ -105,7 +105,8 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
   const importedFile = useRef<HTMLInputElement>(null);
 
-  const { snapshot, error: runError, runs, watch, reattach, refreshRuns } = useFlowRun();
+  const { snapshot, error: runError, runs, watch, reattach, refreshRuns, markTerminal } =
+    useFlowRun();
 
   // Re-seed the canvas when a different flow opens — a faithful load + reattach to an active run.
   useEffect(() => {
@@ -187,11 +188,16 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     const overlay = snapshot ? snapshotValues(snapshot) : {};
     return { ...base, ...overlay };
   }, [nodeState, snapshot]);
-  const locked = useMemo(
-    () => (snapshot ? executedNodeIds(snapshot) : new Set<string>()),
-    [snapshot],
-  );
   const runActive = !!snapshot && !isTerminalSnapshot(snapshot);
+  // The executed-node lock applies ONLY while a run is genuinely IN FLIGHT (`runActive`). A terminal
+  // snapshot — a finished manual run, OR the latest finite firing of an armed cron flow that
+  // `reattach` latched onto for its values — must NOT lock its nodes: there's no live run to protect,
+  // so the operator can edit freely. (The bug: locking on `snapshot` alone left every node read-only
+  // after Stop / between cron firings, forcing a page refresh to edit.)
+  const locked = useMemo(
+    () => (runActive && snapshot ? executedNodeIds(snapshot) : new Set<string>()),
+    [runActive, snapshot],
+  );
 
   // The merged registry keyed by type — used to resolve a node's `kind` (so a trigger renders no
   // target handle) + the selected node's descriptor for the config panel.
@@ -325,12 +331,19 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
       try {
         if (op === "suspend") await suspendFlow(snapshot.runId);
         if (op === "resume") await resumeFlow(snapshot.runId);
-        if (op === "cancel") await cancelFlow(snapshot.runId);
+        if (op === "cancel") {
+          await cancelFlow(snapshot.runId);
+          // Release the run-active lock NOW so the operator can edit nodes immediately — don't wait on
+          // the SSE `run-finished` frame (it may never arrive if the stream already closed, which is
+          // exactly what forced a page refresh before). The host is re-read as the source of truth on
+          // the next open / refresh.
+          markTerminal("cancelled");
+        }
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e));
       }
     },
-    [snapshot],
+    [snapshot, markTerminal],
   );
 
   /** Persist JUST the selected node's config (`flows.node.update`) — no whole-flow post

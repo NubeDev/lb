@@ -247,7 +247,19 @@ async fn dispatch_sink(
     let value = inputs.get("value").cloned().unwrap_or(Value::Null);
     match target {
         "series" => {
-            let req = json!({ "samples": [{ "series": name, "value": value, "ts": now }] });
+            // `ingest.write` deserializes each sample into the full `Sample` shape: `producer` is
+            // stamped to the authenticated principal INSIDE the verb but must be PRESENT to deserialize
+            // (send ""), `seq` is the monotonic (series,producer) dedup key — use `now` so a retry of
+            // THIS firing reuses it (idempotent) while successive firings advance it, and the point
+            // rides in `payload` (NOT `value`). The prior `{series,value,ts}` shape failed deserialize
+            // with "missing field `producer`".
+            let req = json!({ "samples": [{
+                "series": name,
+                "producer": "",
+                "ts": now,
+                "seq": now,
+                "payload": value,
+            }] });
             match Box::pin(call_tool(
                 node,
                 principal,
@@ -282,7 +294,17 @@ async fn dispatch_sink(
             }
         }
         "channel" | "inbox" => {
-            let req = json!({ "channel": name, "body": value });
+            // `inbox.record` requires a stable `id` (idempotent on (channel,id)) — derive it from
+            // (run,node) so a resume/retry upserts the same item, never a duplicate; each new firing has
+            // a fresh run id so it records a new item. `body` must be a STRING, so stringify a
+            // structured value. `author` is forced to the principal inside the verb. The prior
+            // `{channel,body}` shape failed with "missing arg: id".
+            let id = format!("{run_id}:{node_id}");
+            let body = match &value {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let req = json!({ "channel": name, "id": id, "body": body, "ts": now });
             match Box::pin(call_tool(
                 node,
                 principal,

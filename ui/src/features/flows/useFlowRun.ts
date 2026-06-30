@@ -30,6 +30,10 @@ export interface FlowRunState {
   reattach: (flowId: string) => Promise<void>;
   /** Re-poll the runs list (cheap) so a new cron firing surfaces in the banner without reopening. */
   refreshRuns: (flowId: string) => Promise<void>;
+  /** Optimistically mark the watched run terminal (e.g. right after a Stop/cancel) so the canvas's
+   *  run-active lock releases IMMEDIATELY — without waiting on the SSE `run-finished` frame, which
+   *  may never arrive if the stream already closed. The host stays the source of truth on next load. */
+  markTerminal: (status: string) => void;
 }
 
 function isTerminal(status: string): boolean {
@@ -66,6 +70,10 @@ export function useFlowRun(): FlowRunState {
 
   const watch = useCallback((next: string | null) => {
     setRunId(next);
+  }, []);
+
+  const markTerminal = useCallback((status: string) => {
+    setSnapshot((cur) => (cur ? { ...cur, status } : cur));
   }, []);
 
   const reattach = useCallback(async (flowId: string) => {
@@ -144,5 +152,5 @@ export function useFlowRun(): FlowRunState {
     };
   }, [runId]);
 
-  return { snapshot, error, runs, watch, reattach, refreshRuns };
+  return { snapshot, error, runs, watch, reattach, refreshRuns, markTerminal };
 }

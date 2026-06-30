@@ -113,7 +113,9 @@ async fn registry_reflects_an_installed_extension() {
     // built-ins first, then the ext nodes (global type <ext>.<type>), sorted.
     assert_eq!(
         types,
-        vec!["trigger", "tool", "rhai", "count", "counter", "subflow", "sink", "mqtt.in", "mqtt.out"]
+        vec![
+            "trigger", "tool", "rhai", "count", "counter", "subflow", "sink", "mqtt.in", "mqtt.out"
+        ]
     );
     // the ext descriptor carries its ports + category from the block.
     let mqtt_in = out["nodes"]

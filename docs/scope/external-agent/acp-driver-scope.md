@@ -11,12 +11,17 @@ this sub-scope assumes #3's hooks and focuses on *talking to the agent correctly
 
 ## Implementation status — the shipped spike vs the ACP target (read this first)
 
-The **integration wire is ACP** (this scope's plan, below). What exists on disk today is a deliberately
-**simpler seam-proof, not the ACP driver**: `rust/crates/external-agent/` drives `vtcode exec --json`
-over **NDJSON stdout lines** (no ACP, no SDK dependency — `Cargo.toml` pulls only `lb-run-events`,
-`serde`, `tokio`, `thiserror`). It validates the two cheap-to-get-wrong halves — the per-agent
-launch/decode seam (`AgentWrapper`) and the wire→`RunEvent` projection — against a **real** binary,
-without paying for the ACP transport before the seam is proven worth it.
+The **integration wire is ACP**, and that is now **verified for the default agent**: `interpreter acp`
+(Open Interpreter, the default) answers a real `initialize` handshake — `protocolVersion: 1`,
+`loadSession: true` (ACP resume), `mcpCapabilities`, session list/close (see Example flow). So the ACP
+plan below is grounded, not aspirational.
+
+What exists *on disk* today is a deliberately **simpler seam-proof, not the ACP driver**:
+`rust/crates/external-agent/` drives the agents' `exec --json` over **NDJSON stdout lines** (no ACP, no
+SDK dependency — `Cargo.toml` pulls only `lb-run-events`, `serde`, `tokio`, `thiserror`). It validates
+the two cheap-to-get-wrong halves — the per-agent launch/decode seam (`AgentWrapper`) and the
+wire→`RunEvent` projection — against **real** binaries: `vtcode exec --json`, and `interpreter exec
+--json` driven end-to-end against **Z.AI GLM-4.6** (a real file-writing, command-running agentic run).
 
 **These are different wires, and the spike's transport is throwaway.** Moving to ACP is **net-new
 work**, not a rename: the JSON-RPC stdio transport, the `initialize` handshake + capability
@@ -174,11 +179,13 @@ no dependents (keeps the future feature-OFF build clean — runtime-seam "featur
 
 ## Example flow
 
-1. `AcpRuntime::run(ws, goal, profile=vtcode-default, principal, mcp_endpoint)` is selected by the #1
-   registry.
-2. `spawn.rs` launches `vtcode acp …` (inside #3's sandbox) and wires stdio; the client `initialize`s,
-   advertising the MCP bridge and **declining** fs/terminal caps; ACP version is checked against the
-   profile range (mismatch → refuse to start).
+1. `AcpRuntime::run(ws, goal, profile=open-interpreter-default, principal, mcp_endpoint)` is selected by
+   the #1 registry. (`vtcode-default`, `codex-default` are alternate profiles over the same path.)
+2. `spawn.rs` launches `interpreter acp …` (inside #3's sandbox) and wires stdio; the client
+   `initialize`s, advertising the MCP bridge and **declining** fs/terminal caps; ACP version is checked
+   against the profile range (mismatch → refuse to start). *Verified:* `interpreter acp` returns a real
+   `initialize` result — `protocolVersion: 1`, `loadSession: true`, `mcpCapabilities`, session
+   list/close — so the handshake, version gate, and ACP-resume (#5) are realizable against the default.
 3. The driver loads the profile's `persona_skill` via `assets.load_skill` (grant-gated, derived
    principal); `session/new` carries that skill body as instructions, then `session/prompt { goal }`.
    The agent prompts its model via the gateway (#4).
