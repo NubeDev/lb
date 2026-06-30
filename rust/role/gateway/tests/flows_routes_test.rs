@@ -103,16 +103,12 @@ async fn flows_crud_round_trip_over_the_gateway() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+    // A tombstoned flow is absent → `flows.get` collapses to an opaque Denied (no existence leak).
     let resp = router(gw)
         .oneshot(bearer(get_req("/flows/cooler"), &tok))
         .await
         .unwrap();
-    let status = resp.status();
-    let body = resp.into_body();
-    let bytes = http_body_util::BodyExt::collect(body).await.unwrap().to_bytes();
-    let text = String::from_utf8_lossy(&bytes);
-    eprintln!("DEBUG get-after-delete status={status} body={text}");
-    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -195,12 +191,13 @@ async fn workspace_b_cannot_read_workspace_a_flow() {
         .await
         .unwrap();
 
-    // ws-B cannot get ws-A's flow (the workspace wall — derived from the token, not the path).
+    // ws-B cannot get ws-A's flow (the workspace wall — derived from the token, not the path). The
+    // host collapses an absent flow to an opaque Denied (no existence leak) → 403.
     let resp = router(gw.clone())
         .oneshot(bearer(get_req("/flows/secret"), &tok_b))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 
     // ws-B's list does not include ws-A's flow.
     let resp = router(gw)
