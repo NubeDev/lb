@@ -17,16 +17,20 @@ import {
 import type { Flow, FlowNodeState, FlowRunSnapshot } from "@/lib/flows";
 
 describe("nodeStateValues (persistent runtime view)", () => {
-  it("maps node_state entries to per-node {output}, omitting null values", () => {
+  it("maps each node's envelope to its payload badge, omitting null values", () => {
     const state: FlowNodeState = {
       flowId: "f",
       nodes: [
-        { node: "a", value: { count: 4 }, rev: 7 },
+        // the stored value is the whole envelope; the badge shows its `payload` (D10).
+        { node: "a", value: { payload: 4, topic: "kfc.temp" }, rev: 7 },
+        // no `payload` key → fall back to the whole value.
+        { node: "fallback", value: { other: 1 }, rev: 3 },
         { node: "b", value: null, rev: null }, // never ran → omitted (renders blank, not null)
       ],
     };
     const v = nodeStateValues(state);
-    expect(v.a).toEqual({ output: { count: 4 }, error: null });
+    expect(v.a).toEqual({ output: 4, error: null });
+    expect(v.fallback).toEqual({ output: { other: 1 }, error: null });
     expect(v.b).toBeUndefined();
   });
 });
@@ -82,12 +86,13 @@ describe("snapshotValues", () => {
       flowVersion: 3,
       status: "running",
       steps: [
-        { id: "a", claim: "done", terminal: true, outcome: "ok", output: { count: 2 }, error: null },
+        // a settled node's recorded value is its envelope; the badge shows the `payload` (D10).
+        { id: "a", claim: "done", terminal: true, outcome: "ok", output: { payload: 2 }, error: null },
         { id: "b", claim: "running", terminal: false, outcome: "", output: null, error: null },
       ],
     };
     const v = snapshotValues(snap);
-    expect(v.a.output).toEqual({ count: 2 });
+    expect(v.a.output).toEqual(2);
     expect(v.b.output).toBeNull();
   });
 });

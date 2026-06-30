@@ -80,6 +80,34 @@ interrupt it. This slice makes the existing runtime **observable + interruptible
   owner failover for a backgrounded run (restart `flows.resume` re-drives) · per-node step-level
   token streaming.
 
+**Flows — the Node-RED message envelope (`payload`/`topic`, auto-wire): SHIPPED** (2026-07-01), over the
+flows runtime. A flow message is now a JSON **envelope** — a primary `payload` slot (always on output) +
+optional `topic` (routing/name) + free metadata — that **flows down a wire automatically on connect** and
+carries `topic` through a chain (Node-RED ergonomics over our own durable per-node engine, no shared
+mutable `msg`). A **clean breaking change** (flows is in dev): `${steps.x.output}` and bare node outputs
+are removed.
+- **auto-wire (D3)** — single upstream + no `with.payload` → inputs = the upstream's full recorded
+  envelope (no binding typed); a **join** (≥2 upstreams) with no `with.payload` is rejected at save by the
+  new `UnboundJoin` lint (auto-wire never silently picks one upstream).
+- **carry-forward (D4)** — a node's recorded envelope = `{ ...carry, ...emitted }` (carry = inputs minus
+  `payload`, so `topic` propagates); a join carries nothing.
+- **binding grammar (D5)** — `${steps.x}` = whole envelope; `${steps.x.<dot.path>}` = a field path into it
+  (`payload`/`topic`/`findings`/`payload.items.1`, missing→null); `.output`/`.findings` are no longer
+  special. Whole-reference only, no interpolation.
+- **per-builtin envelopes (D6)** + **explicit `counter` mode (D7)** — `tick` (default, +step every firing
+  regardless of payload) vs `throughput` (+payload size); the implicit-throughput trap is gone. Built-in
+  descriptor ports renamed to `payload`/`topic`/`findings`. Sink destination = `msg.topic ?? config.name`.
+- **canvas (D10)** — `flow_node_state` stores the whole envelope; `flowGraph` shows its `payload` badge
+  (falls back to the whole envelope when there's no `payload`).
+- **Tests (green, real `mem://`/caps/jobs — no mocks):** `lb-flows` (binding field-paths/whole-envelope,
+  the join lint, no-stray-port); host `flows_run_test` +6 (auto-wire 3-node no-`with`, join-lint
+  rejection, topic carry-forward, `rhai return msg`, counter tick-vs-throughput) keeping the flows suites
+  green, sink reads `payload` + `msg.topic` routes; `ui flowGraph.test` (envelope→payload badge +
+  fallback). The mandatory capability-deny + workspace-isolation tests carry over (assertion shapes moved
+  to `payload`). Session: `sessions/flows/flow-message-envelope-session.md`; scope:
+  `scope/flows/flow-message-envelope-scope.md`; public updated. **Deferred (its own session):**
+  `flow-dashboard-binding-ux-scope` (picker `payload`/`topic` ports, read views default to `payload`).
+
 **Flows — PLC-grade reliability (unique run ids + conflict-safe writes): SHIPPED** (2026-06-30), over
 the flows runtime. Driven by a live `:8080` reproduction: 8 concurrent `POST /flows/chain4/run`
 returned **one shared run id** + a wall of `Invalid revision` / `read or write conflict` store

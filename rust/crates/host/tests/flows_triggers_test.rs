@@ -222,7 +222,7 @@ async fn cron_trigger_node_fires_its_subgraph() {
         id: "a".into(),
         node_type: "count".into(),
         needs: vec!["trigger-5".into()],
-        with: serde_json::Map::from_iter([("items".into(), json!([1, 2, 3, 4]))]),
+        with: serde_json::Map::from_iter([("payload".into(), json!([1, 2, 3, 4]))]),
         config: json!({}),
     };
     let mut f = rhai_flow("chain4");
@@ -250,7 +250,7 @@ async fn cron_trigger_node_fires_its_subgraph() {
         .find(|s| s["id"] == "a")
         .expect("count step present");
     assert_eq!(
-        step_a["output"]["count"], 4,
+        step_a["output"]["payload"], 4,
         "count node produced a real value"
     );
 }

@@ -3,14 +3,20 @@
 //! through the same palette path as extension nodes — one registry, one renderer, no "is this
 //! native?" branch. They map onto the spine's node model (`flows-scope.md` "The node model").
 //!
+//! Every built-in speaks the **message envelope** (flow-message-envelope-scope D6): its input port is
+//! `payload` (the value) with `topic` carried alongside, and its output is `payload` (+ any field it
+//! sets, e.g. `topic`/`findings`). Ports are named `payload`/`topic` so the palette, canvas handles,
+//! and dashboard picker all speak one vocabulary.
+//!
 //! | `type` | `kind` | `tool` binding | ports | config (shape) |
 //! |---|---|---|---|---|
-//! | `trigger` | trigger | host (no MCP tool) | out: `fire` | `{ mode, ... }` (cron spec / series / inject sub-mode) |
-//! | `tool` | transform | the node's `mcp_verb` config field | in: `args`; out: `output` | `{ verb, args }` |
-//! | `rhai` | transform | host `rules.eval` (the lb-rules cage) | in: `input`; out: `output`,`findings` | `{ source }` |
-//! | `count` | transform | host (no MCP tool) | in: `items`; out: `count` | `{}` (counts its input) |
-//! | `subflow` | transform | host `flows.run` (child, pinned) | in/out by the child's named ports | `{ flow }` |
-//! | `sink` | sink | host write (`inbox\|outbox\|channel\|series`) or an ext-node | in: `value` | `{ target }` |
+//! | `trigger` | trigger | host (no MCP tool) | out: `payload`,`topic` | `{ mode, topic?, ... }` |
+//! | `tool` | transform | the node's `mcp_verb` config field | in: `payload`; out: `payload` | `{ verb, args }` |
+//! | `rhai` | transform | host `rules.eval` (the lb-rules cage) | in: `payload`; out: `payload`,`topic`,`findings` | `{ source }` |
+//! | `count` | transform | host (no MCP tool) | in: `payload`; out: `payload` | `{}` (counts its input) |
+//! | `counter` | transform | host (no MCP tool) | in: `payload`; out: `payload` | `{ mode, step, reset }` |
+//! | `subflow` | transform | host `flows.run` (child, pinned) | in: `payload`; out: `payload` | `{ flow }` |
+//! | `sink` | sink | host write (`inbox\|outbox\|channel\|series`) or an ext-node | in: `payload`,`topic` | `{ target }` |
 //!
 //! The `trigger` node's `inject` sub-mode (Decision 9) splits intent: `fire` starts a one-shot run
 //! with the value; `retain` updates the node's retained `flow_input` value and starts no run. The
@@ -40,7 +46,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             .with_title("Trigger")
             .with_category("Flow")
             .with_icon("zap")
-            .with_ports(vec![], vec!["fire".into()])
+            .with_ports(vec![], vec!["payload".into(), "topic".into()])
             .with_config(
                 1,
                 json!({
@@ -50,6 +56,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
                         "mode": {"type": "string", "enum": ["manual", "cron", "event", "inject", "boot"], "default": "manual"},
                         "cron": {"type": "string", "description": "5-field cron spec (mode=cron)"},
                         "series": {"type": "string", "description": "source series to watch (mode=event)"},
+                        "topic": {"type": "string", "description": "the topic stamped on the firing envelope (D6)"},
                         "inject_mode": {"type": "string", "enum": ["fire", "retain"], "default": "fire", "description": "Decision 9 (mode=inject)"}
                     }
                 }),
@@ -61,7 +68,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             .with_title("Tool")
             .with_category("Flow")
             .with_icon("wrench")
-            .with_ports(vec!["args".into()], vec!["output".into()])
+            .with_ports(vec!["payload".into()], vec!["payload".into()])
             .with_config(
                 1,
                 json!({
@@ -80,7 +87,10 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             .with_title("Rhai")
             .with_category("Flow")
             .with_icon("code")
-            .with_ports(vec!["input".into()], vec!["output".into(), "findings".into()])
+            .with_ports(
+                vec!["payload".into()],
+                vec!["payload".into(), "topic".into(), "findings".into()],
+            )
             .with_config(
                 1,
                 json!({
@@ -97,7 +107,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             .with_title("Count (input size)")
             .with_category("Flow")
             .with_icon("hash")
-            .with_ports(vec!["items".into()], vec!["count".into()])
+            .with_ports(vec!["payload".into()], vec!["payload".into()])
             .with_config(
                 1,
                 json!({
@@ -108,22 +118,23 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             ),
         // A STATEFUL accumulator — the Node-RED / PLC counter (the "rung holds its last result").
         // Unlike `count` (a pure transform of THIS firing's input), `counter` reads its own durable
-        // last value (`flow_node_state:{flow}:{node}`) and increments by `step` on every firing, so
-        // the value GOES UP across runs and survives a restart. `reset` zeroes it; an `items` input
-        // increments by the input's size instead of `step` (a throughput counter). Output port
-        // `count` carries the running total. No MCP tool — the host resolves it directly.
+        // last value and increments on every firing, so the value GOES UP across runs and survives a
+        // restart. `mode` is EXPLICIT (flow-message-envelope-scope D7, the trap removed): `tick`
+        // (default) → +`step` every firing regardless of payload; `throughput` → +the size of the
+        // `payload`. `reset` zeroes it. Output `payload` carries the running total. No MCP tool.
         NodeDescriptor::new("counter", NodeKind::Transform, "")
             .with_title("Counter (running total)")
             .with_category("Flow")
             .with_icon("plus")
-            .with_ports(vec!["items".into()], vec!["count".into()])
+            .with_ports(vec!["payload".into()], vec!["payload".into()])
             .with_config(
                 1,
                 json!({
                     "type": "object",
                     "additionalProperties": false,
                     "properties": {
-                        "step": {"type": "integer", "default": 1, "description": "increment per firing (when no `items` input)"},
+                        "mode": {"type": "string", "enum": ["tick", "throughput"], "default": "tick", "description": "tick=+step every firing; throughput=+payload size (D7)"},
+                        "step": {"type": "integer", "default": 1, "description": "increment per firing (mode=tick)"},
                         "reset": {"type": "boolean", "default": false, "description": "zero the running total before applying this firing"}
                     }
                 }),
@@ -151,7 +162,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
             .with_title("Sink")
             .with_category("Flow")
             .with_icon("arrow-down-to-line")
-            .with_ports(vec!["value".into()], vec![])
+            .with_ports(vec!["payload".into(), "topic".into()], vec![])
             .with_config(
                 1,
                 json!({
@@ -204,7 +215,22 @@ mod tests {
         let d = builtin_descriptors();
         let count = d.iter().find(|x| x.r#type == "count").unwrap();
         assert_eq!(count.kind, NodeKind::Transform);
-        assert_eq!(count.inputs, vec!["items".to_string()]);
-        assert_eq!(count.outputs, vec!["count".to_string()]);
+        assert_eq!(count.inputs, vec!["payload".to_string()]);
+        assert_eq!(count.outputs, vec!["payload".to_string()]);
+    }
+
+    #[test]
+    fn builtins_speak_the_envelope_ports() {
+        // Every built-in's ports are envelope ports — no stray `items`/`value`/`output` literals (D6).
+        let d = builtin_descriptors();
+        for desc in &d {
+            for p in desc.inputs.iter().chain(desc.outputs.iter()) {
+                assert!(
+                    matches!(p.as_str(), "payload" | "topic" | "findings"),
+                    "builtin {} has non-envelope port {p}",
+                    desc.r#type
+                );
+            }
+        }
     }
 }

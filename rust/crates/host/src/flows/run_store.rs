@@ -154,6 +154,11 @@ pub async fn claim_step(
 
 /// Record a node's terminal outcome (idempotent) + upsert `flow_node_state` last-value on Ok
 /// (Decision 5 — the dashboard instant read; history is the node's series, not this record).
+///
+/// On `Ok`, the recorded value is the **message envelope** (flow-message-envelope-scope D1): the
+/// `carry` map (the incoming inputs minus `payload`, so `topic` and friends propagate down a linear
+/// chain — D4) merged under the node's `emitted` fields (which always include a fresh `payload`).
+/// A join (`carry` empty) records just `emitted`. `flow_node_state` stores the whole envelope (D9).
 pub async fn record_outcome(
     store: &Store,
     ws: &str,
@@ -167,17 +172,28 @@ pub async fn record_outcome(
     };
     state.claim = ClaimState::Done;
     match outcome {
-        NodeOutcome::Ok(output, findings) => {
+        NodeOutcome::Ok { emitted, carry } => {
+            // D4 carry-forward: `{ ...carry, ...emitted }` — emitted wins on a key collision (a node
+            // overwrites a carried field, e.g. setting its own `topic`).
+            let mut envelope = match carry {
+                Value::Object(m) => m,
+                _ => serde_json::Map::new(),
+            };
+            if let Value::Object(e) = emitted {
+                for (k, v) in e {
+                    envelope.insert(k, v);
+                }
+            }
+            let envelope = Value::Object(envelope);
             state.outcome = "ok".into();
-            state.output = output.clone();
-            state.findings = findings.clone();
-            // Decision 5: last-value state for the instant dashboard read.
+            state.output = envelope.clone();
+            // Decision 5/9: last-value envelope for the instant dashboard read.
             write(
                 store,
                 ws,
                 FLOW_NODE_STATE_TABLE,
                 &format!("{flow_id}:{node_id}"),
-                &output,
+                &envelope,
             )
             .await
             .map_err(|e| e.to_string())?;
@@ -193,12 +209,23 @@ pub async fn record_outcome(
     write_step(store, ws, &state).await
 }
 
-/// The terminal outcome a node's executor reports.
+/// The terminal outcome a node's executor reports. `Ok` carries the node's freshly-`emitted` envelope
+/// fields and the `carry` map (incoming inputs minus `payload`) to merge forward (D4).
 #[allow(dead_code)]
 pub enum NodeOutcome {
-    Ok(Value, Value),
+    Ok { emitted: Value, carry: Value },
     Err(String),
     Skipped,
+}
+
+impl NodeOutcome {
+    /// Convenience: an `Ok` with no carry-forward (a join, or a node that synthesises its envelope).
+    pub fn ok(emitted: Value) -> Self {
+        NodeOutcome::Ok {
+            emitted,
+            carry: Value::Null,
+        }
+    }
 }
 
 /// Decrement dependents' in-degree; return those that reached 0 (marked Enqueued).
@@ -299,31 +326,92 @@ pub async fn finalize_if_complete(
     Ok(Some(status.to_string()))
 }
 
-/// Resolve a node's `with` bindings against the recorded Done-step outputs + the merged params
-/// (declared params ∪ retained `flow_input` values, Decision 9 read-side).
+/// A node's resolved inputs (its incoming message, D2) plus the `carry` map to merge forward (D4).
+pub struct ResolvedInputs {
+    /// The node's incoming `msg` — the map every builtin reads `payload`/`topic` from.
+    pub inputs: serde_json::Map<String, Value>,
+    /// The fields to carry forward onto the node's output envelope (inputs minus `payload`). Empty
+    /// for a join (≥2 upstreams) — no ambiguous merge (D4).
+    pub carry: serde_json::Map<String, Value>,
+}
+
+/// Resolve a node's incoming message (flow-message-envelope-scope D2/D3). Auto-wire: if the node has
+/// **exactly one** `needs` upstream and its `with` does NOT bind `payload`, `inputs` = that upstream's
+/// **full recorded envelope** (a copy — Node-RED "drag a wire and it flows"). With an explicit `with`,
+/// `inputs` is built from the bindings only (no auto). With ≥2 upstreams and no `with` (a join), the
+/// save-time lint already rejected it; defensively `inputs` is empty here.
+///
+/// `carry` (D4) = `inputs` minus `payload`, but only when `inputs` came from a single upstream OR a
+/// single explicit `payload` binding (so `topic` propagates); a multi-input join carries nothing.
 pub async fn resolve_node_bindings(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
+    node_id: &str,
     with: &serde_json::Map<String, Value>,
     params: &serde_json::Map<String, Value>,
-) -> Result<serde_json::Map<String, Value>, String> {
+) -> Result<ResolvedInputs, String> {
     let mut recorded = HashMap::new();
     for n in &flow.nodes {
         if let Some(rec) = read_step(store, ws, run_id, &n.id).await? {
             if rec.claim == ClaimState::Done && rec.outcome == "ok" {
-                recorded.insert(
-                    n.id.clone(),
-                    NodeOutput {
-                        output: rec.output,
-                        findings: rec.findings,
-                    },
-                );
+                recorded.insert(n.id.clone(), NodeOutput::new(rec.output));
             }
         }
     }
-    resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())
+    let needs = flow
+        .node(node_id)
+        .map(|n| n.needs.as_slice())
+        .unwrap_or(&[]);
+    let binds_payload = with.contains_key("payload");
+
+    // D3 auto-wire: single upstream, no explicit `payload` binding → copy the upstream's envelope.
+    if needs.len() == 1 && !binds_payload {
+        let up = &needs[0];
+        let envelope = recorded
+            .get(up)
+            .map(|r| r.envelope.clone())
+            .unwrap_or(Value::Null);
+        let inputs = match envelope {
+            Value::Object(m) => m,
+            // The upstream produced a non-object (a `Continue`-null, say) — wrap it as a payload so
+            // the node still reads a well-formed message.
+            other => {
+                let mut m = serde_json::Map::new();
+                m.insert("payload".into(), other);
+                m
+            }
+        };
+        // Still apply any non-`payload` explicit bindings on top (e.g. a hand-set `topic`).
+        let mut inputs = inputs;
+        let bound = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
+        for (k, v) in bound {
+            inputs.insert(k, v);
+        }
+        let carry = without_payload(&inputs);
+        return Ok(ResolvedInputs { inputs, carry });
+    }
+
+    // Explicit bindings (or a no-upstream node): build `inputs` from `with` only.
+    let inputs = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
+    // Carry forward only when this is NOT a multi-input join (D4): a single (or zero) upstream, or a
+    // single explicit `payload` binding.
+    let carry = if needs.len() >= 2 {
+        serde_json::Map::new()
+    } else {
+        without_payload(&inputs)
+    };
+    Ok(ResolvedInputs { inputs, carry })
+}
+
+/// A copy of `inputs` with the `payload` key removed — the fields that carry forward (D4).
+fn without_payload(inputs: &serde_json::Map<String, Value>) -> serde_json::Map<String, Value> {
+    inputs
+        .iter()
+        .filter(|(k, _)| k.as_str() != "payload")
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect()
 }
 
 /// Read every retained `flow_input` for a flow and merge into `params` (Decision 9: a run reads the

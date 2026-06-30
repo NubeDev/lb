@@ -141,9 +141,20 @@ export function snapshotValues(
 ): Record<string, { output?: unknown; error?: string | null }> {
   const out: Record<string, { output?: unknown; error?: string | null }> = {};
   for (const s of snap.steps ?? []) {
-    out[s.id] = { output: s.output, error: s.error ?? null };
+    out[s.id] = { output: payloadOf(s.output), error: s.error ?? null };
   }
   return out;
+}
+
+/** The value badge a node shows = its envelope's `payload` (flow-message-envelope-scope D10),
+ *  falling back to the whole envelope only when there is no `payload` key (a non-envelope value, or a
+ *  node that hasn't run). Keeps the canvas legible without the full `{payload, topic, ...}` clutter. */
+export function payloadOf(envelope: unknown): unknown {
+  if (envelope !== null && typeof envelope === "object" && !Array.isArray(envelope)) {
+    const obj = envelope as Record<string, unknown>;
+    if ("payload" in obj) return obj.payload;
+  }
+  return envelope;
 }
 
 /** Map the persistent runtime state (`flows.node_state`) to the same per-node `{output}` shape the
@@ -156,7 +167,7 @@ export function nodeStateValues(
   const out: Record<string, { output?: unknown; error?: string | null }> = {};
   for (const n of state.nodes ?? []) {
     if (n.value !== null && n.value !== undefined) {
-      out[n.node] = { output: n.value, error: null };
+      out[n.node] = { output: payloadOf(n.value), error: null };
     }
   }
   return out;

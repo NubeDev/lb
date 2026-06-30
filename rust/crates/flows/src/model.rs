@@ -67,7 +67,8 @@ pub struct Node {
     pub node_type: String,
     #[serde(default)]
     pub needs: Vec<String>,
-    /// Input bindings: literal | `${steps.x.output}` | `${steps.x.findings}` | `${params.y}`.
+    /// Input bindings: literal | `${steps.x}` | `${steps.x.payload}` | `${steps.x.<path>}` |
+    /// `${params.y}` (the message-envelope grammar, flow-message-envelope-scope D5).
     #[serde(default)]
     pub with: serde_json::Map<String, Value>,
     /// The node's config, validated against its descriptor's schema at save.
@@ -264,6 +265,10 @@ pub enum DagError {
     UnknownDependency(String, String),
     #[error("flow has a cycle")]
     Cycle,
+    #[error(
+        "node {0} has {1} inputs — a join must bind `payload` (auto-wire is single-upstream only)"
+    )]
+    UnboundJoin(String, usize),
 }
 
 /// Validate a flow's DAG: non-empty, within `max_nodes`, unique ids, deps resolve, no self-edge,
@@ -314,6 +319,15 @@ pub fn validate_flow(flow: &Flow, max_nodes: usize) -> Result<(), DagError> {
     }
     if processed != flow.nodes.len() {
         return Err(DagError::Cycle);
+    }
+    // Join lint (flow-message-envelope-scope D3): auto-wire copies a SINGLE upstream's envelope. A
+    // node with ≥2 upstreams is a join — it MUST bind `payload` explicitly, else the engine cannot
+    // know which upstream's message to carry (silently picking one would hide a join bug). Reject at
+    // save so a forgotten binding never looks like it works while dropping data.
+    for n in &flow.nodes {
+        if n.needs.len() >= 2 && !n.with.contains_key("payload") {
+            return Err(DagError::UnboundJoin(n.id.clone(), n.needs.len()));
+        }
     }
     Ok(())
 }
@@ -410,18 +424,43 @@ mod tests {
         );
     }
 
+    /// A node whose `with` binds `payload` (a join author resolved the ambiguity explicitly).
+    fn join_node(id: &str, needs: &[&str]) -> Node {
+        let mut n = node(id, needs);
+        n.with.insert("payload".into(), json!("${steps.b.payload}"));
+        n
+    }
+
     #[test]
     fn diamond_frontier_orders_correctly() {
+        // The diamond's sink `d` joins `b` + `c`, so it MUST bind `payload` (D3 join lint).
         let f = flow(vec![
             node("a", &[]),
             node("b", &["a"]),
             node("c", &["a"]),
-            node("d", &["b", "c"]),
+            join_node("d", &["b", "c"]),
         ]);
         validate_flow(&f, MAX_FLOW_NODES).unwrap();
         assert_eq!(f.frontier(), vec!["a"]);
         let deps = f.dependents();
         assert_eq!(deps["a"], vec!["b", "c"]);
+    }
+
+    #[test]
+    fn rejects_a_join_with_no_payload_binding() {
+        // ≥2 upstreams and no `with.payload` → the save-time join lint (D3).
+        let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &["a", "b"])]);
+        assert_eq!(
+            validate_flow(&f, MAX_FLOW_NODES),
+            Err(DagError::UnboundJoin("c".into(), 2))
+        );
+        // ...and passes once `payload` is bound.
+        let f = flow(vec![
+            node("a", &[]),
+            node("b", &[]),
+            join_node("c", &["a", "b"]),
+        ]);
+        validate_flow(&f, MAX_FLOW_NODES).expect("explicit join is valid");
     }
 
     #[test]

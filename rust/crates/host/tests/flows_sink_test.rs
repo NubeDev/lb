@@ -58,14 +58,14 @@ fn flow_with(id: &str, sink: Node) -> Flow {
     }
 }
 
-/// A lone `sink` fed a literal `value` via `with` (the host resolves the literal unchanged) — the same
-/// pattern the `count_node_counts_its_input` test uses for a lone transform.
+/// A lone `sink` fed a literal `payload` via `with` (the host resolves the literal unchanged). The
+/// sink reads `msg.payload` and writes it; its destination = `msg.topic ?? config.name` (D6).
 fn sink_node(target: &str, name: &str, value: Value) -> Node {
     Node {
         id: "out".into(),
         node_type: "sink".into(),
         needs: vec![],
-        with: serde_json::Map::from_iter([("value".into(), value)]),
+        with: serde_json::Map::from_iter([("payload".into(), value)]),
         config: json!({ "target": target, "name": name }),
     }
 }
@@ -119,7 +119,8 @@ async fn sink_series_writes_a_sample_readable_by_series_latest() {
         "sink step: {}",
         snap["steps"][0]
     );
-    assert_eq!(snap["steps"][0]["output"]["accepted"], 1);
+    // D6: the sink emits a pass-through envelope `{ payload }`.
+    assert_eq!(snap["steps"][0]["output"]["payload"], 42);
 
     // And the value actually landed in the series (the round-trip the proof the write is real).
     let out = call_tool(
@@ -158,7 +159,7 @@ async fn sink_inbox_records_an_item_readable_by_inbox_list() {
         "sink step: {}",
         snap["steps"][0]
     );
-    assert_eq!(snap["steps"][0]["output"]["recorded"], true);
+    assert_eq!(snap["steps"][0]["output"]["payload"], "hello from a flow");
 
     // The item is in the channel with the flow's value as its body.
     let out = call_tool(
@@ -210,5 +211,47 @@ async fn sink_inbox_records_a_structured_value_as_a_stringified_body() {
             .as_str()
             .is_some_and(|b| b.contains("\"count\":5"))),
         "structured body not stringified: {listed}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn sink_destination_uses_msg_topic_over_config_name() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", CAPS);
+
+    // The sink's `config.name` is a default; `msg.topic` (carried on the envelope) ROUTES the write
+    // (D6: destination = `msg.topic ?? config.name`). The sink here carries `topic` = the real channel.
+    let sink = Node {
+        id: "out".into(),
+        node_type: "sink".into(),
+        needs: vec![],
+        with: serde_json::Map::from_iter([
+            ("payload".into(), json!("routed by topic")),
+            ("topic".into(), json!("topic-channel")),
+        ]),
+        config: json!({ "target": "inbox", "name": "config-channel" }),
+    };
+    let f = flow_with("sink-topic", sink);
+    save_flow(&node, &p, &f).await;
+    let snap = run_to_terminal(&node, &p, "sink-topic", "sink-topic-1").await;
+    assert_eq!(snap["status"], "success", "run snapshot: {snap}");
+
+    // The item landed in the TOPIC channel, not the config one.
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "inbox.list",
+        &json!({ "channel": "topic-channel" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let listed: Value = serde_json::from_str(&out).unwrap();
+    let items = listed["items"].as_array().expect("items array");
+    assert!(
+        items
+            .iter()
+            .any(|it| it["body"] == json!("routed by topic")),
+        "topic did not route the write: {listed}"
     );
 }

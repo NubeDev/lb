@@ -17,9 +17,9 @@
 //! - [`config_schema`] — compile + validate a node config against JSON-Schema 2020-12 (Decision 3).
 //! - [`model`] — the typed `Flow` graph (`Node`/`Edge`/`needs`/`with`) + DAG math (Kahn cycle-detect,
 //!   indegrees/dependents/frontier), reusing the chain binding grammar verbatim.
-//! - [`binding`] — resolve a node's `with` bindings (whole-value `${steps.x.output}` /
-//!   `${params.y}` / literal) against recorded upstream outputs + flow params — the chain rule,
-//!   no templating mini-language.
+//! - [`binding`] — resolve a node's `with` bindings (whole-value `${steps.x}` / `${steps.x.payload}` /
+//!   `${params.y}` / literal) against recorded upstream **envelopes** + flow params — the message-
+//!   envelope grammar (flow-message-envelope-scope D5), no templating mini-language.
 
 pub mod binding;
 pub mod builtins;

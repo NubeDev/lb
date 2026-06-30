@@ -166,13 +166,13 @@ async fn linear_rhai_flow_runs_to_success() {
 async fn count_node_counts_its_input() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    // A count node fed a literal 4-element array via `with`. The host resolves the literal binding
-    // unchanged; the count transform emits {count: 4}.
+    // A count node fed a literal 4-element array via `with.payload` (the envelope's value slot). The
+    // count transform reads `payload` and emits the envelope `{ payload: 4 }`.
     let count = Node {
         id: "count".into(),
         node_type: "count".into(),
         needs: vec![],
-        with: serde_json::Map::from_iter([("items".into(), json!([1, 2, 3, 4]))]),
+        with: serde_json::Map::from_iter([("payload".into(), json!([1, 2, 3, 4]))]),
         config: json!({}),
     };
     let f = flow("cnt", vec![count]);
@@ -182,20 +182,24 @@ async fn count_node_counts_its_input() {
     assert_eq!(snap["status"], "success");
     let step = &snap["steps"][0];
     assert_eq!(step["outcome"], "ok");
-    assert_eq!(step["output"]["count"], 4);
+    assert_eq!(step["output"]["payload"], 4);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn diamond_frontier_runs_in_dependency_order() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
+    // `d` joins `b` + `c` (≥2 upstreams), so it MUST bind `payload` explicitly (D3 join lint) —
+    // auto-wire is single-upstream only.
+    let mut d = rhai_node("d", &["b", "c"], "4");
+    d.with.insert("payload".into(), json!("${steps.b.payload}"));
     let f = flow(
         "dia",
         vec![
             rhai_node("a", &[], "1"),
             rhai_node("b", &["a"], "2"),
             rhai_node("c", &["a"], "3"),
-            rhai_node("d", &["b", "c"], "4"),
+            d,
         ],
     );
     save_flow(&node, &p, "ws", &f).await;
@@ -407,6 +411,160 @@ async fn subflow_parks_on_child_run() {
         .find(|s| s["id"] == "sub")
         .unwrap();
     assert_eq!(sub["outcome"], "ok");
-    // the subflow node's output folds the child's terminal node outputs (unwrapped scalar).
-    assert_eq!(sub["output"]["c"], 7);
+    // the subflow node emits an envelope whose `payload` folds the child's terminal node envelopes
+    // (each child node's recorded envelope is `{payload: <value>}`).
+    assert_eq!(sub["output"]["payload"]["c"]["payload"], 7);
+}
+
+fn step_output<'a>(snap: &'a Value, id: &str) -> &'a Value {
+    snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == id)
+        .unwrap_or_else(|| panic!("no step {id}"))
+        .get("output")
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn auto_wire_flows_the_envelope_end_to_end_with_no_with() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // A 3-node linear chain, NO `with` typed on any node (D3 auto-wire). `a` emits payload 10; `b`
+    // reads `payload` (auto-wired from `a`) and doubles it; `c` reads `b`'s payload and adds 5.
+    let f = flow(
+        "auto",
+        vec![
+            rhai_node("a", &[], "10"),
+            rhai_node("b", &["a"], "payload * 2"),
+            rhai_node("c", &["b"], "payload + 5"),
+        ],
+    );
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "auto", "auto-1").await;
+    let snap = runs_get(&node, &p, "ws", "auto-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(step_output(&snap, "a")["payload"], 10);
+    assert_eq!(step_output(&snap, "b")["payload"], 20);
+    assert_eq!(step_output(&snap, "c")["payload"], 25);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn save_rejects_a_join_with_no_payload_binding() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // `j` joins `a` + `b` but binds no `payload` → the save-time join lint rejects it (D3).
+    let f = flow(
+        "join",
+        vec![
+            rhai_node("a", &[], "1"),
+            rhai_node("b", &[], "2"),
+            rhai_node("j", &["a", "b"], "3"),
+        ],
+    );
+    let body = serde_json::to_value(&f).unwrap().to_string();
+    let err = call_tool(&node, &p, "ws", "flows.save", &body)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, lb_mcp::ToolError::BadInput(_)));
+    // ...and saving succeeds once `payload` is bound.
+    let mut j = rhai_node("j", &["a", "b"], "3");
+    j.with.insert("payload".into(), json!("${steps.a.payload}"));
+    let f = flow(
+        "join",
+        vec![rhai_node("a", &[], "1"), rhai_node("b", &[], "2"), j],
+    );
+    let saved = save_flow(&node, &p, "ws", &f).await;
+    assert_eq!(saved["version"], 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn topic_carries_forward_down_the_chain() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // `a` sets a topic on its envelope (`return msg`-style object); `b` (auto-wired) emits only a new
+    // payload — the topic must CARRY FORWARD to `b`'s recorded envelope (D4).
+    let f = flow(
+        "carry",
+        vec![
+            rhai_node("a", &[], r#"#{payload: 1, topic: "kfc.temp"}"#),
+            rhai_node("b", &["a"], "payload + 1"),
+        ],
+    );
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "carry", "carry-1").await;
+    let snap = runs_get(&node, &p, "ws", "carry-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(step_output(&snap, "a")["topic"], "kfc.temp");
+    assert_eq!(step_output(&snap, "b")["payload"], 2);
+    // topic carried even though `b` only set a new payload.
+    assert_eq!(step_output(&snap, "b")["topic"], "kfc.temp");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rhai_return_msg_round_trips_the_envelope() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // An object carrying a `payload` key IS the emitted envelope (function-node `return msg`); a bare
+    // value (no `payload` key) is the new payload (D6).
+    let f = flow(
+        "ret",
+        vec![
+            rhai_node("env", &[], r#"#{payload: 99, topic: "t"}"#),
+            rhai_node("bare", &[], "#{a: 1}"),
+        ],
+    );
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "ret", "ret-1").await;
+    let snap = runs_get(&node, &p, "ws", "ret-1").await;
+    assert_eq!(snap["status"], "success");
+    // object with `payload` → it is the envelope verbatim.
+    assert_eq!(step_output(&snap, "env")["payload"], 99);
+    assert_eq!(step_output(&snap, "env")["topic"], "t");
+    // object WITHOUT `payload` → wrapped as the new payload.
+    assert_eq!(step_output(&snap, "bare")["payload"]["a"], 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn counter_tick_mode_does_not_jump_by_payload_size() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // Regression for the implicit-throughput trap (D7): an auto-wired counter in DEFAULT tick mode
+    // increments by `step` (1), NOT by the size of the wired payload. `src` emits a 4-element array;
+    // `tick` is auto-wired to it but must read +1, not +4. (Fail-before: the old `items`-detect would
+    // have jumped to 4.)
+    let counter = Node {
+        id: "tick".into(),
+        node_type: "counter".into(),
+        needs: vec!["src".into()],
+        with: serde_json::Map::new(),
+        config: json!({}),
+    };
+    let f = flow("tick", vec![rhai_node("src", &[], "[1, 2, 3, 4]"), counter]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "tick", "tick-1").await;
+    let snap = runs_get(&node, &p, "ws", "tick-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(step_output(&snap, "tick")["payload"], 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn counter_throughput_mode_adds_payload_size() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // Explicit `throughput` mode → increment by the payload's size (4 for a 4-element array, D7).
+    let counter = Node {
+        id: "thru".into(),
+        node_type: "counter".into(),
+        needs: vec!["src".into()],
+        with: serde_json::Map::new(),
+        config: json!({ "mode": "throughput" }),
+    };
+    let f = flow("thru", vec![rhai_node("src", &[], "[1, 2, 3, 4]"), counter]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "thru", "thru-1").await;
+    let snap = runs_get(&node, &p, "ws", "thru-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(step_output(&snap, "thru")["payload"], 4);
 }

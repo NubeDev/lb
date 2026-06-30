@@ -481,14 +481,14 @@ async fn cancel_status_written_before_drive_is_honored_deterministically() {
 
 // ── flows.node_state (the persistent runtime view) ────────────────────────────────────────────────
 
-/// A count node fed a literal array via `with` (so it produces a real `{count:N}` value the
-/// persistent state captures).
+/// A count node fed a literal array via `with.payload` (so it produces a real `{payload:N}` envelope
+/// the persistent state captures).
 fn count_with(id: &str, needs: &[&str], items: Value) -> Node {
     Node {
         id: id.into(),
         node_type: "count".into(),
         needs: needs.iter().map(|s| s.to_string()).collect(),
-        with: serde_json::Map::from_iter([("items".into(), items)]),
+        with: serde_json::Map::from_iter([("payload".into(), items)]),
         config: json!({}),
     }
 }
@@ -532,7 +532,7 @@ async fn node_state_returns_persistent_last_value_updated_in_place() {
         .find(|n| n["node"] == "a")
         .unwrap();
     assert_eq!(
-        a["value"]["count"], 4,
+        a["value"]["payload"], 4,
         "persistent value present after run settles"
     );
     let rev1 = a["rev"].clone();
@@ -554,7 +554,7 @@ async fn node_state_returns_persistent_last_value_updated_in_place() {
         .iter()
         .find(|n| n["node"] == "a")
         .unwrap();
-    assert_eq!(a2["value"]["count"], 4);
+    assert_eq!(a2["value"]["payload"], 4);
     assert_ne!(
         a2["rev"], rev1,
         "the node_state record updated IN PLACE (rev bumped), not appended"

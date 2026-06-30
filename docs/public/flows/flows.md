@@ -162,8 +162,9 @@ independent triggers**, and firing one trigger flows only down **its own wires**
   subflow). The run records `entry_node` (`flows.runs.get` → `entryNode`); cron / inject / boot / `flows.run
   {entry}` all fire from their node.
 - **A real `counter` node** — the stateful accumulator (Node-RED / PLC "the rung holds its last result").
-  It reads its durable running total and **increments atomically** per firing (delta = input `items` size,
-  or `config.step`; `reset` zeroes it), so the count GOES UP across runs and survives a restart. Backed by
+  It reads its durable running total and **increments atomically** per firing (delta is set by the
+  explicit `mode` — see the envelope slice below; `reset` zeroes it), so the count GOES UP across runs and
+  survives a restart. Backed by
   durable **node memory** `flow_node_memory:{ws}:{flow}:{node}` + the new atomic `lb_store::increment`
   (server-side accumulate, per-key serialized — a retry can't double-add). The pure `count` transform is
   unchanged. This is the foundation for future stateful nodes (rate, debounce, moving-average).
@@ -177,6 +178,46 @@ totals 1..=64, ws-walled), `lb-flows` model helpers. Debug:
 
 *Open (follow-up, not bugs):* UI per-trigger armed chips; per-node enable/disable; orphan-cursor sweep on
 trigger removal; a native http-in/webhook source node (its own scope).
+
+## What's shipped (the Node-RED message envelope — `payload`/`topic`, auto-wire on connect)
+
+`flow-message-envelope-scope` — a flow message is now a JSON **envelope**: a primary `payload` slot
+(always on a node's output) + an optional `topic` (routing/name) + free metadata (`findings`, …). It
+flows down a wire **automatically** on connect, and `topic` carries through a chain — the Node-RED
+ergonomics, over our own durable per-node engine (no shared mutable `msg`). **Breaking change** (flows is
+in dev): old `${steps.x.output}` bindings and bare node outputs are gone.
+
+- **Auto-wire (D3).** A node with **exactly one** upstream and no `with.payload` receives that upstream's
+  **full recorded envelope** as its input message — no binding typed. With an explicit `with`, inputs come
+  from the bindings only. A **join** (≥2 upstreams) with no `with.payload` is rejected at save by the
+  `UnboundJoin` lint — auto-wire never silently picks one of several upstreams.
+- **Carry-forward (D4).** A node's recorded envelope = `{ ...carry, ...emitted }`, where `carry` is the
+  incoming inputs minus `payload` (so `topic` propagates) and `emitted` is what the node produced (always
+  a fresh `payload`). A node clears a carried field by emitting it as `null`; a join carries nothing.
+- **Binding grammar (D5).** `${steps.x}` → the whole envelope; `${steps.x.<dot.path>}` → a field path into
+  it (`payload`, `topic`, `findings`, `payload.items.1`, … ; missing → `null`); `${params.y}` unchanged;
+  literal otherwise. Whole-reference only, no interpolation. `.output`/`.findings` are no longer special —
+  they are ordinary field paths.
+- **Per-builtin envelopes (D6).** Every builtin reads `inputs["payload"]` and emits an envelope:
+  `trigger` → `{payload: <firing value>, topic: config.topic?}`; `count` → `{payload: <size>}`; `rhai` →
+  the script return as `payload`, or if it returns an object with a `payload` key that object **is** the
+  envelope (`return msg`), with rules `findings` on the `findings` field; `tool` → the verb result as
+  `payload` (args merged with an object payload); `sink` → pass-through `{payload}`, destination =
+  `msg.topic ?? config.name`, writing `msg.payload`; `subflow` → the child's folded outputs as `payload`.
+- **`counter` mode is explicit (D7) — the implicit-throughput trap removed.** `mode: "tick" | "throughput"`
+  (default `tick` = +`step` every firing **regardless of payload**; `throughput` = +the payload's size).
+  An auto-wired counter no longer surprise-jumps by input size.
+- **Canvas shows `payload` (D10).** `flow_node_state` stores the whole envelope; `flowGraph` maps it to its
+  `payload` for the value badge (falling back to the whole envelope when there's no `payload` key).
+
+Proven: `lb-flows::binding` (field-paths, whole-envelope, missing→null), `model` (the join lint),
+`builtins` (no stray non-envelope ports); `host::flows_run_test` (auto-wire 3-node chain with no `with`,
+the join-lint save rejection, topic carry-forward, `rhai return msg`, counter tick-vs-throughput),
+`flows_sink_test` (sink reads `payload`, `msg.topic` routes the write); `ui flowGraph.test` (envelope →
+payload badge + fallback). Session: `sessions/flows/flow-message-envelope-session.md`.
+
+*Open (follow-up, not this slice):* `flow-dashboard-binding-ux-scope` — the picker offering
+`payload`/`topic` ports and read views defaulting to `payload`.
 
 ## Where to read
 - Scope (the ask, Decisions 1–13): `scope/flows/` (`README.md` index + the seven sub-docs).

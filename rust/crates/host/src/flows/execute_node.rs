@@ -60,9 +60,17 @@ pub async fn execute_one(
         .and_then(|s| s.patched_config.clone())
         .unwrap_or_else(|| node_spec.config.clone());
 
-    let inputs =
-        run_store::resolve_node_bindings(&node.store, ws, flow, run_id, &node_spec.with, params)
-            .await?;
+    let resolved = run_store::resolve_node_bindings(
+        &node.store,
+        ws,
+        flow,
+        run_id,
+        node_id,
+        &node_spec.with,
+        params,
+    )
+    .await?;
+    let run_store::ResolvedInputs { inputs, carry } = resolved;
 
     let outcome = dispatch(
         node, principal, ws, run_id, flow, node_id, &config, inputs, params, now,
@@ -70,6 +78,15 @@ pub async fn execute_one(
     .await;
     let failed = matches!(outcome, NodeOutcome::Err(_));
 
+    // D4 carry-forward: attach the carried fields (inputs minus `payload`) to the emitted envelope so
+    // `topic` propagates down a linear chain. A join (carry empty) merges nothing.
+    let outcome = match outcome {
+        NodeOutcome::Ok { emitted, .. } => NodeOutcome::Ok {
+            emitted,
+            carry: serde_json::Value::Object(carry),
+        },
+        other => other,
+    };
     run_store::record_outcome(&node.store, ws, &flow.id, run_id, node_id, outcome).await?;
 
     // Record-THEN-publish (flow-runtime-control-scope): the durable outcome is written above; now
@@ -121,37 +138,59 @@ async fn dispatch(
         let tool = resolve_ext_tool(&node.store, ws, node_type)
             .await
             .unwrap_or_else(|| node_type.to_string());
-        return call_tool_node(node, principal, ws, &tool, &Value::Object(inputs)).await;
+        // The ext node receives the whole envelope as its input `msg` and its result becomes the
+        // emitted `payload` (the participate-in-carry-forward convention, node-descriptor-scope).
+        return match call_tool_node(node, principal, ws, &tool, &Value::Object(inputs)).await {
+            NodeOutcome::Ok { emitted, .. } => NodeOutcome::ok(json!({ "payload": emitted })),
+            other => other,
+        };
     }
     match node_type {
         "trigger" => {
-            // The entry node: its output is the firing payload (the trigger value), read from params
-            // under the node id (set by the firing path), else the resolved `with`.
-            let payload = params
-                .get(node_id)
-                .cloned()
-                .unwrap_or_else(|| Value::Object(inputs));
-            NodeOutcome::Ok(payload, Value::Null)
+            // The entry node (D6): emits `{ payload: <firing value>, topic: <config.topic?> }`. The
+            // firing value is read from params under the node id (set by the firing path — a cron ts
+            // or an injected payload), else the resolved `with`'s `payload`.
+            let payload = params.get(node_id).cloned().unwrap_or_else(|| {
+                inputs
+                    .get("payload")
+                    .cloned()
+                    .unwrap_or_else(|| Value::Object(inputs.clone()))
+            });
+            let mut emitted = serde_json::Map::new();
+            emitted.insert("payload".into(), payload);
+            if let Some(topic) = config.get("topic").filter(|t| !t.is_null()) {
+                emitted.insert("topic".into(), topic.clone());
+            }
+            NodeOutcome::ok(Value::Object(emitted))
         }
         "tool" => {
             let verb = config.get("verb").and_then(|v| v.as_str()).unwrap_or("");
             if verb.is_empty() {
                 return NodeOutcome::Err("tool node missing config.verb".into());
             }
+            // D6: `config.args` merged with `payload` when `payload` is an object (so a structured
+            // message extends the static args). The verb's result becomes the emitted `payload`.
             let mut args = config
                 .get("args")
                 .cloned()
                 .unwrap_or(Value::Object(Default::default()));
-            if let Value::Object(map) = &mut args {
-                for (k, v) in inputs {
-                    map.insert(k, v);
+            if let (Value::Object(map), Some(Value::Object(p))) = (&mut args, inputs.get("payload"))
+            {
+                for (k, v) in p {
+                    map.insert(k.clone(), v.clone());
                 }
             }
-            call_tool_node(node, principal, ws, verb, &args).await
+            match call_tool_node(node, principal, ws, verb, &args).await {
+                NodeOutcome::Ok { emitted, .. } => NodeOutcome::ok(json!({ "payload": emitted })),
+                other => other,
+            }
         }
         "rhai" => {
+            // D6: the whole `msg` is the script scope. If the script returns an object containing a
+            // `payload` key, that object IS the emitted envelope (`return msg`); otherwise the return
+            // is the new `payload`. A rules `findings` value rides the `findings` field.
             let source = config.get("source").and_then(|v| v.as_str()).unwrap_or("");
-            let req = json!({ "body": source, "params": Value::Object(inputs), "ts": now });
+            let req = json!({ "body": source, "params": Value::Object(inputs.clone()), "ts": now });
             match Box::pin(call_tool(
                 node,
                 principal,
@@ -163,10 +202,22 @@ async fn dispatch(
             {
                 Ok(out) => {
                     let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
-                    NodeOutcome::Ok(
-                        unwrap_rule_output(v.get("output")),
-                        v.get("findings").cloned().unwrap_or(Value::Null),
-                    )
+                    let ret = unwrap_rule_output(v.get("output"));
+                    let findings = v.get("findings").cloned().unwrap_or(Value::Null);
+                    let mut emitted = match &ret {
+                        // `return msg` — an object carrying `payload` IS the envelope.
+                        Value::Object(m) if m.contains_key("payload") => m.clone(),
+                        // Otherwise the return value is the new payload.
+                        _ => {
+                            let mut m = serde_json::Map::new();
+                            m.insert("payload".into(), ret);
+                            m
+                        }
+                    };
+                    if !findings.is_null() {
+                        emitted.insert("findings".into(), findings);
+                    }
+                    NodeOutcome::ok(Value::Object(emitted))
                 }
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
@@ -179,36 +230,30 @@ async fn dispatch(
         }
         "subflow" => dispatch_subflow(node, principal, ws, config, inputs, now).await,
         "count" => {
-            // A pure transform: count the input. An array → its length, an object → its key count,
-            // null → 0, any scalar → 1. Output port `count` carries the integer. Stateless: the same
-            // input always yields the same count (this is why "always 4" — it counts THIS firing's
-            // array, it does not accumulate). For a running total use `counter`.
-            let items = inputs.get("items").cloned().unwrap_or(Value::Null);
-            let n = match items {
-                Value::Array(a) => a.len() as u64,
-                Value::Object(m) => m.len() as u64,
-                Value::Null => 0,
-                _ => 1,
-            };
-            NodeOutcome::Ok(json!({ "count": n }), Value::Null)
+            // A pure transform: count the input `payload` (D6). An array → its length, an object → its
+            // key count, null → 0, any scalar → 1. Emits `{ payload: <size> }`. Stateless: the same
+            // input always yields the same count. For a running total use `counter`.
+            let n = payload_size(inputs.get("payload"));
+            NodeOutcome::ok(json!({ "payload": n }))
         }
         "counter" => {
-            // A STATEFUL accumulator (Node-RED / PLC counter): read this node's durable memory and
-            // add to it ATOMICALLY (server-side, so concurrent firings never lose a count), so the
-            // total goes UP across runs and survives a restart. Delta = the input's size when an
-            // `items` input is wired (a throughput counter), else `config.step` (default 1). `reset`
-            // zeroes the total before this firing's add. The new total is the output AND the memory.
+            // A STATEFUL accumulator (Node-RED / PLC counter): read this node's durable memory and add
+            // to it ATOMICALLY. `mode` is EXPLICIT (D7, the trap removed): `tick` (default) → +`step`
+            // every firing regardless of payload; `throughput` → +the size of `payload`. `reset`
+            // zeroes the total before this firing's add. The new total is the emitted `payload`.
             let step = config.get("step").and_then(|v| v.as_i64()).unwrap_or(1);
             let reset = config
                 .get("reset")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let by = match inputs.get("items") {
-                Some(Value::Array(a)) => a.len() as i64,
-                Some(Value::Object(m)) => m.len() as i64,
-                // No `items` wired → a plain per-firing tick of `step`.
-                None | Some(Value::Null) => step,
-                Some(_) => 1,
+            let mode = config
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("tick");
+            let by = match mode {
+                "throughput" => payload_size(inputs.get("payload")) as i64,
+                // "tick" (default): a plain per-firing increment of `step`, REGARDLESS of payload.
+                _ => step,
             };
             match lb_store::increment(
                 &node.store,
@@ -221,7 +266,7 @@ async fn dispatch(
             )
             .await
             {
-                Ok(total) => NodeOutcome::Ok(json!({ "count": total, "ts": now }), Value::Null),
+                Ok(total) => NodeOutcome::ok(json!({ "payload": total, "ts": now })),
                 Err(e) => NodeOutcome::Err(format!("counter increment failed: {e}")),
             }
         }
@@ -243,8 +288,12 @@ async fn dispatch_sink(
     now: u64,
 ) -> NodeOutcome {
     let target = config.get("target").and_then(|v| v.as_str()).unwrap_or("");
-    let name = config.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let value = inputs.get("value").cloned().unwrap_or(Value::Null);
+    // D6: the destination = `msg.topic ?? config.name` (the topic routes the message, like Node-RED).
+    let config_name = config.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let topic = inputs.get("topic").and_then(|v| v.as_str());
+    let name = topic.filter(|t| !t.is_empty()).unwrap_or(config_name);
+    // D6: the sink writes `msg.payload`.
+    let value = inputs.get("payload").cloned().unwrap_or(Value::Null);
     match target {
         "series" => {
             // `ingest.write` deserializes each sample into the full `Sample` shape: `producer` is
@@ -258,7 +307,7 @@ async fn dispatch_sink(
                 "producer": "",
                 "ts": now,
                 "seq": now,
-                "payload": value,
+                "payload": value.clone(),
             }] });
             match Box::pin(call_tool(
                 node,
@@ -269,7 +318,9 @@ async fn dispatch_sink(
             ))
             .await
             {
-                Ok(_) => NodeOutcome::Ok(json!({"accepted": 1}), Value::Null),
+                // D6 pass-through: the sink emits `{ payload }` so a downstream node (and the canvas)
+                // sees what was written; `topic` carries forward.
+                Ok(_) => NodeOutcome::ok(json!({ "payload": value })),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
         }
@@ -289,7 +340,7 @@ async fn dispatch_sink(
             )
             .await
             {
-                Ok(()) => NodeOutcome::Ok(json!({"enqueued": effect_id}), Value::Null),
+                Ok(()) => NodeOutcome::ok(json!({ "payload": value })),
                 Err(e) => NodeOutcome::Err(e.to_string()),
             }
         }
@@ -314,7 +365,7 @@ async fn dispatch_sink(
             ))
             .await
             {
-                Ok(_) => NodeOutcome::Ok(json!({"recorded": true}), Value::Null),
+                Ok(_) => NodeOutcome::ok(json!({ "payload": value })),
                 Err(e) => NodeOutcome::Err(tool_err_string(e)),
             }
         }
@@ -346,8 +397,8 @@ async fn dispatch_subflow(
     };
     let child_run = child_run_id(spec, now);
     let mut child_params = child.params.clone();
-    // Map parent inputs → child params by name (Decision 4 binding grammar: whole-value references
-    // resolved on the parent side arrive here as literals).
+    // D6: the subflow reads `payload` in — pass the incoming envelope's fields into the child params
+    // (so the child's roots can read `payload`/`topic`).
     for (k, v) in inputs {
         child_params.insert(k, v);
     }
@@ -375,7 +426,8 @@ async fn dispatch_subflow(
                     }
                 }
             }
-            NodeOutcome::Ok(Value::Object(folded), Value::Null)
+            // D6: the child's outputs become this node's `payload` (the subflow emits an envelope).
+            NodeOutcome::ok(json!({ "payload": Value::Object(folded) }))
         }
         Ok(status) => NodeOutcome::Err(format!("subflow child {child_id} ended {status}")),
         Err(e) => NodeOutcome::Err(e.to_string()),
@@ -406,9 +458,21 @@ async fn call_tool_node(
     match Box::pin(call_tool(node, principal, ws, verb, &args.to_string())).await {
         Ok(out) => {
             let v: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
-            NodeOutcome::Ok(v, Value::Null)
+            // The raw verb result; callers wrap it into a `payload` envelope (D6).
+            NodeOutcome::ok(v)
         }
         Err(e) => NodeOutcome::Err(tool_err_string(e)),
+    }
+}
+
+/// The "size" of a `payload` for `count`/`counter` (D6): an array → its length, an object → its key
+/// count, null/absent → 0, any scalar → 1.
+fn payload_size(payload: Option<&Value>) -> u64 {
+    match payload {
+        Some(Value::Array(a)) => a.len() as u64,
+        Some(Value::Object(m)) => m.len() as u64,
+        None | Some(Value::Null) => 0,
+        Some(_) => 1,
     }
 }
 
@@ -420,7 +484,7 @@ fn tool_err_string(e: ToolError) -> String {
 }
 
 /// Unwrap a serialized `RuleOutput` (`{kind:"scalar", value:v}` / `{kind:"grid", columns, rows}`)
-/// to the JSON a downstream `${steps.x.output}` binding reads — the chain `output_json` convention.
+/// to the plain JSON the rhai node turns into its emitted `payload`/envelope (D6).
 fn unwrap_rule_output(v: Option<&Value>) -> Value {
     let Some(v) = v else { return Value::Null };
     match v.get("kind").and_then(|k| k.as_str()) {
