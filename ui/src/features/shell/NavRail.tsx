@@ -15,6 +15,7 @@ import {
   Plug,
   Puzzle,
   ScrollText,
+  Workflow,
   Wrench,
   Send,
   Shield,
@@ -42,6 +43,7 @@ export type CoreSurface =
   | "dashboards"
   | "rules"
   | "chains"
+  | "flows"
   | "datasources"
   | "reminders"
   | "ingest"
@@ -80,6 +82,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "rules", icon: ScrollText, label: "Rules" },
   { key: "chains", icon: GitBranch, label: "Chains" },
+  { key: "flows", icon: Workflow, label: "Flows" },
   { key: "datasources", icon: Plug, label: "Datasources" },
   { key: "reminders", icon: CalendarClock, label: "Reminders" },
   { key: "ingest", icon: Activity, label: "Ingest" },

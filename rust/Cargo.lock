@@ -4730,6 +4730,7 @@ dependencies = [
  "lb-auth",
  "lb-devkit",
  "lb-ext-loader",
+ "lb-flows",
  "lb-host",
  "lb-inbox",
  "lb-mcp",
