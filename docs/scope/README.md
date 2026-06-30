@@ -78,7 +78,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   enable/disable + `start_on_boot` + `placement`; **dashboard↔flow** binding (`flows.inject` in,
   bus-subject out); shared via the grant model; graph edits undo for free. Rejected adopting
   `open-rmf/crossflow` (in-process Bevy-ECS state breaks rules 1/4, bypasses the cap wall).
-- `files/`, `skills/`, `document-store/` — shared workspace assets (S4).
+- `files/`, `skills/`, `document-store/` — shared workspace assets (S4). `document-store/` now
+  holds `document-store-scope.md` (the ask): a **reusable markdown document store** on the shipped
+  S4 asset/file substrate — markdown body + **images/attachments** (the SurrealDB file store §6.12
+  finally lands) + a queryable **link graph** (doc→doc links, doc→asset embeds), shared to a
+  **user/team/workspace**, undo-journaled save, CRUD over the additive `assets.*` verbs, **reusable
+  by extensions** (host-callback ABI) and the doc-site authoring side. Public/anonymous serving is a
+  deferred slice with its own threat model.
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*

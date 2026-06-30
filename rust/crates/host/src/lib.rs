@@ -128,9 +128,9 @@ pub use flows::{
     reconcile_flows, source_series, FlowReactorPass, FlowReconcilePass,
 };
 pub use host_tools::{
-    call_host_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach, host_time_now,
-    host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress, HostNetInfo,
-    HostNetInterface, HostNetReach, HostTimeNow, HostTimeZones, HOST_FS_LIST_LIMIT,
+    call_host_tool, call_secret_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach,
+    host_time_now, host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress,
+    HostNetInfo, HostNetInterface, HostNetReach, HostTimeNow, HostTimeZones, HOST_FS_LIST_LIMIT,
     HOST_NET_REACH_DEFAULT_TIMEOUT_MS, HOST_NET_REACH_MAX_TIMEOUT_MS,
 };
 pub use identity::{
