@@ -55,6 +55,33 @@ fire re-resolve fix (persist member caps durably on login), then the named follo
 tool-agnostic palette), A2UI/JSON-render as an additional sandboxed view, pin-a-response-to-a-dashboard,
 and the live-updating `/reminders` card.
 
+**Just shipped (2026-07-02): Widget Kit Phase 1 — a declarative per-field presentation vocabulary + the
+`lib/widgets/` extraction + a shared table column-model.** A `reminder.list` table rendered raw record keys
+as headers (`maxRuns`/`principalSub`/`nextAttemptTs`) and dumped nested `action` as a JSON blob, and the
+input widgets were trapped in feature folders. Phase 1 fixes both, **backend-driven and generic** (no
+tool-specific UI): (A) a field author declares `label`/`description`/`hide`/`order` **once** — on `x-lb`
+for a FORM field, on the shipped `fieldConfig` (`displayName`==label; **added `hide`**/`order`) for a
+RESPONSE field — and BOTH the palette arg rail and BOTH table renderers resolve them through the **one**
+`resolveFieldPresentation` + `humanize` (`maxRuns`→"Max Runs"), so a header and a form label can't drift.
+(B) The input widgets + registry + `CronBuilder` + the presentation/table core moved into `ui/src/lib/widgets/`
+(registry = the public API), a **behavior-preserving move + re-export shim** — the palette/dashboard suites
+stayed green with no assertion changes. (C) One shared `table/columns.ts` (resolved headers, `hide`,
+`order`, nested-value rendering) that both `TablePanel` (read-only) and `ResponseTable` (row-controlled)
+consume; ResponseTable's only extra stays the per-row control column. **The motivating fix, green over the
+real gateway:** `reminder.list`'s descriptor declares a `fieldConfig` (Max Runs / Next fire / Action,
+`principalSub`+`ts` hidden); the render envelope (`RichResultPayload`, TS+Rust) gained an optional
+`fieldConfig` (additive data on the existing envelope — **no new verb/cap/table/WIT**), `buildCell` copies
+it onto the cell, and the `/reminders` table now reads author labels and hides the noise. **`hide` is
+presentation, NOT security** (a hidden field still crossed the bridge under the viewer's grant — proven by
+a test; the deny is opaque with or without `hide`). Tests (rule 9, real gateway): Rust `lb-host` 83 lib +
+descriptor/payload assertions; UI `pnpm test` 313; real-gateway reminders palette 11 (incl. the presentation
+regression mounted off the LIVE catalog + capability-deny + workspace-isolation). Scope
+[`widget-kit`](scope/frontend/widget-kit-scope.md), session
+[`widget-kit`](sessions/frontend/widget-kit-session.md), public
+[`widget-kit`](public/frontend/widget-kit.md). **Next up:** Phase 2 — move the dashboard view
+renderers/controls into the library, the mount-context input channel (`ctx.mode`/`value`/`onValue`) +
+`defineWidget`, and ext-authored input widgets.
+
 **Just shipped (2026-07-01): the in-channel agent wired into the `/` command palette — the run-lifecycle
 #5 read surface.** The rendered channel composer is the `CommandPalette` (not the old, unrendered
 `MessageComposer`), so the in-channel agent was orphaned — `/agent hey` showed "No commands match". Made

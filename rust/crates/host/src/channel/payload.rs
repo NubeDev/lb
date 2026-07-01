@@ -145,6 +145,17 @@ pub struct RichResultPayload {
     /// The tool set the response's bridge may forward (the `source` + `action` tools). Empty → none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<String>,
+    /// The per-field PRESENTATION config for the rendered view (widget-kit scope, Phase 1) — the Grafana
+    /// `fieldConfig` a descriptor declares so a table's headers read the author's labels, drop `hide`d
+    /// columns, and order as declared. INERT DATA on this existing envelope (no new verb/table); the UI
+    /// copies it onto the cell and resolves every header through the one presentation resolver. Absent →
+    /// the table humanizes raw keys. Kept an opaque `Value` (the UI owns the `FieldConfig` shape).
+    #[serde(
+        default,
+        rename = "fieldConfig",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub field_config: Option<Value>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -255,6 +266,10 @@ pub fn rich_result_body(
         options,
         action,
         tools,
+        // This host-authored constructor carries no presentation config; a DESCRIPTOR that wants table
+        // presentation declares `fieldConfig` in its `result` Value (see reminder/descriptor.rs). Absent
+        // → the UI humanizes raw keys.
+        field_config: None,
     }))
 }
 

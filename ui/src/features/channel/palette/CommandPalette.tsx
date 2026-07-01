@@ -23,12 +23,12 @@ import { Input } from "@/components/ui/input";
 import { argNames, hintFor, isActiveRequired, isShown } from "@/lib/channel/palette.types";
 import type { ToolDescriptor } from "@/lib/channel/palette.types";
 import { encodeRichResult } from "@/lib/channel/payload.types";
+import { resolveWidget, resolveFieldPresentation } from "@/lib/widgets";
 import { useCatalog } from "./useCatalog";
 import { useMentions } from "./useMentions";
 import { parsePalette } from "./parsePalette";
 import { EntityPicker } from "./argWidgets/EntityPicker";
 import { ActiveArgWidget } from "./argWidgets/ActiveArgWidget";
-import { resolveWidget } from "./argWidgets/registry";
 
 interface Props {
   channel: string;
@@ -114,6 +114,10 @@ export function CommandPalette({
     : undefined;
   const activeHint = activeArg ? hintFor(tool?.input_schema, activeArg) : undefined;
   const activeWidget = activeArg ? widgetOf(activeArg) : undefined;
+  // The resolved PRESENTATION for the active arg (widget-kit scope) — the SAME `resolveFieldPresentation`
+  // the table headers funnel through, reading the form's `x-lb` label/description (humanize fallback). So
+  // a field's rail label and its table header never drift (`max_runs` → "Max Runs" in both).
+  const activePresentation = activeArg ? resolveFieldPresentation(activeArg, activeHint) : undefined;
   const entity = activeHint?.entity ?? null;
   // Entity args keep the shared @-picker (↑↓⏎ mention-nav); every other active arg renders via the widget
   // registry (ActiveArgWidget). An inline widget stays live until submit; a chip widget commits to a chip.
@@ -383,6 +387,16 @@ export function CommandPalette({
             }
           }}
         >
+          {/* The resolved presentation label + help — same resolver the table headers use, so a form
+              field's label and its table header agree (widget-kit scope). */}
+          {activePresentation && (
+            <div className="px-3 pt-2" aria-label={`field ${activeArg}`}>
+              <span className="text-xs font-medium text-fg">{activePresentation.label}</span>
+              {activePresentation.description && (
+                <span className="ml-2 text-xs text-muted">{activePresentation.description}</span>
+              )}
+            </div>
+          )}
           <ActiveArgWidget
             name={activeArg}
             hint={activeHint}

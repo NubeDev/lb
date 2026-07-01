@@ -11,16 +11,18 @@
 // args object on submit.
 
 import type { XLbHint } from "@/lib/channel/palette.types";
-import { SqlArg } from "./SqlArg";
-import { RuntimeArg } from "./RuntimeArg";
-import { SelectArg } from "./SelectArg";
-import { CronArg } from "./CronArg";
-import { BooleanArg } from "./BooleanArg";
-import { NumberArg } from "./NumberArg";
-import { DateArg } from "./DateArg";
-import { TextArg } from "./TextArg";
-import { ExtArg } from "./ExtArg";
-import { resolveWidget } from "./registry";
+import {
+  SqlArg,
+  RuntimeArg,
+  SelectArg,
+  CronArg,
+  BooleanArg,
+  NumberArg,
+  DateArg,
+  TextArg,
+  ExtArg,
+} from "@/lib/widgets/inputs";
+import { resolveWidget } from "@/lib/widgets/registry";
 
 interface Props {
   /** The active arg name. */

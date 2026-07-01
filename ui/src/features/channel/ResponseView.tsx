@@ -85,6 +85,9 @@ export function buildCell(payload: RichResultPayload, itemKey: string): Cell {
       hide: true,
     })),
     options: payload.options,
+    // The descriptor-declared per-field presentation (widget-kit scope) — copied onto the cell so the
+    // shared table column-model resolves headers/hide/order through it (the ONE resolver the form uses).
+    fieldConfig: payload.fieldConfig,
   };
 }
 
