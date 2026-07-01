@@ -10,6 +10,7 @@ use std::sync::Arc;
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_enabled, load_extension, Node};
 
+mod external_agent;
 mod federation;
 mod github;
 

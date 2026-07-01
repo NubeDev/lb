@@ -4735,6 +4735,18 @@ name = "lb-role-bootstrap-ui"
 version = "0.1.0"
 
 [[package]]
+name = "lb-role-external-agent"
+version = "0.1.0"
+dependencies = [
+ "lb-auth",
+ "lb-external-agent",
+ "lb-host",
+ "lb-run-events",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lb-role-gateway"
 version = "0.1.0"
 dependencies = [
@@ -5481,6 +5493,7 @@ dependencies = [
  "lb-authz",
  "lb-host",
  "lb-mcp",
+ "lb-role-external-agent",
  "lb-role-gateway",
  "lb-role-github-target",
  "lb-role-github-webhook",

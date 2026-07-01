@@ -28,6 +28,7 @@ pub async fn invoke_remote(
     goal: &str,
     skill: Option<&str>,
     doc: Option<&str>,
+    runtime: Option<&str>,
     tools: &[AllowedTool],
     ts: u64,
 ) -> Result<String, AgentError> {
@@ -43,6 +44,7 @@ pub async fn invoke_remote(
         goal: goal.to_string(),
         skill: skill.map(|s| s.to_string()),
         doc: doc.map(|s| s.to_string()),
+        runtime: runtime.map(|s| s.to_string()),
         tools: tools
             .iter()
             .map(|t| (t.name.clone(), t.description.clone()))

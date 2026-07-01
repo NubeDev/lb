@@ -14,7 +14,7 @@ use std::time::Duration;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     invoke_remote, load_extension, serve_agent, serve_ext, AgentError, AllowedTool, Node,
-    Role as NodeRole,
+    Role as NodeRole, RuntimeRegistry,
 };
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider, ToolCall};
 
@@ -76,7 +76,15 @@ async fn hub_and_edge(agent_caps: Vec<String>) -> (Node, Arc<Node>) {
         ),
         AiResponse::stop("routed: done", 5),
     ])));
-    std::mem::forget(serve_agent(hub.clone(), model, agent_caps).await.unwrap());
+    // The routed server dispatches through the runtime registry (#1). Here the registry holds only
+    // the in-house default over the mock model — exactly a feature-OFF node's registry.
+    let model: Arc<dyn lb_host::ErasedModel> = model;
+    let registry = Arc::new(RuntimeRegistry::with_default(model));
+    std::mem::forget(
+        serve_agent(hub.clone(), registry, agent_caps)
+            .await
+            .unwrap(),
+    );
 
     let edge = Node::boot_as(NodeRole::Edge).await.expect("edge boots");
     // The hub is returned as an Arc the test holds, keeping its Zenoh peer (and the served agent +
@@ -98,6 +106,7 @@ async fn an_edge_invokes_the_hub_agent_over_the_routed_namespace() {
             ws,
             "routed-sess",
             "echo something",
+            None,
             None,
             None,
             &echo_tool(),
@@ -130,6 +139,7 @@ async fn a_routed_invoke_is_denied_without_the_cap_and_never_leaves_the_edge() {
         "x",
         None,
         None,
+        None,
         &echo_tool(),
         1,
     )
@@ -156,6 +166,7 @@ async fn an_edge_principal_in_ws_b_cannot_route_into_ws_a() {
         ws_a, // targeting workspace A while scoped to B
         "s",
         "x",
+        None,
         None,
         None,
         &echo_tool(),

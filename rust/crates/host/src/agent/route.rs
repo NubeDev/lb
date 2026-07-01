@@ -40,6 +40,12 @@ pub struct AgentInvokeRequest {
     pub goal: String,
     pub skill: Option<String>,
     pub doc: Option<String>,
+    /// The **runtime selector** (runtime-seam #1). Resolved against the serving node's registry:
+    /// `None`/absent → the in-house default; a known profile id (`"open-interpreter-default"`, …) →
+    /// that external runtime; an unknown named id → error. `#[serde(default)]` so an older edge that
+    /// omits the field decodes as `None` (default runtime) — the wire stays backward-compatible.
+    #[serde(default)]
+    pub runtime: Option<String>,
     /// Allowed tools, as `(name, description)` pairs (the host `AllowedTool` shape on the wire).
     pub tools: Vec<(String, String)>,
     pub ts: u64,

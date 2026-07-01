@@ -174,8 +174,18 @@ rust/role/external-agent/src/
 The `crates/` leaf becomes the `role/` crate when #1's `AgentRuntime` seam + the `external-agent`
 feature land: `driver.rs`'s spawn/collect role is taken over by `spawn.rs`/`lib.rs`, the NDJSON
 `decode_line` in each `wrappers/*.rs` is re-pointed onto `encode.rs`'s ACP decode, and `profile.rs`
-carries over largely intact. Until then the leaf intentionally lives in `crates/` with no feature and
-no dependents (keeps the future feature-OFF build clean — runtime-seam "feature leakage").
+carries over largely intact.
+
+> **SHIPPED (2026-07-01, `sessions/external-agent/runtime-seam-integration-session.md`):** #1 landed
+> and the leaf is now **wired through the seam** by a new feature-gated role crate
+> `rust/role/external-agent/` (`lb-role-external-agent`): `lib.rs::AcpRuntime` (`impl
+> lb_host::AgentRuntime`) calls the leaf's `drive(..)` behind a per-run **scratch-dir cwd seal**
+> (`scratch.rs`) and forwards its `RunEvent`s; `profiles.rs` is the swap unit (`resolve_builtin` →
+> Open Interpreter / VT Code / Codex). **This slice's transport is still `exec --json`** — `spawn.rs`
+> / `bridge_mcp.rs` / `encode.rs` (the ACP SDK) are the **next** slice, added HERE behind the same
+> feature (additive; the seam is transport-agnostic). The leaf crate stays in `crates/` (no feature,
+> depended on only by the role crate) so the feature-OFF `node` build still excludes it — verified by
+> `cargo tree` (runtime-seam "feature leakage" gate).
 
 ## Example flow
 

@@ -1,0 +1,37 @@
+[package]
+name = "lb-role-external-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# The external-agent ROLE crate (external-agent sub-scope #1/#2). It supplies the `AcpRuntime`
+# `impl lb_host::AgentRuntime` and the registration hook that populates the node's runtime registry.
+# Roles depend on host, never the reverse (symmetric layering, rule 1). Pulled into the `node` binary
+# ONLY behind the `external-agent` cargo feature — a feature-off node never compiles this crate, so
+# the OFF build carries none of its (or its transitive `lb-external-agent`) code.
+#
+# NOTE (implementation status, per acp-driver-scope "Implementation status"): this slice reaches the
+# agent over the shipped `exec --json` NDJSON transport (via `lb-external-agent::drive`). The full ACP
+# SDK swap (`agent-client-protocol{,-tokio,-rmcp}`) is the next slice; the seam is transport-agnostic,
+# so it is additive. When ACP lands, its SDK deps are added HERE, still behind the same feature — the
+# OFF build stays clean either way.
+
+[lib]
+name = "lb_role_external_agent"
+path = "src/lib.rs"
+
+[dependencies]
+lb-host.workspace = true
+lb-auth.workspace = true
+lb-run-events.workspace = true
+lb-external-agent.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# The seam/registry/swap tests drive the runtime through the host registry against a real Node
+# (mem:// store), no fake backend (rule 9). The real-subprocess run stays opt-in (env-gated), like
+# the leaf crate's vtcode_smoke_test.
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+lb-auth.workspace = true
