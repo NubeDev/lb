@@ -9,6 +9,8 @@ import { useEffect, useMemo, useState } from "react";
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
 import { makeWidgetBridge } from "../builder/widgetBridge";
 import { useSource } from "../builder/useSource";
+import { useFlowNodeValue } from "./useFlowNodeValue";
+import { flowBindingOfAction } from "./flowBinding";
 import { asNumber } from "./num";
 import type { Action, Source } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
@@ -21,13 +23,26 @@ interface Props {
   options?: Record<string, unknown>;
   label?: string;
   scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function SwitchControl({ source, action, tools, label, scope = emptyScope() }: Props) {
+export function SwitchControl({
+  source,
+  action,
+  tools,
+  label,
+  scope = emptyScope(),
+  refreshKey = 0,
+}: Props) {
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
-  const { latest } = useSource(source, tools, scope); // optional self-state read
+  // A flow-bound switch seeds its current state from its OWN retained input (flow-dashboard-binding-
+  // ux-scope) — not its output, not a default. A non-flow control keeps the optional `source` read.
+  const flow = flowBindingOfAction(action);
+  const flowVal = useFlowNodeValue(flow?.flowId, flow?.node, flow?.port ?? "payload", "input", refreshKey);
+  const { latest: srcLatest } = useSource(flow ? undefined : source, tools, scope);
+  const latest = flow ? flowVal.value : srcLatest;
   const [on, setOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

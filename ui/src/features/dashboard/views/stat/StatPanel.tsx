@@ -20,7 +20,7 @@ import { rowNumber } from "../num";
 import { reduceFrame } from "../reduce";
 import { valueFieldOptions, valueColor } from "../field";
 import { readStatOptions } from "./options";
-import { formatValue } from "../../fieldconfig/format";
+import { useFormattedValue } from "../../fieldconfig/useFormattedValue";
 import { applyMappings } from "../../fieldconfig/mappings";
 import { resolveColor } from "../../fieldconfig/color";
 
@@ -34,14 +34,20 @@ interface Props {
 export function StatPanel({ cell, label, scope = emptyScope(), refreshKey = 0 }: Props) {
   const { rows, loading, denied } = usePanelData(cell, scope, refreshKey);
 
-  if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;
-  if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;
-
   const options = readStatOptions(cell.options);
   const opts = valueFieldOptions(cell);
 
-  // The single value the stat draws — the explicit reduceOptions bridge (no implicit guess).
+  // The single value the stat draws — the explicit reduceOptions bridge (no implicit guess). Computed
+  // BEFORE the early returns so the formatting hook below is called unconditionally (React rule).
   const value = reduceFrame(rows, options.reduceOptions);
+  // A value mapping wins over the numeric format (Grafana order); else the one user-prefs bridge
+  // (`useFormattedValue` — sync for numbers, the viewer's wall-clock for a datetime field). Always
+  // called; the mapping/empty branches below decide whether its output is used.
+  const formatted = useFormattedValue(value, opts);
+
+  if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;
+  if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;
+
   if (value === null) {
     // Honest empty: a mapped/noValue label when the field declares one, else "no value" — never a fake 0.
     const mapped = applyMappings(null, opts.mappings);
@@ -50,10 +56,9 @@ export function StatPanel({ cell, label, scope = emptyScope(), refreshKey = 0 }:
     return <StatBody label={label ?? ""} text={text} color="hsl(var(--fg))" colorMode="none" sparkline={null} />;
   }
 
-  // A value mapping wins over the numeric format (Grafana order); else the one user-prefs bridge.
   const mapped = applyMappings(value, opts.mappings);
   const color = mapped?.color ? resolveColor(mapped.color) : valueColor(value, opts);
-  const text = mapped?.text ?? formatValue(value, opts).text;
+  const text = mapped?.text ?? formatted;
 
   // The sparkline (graphMode: line|area) over the frame's points — colored to match the value.
   const points = rows.map(rowNumber).filter((n): n is number => n !== null);

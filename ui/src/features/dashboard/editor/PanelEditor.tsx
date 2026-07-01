@@ -83,6 +83,16 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   const switchView = (view: View) =>
     setState((s) => ({ ...s, view, options: defaultOptionsForView(view) }));
 
+  // A Flows binding swaps the viz picker's offered set (flow-dashboard-binding-ux-scope): an INPUT
+  // port carries a `flows.inject` action (write controls); an OUTPUT port reads `flows.node_state`
+  // (the JSON read view + scalar viz). Absent → the standard viz set.
+  const flowKind: "input" | "output" | null =
+    state.carry.action?.tool === "flows.inject"
+      ? "input"
+      : state.targets[0]?.tool === "flows.node_state"
+        ? "output"
+        : null;
+
   // The draft cell = what save would persist (also the preview's input). Built from the SAME serializer.
   const draft = useMemo(() => editorStateToCell(state, cell), [state, cell]);
 
@@ -125,7 +135,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             <div className="h-56 shrink-0">
               <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} />
             </div>
-            <VizPicker view={viewC} onChange={switchView} shape={shape} />
+            <VizPicker view={viewC} onChange={switchView} shape={shape} flowKind={flowKind} />
           </div>
 
           {/* Right: the options rail — search + tabs + the active tab body. */}

@@ -179,9 +179,10 @@ async fn dispatch(
             let id = str_arg(input, "id")?;
             let node_id = str_arg(input, "node")?;
             let value = input.get("value").cloned().unwrap_or(Value::Null);
+            let port = input.get("port").and_then(|v| v.as_str());
             let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
             let fired =
-                triggers::flows_inject(node, principal, ws, id, node_id, value, now).await?;
+                triggers::flows_inject(node, principal, ws, id, node_id, value, port, now).await?;
             Ok(json!({ "fired_run": fired }))
         }
         "flows.patch_run" => {

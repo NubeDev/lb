@@ -3,7 +3,9 @@
 //! - `flows.enable {id, enabled, start_on_boot}` flips the durable lifecycle flags. `enabled=false`
 //!   means **no trigger fires** (the cron scan skips it, the event subscription is dropped, boot
 //!   won't fire). The `reconcile_flows` loop (separate file) converges the source arm/disarm state.
-//! - `flows.inject {id, node, value}` sets a node's **retained** value in `flow_input` (Decision 9),
+//! - `flows.inject {id, node, value, port?}` sets a node's **retained** value in `flow_input`
+//!   (Decision 9). With `port`, the value lands in the per-port record `flow_input:{flow}:{node}:
+//!   {port}`; without it, the node-level `flow_input:{flow}:{node}`. It
 //!   and fires a run **only** when the target node is a *firing* trigger (`inject_mode: fire`). An
 //!   inject into a `retain` node updates state and starts NO run — the control-loop pattern: a
 //!   slider sets a retained `setpoint`, a switch a retained `enabled`, and event-triggered one-shot
@@ -39,8 +41,13 @@ pub async fn flows_enable(
     persist_flow(&node.store, ws, &flow).await
 }
 
-/// `flows.inject {id, node, value}` — set a node's retained value (Decision 9). Returns whether a run
-/// was fired (only a `fire`-mode trigger node starts a one-shot run).
+/// `flows.inject {id, node, value, port?}` — set a node's retained value (Decision 9). With `port`,
+/// the value lands in the **per-port** record `flow_input:{flow}:{node}:{port}`; without it, the
+/// **node-level** record `flow_input:{flow}:{node}` (the whole-node payload cron/event runs read).
+/// The run's binding resolver prefers per-port retained > node-level retained > static `with`/auto-
+/// wire (flow-dashboard-binding-ux-scope). Returns whether a run was fired (only a `fire`-mode
+/// trigger node starts a one-shot run).
+#[allow(clippy::too_many_arguments)]
 pub async fn flows_inject(
     node: &Arc<Node>,
     principal: &Principal,
@@ -48,20 +55,26 @@ pub async fn flows_inject(
     flow_id: &str,
     node_id: &str,
     value: Value,
+    port: Option<&str>,
     now: u64,
 ) -> Result<bool, FlowsError> {
     let flow = flows_get_internal(&node.store, ws, flow_id).await?;
-    // Persist the retained input (`flow_input:{flow}:{node}`) — the read-side every run consults.
-    let rec = serde_json::json!({ "flow": flow_id, "node": node_id, "value": value });
-    lb_store::write(
-        &node.store,
-        ws,
-        FLOW_INPUT_TABLE,
-        &format!("{flow_id}:{node_id}"),
-        &rec,
-    )
-    .await
-    .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    // Persist the retained input — the read-side every run consults. The record id is node-level
+    // (`{flow}:{node}`) or per-port (`{flow}:{node}:{port}`); `port` is stashed on the body so the
+    // node_state read-back and the resolver can recover which slot it drives.
+    let (record_id, rec) = match port {
+        Some(p) => (
+            format!("{flow_id}:{node_id}:{p}"),
+            serde_json::json!({ "flow": flow_id, "node": node_id, "port": p, "value": value }),
+        ),
+        None => (
+            format!("{flow_id}:{node_id}"),
+            serde_json::json!({ "flow": flow_id, "node": node_id, "value": value }),
+        ),
+    };
+    lb_store::write(&node.store, ws, FLOW_INPUT_TABLE, &record_id, &rec)
+        .await
+        .map_err(|e| FlowsError::Internal(e.to_string()))?;
 
     // Decision 9: fire a run only for a FIRING trigger node. A trigger node's config carries
     // `inject_mode: "fire" | "retain"`; non-trigger nodes are retained (no run). An inject into a

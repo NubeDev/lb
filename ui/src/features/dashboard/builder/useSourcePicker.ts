@@ -7,6 +7,8 @@ import { useEffect, useState } from "react";
 
 import { listSeries } from "@/lib/ingest/ingest.api";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
+import { listFlows, getFlow, listFlowNodes } from "@/lib/flows/flows.api";
+import type { Flow, NodeDescriptor } from "@/lib/flows/flows.types";
 import { buildSourceEntries, type SourceEntry } from "./sourcePicker";
 
 export interface SourcePickerData {
@@ -28,14 +30,24 @@ export function useSourcePicker(ws: string): SourcePickerData {
     let cancelled = false;
     setData((d) => ({ ...d, loading: true }));
     (async () => {
-      // Both reads tolerate a deny/empty — a workspace may have granted only one of them.
-      const [series, installed] = await Promise.all([
+      // Every read tolerates a deny/empty — a workspace may have granted only some of them. The Flows
+      // group composes `flows.list` (flows the caller may reach) + `flows.nodes` (descriptors); a flow
+      // the caller cannot `flows.get` is silently skipped (it never appears in the picker — the cap-
+      // scoped offer, flow-dashboard-binding-ux-scope). No `flows.*` cap → an empty Flows group.
+      const [series, installed, flowSummaries, descriptors] = await Promise.all([
         listSeries().catch(() => [] as string[]),
         listExtensions().catch(() => [] as ExtRow[]),
+        listFlows().catch(() => [] as { id: string; name: string }[]),
+        listFlowNodes().catch(() => [] as NodeDescriptor[]),
       ]);
+      const flows = (
+        await Promise.all(
+          flowSummaries.map((s) => getFlow(s.id).catch(() => null as Flow | null)),
+        )
+      ).filter((f): f is Flow => f != null);
       if (cancelled) return;
       setData({
-        entries: buildSourceEntries(series, installed),
+        entries: buildSourceEntries(series, installed, flows, descriptors),
         installed,
         loading: false,
       });

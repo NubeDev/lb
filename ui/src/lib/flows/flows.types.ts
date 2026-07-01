@@ -136,6 +136,12 @@ export interface NodeStateEntry {
   node: string;
   value: unknown;
   rev: number | null;
+  /** The node's node-level RETAINED input (`flow_input:{flow}:{node}`), if any — a control seeds its
+   *  current state from its OWN input (not its output `value`). flow-dashboard-binding-ux-scope. */
+  input?: unknown;
+  /** Per-PORT retained inputs (`flow_input:{flow}:{node}:{port}`), keyed by port name. A per-port
+   *  value wins over the node-level `input` for that slot. */
+  inputs?: Record<string, unknown>;
 }
 
 /** `flows.node_state` — the persistent runtime view: every node's current value + the flow's armed

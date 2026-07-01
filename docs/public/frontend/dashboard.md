@@ -223,6 +223,46 @@ A control cell can author a **JSON payload** sent to a write target on interacti
   in the cell's tool set ∩ grant (bridge leash + host re-check).
 - Lives in the ⚙ settings drawer for a control cell (button/switch/slider).
 
+## Flow⇄dashboard binding (pick a flow node + port — switch / slider / JSON, both ways)
+
+A **Flows** binding makes a flow node port authorable in clicks (no MCP, no magic strings), reachable in
+the **one PanelEditor** ("Edit panel"): pick **Datasource → Flows**, then a **flow node port** from the
+`FlowsQuerySection`; the viz picker swaps to the control set (Switch/Slider/JSON) for an input port or the
+JSON read view for an output port. It is built from shipped reads only (`flows.list` → `flows.get` →
+`flows.nodes` descriptors) and is **agnostic to the node type + port names** — a node type a developer
+ships tomorrow, with any `inputs[]`/`outputs[]` (not just `payload`), appears in the picker and drives /
+reads back with **zero picker or engine changes** (the picker iterates descriptor ports; inject +
+node_state read-back key on the `{node}:{port}` string; the read view extracts the *selected* port name):
+
+- **Drill flow → node → port.** An **input port** resolves to a write `Action {tool:"flows.inject",
+  argsTemplate:{id,node,port,value:"{{value}}"}}`; an **output port** to a read `Source
+  {tool:"flows.node_state", args:{id,__flowNode,__flowPort}}`. The author sees friendly labels like
+  `Cooler Control › setpoint-in › payload (input)` — never a tool name. The picker offers only flows the
+  caller can `flows.get` (the cap-scoped offer; a flow the caller can't read never appears).
+- **Switch / slider / JSON controls drive a port.** A switch sets a boolean `payload`; a slider a number
+  (`options.min/max/step`); the **JSON control** (`JsonControl`) sends a structured `payload`, validating
+  with ajv against the port's descriptor schema when one exists (`options.schema`), else free JSON — and
+  **rejects invalid JSON before any call** (no fake accept). All three are one binding (`flows.inject` to
+  a port) with different editors; the write goes through the leashed `WidgetBridge`, re-checked at the host.
+- **Controls reflect the node's real current value.** On mount a flow-bound control reads its OWN retained
+  input from the extended `flows.node_state` (per-port value wins over node-level), so a switch/slider/JSON
+  shows true state after reload or restart — not a default. It advances on the canvas-cadence refresh tick
+  (`useFlowNodeValue`); a `flows.node.watch` SSE is the later live-upgrade slice (never a `runs.get` poll,
+  never a `series.watch` on an arbitrary node).
+- **JSON / object read view (`jsonview`).** Pretty-prints a flow node's structured `payload` back out
+  (collapsible) via `flows.node_state`; defaults to the `payload` field, `options.envelope` shows the
+  whole `{payload, topic, …}` envelope. The one previously-missing read view (built ones:
+  chart/stat/gauge/table/scripted/control). Both `json` and `jsonview` are registered in `WidgetView`.
+- **Visual JSON-path builder (parse out the JSON).** Once an output node is bound, the
+  `FlowsQuerySection` shows the node's CURRENT value as an interactive, collapsible **tree** (`JsonPathPicker`
+  + `jsonPaths.ts`): objects → keys, arrays → indices, nested → deeper, scalars → leaves. Clicking a row
+  binds **exactly that path** (e.g. `payload`, `payload.cron_ts`, `items[0].name`), stored on the source
+  args as `__flowPath`; a live preview shows the resolved value. The picked path then feeds **any** view —
+  not just the JSON view: `usePanelData` resolves a `flows.node_state` source CLIENT-SIDE through the
+  path extraction and shapes it (a scalar → stat/gauge/text; an array → table/timeseries rows; an object →
+  one row / the JSON view), so a flow value never lands as the raw whole-flow dump. Agnostic to shape and
+  node type; a missing path resolves to `null` (honest), never a stale value.
+
 ## Authorization
 
 Dashboard access has three gates:

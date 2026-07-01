@@ -6,6 +6,7 @@
 
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { Source, Action } from "@/lib/dashboard";
+import type { Flow, NodeDescriptor } from "@/lib/flows/flows.types";
 import { widgetIdOf } from "./ExtWidget";
 
 /** A friendly source entry the picker offers. `kind` groups it; `resolve()` gives the `{tool, args}`. */
@@ -14,7 +15,7 @@ export interface SourceEntry {
   id: string;
   /** The grouping origin (the picker's left-rail sections). `widget` is a packaged extension tile (a
    *  finished `[[widget]]` the developer shipped — distinct from `extension`, which offers raw tools). */
-  group: "series" | "live" | "extension" | "action" | "sql" | "widget";
+  group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows";
   /** What the author sees — never a raw tool name. */
   label: string;
   /** For a `widget` entry: the icon name the tile declared (lucide id), carried onto the option. */
@@ -115,6 +116,55 @@ export function extWidgetEntries(rows: ExtRow[]): SourceEntry[] {
   return out;
 }
 
+/** Build the Flows group — one entry per (flow, node, INPUT/OUTPUT port). The picker reads only
+ *  shipped verbs (`flows.list`→flow, `flows.get`→nodes, `flows.nodes`→descriptors), so a flow node
+ *  becomes a binding with no hand-typed tool name (flow-dashboard-binding-ux-scope, the headline UX):
+ *
+ *  - an INPUT port → a write Action `{tool:"flows.inject", argsTemplate:{id,node,port,value:"{{value}}"}}`
+ *    — a switch/slider/JSON control drives that port's retained `flow_input`;
+ *  - an OUTPUT port → a read Source reading the node's `payload` via `flows.node_state` (instant +
+ *    canvas-cadence refresh; NOT polling `runs.get`, NOT a series.watch on an arbitrary node — D).
+ *
+ *  The author sees `cooler-ctl › setpoint-in › payload (input)`, never `flows.inject`. A node whose
+ *  descriptor is missing (an unknown ext type) contributes no ports — an honest empty, never a guess. */
+export function flowsEntries(flows: Flow[], descriptors: NodeDescriptor[]): SourceEntry[] {
+  const byType = new Map(descriptors.map((d) => [d.type, d]));
+  const out: SourceEntry[] = [];
+  for (const flow of flows) {
+    for (const node of flow.nodes ?? []) {
+      const desc = byType.get(node.type);
+      if (!desc) continue;
+      for (const port of desc.inputs ?? []) {
+        out.push({
+          id: `flows:in:${flow.id}:${node.id}:${port}`,
+          group: "flows",
+          label: `${flow.name || flow.id} › ${node.id} › ${port} (input)`,
+          // The control fills `{{value}}` on interaction; the host re-checks the cap + ws + grant.
+          action: {
+            tool: "flows.inject",
+            argsTemplate: { id: flow.id, node: node.id, port, value: "{{value}}" },
+          },
+          writes: true,
+        });
+      }
+      for (const port of desc.outputs ?? []) {
+        out.push({
+          id: `flows:out:${flow.id}:${node.id}:${port}`,
+          group: "flows",
+          label: `${flow.name || flow.id} › ${node.id} › ${port} (output)`,
+          // The read reads the whole flow's node_state; the view/control extracts THIS node's port.
+          source: {
+            tool: "flows.node_state",
+            args: { id: flow.id, __flowNode: node.id, __flowPort: port },
+          },
+          writes: false,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 /** The id the picker uses for the "SQL query" entry — the visual SQL builder + raw-SQL Code source
  *  (widget-builder Slice C). Selecting it opens the Builder⇄Code editor, which resolves to a
  *  `{ tool: "store.query", args: { sql, vars? } }` source (Slice A). */
@@ -138,12 +188,18 @@ export function sqlSourceEntry(): SourceEntry {
  *  `rows` from `ext.list`. The author sees labels grouped by origin; the cell gets the resolved tools.
  *  The "SQL query" entry is always offered (the parse gate + workspace wall + row cap at the host make
  *  it safe regardless of which tables exist). */
-export function buildSourceEntries(seriesNames: string[], rows: ExtRow[]): SourceEntry[] {
+export function buildSourceEntries(
+  seriesNames: string[],
+  rows: ExtRow[],
+  flows: Flow[] = [],
+  descriptors: NodeDescriptor[] = [],
+): SourceEntry[] {
   return [
     ...seriesEntries(seriesNames),
     ...liveEntries(seriesNames),
     ...extensionEntries(rows),
     ...extWidgetEntries(rows),
+    ...flowsEntries(flows, descriptors),
     sqlSourceEntry(),
   ];
 }

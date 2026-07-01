@@ -29,6 +29,9 @@ export function defaultOptionsForView(view: View): Record<string, unknown> {
       return { ...defaultPieChartOptions() };
     case "table":
       return { ...defaultTableOptions() };
+    case "slider":
+      // Flow slider defaults (flow-dashboard-binding-ux-scope): a usable 0–100 range, step 1.
+      return { min: 0, max: 100, step: 1 };
     default:
       return {};
   }

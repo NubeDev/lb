@@ -116,6 +116,29 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
                     "properties": {}
                 }),
             ),
+        // The Node-RED `json` node: convert the `payload` between a JSON STRING and a structured value
+        // at a flow's text boundary (a webhook body, an MQTT text message, a file read) — the one thing
+        // neither `rhai` (reshapes an already-structured msg) nor a `${steps.x.payload.field}` binding
+        // (walks an already-structured msg) can do. `mode=parse` (default): a JSON string `payload` →
+        // its parsed value; a non-string or invalid JSON FAILS the node (Node-RED parity — surfaces a
+        // bad body instead of silently flowing a wrong shape). `mode=stringify`: any `payload` → its
+        // JSON string (`pretty` indents). Stateless, no MCP tool — the host resolves it like `count`.
+        NodeDescriptor::new("json", NodeKind::Transform, "")
+            .with_title("JSON (parse / stringify)")
+            .with_category("Flow")
+            .with_icon("braces")
+            .with_ports(vec!["payload".into()], vec!["payload".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "mode": {"type": "string", "enum": ["parse", "stringify"], "default": "parse", "description": "parse=JSON string→value (fails on bad JSON); stringify=value→JSON string"},
+                        "pretty": {"type": "boolean", "default": false, "description": "indent the output string (mode=stringify)"}
+                    }
+                }),
+            ),
         // A STATEFUL accumulator — the Node-RED / PLC counter (the "rung holds its last result").
         // Unlike `count` (a pure transform of THIS firing's input), `counter` reads its own durable
         // last value and increments on every firing, so the value GOES UP across runs and survives a
@@ -188,7 +211,7 @@ mod tests {
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
         assert_eq!(
             types,
-            vec!["trigger", "tool", "rhai", "count", "counter", "subflow", "sink"]
+            vec!["trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink"]
         );
         // every built-in carries a compilable config schema (load-time contract).
         for desc in &d {

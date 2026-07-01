@@ -19,6 +19,7 @@ import { seedEntryId } from "../../builder/WidgetBuilder";
 import { SQL_SOURCE_ID, type SourceEntry } from "../../builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "../../builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
+import { FlowsQuerySection } from "./FlowsQuerySection";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
@@ -45,10 +46,11 @@ function targetFromEntry(entry: SourceEntry | null, prev: Target | undefined): T
 }
 
 /** Which built-in/federation datasource the saved target binds — drives the dropdown's selected value. */
-function dsKindOf(target: Target | undefined): "surreal" | "series" | "federation" {
+function dsKindOf(target: Target | undefined): "surreal" | "series" | "federation" | "flows" {
   const t = target?.datasource?.type;
   if (t === "federation" || target?.tool === "federation.query") return "federation";
   if (t === "series") return "series";
+  if (t === "flows" || target?.tool === "flows.node_state") return "flows";
   return "surreal";
 }
 
@@ -63,7 +65,10 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   const { entries, loading } = useSourcePicker(ws);
   const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
   const primary = state.targets[0];
-  const dsKind = dsKindOf(primary);
+  // A flow INPUT control has no read target — it carries a `flows.inject` action; recognise the Flows
+  // datasource from EITHER the target (output read) or the carried action (input control).
+  const isFlowAction = state.carry.action?.tool === "flows.inject";
+  const dsKind = isFlowAction ? "flows" : dsKindOf(primary);
 
   // Match the current target back to a picker entry id (series/sql path only — federation uses raw SQL).
   const entryId = useMemo(
@@ -73,6 +78,10 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   const entry = entries.find((e) => e.id === entryId) ?? null;
   const isSql = dsKind === "surreal" && (entry?.id === SQL_SOURCE_ID || primary?.tool === "store.query");
   const isFederation = dsKind === "federation";
+  const isFlows = dsKind === "flows";
+  // The datasource dropdown's selected value (flows takes precedence over the target-derived value when
+  // an inject action is carried — an input control has no read target to derive from).
+  const dsValue = isFlows ? "flows" : dsValueOf(primary);
   const fedSource = (primary?.args?.source as string | undefined) ?? "";
   const fedSql = (primary?.args?.sql as string | undefined) ?? "";
 
@@ -89,11 +98,17 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
       return;
     }
     if (value === "series") {
-      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }] });
+      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }], carry: { ...state.carry, action: undefined } });
+      return;
+    }
+    if (value === "flows") {
+      // Flows: an empty `flows`-typed target; the FlowsQuerySection picks the node port (input → an
+      // inject action + control view; output → a node_state source + read view).
+      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "flows" } }], carry: { ...state.carry, action: undefined } });
       return;
     }
     // surreal (native) — reset to an empty native target; the source picker / SQL editor takes over.
-    patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }] });
+    patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }], carry: { ...state.carry, action: undefined } });
   };
 
   const selectEntry = (id: string) => {
@@ -117,7 +132,7 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
         <select
           aria-label="panel datasource"
           className={`${FIELD} w-full`}
-          value={dsValueOf(primary)}
+          value={dsValue}
           onChange={(e) => selectDatasource(e.target.value)}
         >
           {dsLoading && <option value="">loading datasources…</option>}
@@ -129,8 +144,11 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
         </select>
       </label>
 
+      {/* Flows — the flow→node→port picker (input port → control + inject action; output → read view). */}
+      {isFlows && <FlowsQuerySection state={state} patch={patch} entries={entries} loading={loading} />}
+
       {/* Native surreal + series share the friendly source picker (labels → `{tool,args}`). */}
-      {!isFederation && (
+      {!isFederation && !isFlows && (
         <label className="grid gap-1 text-xs text-muted">
           Source
           {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (see dashboard.md follow-up) */}

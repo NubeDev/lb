@@ -66,9 +66,13 @@ function fallbackFormat(value: number, mapping: UnitMapping, decimals?: number):
       return { text: `${number} ${mapping.label}`.trim(), number, unit: mapping.label, viaPrefs: false };
     case "number":
       return { text: `${number}${mapping.suffix ?? ""}`, number, unit: (mapping.suffix ?? "").trim(), viaPrefs: false };
-    case "datetime":
-      // FALLBACK: a plain ISO-ish render of an epoch-ms instant (prefs will localize the pattern).
-      return { text: new Date(value).toISOString(), number, unit: "", viaPrefs: false };
+    case "datetime": {
+      // FALLBACK: a plain ISO-ish render (the prefs formatter localizes tz + style — see
+      // `useFormattedValue`). Honor the declared `dateUnit` so a flow epoch-SECONDS value shows the
+      // right year here too (not 1970) while the async prefs render settles.
+      const ms = mapping.dateUnit === "s" ? value * 1000 : value;
+      return { text: new Date(ms).toISOString(), number, unit: "", viaPrefs: false };
+    }
     case "none":
     default:
       return { text: number, number, unit: "", viaPrefs: false };

@@ -11,17 +11,19 @@ import { listDatasources } from "@/lib/datasources";
 /** One option in the datasource dropdown — a built-in or a registered federation source. */
 export interface DatasourceOption {
   /** The `DataSourceRef.type` this option binds onto the target. */
-  type: "surreal" | "series" | "federation";
+  type: "surreal" | "series" | "federation" | "flows";
   /** The display label. */
   label: string;
   /** The federation source NAME (federation only) — also the `uid` tail `datasource:{ws}:{name}`. */
   name?: string;
 }
 
-/** The two built-ins every workspace has, regardless of `datasource.list` — native store + series. */
+/** The built-ins every workspace has, regardless of `datasource.list` — native store + series + the
+ *  Flows binding (flow-dashboard-binding-ux-scope: pick a flow node + port → a control or read view). */
 const BUILTINS: DatasourceOption[] = [
   { type: "surreal", label: "SurrealDB (native)" },
   { type: "series", label: "Series" },
+  { type: "flows", label: "Flows (node ports)" },
 ];
 
 /** Load the datasource options for `ws`: the two built-ins + each registered federation source. A

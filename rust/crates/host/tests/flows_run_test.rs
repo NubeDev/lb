@@ -568,3 +568,153 @@ async fn counter_throughput_mode_adds_payload_size() {
     assert_eq!(snap["status"], "success");
     assert_eq!(step_output(&snap, "thru")["payload"], 4);
 }
+
+// ── the Node-RED `json` node: parse/stringify at a flow's text boundary ──────────────────────────
+// (json-node-scope). Real run through the engine; the value is fed via `with.payload` (the envelope
+// value slot), exactly like `count_node_counts_its_input`. Covers: parse string→object, stringify
+// object→string (+ pretty), the Node-RED "fail on bad JSON" contract, and topic carry-forward.
+
+/// A `json` node fed a literal `payload` (no upstream) — the single-node flow shape these tests use.
+fn json_node(id: &str, mode: &str, payload: Value, extra: Value) -> Node {
+    let mut config = json!({ "mode": mode });
+    if let (Value::Object(c), Value::Object(e)) = (&mut config, &extra) {
+        for (k, v) in e {
+            c.insert(k.clone(), v.clone());
+        }
+    }
+    Node {
+        id: id.into(),
+        node_type: "json".into(),
+        needs: vec![],
+        with: serde_json::Map::from_iter([("payload".into(), payload)]),
+        config,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn json_parse_turns_a_string_payload_into_an_object() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // A JSON STRING arrives (a webhook body / MQTT text) → the node emits the parsed object so a
+    // downstream `${steps.x.payload.field}` binding can walk into it.
+    let n = json_node(
+        "j",
+        "parse",
+        json!("{\"temp\": 21, \"unit\": \"C\"}"),
+        json!({}),
+    );
+    let f = flow("jp", vec![n]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "jp", "jp-1").await;
+    let snap = runs_get(&node, &p, "ws", "jp-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(
+        step_output(&snap, "j")["payload"],
+        json!({ "temp": 21, "unit": "C" })
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn json_stringify_turns_a_value_into_a_json_string() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // An object → its compact JSON string (what a sink/outbox text target wants).
+    let n = json_node("j", "stringify", json!({ "a": 1, "b": [2, 3] }), json!({}));
+    let f = flow("js", vec![n]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "js", "js-1").await;
+    let snap = runs_get(&node, &p, "ws", "js-1").await;
+    assert_eq!(snap["status"], "success");
+    // The emitted payload is a STRING that re-parses to the original value (key order is not asserted).
+    let s = step_output(&snap, "j")["payload"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let reparsed: Value = serde_json::from_str(&s).unwrap();
+    assert_eq!(reparsed, json!({ "a": 1, "b": [2, 3] }));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn json_parse_fails_the_node_on_invalid_json() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // Node-RED parity: a malformed body FAILS the node (not a silent passthrough). Under the default
+    // Halt policy that settles the run `failed`, surfacing the bad input instead of flowing it on.
+    let n = json_node("j", "parse", json!("{not json"), json!({}));
+    let f = flow("jbad", vec![n]);
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "jbad", "jbad-1").await;
+    let snap = runs_get(&node, &p, "ws", "jbad-1").await;
+    assert_eq!(snap["status"], "failed");
+    assert_eq!(
+        step_output(&snap, "j").is_null() || step_output(&snap, "j") == &json!({}),
+        true
+    );
+    let step = snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "j")
+        .unwrap();
+    assert_eq!(step["outcome"], "err");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn json_parse_carries_topic_forward() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // A trigger stamps a `topic`; auto-wire carries it onto the json node's envelope (the executor's
+    // carry merge), so a parsed message keeps its routing topic for a downstream `sink`.
+    let trig = node_with_topic("t", "kfc.fryer");
+    let j = Node {
+        id: "j".into(),
+        node_type: "json".into(),
+        needs: vec!["t".into()],
+        with: serde_json::Map::new(),
+        config: json!({ "mode": "parse" }),
+    };
+    let f = flow("jtopic", vec![trig, j]);
+    save_flow(&node, &p, "ws", &f).await;
+    // The trigger's firing payload is a JSON string (set via params under the node id at run time).
+    run_flow_with_param(
+        &node,
+        &p,
+        "ws",
+        "jtopic",
+        "jtopic-1",
+        "t",
+        json!("{\"v\": 9}"),
+    )
+    .await;
+    let snap = runs_get(&node, &p, "ws", "jtopic-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(step_output(&snap, "j")["payload"], json!({ "v": 9 }));
+    assert_eq!(step_output(&snap, "j")["topic"], "kfc.fryer");
+}
+
+/// A trigger node that stamps a `topic` on its firing envelope (D6).
+fn node_with_topic(id: &str, topic: &str) -> Node {
+    Node {
+        id: id.into(),
+        node_type: "trigger".into(),
+        needs: vec![],
+        with: serde_json::Map::new(),
+        config: json!({ "mode": "manual", "topic": topic }),
+    }
+}
+
+/// Like `run_flow` but seeds the trigger node's firing payload via `params[node_id]` (the firing path).
+async fn run_flow_with_param(
+    node: &Arc<HostNode>,
+    p: &Principal,
+    ws: &str,
+    id: &str,
+    run_id: &str,
+    trigger_node: &str,
+    payload: Value,
+) {
+    let req = json!({ "id": id, "run_id": run_id, "ts": 1, "params": { trigger_node: payload } })
+        .to_string();
+    call_tool(node, p, ws, "flows.run", &req).await.unwrap();
+    await_terminal(node, p, ws, run_id).await;
+}

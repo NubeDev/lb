@@ -389,12 +389,15 @@ pub async fn resolve_node_bindings(
         for (k, v) in bound {
             inputs.insert(k, v);
         }
+        // Retained `flow_input` wins over auto-wire too (precedence: per-port > node-level > wire).
+        overlay_retained_inputs(store, ws, &flow.id, node_id, &mut inputs).await?;
         let carry = without_payload(&inputs);
         return Ok(ResolvedInputs { inputs, carry });
     }
 
     // Explicit bindings (or a no-upstream node): build `inputs` from `with` only.
-    let inputs = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
+    let mut inputs = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
+    overlay_retained_inputs(store, ws, &flow.id, node_id, &mut inputs).await?;
     // Carry forward only when this is NOT a multi-input join (D4): a single (or zero) upstream, or a
     // single explicit `payload` binding.
     let carry = if needs.len() >= 2 {
@@ -403,6 +406,64 @@ pub async fn resolve_node_bindings(
         without_payload(&inputs)
     };
     Ok(ResolvedInputs { inputs, carry })
+}
+
+/// Overlay this node's retained `flow_input` onto its resolved `inputs`, establishing the binding
+/// precedence **per-port retained > node-level retained > static `with`/auto-wire** (flow-dashboard-
+/// binding-ux-scope, ratified in flow-run-scope). The node-level retained value is the node's
+/// `payload`; a per-port record sets that named port (and wins over the node-level value when both
+/// target `payload`). A run reads the CURRENT retained value, so a control's inject always takes for
+/// the next run — the "value didn't take" trap closed.
+async fn overlay_retained_inputs(
+    store: &Store,
+    ws: &str,
+    flow_id: &str,
+    node_id: &str,
+    inputs: &mut serde_json::Map<String, Value>,
+) -> Result<(), String> {
+    // Node-level retained (`flow_input:{flow}:{node}`) → the node's `payload`.
+    if let Some(rec) = read(store, ws, FLOW_INPUT_TABLE, &format!("{flow_id}:{node_id}"))
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        if let Some(val) = retained_value(&rec) {
+            inputs.insert("payload".into(), val);
+        }
+    }
+    // Per-port retained (`flow_input:{flow}:{node}:{port}`) → that named port; wins over node-level.
+    // The records share the table, so we scan and filter by this node's `{flow}:{node}:` prefix on
+    // the record id, reading the authoritative `port`/`value` off the stored body.
+    let page = scan(store, ws, FLOW_INPUT_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let prefix = format!("{FLOW_INPUT_TABLE}:{flow_id}:{node_id}:");
+    for row in page.rows {
+        if !row.id.starts_with(&prefix) {
+            continue;
+        }
+        let body = match &row.data {
+            Value::Object(o) => o.get("data").cloned().unwrap_or(Value::Null),
+            other => other.clone(),
+        };
+        let (Some(port), Some(val)) = (
+            body.get("port").and_then(|v| v.as_str()),
+            body.get("value").cloned(),
+        ) else {
+            continue;
+        };
+        inputs.insert(port.to_string(), val);
+    }
+    Ok(())
+}
+
+/// Pull the retained `value` off a `flow_input` record body (it lives under the store's `data`
+/// envelope for a `read`).
+fn retained_value(rec: &Value) -> Option<Value> {
+    let body = match rec {
+        Value::Object(o) => o.get("data").cloned().unwrap_or_else(|| rec.clone()),
+        other => other.clone(),
+    };
+    body.get("value").cloned()
 }
 
 /// A copy of `inputs` with the `payload` key removed — the fields that carry forward (D4).

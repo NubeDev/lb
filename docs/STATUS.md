@@ -16,6 +16,18 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-01): flow timestamp display + a flow-read "binding broken" fix.** A flow node's
+canonical epoch-**seconds** `ts` now renders as the viewer's wall-clock via `format.datetime` (the
+`lb-prefs` host tool) wired into the ONE viz field-config bridge (`fieldconfig/format.ts` — the
+long-planned "when lb-prefs ships, this becomes the real dispatch" swap), unit declared as `dateUnit:"s"`
+so the seconds→ms ×1000 is never magnitude-guessed. Backend: `prefs.get`/`resolve`/`set` are now
+member-level (a member must resolve their OWN prefs to render; still forced to the caller's `sub`, deny
+test unchanged). Also fixed the live "binding broken — re-pick" on saved flow read cells (an empty v2
+`source:{tool:""}` placeholder shadowed the real v3 `sources[]` in `WidgetView`). Scope
+`scope/prefs/flow-ts-display-scope.md`; session `sessions/prefs/flow-ts-display-session.md`; debug
+`debugging/flows/flow-read-binding-broken-empty-source.md`. Tests: +3 real-gateway (two-viewer render +
+ws-isolation) +8 unit; regression suites green (UI 232, flow-binding gateway 16, Rust prefs 8).
+
 **Flows — the visual node-graph engine (backend spine + Wave 3 surfaces): SHIPPED** (2026-06-30), over the
 shipped rules + chains + jobs + outbox + extension plane. A `flow:{ws}:{id}` typed node graph authored
 on a React Flow canvas and run as a durable `lb-jobs` session — **flows are not a new engine**,
@@ -105,8 +117,32 @@ are removed.
   green, sink reads `payload` + `msg.topic` routes; `ui flowGraph.test` (envelope→payload badge +
   fallback). The mandatory capability-deny + workspace-isolation tests carry over (assertion shapes moved
   to `payload`). Session: `sessions/flows/flow-message-envelope-session.md`; scope:
-  `scope/flows/flow-message-envelope-scope.md`; public updated. **Deferred (its own session):**
-  `flow-dashboard-binding-ux-scope` (picker `payload`/`topic` ports, read views default to `payload`).
+  `scope/flows/flow-message-envelope-scope.md`; public updated. **Built on by:** the flow⇄dashboard
+  binding UX below (picker `payload`/`topic` ports, read views default to `payload`).
+
+**Flows — the flow⇄dashboard binding UX (pick a node + port; switch / slider / JSON, both ways):
+SHIPPED** (2026-07-01), over the shipped `flows.inject` write + read-out (no new transport). Makes the
+bidirectional binding **authorable in clicks** and carries **structured JSON both ways**.
+- **port-aware inject** — `flows.inject {…, port?}` upserts the per-port `flow_input:{flow}:{node}:{port}`
+  (node-level unchanged); same `mcp:flows.inject:call` cap + per-call ws + grant recheck (no widening).
+  Threaded through the host dispatch + the gateway `POST /flows/{id}/inject` route.
+- **binding precedence** — `resolve_node_bindings` overlays retained `flow_input` so a run's input is
+  **per-port retained > node-level retained > static `with` / auto-wire** (explicit + tested, both
+  branches); the injected value is the node's `payload`.
+- **read-back** — `flows.node_state {id}` folds each node's retained `flow_input` (`input` node-level +
+  `inputs` per-port) into its entry, so a control seeds its CURRENT state from its OWN input, not its
+  output. One read drives canvas + dashboard; no new verb.
+- **frontend** — a **Flows source-picker group** (flow→node→port → Action/Source, friendly labels, no
+  tool name); switch/slider/**JSON** controls driving a port + seeding current value on mount
+  (`useFlowNodeValue`); a new **JSON/object read view** (`jsonview`) pretty-printing a node's `payload`.
+- **Tests (green, real spawned gateway / `mem://` — no `*.fake.ts`):** host `flows_triggers_test` +8
+  (port upsert, precedence by a real run, object round-trip, node_state read-back, inject deny node- AND
+  port-keyed, ws-isolation); `ui` unit `flowsPicker.test.ts` (6); `ui` gateway
+  `FlowDashboardBinding.gateway.test.ts` +7 (picker offer, slider port-inject + precedence, current-value
+  mount read, switch boolean, JSON validate/reject, JSON read advance, ws read-isolation). Session:
+  `sessions/flows/flow-dashboard-binding-ux-session.md`; scope `scope/flows/flow-dashboard-binding-ux-scope.md`;
+  public `flows.md` + `frontend/dashboard.md` updated. **Deferred:** a `flows.node.watch` SSE (sub-second
+  liveness) + JSON-path sub-field output selection.
 
 **Flows — PLC-grade reliability (unique run ids + conflict-safe writes): SHIPPED** (2026-06-30), over
 the flows runtime. Driven by a live `:8080` reproduction: 8 concurrent `POST /flows/chain4/run`

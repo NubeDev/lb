@@ -199,6 +199,18 @@ fn member_caps() -> Vec<String> {
         "mcp:flows.node_state:call",
         "mcp:flows.enable:call",
         "mcp:flows.inject:call",
+        // prefs (user-prefs scope): reading/writing your OWN presentation settings is member-level —
+        // as member-level as building your own dashboard or reading your own flow. `prefs.get`/
+        // `prefs.resolve`/`prefs.set` force the target to the caller's own `sub` (structural, beyond
+        // the cap — a caller can never name another user), so granting them to a member widens
+        // nothing; it just lets a member RENDER their own screen (the viz layer resolves the viewer's
+        // prefs to localize a timestamp/quantity via `format.datetime`/`format.quantity`, which are
+        // grant-free but need the resolved axes). Without this a member could build a dashboard but
+        // not resolve the prefs to format it (flow-ts-display scope). `prefs.set_default` stays
+        // admin-only (NOT granted here) — it writes the WORKSPACE default, not a personal record.
+        "mcp:prefs.get:call",
+        "mcp:prefs.resolve:call",
+        "mcp:prefs.set:call",
         // telemetry console (telemetry-console scope): the read grant the Telemetry page's
         // `telemetry.query`/`trace` (and the SSE `telemetry.tail`) gate on. Member-level — the read
         // surface is HARD-filtered to the caller's workspace server-side, so a member sees only their

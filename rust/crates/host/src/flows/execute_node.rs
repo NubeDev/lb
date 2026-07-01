@@ -236,6 +236,44 @@ async fn dispatch(
             let n = payload_size(inputs.get("payload"));
             NodeOutcome::ok(json!({ "payload": n }))
         }
+        "json" => {
+            // The Node-RED `json` node: convert `payload` between a JSON string and a structured value
+            // at a text boundary. Stateless, no tool dispatch — a pure transform like `count`. `topic`
+            // and friends carry forward via the executor's `carry` merge (we emit only `payload`).
+            let mode = config
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("parse");
+            let payload = inputs.get("payload").cloned().unwrap_or(Value::Null);
+            match mode {
+                // string → value. A non-string or invalid JSON FAILS (Node-RED parity) so a bad body
+                // surfaces under the flow's `FailurePolicy` instead of silently flowing a wrong shape.
+                "parse" => match &payload {
+                    Value::String(s) => match serde_json::from_str::<Value>(s) {
+                        Ok(parsed) => NodeOutcome::ok(json!({ "payload": parsed })),
+                        Err(e) => NodeOutcome::Err(format!("json.parse: invalid JSON: {e}")),
+                    },
+                    _ => NodeOutcome::Err("json.parse: expected a string payload".into()),
+                },
+                // value → JSON string. `pretty` indents. Never fails (any serde_json::Value serializes).
+                "stringify" => {
+                    let pretty = config
+                        .get("pretty")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let s = if pretty {
+                        serde_json::to_string_pretty(&payload)
+                    } else {
+                        serde_json::to_string(&payload)
+                    };
+                    match s {
+                        Ok(text) => NodeOutcome::ok(json!({ "payload": text })),
+                        Err(e) => NodeOutcome::Err(format!("json.stringify: {e}")),
+                    }
+                }
+                other => NodeOutcome::Err(format!("json node: unknown mode: {other}")),
+            }
+        }
         "counter" => {
             // A STATEFUL accumulator (Node-RED / PLC counter): read this node's durable memory and add
             // to it ATOMICALLY. `mode` is EXPLICIT (D7, the trap removed): `tick` (default) → +`step`

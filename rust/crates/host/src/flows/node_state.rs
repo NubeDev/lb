@@ -12,7 +12,7 @@ use lb_store::{scan, Store, MAX_SCAN_LIMIT};
 use serde_json::{json, Value};
 
 use super::error::FlowsError;
-use super::record::FLOW_NODE_STATE_TABLE;
+use super::record::{FLOW_INPUT_TABLE, FLOW_NODE_STATE_TABLE};
 use super::save::{authorize_store_read, flows_get_internal};
 
 /// `flows.node_state {id}` — every node's current persistent value for flow `flow_id`, plus the
@@ -60,6 +60,42 @@ pub async fn flows_node_state(
     for n in &flow.nodes {
         if !nodes.iter().any(|e| e["node"] == json!(n.id)) {
             nodes.push(json!({ "node": n.id, "value": Value::Null, "rev": Value::Null }));
+        }
+    }
+
+    // Fold each node's RETAINED INPUT (`flow_input`) into its entry, so a control seeds its current
+    // state from its OWN input (not its output) — one read drives both the canvas and the dashboard
+    // (flow-dashboard-binding-ux-scope, Decision: read-back via node_state, no new verb). `input` is
+    // the node-level retained `payload`; `inputs` is the per-port map. Records share one table per ws;
+    // ids are `{flow}:{node}` (node-level) or `{flow}:{node}:{port}` (per-port).
+    let input_page = scan(store, ws, FLOW_INPUT_TABLE, MAX_SCAN_LIMIT, None)
+        .await
+        .map_err(|e| FlowsError::Internal(e.to_string()))?;
+    for row in input_page.rows {
+        let body = match &row.data {
+            Value::Object(o) => o.get("data").cloned().unwrap_or(Value::Null),
+            other => other.clone(),
+        };
+        // The body carries the authoritative `flow`/`node`/`port?`/`value` (written by flows.inject);
+        // filter to THIS flow so one flow's inputs never bleed another's.
+        if body.get("flow").and_then(|v| v.as_str()) != Some(flow_id) {
+            continue;
+        }
+        let Some(node_id) = body.get("node").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let value = body.get("value").cloned().unwrap_or(Value::Null);
+        let Some(entry) = nodes.iter_mut().find(|e| e["node"] == json!(node_id)) else {
+            continue;
+        };
+        match body.get("port").and_then(|v| v.as_str()) {
+            Some(port) => {
+                if !entry["inputs"].is_object() {
+                    entry["inputs"] = json!({});
+                }
+                entry["inputs"][port] = value;
+            }
+            None => entry["input"] = value,
         }
     }
 

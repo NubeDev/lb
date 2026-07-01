@@ -35,7 +35,8 @@ ws-scoped), offline/sync (resume/cron-replay exactly-once), and the deny matrix.
   surface) · `flows.runs.list` (reattach) · **`flows.watch {run_id}`** — the live SSE settle feed
   (snapshot then `node-settled`/`run-finished` deltas; the canvas folds it, falling back to the
   bounded `runs.get` poll when no stream).
-- **Triggers:** `flows.enable {id,enabled,start_on_boot}` · `flows.inject {id,node,value}`.
+- **Triggers:** `flows.enable {id,enabled,start_on_boot}` · `flows.inject {id,node,value,port?}` (the
+  optional `port` drives the per-port retained `flow_input`; precedence per-port > node-level > `with`).
 - **Reactors (host-internal, mounted by config):** `react_to_flows_cron` · `reconcile_flows`.
 
 Composition, never widening: `flows.run` plus every node-tool's own gate under `caller ∩ grant` — a
@@ -46,7 +47,8 @@ under `FailurePolicy`.
 `flow:{ws}:{id}` (graph + version + lifecycle) · `flow_run:{ws}:{run_id}` (coordinator + pinned
 `flow_version`) · `flow_step_output:{ws}:{run_id}:{node}` (CAS claim + outcome) ·
 `flow_node_state:{ws}:{flow}:{node}` (last-value, Decision 5) · `flow_input:{ws}:{flow}:{node}`
-(retained inject values, Decision 9). The run-store mirrors the chain run-store (Decision 6: one
+(node-level retained inject value, Decision 9) · `flow_input:{ws}:{flow}:{node}:{port}` (per-port
+retained value; precedence per-port > node-level > static `with`). The run-store mirrors the chain run-store (Decision 6: one
 engine, `chains.*` the alias).
 
 ## What's deferred (with the decision it traces to)
@@ -218,6 +220,34 @@ payload badge + fallback). Session: `sessions/flows/flow-message-envelope-sessio
 
 *Open (follow-up, not this slice):* `flow-dashboard-binding-ux-scope` — the picker offering
 `payload`/`topic` ports and read views defaulting to `payload`.
+
+## What's shipped (the flow⇄dashboard binding UX — pick a node + port; switch / slider / JSON, both ways)
+
+`flow-dashboard-binding-ux-scope` — the bidirectional binding is now **authorable in clicks** and
+carries **structured JSON both ways**, on top of the shipped `flows.inject` write + read-out (no new
+transport). The backend gained the per-port reach + read-back the UX needs:
+
+- **Port-aware `flows.inject {id, node, value, port?}`.** With `port`, the value lands in the per-port
+  record `flow_input:{ws}:{flow}:{node}:{port}`; without it, the node-level `flow_input:{ws}:{flow}:{node}`
+  (unchanged). The only verb change — an additive optional arg, the **same** `mcp:flows.inject:call` cap +
+  per-call ws + grant recheck (no widening).
+- **Binding precedence (run input): per-port retained > node-level retained > static `with` / auto-wire.**
+  `resolve_node_bindings` overlays the current retained `flow_input` onto a node's resolved inputs in both
+  the auto-wire and explicit-`with` branches: the node-level value sets `payload`, a per-port record sets
+  that named port (and wins). A run always reads the CURRENT retained value, so a control's inject takes
+  for the next run.
+- **`flows.node_state {id}` reads retained inputs back.** Each node entry now also carries `input` (the
+  node-level retained `payload`) and `inputs` (the per-port map). One read drives both the canvas and the
+  dashboard; a control seeds its current state from its OWN input, not its output. No new verb.
+
+Frontend (see `public/frontend/dashboard.md`): a **Flows source-picker group** (flow → node → port) that
+emits the right Action/Source with no tool name shown; switch/slider/**JSON** controls that drive a port
+and seed their current value on mount; and a **JSON/object read view**.
+
+Proven: `host::flows_triggers_test` (port upsert, precedence by a real run, object round-trip, node_state
+read-back, inject deny node- AND port-keyed, ws-isolation); `ui` unit `flowsPicker.test.ts`; `ui` gateway
+`FlowDashboardBinding.gateway.test.ts` (picker offer, slider port-inject + precedence, current-value
+mount read, switch boolean, JSON validate/reject, JSON read view advance, ws read-isolation).
 
 ## Where to read
 - Scope (the ask, Decisions 1–13): `scope/flows/` (`README.md` index + the seven sub-docs).

@@ -33,6 +33,7 @@ const FULL: &[&str] = &[
     "mcp:flows.run:call",
     "mcp:flows.enable:call",
     "mcp:flows.inject:call",
+    "mcp:flows.node_state:call",
     "mcp:flows.runs.get:call",
     "mcp:flows.runs.list:call",
     "mcp:rules.run:call",
@@ -310,6 +311,306 @@ async fn capability_deny_enable_without_cap() {
         .await
         .unwrap_err();
     assert!(matches!(err, lb_mcp::ToolError::Denied));
+}
+
+// ───────────────────────── flow⇄dashboard binding UX (port-aware inject) ─────────────────────────
+
+/// Run a flow synchronously-then-poll and return its terminal snapshot.
+async fn run_to_terminal(
+    node: &Arc<HostNode>,
+    p: &Principal,
+    ws: &str,
+    id: &str,
+    run_id: &str,
+) -> Value {
+    let req = json!({ "id": id, "run_id": run_id, "ts": 1 }).to_string();
+    call_tool(node, p, ws, "flows.run", &req).await.unwrap();
+    await_terminal(node, p, ws, run_id).await
+}
+
+fn step_payload<'a>(snap: &'a Value, id: &str) -> &'a Value {
+    snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == id)
+        .map(|s| &s["output"]["payload"])
+        .unwrap_or(&Value::Null)
+}
+
+/// A single-node `ctl` flow: a rhai node that echoes its `payload` (so the run's resolved input is
+/// observable as the recorded output). `with.payload` is the static baseline (lowest precedence).
+fn ctl_flow(id: &str, static_payload: Value) -> Flow {
+    let ctl = Node {
+        id: "ctl".into(),
+        node_type: "rhai".into(),
+        needs: vec![],
+        with: serde_json::Map::from_iter([("payload".into(), static_payload)]),
+        config: json!({ "source": "payload" }),
+    };
+    let mut f = rhai_flow(id);
+    f.nodes = vec![ctl];
+    f
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn inject_with_port_upserts_the_per_port_record() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("pp", json!(1))).await;
+    // inject WITH a port → the per-port record `flow_input:{flow}:{node}:{port}`.
+    let req =
+        json!({ "id": "pp", "node": "ctl", "port": "payload", "value": 7, "ts": 1 }).to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    let st = store_read(&node.store, "ws", "flow_input", "pp:ctl:payload")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(st["value"], 7);
+    assert_eq!(st["port"], "payload");
+    // the node-level record is untouched (the per-port write does not derive it).
+    assert!(store_read(&node.store, "ws", "flow_input", "pp:ctl")
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn inject_without_port_unchanged_node_level_record() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("nl", json!(1))).await;
+    // inject WITHOUT a port → node-level record, exactly as before (back-compat).
+    let req = json!({ "id": "nl", "node": "ctl", "value": 3, "ts": 1 }).to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    let st = store_read(&node.store, "ws", "flow_input", "nl:ctl")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(st["value"], 3);
+    assert!(st.get("port").is_none() || st["port"].is_null());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn binding_precedence_per_port_over_node_level_over_with() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("prec", json!(1))).await;
+
+    // 1) only the static `with` → payload 1.
+    let snap = run_to_terminal(&node, &p, "ws", "prec", "prec-1").await;
+    assert_eq!(step_payload(&snap, "ctl"), &json!(1));
+
+    // 2) node-level retained beats `with` → payload 5.
+    let req = json!({ "id": "prec", "node": "ctl", "value": 5, "ts": 1 }).to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    let snap = run_to_terminal(&node, &p, "ws", "prec", "prec-2").await;
+    assert_eq!(step_payload(&snap, "ctl"), &json!(5));
+
+    // 3) per-port retained beats node-level → payload 9 (the precedence headline).
+    let req =
+        json!({ "id": "prec", "node": "ctl", "port": "payload", "value": 9, "ts": 1 }).to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    let snap = run_to_terminal(&node, &p, "ws", "prec", "prec-3").await;
+    assert_eq!(step_payload(&snap, "ctl"), &json!(9));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn object_payload_round_trips_inject_to_run() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("obj", json!(null))).await;
+    let obj = json!({ "mode": "eco", "band": [3.5, 4.5] });
+    let req = json!({ "id": "obj", "node": "ctl", "value": obj, "ts": 1 }).to_string();
+    call_tool(&node, &p, "ws", "flows.inject", &req)
+        .await
+        .unwrap();
+    // it persisted on flow_input...
+    let st = store_read(&node.store, "ws", "flow_input", "obj:ctl")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(st["value"], obj);
+    // ...and the run reads the structured value as the node's payload.
+    let snap = run_to_terminal(&node, &p, "ws", "obj", "obj-1").await;
+    assert_eq!(step_payload(&snap, "ctl"), &obj);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn node_state_reads_back_retained_inputs() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("rb", json!(1))).await;
+    // a node-level retained value AND a per-port value.
+    call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.inject",
+        &json!({ "id": "rb", "node": "ctl", "value": 4, "ts": 1 }).to_string(),
+    )
+    .await
+    .unwrap();
+    call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.inject",
+        &json!({ "id": "rb", "node": "ctl", "port": "payload", "value": 6, "ts": 1 }).to_string(),
+    )
+    .await
+    .unwrap();
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.node_state",
+        &json!({ "id": "rb" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let entry = v["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node"] == "ctl")
+        .unwrap();
+    // a control seeds its current state from its OWN input (node-level + per-port), not its output.
+    assert_eq!(entry["input"], 4);
+    assert_eq!(entry["inputs"]["payload"], 6);
+}
+
+/// AGNOSTIC to the port NAME: inject + precedence + read-back all key on the `{port}` string, never a
+/// known `payload`. A developer's new node type with an arbitrary input port (`setpoint`) drives and
+/// reads back with zero engine changes. (Here the `ctl` rhai node still echoes `payload`, but we prove
+/// the per-port record + node_state read-back work for a non-`payload` slot name.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn port_aware_inject_is_agnostic_to_the_port_name() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    save(&node, &p, "ws", &ctl_flow("agno", json!(1))).await;
+    // inject a value into an arbitrarily-named port the engine has never heard of.
+    call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.inject",
+        &json!({ "id": "agno", "node": "ctl", "port": "setpoint", "value": 21.5, "ts": 1 })
+            .to_string(),
+    )
+    .await
+    .unwrap();
+    // the per-port record is keyed by the real port name...
+    let st = store_read(&node.store, "ws", "flow_input", "agno:ctl:setpoint")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(st["value"], 21.5);
+    assert_eq!(st["port"], "setpoint");
+    // ...and node_state reads it back under that name (not flattened into `payload`).
+    let out = call_tool(
+        &node,
+        &p,
+        "ws",
+        "flows.node_state",
+        &json!({ "id": "agno" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let v: Value = serde_json::from_str(&out).unwrap();
+    let entry = v["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["node"] == "ctl")
+        .unwrap();
+    assert_eq!(entry["inputs"]["setpoint"], 21.5);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn capability_deny_inject_does_not_upsert_node_or_port_record() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let saver = principal("ws", FULL);
+    save(&node, &saver, "ws", &ctl_flow("deny", json!(1))).await;
+    // a caller WITHOUT mcp:flows.inject:call — denied server-side at the bridge.
+    let caps: Vec<&str> = FULL
+        .iter()
+        .filter(|c| **c != "mcp:flows.inject:call")
+        .cloned()
+        .collect();
+    let viewer = principal("ws", &caps);
+    // node-level inject denied...
+    let err = call_tool(
+        &node,
+        &viewer,
+        "ws",
+        "flows.inject",
+        &json!({ "id": "deny", "node": "ctl", "value": 5, "ts": 1 }).to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, lb_mcp::ToolError::Denied));
+    // ...and port-keyed inject denied — neither record is upserted.
+    let err = call_tool(
+        &node,
+        &viewer,
+        "ws",
+        "flows.inject",
+        &json!({ "id": "deny", "node": "ctl", "port": "payload", "value": 5, "ts": 1 }).to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, lb_mcp::ToolError::Denied));
+    assert!(store_read(&node.store, "ws", "flow_input", "deny:ctl")
+        .await
+        .unwrap()
+        .is_none());
+    assert!(
+        store_read(&node.store, "ws", "flow_input", "deny:ctl:payload")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn workspace_isolation_ws_b_cannot_inject_into_ws_a_flow() {
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let pa = principal("ws-a", FULL);
+    save(&node, &pa, "ws-a", &ctl_flow("iso", json!(1))).await;
+    // ws-B injects into "iso" — the flow does not exist in ws-B → denied (NotFound→Denied).
+    let pb = principal("ws-b", FULL);
+    let err = call_tool(
+        &node,
+        &pb,
+        "ws-b",
+        "flows.inject",
+        &json!({ "id": "iso", "node": "ctl", "value": 9, "ts": 1 }).to_string(),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        lb_mcp::ToolError::Denied | lb_mcp::ToolError::NotFound
+    ));
+    // ws-A's record is untouched; no ws-B record was written.
+    assert!(store_read(&node.store, "ws-a", "flow_input", "iso:ctl")
+        .await
+        .unwrap()
+        .is_none());
+    assert!(store_read(&node.store, "ws-b", "flow_input", "iso:ctl")
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[test]

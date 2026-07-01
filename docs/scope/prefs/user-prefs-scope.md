@@ -323,6 +323,10 @@ No blocking open questions — these are the long-term answers the build follows
 
 ## Related
 
+- [`flow-ts-display-scope.md`](./flow-ts-display-scope.md) — the first CONSUMER of `format.datetime` in
+  the viz layer: a flow node's canonical epoch-seconds `ts` rendered in the viewer's resolved prefs via
+  the field-config bridge (the "when lb-prefs ships, format.ts becomes the real dispatch" swap). Also
+  made `prefs.get`/`resolve`/`set` member-level (a member must resolve their own prefs to render).
 - README **§6.5** (MCP is the universal contract — format/convert/prefs are tools), **§3.7** (same),
   **§6.8** (sync/authority — prefs are cloud-authoritative shared data), **§6.12** (docs/skills as shared
   workspace assets — the override-catalog model), **§7** (workspace = the wall; user is a global identity

@@ -233,6 +233,10 @@ pub async fn enable_flow(
 pub struct InjectFlow {
     pub node: String,
     pub value: Value,
+    /// Optional input port — drives `flow_input:{flow}:{node}:{port}` (per-port retained); absent
+    /// drives the node-level retained value (flow-dashboard-binding-ux-scope).
+    #[serde(default)]
+    pub port: Option<String>,
 }
 
 /// `POST /flows/{id}/inject` — `flows.inject` (sets a retained input OR fires a one-shot run for a
@@ -247,7 +251,10 @@ pub async fn inject_flow(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({ "id": id, "node": body.node, "value": body.value, "ts": gw.now() });
+    let mut input = json!({ "id": id, "node": body.node, "value": body.value, "ts": gw.now() });
+    if let Some(port) = body.port {
+        input["port"] = Value::String(port);
+    }
     call(&gw, &p, "flows.inject", &input).await
 }
 

@@ -601,12 +601,17 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       });
     }
     case "flows_inject": {
-      const { id, node, value } = args as {
+      const { id, node, value, port } = args as {
         id: string;
         node: string;
         value: unknown;
+        port?: string;
       };
-      return postJson<T>(`${base}/flows/${enc(id)}/inject`, { node, value });
+      return postJson<T>(`${base}/flows/${enc(id)}/inject`, {
+        node,
+        value,
+        ...(port ? { port } : {}),
+      });
     }
 
     // ── rules (rules-workbench scope, Phase 1): the browser's `rules.*` Playground CRUD + run over
@@ -641,6 +646,25 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return delJson<T>(`${base}/rules/${enc(id)}`);
     }
 
+    // ── prefs (user-prefs scope): the viewer resolves their OWN prefs (`prefs.resolve`, member-level,
+    //    forced to the caller's `sub`) and formats a canonical value through the grant-free utility
+    //    tier (`format.datetime`) — one host implementation of tz/DST/style, no client date math. The
+    //    viz layer (`fieldconfig/format.ts`) composes these at the render boundary. ──
+    case "prefs_resolve": {
+      const { override } = (args ?? {}) as { override?: Record<string, unknown> };
+      return postJson<T>(`${base}/prefs/resolve`, { override });
+    }
+    case "prefs_set": {
+      // Merge a patch into the caller's OWN prefs record (member-level, forced to the caller's `sub`).
+      // The body IS the patch (nullable axes omitted). Mirrors `PUT /prefs`.
+      return putJson<T>(`${base}/prefs`, (args ?? {}) as Record<string, unknown>);
+    }
+    case "format_datetime": {
+      // `instant` is epoch MILLISECONDS (the host formatter's contract). Either a resolved `prefs`
+      // object OR explicit `timezone`/`date_style`/`time_style` axes — the caller passes one.
+      return postJson<T>(`${base}/format/datetime`, args ?? {});
+    }
+
     default:
       throw new Error(`unknown command: ${cmd}`);
   }
@@ -649,6 +673,18 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
 /** DELETE a route. Returns undefined for `204`, else the JSON body (e.g. the revoked/removed count). */
 async function delJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { method: "DELETE", headers: authHeaders() });
+  if (!res.ok) throw new Error(await errorText(res));
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+/** PUT a JSON body. A `204 No Content` (set_prefs) resolves to undefined. */
+async function putJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(await errorText(res));
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

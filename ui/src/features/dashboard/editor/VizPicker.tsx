@@ -22,20 +22,60 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "table", label: "Table" },
 ];
 
+/** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the
+ *  WRITE controls (a switch sets a boolean, a slider a number, a JSON control a structured payload); an
+ *  OUTPUT-port binding offers the JSON/object read view. Shape-validation doesn't apply (these aren't
+ *  query-shaped), so they're always enabled when offered. */
+const FLOW_CONTROL_VIEWS: { id: View; label: string }[] = [
+  { id: "switch", label: "Switch" },
+  { id: "slider", label: "Slider" },
+  { id: "json", label: "JSON" },
+];
+const FLOW_READ_VIEWS: { id: View; label: string }[] = [{ id: "jsonview", label: "JSON view" }];
+
 interface Props {
   view: View;
   onChange: (view: View) => void;
   /** The detected shape of the current target's data — disables views that shape can't honestly fill.
    *  `unknown` (no data yet) leaves every view enabled. */
   shape?: ResultShape;
+  /** When a Flows INPUT port is bound: offer the write controls. When a Flows OUTPUT port is bound:
+   *  offer the JSON read view. Absent → the standard viz set only. */
+  flowKind?: "input" | "output" | null;
 }
 
-export function VizPicker({ view, onChange, shape = "unknown" }: Props) {
+export function VizPicker({ view, onChange, shape = "unknown", flowKind = null }: Props) {
+  // A flow binding swaps the offered set: an input port → write controls (no viz; a control isn't a
+  // chart), an output port → the JSON read view alongside the scalar viz (a node value can also stat/
+  // gauge). The standard viz set otherwise.
+  if (flowKind === "input") {
+    return (
+      <div className="grid gap-2" aria-label="visualization picker">
+        <div className="flex flex-wrap gap-1.5">
+          {FLOW_CONTROL_VIEWS.map((v) => (
+            <Button
+              key={v.id}
+              variant={view === v.id ? "default" : "outline"}
+              size="sm"
+              aria-label={`viz ${v.id}`}
+              aria-pressed={view === v.id}
+              className="h-auto px-2.5 py-1"
+              onClick={() => onChange(v.id)}
+            >
+              {v.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+  const offered = flowKind === "output" ? [...FLOW_READ_VIEWS, ...VIEWS] : VIEWS;
+  const alwaysOn = new Set<View>(FLOW_READ_VIEWS.map((v) => v.id));
   return (
     <div className="grid gap-2" aria-label="visualization picker">
       <div className="flex flex-wrap gap-1.5">
-        {VIEWS.map((v) => {
-          const fits = viewFitsShape(v.id, shape);
+        {offered.map((v) => {
+          const fits = alwaysOn.has(v.id) || viewFitsShape(v.id, shape);
           const selected = view === v.id;
           return (
             <Button

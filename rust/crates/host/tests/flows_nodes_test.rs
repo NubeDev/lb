@@ -86,7 +86,7 @@ async fn registry_has_all_builtins_with_no_installs() {
     let types = types(&out);
     assert_eq!(
         types,
-        vec!["trigger", "tool", "rhai", "count", "counter", "subflow", "sink"]
+        vec!["trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink"]
     );
 }
 
@@ -114,7 +114,8 @@ async fn registry_reflects_an_installed_extension() {
     assert_eq!(
         types,
         vec![
-            "trigger", "tool", "rhai", "count", "counter", "subflow", "sink", "mqtt.in", "mqtt.out"
+            "trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink", "mqtt.in",
+            "mqtt.out"
         ]
     );
     // the ext descriptor carries its ports + category from the block.
@@ -149,7 +150,7 @@ async fn workspace_isolation_ext_in_ws_a_absent_in_ws_b() {
     let out_b = call_nodes(&node, &pb, "ws-b").await;
     assert_eq!(
         types(&out_b),
-        vec!["trigger", "tool", "rhai", "count", "counter", "subflow", "sink"]
+        vec!["trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink"]
     );
 }
 

@@ -19,10 +19,34 @@ import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 import { useSource, type SourceState } from "./useSource";
 import { useVizQuery } from "./useVizQuery";
+import { useFlowNodeValue } from "../views/useFlowNodeValue";
+import { flowBindingOfSource } from "../views/flowBinding";
 import { cellTools } from "../views/WidgetView";
 
 /** The streaming verbs that keep the live `useSource` SSE path (viz.stream is the un-built follow-up). */
 const WATCH_VERBS = new Set(["series.watch", "bus.watch"]);
+
+/** Shape a single extracted flow value into the `SourceState` rows every view reads. An ARRAY becomes
+ *  rows (a table/timeseries plots them); an OBJECT becomes one row; a SCALAR a `{value}` row (stat/
+ *  gauge/text). So the visual JSON-path selection drives ANY view, not just the JSON view. */
+function flowToState(value: unknown, loading: boolean, denied: boolean): SourceState {
+  if (denied) return { rows: [], latest: null, loading, denied: true };
+  let rows: Array<Record<string, unknown>>;
+  let latest: unknown;
+  if (Array.isArray(value)) {
+    rows = value.map((x) =>
+      x && typeof x === "object" && !Array.isArray(x) ? (x as Record<string, unknown>) : { value: x },
+    );
+    latest = value.length ? value[value.length - 1] : null;
+  } else if (value && typeof value === "object") {
+    rows = [value as Record<string, unknown>];
+    latest = value;
+  } else {
+    rows = [{ value }];
+    latest = value;
+  }
+  return { rows, latest, loading, denied: false };
+}
 
 /** Resolve a panel's data. Phase 3: a non-watch panel resolves via a debounced `viz.query(panel)` call
  *  returning `{ frames, rows }` — the SAME `SourceState` shape, so callers are unchanged. A watch primary
@@ -31,14 +55,28 @@ const WATCH_VERBS = new Set(["series.watch", "bus.watch"]);
 export function usePanelData(panel: Cell, scope: VarScope = emptyScope(), refreshKey = 0): SourceState {
   const target = cellPrimaryTarget(panel);
   const isWatch = !!target && WATCH_VERBS.has(target.tool);
+  // A FLOW source (`flows.node_state`) resolves CLIENT-SIDE through the flow read + JSON-path extraction
+  // (the visual builder's selection), shaped into rows — so stat/gauge/table/timeseries all show the
+  // picked field, never the raw whole-flow dump. It never hits `viz.query` (the backend has no notion
+  // of a flow node value) and carries no token (the read is the same path the canvas uses).
+  const flowBind = target ? flowBindingOfSource({ tool: target.tool, args: target.args }) : null;
 
-  // Both hooks are ALWAYS called (rules-of-hooks) — only one is "live" per panel. The live path runs the
-  // watch source; the viz.query path runs the non-watch panel. The unused one resolves to a cheap state.
+  // All hooks are ALWAYS called (rules-of-hooks) — only one is "live" per panel. The unused ones resolve
+  // to a cheap state. The live path runs the watch source; viz.query the non-watch, non-flow panel.
   const watchSource = isWatch && target ? { tool: target.tool, args: target.args } : undefined;
   const tools = cellTools(panel);
   const live = useSource(watchSource, tools, scope, refreshKey);
-  const queried = useVizQuery(isWatch ? EMPTY_PANEL : panel, scope, refreshKey);
+  const queried = useVizQuery(isWatch || flowBind ? EMPTY_PANEL : panel, scope, refreshKey);
+  const flow = useFlowNodeValue(
+    flowBind?.flowId,
+    flowBind?.node,
+    flowBind?.port ?? "payload",
+    "output",
+    refreshKey,
+    flowBind?.path,
+  );
 
+  if (flowBind) return flowToState(flow.value, flow.loading, flow.denied);
   return isWatch ? live : queried;
 }
 

@@ -2,10 +2,13 @@
 // scope, "Control views"). The released value fills the action's `argsTemplate` `{{value}}` slot and
 // is written through the bridge (granted write, host-re-checked). Gated + ws-scoped + token-less.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
 import { makeWidgetBridge } from "../builder/widgetBridge";
+import { useFlowNodeValue } from "./useFlowNodeValue";
+import { flowBindingOfAction } from "./flowBinding";
+import { asNumber } from "./num";
 import type { Action } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { interpolateArgs, emptyScope } from "@/lib/vars";
@@ -16,16 +19,34 @@ interface Props {
   options?: Record<string, unknown>;
   label?: string;
   scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function SliderControl({ action, tools, options, label, scope = emptyScope() }: Props) {
+export function SliderControl({
+  action,
+  tools,
+  options,
+  label,
+  scope = emptyScope(),
+  refreshKey = 0,
+}: Props) {
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
   const min = typeof options?.min === "number" ? (options.min as number) : 0;
   const max = typeof options?.max === "number" ? (options.max as number) : 100;
+  const step = typeof options?.step === "number" ? (options.step as number) : 1;
   const [value, setValue] = useState(min);
   const [error, setError] = useState<string | null>(null);
+
+  // A flow-bound slider seeds its current value from its OWN retained input on mount (flow-dashboard-
+  // binding-ux-scope) — true state after reload/restart, not the min default.
+  const flow = flowBindingOfAction(action);
+  const seeded = useFlowNodeValue(flow?.flowId, flow?.node, flow?.port ?? "payload", "input", refreshKey);
+  useEffect(() => {
+    const n = asNumber(seeded.value);
+    if (n !== null) setValue(n);
+  }, [seeded.value]);
 
   async function commit(v: number) {
     if (!action?.tool) return;
@@ -49,6 +70,7 @@ export function SliderControl({ action, tools, options, label, scope = emptyScop
           type="range"
           min={min}
           max={max}
+          step={step}
           value={value}
           aria-label="slider"
           onChange={(e) => setValue(Number(e.target.value))}

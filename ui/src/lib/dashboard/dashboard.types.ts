@@ -39,6 +39,9 @@ export type View =
   | "switch"
   | "slider"
   | "button"
+  // flow⇄dashboard binding UX: a validated JSON-payload control (write) + a JSON/object read view.
+  | "json"
+  | "jsonview"
   // v3 Grafana panel-type ids (the canonical vocabulary)
   | "timeseries"
   | "barchart"

@@ -8,8 +8,8 @@
 // intersects with the install grant server-side, so a cell naming a tool it wasn't granted is denied
 // there even if it reached the bridge.
 
-import type { Cell } from "@/lib/dashboard";
-import { cellView, cellLabel } from "@/lib/dashboard";
+import type { Cell, Source } from "@/lib/dashboard";
+import { cellView, cellLabel, cellPrimaryTarget } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
@@ -25,6 +25,8 @@ import { ScriptedView } from "./ScriptedView";
 import { SwitchControl } from "./SwitchControl";
 import { SliderControl } from "./SliderControl";
 import { ButtonControl } from "./ButtonControl";
+import { JsonControl } from "./JsonControl";
+import { JsonView } from "./JsonView";
 import { ExtWidget } from "../builder/ExtWidget";
 
 /** The tools a cell may forward through the bridge = its source + action + v3 target tools (host ∩
@@ -66,6 +68,18 @@ export function WidgetView({
   const view = cellView(cell);
   const tools = cellTools(cell);
   const options = cell.options;
+  // The cell's primary read source — resolved from BOTH the v3 `sources[]` shape (what the PanelEditor
+  // writes) and the v2 single `source` (older cells), so a flow read view bound through the editor
+  // (which emits `sources[]`) finds its `flows.node_state` target instead of an absent `cell.source`.
+  // Use the v2 `source` ONLY when it carries a real tool: the gateway round-trips a v3 cell with an
+  // EMPTY placeholder `source` (`{tool:"", args:null}`) alongside the real `sources[]`, and `??` would
+  // wrongly pick that empty object over the flow target — the "binding broken" bug. `.tool ?` skips it.
+  const primaryTarget = cellPrimaryTarget(cell);
+  const primarySource: Source | undefined = cell.source?.tool
+    ? cell.source
+    : primaryTarget
+      ? { tool: primaryTarget.tool, args: primaryTarget.args }
+      : undefined;
   // Default the header label to the cell's effective label (title → derived) so every built-in view
   // shows the configured title (widget-config-vars scope, Slice 1).
   label = label ?? cellLabel(cell);
@@ -106,12 +120,19 @@ export function WidgetView({
       return <ScriptedView engine="template" tools={tools} options={options} />;
     case "switch":
       return (
-        <SwitchControl source={cell.source} action={cell.action} tools={tools} options={options} label={label} scope={scope} />
+        <SwitchControl source={primarySource} action={cell.action} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />
       );
     case "slider":
-      return <SliderControl action={cell.action} tools={tools} options={options} label={label} scope={scope} />;
+      return <SliderControl action={cell.action} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
     case "button":
       return <ButtonControl action={cell.action} tools={tools} options={options} label={label} scope={scope} />;
+    case "json":
+      // A validated structured-payload control driving a flow node port via `flows.inject`.
+      return <JsonControl action={cell.action} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "jsonview":
+      // A read view that pretty-prints a flow node's structured `payload` (collapsible). Reads the
+      // primary target so a cell authored as v3 `sources[]` (the PanelEditor) resolves its flow source.
+      return <JsonView source={primarySource} options={options} label={label} refreshKey={refreshKey} />;
     default:
       return (
         <div className="flex h-full items-center justify-center text-xs text-muted" role="status">

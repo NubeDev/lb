@@ -36,6 +36,11 @@ export interface UnitMapping {
   /** `number`/`none`/`datetime`: the static suffix or date pattern to append/use. */
   suffix?: string;
   pattern?: string;
+  /** `datetime` ONLY: the epoch unit of the canonical value, so the bridge normalizes to the
+   *  milliseconds `format.datetime` expects. `"ms"` (default, back-compat with the ISO/`time:*`
+   *  entries) or `"s"` (the flow clock — `flows.node_state` `ts`/`cron_ts` are epoch SECONDS). Declared,
+   *  NEVER inferred from the integer magnitude (a latent bug for pre-2001 / post-2033 instants). */
+  dateUnit?: "s" | "ms";
 }
 
 /** The closed table — Grafana id → mapping. Extended as `lb-prefs` grows its dimension enum. A
@@ -64,9 +69,14 @@ const TABLE: Record<string, UnitMapping> = {
   // currency — passthrough display unit
   currencyUSD: { id: "currencyUSD", label: "$", kind: "number", suffix: " USD" },
   currencyEUR: { id: "currencyEUR", label: "€", kind: "number", suffix: " EUR" },
-  // datetime patterns
-  dateTimeAsIso: { id: "dateTimeAsIso", label: "ISO", kind: "datetime", pattern: "iso" },
-  "time:YYYY-MM-DD": { id: "time:YYYY-MM-DD", label: "date", kind: "datetime", pattern: "YYYY-MM-DD" },
+  // datetime patterns — an epoch instant rendered in the viewer's tz + date/time style via
+  // `format.datetime`. `dateUnit` declares the canonical epoch unit (default `ms`); the flow entry is
+  // `s` because the flow clock stamps epoch SECONDS.
+  dateTimeAsIso: { id: "dateTimeAsIso", label: "date/time", kind: "datetime", pattern: "iso", dateUnit: "ms" },
+  "time:YYYY-MM-DD": { id: "time:YYYY-MM-DD", label: "date", kind: "datetime", pattern: "YYYY-MM-DD", dateUnit: "ms" },
+  // A flow node's `ts`/`cron_ts` field (epoch SECONDS) → wall-clock in the viewer's prefs. The picker
+  // suggests this when a bound flow leaf looks like a timestamp (flow-ts-display scope).
+  "time:flow-seconds": { id: "time:flow-seconds", label: "date/time (flow)", kind: "datetime", dateUnit: "s" },
 };
 
 /** The picker list — every mapped unit, grouped-friendly order (the field-tab unit dropdown source). */
@@ -86,7 +96,8 @@ export function resolveUnit(unitId: string | undefined): UnitMapping {
     return { id: unitId, label: suffix, kind: "number", suffix: ` ${suffix}` };
   }
   if (unitId.startsWith("time:")) {
-    return { id: unitId, label: "date", kind: "datetime", pattern: unitId.slice("time:".length) };
+    // An unmapped `time:<pattern>` id — epoch MS by default (the flow-seconds id is in the table above).
+    return { id: unitId, label: "date", kind: "datetime", pattern: unitId.slice("time:".length), dateUnit: "ms" };
   }
   // Unmapped: passthrough number + the raw id as a visible suffix (degrade, never throw or mis-convert).
   return { id: unitId, label: unitId, kind: "number", suffix: ` ${unitId}` };

@@ -59,4 +59,28 @@ describe("unit mapping table", () => {
     expect(resolveUnit("custom:widgets")).toMatchObject({ kind: "number", suffix: " widgets" });
     expect(resolveUnit("totallyunknown").kind).toBe("number");
   });
+
+  it("datetime units carry the epoch dateUnit — flow-seconds is `s`, the rest default `ms`", () => {
+    // The load-bearing distinction (flow-ts-display scope): the flow clock is epoch SECONDS, everything
+    // else epoch ms. Declared on the mapping, NEVER guessed from the integer magnitude.
+    expect(resolveUnit("time:flow-seconds")).toMatchObject({ kind: "datetime", dateUnit: "s" });
+    expect(resolveUnit("dateTimeAsIso")).toMatchObject({ kind: "datetime", dateUnit: "ms" });
+    expect(resolveUnit("time:YYYY-MM-DD")).toMatchObject({ kind: "datetime", dateUnit: "ms" });
+  });
+});
+
+describe("datetime fallback honors the epoch unit (seconds vs ms)", () => {
+  const INSTANT_MS = 1782864300000; // 2026-07-01T00:05:00Z
+  it("a flow epoch-SECONDS value renders the right YEAR in the fallback (not 1970)", () => {
+    // Before the async prefs render settles, the sync fallback still shows a sane date because
+    // `dateUnit:"s"` triggers the ×1000. A magnitude-guessing formatter would render 1970 here.
+    const f = formatValue(1782864300, { unit: "time:flow-seconds" });
+    expect(f.text).toBe(new Date(INSTANT_MS).toISOString());
+    expect(f.text.startsWith("2026-")).toBe(true);
+  });
+
+  it("an epoch-MS datetime value is unchanged (no spurious ×1000)", () => {
+    const f = formatValue(INSTANT_MS, { unit: "dateTimeAsIso" });
+    expect(f.text).toBe(new Date(INSTANT_MS).toISOString());
+  });
 });

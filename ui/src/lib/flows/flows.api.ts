@@ -148,6 +148,7 @@ export function injectFlow(
   id: string,
   node: string,
   value: unknown,
+  port?: string,
 ): Promise<InjectFlowResult> {
-  return invoke<InjectFlowResult>("flows_inject", { id, node, value });
+  return invoke<InjectFlowResult>("flows_inject", { id, node, value, port });
 }
