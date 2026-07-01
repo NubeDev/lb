@@ -69,7 +69,7 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
 - `control-engine/` — the native (Tier-2) **`control-engine` extension** (`control-engine-scope.md`):
   bridges Control Engine (CE) instances into a workspace as a caps-gated MCP surface (`ce.*`, mirroring
-  the `rubix-ce` `ControlEngine` trait) — a local CE over `localhost` REST/WS, and remote CEs on
+  the `ce-client-rust` `ControlEngine` trait) — a local CE over `localhost` REST/WS, and remote CEs on
   **appliance** LB nodes reached by **routed MCP over Zenoh** (symmetric nodes, no CE-on-Zenoh codec).
   The visual editor is the vendored `@nube/ce-wiresheet` package, mounted as the extension's federated
   `[ui]` page and re-pointed onto the MCP bridge (browser→CE only through the host). MCP-only so agents

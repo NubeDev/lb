@@ -2,10 +2,20 @@
  * single @theme, so the color utilities resolve here). Imported by src/index.ts so the
  * library bundle ships it (host: `import '@nube/nav-rail/style.css'`).
  *
+ * IMPORTANT — this is a LIBRARY stylesheet dropped into a host app's build. We deliberately
+ * import ONLY Tailwind's `theme` (tokens) + `utilities` (the classes the rail uses), NOT
+ * `preflight`/`base`. Shipping Tailwind's base reset would (a) emit an `@layer base` with no
+ * matching `@tailwind base` in the host's PostCSS context (a build error in a v3 host like
+ * lb's `ui`), and (b) clobber the host app's global styles. A self-contained widget ships its
+ * utilities, never a global reset.
+ *
  * `@theme` maps the rail's Tailwind utilities onto the tokens; the tokens live in
  * nav-rail-theme.css, scoped to `.nav-rail` and host-overridable. */
 
-@import 'tailwindcss';
+@layer theme, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
 @import './nav-rail-theme.css';
 
 @theme {

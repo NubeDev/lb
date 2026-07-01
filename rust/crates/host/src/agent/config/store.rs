@@ -63,14 +63,14 @@ pub async fn set_agent_config(
     patch: &AgentConfig,
 ) -> Result<(), StoreError> {
     define_agent_config_schema(store, ws).await?;
-    let mut merge = match serde_json::to_value(patch).map_err(|e| StoreError::Decode(e.to_string()))?
-    {
-        Value::Object(map) => map,
-        other => json!({ "_": other })
-            .as_object()
-            .cloned()
-            .unwrap_or_default(),
-    };
+    let mut merge =
+        match serde_json::to_value(patch).map_err(|e| StoreError::Decode(e.to_string()))? {
+            Value::Object(map) => map,
+            other => json!({ "_": other })
+                .as_object()
+                .cloned()
+                .unwrap_or_default(),
+        };
     merge.insert("ws".into(), Value::String(ws.to_string()));
 
     store
