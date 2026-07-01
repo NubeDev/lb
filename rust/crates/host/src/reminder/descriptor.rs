@@ -19,8 +19,17 @@ use serde_json::{json, Value};
 
 /// The form-shaped input schema for `reminder.create` — the flat fields the palette renders. `schedule`
 /// drives the `cron` widget; `action_kind` drives a `select` over the three action kinds; the remaining
-/// action fields are plain optional strings the form shows per the chosen kind. The verb's nested
+/// action fields are the per-kind action fields, declared **conditionally required** via the generic
+/// `x-lb.showIf` + `requiredWhenShown` vendor hints: a field is shown (and, when it carries
+/// `requiredWhenShown`, required) only when `action_kind` equals the declared value. The verb's nested
 /// `action` object is assembled UI-side from these before the call.
+///
+/// `showIf`/`requiredWhenShown` are GENERIC (any conditional form uses them), JSON-Schema-safe (a
+/// vendor `x-lb` block, not schema keywords), and readable UI-side with no reminder knowledge — the
+/// palette's `isShown`/`isActiveRequired` interpret them from the collected values. This is what makes
+/// `channel`/`body` (etc.) reachable from the palette form: plain `required` can't say "required WHEN
+/// `action_kind=channel-post`", so without these hints the fields were unreachable ("missing string
+/// arg: channel"). See `docs/debugging/channels/palette-conditional-required-fields-unreachable.md`.
 pub(crate) fn create_schema() -> Value {
     json!({
         "type": "object",
@@ -30,13 +39,23 @@ pub(crate) fn create_schema() -> Value {
                 "type": "string",
                 "x-lb": { "widget": "select", "options": ["channel-post", "mcp-tool", "outbox"] }
             },
-            "channel": { "type": "string" },
-            "body": { "type": "string" },
-            "tool": { "type": "string" },
-            "args": { "type": "string" },
-            "target": { "type": "string" },
-            "action_action": { "type": "string" },
-            "payload": { "type": "string" },
+            // channel-post fields.
+            "channel": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "channel-post" }, "requiredWhenShown": true } },
+            "body": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "channel-post" } } },
+            // mcp-tool fields.
+            "tool": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "mcp-tool" }, "requiredWhenShown": true } },
+            "args": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "mcp-tool" } } },
+            // outbox fields.
+            "target": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true } },
+            "action_action": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true } },
+            "payload": { "type": "string",
+                "x-lb": { "showIf": { "action_kind": "outbox" } } },
             "max_runs": { "type": "number" },
             "enabled": { "type": "boolean" }
         },
@@ -145,6 +164,51 @@ mod tests {
         assert_eq!(required.len(), 2);
         assert!(required.contains(&json!("schedule")));
         assert!(required.contains(&json!("action_kind")));
+    }
+
+    #[test]
+    fn per_kind_action_fields_are_conditionally_required() {
+        let s = create_schema();
+        // channel-post: `channel` is shown+required when action_kind=channel-post; `body` shown, optional.
+        assert_eq!(
+            s["properties"]["channel"]["x-lb"]["showIf"]["action_kind"],
+            "channel-post"
+        );
+        assert_eq!(
+            s["properties"]["channel"]["x-lb"]["requiredWhenShown"],
+            true
+        );
+        assert_eq!(
+            s["properties"]["body"]["x-lb"]["showIf"]["action_kind"],
+            "channel-post"
+        );
+        assert!(s["properties"]["body"]["x-lb"]
+            .get("requiredWhenShown")
+            .is_none());
+        // mcp-tool: `tool` shown+required; `args` shown, optional.
+        assert_eq!(
+            s["properties"]["tool"]["x-lb"]["showIf"]["action_kind"],
+            "mcp-tool"
+        );
+        assert_eq!(s["properties"]["tool"]["x-lb"]["requiredWhenShown"], true);
+        assert_eq!(
+            s["properties"]["args"]["x-lb"]["showIf"]["action_kind"],
+            "mcp-tool"
+        );
+        // outbox: `target` + `action_action` shown+required; `payload` shown, optional.
+        assert_eq!(
+            s["properties"]["target"]["x-lb"]["showIf"]["action_kind"],
+            "outbox"
+        );
+        assert_eq!(s["properties"]["target"]["x-lb"]["requiredWhenShown"], true);
+        assert_eq!(
+            s["properties"]["action_action"]["x-lb"]["requiredWhenShown"],
+            true
+        );
+        assert_eq!(
+            s["properties"]["payload"]["x-lb"]["showIf"]["action_kind"],
+            "outbox"
+        );
     }
 
     #[test]

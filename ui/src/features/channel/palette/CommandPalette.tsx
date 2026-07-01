@@ -20,7 +20,7 @@ import { SendHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { argNames, hintFor } from "@/lib/channel/palette.types";
+import { argNames, hintFor, isActiveRequired, isShown } from "@/lib/channel/palette.types";
 import type { ToolDescriptor } from "@/lib/channel/palette.types";
 import { encodeRichResult } from "@/lib/channel/payload.types";
 import { useCatalog } from "./useCatalog";
@@ -75,12 +75,42 @@ export function CommandPalette({
   // and stays active until submit. The active arg is the first unsatisfied chip arg, INLINE widgets last
   // (so a required text arg like the agent's `goal` is filled before the runtime dropdown takes focus).
   const args = useMemo(() => argNames(tool?.input_schema), [tool]);
-  const filledNames = useMemo(() => new Set(chips.map((c) => c.name)), [chips]);
+  // An arg is "filled" once it has a chip (chip widgets) OR a non-empty inline value (inline widgets —
+  // sql/select/cron/…). Inline args were previously NEVER counted filled (chip-only), so a form with
+  // TWO required inline widgets (e.g. `/remind`'s cron `schedule` + `select` `action_kind`) stuck on the
+  // first one forever — the second widget never activated and its arg was dropped from the call
+  // ("missing string arg: action_kind"). Counting a valued inline arg as filled lets the rail advance
+  // through each required inline widget in turn.
+  const filledNames = useMemo(() => {
+    const s = new Set(chips.map((c) => c.name));
+    for (const [k, v] of Object.entries(inlineVals)) if (v !== undefined && v !== "") s.add(k);
+    return s;
+  }, [chips, inlineVals]);
+  // The currently-collected form VALUES (chips + inline widget values) — the input to conditional
+  // visibility (`x-lb.showIf`). A `select` like `action_kind` writes into `inlineVals`, so switching it
+  // re-computes which per-kind fields are shown/required. (The in-progress chip text is folded at submit,
+  // not here — a half-typed value shouldn't flip a condition mid-keystroke.)
+  const values = useMemo(() => {
+    const v: Record<string, string> = {};
+    for (const c of chips) v[c.name] = c.value;
+    for (const [k, val] of Object.entries(inlineVals)) if (val !== undefined) v[k] = val;
+    return v;
+  }, [chips, inlineVals]);
   const widgetOf = (a: string) => resolveWidget(hintFor(tool?.input_schema, a));
   const isInline = (a: string) => widgetOf(a).inline;
+  // ACTIVE-required = unconditionally `required`, or currently-shown AND `requiredWhenShown` (a
+  // conditional per-kind field, e.g. `channel` once `action_kind=channel-post`). This is what makes the
+  // rail walk `required ∪ shown-and-required` and surface the action fields Bug B left unreachable.
+  const required = (a: string) => isActiveRequired(tool?.input_schema, a, values);
+  const shown = (a: string) => isShown(tool?.input_schema, a, values);
+  // The rail auto-targets only ACTIVE-required unfilled args (a required chip arg first, then a required
+  // inline widget). An OPTIONAL/hidden arg never grabs focus and never blocks submit — so a command whose
+  // args are all optional (e.g. `reminder.list`'s `status`/`limit` filters) is runnable the instant it is
+  // picked, and a per-kind field only activates once its `action_kind` is chosen. As `action_kind` is
+  // filled the walk advances to `channel` (etc.) in turn — the `/remind` form completes field by field.
   const activeArg = tool
-    ? // a non-inline unfilled arg first; only when all of those are filled does an inline widget go active
-      args.find((a) => !isInline(a) && !filledNames.has(a)) ?? args.find((a) => isInline(a))
+    ? args.find((a) => required(a) && !isInline(a) && !filledNames.has(a)) ??
+      args.find((a) => required(a) && isInline(a) && !filledNames.has(a))
     : undefined;
   const activeHint = activeArg ? hintFor(tool?.input_schema, activeArg) : undefined;
   const activeWidget = activeArg ? widgetOf(activeArg) : undefined;
@@ -151,11 +181,14 @@ export function CommandPalette({
     setArgText("");
   }
 
-  /** The full args object: chips + every inline widget value + a chip arg still being typed (folded). */
+  /** The full args object: chips + every inline widget value + a chip arg still being typed (folded).
+   *  HIDDEN fields are dropped: a per-kind field whose `x-lb.showIf` no longer matches (e.g. a `channel`
+   *  typed under `action_kind=channel-post`, then switched to `outbox`) must NOT leak a stale value into
+   *  the call — the verb would build the wrong action. Only currently-shown fields are collected. */
   function buildArgs(): Record<string, string> {
     const argsObj: Record<string, string> = {};
-    for (const chip of chips) argsObj[chip.name] = chip.value;
-    for (const a of args) if (isInline(a) && inlineVals[a] !== undefined) argsObj[a] = inlineVals[a];
+    for (const chip of chips) if (shown(chip.name)) argsObj[chip.name] = chip.value;
+    for (const a of args) if (isInline(a) && inlineVals[a] !== undefined && shown(a)) argsObj[a] = inlineVals[a];
     if (activeArg && !isInlineActive && argText.trim() && !(activeArg in argsObj)) {
       argsObj[activeArg] = argText.trim();
     }

@@ -44,6 +44,16 @@ export interface XLbHint {
   options?: string[];
   /** `select`: a catalog tool whose rows become the option list (fetched via the bridge, gated). */
   source?: string;
+  /** CONDITIONAL VISIBILITY (generic form hint): this field is SHOWN only when every named arg in the
+   *  map equals its declared value against the currently-collected form values. Absent → always shown.
+   *  This is what makes conditionally-required fields (e.g. `reminder.create`'s per-`action_kind` action
+   *  fields) reachable — plain JSON-Schema `required` can't say "required WHEN action_kind=channel-post".
+   *  Values are compared as strings (the form collects everything as text). */
+  showIf?: Record<string, string>;
+  /** When the field is SHOWN (its {@link showIf} matches, or it has none), treat it as REQUIRED — it
+   *  blocks submit until filled and enters the active-arg walk. A shown field WITHOUT this is offered but
+   *  optional. Ignored while the field is hidden. */
+  requiredWhenShown?: boolean;
   /** The hint version (default 1). Additive — a new widget shape bumps this without breaking readers. */
   v?: number;
 }
@@ -97,4 +107,40 @@ export function argNames(schema: InputSchema | undefined): string[] {
   const req = schema.required ?? [];
   const rest = Object.keys(schema.properties).filter((k) => !req.includes(k));
   return [...req.filter((k) => k in schema.properties!), ...rest];
+}
+
+/** Whether `key` is a REQUIRED arg of `schema`. An optional arg is offered by the rail but never
+ *  blocks submit (so a command with only-optional args — e.g. `reminder.list`'s `status`/`limit`
+ *  filters — is runnable the instant it is picked). Absent `required` → nothing is required. */
+export function isRequired(schema: InputSchema | undefined, key: string): boolean {
+  return (schema?.required ?? []).includes(key);
+}
+
+/** Whether `key` is SHOWN given the currently-collected form `values`. A field with an `x-lb.showIf`
+ *  map is shown only when every named arg in it equals its declared value (string comparison — the form
+ *  collects everything as text); a field with no `showIf` is always shown. This is the request-side twin
+ *  of the response `x-lb-render` contract: the descriptor declares visibility, the palette interprets it
+ *  with ZERO tool knowledge. Drives which per-`action_kind` action fields the `/remind` form surfaces. */
+export function isShown(
+  schema: InputSchema | undefined,
+  key: string,
+  values: Record<string, string>,
+): boolean {
+  const cond = hintFor(schema, key)?.showIf;
+  if (!cond) return true;
+  return Object.entries(cond).every(([k, v]) => (values[k] ?? "") === v);
+}
+
+/** Whether `key` is ACTIVE-required given the collected `values`: either unconditionally `required`, OR
+ *  currently {@link isShown} AND declared `requiredWhenShown`. This is the union the rail walks — it
+ *  generalises "walk `required`" to "walk `required ∪ shown-and-required`", so a conditionally-required
+ *  field (e.g. `channel` when `action_kind=channel-post`) blocks submit and takes rail focus. A shown but
+ *  not-required field (e.g. `body`) is offered but never blocks submit. A hidden field is neither. */
+export function isActiveRequired(
+  schema: InputSchema | undefined,
+  key: string,
+  values: Record<string, string>,
+): boolean {
+  if (isRequired(schema, key)) return true;
+  return isShown(schema, key, values) && hintFor(schema, key)?.requiredWhenShown === true;
 }

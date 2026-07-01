@@ -40,4 +40,14 @@ describe("CronArg widget", () => {
     const input = (await screen.findByLabelText("cron-stub")) as HTMLInputElement;
     expect(input.value).toBe("0 9 * * *");
   });
+
+  // The builder only emits onChange on an EDIT, so an unedited cron used to leave the arg EMPTY — the
+  // required `schedule` never counted as filled and the `/remind` rail stuck on it. CronArg now SEEDS the
+  // shown default into the collected value on mount (WYSIWYG), so the default is really submitted.
+  it("seeds the shown default into onChange on mount so an unedited cron is collected", async () => {
+    const onChange = vi.fn();
+    render(<CronArg value="" onChange={onChange} />);
+    await screen.findByLabelText("cron-stub");
+    expect(onChange).toHaveBeenCalledWith("0 9 * * *");
+  });
 });

@@ -147,6 +147,61 @@ describe("Reminders through the generic palette (real gateway)", () => {
     expect(got?.action.kind).toBe("channel-post");
   });
 
+  it("create form e2e: driving the /remind palette form creates a real channel-post reminder", async () => {
+    // The FULL request-side round-trip through the REAL generic palette form (no direct invoke): accept
+    // the reminder.create command from the real catalog, fill the cron `schedule` (its default is seeded),
+    // let the `action_kind` select default to "channel-post", fill the CONDITIONALLY-required `channel`
+    // (surfaced only because it declared `x-lb.showIf`+`requiredWhenShown`), and submit. The palette makes
+    // the plain bridge call VERBATIM; we assert the real stored reminder through reminder.list/get. This is
+    // the surface Bug B left unreachable — the action fields could not be filled from the form before.
+    const ws = nextWs();
+    await signInReal("user:me", ws);
+
+    const user = userEvent.setup();
+    const calls: Array<{ tool: string; args: Record<string, unknown> }> = [];
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={async (tool, args) => {
+          calls.push({ tool, args });
+          await invoke("mcp_call", { tool, args }); // the real host-mediated bridge
+        }}
+        onPostRich={noop}
+        onSendChat={noop}
+      />,
+    );
+
+    // Accept /reminder.create from the REAL catalog.
+    await user.type(screen.getByLabelText("message"), "/reminder");
+    const menu = await screen.findByRole("listbox", { name: "commands" });
+    await user.click(within(menu).getByText(/Schedule a reminder/));
+
+    // The cron `schedule` seeds its default; the `action_kind` select preselects "channel-post" → the
+    // conditionally-required `channel` field surfaces. Fill it and submit.
+    const channel = await screen.findByLabelText("channel");
+    await user.type(channel, "standup");
+    await waitFor(() => expect(screen.getByLabelText("send")).toBeEnabled());
+    await user.click(screen.getByLabelText("send"));
+
+    // The palette made ONE plain bridge call with the collected form (cron default + kind + channel) —
+    // NO stale per-kind fields for the other action kinds (only shown fields collected).
+    await waitFor(() => expect(calls.length).toBe(1));
+    expect(calls[0].tool).toBe("reminder.create");
+    expect(calls[0].args).toMatchObject({ schedule: "0 9 * * *", action_kind: "channel-post", channel: "standup" });
+    expect(calls[0].args).not.toHaveProperty("target"); // an outbox field never leaked
+    expect(calls[0].args).not.toHaveProperty("tool"); // an mcp-tool field never leaked
+
+    // A REAL reminder now exists, with the channel-post action assembled host-side from the flat form.
+    const reminders = await listReminders();
+    expect(reminders.length).toBe(1);
+    const created = reminders[0] as { id: string; schedule: string; action: { kind: string; channel: string } };
+    expect(created.schedule).toBe("0 9 * * *");
+    expect(created.action).toMatchObject({ kind: "channel-post", channel: "standup" });
+    expect((await getReminder(created.id))?.action).toMatchObject({ kind: "channel-post", channel: "standup" });
+  });
+
   it("list command posts the descriptor.result render envelope VERBATIM (tool-agnostic)", async () => {
     // Drive the REAL generic palette: `/reminder.list` → accept the command from the REAL catalog →
     // submit. Because reminder.list's descriptor DECLARES a `result`, the palette POSTS that render (it
@@ -172,10 +227,11 @@ describe("Reminders through the generic palette (real gateway)", () => {
     await user.type(screen.getByLabelText("message"), "/reminder");
     const menu = await screen.findByRole("listbox", { name: "commands" });
     await user.click(within(menu).getByText(/List reminders/));
-    // The list command's only args are optional (status/limit); ⏎ on the first arg submits (nothing
-    // inline follows), so the palette posts the declared render. The palette itself carries no reminder
-    // knowledge — it just posts `tool.result`.
-    await user.type(screen.getByLabelText("status"), "{Enter}");
+    // The list command's only args are OPTIONAL (status/limit), so no arg box demands input — the command
+    // is runnable the instant it is picked (the optional-arg fix). Press send: the palette posts the
+    // declared render. The palette itself carries no reminder knowledge — it just posts `tool.result`.
+    expect(screen.queryByLabelText("status")).toBeNull();
+    await user.click(screen.getByLabelText("send"));
     await waitFor(() => expect(posted.length).toBe(1));
 
     const payload = parsePayload(posted[0]) as RichResultPayload;
@@ -383,7 +439,7 @@ describe("Reminders through the generic palette (real gateway)", () => {
     await user.type(screen.getByLabelText("message"), "/reminder");
     const menu = await screen.findByRole("listbox", { name: "commands" });
     await user.click(within(menu).getByText(/List reminders/));
-    await user.type(screen.getByLabelText("status"), "{Enter}");
+    await user.click(screen.getByLabelText("send")); // only-optional args → runnable immediately
     await waitFor(() => expect(posted.length).toBe(1));
 
     // A real control write's args (what the bridge forwards) — interpolated, token-free.

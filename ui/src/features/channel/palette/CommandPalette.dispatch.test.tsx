@@ -13,9 +13,13 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolDescriptor } from "@/lib/channel/palette.types";
 import { encodeRichResult } from "@/lib/channel/payload.types";
 
+// `status` is REQUIRED here so the rail activates it and the "collected args merge into source.args" /
+// "verbatim args" proofs have an arg to collect. (An OPTIONAL arg is skippable and does not block submit —
+// covered by LIST_NOARG_CMD below, which reproduces the `/reminders`-with-only-optional-filters case.)
 const STATUS_SCHEMA = {
   type: "object",
   properties: { status: { type: "string", "x-lb": { widget: "text" as const } } },
+  required: ["status"],
 };
 
 // A GENERIC descriptor that DECLARES a `result` render (a source-backed table with a row control) — NOT a
@@ -38,12 +42,49 @@ const CREATE_CMD: ToolDescriptor = {
   group: "things",
   input_schema: STATUS_SCHEMA,
 };
+// A result-declaring command whose only args are OPTIONAL filters (like `reminder.list`'s status/limit) —
+// it must be runnable the INSTANT it is picked, with NO arg text box demanding input (the `/reminders` UX
+// fix). Accepting the command and pressing send posts its render with no collected filter args.
+const LIST_NOARG_CMD: ToolDescriptor = {
+  name: "things.listall",
+  title: "things.listall",
+  group: "things",
+  input_schema: {
+    type: "object",
+    properties: { status: { type: "string", "x-lb": { widget: "text" as const } } },
+    // no `required` — every arg is an optional filter
+  },
+  result: {
+    view: "table",
+    source: { tool: "things.listall", args: {} },
+    tools: ["things.listall"],
+  },
+};
+
+// A GENERIC descriptor with CONDITIONALLY-REQUIRED fields (the `/remind` shape, tool-agnostic): a
+// `select` `kind` gates two per-kind fields via `x-lb.showIf`. `channel` is required when shown
+// (`requiredWhenShown`), `note` is shown-but-optional. This is the exact mechanism that makes the
+// reminder action fields reachable — the palette carries ZERO knowledge that it is a reminder.
+const FORM_CMD: ToolDescriptor = {
+  name: "things.form",
+  title: "things.form",
+  group: "things",
+  input_schema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", "x-lb": { widget: "select" as const, options: ["a", "b"] } },
+      channel: { type: "string", "x-lb": { showIf: { kind: "a" }, requiredWhenShown: true } },
+      note: { type: "string", "x-lb": { showIf: { kind: "a" } } },
+    },
+    required: ["kind"],
+  },
+};
 
 // Stub the two data hooks so the palette renders from a fixed catalog with no network (a thin stub, not a
 // node re-implementation — rule 9). `useMentions` is unused by these fixtures (no entity args).
 vi.mock("./useCatalog", () => ({
   useCatalog: () => ({
-    tools: [LIST_CMD, CREATE_CMD],
+    tools: [LIST_CMD, CREATE_CMD, LIST_NOARG_CMD, FORM_CMD],
     loading: false,
     error: null,
     revalidate: async () => {},
@@ -111,5 +152,73 @@ describe("CommandPalette — the generic descriptor.result submit rule", () => {
     // The else-branch is generic too: the collected form fields go verbatim — no reshaping, no confirmation.
     expect(onPostRich).not.toHaveBeenCalled();
     expect(onCallTool).toHaveBeenCalledWith("things.create", { status: "open" });
+  });
+
+  // The `/reminders` UX fix: a command whose only args are OPTIONAL filters is runnable the instant it is
+  // picked — NO arg text box blocks it. Accept the command, press send immediately, the render is posted.
+  it("runs a command with only OPTIONAL args immediately — no arg box, no blocked submit", async () => {
+    const onPostRich = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={noop}
+        onPostRich={onPostRich}
+        onSendChat={noop}
+      />,
+    );
+    await user.type(screen.getByLabelText("message"), "/things.listall");
+    await screen.findByRole("listbox", { name: "commands" });
+    await user.keyboard("{Enter}");
+
+    // No arg widget demands input — the optional `status` filter never activates.
+    expect(screen.queryByLabelText("status")).toBeNull();
+
+    // Send is immediately enabled and posts the declared render with no collected filter args.
+    await user.click(screen.getByLabelText("send"));
+    expect(onPostRich).toHaveBeenCalledTimes(1);
+    expect(onPostRich).toHaveBeenCalledWith(
+      encodeRichResult({
+        view: "table",
+        source: { tool: "things.listall", args: {} },
+        tools: ["things.listall"],
+      }),
+    );
+  });
+
+  // The `/remind` fix (tool-agnostic): a CONDITIONALLY-required field (`x-lb.showIf` +
+  // `requiredWhenShown`) enters the active-arg walk once its condition matches, blocks submit until
+  // filled, and is then sent — the mechanism that made the reminder action fields reachable.
+  it("surfaces a conditionally-required field once its showIf matches, blocks submit, then sends it", async () => {
+    const onCallTool = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={onCallTool}
+        onPostRich={noop}
+        onSendChat={noop}
+      />,
+    );
+    await user.type(screen.getByLabelText("message"), "/things.form");
+    await screen.findByRole("listbox", { name: "commands" });
+    await user.keyboard("{Enter}");
+
+    // `kind` (select) preselects its first option "a" → the `showIf:{kind:"a"}` fields activate. The
+    // required `channel` now demands input and BLOCKS submit (it was unreachable before this fix).
+    const channel = await screen.findByLabelText("channel");
+    expect(screen.getByLabelText("send")).toBeDisabled();
+
+    // Filling `channel` satisfies the last active-required field → submit enables and sends all fields
+    // (kind + the shown channel), VERBATIM through the bridge (no result declared).
+    await user.type(channel, "standup");
+    const send = screen.getByLabelText("send");
+    expect(send).toBeEnabled();
+    await user.click(send);
+    expect(onCallTool).toHaveBeenCalledWith("things.form", { kind: "a", channel: "standup" });
   });
 });
