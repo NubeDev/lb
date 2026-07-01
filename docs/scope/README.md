@@ -129,6 +129,8 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
+  Phase 2 (MF1 message catalogs + per-recipient server-side localization) is scoped in
+  `i18n-catalogs-scope.md`.
 - `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
   **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
   (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.

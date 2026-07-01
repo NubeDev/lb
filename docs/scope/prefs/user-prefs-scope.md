@@ -5,7 +5,8 @@ generated client constants are built, tested (deny + specified workspace-isolati
 affine-conversion + axis-independence + resolution-chain + locale-rendering incl. DST + canonical
 guarantee, all on real infra), and promoted to [`public/prefs/prefs.md`](../../public/prefs/prefs.md).
 See [`sessions/prefs/lb-prefs-session.md`](../../sessions/prefs/lb-prefs-session.md). The **i18n
-MessageFormat catalogs** (server-localized notifications/emails) remain deferred — Phase 2 — but the
+MessageFormat catalogs** (server-localized notifications/emails) remain deferred — Phase 2, **now scoped
+in [`i18n-catalogs-scope.md`](./i18n-catalogs-scope.md)** — but the
 MessageFormat **dialect is now resolved/pinned** (see Resolved decisions). Stage: a **core crate**
 (`lb-prefs`) — the preference record + resolution + locale/timezone/date/number formatting lands
 alongside server-generated content (useful from **S2** inbox onward, naturally bundled into the
