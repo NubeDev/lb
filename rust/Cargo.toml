@@ -46,6 +46,7 @@ members = [
     "sdk",
     "node",
     "role/acp",
+    "role/external-agent",
     "role/gateway",
     "role/ai-gateway",
     "role/registry-host",
@@ -97,6 +98,12 @@ lb-undo = { path = "crates/undo" }
 lb-viz = { path = "crates/viz" }
 lb-host = { path = "crates/host" }
 lb-sdk = { path = "sdk" }
+# The external-agent driver (leaf) + its role crate (external-agent topic). The leaf carries no ACP
+# SDK and is a plain member; the role crate is pulled ONLY behind the `external-agent` feature on the
+# `node` binary (runtime-seam #1 "the node pulls it only with the feature"), so a feature-off node
+# never compiles it — the OFF-build ACP-deps-absent gate.
+lb-external-agent = { path = "crates/external-agent" }
+lb-role-external-agent = { path = "role/external-agent" }
 
 # role crates (the §8 role layer). Roles depend on host, never the reverse; listed here so a
 # crate — or a host DEV-dependency, as in the S5 agent tests — can inherit one by `{ workspace

@@ -20,14 +20,18 @@ mod activate;
 mod authorize;
 mod catalog;
 mod decision;
+mod dispatch;
 mod error;
+mod in_house;
 mod invoke;
 mod invoke_remote;
 mod model_access;
 mod policy;
+mod registry;
 mod rehydrate;
 mod route;
 mod run;
+mod runtime;
 mod serve;
 mod step;
 mod substrate;
@@ -39,7 +43,9 @@ pub use decision::{
     decision_id, load_decision, settle_decision, AgentDecision, DecisionState, SettleOutcome,
     APPROVAL_CHANNEL as DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
 };
+pub use dispatch::{invoke_via_runtime, Substrate};
 pub use error::AgentError;
+pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
@@ -48,7 +54,9 @@ pub use policy::{
     POLICY_TABLE,
 };
 pub use rehydrate::{rehydrate, LoopState};
+pub use registry::RuntimeRegistry;
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
+pub use runtime::{AgentRuntime, ErasedModel, RunContext};
 pub use run::{cancel_run, run_session, MAX_STEPS};
 pub use serve::{serve_agent, AgentServer};
 pub use tool::call_agent_tool;

@@ -17,8 +17,9 @@ use std::sync::Arc;
 use lb_auth::Principal;
 use lb_bus::{declare_queryable, BusError, Responder};
 
-use super::invoke::{invoke, Invocation};
-use super::model_access::{AllowedTool, ModelAccess};
+use super::dispatch::invoke_via_runtime;
+use super::model_access::AllowedTool;
+use super::registry::RuntimeRegistry;
 use super::route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
 use crate::boot::Node;
 
@@ -28,31 +29,37 @@ pub struct AgentServer {
     _task: tokio::task::JoinHandle<()>,
 }
 
-/// Begin serving the agent on `node` to remote callers, using `model` for model access and
-/// `agent_caps` as the agent actor's own capabilities. Spawns a task answering routed invocations
-/// until the returned [`AgentServer`] drops.
+/// Begin serving the agent on `node` to remote callers, resolving each invocation's `runtime` against
+/// `registry` and using `agent_caps` as the agent actor's own capabilities. Spawns a task answering
+/// routed invocations until the returned [`AgentServer`] drops.
 ///
-/// `node` and `model` are shared (`Arc`) into the task. `M: 'static` so the task can own its clone.
-pub async fn serve_agent<M: ModelAccess + Send + Sync + 'static>(
+/// **The registry carries the runtime seam (#1).** It always holds the in-house `default` (built by
+/// the wiring layer over its `ModelAccess`); a node built with the `external-agent` feature also
+/// registers the external `AcpRuntime` entries. So whether a routed `agent.invoke { runtime }`
+/// reaches an external agent is the registry's *contents* (feature + config), never a branch here —
+/// this loop dispatches through the trait object identically for every runtime.
+///
+/// `node` and `registry` are shared (`Arc`) into the task.
+pub async fn serve_agent(
     node: Arc<Node>,
-    model: Arc<M>,
+    registry: Arc<RuntimeRegistry>,
     agent_caps: Vec<String>,
 ) -> Result<AgentServer, BusError> {
     let responder = declare_queryable(&node.bus, "*", &agent_call_key()).await?;
-    let task = tokio::spawn(answer_loop(responder, node, model, agent_caps));
+    let task = tokio::spawn(answer_loop(responder, node, registry, agent_caps));
     Ok(AgentServer { _task: task })
 }
 
-/// The answer loop: await each routed invocation, run the agent loop, reply.
-async fn answer_loop<M: ModelAccess + Send + Sync + 'static>(
+/// The answer loop: await each routed invocation, run the resolved runtime, reply.
+async fn answer_loop(
     responder: Responder,
     node: Arc<Node>,
-    model: Arc<M>,
+    registry: Arc<RuntimeRegistry>,
     agent_caps: Vec<String>,
 ) {
     while let Some(incoming) = responder.recv().await {
         let reply = match serde_json::from_slice::<AgentInvokeRequest>(&incoming.payload()) {
-            Ok(req) => run_one(&node, model.as_ref(), &agent_caps, req).await,
+            Ok(req) => run_one(&node, &registry, &agent_caps, req).await,
             Err(e) => AgentInvokeReply::Err(format!("malformed agent request: {e}")),
         };
         let bytes = serde_json::to_vec(&reply).unwrap_or_default();
@@ -60,10 +67,11 @@ async fn answer_loop<M: ModelAccess + Send + Sync + 'static>(
     }
 }
 
-/// Run one routed invocation: reconstruct the caller, run `invoke`, map the outcome to a reply.
-async fn run_one<M: ModelAccess>(
+/// Run one routed invocation: reconstruct the caller, dispatch through the resolved runtime, map the
+/// outcome to a reply. The `runtime` field selects the runtime (absent → default; unknown → error).
+async fn run_one(
     node: &Node,
-    model: &M,
+    registry: &RuntimeRegistry,
     agent_caps: &[String],
     req: AgentInvokeRequest,
 ) -> AgentInvokeReply {
@@ -81,16 +89,26 @@ async fn run_one<M: ModelAccess>(
         })
         .collect();
 
-    let inv = Invocation {
-        job_id: &req.job_id,
-        goal: &req.goal,
+    let substrate = super::dispatch::Substrate {
         skill: req.skill.as_deref(),
         doc: req.doc.as_deref(),
-        tools: &tools,
-        ts: req.ts,
     };
 
-    match invoke(node, model, &caller, agent_caps, &ws, inv).await {
+    match invoke_via_runtime(
+        node,
+        registry,
+        req.runtime.as_deref(),
+        &caller,
+        agent_caps,
+        &ws,
+        &req.job_id,
+        &req.goal,
+        substrate,
+        &tools,
+        req.ts,
+    )
+    .await
+    {
         Ok(answer) => AgentInvokeReply::Ok(answer),
         Err(e) => AgentInvokeReply::Err(e.to_string()),
     }

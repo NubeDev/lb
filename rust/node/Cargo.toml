@@ -29,5 +29,17 @@ lb-role-gateway = { path = "../role/gateway" }
 lb-role-github-webhook.workspace = true
 lb-role-github-target.workspace = true
 lb-role-github-workflow.workspace = true
+# The external-agent role (external-agent topic, runtime-seam #1). OPTIONAL + behind the
+# `external-agent` feature: a default `cargo build` does NOT compile it (nor its transitive
+# `lb-external-agent`), so the OFF build carries none of the external-agent code — the compile-time
+# optionality gate. Built with `cargo build -p node --features external-agent`.
+lb-role-external-agent = { workspace = true, optional = true }
 anyhow.workspace = true
 tokio.workspace = true
+
+[features]
+# OFF by default (runtime-seam-scope: "the `external-agent` cargo feature, OFF by default"). Turning
+# it on pulls the role crate and lets the node register the external `AcpRuntime` entries into its
+# runtime registry; off leaves a default-only registry with zero external surface.
+default = []
+external-agent = ["dep:lb-role-external-agent"]
