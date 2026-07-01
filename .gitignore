@@ -38,6 +38,12 @@ rust/extensions-ui/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Machine-specific cargo tuning (parallel-job caps + host C toolchain / linker paths).
+# These point at per-box absolute paths (e.g. the zig shims in ~/.local/bin) and must NOT
+# be committed: on CI and other machines the paths don't exist and the linker fails. Each
+# dev keeps their own local copy; the repo builds with the default `cc` toolchain.
+**/.cargo/config.toml
+
 # AI agent workspaces
 .agents/
 .claude/
