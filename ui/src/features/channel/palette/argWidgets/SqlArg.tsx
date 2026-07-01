@@ -6,6 +6,8 @@
 
 import { useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { useSqlSchema } from "./useSqlSchema";
 
 interface Props {
@@ -47,7 +49,7 @@ export function SqlArg({ source, value, onChange, onSubmit, onCancel }: Props) {
 
   return (
     <div className="border-t border-border bg-panel p-2" aria-label="sql editor">
-      <textarea
+      <Textarea
         aria-label="sql"
         value={value}
         autoFocus
@@ -69,7 +71,7 @@ export function SqlArg({ source, value, onChange, onSubmit, onCancel }: Props) {
           }
         }}
         placeholder="SELECT … (⌘/Ctrl+Enter to run)"
-        className="control-field min-h-[4.5rem] w-full resize-y font-mono text-sm"
+        className="min-h-[4.5rem] w-full resize-y"
       />
       {open && suggestions.length > 0 && (
         <ul
@@ -79,16 +81,18 @@ export function SqlArg({ source, value, onChange, onSubmit, onCancel }: Props) {
         >
           {suggestions.map((s) => (
             <li key={s} role="option" aria-selected={false}>
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   accept(s);
                 }}
-                className="soft-button h-7 px-2 text-xs"
+                className="h-7 px-2 text-xs"
               >
                 {s}
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

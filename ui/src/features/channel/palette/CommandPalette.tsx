@@ -14,6 +14,8 @@
 import { useMemo, useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { argNames, hintFor } from "@/lib/channel/palette.types";
 import type { ToolDescriptor } from "@/lib/channel/palette.types";
 import { useCatalog } from "./useCatalog";
@@ -173,7 +175,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
   return (
     <div className="border-t border-border bg-panel/70">
       {catalogError && (
-        <div role="alert" className="px-3 py-1 text-xs text-red-600 dark:text-red-300">
+        <div role="alert" className="px-3 py-1 text-xs text-destructive">
           {catalogError}
         </div>
       )}
@@ -230,7 +232,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
       {/* The active entity picker. */}
       {tool && entity && (
         <div onKeyDownCapture={onArgKey}>
-          <input
+          <Input
             aria-label={`@${activeArg}`}
             value={argText}
             autoFocus
@@ -240,7 +242,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
             }}
             onKeyDown={onArgKey}
             placeholder={`@ pick a ${activeArg}`}
-            className="control-field mx-3 my-2 w-[calc(100%-1.5rem)]"
+            className="mx-3 my-2 w-[calc(100%-1.5rem)]"
           />
           <EntityPicker
             arg={activeArg!}
@@ -274,7 +276,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
         className="flex items-center gap-2 p-3"
       >
         {tool === null && (
-          <input
+          <Input
             aria-label="message"
             value={text}
             onChange={(e) => {
@@ -283,20 +285,20 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
             }}
             onKeyDown={onInputKey}
             placeholder={`Message #${channel}  ·  / for commands`}
-            className="control-field min-w-0 flex-1"
+            className="min-w-0 flex-1"
           />
         )}
         {allArgsFilled && (
           <span className="flex-1 text-xs text-muted">Ready — press send to run</span>
         )}
-        <button
+        <Button
           type="submit"
           aria-label="send"
           disabled={tool === null ? !text.trim() : isSqlArg && !sql.trim()}
-          className="soft-button h-9 px-3"
+          className="px-3"
         >
           <SendHorizontal size={16} />
-        </button>
+        </Button>
       </form>
     </div>
   );

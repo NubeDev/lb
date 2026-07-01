@@ -79,6 +79,20 @@ describe("ChannelView (real gateway)", () => {
     expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
   });
 
+  it("does not overflow horizontally at a narrow (phone) viewport", async () => {
+    // Responsive regression guard for the shadcn migration (ui-standards-scope): the canonical
+    // `flex h-full min-w-0 flex-col` surface must never exceed its container on a phone.
+    const ws = await signedInWs();
+    const { container } = render(
+      <div style={{ width: 360 }}>
+        <ChannelView ws={ws} channel="general" author="user:me" now={fixedClock()} />
+      </div>,
+    );
+    const section = await screen.findByLabelText("channel view");
+    expect(container.querySelector("section")).toBe(section);
+    expect(section.scrollWidth).toBeLessThanOrEqual(360);
+  });
+
   it("re-posting the same message id is idempotent (durable history shows one)", async () => {
     const user = userEvent.setup();
     const ws = await signedInWs();

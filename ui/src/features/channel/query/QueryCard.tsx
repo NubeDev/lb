@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { AlertTriangle, Database, Table2, BarChart3 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import type { ItemPayload } from "@/lib/channel/payload.types";
 import { ChartView } from "./ChartView";
 import { ResultTable } from "./ResultTable";
@@ -35,7 +36,7 @@ export function QueryCard({ payload }: Props) {
 
   if (payload.kind === "query_error") {
     return (
-      <div role="alert" className="flex items-start gap-2 text-sm text-red-600 dark:text-red-300">
+      <div role="alert" className="flex items-start gap-2 text-sm text-destructive">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
         <div className="min-w-0">
           <QueryChip source={payload.source} sql={payload.sql} />
@@ -54,14 +55,16 @@ export function QueryCard({ payload }: Props) {
       <div className="flex items-center justify-between gap-2">
         <QueryChip source={payload.source} sql={payload.sql} />
         {hasChart && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             aria-label={tableVisible ? "show chart" : "show table"}
             onClick={() => setShowTable((s) => !s)}
-            className="soft-button h-7 px-2 text-xs"
+            className="h-7 px-2 text-xs"
           >
             {tableVisible ? <BarChart3 size={14} /> : <Table2 size={14} />}
-          </button>
+          </Button>
         )}
       </div>
 

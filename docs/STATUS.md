@@ -16,6 +16,28 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-01): shadcn migration Wave 0 + Wave 1 (channels + rules).** Executed
+`scope/frontend/shadcn-migration-scope.md` (the ordered plan over `ui-standards-scope.md`), copying
+the canonical **Flows** shape — not Dashboard. **Wave 0:** generated the three missing primitives
+token-bound like `sidebar.tsx` — `ui/src/components/ui/{alert,dialog,switch}.tsx` (`alert` replaces
+`.state-alert`; `dialog` on the already-present `@radix-ui/react-dialog` with real focus-trap;
+`switch` a hand-authored `role="switch"` button, no new dep); resolved the RulesView "lint gap" (it
+was already on `AppPageHeader`+`Button`/`Input` and already absent from `LEGACY_VIEWS` — only a raw
+`text-amber-600`→`text-accent` remained). **Wave 1 (migrated onto `components/ui/*` + tokens, one
+PR-sized unit each):** the shared `confirm/ConfirmDestructive` (hand-rolled `role="dialog"`→`Dialog`,
+checkbox→`Switch`, red literals→destructive tokens — used by admin ×4 + extensions), and the six
+channel views (`ChannelView` onto the canonical `AppPageHeader` section, `ChannelList`,
+`MessageComposer`, `palette/CommandPalette`, `palette/argWidgets/SqlArg`, `query/QueryCard`). Removed
+the 7 migrated paths from `ui/eslint.config.js` `LEGACY_VIEWS` (now **error**-guarded on regression):
+**`LEGACY_VIEWS` 28 → 21**, lint **150 → 120 warnings, 0 errors**. Presentation only — **no MCP tool /
+record / bus subject / capability change**. Tests (real gateway, no mocks — CLAUDE §9): all
+`channel/*` + `confirm` + `rules` gateway tests green + a new 360px responsive smoke on `ChannelView`;
+admin/extensions callers of `ConfirmDestructive` green; `pnpm test` 242/242. The 7 `pnpm test:gateway`
+failures are **pre-existing** (studio/system fail identically on a clean stash; workflow is a
+cross-test seeding race that passes in isolation) — none in a migrated area. **Wave 2 (dashboard) is
+next up** (stopped after Wave 1 per the ask). Scope `scope/frontend/shadcn-migration-scope.md`;
+session `sessions/frontend/shadcn-migration-channels-rules-session.md`.
+
 **Just shipped (2026-07-01): `chains` engine RETIRED — `flows` is the one DAG engine.** Executed
 `scope/flows/chains-retirement-scope.md` (`flows-scope.md` Decision 6, taken to its clean-cut end
 state — delete, no alias, no stub). Deleted outright: the host `chains` module (8 files), the

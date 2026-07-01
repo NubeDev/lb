@@ -98,7 +98,7 @@ export function RulesView({ ws }: RulesViewProps) {
                 </>
               ) : null}
               {r.dirty ? (
-                <span aria-label="dirty indicator" className="text-xs text-amber-600">
+                <span aria-label="dirty indicator" className="text-xs text-accent">
                   ● unsaved
                 </span>
               ) : null}

@@ -4,6 +4,7 @@
 
 import { Hash } from "lucide-react";
 
+import { AppPageHeader } from "@/components/app/page-header";
 import { useChannel } from "./useChannel";
 import { usePresence } from "./usePresence";
 import { MessageList } from "./MessageList";
@@ -27,20 +28,13 @@ export function ChannelView({ ws, channel, author, now }: Props) {
   const online = usePresence(ws, channel);
 
   return (
-    <section className="flex h-full flex-col bg-bg">
-      <header className="page-header">
-        <div className="page-header-icon">
-          <Hash size={16} />
-        </div>
-        <div className="min-w-0">
-          <h1 className="page-title">#{channel}</h1>
-          <p className="page-subtitle">Posting as {author}</p>
-        </div>
-        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
-          <span className="truncate">{ws}</span>
-        </span>
-      </header>
+    <section aria-label="channel view" className="flex h-full min-w-0 flex-col bg-bg text-fg">
+      <AppPageHeader
+        icon={Hash}
+        title={`#${channel}`}
+        description={`Posting as ${author}`}
+        workspace={ws}
+      />
 
       {online.length > 0 && (
         <div
@@ -58,7 +52,11 @@ export function ChannelView({ ws, channel, author, now }: Props) {
       )}
 
       {error && (
-        <div role="alert" className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-xs text-red-600 dark:text-red-300">
+        <div
+          role="alert"
+          aria-label="channel error"
+          className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+        >
           {error}
         </div>
       )}
