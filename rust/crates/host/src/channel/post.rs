@@ -48,6 +48,14 @@ pub async fn post(
     // case is a follow-up `query_error` item (or none if the worker itself could not persist).
     super::query_worker::run_if_query(node, principal, ws, cid, &delivered).await;
 
+    // INLINE agent worker (channels-agent scope): a `kind:"agent"` item is the request; the host
+    // drives an agent run here in the post path and posts the `agent_result`/`agent_error` back. Only
+    // `kind:"agent"` triggers work (re-entrancy guard); a worker failure never fails the originating
+    // post (the request item already durably landed). Sits beside the query worker — one consistent
+    // "post → inline worker" model. (Non-blocking background execution is the run-lifecycle #5
+    // follow-up; the request item is published BEFORE this runs, so a watcher sees the run live.)
+    super::agent_worker::run_if_agent(node, principal, ws, cid, &delivered).await;
+
     Ok(delivered)
 }
 

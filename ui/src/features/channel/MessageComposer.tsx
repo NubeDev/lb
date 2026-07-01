@@ -39,7 +39,7 @@ export function MessageComposer({ channel, onSend }: Props) {
         aria-label="message"
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        placeholder={`Message #${channel}`}
+        placeholder={`Message #${channel}  ·  /agent [@runtime] <goal>`}
         className="min-w-0 flex-1"
       />
       <Button type="submit" aria-label="send" disabled={!body.trim() || busy} className="px-3">

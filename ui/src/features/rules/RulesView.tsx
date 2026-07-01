@@ -9,7 +9,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { FileCode2, Pencil } from "lucide-react";
 
-import { AppPageHeader } from "@/components/app/page-header";
+import { AppPage } from "@/components/app/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRules } from "./useRules";
@@ -49,7 +49,43 @@ export function RulesView({ ws }: RulesViewProps) {
   }
 
   return (
-    <div aria-label="rules workbench" className="flex h-full">
+    <AppPage
+      label="rules workbench"
+      icon={FileCode2}
+      title={selectedName ?? r.selectedId ?? "Rules"}
+      description="Author and run Rhai rules over live workspace data."
+      workspace={ws}
+      actions={
+        <>
+          <Button aria-label="run rule" size="sm" disabled={r.running} onClick={() => void r.run()}>
+            Run
+          </Button>
+          {r.selectedId ? (
+            <>
+              <Button aria-label="rename rule" size="sm" variant="ghost" onClick={startRename}>
+                <Pencil size={14} /> Rename
+              </Button>
+              <Button
+                aria-label="save rule"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  const sid = r.selectedId;
+                  if (sid) void r.save(sid, selectedName ?? sid);
+                }}
+              >
+                Save
+              </Button>
+            </>
+          ) : null}
+          {r.dirty ? (
+            <span aria-label="dirty indicator" className="text-xs text-accent">
+              ● unsaved
+            </span>
+          ) : null}
+        </>
+      }
+    >
       <RuleRail
         roster={r.roster}
         selectedId={r.selectedId}
@@ -58,58 +94,11 @@ export function RulesView({ ws }: RulesViewProps) {
         onCreate={r.create}
       />
 
-      <section className="flex min-w-0 flex-1 flex-col bg-bg text-fg">
-        <AppPageHeader
-          icon={FileCode2}
-          title={selectedName ?? r.selectedId ?? "Rules"}
-          description="Author and run Rhai rules over live workspace data."
-          workspace={ws}
-          actions={
-            <>
-              <Button
-                aria-label="run rule"
-                size="sm"
-                disabled={r.running}
-                onClick={() => void r.run()}
-              >
-                Run
-              </Button>
-              {r.selectedId ? (
-                <>
-                  <Button
-                    aria-label="rename rule"
-                    size="sm"
-                    variant="ghost"
-                    onClick={startRename}
-                  >
-                    <Pencil size={14} /> Rename
-                  </Button>
-                  <Button
-                    aria-label="save rule"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const sid = r.selectedId;
-                      if (sid) void r.save(sid, selectedName ?? sid);
-                    }}
-                  >
-                    Save
-                  </Button>
-                </>
-              ) : null}
-              {r.dirty ? (
-                <span aria-label="dirty indicator" className="text-xs text-accent">
-                  ● unsaved
-                </span>
-              ) : null}
-            </>
-          }
-        />
-
+      <div className="flex min-w-0 flex-1 flex-col">
         {renaming && r.selectedId ? (
           <form
             aria-label="rename rule form"
-            className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2"
+            className="flex items-center gap-2 border-b border-border bg-panel px-4 py-2"
             onSubmit={submitRename}
           >
             <Input
@@ -147,7 +136,7 @@ export function RulesView({ ws }: RulesViewProps) {
           </div>
           <AuthoringPanel ws={ws} onInsert={insert} onLoadExample={r.loadExample} />
         </div>
-      </section>
-    </div>
+      </div>
+    </AppPage>
   );
 }

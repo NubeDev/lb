@@ -32,18 +32,39 @@ impl AgentWrapper for CodexWrapper {
     }
 
     fn command_args(&self, profile: &AgentProfile, goal: &str, workspace: &str) -> Vec<String> {
-        // `codex exec --json --skip-git-repo-check -C <workspace> -m <model> <goal>`
-        // Auth + provider are codex's own config/login, so (unlike vtcode) no `--api-key-env`.
-        vec![
+        // `codex exec --json --skip-git-repo-check -C <workspace> [provider -c overrides] -m <model> <goal>`
+        let mut args = vec![
             "exec".into(),
             "--json".into(),
             "--skip-git-repo-check".into(),
             "-C".into(),
             workspace.into(),
-            "-m".into(),
-            profile.model.model.clone(),
-            goal.into(),
-        ]
+        ];
+        // When the profile names an OpenAI-compatible `base_url`, configure codex's `model_providers`
+        // via `-c` overrides so the agent reaches OUR endpoint (Z.AI coding today; the gateway under
+        // model-routing #4) rather than its own login. `wire_api=chat` is mandatory: codex defaults to
+        // the OpenAI *Responses* API (`/responses`, 404 on Z.AI), while Z.AI — and our gateway — speak
+        // Chat Completions. The provider id is the profile's `provider` (must NOT collide with a codex
+        // built-in like `zai`, which points at the throttled standard endpoint). The **name** of the
+        // key env var is passed, never the value (the key lives in this process's env — model-routing
+        // #4 mints a scoped one). Absent `base_url`, fall back to codex's own auth/config (no overrides).
+        if let Some(base_url) = &profile.model.base_url {
+            let p = &profile.model.provider;
+            args.extend([
+                "-c".into(),
+                format!("model_providers.{p}.name={p}"),
+                "-c".into(),
+                format!("model_providers.{p}.base_url={base_url}"),
+                "-c".into(),
+                format!("model_providers.{p}.env_key={}", profile.model.api_key_env),
+                "-c".into(),
+                format!("model_providers.{p}.wire_api=chat"),
+                "-c".into(),
+                format!("model_provider={p}"),
+            ]);
+        }
+        args.extend(["-m".into(), profile.model.model.clone(), goal.into()]);
+        args
     }
 
     fn decode_line(&self, line: &str, turn: u32) -> Decoded {
@@ -216,5 +237,59 @@ impl ThreadItem {
             }],
             _ => vec![],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::profile::ModelEndpoint;
+
+    fn zai_model() -> ModelEndpoint {
+        ModelEndpoint {
+            provider: "zaicoding".into(),
+            model: "glm-4.6".into(),
+            api_key_env: "ZAI_API_KEY".into(),
+            base_url: Some("https://api.z.ai/api/coding/paas/v4".into()),
+        }
+    }
+
+    // With a base_url, the wrapper emits the codex `model_providers` `-c` overrides — the EXACT set
+    // verified against a real Z.AI GLM-4.6 run (name/base_url/env_key/wire_api=chat + model_provider).
+    // `wire_api=chat` is the load-bearing one: codex defaults to `/responses` (404 on Z.AI).
+    #[test]
+    fn command_args_emit_provider_overrides_when_base_url_is_set() {
+        let profile = AgentProfile::open_interpreter_default(zai_model());
+        let args = CodexWrapper.command_args(&profile, "hi", "/ws");
+        let joined = args.join(" ");
+        assert!(joined
+            .contains("model_providers.zaicoding.base_url=https://api.z.ai/api/coding/paas/v4"));
+        assert!(joined.contains("model_providers.zaicoding.env_key=ZAI_API_KEY"));
+        assert!(joined.contains("model_providers.zaicoding.wire_api=chat"));
+        assert!(joined.contains("model_provider=zaicoding"));
+        // Only the env var NAME is passed (`env_key=ZAI_API_KEY`), never a key value — the wrapper
+        // has no access to the secret, so no argv token can carry it. Asserted by construction: the
+        // sole key-related token is the env var name.
+        assert!(joined.contains("env_key=ZAI_API_KEY"));
+        // Still a headless JSON exec of the goal against the model.
+        assert!(joined.starts_with("exec --json --skip-git-repo-check -C /ws"));
+        assert_eq!(args.last().unwrap(), "hi");
+        assert!(joined.contains("-m glm-4.6"));
+    }
+
+    // Without a base_url, the wrapper falls back to codex's own login/config — no provider overrides
+    // (the pre-Z.AI behavior the earlier tests rely on).
+    #[test]
+    fn command_args_omit_provider_overrides_when_base_url_is_none() {
+        let model = ModelEndpoint {
+            provider: "openai".into(),
+            model: "gpt-5.4-mini".into(),
+            api_key_env: "OPENAI_API_KEY".into(),
+            base_url: None,
+        };
+        let profile = AgentProfile::codex_default(model);
+        let args = CodexWrapper.command_args(&profile, "hi", "/ws");
+        assert!(!args.join(" ").contains("model_provider"));
+        assert!(args.contains(&"-m".to_string()));
     }
 }

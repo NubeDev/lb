@@ -68,8 +68,8 @@ pub use agent::{
     Activation, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest, AgentRuntime,
     AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect, ErasedModel,
     InHouseRuntime, Invocation, LoopState, ModelAccess, Policy, ProposedCall, Rule, RunContext,
-    RuntimeRegistry, SettleOutcome, Substrate, Turn, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
-    DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
+    RuntimeRegistry, SettleOutcome, Substrate, Turn, UnconfiguredModel, DECISION_APPROVAL_CHANNEL,
+    DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
 };
 pub use apikey::{
     apikey_authenticate, apikey_create, apikey_get, apikey_list, apikey_revoke, apikey_rotate,
@@ -109,8 +109,8 @@ pub use dbview::{
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
 };
 pub use devkit::{
-    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_scaffold,
-    devkit_templates, BuildStarted, DevkitError,
+    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_root, devkit_scaffold,
+    devkit_templates, BuildStarted, DevkitError, DevkitRoot,
 };
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,

@@ -6,6 +6,7 @@
 //! (the hard wall, §7) before any bus or store access — there is no path to a channel that
 //! skips authorization. One verb per file (FILE-LAYOUT §3).
 
+mod agent_worker;
 mod authorize;
 mod chart;
 mod chart_pref;

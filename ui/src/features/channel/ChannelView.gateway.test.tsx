@@ -8,7 +8,7 @@
 // hook performs after each post — the same path the original fake-backed test exercised.
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ChannelView } from "./ChannelView";
@@ -62,7 +62,9 @@ describe("ChannelView (real gateway)", () => {
     await user.click(screen.getByLabelText("send"));
     await screen.findByText("second");
 
-    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    // Scope to the message list — the surface also renders the channel roster (its own <li>s).
+    const messages = within(screen.getByLabelText("messages"));
+    const items = messages.getAllByRole("listitem").map((li) => li.textContent);
     expect(items[0]).toContain("first");
     expect(items[1]).toContain("second");
   });

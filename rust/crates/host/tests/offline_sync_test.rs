@@ -15,33 +15,21 @@
 //! Each test uses a UNIQUE workspace id (in-process peers share a workspace's keyspace) and the
 //! multi-thread flavor (boots a Zenoh peer).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_bus::Bus;
-use lb_host::{
-    history, post, replay_history, sync_channel, ChannelSync, Node, Role as NodeRole, SidecarMap,
-};
+use lb_host::{history, post, replay_history, sync_channel, ChannelSync, Node, Role as NodeRole};
 use lb_inbox::Item;
-use lb_mcp::Registry;
-use lb_runtime::Engine;
-use lb_store::Store;
 
 /// Build a node on an explicit `bus` + `role`. Same wiring as `Node::boot_as`, but we own the bus
 /// so edge and hub can be **point-to-point linked** over loopback TCP (see `linked_edge_and_hub`).
 /// Mirrors the direct-construction pattern in `cross_node_routing_test.rs` / `ext_publish_test.rs`
 /// — nothing mocked, just a real Zenoh peer whose endpoints we chose.
 async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
-    Node {
-        store: Store::memory().await.expect("in-mem store"),
-        bus,
-        engine: Engine::new().expect("runtime engine"),
-        registry: Arc::new(Registry::new()),
-        sidecars: Arc::new(SidecarMap::new()),
-        apikeys: Arc::new(lb_host::ApiKeyCache::new()),
-        role,
-    }
+    Node::boot_on_bus(bus, role)
+        .await
+        .expect("node boots on the given bus")
 }
 
 /// Stand up an edge and a hub **explicitly linked over a loopback TCP endpoint** so discovery is

@@ -200,7 +200,16 @@ function CoreGate({ surface, children }: { surface: CoreSurface; children: JSX.E
 function ChannelsRoute() {
   const ctx = useAppRoutingContext();
   const { c } = channelsRoute.useSearch();
-  return <ChannelView ws={ctx.workspace} channel={c} author={ctx.principal} />;
+  const navigate = useNavigate({ from: "/t/$ws/channels" });
+  return (
+    <ChannelView
+      ws={ctx.workspace}
+      channel={c}
+      author={ctx.principal}
+      onSelectChannel={(channel) => void navigate({ search: { c: channel } })}
+      onSwitchWorkspace={ctx.switchWorkspace}
+    />
+  );
 }
 
 function DashboardsRoute() {

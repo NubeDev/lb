@@ -14,6 +14,12 @@ interface Props {
 }
 
 export function MessageList({ items, author, onEdit, onDelete }: Props) {
+  // The run ids that already have a durable answer/error (the agent worker posts those under id
+  // `a:<job>`). A pending `agent` request whose job is in here is superseded — AgentCard hides its
+  // "running…" placeholder so a completed run never shows a stuck spinner.
+  const settledJobs = new Set(
+    items.filter((m) => m.id.startsWith("a:")).map((m) => m.id.slice(2)),
+  );
   if (items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -27,7 +33,14 @@ export function MessageList({ items, author, onEdit, onDelete }: Props) {
   return (
     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto p-4" aria-label="messages">
       {items.map((m) => (
-        <MessageItem key={m.id} item={m} author={author} onEdit={onEdit} onDelete={onDelete} />
+        <MessageItem
+          key={m.id}
+          item={m}
+          author={author}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          settledJobs={settledJobs}
+        />
       ))}
     </ul>
   );

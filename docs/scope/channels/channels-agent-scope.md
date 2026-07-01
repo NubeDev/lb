@@ -1,6 +1,9 @@
 # Channels scope — in-channel agent (ask an agent, get an answer, in the channel)
 
-Status: scope (the ask). Promotes to `public/channels/` once shipped.
+Status: **v1 shipped** (inline worker; external agent driven live vs Z.AI GLM-4.6) — see
+[channels-agent-session.md](../../sessions/channels/channels-agent-session.md). Live run-feed +
+background execution + external-agent #3/#4 remain follow-ups. Promotes fully to `public/channels/`
+once the run-feed lands.
 Topic: `channels`. Builds on `channels-scope.md` (registry/history/stream), `channels-query-charts-scope.md`
 (the inline-worker pattern this reuses), the shipped `agent.invoke` / `AgentRuntime` seam
 (`scope/external-agent/runtime-seam-scope.md`), and the shipped agent **run** surface
@@ -229,24 +232,31 @@ agent-run job path. The **one** permitted fake stays the model provider behind t
 
 ## Open questions
 
-To be resolved in the build session ([channels-agent-session.md](../../sessions/channels/channels-agent-session.md)):
+Resolved in the build session ([channels-agent-session.md](../../sessions/channels/channels-agent-session.md)):
 
-- **Worker trigger — inline in `channel.post` (like query) but spawn-not-block?** Leaning yes: hook at the
-  same `run_if_query` point for the re-entrancy/idempotency benefits, but the worker **spawns** the
-  durable run and returns rather than awaiting it. Confirm the spawn primitive (agent-run job start) and
-  that `post` is not held.
-- **Who mints `job`?** Leaning: the **UI** mints it (as `AgentView` mints `jobId`) so it can subscribe to
-  the run stream the instant the request item lands. Alternative: the worker mints it and echoes it on an
-  early `agent` state item — one extra post. Decide the correlation/subscription story.
-- **Answer cap — reuse ≤256 KB** with a `truncated` flag + "view full run"? Confirm the number and the
-  link target (job transcript view).
-- **In-channel per-tool Allow/Deny card?** The agent-run first-settle decision (Part 2) can surface as an
-  interactive card in the channel (Ask). v1 relies on `agent_policy` (Deny/Allow) only; the interactive
-  card is a fast-follow. Confirm v1 excludes it.
-- **Palette command shape.** `/agent <goal>` (one free-text arg) vs a richer arg-widget with an optional
-  runtime picker. v1: single goal arg, `runtime` omitted (default). The runtime picker lands with #3.
-- **Skill/persona selection.** `agent.invoke` accepts a granted `skill`; expose an optional
-  `/agent --as <skill>`? v1: omit; a later slice adds the persona picker (grant-gated `load_skill`).
+- **Worker trigger — DECIDED: inline in `channel.post`, awaited (not spawned) for v1.** Hooked at the
+  same point as `run_if_query`, the faithful reuse of the proven worker pattern; it works end to end
+  today. The tradeoff (a long run blocks the poster's `post`) is accepted for v1 and documented;
+  **non-blocking, supervised, resumable background execution is the run-lifecycle #5 follow-up.** The
+  request item is published BEFORE the worker runs, so a watcher already sees the run start live.
+- **Who mints `job` — DECIDED: the UI** (via `newRunId`, as `AgentView` mints `jobId`), so a client can
+  subscribe to the run stream the instant the request item lands.
+- **Answer cap — DECIDED: ≤256 KB** with a `truncated` flag (mirrors the query worker;
+  `agent_worker.rs::AGENT_MAX_BYTES`, char-boundary safe). "View full run" links to the run stream/job.
+- **In-channel per-tool Allow/Deny card — DECIDED: excluded from v1** (relies on `agent_policy` Deny/Allow
+  only). The interactive first-settle card is a fast-follow.
+- **Palette command shape — DECIDED: `/agent [@runtime] <goal>`** (UI-parsed into the structured payload;
+  the host never parses chat text). `@open-interpreter-default` selects an external agent; omit for the
+  in-house default. A runtime *picker* lands with the `agent.runtimes` read verb (#5).
+- **Skill/persona selection — DEFERRED:** v1 omits it; a later slice adds a persona picker (grant-gated
+  `load_skill`).
+
+**New (surfaced during the build, tracked for follow-up):**
+- **Live run-feed in the card** — the "both" streaming half. The run publishes `RunEvent`s and the request
+  carries `job`; the UI subscription + live rendering is the agent-run Part 3 "run-feed UI" follow-up.
+- **External-agent #3/#4 are the gates for a *production* external run** — v1 drives Open Interpreter →
+  Z.AI directly via `ZAI_API_KEY` for the demo; #3 (capability-wall) and #4 (model-routing through our
+  gateway) must land before an untrusted external agent runs in anger.
 
 ## Related
 

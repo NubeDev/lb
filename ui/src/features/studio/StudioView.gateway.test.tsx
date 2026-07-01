@@ -22,47 +22,50 @@ const nextId = () => `studio-gateway-${Date.now()}-${n++}`;
 beforeAll(() => useRealGateway());
 
 describe("Extension Studio (real gateway)", () => {
-  it(
-    "scaffolds, builds, streams logs, publishes, and calls the generated wasm tool",
-    async () => {
-      const id = nextId();
-      await signInWithCaps("user:studio", `studio-${n}`, [
-        "mcp:devkit.templates:call",
-        "mcp:devkit.scaffold:call",
-        "mcp:devkit.inspect:call",
-        "mcp:devkit.build:call",
-        "mcp:ext.publish:call",
-        "mcp:ext.list:call",
-        "mcp:bus.watch:call",
-        `mcp:${id}.ping:call`,
-      ]);
+  it("scaffolds, builds, streams logs, publishes, and calls the generated wasm tool", async () => {
+    const id = nextId();
+    await signInWithCaps("user:studio", `studio-${n}`, [
+      "mcp:devkit.templates:call",
+      "mcp:devkit.scaffold:call",
+      "mcp:devkit.inspect:call",
+      "mcp:devkit.build:call",
+      "mcp:ext.publish:call",
+      "mcp:ext.list:call",
+      "mcp:bus.watch:call",
+      `mcp:${id}.ping:call`,
+    ]);
 
-      const templates = await listDevkitTemplates();
-      expect(templates.map((t) => t.tier)).toContain("wasm");
+    const templates = await listDevkitTemplates();
+    expect(templates.map((t) => t.tier)).toContain("wasm");
 
-      const scaffold = await scaffoldDevkitExtension({ id, tier: "wasm", features: [] });
-      try {
-        expect(scaffold.path).toContain(id);
-        const started = await buildDevkitExtension(scaffold.path);
-        const lines = await collectBuildLog(started.log_subject);
-        expect(lines.some((line) => line.includes("cargo"))).toBe(true);
-        expect(lines).toContain("devkit build: done");
+    const scaffold = await scaffoldDevkitExtension({
+      id,
+      tier: "wasm",
+      features: [],
+    });
+    try {
+      expect(scaffold.path).toContain(id);
+      const started = await buildDevkitExtension(scaffold.path);
+      const lines = await collectBuildLog(started.log_subject);
+      expect(lines.some((line) => line.includes("cargo"))).toBe(true);
+      expect(lines).toContain("devkit build: done");
 
-        const inspected = await inspectDevkitExtension(scaffold.path);
-        expect(inspected.built).toBe(true);
+      const inspected = await inspectDevkitExtension(scaffold.path);
+      expect(inspected.built).toBe(true);
 
-        await publishDevkitExtension(scaffold.path);
-        const out = await invoke<{ ok: boolean; ext: string; tier: string }>("mcp_call", {
+      await publishDevkitExtension(scaffold.path);
+      const out = await invoke<{ ok: boolean; ext: string; tier: string }>(
+        "mcp_call",
+        {
           tool: `${id}.ping`,
           args: {},
-        });
-        expect(out).toEqual({ ok: true, ext: id, tier: "wasm" });
-      } finally {
-        await rm(scaffold.path, { recursive: true, force: true });
-      }
-    },
-    120_000,
-  );
+        },
+      );
+      expect(out).toEqual({ ok: true, ext: id, tier: "wasm" });
+    } finally {
+      await rm(scaffold.path, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 function collectBuildLog(subject: string): Promise<string[]> {

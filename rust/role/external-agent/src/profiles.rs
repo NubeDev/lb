@@ -24,11 +24,16 @@ pub const CODEX_DEFAULT: &str = "codex-default";
 /// The default model endpoint the built-in profiles use when the node config supplies none. Z.AI
 /// GLM-4.6 via the **coding** endpoint (the verified, non-throttled path); the api-key env is
 /// `ZAI_API_KEY` (the driver passes the *name*, never the value). A node config overrides this.
+///
+/// `provider` is `zaicoding` — a DISTINCT id, deliberately not codex's built-in `zai` (which points
+/// at the throttled standard endpoint + wants `ZHIPU_API_KEY`). `base_url` is the coding-plan endpoint,
+/// which the codex wrapper turns into `model_providers.zaicoding.*` overrides (with `wire_api=chat`).
 pub fn default_model_endpoint() -> ModelEndpoint {
     ModelEndpoint {
-        provider: "zai".to_string(),
+        provider: "zaicoding".to_string(),
         model: "glm-4.6".to_string(),
         api_key_env: "ZAI_API_KEY".to_string(),
+        base_url: Some("https://api.z.ai/api/coding/paas/v4".to_string()),
     }
 }
 

@@ -1,7 +1,7 @@
 //! Boot a node: open the embedded store + bus, build the runtime engine, and hold the MCP
 //! registry. This is the assembled spine the rest of the host (and the `node` binary) drive.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use lb_bus::{Bus, BusError};
 use lb_mcp::Registry;
@@ -9,6 +9,7 @@ use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
 use thiserror::Error;
 
+use crate::agent::{RuntimeRegistry, UnconfiguredModel};
 use crate::apikey::ApiKeyCache;
 use crate::native::SidecarMap;
 use crate::role::Role;
@@ -42,6 +43,15 @@ pub struct Node {
     /// path reads and `revoke`/`rotate` bust. Shared so the gateway auth path and the management
     /// verbs see one cache; a revoke bites on this node's next request (instant local revoke).
     pub apikeys: Arc<ApiKeyCache>,
+    /// The **agent runtime registry** (external-agent runtime-seam #1) — part of the node spine so
+    /// any host service that starts a run reaches ONE source of truth: the routed `serve_agent`, and
+    /// the in-channel agent worker (`channel/agent_worker.rs`). Boot installs a default-only registry
+    /// (the in-house `default` over the [`UnconfiguredModel`] placeholder); the `node` binary, when
+    /// built with the `external-agent` feature, swaps in a registry that also holds the external
+    /// `AcpRuntime` entries via [`install_runtimes`](Node::install_runtimes). Held behind a `Mutex`
+    /// so the binary can install after boot; readers [`clone`](Node::runtimes) the inner `Arc` out
+    /// and never hold the lock across the (long) run.
+    runtimes: Mutex<Arc<RuntimeRegistry>>,
     pub role: Role,
 }
 
@@ -65,7 +75,28 @@ impl Node {
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
+            runtimes: Mutex::new(Arc::new(default_runtimes())),
             role: Role::Solo,
+        })
+    }
+
+    /// Boot a node over a CALLER-SUPPLIED `bus` and `role`, with a fresh in-memory store. Same wiring
+    /// as [`boot_as`](Node::boot_as) — only the bus is injected, so a test can point-to-point link a
+    /// hub and an edge on one explicit bus (the routed-call tests). A config choice (§3.1), not a code
+    /// branch. Keeps `Node`'s spine fields encapsulated (the runtime registry is installed here, not
+    /// hand-assembled at each call site).
+    pub async fn boot_on_bus(bus: Bus, role: Role) -> Result<Self, NodeError> {
+        let store = Store::memory().await?;
+        let engine = Engine::new()?;
+        Ok(Self {
+            store,
+            bus,
+            engine,
+            registry: Arc::new(Registry::new()),
+            sidecars: Arc::new(SidecarMap::new()),
+            apikeys: Arc::new(ApiKeyCache::new()),
+            runtimes: Mutex::new(Arc::new(default_runtimes())),
+            role,
         })
     }
 
@@ -83,8 +114,22 @@ impl Node {
             registry: Arc::new(Registry::new()),
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
+            runtimes: Mutex::new(Arc::new(default_runtimes())),
             role,
         })
+    }
+
+    /// The node's agent runtime registry (external-agent #1). Clones the inner `Arc` out under a brief
+    /// lock so a caller can drive a (long) run without holding the lock — see [`runtimes`](Node::runtimes-field).
+    pub fn runtimes(&self) -> Arc<RuntimeRegistry> {
+        self.runtimes.lock().expect("runtimes lock").clone()
+    }
+
+    /// Install a runtime registry, replacing the default-only one. Called ONCE by the `node` binary
+    /// after boot when the `external-agent` feature is on, to add the external `AcpRuntime` entries.
+    /// (A feature-off node never calls this and keeps the default-only registry.)
+    pub fn install_runtimes(&self, registry: RuntimeRegistry) {
+        *self.runtimes.lock().expect("runtimes lock") = Arc::new(registry);
     }
 
     /// Select the store engine by **config, not role** (symmetric nodes, §3.1): `LB_STORE_PATH`
@@ -97,4 +142,12 @@ impl Node {
             _ => Store::memory().await,
         }
     }
+}
+
+/// The boot-time runtime registry: the in-house `default` only, over the [`UnconfiguredModel`]
+/// placeholder (no model provider wired at this layer yet — the `agent_invoke`-needs-a-provider gap).
+/// A feature-on `node` binary replaces this with one that also carries the external runtimes via
+/// [`Node::install_runtimes`]; the resolve invariant (absent → default) holds either way.
+fn default_runtimes() -> RuntimeRegistry {
+    RuntimeRegistry::with_default(Arc::new(UnconfiguredModel))
 }

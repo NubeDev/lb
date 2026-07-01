@@ -37,8 +37,19 @@ export interface InspectReport {
   };
 }
 
+export interface DevkitRoot {
+  path: string;
+  os: string;
+}
+
 export function listDevkitTemplates(): Promise<TemplateInfo[]> {
   return invoke<TemplateInfo[]>("mcp_call", { tool: "devkit.templates", args: {} });
+}
+
+/** The absolute devkit root directory — where scaffolds live and the only tree `inspect`/`build`/
+ *  `publish` accept a path under. The "open existing" folder picker browses from here. */
+export function devkitRoot(): Promise<DevkitRoot> {
+  return invoke<DevkitRoot>("mcp_call", { tool: "devkit.root", args: {} });
 }
 
 export function scaffoldDevkitExtension(input: {

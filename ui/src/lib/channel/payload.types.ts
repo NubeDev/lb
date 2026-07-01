@@ -7,6 +7,12 @@
 //   - `query`        — `{ kind, source, sql }`, posted by a member who wants to run a query.
 //   - `query_result` — `{ kind, source, sql, columns, rows, chart?, truncated? }`, by the worker.
 //   - `query_error`  — `{ kind, source, sql, error }`, by the worker on failure.
+//   - `agent`        — `{ kind, goal, runtime?, job }`, posted by a member who wants to ask an agent
+//                      (channels-agent scope). `runtime` selects the AgentRuntime (absent → in-house
+//                      default; a profile id like `open-interpreter-default` → an external agent).
+//                      `job` is the durable run id the UI mints so it can watch the run stream.
+//   - `agent_result` — `{ kind, goal, runtime, job, answer, truncated? }`, by the agent worker.
+//   - `agent_error`  — `{ kind, goal, error }`, by the agent worker (opaque on deny/unknown-runtime).
 
 /** The chart kinds the host picker emits (rendered verbatim as the `type` field). */
 export type ChartType = "line" | "bar" | "histogram";
@@ -56,10 +62,52 @@ export interface QueryErrorPayload {
   error: string;
 }
 
-/** The kind-tagged union pulled out of an item `body`. Chat (no `kind`) is `null`. */
-export type ItemPayload = QueryPayload | QueryResultPayload | QueryErrorPayload;
+/** `kind: "agent"` — a member's request to ask an agent `goal` (channels-agent scope). */
+export interface AgentPayload {
+  kind: "agent";
+  goal: string;
+  /** The runtime selector: absent → the in-house default; a profile id → an external agent. */
+  runtime?: string;
+  /** The durable run id (the UI mints it so it can subscribe to the run stream immediately). */
+  job: string;
+}
 
-const KINDS = new Set(["query", "query_result", "query_error"]);
+/** `kind: "agent_result"` — the agent worker's durable final answer. */
+export interface AgentResultPayload {
+  kind: "agent_result";
+  goal: string;
+  /** The runtime that served the run (`"default"` or a profile id). */
+  runtime: string;
+  job: string;
+  answer: string;
+  /** True when the answer hit the byte cap and was trimmed. */
+  truncated?: boolean;
+}
+
+/** `kind: "agent_error"` — the worker's opaque/honest failure (opaque on deny/unknown-runtime). */
+export interface AgentErrorPayload {
+  kind: "agent_error";
+  goal: string;
+  error: string;
+}
+
+/** The kind-tagged union pulled out of an item `body`. Chat (no `kind`) is `null`. */
+export type ItemPayload =
+  | QueryPayload
+  | QueryResultPayload
+  | QueryErrorPayload
+  | AgentPayload
+  | AgentResultPayload
+  | AgentErrorPayload;
+
+const KINDS = new Set([
+  "query",
+  "query_result",
+  "query_error",
+  "agent",
+  "agent_result",
+  "agent_error",
+]);
 
 /** Detect whether a `query_result` carries POSITIONAL array rows (one value per column, in
  *  `columns` order — the compact shape the worker PERSISTS) and zip them into the keyed objects the
@@ -98,5 +146,21 @@ export function parsePayload(body: string): ItemPayload | null {
  *  the host never parses chat text into a command. */
 export function encodeQuery(source: string, sql: string): string {
   const payload: QueryPayload = { kind: "query", source, sql };
+  return JSON.stringify(payload);
+}
+
+/** Mint a run id for an `agent` request. Kept tiny + injectable-free; uniqueness only needs to hold
+ *  within a channel's lifetime (it keys the run stream + correlates the `agent_result`). */
+export function newRunId(): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `run-${Date.now().toString(36)}-${rand}`;
+}
+
+/** Encode an `agent` request body (channels-agent scope). `runtime` omitted → the in-house default;
+ *  pass a profile id (e.g. `open-interpreter-default`) to drive an external agent. The UI mints `job`
+ *  (via {@link newRunId}) so it can watch the run stream the instant the request lands. */
+export function encodeAgent(goal: string, job: string, runtime?: string): string {
+  const payload: AgentPayload = { kind: "agent", goal, job };
+  if (runtime) payload.runtime = runtime;
   return JSON.stringify(payload);
 }

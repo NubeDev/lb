@@ -41,18 +41,22 @@ pub enum DriveError {
     Io(#[from] std::io::Error),
 }
 
-/// Drive one run to completion with `wrapper`, collecting every projected [`RunEvent`]. A streaming
-/// variant (yield per line) is the natural next step; this collecting form keeps the standalone
-/// crate's test surface simple while proving spawn + decode + project against a real binary.
+/// Drive one run to completion with `wrapper`, collecting every projected [`RunEvent`] **and**, when a
+/// `sink` is given, emitting each event **the moment its stdout line decodes** — so a watcher sees the
+/// agent work live (tool calls, reasoning, text) instead of a burst at the end. The collected `Vec` is
+/// still returned (the caller assembles the final answer from it); the sink is an additive live tap.
 ///
 /// `goal` is the prompt; `workspace` is the cwd the agent runs in. The caller owns env (the API-key
 /// var the profile names must be set in this process; the wrapper passes the *name*, never the value).
+/// `sink` is an unbounded channel (never blocks the read loop); a closed receiver is ignored (the run
+/// keeps going and still returns its collected events).
 pub async fn drive(
     wrapper: &dyn AgentWrapper,
     profile: &AgentProfile,
     goal: &str,
     workspace: &str,
     timeout: Duration,
+    sink: Option<&tokio::sync::mpsc::UnboundedSender<RunEvent>>,
 ) -> Result<Vec<RunEvent>, DriveError> {
     let args = wrapper.command_args(profile, goal, workspace);
     let mut child = Command::new(&profile.binary)
@@ -71,9 +75,19 @@ pub async fn drive(
     let collect = async {
         let mut events = Vec::new();
         let mut turn: u32 = 0;
-        events.push(RunEvent::RunStart {
-            goal: goal.to_string(),
-        });
+        // Collect an event AND tap it to the live sink (best-effort: a closed sink never fails the run).
+        let mut emit = |event: RunEvent, events: &mut Vec<RunEvent>| {
+            if let Some(tx) = sink {
+                let _ = tx.send(event.clone());
+            }
+            events.push(event);
+        };
+        emit(
+            RunEvent::RunStart {
+                goal: goal.to_string(),
+            },
+            &mut events,
+        );
 
         let mut lines = BufReader::new(stdout).lines();
         while let Some(line) = lines.next_line().await? {
@@ -84,11 +98,17 @@ pub async fn drive(
             match wrapper.decode_line(line, turn) {
                 // A model message is a step boundary in the per-step v1 model.
                 Decoded::Message(projected) => {
-                    events.push(RunEvent::StepStart { turn });
-                    events.extend(projected);
+                    emit(RunEvent::StepStart { turn }, &mut events);
+                    for ev in projected {
+                        emit(ev, &mut events);
+                    }
                     turn = turn.saturating_add(1);
                 }
-                Decoded::Events(projected) => events.extend(projected),
+                Decoded::Events(projected) => {
+                    for ev in projected {
+                        emit(ev, &mut events);
+                    }
+                }
                 Decoded::Ignore => {}
             }
         }

@@ -295,6 +295,8 @@ accumulator**, switch gating, split→join + split→map→join, delay park+resu
 fixed: `debugging/flows/switch-else-branch-fires-unconditionally.md`.
 
 ## Where to read
+- **Drive it (agent/API):** `skills/flows-mcp/SKILL.md` — the operating manual for the whole `flows.*`
+  surface over MCP/REST (CRUD flows + nodes, run/watch/lifecycle, the 28-node palette, inject/enable).
 - Scope (the ask, Decisions 1–16): `scope/flows/` (`README.md` index + the sub-docs; the data pack is
   `scope/flows/data-nodes-scope.md`, session `sessions/flows/data-nodes-session.md`).
 - Sessions (the working logs): `sessions/flows/` (node-descriptor · flow-run · extension-triggers ·

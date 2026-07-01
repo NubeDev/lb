@@ -50,8 +50,6 @@ const LEGACY_VIEWS = [
   "src/features/admin/WorkspacesAdmin.tsx",
   "src/features/agent/AgentView.tsx",
   "src/features/dashboard/AddWidget.tsx",
-  "src/features/dashboard/DashboardRoster.tsx",
-  "src/features/dashboard/DashboardView.tsx",
   "src/features/dashboard/Grid.tsx",
   "src/features/dashboard/vars/VariableEditor.tsx",
   "src/features/data/DataView.tsx",
@@ -62,9 +60,7 @@ const LEGACY_VIEWS = [
   "src/features/ingest/SchemaForm.tsx",
   "src/features/outbox/OutboxView.tsx",
   "src/features/session/LoginView.tsx",
-  "src/features/studio/StudioView.tsx",
   "src/features/workflow/WorkflowView.tsx",
-  "src/features/workspace/WorkspaceSwitcher.tsx",
 ];
 
 export default tseslint.config(

@@ -36,6 +36,7 @@ mod serve;
 mod step;
 mod substrate;
 mod tool;
+mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog};
@@ -60,3 +61,5 @@ pub use run::{cancel_run, run_session, MAX_STEPS};
 pub use runtime::{AgentRuntime, ErasedModel, RunContext};
 pub use serve::{serve_agent, AgentServer};
 pub use tool::call_agent_tool;
+#[allow(unused_imports)]
+pub use unconfigured::{UnconfiguredModel, UNCONFIGURED_ANSWER};

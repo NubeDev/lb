@@ -1,9 +1,59 @@
-# Frontend — shadcn migration Wave 0 + Wave 1 (channels + rules) (session)
+# Frontend — shadcn migration Wave 0/1 + reusable page-shell (channels · rules · dashboard) (session)
 
 - Date: 2026-07-01
 - Scope: ../../scope/frontend/shadcn-migration-scope.md (executes ../../scope/frontend/ui-standards-scope.md)
 - Stage: S9+ (frontend standard) — no stage exit gate; presentation-only migration
 - Status: done
+
+## Phase 2 addendum — reusable page-shell + Wave 2 dashboard + channels/rules alignment
+
+After Wave 1, the user flagged that **Dashboard and Rules didn't line up with Flows**: the fix was
+structural, not spacing. Flows puts `AppPageHeader` at the **full width** with the rail *below* it;
+Dashboard/Rules/Channels had the rail as a **full-height sibling** with a body-only header, so the
+"New" control and the page title never shared a baseline. Extracted the Flows shape into three
+reusable layout components and pointed every large surface at them:
+
+- **`components/app/page.tsx` (`AppPage`)** — the canonical `section` + full-width `AppPageHeader` +
+  optional destructive-token error strip + `min-h-0 flex-1` body row. Adopting it *guarantees* the
+  alignment (header spans the width; rail drops below).
+- **`components/app/rail.tsx` (`AppRail`)** — the shared roster aside (identical width/border/tone +
+  a `min-h-[3rem]` header control-row slot).
+- **`components/app/empty-state.tsx` (`AppEmptyState`)** — the shared accent-icon "select or create…"
+  card.
+
+Adopted in: **Flows** (`FlowsView`+`FlowRail`, no visual change — the reference), **Dashboard**
+(`DashboardView`+`DashboardRoster` — Wave 2: restructured + header controls migrated to
+`Button`/`Input`/`Select`/`Badge`; **removed from `LEGACY_VIEWS`**), **Rules** (`RulesView`+`RuleRail`
+— restructured; already shadcn), and **Channels** (`ChannelView` — the channel rail (workspace
+switcher + `ChannelList`) moved *into* the surface via `AppPage`, so the `#channel` header spans full
+width; `RoutedShell` dropped its channels-only aside special-case; `ChannelsRoute` now passes
+`onSelectChannel`/`onSwitchWorkspace`).
+
+Per the user's ask, **deleted the "add new workspace" control** on the channel rail: `WorkspaceSwitcher`
+lost its create-workspace `<form>` (input + "+") and was migrated to shadcn (`Select` + `Alert`,
+legacy classes gone) — **removed from `LEGACY_VIEWS`**. The workspace *switch* (select) stays.
+
+Also restored the workspace tooltip: `AppPageHeader`'s `WorkspaceBadge` now carries
+`title="Workspace {ws}"` (Wave 1 had dropped the old `scope-pill` title that `App.gateway.test`
+asserts via `getByTitle`).
+
+**Verified live** (real gateway `node` on `:8080` + vite): Dashboard, Flows, Channels, Rules all
+render the identical shape — full-width header, rail below with an aligned header row, accent
+empty-state; the channel "new workspace" control is gone (screenshots taken this session).
+
+**Tests/lint this phase:** `pnpm test` 268/268; `pnpm lint` 0 errors (150→**91** warnings);
+`LEGACY_VIEWS` 28 → **17**. Migrated-view gateway tests pass in isolation
+(`ChannelView` 5/5 incl. the responsive smoke, `RulesView` 7/7, `DashboardView` 6/6, all `flows`).
+Fixed two Wave-1 regressions surfaced by `App.gateway.test` (my failing-file grep had excluded
+`src/App.*` — lesson logged): the dropped workspace `title` (restored on the badge) and
+`getAllByRole("listitem")` in the message-ordering test now scoping `within` the `messages` list
+(the surface legitimately renders a second list — the channel roster). The remaining `App.gateway`
+red is the **pre-existing `signInReal` "not a member of any workspace" seeding flake** (varies
+run-to-run, present at HEAD, unrelated to layout).
+
+---
+
+## (Phase 1) Wave 0 + Wave 1
 
 ## Goal
 

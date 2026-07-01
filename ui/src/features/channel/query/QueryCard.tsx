@@ -51,6 +51,9 @@ export function QueryCard({ payload, channel, itemId }: Props) {
       </div>
     );
   }
+  // Agent kinds are rendered by AgentCard (MessageItem routes them there); guard so this card only
+  // ever narrows to a query_result (the union is shared with the channels-agent payloads).
+  if (payload.kind !== "query_result") return null;
   return <QueryResultCard payload={payload} channel={channel} itemId={itemId} />;
 }
 

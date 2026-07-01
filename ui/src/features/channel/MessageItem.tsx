@@ -12,6 +12,7 @@ import { parsePayload } from "@/lib/channel/payload.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QueryCard } from "./query/QueryCard";
+import { AgentCard } from "./AgentCard";
 
 interface Props {
   item: Item;
@@ -19,9 +20,19 @@ interface Props {
   author: string;
   onEdit: (id: string, body: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  /** Run ids that already have a durable answer/error (from MessageList) — a settled `agent` request
+   *  hides its "running…" placeholder. */
+  settledJobs?: Set<string>;
 }
 
-export function MessageItem({ item, author, onEdit, onDelete }: Props) {
+/** The agent payload kinds route to AgentCard; everything else kind-tagged goes to QueryCard. */
+function isAgentPayload(
+  p: ReturnType<typeof parsePayload>,
+): p is Extract<NonNullable<ReturnType<typeof parsePayload>>, { kind: `agent${string}` }> {
+  return !!p && (p.kind === "agent" || p.kind === "agent_result" || p.kind === "agent_error");
+}
+
+export function MessageItem({ item, author, onEdit, onDelete, settledJobs }: Props) {
   const payload = parsePayload(item.body);
   const isOwn = item.author === author;
   // Edit applies to plain chat text only — a kind-tagged payload is structured, not free text.
@@ -139,6 +150,11 @@ export function MessageItem({ item, author, onEdit, onDelete }: Props) {
             <X size={16} />
           </Button>
         </div>
+      ) : isAgentPayload(payload) ? (
+        <AgentCard
+          payload={payload}
+          settled={payload.kind === "agent" && !!settledJobs?.has(payload.job)}
+        />
       ) : payload ? (
         <QueryCard payload={payload} channel={item.channel} itemId={item.id} />
       ) : (

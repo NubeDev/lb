@@ -4,6 +4,7 @@
 
 import { Plus, Trash2, Workflow } from "lucide-react";
 
+import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FlowSummary } from "@/lib/flows";
@@ -18,18 +19,25 @@ export interface FlowRailProps {
 
 export function FlowRail({ roster, openId, onOpen, onDelete, onNew }: FlowRailProps) {
   return (
-    <aside
-      aria-label="flow rail"
-      className="flex w-64 shrink-0 flex-col border-r border-border bg-panel shadow-sm shadow-black/5"
+    <AppRail
+      label="flow rail"
+      header={
+        <>
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted">Flows</span>
+          <Button
+            aria-label="new flow"
+            onClick={onNew}
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 gap-1 px-2 text-xs"
+          >
+            <Plus size={14} />
+            New
+          </Button>
+        </>
+      }
     >
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted">Flows</span>
-        <Button aria-label="new flow" onClick={onNew} variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
-          <Plus size={14} />
-          New
-        </Button>
-      </div>
-      <ul aria-label="flow roster" className="flex-1 space-y-1 overflow-auto p-2">
+      <ul aria-label="flow roster" className="space-y-1">
         {roster.length === 0 ? (
           <li className="rounded-md border border-dashed border-border bg-bg/60 px-3 py-3 text-xs text-muted">
             No flows yet.
@@ -83,6 +91,6 @@ export function FlowRail({ roster, openId, onOpen, onDelete, onNew }: FlowRailPr
           })
         )}
       </ul>
-    </aside>
+    </AppRail>
   );
 }

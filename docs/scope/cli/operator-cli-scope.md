@@ -20,6 +20,25 @@ new API, a new permission path, or a second enforcement point** — it is a clie
 `lb_host::call_tool` chokepoint every other caller already funnels through (browser, extension
 pages, the ACP adapter). It adds **zero new MCP verbs, zero new capabilities, zero new tables.**
 
+## v1 slice boundary (what the first ship proves)
+
+The Goals below describe the **full** CLI. v1 is deliberately narrower: it proves the spine end to end
+and retires the `curl + jq` flow, and **defers the full typed command tree to follow-up slices**. The
+load-bearing v1 surface is:
+
+- `lb login` / `lb whoami` (dev-login token, kept per-workspace) — the front door.
+- `lb call <tool> '{json}'` — the universal escape hatch that makes the spine provable in one command
+  and reaches *every* verb with zero per-verb wiring.
+- **One** typed command (`lb inbox list`) as the proof that typed → `/mcp/call` shaping works.
+- `lb ext publish` + `lb devkit sign` — the `make publish-ext` / `lb-pack` retirement.
+- `lb local …` — the offline/edge posture.
+- The mandatory **capability-deny** + **workspace-isolation** tests (below), across remote **and** local.
+
+Everything else in Goals (the rest of the typed verb set `ws`/`members`/`channels`/`outbox`/`registry`/
+`system`/`agent`/`store`/`tags`, plus `watch` SSE streams) grows on the same one client path once the
+spine is green — each is a thin addition, not new architecture. Sizing this way keeps v1 shippable and
+keeps the "promotes to `public/cli/` once the first slice proves the spine" promise honest.
+
 ## Goals
 
 - **One binary, two postures**, mirroring the symmetric-nodes rule (§3.1):
@@ -140,6 +159,11 @@ logged-in user (a real parity risk, called out below).
   workspace dep, key-stack "Secrets") is the documented upgrade path off the plaintext config file —
   same seam `api-keys-scope.md` names for its hash.
 - **SDK/WIT impact:** **none** — pure client, no guest ABI, no `Subject` variant, no host change.
+- **Skill doc (required):** the CLI **is** an agent-/operator-drivable surface, so the shipping session
+  owns `skills/lb-cli/SKILL.md` — a runnable how-to grounded in a live `lb login` → `lb call` →
+  `lb ext publish` run (remote **and** `lb local`), covering the `-w` credential-selector semantics and
+  the honest-deny output. Named here per SCOPE-WRITTING §6; written on ship, not at scope time. A
+  missing/stale skill for this surface is a finding, not a nicety.
 
 ## Example flow
 
@@ -161,7 +185,7 @@ logged-in user (a real parity risk, called out below).
    gamma`."* Passing `-w beta` while the `acme` token is loaded is **not** a cross-workspace hop — the
    `beta` token's own workspace is what reaches the server (there is no ws in the body to override).
 6. **Local mode (offline).** `lb local -w acme call hello.echo '{"msg":"hi"}'` embeds `Node::boot()`
-   (the `node/src/main.rs:19` pattern), mints a `dev_claims`-shaped principal for `acme`, and calls
+   (the `node/src/main.rs:43` pattern), mints a `dev_claims`-shaped principal for `acme`, and calls
    `call_tool` in-process — **no network, no gateway, no daemon**. Identical output to step 2.
 7. **Retire curl+jq.** `lb devkit sign hello-v2` (over the `lb-devkit` library `lb-pack` already uses)
    → `lb ext publish` (`POST /extensions`) → `204` ⇒ verified, installed, loaded live. This **is**
@@ -270,8 +294,10 @@ live socket. Mandatory categories from testing-scope §2:
   `../system-map/system-map-scope.md` (the status console `lb system` surfaces), `../extensions/ext-sdk-scope.md`
   (the `lb-devkit` library `lb devkit sign` unifies on), `../frontend/admin-console-scope.md` (the UI
   twin of several typed commands).
+- Skill: `../../skills/lb-cli/SKILL.md` (written on ship by the implementing session — the runnable
+  how-to for driving `lb`, grounded in a live run; see "Skill doc" in "How it fits the core").
 - Implementation seams (for the building session): the gateway's universal bridge
   `role/gateway/src/routes/mcp.rs` (`POST /mcp/call` → `lb_host::call_tool`), `role/gateway/src/routes/login.rs`
   (`/login`), `role/gateway/src/session/authenticate.rs` (the verify chokepoint), `lb_host::call_tool`
-  (`crates/host/src/tool_call.rs`), the local-boot pattern `node/src/main.rs:19`, the `lb-devkit` library
+  (`crates/host/src/tool_call.rs:80`), the local-boot pattern `node/src/main.rs:43`, the `lb-devkit` library
   (`crates/devkit/src/lib.rs`, used by `tools/pack`), and the `Makefile` `publish-ext` flow this retires.

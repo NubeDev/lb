@@ -50,6 +50,12 @@ async fn main() -> anyhow::Result<()> {
     let sink = lb_telemetry::SinkConfig::from_env();
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), sink);
 
+    // External-agent runtimes (external-agent runtime-seam #1): with the `external-agent` feature ON,
+    // install the external `AcpRuntime` entries (Open Interpreter → Z.AI GLM-4.6 default, VT Code,
+    // Codex) alongside the in-house default, so an in-channel `kind:"agent"` request with
+    // `runtime:"open-interpreter-default"` reaches a real agent. Feature-OFF this is a no-op.
+    external_agent::install(&node);
+
     // Locate the built hello component. Override with HELLO_WASM; default to the cargo target.
     let wasm_path = std::env::var("HELLO_WASM")
         .map(PathBuf::from)
