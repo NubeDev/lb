@@ -67,13 +67,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
-- `control-engine/` — the native (Tier-2) **`control-engine` extension** (`control-engine-scope.md`):
+- `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
+  extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
+  extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):
   bridges Control Engine (CE) instances into a workspace as a caps-gated MCP surface (`ce.*`, mirroring
   the `ce-client-rust` `ControlEngine` trait) — a local CE over `localhost` REST/WS, and remote CEs on
   **appliance** LB nodes reached by **routed MCP over Zenoh** (symmetric nodes, no CE-on-Zenoh codec).
   The visual editor is the vendored `@nube/ce-wiresheet` package, mounted as the extension's federated
   `[ui]` page and re-pointed onto the MCP bridge (browser→CE only through the host). MCP-only so agents
-  and the CLI drive CE identically to the UI.
+  and the CLI drive CE identically to the UI. Live COV rides the generic `extensions/extension-watch-scope.md`
+  primitive (`ce.watch`), the only — and generic — core addition it implies.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
   `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `core/` also holds
   `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
@@ -99,7 +102,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   Extension Studio wizard that **generate** a fresh extension (wasm|native backend + shadcn/Tailwind
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
-  behind one `Toolchain` trait).
+  behind one `Toolchain` trait), and `extension-watch-scope.md` (the **generic live-feed primitive for
+  extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
+  host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
+  ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
+  `ce.watch` is its first tenant).
 - `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
   earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
   over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed

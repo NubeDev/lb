@@ -15,6 +15,6 @@ mod tool;
 mod verbs;
 
 pub use model::{AgentConfig, ModelEndpointPatch};
-pub use store::AGENT_CONFIG_TABLE;
+pub use store::{get_agent_config, AGENT_CONFIG_TABLE};
 pub use tool::call_agent_config_tool;
 pub use verbs::{agent_config_get, agent_config_set};

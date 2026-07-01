@@ -17,7 +17,8 @@ gateway. This page documents, once shipped, each slice:
 ## Agent config — the per-workspace default runtime (shipped)
 
 Scope: [`../../scope/external-agent/agent-config-scope.md`](../../scope/external-agent/agent-config-scope.md) ·
-Session: [`agent-config-settings`](../../sessions/external-agent/agent-config-settings-session.md)
+Session: [`agent-config-settings`](../../sessions/external-agent/agent-config-settings-session.md) ·
+Skill (operating manual): [`../../skills/external-agent/SKILL.md`](../../skills/external-agent/SKILL.md)
 
 A workspace can now **persist which agent runtime it uses by default** and the **model endpoint** it
 routes through — beyond the node's compiled-in default. Mirrors the `prefs.set_default` pattern (an

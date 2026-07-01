@@ -31,6 +31,7 @@ mod model_access;
 mod policy;
 mod registry;
 mod rehydrate;
+mod resolve_default;
 mod route;
 mod run;
 mod runtime;
@@ -64,6 +65,7 @@ pub use policy::{
 };
 pub use registry::RuntimeRegistry;
 pub use rehydrate::{rehydrate, LoopState};
+pub use resolve_default::resolve_effective_runtime;
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
 pub use run::{cancel_run, run_session, MAX_STEPS};
 pub use runtime::{AgentRuntime, ErasedModel, RunContext};

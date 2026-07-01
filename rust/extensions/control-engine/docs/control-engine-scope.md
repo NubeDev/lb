@@ -80,6 +80,33 @@ instead of a symmetric LB node — losing enrollment, isolation, and the routed-
 **Rejected — raw gated reverse-proxy:** keeps the package unforked but violates rule 7 (a
 non-MCP path to a capability) and is dead to agents/CLI.
 
+## 100% extension — the core stays CE-ignorant (hard invariant)
+
+**Non-negotiable: no host/core crate contains the word `ce`/`control-engine` or any CE concept.**
+Everything CE-specific lives in `rust/extensions/control-engine/` (the sidecar + manifest) and
+`packages/ce-wiresheet` (the UI). The extension is built **entirely on generic platform primitives**
+that other extensions already use — verified against the codebase (`mqtt`, `fleet-monitor`,
+`proof-panel`):
+
+| CE-specific concern | Lives in | Generic primitive it rides | Core knows? |
+|---|---|---|---|
+| CE REST/WS protocol, `ce-client-rust` | the sidecar crate | native Tier-2 supervision (`[native]`) | ❌ |
+| `ce.*` tools + their caps | `extension.toml` | manifest `[[tools]]` → `mcp:<id>.<tool>:call` (name is the gate) | ❌ |
+| Appliance registry `ce_appliance` | extension's own table | generic `store:ce_appliance:*` verbs | ❌ (no host table code) |
+| Reaching a remote appliance | — | routed `<ext>.<tool>` MCP hop over Zenoh (routes by ext-id, never inspects tool) | ❌ |
+| Live COV | the sidecar | the **generic** extension-watch primitive (`ce.watch`, `kind="watch"`) + opt-in `series` historian | ❌ |
+| CE socket / CE token | manifest request | `net:tcp:127.0.0.1:<port>` + `secret:control-engine/*:get` (generic escape hatches, `mqtt` precedent) | ❌ |
+| The wiresheet editor | `packages/ce-wiresheet` | federated `[ui]` remote + `bridge.call`/`bridge.watch` | ❌ |
+
+**The only core change this whole effort implies is generic, not CE-specific:** the
+**extension-watch** primitive (`scope/extensions/extension-watch-scope.md`) — "any extension can
+contribute a live `watch` tool." That is exactly the kind of generic platform addition that keeps the
+core CE-ignorant while making extensions equal citizens; CE is merely its first tenant, and can even
+ship on the zero-core-change series-bridge until it lands. **No new WIT world** — `ce.*` reuse the
+frozen `tool.call`/`host.call-tool` (like `mqtt`), so the stable ABI is untouched.
+
+This invariant is **enforced by a regression test**, not just documented (see Testing plan).
+
 ## How it fits the core
 
 - **Tenancy / isolation.** Every appliance record is `ce_appliance:{ws}:{id}`; every `ce.*` call
@@ -89,10 +116,12 @@ non-MCP path to a capability) and is dead to agents/CLI.
 - **Capabilities.** Each tool is gated by `mcp:control-engine.<verb>:call` (house convention,
   the manifest NAME is the gate). Read verbs (`tree`/`schema`/`watch`/`appliance.list`) vs write
   verbs (`patch`/`set-override`/`call-action`/`add-node`/`add-edge`/`remove-node`/`appliance.add`/
-  `appliance.remove`) are distinct caps. The sidecar itself requests `net:tcp:127.0.0.1:<port>`
-  (the native socket escape hatch, like `mqtt`) and, if the CE requires auth,
-  `secret:control-engine/<appliance>/token:get` (mediated by `lb-secrets`; the wiresheet never
-  sees it). **Deny path:** a caller without `mcp:control-engine.patch:call` calling `ce.patch` →
+  `appliance.remove`) are distinct caps. The sidecar **requests** only generic host caps —
+  `store:ce_appliance:read`/`write` (its own registry table), `net:tcp:127.0.0.1:<port>` (the native
+  socket escape hatch, like `mqtt`), `mcp:ingest.write:call` (only when the opt-in series historian is
+  on), and — only when the CE requires auth — `secret:control-engine/<appliance>/token:get` (mediated
+  by `lb-secrets`; the wiresheet never sees it). **Not one of these is a verb the host special-cases.**
+  **Deny path:** a caller without `mcp:control-engine.patch:call` calling `ce.patch` →
   `DENIED mcp:control-engine.patch:call`, before any CE round trip.
 - **Placement.** `either`. The extension runs on every node; on an appliance edge node it binds
   localhost CE, on a cloud node it routes to appliances. No behavioral branch — config/role only.
@@ -143,9 +172,9 @@ non-MCP path to a capability) and is dead to agents/CLI.
    renders it on React Flow.
 5. The user drags/edits → `ce.patch { appliance:"plant-1", node, props }` → same gate → same
    routed hop → `ce-client-rust.patch(...)` on `edge-7`. CE applies it; CE is the authority.
-6. The page opens `ce.watch { appliance:"plant-1" }` → gateway SSE over the
-   `ce/{ws}/plant-1/cov` subject; `edge-7`'s sidecar bridges CE COV onto it; live values stream to
-   the canvas with no polling.
+6. The page opens `ce.watch { appliance:"plant-1" }` → the extension-watch primitive allocates the
+   workspace subject and routes the `arm` to `edge-7`, whose sidecar publishes decoded CE COV onto it;
+   the cloud gateway relays SSE and live values stream to the canvas with no polling.
 7. A ws-B user calling `ce.tree { appliance:"plant-1" }` is denied at gate 1 (not their workspace)
    — the appliance is invisible and unreachable across the wall.
 
@@ -167,6 +196,11 @@ Per `scope/testing/testing-scope.md`, with the mandatory categories:
   (`ce_fake.rs`), OR — preferred where feasible — a tiny **real** localhost HTTP/WS server
   speaking the CE `/api/v0` + `/ws` subset so even the `ce-client-rust` transport is real. Pick one,
   name it, keep it to one file behind the trait.
+- **Core-ignorance invariant (mandatory, prove-absence).** A `ce_core_ignorance_test` greps the
+  host/core crates (`rust/crates/host`, `rust/crates/mcp`, `rust/crates/caps`, `rust/role/gateway`,
+  …) and asserts **no** live reference to `control-engine`/`ce_appliance`/CE concepts outside the
+  extension folder and docs — the same "prove-absence" pattern as `chains_retired_test`. CI fails if a
+  CE string leaks into core.
 - **Offline behavior.** Appliance node unreachable → `ce.*` returns a loud error; assert it does
   **not** silently queue.
 - **Hot-reload / restart.** The native sidecar restart loses no durable state — the appliance
@@ -190,8 +224,10 @@ Per `scope/testing/testing-scope.md`, with the mandatory categories:
   (UID re-numbering) mean the wiresheet must resync via `ce.tree`, never trust cached UIDs.
 - **The `net:tcp` escape hatch** on the sidecar is real blast radius; scope it to the exact CE
   host:port from the appliance record and admin-approve at install.
-- **COV transport choice** (bespoke `ce.watch` subject vs bridging into the series plane) affects
-  history, replay, and load — decide before the UI locks its subscribe path.
+- **Dependency on the extension-watch primitive.** `ce.watch` is the first real tenant of
+  `scope/extensions/extension-watch-scope.md`; if that primitive slips, CE falls back to the
+  series-bridge live path (no block) but carries two code paths until it migrates — track the
+  sequencing.
 
 ## Decisions (best long-term calls — resolved at scope time)
 
@@ -249,6 +285,8 @@ with the rejected alternative, so the implementing session builds against them (
 - `scope/extensions/extensions-scope.md` (manifest contract), `native-tier-scope.md` (sidecar
   supervision), `ui-federation-scope.md` (federated `[ui]` + bridge), `reference-extensions-scope.md`
   (`net:*` caps; `mqtt`/`fleet-monitor` as templates).
+- **`scope/extensions/extension-watch-scope.md`** — the generic extension-watch primitive `ce.watch`
+  is the first tenant of (the only, and generic, core addition this effort implies).
 - `scope/auth-caps/api-keys-scope.md` + `edge-trust-scope.md` (appliance = machine principal).
 - `scope/datasources/datasources-scope.md` (the sibling native Tier-2 `federation` extension —
   same `net:*` + mediated-secret + workspace-pinned shape).

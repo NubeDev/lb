@@ -117,9 +117,11 @@ real-gateway `SettingsView` test — admin can pick + persist + re-read; a membe
 
 ## Skill doc
 
-N/A for this slice — it exposes two ordinary MCP verbs reachable via the generic `lb call`
-(`lb-cli` SKILL already documents calling any tool). If the invoke-default follow-up adds an
-automatable "set the workspace agent" task worth its own runnable how-to, name it then.
+Shipped: [`skills/external-agent/SKILL.md`](../../skills/external-agent/SKILL.md) — the operating
+manual for setting up and driving the external agent end to end (the `external-agent` feature build,
+`agent.runtimes`, the new `agent.config.get`/`set`, and `agent.invoke { runtime }` / the `/agent`
+palette). It supersedes the earlier "N/A" call: once persistence made "set up the workspace agent" a
+real, drivable admin task, it earned a runnable how-to grounded in a live run.
 
 ## Related
 
