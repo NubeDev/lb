@@ -28,7 +28,7 @@ interface Props {
 const noop = () => {};
 
 export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitchWorkspace }: Props) {
-  const { items, loading, error, send, edit, remove, postQuery, callTool } = useChannel(
+  const { items, loading, error, send, edit, remove, postQuery, postAgent, callTool } = useChannel(
     ws,
     channel,
     author,
@@ -82,6 +82,7 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
         <CommandPalette
           channel={channel}
           onPostQuery={postQuery}
+          onSendAgent={postAgent}
           onCallTool={callTool}
           onSendChat={send}
         />

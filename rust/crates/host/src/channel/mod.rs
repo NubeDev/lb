@@ -27,7 +27,7 @@ mod subscribe;
 // (crate-internal). `run-lifecycle #5` moved the run off the POST connection: `run_if_agent`
 // enqueues, `drive_queued_run` is what the reactor calls per pending job.
 pub(crate) use agent_job::{ChannelAgentJob, CHANNEL_AGENT_KIND};
-pub(crate) use agent_worker::drive_queued_run;
+pub(crate) use agent_worker::{drive_queued_run, RUN_WALL_CEILING};
 
 // The chart picker + kind-tagged payload helpers are crate-internal: the inline query worker
 // (`query_worker.rs`) and `post.rs` are the only consumers today. Exposed `pub(crate)` (not `pub`)

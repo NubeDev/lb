@@ -1,6 +1,7 @@
 # Core scope — the resource-verb convention (one grammar for every listable, runnable thing)
 
-Status: scope (the ask). Promotes to `public/core/core.md` once shipped (adopted by ≥3 families).
+Status: scope (the ask) — **all decisions locked (see Decisions v1)**. Promotes to `public/core/core.md`
+once shipped (adopted by ≥3 families).
 
 Every resource family the platform ships — reminders, jobs, flows, extensions, channels, and the
 external-agent runs — has the **same lifecycle shape**: you list them, get one, create/update/delete
@@ -170,12 +171,14 @@ Per `scope/testing/testing-scope.md`; real store/bus/gateway, seeded records, no
 ## Risks & hard problems
 
 - **Rename blast radius.** `channel_list`/`installed` are called from the UI, tests, and possibly saved
-  flows/reminders (an MCP-tool action storing `{tool:"channel_list"}`). The alias window is the
-  mitigation, but **stored** references (a reminder whose action calls the old name) must resolve through
-  the alias at fire time too — test a reminder created against the old name after the rename.
+  flows/reminders (an MCP-tool action storing `{tool:"channel_list"}`). Resolved by D1's **permanent**
+  dispatch alias: stored references resolve old→canonical at fire time forever — test a reminder created
+  against the old name *after* the rename *and after* the one-release advertisement cut, proving the
+  stored path still fires while the surface no longer offers the name.
 - **Cap-grant migration.** Renaming `mcp:installed:call → mcp:extension.list:call` must not silently drop
-  a workspace's grant. Honor the old cap as an alias during the window; document the one-release cut so
-  admins re-grant before it's removed. Getting this wrong locks a workspace out of listing its extensions.
+  a workspace's grant. D1 keeps the old cap **permanently** honored via the alias map (not a timed cut) —
+  so an upgrade never locks a workspace out of listing its extensions, and there's no "re-grant before
+  release N" trap nobody tracks. New grants issue under the canonical cap; the old one is honored, not minted.
 - **Over-standardizing.** Not every family needs every verb. A channel has no meaningful `start/stop`; a
   reminder has no `logs`. The convention is a **menu, not a mandate** — a family declares the subset it
   needs and states why the rest are N/A (exactly this doc's own discipline). Forcing empty verbs is worse
@@ -247,7 +250,7 @@ deviation in the session doc.
 - `scope/datasources/page-cursor-scope.md` — the keyset `{items, next_cursor}` every `list` reuses.
 - `scope/undo/` — the soft-delete tombstone model `delete` defaults to.
 - `rust/role/cli/src/dispatch.rs` + `cli.rs` — the one CLI dispatch table this convention feeds.
+- `skills/lb-cli/SKILL.md` — the CLI skill that teaches this grammar ("The common resource grammar"
+  section); the implementing session promotes that section from scoped→shipped and flips its markers.
 - `README.md` §3 (rules 5/7), §6.1 (API shape), §6.5 (MCP), §6.13 (gateway SSE).
 - `public/core/core.md` — promotion target on ship.
-</content>
-</invoke>

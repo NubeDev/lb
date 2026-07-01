@@ -87,3 +87,30 @@ pub async fn seed_inbox_item(node: &Node, ws: &str, channel: &str, id: &str, bod
         .await
         .expect("seed inbox item via the real write path");
 }
+
+/// Seed one reminder through the REAL host write path (`reminder_create`), as a principal holding
+/// exactly `mcp:reminder.create:call` in `ws`. A channel-post action with a daily-09:00 schedule —
+/// enough for list/get/delete tests. This is a DB seed via the real verb, not a mocked response.
+pub async fn seed_reminder(node: &Node, ws: &str, id: &str, channel: &str, body: &str) {
+    let principal = lb_auth::Principal::routed(
+        "user:seed",
+        ws,
+        vec!["mcp:reminder.create:call".to_string()],
+    );
+    let action = lb_host::ReminderAction::ChannelPost {
+        channel: channel.to_string(),
+        body: body.to_string(),
+    };
+    lb_host::reminder_create(
+        &node.store,
+        &principal,
+        ws,
+        id,
+        "0 9 * * *",
+        None,
+        action,
+        NOW,
+    )
+    .await
+    .expect("seed reminder via the real write path");
+}

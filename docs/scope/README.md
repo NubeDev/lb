@@ -133,6 +133,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `channels-agent-scope.md`: ask an agent in a channel — a host worker spawns a durable agent **run**
   (via the shipped `agent.invoke`/`AgentRuntime` seam), streams its work live over the agent-run SSE,
   and posts the final answer back as a durable item (in-house runtime now, external once #3 ships).
+  And `channels-rich-responses-scope.md`: a command/tool/agent answers with a **rich, typed response**
+  (chart/table/stat/form/control, or an AI-generated sandboxed UI) by reusing the **shipped v2 widget
+  contract** un-gridded onto the channel — the `render:{view,source|data,options}` cell shape mounted
+  through the dashboard's `WidgetView`/`views/*` renderers + host-mediated bridge, leashed to the viewer's
+  grant. Generative UI (JSX `template`, future A2UI/JSON-render) is one more sandboxed `view`, not a base
+  layer; forms/wizards are the palette arg-rail over a versioned `x-lb` widget enum.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
@@ -148,6 +154,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   **channel post** (inbox), **MCP tool call** (any capability, under a stored principal re-checked
   at fire time), and **must-deliver effect** (outbox). Cron is the storage format; the UI authors
   it with a best-in-class React cron-builder. The single-action sibling of a rule chain.
+  Also `reminders-rich-responses-scope.md`: reminders as the **first tenant** of the channel
+  rich-responses contract — `/remind` is a backend-declared form (cron-builder + action `select`) that
+  calls `reminder.create`, and `/reminders` is an interactive `render:{view:"table", source:reminder.list}`
+  response with per-row pause/run-now/delete controls, all rendered by the shipped widget views over the
+  viewer-grant-leashed bridge (no reminders-specific channel UI); adds two `x-lb` widgets (`cron`, static
+  `select`) and a small `reminder.fire` run-now verb.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.

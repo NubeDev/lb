@@ -8,7 +8,10 @@ description: >-
   universal `lb call <tool> '{json}'` escape hatch, the typed `lb inbox list`, `lb devkit sign` +
   `lb ext publish` (the `make publish-ext` retirement), and `lb local …` (offline, in-process). It is
   a PURE client of the one `POST /mcp/call` chokepoint — it holds no authority, and is denied exactly
-  when the server denies (`DENIED  mcp:<tool>:call`, non-zero exit).
+  when the server denies (`DENIED  mcp:<tool>:call`, non-zero exit). The **common resource grammar**
+  (`lb <resource> ls|show|create|rm|start|stop|status|watch` across reminders/jobs/flows/extensions/
+  channels) is scoped (`core/resource-verbs-scope.md`) and is the direction every typed command
+  follows — see "The common resource grammar" below.
 ---
 
 # Operating a node from the terminal (`lb`)
@@ -105,6 +108,97 @@ lb inbox list ops
 ```
 
 Table by default (columns come from the items the server returns); `-o json` for the raw envelope.
+
+## The common resource grammar (scoped — `core/resource-verbs-scope.md`, not all shipped yet)
+
+> **Status: the direction, with the reference family live.** `lb inbox list` (§3) was the first instance;
+> the **`lb reminder …` family now ships in full** as the grammar's reference (see below). As the rest of
+> `core/resource-verbs-scope.md` lands, every listable/runnable family speaks the **same** grammar, so
+> learning one family teaches all of them. Commands below marked ✅ ship today; ⏳ are scoped.
+
+**One grammar, every resource.** A resource is anything you list and act on — a reminder, a job, a flow,
+an extension, a channel. Each speaks the same verbs, so the shape is predictable across all of them:
+
+| CLI | MCP verb | Meaning |
+|---|---|---|
+| `lb <r> ls` | `<r>.list` | list them (ws-scoped, `--status`/`--limit`, keyset-paged) |
+| `lb <r> show <id>` | `<r>.get` | one by id |
+| `lb <r> create …` | `<r>.create` | make one → prints the id |
+| `lb <r> update <id> …` | `<r>.update` | mutate (rename / reconfigure / pause-via-field) |
+| `lb <r> rm <id>` | `<r>.delete` | delete (soft where the family has undo; `--hard` purges) |
+| `lb <r> watch <id>` | `<r>.watch` | live changes over SSE |
+
+**Runnable resources** (jobs, flows, extensions, external-agent runs) add the run-control verbs on top:
+
+| CLI | MCP verb | Meaning |
+|---|---|---|
+| `lb <r> start <id>` | `<r>.start` | begin / arm (flow enable+deploy, ext load, run kick) |
+| `lb <r> stop <id>` | `<r>.stop` | halt / disarm (flow disable, ext unload, run cancel) |
+| `lb <r> status <id>` | `<r>.status` | one-shot health snapshot |
+| `lb <r> restart <id>` | `<r>.restart` | stop + start, one call |
+| `lb <r> logs <id>` | `<r>.logs` | recent events (bounded tail; `watch` for live) |
+
+```bash
+lb reminder create --channel team --body "standup time" --cron "0 9 * * 1"  # ✅  → reminder.create (prints the id)
+lb reminder ls --status enabled --limit 5   # ✅  → reminder.list  (status = the enabled flag)
+lb reminder show standup-time-thhn28   # ✅  → reminder.get
+lb reminder update standup-time-thhn28 --enabled false   # ✅  → reminder.update (pause via --enabled)
+lb reminder rm standup-time-thhn28     # ✅  → reminder.delete (soft; --hard accepted for grammar parity)
+lb job ls --status running             # ⏳  → job.list   (jobs/job-control-scope.md)
+lb job cancel job_9a2                   # ⏳  → job.cancel  (= the runnable `stop`)
+lb job watch job_9a2                    # ⏳  → job.watch
+lb flow status flow_42                  # ⏳  → flows.status
+lb flow stop  flow_42                   # ⏳  → flows.stop (alias of flows.disable)
+lb ext ls                              # ⏳  → extension.list (formerly `installed`)
+lb inbox list ops                      # ✅  → inbox.list  (the shipped first instance)
+```
+
+**Design rules the grammar holds (so it stays a grammar, not a pile of commands):**
+
+- **`ls`/`show`/`rm` are first-class per-family clap subcommands, generated from ONE dispatch table**
+  (`cli/src/dispatch.rs`) — so there is a single source of truth, not per-family hand-copied plumbing
+  (resource-verbs D5). Discoverable, tab-completable, real `--help` per family.
+- **`create` prints the id, not the whole record** (D4) — `lb <r> show <id>` if you want the record.
+  Keeps `create` cheap and `-o json` uniform.
+- **The renamed outliers keep working forever on the wire** — `channel_list`/`installed` dispatch to
+  `channel.list`/`extension.list` via a **permanent** alias (D1), so a script or a stored reminder action
+  using the old name never breaks; only the *advertised* name in help/catalog retires after one release.
+- **Everything still funnels through `lb call`** — a family verb is typed sugar over `<r>.<verb>` on the
+  one `/mcp/call` chokepoint. Before a family's typed sugar ships, `lb call reminder.list '{}'` already
+  works today (the escape hatch is the grammar's substrate).
+- **Deny is uniform** — `lb job cancel …` without `mcp:job.cancel:call` is `DENIED  mcp:job.cancel:call`
+  (exit 3), exactly like every other verb. The grammar doesn't change the enforcement; the server owns it.
+
+### `lb reminder …` — the reference family (✅ shipped)
+
+The reminder family is the grammar made real end to end — typed sugar over the shipped `reminder.*`
+verbs, wired from the one dispatch table (`cli/src/dispatch.rs`, resource-verbs D5). A `dev_claims`
+session (`lb login` / `lb local`) already carries the caps.
+
+```bash
+# create → prints the ID (D4), not the record. The id is derived from the body (a kebab slug + a short
+# suffix) unless you pass --id; the schedule is a 5-field cron string (defaults to daily 09:00).
+lb reminder create --channel team --body "standup time" --cron "0 9 * * 1"
+# ws: acme  user: user:ada  role: member  mode: remote      # ← stderr
+# standup-time-thhn28                                        # ← stdout: just the id
+
+lb reminder ls                                    # every reminder (ws-scoped), oldest→newest
+lb reminder ls --status enabled --limit 5         # filter on the on/off switch; cap the rows
+lb reminder show standup-time-thhn28              # the record (field | value)
+lb reminder update standup-time-thhn28 --enabled false   # pause (resume with --enabled true)
+lb reminder update standup-time-thhn28 --cron "0 8 * * 0" # reschedule
+lb reminder rm standup-time-thhn28                # soft tombstone (never fires/lists again)
+lb reminder create ... -o json                    # the raw {id, schedule, enabled, action, …} envelope
+```
+
+- **`--status` is `enabled|disabled`** (the reminder's on/off flag) — a real server-side filter on
+  `reminder.list` (resource-verbs D3's `{status?, limit}`), not a CLI-side sieve. A bad value is a clean
+  bad-input error (exit 2), not a deny.
+- **`create` derives the id** from `--body` so you rarely type one; it prints only that id (D4) — use
+  `lb reminder show <id>` for the record. Pass `--id` to choose it yourself; `--max-runs N` caps firings.
+- **`--hard` on `rm`** is accepted for grammar parity across families; the shipped delete is always a soft
+  tombstone today, so it's currently a no-op passthrough (it becomes load-bearing when reminder undo
+  lands, D2).
 
 ## 4. `lb devkit sign` + `lb ext publish` — retire `make publish-ext`
 
@@ -238,6 +332,9 @@ against a REAL gateway on a real socket**, seeded via the real write path — `r
 - `remote_test.rs` — login → call round-trip, capability-deny (server `403` → `DENIED`, exit
   non-zero), workspace-isolation (a ws-A token returns only ws-A data even when passed `-w B`), the
   typed `inbox list` over a seeded inbox, and offline (a down gateway → clear `Transport` error).
+- `reminder_test.rs` — the reference family: create → ls → show → update → rm round-trip over a real
+  gateway, the mandatory `reminder.delete` capability-deny (exit 3, record untouched), and
+  workspace-isolation on both read (ws-A lists only its own) and write (ws-B cannot rm a ws-A reminder).
 - `local_test.rs` — offline operation, deny parity (local denies the same verbs a member token
   would), and local `-w` workspace-isolation on one shared store.
 - `ext_publish_test.rs` — sign → publish over the real gateway (the tool becomes callable), and the
@@ -268,6 +365,9 @@ Run them: `cd rust && cargo test -p lb-cli`.
 ## Related
 
 - Scope: `docs/scope/cli/operator-cli-scope.md` (the ask + the `-w` credential-selector resolution).
+- Grammar scope: `docs/scope/core/resource-verbs-scope.md` (the common `ls|show|rm|start|stop|status|
+  watch` grammar every family follows — the source of "The common resource grammar" section above),
+  with `docs/scope/jobs/job-control-scope.md` (`lb job ls|cancel|retry|watch`) as its first new tenant.
 - Public: `docs/public/cli/cli.md` (the shipped truth).
 - Session: `docs/sessions/cli/operator-cli-session.md` (the build log + green tests).
 - Implementation: `rust/role/cli/` (client lib + `lb` binary); the seams it uses —

@@ -266,6 +266,15 @@ fn member_caps() -> Vec<String> {
         // member set. The gateway re-checks each cap server-side (a token without it is refused).
         "mcp:agent.decide:call",
         "mcp:agent.policy.set:call",
+        // channels-agent + run-lifecycle #5: the in-channel agent. `mcp:agent.invoke:call` is the run's
+        // own gate — it also makes the `/agent.invoke` command APPEAR in the `/` palette catalog (the
+        // catalog gates each tool on `authorize_tool(principal, ws, <name>)`; naming the descriptor
+        // `agent.invoke` reuses that gate with zero special-casing). A member with it sees + can run the
+        // agent; one without simply doesn't see the command (absent, not greyed). `mcp:agent.runtimes:call`
+        // is a DISTINCT read cap for the runtime-picker dropdown (`agent.runtimes` — list-only, no
+        // mutation), so the picker loads for a normal member. Both member-level; the host re-checks each.
+        "mcp:agent.invoke:call",
+        "mcp:agent.runtimes:call",
         // agent-run scope Part 3: `agent.watch` gates the live `RunEvent` SSE feed (`GET
         // /runs/{job}/stream`). Read-only on the run; checked inside `watch_run` (a `403` before any
         // stream body). Member-level — observing a run is not an admin act.

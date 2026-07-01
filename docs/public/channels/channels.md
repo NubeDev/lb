@@ -73,7 +73,8 @@ The browser code is split into small files:
 - `ui/src/features/channel/useChannels.ts`: registry list/create.
 - `ui/src/features/channel/useChannel.ts`: one channel's history/send/live merge.
 - `ui/src/features/channel/usePresence.ts`: online roster.
-- `ChannelList`, `ChannelView`, `MessageList`, and `MessageComposer`: rendering.
+- `ChannelList`, `ChannelView`, `MessageList`, and `palette/CommandPalette` (the input as a `/`
+  command surface — supersedes the removed `MessageComposer`): rendering.
 
 `useChannel` loads durable history on mount, opens a live stream when a gateway is available, and
 merges live messages idempotently by id. After sending, it refreshes from durable history so the store

@@ -154,9 +154,10 @@ would lose the answer). Spawning the durable job is the correct reuse.
 
 ## Example flow
 
-1. Alice (holds `bus:chan/ops:pub` and `mcp:agent.invoke:call`) types `/agent What changed in the deploy
-   logs in the last hour?` in channel `ops`. The palette (`channels-command-palette`) mints a run id and
-   builds the payload.
+1. Alice (holds `bus:chan/ops:pub` and `mcp:agent.invoke:call`) opens `/` in channel `ops`, picks the
+   agent command (visible because she holds `mcp:agent.invoke:call` — the catalog gate), types the goal
+   "What changed in the deploy logs in the last hour?", and leaves the runtime dropdown on its default.
+   The palette (`channels-command-palette`) mints a run id and builds the payload via `onSendAgent`.
 2. The UI posts an `Item` with body `{ kind:"agent", goal:"What changed…", job:"run-abc" }` via the
    existing channel `post`. The `pub` gate passes; the item persists and publishes; everyone in `ops` sees
    the question appear (rendered as an agent card in a "running" state, not raw JSON).
@@ -258,9 +259,15 @@ Resolved in the build session ([channels-agent-session.md](../../sessions/channe
   `agent_worker.rs::AGENT_MAX_BYTES`, char-boundary safe). "View full run" links to the run stream/job.
 - **In-channel per-tool Allow/Deny card — DECIDED: excluded from v1** (relies on `agent_policy` Deny/Allow
   only). The interactive first-settle card is a fast-follow.
-- **Palette command shape — DECIDED: `/agent [@runtime] <goal>`** (UI-parsed into the structured payload;
-  the host never parses chat text). `@open-interpreter-default` selects an external agent; omit for the
-  in-house default. A runtime *picker* lands with the `agent.runtimes` read verb (#5).
+- **Palette command shape — REVISED (2026-07-01): a first-class `agent.invoke` palette command**, not a
+  `/agent [@runtime] <goal>` chat string. The rendered composer is the `CommandPalette`, so the agent is a
+  real `tools.catalog` descriptor (gated by `mcp:agent.invoke:call` via the catalog's per-tool
+  `authorize_tool` — the descriptor name IS the gate) whose `runtime` arg is a **dropdown** backed by the
+  `agent.runtimes` read verb (#5), default preselected. Still UI-built into the `kind:"agent"` payload;
+  the host still never parses chat text. See
+  [agent-runtimes-scope.md](../external-agent/agent-runtimes-scope.md). (The original `/agent [@runtime]`
+  string parsed by `parseAgentCommand` on `MessageComposer` was orphaned — that composer was never
+  rendered — and is DELETED.)
 - **Skill/persona selection — DEFERRED:** v1 omits it; a later slice adds a persona picker (grant-gated
   `load_skill`).
 

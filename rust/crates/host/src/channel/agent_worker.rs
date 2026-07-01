@@ -34,6 +34,8 @@
 //!   - The worker holds NO durable state; a failure never fails the originating post (which already
 //!     durably landed) — the worst case is a follow-up `agent_error` (or nothing).
 
+use std::time::Duration;
+
 use lb_auth::Principal;
 use lb_inbox::Item;
 use lb_jobs::{Job, JobStatus};
@@ -56,6 +58,19 @@ const OPAQUE_DENY: &str = "agent not permitted";
 /// Hard byte cap on the persisted answer (mirrors the query worker's 256 KB posture) so a verbose run
 /// can't bloat channel history / the bus frame. The full step-by-step stays in the run stream/job.
 const AGENT_MAX_BYTES: usize = 256 * 1024;
+
+/// **Supervision ceiling** (run-lifecycle #5): the wall-clock budget one detached run may consume
+/// before it is reaped. A hung/looping run (an external subprocess spinning, an in-house loop that
+/// won't settle) is aborted at this ceiling and posts an honest `agent_error` instead of leaving the
+/// card spinning forever. Fixed node default (the decided slice posture; per-workspace policy is a
+/// deferred open question). Dropping the `invoke_via_runtime` future on timeout tears down the run:
+/// for the external `AcpRuntime`, dropping the driver future closes the ACP session and the
+/// subprocess's stdio, so the child is reaped rather than left a zombie (Drop is the reaper seam).
+pub(crate) const RUN_WALL_CEILING: Duration = Duration::from_secs(15 * 60);
+
+/// The honest (non-opaque) message posted when a run is reaped at the ceiling. Distinct from a
+/// capability deny — a timeout is a genuine, reportable run fault, not an authorization signal.
+const TIMEOUT_MESSAGE: &str = "agent run exceeded its time limit and was stopped";
 
 /// If `item` is a `kind:"agent"` request, **enqueue** a durable background run and return; the
 /// background reactor drives it later (run-lifecycle #5). Otherwise (chat, a `query*` /
@@ -114,7 +129,18 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
 /// **Idempotent:** if the correlated answer item (`a:<run_job>`) already exists, the run already
 /// completed on a prior tick (or before a restart) — skip driving it again (no re-run, no re-spend,
 /// no double-post) and just mark the enqueue job done.
-pub async fn drive_queued_run(node: &Node, ws: &str, enqueue_id: &str, record: &ChannelAgentJob) {
+///
+/// **Supervised:** the drive is bounded by `ceiling` — a run that exceeds it is reaped (its future is
+/// dropped, tearing down an external subprocess) and posts an honest `agent_error`, so a hung/looping
+/// run never leaves the card spinning forever. Production passes [`RUN_WALL_CEILING`]; a test passes a
+/// tiny ceiling against a scripted hung runtime.
+pub async fn drive_queued_run(
+    node: &Node,
+    ws: &str,
+    enqueue_id: &str,
+    record: &ChannelAgentJob,
+    ceiling: Duration,
+) {
     let ChannelAgentJob {
         cid,
         goal,
@@ -137,7 +163,18 @@ pub async fn drive_queued_run(node: &Node, ws: &str, enqueue_id: &str, record: &
     let poster = Principal::routed(poster_sub.clone(), ws.to_string(), poster_caps.clone());
     let runtime_label = runtime.clone().unwrap_or_else(|| "default".to_string());
 
-    match drive_run(node, &poster, ws, goal, runtime.as_deref(), run_job, *ts).await {
+    match drive_run(
+        node,
+        &poster,
+        ws,
+        goal,
+        runtime.as_deref(),
+        run_job,
+        *ts,
+        ceiling,
+    )
+    .await
+    {
         Ok(answer) => {
             let (answer, truncated) = cap_answer(answer);
             let body = agent_result_body(goal, &runtime_label, run_job, &answer, truncated);
@@ -176,6 +213,12 @@ async fn finish_enqueue(node: &Node, ws: &str, enqueue_id: &str) {
 /// already-shaped error message for an `agent_error` item. The opaque/honest split happens here:
 /// a named-but-unknown runtime and a capability deny both collapse to [`OPAQUE_DENY`]; a genuine run
 /// fault is honest.
+///
+/// **Supervision:** the whole run is wrapped in `ceiling`. If it elapses first, the run future is
+/// dropped — reaping any external subprocess — and this returns the honest [`TIMEOUT_MESSAGE`] so the
+/// caller posts an `agent_error` rather than leaving a stuck card. Terminal outcome is fail-closed:
+/// the ceiling (host authority) overrides whatever the run would have eventually reported.
+#[allow(clippy::too_many_arguments)]
 async fn drive_run(
     node: &Node,
     poster: &Principal,
@@ -184,6 +227,7 @@ async fn drive_run(
     runtime: Option<&str>,
     job: &str,
     ts: u64,
+    ceiling: Duration,
 ) -> Result<String, String> {
     let registry = node.runtimes();
 
@@ -201,7 +245,7 @@ async fn drive_run(
     // inside `invoke_via_runtime` under the poster.)
     let agent_caps = poster.caps().to_vec();
 
-    invoke_via_runtime(
+    let run = invoke_via_runtime(
         node,
         &registry,
         runtime,
@@ -213,14 +257,23 @@ async fn drive_run(
         Substrate::default(),
         &[], // no tool list surfaced this slice (the #3 MCP bridge is not built; in-house default too)
         ts,
-    )
-    .await
-    .map_err(|e| match e {
-        // Deny is opaque — same message as an unknown runtime (no capability/existence leak).
-        AgentError::Denied => OPAQUE_DENY.to_string(),
-        // A genuine run fault is honest and distinct (e.g. the external subprocess failed/timed out).
-        other => format!("agent run failed: {other}"),
-    })
+    );
+
+    // SUPERVISION: bound the whole run by the wall-clock ceiling. On timeout the `run` future is
+    // dropped here — for an external `AcpRuntime` that closes the ACP session + the subprocess stdio,
+    // so the child is reaped (Drop is the reaper), not left a zombie pinning the job. The ceiling is
+    // authoritative over the run's own eventual outcome (fail-closed).
+    match tokio::time::timeout(ceiling, run).await {
+        // Ran to completion within the ceiling.
+        Ok(result) => result.map_err(|e| match e {
+            // Deny is opaque — same message as an unknown runtime (no capability/existence leak).
+            AgentError::Denied => OPAQUE_DENY.to_string(),
+            // A genuine run fault is honest and distinct (e.g. the external subprocess failed).
+            other => format!("agent run failed: {other}"),
+        }),
+        // Exceeded the ceiling → reaped. Honest, distinct message (not the opaque deny).
+        Err(_elapsed) => Err(TIMEOUT_MESSAGE.to_string()),
+    }
 }
 
 /// Enforce the byte cap on the answer. Returns `(answer, truncated)`; trims to a char boundary at or

@@ -57,6 +57,10 @@ pub enum Command {
     /// Inbox operations (the one typed command in v1).
     #[command(subcommand)]
     Inbox(InboxCmd),
+    /// Reminder operations — the reference family of the common resource grammar
+    /// (`ls`/`show`/`create`/`update`/`rm` over `reminder.list|get|create|update|delete`).
+    #[command(subcommand)]
+    Reminder(ReminderCmd),
     /// Extension operations (publish a signed artifact — the `make publish-ext` retirement).
     #[command(subcommand)]
     Ext(ExtCmd),
@@ -88,6 +92,68 @@ pub enum InboxCmd {
     List {
         /// The channel whose inbox to list.
         channel: String,
+    },
+}
+
+/// `lb reminder …` — the common resource grammar over the shipped `reminder.*` MCP verbs. Each
+/// subcommand is typed sugar over one verb through `POST /mcp/call`; no new verb, cap, or table.
+#[derive(Debug, Subcommand)]
+pub enum ReminderCmd {
+    /// List reminders (`reminder.list`) — ws-scoped, `--status enabled|disabled`, `--limit N`.
+    Ls {
+        /// Filter by the on/off switch: `enabled` or `disabled`. Omitted → both.
+        #[arg(long)]
+        status: Option<String>,
+        /// Cap the number of rows returned (a bounded head of the sorted set).
+        #[arg(long)]
+        limit: Option<u32>,
+    },
+    /// Show one reminder by id (`reminder.get`).
+    Show {
+        /// The reminder id.
+        id: String,
+    },
+    /// Create a reminder (`reminder.create`). Prints the new id (resource-verbs D4), not the record.
+    /// The id is derived from the body unless `--id` is given; the schedule is a 5-field cron string.
+    Create {
+        /// The channel to post into (the channel-post action — the v1 default action kind).
+        #[arg(long)]
+        channel: String,
+        /// The message body to post when the reminder fires.
+        #[arg(long)]
+        body: String,
+        /// The 5-field cron schedule (e.g. `0 9 * * 1` = Mondays 09:00). Defaults to daily 09:00.
+        #[arg(long, default_value = "0 9 * * *")]
+        cron: String,
+        /// An explicit id. Omitted → derived from the body plus a short unique suffix.
+        #[arg(long)]
+        id: Option<String>,
+        /// Stop after this many firings (min 1). Omitted → recurring forever.
+        #[arg(long)]
+        max_runs: Option<u32>,
+    },
+    /// Update a reminder (`reminder.update`) — pause/resume via `--enabled`, reschedule via `--cron`.
+    Update {
+        /// The reminder id.
+        id: String,
+        /// Pause (`false`) or resume (`true`). Resuming re-anchors the next fire to the next slot.
+        #[arg(long)]
+        enabled: Option<bool>,
+        /// A new 5-field cron schedule.
+        #[arg(long)]
+        cron: Option<String>,
+        /// A new run cap (min 1).
+        #[arg(long)]
+        max_runs: Option<u32>,
+    },
+    /// Delete a reminder (`reminder.delete`) — soft tombstone (it never fires or lists again).
+    Rm {
+        /// The reminder id.
+        id: String,
+        /// Purge rather than tombstone. (The shipped verb tombstones; `--hard` is accepted for the
+        /// common grammar and passed through — the server currently treats delete as soft.)
+        #[arg(long)]
+        hard: bool,
     },
 }
 

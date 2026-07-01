@@ -24,6 +24,11 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
+        // The in-channel agent as a first-class palette command. Named `agent.invoke` on purpose: the
+        // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the run's existing
+        // `mcp:agent.invoke:call` gate ALSO decides this command's visibility — no new cap, no `if` in
+        // the catalog (see `agent::descriptor`). The palette routes it to `postAgent`, not a raw call.
+        crate::agent::invoke_descriptor(),
     ];
     out.extend(crate::host_tools::secret_descriptors());
     out

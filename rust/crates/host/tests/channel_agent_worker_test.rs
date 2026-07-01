@@ -21,10 +21,16 @@
 //!     and a ws-B drain never picks up the ws-A run.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{drain_channel_agent_runs, history, post, ErasedModel, Node, RuntimeRegistry};
+use lb_host::{
+    drain_channel_agent_runs, drain_channel_agent_runs_with_ceiling, history, post, AgentRuntime,
+    ErasedModel, Node, RunContext, RuntimeRegistry,
+};
 use lb_inbox::Item;
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 const INVOKE: &str = "mcp:agent.invoke:call";
 
@@ -277,6 +283,98 @@ async fn posting_an_agent_result_item_does_not_enqueue_a_run() {
     let items = history(&node.store, &p, ws, cid).await.expect("history");
     assert_eq!(items.len(), 1, "no worker item spawned: {items:?}");
     assert!(!items.iter().any(|i| i.author == "system:agent-worker"));
+}
+
+/// A runtime that never settles — its `run` future sleeps far past any test ceiling — standing in for
+/// a hung/looping external subprocess. Registered under `default` so an absent `runtime` selects it.
+/// The supervision ceiling must reap it (drop its future) and post an honest `agent_error`.
+struct HungRuntime;
+
+impl AgentRuntime for HungRuntime {
+    fn id(&self) -> &str {
+        "default"
+    }
+
+    fn run<'a>(
+        &'a self,
+        _node: &'a Node,
+        _ctx: RunContext<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, lb_host::AgentError>> + Send + 'a>> {
+        Box::pin(async move {
+            // Never completes within any test's wall — the supervision timeout must fire first.
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            Ok("unreachable — should have been reaped".to_string())
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_run_that_exceeds_the_supervision_ceiling_is_reaped_with_an_agent_error() {
+    // SUPERVISION (run-lifecycle #5): a hung run must not spin the card forever. Bound by a tiny
+    // ceiling against a runtime that never settles, the drive drops the run future (reaping any
+    // external subprocess) and posts an honest `agent_error` — NOT the opaque deny, and NOT a stuck
+    // card. Terminal outcome is the ceiling (host authority), not the agent's eventual word.
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let mut registry = RuntimeRegistry::with_default(answer_model("unused"));
+    registry.register(Arc::new(HungRuntime)); // overrides `default` with the hung runtime
+    node.install_runtimes(registry);
+
+    let ws = "acme";
+    let cid = "ops";
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("loop forever", None, "run-hung");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("the request posts");
+
+    // Drain with a tiny ceiling — the hung run is reaped in ~50ms, not the production 15 minutes.
+    drain_channel_agent_runs_with_ceiling(&node, ws, Duration::from_millis(50)).await;
+
+    let err = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("the reaped run posted an agent_error, not a stuck card");
+    let parsed: serde_json::Value = serde_json::from_str(&err.body).expect("json body");
+    assert_eq!(
+        parsed["kind"], "agent_error",
+        "a reaped run is an error: {parsed:?}"
+    );
+    assert_eq!(
+        parsed["error"], "agent run exceeded its time limit and was stopped",
+        "the timeout message is honest (distinct from the opaque deny)"
+    );
+    assert_ne!(
+        parsed["error"], "agent not permitted",
+        "a timeout must NOT masquerade as a capability deny"
+    );
+
+    // The enqueue job was retired (terminal) — a reaped run does not stay pending to be re-driven.
+    // A second drain is a pure no-op (idempotent on the `a:<job>` error item now present).
+    drain_channel_agent_runs_with_ceiling(&node, ws, Duration::from_millis(50)).await;
+    let errors: Vec<_> = history(&node.store, &p, ws, cid)
+        .await
+        .expect("history")
+        .into_iter()
+        .filter(|i| i.author == "system:agent-worker")
+        .collect();
+    assert_eq!(
+        errors.len(),
+        1,
+        "exactly one error even after re-drain: {errors:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

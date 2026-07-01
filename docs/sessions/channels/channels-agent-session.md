@@ -91,6 +91,14 @@ can do exactly what the asker is granted), then posts `agent_result` / `agent_er
   composer builds the structured payload (the UI mints the run id via `newRunId`); the host never parses
   chat text. `@open-interpreter-default` selects the external agent; omit it for the in-house default.
 
+> **SUPERSEDED (2026-07-01, agent-runtimes-picker-session.md).** The rendered composer is the
+> `CommandPalette` (via `ChannelView`), **not** `MessageComposer` — so the `/agent [@runtime] <goal>`
+> chat-string path above was orphaned (`parseAgentCommand` was never reached from the rendered input).
+> The agent is now a **first-class palette command** (`agent.invoke`, gated by `mcp:agent.invoke:call`
+> via the catalog's per-tool `authorize_tool`), and the `@runtime` is a real **dropdown** backed by the
+> `agent.runtimes` read verb. `parseAgentCommand` + `MessageComposer` are DELETED. `postAgent` stays —
+> it's the payload path the palette now routes `agent.invoke` to (via `onSendAgent`).
+
 ## Design decisions (scope open questions, resolved)
 
 - **Inline worker, not a background job (v1).** Faithful reuse of the query worker's proven
@@ -171,9 +179,10 @@ ws-walled), same as any agent-run watcher.
 cargo build -p node --features external-agent
 # 2. give it the Z.AI key (name only ever lives in the profile; value in the env)
 export ZAI_API_KEY=…            # the coding-plan key (NOT ZHIPU_API_KEY)
-# 3. in a channel, ask the external agent:
-/agent @open-interpreter-default summarize the last hour of deploy logs
-# (omit @open-interpreter-default to use the in-house default)
+# 3. in a channel, ask the external agent via the `/` command palette:
+#    `/` → pick the agent command → type the goal → pick `open-interpreter-default` in the runtime
+#    dropdown (or leave the default) → send. (Superseded the `/agent @… <goal>` chat string — see the
+#    SUPERSEDED note above; the runtime is now a real dropdown, not a typed `@id`.)
 ```
 
 ## Follow-ups
@@ -181,6 +190,8 @@ export ZAI_API_KEY=…            # the coding-plan key (NOT ZHIPU_API_KEY)
 1. Background/supervised execution so the run detaches from the POST connection (survives tab close) —
    run-lifecycle #5.
 2. External-agent #3 capability-wall before any non-dev external run.
-3. `agent.runtimes` read verb (#5) → a runtime picker in the composer instead of a typed `@id`.
+3. ~~`agent.runtimes` read verb (#5) → a runtime picker in the composer instead of a typed `@id`.~~
+   **DONE (2026-07-01)** — agent-runtimes-picker-session.md (the `agent.invoke` palette command +
+   `RuntimeArg` dropdown backed by `agent.runtimes`).
 4. Move the in-house `run_session` onto the same live-tap so its per-token deltas stream too (today the
    in-house loop publishes per-step; the external agent now streams per-line).

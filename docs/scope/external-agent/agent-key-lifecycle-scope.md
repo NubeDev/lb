@@ -1,7 +1,8 @@
 # External-agent scope — the scoped-token lifecycle across a long resumable run
 
-Status: scope (the ask). Sub-scope of `model-routing-scope.md` (#4) × `run-lifecycle-scope.md` (#5).
-Promotes to `public/external-agent/` once shipped.
+Status: scope (the ask) — **all decisions locked (see Decisions v1)**. Sub-scope of
+`model-routing-scope.md` (#4) × `run-lifecycle-scope.md` (#5). Promotes to `public/external-agent/` once
+shipped.
 
 The external agent reaches a model **only** through our gateway, authenticated by a **short-lived,
 workspace-scoped token** — never a provider key (#4). But a run can outlive a short token: an
@@ -198,24 +199,45 @@ Per `scope/testing/testing-scope.md`; real gateway + real token verification, sc
   cheap (one gateway call) and gated behind the grant re-check, so a flap can't escalate privilege — only
   churn, bounded by backoff.
 - **Forgetting the run-status refusal.** If the gateway only checks TTL and not run-status, a hard-cancelled
-  run could still spend on its unexpired token. **Mitigation:** the gateway's token check MUST consult the
-  run's `status` (the `run_id` claim → job record) — this is the braces to the TTL belt; tested explicitly.
+  run could still spend on its unexpired token. **Resolved by D3 (mandatory, not optional):** the gateway's
+  token check consults the run's `status` (the `run_id` claim → job record) and refuses an unexpired token
+  whose run is dead — the braces to the TTL belt; tested explicitly. This is deliberately *not* deferred as
+  a "short TTL is enough" v1 shortcut, which would ship a known post-cancel spend window.
 
-## Open questions
+## Decisions (v1)
 
-- **Token TTL default:** what short lifetime balances revocation latency against renewal churn — 5
-  minutes? Tie it to the prompt-cache/run cadence? (Recommend ~5 min default, configurable per profile;
-  it's the soft-revocation ceiling.)
-- **Refresh fraction:** re-mint at 60% of TTL, or on a fixed lead time before expiry? (Recommend a
-  fraction so it scales with the chosen TTL.)
-- **Does the gateway *need* the run-status check, or is short TTL enough for v1?** (Recommend include the
-  run-status refusal — it's what makes hard-cancel instant; TTL-only leaves a spend window after cancel.)
-- **Where the mint lives:** in `role/acp` (reusing its trusted-session-token minter) or in the runtime
-  crate that owns the subprocess? (Recommend reuse `role/acp`'s minter — same pattern, one place —
-  invoked by the runtime.)
-- **Streaming + renewal:** if #4 ships streaming, does a mid-stream renewal require re-establishing the
-  stream, or can the bearer rotate on the next request only? (Depends on #4's streaming decision; flag as
-  joint.)
+All resolved — long-term-correct, no interim hacks. The build session implements these; record any
+deviation in the session doc.
+
+- **D1 — TTL: 5 minutes, per-profile configurable, and it is the *soft*-revocation ceiling by design.**
+  Five minutes is short enough that a soft grant-revoke stops spend promptly and long enough that renewal
+  churn is negligible (one re-mint per run per ~5 min). It's configurable per `AgentProfile` for a
+  workspace that wants tighter revocation, but the default is fixed so behavior is predictable. The TTL is
+  explicitly **only** the soft-revoke bound — hard cancel is instant via D3, so we don't shorten the TTL
+  to chase hard-stop latency (that would just add churn to solve a problem D3 already solves).
+- **D2 — Refresh at 60% of TTL (a fraction, not a fixed lead), plus a one-shot 401 self-heal.** A fraction
+  scales automatically if the TTL is reconfigured (a fixed 30s lead would silently become dangerous under
+  a 40s TTL). At 60% the rotator re-mints with comfortable margin; if a race still slips through, the
+  runtime retries the failed call **once** after forcing an immediate re-mint before surfacing an error —
+  so the narrow expiry race self-heals rather than failing the run.
+- **D3 — The gateway's token check MUST consult run-status (mandatory, not TTL-only).** This is the
+  no-hack decision: TTL-only would leave a spend window after a hard cancel until the current token
+  expires. The gateway resolves the token's `run_id` claim → the job record's `status` and **refuses a
+  token whose run is cancelled/failed/done even if unexpired.** Hard cancel is therefore instant; TTL is
+  the belt, run-status is the braces. Rejected: "short TTL is good enough for v1" — it ships a known
+  post-cancel spend window, which is exactly the kind of hack this instruction rules out.
+- **D4 — The mint lives in `role/acp`'s trusted-session-token minter, invoked by the runtime.** One
+  minting path, one place, reusing the exact trusted-token pattern `role/acp` already ships (#4) — the
+  runtime that owns the subprocess *calls* it at start/refresh/resume but does not re-implement token
+  issuance. Rejected: a second minter in the runtime crate — it would fork the trusted-token logic and
+  invite the two to drift on claims/expiry/signing.
+- **D5 — Bearer rotates on the next request; streaming re-establishes on renewal if #4 ships streaming.**
+  A short-token rotation is applied to the **next** outbound request's `Authorization` header — the
+  common, simple path. If #4 ships streaming and a long-lived stream would outlive a token, the runtime
+  re-establishes the stream at the renewal boundary (the model call is idempotent by the gateway's
+  idempotency key, #4, so re-establishing mid-response cannot double-charge). This stays joint with #4's
+  streaming decision, but the **contract is fixed**: a renewal never lets an expired bearer ride an open
+  stream — the stream is re-anchored to the fresh token.
 
 ## Related
 
@@ -234,4 +256,3 @@ Per `scope/testing/testing-scope.md`; real gateway + real token verification, sc
 - `scope/secrets/` — the `role/acp` trusted-token minter pattern reused; provider keys stay here, §6.7.
 - `README.md` §6.14/§6.15 (gateway), §6.7 (secrets), §6.9 (jobs), §7 (tenancy).
 - `public/external-agent/external-agent.md` — promotion target on ship.
-</content>

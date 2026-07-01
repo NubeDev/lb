@@ -50,7 +50,8 @@ async function seed(
     | "series"
     | "proof_panel"
     | "flow_node"
-    | "telemetry",
+    | "telemetry"
+    | "agent_drain",
   body: unknown,
 ): Promise<void> {
   const url = inject("gatewayUrl");
@@ -93,6 +94,14 @@ export function seedTelemetry(row: {
  *  through the real ingest path (dashboard scope). Lets a dashboard test bind widgets to real series. */
 export function seedIotDemo(): Promise<void> {
   return seed("iot_demo", {});
+}
+
+/** Drive the session workspace's channel-agent run queue to completion (the real
+ *  `drain_channel_agent_runs` the production reactor calls — the test gateway doesn't spawn the timer,
+ *  so a UI test flushes on demand). After this resolves, a posted `kind:"agent"` request's durable
+ *  `agent_result`/`agent_error` is in the channel history. Driving through the real path, not faking. */
+export function drainAgentRuns(): Promise<void> {
+  return seed("agent_drain", {});
 }
 
 /** Seed a real durable inbox item into the session workspace. */

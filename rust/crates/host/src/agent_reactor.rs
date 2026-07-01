@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::boot::Node;
-use crate::channel::{drive_queued_run, ChannelAgentJob, CHANNEL_AGENT_KIND};
+use crate::channel::{drive_queued_run, ChannelAgentJob, CHANNEL_AGENT_KIND, RUN_WALL_CEILING};
 
 /// Spawn the detached drain tick for the given workspaces. Returns immediately; the loop runs for the
 /// life of the node. `period` is the scan cadence — a few seconds keeps a freshly-posted `agent`
@@ -66,7 +66,7 @@ async fn drain_spawning(node: &Arc<Node>, ws: &str, in_flight: &Arc<Mutex<HashSe
         let in_flight = in_flight.clone();
         let ws = ws.to_string();
         tokio::spawn(async move {
-            drive_queued_run(&node, &ws, &enqueue_id, &record).await;
+            drive_queued_run(&node, &ws, &enqueue_id, &record, RUN_WALL_CEILING).await;
             // Release the claim once the drive has retired the job (or short-circuited on idempotency).
             in_flight
                 .lock()
@@ -81,8 +81,16 @@ async fn drain_spawning(node: &Arc<Node>, ws: &str, in_flight: &Arc<Mutex<HashSe
 /// deterministic drain a test drives without the timer (and a caller that wants a synchronous flush) —
 /// the same drive as the production tick, minus the spawn/in-flight bookkeeping the timer needs.
 pub async fn drain_channel_agent_runs(node: &Arc<Node>, ws: &str) {
+    drain_channel_agent_runs_with_ceiling(node, ws, RUN_WALL_CEILING).await;
+}
+
+/// As [`drain_channel_agent_runs`], but with an explicit supervision `ceiling` — the seam a
+/// supervision test uses to reap a scripted hung run at a tiny wall-time without waiting the
+/// production 15-minute default. Production always uses [`RUN_WALL_CEILING`] (via the timer tick and
+/// the no-arg drain).
+pub async fn drain_channel_agent_runs_with_ceiling(node: &Arc<Node>, ws: &str, ceiling: Duration) {
     for (enqueue_id, record) in scan_drivable(node, ws).await {
-        drive_queued_run(node, ws, &enqueue_id, &record).await;
+        drive_queued_run(node, ws, &enqueue_id, &record, ceiling).await;
     }
 }
 

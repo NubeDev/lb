@@ -8,8 +8,9 @@
 /** An `x-lb` entity hint — drives which `@`-lister an arg's picker is backed by. */
 export type EntityKind = "datasource" | "channel" | "member" | "agent" | "table";
 
-/** An `x-lb` widget hint — selects the arg widget the rail renders. */
-export type WidgetKind = "sql" | "text";
+/** An `x-lb` widget hint — selects the arg widget the rail renders. `runtime` drives the agent
+ *  command's runtime dropdown (external-agent run-lifecycle #5, fed by `agent.runtimes`). */
+export type WidgetKind = "sql" | "text" | "runtime";
 
 /** The vendor-hint block under a property's `x-lb` key (both fields optional). */
 export interface XLbHint {

@@ -12,6 +12,7 @@ pub mod devkit;
 pub mod ext;
 pub mod inbox;
 pub mod login;
+pub mod reminder;
 pub mod whoami;
 
 use crate::header::Header;

@@ -8,8 +8,8 @@
 //! [`AnyTransport`](crate::transport::AnyTransport) and calls it. A DENY or a down-gateway returns a
 //! `CliError` the caller renders.
 
-use crate::cli::{Cli, Command, DevkitCmd, ExtCmd, InboxCmd};
-use crate::commands::{call, devkit, ext, inbox, login, whoami, Printed};
+use crate::cli::{Cli, Command, DevkitCmd, ExtCmd, InboxCmd, ReminderCmd};
+use crate::commands::{call, devkit, ext, inbox, login, reminder, whoami, Printed};
 use crate::config;
 use crate::context::{resolve_gateway_url, RunContext};
 use crate::error::{CliError, CliResult};
@@ -58,7 +58,43 @@ async fn dispatch(command: Command, ctx: &RunContext, format: Format) -> CliResu
             let t = ctx.transport().await?;
             inbox::list(&t, &channel, format).await
         }
+        Command::Reminder(cmd) => {
+            let t = ctx.transport().await?;
+            dispatch_reminder(&t, cmd, format).await
+        }
         Command::Ext(ExtCmd::Publish { target }) => run_publish(ctx, &target).await,
+    }
+}
+
+/// The single reminder dispatch table (resource-verbs D5): one place maps each `lb reminder <verb>`
+/// subcommand to its `reminder.*` handler, so there is one source of truth and no per-verb plumbing
+/// scattered across the tree. Every arm routes through the same resolved transport.
+async fn dispatch_reminder(
+    t: &impl Transport,
+    cmd: ReminderCmd,
+    format: Format,
+) -> CliResult<Printed> {
+    match cmd {
+        ReminderCmd::Ls { status, limit } => {
+            reminder::ls::run(t, status.as_deref(), limit, format).await
+        }
+        ReminderCmd::Show { id } => reminder::show::run(t, &id, format).await,
+        ReminderCmd::Create {
+            channel,
+            body,
+            cron,
+            id,
+            max_runs,
+        } => {
+            reminder::create::run(t, &channel, &body, &cron, id.as_deref(), max_runs, format).await
+        }
+        ReminderCmd::Update {
+            id,
+            enabled,
+            cron,
+            max_runs,
+        } => reminder::update::run(t, &id, enabled, cron.as_deref(), max_runs, format).await,
+        ReminderCmd::Rm { id, hard } => reminder::rm::run(t, &id, hard, format).await,
     }
 }
 

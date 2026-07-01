@@ -16,23 +16,6 @@ import { encodeAgent, encodeQuery, newRunId } from "@/lib/channel/payload.types"
 import type { Item } from "@/lib/channel/channel.types";
 import { invoke } from "@/lib/ipc/invoke";
 
-/** Parse a `/agent [@runtime] <goal>` composer command into `{ goal, runtime? }`, or `null` if the
- *  text isn't an agent command. The UI builds the structured `kind:"agent"` payload — the host never
- *  parses chat text (channels-agent scope). `@open-interpreter-default` selects an external agent;
- *  omit it for the in-house default. */
-export function parseAgentCommand(text: string): { goal: string; runtime?: string } | null {
-  const m = /^\/agent\b\s*(.*)$/s.exec(text.trim());
-  if (!m) return null;
-  let rest = m[1].trim();
-  let runtime: string | undefined;
-  const at = /^@(\S+)\s*(.*)$/s.exec(rest);
-  if (at) {
-    runtime = at[1];
-    rest = at[2].trim();
-  }
-  return { goal: rest, runtime };
-}
-
 /** Merge one item into a list: upsert by id, keep ordered by `ts` (the node's guarantees). */
 function mergeItem(items: Item[], incoming: Item): Item[] {
   const next = items.slice();
@@ -139,16 +122,13 @@ export function useChannel(
     async (body: string) => {
       const trimmed = body.trim();
       if (!trimmed) return;
-      // `/agent [@runtime] <goal>` is an agent command — build the structured payload, don't post it
-      // as chat text (the host never parses chat; channels-agent scope). Everything else is chat.
-      const agent = parseAgentCommand(trimmed);
-      if (agent && agent.goal) {
-        await postAgent(agent.goal, agent.runtime);
-        return;
-      }
+      // Plain chat. The agent is NO LONGER a `/agent` chat string parsed here — it is a first-class
+      // palette command (`agent.invoke`) routed to `postAgent` by the CommandPalette, the same
+      // mechanism `federation.query` uses (external-agent run-lifecycle #5). The host never parses
+      // chat text for commands (channels-agent scope).
       await postBody(trimmed);
     },
-    [postBody, postAgent],
+    [postBody],
   );
 
   // Edit one of the caller's own messages, then reconcile against history. Only the author may

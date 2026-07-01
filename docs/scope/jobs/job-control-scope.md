@@ -1,6 +1,7 @@
 # Jobs scope — the observe/control surface (list · get · cancel · retry · watch)
 
-Status: scope (the ask). Sub-scope of `jobs-scope.md`. Promotes to `public/jobs/` once shipped.
+Status: scope (the ask) — **all decisions locked (see Decisions v1)**. Sub-scope of `jobs-scope.md`.
+Promotes to `public/jobs/` once shipped.
 
 Jobs are the platform's durable, resumable work (`lb-jobs`), and today they are a **host-internal
 primitive with no caller-facing read surface** — you cannot list what is running, inspect a stuck job,
@@ -91,8 +92,9 @@ guessed.
 - **Placement:** either — host code over the store; the control verb acts on whatever node runs the
   owning worker (the worker enacts intent locally). No `if cloud`.
 - **MCP surface (API shape §6.1):**
-  - **Get/list:** `job.get` (by id) + `job.list` (ws-scoped, `{status?, kind?, exhausted?, limit, cursor}`
-    → `{items, next_cursor}` — the shipped keyset shape, `page-cursor-scope.md`). The read verbs.
+  - **Get/list:** `job.get` (by id) + `job.list` (ws-scoped, `{status?, kind?, exhausted?, since?, limit,
+    cursor}` → `{items, next_cursor}` — the shipped keyset shape, `page-cursor-scope.md`; `since` is jobs'
+    typed per-family filter field, D5). The read verbs.
   - **Control (not classic CRUD):** `job.cancel` / `job.retry` — mutate *intent*, not the transcript. No
     `job.create` (jobs are enqueued by their owning feature, never by a raw caller) and no `job.delete`
     (a job is history — it completes/fails/cancels; a retention sweep is a separate batch job, not a
@@ -181,18 +183,35 @@ Per `scope/testing/testing-scope.md`; real store/bus/gateway, seeded real jobs, 
   **Mitigation:** the kind→owner map is one file with a test asserting every shipped kind has an owner;
   an unregistered kind fails loudly at the control verb, not silently.
 
-## Open questions
+## Decisions (v1)
 
-- **`retry` semantics default:** resume-from-cursor (default) vs restart-from-scratch — one flag
-  (`{from:"cursor"|"start"}`), default `cursor`? (Recommend yes, default cursor — the cheap, safe path.)
-- **`cancel` of a `suspended` job:** does cancel apply to a suspended (paused) job the same as a running
-  one? (Recommend yes — cancel is terminal from any non-final state.)
-- **Bulk control:** ship `job.cancel {all, status:"running", kind:"…"}` in v1, or single-id only?
-  (Recommend single-id v1; bulk becomes a bounded sweep or a job later — don't build an unbounded loop.)
-- **Retention/`delete`:** confirmed out of scope here — but where does the completed-job retention sweep
-  live (a scheduled reminder/flow, or a host reactor)? (Flag for a separate retention scope.)
-- **Does `job.list` need a `since`/time filter** for the "jobs in the last hour" view, or is
-  status+kind+keyset enough for v1? (Recommend status+kind+keyset v1; add `since` when a caller needs it.)
+All resolved — long-term-correct, no interim hacks. The build session implements these; record any
+deviation in the session doc.
+
+- **D1 — `retry` takes `{from:"cursor"|"start"}`, default `cursor`.** Resume-from-cursor is the cheap,
+  safe path (persisted steps replay as lookups, no re-spend); `from:"start"` is the explicit escape hatch
+  when a caller knows the transcript itself is poisoned. One flag, safe default — not two verbs.
+- **D2 — `cancel` is terminal from *any* non-final state, including `suspended`.** A suspended (paused)
+  job cancels the same as a running one; cancel is a state machine terminal, not a running-only action.
+  The owner hook unwinds identically whether the job was mid-step or parked. Cancelling an
+  already-final (`done`/`failed`/`cancelled`) job is a clean no-op, not an error.
+- **D3 — Single-id control in v1; bulk is a *job*, never an inline loop, when it lands.** `job.cancel` /
+  `job.retry` act on one id. A future "cancel all running of kind X" is deferred, and when it ships it
+  ships as a **bounded ws-scoped sweep that enqueues a job** (§6.1) — never an unbounded loop in the
+  handler. Shipping single-id now with the job-backed bulk path reserved is the honest v1: no handler that
+  silently breaks past some N.
+- **D4 — Completed-job retention is a scheduled sweep owned elsewhere, and this scope names the owner: a
+  `reminder`/`flow` on a schedule calling a host retention reactor — NOT a caller `job.delete`.** A job is
+  history; callers observe/cancel/retry it, they don't delete it. Retention (age-out of terminal jobs) is
+  an operational sweep, so it belongs to the scheduling machinery already shipped (a reminder firing a
+  retention job, or a `react_to_*` reactor), scoped in its own `jobs/job-retention-scope.md` when needed.
+  Keeping `delete` off the caller surface is deliberate — it prevents a caller from erasing audit-relevant
+  run history.
+- **D5 — `job.list` ships `{status?, kind?, exhausted?, limit, cursor}` now and a `since` time filter
+  now too.** The "jobs in the last hour" view is a real operator need, not a someday-maybe — adding
+  `since` (a lower-bound on the job's logical `ts`) at build time is cheap over the already-indexed `ts`
+  and avoids a later additive-arg churn. It stays within the shared filter core (`core/resource-verbs`
+  D3): `since` is jobs' typed per-family field alongside `kind`.
 
 ## Related
 
@@ -212,4 +231,3 @@ Per `scope/testing/testing-scope.md`; real store/bus/gateway, seeded real jobs, 
 - `scope/datasources/page-cursor-scope.md` — the keyset `{items, next_cursor}` `job.list` reuses.
 - `README.md` §6.9 (jobs), §6.1 (API shape), §3 (rules 5/7), §6.13 (gateway SSE).
 - `public/jobs/jobs.md` — promotion target on ship.
-</content>

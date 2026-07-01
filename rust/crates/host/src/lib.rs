@@ -64,18 +64,21 @@ mod workspaces;
 
 pub use agent::{
     activate_skill, agent_call_key, call_agent_tool, cancel_run, decision_id, evaluate_policy,
-    format_catalog, invoke, invoke_remote, invoke_via_runtime, load_decision, load_policy,
-    rehydrate, render_catalog, resume, run_session, save_policy, serve_agent, settle_decision,
-    Activation, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest, AgentRuntime,
-    AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect, ErasedModel,
-    InHouseRuntime, Invocation, LoopState, ModelAccess, Policy, ProposedCall, Rule, RunContext,
-    RuntimeRegistry, SettleOutcome, Substrate, Turn, UnconfiguredModel, DECISION_APPROVAL_CHANNEL,
-    DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
+    format_catalog, invoke, invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes,
+    load_decision, load_policy, rehydrate, render_catalog, resume, run_session, save_policy,
+    serve_agent, settle_decision, Activation, AgentDecision, AgentError, AgentInvokeReply,
+    AgentInvokeRequest, AgentRuntime, AgentServer, AllowedTool, ArgMatch, CallOutcome,
+    DecisionState, Effect, ErasedModel, InHouseRuntime, Invocation, LoopState, ModelAccess, Policy,
+    ProposedCall, Rule, RunContext, RuntimeRegistry, SettleOutcome, Substrate, Turn,
+    UnconfiguredModel, DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME,
+    DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
 /// deterministic drain a test (or a caller wanting an immediate flush) drives without the timer.
-pub use agent_reactor::{drain_channel_agent_runs, spawn_agent_reactors};
+pub use agent_reactor::{
+    drain_channel_agent_runs, drain_channel_agent_runs_with_ceiling, spawn_agent_reactors,
+};
 pub use apikey::{
     apikey_authenticate, apikey_create, apikey_get, apikey_list, apikey_revoke, apikey_rotate,
     ensure_builtin_roles, is_auth_failure, ApiKeyCache, ApiKeyError, ApiKeyFull, ApiKeyView,

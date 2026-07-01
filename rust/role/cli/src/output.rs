@@ -66,7 +66,7 @@ pub fn table(value: &Value) -> String {
     // Unwrap the common list envelopes first (`{items|rows: [...]}`) — the typed `inbox list` returns
     // `{ items: [...] }`, and we table the items, not a one-row "items" cell.
     if let Value::Object(map) = value {
-        for key in ["items", "rows", "results", "data"] {
+        for key in ["items", "rows", "results", "data", "reminders"] {
             if map.len() == 1 {
                 if let Some(inner @ Value::Array(_)) = map.get(key) {
                     return table(inner);

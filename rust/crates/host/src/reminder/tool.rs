@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::create::reminder_create;
 use super::delete::reminder_delete;
-use super::get::{reminder_get, reminder_list};
+use super::get::{reminder_get, reminder_list, StatusFilter};
 use super::update::{reminder_update, ReminderPatch};
 use crate::boot::Node;
 
@@ -87,7 +87,17 @@ pub async fn call_reminder_tool(
             Ok(json!({ "reminder": reminder.map(|r| reminder_json(&r)) }))
         }
         "list" => {
-            let reminders = reminder_list(&node.store, principal, ws)
+            let status = match input.get("status") {
+                None | Some(Value::Null) => None,
+                Some(v) => {
+                    let s = v
+                        .as_str()
+                        .ok_or_else(|| ToolError::BadInput("status must be a string".into()))?;
+                    Some(StatusFilter::parse(s).map_err(remind_to_tool)?)
+                }
+            };
+            let limit = opt_u32(input, "limit")?.map(|n| n as usize);
+            let reminders = reminder_list(&node.store, principal, ws, status, limit)
                 .await
                 .map_err(remind_to_tool)?;
             Ok(json!({ "reminders": reminders.iter().map(reminder_json).collect::<Vec<_>>() }))
