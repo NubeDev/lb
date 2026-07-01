@@ -8,6 +8,8 @@
 
 mod authorize;
 mod chart;
+mod chart_pref;
+mod chart_pref_tool;
 mod delete;
 mod edit;
 mod error;
@@ -25,6 +27,7 @@ mod subscribe;
 // public surface honest (no dead `pub use`).
 #[allow(unused_imports)]
 pub(crate) use chart::{pick_chart, ChartKind, ChartSeries, ChartSpec};
+pub use chart_pref_tool::call_channel_chart_pref_tool;
 pub use delete::{delete, watch_deletions, DeletionFeed};
 pub use edit::edit;
 pub use error::ChannelError;

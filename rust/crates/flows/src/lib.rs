@@ -29,6 +29,7 @@ pub mod config_schema;
 pub mod descriptor;
 pub mod model;
 pub mod node_block;
+pub mod ops;
 pub mod registry;
 
 pub use binding::{resolve_bindings, NodeOutput};
@@ -63,4 +64,11 @@ pub mod table {
     /// never lose an update, and it survives a restart (PLC "rung holds its last result"). Keyed
     /// `{flow}:{node}`. This is the borrowed-from-Node-RED/FBP "a node holds state" seam.
     pub const FLOW_NODE_MEMORY: &str = "flow_node_memory";
+    /// Durable **bounded accumulator** — the per-node buffer the *buffering* stateful nodes hold
+    /// between firings (`batch` grouping N payloads; `unique` stream-mode's seen-set; a streaming
+    /// `join`). Distinct from `flow_node_memory` (a single scalar total): a buffer is a **capped**
+    /// list of items (the plc-reliability capped-ring precedent, data-nodes Risk 3 / Open Q3 —
+    /// `BATCH_MAX` bound, **force-release** on overflow so it never grows unbounded and never
+    /// silently drops data). Keyed `{flow}:{node}`; survives restart (Tier B two-firing parity).
+    pub const FLOW_NODE_BUFFER: &str = "flow_node_buffer";
 }

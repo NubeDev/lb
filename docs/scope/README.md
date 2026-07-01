@@ -125,7 +125,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   registry, SSE stream, and presence. Also `channels-query-charts-scope.md`: in-channel SQL queries
   (via `federation.query`) whose results post back as durable items and auto-plot a chart; and
   `channels-command-palette-scope.md`: the `/` + `@` command surface (catalog-driven, capability-
-  filtered MCP tools — the menu *is* the permission model) that composes those queries.
+  filtered MCP tools — the menu *is* the permission model) that composes those queries; and
+  `channels-agent-scope.md`: ask an agent in a channel — a host worker spawns a durable agent **run**
+  (via the shipped `agent.invoke`/`AgentRuntime` seam), streams its work live over the agent-run SSE,
+  and posts the final answer back as a durable item (in-house runtime now, external once #3 ships).
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side

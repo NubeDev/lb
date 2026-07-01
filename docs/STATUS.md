@@ -16,7 +16,20 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-01): shadcn migration Wave 0 + Wave 1 (channels + rules).** Executed
+**Just shipped (2026-07-01): the shared X/Y plot builder (dashboard + channel query charts).** One
+chart model (`ui/src/lib/charts/`: `PlotSpec` + field-kind inference + `buildPlot` + `suggestPlot`,
+16 unit tests) and one 10× Recharts renderer/builder (`ui/src/features/charts/`: `PlotChart` with real
+titled X/Y axes + gridlines + themed tooltip + legend + reduced-motion draw-in; `PlotBuilder` — run a
+query, see the typed fields, pick chart type + X/Y/series with a live preview), reused by BOTH surfaces.
+Dashboard panels (`timeseries`/`barchart`/`piechart`) render through it when a `plot` spec is set
+(additive; persisted in `Cell.options.plot` via `dashboard.save`, new **Plot** editor tab). Channel
+query results get a **Customize** builder; the viewer's choice persists **per-user** via new host verbs
+`channel.chart_pref.get`/`.set` (record `channel_chart_pref:[ws, cid__item__user]`, channel-`sub` gated,
+member cap added) — the worker-authored result stays immutable. `pnpm test` 258 green; `cargo test -p
+lb-host --test channel_chart_pref_test` 3 green (round-trip + per-user + capability-deny + workspace
+isolation). Docs: [`public/frontend/dashboard.md`](public/frontend/dashboard.md) → "X/Y plot builder".
+
+**Also shipped (2026-07-01): shadcn migration Wave 0 + Wave 1 (channels + rules).** Executed
 `scope/frontend/shadcn-migration-scope.md` (the ordered plan over `ui-standards-scope.md`), copying
 the canonical **Flows** shape — not Dashboard. **Wave 0:** generated the three missing primitives
 token-bound like `sidebar.tsx` — `ui/src/components/ui/{alert,dialog,switch}.tsx` (`alert` replaces
@@ -37,6 +50,23 @@ failures are **pre-existing** (studio/system fail identically on a clean stash; 
 cross-test seeding race that passes in isolation) — none in a migrated area. **Wave 2 (dashboard) is
 next up** (stopped after Wave 1 per the ask). Scope `scope/frontend/shadcn-migration-scope.md`;
 session `sessions/frontend/shadcn-migration-channels-rules-session.md`.
+
+**Just shipped (2026-07-01): the flows data & JSON node pack — 20 built-in nodes.** Executed
+`scope/flows/data-nodes-scope.md` end to end: **Tier A** pure transforms (`change`/`select`/`merge`/
+`map`/`flatten`/`sort`/`range`/`aggregate`/`template` + `csv`/`xml`/`yaml`/`base64`), **Tier B** durable
+state (`filter` RBE, `unique`, `batch` — one additive capped `flow_node_buffer` record), **Tier C**
+engine-extending (`switch` edge-gating, `split`/`join` array-carry, `delay` durable park). The registry
+went 8 → 28 descriptors. Pure transform logic lives in `crates/flows/src/ops/` (unit-tested in-crate);
+`builtins.rs` → `builtins/` and `execute_node.rs` → `execute_node/` (FILE-LAYOUT, all files < 400 lines).
+Three new spine Decisions (**14** switch edge-gating, **15** split/join array-carry, **16** delay
+parks-on-resume) and **all five scope open questions resolved** — zero left. New parse crates
+(`csv`/`quick-xml`/`serde_yaml`/`base64`) added to `key-stack.md`. Frontier engine gained a `Skipped`
+gating outcome + `run_store::{ready_one_dependent,skip_gated,park_step}` + `flows.resume` clearing a
+suspended status. **No new MCP verb, no new capability.** Green: `cargo build/test --workspace`,
+`cargo fmt`; unit 78 + Tier A 15 + Tier B/C 11, mandatory capability-deny + workspace-isolation both
+proven. One bug found+fixed (`debugging/flows/switch-else-branch-fires-unconditionally.md`). Scope
+`scope/flows/data-nodes-scope.md`; session `sessions/flows/data-nodes-session.md`; public
+`public/flows/flows.md` (data-pack section).
 
 **Just shipped (2026-07-01): `chains` engine RETIRED — `flows` is the one DAG engine.** Executed
 `scope/flows/chains-retirement-scope.md` (`flows-scope.md` Decision 6, taken to its clean-cut end

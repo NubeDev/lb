@@ -95,6 +95,11 @@ fn member_caps() -> Vec<String> {
         // the caller may already run (a denied tool is absent), never data. Without it the UI has no
         // palette at all.
         "mcp:tools.catalog:call",
+        // channel query charts: a viewer's per-item plot override (get/set). Member-level — the same
+        // audience that may read a channel (`bus:chan/*:sub`, held above) may save how THEY plot a
+        // query result; the verb re-checks the channel `sub` gate.
+        "mcp:channel.chart_pref.get:call",
+        "mcp:channel.chart_pref.set:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.

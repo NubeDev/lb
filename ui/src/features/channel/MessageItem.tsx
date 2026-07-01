@@ -140,7 +140,7 @@ export function MessageItem({ item, author, onEdit, onDelete }: Props) {
           </Button>
         </div>
       ) : payload ? (
-        <QueryCard payload={payload} />
+        <QueryCard payload={payload} channel={item.channel} itemId={item.id} />
       ) : (
         <div className="break-words leading-6 text-fg">{item.body}</div>
       )}

@@ -16,6 +16,7 @@ canonical **Decisions (v1)** that every other doc references by number.
 |---|---|
 | [flows-scope.md](flows-scope.md) | **Spine.** The node model, the versioning principle, "generalises `chains`", the canonical **Decisions (v1)**, the rejected `crossflow` runtime, and the global testing/risk posture. Start here. |
 | [node-descriptor-scope.md](node-descriptor-scope.md) | **The keystone contract.** The `[[node]]` manifest block, the five node kinds, ports, the inline **JSON-Schema** config, the merged `flows.nodes` registry, and the built-in descriptors. The data-driven editor and extension nodes both key off this. |
+| [data-nodes-scope.md](data-nodes-scope.md) | **The data & JSON node pack — 20 new built-ins.** `change`/`select`/`merge`/`map`/`flatten`/`sort`/`range`/`aggregate`/`template` + `csv`/`xml`/`yaml`/`base64` (Tier A, stateless) · `filter`(RBE)/`unique`/`batch` (Tier B, durable state) · `switch`/`split`/`join`/`delay` (Tier C, engine-extending). Descriptors in the frozen node-descriptor shape — Node-RED's function/sequence/parse nodes over the shipped plane. Consumes the descriptor contract; no new mechanism. |
 | [extension-nodes-scope.md](extension-nodes-scope.md) | **Extensions add backend nodes — WASM *and* native.** The three interaction shapes (transform / sink / source), execution through the gated `caller ∩ install-grant` callback, source **arm/disarm** + the `ingest.write`→series bridge, and the worked `mqtt/extension.toml`. |
 | [flow-run-scope.md](flow-run-scope.md) | **Durable execution.** The run as an `lb-jobs` `flow-run` job, the frontier driver + CAS step-claim ported from `chains`, the run-store records, suspend/resume, **version-pinning**, `flows.patch_run`, `ResumePointDrift`, failure policy, and the high-frequency fan-out posture. |
 | [triggers-lifecycle-scope.md](triggers-lifecycle-scope.md) | **What starts a flow, and where.** The trigger kinds (`manual\|cron\|event\|inject\|boot`), enable/disable, `start_on_boot` via a `react_to_flows` reconciler, and `placement` across node roles. |
@@ -36,6 +37,12 @@ is the spine the triggers and editor drive; the canvas and dashboard binding are
 **In flight (post-Wave-3 ergonomics):** `flow-message-envelope` (the `{payload, topic}` + auto-wire
 model — a breaking engine change, build first) → `flow-dashboard-binding-ux` (the flow-aware picker +
 switch/slider/JSON, which consumes the envelope's `payload`/`topic` ports).
+
+**Node pack (`data-nodes`):** consumes the descriptor contract, so it lands *after* `node-descriptor`
++ `flow-message-envelope` and builds in its own risk tiers — **Tier A** (stateless transforms/parse)
+any time, **Tier B** (durable-state nodes) once the accumulator record is settled, **Tier C**
+(`switch`/`split`/`join`/`delay`) only after the `flow-run` engine seam for gating/sequences is
+decided. Not a prerequisite for anything else; purely additive palette content.
 
 ## Related (platform primitives reused)
 

@@ -261,8 +261,42 @@ read-back, inject deny node- AND port-keyed, ws-isolation); `ui` unit `flowsPick
 `FlowDashboardBinding.gateway.test.ts` (picker offer, slider port-inject + precedence, current-value
 mount read, switch boolean, JSON validate/reject, JSON read view advance, ws read-isolation).
 
+## The data & JSON node pack — 20 built-in nodes (shipped 2026-07-01)
+
+Beyond the eight spine built-ins (`trigger`/`tool`/`rhai`/`count`/`json`/`counter`/`subflow`/`sink`),
+the registry now ships **twenty** host-resolved data/JSON nodes so a flow reshapes/routes/scales/parses
+a payload **without** dropping into a `rhai` cage. Same descriptor shape, same `{payload, topic}`
+envelope (Decision 6), same palette path — no new registry, no new cap (they run inside a `flows.run`,
+already gated by `mcp:flows.run:call`).
+
+- **Tier A — pure stateless transforms** (`ops::*`, unit-tested in `lb-flows`): `change` (ordered
+  set/move/copy/delete), `select` (keep paths), `merge` (deep-merge an array of objects), `map`
+  (per-element ops), `flatten`, `sort`, `range` (linear scale + clamp), `aggregate`
+  (sum/min/max/mean/count/concat), `template` (mustache-lite); `csv`/`xml`/`yaml`/`base64` (parse ↔
+  stringify — **malformed input fails the node**, `json`-node parity).
+- **Tier B — durable state** (the one additive `flow_node_buffer` record, capped `BATCH_MAX`,
+  force-release): `filter` (report-by-exception — pass on change / deadband, reusing the Decision-5
+  last-value record), `unique` (array dedupe + a durable stream seen-set), `batch` (group N).
+- **Tier C — engine-extending** (new spine Decisions **14/15/16**): `switch` (multi-output conditional
+  routing via **edge-gating** — settle `Ok`, release only the dependents a matched rule names, gate the
+  rest; `else` is a fallthrough, not a predicate); `split`/`join` (**array-carry** — one settle carries
+  the array + a `parts` sequence descriptor, `join` recombines from the carried `parts`; per-element
+  work is `map`); `delay` (durable **park** on the suspend/resume seam — a release instant in the store,
+  never an in-memory sleep, so it survives a restart; `rate` mode spaces releases).
+
+The frontier engine gained: a `Skipped` outcome that gates a subtree (RBE suppress + switch's unmatched
+branches), `run_store::{ready_one_dependent, skip_gated, park_step}`, and `flows.resume` clearing a
+`suspended` status before re-driving. No new MCP verb, no new capability.
+
+Proven (real store/caps/jobs, no mocks — CLAUDE §9): `lb-flows` unit (78: `ops::*` table-driven +
+descriptor + registry), `host::flows_data_nodes_test` (15: Tier A per-node incl. parse-fail +
+capability-deny), `host::flows_data_engine_test` (11: Tier B two-firing + **workspace-isolation of the
+accumulator**, switch gating, split→join + split→map→join, delay park+resume, rate-limit). Bug found +
+fixed: `debugging/flows/switch-else-branch-fires-unconditionally.md`.
+
 ## Where to read
-- Scope (the ask, Decisions 1–13): `scope/flows/` (`README.md` index + the seven sub-docs).
+- Scope (the ask, Decisions 1–16): `scope/flows/` (`README.md` index + the sub-docs; the data pack is
+  `scope/flows/data-nodes-scope.md`, session `sessions/flows/data-nodes-session.md`).
 - Sessions (the working logs): `sessions/flows/` (node-descriptor · flow-run · extension-triggers ·
   flows-canvas · dashboard-binding).
 - Spine primitives reused: `lb-rules/workflow/` (DAG math + binding grammar), `lb-jobs`,

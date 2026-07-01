@@ -28,6 +28,7 @@ import { usePanelShape } from "./usePanelShape";
 import { OptionsSearch } from "./OptionsSearch";
 import { PreviewPane } from "./PreviewPane";
 import { QueryTab } from "./tabs/QueryTab";
+import { PlotAxesTab } from "./tabs/PlotAxesTab";
 import { TransformTab } from "./tabs/TransformTab";
 import { PanelOptionsTab } from "./tabs/PanelOptionsTab";
 import { FieldTab } from "./tabs/FieldTab";
@@ -45,8 +46,11 @@ interface Props {
   scope?: VarScope;
 }
 
-const TAB_IDS = ["query", "transform", "options", "field", "overrides"] as const;
+const TAB_IDS = ["query", "plot", "transform", "options", "field", "overrides"] as const;
 type TabId = (typeof TAB_IDS)[number];
+
+/** The cartesian chart views that support the shared X/Y plot builder (the Plot tab). */
+const PLOTTABLE_VIEWS = new Set(["timeseries", "barchart", "piechart"]);
 
 export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = emptyScope() }: Props) {
   // The whole working state — rebuilt from the cell via the ONE (de)serializer. Re-seeded when the
@@ -106,8 +110,10 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
     onOpenChange(false);
   };
 
+  const canPlot = PLOTTABLE_VIEWS.has(viewC);
   const tabs = [
     { id: "query", label: "Query" },
+    ...(canPlot ? [{ id: "plot", label: "Plot" }] : []),
     { id: "transform", label: "Transform", badge: state.transformations.length || undefined },
     { id: "options", label: "Panel options" },
     { id: "field", label: "Field" },
@@ -144,6 +150,9 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             <EditorTabs tabs={tabs} active={tab} onSelect={(id) => setTab(id as TabId)} />
             <div className="min-h-0 flex-1 overflow-y-auto">
               {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} onRun={run} />}
+              {tab === "plot" && canPlot && (
+                <PlotAxesTab draft={draft} state={state} patch={patch} scope={scope} refreshKey={refreshKey} />
+              )}
               {tab === "transform" && <TransformTab state={state} patch={patch} />}
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} />}
               {tab === "field" && <FieldTab state={stateC} patch={patch} />}

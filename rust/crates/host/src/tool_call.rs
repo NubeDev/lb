@@ -42,6 +42,9 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("outbox.")
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
+        // The per-viewer chart-preference verbs only (NOT all `channel.*`, so future channel
+        // extension tools still route to the registry) — a query-result's plot override.
+        || qualified_tool.starts_with("channel.chart_pref.")
         || qualified_tool.starts_with("viz.")
         || qualified_tool.starts_with("template.")
         || qualified_tool.starts_with("devkit.")
@@ -270,6 +273,11 @@ async fn dispatch_at_depth(
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("channel.chart_pref.") {
+            // channel query charts: a viewer's per-item plot override. The outer gate ran
+            // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.
+            crate::call_channel_chart_pref_tool(&node.store, principal, ws, qualified_tool, &input)
+                .await?
         } else if qualified_tool.starts_with("viz.") {
             // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
             // under the caller's authority — so `depth` is threaded through to re-enter at depth+1

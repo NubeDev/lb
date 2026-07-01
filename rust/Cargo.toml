@@ -142,6 +142,16 @@ toml = "0.9"
 # config schema is compiled + instances validated host-side by `jsonschema` (Boon), and editor-side
 # by `ajv`. The one dialect the platform standardizes on for any record carrying a user config.
 jsonschema = "0.30"
+# The data/JSON node pack parse crates (flows data-nodes scope, Risk 4). Minimal, well-audited,
+# pure-Rust readers/writers pulled ONLY into `lb-flows` for the `csv`/`xml`/`yaml`/`base64` built-in
+# nodes: `csv` (Node-RED CSV parity), `quick-xml` (event-driven XML, no C++ dep), `serde_yaml`
+# (YAML 1.2 ↔ serde), `base64` (the text/bytes boundary). A parse of malformed input FAILS the node
+# (json-node parity). No heavy templating engine — the `template` node uses a hand-rolled
+# mustache-lite over these same serde values (no crate).
+csv = "1"
+quick-xml = { version = "0.41", features = ["serialize"] }
+serde_yaml = "0.9"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`

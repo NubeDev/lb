@@ -104,3 +104,4 @@ pub const FLOW_NODE_STATE_TABLE: &str = table::FLOW_NODE_STATE;
 pub const FLOW_INPUT_TABLE: &str = table::FLOW_INPUT;
 pub const FLOW_TRIGGER_STATE_TABLE: &str = table::FLOW_TRIGGER_STATE;
 pub const FLOW_NODE_MEMORY_TABLE: &str = table::FLOW_NODE_MEMORY;
+pub const FLOW_NODE_BUFFER_TABLE: &str = table::FLOW_NODE_BUFFER;

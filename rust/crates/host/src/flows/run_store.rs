@@ -229,6 +229,21 @@ impl NodeOutcome {
     }
 }
 
+/// Park a claimed node back to `Enqueued` without recording a terminal outcome — the durable-delay
+/// suspend seam (Decision 16). A `delay` whose timer has not elapsed calls this: the node is re-driven
+/// from `Enqueued` on the next `flows.resume` (with an advanced clock), never double-settling. A
+/// no-op if the step is already terminal.
+pub async fn park_step(store: &Store, ws: &str, run_id: &str, node_id: &str) -> Result<(), String> {
+    let Some(mut rec) = read_step(store, ws, run_id, node_id).await? else {
+        return Ok(());
+    };
+    if rec.claim == ClaimState::Done {
+        return Ok(());
+    }
+    rec.claim = ClaimState::Enqueued;
+    write_step(store, ws, &rec).await
+}
+
 /// Decrement dependents' in-degree; return those that reached 0 (marked Enqueued).
 pub async fn ready_dependents(
     store: &Store,
@@ -257,6 +272,46 @@ pub async fn ready_dependents(
         write_step(store, ws, &rec).await?;
     }
     Ok(ready)
+}
+
+/// Release exactly **one** dependent by decrementing its in-degree (enqueue at 0) — the selective
+/// counterpart of [`ready_dependents`], used by `switch` edge-gating (Decision 14) to fire only the
+/// dependents a matched rule named. Idempotent: a non-`Pending` dependent is only decremented.
+pub async fn ready_one_dependent(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    dep: &str,
+) -> Result<(), String> {
+    let Some(mut rec) = read_step(store, ws, run_id, dep).await? else {
+        return Ok(());
+    };
+    rec.indegree = rec.indegree.saturating_sub(1);
+    if rec.claim == ClaimState::Pending && rec.indegree == 0 {
+        rec.claim = ClaimState::Enqueued;
+    }
+    write_step(store, ws, &rec).await
+}
+
+/// Gate a node and its exclusive subtree as Skipped — a `switch` unmatched branch (Decision 14) or a
+/// suppressed stateful node's downstream. Marks `gated` itself Skipped (if not yet terminal), then
+/// cascades through its dependents (the `skip_subtree` walk seeded at `gated`). A node already
+/// Running/Done is left as-is (a live path reached it first — the disjoint-branch assumption).
+pub async fn skip_gated(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+    gated: &str,
+) -> Result<(), String> {
+    if let Some(mut rec) = read_step(store, ws, run_id, gated).await? {
+        if matches!(rec.claim, ClaimState::Pending | ClaimState::Enqueued) {
+            rec.claim = ClaimState::Done;
+            rec.outcome = "skipped".into();
+            write_step(store, ws, &rec).await?;
+        }
+    }
+    skip_subtree(store, ws, flow, run_id, gated).await
 }
 
 /// Mark the transitive subtree below a failed node as Skipped (Halt policy).
