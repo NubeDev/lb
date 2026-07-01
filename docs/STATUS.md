@@ -16,7 +16,26 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-01): flow timestamp display + a flow-read "binding broken" fix.** A flow node's
+**Just shipped (2026-07-01): `chains` engine RETIRED — `flows` is the one DAG engine.** Executed
+`scope/flows/chains-retirement-scope.md` (`flows-scope.md` Decision 6, taken to its clean-cut end
+state — delete, no alias, no stub). Deleted outright: the host `chains` module (8 files), the
+`lb_rules::workflow` DAG model, the gateway `/chains` routes, the six `mcp:chains.*` + two
+`store:chain:*` grants, and the React chain feature (`features/chains` + `lib/chains`, the Chains nav
+entry/route/surface). `flows` is a proven strict superset (same binding grammar + triggers +
+one-job-per-node topology + frontier driver + CAS run-store, plus richer nodes and a live-SSE canvas),
+so nothing is lost — to "chain rules into a DAG" you author a flow of `Rhai`/`Tool` nodes. Superset
+proven before any chain test was deleted (2 gap flow tests added first: partialFailure-under-Halt +
+`MAX_FLOW_NODES` save-reject). **Regression guard (the headline):** `chains_retired_test.rs` (each
+retired verb → unknown-verb `NotFound`, gone not merely ungranted) + `chains_retired_routes_test.rs`
+(each `/chains…` route 404, `/flows` still 200). Removed one straggler: `max_chain_steps` chains-only
+dead code. `rule-chains-scope.md` kept as `rubix-cube` lineage; `rules-workbench-scope.md` Phase-2 DAG
+canvas banner'd as superseded by Flows. Green: `cargo build/test --workspace`, `cargo fmt`, `pnpm test`
+(242), `pnpm test:gateway`; prove-absence grep clean (no live `chains`/`lb_rules::workflow` outside
+`rubix-cube` + `docs/` lineage + the two regression tests). Scope
+`scope/flows/chains-retirement-scope.md`; session `sessions/flows/chains-retirement-session.md`; public
+`public/flows/flows.md` (chains-removed note).
+
+**Earlier on 2026-07-01: flow timestamp display + a flow-read "binding broken" fix.** A flow node's
 canonical epoch-**seconds** `ts` now renders as the viewer's wall-clock via `format.datetime` (the
 `lb-prefs` host tool) wired into the ONE viz field-config bridge (`fieldconfig/format.ts` — the
 long-planned "when lb-prefs ships, this becomes the real dispatch" swap), unit declared as `dateUnit:"s"`
@@ -29,9 +48,10 @@ test unchanged). Also fixed the live "binding broken — re-pick" on saved flow 
 ws-isolation) +8 unit; regression suites green (UI 232, flow-binding gateway 16, Rust prefs 8).
 
 **Flows — the visual node-graph engine (backend spine + Wave 3 surfaces): SHIPPED** (2026-06-30), over the
-shipped rules + chains + jobs + outbox + extension plane. A `flow:{ws}:{id}` typed node graph authored
+shipped rules + jobs + outbox + extension plane. A `flow:{ws}:{id}` typed node graph authored
 on a React Flow canvas and run as a durable `lb-jobs` session — **flows are not a new engine**,
-they generalise the `chains` rule-DAG (Decision 6: one engine, `chains.*` the eventual alias). The
+they generalise the `rubix-cube` rule-DAG (Decision 6: one engine — `chains` since **retired**, see
+above). The
 Decisions 1–13 are held verbatim. Wave 3 adds the **editor canvas** (Slice E) + the **dashboard↔flow
 binding** (Slice F) — pure clients of the shipped `flows.*` / `flows.nodes` gateway verbs (no new host
 work, no new caps).

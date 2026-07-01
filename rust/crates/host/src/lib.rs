@@ -15,7 +15,6 @@ mod authz;
 mod boot;
 mod bus;
 mod callback;
-mod chains;
 mod channel;
 mod channel_registry;
 mod dashboard;
@@ -92,10 +91,6 @@ pub use authz::{
 pub use boot::{Node, NodeError};
 pub use bus::{
     authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
-};
-pub use chains::{
-    call_chains_tool, chains_delete, chains_get, chains_list, chains_resume, chains_run,
-    chains_run_get, chains_save, ChainsError,
 };
 pub use channel::{
     delete, edit, history, join, post, subscribe_channel, watch, watch_deletions, ChannelError,
@@ -200,9 +195,9 @@ pub use render_templates::{
 };
 pub use role::Role;
 pub use rules::{
-    ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
-    rules_get, rules_list, rules_run, rules_save, workspace_datasources, workspace_queries,
-    HostAiSeam, HostDataSeam, RuleModel, RulesError, RunResult, SavedRule,
+    ai_limits, call_rules_tool, params_to_rhai, rule_limits, rules_delete, rules_get, rules_list,
+    rules_run, rules_save, workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam,
+    RuleModel, RulesError, RunResult, SavedRule,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};

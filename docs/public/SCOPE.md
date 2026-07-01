@@ -111,9 +111,11 @@ host work added (`public/frontend/rules-workbench.md`):
 - **Playground** — a CodeMirror editor + `rules.run` rendering the typed `RuleOutput` three ways
   (scalar/grid/findings) + log + ms/ai budget; full `rules.*` CRUD rail; honest cage/deny/AI-budget/
   AI-not-configured states (`BadInput` verbatim, `Denied` opaque), never a fake result.
-- **Chain canvas** — a React Flow DAG (nodes=steps, edges=needs) over `chains.*`; a cyclic edge renders
-  the host's validation error inline; Run + a **bounded** `chains.runs.get` settle-poll colours nodes
-  pending/running/ok/err/skipped with the Halt-pruned subtree greyed.
+- **Chain canvas** *(RETIRED — superseded by the Flows canvas; `chains` is deleted, `flows` is the one
+  DAG engine — `scope/flows/chains-retirement-scope.md`)* — was a React Flow DAG (nodes=steps,
+  edges=needs) over `chains.*`; a cyclic edge rendered the host's validation error inline; Run + a
+  bounded `chains.runs.get` settle-poll coloured nodes. The DAG capability now lives in **Flows**
+  (`flows.*`, live `flows.watch` SSE instead of a poll).
 - **Datasources admin** — first-party shell page over `datasource.*` (the federation extension stays
   headless): list (redacted, never the DSN), add (DSN write-only, implied grants shown), test (honest
   green/red probe), remove.

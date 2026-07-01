@@ -1,6 +1,6 @@
-//! The durable run-state records (flow-run-scope "Data (SurrealDB)"), mirroring the chain run-store
-//! shape (Decision 6: one engine, `chains.*` the alias). Per-node rows so concurrent branch jobs
-//! don't contend. All workspace-walled, the one datastore — no new persistence layer.
+//! The durable run-state records (flow-run-scope "Data (SurrealDB)"). Per-node rows so concurrent
+//! branch jobs don't contend. All workspace-walled, the one datastore — no new persistence layer.
+//! (`flows` is the one DAG engine — chains-retirement scope.)
 //!
 //! - `flow:{ws}:{id}` — the typed graph (the `lb_flows::Flow` model);
 //! - `flow_run:{ws}:{run_id}` — the run coordinator: lifecycle + the **pinned `flow_version`**
@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The CAS claim state of one node — the idempotency guard under redelivery (a lost claim no-ops).
-/// Identical to the chain `ClaimState` (Decision 6).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ClaimState {
@@ -26,7 +25,7 @@ pub enum ClaimState {
 }
 
 /// The persisted run coordinator: lifecycle + the **pinned `flow_version`** (Decision 1) + params.
-/// Internal record (snake_case, matching the chain convention); `flows.runs.get` builds its own
+/// Internal record (snake_case); `flows.runs.get` builds its own
 /// camelCase JSON for the wire — this struct does not leak directly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowRunRecord {
@@ -47,7 +46,7 @@ pub struct FlowRunRecord {
     pub entry_node: Option<String>,
 }
 
-/// One node's durable state + recorded result (mirrors the chain `StepStateRecord`).
+/// One node's durable state + recorded result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowStepRecord {
     pub run_id: String,

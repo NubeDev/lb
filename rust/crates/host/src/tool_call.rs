@@ -47,7 +47,6 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("devkit.")
         || qualified_tool.starts_with("agent.")
         || qualified_tool.starts_with("rules.")
-        || qualified_tool.starts_with("chains.")
         || qualified_tool.starts_with("federation.")
         || qualified_tool.starts_with("flows.")
         || qualified_tool.starts_with("datasource.")
@@ -302,8 +301,6 @@ async fn dispatch_at_depth(
             crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("chains.") {
-            crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("flows.") {
             // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
             // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through

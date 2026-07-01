@@ -57,12 +57,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+
   `datasource.*` admin CRUD and a `federation.mirror` `lb-jobs` batch). SurrealDB stays the authority;
   external DBs are federated sources reached through the gated extension, never a second authority.
-  Also `page-chaining-scope.md`: one **keyset cursor** paging contract (opaque `cursor` + `limit` →
-  `{rows, next_cursor}`, additive on the existing read verbs, no new cap) so large timeseries load a
-  fast page at a time — **SurrealDB pages the state plane** (index-backed, O(page)), DataFusion pages
-  only by predicate **pushdown** to the real source, and anything that must load at dashboard speed is
-  **mirrored** into the series plane and keyset-paged there; a chart **downsamples** (time-bucket
-  min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager rejected.
+  Also **`page-chaining-scope.md`** (parent) + its slices: one **keyset cursor** paging contract (opaque
+  `cursor` + `limit` → `{rows, next_cursor}`, additive on the existing read verbs, no new cap) so large
+  timeseries load a fast page at a time — **SurrealDB pages the state plane** (index-backed, O(page)),
+  DataFusion pages only by predicate **pushdown** to the real source, and anything that must load at
+  dashboard speed is **mirrored** into the series plane and keyset-paged there; a chart **downsamples**
+  (time-bucket min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager
+  rejected. Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
+  `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
+  (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
+  and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
   `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `extensions/` also holds
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
@@ -85,8 +89,9 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
   behind one `Toolchain` trait).
-- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`): a node-red-style canvas
-  over the shipped plane, not a new engine. Promotes the `chains` rule-DAG `Step` into a typed
+- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
+  earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
+  over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed
   `Node` (`Trigger | Tool | Rhai | Subflow | Sink`), each carrying a **descriptor** (ports + a
   config **JSON-Schema** the React Flow editor renders a form from). **Extensions contribute
   backend node types** via an additive `[[node]]` block in `extension.toml` — **identical for

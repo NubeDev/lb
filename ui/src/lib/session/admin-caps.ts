@@ -66,10 +66,9 @@ export const CAP = {
   dashboardList: "mcp:dashboard.list:call",
   dashboardSave: "mcp:dashboard.save:call",
   // rules workbench (rules-workbench scope): member-level nav gates. The Playground shows for any
-  // session that may run a rule; the chain canvas for chains.get; the datasources admin for
-  // datasource.list. Gate 3 / ownership + the gateway's per-verb re-check are the real boundary.
+  // session that may run a rule; the datasources admin for datasource.list. Gate 3 / ownership + the
+  // gateway's per-verb re-check are the real boundary. (The DAG canvas is Flows — see `flowsList`.)
   rulesRun: "mcp:rules.run:call",
-  chainsGet: "mcp:chains.get:call",
   datasourceList: "mcp:datasource.list:call",
   // flows (flows-canvas scope, Wave 3): member-level nav gate. The canvas shows for any session that
   // may list flows; the gateway re-checks `mcp:flows.<verb>:call` per verb server-side regardless.

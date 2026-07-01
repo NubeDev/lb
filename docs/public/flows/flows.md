@@ -4,15 +4,27 @@ The visual **node-graph flow engine** (node-red over the shipped plane). A `flow
 node graph authored on a React Flow canvas, run as a durable resumable `lb-jobs` session, with
 **extension-contributed backend node types** (`[[node]]` in `extension.toml`, identical for WASM and
 native — only the execution transport differs). The headline holds: **flows are not a new engine.** A
-flow is the generalisation of the shipped `chains` rule-DAG — a typed `Node` model + a backend node
+flow is the generalisation of the `rubix-cube` rule-DAG — a typed `Node` model + a backend node
 registry + an editor, run on `lb-jobs`, state in SurrealDB, motion on Zenoh (Decisions 1–13).
+
+> **Chains removed — flows is the one DAG engine.** The earlier `chains` rule-DAG (the `chains.*`
+> MCP verbs, the host `chains` module, the gateway `/chains` routes, the `lb_rules::workflow` model,
+> the React chain canvas, the `mcp:chains.*` grants) has been **deleted outright** — no alias, no
+> stub (`flows-scope.md` Decision 6, executed to its clean-cut end state). `flows` is a strict
+> superset: same binding grammar, same `manual|cron|event` triggers, same one-job-per-node topology,
+> the same frontier driver + CAS run-store (ported from `rubix-cube` via the retired chain engine),
+> plus `Subflow`/`Sink`/`Source` nodes, retained inputs, and the live-SSE canvas. To "chain rules
+> into a DAG", author a flow of `Rhai`/`Tool` nodes. A client still calling a retired `chains.*` verb
+> gets the host's **unknown-verb** refusal, and a `/chains…` HTTP call 404s — asserted by
+> `chains_retired_test.rs` + `chains_retired_routes_test.rs` (the guard against a stray re-add). See
+> [`chains-retirement-scope`](../../scope/flows/chains-retirement-scope.md) and its session doc.
 
 ## What's shipped (the backend spine — Waves 1–2)
 
 | Slice | What | Tests |
 |---|---|---|
-| **node-descriptor** | `lb-flows` crate: the `NodeDescriptor` keystone contract, the additive `[[node]]` manifest block (parse + validate), the five built-in descriptors, the merged `flows.nodes` registry (built-ins ∪ installed-ext nodes — a read-time union over `install` records), the JSON-Schema 2020-12 config gate, the typed `Flow` graph model + DAG math (Kahn), the chain binding grammar. `flows.nodes` verb. | lb-flows 26 · ext-loader 16 · host 5 |
-| **flow-run** | the durable run engine over `lb-jobs`: `flow_run` coordinator (pins `flow_version`) + one `flow-step` job per node, the `chains` frontier driver ported verbatim, CAS exactly-once (`Enqueued→Running`), `FailurePolicy`, suspend/resume/cancel, `flows.patch_run` (config-only to an unexecuted node, validated against the pinned schema), `ResumePointDrift`, subflow-parks-on-child, the full `flows.*` run MCP surface incl. `flows.runs.list` (reattach), the canonical `coalesce` enum. | host 12 |
+| **node-descriptor** | `lb-flows` crate: the `NodeDescriptor` keystone contract, the additive `[[node]]` manifest block (parse + validate), the five built-in descriptors, the merged `flows.nodes` registry (built-ins ∪ installed-ext nodes — a read-time union over `install` records), the JSON-Schema 2020-12 config gate, the typed `Flow` graph model + DAG math (Kahn), the rubix-cube binding grammar. `flows.nodes` verb. | lb-flows 26 · ext-loader 16 · host 5 |
+| **flow-run** | the durable run engine over `lb-jobs`: `flow_run` coordinator (pins `flow_version`) + one `flow-step` job per node, the rubix-cube frontier driver ported verbatim, CAS exactly-once (`Enqueued→Running`), `FailurePolicy`, suspend/resume/cancel, `flows.patch_run` (config-only to an unexecuted node, validated against the pinned schema), `ResumePointDrift`, subflow-parks-on-child, the full `flows.*` run MCP surface incl. `flows.runs.list` (reattach), the canonical `coalesce` enum. | host 12 |
 | **extension-nodes** | descriptor-aware ext-node dispatch under `caller ∩ install-grant` (the shipped `build_call_context` chokepoint — two-direction deny, no widening); the source shape (host-owned `flow:{ws}:{flow}:{node}` series, arm/disarm); the worked `mqtt` reference manifest. | host 5 |
 | **triggers-lifecycle** | the five trigger kinds; `flows.enable`; the two lifecycle passes — `react_to_flows_cron` (durable clock-scan, deterministic firing id, fire-once-then-skip) + `reconcile_flows` (single-owner election, arm/disarm, guarded teardown); `flows.inject` (Decision 9 retain-vs-fire); placement matched as data. | host 8 |
 | **runtime-control** (Wave 3) | the manual run is now a **background job** (`flows.run` spawns the drive + returns `run_id` at once); `cancel`/`suspend` **bite mid-run** (the driver checks the durable status between frontier batches — Stop actually stops); a **live SSE watch** (`flows.watch` → `GET /flows/runs/{run}/stream`, snapshot-then-`node-settled`/`run-finished` deltas over a workspace-walled `flow:{ws}:{run}` Zenoh subject — "fire on the eventbus if anyone's listening"); **per-node config CRUD** on the saved flow (`flows.node.get`/`flows.node.update`, schema-validated, version-bumped) so a node tweak isn't a whole-`Flow` post. | host 9 |

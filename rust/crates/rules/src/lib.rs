@@ -11,8 +11,8 @@
 //! Ported from the `rubix-cube` rules engine (`rust/rubix-cube/rbx-server/src/rules/`), MIT/Apache-2.0,
 //! same repo lineage. **Lifted verbatim:** the rhai sandbox + governors ([`sandbox`]), the lazy `Grid`/
 //! `Col`/`GroupedGrid` plan model ([`grid`]), the timeseries plan-builders ([`verbs`]), the `AiMeter`
-//! budget ([`meter`]), the nsql re-validation fence (in [`verbs`]), the DAG model + binding resolver
-//! ([`workflow`]). **Re-seamed:** grid `collect` calls the host data seam (`store.query`/`series.*` or
+//! budget ([`meter`]), the nsql re-validation fence (in [`verbs`]). **Re-seamed:** grid `collect`
+//! calls the host data seam (`store.query`/`series.*` or
 //! `federation.query`) instead of a local DataFusion engine; `ai.*` re-points at the AI-gateway;
 //! `alert` routes to inbox/outbox (host-side). **Re-keyed:** `project_id` → `workspace`.
 
@@ -23,7 +23,6 @@ mod runtime;
 mod sandbox;
 pub mod seam;
 mod verbs;
-pub mod workflow;
 
 pub use engine::{AiLimits, RuleEngine};
 pub use grid::{dynamic_to_json, json_to_dynamic};

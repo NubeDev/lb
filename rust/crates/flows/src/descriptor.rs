@@ -6,7 +6,7 @@
 //! A descriptor carries: an identity (`type`, unique within its origin), human labels (`title`,
 //! `category`) for the palette, a coarse [`NodeKind`] (palette grouping + wiring affordances — a
 //! `trigger` has no inputs, a `sink` no outputs, a `source` host-arms a series), the **named ports**
-//! (`inputs`/`outputs`) that carry the chain binding grammar, the `tool` binding that runs it, and
+//! (`inputs`/`outputs`) that carry the rubix-cube binding grammar, the `tool` binding that runs it, and
 //! an inline **JSON-Schema 2020-12** config (Decision 3) + a `config_version` for schema evolution.
 //!
 //! The descriptor **declares no capabilities itself** — reading the catalog reveals only *what could

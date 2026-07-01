@@ -1,5 +1,6 @@
-//! The durable run-store over SurrealDB — the flow engine's backend (flow-run-scope "Data"), ported
-//! from the chain `run_store` (Decision 6: one engine). The CAS claim (`Pending|Enqueued → Running`)
+//! The durable run-store over SurrealDB — the flow engine's backend (flow-run-scope "Data"; the
+//! run-store shape ported from `rubix-cube` via the retired chain engine). The CAS claim
+//! (`Pending|Enqueued → Running`)
 //! is the **cross-node** exactly-once owner under redelivery (Decision 8); a lost claim no-ops, so a
 //! duplicate node redelivery never double-runs. Per-node rows so concurrent branch jobs don't
 //! contend, and a restart resumes from the recorded state (the headline offline/sync property).

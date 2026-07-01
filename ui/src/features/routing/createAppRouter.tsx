@@ -14,7 +14,6 @@ import {
 } from "@tanstack/react-router";
 
 import { AdminView } from "@/features/admin";
-import { ChainsView } from "@/features/chains";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
@@ -124,7 +123,6 @@ const routeTree = rootRoute.addChildren([
     channelsRoute,
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
-    coreRoute("/chains", "chains", () => <Chains />),
     coreRoute("/flows", "flows", () => <Flows />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
@@ -236,10 +234,6 @@ function ExtRoute() {
 
 function Rules() {
   return <RulesView ws={useAppRoutingContext().workspace} />;
-}
-
-function Chains() {
-  return <ChainsView ws={useAppRoutingContext().workspace} />;
 }
 
 function Flows() {

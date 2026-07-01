@@ -10,7 +10,6 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   channels: "/channels",
   dashboards: "/dashboards",
   rules: "/rules",
-  chains: "/chains",
   flows: "/flows",
   datasources: "/datasources",
   reminders: "/reminders",

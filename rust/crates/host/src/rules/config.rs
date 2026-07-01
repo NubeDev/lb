@@ -47,8 +47,3 @@ pub fn ai_limits() -> AiLimits {
         context_rows: env_usize("LB_RULES_AI_CONTEXT_ROWS", 200),
     }
 }
-
-/// The DAG size cap for a chain (rule-chains-scope: `WORKFLOW_MAX_STEPS`).
-pub fn max_chain_steps() -> usize {
-    env_usize("LB_RULES_MAX_CHAIN_STEPS", 200)
-}

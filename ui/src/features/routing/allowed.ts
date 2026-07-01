@@ -8,7 +8,6 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   const allowed: CoreSurface[] = ["channels", "inbox", "outbox"];
   if (hasCap(caps, CAP.dashboardList)) allowed.push("dashboards");
   if (hasCap(caps, CAP.rulesRun)) allowed.push("rules");
-  if (hasCap(caps, CAP.chainsGet)) allowed.push("chains");
   if (hasCap(caps, CAP.flowsList)) allowed.push("flows");
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");
   if (hasCap(caps, CAP.reminderList)) allowed.push("reminders");

@@ -82,7 +82,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
                 }),
             ),
         // The function node — the lb-rules rhai cage. Bound to the host `rules.eval` tool. Ports
-        // carry the cage convention: `output` + `findings` (the chain binding grammar verbatim).
+        // carry the cage convention: `output` + `findings` (the rubix-cube binding grammar verbatim).
         NodeDescriptor::new("rhai", NodeKind::Transform, HOST_RULES_EVAL)
             .with_title("Rhai")
             .with_category("Flow")
