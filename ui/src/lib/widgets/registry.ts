@@ -19,7 +19,7 @@
 // widgets are unaffected — they already mount for real via WidgetView→ExtWidget (a self-owned read tile,
 // no value-reporting needed). When the mount contract gains a value channel, ExtArg upgrades in place.
 
-import type { WidgetKind, XLbHint } from "@/lib/channel/palette.types";
+import type { WidgetKind, XLbHint } from "./types";
 
 /** The concrete widget a hint resolves to — the registered built-in kinds plus `ext` (an extension-
  *  contributed arg widget carried by `viewKey`). */

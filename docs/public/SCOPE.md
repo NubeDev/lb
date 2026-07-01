@@ -3,6 +3,21 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — frontend: Widget Kit Phase 1 — field presentation + a reusable widget library)
+
+A declarative per-field **presentation** vocabulary (`label`/`description`/`hide`/`order`) authored on the
+descriptor and resolved by ONE `resolveFieldPresentation` + `humanize`, applied on BOTH the request form
+(`x-lb`) and the response table (`fieldConfig`, with a new additive `hide`) — so `maxRuns` reads "Max Runs"
+in both and a header can't drift from a form label. The input widgets + registry + `CronBuilder` + the
+presentation/table core were extracted into `ui/src/lib/widgets/` (registry = the public API) as a
+behavior-preserving move + re-export shim. One shared table column-model backs both the read-only
+`TablePanel` and the row-controlled `ResponseTable`. The `/reminders` table now reads author labels, hides
+`principalSub`/`ts`, and no longer dumps `action` as a raw blob (its descriptor declares a `fieldConfig` that
+rides the existing rich_result envelope — **no new verb/cap/table/WIT**). `hide` is presentation, **not**
+security (a hidden field still crossed the bridge under the viewer's grant). Phase 2 (view-renderer move +
+the ext input-widget value channel + `defineWidget`) is a named follow-up. See
+[`frontend/widget-kit.md`](frontend/widget-kit.md).
+
 ## Shipped (post-S10 — operator CLI `lb`, v1 slice: the terminal twin of the shell)
 
 A fourth client of the node gateway — the terminal twin of the React shell — holding **no authority

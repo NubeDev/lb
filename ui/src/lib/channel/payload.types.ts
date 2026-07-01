@@ -114,6 +114,12 @@ export interface RichResultPayload {
   /** The declared tool set the response's bridge may forward (the `source` + `action` + row-control
    *  tools). The host intersects it with the viewer's grant server-side (render.tools ∩ grant). */
   tools?: string[];
+  /** The per-field PRESENTATION config for the rendered view (widget-kit scope, Phase 1) — the Grafana
+   *  `fieldConfig` a descriptor declares so a table's headers read the author's labels (`displayName`),
+   *  drop hidden columns (`hide`), and order as declared. INERT DATA that rides this existing envelope
+   *  (no new verb/table) — `ResponseView.buildCell` copies it onto `cell.fieldConfig`, and the shared
+   *  table column-model resolves every header through it. Absent → the table humanizes raw keys. */
+  fieldConfig?: import("@/lib/dashboard").FieldConfig;
 }
 
 /** The kind-tagged union pulled out of an item `body`. Chat (no `kind`) is `null`. */

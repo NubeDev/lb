@@ -210,7 +210,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   explorable authoring surface extending that Playground: a searchable function palette mirroring the
   registered Rhai verbs, click-to-load examples, and a datasource/schema/series data explorer — all
   click-to-insert, frontend-only over the shipped verbs, with the `store.schema` reader extracted to a
-  shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer).
+  shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer), and
+  `widget-kit-scope.md` (make widgets genuinely reusable across the whole system: a declarative per-field
+  presentation vocabulary — `label`/`description`/`hide`/`order` — that both the request form and the
+  response table honor through one resolver; extract the input widgets + registry out of the palette/
+  dashboard/reminders feature folders into a common `lib/widgets/` library; and version the federation mount
+  context with an input `value`/`onValue` channel + `defineWidget` so extensions can author form widgets,
+  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore).
   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/

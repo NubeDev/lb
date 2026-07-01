@@ -16,7 +16,9 @@
 import { useMemo } from "react";
 
 import type { Cell } from "@/lib/dashboard";
+import { cellFieldConfig } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
+import { resolveColumns, cellText } from "@/lib/widgets";
 import { cellTools } from "@/features/dashboard/views/WidgetView";
 import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { WidgetMessage } from "@/features/dashboard/widgets/chrome";
@@ -38,19 +40,6 @@ interface Props {
   rowControls: RowControl[];
 }
 
-/** The union of keys across the rows, in first-seen order — the introspected data columns. */
-function columnsOf(rows: Array<Record<string, unknown>>): string[] {
-  const seen: string[] = [];
-  for (const row of rows) for (const k of Object.keys(row)) if (!seen.includes(k)) seen.push(k);
-  return seen;
-}
-
-/** Render one value cell — an object as JSON, null as empty, everything else verbatim (honest text). */
-function cellText(v: unknown): string {
-  if (v == null) return "";
-  return typeof v === "object" ? JSON.stringify(v) : String(v);
-}
-
 export function ResponseTable({ cell, rowControls }: Props) {
   // Rows through the ONE shipped panel-data hook — the same read path every dashboard view uses, so the
   // table re-runs its source (e.g. `reminder.list`) exactly like a dashboard table.
@@ -63,7 +52,10 @@ export function ResponseTable({ cell, rowControls }: Props) {
   if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;
   if (rows.length === 0) return <WidgetMessage tone="muted">no rows</WidgetMessage>;
 
-  const cols = columnsOf(rows);
+  // The shared column-model resolves headers through the ONE presentation resolver (the cell's declared
+  // `fieldConfig` → label override / humanize fallback), drops `hide`-marked columns, and applies any
+  // `order`. Identical to what the read-only TablePanel renders — the only extra here is the control column.
+  const cols = resolveColumns(rows, cellFieldConfig(cell));
 
   return (
     <div className="overflow-auto" aria-label="response table">
@@ -71,8 +63,8 @@ export function ResponseTable({ cell, rowControls }: Props) {
         <thead className="text-muted">
           <tr>
             {cols.map((c) => (
-              <th key={c} className="border-b border-border px-2 py-1 font-medium">
-                {c}
+              <th key={c.key} title={c.description} className="border-b border-border px-2 py-1 font-medium">
+                {c.header}
               </th>
             ))}
             {rowControls.length > 0 && (
@@ -87,8 +79,8 @@ export function ResponseTable({ cell, rowControls }: Props) {
             return (
               <tr key={i} className="odd:bg-bg/40">
                 {cols.map((c) => (
-                  <td key={c} className="truncate border-b border-border/50 px-2 py-1">
-                    {cellText(row[c])}
+                  <td key={c.key} className="truncate border-b border-border/50 px-2 py-1">
+                    {cellText(row[c.key])}
                   </td>
                 ))}
                 {rowControls.length > 0 && (

@@ -5,7 +5,7 @@
 
 import { useEffect } from "react";
 
-import { CronBuilder } from "@/features/reminders/CronBuilder";
+import { CronBuilder } from "./CronBuilder";
 
 /** The default schedule shown (and, until edited, COLLECTED) — a daily 9am cron. */
 const DEFAULT_CRON = "0 9 * * *";

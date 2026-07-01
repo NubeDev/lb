@@ -34,30 +34,34 @@ pub(crate) fn create_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "schedule": { "type": "string", "x-lb": { "widget": "cron" } },
+            "schedule": { "type": "string",
+                "x-lb": { "widget": "cron", "label": "Schedule", "description": "When the reminder fires (cron)" } },
             "action_kind": {
                 "type": "string",
-                "x-lb": { "widget": "select", "options": ["channel-post", "mcp-tool", "outbox"] }
+                "x-lb": { "widget": "select", "options": ["channel-post", "mcp-tool", "outbox"],
+                          "label": "Action Kind", "description": "What the reminder does when it fires" }
             },
             // channel-post fields.
             "channel": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "channel-post" }, "requiredWhenShown": true } },
+                "x-lb": { "showIf": { "action_kind": "channel-post" }, "requiredWhenShown": true,
+                          "label": "Channel", "description": "The channel to post into" } },
             "body": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "channel-post" } } },
+                "x-lb": { "showIf": { "action_kind": "channel-post" }, "label": "Body" } },
             // mcp-tool fields.
             "tool": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "mcp-tool" }, "requiredWhenShown": true } },
+                "x-lb": { "showIf": { "action_kind": "mcp-tool" }, "requiredWhenShown": true, "label": "Tool" } },
             "args": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "mcp-tool" } } },
+                "x-lb": { "showIf": { "action_kind": "mcp-tool" }, "label": "Args" } },
             // outbox fields.
             "target": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true } },
+                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true, "label": "Target" } },
             "action_action": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true } },
+                "x-lb": { "showIf": { "action_kind": "outbox" }, "requiredWhenShown": true, "label": "Action" } },
             "payload": { "type": "string",
-                "x-lb": { "showIf": { "action_kind": "outbox" } } },
-            "max_runs": { "type": "number" },
-            "enabled": { "type": "boolean" }
+                "x-lb": { "showIf": { "action_kind": "outbox" }, "label": "Payload" } },
+            "max_runs": { "type": "number",
+                "x-lb": { "label": "Max Runs", "description": "Stop after N fires (blank = forever)" } },
+            "enabled": { "type": "boolean", "x-lb": { "label": "Enabled" } }
         },
         "required": ["schedule", "action_kind"]
     })
@@ -96,6 +100,30 @@ pub(crate) fn list_render() -> Value {
             { "kind": "button", "buttonLabel": "Delete",
               "action": { "tool": "reminder.delete", "argsTemplate": { "id": "${id}" } } }
         ] },
+        // Per-field PRESENTATION for the interactive list (widget-kit scope) — the descriptor declares the
+        // table's headers/visibility ONCE here, resolved UI-side through the ONE presentation resolver the
+        // /remind FORM uses (so `maxRuns` reads "Max Runs" in both). `hide` is PRESENTATION, NOT SECURITY:
+        // `principalSub`/`ts` still cross the bridge under the viewer's grant — hiding only drops the column
+        // from the rendered surface; a truly-ungranted source is denied server-side regardless. The nested
+        // `action` gets a label + help instead of rendering as a raw JSON blob. INERT DATA on the existing
+        // envelope — no new verb, no new table.
+        "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+                { "matcher": { "id": "byName", "options": "maxRuns" },
+                  "properties": [ { "id": "displayName", "value": "Max Runs" },
+                                  { "id": "description", "value": "Stop after N fires (blank = forever)" } ] },
+                { "matcher": { "id": "byName", "options": "nextAttemptTs" },
+                  "properties": [ { "id": "displayName", "value": "Next fire" } ] },
+                { "matcher": { "id": "byName", "options": "action" },
+                  "properties": [ { "id": "displayName", "value": "Action" },
+                                  { "id": "description", "value": "What fires" } ] },
+                { "matcher": { "id": "byName", "options": "principalSub" },
+                  "properties": [ { "id": "hide", "value": true } ] },
+                { "matcher": { "id": "byName", "options": "ts" },
+                  "properties": [ { "id": "hide", "value": true } ] }
+            ]
+        },
         "tools": ["reminder.list", "reminder.update", "reminder.fire", "reminder.delete"]
     })
 }
@@ -251,6 +279,55 @@ mod tests {
         ] {
             assert!(tools.contains(&json!(want)), "bridge declares {want}");
         }
+    }
+
+    #[test]
+    fn create_schema_carries_form_presentation_labels() {
+        // Widget-kit scope: the /remind FORM fields declare `label`/`description` on `x-lb` (beside the
+        // widget/showIf hints), resolved UI-side through the ONE presentation resolver the table uses.
+        let s = create_schema();
+        assert_eq!(s["properties"]["max_runs"]["x-lb"]["label"], "Max Runs");
+        assert_eq!(
+            s["properties"]["max_runs"]["x-lb"]["description"],
+            "Stop after N fires (blank = forever)"
+        );
+        assert_eq!(
+            s["properties"]["action_kind"]["x-lb"]["label"],
+            "Action Kind"
+        );
+        assert_eq!(s["properties"]["channel"]["x-lb"]["label"], "Channel");
+    }
+
+    #[test]
+    fn list_render_declares_table_field_presentation() {
+        // Widget-kit scope (the motivating fix): the interactive list declares its table presentation via
+        // `fieldConfig` byName overrides — "Max Runs" (not maxRuns), "Next fire", "Action"/"What fires",
+        // and `principalSub`/`ts` HIDDEN. Resolved UI-side through the same resolver as the form.
+        let render = list_render();
+        let overrides = render["fieldConfig"]["overrides"].as_array().unwrap();
+
+        // A helper: the properties for a given byName field.
+        let props_for = |field: &str| -> Vec<(String, Value)> {
+            overrides
+                .iter()
+                .find(|o| o["matcher"]["id"] == "byName" && o["matcher"]["options"] == field)
+                .map(|o| {
+                    o["properties"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|p| (p["id"].as_str().unwrap().to_string(), p["value"].clone()))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+
+        assert!(props_for("maxRuns").contains(&("displayName".into(), json!("Max Runs"))));
+        assert!(props_for("nextAttemptTs").contains(&("displayName".into(), json!("Next fire"))));
+        assert!(props_for("action").contains(&("displayName".into(), json!("Action"))));
+        // principalSub + ts are HIDDEN (presentation, not security — they still cross the bridge).
+        assert!(props_for("principalSub").contains(&("hide".into(), json!(true))));
+        assert!(props_for("ts").contains(&("hide".into(), json!(true))));
     }
 
     #[test]

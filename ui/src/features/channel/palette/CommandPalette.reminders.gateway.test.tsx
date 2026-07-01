@@ -91,6 +91,19 @@ const LIST_RENDER_BODY = encodeRichResult({
       { kind: "button", buttonLabel: "Delete", action: { tool: "reminder.delete", argsTemplate: { id: "${id}" } } },
     ],
   },
+  // The per-field PRESENTATION the reminder.list descriptor declares (widget-kit scope) — mirrors
+  // rust/crates/host/src/reminder/descriptor.rs `list_render()` fieldConfig ONE-TO-ONE. The palette posts
+  // this verbatim off the catalog; here we mount the same envelope so the table resolves the same headers.
+  fieldConfig: {
+    defaults: {},
+    overrides: [
+      { matcher: { id: "byName", options: "maxRuns" }, properties: [ { id: "displayName", value: "Max Runs" }, { id: "description", value: "Stop after N fires (blank = forever)" } ] },
+      { matcher: { id: "byName", options: "nextAttemptTs" }, properties: [ { id: "displayName", value: "Next fire" } ] },
+      { matcher: { id: "byName", options: "action" }, properties: [ { id: "displayName", value: "Action" }, { id: "description", value: "What fires" } ] },
+      { matcher: { id: "byName", options: "principalSub" }, properties: [ { id: "hide", value: true } ] },
+      { matcher: { id: "byName", options: "ts" }, properties: [ { id: "hide", value: true } ] },
+    ],
+  },
   tools: ["reminder.list", "reminder.update", "reminder.fire", "reminder.delete"],
 });
 
@@ -99,6 +112,24 @@ const LIST_RENDER_BODY = encodeRichResult({
  *  the mounted `<table>`. This is the interactive list a channel member sees. */
 async function mountList(ws: string): Promise<HTMLElement> {
   const item: Item = { id: "rich-list", channel: "general", author: "system:reminders", body: LIST_RENDER_BODY, ts: 1 };
+  render(<MessageItem item={item} author="user:me" ws={ws} onEdit={noop} onDelete={noop} />);
+  return waitFor(() => {
+    const t = document.querySelector('[aria-label="response table"]');
+    if (!t || t.querySelectorAll("tbody tr").length === 0) throw new Error("table not loaded");
+    return t as HTMLElement;
+  }, { timeout: 8000 });
+}
+
+/** Mount the reminder.list interactive list from the REAL descriptor's declared render — pulled off the
+ *  live `tools.catalog` (NOT the hand-mirrored constant), so this proves the Rust `list_render()` (incl.
+ *  its widget-kit `fieldConfig`) reaches the rendered table end to end: descriptor → catalog → posted
+ *  rich_result → ResponseView → ResponseTable. The palette posts `tool.result` verbatim; we do the same. */
+async function mountListFromCatalog(ws: string): Promise<HTMLElement> {
+  const tools = await catalog();
+  const list = tools.find((t) => t.name === "reminder.list");
+  if (!list?.result) throw new Error("reminder.list descriptor carries no result render");
+  const body = encodeRichResult(list.result as Parameters<typeof encodeRichResult>[0]);
+  const item: Item = { id: "rich-list-cat", channel: "general", author: "system:reminders", body, ts: 1 };
   render(<MessageItem item={item} author="user:me" ws={ws} onEdit={noop} onDelete={noop} />);
   return waitFor(() => {
     const t = document.querySelector('[aria-label="response table"]');
@@ -181,6 +212,14 @@ describe("Reminders through the generic palette (real gateway)", () => {
     // The cron `schedule` seeds its default; the `action_kind` select preselects "channel-post" → the
     // conditionally-required `channel` field surfaces. Fill it and submit.
     const channel = await screen.findByLabelText("channel");
+
+    // FORM presentation (widget-kit): the arg rail renders the field's resolved label + description from
+    // the SAME resolver the table headers use — the descriptor declared `channel → {label:"Channel",
+    // description:"The channel to post into"}`, so the rail shows them (not the raw `channel`).
+    const fieldRow = await screen.findByLabelText("field channel");
+    expect(fieldRow.textContent).toContain("Channel");
+    expect(fieldRow.textContent).toContain("The channel to post into");
+
     await user.type(channel, "standup");
     await waitFor(() => expect(screen.getByLabelText("send")).toBeEnabled());
     await user.click(screen.getByLabelText("send"));
@@ -282,12 +321,48 @@ describe("Reminders through the generic palette (real gateway)", () => {
     for (const id of ids) {
       expect(rowIndexOf(table, id)).toBeGreaterThanOrEqual(0);
     }
-    // The introspected columns include the reminder fields (id + schedule), not a lone `reminders` column.
+    // The columns resolve through the ONE presentation resolver (widget-kit): raw keys humanize
+    // ("Id"/"Schedule"), never a lone `reminders` column, and the actual schedule shows in the rows.
     const headers = Array.from(table.querySelectorAll("thead th")).map((h) => h.textContent);
-    expect(headers).toContain("id");
-    expect(headers).toContain("schedule");
+    expect(headers).toContain("Id");
+    expect(headers).toContain("Schedule");
     expect(headers).not.toContain("reminders"); // the array was unwrapped, not shown as one cell
     expect(table.textContent).toContain("0 8 * * 1"); // the real seeded schedule shows in the rows
+  });
+
+  it("presentation regression (the motivating fix): /reminders table shows 'Max Runs', hides principalSub/ts, no raw action blob", async () => {
+    // The HEADLINE widget-kit fix over the REAL gateway. reminder.list's descriptor declares a
+    // `fieldConfig` (Max Runs / Next fire / Action, principalSub+ts hidden). The rich_result carries it,
+    // buildCell copies it onto the cell, and the shared table column-model resolves every header through
+    // the ONE presentation resolver. So the table reads author labels — NOT raw record keys — and drops
+    // the hidden columns. `action` renders as a labeled cell (readable text), never a thrown JSON blob.
+    const ws = nextWs();
+    await signInReal("user:me", ws);
+    await seedReminder("standup", "sync");
+
+    // Mount from the REAL descriptor's declared render (off the live catalog), so this proves the Rust
+    // list_render() fieldConfig reaches the table end to end — not a test-authored envelope.
+    const table = await mountListFromCatalog(ws);
+    const headers = Array.from(table.querySelectorAll("thead th")).map((h) => h.textContent);
+
+    // Author label wins over the humanized raw key: "Max Runs", never "maxRuns".
+    expect(headers).toContain("Max Runs");
+    expect(headers).not.toContain("maxRuns");
+    // The nextAttemptTs override reads "Next fire"; action reads "Action".
+    expect(headers).toContain("Next fire");
+    expect(headers).toContain("Action");
+    // Hidden columns are DROPPED from the surface (presentation, not security — see the deny test).
+    expect(headers).not.toContain("principalSub");
+    expect(headers).not.toContain("Principal Sub");
+    expect(headers).not.toContain("ts");
+    // The `action` cell is readable text (the seeded channel-post shows its data), not a header-less blob
+    // dumped as one giant column — a real value appears in the rows under the Action column.
+    expect(table.textContent).toContain("standup");
+
+    // HIDE IS NOT SECURITY: the hidden field still crossed the bridge under the viewer's grant — the raw
+    // reminder.list row STILL contains principalSub (hiding only drops the rendered column).
+    const rows = await listReminders();
+    expect(rows[0]).toHaveProperty("principalSub"); // data crossed; only the column is hidden
   });
 
   it("pause control DOM e2e: clicking a row's switch drives reminder.update → enabled:false", async () => {
@@ -386,6 +461,13 @@ describe("Reminders through the generic palette (real gateway)", () => {
     await expect(
       invoke("mcp_call", { tool: "reminder.update", args: { id: "anything", enabled: false } }),
     ).rejects.toThrow(/denied/i);
+
+    // HIDE IS PRESENTATION, NOT SECURITY: the reminder.list render HIDES principalSub/ts, but that changes
+    // NOTHING about the deny — a source/action the viewer lacks is denied server-side whether or not a
+    // field is hidden. The deny above is opaque and unchanged by the presentation `hide` on the envelope.
+    await expect(
+      invoke("mcp_call", { tool: "reminder.create", args: { schedule: "0 8 * * 1", action_kind: "channel-post", channel: "x", body: "y" } }),
+    ).rejects.toThrow(/denied/i); // no create cap → denied, exactly as without any `hide` involved
   });
 
   it("workspace isolation: ws-B sees only its own reminders and cannot touch ws-A's", async () => {
