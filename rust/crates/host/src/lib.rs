@@ -63,8 +63,9 @@ mod workflow;
 mod workspaces;
 
 pub use agent::{
-    activate_skill, agent_call_key, call_agent_tool, cancel_run, decision_id, evaluate_policy,
-    format_catalog, invoke, invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes,
+    activate_skill, agent_call_key, agent_config_get, agent_config_set, call_agent_tool, cancel_run,
+    decision_id, evaluate_policy, format_catalog, invoke, invoke_descriptor, invoke_remote,
+    invoke_via_runtime, list_runtimes, AgentConfig, ModelEndpointPatch, AGENT_CONFIG_TABLE,
     load_decision, load_policy, rehydrate, render_catalog, resume, run_session, save_policy,
     serve_agent, settle_decision, Activation, AgentDecision, AgentError, AgentInvokeReply,
     AgentInvokeRequest, AgentRuntime, AgentServer, AllowedTool, ArgMatch, CallOutcome,

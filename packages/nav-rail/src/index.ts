@@ -14,4 +14,6 @@ import "./nav-rail.css"; // bundles Tailwind + the rail's tokens into the lib st
 
 export { NavRail } from "./NavRail";
 export type { NavRailProps } from "./NavRail";
+export { NavMenu } from "./NavMenu";
+export type { NavMenuProps } from "./NavMenu";
 export type { NavItem, NavGroup } from "./items";

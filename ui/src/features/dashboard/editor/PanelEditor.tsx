@@ -21,8 +21,9 @@ import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 
 import { cellToEditorState, editorStateToCell, type EditorState } from "./cellEditorState";
+import { NavMenu, type NavItem } from "@nube/nav-rail";
+
 import { defaultOptionsForView } from "./viewOptions";
-import { EditorTabs } from "./Tabs";
 import { VizPicker } from "./VizPicker";
 import { usePanelShape } from "./usePanelShape";
 import { OptionsSearch } from "./OptionsSearch";
@@ -111,14 +112,22 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   };
 
   const canPlot = PLOTTABLE_VIEWS.has(viewC);
-  const tabs = [
+  // The options rail is the reusable @nube/nav-rail NavMenu (retired the in-house EditorTabs strip):
+  // one data-driven vertical nav, section ids = tab ids. Badges (transform/override counts) come
+  // through NavMenu's `badge` fn below.
+  const tabItems: NavItem[] = [
     { id: "query", label: "Query" },
-    ...(canPlot ? [{ id: "plot", label: "Plot" }] : []),
-    { id: "transform", label: "Transform", badge: state.transformations.length || undefined },
+    ...(canPlot ? [{ id: "plot", label: "Plot" } as NavItem] : []),
+    { id: "transform", label: "Transform" },
     { id: "options", label: "Panel options" },
     { id: "field", label: "Field" },
-    { id: "overrides", label: "Overrides", badge: state.fieldConfig?.overrides?.length || undefined },
+    { id: "overrides", label: "Overrides" },
   ];
+  const tabBadge = (id: string): number | undefined => {
+    if (id === "transform") return state.transformations.length || undefined;
+    if (id === "overrides") return state.fieldConfig?.overrides?.length || undefined;
+    return undefined;
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -144,11 +153,20 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             <VizPicker view={viewC} onChange={switchView} shape={shape} flowKind={flowKind} />
           </div>
 
-          {/* Right: the options rail — search + tabs + the active tab body. */}
+          {/* Right: the options rail — search on top, then the reusable NavMenu (Query/Transform/…)
+              beside the active tab body. */}
           <div className="flex min-h-0 flex-col gap-2">
             <OptionsSearch value={search} onChange={setSearch} />
-            <EditorTabs tabs={tabs} active={tab} onSelect={(id) => setTab(id as TabId)} />
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
+              <NavMenu
+                aria-label="panel editor sections"
+                className="border-r border-border pr-2"
+                items={tabItems}
+                active={tab}
+                badge={tabBadge}
+                onSelect={(id) => setTab(id as TabId)}
+              />
+              <div className="min-h-0 flex-1 overflow-y-auto">
               {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} onRun={run} />}
               {tab === "plot" && canPlot && (
                 <PlotAxesTab draft={draft} state={state} patch={patch} scope={scope} refreshKey={refreshKey} />
@@ -157,6 +175,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} />}
               {tab === "field" && <FieldTab state={stateC} patch={patch} />}
               {tab === "overrides" && <OverridesTab state={state} patch={patch} />}
+              </div>
             </div>
           </div>
         </div>

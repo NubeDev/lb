@@ -627,10 +627,19 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { override } = (args ?? {}) as { override?: Record<string, unknown> };
       return postJson<T>(`${base}/prefs/resolve`, { override });
     }
+    case "prefs_get": {
+      // The caller's OWN stored, nullable prefs record (`{ prefs: … | null }`). Mirrors `GET /prefs`.
+      return getJson<T>(`${base}/prefs`);
+    }
     case "prefs_set": {
       // Merge a patch into the caller's OWN prefs record (member-level, forced to the caller's `sub`).
       // The body IS the patch (nullable axes omitted). Mirrors `PUT /prefs`.
       return putJson<T>(`${base}/prefs`, (args ?? {}) as Record<string, unknown>);
+    }
+    case "prefs_set_default": {
+      // Merge a patch into the WORKSPACE-default prefs record (admin-gated by the host). The body IS
+      // the patch. Mirrors `PUT /prefs/default` (204).
+      return putJson<T>(`${base}/prefs/default`, (args ?? {}) as Record<string, unknown>);
     }
     case "format_datetime": {
       // `instant` is epoch MILLISECONDS (the host formatter's contract). Either a resolved `prefs`

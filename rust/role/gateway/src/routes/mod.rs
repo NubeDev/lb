@@ -5,6 +5,7 @@
 
 mod admin_apikeys;
 mod admin_grants;
+mod agent_config;
 mod admin_members;
 mod admin_teams;
 mod admin_users;
@@ -46,6 +47,9 @@ pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, 
 pub use admin_grants::{
     assign_grant, define_role, delete_role, list_grants, list_roles, resolve_caps, revoke_grant,
     revoke_tokens_route,
+};
+pub use agent_config::{
+    get_agent_config as get_agent_config_route, set_agent_config as set_agent_config_route,
 };
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};

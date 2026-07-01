@@ -16,6 +16,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@nube/nav-rail": "workspace:*",
     "@codemirror/lang-javascript": "^6.2.4",
     "@codemirror/lang-sql": "^6.9.1",
     "@codemirror/state": "^6.5.2",

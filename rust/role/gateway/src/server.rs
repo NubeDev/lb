@@ -16,7 +16,8 @@ use crate::routes::{
     delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
     edit_message, enable_extension, enable_flow, enable_user, find_series, flow_node_state,
     flow_run_stream, format_datetime, format_number, format_quantity, get_apikey, get_catalog,
-    get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity,
+    get_agent_config_route, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run,
+    get_history, get_identity,
     get_outbox_status, get_prefs, get_rule, grant_skill, identity_workspaces_route, inject_flow,
     latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels, list_dashboards,
     list_datasources, list_docs, list_extensions, list_flow_nodes, list_flow_runs, list_flows,
@@ -28,7 +29,8 @@ use crate::routes::{
     request_approval, resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval,
     revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule,
     run_stream, save_dashboard, save_flow, save_rule, scan_table, series_stream, serve_ext_ui,
-    set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    set_agent_config_route, set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc,
+    start_job, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
@@ -74,6 +76,12 @@ pub fn router(gw: Gateway) -> Router {
         .route("/prefs", get(get_prefs).put(set_prefs))
         .route("/prefs/resolve", post(resolve_prefs))
         .route("/prefs/default", put(set_default_prefs))
+        // agent-config scope: the per-workspace default-runtime + model-endpoint record.
+        // `GET` is member-level; `PUT` is admin-gated by the host (re-checked server-side).
+        .route(
+            "/agent/config",
+            get(get_agent_config_route).put(set_agent_config_route),
+        )
         .route("/format/datetime", post(format_datetime))
         .route("/format/number", post(format_number))
         .route("/format/quantity", post(format_quantity))

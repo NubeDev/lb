@@ -275,6 +275,13 @@ fn member_caps() -> Vec<String> {
         // mutation), so the picker loads for a normal member. Both member-level; the host re-checks each.
         "mcp:agent.invoke:call",
         "mcp:agent.runtimes:call",
+        // agent-config scope: the per-workspace default-runtime + model-endpoint record. `get` is
+        // member-level (a member reads it to render the Settings/Agent surface and to know which
+        // runtime an invoke will use); `set` writes the WORKSPACE default — an ADMIN act beside
+        // `prefs.set_default`/`agent.policy.set`, granted here because the dev login doubles as admin.
+        // The host re-checks each cap server-side (a token without `set` is refused).
+        "mcp:agent.config.get:call",
+        "mcp:agent.config.set:call",
         // reminders-tenant scope: `reminder.fire` is the gated run-now verb (a "fire now" control).
         // Member-level — the same authority that creates/updates a reminder may fire one now; the
         // firing still re-checks the ACTION's own cap under the stored principal (no escalation).

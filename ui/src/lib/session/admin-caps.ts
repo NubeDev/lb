@@ -85,6 +85,14 @@ export const CAP = {
   // grant too (the console requires BOTH to show both lanes — `auditQuery`).
   telemetryRead: "mcp:telemetry.read:call",
   auditQuery: "mcp:audit.query:call",
+  // settings (user-prefs + agent-config scopes): the Settings page's Preferences tab is member-level
+  // (`prefs.set` writes the caller's OWN record); the workspace-default control gates on the
+  // admin-only `prefs.set_default`. The Agent tab reads with `agent.config.get` (member) and the
+  // admin-only `agent.config.set` gates the runtime/endpoint editor. The gateway re-checks each.
+  prefsSet: "mcp:prefs.set:call",
+  prefsSetDefault: "mcp:prefs.set_default:call",
+  agentConfigGet: "mcp:agent.config.get:call",
+  agentConfigSet: "mcp:agent.config.set:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

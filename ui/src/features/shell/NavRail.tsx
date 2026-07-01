@@ -18,6 +18,7 @@ import {
   Workflow,
   Wrench,
   Send,
+  Settings,
   Shield,
 } from "lucide-react";
 
@@ -55,7 +56,8 @@ export type CoreSurface =
   | "outbox"
   | "admin"
   | "extensions"
-  | "studio";
+  | "studio"
+  | "settings";
 
 /** A selected surface: a core one, or an **extension page** keyed `ext:<id>` (ui-federation scope). */
 export type Surface = CoreSurface | `ext:${string}`;
@@ -93,6 +95,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "admin", icon: Shield, label: "Admin" },
   { key: "extensions", icon: Boxes, label: "Extensions" },
   { key: "studio", icon: Wrench, label: "Studio" },
+  { key: "settings", icon: Settings, label: "Settings" },
 ];
 
 export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }: Props) {

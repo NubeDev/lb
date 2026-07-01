@@ -19,6 +19,7 @@
 mod activate;
 mod authorize;
 mod catalog;
+mod config;
 mod decision;
 mod descriptor;
 mod dispatch;
@@ -42,6 +43,10 @@ mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog};
+pub use config::{
+    agent_config_get, agent_config_set, call_agent_config_tool, AgentConfig, ModelEndpointPatch,
+    AGENT_CONFIG_TABLE,
+};
 pub use decision::{
     decision_id, load_decision, settle_decision, AgentDecision, DecisionState, SettleOutcome,
     APPROVAL_CHANNEL as DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
