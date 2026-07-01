@@ -14,7 +14,11 @@
 /// Register the external-agent runtimes into `registry`, if the feature is on. `model` is the node's
 /// configured model endpoint (provider/model/api-key-env NAME — never a key value); `scratch_base`
 /// is the node's scratch root (defaults to the OS temp dir when `None`).
+// Not yet invoked from `main`: `serve_agent` (the routed agent surface this registry feeds) is booted
+// where the gateway wires the agent, which is the serve-wiring TODO above. The function is the real,
+// compiled registration path the role-crate tests exercise; wiring the boot call is the next step.
 #[cfg(feature = "external-agent")]
+#[allow(dead_code)]
 pub fn register_external_runtimes(
     registry: &mut lb_host::RuntimeRegistry,
     model: lb_role_external_agent::ModelEndpoint,

@@ -31,7 +31,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use lb_external_agent::{drive, ModelEndpoint};
+use lb_external_agent::drive;
 use lb_host::{AgentError, AgentRuntime, Node, RunContext, RuntimeRegistry};
 use lb_run_events::{RunEvent, RunOutcome};
 

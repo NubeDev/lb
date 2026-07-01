@@ -5494,6 +5494,7 @@ dependencies = [
  "lb-authz",
  "lb-host",
  "lb-mcp",
+ "lb-role-external-agent",
  "lb-role-gateway",
  "lb-role-github-target",
  "lb-role-github-webhook",
