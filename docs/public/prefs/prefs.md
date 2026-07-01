@@ -5,11 +5,13 @@ SI/base units, locale-neutral enums) and **never** as a formatted string; presen
 the boundary from a principal's resolved preferences and exposed as MCP tools so thin clients don't
 re-implement timezone math, unit conversion, or date formatting.
 
-Status: **shipped** — units + formatting core. The i18n MessageFormat catalogs (server-localized
-notifications/emails) are deferred as named follow-ups (dialect already pinned, see below).
+Status: **shipped** — units + formatting core **and** the Phase-2 i18n MessageFormat catalogs
+(server-localized notifications/emails, per-recipient fan-out). icu4x remains a named swap-in.
 
-Scope: [`../../scope/prefs/user-prefs-scope.md`](../../scope/prefs/user-prefs-scope.md) ·
-Session: [`../../sessions/prefs/lb-prefs-session.md`](../../sessions/prefs/lb-prefs-session.md)
+Scope: [`../../scope/prefs/user-prefs-scope.md`](../../scope/prefs/user-prefs-scope.md),
+[`../../scope/prefs/i18n-catalogs-scope.md`](../../scope/prefs/i18n-catalogs-scope.md) ·
+Sessions: [`lb-prefs`](../../sessions/prefs/lb-prefs-session.md),
+[`i18n-catalogs`](../../sessions/prefs/i18n-catalogs-session.md)
 
 ## Records (SurrealDB, state)
 
@@ -94,10 +96,51 @@ The workspace + caps come from the session token, never the body. The utility ti
 - **Sync/authority:** cloud-authoritative shared data with an edge read-cache; deterministic composite
   ids make offline edits idempotent on replay (LWW).
 
+## i18n catalogs (Phase 2 — shipped)
+
+Server-side, per-recipient localization of app-generated content (inbox items, emails, push), on the
+**same renderer** the client uses.
+
+- **MF1 dialect, one source.** A hand-written **ICU MessageFormat 1 subset** parser/renderer in
+  `lb-prefs` (`catalog::render(key, args, override, resolved)`): argument, `plural` (`one`/`other` +
+  exact `=0`/`=1`), `select` (arbitrary keywords + mandatory `other`), typed `{ts,date}` /
+  `{n,number}` / `{v,quantity,<dim>}` placeholders (dispatched to the shipped `format::*`, never
+  re-derived), one level of nesting, the `#` count token. en/es plural per CLDR 44. Anything outside
+  the subset is a **catalog-lint error** (build-time test + rejected on write), never a silent parse.
+- **Built-in en/es catalogs**, compiled in (`include_str!` of `catalog/builtin/{en,es}.mf`), version-
+  stamped. The client bundle (`ui/src/lib/prefs/catalog.generated.ts`) is **generated** from them
+  (`cargo run -p lb-prefs --bin gen-prefs-catalog`) and byte-identity drift-tested — host and client
+  can't diverge by construction. The client renders the same MF1 with `intl-messageformat` (a
+  cross-check test asserts byte-identical output).
+- **Per-workspace override catalog.** `message_catalog:[ws, locale]` (SCHEMAFULL, flat dotted keys →
+  MF1). A sparse override shadows a builtin key **for that workspace+locale only**. MERGE is per
+  message-key (two offline edits to different keys both survive; same-key LWW; composite id →
+  idempotent replay). Fallback: **override → builtin(lang) → builtin(en) → the key literal** — never
+  blank, never panics; a placeholder failure renders the honest literal `[<arg>]`.
+- **Per-recipient fan-out.** A notification to an N-member team renders **N times**, once per member's
+  resolved prefs (a team has no language of its own).
+
+### Catalog MCP surface + routes
+
+```
+message.render(key, args, recipient?)   POST /message/render    -> { text, locale_used, catalog_version }
+prefs.catalog(locale)                   POST /prefs/catalog     -> { locale, catalog_version, messages, has_override }
+message.set_catalog(locale, messages)   PUT  /message/catalog   -> 204  (+ "catalog changed" hint)
+```
+
+- **Capabilities:** `message.render` is member-level for the caller's OWN render (`mcp:message.
+  render:call`); rendering **for another recipient** (the fan-out path) additionally requires
+  `mcp:message.render_recipient:call` (the service/admin grant a producer holds, parallel to
+  `prefs.get(other)`). `prefs.catalog` is member-level (read the merged map for own ws).
+  `message.set_catalog` is **admin** (`mcp:message.set_catalog:call`), beside `prefs.set_default`.
+  Render is gated (unlike grant-free `format.*`) because a catalog with overrides carries tenant data.
+  Deny is opaque. An out-of-subset override is a `400` (authoring error), distinct from a `403`.
+- **Motion:** `message.set_catalog` publishes `ws/{ws}/prefs/catalog-changed`
+  `{ locale, catalog_version }` so open clients re-fetch — fire-and-forget; the store holds the state.
+
 ## Deferred (named follow-ups)
 
-i18n MessageFormat catalogs (server-localized notifications/emails/inbox, per-recipient fan-out, the
-workspace override-catalog asset), the icu4x swap-in (localized unit/month names + MessageFormat
-engine + en/es CLDR data-slicing), and the client settings/bootstrap-locale UI. The MessageFormat
-**dialect is already pinned — ICU MF1, `intl-messageformat` on the client** — so catalog work starts
-unblocked; the host MF1 parser is the remaining Phase-2 build item.
+The **icu4x swap-in** (localized unit/month **names** + the full-CLDR plural engine for locales beyond
+`one`/`other`, e.g. `pl`/`ar` + en/es CLDR data-slicing) behind the same `format::*`/`catalog::*`
+signatures, and the client **settings/bootstrap-locale UI** + RTL layout application. MF2 is
+explicitly out (the dialect is pinned to MF1 to match `intl-messageformat`).

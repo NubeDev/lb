@@ -171,8 +171,9 @@ pub use native::{
 };
 pub use outbox::{enqueue_outbox, outbox_status, OutboxError, OutboxStatus};
 pub use prefs::{
-    authorize_prefs, call_format_tool, call_prefs_tool, prefs_get, prefs_resolve, prefs_set,
-    prefs_set_default, PrefsSvcError,
+    authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,
+    catalog_changed_subject, message_render, message_set_catalog, prefs_catalog, prefs_get,
+    prefs_resolve, prefs_set, prefs_set_default, CatalogView, PrefsSvcError,
 };
 pub use query::{
     call_query_tool, compile_descriptor, query_compile, query_delete, query_get, query_list,

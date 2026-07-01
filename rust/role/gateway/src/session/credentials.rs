@@ -211,6 +211,18 @@ fn member_caps() -> Vec<String> {
         "mcp:prefs.get:call",
         "mcp:prefs.resolve:call",
         "mcp:prefs.set:call",
+        // i18n catalogs (i18n-catalogs scope, prefs Phase 2). `message.render` (render a catalog
+        // message for the CALLER) + `prefs.catalog` (read the merged override-over-builtin map for
+        // the caller's own workspace) are member-level — a member must render/read to localize their
+        // own screen, mirroring `prefs.resolve`. `message.render_recipient` is the fan-out grant the
+        // outbox/inbox producer holds to render FOR ANOTHER recipient (producing content on their
+        // behalf, like `prefs.get(other)`) — the dev principal carries it so the collaboration UI can
+        // exercise per-recipient rendering. `message.set_catalog` writes a WORKSPACE override, an
+        // ADMIN act beside `prefs.set_default`; granted here because the dev login doubles as admin.
+        "mcp:message.render:call",
+        "mcp:message.render_recipient:call",
+        "mcp:prefs.catalog:call",
+        "mcp:message.set_catalog:call",
         // telemetry console (telemetry-console scope): the read grant the Telemetry page's
         // `telemetry.query`/`trace` (and the SSE `telemetry.tail`) gate on. Member-level — the read
         // surface is HARD-filtered to the caller's workspace server-side, so a member sees only their

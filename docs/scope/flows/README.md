@@ -24,6 +24,7 @@ canonical **Decisions (v1)** that every other doc references by number.
 | [flow-dashboard-binding-ux-scope.md](flow-dashboard-binding-ux-scope.md) | **The binding made authorable.** A flow-aware **source picker** (pick flow → node → port/slot), switch/slider wired for you, **structured JSON in *and* out**, port-aware `flows.inject`, and controls that reflect a node's real current value. Builds on `dashboard-binding-scope.md` (the shipped mechanism) — adds the UX + read-back, no new transport. |
 | [flows-canvas-scope.md](flows-canvas-scope.md) | **The editor.** The React Flow canvas, the palette from `flows.nodes`, schema-driven config forms, the draft/version + executed-node-lock UX, import/export, and undo. |
 | [flow-runtime-control-scope.md](flow-runtime-control-scope.md) | **Observable + interruptible runtime.** Decouples the driver from the request (a run is a background job), makes `cancel`/`suspend` bite **mid-run**, streams per-node settles over a Zenoh subject + a gateway **SSE** `flows.watch` (the "fire on the eventbus if anyone's listening" feed), and adds **per-node config CRUD** (`flows.node.get`/`update`) so a node tweak isn't a whole-`Flow` post. |
+| [chains-retirement-scope.md](chains-retirement-scope.md) | **Retire `chains` — flows are the one DAG engine.** Executes Decision 6 to its end: **delete** the `chains.*` verbs, the host `chains` module, the `lb_rules::workflow` model, the gateway routes, and the React chain canvas (flows are a proven superset). No alias — a clean pre-1.0 cut. `rule-chains-scope.md` retires to lineage. |
 | [flow-plc-reliability-scope.md](flow-plc-reliability-scope.md) | **PLC-grade reliability + the reactive run model.** Fixes the frozen-`gw.now` constant-run-id bug (one finished run looked perpetually re-runnable → store `Invalid revision`/transaction-conflict, flickering controls), hardens the run-store write against concurrent rev RMW (per-key lock + retry, the capped-ring precedent), and wires **Run = deploy** for triggered/source flows (Node-RED reactive posture: arm via `flows.enable`+`start_on_boot`, reconciler-owned, survives restart; Stop disarms) while a manual chain stays one-shot. |
 
 ## Build order (suggested)
@@ -38,8 +39,9 @@ switch/slider/JSON, which consumes the envelope's `payload`/`topic` ports).
 
 ## Related (platform primitives reused)
 
-- `../rules/rule-chains-scope.md` + `rules-engine-scope.md` — the DAG engine, run-store, and the
-  rhai cage this generalises.
+- `../rules/rules-engine-scope.md` — the single-rule `rhai` cage a `Rhai`/`Tool` node runs (stays).
+- `../rules/rule-chains-scope.md` — **retired to lineage** by `chains-retirement-scope.md`: the
+  `rubix-cube` workflow-DAG port that flows generalised and now *replaces* (read as history).
 - `../jobs/jobs-scope.md` — the durable resumable run + suspend/resume.
 - `../extensions/extensions-scope.md` (`extension.toml`), `host-callback-scope.md`,
   `reference-extensions-scope.md` (the native MQTT bridge), `ui-federation-scope.md`.

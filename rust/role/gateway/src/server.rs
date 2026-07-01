@@ -16,8 +16,8 @@ use crate::routes::{
     delete_message, delete_role, delete_rule, delete_team, delete_user, disable_extension,
     disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
     flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity, get_apikey,
-    get_chain, get_chain_run, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run,
-    get_history, get_identity, get_outbox_status, get_prefs, get_rule, grant_skill,
+    get_catalog, get_chain, get_chain_run, get_dashboard, get_doc, get_flow, get_flow_node,
+    get_flow_run, get_history, get_identity, get_outbox_status, get_prefs, get_rule, grant_skill,
     identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
     list_chains, list_channels, list_dashboards, list_datasources, list_docs, list_extensions,
     list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
@@ -25,13 +25,13 @@ use crate::routes::{
     list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog, patch_flow_run,
     post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
     read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, request_approval, resolve_caps, resolve_inbox, resolve_prefs,
-    resolve_workflow_approval, revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey,
-    run_chain, run_flow, run_query, run_rule, run_stream, save_chain, save_dashboard, save_flow,
-    save_rule, scan_table, series_stream, serve_ext_ui, set_default_prefs, set_prefs,
-    share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, telemetry_stream, test_datasource, uninstall_extension,
-    update_flow_node, write_samples,
+    rename_team, rename_workspace, render_catalog_message, request_approval, resolve_caps,
+    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
+    revoke_tokens_route, rotate_apikey, run_chain, run_flow, run_query, run_rule, run_stream,
+    save_chain, save_dashboard, save_flow, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -79,6 +79,13 @@ pub fn router(gw: Gateway) -> Router {
         .route("/format/number", post(format_number))
         .route("/format/quantity", post(format_quantity))
         .route("/convert/unit", post(convert_unit))
+        // i18n catalogs (i18n-catalogs scope, prefs Phase 2). All three are GATED tenant verbs (a
+        // catalog carries workspace overrides): `message.render` (member for self, +fan-out grant for
+        // another recipient), `prefs.catalog` (member — the merged override-over-builtin map), and
+        // `message.set_catalog` (admin — writes a workspace override + publishes the "changed" hint).
+        .route("/message/render", post(render_catalog_message))
+        .route("/prefs/catalog", post(get_catalog))
+        .route("/message/catalog", put(set_catalog))
         // admin-crud: the destructive/admin surface (admin-console scope). Every verb re-checks the
         // capability server-side — the UI cap-gate is convenience only.
         .route("/admin/users", get(list_users).post(create_user))

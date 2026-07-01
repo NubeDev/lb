@@ -48,14 +48,21 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
-  `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox),
-  plus **rule chains** — a rule DAG whose every step is an `lb-jobs` job, cron via the S6 reactor, event
-  via `bus.watch` (`rule-chains-scope.md`). Exposed as `rules.*` / `chains.*` MCP verbs.
+  `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox).
+  Exposed as `rules.*` MCP verbs. **Chaining rules into a DAG is now `flows/`** — the standalone
+  `chains.*` surface is retired (`flows/chains-retirement-scope.md`); `rule-chains-scope.md` stays as
+  lineage (the `rubix-cube` workflow-DAG port history), not a shipping surface.
 - `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds
   DataFusion + connectors to query external SQL sources (MySQL, PostgreSQL/TimescaleDB, …) under `net:*`
   + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+
   `datasource.*` admin CRUD and a `federation.mirror` `lb-jobs` batch). SurrealDB stays the authority;
   external DBs are federated sources reached through the gated extension, never a second authority.
+  Also `page-chaining-scope.md`: one **keyset cursor** paging contract (opaque `cursor` + `limit` →
+  `{rows, next_cursor}`, additive on the existing read verbs, no new cap) so large timeseries load a
+  fast page at a time — **SurrealDB pages the state plane** (index-backed, O(page)), DataFusion pages
+  only by predicate **pushdown** to the real source, and anything that must load at dashboard speed is
+  **mirrored** into the series plane and keyset-paged there; a chart **downsamples** (time-bucket
+  min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager rejected.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
   `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `extensions/` also holds
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
@@ -171,7 +178,7 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a
   React Flow chain canvas that colours steps as they settle, and a datasources admin page — first-party
-  shell driving the shipped `rules.*`/`chains.*`/`datasource.*` verbs over the gateway, mirroring the
+  shell driving the shipped `rules.*`/`flows.*`/`datasource.*` verbs over the gateway, mirroring the
   dashboard pattern; the federation extension stays headless), and `rules-editor-ux-scope.md` (a guided,
   explorable authoring surface extending that Playground: a searchable function palette mirroring the
   registered Rhai verbs, click-to-load examples, and a datasource/schema/series data explorer — all

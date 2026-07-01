@@ -88,11 +88,19 @@ canonical — UTC instants, base units, neutral enums — never a formatted stri
   + a **grant-free** utility tier `format.datetime/number/quantity` + `convert.unit` (pure math, no
   tenant data). Gateway routes mirror them 1:1. Closed vocabulary generated to the client
   (`ui/src/lib/prefs/dimensions.generated.ts`).
-- **Deferred (Phase 2, named):** i18n MessageFormat catalogs (server-localized notifications/emails,
-  per-recipient fan-out) — dialect pinned (ICU MF1 / `intl-messageformat`); the `icu4x` swap-in for
-  localized names + the MessageFormat engine + the en/es CLDR data slice; the client settings UI.
+- **i18n catalogs (Phase 2, shipped):** a hand-written **ICU MF1 subset** parser/renderer in
+  `lb-prefs` (plural `one`/`other`+`=0`/`=1`, `select`, typed date/number/quantity placeholders routed
+  to `format::*`, one nest, `#`); built-in en/es `.mf` catalogs compiled in + **generated to the client**
+  (`catalog.generated.ts`, byte-identity drift-tested; `intl-messageformat` cross-checked host==client);
+  a sparse per-workspace override `message_catalog:[ws, locale]` (per-key merge, LWW, offline-idempotent);
+  and 3 MCP verbs — `message.render` (member for self, `message.render_recipient` grant to fan out for
+  another), `prefs.catalog` (member), `message.set_catalog` (admin) — routes 1:1, + the "catalog changed"
+  hint. **Server-side per-recipient fan-out**: one event → N distinct renders (per member's prefs).
+- **Deferred (named):** the `icu4x` swap-in (localized names + full-CLDR plural engine + en/es CLDR
+  slice) behind the same signatures; the client settings/bootstrap-locale + RTL UI.
 
-See `prefs/prefs.md`, `../scope/prefs/user-prefs-scope.md`, `../sessions/prefs/lb-prefs-session.md`.
+See `prefs/prefs.md`, `../scope/prefs/{user-prefs,i18n-catalogs}-scope.md`,
+`../sessions/prefs/{lb-prefs,i18n-catalogs}-session.md`.
 
 ## Shipped (S9+ — frontend: the rules workbench — Playground · chain canvas · datasources admin)
 

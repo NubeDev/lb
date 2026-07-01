@@ -4,6 +4,9 @@
 packages:
   - '.'
 
+allowBuilds:
+  esbuild: set this to true or false
+
 # Approve build scripts for these deps (pnpm blocks postinstall/build scripts by default).
 onlyBuiltDependencies:
   - esbuild

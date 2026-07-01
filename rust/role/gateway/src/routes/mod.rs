@@ -11,6 +11,7 @@ mod admin_users;
 mod admin_workspaces;
 mod assets;
 mod bus;
+mod catalog;
 mod chains;
 mod channel_registry;
 mod dashboard;
@@ -55,6 +56,7 @@ pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
 pub use bus::{bus_stream, publish_message};
+pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
 pub use chains::{delete_chain, get_chain, get_chain_run, list_chains, run_chain, save_chain};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{

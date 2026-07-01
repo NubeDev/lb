@@ -54,6 +54,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("secret.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("prefs.")
+        || qualified_tool.starts_with("message.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool.starts_with("reminder.")
         || qualified_tool.starts_with("query.")
@@ -326,6 +327,20 @@ async fn dispatch_at_depth(
             crate::call_secret_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("prefs.") {
             crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("message.") {
+            // i18n-catalogs scope: `message.render` / `message.set_catalog`. The outer gate ran the
+            // base `mcp:message.<verb>:call`; the render verb adds the `message.render_recipient`
+            // grant for a foreign-recipient fan-out, and set_catalog publishes the "catalog changed"
+            // hint (needs the bus).
+            crate::call_catalog_tool(
+                &node.store,
+                &node.bus,
+                principal,
+                ws,
+                qualified_tool,
+                &input,
+            )
+            .await?
         } else if qualified_tool.starts_with("query.") {
             // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
             // federation.query). query.run adds the no-widening target cap inside its service.
