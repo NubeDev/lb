@@ -1,16 +1,18 @@
 //! Opt-in **end-to-end in-channel** run (channels-agent + external-agent): post a real `kind:"agent"`
 //! item into a real channel on a real `Node`, selecting the **external** `open-interpreter-default`
-//! runtime, and assert the worker posts a real `agent_result` carrying the agent's answer. This is the
-//! whole headline path — channel `post` → inline agent worker → runtime seam → Open Interpreter
-//! subprocess → **Z.AI GLM-4.6** → `agent_result` in durable history — with NOTHING faked (rule 9;
-//! the model is the real Z.AI coding endpoint).
+//! runtime, drive the background drain, and assert the worker posts a real `agent_result` carrying the
+//! agent's answer. This is the whole headline path — channel `post` (enqueues the durable run) →
+//! background reactor drain → agent worker → runtime seam → Open Interpreter subprocess →
+//! **Z.AI GLM-4.6** → `agent_result` in durable history — with NOTHING faked (rule 9; the model is the
+//! real Z.AI coding endpoint). (`post` returns before the run; `drain_channel_agent_runs` is the
+//! synchronous flush the background reactor performs on its tick — run-lifecycle #5.)
 //!
 //! Gated on `EXTAGENT_SMOKE=1` (like the seam smoke) so the default offline `cargo test` skips it: it
 //! needs the `interpreter` binary on `PATH` and a non-throttled `ZAI_API_KEY`. With those set:
 //!   EXTAGENT_SMOKE=1 ZAI_API_KEY=… cargo test -p lb-role-external-agent --test channel_smoke_test -- --nocapture
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{history, post, Node, RuntimeRegistry, UnconfiguredModel};
+use lb_host::{drain_channel_agent_runs, history, post, Node, RuntimeRegistry, UnconfiguredModel};
 use lb_inbox::Item;
 use lb_role_external_agent::profiles::{default_model_endpoint, OPEN_INTERPRETER_DEFAULT};
 use lb_role_external_agent::register;
@@ -36,7 +38,7 @@ async fn asking_in_a_channel_drives_open_interpreter_against_zai() {
         return;
     }
 
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
 
     // Install the external runtimes on the node exactly as the feature-on `node` binary does at boot.
     let mut registry = RuntimeRegistry::with_default(Arc::new(UnconfiguredModel));
@@ -78,6 +80,10 @@ async fn asking_in_a_channel_drives_open_interpreter_against_zai() {
     )
     .await
     .expect("the agent request posts");
+
+    // `post` only ENQUEUED the durable run (run-lifecycle #5) — drive the drain the background reactor
+    // would run on its tick, synchronously, so the smoke test observes the completed answer.
+    drain_channel_agent_runs(&node, ws).await;
 
     // The worker's answer is in durable history, correlated to the run.
     let items = history(&node.store, &p, ws, cid).await.expect("history");

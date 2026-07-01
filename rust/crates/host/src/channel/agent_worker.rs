@@ -1,11 +1,14 @@
 //! The **channel agent worker** (channels-agent scope) — the sibling of [`query_worker`](super::query_worker).
-//! Runs INLINE inside [`channel::post`](super::post) when the posted item is a `kind:"agent"` request:
-//! it drives an agent run toward the goal through the host-owned runtime seam (external-agent #1,
-//! `invoke_via_runtime` → the node's [`RuntimeRegistry`](crate::RuntimeRegistry)), then posts the
-//! durable `kind:"agent_result"` (or `kind:"agent_error"`) item back into the same channel under a
-//! system identity. The whole exchange lives in durable channel history and streams over SSE; while a
-//! run executes it publishes `RunEvent`s on the run's bus subject, so a watcher sees it live
-//! (agent-run Part 3), identically for an in-house or an external agent.
+//! Called from [`channel::post`](super::post) when the posted item is a `kind:"agent"` request. As of
+//! run-lifecycle #5 it no longer drives the run inline: it **enqueues a durable job** and returns, so
+//! `post` finishes at once and the run is detached from the POST connection (it survives the tab
+//! closing AND a node restart). The background [`agent_reactor`](crate::agent_reactor) drains the
+//! queue and calls [`drive_queued_run`] here, which drives the run through the host-owned runtime seam
+//! (external-agent #1, `invoke_via_runtime` → the node's [`RuntimeRegistry`](crate::RuntimeRegistry))
+//! and posts the durable `kind:"agent_result"` (or `kind:"agent_error"`) item back into the same
+//! channel under a system identity. The whole exchange lives in durable channel history and streams
+//! over SSE; while a run executes it publishes `RunEvent`s on the run's bus subject, so a watcher sees
+//! it live (agent-run Part 3), identically for an in-house or an external agent.
 //!
 //! **Runtime is selected, not branched.** `AgentPayload.runtime` flows straight into the registry
 //! (absent → the in-house `default`; a profile id → an external `AcpRuntime`, e.g.
@@ -15,28 +18,27 @@
 //!
 //! Security invariants (do not weaken), mirroring the query worker:
 //!   - TWO grants, in order: channel `bus:chan/{cid}:pub` (the member already passed it to post the
-//!     `agent` item), then `mcp:agent.invoke:call` when the worker drives the run UNDER THE POSTER'S
-//!     principal (`invoke_via_runtime`'s gate 1). A member without the invoke grant is denied here and
-//!     gets an OPAQUE `agent_error` ("agent not permitted"). Inside the run every tool the agent tries
-//!     re-runs `caps::check` under the derived `agent ∩ caller` principal (no widening).
+//!     `agent` item), then `mcp:agent.invoke:call` when the run is driven UNDER THE POSTER'S principal
+//!     (`invoke_via_runtime`'s gate 1). The poster's identity + caps are carried on the durable
+//!     enqueue record and the reactor reconstructs the poster via `Principal::routed` (the same
+//!     co-trust reconstruction the routed-agent hub does). A member without the invoke grant is denied
+//!     when the run drives and gets an OPAQUE `agent_error` ("agent not permitted"). Inside the run
+//!     every tool the agent tries re-runs `caps::check` under the derived `agent ∩ caller` principal
+//!     (no widening).
 //!   - The deny path is **opaque**: a missing invoke grant AND a named-but-unknown/ungranted runtime
 //!     collapse to the SAME "agent not permitted" — so the poster learns nothing about which runtimes
 //!     exist. A genuine run fault is an honest, distinct message.
-//!   - **Re-entrancy guard:** only `kind:"agent"` triggers work. The worker's own
+//!   - **Re-entrancy guard:** only `kind:"agent"` enqueues work. The worker's own
 //!     `agent_result`/`agent_error` items parse to other variants and are ignored — an infinite loop
 //!     is one absent guard away (tested).
 //!   - The worker holds NO durable state; a failure never fails the originating post (which already
 //!     durably landed) — the worst case is a follow-up `agent_error` (or nothing).
-//!
-//! **v1 is inline (like the query worker); non-blocking background execution is the run-lifecycle #5
-//! follow-up.** An `exec --json` run can take many seconds, so awaiting it here blocks the poster's
-//! `post` for the run's duration. That is the faithful reuse of the proven worker pattern and works
-//! end-to-end today; spawning it as a durable, supervised, resumable job (so `post` returns at once
-//! and only the answer streams later) is `run-lifecycle-scope.md`, flagged in the channels-agent scope.
 
 use lb_auth::Principal;
 use lb_inbox::Item;
+use lb_jobs::{Job, JobStatus};
 
+use super::agent_job::{ChannelAgentJob, CHANNEL_AGENT_KIND};
 use super::payload::{
     agent_error_body, agent_result_body, parse_payload, AgentPayload, ItemPayload,
 };
@@ -55,10 +57,15 @@ const OPAQUE_DENY: &str = "agent not permitted";
 /// can't bloat channel history / the bus frame. The full step-by-step stays in the run stream/job.
 const AGENT_MAX_BYTES: usize = 256 * 1024;
 
-/// If `item` is a `kind:"agent"` request, drive the run and post the result/error item. Otherwise
-/// (chat, a `query*`/`agent_result`/`agent_error` payload, …) do nothing — the re-entrancy guard.
-/// Never errors: a worker failure becomes an `agent_error` item (or is swallowed if even that cannot
-/// land); the originating post has already succeeded.
+/// If `item` is a `kind:"agent"` request, **enqueue** a durable background run and return; the
+/// background reactor drives it later (run-lifecycle #5). Otherwise (chat, a `query*` /
+/// `agent_result` / `agent_error` payload, …) do nothing — the re-entrancy guard. Never errors: a
+/// failure to enqueue never fails the originating post (which already durably landed).
+///
+/// Detaching the run from the POST connection is the whole point: `post` returns the instant the
+/// enqueue job persists, and the run drives itself under the reactor — so closing the tab or restarting
+/// the node no longer cancels or loses the run. The poster's identity + caps are captured onto the
+/// durable record so the reactor drives the run under the ASKER's authority, not the reactor's.
 pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, item: &Item) {
     // RE-ENTRANCY GUARD: only a `kind:"agent"` item triggers work. A result/error item (or plain chat,
     // or a query payload) parses to another variant / None and returns here — never feeds on its output.
@@ -67,21 +74,102 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
         return;
     };
 
-    let ts = item.ts.saturating_add(1);
-    // The runtime label the result echoes: the requested id, or the default's id when absent.
+    let record = ChannelAgentJob {
+        cid: cid.to_string(),
+        goal,
+        runtime,
+        run_job: job.clone(),
+        // The poster's identity + caps — the reactor reconstructs the poster principal from these
+        // (`Principal::routed`) so the run acts with the ASKER's authority, bounded by the asker's
+        // grants (`agent ∩ poster`). Co-trust reconstruction, in-process + ws-scoped, exactly as the
+        // routed-agent hub already does; never used to widen.
+        poster_sub: poster.sub().to_string(),
+        poster_caps: poster.caps().to_vec(),
+        // The run + its result item are ordered strictly after the request item.
+        ts: item.ts.saturating_add(1),
+    };
+
+    // Persist the enqueue job durably. Idempotent on `q:<run_job>` (a redelivered request upserts the
+    // same job — no double run). A failure to enqueue is swallowed: the request item already landed,
+    // and the reactor only drains what durably persisted (the alternative — driving inline on an
+    // enqueue failure — would re-tie the run to the POST connection we are deliberately detaching).
+    let payload = match serde_json::to_string(&record) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let enqueue = Job::new(
+        ChannelAgentJob::job_id(&job),
+        CHANNEL_AGENT_KIND,
+        payload,
+        record.ts,
+    );
+    let _ = lb_jobs::create(&node.store, ws, &enqueue).await;
+}
+
+/// Drive one queued channel agent run to completion and post its `agent_result`/`agent_error` back,
+/// then mark the enqueue job terminal so it is never re-driven. Called by the background reactor for
+/// each pending [`ChannelAgentJob`]. This is the work that used to run inline in `post`; it is
+/// unchanged except that it now runs detached under the reactor, under the reconstructed poster.
+///
+/// **Idempotent:** if the correlated answer item (`a:<run_job>`) already exists, the run already
+/// completed on a prior tick (or before a restart) — skip driving it again (no re-run, no re-spend,
+/// no double-post) and just mark the enqueue job done.
+pub async fn drive_queued_run(node: &Node, ws: &str, enqueue_id: &str, record: &ChannelAgentJob) {
+    let ChannelAgentJob {
+        cid,
+        goal,
+        runtime,
+        run_job,
+        poster_sub,
+        poster_caps,
+        ts,
+    } = record;
+
+    // IDEMPOTENCY: a completed run already posted `a:<run_job>` — do not re-drive it. Best-effort; a
+    // read hiccup falls through to drive (the run itself is idempotent on `run_job` via the job).
+    if answer_already_posted(node, ws, cid, run_job).await {
+        finish_enqueue(node, ws, enqueue_id).await;
+        return;
+    }
+
+    // Reconstruct the poster as the co-trust routed principal — the run acts with the asker's
+    // authority, bounded by the asker's grants (identical to `AgentInvokeRequest`'s hub-side rebuild).
+    let poster = Principal::routed(poster_sub.clone(), ws.to_string(), poster_caps.clone());
     let runtime_label = runtime.clone().unwrap_or_else(|| "default".to_string());
 
-    match drive_run(node, poster, ws, &goal, runtime.as_deref(), &job, ts).await {
+    match drive_run(node, &poster, ws, goal, runtime.as_deref(), run_job, *ts).await {
         Ok(answer) => {
             let (answer, truncated) = cap_answer(answer);
-            let body = agent_result_body(&goal, &runtime_label, &job, &answer, truncated);
-            let _ = post_worker_item(node, ws, cid, &job, body, ts).await;
+            let body = agent_result_body(goal, &runtime_label, run_job, &answer, truncated);
+            let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
         }
         Err(msg) => {
-            let body = agent_error_body(&goal, &msg);
-            let _ = post_worker_item(node, ws, cid, &job, body, ts).await;
+            let body = agent_error_body(goal, &msg);
+            let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
         }
     }
+
+    // The run is done (a result or an error item landed) — retire the enqueue job so the reactor's
+    // next drain skips it. Terminal even on a post failure: the alternative (leaving it Running) would
+    // re-drive a run whose answer we already spent the model on.
+    finish_enqueue(node, ws, enqueue_id).await;
+}
+
+/// Whether the correlated answer item (`a:<run_job>`) already exists in the channel — the durable
+/// signal that this run already completed (idempotency across ticks / a node restart mid-drain).
+async fn answer_already_posted(node: &Node, ws: &str, cid: &str, run_job: &str) -> bool {
+    let want = ChannelAgentJob::result_item_id(run_job);
+    matches!(
+        lb_inbox::get(&node.store, ws, cid, &want).await,
+        Ok(Some(_))
+    )
+}
+
+/// Mark the enqueue job `Done` so the reactor's next drain no longer picks it up. Best-effort — a
+/// failure just means the next tick re-considers it, and the `answer_already_posted` idempotency guard
+/// then short-circuits the re-drive.
+async fn finish_enqueue(node: &Node, ws: &str, enqueue_id: &str) {
+    let _ = lb_jobs::complete(&node.store, ws, enqueue_id, JobStatus::Done).await;
 }
 
 /// Drive the run under the poster's authority via the runtime seam, returning the final answer or an

@@ -68,7 +68,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
-  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `extensions/` also holds
+  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `core/` also holds
+  `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
+  + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
+  all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
+  `channel_list → channel.list`, `installed → extension.list` behind a one-release alias). `extensions/` also holds
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
   exposed over the gateway, not Tauri-only) and `ui-federation-scope.md` (mount an extension's OWN
   pages inside the shell — module federation for trusted publishers, iframe/Web Component sandbox for
@@ -133,7 +137,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
-- `jobs/` — the SurrealDB-native durable job queue / resumable session (S5).
+- `jobs/` — the SurrealDB-native durable job queue / resumable session (S5). Also
+  `job-control-scope.md` (the **observe/control surface** — `job.list|get|cancel|retry|watch`,
+  owner-routed through the owning service's chokepoint so callers can see/stop/recover durable work
+  without a raw `jobs.*` table API; the runnable-trait member of `core/resource-verbs-scope.md`).
 - `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
   (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
   `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6

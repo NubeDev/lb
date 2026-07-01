@@ -9,6 +9,7 @@
 //! and `load_extension` to bring a component online. Tool calls go through `lb_mcp::call`.
 
 mod agent;
+mod agent_reactor;
 mod apikey;
 mod assets;
 mod authz;
@@ -71,6 +72,10 @@ pub use agent::{
     RuntimeRegistry, SettleOutcome, Substrate, Turn, UnconfiguredModel, DECISION_APPROVAL_CHANNEL,
     DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
 };
+/// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
+/// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
+/// deterministic drain a test (or a caller wanting an immediate flush) drives without the timer.
+pub use agent_reactor::{drain_channel_agent_runs, spawn_agent_reactors};
 pub use apikey::{
     apikey_authenticate, apikey_create, apikey_get, apikey_list, apikey_revoke, apikey_rotate,
     ensure_builtin_roles, is_auth_failure, ApiKeyCache, ApiKeyError, ApiKeyFull, ApiKeyView,

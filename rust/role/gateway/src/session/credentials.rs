@@ -69,6 +69,11 @@ fn member_caps() -> Vec<String> {
         "mcp:devkit.scaffold:call",
         "mcp:devkit.inspect:call",
         "mcp:devkit.build:call",
+        // Studio "open existing" folder picker: `devkit.root` anchors the browse at the devkit root,
+        // `host.fs.list` walks it one level at a time (so the user browses to an extension instead of
+        // typing a path). Read-only metadata; the host re-checks both server-side.
+        "mcp:devkit.root:call",
+        "mcp:host.fs.list:call",
         // Publishing a native devkit build reuses `ext.publish` plus the existing native install
         // gate before any child process is supervised.
         "mcp:native.install:call",

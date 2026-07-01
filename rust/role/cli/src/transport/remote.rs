@@ -18,10 +18,24 @@ use super::Transport;
 /// A reqwest client bound to one gateway URL + one session token. Constructed by the command layer
 /// after it selected the credential for the `-w` workspace (a missing credential errored before we got
 /// here — the credential-selector rule).
+///
+/// `Debug` is hand-written to REDACT the token — a derived `Debug` would print the bearer, defeating
+/// the never-log discipline. Only the URL is shown.
 pub struct Remote {
     client: reqwest::Client,
     base_url: String,
     token: String,
+}
+
+impl std::fmt::Debug for Remote {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never print the token — a redacted placeholder keeps `{:?}` (used in test panics) from
+        // leaking the secret.
+        f.debug_struct("Remote")
+            .field("base_url", &self.base_url)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 impl Remote {
@@ -99,7 +113,9 @@ async fn map_response(tool: &str, resp: reqwest::Response) -> CliResult<Value> {
     // verbatim"). Failing to read it still yields an honest error, not a success.
     let body = resp.text().await.unwrap_or_default();
     match status {
-        StatusCode::FORBIDDEN => Err(CliError::Denied { tool: tool.to_string() }),
+        StatusCode::FORBIDDEN => Err(CliError::Denied {
+            tool: tool.to_string(),
+        }),
         StatusCode::UNAUTHORIZED => Err(CliError::Transport(format!(
             "unauthorized (401): {}",
             body.trim()

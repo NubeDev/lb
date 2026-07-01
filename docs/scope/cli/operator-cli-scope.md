@@ -1,6 +1,9 @@
 # Operator CLI scope — `lb`, the terminal twin of the shell
 
-Status: scope (the ask). Promotes to `public/cli/` once the first slice proves the spine end to end.
+Status: **v1 slice shipped** (2026-07-01) — the spine is proven end to end and promoted to
+`public/cli/cli.md`; the full typed verb tree + `watch` streams remain follow-up slices (see the v1
+slice boundary + the resolved Open questions). Build log: `../../sessions/cli/operator-cli-session.md`;
+skill: `../../skills/lb-cli/SKILL.md`.
 
 > Read with: `../auth-caps/api-keys-scope.md` (machine principals — the CLI is its **named first
 > consumer**; v1 mints a dev-login token, API keys land as the follow-up), `../auth-caps/auth-caps-scope.md`
@@ -257,32 +260,37 @@ live socket. Mandatory categories from testing-scope §2:
 
 ## Open questions
 
-- **API keys vs dev-login for v1 auth** — recommend **dev-login token now** (reuses `/login`, zero new
-  auth code), API keys as the follow-up once `api-keys-scope.md` ships (the CLI is its named first
-  consumer). Settled toward reuse; confirm on build.
-- **`-w` semantics (resolved): credential selector, not override.** Because `/mcp/call` has no ws in the
-  body, `-w` cannot override the token's workspace; it selects which stored credential to load, and an
-  unstored workspace errors loudly. (Captured here so the build doesn't re-litigate it; see the isolation
-  test + the `-w` risk.)
-- **When does a typed REST route earn its place over `/mcp/call`?** v1 routes everything through
-  `/mcp/call` for one path + free new verbs. The **trigger to switch a specific verb** to its typed REST
-  route (`GET /inbox/{channel}`, …) is the moment the command needs a **validated result shape** (typed
-  columns, pagination) or a **distinct error envelope** — e.g. `lb inbox list` needing to tell an empty
-  list from an error envelope without defensive guessing. Switch per-verb, not wholesale; `/mcp/call`
-  stays the permanent fallback and the `lb call` escape hatch.
-- **Local-mode default cap set** — mirror `session::dev_claims` (member + demo caps) for parity, or ship
-  something narrower (read-only by default, `--admin` to widen)? Recommend **mirror `dev_claims`** so
-  local == a real login; revisit if local is used in shared/CI contexts.
-- **Config location + env overrides** — `$LB_DIR/config` (TOML) to match the `.lazybones/` root the
-  Makefile already uses, with env overrides `LB_GATEWAY_URL` / `LB_TOKEN` / `LB_WORKSPACE` mirroring the
-  node's env-config style? Recommend yes. Keychain (`keyring`) for the token in phase 2.
-- **Streaming output format** — `lb agent watch` / `lb channels watch`: pretty lines by default, NDJSON
-  with `-o json`? Recommend that; confirm the pretty shape against `AgentView`'s rendering.
-- **Retire `lb-pack` now or later** — recommend **later**: add `lb devkit sign` now (unified path), keep
-  `lb-pack` as a shim, retire once the Makefile + any docs migrate.
-- **Does the CLI warrant a README §6.13 note?** The CLI is a fourth client (besides browser/Tauri/mobile).
-  Adding it to §6.13 must not renumber sections (many docs cross-reference them) — likely an additive
-  sentence, deferred to the ship session. Flagged here, not done at scope time.
+> **Resolved on the v1 build (2026-07-01).** All of these were settled toward the recommendations
+> below; see `../../sessions/cli/operator-cli-session.md` and `../../public/cli/cli.md`. Kept here
+> (marked ✅/⏳) so the history of *why* is legible, not deleted.
+
+- ✅ **API keys vs dev-login for v1 auth** — **dev-login token** (reuses `/login`, zero new auth code).
+  API keys remain the follow-up (`api-keys-scope.md`); the CLI's per-workspace credential slot becomes
+  a key slot with no command-tree change when they ship. **Done.**
+- ✅ **`-w` semantics: credential selector, not override.** Implemented exactly as stated — `-w`
+  selects the stored credential; an unstored workspace errors loudly (`no session for workspace <ws>;
+  run \`lb login -w <ws>\``, exit 4). The isolation tests (remote + local) pin it. **Done.**
+- ✅ **Typed REST route vs `/mcp/call`** — v1 routes **every** typed verb through `/mcp/call` (one
+  client path, free new verbs); `lb inbox list` shapes defensively over `{items:[…]}` and tells empty
+  (`(no rows)`) from an error without a typed envelope. The switch trigger (a validated shape /
+  distinct error envelope) is unchanged and per-verb; `/mcp/call` stays the permanent fallback. The
+  one exception, as scoped, is `lb ext publish` → `POST /extensions` (its body is a signed `Artifact`,
+  not `{tool,args}`). **Done.**
+- ✅ **Local-mode default cap set** — **mirrors `session::dev_claims`** (the gateway's own function,
+  reused), so local == a real login. The parity deny test confirms local denies the same verbs a
+  member token would (e.g. `prefs.set_default`). Revisit if local is used in shared/CI contexts. **Done.**
+- ✅ **Config location + env overrides** — `$LB_DIR/config` (TOML), `0600`, with `LB_GATEWAY_URL` /
+  `LB_TOKEN` / `LB_WORKSPACE` (+ `LB_DIR`, `LB_DEVKIT_ROOT`) overriding the file. `keyring` documented
+  as the phase-2 upgrade. **Done.**
+- ⏳ **Streaming output format** — `lb agent watch` / `lb channels watch` (pretty lines / NDJSON with
+  `-o json`). **Deferred:** `watch` is a v1 non-goal (SSE streams grow on the same client path in a
+  follow-up slice). Recommendation stands; not built this session.
+- ✅ **Retire `lb-pack` now or later** — **later.** `lb devkit sign` ships as the unified path (same
+  `lb-devkit::sign_artifact`); `lb-pack` is kept as a thin shim, so the Makefile's `pack` /
+  `trusted-pubkey` / `publish-ext` stay green. Retire in a later cleanup once docs/Makefile migrate. **Done.**
+- ⏳ **README §6.13 note** — the CLI is a fourth client. **Deferred** (additive sentence, must not
+  renumber §-references). Flagged as a follow-up; not done this session to avoid touching the
+  cross-referenced section numbering.
 
 ## Related
 

@@ -1,9 +1,13 @@
 # Channels scope — in-channel agent (ask an agent, get an answer, in the channel)
 
-Status: **v1 shipped** (inline worker; external agent driven live vs Z.AI GLM-4.6) — see
-[channels-agent-session.md](../../sessions/channels/channels-agent-session.md). Live run-feed +
-background execution + external-agent #3/#4 remain follow-ups. Promotes fully to `public/channels/`
-once the run-feed lands.
+Status: **v1 + live run-feed + background execution shipped.** v1 (inline worker; external agent driven
+live vs Z.AI GLM-4.6) + the live run-feed — see
+[channels-agent-session.md](../../sessions/channels/channels-agent-session.md). **Background/durable
+execution** (the run is now a durable enqueue job drained by a background reactor off the POST
+connection — survives tab close + node restart, idempotent) — see
+[channels-agent-background-session.md](../../sessions/channels/channels-agent-background-session.md).
+**Supervision** (wall-time ceiling + kill/reap of a hung run) and external-agent #3/#4 remain follow-ups.
+Promotes fully to `public/channels/` once supervision lands.
 Topic: `channels`. Builds on `channels-scope.md` (registry/history/stream), `channels-query-charts-scope.md`
 (the inline-worker pattern this reuses), the shipped `agent.invoke` / `AgentRuntime` seam
 (`scope/external-agent/runtime-seam-scope.md`), and the shipped agent **run** surface
@@ -214,13 +218,15 @@ agent-run job path. The **one** permitted fake stays the model provider behind t
 - **Worker identity & re-entrancy.** The worker posts `agent_result` items, which are channel posts — it
   must never treat its own output as a new request. Only `kind:"agent"` triggers work; guard explicitly
   and test, exactly like the query worker (an infinite loop is one absent guard away).
-- **Long / hung runs.** Unlike a SELECT, a run can run for minutes or hang. This is why it is a durable
-  job, not inline: supervision (timeout/kill) is the agent-run / external-agent #5 job concern; a run that
-  dies must post an `agent_error`, not leave the card spinning forever. Confirm a run timeout surfaces as
-  `agent_error`.
-- **Duplicate spawn.** If the worker were driven by bus redelivery it could start a run twice. Tie the run
-  to the durable `agent` item id (the `job` on the payload is the idempotency key): a redelivered item with
-  an already-started `job` is a no-op. (Inline-in-`post`, like query, avoids redelivery entirely — favor it.)
+- **Long / hung runs.** Unlike a SELECT, a run can run for minutes or hang. This is why it is now a
+  durable job drained by a background reactor (the background slice shipped this): the run detaches from
+  `post` and survives a restart. **Supervision (wall-time ceiling + kill/reap) is still open** — a run
+  that hangs must eventually post an `agent_error`, not leave the card spinning forever; that is the
+  remaining external-agent #5 half. (A run that *dies* on a fault already posts an `agent_error`.)
+- **Duplicate spawn — RESOLVED by the background slice.** The reactor drains a durable enqueue job, and
+  `drive_queued_run` short-circuits if the correlated answer item (`a:<run_job>`) already exists — so a
+  re-drain (tick overlap, redelivery, restart mid-queue) never starts a run twice or double-posts. An
+  in-process `in_flight` set additionally avoids spawning a second drive while the first is still running.
 - **Model provider required.** Any real run needs a live model (STATUS notes `agent_invoke` gateway wiring
   was deferred precisely because it needs a real provider, no mock). The channel worker inherits that: with
   no provider configured the run posts an honest `agent_error`. Wiring a real provider/gateway model is a
@@ -234,11 +240,18 @@ agent-run job path. The **one** permitted fake stays the model provider behind t
 
 Resolved in the build session ([channels-agent-session.md](../../sessions/channels/channels-agent-session.md)):
 
-- **Worker trigger — DECIDED: inline in `channel.post`, awaited (not spawned) for v1.** Hooked at the
-  same point as `run_if_query`, the faithful reuse of the proven worker pattern; it works end to end
-  today. The tradeoff (a long run blocks the poster's `post`) is accepted for v1 and documented;
-  **non-blocking, supervised, resumable background execution is the run-lifecycle #5 follow-up.** The
-  request item is published BEFORE the worker runs, so a watcher already sees the run start live.
+- **Worker trigger — DECIDED (v1): inline in `channel.post`, awaited. SUPERSEDED (background slice):
+  the worker now ENQUEUES a durable job and returns; a background reactor drains it.** v1 hooked at the
+  same point as `run_if_query` (the faithful reuse of the proven worker pattern; worked end to end) but a
+  long run blocked the poster's `post` and closing the tab mid-run cancelled it. The
+  [background slice](../../sessions/channels/channels-agent-background-session.md) (run-lifecycle #5)
+  fixed both: `run_if_agent` writes a durable `channel-agent-run` enqueue job (carrying the poster's
+  sub+caps) and returns at once; `spawn_agent_reactors` (twin of `spawn_flow_reactors`) drains pending
+  jobs off the connection and drives each via `drive_queued_run` under the reconstructed poster. The run
+  now survives the tab closing AND a node restart, and is idempotent on `a:<run_job>` (a re-drain never
+  re-runs / double-posts). The request item is still published BEFORE the run drives, so a watcher sees
+  the run start live. **Supervision (wall-time ceiling + kill/reap of a hung run) is the remaining #5
+  half.**
 - **Who mints `job` — DECIDED: the UI** (via `newRunId`, as `AgentView` mints `jobId`), so a client can
   subscribe to the run stream the instant the request item lands.
 - **Answer cap — DECIDED: ≤256 KB** with a `truncated` flag (mirrors the query worker;

@@ -4555,6 +4555,7 @@ name = "lb-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "clap",
  "dirs 5.0.1",
  "ed25519-dalek",

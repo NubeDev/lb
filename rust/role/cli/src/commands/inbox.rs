@@ -14,11 +14,7 @@ use super::Printed;
 
 /// List the inbox for `channel` via `inbox.list`. The channel is a required arg of the verb; the CLI
 /// passes it through and shapes whatever the server returns (the drift-defense discipline).
-pub async fn list(
-    transport: &impl Transport,
-    channel: &str,
-    format: Format,
-) -> CliResult<Printed> {
+pub async fn list(transport: &impl Transport, channel: &str, format: Format) -> CliResult<Printed> {
     let header = transport.header();
     let result = transport
         .call("inbox.list", json!({ "channel": channel }))

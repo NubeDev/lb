@@ -1,6 +1,12 @@
 # External-agent scope — the run as a durable job: resume, supervision, read surface
 
-Status: scope (the ask). Sub-scope #5 of `external-agent-scope.md`. Promotes to `public/external-agent/`.
+Status: scope (the ask) — **partial: durable-detached-run shipped for the in-channel path.** Sub-scope
+#5 of `external-agent-scope.md`. The **channel** agent run is now a durable enqueue job drained by a
+background reactor off the request connection (non-blocking, idempotent, survives restart) — see
+[channels-agent-background-session.md](../../sessions/channels/channels-agent-background-session.md). Still
+open here: **supervision** (wall-time/iteration ceiling + kill/reap of a hung/looping subprocess), the
+**resume** contract for the foreign external loop, and the **`agent.runtimes`** read surface. Promotes to
+`public/external-agent/`.
 
 Make an external-agent run a **first-class, durable, supervised** object — the same way the in-house
 loop's run is — so it survives the edge disconnecting, can be watched live, resumes without

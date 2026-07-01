@@ -39,7 +39,9 @@ impl Format {
 /// CLI's tables are already plain ASCII, so this currently gates nothing visible — recorded so a later
 /// colorized renderer honors it by construction.
 pub fn color_suppressed() -> bool {
-    std::env::var_os("NO_COLOR").map(|v| !v.is_empty()).unwrap_or(false)
+    std::env::var_os("NO_COLOR")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
 }
 
 /// Render a tool result `value` in `format`. `Json` is a pretty round-trip of the raw value (no field
@@ -159,7 +161,10 @@ mod tests {
         assert!(t.contains("id"), "columns come from the items: {t}");
         assert!(t.contains("author"), "{t}");
         assert!(t.contains("i1") && t.contains("i2"), "{t}");
-        assert!(!t.contains("items"), "the envelope key must be unwrapped: {t}");
+        assert!(
+            !t.contains("items"),
+            "the envelope key must be unwrapped: {t}"
+        );
     }
 
     #[test]

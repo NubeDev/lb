@@ -17,6 +17,7 @@
 //! Verbs, one per file (FILE-LAYOUT §3):
 //! - [`create`] — start a session (idempotent on `id`).
 //! - [`load`] — read it back (the resume read; `None` cross-workspace — isolation).
+//! - [`pending`] — list still-running jobs of a `kind` (the background reactor's drain scan).
 //! - [`append_event`] — record the typed event at step `i` + advance the cursor (idempotent resume).
 //! - [`complete`] — set a terminal status (`Done`/`Failed`).
 //! - [`cancel`] — the durable stop (`Cancelled`, non-restartable; Part 0 cancel hook).
@@ -28,6 +29,7 @@ mod complete;
 mod create;
 mod load;
 mod model;
+mod pending;
 mod suspend;
 mod transcript;
 mod update;
@@ -38,6 +40,7 @@ pub use complete::complete;
 pub use create::create;
 pub use load::load;
 pub use model::{Job, JobStatus, Step};
+pub use pending::pending;
 pub use suspend::{suspend, unsuspend};
 pub use transcript::{SuspensionDecision, TranscriptEvent, TRANSCRIPT_SCHEMA_VERSION};
 

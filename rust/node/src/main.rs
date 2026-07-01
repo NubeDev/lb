@@ -109,6 +109,17 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(5),
     );
 
+    // CHANNEL AGENT REACTOR TICK (run-lifecycle #5): drain durable `channel-agent-run` enqueue jobs
+    // that `channel::post` writes when a member asks an agent in a channel, and drive each run OFF the
+    // POST connection — so an in-channel agent run survives the tab closing and (being durable +
+    // idempotent) a node restart. One detached owner per node, scanning the configured workspace on a
+    // few-second cadence (a freshly-posted request starts its run promptly; each tick is a cheap scan).
+    lb_host::spawn_agent_reactors(
+        node.clone(),
+        vec![ws.clone()],
+        std::time::Duration::from_secs(2),
+    );
+
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
     github::mount(node.clone()).await;

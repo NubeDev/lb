@@ -17,7 +17,11 @@ use super::Printed;
 /// Render the caller's identity from a decoded/minted claim set: `sub`, `ws`, `role`, and the caps.
 /// `header` is the transport's header (already `ws/user/role`); `caps` is the held capability list.
 /// The token is not a parameter here — by construction it cannot be printed.
-pub fn render(header: &crate::header::Header, caps: &[String], format: Format) -> CliResult<Printed> {
+pub fn render(
+    header: &crate::header::Header,
+    caps: &[String],
+    format: Format,
+) -> CliResult<Printed> {
     let body: Value = json!({
         "user": header.user,
         "workspace": header.workspace,

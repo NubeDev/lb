@@ -79,9 +79,8 @@ pub fn lb_dir() -> PathBuf {
 /// brand-new operator can `lb login` without a pre-existing file.
 pub fn load_from(path: &Path) -> CliResult<Config> {
     match std::fs::read_to_string(path) {
-        Ok(text) => {
-            toml::from_str(&text).map_err(|e| CliError::Other(format!("parse config {path:?}: {e}")))
-        }
+        Ok(text) => toml::from_str(&text)
+            .map_err(|e| CliError::Other(format!("parse config {path:?}: {e}"))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
         Err(e) => Err(CliError::Other(format!("read config {path:?}: {e}"))),
     }
@@ -102,7 +101,8 @@ pub fn save_to(config: &Config, path: &Path) -> CliResult<()> {
     }
     let text = toml::to_string_pretty(config)
         .map_err(|e| CliError::Other(format!("serialize config: {e}")))?;
-    std::fs::write(path, text).map_err(|e| CliError::Other(format!("write config {path:?}: {e}")))?;
+    std::fs::write(path, text)
+        .map_err(|e| CliError::Other(format!("write config {path:?}: {e}")))?;
     set_owner_only(path)?;
     Ok(())
 }
@@ -170,7 +170,12 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             let mode = std::fs::metadata(&path).unwrap().permissions().mode();
             // Only the owner bits may be set — no group/other read on secret material.
-            assert_eq!(mode & 0o777, 0o600, "config must be 0600, got {:o}", mode & 0o777);
+            assert_eq!(
+                mode & 0o777,
+                0o600,
+                "config must be 0600, got {:o}",
+                mode & 0o777
+            );
         }
     }
 

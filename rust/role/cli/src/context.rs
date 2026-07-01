@@ -9,7 +9,7 @@
 
 use crate::config::{self, Config};
 use crate::error::{CliError, CliResult};
-use crate::transport::{Local, Remote};
+use crate::transport::{AnyTransport, Local, Remote};
 
 /// The default gateway URL when neither env, config, nor `--url` supplies one.
 pub const DEFAULT_GATEWAY_URL: &str = "http://127.0.0.1:8080";
@@ -46,15 +46,27 @@ impl RunContext {
     /// token was minted for is what reaches the server — `-w` only chose which token, it did not
     /// override the wall.
     pub fn remote(&self) -> CliResult<Remote> {
-        let ws = self
-            .resolve_workspace()
-            .ok_or_else(|| CliError::Other("no workspace selected; run `lb login -w <ws>`".into()))?;
+        let ws = self.resolve_workspace().ok_or_else(|| {
+            CliError::Other("no workspace selected; run `lb login -w <ws>`".into())
+        })?;
         // `LB_TOKEN` (CI) wins over the file, but is still keyed to the selected workspace's identity —
         // it is the credential for THIS ws, injected out-of-band.
         let token = non_empty_env(config::TOKEN_ENV)
             .or_else(|| self.config.token_for(&ws).map(str::to_string))
-            .ok_or_else(|| CliError::NoCredential { workspace: ws.clone() })?;
+            .ok_or_else(|| CliError::NoCredential {
+                workspace: ws.clone(),
+            })?;
         Ok(Remote::new(self.gateway_url.clone(), token))
+    }
+
+    /// Build the transport for this run — Remote or Local by the `local` flag (a config/flag choice,
+    /// never a code branch on role). The single seam a command reaches for its `impl Transport`.
+    pub async fn transport(&self) -> CliResult<AnyTransport> {
+        if self.local {
+            Ok(AnyTransport::Local(self.local().await?))
+        } else {
+            Ok(AnyTransport::Remote(self.remote()?))
+        }
     }
 
     /// Build the LOCAL transport: boot an in-process node and mint a `dev_claims` principal scoped to

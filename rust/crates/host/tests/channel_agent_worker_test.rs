@@ -1,22 +1,27 @@
-//! Channel agent-worker tests (channels-agent scope), over a REAL `Node` + the REAL `post` path and
-//! the REAL in-house agent loop driven through the runtime seam. The ONLY stubbed external is the
-//! model provider HTTP (`MockProvider`, rule 9 — store + bus + loop + channel are all real). The
-//! worker is installed on the node via `Node::install_runtimes` exactly as a feature-on node would
-//! install external runtimes; here the installed `default` is the in-house loop over a fixed-answer
-//! provider, so a posted `kind:"agent"` item drives a genuine run and posts a real `agent_result`.
+//! Channel agent-worker tests (channels-agent scope + run-lifecycle #5 background execution), over a
+//! REAL `Node` + the REAL `post` path, the REAL background reactor drain, and the REAL in-house agent
+//! loop driven through the runtime seam. The ONLY stubbed external is the model provider HTTP
+//! (`MockProvider`, rule 9 — store + bus + loop + channel + job queue are all real). The `default`
+//! runtime is installed via `Node::install_runtimes` exactly as a feature-on node installs external
+//! runtimes; here it is the in-house loop over a fixed-answer provider, so a posted `kind:"agent"` item
+//! ENQUEUES a durable run that the drain drives and posts a real `agent_result` from.
 //!
-//! Mandatory invariants (mirroring the query worker's tests + testing-scope §2.1):
-//!   - HAPPY PATH: an `agent` request from a granted poster yields an `agent_result` carrying the run's
-//!     answer, posted under `system:agent-worker`, correlated to the run (`a:<job>`).
+//! Mandatory invariants (mirroring the query worker's tests + testing-scope §2.1, plus #5's async gate):
+//!   - BACKGROUND SPAWN (#5): posting an `agent` item returns from `post` BEFORE the run completes —
+//!     the `agent_result` is absent right after `post` and appears only after the reactor drains.
+//!   - HAPPY PATH: after the drain, an `agent` request from a granted poster yields an `agent_result`
+//!     carrying the run's answer, posted under `system:agent-worker`, correlated to the run (`a:<job>`).
+//!   - IDEMPOTENCY (#5 durable-resume safety): draining twice does NOT post a second result / re-run.
 //!   - CAPABILITY DENY (opaque): a poster WITHOUT `mcp:agent.invoke:call` gets an `agent_error` whose
 //!     message is EXACTLY "agent not permitted".
 //!   - UNKNOWN RUNTIME (opaque): a named runtime that isn't registered collapses to the SAME "agent not
 //!     permitted" — no runtime-existence leak.
-//!   - RE-ENTRANCY: posting an `agent_result` item does NOT re-trigger the worker.
-//!   - WORKSPACE ISOLATION: the result lands in the poster's workspace only; a ws-B reader can't see it.
+//!   - RE-ENTRANCY: posting an `agent_result` item does NOT enqueue a run.
+//!   - WORKSPACE ISOLATION: the result lands in the poster's workspace only; a ws-B reader can't see it,
+//!     and a ws-B drain never picks up the ws-A run.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{history, post, ErasedModel, Node, RuntimeRegistry};
+use lb_host::{drain_channel_agent_runs, history, post, ErasedModel, Node, RuntimeRegistry};
 use lb_inbox::Item;
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 use std::sync::Arc;
@@ -56,9 +61,18 @@ fn agent_request_body(goal: &str, runtime: Option<&str>, job: &str) -> String {
     v.to_string()
 }
 
+/// The worker's `agent_result`/`agent_error` item for a channel, if the reactor has posted one.
+async fn worker_item(node: &Node, p: &Principal, ws: &str, cid: &str) -> Option<Item> {
+    history(&node.store, p, ws, cid)
+        .await
+        .expect("history")
+        .into_iter()
+        .find(|i| i.author == "system:agent-worker")
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn an_agent_request_yields_an_agent_result_with_the_run_answer() {
-    let node = Node::boot().await.expect("node boots");
+async fn post_enqueues_and_returns_before_the_run_completes() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "the deploy rolled back at 14:02");
     let ws = "acme";
     let cid = "ops";
@@ -82,11 +96,24 @@ async fn an_agent_request_yields_an_agent_result_with_the_run_answer() {
     .await
     .expect("agent request posts");
 
+    // BACKGROUND SPAWN (#5): `post` returned WITHOUT driving the run — no result yet, only the request.
+    assert!(
+        worker_item(&node, &p, ws, cid).await.is_none(),
+        "post must return before the run completes (the run is detached from the POST connection)"
+    );
     let items = history(&node.store, &p, ws, cid).await.expect("history");
-    let result = items
-        .iter()
-        .find(|i| i.author == "system:agent-worker")
-        .expect("the worker posted an agent_result");
+    assert_eq!(
+        items.len(),
+        1,
+        "only the request item is durable right after post"
+    );
+
+    // The reactor drains the durable queue and drives the run to completion — the answer appears now.
+    drain_channel_agent_runs(&node, ws).await;
+
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("the drain posted an agent_result");
     assert_eq!(
         result.id, "a:run-1",
         "the answer is correlated to the run id"
@@ -99,8 +126,52 @@ async fn an_agent_request_yields_an_agent_result_with_the_run_answer() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn draining_twice_does_not_post_a_second_result() {
+    // #5 durable-resume safety: a re-drain (a second reactor tick, or a restart mid-queue) must not
+    // re-run or double-post — the `a:<job>` idempotency guard short-circuits the re-drive.
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    install_answer_runtime(&node, "answered once");
+    let ws = "acme";
+    let cid = "ops";
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("g", None, "run-dup");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("request posts");
+
+    drain_channel_agent_runs(&node, ws).await;
+    drain_channel_agent_runs(&node, ws).await; // second tick — must be a no-op
+
+    let results: Vec<_> = history(&node.store, &p, ws, cid)
+        .await
+        .expect("history")
+        .into_iter()
+        .filter(|i| i.author == "system:agent-worker")
+        .collect();
+    assert_eq!(
+        results.len(),
+        1,
+        "exactly one result even after two drains: {results:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable");
     let ws = "acme";
     let cid = "ops";
@@ -123,12 +194,11 @@ async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() 
     )
     .await
     .expect("the request posts");
+    drain_channel_agent_runs(&node, ws).await;
 
-    let items = history(&node.store, &p, ws, cid).await.expect("history");
-    let err = items
-        .iter()
-        .find(|i| i.author == "system:agent-worker")
-        .expect("the worker posted an agent_error");
+    let err = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("the drain posted an agent_error");
     let parsed: serde_json::Value = serde_json::from_str(&err.body).expect("json body");
     assert_eq!(parsed["kind"], "agent_error");
     assert_eq!(
@@ -139,7 +209,7 @@ async fn a_request_without_the_invoke_grant_yields_opaque_agent_not_permitted() 
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_named_unknown_runtime_collapses_to_the_same_opaque_deny() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable"); // only `default` is registered
     let ws = "acme";
     let cid = "ops";
@@ -164,19 +234,18 @@ async fn a_named_unknown_runtime_collapses_to_the_same_opaque_deny() {
     )
     .await
     .expect("the request posts");
+    drain_channel_agent_runs(&node, ws).await;
 
-    let items = history(&node.store, &p, ws, cid).await.expect("history");
-    let err = items
-        .iter()
-        .find(|i| i.author == "system:agent-worker")
-        .expect("the worker posted an agent_error");
+    let err = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("the drain posted an agent_error");
     let parsed: serde_json::Value = serde_json::from_str(&err.body).expect("json body");
     assert_eq!(parsed["error"], "agent not permitted");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn posting_an_agent_result_item_does_not_re_trigger_the_worker() {
-    let node = Node::boot().await.expect("node boots");
+async fn posting_an_agent_result_item_does_not_enqueue_a_run() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "unreachable");
     let ws = "acme";
     let cid = "ops";
@@ -189,7 +258,7 @@ async fn posting_an_agent_result_item_does_not_re_trigger_the_worker() {
         ],
     );
 
-    // The worker's OWN output shape — re-posting it must not spawn another run (infinite-loop guard).
+    // The worker's OWN output shape — re-posting it must not enqueue another run (infinite-loop guard).
     let body = serde_json::json!({
         "kind": "agent_result", "goal": "g", "runtime": "default", "job": "run-4", "answer": "a"
     })
@@ -203,6 +272,7 @@ async fn posting_an_agent_result_item_does_not_re_trigger_the_worker() {
     )
     .await
     .expect("the result item posts");
+    drain_channel_agent_runs(&node, ws).await; // nothing was enqueued, so this is a no-op
 
     let items = history(&node.store, &p, ws, cid).await.expect("history");
     assert_eq!(items.len(), 1, "no worker item spawned: {items:?}");
@@ -211,7 +281,7 @@ async fn posting_an_agent_result_item_does_not_re_trigger_the_worker() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn the_result_is_workspace_scoped_and_not_visible_from_another_workspace() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     install_answer_runtime(&node, "ws-A only answer");
     let cid = "ops";
     let ada = principal(
@@ -233,12 +303,18 @@ async fn the_result_is_workspace_scoped_and_not_visible_from_another_workspace()
     )
     .await
     .expect("request posts in ws acme");
+
+    // A ws-B drain must not pick up the ws-A run (the queue scan is workspace-namespaced).
+    drain_channel_agent_runs(&node, "other").await;
     assert!(
-        history(&node.store, &ada, "acme", cid)
-            .await
-            .unwrap()
-            .iter()
-            .any(|i| i.author == "system:agent-worker"),
+        worker_item(&node, &ada, "acme", cid).await.is_none(),
+        "a ws-B drain must not drive the ws-A run"
+    );
+
+    // The ws-A drain drives it; the result lands in ws acme only.
+    drain_channel_agent_runs(&node, "acme").await;
+    assert!(
+        worker_item(&node, &ada, "acme", cid).await.is_some(),
         "the result lands in ws acme"
     );
 

@@ -121,11 +121,12 @@ export function useChannel(
   // Post a `kind:"agent"` request. The UI mints the run id (so the card subscribes to the run stream
   // immediately) and builds the structured payload; the host agent worker answers it.
   //
-  // DON'T await the underlying post: the inline run can take many seconds, but the request item, the
-  // live run feed, and the durable answer all arrive over SSE — blocking the composer on the run would
-  // freeze it for the run's duration. We fire-and-forget (never *abort* the fetch — that would cancel
-  // the server-side run); `postBody` folds its own errors into `error`. In the Tauri shell / tests
-  // (no SSE), the request + answer simply appear when the post resolves.
+  // The host now ENQUEUES a durable background run and returns at once (run-lifecycle #5) — the run is
+  // driven off the POST connection by the host reactor, so it survives this tab closing AND a node
+  // restart, and closing the tab no longer cancels it. We still fire-and-forget rather than await: the
+  // request item, the live run feed, and the durable answer all arrive over SSE, so blocking the
+  // composer buys nothing. `postBody` folds its own errors into `error`. In the Tauri shell / tests
+  // (no SSE), the request appears when the post resolves and the answer when the run drains.
   const postAgent = useCallback(
     async (goal: string, runtime?: string) => {
       if (!goal.trim()) return;

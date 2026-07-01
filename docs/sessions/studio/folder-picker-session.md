@@ -40,10 +40,15 @@ no way to discover its absolute location. That gap is exactly why typing was fra
 - `CreateStep.tsx` — the "Open existing" branch now renders `<DirectoryPicker>` instead of a raw path
   input.
 
-## New capabilities the feature needs
+## New capabilities the feature needs — granted
 
-The Studio user now also needs `mcp:devkit.root:call` and `mcp:host.fs.list:call` granted (browsing is
-denied-opaque without them; the picker falls back to a manual path field on error).
+Browsing needs `mcp:devkit.root:call` (anchor) + `mcp:host.fs.list:call` (walk); without them the
+picker falls back to a manual path field. Both are now added to the gateway dev **`member_caps()`**
+(`rust/role/gateway/src/session/credentials.rs`), right in the existing devkit block — the single
+authoritative built-in cap set for the gateway node (the same set the real-gateway test harness signs
+in with). No other login/provisioning path enumerates these MCP caps: the devkit cap strings live only
+in `credentials.rs`; production **custom** roles are defined at runtime via `role_define` by an admin,
+who can bundle these caps because they already hold them. `lb-role-gateway` compiles clean.
 
 ## Verification
 

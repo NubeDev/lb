@@ -95,14 +95,15 @@ impl Transport for Local {
         // The SAME chokepoint the gateway reaches — workspace-first, then `mcp:<tool>:call`, then
         // dispatch. The workspace is the principal's (never caller-supplied): `-w` scoped it, and it
         // cannot be overridden here.
-        let out = lb_host::call_tool(&self.node, &self.principal, &self.workspace, tool, &input).await;
+        let out =
+            lb_host::call_tool(&self.node, &self.principal, &self.workspace, tool, &input).await;
         match out {
             Ok(s) => Ok(serde_json::from_str(&s).unwrap_or(Value::String(s))),
             // A local deny is the same honest deny a remote 403 is — surface it identically.
-            Err(ToolError::Denied) => Err(CliError::Denied { tool: tool.to_string() }),
-            Err(ToolError::NotFound) => {
-                Err(CliError::BadInput(format!("no such tool: {tool}")))
-            }
+            Err(ToolError::Denied) => Err(CliError::Denied {
+                tool: tool.to_string(),
+            }),
+            Err(ToolError::NotFound) => Err(CliError::BadInput(format!("no such tool: {tool}"))),
             Err(ToolError::BadInput(msg)) => Err(CliError::BadInput(msg)),
             Err(ToolError::Extension(msg)) => Err(CliError::Other(format!("tool error: {msg}"))),
         }

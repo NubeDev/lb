@@ -33,6 +33,8 @@ lb-auth.workspace = true
 # sends the `Artifact` JSON `lb-registry` defines and the gateway verifies.
 lb-devkit.workspace = true
 lb-registry.workspace = true
+# The local transport maps `lb_mcp::ToolError` (a host deny) to the CLI's honest DENY.
+lb-mcp.workspace = true
 # Local mode mints the SAME claim set as the dev-login for parity (scope decision) — reuse the one
 # `dev_claims` the gateway's `/login` uses rather than re-listing caps.
 lb-role-gateway.workspace = true
@@ -49,8 +51,10 @@ anyhow.workspace = true
 [dev-dependencies]
 # The integration tests spin a REAL gateway on a real socket + seed via the real write path (no mocks,
 # CLAUDE §9): the node, the outbox/inbox seed verbs, a known signing key, and a scratch LB_DIR.
-lb-mcp.workspace = true
 lb-store.workspace = true
 ed25519-dalek.workspace = true
 tempfile.workspace = true
 futures.workspace = true
+# The integration tests spin the real gateway on a real socket (`axum::serve`) — the same way
+# `role/gateway/tests/` binds a listener for its SSE test.
+axum.workspace = true

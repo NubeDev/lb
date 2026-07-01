@@ -3,6 +3,30 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — operator CLI `lb`, v1 slice: the terminal twin of the shell)
+
+A fourth client of the node gateway — the terminal twin of the React shell — holding **no authority
+of its own**, denied exactly when the server denies (`cli/cli.md`, `../skills/lb-cli/SKILL.md`):
+
+- **One binary, two postures** (`rust/role/cli/`, crate `lb-cli`, binary `lb`): *remote* (a reqwest
+  client over the gateway's `POST /mcp/call`) and *local* (an embedded `Node::boot()` + a minted
+  `dev_claims`-shaped `Principal`, offline). One `Transport` trait, both ending at
+  `lb_host::call_tool`. Mode is a config/flag choice (`--local`), never an `if cloud` branch.
+- **v1 commands**: `lb login`/`whoami` (dev-login token, per-workspace, `0600`, never logged); the
+  universal `lb call <tool> '{json}'`; one typed `lb inbox list <channel>`; `lb devkit sign` +
+  `lb ext publish` (the `make publish-ext` / `lb-pack` fold — same `lb-devkit` signing, so artifacts
+  verify by construction; `lb-pack` kept as a shim); `lb local …` (the offline/edge posture).
+- **Pure client, zero new surface**: no new MCP verbs, capabilities, tables, or enforcement paths.
+  `-w` is a **credential selector** (an unstored workspace is a loud error), never a workspace
+  override — the token's ws always reaches the server (`/mcp/call` carries no ws in the body). Every
+  command prints a `ws/user/role/mode` header (stderr) + shaped body (stdout); a deny renders
+  `DENIED  mcp:<tool>:call` and exits non-zero — never a fabricated success.
+- One host-crate touch: `lb_auth::claims_unverified` (a client-side header read; not an authz path —
+  the server re-verifies every request). New deps: `clap`/`tabled`/`dirs` (CLI ergonomics only).
+- **Tested** in-process against a real gateway on a real socket, seeded via the real write path (no
+  mocks): capability-deny + workspace-isolation + offline, remote AND local; the `devkit sign` →
+  `verify_artifact` round-trip; config `0600` + "no command emits the token" (`rust/role/cli/tests/`).
+
 ## Shipped (post-S10 — global identity / many-workspaces, the Slack model)
 
 One **global identity** per person belonging to many workspaces, linked by a per-workspace

@@ -27,7 +27,12 @@ pub struct Header {
 
 impl Header {
     /// Build a header from raw parts (a transport supplies these from its session).
-    pub fn new(workspace: impl Into<String>, user: impl Into<String>, role: Role, local: bool) -> Self {
+    pub fn new(
+        workspace: impl Into<String>,
+        user: impl Into<String>,
+        role: Role,
+        local: bool,
+    ) -> Self {
         Self {
             workspace: workspace.into(),
             user: user.into(),
@@ -94,7 +99,10 @@ mod tests {
     #[test]
     fn renders_ws_user_role_mode() {
         let h = Header::new("acme", "user:ada", Role::Member, false);
-        assert_eq!(h.render(), "ws: acme  user: user:ada  role: member  mode: remote");
+        assert_eq!(
+            h.render(),
+            "ws: acme  user: user:ada  role: member  mode: remote"
+        );
     }
 
     #[test]
@@ -105,9 +113,18 @@ mod tests {
 
     #[test]
     fn role_labels_are_kebab_case() {
-        assert_eq!(Header::new("w", "u", Role::WorkspaceAdmin, false).role_label(), "workspace-admin");
-        assert_eq!(Header::new("w", "u", Role::SuperAdmin, false).role_label(), "super-admin");
-        assert_eq!(Header::new("w", "u", Role::Member, false).role_label(), "member");
+        assert_eq!(
+            Header::new("w", "u", Role::WorkspaceAdmin, false).role_label(),
+            "workspace-admin"
+        );
+        assert_eq!(
+            Header::new("w", "u", Role::SuperAdmin, false).role_label(),
+            "super-admin"
+        );
+        assert_eq!(
+            Header::new("w", "u", Role::Member, false).role_label(),
+            "member"
+        );
     }
 
     #[test]
@@ -125,6 +142,9 @@ mod tests {
         // from. A regression here would leak the bearer into every command's first line.
         let tok = sample_token("acme", "user:ada", Role::Member);
         let h = header_from_token(&tok, false).unwrap();
-        assert!(!h.render().contains(&tok), "the header must never echo the token");
+        assert!(
+            !h.render().contains(&tok),
+            "the header must never echo the token"
+        );
     }
 }

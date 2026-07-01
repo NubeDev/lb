@@ -19,6 +19,38 @@ use serde_json::Value;
 use crate::error::CliResult;
 use crate::header::Header;
 
+/// Either transport, as one concrete value — so the dispatcher builds one `AnyTransport` (a config/flag
+/// choice, not a code branch on role) and hands it to a command as `impl Transport`. An enum rather
+/// than `Box<dyn>` because the trait's `async fn call` is not object-safe-with-Send cleanly, and the
+/// two-variant enum is smaller and faster anyway.
+pub enum AnyTransport {
+    Remote(Remote),
+    Local(Local),
+}
+
+impl Transport for AnyTransport {
+    fn header(&self) -> Header {
+        match self {
+            AnyTransport::Remote(t) => t.header(),
+            AnyTransport::Local(t) => t.header(),
+        }
+    }
+
+    fn caps(&self) -> Vec<String> {
+        match self {
+            AnyTransport::Remote(t) => t.caps(),
+            AnyTransport::Local(t) => t.caps(),
+        }
+    }
+
+    async fn call(&self, tool: &str, args: Value) -> CliResult<Value> {
+        match self {
+            AnyTransport::Remote(t) => t.call(tool, args).await,
+            AnyTransport::Local(t) => t.call(tool, args).await,
+        }
+    }
+}
+
 /// A client transport: authenticate, then call one MCP tool and return its JSON result. Async over the
 /// `async_trait`-free `impl Future` style is avoided (object safety) — this uses `async_trait`'s hand
 /// pattern via a boxed future is not needed since we dispatch on a concrete enum at the call site. To
