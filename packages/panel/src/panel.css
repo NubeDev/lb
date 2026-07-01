@@ -1,0 +1,37 @@
+/* The Panel stylesheet — Tailwind v4 + the panel's own tokens, in its OWN build (a
+ * single @theme, so the color utilities resolve here). Imported by src/index.ts so the
+ * library bundle ships it (host: `import '@nube/panel/style.css'`).
+ *
+ * IMPORTANT — this is a LIBRARY stylesheet dropped into a host app's build. We deliberately
+ * import ONLY Tailwind's `theme` (tokens) + `utilities` (the classes the panel uses), NOT
+ * `preflight`/`base`. Shipping Tailwind's base reset would (a) emit an `@layer base` with no
+ * matching `@tailwind base` in the host's PostCSS context (a build error in a v3 host), and
+ * (b) clobber the host app's global styles. A self-contained widget ships its utilities,
+ * never a global reset. (Same lesson as @nube/nav-rail — see nav-rail.css.)
+ *
+ * @nube/nav-rail's own stylesheet (the section rail's tokens) is a SEPARATE bundle the host
+ * already imports; we do not re-emit it here.
+ *
+ * `@theme` maps the panel's Tailwind utilities onto the tokens; the tokens live in
+ * panel-theme.css, scoped to `.lb-panel` and host-overridable. */
+
+@layer theme, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+@import './panel-theme.css';
+
+@theme {
+  --color-lbp-bg: hsl(var(--lbp-bg));
+  --color-lbp-panel: hsl(var(--lbp-panel));
+  --color-lbp-secondary: hsl(var(--lbp-secondary));
+  --color-lbp-border: hsl(var(--lbp-border));
+  --color-lbp-input: hsl(var(--lbp-input));
+  --color-lbp-fg: hsl(var(--lbp-fg));
+  --color-lbp-muted: hsl(var(--lbp-muted));
+  --color-lbp-accent: hsl(var(--lbp-accent));
+  --color-lbp-amber: hsl(var(--lbp-amber));
+
+  --font-sans: var(--lbp-font-sans);
+  --font-mono: var(--lbp-font-mono);
+}

@@ -1,199 +1,116 @@
-# nav-rail scope — a reusable, data-driven sidebar package
+# HANDOVER — reusable ce-wiresheet-style panel (shadcn), first used on the dashboard Edit widget
 
-Status: **shipped (2026-07-02)** — package `packages/nav-rail/` (`@nube/nav-rail`) built + green
-(12 unit tests), first-used in the dashboard `PanelEditor` (the `NavMenu` options rail, replacing the
-in-house `EditorTabs`); verified against the real gateway (panel-editor + flows-panel-editor gateway
-suites pass). Promotes to `public/shell/nav-rail.md`. Session:
-[`nav-rail`](../../sessions/shell/nav-rail-session.md).
+Status: **handover / scope**. Copy-paste this whole file to the implementing agent.
 
-> **Build note (as shipped):** the package exposes **two** components off one data model
-> (`NavItem[]`): `NavRail` (the app-shell collapsible icon rail — the faithful generic port of the lb
-> `NavRail`) and `NavMenu` (an in-flow, non-fixed vertical menu for embedding as **section nav** inside
-> a panel/dialog). The dashboard first-use consumes `NavMenu` because the PanelEditor options rail lives
-> inside a Sheet, where the app-shell sidebar's `position:fixed` would escape the container. Cross-repo
-> use in `ce-wiresheet` is deferred (the user redirected the first-use to the dashboard viz panel).
+---
 
-We want the **collapsible icon-rail sidebar** we already like from the Lazybones shell
-(`ui/src/features/shell/NavRail.tsx`) as a **standalone, reusable package** — not left
-inline. It ships as `packages/nav-rail/` (`@nube/nav-rail`), a workspace sibling of `ui/`,
-with its own build. It is consumed **first** by the `ce-wiresheet` editor (a separate Nube
-repo), and can later replace the inline `NavRail.tsx` inside `ui/` itself. Unlike that
-original — which hard-codes Lazybones surfaces (`channels`, `flows`, …), cap-gating, and a
-`ThemeSwitcher` — the package is **fully generic and data-driven**: the host passes an
-`items[]` config plus `active`/`onSelect` and optional header/footer slots.
+## The goal (verbatim intent)
 
-## Goals
+> Make a **common, reusable panel** that **looks like the ce-wiresheet panel**, built with
+> **shadcn/ui**. The **first place we use it is the lb dashboard "Edit panel" widget**
+> (`ui/src/features/dashboard/editor/PanelEditor.tsx`).
 
-- One reusable sidebar package, matching the look of the current `NavRail`
-  (collapsible-to-icon, grouped items, tooltips when collapsed, header brand slot, footer
-  slot, `⌘/Ctrl-B` toggle), that both `ui/` and external Nube apps can consume.
-- **Data-driven, zero app concepts.** No `CoreSurface` union, no capabilities, no
-  `ThemeSwitcher`. The host supplies `items` (`{ id, label, icon, group? }`), `active`,
-  `onSelect(id)`, and optional `header`/`footer` React nodes.
-- **shadcn/ui Sidebar as the engine, vendored as source** (shadcn is copy-in source, not an
-  npm dep — the "popular sidebar" *is* shadcn's). The package owns the primitives it needs
-  (`sidebar`, `sheet`, `tooltip`, `button`) + `cn` + `useIsMobile`, so a consumer installs
-  ONE package, not a shadcn setup.
-- **Self-themed & host-overridable.** All color comes from `hsl(var(--nr-*))` tokens scoped
-  under a `.nav-rail` root class, overridable by the host at `:root` or inline — the same
-  contract ce-wiresheet uses for its editor. Dark default + `.theme-light` variant.
-- First use: mount the rail in `ce-wiresheet/src`, wired to the editor's **real** surfaces
-  (Components, Scripts, Schedule, Diagnostics, Agent) — no fake data.
+That is the entire brief. Copy the ce-wiresheet panel's **look and structure**, make it a
+**reusable shadcn component**, then rebuild the dashboard Edit panel on top of it.
 
-## Non-goals
+## What went wrong before (so you don't repeat it)
 
-- Not porting lb's cap-gating, `Surface`/`ext:` routing, or extension-slot federation
-  (`ui-federation-scope`) — the host decides what `items` to show (it can pre-filter by its
-  own caps before passing them in).
-- Not a router. `onSelect` hands the id back; routing/content is the host's job.
-- Not a theme-switcher UI — that's a host footer slot.
-- **Migrating `ui/`'s own `NavRail.tsx` onto the package is a follow-up, not this ship.**
-  `ui/` keeps its file; this change only adds the package and wires the ce-wiresheet
-  consumer. (See Open questions.)
+A previous pass built a `@nube/nav-rail` **sidebar/nav-menu** and swapped it into the Edit
+panel's tab strip. **That was the wrong artifact** — a nav rail is not the panel. The Edit
+panel still "looks like it did before" (a cramped fixed-width Sheet, `sm:max-w-3xl`, sparse
+options). The user's words: *"the one in CE has so many options on resize"* — the ce panel is
+**rich, dense, and resizable**; ours is thin and fixed. Fix **that** gap.
 
-## Intent / approach
+Decide with the user (or from the files) whether to **delete `@nube/nav-rail`** or keep it as an
+internal dependency of the new panel. Do not leave a nav rail masquerading as "the panel."
 
-Two layers, matching how shadcn is meant to be used:
+## Step 0 — confirm the source panel (one decision, then go)
 
-1. **Primitives (vendored shadcn):** `src/primitives/{sidebar,sheet,tooltip,button}.tsx`
-   plus `src/lib/cn.ts` and `src/hooks/use-mobile.ts`. Copied faithfully from
-   `ui/src/components/ui/*`, with two edits: imports rewritten off the `@/` alias to
-   relative paths, and color utilities pointed at the package's own `--nr-*` tokens instead
-   of lb's global `bg-bg`/`text-fg`. Internal — the package does not re-export the raw
-   shadcn API as its contract, so the engine stays swappable.
-2. **`NavRail` (our component):** the generic, data-driven wrapper — the reusable thing.
-   `SidebarHeader` (header slot) → grouped `SidebarMenu` from `items` → `SidebarFooter`
-   (footer slot), with `collapsible="icon"`, tooltips, and `aria-current`. ~120 lines like
-   the original, minus the lb-isms.
+"The ce-wiresheet panel" = one of these files in `/home/user/code/c/ce/ce-wiresheet/src/`.
+Pick the one the user means (the screenshot they shared is the lb Edit panel, i.e. the
+**target**, not the source). Best candidates, largest/most-option-dense first:
 
-Build mirrors ce-wiresheet's lib setup: Tailwind v4 `@theme` over `hsl(var())` tokens
-scoped to `.nav-rail`, Vite lib build (ESM+CJS+dts), React as a peer dep, one bundled
-stylesheet (`@nube/nav-rail/style.css`). The package builds its **own** CSS, so the fact
-that `ui/` is on Tailwind v3 and the package is on v4 doesn't cross the boundary — the
-consumer imports the prebuilt stylesheet.
+| File | Lines | What it is |
+|---|---|---|
+| `components/DiagPanel.tsx` | 589 | the biggest panel — many sections + controls |
+| `ui/UiTabHost.tsx` | 374 | the tabbed panel host (resizable drawer that holds panels) |
+| `ui/InspectPanel.tsx` | 271 | dense detail panel: identity header + grouped `Section`s + property/edge/metadata tables ("so many options" look) |
+| `ui/TabShell.tsx` | 103 | generic IDE tab-shell: pinned index tab + closeable tabs (render-prop) |
 
-**Placement — repo-root workspace.** The pnpm workspace was rooted at `ui/`; we promote it
-to the repo root (`packages: ['ui', 'packages/*']`) so `ui/` can depend on the sibling via
-`workspace:*` without a publish/link dance.
+Read the chosen file top-to-bottom. That is the thing you are copying.
 
-**Alternative rejected — leave NavRail inline / copy it into the consumer:** faster, but
-carries lb's `CoreSurface`/cap/ThemeSwitcher coupling and gives no reuse. A workspace
-package is the reuse boundary the user asked for ("make sure it's a library").
+## Step 1 — copy it faithfully into a reusable shadcn package
 
-**Alternative rejected — a foreign npm sidebar (`react-pro-sidebar`, MUI Drawer):** none
-match the NavRail look or the scoped-token theming without heavy restyling, and they drag in
-a competing style system. The "popular" sidebar *is* shadcn's Sidebar — source-vendored by
-design, which is what we do.
+- Create/extend a package under `packages/` (repo-root pnpm workspace already includes
+  `packages/*`; `ui/` depends on it via `workspace:*`). Suggested name: `@nube/panel`.
+- **Port the ce panel's structure and look**: its header, its **`Section`** grouping, its dense
+  tables/rows, its resizability, its spacing/typography. Keep the *look*; drop ce-specific data
+  wiring (engine types, `useStore`, REST) — make it **data-driven via props**.
+- **Build on shadcn/ui primitives** (the user asked for shadcn explicitly). The lb app already
+  vendors shadcn under `ui/src/components/ui/*` — mirror those primitives into the package
+  (`sheet`, `resizable`, `separator`, `scroll-area`, `input`, `button`, `tabs`/section headers,
+  `cn`), or depend on a shared copy. **Resizability**: use shadcn's `resizable`
+  (react-resizable-panels) so widening the panel reveals more option columns — this is the
+  "so many options on resize" behavior the user wants.
+- **Self-themed** like ce-wiresheet: all color via `hsl(var(--token))` scoped to a root class,
+  host-overridable. lb `ui/` is now on **Tailwind v4** (migrated in the prior pass — keep that),
+  so a v4 `@theme` + tokens is fine; **the package stylesheet must ship theme+utilities only,
+  NO preflight** (a library must not reset its host — this exact bug already bit us:
+  `docs/debugging/frontend/react-types-19-collision.md` neighbours; see also the `@layer base`
+  drop-in error).
+- **Deps discipline** (a prior bug): pin the package's dev React/types/lucide to match `ui`
+  (`react@^18.3.1`, `@types/react@^18.3.12`, `lucide-react@^0.460.0`) or you split the
+  `@types/react` world and break `ui`'s lucide typecheck. See
+  `docs/debugging/frontend/react-types-19-collision.md`.
+- **FILE-LAYOUT**: one responsibility per file, ≤400 lines. `Panel.tsx` (shell), `Section.tsx`,
+  the row/table pieces, `items.ts`/types, each shadcn primitive its own file. No `utils.ts`.
 
-## How it fits the core
+## Step 2 — first use: the dashboard Edit panel
 
-`nav-rail` is a **presentational frontend library**, not a node — the platform principles
-about nodes are N/A, stated explicitly so the build doesn't invent them:
+Rebuild `ui/src/features/dashboard/editor/PanelEditor.tsx` on the new panel:
 
-- **Tenancy / caps / SurrealDB / Zenoh / MCP / sync / secrets:** **N/A** — no backend, no
-  workspace, no verbs. A host that needs cap-gating filters `items` before passing them.
-- **One responsibility per file** (FILE-LAYOUT — applies to `.tsx`): `NavRail.tsx` (render),
-  `items.ts` (the `NavItem`/`NavGroup` types), one primitive per file, `use-mobile.ts`,
-  `cn.ts`. No `utils.ts`. The vendored `sidebar.tsx` is faithful to shadcn and runs over the
-  ≤400-line budget — kept intact (forking shadcn to split it invites drift); flagged as
-  vendored so it isn't read as our code. OUR files stay small.
-- **No mocks / no fake backend** (CLAUDE §9): the rail is presentational — no backend to
-  fake. Tests render the **real** component with real `items`; the ce-wiresheet integration
-  wires it to the editor's **real** surfaces, not a stub list. No `*.fake.ts`.
-- **Symmetric / stateless:** the component holds only view state (open/collapsed); no
-  durable state. N/A to node symmetry.
-- **Stable public surface:** exports `NavRail`, the `NavItem`/`NavGroup` types, and
-  `./style.css`. Vendored primitives stay internal.
+- It is currently a fixed-width `Sheet` (`side="right" sm:max-w-3xl`) — **replace that** with the
+  reusable resizable panel so it is **wide and resizable**, matching the ce look.
+- Keep the existing wiring: `cellToEditorState`/`editorStateToCell`, `PreviewPane`, `VizPicker`,
+  the section bodies (`QueryTab`/`TransformTab`/`PanelOptionsTab`/`FieldTab`/`OverridesTab`),
+  `OptionsSearch`, save/cancel. Only the **shell + look** changes.
+- The section navigation (Query / Transform / Panel options / Field / Overrides) should be
+  presented in the **ce panel's idiom** (its `Section`/tab treatment), not a plain text list.
+- Preserve behavior: the gateway tests must stay green
+  (`ui/src/features/dashboard/editor/panelEditor.gateway.test.tsx`,
+  `flowsPanelEditor.gateway.test.tsx`) and the DashboardView render test.
 
-## MCP surface / API shape
+## Guardrails / tests (must stay green)
 
-A presentational component — **no CRUD / get-list / watch / batch** (those are node
-concepts, N/A). The surface is one component + its data model:
+- `pnpm -C ui build` (Tailwind v4, `tsc --noEmit && vite build`).
+- `pnpm -C ui test` (322 unit tests today).
+- `pnpm -C ui test:gateway` — the panel-editor + flows-panel-editor + DashboardView suites.
+  (Baseline has **4 pre-existing** gateway failures unrelated to this work: `DashboardView`,
+  `SystemView` subsystem sheet, `sqlSource` visual-editor, agent-command palette — they fail on
+  the untouched tree too; don't chase them, just don't add new ones.)
+- New package: its own `pnpm test` (real component, no fakes — CLAUDE §9), `typecheck`, `build`.
+- Package CSS ships **0** `@layer base` blocks (grep the built `dist/*.css`).
 
-```ts
-export interface NavItem { id: string; label: string; icon?: React.ComponentType; group?: string }
-export interface NavRailProps {
-  items: NavItem[];
-  active: string | null;
-  onSelect: (id: string) => void;
-  header?: React.ReactNode;      // brand/logo slot (collapses to an icon)
-  footer?: React.ReactNode;      // e.g. host's theme switcher / sign-out
-  defaultCollapsed?: boolean;
-  className?: string;            // extra classes on the root (host theming hook)
-}
-export function NavRail(props: NavRailProps): JSX.Element
-```
+## Files & pointers
 
-Items with the same `group` render under one `SidebarGroupLabel`; ungrouped items render in
-a default group. Order is array order.
+- **Source (copy this):** `/home/user/code/c/ce/ce-wiresheet/src/` — the panel file chosen in
+  Step 0. Its theming pattern: `src/wiresheet.css` + `src/wiresheet-theme.css` (`@theme` over
+  scoped `hsl(var())` tokens). Its lib build to mirror: `vite.lib.config.ts`.
+- **Target (first use):** `ui/src/features/dashboard/editor/PanelEditor.tsx` and its
+  `tabs/*`, `PreviewPane.tsx`, `VizPicker.tsx`, `OptionsSearch.tsx`.
+- **shadcn primitives to mirror:** `ui/src/components/ui/{sheet,resizable,separator,scroll-area,
+  input,button,tabs}.tsx`, `ui/src/lib/utils.ts` (`cn`). (If `resizable` isn't vendored yet, add
+  it — `react-resizable-panels`.)
+- **Prior-pass debris to reconcile:** `packages/nav-rail/` (the wrong artifact — reuse or remove),
+  the `NavMenu` swap inside `PanelEditor.tsx` (revert to make room for the real panel).
+- **Prior-pass wins to KEep:** the Tailwind-v4 migration of `ui/`
+  (`docs/sessions/frontend/tailwind-v4-migration-session.md`) — do not revert it.
 
-## Example flow
+## Definition of done
 
-1. A host renders `<NavRail items={[{id:'components',label:'Components',icon:Boxes},
-   {id:'scripts',label:'Scripts',icon:Braces,group:'Author'}]} active={sel}
-   onSelect={setSel} header={<Brand/>} />`.
-2. Collapsed (icon) mode shows only icons with hover tooltips; `⌘/Ctrl-B` toggles.
-3. Clicking "Scripts" calls `onSelect('scripts')`; the host swaps its content pane. The rail
-   marks it `aria-current="page"`.
-4. ce-wiresheet mounts this rail as its left chrome, `items` = the editor's real surfaces,
-   `onSelect` drives the existing tab/panel host (`UiTabHost`/`TabShell`).
-
-## Testing plan
-
-`packages/nav-rail` uses `vitest` + `@testing-library/react` (jsdom). Mandatory categories
-from `scope/testing/testing-scope.md` mapped to a presentational lib:
-
-- **Real component, no fakes** (the §0 rule that applies): tests render the **real**
-  `NavRail` with real `items`; no `*.fake` re-implementation.
-- **Unit / interaction:**
-  - one button per item, grouped by `group`, in array order;
-  - clicking an item calls `onSelect` with its id; the active item has
-    `aria-current="page"`;
-  - collapsed mode hides labels / exposes tooltips; `⌘/Ctrl-B` toggles state;
-  - header/footer slots render when provided, absent when not;
-  - a host `className` / inline `--nr-*` override reaches the root (theming contract).
-- **Integration (ce-wiresheet):** mount the editor chrome with the rail wired to real
-  surfaces; assert selecting a surface changes the active panel — against real editor
-  components, not a stub.
-
-**Capability-deny and workspace-isolation tests are N/A** — no caps or tenancy in a
-presentational frontend lib. Stated so the implementing session doesn't invent them.
-
-## Risks & hard problems
-
-- **Tailwind `@theme` scoping.** Color utilities only resolve inside the lib's own `@theme`
-  build (ce-wiresheet learned this the hard way). The package ships its own `@theme` +
-  tokens; without it `bg-nr-panel` won't resolve in a host build. Mirror `wiresheet.css`.
-- **Two token vocabularies.** The original uses `bg-panel`/`text-fg`; the package uses
-  `--nr-*`. The vendored copy must be fully converted or the rail renders mis-styled.
-  Covered by the theming test.
-- **Faithful vendor vs. the ≤400-line rule.** `sidebar.tsx` kept verbatim breaks the budget;
-  splitting risks upstream drift. Decision: keep faithful + isolated, keep OUR files small,
-  flag it.
-- **Peer-dep split.** Radix + cva are `dependencies`; React is a peer + external in the lib
-  build — a wrong split double-loads React in a host.
-- **Workspace promotion.** Moving the pnpm root from `ui/` to the repo root must not break
-  `ui/`'s existing install/build. Verify `pnpm install` + `ui` build/test stay green.
-
-## Open questions
-
-1. **Migrate `ui/`'s `NavRail.tsx` onto the package?** Recommended (lb passes its
-   `CoreSurface` items + cap filter + `ThemeSwitcher` as slots), but out of scope here.
-2. **npm scope / publish:** `@nube/nav-rail` assumed, consumed via `workspace:*` (lb) and
-   file/git (ce-wiresheet) for now. Confirm before publishing.
-3. **Mobile off-canvas:** the Sheet-based mobile drawer comes free via the vendored
-   primitives. Keep it (default) or desktop-icon only?
-4. **In ce-wiresheet, does the rail REPLACE the `ExtensionStrip`/`TabShell` chrome or sit
-   alongside as top-level nav?** Default: top-level nav alongside. Affects integration
-   wiring, not the package.
-
-## Related
-
-- Design source: `ui/src/features/shell/NavRail.tsx` (the liked original) and
-  `ui/src/components/ui/sidebar.tsx` (the shadcn engine vendored).
-- Consumer repo: `ce-wiresheet/src` — theming pattern mirrored from its `wiresheet.css` /
-  `wiresheet-theme.css`; sits beside `ExtensionStrip.tsx` / `TabShell.tsx`.
-- Sibling scope: `scope/extensions/ui-federation-scope.md` (extension sidebar slots — NOT
-  ported here; the host owns `items`).
-- No SKILL.md: presentational UI component, no agent-/API-drivable surface (no MCP verbs, no
-  gateway routes). **N/A.**
+1. A reusable shadcn panel package that **visually reads like the ce-wiresheet panel**
+   (dense, sectioned, **resizable — more options as it widens**).
+2. The dashboard Edit panel (`PanelEditor.tsx`) rebuilt on it — no longer a cramped fixed Sheet.
+3. All the guardrail builds/tests green; no new gateway failures; package CSS preflight-free.
+4. The stray nav-rail artifact resolved (kept-as-dependency or deleted), not left pretending to
+   be the panel.

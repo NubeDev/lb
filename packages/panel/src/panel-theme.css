@@ -1,0 +1,43 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Panel design tokens — the panel's SELF-CONTAINED palette.
+ *
+ * Same contract as ce-wiresheet's wiresheet-theme.css and @nube/nav-rail's
+ * nav-rail-theme.css: every color in the panel is `hsl(var(--token))` off this list,
+ * scoped to the `.lb-panel` root class the component puts on its wrapper, so:
+ *   • the host app's palette can't leak in or be clobbered, and
+ *   • a host can RE-SKIN the panel by overriding any of these vars — e.g.
+ *       .lb-panel { --lbp-accent: 280 80% 60%; }
+ *     or inline `style={{ '--lbp-accent': '...' }}` on the mount — WITHOUT forking.
+ *
+ * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works). Dark by default;
+ * `.theme-light` flips to the light palette. Token values track ce-wiresheet so the
+ * panel READS like the ce InspectPanel out of the box.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+:root,
+.lb-panel {
+  --lbp-bg: 234 18% 6%;          /* app canvas behind the panel */
+  --lbp-panel: 232 15% 9%;       /* the panel surface */
+  --lbp-secondary: 230 14% 12%;  /* headers / sub-surfaces */
+  --lbp-border: 230 10% 18%;
+  --lbp-input: 230 10% 18%;
+  --lbp-fg: 220 16% 93%;         /* primary text */
+  --lbp-muted: 220 8% 56%;       /* labels / idle text */
+  --lbp-accent: 200 86% 64%;     /* focus ring / brand mark / links */
+  --lbp-amber: 32 92% 60%;       /* warning / override status */
+
+  --lbp-font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --lbp-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.lb-panel.theme-light {
+  --lbp-bg: 240 20% 99%;
+  --lbp-panel: 0 0% 100%;
+  --lbp-secondary: 240 18% 97%;
+  --lbp-border: 240 14% 88%;
+  --lbp-input: 240 14% 88%;
+  --lbp-fg: 234 22% 14%;
+  --lbp-muted: 235 12% 42%;
+  --lbp-accent: 200 80% 46%;
+  --lbp-amber: 32 88% 46%;
+}

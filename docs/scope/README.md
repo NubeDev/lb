@@ -226,12 +226,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   click-to-insert, frontend-only over the shipped verbs, with the `store.schema` reader extracted to a
   shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer), and
   `graphics-canvas-scope.md` (the **free-form graphics surface** — Niagara-style plant graphics /
-  floor plans / mimic pages: a workspace-scoped `scene:{id}` JSON scene-graph record rendered by an
-  own SVG `view:"canvas"` through the shipped v2 widget contract; drawn by hand (flows-canvas editor
-  patterns), **drawn by the AI agent** via `scene.create`/`scene.apply` patch ops against the same
-  durable record (watch-fed live repaint — no second rendering protocol), and extended by
-  `[[shape]]` extension shape types over the federation registry; 3D later as an r3f renderer over
-  the same document; tldraw and the Awaken A2UI crate evaluated and rejected, their patterns kept), and
+  floor plans / mimic pages / 3D buildings, a **100% UI extension** (control-engine precedent: no
+  new core verbs/tables/WIT; docs co-locate with the extension once scaffolded): a declarative,
+  dimension-agnostic scene document stored via the shipped asset/document verbs, rendered by **one
+  engine — three.js via `@react-three/fiber`** (flat plant graphics = orthographic top-down camera;
+  3D = the same document with a perspective camera — never built twice), drawn by hand (drei
+  gizmos/controls) and **drawn by the AI agent** through the same shipped tools (skill-guided
+  read-modify-save, validate-and-placeholder on LLM sloppiness); new equipment ships as **symbol
+  packs (GLTF/SVG assets — data, not code)**; React Flow, Konva/Pixi, Babylon, tldraw, and the
+  Awaken A2UI crate evaluated and rejected, their patterns kept), and
   `widget-kit-scope.md` (make widgets genuinely reusable across the whole system: a declarative per-field
   presentation vocabulary — `label`/`description`/`hide`/`order` — that both the request form and the
   response table honor through one resolver; extract the input widgets + registry out of the palette/

@@ -1,294 +1,314 @@
-# Frontend scope — graphics canvas (drawing pages, plant graphics, AI-drawn UI)
+# Frontend scope — graphics canvas (plant graphics, floor plans, 3D — one engine, 100% extension)
 
-Status: scope (the ask). Promotes to `public/frontend/` once shipped.
+Status: scope (the ask). Promotes to `public/frontend/` once shipped. Per the
+`control-engine` precedent, the docs **co-locate with the extension** once it is
+scaffolded (`rust/extensions/graphics-canvas/docs/`) — the core stays canvas-ignorant.
 
 We want a **free-form graphics surface** — the Tridium-Niagara "PX page" class of UI:
-AHU/plant graphics, floor plans, mimic diagrams, eventually 3D buildings — that is *not*
-the react-grid dashboard. A user can draw it by hand; an **AI agent can draw it for
-them** (the 2026 default); an **extension can add new shape types** (a fan, a valve, a
-chiller). Shapes bind to live data through the same contract dashboard widgets already
-use. One design serves both asks: the "drawing page" and the "AI canvas widget" are the
-same document with two producers.
+AHU/plant graphics, floor plans, mimic diagrams, and 3D buildings — that is *not* the
+react-grid dashboard. A user can draw it by hand; an **AI agent can draw it for them**
+(the 2026 default); new equipment symbols arrive as **data (symbol packs), not code**.
+Shapes bind to live data through the same contract dashboard widgets already use.
+Three hard decisions frame this scope: **one engine** (three.js via
+`@react-three/fiber` — flat scenes *and* 3D from the same document, never built twice),
+**one deliverable posture** (a **100% UI extension**, zero core code), and **one source
+of truth** (a declarative scene document the human editor, the AI, and the renderer all
+share).
 
 ## Goals
 
-- A **scene document**: a declarative, versioned JSON scene graph (`scene:{id}` record,
-  workspace-scoped) that fully describes a graphics page — shapes, transforms, styling,
-  data bindings, actions.
-- A **canvas view** (`view: "canvas"`) rendered through the shipped v2 widget contract:
-  works as a dashboard cell, as a full-bleed "graphics page" (a dashboard with one cell),
-  and as a channel rich-response.
-- A **manual editor**: palette of shape types, drag-to-place, select/move/resize/rotate,
-  a property rail, zoom/pan, undo — the flows-canvas interaction patterns on an SVG
-  scene instead of a DAG.
-- **AI drawing as a first-class producer**: the agent draws by calling `scene.*` MCP
-  verbs (create + patch ops) against the *same durable record* the human edits; every
-  open canvas repaints live via watch. No second "AI rendering" pipeline.
-- **Extension shape types**: an extension registers custom shapes (render + prop schema)
-  through the existing UI-federation mount, declared in `extension.toml` — the shape
-  analog of `[[widget]]`.
-- **Live data on shapes**: any shape prop can bind to a read source (`Target`/`source`)
-  and any shape can carry an `action` (click a valve → `{tool, argsTemplate}`), reusing
-  `fieldConfig`/`format.ts` for units/thresholds/prefs.
-- A **3D path that doesn't fork the model**: the scene schema is renderer-agnostic so a
-  later `react-three-fiber` renderer draws `3d.*` shape types from the same document.
+- A **scene document**: a declarative, versioned JSON scene graph (workspace-scoped
+  record) that fully describes a graphics page — shapes, transforms, styling, data
+  bindings, actions. Renderer-agnostic and dimension-agnostic: a "2D" AHU page and a 3D
+  building are the same format (flat scenes just keep `z = 0` and an orthographic
+  camera).
+- **One engine: three.js via `@react-three/fiber` + `@react-three/drei`.** Flat plant
+  graphics render under an orthographic top-down camera (it looks and edits like a 2D
+  drawing tool); 3D buildings are the same scene with a perspective camera. One
+  library, one renderer, one editor — 3D is a camera setting, not a second build.
+- A **manual editor** built on the r3f ecosystem's chrome, not from zero: drei
+  `TransformControls` (move/rotate/scale gizmos), `MapControls`/`OrbitControls`
+  (pan/zoom/orbit), per-mesh pointer events (raycast hit-testing is the library's job),
+  drei `Html`/`Text` for labels and overlays, `Grid` + snapping. We write the palette,
+  the property rail, and box-select.
+- **100% UI extension.** A federated `[ui]` page (the full-bleed graphics page) +
+  `[[widget]]` entries (the dashboard-cell viewer) from one `extension.toml`. **No new
+  core verbs, tables, capabilities, or WIT surface.** Persistence and data all ride
+  shipped core tools through the host-mediated bridge.
+- **AI drawing as a first-class producer**: the agent edits the *same scene document*
+  through the *same shipped tools* the editor uses; every open canvas re-renders live.
+  No AI-specific rendering pipeline.
+- **Symbol packs — new equipment as data, not code**: a pack = GLTF models / SVG
+  symbols + a prop/binding schema, uploaded as workspace assets. Installing a "chiller
+  plant pack" requires no code deploy, works offline, and is something an AI can
+  generate.
+- **Live data on shapes**: any shape prop binds to a read source (`Target`/`source`
+  vocabulary) and any shape can carry an `action` (`{tool, argsTemplate}`), reusing
+  `fieldConfig`/`format.ts` for units/thresholds/prefs — under the **viewer's** grant.
 
 ## Non-goals
 
-- **Not a whiteboard.** No freehand ink, sticky notes, or multiplayer cursors — this is
-  data-bound plant graphics, not Miro. (If a whiteboard is ever wanted, it's a separate
-  scope.)
-- **Not phase-1 3D.** The schema reserves room (z, `3d.*` namespace); no 3D renderer
-  ships in the first slices.
-- **Not a CAD/BIM tool.** Floor plans are drawn shapes or a background image/SVG asset,
-  not IFC imports.
-- **Not a new streaming UI protocol.** No A2UI wire protocol, no SSE "render channel" —
-  agent drawing is record edits + the existing watch feed (see rejected alternatives).
-- **Not a replacement for the grid dashboard.** The grid stays the default for
-  tile-of-widgets pages; canvas is for spatial/diagrammatic pages.
+- **Not two renderers.** No SVG/Konva/React-Flow 2D path alongside three.js. One
+  engine or none.
+- **Not core code.** If a slice seems to need a core change, that's a finding to
+  surface (and probably a generic primitive with its own scope), not something to
+  smuggle in.
+- **Not a whiteboard.** No freehand ink, sticky notes, or multiplayer cursors — this
+  is data-bound plant graphics, not Miro.
+- **Not CAD/BIM.** Floor plans are drawn shapes, a background image, or an imported
+  GLTF — not IFC round-tripping.
+- **Not a new streaming UI protocol.** No A2UI wire protocol, no SSE "draw channel" —
+  agent drawing is document edits + the existing refresh/watch path.
 
 ## Intent / approach
 
-**The key idea: the scene document is the single source of truth, and everything —
-human editor, AI agent, extension — is just a writer or renderer of that document.**
+**The key idea: one scene document, one engine, and everything — human editor, AI
+agent, symbol pack — is just a writer of that document or an asset it references.**
 
 ```
-scene:{id} (SurrealDB, workspace-walled)
-   ▲ scene.create/update/apply (MCP verbs)          ▼ scene.get / scene.watch
-   │                                                │
-   ├── manual editor (palette + property rail)      └── <CanvasView>  (SVG renderer)
-   ├── AI agent (patch ops via scene.apply)              ├─ built-in shapes
-   └── import/seed (a template AHU page)                 └─ ext shapes (federation registry)
+scene document (SurrealDB via shipped verbs, workspace-walled)
+   ▲ written by                                  ▼ read by
+   ├── manual editor (palette + gizmos + rail)   └── <SceneCanvas> (r3f renderer)
+   ├── AI agent (same tools, skill-guided)            ├─ built-in primitives
+   └── template/import                                └─ symbol packs (GLTF/SVG assets)
 ```
 
-A scene is a flat map of shapes (ids referencing ids — the same flat-list model A2UI
-and the flows graph use, which is easy for an LLM to patch incrementally):
+A scene is a flat map of shapes (ids referencing ids — easy for an LLM to patch
+incrementally, the model A2UI and the flows graph both validate):
 
 ```jsonc
 {
   "v": 1,
-  "canvas": { "w": 1920, "h": 1080, "bg": { "asset": "file:floorplan-l2.svg" } },
+  "camera": { "mode": "ortho-top" },            // or "persp" — the 2D/3D switch
+  "bg": { "asset": "floorplan-l2.svg" },        // optional underlay (image/SVG/GLTF)
   "shapes": {
     "sf1": {
-      "type": "hvac.fan",                    // built-in or "ext:{extId}/{shape}"
-      "t": { "x": 420, "y": 310, "w": 96, "h": 96, "r": 0 },   // z reserved for 3D
+      "type": "hvac.fan",                        // primitive or symbol-pack type
+      "t": { "x": 420, "y": 310, "z": 0, "r": 0, "s": 1 },
       "props": { "label": "SF-1" },
-      "bind": {                               // prop ← data, same Target vocab as v3 cells
+      "bind": {                                  // prop ← data, same Target vocab as v3 cells
         "running": { "source": { "tool": "series.latest", "args": { "series": "ahu1.sf1.status" } } },
         "speed":   { "source": { "tool": "series.latest", "args": { "series": "ahu1.sf1.speed" } },
                      "fieldConfig": { "unit": "percent" } }
       },
       "action": { "tool": "flows.inject", "argsTemplate": { "flow": "ahu1", "port": "sf1_cmd" } }
     },
-    "duct1": { "type": "shape.path", "t": { "x": 0, "y": 0 }, "props": { "d": "M420 358 H 760", "stroke": "duct" } },
+    "duct1": { "type": "shape.path", "props": { "d": "M420 358 H 760", "style": "duct" } },
     "lbl1":  { "type": "shape.text", "t": { "x": 420, "y": 420 }, "props": { "text": "Supply Fan" } }
-  },
-  "order": ["duct1", "sf1", "lbl1"]           // paint order (z-index)
+  }
 }
 ```
 
-**Renderer: our own SVG scene renderer, not tldraw.** Built-in shape primitives
-(`shape.rect|ellipse|path|line|text|image`) plus a domain starter set (`hvac.*` pipes,
-ducts, fans, valves, gauges) render as React SVG components; extension shapes are React
-components resolved from the federation registry. SVG gives us DOM events, CSS theming
-(token-bound, per `ui-standards-scope.md`), crisp zoom, and lets an extension shape be
-an arbitrary React component. Editor interaction (palette drag-on, selection, transform
-handles, config rail, undo buffer) ports the proven patterns from
-`ui/src/features/flows/FlowCanvas.tsx` / `Palette.tsx` / `NodeConfigPanel.tsx`.
+**Why three.js (r3f) and not a 2D library.** The ask includes 3D buildings, and the
+constraint is *one* library. Konva/fabric (canvas-2D) and any SVG approach dead-end at
+3D — adopting one means building the renderer twice, the exact thing we refuse to do.
+three.js through `@react-three/fiber` keeps every shape an ordinary React component
+(`(props, boundValues) → JSX meshes`), which keeps symbol rendering, the property rail,
+and future pluggability idiomatic. Flat mode is not a hack: an orthographic top-down
+camera over `z=0` geometry *is* a 2D drawing surface — same gizmos, same hit-testing.
+Costs accepted: a ~1 MB engine bundle (paid only by this extension — see below), and
+WebGL text/lines needing drei's `Text`/`Line` rather than DOM. Rejected alternatives:
 
-**AI drawing = editing the record.** The agent gets `scene.create` and `scene.apply`
-(a bounded batch of RFC-6902-style ops over `/shapes/*` and `/order`) as MCP tools plus
-a `skills/graphics-canvas/SKILL.md` teaching the shape catalog. Because every open
-canvas holds a `scene.watch`, the user *sees the agent draw* shape-by-shape — streaming
-UX without a streaming protocol. A `normalize + validate` layer (unknown type → reject
-with the catalog; missing transform → default) absorbs LLM sloppiness before anything
-touches the store — the pattern proven by Awaken's `normalize_args`.
+- **React Flow** — considered (already in-stack for flows) and rejected: its idiom is
+  node-and-edge diagrams, and fighting it to *not* look like a flow chart — plus no 3D,
+  ever — makes it the wrong base for this surface.
+- **Konva / fabric.js / PixiJS** — good 2D editors/renderers, but 2D-only: choosing one
+  forces the second build when 3D lands. Rejected on the one-engine constraint.
+- **Babylon.js** — the other credible 3D engine, batteries included, but its React
+  story is thin; r3f's component model is what makes shapes/symbols composable React.
+- **GoJS / JointJS+** — commercial licenses, 2D-only. Out.
+- **tldraw / Excalidraw** — whiteboards (watermark/paid license; hand-drawn genre; own
+  store fighting rule 2). Wrong genre, and 2D-only.
+- **Awaken's `awaken-ext-generative-ui` crate / A2UI v0.8 wire protocol** — evaluated
+  against the clone at `/tmp/awaken`. Solid (MIT/Apache-2.0, tested) but coupled to the
+  Awaken runtime, fixed catalog, and aimed at streaming chat-form UI (territory
+  `channels-rich-responses` already covers). **Patterns adopted** — flat id-referenced
+  maps, incremental patch updates, normalize-before-validate for LLM sloppiness —
+  dependency rejected. (Same verdict shape as `agent-run/`.)
+- **A live SSE "draw channel"** — rejected: motion carrying state (rule 3), evaporates
+  on refresh, needs persistence anyway. Durable-document-plus-refresh gives replay,
+  undo, audit, and multi-viewer sync free.
 
-**Page vs widget resolves to "both, one mechanism".** `canvas` is a v2 `view`; a
-dashboard cell hosts it like any widget. A "graphics page" is a dashboard whose single
-cell is a full-bleed canvas — deep-linkable via `routing-scope.md`, shareable via the
-existing dashboard authz. Extensions that mount their own dashboards get canvas for
-free. A channel rich-response with `view:"canvas"` renders a scene inline (source =
-`scene.get`, or small inline `data`).
+**Why 100% extension.** The core gains nothing canvas-shaped: no new verbs, no new
+tables, no WIT change. The extension ships a federated `[ui]` page (full-bleed graphics
+pages, deep-linkable per `routing-scope.md`) and `[[widget]]` canvas cells for
+dashboards, both mounting the same `<SceneCanvas>` over the same bridge. A pleasant
+consequence of the extension posture: **only this remote bundles three.js**, so there
+is no shared-singleton/import-map problem in federation — the engine is an
+implementation detail of one bundle. Precedent: `control-engine` (100% extension, core
+CE-ignorant, docs co-located).
 
-**Rejected alternatives:**
+**Persistence with zero core additions.** Scene documents and symbol packs are
+workspace **assets/documents** written and read through the shipped generic verbs the
+manifest `scope` lists (the asset/document surface of `files/`/`document-store/`; exact
+verb set is Open question 1). The bridge enforces capability ∩ workspace as it does for
+every widget today. Concurrency uses the document layer's revision check (stale write →
+reload, retry) — the flows `write_locked` discipline at the client.
 
-- **tldraw** — closest off-the-shelf editor, but rejected: (a) its license requires the
-  watermark or a paid business license; (b) it brings its own reactive store/persistence
-  model, which fights rule 2 (one datastore) and our undo journal; (c) custom shapes are
-  registered at editor mount and its `ShapeUtil` API churns — a bad foundation for a
-  frozen extension contract; (d) it's a freeform whiteboard, and the data-binding layer
-  (the whole point) would be ours anyway. We'd be maintaining a fork-shaped integration
-  for the ~20% we use.
-- **Excalidraw** — MIT, but hand-drawn aesthetic, same no-binding gap, weaker custom
-  shape story. Wrong genre.
-- **Adopting the Awaken `awaken-ext-generative-ui` crate / A2UI v0.8 wire protocol** —
-  evaluated against the clone at `/tmp/awaken`. The crate is solid (MIT/Apache-2.0,
-  well-tested) but tightly coupled to the Awaken runtime's plugin/tool/sink traits, and
-  its component catalog is *fixed*, not extension-pluggable — the exact gap we need
-  closed. Its A2UI is the a2ui.org v0.8 spec (not Google's), aimed at streaming
-  *form/card chat UI*, which our channels rich-responses scope already covers with the
-  v2 widget contract. **We adopt its patterns** — flat id-referenced component maps,
-  JSONL/JSON-patch incremental updates, arg normalization before validation — and skip
-  the dependency. (Same verdict shape as `agent-run/`: ideas reviewed, framework
-  rejected.)
-- **A live SSE "draw channel" instead of record edits** — rejected: it would be motion
-  carrying state (rule 3), the drawing would evaporate on refresh, and we'd need a
-  second persistence step anyway. Durable-record-plus-watch gives replay, undo, audit,
-  and multi-viewer sync for free.
-- **`<canvas>`/WebGL 2D renderer** — rejected for phase 1: loses DOM events, CSS
-  tokens, and React-component extension shapes. Revisit only if a scene with thousands
-  of shapes actually janks (measure first).
+**AI drawing = editing the document with the tools it already has.** No new protocol:
+the agent (guided by `skills/graphics-canvas/SKILL.md`) reads the scene, applies
+shape-map edits, and saves through the same asset verbs — each save re-renders every
+open canvas. The skill carries the shape catalog + worked recipes; the extension's
+loader **normalizes and validates** every document before render (unknown type →
+labeled placeholder box, never a crash; the Awaken `normalize_args` lesson), so an LLM
+mid-draft can't take down a page. A channel rich-response embeds a graphic as
+`render:{view:"ext:graphics-canvas/scene", options:{sceneId}}` — the shipped ext-widget
+path, nothing new.
+
+**Symbol packs instead of code plugins.** New equipment types are **data**: a pack
+manifest (JSON: type names, prop schemas, binding slots, anchor points) + GLTF models
+(3D) and/or SVG symbols (flat), stored as workspace assets. The palette merges
+installed packs; scenes reference `pack.type` names; a missing pack renders labeled
+placeholders. This is deliberately chosen over code-level shape plugins
+(extension-to-extension code composition is unsolved surface) — and it means an AI can
+*generate a symbol pack* as readily as a scene. Code-level plugins stay an explicit
+non-slice until a symbol pack provably can't express something.
 
 ## How it fits the core
 
-- **Tenancy / isolation:** `scene:{id}` records are workspace-scoped like `dashboard:{id}`;
-  every `scene.*` verb resolves the workspace from the signed token. Isolation tested.
-- **Capabilities:** one cap per verb (`mcp:scene.get:call`, `…create`, `…update`,
-  `…apply`, `…delete`, `…watch`). Shape *bindings* execute under the **viewer's** grant
-  through the host-mediated bridge (same leash as dashboard cells — a scene authored by
-  an admin does not widen a viewer). Deny path: a bound shape whose source tool the
-  viewer lacks renders its no-access state, not an error page.
-- **Placement:** either — scenes are records; a canvas over an edge node's series works
-  offline like any dashboard. No `if cloud`.
-- **MCP surface (§6.1):** `scene.list|get|create|update|delete|watch` per
-  `core/resource-verbs-scope.md`, plus `scene.apply` — a **small, bounded, synchronous
-  batch** (cap ~200 ops per call, per-op results, rev-checked) — a drawing gesture or
-  one agent step, not an import. A bulk import/template-instantiation that could run
-  long would be an `lb-jobs` job, deferred until a caller exists.
-- **Data (SurrealDB):** one new `scene` table (doc + `rev` + timestamps). Cell references
-  it as `options.sceneId`; small inline scenes allowed in rich-responses only. State only.
-- **Bus (Zenoh):** `scene.watch` rides the existing store-watch/SSE path — change
-  notifications (motion), document truth in the store (state). Fire-and-forget class.
-- **Sync / authority:** same authority story as dashboards. Concurrent writes are
-  rev-checked (`scene.apply` carries `expect_rev`; stale → retry with fresh doc), the
-  same discipline as `write_locked` in flows.
-- **Stateless extensions:** an extension shape is a pure `(props, boundValues) → SVG/JSX`
-  render + a prop JSON-Schema; no instance state. Hot-reload safe.
-- **No mocks:** tests seed real scenes into the real store, render through the real
-  `WidgetHost`, and exercise `scene.*` over the real gateway (`pnpm test:gateway`).
-- **SDK/WIT impact — flagged loudly:** this extends the *frontend* federation contract
-  (an `[[shape]]` manifest block + a `shapes` export on the remote, versioned per
-  `widget-kit-scope.md`'s mount-context versioning). The WASM WIT ABI is untouched.
-- **Skill doc:** yes — `skills/graphics-canvas/SKILL.md` (the agent-drivable surface:
-  the shape catalog, `scene.create`/`scene.apply` recipes, a worked "draw an AHU" run).
-  The implementing session writes it from a live run.
-
-## Extension shape contract (the `[[widget]]` sibling)
-
-```toml
-[[shape]]
-entry  = "remoteEntry.js"
-prefix = "hvac-pro"                   # types register as ext:{extId}/{prefix}.{name}
-scope  = ["series.latest"]            # tools the shapes' bindings may call
-```
-
-The remote exports `shapes: Record<string, ShapeDef>` where
-`ShapeDef = { schema, defaults, render(props, bound, ctx), anchors? }`. Trusted
-(allow-listed key) publishers render in-process; untrusted shapes follow the
-`ui-federation-scope.md` sandbox tier (phase 1 supports **trusted only** — an
-iframe-per-shape is unworkable, so untrusted shape sandboxing is an open question).
-A scene referencing an uninstalled shape type renders a labeled placeholder box — a
-scene must never hard-fail on a missing extension.
+- **Tenancy / isolation:** scenes and packs are workspace assets; every read/write goes
+  through the bridge, workspace resolved from the signed token. Nothing canvas-specific
+  to enforce — the wall is the existing one. Isolation still tested (below).
+- **Capabilities:** the manifest `scope` lists the tools the page/widget may call
+  (asset read/write + the read tools bindings use, e.g. `series.latest`). Bindings and
+  actions execute under the **viewer's** grant — an admin-authored scene never widens a
+  viewer. Deny path: a bound shape renders its no-access state; a denied save surfaces
+  the deny honestly.
+- **Placement:** either — assets + bridge work identically on edge and cloud; a canvas
+  over a local node's series works offline. No `if cloud`.
+- **MCP surface:** **none added.** The extension consumes shipped verbs; the API-shape
+  checklist (§6.1) is satisfied by the document layer it rides. If document-granular
+  patch ops or a watch feed prove necessary (Open questions 1–2), that's a *generic*
+  document-layer ask, scoped there — not a canvas verb.
+- **Data (SurrealDB):** no new tables. State = scene/pack assets in the store.
+- **Bus (Zenoh):** nothing canvas-specific. Live values ride the existing widget
+  refresh/watch path; live co-editing (if ever) rides a generic document watch.
+- **Sync / authority / secrets:** inherited from the asset layer; no secret material.
+- **Stateless extension:** the page/widget holds no durable state — pure render of
+  (scene doc, bound values). Hot-reload safe by construction.
+- **No mocks:** tests seed real scenes/packs into the real store and exercise the real
+  gateway + federation loader (`pnpm test:gateway`); the ext widget renders through the
+  real `WidgetHost`.
+- **SDK/WIT impact:** **none.** Frozen `RemoteMount` contract, existing `[ui]`/
+  `[[widget]]` manifest blocks, no WASM ABI change. (This is the payoff of the
+  100%-extension + symbol-packs-as-data decisions.)
+- **One responsibility per file:** the extension's `ui/` follows FILE-LAYOUT — renderer
+  (`scene/` shape components, one per primitive), editor (`edit/` one gesture per
+  file), binding (`data/useSceneData.ts`), pack loading (`packs/`).
+- **Skill doc:** yes — `skills/graphics-canvas/SKILL.md` (agent-drivable surface: the
+  scene schema, shape catalog, read-modify-save recipes, a worked "draw an AHU" run).
+  Written by the implementing session from a live run.
 
 ## Example flow — "AI, draw me the AHU-1 graphic"
 
 1. User (in a channel or the canvas's "draw with AI" rail): *"Draw AHU-1: outside-air
    damper, filter, supply fan SF-1 bound to `ahu1.sf1.*`, cooling coil, duct run."*
-2. The agent (skill-guided) calls `scene.create {name:"AHU-1"}` → gets `scene:{id}`,
-   then 4–6 `scene.apply` batches: ducts first, then equipment shapes with `bind`
-   blocks, then labels and `order`.
-3. The host checks capability + workspace per call; invalid shape types bounce back
-   with the catalog (normalize/validate), and the agent self-corrects.
-4. The user's canvas holds `scene.watch` — the page draws itself shape-by-shape as the
-   agent works.
-5. The agent answers in-channel with `render:{view:"canvas", source:{tool:"scene.get",
-   args:{id}}}` — the graphic is live in the thread.
-6. User drags SF-1 two grid units left, retitles a label (property rail), hits save →
-   `scene.apply` with `expect_rev`; the undo journal records the reverse ops.
-7. Clicking the fan fires its `action` through the bridge under the viewer's grant —
+2. The agent (skill-guided) creates a scene asset, then saves it in a few
+   read-modify-write steps: ducts and underlay first, then equipment shapes with
+   `bind` blocks, then labels.
+3. Every call crosses the host chokepoint: capability + workspace checked; a malformed
+   shape is caught by the extension's validator at render and shown as a labeled
+   placeholder — the skill teaches the agent to re-read and fix.
+4. The user's open canvas re-renders on each save — the page draws itself in steps.
+5. The agent answers in-channel with the ext-widget render payload — the graphic is
+   live in the thread.
+6. User drags SF-1 with the gizmo, retitles a label in the property rail, saves —
+   revision-checked write; the reverse edit lands in the undo journal.
+7. Clicking the fan fires its `action` through the bridge under the viewer's grant;
    deny renders as the shape's no-access state.
+8. Later: the same scene, `camera: "persp"`, extruded walls from the floor plan, fan
+   status colored on the 3D model — same document, same engine, no second build.
 
 ## Testing plan
 
 Per `scope/testing/testing-scope.md` — mandatory categories:
 
-- **Capability deny:** `scene.apply` without `mcp:scene.apply:call` → deny; a bound
-  shape whose viewer lacks the source tool renders no-access (WidgetHost test).
-- **Workspace isolation:** scene created in ws A invisible to `scene.get/list` in ws B;
-  watch feeds don't leak across the wall.
-- **Unit:** scene schema validate/normalize (unknown type, missing transform, bad op
-  path); `scene.apply` rev-conflict; painter's-order ops.
-- **Integration (real store/gateway, `pnpm test:gateway`):** create → apply → get
-  round-trip byte-stable (no v2/v3-style shadowing — see
-  `debugging/` flow-read binding trap); watch delivers applied ops; agent-path test
-  drives `scene.*` through the real MCP surface and asserts the rendered scene.
-- **Extension:** a test extension registers one `[[shape]]`; scene renders it through
-  the real federation loader; uninstall → placeholder, not crash.
-- **Hot-reload:** re-publish the shape extension; open canvas re-resolves without state loss.
+- **Capability deny:** widget whose viewer lacks a binding's source tool → no-access
+  state; scene save without the write grant → surfaced deny (real gateway).
+- **Workspace isolation:** scene/pack assets created in ws A invisible from ws B
+  through the same verbs; a ws-B viewer of a shared dashboard cannot reach ws-A series.
+- **Unit:** scene validate/normalize (unknown type, missing transform, cyclic refs,
+  bad bind path); pack-manifest validation; camera-mode mapping.
+- **Integration (real store/gateway, `pnpm test:gateway`):** create → save → reload
+  round-trip byte-stable (the flow-read empty-source shadowing trap is the cautionary
+  tale); revision-conflict retry; agent-path test drives the full read-modify-save loop
+  through the real MCP surface and asserts the resulting document.
+- **Federation:** the widget loads through the real `remoteEntry.js` path and renders a
+  seeded scene in `WidgetHost`; missing symbol pack → placeholder, not crash.
+- **Hot-reload:** re-publish the extension; open canvas remounts cleanly (stateless).
+- **Render smoke:** headless WebGL is flaky in CI — assert on the *scene graph built
+  from the document* (r3f test renderer), not pixels; pixel/screenshot checks stay a
+  local `verify` step, stated here so CI doesn't silently skip rendering.
 
 ## Risks & hard problems
 
-- **Binding fan-out.** A plant page can bind 200+ props. Per-shape polling won't fly:
-  the canvas must **multiplex** — collect all sources, dedupe, one batched
-  read/watch per tool, fan values out to shapes. This is the hardest engineering in
-  phase 1 and should be built as a reusable hook (`useSceneData`, the multi-target
-  sibling of `usePanelData`).
-- **Schema longevity.** The scene doc will outlive renderer rewrites (that's the point —
-  it's what makes 3D a new renderer, not a new format). `v` field + additive-only
-  evolution + a migration note per bump. Getting `t` (transform) right now — including
-  reserved `z`/`sz` — is cheap; retrofitting is not.
-- **LLM-emitted garbage.** Validation must be total (every op checked before any
-  applied) and error messages must be *teaching* (return the catalog + the failing op),
-  or agent drawing will feel broken. Budget real time on the normalize layer.
-- **Editor scope creep.** Transform handles, snapping, alignment guides, grouping,
-  multi-select… each is a week. Phase the editor ruthlessly: place/move/resize/delete +
-  property rail first; rotation/grouping/guides later.
-- **Untrusted extension shapes** have no good sandbox story yet (in-process SVG is the
-  model). Trusted-tier only until solved.
-- **3D optimism.** r3f over the same doc is credible but the *authoring* UX for 3D is a
-  different discipline. Treat phase-3D as scene-schema-compatible *viewing* (a 3D
-  building with bound status colors) before any 3D *editing*.
+- **Editor-from-engine gap.** drei gives gizmos, controls, and hit-testing, but
+  box-select, snapping, alignment, grouping, and undo wiring are ours, in WebGL rather
+  than DOM. This is the honest cost of the one-engine decision — budget it. Phase
+  ruthlessly: place/move/scale/delete + property rail first.
+- **Binding fan-out.** A plant page binds 200+ props. Per-shape polling won't fly: one
+  `useSceneData` multiplexer — collect, dedupe, batch per tool, fan out. The hardest
+  engineering in phase 1.
+- **WebGL contexts per cell.** Browsers cap live WebGL contexts (~8–16); a dashboard
+  of many canvas cells will hit it. Mitigate: render-on-demand + context release for
+  offscreen cells; a shared-canvas/portal approach if real dashboards prove it.
+- **Text and 2D crispness.** WebGL text (drei `Text`/SDF) and thin lines need care to
+  match DOM crispness on a flat page; symbol SVGs rasterize at zoom. Prototype the flat
+  look early — it's the first thing a Niagara user judges.
+- **LLM-emitted garbage.** Validation must be total and errors must *teach* (return
+  the catalog + the failing shape) or AI drawing feels broken. Whole-doc
+  read-modify-write also risks clobbering concurrent edits — revision checks are not
+  optional.
+- **Document-layer dependency.** The zero-core-additions posture leans on the shipped
+  asset/document surface; if `document-store/` phases land late, phase 1 needs an
+  honest interim (Open question 1) — not a private table.
+- **Symbol-pack schema longevity.** Packs are the public contract other people author
+  (and AIs generate); version the manifest from day one, additive-only.
 
 ## Phases
 
-1. **Scene plane** — `scene` table, `scene.*` verbs + caps, schema validate/normalize,
-   read-only `<CanvasView>` (built-in shapes, bindings via `useSceneData`, actions),
-   `view:"canvas"` wired into WidgetHost + rich-responses.
-2. **Manual editor** — palette, place/move/resize/delete, property rail (schema-driven,
-   like `NodeConfigPanel`), paint order, undo, save with rev.
-3. **AI drawing** — `scene.apply` agent recipes, `skills/graphics-canvas/SKILL.md`,
-   teaching-error validation, live watch repaint, "draw with AI" rail.
-4. **Extension shapes** — `[[shape]]` manifest, remote `shapes` export, catalog merge,
-   placeholder-on-missing, the hvac starter set possibly dogfooded *as* an extension.
-5. **3D viewer** — r3f renderer, `3d.*` types, gltf assets via `files/`; editing deferred.
+1. **Viewer** — scene schema + validate/normalize, `<SceneCanvas>` (r3f, ortho flat
+   mode), built-in primitives, `useSceneData` binding multiplexer, actions,
+   `[[widget]]` cell + `[ui]` page, seeded demo scene.
+2. **Editor** — palette, gizmo transforms, property rail (schema-driven), box-select,
+   snap grid, save with revision check, undo wiring.
+3. **AI drawing** — `skills/graphics-canvas/SKILL.md`, teaching-error validation,
+   draw-with-AI rail, channel rich-response embed.
+4. **Symbol packs** — pack manifest + loader, palette merge, an `hvac` starter pack
+   (dogfooded as the first pack), placeholder-on-missing.
+5. **3D** — perspective camera, GLTF building/underlay import, extrusion helpers,
+   status-bound materials; 3D *viewing* before 3D editing.
 
 ## Open questions
 
-- Does the **hvac starter shape set** ship built-in or as a first-party extension
-  (dogfooding `[[shape]]` from day one)? Leaning extension — it proves the contract.
-- `scene.watch` transport: reuse the dashboard `refreshKey` polling first, or land
-  store-watch SSE in phase 1? (Phase 1 can poll; watch is needed by phase 3 for the
-  draw-live UX.)
-- Do scenes participate in the **dashboard share/authz model** directly, or inherit
-  from the referencing dashboard? (Leaning: own record, own share bits — a scene can
-  back several dashboards.)
-- Snap grid + anchor points (`anchors?` on ShapeDef) for connecting ducts/pipes: phase 2
-  or phase 4? Connectors-that-stay-attached is the feature that makes it feel like
-  Niagara, and it may deserve its own slice.
-- Background floor-plan assets: image/SVG upload via `files/`/`document-store/` — which
-  lands first, and does canvas block on it? (Phase 1 can ship with `bg` optional.)
+1. **Which shipped verbs persist scenes?** The `document-store/`/`files/` asset surface
+   is the intended home; confirm the exact verb set available at build time, and the
+   interim if its phases land later (a generic per-extension `kv.*` is the named
+   fallback in `extensions/reference-extensions-scope.md`).
+2. **Live repaint transport:** widget `refreshKey` polling is enough for phases 1–2;
+   does phase 3's watch-the-AI-draw UX justify asking for a *generic* document watch
+   feed (its own scope), or is 2s polling honestly fine?
+3. **Where does the scene-edit undo land** — the core undo journal (via the document
+   layer's reverse ops) or an editor-local stack persisted in the scene asset's
+   history? Leaning core journal, via whatever `document-store/` ships.
+4. **Flat-mode interaction defaults:** snap grid size, rotation steps, and whether
+   flat mode locks orbit entirely (leaning yes — flat pages should never accidentally
+   tilt).
+5. **Pack authoring UX:** hand-written JSON + uploaded GLTF/SVG first, or a minimal
+   "new pack" wizard in phase 4? (Leaning hand-written + a documented example pack.)
 
 ## Related
 
-- `frontend/dashboard-scope.md`, `frontend/dashboard-widgets-scope.md`,
-  `frontend/widget-kit-scope.md` — the v2/v3 cell contract, `fieldConfig`, federation
-  mount versioning this builds on.
-- `extensions/ui-federation-scope.md` — trust tiers + bridge the shape registry extends.
-- `channels/channels-rich-responses-scope.md` — `view:"canvas"` as one more rich view.
-- `core/resource-verbs-scope.md` — the `scene.*` verb grammar.
-- `undo/` — reverse-ops journal for scene edits; `frontend/routing-scope.md` — deep links.
-- README `§3` (rules 2/3/5/6), `§6.1` (API shape), `§6.5` (dispatch chokepoint).
+- `extensions/ui-federation-scope.md` — the `[ui]`/`[[widget]]` mount + bridge this
+  rides; `rust/extensions/control-engine/docs/control-engine-scope.md` — the
+  100%-extension precedent (core ignorant, docs co-located).
+- `frontend/dashboard-widgets-scope.md`, `frontend/widget-kit-scope.md` — the ext-widget
+  cell contract, `fieldConfig`, mount versioning.
+- `channels/channels-rich-responses-scope.md` — the in-channel embed path.
+- `document-store/document-store-scope.md`, `files/` — the persistence surface (Open
+  question 1); `undo/` — Open question 3; `frontend/routing-scope.md` — deep links.
+- README `§3` (rules 1–7), `§6.12` (file store).
 - Evaluated: Awaken generative-UI (`/tmp/awaken`, MIT/Apache-2.0) — patterns adopted,
-  dependency rejected (see Intent). tldraw/Excalidraw rejected (see Intent).
+  dependency rejected. React Flow, Konva/fabric/Pixi, Babylon, tldraw/Excalidraw,
+  GoJS/JointJS+ — rejected (see Intent).
 - `skills/graphics-canvas/SKILL.md` — owned by the implementing session (phase 3).
