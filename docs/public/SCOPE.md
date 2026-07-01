@@ -135,11 +135,30 @@ canonical — UTC instants, base units, neutral enums — never a formatted stri
   and 3 MCP verbs — `message.render` (member for self, `message.render_recipient` grant to fan out for
   another), `prefs.catalog` (member), `message.set_catalog` (admin) — routes 1:1, + the "catalog changed"
   hint. **Server-side per-recipient fan-out**: one event → N distinct renders (per member's prefs).
+- **Settings UI (shipped 2026-07-02):** a dedicated **Settings** nav surface — a **Preferences** tab
+  over all eight axes (`prefs.set` own + admin `prefs.set_default`, unit picker generated from the
+  server vocabulary) and an **Agent** tab (below). See `prefs/prefs.md` → "Settings UI".
 - **Deferred (named):** the `icu4x` swap-in (localized names + full-CLDR plural engine + en/es CLDR
-  slice) behind the same signatures; the client settings/bootstrap-locale + RTL UI.
+  slice) behind the same signatures; the **pre-auth bootstrap-locale** + RTL UI (the settings *editor*
+  is shipped).
 
 See `prefs/prefs.md`, `../scope/prefs/{user-prefs,i18n-catalogs}-scope.md`,
 `../sessions/prefs/{lb-prefs,i18n-catalogs}-session.md`.
+
+## Shipped (per-workspace agent config — the workspace's default runtime + endpoint)
+
+The `agent.runtimes` read verb *lists* what a node offers; this persists a workspace's **choice**.
+
+- **Record:** `workspace_agent_config:[ws]` (SCHEMAFULL, composite-id, idempotent replay) — nullable
+  `default_runtime` (registry-validated on write) + a **names-only** `model_endpoint`.
+- **Verbs:** `agent.config.get` (member, `mcp:agent.config.get:call`) + `agent.config.set` (admin,
+  `mcp:agent.config.set:call`); gateway `GET|PUT /agent/config` (1:1). Opaque deny; no delete/feed/batch.
+- **UI:** the Settings **Agent** tab — a runtime dropdown (from `agent.runtimes`) + endpoint fields,
+  editable for an admin, read-only for a member (server is the wall); registry-drift flagged.
+- **Follow-up (named):** honor the stored default in `agent.invoke` when `runtime` is omitted.
+
+See `external-agent/external-agent.md` → "Agent config", `../scope/external-agent/agent-config-scope.md`,
+`../sessions/external-agent/agent-config-settings-session.md`.
 
 ## Shipped (S9+ — frontend: the rules workbench — Playground · chain canvas · datasources admin)
 

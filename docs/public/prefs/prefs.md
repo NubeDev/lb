@@ -138,9 +138,24 @@ message.set_catalog(locale, messages)   PUT  /message/catalog   -> 204  (+ "cata
 - **Motion:** `message.set_catalog` publishes `ws/{ws}/prefs/catalog-changed`
   `{ locale, catalog_version }` so open clients re-fetch — fire-and-forget; the store holds the state.
 
+## Settings UI (shipped)
+
+The client **settings surface** the scope named is shipped: a dedicated **Settings** nav surface
+(`ui/src/features/settings/`) whose **Preferences** tab edits **all eight axes** — language, timezone,
+date/time style, first-day-of-week, number format, unit system, and the closed dimension→unit overrides
+— through `prefs.set` (own record) and, for an admin holding `mcp:prefs.set_default:call`, the workspace
+default via `prefs.set_default` (a "My preferences / Workspace defaults" scope switch). The editor reads
+`prefs.get` (only the explicitly-set axes; an unset axis shows "Inherit — <resolved>" via `prefs.resolve`
+as the ghost), and the unit-override picker is generated from the SAME `dimensions.generated.ts`
+vocabulary the server enforces (client and server can't disagree on the allowed set). The Settings
+surface is always in the nav — every member may edit their own prefs; the workspace-default control is
+cap-gated per-control (server-enforced). See `../external-agent/external-agent.md` for the sibling
+**Agent** tab.
+
 ## Deferred (named follow-ups)
 
 The **icu4x swap-in** (localized unit/month **names** + the full-CLDR plural engine for locales beyond
 `one`/`other`, e.g. `pl`/`ar` + en/es CLDR data-slicing) behind the same `format::*`/`catalog::*`
-signatures, and the client **settings/bootstrap-locale UI** + RTL layout application. MF2 is
-explicitly out (the dialect is pinned to MF1 to match `intl-messageformat`).
+signatures, and the **bootstrap-locale (pre-auth)** path + RTL layout application (the settings *editor*
+is shipped; language before a principal exists is still deferred). MF2 is explicitly out (the dialect is
+pinned to MF1 to match `intl-messageformat`).

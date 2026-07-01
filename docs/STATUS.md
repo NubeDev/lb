@@ -16,6 +16,27 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-02): the Settings surface — user preferences editor + per-workspace agent config.**
+A dedicated **Settings** nav surface (always visible — prefs are member-level) with two tabs. **Preferences**
+is the `lb-prefs` client half the prefs scope long deferred: an editor over **all eight axes** (language,
+timezone, date/time style, first-day-of-week, number format, unit system, and the closed dimension→unit
+overrides) via `prefs.set` (own record) + an admin "Workspace defaults" scope switch via `prefs.set_default`;
+it reads `prefs.get` (only set axes) with `prefs.resolve` as the ghost fallback, and the unit-override picker
+is generated from the SAME `dimensions.generated.ts` the server enforces. **Agent** needed NEW backend:
+`agent.runtimes` only *listed* what a node offers — nothing persisted a workspace's *choice*. Added
+`workspace_agent_config:[ws]` (SCHEMAFULL, composite-id, names-only `model_endpoint`) + two verbs
+(`agent.config.get` member, `agent.config.set` admin — the latter validates the chosen runtime against the
+node's registry, `BadInput` on an unknown id), mirroring `prefs.set_default`; gateway `GET|PUT /agent/config`.
+The Agent tab is a runtime dropdown (backed by `agent.runtimes`) + endpoint fields, editable for an admin,
+read-only for a member (server is the wall). Tests (rule 9, real infra): host `agent_config_test` **6**
+(round-trip + names-only, per-verb deny, workspace-isolation, unknown-runtime reject, idempotent replay); UI
+`SettingsView.gateway` **3** (prefs round-trip + hydrate, agent round-trip, cap-gate + server-deny). Scope
+[`agent-config`](scope/external-agent/agent-config-scope.md); session
+[`agent-config-settings`](sessions/external-agent/agent-config-settings-session.md); public
+[`external-agent`](public/external-agent/external-agent.md) (agent-config) + [`prefs`](public/prefs/prefs.md)
+(settings UI). **Next up:** honor the stored default in `agent.invoke` when `runtime` is omitted; the
+pre-auth bootstrap-locale path; full `AgentProfile` authoring when the external-agent feature ships in anger.
+
 **Just shipped (2026-07-01): channel rich responses (the descriptor-driven render contract) + reminders
 as its first tenant — the channel is now a GENERIC front-end for the MCP tool surface.** The channel
 became a second mount surface for the shipped dashboard widget contract: a command/tool/agent answers

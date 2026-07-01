@@ -30,7 +30,9 @@ workspace root was promoted from `ui/` to the repo root (`packages: ['ui', 'pack
   vendored; our files (`NavRail`, `NavMenu`, `items`) stay small.
 - **Self-themed** like ce-wiresheet: Tailwind v4 `@theme` over `hsl(var(--nr-*))` tokens scoped
   to `.nav-rail`, dark default + `.theme-light`, host-overridable at `:root`/`className`/inline.
-  Its own Vite lib build (ESM+CJS+dts + one bundled `style.css`); React is a peer.
+  Its own Vite lib build (ESM+CJS+dts + one bundled `style.css`); React is a peer. The stylesheet
+  ships **theme + utilities only, no preflight** (a library must not drop a global reset into a
+  host) — `@import "tailwindcss/theme.css"` + `.../utilities.css`, not the full `tailwindcss`.
 
 **First use — dashboard `PanelEditor`** (`ui/src/features/dashboard/editor/PanelEditor.tsx`):
 - Replaced the in-house `EditorTabs` (`Tabs.tsx`) options-rail strip with `NavMenu` as a left
@@ -58,6 +60,12 @@ workspace root was promoted from `ui/` to the repo root (`packages: ['ui', 'pack
 `ui`'s typecheck. **Fix:** aligned the package's dev React/types/lucide to `ui`'s (`react@^18.3.1`,
 `@types/react@^18.3.12`, `lucide-react@^0.460.0`) so the workspace stays one type world. Logged to
 [`debugging/frontend/react-types-19-collision.md`](../../debugging/frontend/react-types-19-collision.md).
+
+## Related migration
+
+Wiring this v4 package into the (then v3) `ui` surfaced a Tailwind major mismatch; `ui` was migrated
+to Tailwind v4 in the same session — see
+[`sessions/frontend/tailwind-v4-migration-session.md`](../frontend/tailwind-v4-migration-session.md).
 
 ## Follow-ups (deferred, not silent)
 

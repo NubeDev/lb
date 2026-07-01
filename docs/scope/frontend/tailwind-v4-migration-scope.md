@@ -1,6 +1,12 @@
 # frontend scope — migrate `ui/` from Tailwind v3 to v4
 
-Status: scope (the ask). Promotes to `public/frontend/frontend.md` once shipped.
+Status: **shipped (2026-07-02)** — `ui/` builds + runs on Tailwind v4 via `@tailwindcss/vite`;
+CSS-first `@theme` (no `tailwind.config.ts`/`postcss.config.js`); `tw-animate-css` replaces
+`tailwindcss-animate`; class dark mode via `@custom-variant`. 322 unit tests + the real-gateway
+suite green with **no new failures** (the 4 pre-existing gateway failures are unchanged from the v3
+baseline; the panel-editor/NavMenu suites pass). The `@nube/nav-rail` v4 stylesheet now drops in
+cleanly. Session: [`tailwind-v4-migration`](../../sessions/frontend/tailwind-v4-migration-session.md).
+Promotes to `public/frontend/frontend.md`.
 
 Move the lb React shell (`ui/`) from **Tailwind CSS v3.4** to **v4**. Today `ui` is v3
 (`tailwind.config.ts` + PostCSS plugin + `@tailwind` directives + `tailwindcss-animate`); the new

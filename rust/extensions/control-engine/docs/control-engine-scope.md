@@ -103,20 +103,22 @@ non-MCP path to a capability) and is dead to agents/CLI.
     `ce.remove-node`, `ce.call-action`, plus registry writes `ce.appliance.add` /
     `ce.appliance.remove`. (Trait-complete `remove-edge`/`restore`/`copy`/`bulk`/`set-layout`
     are additive follow-ups.)
-  - **Live feed:** `ce.watch` — COV is *changes, not a snapshot*, so it is a `watch` tool backed
-    by a workspace bus subject (`ce/{ws}/{appliance}/cov`) surfaced through the gateway SSE route
-    (§6.13), not a polled `tree`. The appliance sidecar subscribes its local CE's binary-WS COV
-    and republishes decoded frames onto that subject.
+  - **Live feed:** `ce.watch` — COV is *changes, not a snapshot*, so it is a **streaming tool**
+    (`kind = "watch"`) built on the generic extension-watch primitive
+    (`scope/extensions/extension-watch-scope.md`): the host allocates a workspace subject, the
+    appliance sidecar arms its local CE binary-WS COV publisher on first subscriber, and the gateway
+    relays SSE (§6.13) — no polled `tree`, no CE-specific host route.
   - **Batch:** `ce.bulk` (one CE round trip) is bounded/always-fast → stays synchronous. A large
     graph **import** (many nodes/edges) MUST be a job (README §6.10), not a blocking loop —
     deferred, named as a follow-up.
 - **Data (SurrealDB).** `ce_appliance:{ws}:{id}` = `{ id, name, mode: "local"|"appliance",
   node, base, secret_ref?, ts }` — the registry, state. Optional: bridge selected COV props onto
   the **series** plane (`ingest.write`) for history/replay, reusing the shipped `series.watch`
-  SSE (an alternative to a bespoke `ce.watch` subject — see Open questions).
-- **Bus (Zenoh).** Two motions: routed `ce.*` MCP calls (request/response, must-reach-the-node
-  *online*), and COV frames (`ce/{ws}/{appliance}/cov`, fire-and-forget live feed, replayable
-  from series if bridged).
+  SSE (the opt-in historian — see Decisions).
+- **Bus (Zenoh).** Two motions, both on **generic** host-owned subjects (no bespoke CE subject):
+  routed `ce.*` MCP calls (request/response, must-reach-the-node *online*), and `ce.watch` COV frames
+  on the extension-watch-allocated subject (`ws/{ws}/ext/control-engine/watch/{h}`, fire-and-forget,
+  replayable from series only if the historian is on).
 - **Sync / authority.** The CE is the authority for its own graph; LB holds no shadow copy.
   `ce.*` commands are **online request/response** — if the appliance node is unreachable the call
   **fails loud**, it does **not** queue (an override you can't confirm applied is worse silently
@@ -196,12 +198,19 @@ Per `scope/testing/testing-scope.md`, with the mandatory categories:
 The user asked us to make the long-term-best call on each of these; recorded here as decided,
 with the rejected alternative, so the implementing session builds against them (not re-litigate).
 
-- **COV surface → bespoke bus subject + `ce.watch` (primary); series-bridge is opt-in per-prop.**
-  The live canvas subscribes `ce.watch` over `ce/{ws}/{appliance}/cov` (low latency, no write
-  amplification). Historization is a **separate, opt-in** concern: a per-appliance list of props to
-  mirror onto the **series** plane via `ingest.write`, reusing the shipped `series.watch`/history —
-  never all COV by default. *Rejected: bridging every COV sample into series* — turns a high-rate
-  live feed into unbounded write churn and coples the live path to the historian.
+- **COV surface → `ce.watch`, a streaming tool built on the generic extension-watch primitive
+  (primary); series-bridge is the opt-in historian.** Rather than a bespoke CE bus subject or a
+  CE-shaped gateway route, `ce.watch` is declared `kind = "watch"` and rides the platform's
+  **generic** extension-watch contract (`scope/extensions/extension-watch-scope.md`): the host
+  allocates the workspace subject, the sidecar arms its CE-COV publisher on first subscriber, the
+  gateway relays SSE — **the core gains a generic streaming primitive, never any CE knowledge.** This
+  keeps CE motion on the bus (rule 3) without persisting it as state. Historization stays a
+  **separate, opt-in** concern: a per-appliance list of props mirrored onto the **series** plane via
+  `ingest.write`, reusing `series.watch`/history — never all COV by default. **Sequencing:** if the
+  extension-watch primitive isn't ready when CE v1 lands, live COV ships on the zero-core-change
+  `ingest.write`→`series.watch` bridge and migrates to `ce.watch` when the primitive ships — CE is
+  never blocked on it. *Rejected: a bespoke `ce/{ws}/{id}/cov` subject + CE-specific SSE route* —
+  it would put CE knowledge in core, breaking the 100%-extension invariant.
 - **Vendoring → `packages/ce-wiresheet` as a copied `workspace:*` package** (mirrors
   `packages/nav-rail`), so our approval-gated transport fork lives in one build graph with no
   publish/link dance. Track upstream by recording the imported `ce-wiresheet` commit in the
