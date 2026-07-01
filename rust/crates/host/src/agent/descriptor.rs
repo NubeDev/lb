@@ -41,5 +41,6 @@ pub fn invoke_descriptor() -> ToolDescriptor {
         title: "Ask the in-channel agent to pursue a goal (pick a runtime)".to_string(),
         group: "agent".to_string(),
         input_schema: Some(invoke_schema()),
+        result: None,
     }
 }

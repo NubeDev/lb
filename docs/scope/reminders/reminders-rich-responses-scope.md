@@ -1,35 +1,48 @@
 # Reminders scope — reminders as the first rich channel command/response
 
-Status: scope (the ask). Promotes to `public/reminders/` once shipped.
+Status: **SHIPPED** — the corrected, descriptor-driven contract: `reminder.create`'s **descriptor** declares
+the flat form; the **verb** builds the `Action` server-side; `reminder.list`'s **descriptor** carries
+`result` = the table+row-controls render; the **generic palette** posts `descriptor.result`. The reminder
+feature ships **entirely from backend descriptors** — the UI has no reminder knowledge. Kept a scope doc as
+the authoritative spec of *why*; promotes to `public/reminders/`.
 Topic: `reminders`. Builds on the **shipped** `reminders-scope.md` (the `reminder.*` MCP surface + record +
-reactor + `RemindersView`) and — load-bearing — `channels/channels-rich-responses-scope.md` (the ask:
-render a command/tool/agent answer through the **shipped v2 widget contract**, un-gridded onto the
-channel). This scope is the **first concrete tenant** of that contract: it proves the whole
-request-form / rich-response / control loop end to end against a real, already-built MCP surface.
+reactor + `RemindersView`) and — load-bearing — `channels/channels-rich-responses-scope.md` (the contract:
+a `ToolDescriptor` carries **both** `input_schema` (the FORM) and `result` (the RESPONSE render); the palette
+is a **generic interpreter** that names only `tools.catalog`, renders schema widgets by string, and posts
+`descriptor.result` — with **no tool-name branch**). This scope is the **first concrete tenant** of that
+contract: it proves the whole request-form / rich-response / control loop end to end against a real,
+already-built MCP surface — with the UI holding **zero** reminder-specific knowledge.
 
 We want to **drive reminders entirely from a channel** — `/remind` opens a backend-declared **form** (a
-cron-builder + an action picker) that calls `reminder.create`, and `/reminders` answers with an
-**interactive list**: a table of the workspace's reminders with inline **pause/resume**, **run-now**, and
-**delete** controls that call `reminder.update`/`reminder.fire`/`reminder.delete`. Every pixel is rendered
-by the **shipped** dashboard widget renderers (`WidgetView`/`views/*`) over the host-mediated bridge,
-leashed to the viewer's grant — no reminders-specific channel UI. Reminders is the proof that a real
-feature's whole CRUD surface can be a channel command/response with **zero bespoke rendering**.
+cron-builder + an action picker) whose flat fields the **`reminder.create` verb** shapes into an `Action`
+server-side, and `/reminders` answers with an **interactive list** the **`reminder.list` descriptor
+declares** (`result` = a table + inline **pause/resume**, **run-now**, and **delete** row controls calling
+`reminder.update`/`reminder.fire`/`reminder.delete`). Every pixel is rendered by the **shipped** dashboard
+widget renderers (`WidgetView`/`views/*`) over the host-mediated bridge, leashed to the viewer's grant. The
+**channel UI has no reminder knowledge at all**: it names one tool (`tools.catalog`), renders
+`reminder.create`'s `input_schema` widgets, and posts `reminder.list`'s `descriptor.result` — the same
+generic path every command takes. Reminders is the proof that a real feature's whole CRUD surface ships
+**from backend descriptors alone**, with **zero bespoke rendering and zero client-side per-tool code**.
 
 ## Goals
 
-- **`/remind` = a backend-declared form.** A palette command whose `input_schema` (with `x-lb` widget
-  hints) declares a **cron** field, an **action-kind `select`**, the action's args, and an optional
-  `max_runs`/`enabled` — rendered by the palette's arg rail, submitted as `reminder.create`. The form is
-  the command descriptor, not channel code.
-- **`/reminders` = a rich, interactive response.** A command that returns a `render:{ view:"table",
-  source:{ tool:"reminder.list" }, options:{ … row controls … } }` block — the channel mounts the shipped
-  `table` view; each row carries **control** actions (`switch`→`reminder.update{enabled}`, a **run-now**
+- **`/remind` = a backend-declared FLAT form; the verb shapes it.** The `reminder.create` **descriptor's**
+  `input_schema` (with `x-lb` widget hints) declares a **flat** shape — a **cron** field, an **action-kind
+  `select`**, the action's fields, and optional `max_runs`/`enabled`. The palette renders it by string and
+  posts the collected fields **verbatim**; the **`reminder.create` verb** does the shaping — it takes the
+  flat `schedule` + `action_kind` + fields and builds the nested `Action` **server-side**. The form is the
+  descriptor; the shaping is the verb; the UI reshapes **nothing**.
+- **`/reminders` = a descriptor-declared, interactive response.** The `reminder.list` **descriptor** carries
+  `result` = a `{ v, view:"table", source:{ tool:"reminder.list" }, options:{ … row controls … } }` render
+  envelope; the **generic palette posts `descriptor.result`** and the channel mounts the shipped `table`
+  view. Each row carries **control** actions (`switch`→`reminder.update{enabled}`, a **run-now**
   button→`reminder.fire`, a **delete** button→`reminder.delete`) that call the write verbs through the
-  bridge, gated + ws-scoped.
-- **Reuse, not rebuild.** Data + writes ride `reminder.list/create/update/fire/delete` (shipped) through
-  the shipped `bridge.call`; rendering rides the shipped `WidgetView`. The **only** new code is the
-  reminder **command descriptor** (request form) + the reminder **response `render` block** shape (response
-  view) — both data, no new renderer.
+  bridge, gated + ws-scoped. The palette does **not** assemble this render — it reads it off the descriptor.
+- **Reuse, not rebuild — and no client per-tool code.** Data + writes ride `reminder.list/create/update/
+  fire/delete` (shipped) through the shipped `bridge.call`; rendering rides the shipped `WidgetView`; the
+  request/response contract is `channels-rich-responses`. The **only** new code is **backend data**: the
+  `reminder.create` descriptor's `input_schema` (+ the verb's flat→`Action` shaping) and the `reminder.list`
+  descriptor's `result` render envelope. No new renderer, no reminder-aware channel component.
 - **Security identical to `RemindersView`.** Every bridged call is `reminder.<verb>` under the **viewer's**
   grant + workspace (from the token), re-checked at the host — the same gates the shipped view and CLI hit.
   A viewer without `mcp:reminder.list:call` never sees the command (catalog "absent") and can't render the
@@ -62,25 +75,29 @@ feature's whole CRUD surface can be a channel command/response with **zero bespo
 **Reminders already has the whole backend — this slice only moves its front door into the channel.** The
 shipped `RemindersView` proves the loop: `reminder.list` → a table with a pause switch + an action editor
 + a cron builder, all over the MCP bridge. The `channels-rich-responses` contract says that same loop is
-expressible as **one command descriptor (the create form) + one response `render` block (the interactive
-list)** rendered by the shipped `WidgetView`. So:
+expressible as **the `ToolDescriptor` carrying both halves** — `input_schema` (the create FORM) and `result`
+(the interactive-list RESPONSE render) — rendered by the shipped `WidgetView`, posted by the **generic**
+palette with no reminder-specific client code. So the whole slice is **backend descriptors**:
 
-- **Request side (the form).** Add a reminder **command descriptor** to `host_descriptors()` named
-  `reminder.create`, with `input_schema`:
-  - `schedule` → `{ x-lb:{ widget:"cron" } }` — a new `cron` widget in the palette registry, wrapping the
-    **already-shipped `CronBuilder`** (`react-js-cron`) reused as an arg widget.
+- **Request side (the form) — a flat descriptor + a shaping verb.** The `reminder.create` **descriptor's**
+  `input_schema` declares a **flat** form:
+  - `schedule` → `{ x-lb:{ widget:"cron" } }` — the `cron` widget in the (open, string-keyed) palette
+    registry, wrapping the **already-shipped `CronBuilder`** (`react-js-cron`) reused as an arg widget.
   - `action_kind` → `{ x-lb:{ widget:"select", options:["channel-post","mcp-tool","outbox"] } }` — an
     inline-enum `select` (the sibling of the `source:"<tool>"` select; here the options are static).
-  - the action's fields (channel id / tool+args / outbox effect), `max_runs?`, `enabled?`.
-  Catalog visibility gates on `mcp:reminder.create:call`. Submit posts a `reminder.create` call — the
-  channel's palette dispatches it through the bridge, and the create's confirmation posts back as a small
-  `render:{view:"stat"|"table"}` response ("reminder scheduled: next Mon 08:00").
-- **Response side (the list).** Add a `/reminders` command (descriptor named `reminder.list`, gated
-  `mcp:reminder.list:call`) that returns a `render` block: `view:"table"`, `source:{tool:"reminder.list"}`,
-  and per-row **control** actions in `options` — the shipped control views (`switch`/`button`) bound to
-  `reminder.update`/`reminder.fire`/`reminder.delete` via the `argsTemplate` `{{id}}`/`{{value}}` slots
-  (the shipped control mechanism). `ResponseView` mounts it; the bridge leashes the writes to the viewer's
-  grant.
+  - the action's fields (channel id / tool+args / outbox effect), `max_runs?`, `enabled?` — **flat**.
+  Catalog visibility gates on `mcp:reminder.create:call`. The palette posts these **flat fields verbatim**;
+  the **`reminder.create` verb builds the nested `Action` server-side** from `action_kind` + fields (the UI
+  never assembles the `Action` — that reshaping was the leak the correction removes). The create's
+  confirmation is the descriptor's own `result` (a small `view:"stat"|"table"` — "reminder scheduled: next
+  Mon 08:00"), posted by the generic path.
+- **Response side (the list) — the descriptor's `result`.** The `reminder.list` **descriptor** (gated
+  `mcp:reminder.list:call`) carries `result` = a render envelope: `view:"table"`,
+  `source:{tool:"reminder.list"}`, and per-row **control** actions in `options` — the shipped control views
+  (`switch`/`button`) bound to `reminder.update`/`reminder.fire`/`reminder.delete`, the row `id` templated
+  in from the row object (below). The **generic palette posts `descriptor.result`**; `ResponseView` mounts
+  it via the shipped `WidgetView`; the bridge leashes the writes to the viewer's grant. The palette does
+  **not** hardcode this list render — it reads it off the descriptor like any other command's.
 - **Reused wholesale:** `WidgetView`, the `table`/`switch`/`button`/`stat` renderers, `widgetBridge`, the
   palette arg-rail, the `CronBuilder`, `react_to_reminders`, and every `reminder.*` verb except a possible
   new `reminder.fire`.
@@ -94,6 +111,11 @@ where the contract is thin — cheaply, against known-good verbs.
 
 **Rejected alternatives:**
 
+- *Let the channel assemble the `reminder.create` call or hardcode the `/reminders` list render.* Rejected —
+  that is the design flaw the `channels-rich-responses` correction removes: it forks a second command system
+  into the client, breaks rule 7, and means each reminder change is a UI change. The **descriptor** carries
+  the flat form (`input_schema`) AND the list render (`result`); the **verb** shapes the flat fields into the
+  `Action`; the UI is a pure schema+render interpreter that never names `reminder.*`.
 - *A bespoke `/remind` handler in the channel (parse text → `reminder.create`).* Rejected — it is the
   orphaned-`/agent` mistake again (a second command system beside the palette). The command is a
   descriptor; the form is its `input_schema`.
@@ -142,11 +164,14 @@ where the contract is thin — cheaply, against known-good verbs.
 - **Secrets:** none reach the renderer. A reminder whose action needs a secret pulls it server-side in the
   fire handler (shipped); the form/list never touch it.
 - **SDK/WIT impact — minor, additive.** No new stable boundary of its own: it *uses* the
-  `channels-rich-responses` `render` envelope + the `x-lb` widget enum (the boundaries that scope freezes).
-  This slice **adds two `x-lb` widget values** to that enum's registry — `cron` (wrapping the shipped
-  `CronBuilder`) and confirms the static-`options` `select` — both additive, `v`-stamped, `unknown→text`
-  fallback applies. Flag: the possible new `reminder.fire` verb is a normal gated MCP verb (no boundary
-  change).
+  `channels-rich-responses` boundaries — the `ToolDescriptor.result` (`x-lb-render`) envelope and the open,
+  string-keyed `x-lb.widget` vocabulary. This slice is **pure backend descriptor data**: the
+  `reminder.create` descriptor's `input_schema`, that verb's flat→`Action` shaping, and the `reminder.list`
+  descriptor's `result` render envelope. It **contributes two widget strings** to the open registry — `cron`
+  (wrapping the shipped `CronBuilder`) and the static-`options` `select` — both resolved by string, additive,
+  `v`-stamped, `unknown→text` fallback applies. Because the vocabulary is open (built-ins ∪
+  `ext:<id>/<widget>`), even these could be extension-contributed; here they are built-ins. Flag: the
+  possible new `reminder.fire` verb is a normal gated MCP verb (no boundary change).
 
 ## Example flow
 
@@ -156,10 +181,12 @@ where the contract is thin — cheaply, against known-good verbs.
    `max_runs?`. She builds "every Mon & Sun 08:00", action = post "standup" to `#ops`, submits. The palette
    calls `reminder.create` through the bridge (her token, her ws); a small `render:{view:"stat"}` confirms
    "scheduled — next Mon 08:00" in history.
-2. **List via `/reminders`.** Ada types `/reminders`. The response is `render:{ view:"table", source:{tool:
-   "reminder.list"} }`; the shipped `table` view renders her workspace's reminders. Each row has a **pause
-   switch** (`reminder.update{ id:{{id}}, enabled:{{value}} }`), a **run-now** button
-   (`reminder.fire{ id:{{id}} }`), and a **delete** button (`reminder.delete{ id:{{id}} }`).
+2. **List via `/reminders`.** Ada types `/reminders`. The `reminder.list` **descriptor's `result`** is
+   `{ view:"table", source:{tool:"reminder.list"} }` with per-row controls; the generic palette posts it and
+   the shipped `table` view renders her workspace's reminders. Each row (supplied as the control's
+   `VarScope.values`) has a **pause switch** (`reminder.update{ id:${id}, enabled:{{value}} }`), a **run-now**
+   button (`reminder.fire{ id:${id} }`), and a **delete** button (`reminder.delete{ id:${id} }`) — `${id}`
+   the shipped row-field var, `{{value}}` the shipped interaction slot.
 3. **Toggle a reminder.** Ada flips the pause switch on one row → the bridge calls `reminder.update` under
    her grant + ws → the host re-checks `mcp:reminder.update:call` + workspace → the reminder pauses. The
    shipped control view, unchanged.
@@ -213,12 +240,13 @@ Plus this slice's cases (real gateway):
 
 ## Risks & hard problems
 
-- **The row-control `argsTemplate` must bind the reminder **id** safely.** Each row's pause/fire/delete
-  control needs the row's `id` in its args (`{{id}}`), plus `{{value}}` for the switch. The shipped
-  `argsTemplate` has one `{{value}}` slot; binding a **row id** into a per-row control is the one mechanical
-  question — confirm the shipped control/table view can template a row field, or extend `argsTemplate`
-  minimally (typed, one new `{{id}}`-style row slot) in the widget-builder scope, consumed here. **Load-
-  bearing for the interactive list.**
+- **The row-control render must bind the reminder **id** safely — RESOLVED, no `argsTemplate` extension.**
+  Each row's pause/fire/delete control needs the row's `id` in its args plus the interaction value for the
+  switch. **Resolved:** the control template uses **`${id}`** (a **row field** — the shipped vars engine
+  matches `${name}`) for the row id and **`{{value}}`** (the shipped interaction slot) for the switch state,
+  with the **row object supplied as the control's `VarScope.values`**. No `argsTemplate` extension is
+  needed — `${id}` resolves against the row and `{{value}}` against the interaction, both already shipped.
+  Still load-bearing for the interactive list; test it against the real table view.
 - **Deny must bite the write, not just hide the control.** Hiding a pause toggle for a viewer without
   `update` is UX; the guarantee is the **host** denying `reminder.update` even if the control fires. Test
   the real ungranted write, per the rich-responses headline.
@@ -239,11 +267,19 @@ Decisions taken so the build has no blocking gap; residuals are named follow-ups
 **Resolved (decisions taken):**
 
 - **`/remind` and `/reminders` are palette command descriptors** (named `reminder.create` / `reminder.list`,
-  catalog-gated on those caps), NOT bespoke channel handlers. Decided.
-- **The list is a `render:{view:"table", source:{tool:"reminder.list"}}` response with per-row control
-  views**, mounted by the shipped `WidgetView`. Decided.
-- **Two new `x-lb` widgets:** `cron` (wraps the shipped `CronBuilder`) and static-`options` `select`.
-  Decided; additive to the rich-responses widget enum.
+  catalog-gated on those caps), NOT bespoke channel handlers. The UI holds **zero** reminder knowledge —
+  it names only `tools.catalog`, renders `input_schema` widgets, and posts `descriptor.result`. Decided.
+- **`reminder.create` declares a FLAT `input_schema`; the verb shapes the `Action` server-side.** Decided.
+  The UI posts the collected flat fields verbatim — no client-side assembly of the nested `Action`.
+- **The list render lives on the descriptor as `reminder.list`'s `result`** (`view:"table"`,
+  `source:{tool:"reminder.list"}`, per-row control views), posted by the **generic** palette and mounted by
+  the shipped `WidgetView`. Decided — the palette does not hardcode it.
+- **Two widget strings contributed to the OPEN registry:** `cron` (wraps the shipped `CronBuilder`) and the
+  static-`options` `select`. Decided; resolved by string, additive, `unknown→text` fallback (built-ins here,
+  but the vocabulary is built-ins ∪ `ext:<id>/<widget>`).
+- **Row-id templating — RESOLVED, no `argsTemplate` extension:** `${id}` (the shipped `${name}` row-field
+  var) for the row id + `{{value}}` (the shipped interaction slot) for the switch, via the **row object as
+  the control's `VarScope.values`**. Decided.
 - **Add `reminder.fire`** (a gated, idempotent, one-firing verb) if not already exposed, to back run-now.
   Decided.
 
@@ -255,8 +291,9 @@ Decisions taken so the build has no blocking gap; residuals are named follow-ups
    inline). v1 is list + coarse controls (pause/fire/delete); inline edit is additive.
 3. **NL scheduling** — `/remind fri 5pm …` → an NL→cron layer over `reminder.create` (a later parser, same
    verb).
-4. **Row-id templating shape** — if the shipped `argsTemplate` can't bind a row field, the minimal typed
-   extension (widget-builder scope) — resolve during Phase-1 against the real table view.
+
+(Row-id templating is **resolved above** — `${id}` row-field var + `{{value}}` interaction slot via the row
+as the control's `VarScope.values`; no longer a follow-up.)
 
 ## Related
 

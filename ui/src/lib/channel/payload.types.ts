@@ -91,6 +91,31 @@ export interface AgentErrorPayload {
   error: string;
 }
 
+/** `kind: "rich_result"` — the render-envelope (channel rich responses scope). Mirrors the Rust
+ *  `RichResultPayload` (rust/crates/host/src/channel/payload.rs) ONE-TO-ONE. A worker's viewable
+ *  response: a `view` over inline `data` and/or a re-runnable `source`, with row-control `options`, an
+ *  optional control `action`, and the `tools` the response's bridge may forward. `v` is the envelope
+ *  version and is ALWAYS on the wire — a reader keys any upconversion on it, and a `v` newer than the UI
+ *  understands degrades AT RENDER (ResponseView), never at parse. */
+export interface RichResultPayload {
+  kind: "rich_result";
+  /** The render-envelope version — always `2`. */
+  v: 2;
+  /** The viewer to render with (`table`/`chart`/`stat`/`switch`/`button`/`template`). */
+  view: string;
+  /** A `{tool, args}` object the viewer re-runs to (re)load data. Absent → the response is inline-only. */
+  source?: { tool: string; args?: Record<string, unknown> };
+  /** Inline data the viewer renders directly. Absent → the viewer runs `source`. */
+  data?: unknown;
+  /** View options (incl. row controls). Absent → the viewer's defaults. */
+  options?: Record<string, unknown>;
+  /** A control's `{tool, argsTemplate}` (a button/switch's effect). Absent → the view is read-only. */
+  action?: { tool: string; argsTemplate?: Record<string, unknown> };
+  /** The declared tool set the response's bridge may forward (the `source` + `action` + row-control
+   *  tools). The host intersects it with the viewer's grant server-side (render.tools ∩ grant). */
+  tools?: string[];
+}
+
 /** The kind-tagged union pulled out of an item `body`. Chat (no `kind`) is `null`. */
 export type ItemPayload =
   | QueryPayload
@@ -98,7 +123,8 @@ export type ItemPayload =
   | QueryErrorPayload
   | AgentPayload
   | AgentResultPayload
-  | AgentErrorPayload;
+  | AgentErrorPayload
+  | RichResultPayload;
 
 const KINDS = new Set([
   "query",
@@ -107,6 +133,7 @@ const KINDS = new Set([
   "agent",
   "agent_result",
   "agent_error",
+  "rich_result",
 ]);
 
 /** Detect whether a `query_result` carries POSITIONAL array rows (one value per column, in
@@ -163,4 +190,15 @@ export function encodeAgent(goal: string, job: string, runtime?: string): string
   const payload: AgentPayload = { kind: "agent", goal, job };
   if (runtime) payload.runtime = runtime;
   return JSON.stringify(payload);
+}
+
+/** Encode a `rich_result` render-envelope into the body string the channel `post` carries — the UI
+ *  posts this to render a structured response (e.g. a `reminder.list` table). Stamps `kind` + `v:2`,
+ *  mirroring `rich_result_body` on the Rust side. Callers pass the render fields; the version is always
+ *  2 (additive/versioned — a reader degrades at render, not parse). */
+export function encodeRichResult(
+  payload: Omit<RichResultPayload, "kind" | "v"> & { v?: 2 },
+): string {
+  const body: RichResultPayload = { ...payload, kind: "rich_result", v: 2 };
+  return JSON.stringify(body);
 }

@@ -58,6 +58,7 @@ pub fn save_descriptor() -> ToolDescriptor {
         title: "Save (upsert) a PRQL/raw query as an editable workspace record".to_string(),
         group: "query".to_string(),
         input_schema: Some(save_schema()),
+        result: None,
     }
 }
 
@@ -68,6 +69,7 @@ pub fn run_descriptor() -> ToolDescriptor {
         title: "Run a saved/inline query against the platform store or a datasource".to_string(),
         group: "query".to_string(),
         input_schema: Some(run_schema()),
+        result: None,
     }
 }
 
@@ -78,5 +80,6 @@ pub fn compile_descriptor() -> ToolDescriptor {
         title: "Compile a PRQL/raw query to its target SQL without executing".to_string(),
         group: "query".to_string(),
         input_schema: Some(compile_schema()),
+        result: None,
     }
 }

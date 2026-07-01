@@ -275,6 +275,12 @@ fn member_caps() -> Vec<String> {
         // mutation), so the picker loads for a normal member. Both member-level; the host re-checks each.
         "mcp:agent.invoke:call",
         "mcp:agent.runtimes:call",
+        // reminders-tenant scope: `reminder.fire` is the gated run-now verb (a "fire now" control).
+        // Member-level — the same authority that creates/updates a reminder may fire one now; the
+        // firing still re-checks the ACTION's own cap under the stored principal (no escalation).
+        // Granted explicitly here because the `mcp:*.<verb>:call` wildcards below do NOT cover `fire`
+        // (there is no `mcp:*.fire:call`), so without this line the run-now control would be denied.
+        "mcp:reminder.fire:call",
         // agent-run scope Part 3: `agent.watch` gates the live `RunEvent` SSE feed (`GET
         // /runs/{job}/stream`). Read-only on the run; checked inside `watch_run` (a `403` before any
         // stream body). Member-level — observing a run is not an admin act.

@@ -141,3 +141,54 @@ covered:
   an outage fires exactly once on catch-up, no backfill); **capability-deny** at firing (a revoked
   action grant → logged deny, no effect, left scheduled); **workspace-isolation** across store +
   reactor; and the recurring multi-day cron math (Mon+Sun 08:00) on the injected clock.
+
+## Reminders in a channel — the first rich-response tenant
+
+Reminders are drivable **entirely from a channel** with **zero reminders-specific UI code** — the proof
+of the [channel rich-responses](../channels/channels.md#rich-responses--the-channel-is-a-generic-mcp-front-end-descriptor-driven)
+contract. Everything is declared by **backend descriptors**; the palette is a generic interpreter.
+
+- **`/remind` — a backend-declared form.** The `reminder.create` descriptor declares a **flat**
+  `input_schema`: `schedule` (`x-lb:{widget:"cron"}`, wrapping the shipped `CronBuilder`), `action_kind`
+  (`x-lb:{widget:"select", options:["channel-post","mcp-tool","outbox"]}`), the per-kind action fields,
+  and `max_runs?`/`enabled?`. Catalog visibility gates on `mcp:reminder.create:call` (the descriptor
+  name IS the gate). The palette renders the form and posts the collected fields **verbatim**; the
+  **verb builds the nested `Action` server-side**, derives an `id`, and supplies `now` (in seconds) — so
+  the UI holds no reminder knowledge. The nested `action:{…}` wire form still works (back-compat).
+- **`/reminders` — an interactive list.** The `reminder.list` descriptor carries a **`result`** render
+  envelope: `view:"table"`, `source:{tool:"reminder.list"}`, and per-row **controls** —
+  a pause **switch** (`reminder.update{id:"${id}", enabled:"{{value}}"}`), a run-now **button**
+  (`reminder.fire{id:"${id}"}`), and a delete **button** (`reminder.delete{id:"${id}"}`). The generic
+  palette posts this render; `ResponseView`/`ResponseTable` mount the shipped `table` + per-row controls,
+  the writes leashed to the viewer's grant. A row control binds the row's `id` via the shipped vars
+  engine (`${id}`) and the switch state via `{{value}}` — the row object is the control's `VarScope`.
+- **`reminder.fire` — the run-now verb** (new). Gated `mcp:reminder.fire:call` (in the member bundle),
+  idempotent on `(reminder_id, now)`, **reusing** the shipped internal fire path (`fire_reminder`) — one
+  manual firing, keyed on `now`, without advancing the schedule.
+
+**Security is identical to the shipped `RemindersView`:** every bridged call is `reminder.<verb>` under
+the viewer's grant + workspace (from the token), re-checked at the host. A viewer without
+`mcp:reminder.list:call` never sees `/reminders`; with `list` but not `update`, the pause toggle is
+denied **server-side** (opaque). Two sessions are isolated: a ws-B viewer sees only ws-B reminders and
+cannot fire/delete a ws-A id.
+
+**Tests (rule 9 — real gateway, real `reminder.*` verbs, real seeded reminders):** Rust
+`reminder_fire_test.rs` (**9**) — fire deny/ws-isolation/idempotency, **flat-form create** (no nested
+action, no id) + nested back-compat, catalog gating (`reminder.create`/`.list`/`.fire` visible only with
+their cap; `list` carries its render), and a `ts`-default regression. UI real-gateway loop — create →
+`reminder.get`; `/reminders` table renders seeded rows from the real `reminder.list`; **pause** and
+**delete** drive the real verbs; the `list`-not-`update` deny; two-session isolation; token never
+crosses the boundary.
+
+**Known limitation (pre-existing, deferred):** a reminder created by a **dev-login / token-only**
+principal **does not fire** — run-now *and* the scheduled reactor. `fire_reminder` re-resolves the
+creator's caps from the **durable grant store** at fire time (so a revoke applies), but a dev-login token
+carries `member_caps()` in the **JWT only** — nothing durable — so the re-check denies. This is
+**pre-existing in the shipped reminder system**, surfaced by the real run-now control; the control and
+contract are correct and work the instant the fire path is fixed (a named follow-up: persist member caps
+durably on login). See
+[`debugging/reminders/reminder-fire-reresolve-misses-token-caps.md`](../../debugging/reminders/reminder-fire-reresolve-misses-token-caps.md).
+
+Related: `../channels/channels.md` (the rich-responses contract), `../frontend/dashboard.md` (the widget
+renderers reused), `../../scope/reminders/reminders-rich-responses-scope.md`, and
+`../../sessions/reminders/reminders-rich-responses-session.md`.

@@ -47,6 +47,9 @@ export interface ChannelState {
   postAgent: (goal: string, runtime?: string) => Promise<void>;
   /** Dispatch any other catalog tool via the host-mediated bridge (no channel Item). */
   callTool: (tool: string, args: Record<string, unknown>) => Promise<void>;
+  /** Post a pre-encoded `kind:"rich_result"` render-envelope body as a channel Item (the palette posts a
+   *  descriptor-declared interactive render this way, tool-agnostic — ResponseView renders it). */
+  postRich: (body: string) => Promise<void>;
 }
 
 /** Drive a channel view for `(ws, channel)` as `author`. `now` injects the logical
@@ -171,6 +174,17 @@ export function useChannel(
     [postBody],
   );
 
+  // Post a `kind:"rich_result"` render-envelope Item (already encoded by the caller via
+  // `encodeRichResult`) then reconcile against history — the same durable post path as chat/query, so a
+  // structured response appears for every channel member and survives a reload.
+  const postRich = useCallback(
+    async (body: string) => {
+      if (!body.trim()) return;
+      await postBody(body);
+    },
+    [postBody],
+  );
+
   // Dispatch a non-query catalog tool through the host-mediated bridge (the same `mcp_call` seam the
   // federation client uses). The palette routes federation.query to `postQuery` instead.
   const callTool = useCallback(
@@ -195,5 +209,6 @@ export function useChannel(
     postQuery,
     postAgent,
     callTool,
+    postRich,
   };
 }

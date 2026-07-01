@@ -191,9 +191,9 @@ pub use registry::{
 pub use reload::reload_extension;
 pub use reminder::{
     call_reminder_tool, fire_job_id, fire_reminder, react_to_reminders, reminder_create,
-    reminder_delete, reminder_get, reminder_list, reminder_update, Action as ReminderAction,
-    ReactorPass as ReminderReactorPass, Reminder, ReminderError, ReminderPatch, ReminderStatus,
-    FIRE_KIND as REMINDER_FIRE_KIND,
+    reminder_delete, reminder_fire, reminder_get, reminder_list, reminder_update,
+    Action as ReminderAction, ReactorPass as ReminderReactorPass, Reminder, ReminderError,
+    ReminderPatch, ReminderStatus, FIRE_KIND as REMINDER_FIRE_KIND,
 };
 pub use remote::register_remote_extension;
 pub use render_templates::{

@@ -16,6 +16,12 @@
 //!                      completion — the durable final answer.
 //!   - `agent_error`  — `{ goal, error }`, posted by the agent worker when the run can't start / fails
 //!                      (opaque on the deny/unknown-runtime path — no capability/existence leak).
+//!   - `rich_result`  — `{ v:2, view, source?, data?, options?, action?, tools }`, the render-envelope
+//!                      (channel rich responses scope). A worker posts a viewable response — a `view`
+//!                      (`table`/`chart`/`stat`/`switch`/`button`/`template`) over inline `data` and/or a
+//!                      `source` the viewer re-runs, with row-control `options` and a control `action`.
+//!                      `tools` is the tool set the response's bridge may forward (source + action tools).
+//!                      `v` is the envelope version, ALWAYS serialized (a reader keys upconversion on it).
 //!
 //! The host NEVER parses chat text for commands — the UI builds these structured payloads and
 //! posts them; the worker reads the `kind` to decide what (if anything) to do.
@@ -32,6 +38,7 @@ pub const KIND_ERROR: &str = "query_error";
 pub const KIND_AGENT: &str = "agent";
 pub const KIND_AGENT_RESULT: &str = "agent_result";
 pub const KIND_AGENT_ERROR: &str = "agent_error";
+pub const KIND_RICH_RESULT: &str = "rich_result";
 
 /// A parsed kind-tagged payload pulled out of an item `body`. Chat (no `kind`) is `None` upstream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -43,6 +50,7 @@ pub enum ItemPayload {
     Agent(AgentPayload),
     AgentResult(AgentResultPayload),
     AgentError(AgentErrorPayload),
+    RichResult(RichResultPayload),
 }
 
 /// `kind: "query"` — a member's request to run `sql` against `source`.
@@ -111,6 +119,34 @@ pub struct AgentErrorPayload {
     pub error: String,
 }
 
+/// `kind: "rich_result"` — the render-envelope (channel rich responses scope). A worker's viewable
+/// response: a `view` over inline `data` and/or a re-runnable `source`, with row-control `options`, an
+/// optional control `action`, and the `tools` set the response's bridge may forward. `v` is the
+/// envelope version and is ALWAYS on the wire (unlike the `skip_serializing_if` fields), so a reader
+/// keys any upconversion on it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RichResultPayload {
+    /// The render-envelope version — always `2`. Never skipped: the wire form always carries `v`.
+    pub v: u32,
+    /// The viewer to render with (`table`/`chart`/`stat`/`switch`/`button`/`template`).
+    pub view: String,
+    /// A `{tool, args}` object the viewer re-runs to (re)load data. Absent → the response is inline-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<Value>,
+    /// Inline data the viewer renders directly. Absent → the viewer runs `source`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data: Option<Value>,
+    /// View options (incl. row controls). Absent → the viewer's defaults.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Value>,
+    /// A control's `{tool, argsTemplate}` (a button/switch's effect). Absent → the view is read-only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<Value>,
+    /// The tool set the response's bridge may forward (the `source` + `action` tools). Empty → none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<String>,
+}
+
 fn is_false(b: &bool) -> bool {
     !b
 }
@@ -124,7 +160,13 @@ pub fn parse_payload(body: &str) -> Option<ItemPayload> {
     let kind = value.get("kind").and_then(Value::as_str)?;
     if !matches!(
         kind,
-        KIND_QUERY | KIND_RESULT | KIND_ERROR | KIND_AGENT | KIND_AGENT_RESULT | KIND_AGENT_ERROR
+        KIND_QUERY
+            | KIND_RESULT
+            | KIND_ERROR
+            | KIND_AGENT
+            | KIND_AGENT_RESULT
+            | KIND_AGENT_ERROR
+            | KIND_RICH_RESULT
     ) {
         return None;
     }
@@ -186,6 +228,33 @@ pub fn agent_error_body(goal: &str, error: &str) -> String {
     encode_payload(&ItemPayload::AgentError(AgentErrorPayload {
         goal: goal.into(),
         error: error.into(),
+    }))
+}
+
+/// Build the `rich_result` render-envelope body (channel rich responses scope). Always stamps `v: 2`
+/// — the envelope version a reader keys upconversion on. The optional shapes drop off the wire when
+/// `None`/empty (`skip_serializing_if`); `v` and `view` are always present.
+///
+/// `#[allow(dead_code)]`: this is the additive contract half — the shape + builder land now (mirrored
+/// by the UI's `payload.types.ts`), ahead of the worker/verb that will POST a rich response. The
+/// `#[cfg(test)]` round-trips below exercise it, so the contract is real, not speculative.
+#[allow(dead_code)]
+pub fn rich_result_body(
+    view: &str,
+    source: Option<Value>,
+    data: Option<Value>,
+    options: Option<Value>,
+    action: Option<Value>,
+    tools: Vec<String>,
+) -> String {
+    encode_payload(&ItemPayload::RichResult(RichResultPayload {
+        v: 2,
+        view: view.into(),
+        source,
+        data,
+        options,
+        action,
+        tools,
     }))
 }
 
@@ -326,5 +395,53 @@ mod tests {
             ItemPayload::AgentError(p) => assert_eq!(p.error, "agent not permitted"),
             _ => panic!("wrong variant"),
         }
+    }
+
+    // channel rich responses: a rich_result round-trips (view + tools survive) and always carries `v:2`.
+    #[test]
+    fn rich_result_round_trips_and_stamps_v2() {
+        let body = rich_result_body(
+            "table",
+            Some(json!({"tool": "store.query", "args": {"sql": "SELECT 1"}})),
+            None,
+            Some(json!({"rows": 50})),
+            None,
+            vec!["store.query".into()],
+        );
+        // `v` is ALWAYS on the wire (unlike the skipped optional fields).
+        assert!(body.contains(r#""v":2"#), "v:2 is always present: {body}");
+        match parse_payload(&body).expect("parsed") {
+            ItemPayload::RichResult(r) => {
+                assert_eq!(r.v, 2);
+                assert_eq!(r.view, "table");
+                assert_eq!(r.tools, vec!["store.query".to_string()]);
+                assert!(r.data.is_none());
+                assert!(r.source.is_some());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    // A minimal rich_result (no source/data/options/action, no tools) still parses to the variant and
+    // still carries `v:2` — the optional shapes drop off the wire, `v`/`view` remain.
+    #[test]
+    fn minimal_rich_result_body_parses_to_the_variant() {
+        let body = rich_result_body("stat", None, None, None, None, Vec::new());
+        assert!(body.contains(r#""v":2"#), "v:2 always present: {body}");
+        assert!(!body.contains("tools"), "empty tools dropped from the wire");
+        assert!(
+            !body.contains("source"),
+            "None source dropped from the wire"
+        );
+        assert!(matches!(
+            parse_payload(&body),
+            Some(ItemPayload::RichResult(_))
+        ));
+    }
+
+    // An unknown kind still stays chat (unchanged by the additive rich_result arm).
+    #[test]
+    fn unknown_kind_still_chat_after_rich_result_added() {
+        assert!(parse_payload(r#"{"kind":"whatever","view":"table"}"#).is_none());
     }
 }

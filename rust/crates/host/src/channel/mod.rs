@@ -42,8 +42,8 @@ pub use error::ChannelError;
 pub use history::history;
 #[allow(unused_imports)]
 pub(crate) use payload::{
-    encode_payload, error_body, parse_payload, result_body, ItemPayload, QueryErrorPayload,
-    QueryPayload, QueryResultPayload,
+    encode_payload, error_body, parse_payload, result_body, rich_result_body, ItemPayload,
+    QueryErrorPayload, QueryPayload, QueryResultPayload, RichResultPayload,
 };
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};

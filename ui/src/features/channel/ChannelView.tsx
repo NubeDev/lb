@@ -7,6 +7,7 @@ import { Hash } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { WorkspaceSwitcher } from "@/features/workspace";
+import { useExtensions } from "@/features/extensions/useExtensions";
 import { useChannel } from "./useChannel";
 import { usePresence } from "./usePresence";
 import { ChannelList } from "./ChannelList";
@@ -28,13 +29,12 @@ interface Props {
 const noop = () => {};
 
 export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitchWorkspace }: Props) {
-  const { items, loading, error, send, edit, remove, postQuery, postAgent, callTool } = useChannel(
-    ws,
-    channel,
-    author,
-    now,
-  );
+  const { items, loading, error, send, edit, remove, postQuery, postAgent, callTool, postRich } =
+    useChannel(ws, channel, author, now);
   const online = usePresence(ws, channel);
+  // Installed extensions — threaded to the message list so an `ext:<id>` rich_result response view mounts
+  // the extension's real tile (the response-side ext widget path).
+  const { rows: installed } = useExtensions();
 
   return (
     <AppPage
@@ -76,7 +76,7 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
             <div className="h-12 w-3/4 animate-pulse rounded-md border border-border bg-panel" />
           </div>
         ) : (
-          <MessageList items={items} author={author} onEdit={edit} onDelete={remove} />
+          <MessageList items={items} author={author} ws={ws} installed={installed} onEdit={edit} onDelete={remove} />
         )}
 
         <CommandPalette
@@ -84,6 +84,7 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
           onPostQuery={postQuery}
           onSendAgent={postAgent}
           onCallTool={callTool}
+          onPostRich={postRich}
           onSendChat={send}
         />
       </div>

@@ -598,6 +598,14 @@ fn undo_svc_to_tool_err(e: UndoSvcError) -> ToolError {
 /// from the in-code descriptor table (`tools::host_descriptors`); extension tools from the runtime
 /// registry. `None` when the tool declares no schema (validation is then skipped — additive).
 fn descriptor_schema(node: &Node, qualified_tool: &str) -> Option<serde_json::Value> {
+    // `reminder.create`'s descriptor schema is FORM-SHAPED (flat `action_kind` + per-kind fields). The
+    // verb now accepts BOTH that flat form AND the nested `action:{kind,…}` wire form (backward compat),
+    // so schema-gating here would wrongly reject the nested callers (they carry `action`, not the
+    // `action_kind` the form schema requires). The verb's own handler is authoritative (it accepts
+    // either shape via `create_action`). This is the one descriptor whose form and wire shapes differ.
+    if qualified_tool == "reminder.create" {
+        return None;
+    }
     for d in crate::tools::host_descriptors() {
         if d.name == qualified_tool {
             return d.input_schema;

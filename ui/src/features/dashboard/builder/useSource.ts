@@ -31,7 +31,9 @@ function toRows(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
   if (typeof result === "object") {
     const o = result as Record<string, unknown>;
-    for (const k of ["samples", "items", "rows", "templates", "dashboards"]) {
+    // `reminders` unwraps `reminder.list` → `{reminders:[…]}` into N rows (the channel-rich-responses
+    // reminders tenant); keep in lock-step with the host mirror `viz/frame.rs::ROW_KEYS`.
+    for (const k of ["samples", "items", "rows", "templates", "dashboards", "reminders"]) {
       if (Array.isArray(o[k])) return o[k] as Array<Record<string, unknown>>;
     }
     return [o];
