@@ -1,0 +1,35 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * NavRail design tokens — the sidebar's SELF-CONTAINED palette.
+ *
+ * Same contract as ce-wiresheet's wiresheet-theme.css: every color in the rail is
+ * `hsl(var(--token))` off this list, scoped to the `.nav-rail` root class the
+ * component puts on its wrapper (and its tooltip/sheet portal root), so:
+ *   • the host app's palette can't leak in or be clobbered, and
+ *   • a host can RE-SKIN the rail by overriding any of these vars — e.g.
+ *       .nav-rail { --nr-accent: 280 80% 60%; }
+ *     or inline `style={{ '--nr-accent': '...' }}` on the mount — WITHOUT forking.
+ *
+ * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works). Dark by default;
+ * `.theme-light` flips to the light palette.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+:root,
+.nav-rail {
+  --nr-bg: 234 18% 6%;          /* app canvas behind the rail */
+  --nr-panel: 232 15% 9%;       /* the rail surface */
+  --nr-border: 230 10% 18%;
+  --nr-fg: 220 16% 93%;         /* active / hovered text */
+  --nr-muted: 220 8% 56%;       /* idle item text + labels */
+  --nr-accent: 200 86% 64%;     /* focus ring / brand mark */
+
+  --nr-font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+}
+
+.nav-rail.theme-light {
+  --nr-bg: 240 20% 99%;
+  --nr-panel: 0 0% 100%;
+  --nr-border: 240 14% 88%;
+  --nr-fg: 234 22% 14%;
+  --nr-muted: 235 12% 42%;
+  --nr-accent: 200 80% 46%;
+}

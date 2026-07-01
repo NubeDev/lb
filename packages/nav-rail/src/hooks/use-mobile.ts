@@ -1,0 +1,23 @@
+import * as React from "react";
+
+const MOBILE_BREAKPOINT = 768;
+
+/** True below the mobile breakpoint — drives the rail's off-canvas (Sheet) mode. */
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined);
+
+  React.useEffect(() => {
+    if (!window.matchMedia) {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const update = () => setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
+    mediaQuery.addEventListener("change", update);
+    update();
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  return !!isMobile;
+}

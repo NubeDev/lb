@@ -1,0 +1,20 @@
+/* The NavRail stylesheet — Tailwind v4 + the rail's own tokens, in its OWN build (a
+ * single @theme, so the color utilities resolve here). Imported by src/index.ts so the
+ * library bundle ships it (host: `import '@nube/nav-rail/style.css'`).
+ *
+ * `@theme` maps the rail's Tailwind utilities onto the tokens; the tokens live in
+ * nav-rail-theme.css, scoped to `.nav-rail` and host-overridable. */
+
+@import 'tailwindcss';
+@import './nav-rail-theme.css';
+
+@theme {
+  --color-nr-bg: hsl(var(--nr-bg));
+  --color-nr-panel: hsl(var(--nr-panel));
+  --color-nr-border: hsl(var(--nr-border));
+  --color-nr-fg: hsl(var(--nr-fg));
+  --color-nr-muted: hsl(var(--nr-muted));
+  --color-nr-accent: hsl(var(--nr-accent));
+
+  --font-sans: var(--nr-font-sans);
+}
