@@ -26,8 +26,8 @@
 //!   TODO(#5): `run-lifecycle-scope.md`.
 
 use std::future::Future;
-use std::pin::Pin;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -158,7 +158,11 @@ fn run_outcome(events: &[RunEvent]) -> Option<RunOutcome> {
 /// binary's feature-gated path — a feature-off node never links this crate, so no external entry
 /// exists (the OFF build's default-only registry). Additive: the default in-house runtime is
 /// untouched.
-pub fn register(registry: &mut RuntimeRegistry, model: ModelEndpoint, scratch_base: Option<PathBuf>) {
+pub fn register(
+    registry: &mut RuntimeRegistry,
+    model: ModelEndpoint,
+    scratch_base: Option<PathBuf>,
+) {
     let base = scratch_base.unwrap_or_else(default_scratch_base);
     for id in BUILTIN_IDS {
         if let Some(rt) = AcpRuntime::new(id, model.clone(), base.clone()) {

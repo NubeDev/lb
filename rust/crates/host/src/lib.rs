@@ -68,7 +68,7 @@ pub use agent::{
     rehydrate, render_catalog, resume, run_session, save_policy, serve_agent, settle_decision,
     Activation, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest, AgentRuntime,
     AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect, ErasedModel,
-    InHouseRuntime, Invocation, LoopState, ModelAccess, Policy, ProposedCall, RunContext, Rule,
+    InHouseRuntime, Invocation, LoopState, ModelAccess, Policy, ProposedCall, Rule, RunContext,
     RuntimeRegistry, SettleOutcome, Substrate, Turn, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
     DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
 };

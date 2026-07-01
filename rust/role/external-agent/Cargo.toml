@@ -34,4 +34,4 @@ tracing.workspace = true
 # (mem:// store), no fake backend (rule 9). The real-subprocess run stays opt-in (env-gated), like
 # the leaf crate's vtcode_smoke_test.
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
-lb-jobs.workspace = true
+lb-auth.workspace = true

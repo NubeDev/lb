@@ -4741,7 +4741,6 @@ dependencies = [
  "lb-auth",
  "lb-external-agent",
  "lb-host",
- "lb-jobs",
  "lb-run-events",
  "tokio",
  "tracing",

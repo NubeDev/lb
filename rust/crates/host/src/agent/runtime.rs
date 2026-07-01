@@ -131,10 +131,6 @@ impl ModelAccess for ModelHandle {
         let tools = tools.to_vec();
         let prior = prior.to_vec();
         let key = idempotency_key.to_string();
-        async move {
-            model
-                .turn_boxed(&ws, &messages, &tools, &prior, &key)
-                .await
-        }
+        async move { model.turn_boxed(&ws, &messages, &tools, &prior, &key).await }
     }
 }
