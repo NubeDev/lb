@@ -28,6 +28,7 @@ import { RulesView } from "@/features/rules";
 import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
+import { SettingsView } from "@/features/settings";
 import { StudioView } from "@/features/studio";
 import { SystemView } from "@/features/system";
 import { AcpServiceView } from "@/features/system-acp";
@@ -138,6 +139,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/admin", "admin", () => <Admin />),
     coreRoute("/extensions", "extensions", () => <Extensions />),
     coreRoute("/studio", "studio", () => <Studio />),
+    coreRoute("/settings", "settings", () => <SettingsPage />),
     extRoute,
   ]),
 ]);
@@ -349,4 +351,9 @@ function Extensions() {
 
 function Studio() {
   return <StudioView ws={useAppRoutingContext().workspace} />;
+}
+
+function SettingsPage() {
+  const ctx = useAppRoutingContext();
+  return <SettingsView ws={ctx.workspace} caps={ctx.caps} />;
 }

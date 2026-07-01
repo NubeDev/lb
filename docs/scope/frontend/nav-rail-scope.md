@@ -1,6 +1,17 @@
 # nav-rail scope — a reusable, data-driven sidebar package
 
-Status: scope (the ask). Promotes to `public/shell/nav-rail.md` once shipped.
+Status: **shipped (2026-07-02)** — package `packages/nav-rail/` (`@nube/nav-rail`) built + green
+(12 unit tests), first-used in the dashboard `PanelEditor` (the `NavMenu` options rail, replacing the
+in-house `EditorTabs`); verified against the real gateway (panel-editor + flows-panel-editor gateway
+suites pass). Promotes to `public/shell/nav-rail.md`. Session:
+[`nav-rail`](../../sessions/shell/nav-rail-session.md).
+
+> **Build note (as shipped):** the package exposes **two** components off one data model
+> (`NavItem[]`): `NavRail` (the app-shell collapsible icon rail — the faithful generic port of the lb
+> `NavRail`) and `NavMenu` (an in-flow, non-fixed vertical menu for embedding as **section nav** inside
+> a panel/dialog). The dashboard first-use consumes `NavMenu` because the PanelEditor options rail lives
+> inside a Sheet, where the app-shell sidebar's `position:fixed` would escape the container. Cross-repo
+> use in `ce-wiresheet` is deferred (the user redirected the first-use to the dashboard viz panel).
 
 We want the **collapsible icon-rail sidebar** we already like from the Lazybones shell
 (`ui/src/features/shell/NavRail.tsx`) as a **standalone, reusable package** — not left
