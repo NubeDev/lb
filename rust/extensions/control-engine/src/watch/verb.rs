@@ -70,7 +70,7 @@ pub async fn run(
 /// frames flow. A tree-fetch failure is non-fatal: we fall back to the caller's `input`
 /// unchanged (the pump still arms; it just carries nothing until the engine is reachable),
 /// so a transient engine blip never fails the whole `watch`.
-async fn expand_scope(base: &str, input: &Value) -> Value {
+pub async fn expand_scope(base: &str, input: &Value) -> Value {
     let scope = input.get("scope");
     let has_components = scope
         .and_then(|s| s.get("components"))

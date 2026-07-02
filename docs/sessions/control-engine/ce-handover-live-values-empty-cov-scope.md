@@ -7,6 +7,12 @@
   `/home/user/code/c/ce/ce-studio` (`run.sh`). The `ce_appliance` registry has ONE
   appliance, **id `aaaa`** (base `http://127.0.0.1:7979`) — NOT `local`.
 
+> **RESOLVED 2026-07-03** — fixed extension-side (`expand_scope` in `watch/verb.rs` +
+> `watch/scope_uids.rs`). Live-verified: stream 0→3164 bytes, real COV frames. See
+> [ce-live-values-empty-cov-scope-fix-session.md](ce-live-values-empty-cov-scope-fix-session.md)
+> and [../../debugging/frontend/ce-canvas-empty-cov-scope-no-live-values.md](../../debugging/frontend/ce-canvas-empty-cov-scope-no-live-values.md).
+> The rest of this handover is retained as the root-cause record.
+
 ## TL;DR — the remaining bug (ROOT-CAUSED, verified against the live engine)
 
 The Control Engine canvas renders the graph + wires now, but shows **no live values**

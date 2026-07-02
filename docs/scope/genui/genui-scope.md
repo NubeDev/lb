@@ -1,6 +1,11 @@
 # GenUI scope — AI-driven widgets over one renderer-agnostic generative-UI layer
 
-Status: scope (the ask). Promotes to `public/genui/` once shipped.
+Status: **SHIPPED** (2026-07-03, branch `ce-node-wiring-v2`) — see `public/genui/genui.md` +
+`sessions/genui/genui-widget-session.md`. All v1 decisions built as written EXCEPT **Decision 1**
+(trust tier), which was **amended to in-process** during implementation with the scope owner's
+approval — see the note inline in Decision 1 below (the shipped `WidgetIframe` sandbox cannot host a
+React surface; the catalog IR is trusted admin-authored data, so in-process is the promotion end-state
+and the CI-tested checklist justifies it). No other decision changed.
 
 We want a dashboard widget whose **layout is authored by the workspace agent** — the user types
 "show me the pump-room flow counters next to today's ingest rate" and gets a real, live, grid-placed

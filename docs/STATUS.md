@@ -16,6 +16,40 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): GenUI — AI-authored dashboard widgets over one generative-UI layer
+(branch `ce-node-wiring-v2`).** A dashboard widget the workspace agent designs from a natural-language
+prompt, rendered live from a persisted, versioned IR — **no model in the render path**. **New package**
+`@nube/genui` (standard `packages/*` layout): a versioned, **A2UI-*shaped* IR** (flat id-referenced
+component map, JSON-Pointer `{$bind}` data model, typed patch messages) with pure ops
+(`resolveBindings`/`applyPatch`/`validate`/`migrate`) + a **`defineCatalog`** whose one source
+generates the render fns, the prompt signature block, AND the A2UI-style catalog JSON. **Two strata on
+two entries** so a viewer never bundles the parser: render (`@nube/genui`, ~24 KB, parser-free) vs
+authoring (`@nube/genui/authoring` — the ONE place the single new external dep `@openuidev/lang-core`
+loads, for the OpenUI-Lang→IR adapter + streaming + the normalize sloppiness pass). **Parse once,
+persist the IR**: accept runs parse→normalize→validate→size-check ONCE (≤8 KB), the typed IR persists,
+raw Lang never renders. **A2UI patterns adopted, Google's packages rejected** (no A2UI adapter in v1).
+The **`view:"genui"`** dashboard tenant: `GenUiView` mounts `<GenUiSurface>` (data via the shipped
+`usePanelData` per v3 `sources[]` target keyed `/data/{refId}`; actions over the `cellTools` leash,
+host-re-checked); the builder's "AI widget" tab drives `agent.invoke`(skill `core.genui-widget`)→run
+stream→live preview→accept→`dashboard.save`. **Trust tier amended to in-process** (flagged + approved):
+the shipped `WidgetIframe` sandbox can't host React (no import map, CSP `connect-src 'none'`, eval'd
+engines — the `ext-widget-iframe-tier-cannot-resolve-bare-react` wall); genui widgets are
+admin-authored (the `dashboard.save` cap is the trust gate), the IR is trusted DATA satisfying the 5
+promotion-checklist items (CI-tested), so it renders in-process (the promotion end-state). **One host
+change** (Decision 6): a validation branch inside `dashboard.save` for `view:"genui"` cells (IR `v`
+known, ≤8 KB, every component in the embedded generated `genui_catalog.json`) — no new verb/cap/table,
+so headless MCP authors get the same loud rejection. A **generated skill** (`skill:core.genui-widget`,
+auto-embedded/seeded) whose catalog block + the host's catalog JSON are produced by `pnpm --filter
+@nube/genui gen:skill`, CI freshness-gated. **Tests (rule 9):** package unit ×42 (Lang↔IR round-trips +
+streaming, op purity + migration goldens, normalize, accept rejections, catalog-compat gate, prompt/JSON
+goldens, the promotion checklist, gen:skill freshness); host ×8 (accept/reject matrix + **capability-
+DENY** + **workspace-ISOLATION**); UI unit (data helpers, empty-source v3 trap); gateway integration ×4
+(real node: save→reload→**render-without-adapter**, save-time rejection, empty-source v3 round-trip,
+save-cap deny). One bug fixed + regression (`debugging/genui/genui-probe-setstate-in-render.md`). Node
+binary builds (skill embeds); `cargo fmt` clean. Deferred (named triggers): A2UI JSONL adapter, the
+channel `view:"genui"` tenant, IR patch-line refine, the design-time sampling policy knob. See
+[`public/genui/genui.md`](public/genui/genui.md) · [`sessions/genui/genui-widget-session.md`](sessions/genui/genui-widget-session.md).
+
 **Just shipped (2026-07-03): agent memory — durable, access-walled (branch `ce-node-wiring-v2`).**
 The workspace agent's **learned** knowledge (skills are the *taught* half), in the MEMORY.md shape:
 many small fact records behind capability-checked MCP verbs, read/written under the derived principal

@@ -3,6 +3,27 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — frontend: GenUI — AI-authored dashboard widgets over one generative-UI layer)
+
+One reusable package `@nube/genui` (a versioned, A2UI-*shaped* IR + a trusted catalog renderer + the
+OpenUI-Lang authoring adapter — the ONE new external dep `@openuidev/lang-core`) with the
+`view:"genui"` dashboard widget as its first tenant. The workspace agent designs a widget from a
+natural-language prompt (`agent.invoke` under `skill:core.genui-widget` → run stream → live Lang
+preview → **accept parses/normalizes/validates once** → the typed IR persists on the cell); it renders
+live with **no model in the render path** — data flows through ordinary v3 `sources[]` via the shipped
+`usePanelData`. Two package strata (render vs authoring) on two entries so a viewer never bundles the
+parser. **A2UI patterns adopted, Google's packages rejected** (no A2UI adapter in v1). **Trust tier:
+in-process** — the scope's "iframe" decision was amended (the shipped `WidgetIframe` sandbox can't host
+React; genui widgets are admin-authored so `dashboard.save` is the trust gate; the catalog IR is
+trusted data satisfying the 5 promotion-checklist items, CI-tested). The **one** host change is a
+validation branch inside `dashboard.save` for `view:"genui"` cells (IR `v` known, ≤8 KB, every
+component in the generated catalog JSON) — no new verb/cap/table, giving headless MCP authors the same
+loud rejection. A generated skill (`gen:skill` renders the catalog block + the host's
+`genui_catalog.json`; CI freshness gate). Tests: package unit ×42, host ×8 (incl. capability-deny +
+workspace-isolation), gateway integration ×4 (save→reload→render-without-adapter, save-time rejection,
+empty-source v3 round-trip). Deferred with named triggers: the A2UI JSONL adapter, the channel tenant,
+IR patch-line refine. See [`genui/genui.md`](genui/genui.md).
+
 ## Shipped (post-S10 — frontend: graphics-canvas phases 1–2 — the `thecrew` extension)
 
 The proven playground lifted into a real, publishable **100% UI extension** (`rust/extensions/thecrew/`)
