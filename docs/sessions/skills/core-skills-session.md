@@ -99,7 +99,10 @@ core_skills_test:      ok. 11 passed; 0 failed
 core_skills_mcp_test:  ok. 4 passed; 0 failed
 ```
 
-Full `cargo test --workspace` + `cargo fmt` green — see the STATUS/paste below.
+`cargo fmt` clean. Full `cargo test --workspace` is green **except** the pre-existing flaky
+`control_engine_appliance_routing_test` (a two-node Zenoh routing test whose failing sub-test moves
+run-to-run — a discovery-timing flake, not a logic bug; it touches no code in this slice). Running
+the workspace with `-- --skip appliance_record_routes` is green.
 
 ## Debugging
 

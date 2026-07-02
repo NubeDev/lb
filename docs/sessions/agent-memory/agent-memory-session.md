@@ -88,7 +88,12 @@ Green output:
 agent_memory_test:  ok. 8 passed; 0 failed
 ```
 
-Full `cargo test --workspace` + `cargo fmt` green (see STATUS).
+`cargo fmt` clean. Full `cargo test --workspace` is green **except** the pre-existing flaky
+`control_engine_appliance_routing_test` (a two-node Zenoh routing test — 1 of its 2 tests fails per
+run and *which one* moves run-to-run: `ce_tree` fails one run and passes the next, `ce_patch` the
+opposite — the discovery-timing signature, not a logic bug). It touches no core-skills/agent-memory
+code; running the full workspace with `-- --skip appliance_record_routes` is green. Logged as a known
+flake (it lacks the `peer_with`/`await_subscriber` barriers the other bus tests got).
 
 ## Debugging
 

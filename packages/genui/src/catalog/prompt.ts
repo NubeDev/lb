@@ -14,8 +14,10 @@ function propSig(name: string, p: PropSpec): string {
 }
 
 function entrySig(e: CatalogEntry): string {
+  // DECLARATION order, not sorted: OpenUI Lang maps positional args to props in this order
+  // (`Stat(value, label)` ← `props: { value, label }`), so the signature MUST show that order or the
+  // agent's positional emission binds to the wrong prop.
   const props = Object.keys(e.props)
-    .sort()
     .map((k) => propSig(k, e.props[k]))
     .join(", ");
   const actions = e.actions?.length ? `  actions: ${e.actions.join(", ")}\n` : "";

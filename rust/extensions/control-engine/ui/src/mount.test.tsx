@@ -14,7 +14,7 @@ async function flush() {
 }
 
 describe("mount", () => {
-  it("renders the page + appliance picker when appliance.list returns one appliance", async () => {
+  it("mounts the editor with NO page header/picker when there is a single appliance", async () => {
     const el = document.createElement("div");
     document.body.appendChild(el);
     const bridge = stubBridge({
@@ -26,15 +26,43 @@ describe("mount", () => {
     const unmount = mount(el, { workspace: "acme" }, bridge);
     await flush();
 
-    expect(el.textContent).toContain("Control Engine");
-    expect(el.textContent).toContain("acme"); // the tenant wall reached the remote
-    // The picker rendered the appliance, and the (stubbed) editor mounted for it.
-    expect(el.querySelector('select[aria-label="appliance"]')).not.toBeNull();
+    // Issue #2: the HOST header owns the title + workspace, so the page renders NO header of its
+    // own (no "Control Engine · acme" bar) — that clashed with the host's. A single appliance has
+    // nothing to pick, so no picker either; the editor just mounts for it.
+    expect(el.textContent).not.toContain("Control Engine");
+    expect(el.querySelector('select[aria-label="appliance"]')).toBeNull();
     expect(el.querySelector('[data-testid="ce-editor"]')).not.toBeNull();
 
     unmount();
     await flush();
     expect(el.childNodes.length).toBe(0);
+    el.remove();
+  });
+
+  it("shows the appliance picker only when there is a real choice (≥2 appliances)", async () => {
+    const el = document.createElement("div");
+    document.body.appendChild(el);
+    const bridge = stubBridge({
+      "control-engine.appliance.list": () => ({
+        appliances: [
+          { id: "ce-a", name: "CE A", base: "http://127.0.0.1:7979" },
+          { id: "ce-b", name: "CE B", base: "http://127.0.0.1:7989" },
+        ],
+      }),
+    });
+
+    const unmount = mount(el, { workspace: "acme" }, bridge);
+    await flush();
+
+    const picker = el.querySelector('select[aria-label="appliance"]');
+    expect(picker).not.toBeNull();
+    expect(picker?.querySelectorAll("option").length).toBe(2);
+    // Still no page title/workspace chrome — only the picker.
+    expect(el.textContent).not.toContain("Control Engine");
+    expect(el.querySelector('[data-testid="ce-editor"]')).not.toBeNull();
+
+    unmount();
+    await flush();
     el.remove();
   });
 
