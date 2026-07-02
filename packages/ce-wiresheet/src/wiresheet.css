@@ -3,11 +3,30 @@
  * when bolted into a host's build). Imported by src/index.ts so the library bundle
  * ships it (host: `import '@nube/ce-wiresheet/style.css'`).
  *
+ * This is a LIBRARY stylesheet, injected into a HOST document, so it obeys the
+ * slice-9 federated-CSS contract (see
+ * rust/extensions/control-engine/docs/slice-9-federated-css-isolation.md and the
+ * `library-css-leaks-global-utilities.md` precedent for `packages/*`):
+ *   • NO Preflight — the host owns the global `*`/`html`/`body` reset; shipping our
+ *     own only re-resets the live shell. So we import `theme` + `utilities` explicitly
+ *     and OMIT `tailwindcss/preflight.css`.
+ *   • Utilities are SCOPED under `.ce-wiresheet` (the class the editor puts on its
+ *     container AND its portal root), so the generated `.flex`/`.border`/… emit as
+ *     `.ce-wiresheet .flex` and can't collide with the host's own Tailwind utilities.
+ *
  * `@theme` maps Tailwind's color/font utilities onto the editor's tokens; the tokens
  * live in wiresheet-theme.css, scoped to `.ce-wiresheet` and host-overridable. */
 
-@import 'tailwindcss';
+@layer theme, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
 @import './wiresheet-theme.css';
+
+@layer utilities {
+  .ce-wiresheet {
+    @tailwind utilities;
+  }
+}
 
 @theme {
   --color-background: hsl(var(--background));
