@@ -16,7 +16,36 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-02): control-engine v1 — slice S6 (`control-engine.watch` live COV feed, branch
+**Just shipped (2026-07-02): control-engine v1 — slice S7 (`BridgeTransport` + federated wiresheet page,
+branch `ce-v1`).** The LB-authored UI half: a federated remote under `rust/extensions/control-engine/ui/`
+mounts the vendored `@nube/ce-wiresheet` `CeEditor` wired to a `BridgeTransport implements EngineTransport`.
+The vendored package is UNTOUCHED — the transport is injected. **Request half:** a table maps the
+wiresheet's `/api/v0` REST paths → `control-engine.*` tools (tree/schema/add-node/patch/set+clear-override/
+add-edge/remove-node/call-action), translating each body to the verb's arg shape (keyed node `{uid,kind}`,
+appliance always injected); an unmapped path throws a LOUD error naming it (never a silent 404 — the signal
+a follow-up verb like `set-layout`/undo/group is owed). **Stream half:** `openStream` arms
+`control-engine.watch {appliance}` → `bridge.watch('series.watch', {series})`; each S6 frame (`frames.ts`)
+decodes into the editor's `DecodedFrame`/`TopologyMsg` (the `>2^53`-as-string → bigint rule mirrored). No
+`bridge.watch` (Tauri/tests) → static canvas, no throw. **Page:** appliance picker (`appliance.list`) +
+empty-state `appliance.add` flow; the `[ui] scope` lists exactly the verbs the canvas emits, so a read-only
+grant yields a read-only canvas (bridge narrowing + host re-check). **v1 gaps (absent-not-broken):**
+presence hidden, per-actor undo engine-shared, drag-position not persisted (no `set-layout` yet).
+**`@nube/ce-wiresheet` resolution:** the ext UI is standalone (own lockfile, `--ignore-workspace`, like
+proof-panel) and resolves the vendored package by vite ALIAS to its built `dist/` (react external in both
+builds → one React); `build.sh` builds the vendored dist first, then the remote. **Seam gap (no vendored
+edit):** the vendored `index.ts` doesn't re-export the `DecodedFrame`/`TopologyMsg`/… types or the wire-tag
+constants — recovered via `Parameters<StreamHandlers[...]>` + fixed protocol literals; a clean re-export is
+a tracked upstream S1 follow-up. **Tests:** 27 co-located vitest UNIT tests green (frame decode vectors ·
+full request-map coverage + loud-unmapped · arg translation · openStream cov→onFrame + no-watch degrade ·
+mount picker + empty state) + `vite build` (`dist/remoteEntry.js`) + the vendored `build:lib` + `tsc`
+clean. The live end-to-end path is proven MANUALLY against a live `ce-studio` (the `test:gateway` harness
+has no SSE/native-sidecar transport — thecrew/proof-panel punt live SSE to Playwright), not in the harness.
+Session [`ce-v1-s7`](sessions/control-engine/ce-v1-s7-session.md). **Next up:** S8 (e2e hardening + ship) —
+and the deferred verbs the unmapped-path errors name (`set-layout`, undo/redo, group/copy).
+
+---
+
+**Shipped earlier (2026-07-02): control-engine v1 — slice S6 (`control-engine.watch` live COV feed, branch
 `ce-v1`).** `control-engine.watch {appliance, scope?}` → `{series, subject}` surfaces CE's change-of-value
 stream as a workspace-scoped live feed. The sidecar re-encodes each already-decoded `rubix-ce` `CovEvent`
 to a **plumbing-agnostic JSON frame** (`{kind:"cov", ts, values:[{uid,v}], status?}` /

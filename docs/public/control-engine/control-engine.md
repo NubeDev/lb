@@ -8,7 +8,7 @@ It is **100% an extension** — no CE concept leaks into core crates. Scope (co-
 `rust/extensions/control-engine/docs/control-engine-scope.md`. The generic live-feed primitive S6 builds
 on: `docs/scope/extensions/extension-watch-scope.md`.
 
-## Shipped (v1: S1, S2, S3, S4, S5, S6)
+## Shipped (v1: S1, S2, S3, S4, S5, S6, S7)
 
 - **Graph reads (S3):** `control-engine.tree {appliance, node?, depth?}` → `{nodes, edges}` and
   `control-engine.schema {appliance}` → `{manifests}`, serving the engine's DTOs **verbatim** behind the
@@ -59,6 +59,29 @@ on: `docs/scope/extensions/extension-watch-scope.md`.
   **Plumbing:** the zero-core-change fallback (`ingest.write` onto a series) behind the same tool name +
   frame contract as the future generic extension-watch primitive — swappable without touching S7.
 
+- **Federated wiresheet page + `BridgeTransport` (S7):** a federated remote under
+  `rust/extensions/control-engine/ui/` mounts the vendored `@nube/ce-wiresheet` `CeEditor` wired to a
+  `BridgeTransport implements EngineTransport` (the S1 seam). The vendored package is **untouched** — the
+  transport is injected via `<CeEditor base transport={new BridgeTransport(bridge, appliance)} />`. The
+  browser never touches CE: the **request half** maps the wiresheet's `/api/v0` REST paths →
+  `control-engine.*` tools (tree · schema · add-node · patch · set/clear-override · add-edge · remove-node
+  · call-action), translating each body to the verb's arg shape (keyed node `{uid,kind}`, appliance always
+  injected) and unwrapping the result rest.ts expects; a path with no mapping throws a **loud error naming
+  it** (never a silent 404 — the signal a follow-up verb is owed). The **stream half** arms
+  `control-engine.watch {appliance}` then `bridge.watch('series.watch', {series})`; each S6 frame decodes
+  (browser-side) into the editor's `DecodedFrame`/`TopologyMsg` (the `>2^53`-as-string → bigint rule
+  mirrored). No `bridge.watch` (Tauri/tests) → a static canvas, no throw. The page adds an appliance picker
+  (`appliance.list`) + an empty-state `appliance.add` flow; the manifest `[ui] scope` lists exactly the
+  verbs the canvas emits, so a read-only grant yields a read-only canvas (bridge narrowing + host re-check).
+  **v1 gaps (absent-not-broken):** presence hidden, per-actor undo engine-shared, drag-position not
+  persisted (no `set-layout` verb yet). **`@nube/ce-wiresheet` resolution:** the ext UI is a standalone
+  package (own lockfile, `--ignore-workspace`, like proof-panel) resolving the vendored package by vite
+  ALIAS to its built `dist/` (react external in both builds → one React); `build.sh` builds the vendored
+  dist first, then the remote. A **seam gap** (the vendored `index.ts` doesn't re-export the
+  `DecodedFrame`/`TopologyMsg`/… types or the wire-tag constants) is resolved with no vendored edit —
+  types recovered via `Parameters<StreamHandlers[...]>`, tags declared as fixed protocol literals — and a
+  clean re-export is tracked as an upstream S1 follow-up.
+
 ## Platform primitives S4 added (generic, CE-ignorant — usable by any extension)
 
 - **Native sidecars are first-class in the MCP routing registry.** A `LocalDispatch` trait
@@ -85,6 +108,12 @@ on: `docs/scope/extensions/extension-watch-scope.md`.
   opt-in per-appliance historian (`history:[prop-uid]` mirrored to a durable series); swapping the live-COV
   fallback plumbing to the generic extension-watch primitive when it lands; and **S8** batching/buffering
   measured under load (v1 coalesces to CE's server-side tick only).
-- **S7** the vendored `@nube/ce-wiresheet` federated page over a `BridgeTransport` (the S1 seam).
+- **The wiresheet paths S7 does NOT back yet** (each throws a loud `UnmappedPathError` in the transport,
+  naming the follow-up verb owed): `set-layout` (position/name persistence on `PATCH /nodes/uid/{uid}`),
+  undo/redo (`/undo` `/redo` `/changelog`), grouping (`/group` `/ungroup` `/facets/*`), `/copy/nodes`,
+  `/restore`, bulk (`/bulknodes`), the edges-GET (`/edges`) and edge mutate (`/edge/uid/{uid}`) paths, and
+  the override BATCH (v1 maps only the first set/clear op). The end-to-end live proof (cloud UI editing a
+  `ce-studio` engine through the full bridge, incl. a live COV frame updating a rendered value) is a MANUAL
+  run — the `test:gateway` harness has no SSE/native-sidecar transport (S7's automated gate is unit tests).
 - A discovery layer that reads `ce_appliance` records to populate the remote-routing entry (S4 stands it
   in with `register_remote_extension` in tests).

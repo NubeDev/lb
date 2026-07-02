@@ -120,5 +120,37 @@ description = "Invoke a named action on a component; returns the action's {retur
 name        = "control-engine.watch"
 description = "Live COV feed for an appliance; arms a CE subscription onto a series. Returns {series, subject}."
 
+# S7 federated wiresheet page (ui-federation scope). The shell dynamic-imports `remoteEntry.js` and
+# calls `mount(el, ctx, bridge)`; the page mounts the vendored `CeEditor` wired to a `BridgeTransport`
+# that routes every canvas action over `bridge.call('control-engine.*')` + `bridge.watch('series.watch')`.
+# The browser never touches CE. `scope` lists EXACTLY the tools the page can emit — the shell narrows the
+# page bridge to `scope ∩ caller-grant` (ui_decl::narrow), then the host re-checks each call server-side,
+# so a read-only user (granted only the read + watch verbs) gets a read-only canvas: the write verbs fall
+# outside their grant and the bridge rejects them `out_of_scope` before they ever reach the host.
+[ui]
+entry = "remoteEntry.js"
+label = "Control Engine"
+icon  = "workflow"
+route = "/control-engine"
+scope = [
+    # Reads the canvas issues (structure + type palette).
+    "control-engine.tree",
+    "control-engine.schema",
+    # The appliance picker + empty-state add flow.
+    "control-engine.appliance.list",
+    "control-engine.appliance.add",
+    # The write verbs the canvas emits (each falls outside a read-only user's grant → read-only canvas).
+    "control-engine.add-node",
+    "control-engine.patch",
+    "control-engine.set-override",
+    "control-engine.clear-override",
+    "control-engine.add-edge",
+    "control-engine.remove-node",
+    "control-engine.call-action",
+    # The live COV feed: arm the watch, then read its series SSE.
+    "control-engine.watch",
+    "series.watch",
+]
+
 [visibility]
 class = "private"
