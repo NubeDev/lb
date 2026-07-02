@@ -10,6 +10,7 @@ use std::sync::Arc;
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_enabled, load_extension, Node};
 
+mod control_engine;
 mod external_agent;
 mod federation;
 mod github;
@@ -125,6 +126,8 @@ async fn main() -> anyhow::Result<()> {
     github::mount(node.clone()).await;
     // datasources role (federation native sidecar), env-gated by LB_FEDERATION_ENDPOINTS.
     federation::mount(node.clone()).await;
+    // control-engine bridge (native CE sidecar), env-gated by LB_CONTROL_ENGINE_BASE.
+    control_engine::mount(node.clone()).await;
     println!(
         "loaded hello: tools={:?} granted_caps={:?}",
         loaded.tools, loaded.granted_caps

@@ -5678,6 +5678,7 @@ dependencies = [
  "lb-store",
  "lb-supervisor",
  "lb-telemetry",
+ "serde_json",
  "tokio",
 ]
 
