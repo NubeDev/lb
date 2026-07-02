@@ -1,0 +1,61 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Wiresheet design tokens — the editor's SELF-CONTAINED palette.
+ *
+ * These are the ONLY visual knobs the editor reads (every color/font in the UI is
+ * `hsl(var(--token))` off this list). They're scoped to the `.ce-wiresheet` root
+ * class the editor puts on its container (and its portal root), so:
+ *   • the host app's palette can't leak in or be clobbered, and
+ *   • a host can RE-SKIN the editor by overriding any of these vars — e.g.
+ *       .ce-wiresheet { --card: 220 20% 14%; --cool: 280 80% 60%; }
+ *     or by passing inline `style={{ '--card': '...' }}` on the mount — WITHOUT
+ *     forking this repo. This is the wiresheet SDK's theming contract.
+ *
+ * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works). Dark by default;
+ * `.theme-light` flips to the light palette. Fonts fall back gracefully when the
+ * host hasn't loaded Geist.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* Dark defaults on :root too — so Tailwind's @theme (which resolves
+   `hsl(var(--card))` at :root) has the tokens, AND so the editor works even
+   before its `.ce-wiresheet` class mounts. `.ce-wiresheet` repeats them so the
+   scope is self-sufficient when a host overrides at :root. */
+:root,
+.ce-wiresheet {
+  --background: 234 18% 6%;
+  --card: 232 15% 9%;
+  --secondary: 230 14% 12%;
+  --border: 230 10% 18%;
+  --input: 230 10% 18%;
+  --foreground: 220 16% 93%;
+  --muted-foreground: 220 8% 56%;
+  --muted: 220 8% 56%;
+
+  /* accents */
+  --cool: 200 86% 64%;   /* wires / primary accent (blue) */
+  --green: 150 64% 52%;  /* ok / boolean-true */
+  --amber: 32 92% 60%;   /* warning / override */
+  --crit: 357 84% 66%;   /* fault / critical */
+  --r1: 258 84% 74%;     /* brand purple */
+  --r2: 174 70% 56%;     /* brand teal */
+
+  --font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+.ce-wiresheet.theme-light {
+  --background: 240 20% 99%;
+  --card: 0 0% 100%;
+  --secondary: 240 18% 97%;
+  --border: 240 14% 88%;
+  --input: 240 14% 88%;
+  --foreground: 234 22% 14%;
+  --muted-foreground: 235 12% 42%;
+  --muted: 235 12% 42%;
+
+  --cool: 200 80% 46%;
+  --green: 150 58% 38%;
+  --amber: 32 88% 46%;
+  --crit: 357 74% 52%;
+  --r1: 258 72% 58%;
+  --r2: 174 64% 38%;
+}
