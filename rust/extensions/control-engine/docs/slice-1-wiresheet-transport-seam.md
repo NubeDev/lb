@@ -116,10 +116,40 @@ consume decoded messages and typed REST wrappers.
 - **Exit gate:** `CeEditor` accepts an injected transport; a test renders the editor
   against `MockTransport` with zero `fetch`/`WebSocket` globals touched.
 
-## Open questions (resolve in-slice)
+## Open questions (RESOLVED in-slice)
 
-- Does the schema message arrive only on the WS today (bootstrap), and must `request`
-  also expose `GET /schema` for the palette? (Both, per `ControlEngine::get_schema` —
-  confirm which one the palette actually reads.)
-- Undo/redo + changelog endpoints (`X-Actor-Id` addressed): confirm the full list of
-  rest.ts wrappers so `request` covers every call site — grep `http(` on the branch.
+- **Schema: WS bootstrap message vs `GET /schema` — are they the same, and does the
+  seam cover the palette read?** They are TWO DISTINCT things, and the seam covers both:
+  - The WS `schema` message (`SchemaMessage` in `engine-types.ts`) is a *slim value-plane
+    decode table only* — `{ uid, dataType, statusFlags }` per streamable property. It rides
+    the stream (`StreamHandlers.onSchema`) and is how the client seeds its render/decode
+    state at bootstrap. It carries NO component-type catalogue.
+  - `GET /schema` (`getSchema()` in `rest.ts`) is the *add-node palette / type catalogue* —
+    every extension's component defs, action signatures, per-property choices. The palette
+    load (`CeEditor` `loadPalette`) and `choices.ts` read THIS, via a normal typed REST
+    wrapper. Confirmed by grep: the palette reads `getSchema()`, never the WS message.
+  - Consequence for the seam: `GET /schema` was a raw `fetch` in the old code; it now goes
+    through `transport.request()` like every other verb (see the `getSchema()` comment in
+    `rest.ts`), so a bridge transport needs **no second raw-fetch path**. There is now zero
+    `fetch(` in `CeEditor.tsx` — the seam is complete.
+- **Full list of `rest.ts` `http()` call sites the seam must cover (incl. undo/redo +
+  changelog `X-Actor-Id`).** Every typed wrapper in `rest.ts` funnels through the single
+  private `http<T>()`, which is the ONE place that calls `transport.request()` (attaching
+  `session`/`actor`/`gesture`). So the seam covers all of them by construction — read,
+  write, override, action-dispatch, edges, facets/group, bulk, copy/restore, extensions,
+  `getSchema`, and undo/redo/changelog. Grep `http(` on the branch returns only call sites
+  inside `rest.ts`; no wrapper bypasses it.
+
+## Implementation notes (what shipped)
+
+- `ws.ts` was **deleted**: its `CeRestWs` socket-ownership machinery (session resume,
+  BroadcastChannel dup-tab guard, reconnect/backoff, binary decode call-site) moved
+  verbatim into `DirectStream`/`DirectTransport` in `transport-direct.ts`. `defaultWsUrl`
+  and `wsUrlFromBase` moved with it (re-exported from `index.ts`).
+- `CeEditor` gained the optional `transport?: EngineTransport` prop (default
+  `new DirectTransport()`), a module-level `streamRef` singleton (replacing the old
+  `wsClient`), and drives the stream through `StreamHandlers`. Presence stays direct-only,
+  wired as an optional second arg to `openStream` that non-direct transports ignore.
+- Conformance/exit-gate test: `lib/transport.test.tsx` renders `CeEditor` against a
+  `MockTransport`, proves it renders a seeded tree + applies a decoded value frame, and
+  asserts `fetch`/`WebSocket` globals are never touched (spies that throw on any call).

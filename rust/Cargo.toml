@@ -40,6 +40,7 @@ members = [
     "crates/telemetry",
     "crates/undo",
     "crates/viz",
+    "extensions/control-engine",
     "extensions/echo-sidecar",
     "extensions/federation",
     "extensions/fleet-monitor",
