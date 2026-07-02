@@ -12,13 +12,16 @@ import { BarGaugeOptionsEditor } from "./options/BarGaugeOptionsEditor";
 import { BarChartOptionsEditor } from "./options/BarChartOptionsEditor";
 import { PieChartOptionsEditor } from "./options/PieChartOptionsEditor";
 import { TableOptionsEditor } from "./options/TableOptionsEditor";
+import { GenUiAuthorTab } from "./GenUiAuthorTab";
 
 interface Props {
   state: EditorState;
   patch: (next: Partial<EditorState>) => void;
+  /** Workspace — needed by the genui "AI widget" author tab to invoke the agent. */
+  ws: string;
 }
 
-export function PanelOptionsTab({ state, patch }: Props) {
+export function PanelOptionsTab({ state, patch, ws }: Props) {
   // `state.view` may be the canonical id already (PanelEditor passes the canonicalized `stateC`); guard
   // anyway so a raw `chart` alias routes to timeseries.
   const view = canonicalView((state.view || "timeseries") as View);
@@ -37,6 +40,9 @@ export function PanelOptionsTab({ state, patch }: Props) {
       return <PieChartOptionsEditor state={state} patch={patch} />;
     case "table":
       return <TableOptionsEditor state={state} patch={patch} />;
+    case "genui":
+      // The "AI widget" authoring surface: prompt → agent → live preview → accept → options.genui.
+      return <GenUiAuthorTab state={state} patch={patch} ws={ws} />;
     default:
       return (
         <div className="py-3 text-xs text-muted" aria-label="panel options tab">

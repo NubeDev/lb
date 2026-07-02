@@ -27,6 +27,7 @@ use super::activate::{activate_skill, SKILL_ACTIVATE};
 use super::catalog::render_catalog;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
+use super::memory::memory_index_for_injection;
 use super::model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall};
 use super::policy::{evaluate, load_policy, Effect};
 use super::rehydrate::{rehydrate, summarize};
@@ -114,6 +115,18 @@ pub async fn run_session<M: ModelAccess>(
     // ungranted skill never reaches the rendered text.
     if let Some(catalog) = render_catalog(node, &agent, ws).await? {
         state.messages.push(("system".into(), catalog));
+    }
+
+    // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the persona + skill
+    // catalog, framed as recalled background (not instructions). Read under an ON-BEHALF-OF principal
+    // — the CALLER's sub (so the `member:{user}` scope resolves to the human behind the run, the same
+    // identity-based contract as the skill/doc gate-3 in `substrate.rs`) with the AGENT's intersected
+    // caps (so the read can never widen). Using the bare `agent:session` sub would resolve
+    // `member:agent:session` and miss the caller's own memory. Best-effort (a deny/empty → no
+    // injection, never a run failure); not persisted, so each run/resume re-injects cleanly.
+    let on_behalf = caller.derive(caller.sub(), agent_caps.to_vec());
+    if let Some(index) = memory_index_for_injection(&node.store, &on_behalf, ws).await {
+        state.messages.push(("system".into(), index));
     }
 
     // RESUME: re-inject the bodies of any skills activated in a PRIOR run segment (Part 5 survives

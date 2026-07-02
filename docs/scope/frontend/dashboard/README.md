@@ -48,6 +48,15 @@ because existing session docs point at them; new dashboard notes should live her
    dashboard (first new consumer: the `thecrew` graphics-canvas extension). Headless-first + a
    dependency-injected `SourceLoaders` seam so one picker works from both the shell (gateway/Tauri) and an
    extension (its bridge); dashboard migrates first (parity), thecrew second. Zero core additions.
+3g. [`../../genui/genui-scope.md`](../../genui/genui-scope.md) — the **AI-authored widget**: a
+   `view:"genui"` cell whose layout the workspace agent designs from a prompt (streamed live preview
+   over the RunEvent SSE; the emission is parsed/normalized **once at accept** and the versioned,
+   typed IR is what `dashboard.save` persists), rendered from a reusable `@nube/genui` package
+   (A2UI-shaped IR + our own catalog renderer; OpenUI-Lang authoring adapter in v1) in the sandboxed
+   iframe tier with a concrete in-process promotion checklist, with steady-state data through
+   ordinary v3 `sources[]` — the agent authors, it never serves. Lives as its own top-level topic
+   because channels rich responses and other surfaces reuse the package (the `source-picker`
+   extraction precedent).
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 

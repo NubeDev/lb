@@ -64,17 +64,19 @@ mod workflow;
 mod workspaces;
 
 pub use agent::{
-    activate_skill, agent_call_key, agent_config_get, agent_config_set, call_agent_tool,
-    cancel_run, decision_id, evaluate_policy, format_catalog, invoke, invoke_descriptor,
-    invoke_remote, invoke_via_runtime, list_runtimes, load_decision, load_policy, rehydrate,
-    render_catalog, resolve_effective_runtime, resolve_effective_runtime_id, resume, run_session,
-    save_policy, serve_agent, settle_decision, Activation, AgentConfig, AgentDecision, AgentError,
-    AgentInvokeReply, AgentInvokeRequest, AgentRuntime, AgentServer, AllowedTool, ArgMatch,
-    CallOutcome, DecisionState, Effect, ErasedModel, InHouseRuntime, Invocation, LoopState,
+    activate_skill, agent_call_key, agent_config_get, agent_config_set, call_agent_memory_tool,
+    call_agent_tool, cancel_run, decision_id, evaluate_policy, format_catalog, invoke,
+    invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes, load_decision,
+    load_policy, memory_delete, memory_get, memory_index_for_injection, memory_list, memory_set,
+    rehydrate, render_catalog, render_index, resolve_effective_runtime,
+    resolve_effective_runtime_id, resume, run_session, save_policy, serve_agent, settle_decision,
+    Activation, AgentConfig, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest,
+    AgentRuntime, AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect,
+    ErasedModel, InHouseRuntime, Invocation, LoopState, Memory, MemoryKind, MemoryScope,
     ModelAccess, ModelEndpointPatch, Policy, ProposedCall, Rule, RunContext, RuntimeRegistry,
     SettleOutcome, Substrate, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
-    DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS,
-    POLICY_TABLE, SKILL_ACTIVATE,
+    DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP,
+    MAX_BODY, MAX_DESCRIPTION, MAX_STEPS, MEMORY_HEADER, POLICY_TABLE, SKILL_ACTIVATE,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
@@ -89,11 +91,14 @@ pub use apikey::{
     TOMBSTONE_STATUS as APIKEY_TOMBSTONE_STATUS,
 };
 pub use assets::{
-    add_member, backlinks, call_asset_tool, delete_asset, delete_doc, get_asset, get_doc,
-    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset,
-    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError, SkillCatalogEntry,
-    MAX_ASSET_BYTES,
+    add_member, backlinks, call_asset_tool, delete_asset, delete_doc, deprecate_skill, get_asset,
+    get_doc, grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill,
+    put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError,
+    SkillCatalogEntry, SkillTier, MAX_ASSET_BYTES,
 };
+// Core-skill boot seeder (core-skills scope): the node binary calls `seed_core_skills` at boot to
+// write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
+// through `lb_host` without depending on `lb_assets` directly.
 pub use authz::{
     authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
     revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
@@ -140,6 +145,7 @@ pub use flows::{
     spawn_flow_reactors, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
+pub use lb_assets::{seed_core_skills, CORE_SKILLS_NS};
 /// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,
 /// set its durable status, and drive it — so a test can prove the drive halts on a pre-written
 /// `cancelled` without a spawn race.
@@ -261,8 +267,9 @@ pub use workflow::{
     TRIAGE_CHANNEL,
 };
 pub use workspaces::{
-    call_workspaces_tool, workspace_create, workspace_delete, workspace_list, workspace_purge,
-    workspace_rename, WorkspaceRecord, WorkspaceStatus, WorkspacesError,
+    call_workspaces_tool, grant_default_core_skills, resolve_default_core_skills, workspace_create,
+    workspace_delete, workspace_list, workspace_purge, workspace_rename, WorkspaceRecord,
+    WorkspaceStatus, WorkspacesError, DEFAULT_CORE_SKILLS,
 };
 // The workflow **directory** register/deregister verbs — prefixed at the crate boundary so the public
 // API names the concept (a bare `register` would be ambiguous next to `register_remote_extension`).

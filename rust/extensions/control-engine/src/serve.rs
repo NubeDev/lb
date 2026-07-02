@@ -133,9 +133,35 @@ async fn dispatch(
         return tools::dispatch_write(&host, &*bound.engine, &bound.instance, tool, input).await;
     }
 
+    // `control-engine.tree` (REAL appliance) reads via a TOLERANT raw JSON fetch, NOT
+    // the crate's typed `get_tree`: `rubix-ce`'s strict `EdgeDto` (required
+    // `source_uid`/`target_uid`) fails the whole decode when the engine emits a
+    // dangling edge, blanking the canvas. The wiresheet consumes the `{nodes,edges}`
+    // JSON verbatim, so the strict typed hop only adds a crash (see `tools::raw_tree`).
+    // The fake path keeps the typed `get_tree` — it drives the trait, not real HTTP.
+    if tool == "control-engine.tree" && !is_fake() {
+        return tools::raw_tree::run(&base, input)
+            .await
+            .map_err(HostError::BadResponse);
+    }
+
     tools::dispatch(&*bound.engine, &bound.instance, tool, input)
         .await
         .map_err(HostError::BadResponse)
+}
+
+/// True when the sanctioned in-memory stub is serving (`ce-fake` feature +
+/// `LB_CE_FAKE=1`) — the host integration/routing test path. Always `false` in a
+/// shipped binary, so the real read always takes the tolerant raw fetch.
+fn is_fake() -> bool {
+    #[cfg(feature = "ce-fake")]
+    {
+        return std::env::var("LB_CE_FAKE").as_deref() == Ok("1");
+    }
+    #[cfg(not(feature = "ce-fake"))]
+    {
+        false
+    }
 }
 
 /// Resolve a graph verb's `appliance` selector to a CE base. Under the `ce-fake` feature + `LB_CE_FAKE=1`

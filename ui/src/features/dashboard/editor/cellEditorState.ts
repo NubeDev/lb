@@ -72,6 +72,9 @@ export interface EditorState {
  *  groups, not `extraOptions`. A stale v2 key (`unit`/`min`/`max`) stays in `extraOptions` (carry). */
 const OWNED_OPTION_KEYS = new Set([
   "sql",
+  // the genui widget's persisted IR + authoring meta (`{ v, ir, meta? }`) — owned so the AI-widget
+  // author tab's write round-trips through the typed group, not `extraOptions`.
+  "genui",
   // the shared X/Y plot spec (viz x/y builder) — a `PlotSpec` picking axes + chart type, rendered by
   // the shared `PlotChart` for the cartesian chart views. Owned so it round-trips through the editor.
   "plot",

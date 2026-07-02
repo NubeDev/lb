@@ -12,8 +12,10 @@
 use lb_auth::Principal;
 
 use super::authorize::authorize_invoke;
+use super::catalog::render_catalog;
 use super::error::AgentError;
 use super::in_house::DEFAULT_RUNTIME;
+use super::memory::memory_index_for_injection;
 use super::model_access::AllowedTool;
 use super::registry::RuntimeRegistry;
 use super::resolve_default::resolve_effective_runtime;
@@ -71,6 +73,8 @@ pub async fn invoke_via_runtime(
 
     // Bake substrate into the goal for the DEFAULT (in-house) runtime only — behaviourally identical
     // to `invoke`. The S4 gates (membership/ownership/grant) fire under the caller (see substrate.rs).
+    // The persona rides this SAME grant-gated `load_skill` loader (core-skills scope: "unify
+    // persona_skill onto the loader path" — a pinned catalog entry, one loader not two).
     let mut goal = goal.to_string();
     if runtime.id() == DEFAULT_RUNTIME {
         if let Some(skill_id) = substrate.skill {
@@ -81,6 +85,31 @@ pub async fn invoke_via_runtime(
             let content = read_substrate_doc(&node.store, caller, agent_caps, ws, doc_id).await?;
             goal = format!("{goal}\n\n[doc {doc_id}]\n{content}");
         }
+        // The in-house loop injects its OWN granted-skills catalog once per run (run.rs — it can
+        // `skill.activate` mid-run), so we do NOT inject it here for the default runtime.
+    } else {
+        // EXTERNAL runtime catalog injection (core-skills scope: "both runtimes list granted skills
+        // … and inject name+description only"). An external agent's only injection channel is the
+        // goal (it drives `ctx.goal` verbatim over `exec --json`), and it cannot call the
+        // loop-internal `skill.activate`; so we fold the compact catalog into the goal here, under the
+        // DERIVED principal (`caller ∩ agent`) — an ungranted/unreadable skill never reaches the text
+        // (render_catalog is grant- + ws-gated, empty catalog → no injection). Bodies stay on demand
+        // via the granted `load_skill` tool in the profile's `granted_tools`.
+        let agent = caller.derive("agent:session", agent_caps.to_vec());
+        if let Some(catalog) = render_catalog(node, &agent, ws).await? {
+            goal = format!("{goal}\n\n{catalog}");
+        }
+        // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the skill catalog,
+        // under an ON-BEHALF-OF principal — the CALLER's sub (so `member:{user}` resolves to the human
+        // behind the run) with the agent's intersected caps (never widening). Best-effort — a
+        // deny/empty is simply no injection. An external run RECALLS by default; whether it may `set`
+        // is its profile's `granted_tools` opt-in (the read/inject is not a write grant).
+        let on_behalf = caller.derive(caller.sub(), agent_caps.to_vec());
+        if let Some(index) = memory_index_for_injection(&node.store, &on_behalf, ws).await {
+            goal = format!("{goal}\n\n{index}");
+        }
+        // The persona for an external run is a granted skill it loads itself via `load_skill`
+        // (dispatch.rs module docs) — the same loader, pinned by the profile, not a second path.
     }
 
     let ctx = RunContext {

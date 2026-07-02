@@ -13,6 +13,7 @@
 //! the verb in its own workspace to read/extend the directory. One verb per file (FILE-LAYOUT §3).
 
 mod create;
+mod default_skills;
 mod delete;
 mod error;
 mod list;
@@ -21,6 +22,9 @@ mod rename;
 mod tool;
 
 pub use create::workspace_create;
+pub use default_skills::{
+    grant_default_core_skills, resolve_default_core_skills, DEFAULT_CORE_SKILLS,
+};
 pub use delete::{workspace_delete, workspace_purge};
 pub use error::WorkspacesError;
 pub use list::workspace_list;

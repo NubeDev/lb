@@ -9,7 +9,7 @@ import {
   applyEdgeChanges,
   applyNodeChanges,
   useReactFlow,
-  useStore as useRfStore,
+  useNodesInitialized,
   type Connection,
   type Edge as RfEdge,
   type EdgeChange,
@@ -31,8 +31,12 @@ import { createPortal } from "react-dom";
 // Selected-edge highlight. RF adds .selected to .react-flow__edge when the
 // edge's `selected` flag is true; the default stylesheet's selected color is
 // hard to see on a dark canvas, so we paint a brighter stroke + drop shadow.
+// SCOPED under `.ce-wiresheet` — a `<style>` applies its rules DOCUMENT-WIDE no
+// matter where the element sits, so an unscoped `.react-flow__edge` here would
+// re-color the HOST shell's own React Flow canvases (system/data/flows views).
+// This is the slice-9 federated-CSS contract for a JS-injected style string.
 const EDGE_SELECTED_CSS = `
-  .react-flow__edge.selected .react-flow__edge-path {
+  .ce-wiresheet .react-flow__edge.selected .react-flow__edge-path {
     stroke: hsl(var(--amber)) !important;
     stroke-width: 2.5 !important;
     filter: drop-shadow(0 0 4px rgba(255,209,102,0.6));
@@ -215,10 +219,15 @@ interface Crumb {
 // palette inside the canvas — e.g. white `--card` nodes while `<html>` is dark.
 // Mirror the document's actual theme class onto colorMode so they always agree.
 function useDocumentColorMode(): "dark" | "light" {
+  // Match the HOST theme convention: it toggles a `.dark` class on <html>; light
+  // mode is the ABSENCE of `.dark` (there is no `.light` class — see
+  // ui/src/lib/theme/theme-dom.ts). Reading `.light` (as before) never matched, so
+  // the canvas was stuck dark. Default (neither class present) → light, matching the
+  // host's default; the editor root's `theme-light` palette flip keys off this.
   const read = (): "dark" | "light" =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("light")
-      ? "light"
-      : "dark"; // default (`:root`) is the dark palette
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
   const [mode, setMode] = useState<"dark" | "light">(read);
   useEffect(() => {
     const el = document.documentElement;
@@ -1347,16 +1356,18 @@ function Inner({ base, transport }: { base: string; transport: EngineTransport }
   // handle) is skipped instead of blocking EVERY edge from rendering. Returns a
   // stable string key (the ready edge ids) so the selector only re-renders when
   // the ready SET changes, not on every store tick.
-  const readyKey = useRfStore((s) => {
-    if (!pendingEdges) return "";
-    const lookup = (s as unknown as { nodeLookup: Map<string, unknown> }).nodeLookup;
-    if (!lookup) return "";
-    const ids: string[] = [];
+  // Which pending edges have BOTH endpoints' handles registered in React Flow's internal
+  // store — computed FRESH (not via a `useStore` selector) so it never reads a stale
+  // subscription snapshot. `rf.getInternalNode(id).internals.handleBounds` is the same
+  // `{ source:[{id}], target:[{id}] }` RF itself uses to place an edge.
+  const readyEdgeIds = useCallback((): Set<string> => {
+    const ready = new Set<string>();
+    if (!pendingEdges) return ready;
     for (const e of pendingEdges) {
-      const src = lookup.get(e.source) as
+      const src = rf.getInternalNode(e.source) as
         | { internals?: { handleBounds?: { source?: { id?: string | null }[] | null } } }
         | undefined;
-      const dst = lookup.get(e.target) as
+      const dst = rf.getInternalNode(e.target) as
         | { internals?: { handleBounds?: { target?: { id?: string | null }[] | null } } }
         | undefined;
       const srcBounds = src?.internals?.handleBounds?.source;
@@ -1364,24 +1375,58 @@ function Inner({ base, transport }: { base: string; transport: EngineTransport }
       if (!srcBounds || !dstBounds) continue;
       if (!srcBounds.some((h) => h.id === e.sourceHandle)) continue;
       if (!dstBounds.some((h) => h.id === e.targetHandle)) continue;
-      ids.push(e.id);
+      ready.add(e.id);
     }
-    return ids.join(",");
-  });
+    return ready;
+  }, [pendingEdges, rf]);
+  // React Flow flips this to `true` once every node is measured and its handles are
+  // registered. On a cold federated-bundle load, handle registration can land AFTER a
+  // fixed timer would fire — the previous `useStore(readyKey)` selector never re-fired to
+  // a non-empty value and the grace drop below raced it, so edges silently vanished.
+  // Depending the promotion on `nodesInitialized` guarantees the effect re-runs the
+  // moment RF finishes wiring handles, and we read the bounds FRESH inside it. See
+  // debugging/frontend/ce-edges-never-render-readykey-race.md.
+  const nodesInitialized = useNodesInitialized();
   useEffect(() => {
     if (!pendingEdges) return;
-    const ready = new Set(readyKey ? readyKey.split(",") : []);
-    setEdges(pendingEdges.filter((e) => ready.has(e.id)));
-    if (ready.size === pendingEdges.length) setPendingEdges(null);
-  }, [readyKey, pendingEdges]);
-  useEffect(() => {
-    // Grace period: the ready edges are already live; stop tracking so any
-    // still-unresolved (malformed) edges are dropped rather than pinning
-    // pendingEdges and re-running the selector on every store change.
-    if (!pendingEdges) return;
-    const t = window.setTimeout(() => setPendingEdges(null), 1500);
-    return () => window.clearTimeout(t);
-  }, [pendingEdges]);
+    // Promote as handles register. `nodesInitialized` re-runs this the moment RF finishes
+    // wiring handles, but handle bounds for a freshly-reloaded set can still populate a
+    // frame or two later — so we also POLL on rAF until every pending edge is live (or the
+    // grace deadline drops the rest as malformed). This replaces the old `useStore`
+    // selector that never re-fired on a cold load and let edges silently vanish.
+    let raf = 0;
+    let deadline = false;
+    const tick = () => {
+      const ready = readyEdgeIds();
+      setEdges((prev) => {
+        const live = new Set(prev.map((e) => e.id));
+        const add = pendingEdges.filter((e) => ready.has(e.id) && !live.has(e.id));
+        return add.length ? [...prev, ...add] : prev;
+      });
+      if (ready.size === pendingEdges.length) {
+        setPendingEdges(null);
+        return;
+      }
+      if (!deadline) raf = window.requestAnimationFrame(tick);
+    };
+    tick();
+    // Grace deadline: once RF reports the nodes initialized, any edge still unresolved is
+    // malformed (e.g. an output→output edge the engine persisted) — stop polling and drop
+    // it. Before init, "unresolved" just means "handles not registered yet", so the clock
+    // only starts after init (a slow cold load gets its full measurement time).
+    let graceTimer = 0;
+    if (nodesInitialized) {
+      graceTimer = window.setTimeout(() => {
+        deadline = true;
+        window.cancelAnimationFrame(raf);
+        setPendingEdges(null);
+      }, 1500);
+    }
+    return () => {
+      window.cancelAnimationFrame(raf);
+      if (graceTimer) window.clearTimeout(graceTimer);
+    };
+  }, [pendingEdges, nodesInitialized, readyEdgeIds]);
 
   // Available component types grouped by extension (the palette). GET /schema
   // (via the transport seam's request(), not a second raw-fetch path — see

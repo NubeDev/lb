@@ -3,6 +3,27 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — frontend: GenUI — AI-authored dashboard widgets over one generative-UI layer)
+
+One reusable package `@nube/genui` (a versioned, A2UI-*shaped* IR + a trusted catalog renderer + the
+OpenUI-Lang authoring adapter — the ONE new external dep `@openuidev/lang-core`) with the
+`view:"genui"` dashboard widget as its first tenant. The workspace agent designs a widget from a
+natural-language prompt (`agent.invoke` under `skill:core.genui-widget` → run stream → live Lang
+preview → **accept parses/normalizes/validates once** → the typed IR persists on the cell); it renders
+live with **no model in the render path** — data flows through ordinary v3 `sources[]` via the shipped
+`usePanelData`. Two package strata (render vs authoring) on two entries so a viewer never bundles the
+parser. **A2UI patterns adopted, Google's packages rejected** (no A2UI adapter in v1). **Trust tier:
+in-process** — the scope's "iframe" decision was amended (the shipped `WidgetIframe` sandbox can't host
+React; genui widgets are admin-authored so `dashboard.save` is the trust gate; the catalog IR is
+trusted data satisfying the 5 promotion-checklist items, CI-tested). The **one** host change is a
+validation branch inside `dashboard.save` for `view:"genui"` cells (IR `v` known, ≤8 KB, every
+component in the generated catalog JSON) — no new verb/cap/table, giving headless MCP authors the same
+loud rejection. A generated skill (`gen:skill` renders the catalog block + the host's
+`genui_catalog.json`; CI freshness gate). Tests: package unit ×42, host ×8 (incl. capability-deny +
+workspace-isolation), gateway integration ×4 (save→reload→render-without-adapter, save-time rejection,
+empty-source v3 round-trip). Deferred with named triggers: the A2UI JSONL adapter, the channel tenant,
+IR patch-line refine. See [`genui/genui.md`](genui/genui.md).
+
 ## Shipped (post-S10 — frontend: graphics-canvas phases 1–2 — the `thecrew` extension)
 
 The proven playground lifted into a real, publishable **100% UI extension** (`rust/extensions/thecrew/`)
@@ -652,6 +673,19 @@ A vertical slice through every layer, building the asset substrate the AI workfl
 - **Skills as versioned, grant-gated assets** — `skill:{id}@{version}` immutable per version
   (rollback = a prior version); `load_skill` returns the body **only when the workspace granted the
   skill** (`grant:skill/{id}` relation) — the §6.12 "load only when granted" rule. See `skills/skills.md`.
+- **Agent memory — durable, access-walled** (2026-07-03) — the workspace agent's learned knowledge
+  in the MEMORY.md shape: a SCHEMAFULL `agent_memory` table keyed `{ws, scope, slug}` (scopes
+  `workspace` + `member:{user}`, the member scope derived from the principal — never an argument),
+  four verbs `agent.memory.list|get|set|delete` (one cap each + a distinct workspace-scope write
+  gate), a derived index injected at session start into both runtimes (framed as recalled background),
+  bounds (desc ≤ 120, body ≤ 8 KB) + a best-effort secret lint. Memory changes quality, never
+  authority. See `agent-memory/agent-memory.md`.
+- **Skills — the core (developer) tier** (2026-07-03) — a second tier alongside user skills:
+  `docs/skills/*/SKILL.md` embedded at build time, seeded at boot as immutable
+  `skill:core.<name>@<node-version>` in a reserved namespace (`_lb_skills`), read-only to users
+  (`put`/`deprecate` reject `core.*`), resolved through the SAME grant gate (no bypass). Adds
+  `assets.deprecate_skill` (soft delete), `list_skills` tier/description rows, a default grant set at
+  workspace creation, and granted-catalog injection into both agent runtimes. See `skills/skills.md`.
 - **Extension install records** — `install_extension` persists `granted = requested ∩ admin_approved`
   as an `install:{ext_id}` record (closing the S1 deferral); `installed` reads it back,
   workspace-isolated. See `extensions/extensions.md`.

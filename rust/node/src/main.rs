@@ -99,6 +99,38 @@ async fn main() -> anyhow::Result<()> {
         eprintln!("boot seed for ws={ws} user={seed_user} failed: {e}");
     }
 
+    // CORE-SKILL SEED (core-skills scope): write the embedded `docs/skills/*/SKILL.md` corpus into
+    // the reserved system namespace as immutable `skill:core.<name>@<node-version>` records. Idempotent
+    // — an already-seeded version is a no-op, so this runs every boot; a node upgrade (a new
+    // CARGO_PKG_VERSION) seeds the new versions and leaves the old for rollback. The boot seeder is the
+    // ONLY writer of that namespace. `env!("CARGO_PKG_VERSION")` is the node build version.
+    let node_version = env!("CARGO_PKG_VERSION");
+    let boot_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match lb_host::seed_core_skills(&node.store, node_version, boot_ts).await {
+        Ok(ids) => println!(
+            "boot: seeded {} core skills @{node_version} ({:?})",
+            ids.len(),
+            ids
+        ),
+        Err(e) => eprintln!("boot: core-skill seed failed: {e}"),
+    }
+
+    // DEFAULT CORE-SKILL GRANTS for the boot workspace (core-skills scope): `workspace_create` applies
+    // the default set on a genuinely-new workspace, but the dev boot workspace is seeded directly (not
+    // through that verb), so grant the resolved set here too. The set is node config —
+    // `LB_DEFAULT_CORE_SKILLS` (comma-separated ids; empty ⇒ none) overrides the compiled-in read-only
+    // defaults. Best-effort + idempotent (each is a revocable `grant:skill/{id}` edge).
+    let default_skills = lb_host::resolve_default_core_skills(
+        std::env::var("LB_DEFAULT_CORE_SKILLS").ok().as_deref(),
+    );
+    lb_host::grant_default_core_skills(&node.store, &ws, &default_skills).await;
+    if !default_skills.is_empty() {
+        println!("boot: default core-skill grants for ws={ws}: {default_skills:?}");
+    }
+
     // FLOW REACTOR TICK: drive the cron/reconcile scans on a cadence so a `mode:"cron"` trigger
     // actually fires on a running node (the scans were previously only invoked from tests — a flow
     // armed in the UI never fired). One detached owner per node, scanning the configured workspace.

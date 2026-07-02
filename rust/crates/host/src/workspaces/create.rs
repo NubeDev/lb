@@ -15,6 +15,7 @@ use lb_authz as raw;
 use lb_mcp::authorize_tool;
 use lb_store::{read, write, Store};
 
+use super::default_skills::{grant_default_core_skills, DEFAULT_CORE_SKILLS};
 use super::error::WorkspacesError;
 use super::model::{WorkspaceRecord, TABLE, TOMBSTONE, WORKSPACES_NS};
 
@@ -56,5 +57,13 @@ pub async fn workspace_create(
         let _ = raw::grant_assign(store, ws, &subject, "role:member").await;
         let _ = raw::grant_assign(store, ws, &subject, "role:workspace-admin").await;
     }
+    // Default core-skill grant set (core-skills scope): a FRESH workspace's agent is useful out of the
+    // box. We reach this branch only on genuine first creation (the membership check above early-returns
+    // an already-existing workspace), so a later admin *revoke* is never undone by a re-create. The
+    // compiled-in read-only defaults (`core.lb-cli`/`core.query`/`core.store-read`); the binary may
+    // widen the set via `LB_DEFAULT_CORE_SKILLS` on its own seeded workspace. Best-effort, like the
+    // membership bootstrap — each is an ordinary, revocable `grant:skill/{id}` edge.
+    let defaults: Vec<String> = DEFAULT_CORE_SKILLS.iter().map(|s| s.to_string()).collect();
+    grant_default_core_skills(store, ws, &defaults).await;
     Ok(record)
 }

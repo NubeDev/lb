@@ -121,6 +121,25 @@ run("BridgeTransport against a live CE engine", () => {
     expect(data.nodes.length).toBeGreaterThan(0);
   }, 20_000);
 
+  // Regression for the `source_uid` codec crash (docs/debugging/frontend/
+  // ce-tree-missing-source-uid-blanks-canvas.md): a real engine emits camelCase edge
+  // keys (`sourceUid`), which the crate's snake_case `EdgeDto` rejected → blank canvas.
+  // The tolerant raw fetch must return the live graph WITH its edges, camelCase intact.
+  it("GET /nodes?withEdges=true returns real camelCase edges (no source_uid crash)", async () => {
+    const data = (await transport.request({
+      method: "GET",
+      path: "/nodes?depth=1&withEdges=true",
+    })) as { nodes: unknown[]; edges: Array<Record<string, unknown>> };
+    expect(Array.isArray(data.edges)).toBe(true);
+    // The seeded ce-studio graph wires random.out → dewpoint.rh, so at least one edge.
+    expect(data.edges.length).toBeGreaterThan(0);
+    // The edge is the RAW engine shape the wiresheet's `buildRfEdges` reads: camelCase
+    // `sourceUid`/`targetUid` (NOT the crate's snake_case), passed through untouched.
+    const e = data.edges[0];
+    expect(typeof e.sourceUid).toBe("number");
+    expect(typeof e.targetUid).toBe("number");
+  }, 20_000);
+
   it("GET /schema returns the live type catalogue (the add-node palette)", async () => {
     const data = (await transport.request({ method: "GET", path: "/schema" })) as {
       manifests?: unknown[];

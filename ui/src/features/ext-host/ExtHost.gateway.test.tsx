@@ -83,4 +83,23 @@ describe("the host-mediated bridge", () => {
     // real gateway in the Rust mcp-route tests (role/gateway/tests). Here the out-of-scope rejection
     // is pure local logic, asserted directly.
   });
+
+  it("watch() gates series.watch on scope and requires a series arg (no-op otherwise)", () => {
+    // Without the `series.watch` grant, watch() is a no-op unsubscribe — the CE canvas then degrades to a
+    // static (no live values) feed rather than opening an ungranted stream. This is the fix for the
+    // "disconnected / no values" symptom: the shell bridge now HAS a watch, so a granted page streams.
+    const ungranted = makeBridge(["control-engine.tree"]);
+    expect(typeof ungranted.watch("series.watch", { series: "s1" }, () => {})).toBe("function");
+
+    const granted = makeBridge(["series.watch"]);
+    // A non-series verb, an empty series, and a missing series arg all no-op (defense in depth).
+    expect(typeof granted.watch("dashboard.delete", { series: "s1" }, () => {})).toBe("function");
+    expect(typeof granted.watch("series.watch", { series: "" }, () => {})).toBe("function");
+    expect(typeof granted.watch("series.watch", {}, () => {})).toBe("function");
+    // In jsdom there is no gateway URL / EventSource, so a granted+valid call still yields a clean no-op
+    // unsubscribe (openSeriesStream returns null); the live SSE is proven by the Rust series-stream tests.
+    const unsub = granted.watch("series.watch", { series: "s1" }, () => {});
+    expect(typeof unsub).toBe("function");
+    unsub();
+  });
 });

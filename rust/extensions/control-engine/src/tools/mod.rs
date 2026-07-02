@@ -17,6 +17,7 @@ pub mod appliance;
 pub mod call_action;
 pub mod clear_override;
 pub mod patch;
+pub mod raw_tree;
 pub mod remove_node;
 pub mod schema;
 pub mod set_override;

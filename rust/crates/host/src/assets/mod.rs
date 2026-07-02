@@ -18,6 +18,7 @@ mod authorize;
 mod backlinks;
 mod delete_asset;
 mod delete_doc;
+mod deprecate_skill;
 mod error;
 mod get_asset;
 mod get_doc;
@@ -40,14 +41,18 @@ pub use add_member::add_member;
 pub use backlinks::backlinks;
 pub use delete_asset::delete_asset;
 pub use delete_doc::delete_doc;
+pub use deprecate_skill::deprecate_skill;
 pub use error::AssetError;
 pub use get_asset::get_asset;
 pub use get_doc::get_doc;
 pub use grant_skill::{grant_skill, revoke_skill};
+/// The skill-grant relation kind + fixed `b` scope, re-exported for the default-grant-at-creation
+/// helper (`workspaces::default_skills`) so it writes the SAME edge `grant_skill`/`load_skill` use.
+pub(crate) use grant_skill::{GRANT, GRANT_SCOPE};
 pub use link_doc::link_doc;
 pub use list_assets::list_assets;
 pub use list_docs::list_docs;
-pub use list_granted_skills::{list_granted_skills, SkillCatalogEntry};
+pub use list_granted_skills::{list_granted_skills, SkillCatalogEntry, SkillTier};
 pub use load_skill::load_skill;
 pub use put_asset::{put_asset, MAX_ASSET_BYTES};
 pub use put_doc::put_doc;

@@ -55,6 +55,17 @@ pub async fn call_agent_tool(
                 None => Err(ToolError::NotFound),
             }
         }
+        // agent-memory scope: the durable memory verbs (`agent.memory.list|get|set|delete`). Each
+        // runs its own MCP + member-wall + ws-write gate inside; the dispatcher returns `None` for a
+        // verb outside its surface, so it composes as a fall-through before `NotFound`.
+        _ if qualified_tool.starts_with("agent.memory.") => {
+            match super::call_agent_memory_tool(&node.store, principal, ws, qualified_tool, input)
+                .await
+            {
+                Some(r) => r,
+                None => Err(ToolError::NotFound),
+            }
+        }
         // agent.watch is added by Part 3 (the start/resume-vs-watch split). Left explicit so the two
         // parts share the `agent.` prefix without one swallowing the other's verbs.
         _ => Err(ToolError::NotFound),

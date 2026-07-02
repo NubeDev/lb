@@ -67,6 +67,7 @@ async fn seed_ext(
 /// The 28 built-in node types in registry order (8 spine + the 20 data/JSON pack — data-nodes scope).
 const BUILTINS: &[&str] = &[
     "trigger",
+    "flipflop",
     "tool",
     "rhai",
     "count",

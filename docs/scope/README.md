@@ -7,7 +7,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 
 ## Topics
 
-- `agent/` — the central, workspace-scoped AI agent (S5).
+- `agent/` — the central, workspace-scoped AI agent (S5). `default-agent-wiring-scope.md` finishes
+  it: wire a real model into the in-house `default` runtime, route the loop's tool calls through the
+  one host MCP bridge so it can call platform tools (`agent.memory.*`/`assets.*`/…) under the wall —
+  a fix that also lets the external agent reach host tools — surface the caller's reachable tools to
+  the loop, and boot `serve_agent`. Closes the "internal agent has no brain and can't use tools" gap.
+- `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
+  `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
+  injected at session start, read/written over caps-checked `agent.memory.*` verbs under the
+  derived principal — so an agent remembers/recalls only what its invoking user may see. The
+  "learned" half of making the agent smarter (the "taught" half is `skills/core-skills-scope.md`).
 - `external-agent/` — a **compile-time-optional** (`external-agent` cargo feature, off by default),
   **swappable** runtime that drives a third-party ACP agent (VT Code default, dirge alternate; any
   [Agent-Client-Protocol](https://agentclientprotocol.com) agent) as a **subprocess** behind a
@@ -119,7 +128,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   enable/disable + `start_on_boot` + `placement`; **dashboard↔flow** binding (`flows.inject` in,
   bus-subject out); shared via the grant model; graph edits undo for free. Rejected adopting
   `open-rmf/crossflow` (in-process Bevy-ECS state breaks rules 1/4, bypasses the cap wall).
-- `files/`, `skills/`, `document-store/` — shared workspace assets (S4). `document-store/` now
+- `files/`, `skills/`, `document-store/` — shared workspace assets (S4). `skills/` also holds
+  `core-skills-scope.md`: the **two-tier skill catalog** — developer-authored **core skills**
+  (the `docs/skills/*/SKILL.md` corpus, embedded in the node and seeded at boot as immutable
+  `skill:core.<name>@<node-version>` records, user-write-rejected) alongside the shipped
+  user tier (full CRUD incl. a new `assets.deprecate_skill`), both behind the same grant gate,
+  surfaced to agents as one granted catalog (name+description in context, bodies on demand). `document-store/` now
   holds `document-store-scope.md` (the ask): a **reusable markdown document store** on the shipped
   S4 asset/file substrate — markdown body + **images/attachments** (the SurrealDB file store §6.12
   finally lands) + a queryable **link graph** (doc→doc links, doc→asset embeds), shared to a
@@ -136,6 +150,19 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (`git.commit_push`/`git.status`) backed by a ported `lb-gh` crate (the `gh`/`git` CLI wrapper).
   `systemd` supervises the node so the reactor ticks — it is **not** the scheduler (the cron is a
   record, symmetric edge↔cloud). The folder-of-verbs sibling of `host-tools/` for CLI-backed tools.
+- `genui/` — **agent-authored generative UI** (`genui-scope.md`): one reusable `@nube/genui` package —
+  a versioned, A2UI-*shaped* IR (surfaces, flat id-referenced component maps, JSON-Pointer data
+  bindings, typed action events; Google A2UI v0.9 patterns adopted, dependency rejected) rendered by
+  our own shell-token-themed catalog, with **emission formats as authoring-time adapters** (Thesys
+  OpenUI Lang via `@openuidev/lang-core` in v1; an A2UI adapter deferred until a real consumer speaks
+  it) — the agent's output is **parsed/normalized once at accept and the typed IR is what persists**,
+  so the render path carries no parser. The `view:"genui"` **dashboard widget** is the first tenant:
+  the workspace agent designs a widget from a prompt (skill-guided data discovery over
+  `flows.*`/`store.query`/`series.*`), streams a live preview over the shipped RunEvent SSE, and
+  persists a normal v2/v3 cell whose steady-state data flows through the existing `sources[]`
+  bindings — the agent authors, it never serves. Sandboxed-view tier per
+  `channels/channels-rich-responses-scope.md` (which reserves the channel as second tenant), with a
+  concrete in-process promotion checklist; zero new verbs/caps/tables.
 - `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.

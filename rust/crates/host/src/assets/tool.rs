@@ -19,9 +19,11 @@ use lb_mcp::{authorize_tool, ToolError};
 use lb_store::Store;
 use serde_json::{json, Value};
 
+use super::grant_skill::revoke_skill;
 use super::{
-    backlinks, delete_asset, delete_doc, get_asset, get_doc, grant_skill, link_doc, list_assets,
-    list_docs, load_skill, put_asset, put_doc, put_skill, share_doc, unshare_doc, AssetError,
+    backlinks, delete_asset, delete_doc, deprecate_skill, get_asset, get_doc, grant_skill,
+    link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset, put_doc,
+    put_skill, share_doc, unshare_doc, AssetError,
 };
 
 /// Dispatch an `assets.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -167,12 +169,40 @@ pub async fn call_asset_tool(
                 .map_err(asset_to_tool)?;
             json!({ "ok": true })
         }
+        "revoke_skill" => {
+            revoke_skill(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "ok": true })
+        }
+        "deprecate_skill" => {
+            deprecate_skill(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({ "ok": true })
+        }
         "load_skill" => {
             let version = input.get("version").and_then(|v| v.as_str());
             let s = load_skill(store, principal, ws, str_arg(input, "id")?, version)
                 .await
                 .map_err(asset_to_tool)?;
             json!({ "id": s.id, "version": s.version, "body": s.body })
+        }
+        // The one agent-facing catalog: the granted skills as {id, latest, description, tier} rows
+        // (core-skills scope — `list_skills` gains tier + description, additive). Never the body.
+        "list_skills" => {
+            let catalog = list_granted_skills(store, principal, ws)
+                .await
+                .map_err(asset_to_tool)?;
+            json!({
+                "skills": catalog.iter().map(|e| json!({
+                    "id": e.id,
+                    "latest": e.latest,
+                    "description": e.description,
+                    "tier": e.tier.as_str(),
+                    "granted": true,
+                })).collect::<Vec<_>>()
+            })
         }
         _ => return Err(ToolError::NotFound),
     };
@@ -187,6 +217,11 @@ fn asset_to_tool(e: AssetError) -> ToolError {
         AssetError::Denied => ToolError::Denied,
         AssetError::NotFound => ToolError::NotFound,
         AssetError::TooLarge => ToolError::BadInput("asset too large".into()),
+        // A reserved-namespace write is a clear, NON-opaque rejection (not a caps signal): the
+        // `core.*` namespace is public and deliberate, so the caller is told plainly.
+        AssetError::Reserved => {
+            ToolError::BadInput("core skills are read-only to users (reserved namespace)".into())
+        }
         AssetError::Store(s) => ToolError::Extension(s.to_string()),
     }
 }

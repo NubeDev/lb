@@ -1,0 +1,306 @@
+{
+  "v": 1,
+  "components": [
+    {
+      "name": "barchart",
+      "description": "A bar chart over `data` ({name,value}[]); `horizontal` flips the orientation.",
+      "props": {
+        "data": {
+          "type": "binding",
+          "description": "Array of {name, value} items.",
+          "required": true
+        },
+        "horizontal": {
+          "type": "boolean",
+          "description": "Draw horizontal bars."
+        }
+      }
+    },
+    {
+      "name": "button",
+      "description": "A button; emits `press` with its value when clicked.",
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "Button caption.",
+          "required": true
+        },
+        "value": {
+          "type": "binding",
+          "description": "Value carried in the emitted action."
+        }
+      },
+      "actions": [
+        "press"
+      ]
+    },
+    {
+      "name": "card",
+      "description": "A bordered card with an optional title, wrapping child components. `children` is an array of component refs, e.g. Card(\"Room\", [a, b]).",
+      "props": {
+        "children": {
+          "type": "array",
+          "description": "Array of child component refs."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional card heading."
+        }
+      }
+    },
+    {
+      "name": "gauge",
+      "description": "A radial arc gauge showing `value` between `min`/`max` with optional thresholds.",
+      "props": {
+        "max": {
+          "type": "number",
+          "description": "Range maximum."
+        },
+        "min": {
+          "type": "number",
+          "description": "Range minimum."
+        },
+        "thresholds": {
+          "type": "array",
+          "description": "Ascending numeric warn/bad thresholds."
+        },
+        "value": {
+          "type": "binding",
+          "description": "Current value.",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "grid",
+      "description": "Responsive grid; `columns` (1..6) per row. `children` is an array of component refs, e.g. Grid(2, [a, b, c]).",
+      "props": {
+        "children": {
+          "type": "array",
+          "description": "Array of child component refs."
+        },
+        "columns": {
+          "type": "number",
+          "description": "Columns per row, clamped 1..6."
+        }
+      }
+    },
+    {
+      "name": "markdown",
+      "description": "Safe minimal markdown (headings, bold, italic, code, links, lists) — no raw HTML.",
+      "props": {
+        "value": {
+          "type": "string",
+          "description": "Markdown source text.",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "piechart",
+      "description": "A pie/donut chart over `data` ({name,value}[]).",
+      "props": {
+        "data": {
+          "type": "binding",
+          "description": "Array of {name, value} items.",
+          "required": true
+        },
+        "pieType": {
+          "type": "enum",
+          "description": "Solid pie or donut.",
+          "values": [
+            "pie",
+            "donut"
+          ]
+        }
+      }
+    },
+    {
+      "name": "placeholder",
+      "description": "Inert labelled placeholder (normalize target for an unknown component).",
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "What was replaced."
+        }
+      }
+    },
+    {
+      "name": "slider",
+      "description": "A range slider; emits `change` with the committed value on release.",
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "Optional caption."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum."
+        },
+        "min": {
+          "type": "number",
+          "description": "Minimum."
+        },
+        "step": {
+          "type": "number",
+          "description": "Step size."
+        },
+        "value": {
+          "type": "binding",
+          "description": "Initial/display value."
+        }
+      },
+      "actions": [
+        "change"
+      ]
+    },
+    {
+      "name": "stack",
+      "description": "Vertical (default) or horizontal flex stack of child components. `children` is an array of component refs, e.g. Stack(\"vertical\", [a, b]).",
+      "props": {
+        "children": {
+          "type": "array",
+          "description": "Array of child component refs."
+        },
+        "direction": {
+          "type": "enum",
+          "description": "Stack axis.",
+          "values": [
+            "vertical",
+            "horizontal"
+          ]
+        }
+      }
+    },
+    {
+      "name": "stat",
+      "description": "A big single-value KPI tile with optional label, unit and tone.",
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "Caption above the value."
+        },
+        "tone": {
+          "type": "enum",
+          "description": "Colour tone of the value.",
+          "values": [
+            "ok",
+            "warn",
+            "bad"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "description": "Unit suffix appended to the value."
+        },
+        "value": {
+          "type": "binding",
+          "description": "The KPI value (number or string).",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "switch",
+      "description": "An on/off toggle; emits `toggle` with the next boolean state.",
+      "props": {
+        "label": {
+          "type": "string",
+          "description": "Optional caption."
+        },
+        "value": {
+          "type": "binding",
+          "description": "Current on/off state."
+        }
+      },
+      "actions": [
+        "toggle"
+      ]
+    },
+    {
+      "name": "table",
+      "description": "A data table over `rows`; `columns` selects/orders fields (else inferred).",
+      "props": {
+        "columns": {
+          "type": "array",
+          "description": "Column keys to show, in order."
+        },
+        "rows": {
+          "type": "binding",
+          "description": "Array of row objects.",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "tag",
+      "description": "A small pill label with an optional tone. (`badge` is a deprecated alias.)",
+      "props": {
+        "text": {
+          "type": "string",
+          "description": "The label text.",
+          "required": true
+        },
+        "tone": {
+          "type": "enum",
+          "description": "Colour tone.",
+          "values": [
+            "ok",
+            "warn",
+            "bad"
+          ]
+        }
+      },
+      "deprecatedAliases": [
+        "badge"
+      ]
+    },
+    {
+      "name": "text",
+      "description": "A single paragraph of plain text; `muted` dims it.",
+      "props": {
+        "muted": {
+          "type": "boolean",
+          "description": "Render dimmed/secondary."
+        },
+        "value": {
+          "type": "string",
+          "description": "The text to display.",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "timeseries",
+      "description": "A line/bars/points chart over `rows`; `yField` (+`xField`) select the numeric series.",
+      "props": {
+        "color": {
+          "type": "string",
+          "description": "Reserved; series colour follows the theme."
+        },
+        "drawStyle": {
+          "type": "enum",
+          "description": "How to draw the series.",
+          "values": [
+            "line",
+            "bars",
+            "points"
+          ]
+        },
+        "rows": {
+          "type": "binding",
+          "description": "Array of data rows.",
+          "required": true
+        },
+        "xField": {
+          "type": "string",
+          "description": "Row field for the x axis (else index)."
+        },
+        "yField": {
+          "type": "string",
+          "description": "Row field for the y value."
+        }
+      }
+    }
+  ]
+}

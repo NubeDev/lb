@@ -3,12 +3,16 @@ import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import dts from 'vite-plugin-dts'
+import { scopeWiresheetCss } from './scope-css'
 
 // Library build — what hosts consume. Emits the CeEditor component (ESM + CJS), a
 // bundled stylesheet (dist/ce-wiresheet.css, from src/index.ts's `import './wiresheet.css'`),
 // and rolled-up types. React / React-DOM are PEER deps so the host provides one copy.
 export default defineConfig({
-  plugins: [react(), tailwindcss(), dts({ rollupTypes: true })],
+  // `scopeWiresheetCss` LAST — it rewrites the FINAL emitted CSS (post-Tailwind) to scope the
+  // `@theme` `:root,:host` token block and the vendored xyflow `.react-flow` rules under
+  // `.ce-wiresheet`, so this library injects nothing global into a host document (slice-9).
+  plugins: [react(), tailwindcss(), dts({ rollupTypes: true }), scopeWiresheetCss()],
   build: {
     outDir: 'dist',
     cssCodeSplit: false,

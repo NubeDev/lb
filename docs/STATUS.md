@@ -16,6 +16,103 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): GenUI — AI-authored dashboard widgets over one generative-UI layer
+(branch `ce-node-wiring-v2`).** A dashboard widget the workspace agent designs from a natural-language
+prompt, rendered live from a persisted, versioned IR — **no model in the render path**. **New package**
+`@nube/genui` (standard `packages/*` layout): a versioned, **A2UI-*shaped* IR** (flat id-referenced
+component map, JSON-Pointer `{$bind}` data model, typed patch messages) with pure ops
+(`resolveBindings`/`applyPatch`/`validate`/`migrate`) + a **`defineCatalog`** whose one source
+generates the render fns, the prompt signature block, AND the A2UI-style catalog JSON. **Two strata on
+two entries** so a viewer never bundles the parser: render (`@nube/genui`, ~24 KB, parser-free) vs
+authoring (`@nube/genui/authoring` — the ONE place the single new external dep `@openuidev/lang-core`
+loads, for the OpenUI-Lang→IR adapter + streaming + the normalize sloppiness pass). **Parse once,
+persist the IR**: accept runs parse→normalize→validate→size-check ONCE (≤8 KB), the typed IR persists,
+raw Lang never renders. **A2UI patterns adopted, Google's packages rejected** (no A2UI adapter in v1).
+The **`view:"genui"`** dashboard tenant: `GenUiView` mounts `<GenUiSurface>` (data via the shipped
+`usePanelData` per v3 `sources[]` target keyed `/data/{refId}`; actions over the `cellTools` leash,
+host-re-checked); the builder's "AI widget" tab drives `agent.invoke`(skill `core.genui-widget`)→run
+stream→live preview→accept→`dashboard.save`. **Trust tier amended to in-process** (flagged + approved):
+the shipped `WidgetIframe` sandbox can't host React (no import map, CSP `connect-src 'none'`, eval'd
+engines — the `ext-widget-iframe-tier-cannot-resolve-bare-react` wall); genui widgets are
+admin-authored (the `dashboard.save` cap is the trust gate), the IR is trusted DATA satisfying the 5
+promotion-checklist items (CI-tested), so it renders in-process (the promotion end-state). **One host
+change** (Decision 6): a validation branch inside `dashboard.save` for `view:"genui"` cells (IR `v`
+known, ≤8 KB, every component in the embedded generated `genui_catalog.json`) — no new verb/cap/table,
+so headless MCP authors get the same loud rejection. A **generated skill** (`skill:core.genui-widget`,
+auto-embedded/seeded) whose catalog block + the host's catalog JSON are produced by `pnpm --filter
+@nube/genui gen:skill`, CI freshness-gated. **Tests (rule 9):** package unit ×42 (Lang↔IR round-trips +
+streaming, op purity + migration goldens, normalize, accept rejections, catalog-compat gate, prompt/JSON
+goldens, the promotion checklist, gen:skill freshness); host ×8 (accept/reject matrix + **capability-
+DENY** + **workspace-ISOLATION**); UI unit (data helpers, empty-source v3 trap); gateway integration ×4
+(real node: save→reload→**render-without-adapter**, save-time rejection, empty-source v3 round-trip,
+save-cap deny). One bug fixed + regression (`debugging/genui/genui-probe-setstate-in-render.md`). Node
+binary builds (skill embeds); `cargo fmt` clean. Deferred (named triggers): A2UI JSONL adapter, the
+channel `view:"genui"` tenant, IR patch-line refine, the design-time sampling policy knob. See
+[`public/genui/genui.md`](public/genui/genui.md) · [`sessions/genui/genui-widget-session.md`](sessions/genui/genui-widget-session.md).
+
+**Just shipped (2026-07-03): agent memory — durable, access-walled (branch `ce-node-wiring-v2`).**
+The workspace agent's **learned** knowledge (skills are the *taught* half), in the MEMORY.md shape:
+many small fact records behind capability-checked MCP verbs, read/written under the derived principal
+(`caller ∩ agent`). **New module** `crates/host/src/agent/memory/` (one verb per file): a SCHEMAFULL
+`agent_memory` table keyed `{ws, scope, slug}` (composite id `[scope, slug]` → idempotent offline
+upsert, LWW); two scopes `workspace` + `member:{user}` where **the member scope is derived from the
+authenticated principal, never an argument** — a run under U resolves `workspace + member:U`,
+structurally never `member:V` (the member wall). **Four verbs** `agent.memory.list|get|set|delete`,
+one `mcp:agent.memory.<verb>:call` cap each, PLUS a distinct **workspace-scope write gate**
+(`store:agent_memory/workspace:write` — a member always curates their own member memory; writing
+SHARED memory needs the extra cap). **Derived index** (list-computed, never stored) injected at
+session start into **both runtimes** AFTER the persona + skill catalog, framed as *recalled
+background, not instructions*, under an **on-behalf-of** principal (the caller's sub so member scope =
+the human, agent's intersected caps so it never widens — the `substrate.rs` contract; a naive derived
+`agent:session` sub would miss the caller's own memory, caught by the injection test). **Bounds** (desc
+≤ 120, body ≤ 8 KB) + a **best-effort secret lint** (PEM/`AKIA…`/`sk-…`/GitHub/`password:` refused).
+Injection capped at the 100 most-recently-updated (older stay stored/listable — evict from injection
+only). In-house gets the verbs by default; external profiles opt in to `set`. Model-proposed
+`set`/`delete` mid-loop is a **named deferral** (the channel worker surfaces no tool list + the loop
+dispatches via `lb_mcp::call`, which doesn't reach host-native `agent.*` — the shared in-house-tool-
+surfacing gap). **Tests (rule 9):** `host/agent_memory_test` (8: per-verb deny · ws-write gate distinct
+· workspace isolation · **member wall (bob never sees member:ada)** · idempotent upsert · bounds +
+secret lint · MCP roundtrip + per-verb MCP deny · **real run injects the index after set / loses it
+after delete**). `cargo fmt` clean. Session
+[`agent-memory`](sessions/agent-memory/agent-memory-session.md); public
+[`agent-memory`](public/agent-memory/agent-memory.md); skill
+[`agent-memory`](skills/agent-memory/SKILL.md). **Next up:** surface `agent.memory.*` as
+model-proposable in-house tools; vector/semantic recall (v1 non-goal).
+
+---
+
+**Just shipped (2026-07-03): core skills — the two-tier skill catalog (branch `ce-node-wiring-v2`).**
+The developer-authored **core skill tier** alongside the shipped S4 user tier, both behind the SAME
+grant gate and the SAME `load_skill`. **Embed + seed:** a `lb-assets` build script embeds the
+`docs/skills/*/SKILL.md` corpus (17 skills) into the node binary at build time — parsing/stripping
+frontmatter, flagging repo-relative links — and `node` boot seeds immutable
+`skill:core.<name>@<node-version>` records into a reserved system namespace (`_lb_skills`, the
+`_lb_identity` precedent; one constant + one resolver file, boot seeder is the only writer). Idempotent
+re-seed; a node upgrade seeds new versions, keeps old for rollback (proven live:
+`boot: seeded 17 core skills @0.1.0`). **Read-only to users:** `put_skill`/`deprecate_skill` reject any
+`core.*` id regardless of caps (a non-opaque `Reserved`→`BadInput`, checked before the caps gate).
+**New verb** `assets.deprecate_skill` (soft delete via a `skill_meta:{id}` flag — hidden from
+list/latest, pinned load still resolves, a new version un-hides). **`list_skills`** gains `{tier,
+description, latest, granted}` rows (the one agent catalog); wired `list_skills`/`deprecate_skill`/
+`revoke_skill` into MCP dispatch. **Default grant set** (`core.lb-cli`/`core.query`/`core.store-read`)
+applied at workspace creation (node config `LB_DEFAULT_CORE_SKILLS`), revocable like any grant — NO
+grant bypass for core. **Catalog injection both runtimes:** the in-house loop keeps its once-per-run
+inject; the external ACP runtime folds the granted catalog into the goal (its only channel), under the
+derived principal (`caller ∩ agent`); persona unified onto the same `load_skill` loader. **One real fix
+to the shipped path:** the caps grammar splits a resource on `/` AND `.`, so a dotted core id
+under-matched `store:skill/*` — the dev-login + grants now use `store:skill/**`
+([debug](debugging/auth/skill-star-cap-misses-dotted-core-id.md)). **Tests (rule 9, real store/loop/
+gateway):** `assets/core_skill_seed_test` (3) + `host/core_skills_test` (11: core.* put/deprecate
+rejected even for admin · ungranted-core deny · empty-catalog-without-read-cap · tier rows · deprecate
+hide/pin/un-hide · default grants at creation · ws isolation · **real-run catalog injection tracks
+grant→grow/revoke→shrink**) + `host/core_skills_mcp_test` (4: per-verb MCP deny + tier rows over the
+bridge). Also fixed a pre-existing red (`flows_nodes_test` `BUILTINS` missing `flipflop`). `cargo fmt`
+clean. Session [`core-skills`](sessions/skills/core-skills-session.md); public
+[`skills`](public/skills/skills.md); skill [`skills`](skills/skills/SKILL.md). **Next up:** durable
+**agent-memory** (the sibling "make the agent smarter" scope) — the same enforcement thesis.
+
+---
+
 **Just shipped (2026-07-02): control-engine v1 — node integration + a generic auth fix.** The shipped
 CE extension is now **installed, cap-reachable, and driven end to end against a real gateway** (not just
 green in tests). Three parts: (1) **boot-install** — `rust/node/src/control_engine.rs` (mirroring

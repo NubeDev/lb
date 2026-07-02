@@ -158,6 +158,9 @@ The topic is shippable when:
 
 ## Related
 
+- **The "smarter agent" companions** (what flows *through* the wall, under the derived principal):
+  `../skills/core-skills-scope.md` (developer core skills + user-CRUD tier, one granted catalog) and
+  `../agent-memory/agent-memory-scope.md` (durable MEMORY.md-shape memory over `agent.memory.*`).
 - README `§6.16` (shared AI agents), `§6.15`/`§6.14` (AI gateway), `§6.9` (jobs), `§6.5` (MCP),
   `§6.14`/`§6.16` (gateway run-SSE), `§7` (tenancy).
 - `scope/agent/agent-scope.md` (the default runtime), `scope/agent-run/agent-run-scope.md` (the ACP

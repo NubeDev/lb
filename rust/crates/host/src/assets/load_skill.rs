@@ -6,8 +6,18 @@
 //! A caller failing gate 1/2 gets `Denied` before any fetch. A caller passing 1+2 but with NO
 //! grant for the skill also gets `Denied` — the mandatory deny (the S4 exit gate: "a skill loads
 //! only when granted"). Version resolution: an explicit version, else the latest published.
+//!
+//! **Two tiers, one gate (core-skills scope).** A `core.*` id resolves against the reserved system
+//! namespace (`list_core_skill_versions`/`get_core_skill`), a user id against the workspace
+//! namespace — but the grant gate (3) is IDENTICAL and workspace-scoped for both. So a core skill
+//! present on every node still loads only when the workspace granted it (no core bypass — the
+//! headline deny). A deprecated user id is hidden from LATEST resolution but a pinned version still
+//! loads (rollback/audit); core ids are never deprecatable.
 
-use lb_assets::{get_skill, list_skills, related, Skill};
+use lb_assets::{
+    get_core_skill, get_skill, is_core, is_deprecated, list_core_skill_versions, list_skills,
+    related, Skill,
+};
 use lb_auth::Principal;
 use lb_caps::Action;
 use lb_store::Store;
@@ -28,19 +38,40 @@ pub async fn load_skill(
     // Gates 1 + 2: workspace isolation, then the skill read capability — before any fetch.
     authorize_skill(principal, ws, id, Action::Read)?;
 
-    // Gate 3: the workspace must have granted this skill. No grant → denied (invisible).
+    // Gate 3: the workspace must have granted this skill. No grant → denied (invisible). Identical
+    // for a core and a user skill — the grant relation is workspace-scoped for BOTH (no core bypass).
     if !related(store, ws, GRANT, id, GRANT_SCOPE).await? {
         return Err(AssetError::Denied);
     }
 
-    // Resolve the version: explicit, or the latest published (last by ts).
+    // Tier split is on WHERE the record lives, not on the gate: core ids resolve against the reserved
+    // system namespace, user ids against the workspace namespace.
+    if is_core(id) {
+        return match version {
+            Some(v) => get_core_skill(store, id, v)
+                .await?
+                .ok_or(AssetError::NotFound),
+            None => list_core_skill_versions(store, id)
+                .await?
+                .pop()
+                .ok_or(AssetError::NotFound),
+        };
+    }
+
+    // User tier. A pinned version always resolves (rollback/audit — even for a deprecated id); LATEST
+    // resolution honors the soft-delete flag (a deprecated id has no visible latest).
     match version {
         Some(v) => get_skill(store, ws, id, v)
             .await?
             .ok_or(AssetError::NotFound),
-        None => list_skills(store, ws, id)
-            .await?
-            .pop()
-            .ok_or(AssetError::NotFound),
+        None => {
+            if is_deprecated(store, ws, id).await? {
+                return Err(AssetError::NotFound);
+            }
+            list_skills(store, ws, id)
+                .await?
+                .pop()
+                .ok_or(AssetError::NotFound)
+        }
     }
 }

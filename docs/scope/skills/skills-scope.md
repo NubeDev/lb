@@ -130,6 +130,8 @@ separate means an agent's token is stable while the workspace's skill set evolve
 
 - README `§6.12` (docs/skills as assets), `§6.16` (agents load skills), `§6.4` (versioned assets +
   rollback).
+- Follow-up scope: [`core-skills-scope.md`](core-skills-scope.md) — the developer-authored core
+  tier + user CRUD (deprecate) + the agent-facing catalog.
 - Sibling scopes: `../files/files-scope.md` (the asset substrate skills reuse),
   `../auth-caps/auth-caps-scope.md`, `../mcp/mcp-scope.md`, `../extensions/extensions-scope.md`.
 - Public (on ship): `../../public/skills/skills.md`.

@@ -27,6 +27,7 @@ mod error;
 mod in_house;
 mod invoke;
 mod invoke_remote;
+mod memory;
 mod model_access;
 mod policy;
 mod registry;
@@ -58,6 +59,11 @@ pub use error::AgentError;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
+pub use memory::{
+    call_agent_memory_tool, memory_delete, memory_get, memory_index_for_injection, memory_list,
+    memory_set, render_index, Memory, MemoryKind, MemoryScope, INJECT_CAP, MAX_BODY,
+    MAX_DESCRIPTION, MEMORY_HEADER,
+};
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,

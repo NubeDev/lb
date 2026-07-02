@@ -1,0 +1,54 @@
+{
+  "name": "@nube/genui",
+  "version": "0.1.0",
+  "description": "A reusable, renderer-agnostic generative-UI layer for React — the Lazybones 'agent authors a widget' machinery. A versioned, A2UI-shaped internal representation (IR) is the persisted contract; emission formats (OpenUI Lang now) are authoring-time adapters that parse INTO the IR; a trusted catalog renders it. Two strata: the RENDER stratum (ir/ + catalog/ + react/) every viewer loads (parser-free, deterministic), and the AUTHORING stratum (adapters/ + normalize/) the builder loads. Self-themed via scoped `--gu-*` tokens under `.gu-root`, host-overridable. Imports nothing from ui/src — the host injects a bridge-shaped call/watch seam.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "files": ["dist"],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./authoring": {
+      "types": "./dist/authoring.d.ts",
+      "import": "./dist/authoring.js",
+      "require": "./dist/authoring.cjs"
+    },
+    "./style.css": "./dist/genui.css"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gen:skill": "tsx src/bin/gen-skill.ts"
+  },
+  "dependencies": {
+    "@openuidev/lang-core": "^0.2.7"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.2.0",
+    "jsdom": "^25.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.0.0",
+    "tsx": "^4.19.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^4.0.0",
+    "vitest": "^2.0.0"
+  }
+}

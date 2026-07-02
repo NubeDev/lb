@@ -65,6 +65,28 @@ impl Toolchain for ContainerToolchain {
             // both at a scratch dir cargo/pnpm can write their own dotfiles/config into.
             "-e".into(),
             "HOME=/tmp".into(),
+            // The mounted `rust/` workspace carries a HOST-specific `.cargo/config.toml` that pins
+            // the x86_64 linker + CC/AR/RANLIB at a personal zig toolchain under
+            // `/home/user/.local/bin` (that box has no system C compiler). Those paths don't exist
+            // in this image — and it has a real GCC toolchain — so the build dies with
+            // `linker /home/user/.local/bin/zigcc not found` the moment any build-script/proc-macro
+            // crate links for the host target (both wasm and native builds compile those on the
+            // host triple). cargo config's `[env]` doesn't override a process env var unless it sets
+            // `force = true` (this one doesn't), so exporting the genuine tools here wins for
+            // CC/AR/RANLIB. The `[target.*].linker` key can't be beaten by env alone — that's
+            // overridden with a `--config` flag on the cargo call below.
+            "-e".into(),
+            "CC=x86_64-linux-gnu-gcc".into(),
+            "-e".into(),
+            "AR=x86_64-linux-gnu-ar".into(),
+            "-e".into(),
+            "RANLIB=x86_64-linux-gnu-ranlib".into(),
+            "-e".into(),
+            "CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc".into(),
+            "-e".into(),
+            "AR_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ar".into(),
+            "-e".into(),
+            "RANLIB_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ranlib".into(),
             "-v".into(),
             mount,
             "-v".into(),
@@ -83,6 +105,17 @@ impl Toolchain for ContainerToolchain {
 
         docker_args.push(self.config.image.clone());
         docker_args.push(program.into());
+        // The host `.cargo/config.toml` pins `[target.x86_64-unknown-linux-gnu].linker` at the
+        // personal zig shim, and a config linker CANNOT be overridden by an env var — only by a
+        // higher-precedence `--config` flag. Repoint it at the image's real GCC so host-target
+        // build-scripts/proc-macros (compiled for both wasm and native extension builds) link.
+        // Inserted right after the cargo subcommand (`build`), before the caller's args, so it
+        // applies to `cargo build ...` without disturbing pnpm/other programs.
+        if program == "cargo" {
+            docker_args.push(
+                r#"--config=target.x86_64-unknown-linux-gnu.linker="x86_64-linux-gnu-gcc""#.into(),
+            );
+        }
         docker_args.extend(args.iter().map(|a| a.to_string()));
 
         // All sanctioned container execution for devkit builds goes through this function; callers
