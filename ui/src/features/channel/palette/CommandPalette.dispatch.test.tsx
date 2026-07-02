@@ -80,11 +80,30 @@ const FORM_CMD: ToolDescriptor = {
   },
 };
 
+// A required chip arg (`goal`) plus an OPTIONAL INLINE widget (`pick`, a `select`) — the agent
+// command's shape (required `goal` + optional `runtime` picker), tool-agnostic. Regression guard: an
+// optional inline widget was previously UNREACHABLE (the rail only walked REQUIRED args), so the runtime
+// dropdown never rendered — the "no option to pick a runtime" bug. The optional-inline rail tier must
+// surface it once `goal` is filled AND keep it mounted after it preselects (so the choice stays editable).
+const OPT_INLINE_CMD: ToolDescriptor = {
+  name: "things.pick",
+  title: "things.pick",
+  group: "things",
+  input_schema: {
+    type: "object",
+    properties: {
+      goal: { type: "string" },
+      pick: { type: "string", "x-lb": { widget: "select" as const, options: ["one", "two"] } },
+    },
+    required: ["goal"],
+  },
+};
+
 // Stub the two data hooks so the palette renders from a fixed catalog with no network (a thin stub, not a
 // node re-implementation — rule 9). `useMentions` is unused by these fixtures (no entity args).
 vi.mock("./useCatalog", () => ({
   useCatalog: () => ({
-    tools: [LIST_CMD, CREATE_CMD, LIST_NOARG_CMD, FORM_CMD],
+    tools: [LIST_CMD, CREATE_CMD, LIST_NOARG_CMD, FORM_CMD, OPT_INLINE_CMD],
     loading: false,
     error: null,
     revalidate: async () => {},
@@ -220,5 +239,42 @@ describe("CommandPalette — the generic descriptor.result submit rule", () => {
     expect(send).toBeEnabled();
     await user.click(send);
     expect(onCallTool).toHaveBeenCalledWith("things.form", { kind: "a", channel: "standup" });
+  });
+
+  // Regression (the "no runtime picker" bug): an OPTIONAL INLINE widget must surface once the required
+  // arg is filled, and STAY mounted after it self-selects a default — so the user can still change it.
+  // Before the optional-inline rail tier the widget never rendered at all.
+  it("renders an optional inline widget PERSISTENTLY beside the required arg (not gated behind ⏎), and sends the choice", async () => {
+    const onCallTool = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={onCallTool}
+        onPostRich={noop}
+        onSendChat={noop}
+      />,
+    );
+    await user.type(screen.getByLabelText("message"), "/things.pick");
+    await screen.findByRole("listbox", { name: "commands" });
+    await user.keyboard("{Enter}");
+
+    // THE FIX (the "no runtime picker" bug): the required `goal` field AND the optional inline `select`
+    // are BOTH visible the instant the command is picked — the optional inline widget renders
+    // persistently, NOT as the "next active arg" gated behind committing `goal` with a hidden ⏎.
+    const goal = await screen.findByLabelText("goal");
+    const pick = (await screen.findByLabelText("select")) as HTMLSelectElement;
+
+    // Type the goal WITHOUT pressing Enter (how a user actually fills it) — the picker stays shown.
+    await user.type(goal, "ship it");
+    expect(screen.getByLabelText("select")).toBeInTheDocument();
+
+    // Change the choice and send — both the typed goal (folded from the in-progress field) and the
+    // picked runtime ride the call.
+    await user.selectOptions(pick, "two");
+    await user.click(screen.getByLabelText("send"));
+    expect(onCallTool).toHaveBeenCalledWith("things.pick", { goal: "ship it", pick: "two" });
   });
 });

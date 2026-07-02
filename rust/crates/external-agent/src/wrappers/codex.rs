@@ -32,11 +32,24 @@ impl AgentWrapper for CodexWrapper {
     }
 
     fn command_args(&self, profile: &AgentProfile, goal: &str, workspace: &str) -> Vec<String> {
-        // `codex exec --json --skip-git-repo-check -C <workspace> [provider -c overrides] -m <model> <goal>`
+        // `codex exec --json --skip-git-repo-check --sandbox workspace-write -c approval_policy=never
+        //   -C <workspace> [provider -c overrides] -m <model> <goal>`
+        //
+        // `--sandbox workspace-write` is load-bearing: `exec` defaults to `read-only`, so without it the
+        // agent discovers it cannot write into its scratch dir mid-run and gives up ("the environment is
+        // read-only") — sometimes with an empty final message, which reads as "the agent did nothing".
+        // `approval_policy=never` is its headless partner: there is no human to approve a command, so any
+        // other policy stalls the run waiting on a prompt that never comes. The agent is already confined
+        // to the isolated scratch `workspace` (its cwd) and re-checked under our caps, so workspace-write
+        // is the right blast radius — not `danger-full-access`.
         let mut args = vec![
             "exec".into(),
             "--json".into(),
             "--skip-git-repo-check".into(),
+            "--sandbox".into(),
+            "workspace-write".into(),
+            "-c".into(),
+            "approval_policy=never".into(),
             "-C".into(),
             workspace.into(),
         ];
@@ -272,7 +285,13 @@ mod tests {
         // sole key-related token is the env var name.
         assert!(joined.contains("env_key=ZAI_API_KEY"));
         // Still a headless JSON exec of the goal against the model.
-        assert!(joined.starts_with("exec --json --skip-git-repo-check -C /ws"));
+        assert!(joined.starts_with(
+            "exec --json --skip-git-repo-check --sandbox workspace-write -c approval_policy=never -C /ws"
+        ));
+        // The sandbox is workspace-write (the agent must write its scratch dir), never read-only (the
+        // silent-failure default) — and headless, so approvals are off.
+        assert!(joined.contains("--sandbox workspace-write"));
+        assert!(joined.contains("approval_policy=never"));
         assert_eq!(args.last().unwrap(), "hi");
         assert!(joined.contains("-m glm-4.6"));
     }

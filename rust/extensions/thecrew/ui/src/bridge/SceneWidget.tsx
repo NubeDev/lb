@@ -66,7 +66,9 @@ export function SceneWidget({ bridge, sceneId }: { bridge: WidgetBridge; sceneId
   return (
     <ValueSourceContext.Provider value={source}>
       <div data-testid="scene-widget" className="h-full w-full">
-        <SceneCanvas />
+        {/* `fit`: auto-frame the scene into the cell + lock pan/zoom (parent-scope "fit per cell" risk —
+            the editor's fixed ±350/zoom-1.6 crop rendered blank in a small grid tile). */}
+        <SceneCanvas fit />
       </div>
     </ValueSourceContext.Provider>
   );

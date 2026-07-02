@@ -85,7 +85,19 @@ export function WidgetView({
   label = label ?? cellLabel(cell);
 
   if (view.startsWith("ext:")) {
-    return <ExtWidget viewKey={view} installed={installed} workspace={workspace} scope={scope} />;
+    // Forward the cell's author-set `options` (e.g. `{sceneId}`) + `binding` so the scope's intended
+    // `{view, options:{sceneId}}` cell shape reaches the tile as `ctx.options`/`ctx.binding` (no more
+    // `ctx.vars` workaround). The tile still reads data only through the bridge; the host re-gates it.
+    return (
+      <ExtWidget
+        viewKey={view}
+        installed={installed}
+        workspace={workspace}
+        scope={scope}
+        options={options as Record<string, unknown> | undefined}
+        binding={cell.binding as Record<string, unknown> | undefined}
+      />
+    );
   }
 
   switch (view) {

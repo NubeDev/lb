@@ -1,61 +1,46 @@
-// Load the source-picker data — the workspace's series (from `series.list`) and installed extensions
-// (from `ext.list`), assembled into friendly `SourceEntry`s (widget-builder scope, "The source
-// picker"). Both reads are shipped + capability-gated; a workspace with no series / no extensions
-// simply yields fewer entries (honest, never a fake catalogue). Re-loads when the workspace changes.
+// The SHELL ADAPTER for the reusable source picker (source-picker-package-scope.md). It is the ONE
+// place `@/lib/*` (the shell's gateway/Tauri API clients) meets `@nube/source-picker`: it builds the
+// package's injected `SourceLoaders` from the shipped clients and delegates to the package hook. Every
+// dashboard consumer keeps importing `useSourcePicker` from here unchanged; the model + orchestration
+// now live in the package (reusable from an extension, which supplies bridge-backed loaders instead).
+//
+// The loaders bag is module-level (stable) — the package hook keys its reload on `ws`.
 
-import { useEffect, useState } from "react";
+import {
+  useSourcePicker as usePkgSourcePicker,
+  type SourceEntry,
+  type SourceLoaders,
+} from "@nube/source-picker";
 
 import { listSeries } from "@/lib/ingest/ingest.api";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
 import { listFlows, getFlow, listFlowNodes } from "@/lib/flows/flows.api";
-import type { Flow, NodeDescriptor } from "@/lib/flows/flows.types";
-import { buildSourceEntries, type SourceEntry } from "./sourcePicker";
+import { listDatasources } from "@/lib/datasources";
 
+/** The shell's picker data — same shape the package returns, but `installed` typed as the shell's
+ *  fuller `ExtRow` (what `WidgetView`/`ExtWidget` consume). The runtime value IS the shell row —
+ *  `listExtensions()` returns it — the package just widens it to its structural subset internally. */
 export interface SourcePickerData {
   entries: SourceEntry[];
-  /** The installed extensions (also handed to the cell renderer for `ext:<id>/<widget>` tiles). */
   installed: ExtRow[];
   loading: boolean;
 }
 
-/** Load + assemble the source picker. `ws` keys the re-load (the workspace switch). */
+// The shell's read seam — the shipped, capability-gated verbs the picker offers. Each is deny-tolerant
+// inside the package hook (a denied read → that group is empty). Stable module-level object.
+const shellLoaders: SourceLoaders = {
+  listSeries: () => listSeries(),
+  listExtensions: () => listExtensions(),
+  listFlows: () => listFlows(),
+  getFlow: (id) => getFlow(id),
+  listFlowNodes: () => listFlowNodes(),
+  listDatasources: () => listDatasources(),
+};
+
+/** Load + assemble the source picker for the shell. `ws` keys the re-load (the workspace switch). */
 export function useSourcePicker(ws: string): SourcePickerData {
-  const [data, setData] = useState<SourcePickerData>({
-    entries: [],
-    installed: [],
-    loading: true,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    setData((d) => ({ ...d, loading: true }));
-    (async () => {
-      // Every read tolerates a deny/empty — a workspace may have granted only some of them. The Flows
-      // group composes `flows.list` (flows the caller may reach) + `flows.nodes` (descriptors); a flow
-      // the caller cannot `flows.get` is silently skipped (it never appears in the picker — the cap-
-      // scoped offer, flow-dashboard-binding-ux-scope). No `flows.*` cap → an empty Flows group.
-      const [series, installed, flowSummaries, descriptors] = await Promise.all([
-        listSeries().catch(() => [] as string[]),
-        listExtensions().catch(() => [] as ExtRow[]),
-        listFlows().catch(() => [] as { id: string; name: string }[]),
-        listFlowNodes().catch(() => [] as NodeDescriptor[]),
-      ]);
-      const flows = (
-        await Promise.all(
-          flowSummaries.map((s) => getFlow(s.id).catch(() => null as Flow | null)),
-        )
-      ).filter((f): f is Flow => f != null);
-      if (cancelled) return;
-      setData({
-        entries: buildSourceEntries(series, installed, flows, descriptors),
-        installed,
-        loading: false,
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [ws]);
-
-  return data;
+  const data = usePkgSourcePicker(shellLoaders, ws);
+  // `installed` is the real shell `ExtRow` at runtime (from `listExtensions`); the package types it as
+  // its structural subset. Re-assert the shell type for consumers that need the fuller row.
+  return { entries: data.entries, installed: data.installed as ExtRow[], loading: data.loading };
 }

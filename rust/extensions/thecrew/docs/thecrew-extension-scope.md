@@ -228,7 +228,30 @@ Per `docs/scope/testing/testing-scope.md` — mandatory categories first:
   double-load React.
 - **WebGL contexts per dashboard cell** — inherit the parent scope's mitigation
   (render-on-demand, release offscreen); acceptable to defer past phase 1 with a
-  documented cell cap.
+  documented cell cap. **Fit-per-cell built (2026-07-02):** a read-only cell auto-fits
+  the ortho camera to the cell pixels (`canvas/fit-bounds.ts` + `FitCamera.tsx`, driven
+  in `useFrame` so drei's declarative camera props can't clobber it) — the editor's fixed
+  ±350/zoom-1.6 framing rendered the cell blank. Verified live.
+
+- **Phase 3: the draw-with-AI RAIL is blocked on a core addition (finding, 2026-07-02).**
+  The AI-drawing loop itself is zero-core — the agent reads/writes the scene with the same
+  shipped `assets.*` verbs, guided by `docs/skills/graphics-canvas/SKILL.md`, and the
+  teaching validator (`scene/catalog.ts` + `validate.ts::teachingReport`) returns the shape
+  catalog + the failing shape so the model self-corrects. That path works **server-side**
+  (`agent::invoke` loads a `skill` and calls granted tools; it's driven from channels /
+  workflow triage / the ACP session). But an **in-page "Draw with AI" rail** — the extension
+  page kicking off the agent itself — cannot be built zero-core: `agent.invoke` is **NOT an
+  MCP tool** (`crates/host/src/agent/tool.rs` dispatches only `agent.policy.set`/`decide`/
+  `runtimes`/`config`; `agent.invoke` is a Rust entry with no `/mcp/call` arm and no gateway
+  route), and the extension page bridge speaks only `/mcp/call` over `cell.tools ∩ grant`. So
+  the rail needs a NEW surface — either expose `agent.invoke` as an MCP verb or add a
+  `/agent/invoke` gateway route (also the shell's `agent_invoke` command isn't mapped in the
+  browser HTTP transport). **STOP-and-surfaced, not built.** Interim: draw a scene by asking
+  the agent through an existing surface (a channel / the composer) with the `graphics-canvas`
+  skill; the open canvas re-renders on each save. Phase-3 pieces that ARE shipped:
+  `SKILL.md`, teaching-error validation, and the channel/dashboard embed
+  (`{view:"ext:thecrew/scene", options:{sceneId}}`, the shipped ext-widget path — no new
+  surface). The rail lands when the agent-invoke surface exists.
 
 ## Open questions
 

@@ -298,6 +298,16 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 2. **Live repaint transport:** widget `refreshKey` polling is enough for phases 1–2;
    does phase 3's watch-the-AI-draw UX justify asking for a *generic* document watch
    feed (its own scope), or is 2s polling honestly fine?
+6. **The in-page draw-with-AI rail needs an agent-invoke surface (finding, 2026-07-02,
+   phase 3).** The AI-drawing LOOP is zero-core — the agent edits the scene doc with the
+   shipped `assets.*` verbs, guided by `skills/graphics-canvas/SKILL.md`, and runs
+   server-side today (`agent::invoke` from channels / workflow triage / ACP). But an
+   extension-page rail that fires the agent itself can't be built: `agent.invoke` is NOT
+   exposed as an MCP tool (`crates/host/src/agent/tool.rs` routes only
+   policy/decide/runtimes/config) and has no gateway route, while the page bridge is
+   `/mcp/call`-only. Building the rail means a *generic* ask — expose `agent.invoke` as an
+   MCP verb or add a `/agent/invoke` gateway route (+ map the shell's `agent_invoke` in the
+   browser HTTP transport) — not a canvas verb. Filed; rail deferred until it lands.
 3. **Where does the scene-edit undo land** — the core undo journal (via the document
    layer's reverse ops) or an editor-local stack persisted in the scene asset's
    history? Leaning core journal, via whatever `document-store/` ships.

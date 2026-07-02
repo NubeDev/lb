@@ -16,6 +16,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { widgetIdOf } from "@nube/source-picker";
+
 import { gatewayUrl } from "@/lib/ipc/http";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { VarScope } from "@/lib/vars";
@@ -36,6 +38,13 @@ interface Props {
   /** The shell-resolved variable scope (widget-config-vars Slice 3) — handed to the tile as
    *  `ctx.vars`/`ctx.timeRange`. The extension NEVER resolves identity or query vars itself. */
   scope?: VarScope;
+  /** The cell's author-set `options` (e.g. `{sceneId}`) — forwarded to the tile as `ctx.options` so the
+   *  scope's intended `{view, options:{sceneId}}` cell shape reaches the widget. The tile still reads
+   *  data only through the bridge; `options` is inert configuration, not a capability. */
+  options?: Record<string, unknown>;
+  /** The cell's `binding` (v1 series binding) — forwarded as `ctx.binding` for a tile that binds a
+   *  single series through its cell. Inert config, re-checked at the host on any bridged read. */
+  binding?: Record<string, unknown>;
 }
 
 /** Parse `ext:<id>/<widget>` into its parts. Returns null for a malformed key. */
@@ -48,7 +57,14 @@ function parseExtKey(viewKey: string): { ext: string; widget: string } | null {
 }
 
 /** Render an installed extension-shipped widget tile, in-process (federated against the shell React). */
-export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() }: Props) {
+export function ExtWidget({
+  viewKey,
+  installed,
+  workspace,
+  scope = emptyScope(),
+  options = {},
+  binding = {},
+}: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +76,10 @@ export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() 
   const fromMs = scope.builtins["__from"];
   const toMs = scope.builtins["__to"];
   const scopeKey = JSON.stringify(scope);
+  // Serialize the author config so a cell-options edit (e.g. changing `sceneId`) re-mounts the tile with
+  // the new ctx — same pattern as `scopeKey`. `options`/`binding` are inert config; the host re-gates any
+  // bridged read regardless of what the tile does with them.
+  const configKey = JSON.stringify({ options, binding });
 
   useEffect(() => {
     if (!row || !tile || !bridge) return;
@@ -80,8 +100,8 @@ export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() 
         const ctx = {
           v: WIDGET_CTX_V,
           workspace,
-          binding: {},
-          options: {},
+          binding,
+          options,
           vars: scope.values,
           builtins: scope.builtins,
           timeRange:
@@ -100,8 +120,8 @@ export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() 
       if (typeof unmount === "function") unmount();
       el.replaceChildren();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `scopeKey` re-mounts the tile on a var/range change
-  }, [row?.ext, tile?.entry, workspace, scopeKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `scopeKey`/`configKey` re-mount the tile on a var/range/config change
+  }, [row?.ext, tile?.entry, workspace, scopeKey, configKey]);
 
   if (!parsed) return <Fallback>malformed widget key</Fallback>;
   if (!row || !row.enabled) return <Fallback>extension not installed</Fallback>;
@@ -115,13 +135,9 @@ export function ExtWidget({ viewKey, installed, workspace, scope = emptyScope() 
   );
 }
 
-/** Derive a widget id from an `ExtUi` tile. The host narrows `[[widget]]` tiles but doesn't carry a
- *  separate id field today; we use the label slug as the stable widget id (matches the cell key the
- *  palette builds). Exported so the source picker builds the SAME `ext:<id>/<widget>` key the renderer
- *  parses — one slug function, never two that can drift. */
-export function widgetIdOf(w: { label: string }): string {
-  return w.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
+// `widgetIdOf` (the tile-label → slug used to build/parse the `ext:<id>/<widget>` key) now lives in
+// `@nube/source-picker` (imported above) — one slug function shared by the picker + this renderer, never
+// two that can drift.
 
 function Fallback({ children }: { children: React.ReactNode }) {
   return (

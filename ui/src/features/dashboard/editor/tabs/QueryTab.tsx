@@ -20,6 +20,7 @@ import { SQL_SOURCE_ID, type SourceEntry } from "../../builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "../../builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
 import { FlowsQuerySection } from "./FlowsQuerySection";
+import { useSceneDocs } from "./useSceneDocs";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
@@ -70,15 +71,26 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   const isFlowAction = state.carry.action?.tool === "flows.inject";
   const dsKind = isFlowAction ? "flows" : dsKindOf(primary);
 
-  // Match the current target back to a picker entry id (series/sql path only — federation uses raw SQL).
-  const entryId = useMemo(
-    () => seedEntryId(primary ? ({ source: { tool: primary.tool, args: primary.args } } as never) : undefined, entries),
-    [primary, entries],
-  );
+  // A packaged extension `[[widget]]` cell carries NO target — it's identified by its `ext:<id>/<widget>`
+  // view key (round-tripped verbatim through `state.view`). Selecting one sets the view + clears targets;
+  // it lives in the source picker's "Extension widgets" group (finding 7: the group the viz-editor rework
+  // dropped, restored here so a packaged tile is pickable in the live builder again).
+  const isWidgetView = (state.view ?? "").startsWith("ext:");
+
+  // Match the current selection back to a picker entry id: a widget cell → its `viewKey` entry; else the
+  // series/sql target path (federation uses raw SQL, so it has no picker entry).
+  const entryId = useMemo(() => {
+    if (isWidgetView) return entries.find((e) => e.viewKey === state.view)?.id ?? "";
+    return seedEntryId(
+      primary ? ({ source: { tool: primary.tool, args: primary.args } } as never) : undefined,
+      entries,
+    );
+  }, [isWidgetView, state.view, primary, entries]);
   const entry = entries.find((e) => e.id === entryId) ?? null;
-  const isSql = dsKind === "surreal" && (entry?.id === SQL_SOURCE_ID || primary?.tool === "store.query");
-  const isFederation = dsKind === "federation";
-  const isFlows = dsKind === "flows";
+  const isSql =
+    !isWidgetView && dsKind === "surreal" && (entry?.id === SQL_SOURCE_ID || primary?.tool === "store.query");
+  const isFederation = !isWidgetView && dsKind === "federation";
+  const isFlows = !isWidgetView && dsKind === "flows";
   // The datasource dropdown's selected value (flows takes precedence over the target-derived value when
   // an inject action is carried — an input control has no read target to derive from).
   const dsValue = isFlows ? "flows" : dsValueOf(primary);
@@ -86,33 +98,47 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   const fedSql = (primary?.args?.sql as string | undefined) ?? "";
 
   // --- selecting a DATASOURCE rewrites the primary target's shape (built-in vs federation). ---
+  // Every branch also clears any `ext:` widget view: a datasource query and a packaged tile are mutually
+  // exclusive cell shapes (the tile has no target), so switching datasource leaves the widget behind.
   const selectDatasource = (value: string) => {
     if (value.startsWith("federation:")) {
       const name = value.slice("federation:".length);
       const opt = dsOptions.find((o) => o.type === "federation" && o.name === name);
       const ds = opt ? refForOption(opt, ws) : { type: "federation" };
       patch({
+        view: isWidgetView ? "" : state.view,
         sql: undefined,
         targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: name, sql: fedSql }, datasource: ds }],
       });
       return;
     }
     if (value === "series") {
-      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }], carry: { ...state.carry, action: undefined } });
+      patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }], carry: { ...state.carry, action: undefined } });
       return;
     }
     if (value === "flows") {
       // Flows: an empty `flows`-typed target; the FlowsQuerySection picks the node port (input → an
       // inject action + control view; output → a node_state source + read view).
-      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "flows" } }], carry: { ...state.carry, action: undefined } });
+      patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "flows" } }], carry: { ...state.carry, action: undefined } });
       return;
     }
     // surreal (native) — reset to an empty native target; the source picker / SQL editor takes over.
-    patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }], carry: { ...state.carry, action: undefined } });
+    patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }], carry: { ...state.carry, action: undefined } });
   };
 
   const selectEntry = (id: string) => {
     const next = entries.find((e) => e.id === id) ?? null;
+    // A packaged tile: the cell becomes `{view:"ext:<id>/<widget>"}` with no target/source (the tile owns
+    // its data via `scope ∩ grant`, re-checked at the host). Clear any prior query target + SQL. The tile
+    // keeps whatever `options` the cell already carried (e.g. a set `sceneId`), edited via the field below.
+    if (next?.group === "widget" && next.viewKey) {
+      patch({ view: next.viewKey as never, sql: undefined, targets: [], carry: { ...state.carry, action: undefined } });
+      return;
+    }
+    // Leaving a widget view for a real source: drop the `ext:` view so the chosen source's view takes over.
+    if (isWidgetView) {
+      patch({ view: "" });
+    }
     if (next?.id === SQL_SOURCE_ID) {
       const sql = state.sql ?? emptySqlSource();
       patch({
@@ -163,8 +189,19 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
             <PickerGroup entries={entries} group="live" label="Live (Zenoh)" />
             <PickerGroup entries={entries} group="sql" label="Direct SurrealDB" />
             <PickerGroup entries={entries} group="extension" label="Installed extension" />
+            {/* The finished packaged tiles (`[[widget]]`) — restored here (finding 7). Selecting one makes
+                a `view:"ext:<id>/<widget>"` cell that owns its own render + data (no view chooser). */}
+            <PickerGroup entries={entries} group="widget" label="Extension widgets" />
           </select>
         </label>
+      )}
+
+      {/* A packaged tile whose config is a scene doc: let the author pick the `sceneId` from the
+          workspace's `scene:` docs (via `assets.list_docs`) instead of hand-seeding the cell — the
+          generic half of finding 8. The chosen id lands in `cell.options.sceneId`, forwarded to the tile
+          as `ctx.options.sceneId` by `ExtWidget`. Shown only for a Scene tile (its viewKey ends `/scene`). */}
+      {isWidgetView && (state.view ?? "").endsWith("/scene") && (
+        <SceneOptionsField ws={ws} state={state} patch={patch} />
       )}
 
       {/* Native SQL — the Builder⇄Code editor, rehydrated from `state.sql` so EDIT reopens the builder. */}
@@ -217,6 +254,43 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+/** The scene picker for a Scene `[[widget]]` tile — sets `cell.options.sceneId` from the workspace's
+ *  `scene:` docs. Kept in this file (one small view over the Query tab's options), reading the shipped
+ *  `assets.list_docs`; a denied/empty list is an honest "no scenes" (never a fabricated roster). */
+function SceneOptionsField({
+  ws,
+  state,
+  patch,
+}: {
+  ws: string;
+  state: EditorState;
+  patch: (next: Partial<EditorState>) => void;
+}) {
+  const { scenes, loading } = useSceneDocs(ws);
+  const sceneId = (state.options?.sceneId as string | undefined) ?? "";
+  const setScene = (id: string) =>
+    patch({ options: { ...state.options, sceneId: id || undefined } });
+  return (
+    <label className="grid gap-1 text-xs text-muted">
+      Scene
+      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (see QueryTab note) */}
+      <select
+        aria-label="scene doc"
+        className={`${FIELD} w-full`}
+        value={sceneId}
+        onChange={(e) => setScene(e.target.value)}
+      >
+        <option value="">{loading ? "loading scenes…" : "— pick a scene —"}</option>
+        {scenes.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.title}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

@@ -103,15 +103,23 @@ export function CommandPalette({
   // rail walk `required ∪ shown-and-required` and surface the action fields Bug B left unreachable.
   const required = (a: string) => isActiveRequired(tool?.input_schema, a, values);
   const shown = (a: string) => isShown(tool?.input_schema, a, values);
-  // The rail auto-targets only ACTIVE-required unfilled args (a required chip arg first, then a required
-  // inline widget). An OPTIONAL/hidden arg never grabs focus and never blocks submit — so a command whose
-  // args are all optional (e.g. `reminder.list`'s `status`/`limit` filters) is runnable the instant it is
-  // picked, and a per-kind field only activates once its `action_kind` is chosen. As `action_kind` is
-  // filled the walk advances to `channel` (etc.) in turn — the `/remind` form completes field by field.
+  // The rail auto-targets ACTIVE-required unfilled args (a required chip arg first, then a required
+  // inline widget). An optional arg NEVER grabs the single active slot — so the required `goal` stays the
+  // field you type into, and an all-optional-filters command is runnable the instant it is picked.
   const activeArg = tool
     ? args.find((a) => required(a) && !isInline(a) && !filledNames.has(a)) ??
       args.find((a) => required(a) && isInline(a) && !filledNames.has(a))
     : undefined;
+  // OPTIONAL INLINE widgets render PERSISTENTLY, alongside the active arg — not through the single active
+  // slot (which only holds one arg at a time). This is what the "no runtime picker" bug got wrong: the
+  // agent command's `runtime` is an optional inline widget, so making it the active arg meant it only
+  // appeared AFTER the required `goal` was committed (a hidden ⏎ step) and then replaced the goal field.
+  // Rendered persistently, the runtime dropdown is visible the moment `/agent` is picked, beside the goal.
+  // A per-kind optional inline field still only shows once its `showIf` matches (`shown` gates it); an
+  // arg that is the ACTIVE arg is skipped here so it is not rendered twice.
+  const optionalInlineArgs = tool
+    ? args.filter((a) => isInline(a) && !required(a) && shown(a) && a !== activeArg)
+    : [];
   const activeHint = activeArg ? hintFor(tool?.input_schema, activeArg) : undefined;
   const activeWidget = activeArg ? widgetOf(activeArg) : undefined;
   // The resolved PRESENTATION for the active arg (widget-kit scope) — the SAME `resolveFieldPresentation`
@@ -413,6 +421,24 @@ export function CommandPalette({
           />
         </div>
       )}
+
+      {/* OPTIONAL INLINE widgets — rendered PERSISTENTLY beside the active arg (not through the single
+          active slot). This is how the agent command's `runtime` picker shows the moment `/agent` is
+          picked, alongside the `goal` field, instead of only after `goal` is committed. Each writes into
+          the same per-arg inline map (`inlineVals`) the args object folds in at submit. */}
+      {tool &&
+        optionalInlineArgs.map((a) => (
+          <ActiveArgWidget
+            key={a}
+            name={a}
+            hint={hintFor(tool.input_schema, a)}
+            value={inlineVals[a] ?? ""}
+            onChange={(v) => setInlineVals((m) => ({ ...m, [a]: v }))}
+            onSubmit={() => void submit()}
+            onCancel={reset}
+            sqlSource={source}
+          />
+        ))}
 
       {/* The free-text input — command/chat entry, plus the submit affordance when args are done. */}
       <form

@@ -42,6 +42,12 @@ because existing session docs point at them; new dashboard notes should live her
    [`import-export-scope.md`](viz/import-export-scope.md) (Grafana JSON in/out), and
    [`panel-editor-scope.md`](viz/panel-editor-scope.md) (the editor UX + the add≡edit parity fix). Additive
    over the shipped v2 contract.
+3f. [`source-picker-package-scope.md`](source-picker-package-scope.md) — **extract the shipped source
+   picker into a reusable `@nube/source-picker` package** so a user (or AI) can select a value from the
+   DB / datasources / Zenoh (live series) / flows the SAME way the dashboard does, from OUTSIDE the
+   dashboard (first new consumer: the `thecrew` graphics-canvas extension). Headless-first + a
+   dependency-injected `SourceLoaders` seam so one picker works from both the shell (gateway/Tauri) and an
+   extension (its bridge); dashboard migrates first (parity), thecrew second. Zero core additions.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -76,6 +82,10 @@ because existing session docs point at them; new dashboard notes should live her
   [`../../flows/flow-dashboard-binding-ux-scope.md`](../../flows/flow-dashboard-binding-ux-scope.md). It
   extends this dashboard's source picker + control views; the underlying `flows.inject`/`flows.node_state`
   mechanism already shipped ([`../../flows/dashboard-binding-scope.md`](../../flows/dashboard-binding-scope.md)).
+- The **reusable source-picker package** (`@nube/source-picker`) — extract the shipped picker (db /
+  datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
+  **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard
+  refactors onto it first (parity), then `thecrew` consumes it.
 
 ## Authoring rule
 

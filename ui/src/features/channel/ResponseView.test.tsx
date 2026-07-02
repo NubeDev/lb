@@ -56,6 +56,22 @@ describe("buildCell — envelope → v2 Cell", () => {
     // The bridge leash covers EVERY declared tool (render.tools) — the host intersects with grant.
     expect(new Set(cellTools(cell))).toEqual(new Set(payload.tools));
   });
+
+  it("carries an ext-widget scene embed's options through to the cell (graphics-canvas phase 3)", () => {
+    // A channel rich-response `{view:"ext:thecrew/scene", options:{sceneId}}` — the shipped ext-widget
+    // path. buildCell must forward `options` so `WidgetView`→`ExtWidget` (finding 8) reach the tile's
+    // `ctx.options.sceneId`; otherwise a graphic embedded in a thread renders the empty state.
+    const payload: RichResultPayload = {
+      kind: "rich_result",
+      v: 2,
+      view: "ext:thecrew/scene",
+      options: { sceneId: "scene:ahu-1" },
+      tools: ["assets.get_doc", "series.latest", "series.watch"],
+    };
+    const cell = buildCell(payload, "item-1");
+    expect(cell.view).toBe("ext:thecrew/scene");
+    expect(cell.options?.sceneId).toBe("scene:ahu-1");
+  });
 });
 
 describe("the per-row control scope binding", () => {
