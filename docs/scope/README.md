@@ -7,7 +7,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 
 ## Topics
 
-- `agent/` — the central, workspace-scoped AI agent (S5).
+- `agent/` — the central, workspace-scoped AI agent (S5). `default-agent-wiring-scope.md` finishes
+  it: wire a real model into the in-house `default` runtime, route the loop's tool calls through the
+  one host MCP bridge so it can call platform tools (`agent.memory.*`/`assets.*`/…) under the wall —
+  a fix that also lets the external agent reach host tools — surface the caller's reachable tools to
+  the loop, and boot `serve_agent`. Closes the "internal agent has no brain and can't use tools" gap.
 - `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
   `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
   injected at session start, read/written over caps-checked `agent.memory.*` verbs under the
