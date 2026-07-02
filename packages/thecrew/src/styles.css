@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+/* DOM chrome only (palette / rail / toolbar) — quiet glass over the canvas,
+   look-scope.md §visual-language. Canvas colors come from theme/tokens.ts, and the
+   two must agree: change them together. */
+:root {
+  --tc-canvas: #0a0e14;
+  --tc-panel: rgb(16 22 32 / 0.82); /* translucent glass panels */
+  --tc-hairline: rgb(148 163 184 / 0.12);
+  --tc-accent: #22d3ee; /* live data + selection only */
+}

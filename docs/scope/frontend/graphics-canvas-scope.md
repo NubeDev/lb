@@ -299,6 +299,10 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 
 ## Related
 
+- **`packages/thecrew/`** — the standalone **UI/UX test bed** for this scope (its own
+  scope set lives at `packages/thecrew/docs/`): proves the look + builder feel on the
+  same engine and scene schema before the extension is built; its `src/scene|canvas|
+  theme|editor` are written to lift into this extension per its reuse contract.
 - `extensions/ui-federation-scope.md` — the `[ui]`/`[[widget]]` mount + bridge this
   rides; `rust/extensions/control-engine/docs/control-engine-scope.md` — the
   100%-extension precedent (core ignorant, docs co-located).

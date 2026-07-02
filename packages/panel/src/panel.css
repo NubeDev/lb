@@ -1,25 +1,29 @@
-/* The Panel stylesheet — Tailwind v4 + the panel's own tokens, in its OWN build (a
- * single @theme, so the color utilities resolve here). Imported by src/index.ts so the
- * library bundle ships it (host: `import '@nube/panel/style.css'`).
+/* The Panel stylesheet — Tailwind v4, SCOPED so it can NEVER touch the host app.
  *
- * IMPORTANT — this is a LIBRARY stylesheet dropped into a host app's build. We deliberately
- * import ONLY Tailwind's `theme` (tokens) + `utilities` (the classes the panel uses), NOT
- * `preflight`/`base`. Shipping Tailwind's base reset would (a) emit an `@layer base` with no
- * matching `@tailwind base` in the host's PostCSS context (a build error in a v3 host), and
- * (b) clobber the host app's global styles. A self-contained widget ships its utilities,
- * never a global reset. (Same lesson as @nube/nav-rail — see nav-rail.css.)
+ * CRITICAL — this is a LIBRARY stylesheet dropped into a host app that ALSO ships Tailwind.
+ * A naive `@import 'tailwindcss/utilities.css'` emits GLOBAL `.flex`/`.grid`/`.border`/… rules
+ * that collide with the host's own utilities (esp. across Tailwind minor versions) and broke
+ * the app layout (the sidebar vanished). So we do two things:
+ *   1. NO preflight / base — a library must never reset its host (the earlier lesson).
+ *   2. SCOPE every generated utility under `.lb-panel` via the v4 nesting form
+ *      (`@layer utilities { .lb-panel { @tailwind utilities } }`), so the panel's classes only
+ *      apply INSIDE the panel and can't leak onto app elements.
  *
- * @nube/nav-rail's own stylesheet (the section rail's tokens) is a SEPARATE bundle the host
- * already imports; we do not re-emit it here.
- *
- * `@theme` maps the panel's Tailwind utilities onto the tokens; the tokens live in
- * panel-theme.css, scoped to `.lb-panel` and host-overridable. */
+ * `@theme` maps the panel's Tailwind color utilities onto the `--lbp-*` tokens; the tokens live
+ * in panel-theme.css, scoped to `.lb-panel`, and ALIAS the host's shadcn vars so the panel
+ * follows the app theme. */
 
 @layer theme, utilities;
 
 @import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
 @import './panel-theme.css';
+
+/* Scoped utilities: generated classes are emitted UNDER `.lb-panel` only. */
+@layer utilities {
+  .lb-panel {
+    @tailwind utilities;
+  }
+}
 
 @theme {
   --color-lbp-bg: hsl(var(--lbp-bg));
@@ -31,7 +35,9 @@
   --color-lbp-muted: hsl(var(--lbp-muted));
   --color-lbp-accent: hsl(var(--lbp-accent));
   --color-lbp-amber: hsl(var(--lbp-amber));
+}
 
-  --font-sans: var(--lbp-font-sans);
-  --font-mono: var(--lbp-font-mono);
+/* The panel inherits the host's sans font; `font-mono` uses the host mono stack. */
+.lb-panel .font-mono {
+  font-family: var(--lbp-font-mono);
 }

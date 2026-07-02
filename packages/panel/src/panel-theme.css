@@ -1,43 +1,35 @@
 /* ─────────────────────────────────────────────────────────────────────────────
- * Panel design tokens — the panel's SELF-CONTAINED palette.
+ * Panel design tokens.
  *
- * Same contract as ce-wiresheet's wiresheet-theme.css and @nube/nav-rail's
- * nav-rail-theme.css: every color in the panel is `hsl(var(--token))` off this list,
- * scoped to the `.lb-panel` root class the component puts on its wrapper, so:
- *   • the host app's palette can't leak in or be clobbered, and
- *   • a host can RE-SKIN the panel by overriding any of these vars — e.g.
- *       .lb-panel { --lbp-accent: 280 80% 60%; }
- *     or inline `style={{ '--lbp-accent': '...' }}` on the mount — WITHOUT forking.
+ * The panel FOLLOWS THE HOST APP'S shadcn theme. Every `--lbp-*` token is an ALIAS of
+ * the host's standard shadcn CSS variable (`--card`, `--foreground`, `--border`, …), with
+ * a hard-coded fallback used only when the host hasn't defined that variable (e.g. a
+ * standalone/external mount with no shadcn tokens). So:
+ *   • inside lb `ui` — the panel inherits the app's light/dark/`data-theme-accent` theme
+ *     automatically (the host flips `--card`/`--foreground`/… on `.dark`), and
+ *   • as a standalone library — it still renders on the dark fallback palette below.
  *
- * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works). Dark by default;
- * `.theme-light` flips to the light palette. Token values track ce-wiresheet so the
- * panel READS like the ce InspectPanel out of the box.
+ * This is the fix for "not using the main css, the colours are wrong": the previous version
+ * shipped its OWN fixed dark palette, so it ignored the host theme and stayed dark in light
+ * mode. Aliasing the host tokens means one theme, owned by the app.
+ *
+ * A host can still override any `--lbp-*` directly under `.lb-panel` for a bespoke skin.
+ * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works).
  * ──────────────────────────────────────────────────────────────────────────── */
 
-:root,
 .lb-panel {
-  --lbp-bg: 234 18% 6%;          /* app canvas behind the panel */
-  --lbp-panel: 232 15% 9%;       /* the panel surface */
-  --lbp-secondary: 230 14% 12%;  /* headers / sub-surfaces */
-  --lbp-border: 230 10% 18%;
-  --lbp-input: 230 10% 18%;
-  --lbp-fg: 220 16% 93%;         /* primary text */
-  --lbp-muted: 220 8% 56%;       /* labels / idle text */
-  --lbp-accent: 200 86% 64%;     /* focus ring / brand mark / links */
-  --lbp-amber: 32 92% 60%;       /* warning / override status */
+  /* Surfaces / text — alias the host shadcn tokens; the second value is the standalone
+     fallback (dark, matching ce-wiresheet) for hosts without shadcn tokens. */
+  --lbp-bg: var(--background, 234 18% 6%);
+  --lbp-panel: var(--card, 232 15% 9%);
+  --lbp-secondary: var(--secondary, 230 14% 12%);
+  --lbp-border: var(--border, 230 10% 18%);
+  --lbp-input: var(--input, 230 10% 18%);
+  --lbp-fg: var(--foreground, 220 16% 93%);
+  --lbp-muted: var(--muted-foreground, 220 8% 56%);
+  --lbp-accent: var(--ring, 200 86% 64%);
+  --lbp-amber: var(--destructive, 32 92% 60%);
 
-  --lbp-font-sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
-  --lbp-font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
-}
-
-.lb-panel.theme-light {
-  --lbp-bg: 240 20% 99%;
-  --lbp-panel: 0 0% 100%;
-  --lbp-secondary: 240 18% 97%;
-  --lbp-border: 240 14% 88%;
-  --lbp-input: 240 14% 88%;
-  --lbp-fg: 234 22% 14%;
-  --lbp-muted: 235 12% 42%;
-  --lbp-accent: 200 80% 46%;
-  --lbp-amber: 32 88% 46%;
+  /* Mono stack for the dense tables/KV; falls back to a system mono when the host has none. */
+  --lbp-font-mono: var(--font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
 }
