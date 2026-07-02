@@ -32,6 +32,13 @@ request = ["mcp:series.find:call", "mcp:series.latest:call", "mcp:series.read:ca
 name        = "fleet.summary"
 description = "A workspace-tagged fleet snapshot, served by the supervised native child."
 
+# The callback proof (native-callback-transport scope): the sidecar CALLS BACK into the host for
+# `series.find` over an authenticated `POST /mcp/call`, proving the out-of-process child can reach
+# host MCP tools under its scoped grant — the same path `ros`'s poller uses for `ingest.write`.
+[[tools]]
+name        = "fleet.probe"
+description = "Round-trips a host `series.find` through the sidecar callback transport (proves child→host MCP)."
+
 # The full PAGE this extension contributes to the sidebar (ui-federation scope). `entry` is the
 # module-federation remote entry, resolved under the gateway's `/extensions/fleet-monitor/ui/` route.
 # The shell loads it as a federated remote (shared React) and mounts it in a cap-gated nav slot.

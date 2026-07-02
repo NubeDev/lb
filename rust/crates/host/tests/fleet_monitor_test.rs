@@ -88,7 +88,12 @@ async fn native_install_spawns_child_and_surfaces_page_plus_two_widgets() {
     .await
     .expect("native fleet-monitor installs + spawns");
     assert_eq!(supervised.version, "0.1.0");
-    assert_eq!(supervised.tools, vec!["fleet.summary".to_string()]);
+    // The manifest declares two tools: the served `fleet.summary` and the callback-proof `fleet.probe`
+    // (native-callback-transport scope — the sidecar calls BACK into the host through it).
+    assert_eq!(
+        supervised.tools,
+        vec!["fleet.summary".to_string(), "fleet.probe".to_string()]
+    );
 
     let out = call_sidecar(
         &node,

@@ -94,6 +94,12 @@ impl Gateway {
     }
 
     fn build(node: Arc<Node>, key: SigningKey, fixed_now: Option<u64>) -> Self {
+        // Install this key onto the NODE so there is ONE signing identity for the whole node: the
+        // gateway's `login`/`authenticate` and the native tier's `LB_EXT_TOKEN` minter both read
+        // `node.key()`. Without this a native sidecar's token would be minted with a throwaway key
+        // the gateway can't verify (native-callback-transport scope). `Gateway::key` is kept as a
+        // convenience clone of the same `Arc` for the routes that already read it.
+        node.install_key(key.clone());
         Self {
             node,
             key: Arc::new(key),

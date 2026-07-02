@@ -1,0 +1,123 @@
+# The `ros` driver extension — manages a fleet of ROS (Rubix) REST appliances. A native Tier-2 sidecar
+# (owns long-lived HTTP connections + a poll-timer loop → its own PID). Backend (src/) + a federated
+# shadcn/Tailwind-v4 page (ui/) in ONE folder, the fleet-monitor pattern. ROS vocabulary lives ONLY
+# here — the core sees generic MCP verbs, `ingest.write` samples, and outbox effects (ingest scope's
+# "IoT is one caller" rule). Authoritative scope: docs/ros-scope.md.
+#
+# STUB — the shape below is scope-time intent (docs/ros-scope.md → "MCP surface"); the implementing
+# session confirms + fills tool descriptors, the [ui] block, and node.config schemas against a live run.
+[extension]
+id          = "ros"
+version     = "0.1.0"
+name        = "ROS"
+description = "Manage a fleet of ROS (Rubix) REST appliances — CRUD, a reusable poller, and setpoint writes."
+
+[runtime]
+tier        = "native"                          # owns HTTP connections + a poll loop → Tier-2 (own PID)
+world       = "lazybones:ext/extension@0.1.0"   # WIT major checked at load (ABI gate)
+placement   = "either"                          # place it where it can reach the appliances (config/role)
+
+[native]
+exec        = "ros-sidecar"
+args        = []
+restart     = "on-crash"
+
+[capabilities]
+# Requested here; the live grant is requested ∩ admin-approved at install. The poll task calls
+# ingest.write; point writes stage outbox effects; the External token is mediated by lb-secrets.
+request = [
+  "net:tcp:*:*",                 # reach the ROS appliances over HTTP (the native net:* escape hatch)
+  "secret:ros/*/token:get",      # per-connection External token, mediated by lb-secrets
+  "mcp:ingest.write:call",       # append polled present-values as series samples
+  "mcp:series.latest:call",      # UI live value
+  "mcp:series.read:call",        # UI trend chart
+]
+
+# CRUD over the connection → network → device → point tree (core/resource-verbs grammar).
+# One tool per verb; each gated by mcp:<tool>:call. Poll toggle = *.update {enable:false}.
+[[tools]]
+name = "ros.list"
+description = "List ROS connections in the workspace (keyset-paged)."
+[[tools]]
+name = "ros.get"
+description = "Get one ROS connection by uuid (token never returned)."
+[[tools]]
+name = "ros.create"
+description = "Register a ROS appliance {name, base_url, token}; token stashed via lb-secrets."
+[[tools]]
+name = "ros.update"
+description = "Update a ROS connection (rename / re-point / enable:false to silence its whole tree)."
+[[tools]]
+name = "ros.delete"
+description = "Remove a ROS connection (soft by default)."
+[[tools]]
+name = "ros.ping"
+description = "Health-check a ROS appliance (proxies /api/system/ping)."
+
+[[tools]]
+name = "network.list"
+description = "List networks under a ROS connection (proxies /api/networks)."
+[[tools]]
+name = "network.get"
+description = "Get one network by uuid."
+[[tools]]
+name = "network.create"
+description = "Create a network on the box."
+[[tools]]
+name = "network.update"
+description = "Update a network (enable:false silences all its devices' points)."
+[[tools]]
+name = "network.delete"
+description = "Delete a network."
+
+[[tools]]
+name = "device.list"
+description = "List devices under a network (proxies /api/devices)."
+[[tools]]
+name = "device.get"
+description = "Get one device by uuid."
+[[tools]]
+name = "device.create"
+description = "Create a device on the box."
+[[tools]]
+name = "device.update"
+description = "Update a device (enable:false silences its points)."
+[[tools]]
+name = "device.delete"
+description = "Delete a device."
+
+[[tools]]
+name = "point.list"
+description = "List points under a device (proxies /api/points)."
+[[tools]]
+name = "point.get"
+description = "Get one point by uuid (present_value, priority array, …)."
+[[tools]]
+name = "point.create"
+description = "Create a point on the box."
+[[tools]]
+name = "point.update"
+description = "Update a point (enable:false drops it from polling)."
+[[tools]]
+name = "point.delete"
+description = "Delete a point."
+[[tools]]
+name = "point.write"
+description = "Write a setpoint {slot 1-16, value|null} — must-deliver, staged as an outbox effect."
+
+# The runnable trait for the poller (core/resource-verbs Tier 2): arm/disarm/inspect per connection.
+[[tools]]
+name = "ros.start"
+description = "Begin polling a connection's enabled tree."
+[[tools]]
+name = "ros.stop"
+description = "Park the poll timer for a connection."
+[[tools]]
+name = "ros.status"
+description = "Poll health: last-ok / last-fail + sample count."
+
+# [ui] — the federated shadcn page (fleet → connection → network → device → point drill-down, poll
+# toggles, point-write). Added by the implementing session with the ui-federation scope, per fleet-monitor.
+
+[visibility]
+class = "private"

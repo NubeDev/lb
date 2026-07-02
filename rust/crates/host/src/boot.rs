@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use lb_auth::SigningKey;
 use lb_bus::{Bus, BusError};
 use lb_mcp::Registry;
 use lb_runtime::{Engine, RuntimeError};
@@ -52,6 +53,16 @@ pub struct Node {
     /// so the binary can install after boot; readers [`clone`](Node::runtimes) the inner `Arc` out
     /// and never hold the lock across the (long) run.
     runtimes: Mutex<Arc<RuntimeRegistry>>,
+    /// The node's **token-signing key** — the one identity root the whole node trusts. It mints and
+    /// verifies session tokens (the gateway's `login`/`authenticate` read it) AND the scoped
+    /// `LB_EXT_TOKEN` a native sidecar carries when it calls back through `POST /mcp/call`
+    /// (native-callback-transport scope). Before this it lived only on the `Gateway`, so a child
+    /// token had to be minted with a throwaway key no one could verify (the co-trust hack the
+    /// native-tier scope flagged deferred); now the minter (`native/spec.rs`) and the verifier
+    /// (gateway `authenticate`) share THIS key, so a child token is a genuine, verifiable JWT.
+    /// Behind a `Mutex<Arc>` (like `runtimes`) so a gateway/test can install a shared key after boot
+    /// via [`install_key`](Node::install_key) — the key never leaves the node (scope: "Secrets").
+    key: Mutex<Arc<SigningKey>>,
     pub role: Role,
 }
 
@@ -76,6 +87,7 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            key: Mutex::new(Arc::new(SigningKey::generate())),
             role: Role::Solo,
         })
     }
@@ -96,6 +108,7 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            key: Mutex::new(Arc::new(SigningKey::generate())),
             role,
         })
     }
@@ -115,6 +128,7 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            key: Mutex::new(Arc::new(SigningKey::generate())),
             role,
         })
     }
@@ -130,6 +144,21 @@ impl Node {
     /// (A feature-off node never calls this and keeps the default-only registry.)
     pub fn install_runtimes(&self, registry: RuntimeRegistry) {
         *self.runtimes.lock().expect("runtimes lock") = Arc::new(registry);
+    }
+
+    /// The node's token-signing key. The gateway mints/verifies session tokens with it, and the
+    /// native tier mints a sidecar's `LB_EXT_TOKEN` with it (so the gateway can verify that token on
+    /// the callback — native-callback-transport scope). Clones the inner `Arc` out under a brief lock.
+    pub fn key(&self) -> Arc<SigningKey> {
+        self.key.lock().expect("node key lock").clone()
+    }
+
+    /// Install the node's signing key, replacing the one generated at boot. Called ONCE when a
+    /// gateway fronts this node with an explicit key (so mint and verify agree on ONE key across the
+    /// gateway's `login`/`authenticate` AND the native token minter). Tests use it to front a node
+    /// with a known key so a minted child token verifies. The key never leaves the node.
+    pub fn install_key(&self, key: SigningKey) {
+        *self.key.lock().expect("node key lock") = Arc::new(key);
     }
 
     /// Select the store engine by **config, not role** (symmetric nodes, §3.1): `LB_STORE_PATH`
