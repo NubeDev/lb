@@ -1,7 +1,11 @@
 # i18n catalogs scope — MessageFormat catalogs + per-recipient server localization (prefs Phase 2)
 
-Status: **scoped, implementation-ready (not built)** — every contract pinned, zero open questions (see
-*Pinned contracts*). The units + formatting core (`lb-prefs`) shipped in S8; this is the
+Status: **shipped** (2026-07-01) — every pinned contract built end to end on the shipped `lb-prefs`
+crate + host + gateway + generated client, tested on real infra (deny per verb incl. render-for-
+another, two-workspace isolation, offline/replay, MF1 plural/select en+es, fallback chain, placeholder-
+parity, the multi-recipient fan-out headline, catalog-lint, the drift guard, and an `intl-messageformat`
+host==client cross-check). See [`../../sessions/prefs/i18n-catalogs-session.md`](../../sessions/prefs/i18n-catalogs-session.md)
+and [`../../public/prefs/prefs.md`](../../public/prefs/prefs.md). The units + formatting core (`lb-prefs`) shipped in S8; this is the
 **Phase 2** deferred half named on that row: *"i18n catalogs + per-recipient fan-out, … settings/
 bootstrap-locale UI."* See [`user-prefs-scope.md`](./user-prefs-scope.md) (the parent — all the design
 decisions this doc builds on are already resolved there) and [`STATUS.md`](../../STATUS.md) line 433.

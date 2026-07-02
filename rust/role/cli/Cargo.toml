@@ -1,0 +1,60 @@
+# lb-cli — the operator CLI (`lb`), the terminal twin of the React shell (operator-cli scope).
+#
+# A FOURTH client of the same gateway surface the browser/Tauri/mobile use (README §6.13). It holds
+# NO authority of its own: remote mode presents a session token and is denied exactly when the server
+# denies; local mode embeds `Node::boot()` and mints a `dev_claims`-shaped principal scoped by `-w`.
+# Zero new MCP verbs, capabilities, tables, or enforcement paths — a pure client of the one
+# `lb_host::call_tool` chokepoint (via `POST /mcp/call` remote, in-process local).
+#
+# The client LIBRARY (`lib.rs` + modules) is testable in-process against a REAL gateway; `main.rs` is a
+# thin shell over it. `lb-role-gateway` / `lb-host` are dev-only (the local transport needs `Node`, the
+# integration tests spin a real gateway) — the runtime binary depends only on the client stack.
+[package]
+name = "lb-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "lb_cli"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lb"
+path = "src/main.rs"
+
+[dependencies]
+# The local transport embeds a real node + mints a real principal in-process (the offline/edge posture).
+lb-host.workspace = true
+lb-auth.workspace = true
+# `lb devkit sign` folds over the existing signing library (one crypto idiom, unchanged); `ext publish`
+# sends the `Artifact` JSON `lb-registry` defines and the gateway verifies.
+lb-devkit.workspace = true
+lb-registry.workspace = true
+# The local transport maps `lb_mcp::ToolError` (a host deny) to the CLI's honest DENY.
+lb-mcp.workspace = true
+# Local mode mints the SAME claim set as the dev-login for parity (scope decision) — reuse the one
+# `dev_claims` the gateway's `/login` uses rather than re-listing caps.
+lb-role-gateway.workspace = true
+clap.workspace = true
+tabled.workspace = true
+dirs.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+# The integration tests spin a REAL gateway on a real socket + seed via the real write path (no mocks,
+# CLAUDE §9): the node, the outbox/inbox seed verbs, a known signing key, and a scratch LB_DIR.
+lb-store.workspace = true
+ed25519-dalek.workspace = true
+tempfile.workspace = true
+futures.workspace = true
+# The integration tests spin the real gateway on a real socket (`axum::serve`) — the same way
+# `role/gateway/tests/` binds a listener for its SSE test.
+axum.workspace = true

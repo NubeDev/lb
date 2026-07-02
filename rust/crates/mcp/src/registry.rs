@@ -43,6 +43,13 @@ pub struct ToolDescriptor {
     /// `None` when the tool declares none (degrades to a single free-text arg).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_schema: Option<Value>,
+    /// The response render envelope (`x-lb-render`) this command's answer mounts as — the v2 rich-result
+    /// shape (`{ v, view, source?, options?, action?, tools? }`). When set, the palette POSTS this render
+    /// (interpolating the collected args into `source.args`) instead of showing a raw tool result; the
+    /// channel mounts it through the shipped `WidgetView`. `None` → the command is a plain call. This is
+    /// the OUTPUT contract that keeps the frontend generic (it never hardcodes what a command renders as).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
 }
 
 impl ToolDescriptor {
@@ -53,6 +60,7 @@ impl ToolDescriptor {
             title: String::new(),
             group: String::new(),
             input_schema: None,
+            result: None,
         }
     }
 }

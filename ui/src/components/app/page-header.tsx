@@ -15,7 +15,11 @@ interface AppPageHeaderProps {
 
 function WorkspaceBadge({ workspace }: { workspace: string }) {
   return (
-    <Badge variant="outline" className="max-w-[18rem] gap-1.5 rounded-full shadow-sm">
+    <Badge
+      variant="outline"
+      title={`Workspace ${workspace}`}
+      className="max-w-[18rem] gap-1.5 rounded-full shadow-sm"
+    >
       <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
       <span className="truncate">{workspace}</span>
     </Badge>

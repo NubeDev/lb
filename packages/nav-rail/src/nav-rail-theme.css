@@ -1,0 +1,26 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * NavRail design tokens.
+ *
+ * The rail FOLLOWS THE HOST APP'S shadcn theme. Every `--nr-*` token is an ALIAS of the
+ * host's standard shadcn CSS variable (`--card`, `--foreground`, `--border`, …), with a
+ * hard-coded fallback used only when the host hasn't defined that variable (a standalone /
+ * external mount with no shadcn tokens). So inside a shadcn host the rail inherits the app's
+ * light/dark theme automatically (the host flips `--card`/`--foreground`/… on `.dark`), and
+ * as a standalone library it still renders on the dark fallback palette.
+ *
+ * This is the fix for the rail's selected item rendering as a fixed near-black block in the
+ * host's LIGHT theme: it used its own fixed dark `--nr-bg`, ignoring the host. Aliasing the
+ * host tokens means one theme, owned by the app. A host can still override any `--nr-*`
+ * directly under `.nav-rail`. Values are HSL triples (so `hsl(var(--x)/.5)` alpha works).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.nav-rail {
+  --nr-bg: var(--muted-bg, 234 18% 6%);      /* selected/hover item surface */
+  --nr-panel: var(--card, 232 15% 9%);       /* the rail surface */
+  --nr-border: var(--border, 230 10% 18%);
+  --nr-fg: var(--foreground, 220 16% 93%);   /* active / hovered text */
+  --nr-muted: var(--muted-foreground, 220 8% 56%); /* idle item text + labels */
+  --nr-accent: var(--ring, 200 86% 64%);     /* focus ring / brand mark */
+
+  --nr-font-sans: inherit;
+}

@@ -6,6 +6,12 @@
 import { useState } from "react";
 import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
 
+import { AppPage } from "@/components/app/page";
+import { AppEmptyState } from "@/components/app/empty-state";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
 import { AddPanel } from "./editor/AddPanel";
@@ -59,7 +65,94 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
   };
 
   return (
-    <div className="flex h-full">
+    <AppPage
+      label="dashboard view"
+      icon={LayoutGrid}
+      title={current?.title ?? "Dashboards"}
+      description="Live workspace dashboards and series widgets."
+      workspace={ws}
+      error={dash.error}
+      actions={
+        <>
+          {current && (
+            <Badge variant="outline" className="rounded-full uppercase">
+              {current.visibility}
+            </Badge>
+          )}
+          {range && (
+            <div className="hidden items-center gap-1 text-xs text-muted md:flex">
+              <Input
+                aria-label="dashboard range from"
+                className="h-8 w-[8.5rem] text-xs"
+                type="date"
+                value={range.from}
+                onChange={(e) => onSearchChange?.({ ...range, from: e.target.value })}
+              />
+              <span>to</span>
+              <Input
+                aria-label="dashboard range to"
+                className="h-8 w-[8.5rem] text-xs"
+                type="date"
+                value={range.to}
+                onChange={(e) => onSearchChange?.({ ...range, to: e.target.value })}
+              />
+            </div>
+          )}
+          {range && current && (
+            <RefreshControl
+              value={range.refresh}
+              onChange={(refresh) => onSearchChange?.({ ...range, refresh })}
+            />
+          )}
+          {current && (
+            <>
+              <Button
+                aria-label="copy dashboard link"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Copy link"
+                onClick={copyLink}
+              >
+                <Share2 size={13} />
+              </Button>
+              <Select
+                aria-label="dashboard visibility"
+                className="h-8 w-auto"
+                value={current.visibility}
+                onChange={(e) => void dash.share(e.target.value as Visibility)}
+              >
+                {VISIBILITIES.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </Select>
+              {canEdit && (
+                <Button
+                  aria-label="edit variables"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  title="Dashboard variables"
+                  onClick={() => setVarEditorOpen(true)}
+                >
+                  <VariableIcon size={13} />
+                </Button>
+              )}
+              <Button
+                aria-label="delete dashboard"
+                variant="destructive"
+                size="sm"
+                onClick={() => void dash.remove(current.id)}
+              >
+                Delete
+              </Button>
+            </>
+          )}
+        </>
+      }
+    >
       <DashboardRoster
         roster={dash.roster}
         selectedId={current?.id ?? null}
@@ -67,159 +160,56 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
         onCreate={dash.create}
       />
 
-      <section className="flex min-w-0 flex-1 flex-col">
-        <header className="page-header">
-          <div className="page-header-icon">
-            <LayoutGrid size={16} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="page-title">{current?.title ?? "Dashboards"}</h1>
-              {current && (
-                <span className="rounded-full border border-border bg-bg px-2 py-0.5 text-[10px] uppercase text-muted">
-                  {current.visibility}
-                </span>
-              )}
-            </div>
-            <p className="page-subtitle">Live workspace dashboards and series widgets.</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {range && (
-              <div className="hidden items-center gap-1 text-xs text-muted md:flex">
-                <input
-                  aria-label="dashboard range from"
-                  className="control-field-sm w-[8.5rem]"
-                  type="date"
-                  value={range.from}
-                  onChange={(e) => onSearchChange?.({ ...range, from: e.target.value })}
-                />
-                <span>to</span>
-                <input
-                  aria-label="dashboard range to"
-                  className="control-field-sm w-[8.5rem]"
-                  type="date"
-                  value={range.to}
-                  onChange={(e) => onSearchChange?.({ ...range, to: e.target.value })}
-                />
-              </div>
-            )}
-            {range && current && (
-              <RefreshControl
-                value={range.refresh}
-                onChange={(refresh) => onSearchChange?.({ ...range, refresh })}
-              />
-            )}
-            {current && (
-              <>
-                <button
-                  aria-label="copy dashboard link"
-                  className="icon-button"
-                  title="Copy link"
-                  onClick={copyLink}
-                >
-                  <Share2 size={13} />
-                </button>
-                <select
-                  aria-label="dashboard visibility"
-                  className="control-field-sm"
-                  value={current.visibility}
-                  onChange={(e) => void dash.share(e.target.value as Visibility)}
-                >
-                  {VISIBILITIES.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                {canEdit && (
-                  <button
-                    aria-label="edit variables"
-                    className="icon-button"
-                    title="Dashboard variables"
-                    onClick={() => setVarEditorOpen(true)}
-                  >
-                    <VariableIcon size={13} />
-                  </button>
-                )}
-                <button
-                  aria-label="delete dashboard"
-                  className="danger-button-sm"
-                  onClick={() => void dash.remove(current.id)}
-                >
-                  Delete
-                </button>
-              </>
-            )}
-            <span className="scope-pill" title={`Workspace ${ws}`}>
-              <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
-              <span className="truncate">{ws}</span>
-            </span>
-          </div>
-        </header>
+      {!current ? (
+        <AppEmptyState
+          icon={LayoutGrid}
+          title="Select or create a dashboard."
+          description="Dashboards stay scoped to the current workspace and can be shared when needed."
+        />
+      ) : (
+        <div className="flex min-w-0 flex-1 flex-col">
+          <VariableBar
+            variables={current.variables ?? []}
+            selected={selectedVars}
+            onChange={setVar}
+            refreshKey={refreshKey}
+          />
+          <VariableEditor
+            ws={ws}
+            variables={current.variables ?? []}
+            open={varEditorOpen}
+            onOpenChange={setVarEditorOpen}
+            onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
+          />
+          <AddPanel
+            ws={ws}
+            existing={current.cells}
+            canEdit={canEdit}
+            scope={scope}
+            onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
+          />
 
-        {dash.error && (
-          <div role="alert" className="border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-300">
-            {dash.error}
-          </div>
-        )}
-
-        {!current ? (
-          <div className="flex flex-1 items-center justify-center p-6">
-            <div className="flex max-w-sm flex-col items-center rounded-lg border border-dashed border-border bg-panel/70 px-6 py-7 text-center shadow-sm shadow-black/5">
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-bg text-muted">
-                <LayoutGrid size={20} />
-              </div>
-              <p className="text-sm font-medium text-fg">Select or create a dashboard.</p>
-              <p className="mt-1 text-xs leading-5 text-muted">
-                Dashboards stay scoped to the current workspace and can be shared when needed.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <VariableBar
-              variables={current.variables ?? []}
-              selected={selectedVars}
-              onChange={setVar}
-              refreshKey={refreshKey}
-            />
-            <VariableEditor
-              ws={ws}
-              variables={current.variables ?? []}
-              open={varEditorOpen}
-              onOpenChange={setVarEditorOpen}
-              onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
-            />
-            <AddPanel
-              ws={ws}
-              existing={current.cells}
+          <div className="min-h-0 flex-1">
+            <Grid
+              cells={current.cells}
+              editable
               canEdit={canEdit}
+              range={range}
               scope={scope}
-              onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
+              refreshKey={refreshKey}
+              installed={picker.installed}
+              workspace={ws}
+              onLayout={(cells) => void dash.saveCells(cells)}
+              onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
+              onEditCell={(edited) =>
+                void dash.saveCells(
+                  current.cells.map((c) => (c.i === edited.i ? edited : c)),
+                )
+              }
             />
-
-            <div className="min-h-0 flex-1">
-              <Grid
-                cells={current.cells}
-                editable
-                canEdit={canEdit}
-                range={range}
-                scope={scope}
-                refreshKey={refreshKey}
-                installed={picker.installed}
-                workspace={ws}
-                onLayout={(cells) => void dash.saveCells(cells)}
-                onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
-                onEditCell={(edited) =>
-                  void dash.saveCells(
-                    current.cells.map((c) => (c.i === edited.i ? edited : c)),
-                  )
-                }
-              />
-            </div>
-          </>
-        )}
-      </section>
-    </div>
+          </div>
+        </div>
+      )}
+    </AppPage>
   );
 }

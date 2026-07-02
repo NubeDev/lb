@@ -19,7 +19,7 @@ mod run;
 mod save;
 mod seam;
 
-pub use config::{ai_limits, max_chain_steps, rule_limits};
+pub use config::{ai_limits, rule_limits};
 pub use delete::rules_delete;
 pub use error::RulesError;
 pub use get::{rules_get, rules_list};

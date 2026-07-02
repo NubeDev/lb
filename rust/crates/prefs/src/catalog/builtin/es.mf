@@ -1,0 +1,11 @@
+catalog-version: 1
+# Built-in Spanish (es) catalog — the same keys as en.mf, MF1 subset messages. es cardinal plural
+# is the same two categories as en (one iff n == 1) per CLDR 44. Kept key-for-key with en so a
+# missing es key falls back to the en builtin (the language → en → key chain).
+
+alert.threshold_crossed = {name} superó {limit, quantity, speed} el {ts, date}
+alert.items_pending = Tienes {count, plural, =0{ningún elemento pendiente} one{# elemento pendiente} other{# elementos pendientes}}
+alert.severity = {level, select, critical{Alerta crítica} warning{Advertencia} other{Aviso}}: {detail}
+notify.welcome = ¡Bienvenido, {name}!
+notify.new_messages = {name} te envió {count, plural, one{un mensaje} other{# mensajes}}
+report.reading = Lectura: {value, quantity, temperature} registrada el {ts, date}

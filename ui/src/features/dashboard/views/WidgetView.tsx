@@ -113,11 +113,11 @@ export function WidgetView({
     case "piechart":
       return <PieChartPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "plot":
-      return <ScriptedView engine="plot" tools={tools} options={options} />;
+      return <ScriptedView cell={cell} engine="plot" scope={scope} refreshKey={refreshKey} />;
     case "d3":
-      return <ScriptedView engine="d3" tools={tools} options={options} />;
+      return <ScriptedView cell={cell} engine="d3" scope={scope} refreshKey={refreshKey} />;
     case "template":
-      return <ScriptedView engine="template" tools={tools} options={options} />;
+      return <ScriptedView cell={cell} engine="template" scope={scope} refreshKey={refreshKey} />;
     case "switch":
       return (
         <SwitchControl source={primarySource} action={cell.action} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />

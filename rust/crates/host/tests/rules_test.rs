@@ -246,7 +246,7 @@ async fn saved_rule_survives_a_restart() {
 // allowlist builder once read raw `lb_store::scan` rows whose `data` is the Versioned `{rev, data:{…}}`
 // envelope, so `row.data.name` always missed — emptying the allowlist and making every federation
 // `source(...)`/`query(...)` resolve as `SourceNotAllowed` → opaque `Denied` (a misleading "not
-// permitted"). Mirrors the sibling `rules.list`/`chains.list` envelope bug.
+// permitted"). Mirrors the sibling `rules.list`/`flows.list` envelope bug.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn registered_datasource_is_in_the_rule_allowlist() {
     let ws = "rules-allowlist";

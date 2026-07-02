@@ -1,6 +1,44 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4 (CSS-first — no tailwind.config.ts). `@import "tailwindcss"` pulls theme +
+   preflight + utilities; `tw-animate-css` replaces the v3 `tailwindcss-animate` plugin
+   (the `animate-in`/`fade-in`/`zoom-in` classes the shadcn tooltip/sheet use). */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Class-based dark mode (v4 dropped the `darkMode:"class"` config knob — declare the variant
+   in CSS). `.dark` on <html> flips the token blocks below. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The design tokens, mapped onto Tailwind's color/radius utilities (was `theme.extend` in
+   tailwind.config.ts). Each is `hsl(var(--token))` so a theme is a CSS-var swap, not a
+   rebuild — the `:root`/`.dark`/`[data-theme-accent]` blocks below own the actual values. */
+@theme {
+  --color-bg: hsl(var(--bg));
+  --color-panel: hsl(var(--panel));
+  --color-border: hsl(var(--border));
+  --color-fg: hsl(var(--fg));
+  --color-muted: hsl(var(--muted));
+  --color-accent: hsl(var(--accent));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted-bg: hsl(var(--muted-bg));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
 
 /* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper;
    accent palettes swap through `data-theme-accent` on <html>. */

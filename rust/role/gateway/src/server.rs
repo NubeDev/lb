@@ -12,26 +12,26 @@ use tower_http::cors::CorsLayer;
 use crate::routes::{
     add_datasource, add_member, add_team_member, archive_workspace, assign_grant, bus_stream,
     channel_stream, convert_unit, create_apikey, create_channel, create_identity, create_team,
-    create_user, create_workspace, define_role, delete_chain, delete_dashboard, delete_flow,
-    delete_message, delete_role, delete_rule, delete_team, delete_user, disable_extension,
-    disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
-    flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity, get_apikey,
-    get_chain, get_chain_run, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run,
+    create_user, create_workspace, define_role, delete_dashboard, delete_flow, delete_message,
+    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
+    edit_message, enable_extension, enable_flow, enable_user, find_series, flow_node_state,
+    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
+    get_apikey, get_catalog, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run,
     get_history, get_identity, get_outbox_status, get_prefs, get_rule, grant_skill,
     identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
-    list_chains, list_channels, list_dashboards, list_datasources, list_docs, list_extensions,
-    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
-    list_members, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
-    list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog, patch_flow_run,
-    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
-    read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, request_approval, resolve_caps, resolve_inbox, resolve_prefs,
-    resolve_workflow_approval, revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey,
-    run_chain, run_flow, run_query, run_rule, run_stream, save_chain, save_dashboard, save_flow,
-    save_rule, scan_table, series_stream, serve_ext_ui, set_default_prefs, set_prefs,
-    share_dashboard, share_doc, start_job, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, telemetry_stream, test_datasource, uninstall_extension,
-    update_flow_node, write_samples,
+    list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_flow_nodes,
+    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_members, list_roles,
+    list_rules, list_series, list_tables, list_team_members, list_teams, list_users,
+    list_workspaces, load_skill, login, mcp_call, mcp_catalog, patch_flow_run, post_message,
+    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
+    read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
+    rename_workspace, render_catalog_message, request_approval, resolve_caps, resolve_inbox,
+    resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant, revoke_tokens_route,
+    rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard, save_flow, save_rule,
+    scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
+    set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -75,10 +75,23 @@ pub fn router(gw: Gateway) -> Router {
         .route("/prefs", get(get_prefs).put(set_prefs))
         .route("/prefs/resolve", post(resolve_prefs))
         .route("/prefs/default", put(set_default_prefs))
+        // agent-config scope: the per-workspace default-runtime + model-endpoint record.
+        // `GET` is member-level; `PUT` is admin-gated by the host (re-checked server-side).
+        .route(
+            "/agent/config",
+            get(get_agent_config_route).put(set_agent_config_route),
+        )
         .route("/format/datetime", post(format_datetime))
         .route("/format/number", post(format_number))
         .route("/format/quantity", post(format_quantity))
         .route("/convert/unit", post(convert_unit))
+        // i18n catalogs (i18n-catalogs scope, prefs Phase 2). All three are GATED tenant verbs (a
+        // catalog carries workspace overrides): `message.render` (member for self, +fan-out grant for
+        // another recipient), `prefs.catalog` (member — the merged override-over-builtin map), and
+        // `message.set_catalog` (admin — writes a workspace override + publishes the "changed" hint).
+        .route("/message/render", post(render_catalog_message))
+        .route("/prefs/catalog", post(get_catalog))
+        .route("/message/catalog", put(set_catalog))
         // admin-crud: the destructive/admin surface (admin-console scope). Every verb re-checks the
         // capability server-side — the UI cap-gate is convenience only.
         .route("/admin/users", get(list_users).post(create_user))
@@ -195,18 +208,11 @@ pub fn router(gw: Gateway) -> Router {
         .route("/datasources", get(list_datasources).post(add_datasource))
         .route("/datasources/{name}", delete(remove_datasource))
         .route("/datasources/{name}/test", post(test_datasource))
-        // chains (rules-workbench scope, Phase 2) — the browser's `chains.*` DAG-canvas CRUD + run +
-        // the per-step run snapshot poll. Each route re-checks `mcp:chains.<verb>:call` server-side;
-        // ws + principal from the token. An invalid DAG at save → `400` (the canvas inline error).
-        .route("/chains", get(list_chains).post(save_chain))
-        .route("/chains/{id}", get(get_chain).delete(delete_chain))
-        .route("/chains/{id}/run", post(run_chain))
-        .route("/chains/{id}/runs/{run_id}", get(get_chain_run))
         // flows (flows-canvas + dashboard-binding scopes, Wave 3) — the browser's `flows.*` typed-node
         // canvas CRUD + run + the per-node run snapshot + reattach, plus enable/inject. Each route
         // re-checks `mcp:flows.<verb>:call` server-side; ws + principal from the token. An invalid DAG
-        // or schema-invalid node config at save → `400` (the canvas inline error). NO new authority:
-        // these are the shipped `flows.*` verbs over the gateway, mirroring the chains routes.
+        // or schema-invalid node config at save → `400` (the canvas inline error). `flows` is the one
+        // DAG engine (chains retired — chains-retirement scope).
         .route("/flows", get(list_flows).post(save_flow))
         .route("/flows/nodes", get(list_flow_nodes))
         .route("/flows/{id}", get(get_flow).delete(delete_flow))

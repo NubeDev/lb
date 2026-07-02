@@ -1,13 +1,13 @@
 //! The typed node-graph `Flow` model + DAG math (flows-scope "The node model", generalised from the
-//! chain `Step`). A flow is a validated DAG whose every node is data-driven: an `id`, a `node_type`
-//! referencing a [`crate::descriptor::NodeDescriptor`] (built-in or `<ext>.<type>`), a `config`
-//! validated against that descriptor's schema, and `needs` + `with` carrying the **chain binding
-//! grammar verbatim** — whole-value `${steps.x.output}` / `${params.y}` references or a literal, no
-//! templating mini-language (rule-chains-scope, lifted verbatim).
+//! rubix-cube rule-DAG step). A flow is a validated DAG whose every node is data-driven: an `id`, a
+//! `node_type` referencing a [`crate::descriptor::NodeDescriptor`] (built-in or `<ext>.<type>`), a
+//! `config` validated against that descriptor's schema, and `needs` + `with` carrying the **rubix-cube
+//! binding grammar verbatim** — whole-value `${steps.x.output}` / `${params.y}` references or a
+//! literal, no templating mini-language (lifted verbatim from the rule-DAG lineage).
 //!
-//! The DAG math (Kahn cycle-detect, indegrees/dependents/frontier) mirrors the chain `Chain::validate`
-//! exactly — a flow **is** the generalised chain topology with a typed node payload (Decision 8). It
-//! is pure math with no I/O, so a flow is validated at save before any node runs.
+//! The DAG math (Kahn cycle-detect, indegrees/dependents/frontier) is the rubix-cube DAG validation
+//! verbatim — a flow **is** the generalised rule-DAG topology with a typed node payload (Decision 8).
+//! It is pure math with no I/O, so a flow is validated at save before any node runs.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -17,7 +17,7 @@ use thiserror::Error;
 
 use crate::descriptor::NodeKind;
 
-/// The size cap on a flow's node count (mirrors the chain cap; re-checks a hand-edited record).
+/// The size cap on a flow's node count (the rubix-cube DAG cap; re-checks a hand-edited record).
 pub const MAX_FLOW_NODES: usize = 256;
 
 /// No extension namespace prefix — built-in types (`trigger`/`tool`/`rhai`/`subflow`/`sink`) carry
@@ -29,7 +29,7 @@ pub fn is_builtin_type(node_type: &str) -> bool {
     !node_type.contains('.')
 }
 
-/// What happens when a node fails (after its retries): the chain policy verbatim. `Halt` prunes the
+/// What happens when a node fails (after its retries): the rubix-cube DAG policy verbatim. `Halt` prunes the
 /// failed node's transitive subtree (those nodes `Skipped`); `Continue` releases dependents with the
 /// failed output resolved to `null`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,7 +160,7 @@ impl Flow {
             next_attempt_ts: 0,
         }
     }
-    /// In-degree (number of `needs`) per node — the chain math verbatim.
+    /// In-degree (number of `needs`) per node — the rubix-cube DAG math verbatim.
     pub fn indegrees(&self) -> HashMap<String, usize> {
         self.nodes
             .iter()
@@ -249,7 +249,7 @@ pub fn kind_of(node_type: &str) -> Option<NodeKind> {
         .map(|d| d.kind)
 }
 
-/// A DAG validation error (the chain `DagError` shapes verbatim). All rejected **before any node
+/// A DAG validation error (the rubix-cube `DagError` shapes verbatim). All rejected **before any node
 /// runs** — a bad graph is a deny-equivalent.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum DagError {
@@ -272,7 +272,7 @@ pub enum DagError {
 }
 
 /// Validate a flow's DAG: non-empty, within `max_nodes`, unique ids, deps resolve, no self-edge,
-/// acyclic (Kahn). Reused verbatim from the chain `Chain::validate`.
+/// acyclic (Kahn). Reused verbatim from the rubix-cube DAG validation.
 pub fn validate_flow(flow: &Flow, max_nodes: usize) -> Result<(), DagError> {
     if flow.nodes.is_empty() {
         return Err(DagError::Empty);
@@ -397,6 +397,15 @@ mod tests {
     fn rejects_a_cycle() {
         let f = flow(vec![node("a", &["b"]), node("b", &["a"])]);
         assert_eq!(validate_flow(&f, MAX_FLOW_NODES), Err(DagError::Cycle));
+    }
+
+    #[test]
+    fn rejects_over_the_node_cap() {
+        // Superset proof for the retired rule-DAG `size_cap_is_rejected` case: the DAG validator
+        // rejects a flow whose node count exceeds the cap, before any run. Uses a small cap (2) with 3
+        // nodes so the test is cheap and the arithmetic is obvious.
+        let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &[])]);
+        assert_eq!(validate_flow(&f, 2), Err(DagError::TooManyNodes(3, 2)));
     }
 
     #[test]

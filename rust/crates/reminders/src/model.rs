@@ -30,8 +30,9 @@ pub enum ReminderStatus {
     Done,
 }
 
-/// The action a reminder fires. One action per reminder (chaining is the rule-chains' job; a
-/// reminder MAY call a chain via the `McpTool` action). `Outbox` is the must-deliver class — the
+/// The action a reminder fires. One action per reminder (multi-step orchestration is the flows
+/// engine's job; a reminder MAY kick off a flow via the `McpTool` action calling `flows.run`).
+/// `Outbox` is the must-deliver class — the
 /// effect rides the transactional outbox + relay, never raw pub/sub (the durability rule).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]

@@ -34,6 +34,7 @@ For a feature with topic name `<topic>` (kebab-case) and a specific ask `<name>`
 | **Scope doc** | `scope/<topic>/<name>-scope.md` | now | Fully written (the deliverable). |
 | **Session doc** | `sessions/<topic>/<name>-session.md` | when work starts | Created from the ABOUT-DOCS template, status `in-progress`. |
 | **Public stub** | `public/<topic>/<topic>.md` | now, if missing | A `TODO` placeholder, filled on ship. |
+| **Skill doc** | `skills/<name>/SKILL.md` | on ship, **if** it exposes a drivable surface | Written/maintained by the implementing session, grounded in a live run. Scope names it; §6 flags whether one is needed. |
 | **Debug area** | `debugging/<topic>/` | on first bug | Created lazily; entries per `debugging-scope.md`. |
 | **Index updates** | see §7 | now | Cross-links wired both ways. |
 
@@ -151,6 +152,10 @@ A scope for *this* platform isn't done until it has considered the principles in
 - [ ] **Durability** — must-deliver effects go through the outbox, not raw pub/sub.
 - [ ] **One responsibility per file** — the implementation plan respects FILE-LAYOUT.
 - [ ] **SDK/WIT impact** — does this touch the stable plugin boundary? Flag it loudly.
+- [ ] **Skill doc** — does this add or change an **agent-/API-drivable surface** (MCP verbs, gateway
+  routes, an automatable task)? If so, name the `skills/<name>/SKILL.md` the implementing session must
+  write and maintain (a runnable how-to grounded in a live run — see `ABOUT-DOCS.md` → "`skills/`").
+  If not, state N/A. A stale/missing skill for a drivable surface is a finding, not a nicety.
 
 If a scope violates a principle, that's a finding to surface — not something to paper over.
 
@@ -192,6 +197,8 @@ the outbox compose: the job does the work, the outbox delivers the effects.
 
 - **`scope/README.md`** — add/confirm the topic is listed.
 - **`public/<topic>/<topic>.md`** — create the TODO stub if missing.
+- **`skills/<name>/SKILL.md`** — if the feature exposes a drivable surface (§6), note that the
+  implementing session owns writing/maintaining it; link it from the scope's "Related".
 - **`README.md`** — if this adds a core component or changes one, update the relevant
   `§` and keep section numbers stable (many docs cross-reference them).
 - **`key-stack.md`** — if it introduces a new library/crate/role, add the row.
@@ -208,13 +215,16 @@ Hand back only when all are true:
 - [ ] `scope/<topic>/<name>-scope.md` exists and is fully written (not a stub).
 - [ ] The platform checklist (§6) is addressed or explicitly N/A.
 - [ ] A **testing plan** names the mandatory categories that apply.
+- [ ] The **skill doc** is decided: either the scope names the `skills/<name>/SKILL.md` the build will
+  write, or it states N/A (no agent-/API-drivable surface) with the reason (§6 checklist).
 - [ ] Open questions are specific and answerable.
 - [ ] `public/<topic>/<topic>.md` exists (at least as a TODO stub).
 - [ ] Indexes and cross-references (§7) are updated.
 - [ ] The doc matches the house voice: practical, decisive, recommends rather than surveys.
 
-The session doc, tests, and debug entries are produced **during implementation** per the
-AI-session rules in `ABOUT-DOCS.md` — this playbook gets the feature ready to build.
+The session doc, tests, debug entries, and (when the feature exposes a drivable surface) the
+`skills/<name>/SKILL.md` are produced **during implementation** per the AI-session rules in
+`ABOUT-DOCS.md` — this playbook gets the feature ready to build.
 
 ---
 
@@ -229,7 +239,8 @@ Here is the scope idea:
 <your feature idea — one sentence to a page>
 
 Set up everything as needed: choose the topic, write the scope doc, create the public
-stub, name the testing plan, work through the platform checklist, and update the indexes
-and cross-references. Ask me 2–3 questions first only if you genuinely can't make the
-core decisions. Then show me the scope doc.
+stub, name the testing plan (and the skills/<name>/SKILL.md if this exposes a drivable
+surface), work through the platform checklist, and update the indexes and cross-references.
+Ask me 2–3 questions first only if you genuinely can't make the core decisions. Then show
+me the scope doc.
 ```

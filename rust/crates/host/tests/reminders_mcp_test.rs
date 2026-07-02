@@ -229,6 +229,112 @@ async fn workspace_isolation_list_and_get_never_cross_the_wall() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn list_status_and_limit_filter_over_the_ws_read() {
+    // The D3 `list` filter grammar (shared minimal core) at the MCP surface: `status` selects on the
+    // `enabled` flag, `limit` truncates the sorted head. Both are applied host-side over the ws read.
+    let ws = "rem-filter";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal(
+        "user:ada",
+        ws,
+        &[
+            "mcp:reminder.create:call",
+            "mcp:reminder.list:call",
+            "mcp:reminder.update:call",
+        ],
+    );
+    let now: u64 = 1;
+
+    // Two reminders; pause the second (enabled=false).
+    for id in ["a", "b"] {
+        call_tool(
+            &node,
+            &p,
+            ws,
+            "reminder.create",
+            &json!({
+                "id": id, "schedule": "0 8 * * 1",
+                "action": channel_post_action("c", "b"), "ts": now,
+            })
+            .to_string(),
+        )
+        .await
+        .unwrap();
+    }
+    call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.update",
+        &json!({ "id": "b", "enabled": false, "ts": now }).to_string(),
+    )
+    .await
+    .unwrap();
+
+    // status=enabled → only `a`.
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.list",
+        &json!({ "status": "enabled" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let l: Value = serde_json::from_str(&out).unwrap();
+    let ids: Vec<&str> = l["reminders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["a"], "status=enabled selects the enabled one");
+
+    // status=disabled → only `b`.
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.list",
+        &json!({ "status": "disabled" }).to_string(),
+    )
+    .await
+    .unwrap();
+    let l: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(l["reminders"].as_array().unwrap().len(), 1);
+    assert_eq!(l["reminders"][0]["id"], "b");
+
+    // limit=1 → one row from the full set.
+    let out = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.list",
+        &json!({ "limit": 1 }).to_string(),
+    )
+    .await
+    .unwrap();
+    let l: Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        l["reminders"].as_array().unwrap().len(),
+        1,
+        "limit truncates"
+    );
+
+    // A garbage status is author feedback (BadInput), not an opaque deny.
+    let err = call_tool(
+        &node,
+        &p,
+        ws,
+        "reminder.list",
+        &json!({ "status": "paused" }).to_string(),
+    )
+    .await
+    .expect_err("bad status filter rejected");
+    assert!(matches!(err, ToolError::BadInput(_)), "got {err:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn bad_cron_at_create_is_bad_input_not_denied() {
     // A malformed schedule is author feedback (BadInput), not an opaque denial — the caller IS
     // authorized; the input is just wrong.

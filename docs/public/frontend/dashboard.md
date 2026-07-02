@@ -528,9 +528,31 @@ the same doctrine as `format.*`.
 - An MCP `sql.generate` tool to restore the (dropped) AI "generate SQL" button.
 - A LogQL-style source (port the Grafana Loki builder/raw files, kept as the reference).
 
+## X/Y plot builder (shipped 2026-07-01)
+
+One chart model + renderer + builder, shared by the **dashboard panels** and the **in-channel query
+results** — real titled X/Y axes, gridlines, a themed tooltip, a legend, and an interactive picker.
+
+- **Model** `ui/src/lib/charts/`: a `PlotSpec` (`type`/`xField`/`yFields[]`/`seriesField?`/`stacked?`/
+  `bins?`), field-kind inference (time/number/category by sampled values), `buildPlot` (rows+spec →
+  Recharts frame: multi-series, long→wide pivot, pie aggregate, histogram bin), and `suggestPlot` (a TS
+  twin of the host `pick_chart` so both surfaces open on the same default).
+- **Renderer/builder** `ui/src/features/charts/`: `PlotChart` (real axes/ticks/grid, `ResponsiveContainer`,
+  reduced-motion draw-in, empty/table-only states) and `PlotBuilder` (chart-type toggle + X/Y/series
+  pickers + live preview).
+- **Dashboard**: `timeseries`/`barchart`/`piechart` render through `PlotChart` when a `plot` spec is set
+  (additive — no spec keeps the legacy chart). A **Plot** tab in the panel editor runs the draft query
+  live and mounts the builder; the spec persists in `Cell.options.plot` via `dashboard.save`.
+- **Channel**: run a query → "Customize" opens the builder; the viewer's choice persists **per-user**
+  via the new host verbs `channel.chart_pref.get`/`.set` (record `channel_chart_pref:[ws, cid__item__user]`,
+  gated by the channel `sub` cap) and is merged over the host's auto-pick. The canonical worker-authored
+  result stays immutable — two viewers can plot it differently.
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)
+- X/Y plot builder scope: [`../../scope/frontend/dashboard/viz/xy-plot-builder-scope.md`](../../scope/frontend/dashboard/viz/xy-plot-builder-scope.md)
+- X/Y plot builder session: [`../../sessions/frontend/xy-plot-builder-session.md`](../../sessions/frontend/xy-plot-builder-session.md)
 - Widget scope: [`../../scope/frontend/dashboard/widgets-scope.md`](../../scope/frontend/dashboard/widgets-scope.md)
 - Widget-builder (v2) scope: [`../../scope/frontend/dashboard/widget-builder-scope.md`](../../scope/frontend/dashboard/widget-builder-scope.md)
 - Phase 1 session: [`../../sessions/frontend/dashboard-session.md`](../../sessions/frontend/dashboard-session.md)

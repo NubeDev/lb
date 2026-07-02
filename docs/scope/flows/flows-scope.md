@@ -162,6 +162,41 @@ rather than re-deciding. Each names the alternative rejected and why.
     caller's choice), then drop the cron registration + its deterministic firing ids — idempotent.
     *Rejected:* removing the `flow` record out from under an armed socket / live run / pending
     firing.
+14. **`switch` is edge-gating, not a new wire `Outcome`.** A `switch` settles `Ok` (a pass-through
+    envelope) like any node; the executor then reads its `config.rules` (each rule carries `to:
+    [node_ids]` — the rule→port→wire mapping made explicit, since this DAG's edges are node-id
+    `needs` with no port label), evaluates them against the routed value, **releases only the matched
+    dependents**, and marks each unmatched immediate dependent's exclusive subtree `skipped` (a
+    "gated skip"). A stateful node that **suppresses** a firing (RBE `filter`, a buffering `batch`, a
+    `unique` duplicate) uses the same seam: it settles `Skipped` and its subtree is gated. This
+    resolves data-nodes Open Q1 **without** a new frontier `Outcome` variant on the wire (the gate is
+    computed at release time from config + the settled value) and without changing the edge model.
+    *Rejected:* a port-labelled edge model (a bigger change than this pack owns) and a null/skip
+    sentinel payload (a dependent can't tell "gated" from a legitimately-null value). Branches are
+    expected disjoint (a Node-RED switch fans to distinct wires); a dependent shared with a live
+    branch is left to fire on its other path.
+15. **`split`/`join` are array-carry, not per-message fan-out.** Node-RED fans a `split` into N
+    independent messages; our one-shot-run model (Decision 9 — no parked runs, no per-event fan-out
+    storm) resolves data-nodes Open Q2 to **array-carry**: `split` emits the sequence as **one**
+    settle whose `payload` is the array plus a top-level `parts` descriptor
+    (`{id, count, kind, keys?}`), and `join` reads the carried `parts` to recombine (rebuilding an
+    object from `keys`, or returning the array). The `parts` field carries forward down the wire like
+    `topic` (D4), so `split → map → join` round-trips **without** a new frontier behaviour —
+    `split`/`join` collapse to pure array transforms (exactly the collapse the pack predicted).
+    Per-element work between them is the array-native `map`/`sort`/`aggregate`, **not** a scalar node
+    per element. `parts` is an additive envelope field (the versioned sequence contract, Risk 2),
+    designed once and shared by `split`/`join`/`batch`. *Rejected:* per-message fan-out (N downstream
+    runs — the fan-out storm Decision 9 exists to avoid).
+16. **`delay` parks on the resume seam, never an in-memory sleep.** A `delay` records its release
+    instant (`delay` mode) or last-release (`rate` mode) in the bounded-accumulator record and, while
+    the timer has not elapsed, returns a **park**: the executor resets the node to `Enqueued` and
+    marks the run `suspended` (the same suspend/resume seam the `subflow` park rides, Decision 11). A
+    `flows.resume` with an advanced clock re-drives the node, which now releases. This survives a
+    restart (the release instant is durable, not a live task) — the honest realisation of a timer
+    under "frontier runs to completion" (Decision 9 forbids a long-lived parked async task). v1
+    resume is operator/reactor-driven (like the `subflow` inline-drive); a timer-reactor that
+    auto-resumes an elapsed park is a follow-up. *Rejected:* a `tokio::sleep` inside the run task (in
+    memory, lost on restart, and a parked task fighting the one-shot model).
 
 ## How it fits the core (overview — detail in the sub-docs)
 

@@ -21,6 +21,12 @@ pub struct ModelEndpoint {
     /// Name of the env var the agent reads the API key from (e.g. `"ZAI_API_KEY"`). The driver does
     /// **not** hold the key value — only the var name, so the secret never lands in a profile struct.
     pub api_key_env: String,
+    /// The OpenAI-compatible base URL the agent should reach the model at (e.g. Z.AI's coding endpoint
+    /// `https://api.z.ai/api/coding/paas/v4`, or — under model-routing #4 — our gateway's OpenAI-
+    /// compatible endpoint). `Some` makes a codex-family agent talk to this endpoint via its
+    /// `model_providers` config (the wrapper emits the `-c` overrides + `wire_api=chat`); `None` falls
+    /// back to the agent's own login/config (the pre-Z.AI behavior). Never carries the key, only the URL.
+    pub base_url: Option<String>,
 }
 
 /// One configured external agent. `id` is what `agent.invoke { runtime: id }` selects once the seam

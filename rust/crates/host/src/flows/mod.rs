@@ -10,6 +10,7 @@
 //! then each verb's own store surface. Composition, never widening: `flows.run` plus every node-tool's
 //! own gate under `caller ∩ grant` (flow-run-scope deny matrix).
 
+pub mod buffer;
 pub mod coordinator;
 pub mod error;
 pub mod execute_node;

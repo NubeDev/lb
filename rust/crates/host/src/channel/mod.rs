@@ -6,8 +6,12 @@
 //! (the hard wall, §7) before any bus or store access — there is no path to a channel that
 //! skips authorization. One verb per file (FILE-LAYOUT §3).
 
+mod agent_job;
+mod agent_worker;
 mod authorize;
 mod chart;
+mod chart_pref;
+mod chart_pref_tool;
 mod delete;
 mod edit;
 mod error;
@@ -19,20 +23,27 @@ mod presence;
 mod query_worker;
 mod subscribe;
 
+// The durable enqueue record + the background-drive entry — consumed by the `agent_reactor`
+// (crate-internal). `run-lifecycle #5` moved the run off the POST connection: `run_if_agent`
+// enqueues, `drive_queued_run` is what the reactor calls per pending job.
+pub(crate) use agent_job::{ChannelAgentJob, CHANNEL_AGENT_KIND};
+pub(crate) use agent_worker::{drive_queued_run, RUN_WALL_CEILING};
+
 // The chart picker + kind-tagged payload helpers are crate-internal: the inline query worker
 // (`query_worker.rs`) and `post.rs` are the only consumers today. Exposed `pub(crate)` (not `pub`)
 // so they don't leak from the crate API until a host caller actually needs them — keeping the lib's
 // public surface honest (no dead `pub use`).
 #[allow(unused_imports)]
 pub(crate) use chart::{pick_chart, ChartKind, ChartSeries, ChartSpec};
+pub use chart_pref_tool::call_channel_chart_pref_tool;
 pub use delete::{delete, watch_deletions, DeletionFeed};
 pub use edit::edit;
 pub use error::ChannelError;
 pub use history::history;
 #[allow(unused_imports)]
 pub(crate) use payload::{
-    encode_payload, error_body, parse_payload, result_body, ItemPayload, QueryErrorPayload,
-    QueryPayload, QueryResultPayload,
+    encode_payload, error_body, parse_payload, result_body, rich_result_body, ItemPayload,
+    QueryErrorPayload, QueryPayload, QueryResultPayload, RichResultPayload,
 };
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};

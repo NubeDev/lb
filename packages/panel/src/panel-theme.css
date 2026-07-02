@@ -1,0 +1,43 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Panel design tokens.
+ *
+ * The panel FOLLOWS THE HOST APP'S shadcn theme. Every `--lbp-*` token is an ALIAS of
+ * the host's standard shadcn CSS variable (`--card`, `--foreground`, `--border`, …), with
+ * a hard-coded fallback used only when the host hasn't defined that variable (e.g. a
+ * standalone/external mount with no shadcn tokens). So:
+ *   • inside lb `ui` — the panel inherits the app's light/dark/`data-theme-accent` theme
+ *     automatically (the host flips `--card`/`--foreground`/… on `.dark`), and
+ *   • as a standalone library — it still renders on the dark fallback palette below.
+ *
+ * This is the fix for "not using the main css, the colours are wrong": the previous version
+ * shipped its OWN fixed dark palette, so it ignored the host theme and stayed dark in light
+ * mode. Aliasing the host tokens means one theme, owned by the app.
+ *
+ * A host can still override any `--lbp-*` directly under `.lb-panel` for a bespoke skin.
+ * Values are HSL triples (so `hsl(var(--x) / .5)` alpha works).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+.lb-panel {
+  /* Surfaces / text — alias the host shadcn tokens; the second value is the standalone
+     fallback (dark, matching ce-wiresheet) for hosts without shadcn tokens. */
+  --lbp-bg: var(--background, 234 18% 6%);
+  --lbp-panel: var(--card, 232 15% 9%);
+  --lbp-secondary: var(--secondary, 230 14% 12%);
+  --lbp-border: var(--border, 230 10% 18%);
+  --lbp-input: var(--input, 230 10% 18%);
+  --lbp-fg: var(--foreground, 220 16% 93%);
+  --lbp-muted: var(--muted-foreground, 220 8% 56%);
+  --lbp-accent: var(--ring, 200 86% 64%);
+  --lbp-amber: var(--destructive, 32 92% 60%);
+
+  /* Mono stack for the dense tables/KV; falls back to a system mono when the host has none. */
+  --lbp-font-mono: var(--font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+
+  /* The surface's OWN base look, set directly on the root — NOT via a `bg-lbp-panel`
+     utility. The scoped utilities are `.lb-panel .<util>` (descendant), which by design do
+     NOT match the `.lb-panel` element itself; if the surface relied on `bg-lbp-panel` for
+     its background it would be TRANSPARENT (see-through — the exact bug this fixes). So the
+     opaque surface background + text colour live here, where they always apply. */
+  background-color: hsl(var(--lbp-panel));
+  color: hsl(var(--lbp-fg));
+}

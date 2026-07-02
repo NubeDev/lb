@@ -246,6 +246,7 @@ fn open_interpreter_reuses_codex_wrapper_only_the_binary_differs() {
         provider: "openai".into(),
         model: "gpt-5.4-mini".into(),
         api_key_env: "OPENAI_API_KEY".into(),
+        base_url: None,
     };
     let codex = AgentProfile::codex_default(model.clone());
     let oi = AgentProfile::open_interpreter_default(model);

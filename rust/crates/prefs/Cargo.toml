@@ -21,3 +21,7 @@ tokio.workspace = true
 [[bin]]
 name = "gen-prefs-ts"
 path = "src/bin/gen_ts.rs"
+
+[[bin]]
+name = "gen-prefs-catalog"
+path = "src/bin/gen_catalog.rs"

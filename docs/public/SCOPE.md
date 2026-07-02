@@ -3,6 +3,45 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — frontend: Widget Kit Phase 1 — field presentation + a reusable widget library)
+
+A declarative per-field **presentation** vocabulary (`label`/`description`/`hide`/`order`) authored on the
+descriptor and resolved by ONE `resolveFieldPresentation` + `humanize`, applied on BOTH the request form
+(`x-lb`) and the response table (`fieldConfig`, with a new additive `hide`) — so `maxRuns` reads "Max Runs"
+in both and a header can't drift from a form label. The input widgets + registry + `CronBuilder` + the
+presentation/table core were extracted into `ui/src/lib/widgets/` (registry = the public API) as a
+behavior-preserving move + re-export shim. One shared table column-model backs both the read-only
+`TablePanel` and the row-controlled `ResponseTable`. The `/reminders` table now reads author labels, hides
+`principalSub`/`ts`, and no longer dumps `action` as a raw blob (its descriptor declares a `fieldConfig` that
+rides the existing rich_result envelope — **no new verb/cap/table/WIT**). `hide` is presentation, **not**
+security (a hidden field still crossed the bridge under the viewer's grant). Phase 2 (view-renderer move +
+the ext input-widget value channel + `defineWidget`) is a named follow-up. See
+[`frontend/widget-kit.md`](frontend/widget-kit.md).
+
+## Shipped (post-S10 — operator CLI `lb`, v1 slice: the terminal twin of the shell)
+
+A fourth client of the node gateway — the terminal twin of the React shell — holding **no authority
+of its own**, denied exactly when the server denies (`cli/cli.md`, `../skills/lb-cli/SKILL.md`):
+
+- **One binary, two postures** (`rust/role/cli/`, crate `lb-cli`, binary `lb`): *remote* (a reqwest
+  client over the gateway's `POST /mcp/call`) and *local* (an embedded `Node::boot()` + a minted
+  `dev_claims`-shaped `Principal`, offline). One `Transport` trait, both ending at
+  `lb_host::call_tool`. Mode is a config/flag choice (`--local`), never an `if cloud` branch.
+- **v1 commands**: `lb login`/`whoami` (dev-login token, per-workspace, `0600`, never logged); the
+  universal `lb call <tool> '{json}'`; one typed `lb inbox list <channel>`; `lb devkit sign` +
+  `lb ext publish` (the `make publish-ext` / `lb-pack` fold — same `lb-devkit` signing, so artifacts
+  verify by construction; `lb-pack` kept as a shim); `lb local …` (the offline/edge posture).
+- **Pure client, zero new surface**: no new MCP verbs, capabilities, tables, or enforcement paths.
+  `-w` is a **credential selector** (an unstored workspace is a loud error), never a workspace
+  override — the token's ws always reaches the server (`/mcp/call` carries no ws in the body). Every
+  command prints a `ws/user/role/mode` header (stderr) + shaped body (stdout); a deny renders
+  `DENIED  mcp:<tool>:call` and exits non-zero — never a fabricated success.
+- One host-crate touch: `lb_auth::claims_unverified` (a client-side header read; not an authz path —
+  the server re-verifies every request). New deps: `clap`/`tabled`/`dirs` (CLI ergonomics only).
+- **Tested** in-process against a real gateway on a real socket, seeded via the real write path (no
+  mocks): capability-deny + workspace-isolation + offline, remote AND local; the `devkit sign` →
+  `verify_artifact` round-trip; config `0600` + "no command emits the token" (`rust/role/cli/tests/`).
+
 ## Shipped (post-S10 — global identity / many-workspaces, the Slack model)
 
 One **global identity** per person belonging to many workspaces, linked by a per-workspace
@@ -88,11 +127,38 @@ canonical — UTC instants, base units, neutral enums — never a formatted stri
   + a **grant-free** utility tier `format.datetime/number/quantity` + `convert.unit` (pure math, no
   tenant data). Gateway routes mirror them 1:1. Closed vocabulary generated to the client
   (`ui/src/lib/prefs/dimensions.generated.ts`).
-- **Deferred (Phase 2, named):** i18n MessageFormat catalogs (server-localized notifications/emails,
-  per-recipient fan-out) — dialect pinned (ICU MF1 / `intl-messageformat`); the `icu4x` swap-in for
-  localized names + the MessageFormat engine + the en/es CLDR data slice; the client settings UI.
+- **i18n catalogs (Phase 2, shipped):** a hand-written **ICU MF1 subset** parser/renderer in
+  `lb-prefs` (plural `one`/`other`+`=0`/`=1`, `select`, typed date/number/quantity placeholders routed
+  to `format::*`, one nest, `#`); built-in en/es `.mf` catalogs compiled in + **generated to the client**
+  (`catalog.generated.ts`, byte-identity drift-tested; `intl-messageformat` cross-checked host==client);
+  a sparse per-workspace override `message_catalog:[ws, locale]` (per-key merge, LWW, offline-idempotent);
+  and 3 MCP verbs — `message.render` (member for self, `message.render_recipient` grant to fan out for
+  another), `prefs.catalog` (member), `message.set_catalog` (admin) — routes 1:1, + the "catalog changed"
+  hint. **Server-side per-recipient fan-out**: one event → N distinct renders (per member's prefs).
+- **Settings UI (shipped 2026-07-02):** a dedicated **Settings** nav surface — a **Preferences** tab
+  over all eight axes (`prefs.set` own + admin `prefs.set_default`, unit picker generated from the
+  server vocabulary) and an **Agent** tab (below). See `prefs/prefs.md` → "Settings UI".
+- **Deferred (named):** the `icu4x` swap-in (localized names + full-CLDR plural engine + en/es CLDR
+  slice) behind the same signatures; the **pre-auth bootstrap-locale** + RTL UI (the settings *editor*
+  is shipped).
 
-See `prefs/prefs.md`, `../scope/prefs/user-prefs-scope.md`, `../sessions/prefs/lb-prefs-session.md`.
+See `prefs/prefs.md`, `../scope/prefs/{user-prefs,i18n-catalogs}-scope.md`,
+`../sessions/prefs/{lb-prefs,i18n-catalogs}-session.md`.
+
+## Shipped (per-workspace agent config — the workspace's default runtime + endpoint)
+
+The `agent.runtimes` read verb *lists* what a node offers; this persists a workspace's **choice**.
+
+- **Record:** `workspace_agent_config:[ws]` (SCHEMAFULL, composite-id, idempotent replay) — nullable
+  `default_runtime` (registry-validated on write) + a **names-only** `model_endpoint`.
+- **Verbs:** `agent.config.get` (member, `mcp:agent.config.get:call`) + `agent.config.set` (admin,
+  `mcp:agent.config.set:call`); gateway `GET|PUT /agent/config` (1:1). Opaque deny; no delete/feed/batch.
+- **UI:** the Settings **Agent** tab — a runtime dropdown (from `agent.runtimes`) + endpoint fields,
+  editable for an admin, read-only for a member (server is the wall); registry-drift flagged.
+- **Follow-up (named):** honor the stored default in `agent.invoke` when `runtime` is omitted.
+
+See `external-agent/external-agent.md` → "Agent config", `../scope/external-agent/agent-config-scope.md`,
+`../sessions/external-agent/agent-config-settings-session.md`.
 
 ## Shipped (S9+ — frontend: the rules workbench — Playground · chain canvas · datasources admin)
 
@@ -103,9 +169,11 @@ host work added (`public/frontend/rules-workbench.md`):
 - **Playground** — a CodeMirror editor + `rules.run` rendering the typed `RuleOutput` three ways
   (scalar/grid/findings) + log + ms/ai budget; full `rules.*` CRUD rail; honest cage/deny/AI-budget/
   AI-not-configured states (`BadInput` verbatim, `Denied` opaque), never a fake result.
-- **Chain canvas** — a React Flow DAG (nodes=steps, edges=needs) over `chains.*`; a cyclic edge renders
-  the host's validation error inline; Run + a **bounded** `chains.runs.get` settle-poll colours nodes
-  pending/running/ok/err/skipped with the Halt-pruned subtree greyed.
+- **Chain canvas** *(RETIRED — superseded by the Flows canvas; `chains` is deleted, `flows` is the one
+  DAG engine — `scope/flows/chains-retirement-scope.md`)* — was a React Flow DAG (nodes=steps,
+  edges=needs) over `chains.*`; a cyclic edge rendered the host's validation error inline; Run + a
+  bounded `chains.runs.get` settle-poll coloured nodes. The DAG capability now lives in **Flows**
+  (`flows.*`, live `flows.watch` SSE instead of a poll).
 - **Datasources admin** — first-party shell page over `datasource.*` (the federation extension stays
   headless): list (redacted, never the DSN), add (DSN write-only, implied grants shown), test (honest
   green/red probe), remove.

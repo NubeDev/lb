@@ -1,6 +1,15 @@
 # Rules scope — rule chains: a rule DAG driven by `lb-jobs`
 
-Status: scope (the ask). Promotes to `public/rules/rules.md` once shipped (the chains section).
+> **⚠ Retired to lineage — not a shipping surface.** The standalone `chains.*` engine this doc
+> scoped is **superseded by `flows/`** (a flow is a strict superset of a rule-chain — same binding
+> grammar, same `lb-jobs`-per-node topology, same frontier driver, plus subflows/sinks/sources and a
+> data-driven canvas). The `chains.*` verbs, the host `chains` module, and the `lb_rules::workflow`
+> model are **removed** by [`../flows/chains-retirement-scope.md`](../flows/chains-retirement-scope.md).
+> This document is kept for its **`rubix-cube` workflow-DAG port history + attribution** (referenced
+> by [`rules-engine-scope.md`](./rules-engine-scope.md)) and as the design record the flow engine
+> generalised — **read it as lineage, build against `flows/`.**
+
+Status: **retired to lineage** (superseded by `flows/`). Was: scope (the ask).
 
 We want to **chain rules into a DAG** — a workflow where each step runs one saved rule, after its
 upstream steps, with a step's output bound into the next step's inputs, triggered manually / on cron /

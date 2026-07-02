@@ -8,6 +8,8 @@ import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 
+import { PlotChart } from "@/features/charts";
+
 import { WidgetHeader, WidgetMessage } from "../../widgets/chrome";
 import { CategoryBarChart, type CategoryDatum } from "../../widgets/recharts";
 import { usePanelData } from "../../builder/usePanelData";
@@ -15,6 +17,7 @@ import { frameCategories, defaultReduceOptions } from "../reduce";
 import { valueFieldOptions, categoryColor } from "../field";
 import { readBarChartOptions } from "./options";
 import { formatValue } from "../../fieldconfig/format";
+import { cellPlot } from "../plot";
 
 interface Props {
   cell: Cell;
@@ -31,6 +34,18 @@ export function BarChartPanel({ cell, label, scope = emptyScope(), refreshKey = 
 
   const options = readBarChartOptions(cell.options);
   const opts = valueFieldOptions(cell);
+
+  // The x/y plot path — a configured `plot` spec renders the full categorical chart (real axes, one bar
+  // per category or per series) through the shared `PlotChart`. Additive: no spec keeps the legacy chart.
+  const plot = cellPlot(cell);
+  if (plot) {
+    return (
+      <div className="flex h-full flex-col" aria-label="barchart panel">
+        <WidgetHeader label={label ?? opts.displayName ?? ""} />
+        <PlotChart rows={rows} spec={plot} valueFormatter={(v) => formatValue(v, opts).text} ariaLabel="barchart plot" />
+      </div>
+    );
+  }
 
   // A barchart draws every category — `reduceOptions.values`-style per-row collapse, capped by limit.
   const cats = frameCategories(rows, defaultReduceOptions());

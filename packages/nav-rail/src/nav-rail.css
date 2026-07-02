@@ -1,0 +1,35 @@
+/* The NavRail stylesheet — Tailwind v4, SCOPED so it can NEVER touch the host app.
+ *
+ * CRITICAL — this is a LIBRARY stylesheet dropped into a host app that ALSO ships Tailwind.
+ * A naive `@import 'tailwindcss/utilities.css'` emits GLOBAL `.flex`/`.w-full`/`.hidden`/… rules
+ * that collide with the host's own utilities (esp. across Tailwind minor versions) and can break
+ * the app layout. So we do two things:
+ *   1. NO preflight / base — a library must never reset its host.
+ *   2. SCOPE every generated utility under `.nav-rail` via the v4 nesting form
+ *      (`@layer utilities { .nav-rail { @tailwind utilities } }`), so the rail's classes only
+ *      apply INSIDE the rail and can't leak onto app elements.
+ *
+ * `@theme` maps the rail's Tailwind color utilities onto the `--nr-*` tokens; the tokens live in
+ * nav-rail-theme.css, scoped to `.nav-rail`, and ALIAS the host's shadcn vars so the rail follows
+ * the app theme. */
+
+@layer theme, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import './nav-rail-theme.css';
+
+/* Scoped utilities: generated classes are emitted UNDER `.nav-rail` only. */
+@layer utilities {
+  .nav-rail {
+    @tailwind utilities;
+  }
+}
+
+@theme {
+  --color-nr-bg: hsl(var(--nr-bg));
+  --color-nr-panel: hsl(var(--nr-panel));
+  --color-nr-border: hsl(var(--nr-border));
+  --color-nr-fg: hsl(var(--nr-fg));
+  --color-nr-muted: hsl(var(--nr-muted));
+  --color-nr-accent: hsl(var(--nr-accent));
+}

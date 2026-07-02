@@ -21,6 +21,16 @@ pub(crate) fn assemble(signing_input: &str, sig: &[u8]) -> String {
     format!("{signing_input}.{sig_b64}")
 }
 
+/// Decode a token's `Claims` **without verifying the signature** — a client-side introspection read
+/// (the operator CLI's `whoami`/header renders `ws`/`sub`/`role` from the token it already holds). This
+/// is NOT an authorization path and grants nothing: the server re-verifies every request with the node
+/// key, so a forged/edited payload only mis-labels the caller's own terminal, never widens access.
+/// `None` if the token shape or payload JSON is malformed.
+pub fn claims_unverified(token: &str) -> Option<crate::claims::Claims> {
+    let (_signing_input, payload, _sig) = split(token)?;
+    serde_json::from_slice(&payload).ok()
+}
+
 /// Split a compact token into (signing_input, payload_bytes, signature_bytes). `None` if the
 /// shape is wrong or any segment is not valid base64url.
 pub(crate) fn split(token: &str) -> Option<(String, Vec<u8>, Vec<u8>)> {

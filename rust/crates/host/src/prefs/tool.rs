@@ -57,6 +57,11 @@ pub async fn call_prefs_tool(
                 .map_err(svc_err)?;
             Ok(json!({ "ok": true }))
         }
+        // i18n-catalogs scope: `prefs.catalog` shares the `prefs.` prefix, so it lands in this
+        // bridge; the DTO shaping lives in the catalog bridge (read-only, no bus).
+        "prefs.catalog" => {
+            super::catalog_tool::call_prefs_catalog_tool(store, principal, ws, input).await
+        }
         _ => Err(ToolError::NotFound),
     }
 }

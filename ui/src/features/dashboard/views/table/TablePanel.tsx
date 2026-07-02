@@ -9,6 +9,7 @@
 
 import type { Cell } from "@/lib/dashboard";
 import { cellFieldConfig } from "@/lib/dashboard";
+import { resolveColumns } from "@/lib/widgets";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 
@@ -26,13 +27,6 @@ interface Props {
   refreshKey?: number;
 }
 
-/** The union of keys across the rows, in first-seen order — the introspected columns. */
-function columnsOf(rows: Array<Record<string, unknown>>): string[] {
-  const seen: string[] = [];
-  for (const row of rows) for (const k of Object.keys(row)) if (!seen.includes(k)) seen.push(k);
-  return seen;
-}
-
 export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }: Props) {
   const { rows, loading, denied } = usePanelData(cell, scope, refreshKey);
 
@@ -42,9 +36,14 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
 
   const options = readTableOptions(cell.options);
   const fc = cellFieldConfig(cell);
-  const cols = columnsOf(rows);
-  // Per-column effective options (defaults + a `byName:<col>` override) — resolved once per column.
-  const colOpts = Object.fromEntries(cols.map((c) => [c, resolveFieldOptions(fc, { name: c, type: "number" })]));
+  // The shared column-model resolves headers through the ONE presentation resolver (`displayName`
+  // override → humanize fallback), drops `hide`-marked columns, and applies `order` — identical to what
+  // ResponseTable renders. Value FORMATTING (unit/decimals/thresholds) stays owned here via
+  // `resolveFieldOptions`, keyed by the raw column key.
+  const cols = resolveColumns(rows, fc);
+  const colOpts = Object.fromEntries(
+    cols.map((c) => [c.key, resolveFieldOptions(fc, { name: c.key, type: "number" })]),
+  );
   const pad = cellHeightClass(options.cellHeight);
 
   // sortBy[0] orders the rows by a column's value (numeric when both sides are numeric, else string).
@@ -59,8 +58,8 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
             <thead className="sticky top-0 bg-panel text-muted">
               <tr>
                 {cols.map((c) => (
-                  <th key={c} className={`border-b border-border px-2 font-medium ${pad}`}>
-                    {colOpts[c].displayName ?? c}
+                  <th key={c.key} title={c.description} className={`border-b border-border px-2 font-medium ${pad}`}>
+                    {c.header}
                   </th>
                 ))}
               </tr>
@@ -70,8 +69,8 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
             {sorted.map((row, i) => (
               <tr key={i} className="odd:bg-bg/40">
                 {cols.map((c) => (
-                  <td key={c} className={`truncate border-b border-border/50 px-2 ${pad}`}>
-                    {renderCell(row[c], colOpts[c])}
+                  <td key={c.key} className={`truncate border-b border-border/50 px-2 ${pad}`}>
+                    {renderCell(row[c.key], colOpts[c.key])}
                   </td>
                 ))}
               </tr>

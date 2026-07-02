@@ -14,7 +14,6 @@ import {
 } from "@tanstack/react-router";
 
 import { AdminView } from "@/features/admin";
-import { ChainsView } from "@/features/chains";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
@@ -29,6 +28,7 @@ import { RulesView } from "@/features/rules";
 import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
 import { type CoreSurface } from "@/features/shell";
+import { SettingsView } from "@/features/settings";
 import { StudioView } from "@/features/studio";
 import { SystemView } from "@/features/system";
 import { AcpServiceView } from "@/features/system-acp";
@@ -124,7 +124,6 @@ const routeTree = rootRoute.addChildren([
     channelsRoute,
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
-    coreRoute("/chains", "chains", () => <Chains />),
     coreRoute("/flows", "flows", () => <Flows />),
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
@@ -140,6 +139,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/admin", "admin", () => <Admin />),
     coreRoute("/extensions", "extensions", () => <Extensions />),
     coreRoute("/studio", "studio", () => <Studio />),
+    coreRoute("/settings", "settings", () => <SettingsPage />),
     extRoute,
   ]),
 ]);
@@ -202,7 +202,16 @@ function CoreGate({ surface, children }: { surface: CoreSurface; children: JSX.E
 function ChannelsRoute() {
   const ctx = useAppRoutingContext();
   const { c } = channelsRoute.useSearch();
-  return <ChannelView ws={ctx.workspace} channel={c} author={ctx.principal} />;
+  const navigate = useNavigate({ from: "/t/$ws/channels" });
+  return (
+    <ChannelView
+      ws={ctx.workspace}
+      channel={c}
+      author={ctx.principal}
+      onSelectChannel={(channel) => void navigate({ search: { c: channel } })}
+      onSwitchWorkspace={ctx.switchWorkspace}
+    />
+  );
 }
 
 function DashboardsRoute() {
@@ -236,10 +245,6 @@ function ExtRoute() {
 
 function Rules() {
   return <RulesView ws={useAppRoutingContext().workspace} />;
-}
-
-function Chains() {
-  return <ChainsView ws={useAppRoutingContext().workspace} />;
 }
 
 function Flows() {
@@ -346,4 +351,9 @@ function Extensions() {
 
 function Studio() {
   return <StudioView ws={useAppRoutingContext().workspace} />;
+}
+
+function SettingsPage() {
+  const ctx = useAppRoutingContext();
+  return <SettingsView ws={ctx.workspace} caps={ctx.caps} />;
 }

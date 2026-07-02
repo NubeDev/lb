@@ -66,10 +66,9 @@ export const CAP = {
   dashboardList: "mcp:dashboard.list:call",
   dashboardSave: "mcp:dashboard.save:call",
   // rules workbench (rules-workbench scope): member-level nav gates. The Playground shows for any
-  // session that may run a rule; the chain canvas for chains.get; the datasources admin for
-  // datasource.list. Gate 3 / ownership + the gateway's per-verb re-check are the real boundary.
+  // session that may run a rule; the datasources admin for datasource.list. Gate 3 / ownership + the
+  // gateway's per-verb re-check are the real boundary. (The DAG canvas is Flows — see `flowsList`.)
   rulesRun: "mcp:rules.run:call",
-  chainsGet: "mcp:chains.get:call",
   datasourceList: "mcp:datasource.list:call",
   // flows (flows-canvas scope, Wave 3): member-level nav gate. The canvas shows for any session that
   // may list flows; the gateway re-checks `mcp:flows.<verb>:call` per verb server-side regardless.
@@ -86,6 +85,14 @@ export const CAP = {
   // grant too (the console requires BOTH to show both lanes — `auditQuery`).
   telemetryRead: "mcp:telemetry.read:call",
   auditQuery: "mcp:audit.query:call",
+  // settings (user-prefs + agent-config scopes): the Settings page's Preferences tab is member-level
+  // (`prefs.set` writes the caller's OWN record); the workspace-default control gates on the
+  // admin-only `prefs.set_default`. The Agent tab reads with `agent.config.get` (member) and the
+  // admin-only `agent.config.set` gates the runtime/endpoint editor. The gateway re-checks each.
+  prefsSet: "mcp:prefs.set:call",
+  prefsSetDefault: "mcp:prefs.set_default:call",
+  agentConfigGet: "mcp:agent.config.get:call",
+  agentConfigSet: "mcp:agent.config.set:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

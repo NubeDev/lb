@@ -87,5 +87,6 @@ pub fn query_descriptor() -> lb_mcp::ToolDescriptor {
         title: "Run a read-only SQL query against a registered datasource".to_string(),
         group: "federation".to_string(),
         input_schema: Some(crate::tools::federation_query_schema()),
+        result: None,
     }
 }

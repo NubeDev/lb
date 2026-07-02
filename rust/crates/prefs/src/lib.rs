@@ -17,6 +17,7 @@
 //! utility tier (no tenant data), while `prefs.get/set/resolve/set_default` are gated there.
 
 pub mod axis;
+pub mod catalog;
 mod convert;
 mod error;
 mod format;
@@ -25,14 +26,18 @@ mod resolve;
 mod store;
 
 pub use axis::{DateStyle, Dimension, FirstDay, NumberFormat, TimeStyle, Unit, UnitSystem};
+pub use catalog::{
+    lint as lint_catalog, merged_catalog, render as render_message, Rendered as RenderedMessage,
+};
 pub use convert::{convert, to_display, DisplayQuantity};
 pub use error::PrefsError;
 pub use format::{format_datetime, format_number, format_quantity, FormattedQuantity, NumberOpts};
 pub use prefs::{Prefs, ResolvedPrefs};
 pub use resolve::{builtin, resolve};
 pub use store::{
-    define_prefs_schema, get_user_prefs, get_workspace_prefs, resolve_chain, set_user_prefs,
-    set_workspace_prefs, USER_PREFS_TABLE, WORKSPACE_PREFS_TABLE,
+    define_prefs_schema, get_catalog_override, get_user_prefs, get_workspace_prefs, resolve_chain,
+    set_catalog_override, set_user_prefs, set_workspace_prefs, CATALOG_TABLE, USER_PREFS_TABLE,
+    WORKSPACE_PREFS_TABLE,
 };
 
 /// The enabled-language slice this build compiled in (en/es). Re-exported for the host's bootstrap

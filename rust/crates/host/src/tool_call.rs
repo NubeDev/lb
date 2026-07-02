@@ -42,18 +42,21 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("outbox.")
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
+        // The per-viewer chart-preference verbs only (NOT all `channel.*`, so future channel
+        // extension tools still route to the registry) — a query-result's plot override.
+        || qualified_tool.starts_with("channel.chart_pref.")
         || qualified_tool.starts_with("viz.")
         || qualified_tool.starts_with("template.")
         || qualified_tool.starts_with("devkit.")
         || qualified_tool.starts_with("agent.")
         || qualified_tool.starts_with("rules.")
-        || qualified_tool.starts_with("chains.")
         || qualified_tool.starts_with("federation.")
         || qualified_tool.starts_with("flows.")
         || qualified_tool.starts_with("datasource.")
         || qualified_tool.starts_with("secret.")
         || qualified_tool.starts_with("host.")
         || qualified_tool.starts_with("prefs.")
+        || qualified_tool.starts_with("message.")
         || qualified_tool.starts_with("bus.")
         || qualified_tool.starts_with("reminder.")
         || qualified_tool.starts_with("query.")
@@ -270,6 +273,11 @@ async fn dispatch_at_depth(
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("channel.chart_pref.") {
+            // channel query charts: a viewer's per-item plot override. The outer gate ran
+            // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.
+            crate::call_channel_chart_pref_tool(&node.store, principal, ws, qualified_tool, &input)
+                .await?
         } else if qualified_tool.starts_with("viz.") {
             // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
             // under the caller's authority — so `depth` is threaded through to re-enter at depth+1
@@ -301,8 +309,6 @@ async fn dispatch_at_depth(
             crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("chains.") {
-            crate::call_chains_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("flows.") {
             // Type-erase this dispatch edge to a boxed `dyn Future + Send`. A `flows.run` reached from
             // INSIDE a running flow (a `tool` node invoking `flows.run`) is an async recursion through
@@ -326,6 +332,20 @@ async fn dispatch_at_depth(
             crate::call_secret_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("prefs.") {
             crate::call_prefs_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("message.") {
+            // i18n-catalogs scope: `message.render` / `message.set_catalog`. The outer gate ran the
+            // base `mcp:message.<verb>:call`; the render verb adds the `message.render_recipient`
+            // grant for a foreign-recipient fan-out, and set_catalog publishes the "catalog changed"
+            // hint (needs the bus).
+            crate::call_catalog_tool(
+                &node.store,
+                &node.bus,
+                principal,
+                ws,
+                qualified_tool,
+                &input,
+            )
+            .await?
         } else if qualified_tool.starts_with("query.") {
             // query scope: the saved-PRQL-query service (compile→dispatch to store.query /
             // federation.query). query.run adds the no-widening target cap inside its service.
@@ -578,6 +598,14 @@ fn undo_svc_to_tool_err(e: UndoSvcError) -> ToolError {
 /// from the in-code descriptor table (`tools::host_descriptors`); extension tools from the runtime
 /// registry. `None` when the tool declares no schema (validation is then skipped — additive).
 fn descriptor_schema(node: &Node, qualified_tool: &str) -> Option<serde_json::Value> {
+    // `reminder.create`'s descriptor schema is FORM-SHAPED (flat `action_kind` + per-kind fields). The
+    // verb now accepts BOTH that flat form AND the nested `action:{kind,…}` wire form (backward compat),
+    // so schema-gating here would wrongly reject the nested callers (they carry `action`, not the
+    // `action_kind` the form schema requires). The verb's own handler is authoritative (it accepts
+    // either shape via `create_action`). This is the one descriptor whose form and wire shapes differ.
+    if qualified_tool == "reminder.create" {
+        return None;
+    }
     for d in crate::tools::host_descriptors() {
         if d.name == qualified_tool {
             return d.input_schema;

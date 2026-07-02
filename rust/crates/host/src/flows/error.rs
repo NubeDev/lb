@@ -1,5 +1,5 @@
-//! The `flows.*` service error type (mirrors `ChainsError`). A deny is opaque (`Denied`), so it is
-//! indistinguishable from a missing flow at the MCP surface.
+//! The `flows.*` service error type. A deny is opaque (`Denied`), so it is indistinguishable from a
+//! missing flow at the MCP surface.
 
 use thiserror::Error;
 

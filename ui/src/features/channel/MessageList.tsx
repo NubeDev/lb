@@ -3,17 +3,28 @@
 // viewer's own rows get edit/delete affordances (wired through from useChannel via these props).
 
 import type { Item } from "@/lib/channel/channel.types";
+import type { ExtRow } from "@/lib/ext/ext.api";
 import { MessageItem } from "./MessageItem";
 
 interface Props {
   items: Item[];
   /** The current viewer's identity — own messages are editable/deletable. */
   author: string;
+  /** The viewer's session workspace — threaded to a `rich_result`'s mounted widget. */
+  ws: string;
+  /** Installed extensions (from `ext.list`) — threaded to a `rich_result`'s ext response view. */
+  installed?: ExtRow[];
   onEdit: (id: string, body: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
 }
 
-export function MessageList({ items, author, onEdit, onDelete }: Props) {
+export function MessageList({ items, author, ws, installed, onEdit, onDelete }: Props) {
+  // The run ids that already have a durable answer/error (the agent worker posts those under id
+  // `a:<job>`). A pending `agent` request whose job is in here is superseded — AgentCard hides its
+  // "running…" placeholder so a completed run never shows a stuck spinner.
+  const settledJobs = new Set(
+    items.filter((m) => m.id.startsWith("a:")).map((m) => m.id.slice(2)),
+  );
   if (items.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-6">
@@ -27,7 +38,16 @@ export function MessageList({ items, author, onEdit, onDelete }: Props) {
   return (
     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto p-4" aria-label="messages">
       {items.map((m) => (
-        <MessageItem key={m.id} item={m} author={author} onEdit={onEdit} onDelete={onDelete} />
+        <MessageItem
+          key={m.id}
+          item={m}
+          author={author}
+          ws={ws}
+          installed={installed}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          settledJobs={settledJobs}
+        />
       ))}
     </ul>
   );

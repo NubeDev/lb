@@ -64,6 +64,38 @@ async fn seed_ext(
     record_install(&node.store, ws, &install).await.unwrap();
 }
 
+/// The 28 built-in node types in registry order (8 spine + the 20 data/JSON pack — data-nodes scope).
+const BUILTINS: &[&str] = &[
+    "trigger",
+    "tool",
+    "rhai",
+    "count",
+    "json",
+    "counter",
+    "subflow",
+    "sink",
+    "change",
+    "select",
+    "merge",
+    "map",
+    "flatten",
+    "sort",
+    "range",
+    "aggregate",
+    "template",
+    "csv",
+    "xml",
+    "yaml",
+    "base64",
+    "split",
+    "join",
+    "batch",
+    "filter",
+    "unique",
+    "switch",
+    "delay",
+];
+
 fn types(out: &serde_json::Value) -> Vec<String> {
     out["nodes"]
         .as_array()
@@ -84,10 +116,7 @@ async fn registry_has_all_builtins_with_no_installs() {
     let p = principal("ws-a", &[NODES_CAP]);
     let out = call_nodes(&node, &p, "ws-a").await;
     let types = types(&out);
-    assert_eq!(
-        types,
-        vec!["trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink"]
-    );
+    assert_eq!(types, BUILTINS.to_vec());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -111,13 +140,10 @@ async fn registry_reflects_an_installed_extension() {
     let out = call_nodes(&node, &p, "ws-a").await;
     let types = types(&out);
     // built-ins first, then the ext nodes (global type <ext>.<type>), sorted.
-    assert_eq!(
-        types,
-        vec![
-            "trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink", "mqtt.in",
-            "mqtt.out"
-        ]
-    );
+    let mut expected: Vec<String> = BUILTINS.iter().map(|s| s.to_string()).collect();
+    expected.push("mqtt.in".into());
+    expected.push("mqtt.out".into());
+    assert_eq!(types, expected);
     // the ext descriptor carries its ports + category from the block.
     let mqtt_in = out["nodes"]
         .as_array()
@@ -148,10 +174,7 @@ async fn workspace_isolation_ext_in_ws_a_absent_in_ws_b() {
     // ws-B (no install) sees only built-ins — the wall holds at the registry.
     let pb = principal("ws-b", &[NODES_CAP]);
     let out_b = call_nodes(&node, &pb, "ws-b").await;
-    assert_eq!(
-        types(&out_b),
-        vec!["trigger", "tool", "rhai", "count", "json", "counter", "subflow", "sink"]
-    );
+    assert_eq!(types(&out_b), BUILTINS.to_vec());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

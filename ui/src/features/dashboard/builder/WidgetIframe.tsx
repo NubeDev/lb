@@ -9,10 +9,11 @@
 // WidgetBridge attaches it server-side. We validate every inbound message came from THIS iframe's
 // window before acting (origin is "null" for an opaque-origin frame, so source-identity is the check).
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { WidgetBridge } from "./widgetBridge";
 import { buildIframeSrcdoc } from "./iframeRuntime";
+import type { TemplateData } from "./templateInterpolate";
 
 interface Props {
   engine: "plot" | "d3" | "template";
@@ -20,15 +21,27 @@ interface Props {
   /** The cell's tool set = `{source, action}` tools ∩ grant — the bridge enforces it; we re-check too. */
   tools: string[];
   bridge: WidgetBridge;
+  /** The panel's source rows (from the parent's `usePanelData`). Seeded into the initial srcdoc AND
+   *  posted to the live frame on every change — so a refresh re-renders without rebuilding the iframe. */
+  data?: TemplateData;
 }
 
-/** Render `code` in a sandboxed iframe, proxying its bridge requests through `bridge`. */
-export function WidgetIframe({ engine, code, tools, bridge }: Props) {
+/** Render `code` in a sandboxed iframe, proxying its bridge requests through `bridge` and streaming the
+ *  panel's rows in via `postMessage` (no rebuild on data change). */
+export function WidgetIframe({ engine, code, tools, bridge, data }: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  // The latest rows, held in a ref so the (engine/code/tools)-keyed build effect reads them WITHOUT
+  // re-running on every data tick, and the ready-handshake can reply with the freshest snapshot.
+  const dataRef = useRef<TemplateData | undefined>(data);
+  const readyRef = useRef(false);
+  // A cheap content signature so we only re-post when the rows actually change (usePanelData returns a
+  // fresh object each render); avoids re-rendering the frame on unrelated parent re-renders.
+  const dataKey = useMemo(() => (data ? JSON.stringify(data) : ""), [data]);
 
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
+    readyRef.current = false;
     const allowed = new Set(tools);
     const unsubs = new Map<string, () => void>();
 
@@ -39,6 +52,14 @@ export function WidgetIframe({ engine, code, tools, bridge }: Props) {
       const msg = e.data || {};
       const win = frame.contentWindow;
       if (!win) return;
+
+      if (msg.type === "frame-ready") {
+        // The frame finished its first paint — reply with the freshest rows (covers data that resolved
+        // after the srcdoc was built). No token ever crosses; this is data only.
+        readyRef.current = true;
+        win.postMessage({ type: "render-data", data: dataRef.current ?? { rows: [], latest: null } }, "*");
+        return;
+      }
 
       if (msg.type === "bridge-call") {
         // Re-check locally (the host re-checks regardless) — a frame asking for a tool outside the set
@@ -69,15 +90,27 @@ export function WidgetIframe({ engine, code, tools, bridge }: Props) {
     };
 
     window.addEventListener("message", onMessage);
-    frame.srcdoc = buildIframeSrcdoc({ engine, code, tools });
+    frame.srcdoc = buildIframeSrcdoc({ engine, code, tools, data: dataRef.current });
 
     return () => {
       window.removeEventListener("message", onMessage);
+      readyRef.current = false;
       // Tear down all live watch streams on unmount/uninstall (stateless eviction).
       unsubs.forEach((u) => u());
       unsubs.clear();
     };
   }, [engine, code, tools, bridge]);
+
+  // Stream fresh rows to the LIVE frame on every change (post-first-paint). Keyed on the content
+  // signature so an identical-rows re-render is a no-op; the frame re-renders with the new data.
+  useEffect(() => {
+    dataRef.current = data;
+    const win = frameRef.current?.contentWindow;
+    if (readyRef.current && win) {
+      win.postMessage({ type: "render-data", data: data ?? { rows: [], latest: null } }, "*");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `dataKey` is the content signature of `data`
+  }, [dataKey]);
 
   return (
     <iframe

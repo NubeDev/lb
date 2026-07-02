@@ -5,9 +5,10 @@
 // `cell.options.templateId`, ≤ TEMPLATE_MAX_BYTES). The saved-template list reads `template.list`
 // (the shipped verb) — never REST.
 //
-// The lazybones `template` engine is the iframe runtime's eval-free JSX/HTML interpreter: `{{path}}`
-// interpolation over a `data` object + `[data-call]` write buttons. The default inline snippet matches
-// it. Code runs ONLY in the sandboxed iframe (the v2 trust contract is unchanged).
+// The lazybones `template` engine is the iframe runtime's eval-free HTML interpreter: `{{path}}` +
+// `{{#each rows}}…{{/each}}` interpolation over the panel's source rows (loaded by the ONE data hook,
+// `usePanelData` — the SAME data every read view gets) + `[data-call]` write buttons. The default inline
+// snippet matches it. Code runs ONLY in the sandboxed iframe (the v2 trust contract is unchanged).
 
 import { useEffect, useState } from "react";
 
@@ -19,6 +20,9 @@ import { CodeEditor } from "./CodeEditor";
  *  produced), the convention the shipped iframe `template` engine interprets. */
 export const DEFAULT_INLINE_CODE = `<div class="p-2 text-xs">
   <div class="text-muted">{{rows.length}} rows</div>
+  <ul>
+    {{#each rows}}<li>{{seq}}</li>{{/each}}
+  </ul>
   <button data-call="store.query" data-args='{"sql":"SELECT seq FROM series LIMIT 1"}'>Refresh</button>
 </div>`;
 
@@ -106,8 +110,10 @@ export function TemplateSourceField({ value, onChange }: Props) {
         </select>
       )}
       <p className="text-[10px] text-muted">
-        Receives the source rows as <span className="font-mono">data</span>. Inline ≤ 4&nbsp;KB; larger
-        snippets save as a render template (≤ 64&nbsp;KB).
+        Binds the source rows with <span className="font-mono">{"{{rows.length}}"}</span> /{" "}
+        <span className="font-mono">{"{{#each rows}}…{{/each}}"}</span>; wire writes with{" "}
+        <span className="font-mono">data-call</span>. Inline ≤ 4&nbsp;KB; larger snippets save as a render
+        template (≤ 64&nbsp;KB).
       </p>
     </div>
   );

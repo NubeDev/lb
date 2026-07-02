@@ -16,18 +16,14 @@
 //! peers-share-the-keyspace.md), so a shared id would let concurrent tests cross-talk. Multi-thread
 //! flavor is required (boots a Zenoh peer; debugging/bus/zenoh-needs-multi-thread-runtime.md).
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_bus::Bus;
 use lb_host::{
-    load_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, SidecarMap,
-    ToolServer,
+    load_extension, register_remote_extension, serve_ext, Node, Role as NodeRole, ToolServer,
 };
-use lb_mcp::{call, Registry, ToolError};
-use lb_runtime::Engine;
-use lb_store::Store;
+use lb_mcp::{call, ToolError};
 
 const MANIFEST: &str = include_str!("../../../extensions/hello/extension.toml");
 
@@ -62,15 +58,9 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
 /// direct-construction pattern in `ext_publish_test.rs` (a custom store handle there; a custom bus
 /// here) — both legitimate, since `Node`'s fields are the booted spine and nothing here is mocked.
 async fn node_on_bus(bus: Bus, role: NodeRole) -> Node {
-    Node {
-        store: Store::memory().await.expect("in-mem store"),
-        bus,
-        engine: Engine::new().expect("runtime engine"),
-        registry: Arc::new(Registry::new()),
-        sidecars: Arc::new(SidecarMap::new()),
-        apikeys: Arc::new(lb_host::ApiKeyCache::new()),
-        role,
-    }
+    Node::boot_on_bus(bus, role)
+        .await
+        .expect("node boots on the given bus")
 }
 
 /// Stand up an edge (node A, the caller) and a hub (node B, hosting `hello` and serving it),

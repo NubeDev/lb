@@ -69,6 +69,11 @@ fn member_caps() -> Vec<String> {
         "mcp:devkit.scaffold:call",
         "mcp:devkit.inspect:call",
         "mcp:devkit.build:call",
+        // Studio "open existing" folder picker: `devkit.root` anchors the browse at the devkit root,
+        // `host.fs.list` walks it one level at a time (so the user browses to an extension instead of
+        // typing a path). Read-only metadata; the host re-checks both server-side.
+        "mcp:devkit.root:call",
+        "mcp:host.fs.list:call",
         // Publishing a native devkit build reuses `ext.publish` plus the existing native install
         // gate before any child process is supervised.
         "mcp:native.install:call",
@@ -95,6 +100,11 @@ fn member_caps() -> Vec<String> {
         // the caller may already run (a denied tool is absent), never data. Without it the UI has no
         // palette at all.
         "mcp:tools.catalog:call",
+        // channel query charts: a viewer's per-item plot override (get/set). Member-level — the same
+        // audience that may read a channel (`bus:chan/*:sub`, held above) may save how THEY plot a
+        // query result; the verb re-checks the channel `sub` gate.
+        "mcp:channel.chart_pref.get:call",
+        "mcp:channel.chart_pref.set:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.
@@ -160,23 +170,18 @@ fn member_caps() -> Vec<String> {
         "mcp:template.get:call",
         "mcp:template.list:call",
         "mcp:template.delete:call",
-        // rules-workbench scope (the Playground · chain canvas · datasources admin): the shipped
-        // `rules.*` / `chains.*` / `datasource.*` verbs the rules/chains/datasources gateway routes
-        // check. Member-level — any member may author/run their own rules + chains and (as admin)
-        // register datasources over real series (workspace wall + per-source `caps::check` inside a
-        // run still decide what a rule may actually read). The gateway re-checks each cap server-side;
-        // a token without a given verb is refused per verb (the deny-per-verb test).
+        // rules-workbench scope (the Playground · datasources admin): the shipped `rules.*` /
+        // `datasource.*` verbs the rules/datasources gateway routes check. Member-level — any member
+        // may author/run their own rules and (as admin) register datasources over real series
+        // (workspace wall + per-source `caps::check` inside a run still decide what a rule may
+        // actually read). The gateway re-checks each cap server-side; a token without a given verb is
+        // refused per verb (the deny-per-verb test). The DAG surface is `flows.*` (chains retired —
+        // chains-retirement scope).
         "mcp:rules.run:call",
         "mcp:rules.save:call",
         "mcp:rules.get:call",
         "mcp:rules.list:call",
         "mcp:rules.delete:call",
-        "mcp:chains.save:call",
-        "mcp:chains.run:call",
-        "mcp:chains.get:call",
-        "mcp:chains.list:call",
-        "mcp:chains.delete:call",
-        "mcp:chains.runs.get:call",
         // flows (flows-canvas + dashboard-binding scopes, Wave 3) — the shipped `flows.*` typed-node
         // engine verbs the flows gateway routes check. Member-level — any member may author/run their
         // own flows (workspace wall + the no-widening run gate still decide what a run may do). The
@@ -211,6 +216,18 @@ fn member_caps() -> Vec<String> {
         "mcp:prefs.get:call",
         "mcp:prefs.resolve:call",
         "mcp:prefs.set:call",
+        // i18n catalogs (i18n-catalogs scope, prefs Phase 2). `message.render` (render a catalog
+        // message for the CALLER) + `prefs.catalog` (read the merged override-over-builtin map for
+        // the caller's own workspace) are member-level — a member must render/read to localize their
+        // own screen, mirroring `prefs.resolve`. `message.render_recipient` is the fan-out grant the
+        // outbox/inbox producer holds to render FOR ANOTHER recipient (producing content on their
+        // behalf, like `prefs.get(other)`) — the dev principal carries it so the collaboration UI can
+        // exercise per-recipient rendering. `message.set_catalog` writes a WORKSPACE override, an
+        // ADMIN act beside `prefs.set_default`; granted here because the dev login doubles as admin.
+        "mcp:message.render:call",
+        "mcp:message.render_recipient:call",
+        "mcp:prefs.catalog:call",
+        "mcp:message.set_catalog:call",
         // telemetry console (telemetry-console scope): the read grant the Telemetry page's
         // `telemetry.query`/`trace` (and the SSE `telemetry.tail`) gate on. Member-level — the read
         // surface is HARD-filtered to the caller's workspace server-side, so a member sees only their
@@ -227,14 +244,13 @@ fn member_caps() -> Vec<String> {
         // requires this secret-write grant alongside `mcp:datasource.add:call` (federation/add.rs).
         // Member-level for the dev login so the datasources admin page's Add actually persists.
         "secret:federation/*:write",
-        // rules-workbench: the `rules.*`/`chains.*` verbs add a defense-in-depth Store-surface check
-        // (`store:rule:*` / `store:chain:*`) BELOW the MCP gate — unlike dashboard, which gates on MCP
-        // + the S4 edges only. The dev member needs the store grants so the Playground/canvas
-        // save/get/list/delete actually persist over the live gateway (mirrors `store:doc/*` above).
+        // rules-workbench: the `rules.*` verbs add a defense-in-depth Store-surface check
+        // (`store:rule:*`) BELOW the MCP gate — unlike dashboard, which gates on MCP + the S4 edges
+        // only. The dev member needs the store grants so the Playground save/get/list/delete actually
+        // persist over the live gateway (mirrors `store:doc/*` above). The DAG engine is `flows.*`,
+        // whose store surface is `store:flow:*` (granted with the flows caps above).
         "store:rule:read",
         "store:rule:write",
-        "store:chain:read",
-        "store:chain:write",
         // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
         // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
         // resolve it, and start the gated coding job from the browser; the gateway re-checks each
@@ -250,6 +266,28 @@ fn member_caps() -> Vec<String> {
         // member set. The gateway re-checks each cap server-side (a token without it is refused).
         "mcp:agent.decide:call",
         "mcp:agent.policy.set:call",
+        // channels-agent + run-lifecycle #5: the in-channel agent. `mcp:agent.invoke:call` is the run's
+        // own gate — it also makes the `/agent.invoke` command APPEAR in the `/` palette catalog (the
+        // catalog gates each tool on `authorize_tool(principal, ws, <name>)`; naming the descriptor
+        // `agent.invoke` reuses that gate with zero special-casing). A member with it sees + can run the
+        // agent; one without simply doesn't see the command (absent, not greyed). `mcp:agent.runtimes:call`
+        // is a DISTINCT read cap for the runtime-picker dropdown (`agent.runtimes` — list-only, no
+        // mutation), so the picker loads for a normal member. Both member-level; the host re-checks each.
+        "mcp:agent.invoke:call",
+        "mcp:agent.runtimes:call",
+        // agent-config scope: the per-workspace default-runtime + model-endpoint record. `get` is
+        // member-level (a member reads it to render the Settings/Agent surface and to know which
+        // runtime an invoke will use); `set` writes the WORKSPACE default — an ADMIN act beside
+        // `prefs.set_default`/`agent.policy.set`, granted here because the dev login doubles as admin.
+        // The host re-checks each cap server-side (a token without `set` is refused).
+        "mcp:agent.config.get:call",
+        "mcp:agent.config.set:call",
+        // reminders-tenant scope: `reminder.fire` is the gated run-now verb (a "fire now" control).
+        // Member-level — the same authority that creates/updates a reminder may fire one now; the
+        // firing still re-checks the ACTION's own cap under the stored principal (no escalation).
+        // Granted explicitly here because the `mcp:*.<verb>:call` wildcards below do NOT cover `fire`
+        // (there is no `mcp:*.fire:call`), so without this line the run-now control would be denied.
+        "mcp:reminder.fire:call",
         // agent-run scope Part 3: `agent.watch` gates the live `RunEvent` SSE feed (`GET
         // /runs/{job}/stream`). Read-only on the run; checked inside `watch_run` (a `403` before any
         // stream body). Member-level — observing a run is not an admin act.

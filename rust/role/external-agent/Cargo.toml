@@ -35,3 +35,6 @@ tracing.workspace = true
 # the leaf crate's vtcode_smoke_test.
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 lb-auth.workspace = true
+# The in-channel end-to-end smoke posts a real channel Item and reads it back from history.
+lb-inbox.workspace = true
+serde_json.workspace = true

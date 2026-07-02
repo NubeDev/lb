@@ -7,7 +7,9 @@ use serde_json::{json, Value};
 
 use crate::Node;
 
-use super::{devkit_build, devkit_inspect, devkit_scaffold, devkit_templates, DevkitError};
+use super::{
+    devkit_build, devkit_inspect, devkit_root, devkit_scaffold, devkit_templates, DevkitError,
+};
 
 pub async fn call_devkit_tool(
     node: &Arc<Node>,
@@ -18,6 +20,7 @@ pub async fn call_devkit_tool(
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "devkit.templates" => Ok(serde_json::to_value(devkit_templates(principal, ws)?).unwrap()),
+        "devkit.root" => Ok(serde_json::to_value(devkit_root(principal, ws)?).unwrap()),
         "devkit.scaffold" => {
             let req: lb_devkit::ScaffoldRequest = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(e.to_string()))?;

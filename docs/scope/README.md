@@ -48,16 +48,41 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
-  `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox),
-  plus **rule chains** — a rule DAG whose every step is an `lb-jobs` job, cron via the S6 reactor, event
-  via `bus.watch` (`rule-chains-scope.md`). Exposed as `rules.*` / `chains.*` MCP verbs.
+  `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox).
+  Exposed as `rules.*` MCP verbs. **Chaining rules into a DAG is now `flows/`** — the standalone
+  `chains.*` surface is retired (`flows/chains-retirement-scope.md`); `rule-chains-scope.md` stays as
+  lineage (the `rubix-cube` workflow-DAG port history), not a shipping surface.
 - `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds
   DataFusion + connectors to query external SQL sources (MySQL, PostgreSQL/TimescaleDB, …) under `net:*`
   + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+
   `datasource.*` admin CRUD and a `federation.mirror` `lb-jobs` batch). SurrealDB stays the authority;
   external DBs are federated sources reached through the gated extension, never a second authority.
+  Also **`page-chaining-scope.md`** (parent) + its slices: one **keyset cursor** paging contract (opaque
+  `cursor` + `limit` → `{rows, next_cursor}`, additive on the existing read verbs, no new cap) so large
+  timeseries load a fast page at a time — **SurrealDB pages the state plane** (index-backed, O(page)),
+  DataFusion pages only by predicate **pushdown** to the real source, and anything that must load at
+  dashboard speed is **mirrored** into the series plane and keyset-paged there; a chart **downsamples**
+  (time-bucket min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager
+  rejected. Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
+  `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
+  (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
+  and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
+- `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
+  extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
+  extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):
+  bridges Control Engine (CE) instances into a workspace as a caps-gated MCP surface (`ce.*`, mirroring
+  the `ce-client-rust` `ControlEngine` trait) — a local CE over `localhost` REST/WS, and remote CEs on
+  **appliance** LB nodes reached by **routed MCP over Zenoh** (symmetric nodes, no CE-on-Zenoh codec).
+  The visual editor is the vendored `@nube/ce-wiresheet` package, mounted as the extension's federated
+  `[ui]` page and re-pointed onto the MCP bridge (browser→CE only through the host). MCP-only so agents
+  and the CLI drive CE identically to the UI. Live COV rides the generic `extensions/extension-watch-scope.md`
+  primitive (`ce.watch`), the only — and generic — core addition it implies.
 - `core/`, `crate-layout/`, `extensions/`, `mcp/`, `node-roles/`, `registry/`, `secrets/`,
-  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `extensions/` also holds
+  `store/`, `tags/`, `tenancy/` — the spine and platform surfaces. `core/` also holds
+  `resource-verbs-scope.md` (the **cross-cutting verb convention**: `<resource>.list|get|create|update|delete|watch`
+  + a runnable `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs
+  all speak one grammar the palette and `lb` CLI render mechanically; renames the outliers
+  `channel_list → channel.list`, `installed → extension.list` behind a one-release alias). `extensions/` also holds
   `lifecycle-management-scope.md` (the full start·stop·enable·disable·upload·install·delete lifecycle
   exposed over the gateway, not Tauri-only) and `ui-federation-scope.md` (mount an extension's OWN
   pages inside the shell — module federation for trusted publishers, iframe/Web Component sandbox for
@@ -77,9 +102,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   Extension Studio wizard that **generate** a fresh extension (wasm|native backend + shadcn/Tailwind
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
-  behind one `Toolchain` trait).
-- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`): a node-red-style canvas
-  over the shipped plane, not a new engine. Promotes the `chains` rule-DAG `Step` into a typed
+  behind one `Toolchain` trait), and `extension-watch-scope.md` (the **generic live-feed primitive for
+  extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
+  host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
+  ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
+  `ce.watch` is its first tenant).
+- `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
+  earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
+  over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed
   `Node` (`Trigger | Tool | Rhai | Subflow | Sink`), each carrying a **descriptor** (ports + a
   config **JSON-Schema** the React Flow editor renders a form from). **Extensions contribute
   backend node types** via an additive `[[node]]` block in `extension.toml` — **identical for
@@ -113,12 +143,24 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   registry, SSE stream, and presence. Also `channels-query-charts-scope.md`: in-channel SQL queries
   (via `federation.query`) whose results post back as durable items and auto-plot a chart; and
   `channels-command-palette-scope.md`: the `/` + `@` command surface (catalog-driven, capability-
-  filtered MCP tools — the menu *is* the permission model) that composes those queries.
+  filtered MCP tools — the menu *is* the permission model) that composes those queries; and
+  `channels-agent-scope.md`: ask an agent in a channel — a host worker spawns a durable agent **run**
+  (via the shipped `agent.invoke`/`AgentRuntime` seam), streams its work live over the agent-run SSE,
+  and posts the final answer back as a durable item (in-house runtime now, external once #3 ships).
+  And `channels-rich-responses-scope.md`: a command/tool/agent answers with a **rich, typed response**
+  (chart/table/stat/form/control, or an AI-generated sandboxed UI) by reusing the **shipped v2 widget
+  contract** un-gridded onto the channel — the `render:{view,source|data,options}` cell shape mounted
+  through the dashboard's `WidgetView`/`views/*` renderers + host-mediated bridge, leashed to the viewer's
+  grant. Generative UI (JSX `template`, future A2UI/JSON-render) is one more sandboxed `view`, not a base
+  layer; forms/wizards are the palette arg-rail over a versioned `x-lb` widget enum.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
-- `jobs/` — the SurrealDB-native durable job queue / resumable session (S5).
+- `jobs/` — the SurrealDB-native durable job queue / resumable session (S5). Also
+  `job-control-scope.md` (the **observe/control surface** — `job.list|get|cancel|retry|watch`,
+  owner-routed through the owning service's chokepoint so callers can see/stop/recover durable work
+  without a raw `jobs.*` table API; the runnable-trait member of `core/resource-verbs-scope.md`).
 - `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
   (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
   `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6
@@ -126,6 +168,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   **channel post** (inbox), **MCP tool call** (any capability, under a stored principal re-checked
   at fire time), and **must-deliver effect** (outbox). Cron is the storage format; the UI authors
   it with a best-in-class React cron-builder. The single-action sibling of a rule chain.
+  Also `reminders-rich-responses-scope.md`: reminders as the **first tenant** of the channel
+  rich-responses contract — `/remind` is a backend-declared form (cron-builder + action `select`) that
+  calls `reminder.create`, and `/reminders` is an interactive `render:{view:"table", source:reminder.list}`
+  response with per-row pause/run-now/delete controls, all rendered by the shipped widget views over the
+  viewer-grant-leashed bridge (no reminders-specific channel UI); adds two `x-lb` widgets (`cron`, static
+  `select`) and a small `reminder.fire` run-now verb.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
@@ -171,12 +219,28 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a
   React Flow chain canvas that colours steps as they settle, and a datasources admin page — first-party
-  shell driving the shipped `rules.*`/`chains.*`/`datasource.*` verbs over the gateway, mirroring the
+  shell driving the shipped `rules.*`/`flows.*`/`datasource.*` verbs over the gateway, mirroring the
   dashboard pattern; the federation extension stays headless), and `rules-editor-ux-scope.md` (a guided,
   explorable authoring surface extending that Playground: a searchable function palette mirroring the
   registered Rhai verbs, click-to-load examples, and a datasource/schema/series data explorer — all
   click-to-insert, frontend-only over the shipped verbs, with the `store.schema` reader extracted to a
-  shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer).
+  shared `lib/schema` consumed by both the dashboard SQL builder and the rules explorer), and
+  `graphics-canvas-scope.md` (the **free-form graphics surface** — Niagara-style plant graphics /
+  floor plans / mimic pages / 3D buildings, a **100% UI extension** (control-engine precedent: no
+  new core verbs/tables/WIT; docs co-locate with the extension once scaffolded): a declarative,
+  dimension-agnostic scene document stored via the shipped asset/document verbs, rendered by **one
+  engine — three.js via `@react-three/fiber`** (flat plant graphics = orthographic top-down camera;
+  3D = the same document with a perspective camera — never built twice), drawn by hand (drei
+  gizmos/controls) and **drawn by the AI agent** through the same shipped tools (skill-guided
+  read-modify-save, validate-and-placeholder on LLM sloppiness); new equipment ships as **symbol
+  packs (GLTF/SVG assets — data, not code)**; React Flow, Konva/Pixi, Babylon, tldraw, and the
+  Awaken A2UI crate evaluated and rejected, their patterns kept), and
+  `widget-kit-scope.md` (make widgets genuinely reusable across the whole system: a declarative per-field
+  presentation vocabulary — `label`/`description`/`hide`/`order` — that both the request form and the
+  response table honor through one resolver; extract the input widgets + registry out of the palette/
+  dashboard/reminders feature folders into a common `lib/widgets/` library; and version the federation mount
+  context with an input `value`/`onValue` channel + `defineWidget` so extensions can author form widgets,
+  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore).
   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/

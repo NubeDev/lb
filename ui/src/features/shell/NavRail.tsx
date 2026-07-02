@@ -6,7 +6,6 @@ import {
   Boxes,
   CalendarClock,
   Database,
-  GitBranch,
   Hash,
   Network,
   Inbox,
@@ -19,6 +18,7 @@ import {
   Workflow,
   Wrench,
   Send,
+  Settings,
   Shield,
 } from "lucide-react";
 
@@ -43,7 +43,6 @@ export type CoreSurface =
   | "channels"
   | "dashboards"
   | "rules"
-  | "chains"
   | "flows"
   | "datasources"
   | "reminders"
@@ -57,7 +56,8 @@ export type CoreSurface =
   | "outbox"
   | "admin"
   | "extensions"
-  | "studio";
+  | "studio"
+  | "settings";
 
 /** A selected surface: a core one, or an **extension page** keyed `ext:<id>` (ui-federation scope). */
 export type Surface = CoreSurface | `ext:${string}`;
@@ -83,7 +83,6 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "channels", icon: Hash, label: "Channels" },
   { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
   { key: "rules", icon: ScrollText, label: "Rules" },
-  { key: "chains", icon: GitBranch, label: "Chains" },
   { key: "flows", icon: Workflow, label: "Flows" },
   { key: "datasources", icon: Plug, label: "Datasources" },
   { key: "reminders", icon: CalendarClock, label: "Reminders" },
@@ -96,6 +95,7 @@ const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
   { key: "admin", icon: Shield, label: "Admin" },
   { key: "extensions", icon: Boxes, label: "Extensions" },
   { key: "studio", icon: Wrench, label: "Studio" },
+  { key: "settings", icon: Settings, label: "Settings" },
 ];
 
 export function NavRail({ active, onSelect, onSignOut, allowed, extSlots = [] }: Props) {

@@ -54,6 +54,7 @@ members = [
     "role/github-target",
     "role/github-workflow",
     "role/bootstrap-ui",
+    "role/cli",
     "tools/pack",
 ]
 exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel"]
@@ -108,6 +109,7 @@ lb-role-external-agent = { path = "role/external-agent" }
 # role crates (the §8 role layer). Roles depend on host, never the reverse; listed here so a
 # crate — or a host DEV-dependency, as in the S5 agent tests — can inherit one by `{ workspace
 # = true }` without breaking the symmetric-layering rule (the host never build-depends on a role).
+lb-role-gateway = { path = "role/gateway" }
 lb-role-ai-gateway = { path = "role/ai-gateway" }
 lb-role-github-webhook = { path = "role/github-webhook" }
 lb-role-github-target = { path = "role/github-target" }
@@ -142,6 +144,16 @@ toml = "0.9"
 # config schema is compiled + instances validated host-side by `jsonschema` (Boon), and editor-side
 # by `ajv`. The one dialect the platform standardizes on for any record carrying a user config.
 jsonschema = "0.30"
+# The data/JSON node pack parse crates (flows data-nodes scope, Risk 4). Minimal, well-audited,
+# pure-Rust readers/writers pulled ONLY into `lb-flows` for the `csv`/`xml`/`yaml`/`base64` built-in
+# nodes: `csv` (Node-RED CSV parity), `quick-xml` (event-driven XML, no C++ dep), `serde_yaml`
+# (YAML 1.2 ↔ serde), `base64` (the text/bytes boundary). A parse of malformed input FAILS the node
+# (json-node parity). No heavy templating engine — the `template` node uses a hand-rolled
+# mustache-lite over these same serde values (no crate).
+csv = "1"
+quick-xml = { version = "0.41", features = ["serialize"] }
+serde_yaml = "0.9"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`
@@ -179,6 +191,18 @@ futures = "0.3"
 # only a gateway dev-dep). `rustls` so there is no system OpenSSL dependency; `json` for the artifact
 # body. Lives in the `registry-host` role crate, never in core `lb-host` (roles depend on host).
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Operator CLI (`lb`) tooling (operator-cli scope, Risk "New external deps"). These are CLI ergonomics
+# — argument parsing + table rendering + the config-dir locator — NOT persistence/auth/bus libraries,
+# so they do not touch rules 1/2/9 (one datastore / no sneaking libs / native on owned seams). Stated
+# explicitly like api-keys did for its crypto choice. `reqwest` (above) is already the workspace's HTTP
+# client; `clap`(derive) + `tabled` + `dirs` are the only additions.
+clap = { version = "4", features = ["derive", "env"] }
+tabled = "0.17"
+dirs = "5"
+# Test-only: a scratch config/key dir for the CLI's config-persistence + 0600-perms unit tests, and a
+# throwaway `LB_DIR` for the live gateway/local integration tests (real store, real socket — no mocks).
+tempfile = "3"
 
 [profile.release]
 lto = "thin"

@@ -71,7 +71,12 @@ impl RuntimeRegistry {
         }
     }
 
-    /// The configured runtime ids (for the `agent.runtimes` read verb, #5 — TODO). Sorted for a
+    /// The default runtime's id (for the `agent.runtimes` read verb, #5). Always present.
+    pub fn default_id(&self) -> &str {
+        &self.default_id
+    }
+
+    /// The configured runtime ids (for the `agent.runtimes` read verb, #5). Sorted for a
     /// stable listing; `default` is always among them.
     pub fn ids(&self) -> Vec<String> {
         let mut ids: Vec<String> = self.entries.keys().cloned().collect();

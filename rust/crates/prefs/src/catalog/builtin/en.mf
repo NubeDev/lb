@@ -1,0 +1,12 @@
+catalog-version: 1
+# Built-in English (en) catalog — the source of truth for server-generated content (i18n-catalogs
+# scope). Flat dotted keys; MF1 subset messages. The client bundle is GENERATED from this file
+# (gen_catalog) so host and client can never drift. One `key = <MF1>` per line; `#` lines are
+# comments; the `catalog-version:` header is a human stamp echoed in responses.
+
+alert.threshold_crossed = {name} exceeded {limit, quantity, speed} at {ts, date}
+alert.items_pending = You have {count, plural, =0{no pending items} one{# pending item} other{# pending items}}
+alert.severity = {level, select, critical{Critical alert} warning{Warning} other{Notice}}: {detail}
+notify.welcome = Welcome, {name}!
+notify.new_messages = {name} sent you {count, plural, one{a message} other{# messages}}
+report.reading = Reading: {value, quantity, temperature} recorded at {ts, date}

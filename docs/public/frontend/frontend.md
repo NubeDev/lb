@@ -18,8 +18,9 @@ ui/src/
   features/channel/
     ChannelView.tsx       ← composes the screen (layout + wiring only)
     MessageList.tsx       ← presentation only
-    MessageComposer.tsx   ← input + send
-    useChannel.ts         ← data/state (history load, send → reconcile)
+    palette/CommandPalette.tsx ← the input as a command surface (/ menu, arg rail; supersedes the
+                                 removed MessageComposer.tsx)
+    useChannel.ts         ← data/state (history load, send → reconcile, postQuery/postAgent)
     index.ts              ← barrel (re-export only)
   lib/channel/
     channel.api.ts        ← one call per export: post(), history()
