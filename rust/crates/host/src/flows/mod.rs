@@ -21,6 +21,7 @@ pub mod nodes;
 pub mod orphan_sweep;
 pub mod patch_run;
 pub mod react_cron;
+pub mod react_interval;
 pub mod reactor_loop;
 pub mod reconcile;
 pub mod record;
@@ -36,6 +37,7 @@ pub mod watch;
 pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
+pub use react_interval::{flipflop_run_id, react_to_flows_interval};
 pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use source::{arm_source, disarm_source, source_series};

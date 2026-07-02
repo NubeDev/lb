@@ -263,6 +263,10 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { ext } = args as { ext: string };
       return postJson<T>(`${base}/extensions/${enc(ext)}/disable`, {});
     }
+    case "ext_reset": {
+      const { ext } = args as { ext: string };
+      return postJson<T>(`${base}/extensions/${enc(ext)}/reset`, {});
+    }
     case "ext_uninstall": {
       const { ext } = args as { ext: string };
       return delJson<T>(`${base}/extensions/${enc(ext)}`);

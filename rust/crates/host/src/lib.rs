@@ -135,9 +135,9 @@ pub use federation::{
 };
 pub use flows::error::FlowsError;
 pub use flows::{
-    arm_source, cron_is_valid, cron_run_id, disarm_source, placement_matches, react_to_flows_cron,
-    reconcile_flows, source_series, spawn_flow_reactors, watch_flow_run, FlowReactorPass,
-    FlowReconcilePass, FlowWatch,
+    arm_source, cron_is_valid, cron_run_id, disarm_source, flipflop_run_id, placement_matches,
+    react_to_flows_cron, react_to_flows_interval, reconcile_flows, source_series,
+    spawn_flow_reactors, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 /// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,
@@ -173,8 +173,8 @@ pub use membership::{
 };
 pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
-    restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
-    SidecarMap, Supervised,
+    record_status, reset_native, restart_native, status_native, stop_native, Lifecycle,
+    NativeServiceError, NativeStatus, SidecarMap, Supervised,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching

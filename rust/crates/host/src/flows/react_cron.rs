@@ -153,6 +153,8 @@ async fn persist_cursor(
     let state = FlowTriggerState {
         next_attempt_ts,
         cron: Some(schedule.to_string()),
+        period_secs: None,
+        flop: None,
     };
     write_cursor(&node.store, ws, flow_id, node_id, &state)
         .await

@@ -55,6 +55,25 @@ describe("useStructural", () => {
     expect(propertyToComponent.get(12)).toBe(1);
   });
 
+  it("upsertComponent tolerates a component with NO properties (add-response shape)", () => {
+    // Regression: the engine's add response (POST /nodes) can omit `properties` on a
+    // brand-new component. The store indexed it with a bare `Object.values(c.properties)`,
+    // which threw "Cannot convert undefined or null to object" — crashing the add-node
+    // canvas action. A property-less component must upsert cleanly.
+    const bare = {
+      uid: 7,
+      name: "fresh",
+      type: "math::add",
+      path: "root/fresh",
+      parent: 0,
+    } as unknown as Component; // deliberately missing `properties` — the raw add-response shape
+    expect(() => S().upsertComponent(bare)).not.toThrow();
+    expect(S().components.get(7)?.name).toBe("fresh");
+    // A later re-upsert (which unindexes the prior bare entry) must also not throw.
+    expect(() => S().upsertComponent(comp(7, "fresh", 0, [71]))).not.toThrow();
+    expect(propertyToComponent.get(71)).toBe(7);
+  });
+
   it("upsertEdge / removeEdge mutate only the edge map", () => {
     S().setNodes([comp(1, "a", 0, [11]), comp(2, "b", 0, [21])], []);
     S().upsertEdge(edge(100, 1, 2));

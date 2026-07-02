@@ -67,6 +67,14 @@ export function uninstallExtension(ext: string): Promise<void> {
   return invoke<void>("ext_uninstall", { ext });
 }
 
+/** Reset `ext` (native tier) — re-arm an exhausted restart budget and force a fresh child, recovering
+ *  a sidecar that crash-looped past its budget (which would otherwise return "restart budget
+ *  exhausted" until the node is bounced). Distinct from stop/start: it doesn't change the durable
+ *  intent, it rescues the running process. Mirrors `native.reset` / POST /extensions/{ext}/reset. */
+export function resetExtension(ext: string): Promise<void> {
+  return invoke<void>("ext_reset", { ext });
+}
+
 /** Upload (publish) a signed `artifact` into the current workspace. The host verifies the signature
  *  BEFORE storing — a tampered/unsigned/foreign-key upload is rejected and nothing is stored
  *  (verify-before-store). The workspace comes from the session token, never the artifact. Mirrors

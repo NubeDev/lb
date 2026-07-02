@@ -416,6 +416,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
       <FlowCanvasHeader
         dirty={dirty}
         runActive={runActive}
+        scheduled={armed.scheduled}
         enabled={enabled}
         liveValues={liveValues}
         onDeploy={handleSave}

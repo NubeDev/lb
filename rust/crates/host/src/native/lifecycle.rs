@@ -98,7 +98,9 @@ pub async fn status_native(
     Ok(read_status(&node.store, ws, ext_id).await?)
 }
 
-/// Update the durable status's restart count after a (operator or crash) restart.
+/// Update the durable status's restart count after a (operator or crash) restart. A restart re-opens
+/// the fault window, so `healthy_since` is reset to `ts`: the cool-off clock for decay restarts from
+/// the fresh child (a sidecar must serve cleanly for the whole window AFTER its last restart).
 pub(crate) async fn bump_restart_count(
     node: &Node,
     ws: &str,
@@ -109,8 +111,93 @@ pub(crate) async fn bump_restart_count(
     if let Some(mut status) = read_status(&node.store, ws, ext_id).await? {
         status.restart_count = restarts;
         status.lifecycle = Lifecycle::Started;
+        status.healthy_since = Some(ts);
         status.ts = ts;
         record_status(&node.store, ws, &status).await?;
     }
     Ok(())
+}
+
+/// **Reset** the native sidecar `ext_id`: re-arm its restart budget and force a fresh child even if
+/// it has already crash-looped past `max_restarts` (native-tier resilience — the operator rescue for
+/// a permanently-exhausted sidecar, distinct from `restart` which is bounded by the budget and
+/// refuses when exhausted). Gated `mcp:native.reset:call`, workspace-first, reaching only THIS
+/// workspace's sidecar (the `SidecarMap` is keyed `(ws, ext_id)`).
+///
+/// Unlike `restart_native`, this recovers a sidecar whose handle is present-but-dead (the exhausted
+/// state leaves the handle in the map with a closed channel): it `rearm`s that handle. If no handle
+/// exists at all (never started / already removed) it is `NotRunning` — use `ext.enable`/install to
+/// start a stopped extension. Resets the durable `restart_count` to 0 and re-opens the cool-off clock.
+pub async fn reset_native<L: lb_supervisor::Launcher>(
+    node: &Node,
+    launcher: &L,
+    caller: &Principal,
+    ws: &str,
+    ext_id: &str,
+    ts: u64,
+) -> Result<(), NativeServiceError> {
+    authorize_native(caller, ws, "reset")?;
+
+    let handle = node
+        .sidecars
+        .get(ws, ext_id)
+        .ok_or(NativeServiceError::NotRunning)?;
+    {
+        let mut sidecar = handle.lock().await;
+        sidecar.rearm(launcher).await?;
+    }
+    // The budget is re-armed and the child is fresh — zero the durable count and re-open the cool-off
+    // clock so the record matches the in-memory sidecar (restart_count 0, healthy from now).
+    if let Some(mut status) = read_status(&node.store, ws, ext_id).await? {
+        status.restart_count = 0;
+        status.lifecycle = Lifecycle::Started;
+        status.healthy_since = Some(ts);
+        status.ts = ts;
+        record_status(&node.store, ws, &status).await?;
+    }
+    Ok(())
+}
+
+/// The decay path: after a sidecar has served a call cleanly, clear its restart accounting if it has
+/// been healthy for the whole cool-off window since its last restart (a transient crash no longer
+/// permanently poisons the budget). Reads the durable `healthy_since` + the sidecar's `cooloff`; if
+/// elapsed and the count is non-zero, zeroes BOTH the in-memory counter (so a later fault gets the
+/// full budget) and the durable `restart_count`. Best-effort and cheap: called on the success branch
+/// of a sidecar call; any read/write hiccup is swallowed (decay is an optimization, not correctness).
+pub(crate) async fn decay_if_healthy(
+    node: &Node,
+    handle: &std::sync::Arc<tokio::sync::Mutex<lb_supervisor::Sidecar>>,
+    ws: &str,
+    ext_id: &str,
+    now: u64,
+) {
+    let cooloff = {
+        let sidecar = handle.lock().await;
+        if sidecar.restarts() == 0 {
+            return; // nothing to decay
+        }
+        sidecar.cooloff().as_millis() as u64
+    };
+    if cooloff == 0 {
+        return; // decay disabled by config; only an explicit reset clears the count
+    }
+    let Ok(Some(mut status)) = read_status(&node.store, ws, ext_id).await else {
+        return;
+    };
+    if status.restart_count == 0 {
+        return;
+    }
+    let healthy_since = status.healthy_since.unwrap_or(now);
+    if now.saturating_sub(healthy_since) < cooloff {
+        return; // not healthy long enough yet
+    }
+    // Sustained-healthy: re-arm the budget in memory and persist the cleared count.
+    {
+        let mut sidecar = handle.lock().await;
+        sidecar.reset_restarts();
+    }
+    status.restart_count = 0;
+    status.healthy_since = Some(now);
+    status.ts = now;
+    let _ = record_status(&node.store, ws, &status).await;
 }

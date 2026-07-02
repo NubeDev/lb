@@ -49,8 +49,20 @@ export function ExtHost({ ext, ui, workspace }: Props) {
 
     return () => {
       cancelled = true;
-      if (typeof unmount === "function") unmount();
-      el.replaceChildren();
+      // Let the extension tear down its own tree first (it may own a React root in `el`). Guard both
+      // steps: a throw here runs during the shell's own render/commit and would surface as React's
+      // "synchronously unmount a root while rendering" / "removeChild: not a child" errors, unwinding
+      // the shell. Swallow — teardown of a page we're navigating away from must never crash the shell.
+      try {
+        if (typeof unmount === "function") unmount();
+      } catch {
+        /* extension unmount threw — already leaving the page; ignore */
+      }
+      try {
+        el.replaceChildren();
+      } catch {
+        /* DOM already reconciled away by the extension's own root; ignore */
+      }
     };
   }, [ext, ui.entry, ui.scope, workspace]);
 

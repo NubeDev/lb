@@ -60,6 +60,10 @@ fn member_caps() -> Vec<String> {
         "mcp:ext.list:call",
         "mcp:ext.disable:call",
         "mcp:ext.uninstall:call",
+        // native-tier resilience: re-arm a sidecar's exhausted restart budget and force a fresh child
+        // from the Extensions console (the Reset button), recovering a permanently-exhausted sidecar
+        // without bouncing the node. Distinct from restart (bounded); the host re-checks server-side.
+        "mcp:native.reset:call",
         // admin-console: publish (upload) a signed extension artifact over POST /extensions. The host
         // verb verify-before-stores; the gateway re-checks this cap server-side.
         "mcp:ext.publish:call",

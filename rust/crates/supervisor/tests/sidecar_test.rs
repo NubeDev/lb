@@ -144,6 +144,82 @@ async fn restart_budget_is_bounded() {
 }
 
 #[tokio::test]
+async fn rearm_recovers_an_exhausted_sidecar() {
+    // The resilience proof: once the budget is exhausted (`restart` refuses), `rearm` re-arms it —
+    // ignoring the budget — and the sidecar serves calls again. This is the operator `reset` path.
+    let (l, launches) = launcher();
+    let spec = Spec {
+        backoff: Backoff {
+            max_restarts: 1,
+            ..Backoff::default()
+        },
+        ..Spec::new("fake")
+    };
+    let mut sc = Sidecar::spawn(spec, &l).await.unwrap();
+    sc.restart(&l).await.expect("restart 1");
+    // Budget spent: the next restart is refused (the permanent-dead-end the bug reproduced).
+    assert!(matches!(
+        sc.restart(&l).await.unwrap_err(),
+        lb_supervisor::SupervisorError::RestartExhausted(1)
+    ));
+
+    // rearm ignores the budget: relaunch + zero the counter.
+    sc.rearm(&l)
+        .await
+        .expect("rearm recovers the exhausted sidecar");
+    assert_eq!(sc.restarts(), 0, "budget re-armed to zero");
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        3,
+        "spawn + restart + rearm"
+    );
+
+    // It answers again — no longer a dead end.
+    let out = sc.call("echo", r#""back""#).await.unwrap();
+    assert_eq!(out, r#"{"tool":"echo","echo":"back"}"#);
+
+    // And the full budget is available again (restart succeeds post-rearm).
+    sc.restart(&l).await.expect("budget available after rearm");
+    assert_eq!(sc.restarts(), 1);
+}
+
+#[tokio::test]
+async fn reset_restarts_zeroes_the_counter_without_respawning() {
+    // The decay primitive: a healthy sidecar's counter can be cleared WITHOUT touching the child
+    // (no relaunch), so a subsequent fault gets the full budget again.
+    let (l, launches) = launcher();
+    let mut sc = Sidecar::spawn(Spec::new("fake"), &l).await.unwrap();
+    sc.restart(&l).await.expect("restart");
+    assert_eq!(sc.restarts(), 1);
+    let before = launches.load(Ordering::SeqCst);
+
+    sc.reset_restarts();
+    assert_eq!(sc.restarts(), 0, "counter decayed");
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        before,
+        "no respawn — the healthy child is untouched"
+    );
+    // Still the same live child.
+    let out = sc.call("echo", r#""alive""#).await.unwrap();
+    assert_eq!(out, r#"{"tool":"echo","echo":"alive"}"#);
+}
+
+#[tokio::test]
+async fn rearm_refuses_a_never_policy() {
+    let (l, _) = launcher();
+    let spec = Spec {
+        restart: RestartPolicy::Never,
+        ..Spec::new("fake")
+    };
+    let mut sc = Sidecar::spawn(spec, &l).await.unwrap();
+    assert!(matches!(
+        sc.rearm(&l).await.unwrap_err(),
+        lb_supervisor::SupervisorError::RestartExhausted(0)
+    ));
+}
+
+#[tokio::test]
 async fn never_policy_refuses_restart() {
     let (l, _) = launcher();
     let spec = Spec {

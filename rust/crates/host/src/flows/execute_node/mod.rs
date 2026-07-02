@@ -184,7 +184,9 @@ async fn dispatch(
 
     // The stateful + engine-extending nodes, and the spine.
     let settled = match node_type {
-        "trigger" => core::trigger(node_id, config, &inputs, params),
+        // `flipflop` is a source: it reads the flipped value the reactor placed in params under its
+        // node id and emits it as the envelope `payload` — the same entry-node leg as `trigger`.
+        "trigger" | "flipflop" => core::trigger(node_id, config, &inputs, params),
         "tool" => core::tool(node, principal, ws, config, &inputs).await,
         "rhai" => core::rhai(node, principal, ws, config, &inputs, now).await,
         "count" => core::count(&inputs),

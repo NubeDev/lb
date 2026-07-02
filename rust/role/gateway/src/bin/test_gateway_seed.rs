@@ -296,6 +296,11 @@ struct SeedExt {
     /// The widget tiles this install contributes (dashboard-widgets scope) — one per `[[widget]]`.
     #[serde(default)]
     widgets: Vec<ExtUi>,
+    /// For a native install: seed a durable `native_status` with this restart count, so the console
+    /// surfaces the count (and the Reset button, shown when `restart_count > 0`) WITHOUT a live child.
+    /// The record is the same one a real crash-restart projects; the runtime process is still absent.
+    #[serde(default)]
+    restart_count: Option<u32>,
 }
 
 /// `POST /_seed/extension` — write a real `Install` record into the token's workspace, so the
@@ -318,6 +323,17 @@ async fn seed_extension(
     record_install(&gw.node.store, p.ws(), &install)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    // A native install may seed a restart count so the console shows the restart history + the Reset
+    // affordance without a live process (the record is what ext.list joins for `restart_count`).
+    if matches!(tier, Tier::Native) {
+        if let Some(count) = body.restart_count {
+            let mut status = lb_host::NativeStatus::new(&install.ext_id, &install.version, 0);
+            status.restart_count = count;
+            lb_host::record_status(&gw.node.store, p.ws(), &status)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        }
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

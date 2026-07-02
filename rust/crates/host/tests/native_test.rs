@@ -21,8 +21,8 @@ use std::path::PathBuf;
 use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    call_sidecar, history, install_native, install_native_from_registry, post, status_native,
-    stop_native, Lifecycle, Node, RegistryServiceError, Source,
+    call_sidecar, history, install_native, install_native_from_registry, post, reset_native,
+    status_native, stop_native, Lifecycle, NativeServiceError, Node, RegistryServiceError, Source,
 };
 use lb_inbox::Item;
 use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys};
@@ -203,6 +203,260 @@ async fn killed_sidecar_restarts_cleanly_with_no_durable_state_lost() {
         !node.sidecars.is_running(ws, "echo-sidecar"),
         "stopped sidecar is no longer live"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn exhausted_budget_is_recovered_by_reset_without_bouncing_the_node() {
+    // The resilience proof (native-tier), with a REAL OS child: crash-loop the sidecar past its
+    // restart budget so `call` returns "restart budget exhausted" (the permanent dead-end the live
+    // bug hit), then `reset` re-arms the budget + respawns and the SAME call answers again — recovery
+    // without a node bounce. Default budget is max_restarts=5, so five crash+recover cycles exhaust it.
+    let ws = "native-reset";
+    let node = Node::boot().await.unwrap();
+    let launcher = OsLauncher;
+    let admin = principal(
+        ws,
+        &[
+            "mcp:native.install:call",
+            "mcp:native.call:call",
+            "mcp:native.reset:call",
+            "mcp:native.status:call",
+        ],
+    );
+
+    install_native(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        MANIFEST,
+        &sidecar_dir(),
+        &[],
+        1,
+    )
+    .await
+    .expect("installs + spawns");
+
+    // Exhaust the budget: each crash kills the child, the NEXT call restarts it (bumping the count).
+    // After 5 restarts the 6th recovery is refused → the call fails with budget-exhausted.
+    let mut ts = 2u64;
+    for i in 0..5 {
+        // crash tool replies then exits; the call itself succeeds.
+        call_sidecar(
+            &node,
+            &launcher,
+            &admin,
+            ws,
+            "echo-sidecar",
+            "crash",
+            "null",
+            ts,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("crash {i} tool replied: {e:?}"));
+        ts += 1;
+        // next call restarts the dead child and answers (restarts 1..=5).
+        call_sidecar(
+            &node,
+            &launcher,
+            &admin,
+            ws,
+            "echo-sidecar",
+            "echo",
+            r#""x""#,
+            ts,
+        )
+        .await
+        .unwrap_or_else(|e| panic!("recover after crash {i}: {e:?}"));
+        ts += 1;
+    }
+    let status = status_native(&node, &admin, ws, "echo-sidecar")
+        .await
+        .unwrap()
+        .expect("status");
+    assert_eq!(status.restart_count, 5, "budget spent (max_restarts=5)");
+
+    // The 6th crash exhausts the budget: the recovery call now fails with the exhausted error — the
+    // permanent dead-end (every subsequent call would fail until the node is bounced).
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "crash",
+        "null",
+        ts,
+    )
+    .await
+    .expect("6th crash tool replied before exit");
+    ts += 1;
+    let err = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""dead""#,
+        ts,
+    )
+    .await
+    .expect_err("budget is exhausted → the call cannot recover the child");
+    assert!(
+        matches!(&err, NativeServiceError::Supervisor(s)
+            if matches!(s, lb_supervisor::SupervisorError::RestartExhausted(_))),
+        "exhausted budget surfaces as RestartExhausted, not a silent hang: {err:?}"
+    );
+    ts += 1;
+
+    // --- RESET: re-arm the budget + force a fresh child (the operator rescue) ---
+    reset_native(&node, &launcher, &admin, ws, "echo-sidecar", ts)
+        .await
+        .expect("reset re-arms the exhausted sidecar without a node bounce");
+    ts += 1;
+
+    // The SAME call answers again — no longer a dead end — and the durable count is re-armed to 0.
+    let out = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""alive""#,
+        ts,
+    )
+    .await
+    .expect("the reset sidecar answers again");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(v["echo"], "alive", "recovered sidecar resumes serving");
+    let after = status_native(&node, &admin, ws, "echo-sidecar")
+        .await
+        .unwrap()
+        .expect("status");
+    assert_eq!(
+        after.restart_count, 0,
+        "reset zeroed the durable restart count"
+    );
+    assert_eq!(after.lifecycle, Lifecycle::Started);
+
+    stop_native(&node, &admin, ws, "echo-sidecar", ts + 1)
+        .await
+        .ok();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn sustained_health_decays_the_restart_count() {
+    // Auto-decay (native-tier resilience): a sidecar that crashed once but then serves calls cleanly
+    // for the cool-off window has its restart count decayed back to zero — a TRANSIENT crash no longer
+    // permanently erodes the budget. Real OS child; we drive the cool-off by advancing the injected
+    // logical clock past the default 30s window (30_000ms) rather than sleeping.
+    let ws = "native-decay";
+    let node = Node::boot().await.unwrap();
+    let launcher = OsLauncher;
+    let admin = principal(
+        ws,
+        &[
+            "mcp:native.install:call",
+            "mcp:native.call:call",
+            "mcp:native.status:call",
+        ],
+    );
+
+    install_native(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        MANIFEST,
+        &sidecar_dir(),
+        &[],
+        1_000,
+    )
+    .await
+    .expect("installs");
+
+    // One crash → one restart. healthy_since is reset to the restart ts (2_000).
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "crash",
+        "null",
+        2_000,
+    )
+    .await
+    .expect("crash replied");
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""r""#,
+        2_000,
+    )
+    .await
+    .expect("recover");
+    let after_crash = status_native(&node, &admin, ws, "echo-sidecar")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_crash.restart_count, 1, "one restart recorded");
+
+    // A call WITHIN the cool-off window (now - 2_000 < 30_000) must NOT decay the count.
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""soon""#,
+        10_000,
+    )
+    .await
+    .expect("call within cooloff");
+    assert_eq!(
+        status_native(&node, &admin, ws, "echo-sidecar")
+            .await
+            .unwrap()
+            .unwrap()
+            .restart_count,
+        1,
+        "count must not decay before the cool-off window elapses"
+    );
+
+    // A successful call AFTER the cool-off window (2_000 + 30_000 = 32_000) decays the count to 0.
+    call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "echo",
+        r#""later""#,
+        33_000,
+    )
+    .await
+    .expect("call after cooloff");
+    assert_eq!(
+        status_native(&node, &admin, ws, "echo-sidecar")
+            .await
+            .unwrap()
+            .unwrap()
+            .restart_count,
+        0,
+        "sustained health decays the restart count — a transient crash is not permanent"
+    );
+
+    stop_native(&node, &admin, ws, "echo-sidecar", 40_000)
+        .await
+        .ok();
 }
 
 // ---- registry × native composition: a signed native artifact installs through the registry ----

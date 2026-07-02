@@ -57,6 +57,25 @@ pub async fn disable_extension(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /extensions/{ext}/reset` — **re-arm** a native sidecar's exhausted restart budget and force
+/// a fresh child (native-tier resilience). The rescue for a sidecar that crash-looped past
+/// `max_restarts` and would otherwise return "restart budget exhausted" until the node is bounced.
+/// Gated server-side on `mcp:native.reset:call` inside `reset_native`; `403` on a deny or if the
+/// sidecar is not running here (wasm rows have no process — the host returns `NotRunning`).
+pub async fn reset_extension(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(ext): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::reset_native(&gw.node, &lb_host::OsLauncher, &p, p.ws(), &ext, gw.now())
+        .await
+        .map_err(forbid)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `DELETE /extensions/{ext}` — uninstall (stop/unload + delete the install record).
 pub async fn uninstall_extension(
     State(gw): State<Gateway>,

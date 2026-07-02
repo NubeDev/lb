@@ -24,6 +24,9 @@ export interface FlowToolbarProps {
   dirty: boolean;
   /** A run is in flight → show Suspend/Resume/Stop and disable Run. */
   runActive: boolean;
+  /** The flow fires on its own (cron/source trigger). When true, Run is a one-off **Test run** — the
+   *  real 24/7 firing comes from Enable; when false (manual only), Run is the only way it ever runs. */
+  scheduled: boolean;
   /** The durable enabled flag (from node_state; the flow record until it loads). */
   enabled: boolean;
   /** Live-value painting on/off. */
@@ -38,6 +41,7 @@ export interface FlowToolbarProps {
 export function FlowToolbar({
   dirty,
   runActive,
+  scheduled,
   enabled,
   liveValues,
   onDeploy,
@@ -60,15 +64,20 @@ export function FlowToolbar({
         {dirty ? "Deploy" : "Deployed"}
       </Button>
       <Button
-        aria-label="run flow"
+        aria-label={scheduled ? "test run flow" : "run flow"}
         onClick={onRun}
         disabled={runActive}
         variant="outline"
         size="sm"
         className="gap-1.5"
+        title={
+          scheduled
+            ? "Fire this flow once now (a test). Its real 24/7 firing comes from Enable + its trigger."
+            : "Run this flow once now"
+        }
       >
         <Play size={13} />
-        Run
+        {scheduled ? "Test run" : "Run"}
       </Button>
       {runActive ? (
         <>

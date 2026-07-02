@@ -26,6 +26,12 @@ pub struct Backoff {
     pub max_delay: Duration,
     /// The most restarts allowed before the supervisor gives up (within one `Sidecar`'s life).
     pub max_restarts: u32,
+    /// How long a sidecar must serve calls cleanly (no fault) before its restart count decays back
+    /// to zero — the cool-off that makes a *transient* crash non-permanent (native-tier resilience:
+    /// budget exhaustion must be recoverable without bouncing the node). A restart during this
+    /// window resets the timer; a sustained-healthy sidecar re-arms its own budget. `0` disables
+    /// decay (the count only clears on an explicit operator `reset`).
+    pub cooloff: Duration,
 }
 
 impl Backoff {
@@ -46,6 +52,9 @@ impl Default for Backoff {
             base: Duration::from_millis(50),
             max_delay: Duration::from_secs(5),
             max_restarts: 5,
+            // A sidecar that serves calls cleanly for 30s is treated as recovered — a transient
+            // crash (a boot race, a node restart flap) no longer permanently poisons the budget.
+            cooloff: Duration::from_secs(30),
         }
     }
 }
@@ -106,6 +115,7 @@ mod tests {
             base: Duration::from_millis(50),
             max_delay: Duration::from_millis(400),
             max_restarts: 10,
+            cooloff: Duration::from_secs(30),
         };
         assert_eq!(b.delay_for(1), Duration::from_millis(50));
         assert_eq!(b.delay_for(2), Duration::from_millis(100));

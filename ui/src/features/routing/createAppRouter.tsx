@@ -18,7 +18,7 @@ import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
-import { ExtHost } from "@/features/ext-host";
+import { ExtHost, ExtErrorBoundary } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { FlowsView } from "@/features/flows";
 import { TelemetryView } from "@/features/telemetry";
@@ -240,7 +240,13 @@ function ExtRoute() {
     );
   }
   if (!page) return <DefaultRedirect />;
-  return <ExtHost ext={page.ext} ui={page.ui} workspace={ctx.workspace} />;
+  // Wall off the extension: a render-time throw inside it stays inside it, not up through the shell
+  // (nav + sidebar). Keyed on the ext id so switching extensions re-arms after a crash.
+  return (
+    <ExtErrorBoundary ext={page.ext} resetKey={page.ext}>
+      <ExtHost ext={page.ext} ui={page.ui} workspace={ctx.workspace} />
+    </ExtErrorBoundary>
+  );
 }
 
 function Rules() {

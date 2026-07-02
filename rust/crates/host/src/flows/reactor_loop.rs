@@ -21,6 +21,7 @@ use crate::boot::Node;
 use crate::Role;
 
 use super::react_cron::react_to_flows_cron;
+use super::react_interval::react_to_flows_interval;
 use super::reconcile::reconcile_flows;
 
 /// The caps the reactor's system principal needs to drive a flow run headless: the flows run surface
@@ -76,5 +77,12 @@ async fn tick_once(node: &Arc<Node>, principal: &Principal, ws: &str, role: Role
         }
         Ok(_) => {}
         Err(e) => tracing::warn!(ws = %ws, error = %e, "flow cron reactor pass failed"),
+    }
+    match react_to_flows_interval(node, principal, ws, now).await {
+        Ok(pass) if pass.fired > 0 => {
+            tracing::info!(ws = %ws, fired = pass.fired, "flow flip-flop reactor fired");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow flip-flop reactor pass failed"),
     }
 }

@@ -51,7 +51,14 @@ or long-lived daemon (a language server, an MQTT bridge). The shipped mechanics:
   budget so a crash loop is capped).
 - **The host `native` service** drives it: `install_native` persists the durable `Install` record
   then spawns; `call_sidecar` dispatches a child tool and **restarts-on-fault then retries** (the
-  supervision crash-path); `stop`/`restart`/`status` are the operator controls.
+  supervision crash-path); `stop`/`restart`/`reset`/`status` are the operator controls.
+- **Exhaustion is recoverable (S8+).** The restart budget caps crash loops, but a *transient* crash
+  (a node-restart flap, a boot-key race) must not permanently poison a sidecar. Two recovery paths,
+  neither needs a node restart: **`native.reset`** (`POST /extensions/{ext}/reset`, gated
+  `mcp:native.reset:call`, a **Reset** button in the Extensions console) re-arms the budget + forces a
+  fresh child; and **auto-decay** — a sidecar that serves calls cleanly for the cool-off window
+  (`Backoff.cooloff`, default 30s) has its restart count decayed back to zero on the next successful
+  call. `reset` is unbounded (rescue) and distinct from `restart` (bounded, counts toward the budget).
 - **Stateless supervision.** The live `Sidecar` (PID, stdio, restart count) is **runtime-only** (a
   `SidecarMap` keyed `(ws, ext_id)`); the durable truth is the `Install` record + a `native_status`
   projection (lifecycle intent + restart count) in the workspace namespace. A restart re-derives from

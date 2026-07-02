@@ -11,6 +11,7 @@ function props(over: Partial<FlowToolbarProps> = {}): FlowToolbarProps {
   return {
     dirty: false,
     runActive: false,
+    scheduled: false,
     enabled: true,
     liveValues: false,
     onDeploy: vi.fn(),
@@ -70,5 +71,16 @@ describe("FlowToolbar", () => {
   it("Run is disabled while a run is active (no double-start)", () => {
     render(<FlowToolbar {...props({ runActive: true })} />);
     expect((screen.getByLabelText("run flow") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("a manual flow shows 'Run'; a scheduled flow shows 'Test run' (24/7 firing is Enable's job)", () => {
+    const { rerender } = render(<FlowToolbar {...props({ scheduled: false })} />);
+    expect(screen.getByLabelText("run flow").textContent).toContain("Run");
+    expect(screen.queryByLabelText("test run flow")).toBeNull();
+
+    rerender(<FlowToolbar {...props({ scheduled: true })} />);
+    const testRun = screen.getByLabelText("test run flow");
+    expect(testRun.textContent).toContain("Test run");
+    expect(screen.queryByLabelText("run flow")).toBeNull();
   });
 });

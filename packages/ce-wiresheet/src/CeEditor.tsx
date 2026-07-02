@@ -1851,18 +1851,26 @@ function Inner({ base, transport }: { base: string; transport: EngineTransport }
     // wired as an extra, optional argument DirectTransport understands and any
     // other transport ignores. Duck-typed rather than `instanceof DirectTransport`
     // so a test transport that also wants presence can opt in the same way.
-    const openStream = transport.openStream as (
-      h: StreamHandlers,
-      presence?: {
-        onPresence(m: { type: "presence"; sessionId: string; state: unknown }): void;
-        onPresenceSnapshot(m: {
-          type: "presenceSnapshot";
-          presences: Array<{ sessionId: string; state: unknown }>;
-        }): void;
-        onPresenceLeft(m: { type: "presenceLeft"; sessionId: string }): void;
-      },
-    ) => EngineStream;
-    const stream = openStream(handlers, {
+    // Call `openStream` AS A METHOD (`transport.openStream(...)`), never via a detached local
+    // (`const f = transport.openStream; f(...)`) — a class-based transport whose `openStream`
+    // reads `this` (e.g. the control-engine BridgeTransport → `this.bridge`) would see `this`
+    // become undefined and throw. Cast the transport, not the extracted function, so the
+    // receiver is preserved. Presence is the optional 2nd arg direct-mode understands and any
+    // other transport ignores (duck-typed — see the note above).
+    const withPresence = transport as EngineTransport & {
+      openStream(
+        h: StreamHandlers,
+        presence?: {
+          onPresence(m: { type: "presence"; sessionId: string; state: unknown }): void;
+          onPresenceSnapshot(m: {
+            type: "presenceSnapshot";
+            presences: Array<{ sessionId: string; state: unknown }>;
+          }): void;
+          onPresenceLeft(m: { type: "presenceLeft"; sessionId: string }): void;
+        },
+      ): EngineStream;
+    };
+    const stream = withPresence.openStream(handlers, {
       onPresence: (m) => {
         usePresence.getState().upsert(m.sessionId, (m.state ?? {}) as PresenceState);
       },
@@ -1881,6 +1889,14 @@ function Inner({ base, transport }: { base: string; transport: EngineTransport }
       },
     });
     streamRef.current = stream;
+    // Close + clear the stream on unmount (or transport swap). Without this the module-level
+    // `streamRef` stays populated after the editor unmounts, so the `if (streamRef.current) return`
+    // guard above makes a REMOUNT skip arming — the canvas comes back static (no live values), and
+    // the old bus subscription leaks. Nulling it means a fresh mount re-arms against the new transport.
+    return () => {
+      stream.close();
+      if (streamRef.current === stream) streamRef.current = null;
+    };
   }, [transport]);
 
   // Coalesce topology pushes into one reload per microtask. Different from the engine's

@@ -282,7 +282,7 @@ function ExtensionSupport({ row }: { row: ExtRow }) {
 }
 
 export function ExtensionsView({ ws }: Props) {
-  const { rows, error, setEnabled, uninstall, upload } = useExtensions();
+  const { rows, error, setEnabled, reset, uninstall, upload } = useExtensions();
   const [pending, setPending] = useState<Pending>(null);
 
   return (
@@ -364,6 +364,17 @@ export function ExtensionsView({ ws }: Props) {
                       >
                         {r.enabled ? "Stop" : "Start"}
                       </Button>
+                      {r.tier === "native" && r.restart_count > 0 && (
+                        <Button
+                          aria-label={`reset ${r.ext}`}
+                          variant="outline"
+                          size="sm"
+                          title="Re-arm the restart budget and force a fresh child (recovers a sidecar that exhausted its restart budget)"
+                          onClick={() => void reset(r.ext)}
+                        >
+                          Reset
+                        </Button>
+                      )}
                       <Button
                         aria-label={`uninstall ${r.ext}`}
                         variant="destructive"

@@ -91,6 +91,10 @@ pub async fn call_sidecar<L: Launcher>(
         Ok(())
     })
     .await?;
+    // The call answered — the child is alive. Decay its restart accounting if it has been healthy for
+    // the cool-off window (a transient crash no longer permanently exhausts the budget). Best-effort:
+    // no launcher needed, and a hiccup here never fails the call the caller already got an answer to.
+    super::lifecycle::decay_if_healthy(node, &handle, ws, ext_id, ts).await;
     Ok(out)
 }
 

@@ -43,6 +43,28 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     }
                 }),
             ),
+        // A self-driving boolean OSCILLATOR (a square-wave source). No inputs; envelope out. Fires on
+        // its own durable interval clock (the reactor, like `cron`) and FLIPS its output each firing:
+        // `start`, `!start`, `start`, … Holds each value for `period_secs` (default 10s → 10s true / 10s
+        // false). A stateful trigger — the durable cursor holds both the clock AND the last value; no
+        // input feeds it. No MCP tool.
+        NodeDescriptor::new("flipflop", NodeKind::Trigger, "")
+            .with_title("Flip-flop (oscillator)")
+            .with_category("Flow")
+            .with_icon("toggle-left")
+            .with_ports(vec![], vec!["payload".into(), "topic".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "period_secs": {"type": "integer", "minimum": 1, "default": 10, "description": "how long each value is held before it flips, in seconds (10 → 10s true / 10s false)"},
+                        "start": {"type": "boolean", "default": true, "description": "the value emitted on the first firing"},
+                        "topic": {"type": "string", "description": "the topic stamped on the firing envelope (D6)"}
+                    }
+                }),
+            ),
         // Everything-is-a-node for ACTIONS: carries the granted MCP verb + args in config; dispatched
         // under the caller's own cap (caller ∩ grant) — one generic descriptor covers every verb.
         NodeDescriptor::new("tool", NodeKind::Transform, "")

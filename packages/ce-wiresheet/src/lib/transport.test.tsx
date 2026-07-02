@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, waitFor, cleanup, act } from "@testing-library/react";
 import { useValues } from "./store";
-import { setRestTransport } from "./rest";
+import { setRestTransport, setRestSessionId, setRestActorId } from "./rest";
 import CeEditor from "../CeEditor";
 import type {
   EngineTransport,
@@ -163,6 +163,10 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   useValues.getState().reset();
+  // Reset the module-level rest singletons so one test's injected transport + bound session don't
+  // leak into the next (each test injects its own transport via the CeEditor prop).
+  setRestSessionId(null);
+  setRestActorId(null);
 });
 
 describe("EngineTransport seam", () => {
@@ -193,5 +197,45 @@ describe("EngineTransport seam", () => {
     // 3. The globals were never touched — the editor stayed behind the seam.
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(wsSpy).not.toHaveBeenCalled();
+  });
+
+  // Regression: the editor must call `transport.openStream(...)` AS A METHOD, preserving the
+  // receiver. It once extracted `const f = transport.openStream; f(...)`, which detaches `this`.
+  // The in-repo MockTransport hid this by arrow-binding its methods; the real control-engine
+  // BridgeTransport uses ordinary prototype methods that read `this.bridge`, so in the browser it
+  // threw "Cannot read properties of undefined (reading 'bridge')" the instant the editor mounted —
+  // taking the whole shell down. This transport reproduces the REAL shape: a prototype method that
+  // dereferences `this`. If the editor detaches the method again, `openStream` throws here.
+  it("calls openStream as a method — a `this`-reading transport is not detached", async () => {
+    class ThisReadingTransport implements EngineTransport {
+      private readonly marker = "bound";
+      stream: MockStream | null = null;
+
+      request(req: EngineRequest): Promise<unknown> {
+        // Touch `this` so a detached call would throw here too.
+        void this.marker;
+        if (req.method === "GET" && req.path.startsWith("/nodes")) return Promise.resolve(seededTree());
+        if (req.method === "GET" && req.path === "/schema") return Promise.resolve([]);
+        if (req.method === "GET" && req.path.startsWith("/edges")) return Promise.resolve([]);
+        if (req.method === "GET" && req.path.startsWith("/changelog"))
+          return Promise.resolve({ undoable: [], redoable: [] });
+        return Promise.resolve({});
+      }
+
+      openStream(handlers: StreamHandlers): EngineStream {
+        // Reading `this` is the crux: if the editor detached this method, `this` is undefined here.
+        if (this.marker !== "bound") throw new Error("openStream lost its receiver (`this`)");
+        this.stream = new MockStream(handlers);
+        return this.stream;
+      }
+    }
+
+    const transport = new ThisReadingTransport();
+    setRestTransport(transport);
+
+    // The mount used to throw synchronously during render — assert it does not, and the tree renders.
+    const { findByText } = render(<CeEditor base="mock://engine" transport={transport} />);
+    await findByText("Adder");
+    expect(transport.stream).not.toBeNull();
   });
 });

@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{install_native, status_native, stop_native, NativeServiceError, Node};
+use lb_host::{install_native, reset_native, status_native, stop_native, NativeServiceError, Node};
 use lb_supervisor::{
     read_frame, write_frame, Channel, Kill, Launcher, Method, Reply, Request, SupervisorError,
 };
@@ -136,4 +136,35 @@ async fn denies_stop_without_grant() {
         node.sidecars.is_running(ws, "echo-sidecar"),
         "the sidecar must still be running after a denied stop"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn denies_reset_without_grant() {
+    // The resilience rescue is capability-gated like every other native verb: re-arming a sidecar's
+    // budget without `mcp:native.reset:call` is refused at the gate, before the launcher is touched.
+    let ws = "native-deny-reset";
+    let node = Node::boot().await.unwrap();
+    let launches = Arc::new(AtomicU32::new(0));
+    let launcher = CountingLauncher(launches.clone());
+
+    let admin = principal(ws, &["mcp:native.install:call"]);
+    install_native(&node, &launcher, &admin, ws, MANIFEST, "", &[], 1)
+        .await
+        .expect("installs");
+    assert!(node.sidecars.is_running(ws, "echo-sidecar"));
+    let launches_after_install = launches.load(Ordering::SeqCst);
+
+    // A principal lacking mcp:native.reset:call cannot rescue the sidecar.
+    let nogrant = principal(ws, &["mcp:native.status:call"]);
+    let err = reset_native(&node, &launcher, &nogrant, ws, "echo-sidecar", 2)
+        .await
+        .expect_err("reset must be refused without the grant");
+    assert!(matches!(err, NativeServiceError::Denied));
+    // The gate ran first: no respawn happened (the launcher was not reached beyond the install spawn).
+    assert_eq!(
+        launches.load(Ordering::SeqCst),
+        launches_after_install,
+        "the launcher must never be reached on a denied reset"
+    );
+    assert!(node.sidecars.is_running(ws, "echo-sidecar"));
 }

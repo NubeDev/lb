@@ -68,7 +68,8 @@ pub use dashboard::{
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
 pub use ext::{
-    disable_extension, enable_extension, list_extensions, publish_extension, uninstall_extension,
+    disable_extension, enable_extension, list_extensions, publish_extension, reset_extension,
+    uninstall_extension,
 };
 pub use ext_ui::serve_ext_ui;
 pub use flows::{

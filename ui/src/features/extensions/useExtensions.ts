@@ -9,6 +9,7 @@ import {
   enableExtension,
   listExtensions,
   publishArtifact,
+  resetExtension,
   uninstallExtension,
   type Artifact,
   type ExtRow,
@@ -18,6 +19,7 @@ export interface ExtensionsState {
   error: string | null;
   refresh: () => Promise<void>;
   setEnabled: (ext: string, enabled: boolean) => Promise<void>;
+  reset: (ext: string) => Promise<void>;
   uninstall: (ext: string) => Promise<void>;
   upload: (artifact: Artifact) => Promise<void>;
 }
@@ -58,6 +60,7 @@ export function useExtensions(): ExtensionsState {
     error,
     refresh,
     setEnabled: (ext, enabled) => run(() => (enabled ? enableExtension(ext) : disableExtension(ext))),
+    reset: (ext) => run(() => resetExtension(ext)),
     uninstall: (ext) => run(() => uninstallExtension(ext)),
     upload: (artifact) => run(() => publishArtifact(artifact)),
   };

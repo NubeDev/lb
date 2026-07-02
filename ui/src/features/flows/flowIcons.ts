@@ -9,6 +9,7 @@ import {
   GitBranch,
   Hash,
   Radio,
+  ToggleLeft,
   Wrench,
   Zap,
   type LucideIcon,
@@ -24,6 +25,7 @@ const ICONS: Record<string, LucideIcon> = {
   hash: Hash,
   "git-branch": GitBranch,
   "arrow-down-to-line": ArrowDownToLine,
+  "toggle-left": ToggleLeft,
 };
 
 /** The kind fallback when a descriptor declares no icon. */

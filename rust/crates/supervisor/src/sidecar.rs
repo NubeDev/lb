@@ -107,6 +107,44 @@ impl Sidecar {
         self.spec.backoff.delay_for(self.restarts + 1)
     }
 
+    /// The cool-off window from the spec — how long a sidecar must serve calls cleanly before its
+    /// restart count may decay (the host owns the clock and calls [`reset_restarts`] when it elapses).
+    pub fn cooloff(&self) -> std::time::Duration {
+        self.spec.backoff.cooloff
+    }
+
+    /// **Re-arm** the restart budget and force a fresh child, IGNORING the budget (native-tier
+    /// resilience: an operator `reset` recovers a sidecar that already crash-looped past
+    /// `max_restarts`). Unlike [`restart`], this does not consult `max_restarts` and works even when
+    /// the sidecar is currently dead (`channel == None`, the exhausted state) — it kills any live
+    /// predecessor, relaunches from the SAME spec, re-handshakes, and zeroes the counter. The
+    /// stateless-extension guarantee makes this safe: the child held no durable state, so a forced
+    /// respawn loses nothing. `RestartPolicy::Never` still refuses (a one-shot is never re-armed).
+    pub async fn rearm<L: Launcher>(&mut self, launcher: &L) -> Result<(), SupervisorError> {
+        if self.spec.restart == RestartPolicy::Never {
+            return Err(SupervisorError::RestartExhausted(self.restarts));
+        }
+        if let Some(channel) = self.channel.take() {
+            channel.kill.kill().await;
+        }
+        let channel = launcher
+            .launch(&self.spec.exec, &self.spec.args, &self.spec.env)
+            .await?;
+        self.channel = Some(channel);
+        self.restarts = 0;
+        self.next_id = 0;
+        self.request(Method::Init, String::new()).await?;
+        Ok(())
+    }
+
+    /// Zero the in-memory restart counter WITHOUT touching the child — the decay path. The host calls
+    /// this once a running sidecar has served calls cleanly for the [`cooloff`] window, so a
+    /// subsequent fault gets the full budget again (a transient crash no longer permanently poisons
+    /// it). No respawn: the child is already healthy; only the accounting is reset.
+    pub fn reset_restarts(&mut self) {
+        self.restarts = 0;
+    }
+
     /// Write one framed request and read framed replies until the one whose `id` matches. Any I/O
     /// failure is a transport error (the child is treated as dead). A child `error` reply maps to
     /// [`SupervisorError::Child`].

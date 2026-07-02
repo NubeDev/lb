@@ -5,7 +5,7 @@
 //!
 //! The set is split by category (FILE-LAYOUT — data-nodes Open Q5, resolved: a file per category so
 //! `builtins.rs` stays under the 400-line rule as it grows from 8 to 28 descriptors):
-//! - [`core`] — the eight spine built-ins (`trigger`/`tool`/`rhai`/`count`/`json`/`counter`/`subflow`/`sink`).
+//! - [`core`] — the nine spine built-ins (`trigger`/`flipflop`/`tool`/`rhai`/`count`/`json`/`counter`/`subflow`/`sink`).
 //! - [`data`] — nine reshape/scale/reduce nodes (`change`/`select`/`merge`/`map`/`flatten`/`sort`/`range`/`aggregate`/`template`).
 //! - [`parse`] — four text↔structure nodes (`csv`/`xml`/`yaml`/`base64`), malformed input FAILS the node.
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
@@ -42,8 +42,9 @@ mod tests {
 
     /// The full expected type set (order = category order). Guards against an accidental drop/rename.
     const EXPECTED: &[&str] = &[
-        // core (8)
+        // core (9)
         "trigger",
+        "flipflop",
         "tool",
         "rhai",
         "count",
@@ -82,7 +83,7 @@ mod tests {
         let d = builtin_descriptors();
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
         assert_eq!(types, EXPECTED);
-        assert_eq!(d.len(), 28, "8 spine + 20 data/JSON pack nodes");
+        assert_eq!(d.len(), 29, "9 spine + 20 data/JSON pack nodes");
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {
             crate::config_schema::compile_schema(&desc.config)
@@ -110,6 +111,15 @@ mod tests {
         let sink = d.iter().find(|x| x.r#type == "sink").unwrap();
         assert!(trig.inputs.is_empty());
         assert!(sink.outputs.is_empty());
+    }
+
+    #[test]
+    fn flipflop_is_a_no_input_trigger() {
+        let d = builtin_descriptors();
+        let ff = d.iter().find(|x| x.r#type == "flipflop").unwrap();
+        assert_eq!(ff.kind, NodeKind::Trigger);
+        assert!(ff.inputs.is_empty(), "flipflop is a source: no input port");
+        assert_eq!(ff.outputs, vec!["payload".to_string(), "topic".to_string()]);
     }
 
     #[test]
@@ -141,7 +151,7 @@ mod tests {
     fn data_pack_nodes_are_envelope_transforms() {
         // Every one of the twenty new nodes is a payload→payload transform (the drop-in mould).
         let d = builtin_descriptors();
-        for ty in &EXPECTED[8..] {
+        for ty in &EXPECTED[9..] {
             let desc = d.iter().find(|x| &x.r#type == ty).unwrap();
             assert_eq!(desc.kind, NodeKind::Transform, "{ty} should be a transform");
             assert_eq!(desc.inputs, vec!["payload".to_string()], "{ty} input");

@@ -89,6 +89,15 @@ pub struct FlowTriggerState {
     /// (a stale cursor for an old spec never fires the new one).
     #[serde(default)]
     pub cron: Option<String>,
+    /// The interval (seconds) this cursor advances by, for a `flipflop` source (`None` for cron). A
+    /// changed `period_secs` re-seeds the cursor exactly as a changed `cron` does.
+    #[serde(default)]
+    pub period_secs: Option<u64>,
+    /// The last value emitted by a `flipflop` source (`None` before its first firing → emit `start`).
+    /// The reactor emits `!flop` each firing and stores the new value here — clock + value move
+    /// together in one durable record.
+    #[serde(default)]
+    pub flop: Option<bool>,
 }
 
 /// The id of a per-node trigger-cursor (and node-memory) record within a flow.

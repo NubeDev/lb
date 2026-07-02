@@ -89,6 +89,40 @@ describe("ExtensionsView (real gateway)", () => {
   // tests (lb_registry verify-before-store + the host publish route); the UI's local malformed-JSON
   // guard lives in UploadArtifact. Not reproduced here — it can't run without a fake. (CLAUDE §9)
 
+  it("shows the Reset affordance only for a native sidecar that has restarted", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // A native install with restarts (a crash-looped sidecar) → the Reset button appears.
+    await seedExtension({
+      ext: "echo-sidecar",
+      version: "v1",
+      tier: "native",
+      enabled: true,
+      restart_count: 3,
+    });
+    // A wasm install (no process, no restart budget) → never a Reset button.
+    await seedExtension({ ext: "hello", version: "v2", tier: "wasm", enabled: true });
+    render(<ExtensionsView ws={ws} />);
+
+    await screen.findByText("echo-sidecar@v1");
+    // The restart count is surfaced from the seeded native_status record.
+    expect(screen.getByTestId("restarts-echo-sidecar")).toHaveTextContent("restarts 3");
+    // The recovery affordance is present for the restarted native, absent for the wasm row.
+    expect(screen.getByLabelText("reset echo-sidecar")).toBeInTheDocument();
+    expect(screen.queryByLabelText("reset hello")).not.toBeInTheDocument();
+  });
+
+  it("hides Reset for a native sidecar with a clean (zero) restart count", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedExtension({ ext: "echo-sidecar", version: "v1", tier: "native", enabled: true });
+    render(<ExtensionsView ws={ws} />);
+
+    await screen.findByText("echo-sidecar@v1");
+    expect(screen.getByTestId("restarts-echo-sidecar")).toHaveTextContent("restarts 0");
+    expect(screen.queryByLabelText("reset echo-sidecar")).not.toBeInTheDocument();
+  });
+
   it("is workspace-isolated — ws-B never sees ws-A's installs", async () => {
     const wsA = nextWs();
     await signInReal("user:ada", wsA);

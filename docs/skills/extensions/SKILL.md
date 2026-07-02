@@ -367,6 +367,7 @@ foreign-key upload is rejected and nothing is persisted. On success the extensio
 | Enable (start) | `POST /extensions/{ext}/enable` | `{"tool":"ext.enable","args":{"ext":"…","ts":…}}` | `mcp:ext.disable:call` |
 | Disable (stop) | `POST /extensions/{ext}/disable` | `{"tool":"ext.disable","args":{"ext":"…","ts":…}}` | `mcp:ext.disable:call` |
 | Uninstall | `DELETE /extensions/{ext}` | `{"tool":"ext.uninstall","args":{"ext":"…","ts":…}}` | `mcp:ext.uninstall:call` |
+| Reset (native only) | `POST /extensions/{ext}/reset` | `{"tool":"native.reset","args":{"ext_id":"…","ts":…}}` | `mcp:native.reset:call` |
 
 ```bash
 curl -s http://127.0.0.1:8080/extensions -H "authorization: Bearer $TOKEN"
@@ -379,6 +380,17 @@ curl -s http://127.0.0.1:8080/extensions -H "authorization: Bearer $TOKEN"
 `enabled` is the durable intent the boot reconciler honors; `running` is live (for native, joined
 from the supervisor's PID map — wasm is `running = enabled`). **Enable/disable flips intent** (the
 install stays); **uninstall tombstones the install** + stops any native child + evicts the binary.
+
+**Recovering an exhausted native sidecar.** A supervised sidecar that crash-loops past its restart
+budget (`max_restarts`, default 5) stops respawning and every call returns `restart budget exhausted
+after N restarts`. Two recovery paths, neither needs a node restart:
+- **Reset** (`native.reset` / `POST /extensions/{ext}/reset`, cap `mcp:native.reset:call`) re-arms
+  the budget and forces a fresh child immediately — the operator rescue. The Extensions console shows
+  a **Reset** button on a native row whose `restart_count > 0`. Distinct from enable/disable (intent)
+  and from the supervisor's bounded auto-restart.
+- **Auto-decay**: a sidecar that then serves calls cleanly for the cool-off window (`Backoff.cooloff`,
+  default 30s) has its `restart_count` decayed back to 0 automatically — a *transient* crash no longer
+  permanently erodes the budget. Decay is observed on the next successful call after the window.
 
 ## 8. Call the extension's tool
 

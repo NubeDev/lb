@@ -40,14 +40,18 @@ interface StructuralState {
 // out to a component in O(1) without going through Zustand selectors.
 export const propertyToComponent = new Map<number, number>();
 
+// `properties` is declared non-optional on Component, and rest.ts normalizes it at the
+// fetch boundary — but guard here too so a component reaching the store from ANY source (a
+// non-REST transport, a test seed, a future endpoint) can never crash the index with
+// "Cannot convert undefined or null to object". Defense-in-depth for the invariant.
 function indexComponentProperties(c: Component) {
-  for (const p of Object.values(c.properties)) {
+  for (const p of Object.values(c.properties ?? {})) {
     propertyToComponent.set(p.uid, c.uid);
   }
 }
 
 function unindexComponentProperties(c: Component) {
-  for (const p of Object.values(c.properties)) {
+  for (const p of Object.values(c.properties ?? {})) {
     propertyToComponent.delete(p.uid);
   }
 }

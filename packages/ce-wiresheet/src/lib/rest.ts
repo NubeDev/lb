@@ -119,12 +119,25 @@ export function getNodeByUid(
   return http<ReadNodesResponse>("GET", `/nodes/uid/${uid}${qs ? "?" + qs : ""}`);
 }
 
-export function addNode(req: AddComponentRequest) {
-  return http<Component>("POST", `/nodes`, req);
+// A freshly-mutated component (POST /nodes, PATCH /nodes, /overrides, /group) can come
+// back LEANER than a GET-loaded one — the engine's add/patch response may omit
+// `properties` entirely (e.g. a brand-new component with no ports materialized yet).
+// The `Component` type declares `properties` NON-optional (every consumer, and the store's
+// `Object.values(c.properties)` index, relies on that), so a missing map crashed the store
+// with "Cannot convert undefined or null to object" on add. Restore the invariant ONCE here,
+// at the client boundary, so the returned value matches the GET shape and no downstream
+// consumer needs a defensive `?? {}`. GET responses already carry `properties`, so this is a
+// no-op for them.
+function normalizeComponent(c: Component): Component {
+  return c.properties ? c : { ...c, properties: {} };
 }
 
-export function updateNode(uid: number, req: UpdateComponentRequest) {
-  return http<Component>("PATCH", `/nodes/uid/${uid}`, req);
+export async function addNode(req: AddComponentRequest): Promise<Component> {
+  return normalizeComponent(await http<Component>("POST", `/nodes`, req));
+}
+
+export async function updateNode(uid: number, req: UpdateComponentRequest): Promise<Component> {
+  return normalizeComponent(await http<Component>("PATCH", `/nodes/uid/${uid}`, req));
 }
 
 // Override endpoints. Setting an override pins a property's value so cycle
@@ -139,8 +152,8 @@ export interface OverridesRequest {
   setOverrides?: PropertyOverride[];
   clearOverrides?: string[];
 }
-export function patchOverrides(uid: number, req: OverridesRequest) {
-  return http<Component>("PATCH", `/overrides/nodes/uid/${uid}`, req);
+export async function patchOverrides(uid: number, req: OverridesRequest): Promise<Component> {
+  return normalizeComponent(await http<Component>("PATCH", `/overrides/nodes/uid/${uid}`, req));
 }
 
 // Action dispatch — `POST /call/nodes/uid/{uid}`. Invoke one named action with
@@ -229,8 +242,12 @@ export function addEdge(req: EdgeRequest) {
 // First-class group: create a Folder under `parentUid` (root if absent),
 // reparent the selection into it, reconcile exposure — one transaction. Returns
 // the new folder.
-export function groupComponents(req: { componentUids: number[]; parentUid?: number; name?: string }) {
-  return http<Component>("POST", `/group`, req);
+export async function groupComponents(req: {
+  componentUids: number[];
+  parentUid?: number;
+  name?: string;
+}): Promise<Component> {
+  return normalizeComponent(await http<Component>("POST", `/group`, req));
 }
 // Dissolve a folder: reparent its children back to its parent, remove it, reconcile.
 export function ungroupFolder(folderUid: number) {

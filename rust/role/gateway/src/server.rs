@@ -25,13 +25,13 @@ use crate::routes::{
     list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, patch_flow_run,
     post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
     read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, render_catalog_message, request_approval, resolve_caps,
-    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
-    revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard,
-    save_flow, save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route,
-    set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_datasource, uninstall_extension, update_flow_node, write_samples,
+    rename_team, rename_workspace, render_catalog_message, request_approval, reset_extension,
+    resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey,
+    revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream,
+    save_dashboard, save_flow, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_agent_config_route, set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc,
+    start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -147,6 +147,9 @@ pub fn router(gw: Gateway) -> Router {
         .route("/mcp/catalog", get(mcp_catalog))
         .route("/extensions/{ext}/enable", post(enable_extension))
         .route("/extensions/{ext}/disable", post(disable_extension))
+        // native-tier resilience: re-arm an exhausted restart budget + force a fresh child (the
+        // Extensions console Reset button). Gated `mcp:native.reset:call` inside the host verb.
+        .route("/extensions/{ext}/reset", post(reset_extension))
         // shared assets (files/skills scope) — the browser's `assets.*` surface, finally reachable
         // over the gateway (was Tauri-only → `unknown command` in the browser). Each re-checks the
         // S4 gates server-side; the workspace + owner come from the token.

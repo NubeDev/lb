@@ -32,6 +32,14 @@ pub struct NativeStatus {
     pub version: String,
     pub lifecycle: Lifecycle,
     pub restart_count: u32,
+    /// The logical timestamp from which this sidecar has been serving calls cleanly (set on install
+    /// and on each restart, since a restart re-opens the fault window). The cool-off clock for decay:
+    /// once a successful call observes `now - healthy_since >= cooloff`, the restart count decays to
+    /// zero (a transient crash stops permanently poisoning the budget). `None` before the first
+    /// timestamped health signal (legacy records deserialize to `None`, treated as "just became
+    /// healthy" on the next call).
+    #[serde(default)]
+    pub healthy_since: Option<u64>,
     pub ts: u64,
 }
 
@@ -42,6 +50,7 @@ impl NativeStatus {
             version: version.into(),
             lifecycle: Lifecycle::Started,
             restart_count: 0,
+            healthy_since: Some(ts),
             ts,
         }
     }

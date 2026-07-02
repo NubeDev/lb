@@ -42,6 +42,40 @@ pub fn cron_triggers(flow: &Flow) -> Vec<CronTrigger> {
         .collect()
 }
 
+/// One flip-flop source node: its id + its hold interval (seconds). Default 10s when unset.
+pub struct FlipFlopTrigger {
+    pub node_id: String,
+    pub period_secs: u64,
+    pub start: bool,
+}
+
+/// Every `flipflop` source node in `flow`. A flow may have any number — each oscillates on its own
+/// clock. An invalid (`< 1`) period is clamped to 1s rather than dropped (a source must always tick).
+pub fn flipflop_triggers(flow: &Flow) -> Vec<FlipFlopTrigger> {
+    flow.nodes
+        .iter()
+        .filter(|n| n.node_type == "flipflop")
+        .map(|n| {
+            let period_secs = n
+                .config
+                .get("period_secs")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(10)
+                .max(1);
+            let start = n
+                .config
+                .get("start")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            FlipFlopTrigger {
+                node_id: n.id.clone(),
+                period_secs,
+                start,
+            }
+        })
+        .collect()
+}
+
 /// Read a trigger node's durable cursor (`None` → never seen / no row yet).
 pub async fn read_cursor(
     store: &Store,

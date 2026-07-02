@@ -12,7 +12,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{install_native, status_native, stop_native, NativeServiceError, Node};
+use lb_host::{install_native, reset_native, status_native, stop_native, NativeServiceError, Node};
 use lb_supervisor::{
     read_frame, write_frame, Channel, Kill, Launcher, Method, Reply, Request, SupervisorError,
 };
@@ -106,6 +106,7 @@ async fn ws_b_cannot_see_or_control_ws_a_sidecar() {
             "mcp:native.install:call",
             "mcp:native.status:call",
             "mcp:native.stop:call",
+            "mcp:native.reset:call",
         ],
     );
 
@@ -134,6 +135,24 @@ async fn ws_b_cannot_see_or_control_ws_a_sidecar() {
             Err(NativeServiceError::NotRunning)
         ),
         "ws-B has no sidecar of its own to stop"
+    );
+
+    // RESET isolation: the resilience rescue is walled the same way. A ws-B principal targeting ws-A
+    // is workspace-denied at gate 1; a ws-B principal in its own workspace has no such sidecar.
+    assert!(
+        matches!(
+            reset_native(&node, &launcher, &b_admin, "ws-a", "echo-sidecar", 4).await,
+            Err(NativeServiceError::Denied)
+        ),
+        "a ws-B principal must be workspace-denied for a ws-A reset"
+    );
+    let b_reset = principal("ws-b", &["mcp:native.reset:call"]);
+    assert!(
+        matches!(
+            reset_native(&node, &launcher, &b_reset, "ws-b", "echo-sidecar", 5).await,
+            Err(NativeServiceError::NotRunning)
+        ),
+        "ws-B has no sidecar of its own to reset"
     );
 
     // ws-A's sidecar is untouched by all of ws-B's attempts.
