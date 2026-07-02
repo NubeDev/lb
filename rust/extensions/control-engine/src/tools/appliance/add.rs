@@ -19,7 +19,6 @@ pub async fn run(host: &HostCtx, input: &Value, ts: u64) -> Result<Value, HostEr
     host.require("control-engine.appliance.add")?;
 
     let id = req_str(input, "id")?;
-    let node = req_str(input, "node")?;
     let base = req_str(input, "base")?;
     let name = input
         .get("name")
@@ -28,6 +27,21 @@ pub async fn run(host: &HostCtx, input: &Value, ts: u64) -> Result<Value, HostEr
         .to_string();
     let mode = parse_mode(input.get("mode").and_then(Value::as_str))?;
     validate_base(base)?;
+    // `node` = which LB node owns this appliance. A LOCAL appliance is by definition on THIS node, so
+    // the caller need not name it — default to `"local"` (the boot-seed convention) when omitted. A
+    // remote `appliance`-mode CE genuinely lives on another node, so its `node` is required (there is
+    // no sensible default — the caller must say which node routes to it).
+    let node = match input.get("node").and_then(Value::as_str) {
+        Some(n) if !n.trim().is_empty() => n,
+        _ => match mode {
+            Mode::Local => "local",
+            Mode::Appliance => {
+                return Err(HostError::BadInput(
+                    "missing/empty arg: node (required for an appliance-mode CE)".into(),
+                ))
+            }
+        },
+    };
 
     let appliance = Appliance {
         id: id.to_string(),
