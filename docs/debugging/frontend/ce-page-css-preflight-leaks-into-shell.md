@@ -1,7 +1,9 @@
 # frontend — the control-engine federated page's stylesheet shipped Preflight and took over the whole shell
 
-Status: **resolved (2026-07-02)**. Area: frontend / federated extension UIs (`control-engine`, and the
-contract for every extension UI). Slice: `rust/extensions/control-engine/docs/slice-9-federated-css-isolation.md`.
+Status: **resolved (2026-07-03)** — Preflight fixed 2026-07-02 (slice-9), the remaining global leaks
+fixed 2026-07-03 (slice-9.1, see "§ The leaks the first guard missed" below). Area: frontend / federated
+extension UIs (`control-engine`, and the contract for every extension UI). Slice:
+`rust/extensions/control-engine/docs/slice-9-federated-css-isolation.md`.
 
 ## Symptom
 
@@ -81,13 +83,71 @@ Measured before/after on the built artifacts:
 
 Green after fix: control-engine/ui **33 passed | 2 skipped**, `vite build` + `build:lib` clean.
 
+## The leaks the first guard missed (slice-9.1, 2026-07-03)
+
+"No Preflight" ≠ "no leakage." The slice-9 fix closed the global RESET and the unscoped Tailwind
+UTILITIES, but a follow-up sweep (`grep` every global write in both injected stylesheets, not just
+Preflight signatures) found **three more** global writes the editor still shipped — all of which the
+Preflight-only guard passed clean:
+
+1. **`:root,.ce-wiresheet{…}` token writes (HIGH).** `wiresheet-theme.css` wrote the editor's palette
+   (`--card --border --foreground --input --muted --muted-foreground --secondary --background`) to
+   `:root` — the SAME names the host's `globals.css` defines. Injected after the shell's CSS, the
+   editor's **dark** values (`--card: 232 15% 9%`) overrode those 8 tokens **document-wide**, so opening
+   CE re-themed every shadcn card/popover/input in the whole shell toward dark, even in host light mode
+   (verified: host `--card: var(--panel)` vs editor's fixed dark). Same class as the earlier
+   `library-css-leaks-global-utilities.md` fixed-palette bug.
+2. **Tailwind v4 `@theme` → `:root,:host{…}` (MED).** The editor's `@theme` block emitted `--color-*`
+   plus generic v4 vars (`--spacing --radius-md --font-sans --font-mono --ease-out
+   --default-transition-*`) to `:root,:host`. `--radius-md` (editor `.375rem` vs host
+   `calc(var(--radius) - 2px)`) and the fonts DIFFER from the host's, so they overrode shell-wide.
+3. **Bare `.react-flow*` rules (HIGH), from TWO sources:**
+   - `@xyflow/react/dist/style.css` (imported by `CeEditor`) ships ~150 unscoped `.react-flow*` rules
+     (some nested in `@media`). The host renders React Flow in its **system/data/flows** views with its
+     OWN `.react-flow` theming (11 rules in `globals.css`) — last-injected wins, so opening CE re-themed
+     the host's canvases.
+   - A **JS-injected** `<style>` string in `CeEditor.tsx` (`EDGE_SELECTED_CSS`) with an unscoped
+     `.react-flow__edge.selected` rule. A `<style>` applies DOCUMENT-WIDE regardless of where the element
+     sits, so it re-colored the host's selected edges too. (This one lived in a JS template literal, not
+     the CSS asset — invisible to a CSS-file audit; found only by scanning the built JS chunk.)
+
+**Fixes (all upstream in `packages/ce-wiresheet`, per S2):**
+
+- `wiresheet-theme.css` — dropped the `:root` selector; tokens now `.ce-wiresheet`-scoped and written as
+  `--card: var(--card, <default>)` so they **inherit** the host token when present (editor tracks host
+  light/dark — "look native") and fall back only standalone. Editor-only tokens (`--cool --crit --r1
+  --r2`) keep fixed defaults.
+- A build-time Vite plugin (`scope-css.ts`, wired into `vite.lib.config.ts`) rewrites the FINAL emitted
+  `ce-wiresheet.css`: `:root`/`:host` → `.ce-wiresheet` (covers the `@theme` block + any stray), and
+  every `.react-flow*` selector (incl. `@media`-nested, element-prefixed, descendant) → prefixed with
+  `.ce-wiresheet`. Leaves keyframe steps, `@property`/`@theme`/`@font-face`, and the `*,:before` `--tw-*`
+  polyfill untouched. Idempotent + brace-balanced (unit-tested in `src/scope-css.test.ts`).
+- `CeEditor.tsx` `EDGE_SELECTED_CSS` — selector scoped to `.ce-wiresheet .react-flow__edge.selected …`
+  at source (a build-time CSS transform can't reach a JS string).
+
+**Guard hardened** (the Preflight-only guard would have passed all three): new
+`src/global-scope-audit.test.ts` asserts the built `ce-wiresheet.css` AND the remoteEntry JS chunks carry
+(a) zero `:root`/`:host` token writes and (b) zero unscoped `.react-flow` CSS rules (the JS-chunk check
+matches a `.react-flow…{prop:` CSS rule, not a `querySelectorAll(".react-flow…")` JS string). Verified to
+BITE: un-scoping `EDGE_SELECTED_CSS` fails it. Final sweep: `:root` writes **0**, `.react-flow` scoped
+**141 / unscoped 0**, editor `:root` writes in the JS chunk **0**.
+
+Green after slice-9.1: control-engine/ui **35 passed | 2 skipped**, ce-wiresheet **153 passed**,
+`build:lib` + `vite build` clean.
+
 ## Lesson
 
-A federated/injected stylesheet renders into the HOST document — it is a **library** stylesheet. Never
-ship Preflight (the host owns the global reset), never emit unscoped global utilities (scope them under
-the page/editor root), and never re-declare the host's `:root` tokens (inherit them, keep only a
-standalone-dev fallback). This is the rule for **every** extension UI, not just CE — `proof-panel` has
-the identical `@tailwind base` leak (see follow-up).
+A federated/injected stylesheet renders into the HOST document — it is a **library** stylesheet. It must
+ship **nothing global**: no Preflight (the host owns the reset), no unscoped utilities, no `:root`/`:host`
+custom-property writes (inherit host tokens, keep only a standalone fallback), and no unscoped element/
+vendor rules (`.react-flow*`) — scope everything under the page/editor root. And "global" includes CSS
+built in **JavaScript**: a `<style>` injected from a JS template literal applies document-wide no matter
+where the element sits, so its selectors must be scoped too — and a CSS-file audit will miss it (scan the
+built JS chunk). Crucially: **"no Preflight" is not "no leakage"** — a guard that only greps Preflight
+signatures passes a `:root` token write and a bare `.react-flow` rule clean. Sweep for *every* global
+write (`:root`, `html`/`body`, unscoped element/class rules, `@keyframes` names, JS-injected `<style>`),
+not just the reset. This is the rule for **every** extension UI, not just CE — `proof-panel` has the
+identical `@tailwind base` + `:root` leak (see follow-up).
 
 ## Related
 

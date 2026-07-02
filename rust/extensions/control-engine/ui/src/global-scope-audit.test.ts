@@ -75,9 +75,18 @@ describe("slice-9.1 global-scope audit (no :root writes, no unscoped .react-flow
         editorRoot.length,
         `${f}: injected editor CSS still writes editor tokens to :root`,
       ).toBe(0);
+      // A `.react-flow…` that is a REAL CSS RULE (a selector ending in `{` immediately followed by a
+      // `prop:value` declaration), not a `querySelectorAll(".react-flow…")` JS string. The editor
+      // injects a runtime `<style>` (EDGE_SELECTED_CSS) — this catches it if it's left unscoped again.
+      // We capture the ~90 chars BEFORE the `.react-flow` token and require `.ce-wiresheet` among them
+      // (the scoping prefix) — a bare rule has no such prefix and fails.
+      const cssRule = /([\s\S]{0,90}?)(\.react-flow[\w.:_ -]*)\{\s*[\w-]+\s*:/g;
+      const leaked = [...decomment(js).matchAll(cssRule)]
+        .filter((m) => !m[1].includes(".ce-wiresheet"))
+        .map((m) => (m[2] + "{…").slice(0, 60));
       expect(
-        unscopedReactFlow(js),
-        `${f}: injected editor CSS still ships unscoped .react-flow rules`,
+        leaked,
+        `${f}: an injected editor CSS RULE ships an unscoped .react-flow selector`,
       ).toEqual([]);
     }
   });
