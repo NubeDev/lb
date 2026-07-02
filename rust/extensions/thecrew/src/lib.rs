@@ -41,7 +41,9 @@ mod tests {
     /// The dispatch under test, decoupled from the generated WIT `Guest::call` (only callable
     /// from a wasm host). Identical shape: every tool name is an explicit error.
     fn dispatch(name: &str) -> Result<String, String> {
-        Err(format!("thecrew serves no tools (UI-only extension): {name}"))
+        Err(format!(
+            "thecrew serves no tools (UI-only extension): {name}"
+        ))
     }
 
     #[test]

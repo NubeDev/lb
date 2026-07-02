@@ -1,7 +1,10 @@
 # thecrew scope — the lift: playground → LB extension (graphics-canvas phases 1–2)
 
-Status: scope (the ask). Promotes to `docs/public/frontend/graphics-canvas.md` once
-phase 1 ships. This is the **implementation scope** for the first two phases of
+Status: **built & tested (2026-07-02)** — phases 1–2 shipped; promoted to
+`docs/public/frontend/graphics-canvas.md`. Build session:
+`docs/sessions/frontend/thecrew-extension-session.md` (green output there). Findings surfaced
+during the build are folded into Open questions + Risks below (no core additions were made).
+This is the **implementation scope** for the first two phases of
 `docs/scope/frontend/graphics-canvas-scope.md` (repo root) — that doc stays the
 authoritative feature scope (schema, engine decision, symbol packs, AI drawing);
 this one scopes only *turning the proven playground into a real extension*.
@@ -207,7 +210,19 @@ Per `docs/scope/testing/testing-scope.md` — mandatory categories first:
   document-store revision ask (Open question 2), not a thecrew workaround.
 - **Binding fan-out** (parent scope risk, now real): one multiplexer in
   `bridge-source.ts` — collect, dedupe, one watch per series, fan out. Budget it;
-  per-shape subscriptions won't fly on a 200-prop page.
+  per-shape subscriptions won't fly on a 200-prop page. **Built** — proven in
+  `bridge-source.test.ts` (N subscribers → 1 backfill + 1 watch upstream).
+- **Save needs an explicit install grant (finding, 2026-07-02).** The default member/dev cap
+  set carries `store:doc/*:write` + `mcp:*.write:call` wildcards but **not** the exact verb cap
+  `mcp:assets.put_doc:call` that `assets.put_doc`'s MCP gate 1 requires (`put_doc` isn't
+  `*.write`). So a scene save works only because thecrew's install grant requests
+  `mcp:assets.put_doc:call` — as the manifest does. A viewer without it is refused server-side
+  (the deny test proves this). No core change; just note it for whoever grants the install.
+- **`series.watch` live SSE has no gateway-vitest transport (finding).** The real-gateway
+  harness has no watch path (matching proof-panel's live tile). The multiplexer's backfill
+  (`series.latest`) is proven live in the gateway suite; the `watch` fan-out is proven via the
+  widget stub (`bridge-source.test.ts`). A Playwright e2e is the honest place for live SSE — a
+  deferred follow-up, not a phases-1–2 gap.
 - **Bundle weight:** three.js rides only this remote (the federation payoff), but
   keep the shared-React import-map discipline from proof-panel so the remote doesn't
   double-load React.
@@ -223,7 +238,11 @@ Per `docs/scope/testing/testing-scope.md` — mandatory categories first:
    `docs/scope/document-store/` — does `put_doc` grow an optional `expected_rev`?
    thecrew is the first real customer; file the finding, don't fork the verb.
 3. **Scene discovery convention:** tag docs `scene` and filter `list_docs`, or a
-   doc-id prefix (`scene:…`)? Leaning tag (it's what tags are for).
+   doc-id prefix (`scene:…`)? **RESOLVED (2026-07-02, build): id-prefix `scene:`.** The
+   shipped `assets.list_docs` returns only `{id,title}` per doc — **no tags** (verified in
+   `crates/host/src/assets/tool.rs`), so a tag-side filter is impossible without a core
+   change. The picker filters on the `scene:` id prefix; docs are STILL tagged `scene` so a
+   future tag-returning `list_docs` can filter server-side. (`bridge/scene-io.ts`.)
 4. **Demo seeding:** seed the AHU-1 + floorplan demo docs at install time (a
    first-run seed from the page) or leave them to tests only? Leaning first-run
    offer ("create demo scenes"), never silent.

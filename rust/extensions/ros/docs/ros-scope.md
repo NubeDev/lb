@@ -3,6 +3,17 @@
 Status: scope (the ask). This is 100% an extension — all docs live in this folder (no repo-root `docs/` copy). Promotes to this folder's shipped notes once built. Target stage: **post-S8**
 (rides the S8 data plane — `ingest`/`series` — and the S7 native tier + registry).
 
+> **Dependency status (2026-07-02): the one platform prerequisite is now SHIPPED.** This scope assumes
+> a native (Tier-2) sidecar can call host MCP tools out-of-process (the poller → `ingest.write`;
+> `point.write` → `outbox.enqueue`). That transport did **not** exist when this scope was written — the
+> native-tier slice deferred it. It now ships as the generic **`lb-sidecar-client`** crate
+> (`SidecarClient::from_env().call_tool(tool, input)` over an authenticated `POST /mcp/call`, a `403`
+> → `CallError::Denied`), with the child's `LB_EXT_TOKEN` now a genuine node-signed JWT the gateway
+> verifies. So the `ingest.write` / `outbox.enqueue` calls this scope describes throughout have a real,
+> capability-gated, workspace-isolated path — the `ros-sidecar` depends on `lb-sidecar-client`, not on
+> any bespoke host-call wiring. See `docs/scope/extensions/native-callback-transport-scope.md`
+> (SHIPPED); `fleet-monitor`'s `fleet.probe` is the reference call site to copy.
+
 We want an **out-of-core extension** that manages many **ROS** controllers (Rubix/ROS REST
 appliances) as first-class, capability-gated resources: connect to N boxes, browse each box's
 **networks → devices → points** tree, CRUD every level, **poll** point present-values into the
@@ -56,8 +67,10 @@ concepts — so **not one line of ROS vocabulary enters a core crate**: the exte
 **Shape:** a native (Tier-2) sidecar extension — it owns long-lived HTTP connections and a poll
 timer loop, so it needs an OS process with its own PID (the `mqtt`/`fleet-monitor` posture, not
 WASM). It serves MCP tools for the CRUD verbs + `point.write` + `ros.ping`, and it runs the poller
-as an internal task that calls the host's `ingest.write`. The federated shadcn UI is a second part
-of the same extension folder.
+as an internal task that calls the host's `ingest.write` **through `lb-sidecar-client`** (the shipped
+native-callback transport — `SidecarClient::from_env().call_tool("ingest.write", …)`; likewise
+`point.write` stages the outbox effect via `call_tool("outbox.enqueue", …)`). The federated shadcn UI
+is a second part of the same extension folder.
 
 **The reusable poller is the core idea.** A `Poller` owns a schedule and a set of *poll targets*;
 each tick it asks a `Source` trait for the current value of each enabled target and hands the batch
@@ -218,6 +231,9 @@ with a seeded fake ROS box behind the `RosApi` trait (the one allowed external f
   `start|stop|status|restart|logs` grammar every verb here conforms to.
 - `../extensions/extensions-scope.md` — the `extension.toml` manifest contract.
 - `../extensions/native-tier-scope.md` — the Tier-2 native sidecar posture (own PID, supervised).
+- `../extensions/native-callback-transport-scope.md` (**SHIPPED**) — `lb-sidecar-client`, the
+  transport the `ros-sidecar` uses to call `ingest.write`/`outbox.enqueue` back into the host. The one
+  platform prerequisite this scope leaned on; see the dependency note at the top.
 - `../extensions/ui-federation-scope.md` — the module-federated shadcn page (the `fleet-monitor`
   pattern this UI copies).
 - `../outbox/…` / README §6.10 — must-deliver point writes stage outbox effects.

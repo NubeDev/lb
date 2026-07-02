@@ -4,7 +4,7 @@
 // safe — stateless). Deny paths surface honestly. Backed by the bridge stub; the REAL host
 // re-check + workspace wall live in the gateway suite (ui/).
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { mountPage, mountWidget } from "./remoteEntry";
 import { stubBridge, rejectingBridge, watchBridge } from "./bridge/bridge.stub";
 import { serializeScene } from "./bridge/scene-io";

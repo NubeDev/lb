@@ -13,16 +13,16 @@ export type Resolver = (args?: Record<string, unknown>) => unknown;
  *  filter's contract). Async so callers can `await`. */
 export function stubBridge(table: Record<string, Resolver>): Bridge {
   return {
-    call: vi.fn(async <T,>(tool: string, args?: Record<string, unknown>): Promise<T> => {
+    call: vi.fn(async (tool: string, args?: Record<string, unknown>) => {
       if (!(tool in table)) throw new Error(`out_of_scope: ${tool}`);
-      return table[tool](args) as T;
+      return table[tool](args);
     }),
-  };
+  } as Bridge;
 }
 
 /** A bridge whose every call rejects — the server-side deny surfaced to the page. */
 export function rejectingBridge(message = "denied"): Bridge {
-  return { call: vi.fn(async () => Promise.reject(new Error(message))) };
+  return { call: vi.fn(async () => Promise.reject(new Error(message))) } as Bridge;
 }
 
 /** A widget bridge with a live `watch`: returns `{ bridge, emit, unsubscribed }` so a test can push
@@ -34,12 +34,12 @@ export function watchBridge(table: Record<string, Resolver>): {
 } {
   const cbs = new Map<string, (e: unknown) => void>();
   let torn = false;
-  const bridge: WidgetBridge = {
-    call: vi.fn(async <T,>(tool: string, args?: Record<string, unknown>): Promise<T> => {
+  const bridge = {
+    call: vi.fn(async (tool: string, args?: Record<string, unknown>) => {
       if (!(tool in table)) throw new Error(`out_of_scope: ${tool}`);
-      return table[tool](args) as T;
+      return table[tool](args);
     }),
-    watch: vi.fn((_tool, args, onEvent) => {
+    watch: vi.fn((_tool: string, args: Record<string, unknown>, onEvent: (e: unknown) => void) => {
       const series = String(args.series);
       cbs.set(series, onEvent);
       return () => {
@@ -49,7 +49,7 @@ export function watchBridge(table: Record<string, Resolver>): {
     }),
   };
   return {
-    bridge,
+    bridge: bridge as unknown as WidgetBridge,
     emit: (series, sample) => cbs.get(series)?.(sample),
     unsubscribed: () => torn,
   };

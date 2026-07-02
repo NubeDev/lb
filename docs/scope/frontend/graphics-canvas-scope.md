@@ -286,10 +286,15 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 
 1. **Which shipped verbs persist scenes?** — **ANSWERED (2026-07-02):** the
    `assets.*` surface is shipped: scenes = `assets.put_doc`/`get_doc`/`list_docs`,
-   packs = `assets.put_asset`/`get_asset`. No `kv.*` fallback needed. **Finding:**
-   `put_doc` has no revision check today (last-writer-wins) — the revision-checked
-   save this scope assumed is a generic `document-store/` ask; the interim mitigation
-   is in `rust/extensions/thecrew/docs/thecrew-extension-scope.md` §Risks.
+   packs = `assets.put_asset`/`get_asset`. No `kv.*` fallback needed. **Findings (from
+   the phases 1–2 build):** (a) `put_doc` has no revision check today (last-writer-wins)
+   — the revision-checked save this scope assumed is a generic `document-store/` ask; the
+   interim mitigation (client read-before-write conflict prompt) is in
+   `rust/extensions/thecrew/docs/thecrew-extension-scope.md` §Risks. (b) `assets.list_docs`
+   returns only `{id,title}` per doc — **no tags** — so a tag-side scene filter is
+   impossible without a core change (see Open question 3, resolved to an id-prefix). (c) the
+   default member cap set lacks `mcp:assets.put_doc:call`, so a scene save works only when
+   the extension's install grant carries it (which the manifest requests).
 2. **Live repaint transport:** widget `refreshKey` polling is enough for phases 1–2;
    does phase 3's watch-the-AI-draw UX justify asking for a *generic* document watch
    feed (its own scope), or is 2s polling honestly fine?
