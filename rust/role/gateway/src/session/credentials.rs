@@ -90,6 +90,22 @@ fn member_caps() -> Vec<String> {
         "mcp:series.latest:call",
         "mcp:series.find:call",
         "mcp:series.list:call",
+        // graphics-canvas (thecrew) live values: the SSE live-value verb the scene bridge subscribes
+        // through (`bridge.watch("series.watch")` → the shipped `GET /series/{s}/stream`). Member-
+        // level like the other series reads — the SSE route authorizes on `series.read` too, so this
+        // cap gates the bridge dispatch; a token without it is refused. Without it a live scene falls
+        // back to `series.latest` polling only.
+        "mcp:series.watch:call",
+        // document-store (assets.*) doc verbs — the browser's shared-doc surface, reached over the
+        // `POST /mcp/call` bridge. Member-level: any member may create/read/list their OWN docs
+        // (gate-3 author-ownership decides which specific doc). These are what the thecrew graphics
+        // extension persists a scene through (`scene:` docs) and what the scene picker lists. Without
+        // the exact per-verb cap the page bridge is refused server-side (thecrew finding 3: the member
+        // set carried `store:doc/*:write`/`mcp:*.write` wildcards but NOT these verb caps, so a live
+        // scene save/load 403'd). The gateway re-checks each server-side (the deny test).
+        "mcp:assets.get_doc:call",
+        "mcp:assets.put_doc:call",
+        "mcp:assets.list_docs:call",
         // bus pub/sub (widget-config-vars "Platform fix") — member-level generic workspace-walled
         // motion. `bus.publish` (fire-and-forget) + `bus.watch` (subscribe). The subject is walled to
         // `ws/{id}/ext/{subject}` host-side from the token; a reserved prefix / cross-ws subject is refused.

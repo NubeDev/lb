@@ -20,11 +20,18 @@ function injectStyles() {
   document.head.appendChild(el);
 }
 
-/** The federated PAGE contract: inject styles once, then mount the graphics page. */
-export function mountPage(el: HTMLElement, ctx: MountCtx, bridge: Bridge): () => void {
+/** The federated PAGE contract: inject styles once, then mount the graphics page. The shell's
+ *  `loadRemoteMount`/`pickMount` resolves the page by the name **`mount`** (the frozen federation
+ *  contract, byte-for-byte proof-panel's) — NOT `mountPage`. Exporting only `mountPage` made the live
+ *  shell throw "remote does not export a `mount` function" and the page never mounted. `mountPage`
+ *  stays as an alias so the existing unit tests (which import it) keep passing. */
+export function mount(el: HTMLElement, ctx: MountCtx, bridge: Bridge): () => void {
   injectStyles();
   return mountPageImpl(el, ctx, bridge);
 }
+
+/** Back-compat alias for `mount` — the unit suite imports `mountPage`. */
+export const mountPage = mount;
 
 /** The dashboard WIDGET contract (a SECOND named export on the same remote): read-only scene cell. */
 export function mountWidget(
@@ -37,4 +44,4 @@ export function mountWidget(
   return mountWidgetImpl(el, ctx, bridge, widgetId);
 }
 
-export default { mountPage, mountWidget };
+export default { mount, mountWidget };

@@ -15,6 +15,12 @@ import { defineConfig } from "vite";
 // what `build.sh` emits for publish.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Replace `process.env.NODE_ENV` at build time. In a Vite LIB build (unlike an app build) Vite does
+  // NOT inject this — and three.js / @react-three/fiber (bundled here, the federation payoff) read it
+  // at module eval. Left unreplaced the browser throws `process is not defined` the moment the remote
+  // loads, so the page never mounts (found live: "Could not load thecrew: process is not defined").
+  // The shell app build defines it for its own graph; a federated remote must define its OWN.
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
     target: "esnext",
     cssCodeSplit: false,

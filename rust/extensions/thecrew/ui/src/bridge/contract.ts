@@ -29,9 +29,14 @@ export interface WidgetBridge {
 }
 
 /** The widget mount context (mirrors proof-panel): the workspace wall + the cell's binding/options
- *  (the scene id the cell renders lands here). */
+ *  (the scene id the cell renders lands here). `vars` is the shell-resolved variable scope the
+ *  dashboard's `ExtWidget` renderer ALSO passes (widget-config-vars) — the scene widget accepts a
+ *  `sceneId` from any of these three so it works both from a cell that carries `options.sceneId` (the
+ *  scope's intended shape) and from a dashboard variable, without the tile resolving anything itself.
+ *  All optional: a page-only build never sets them. */
 export interface WidgetCtx {
   workspace: string;
-  binding: Record<string, unknown>;
-  options: Record<string, unknown>;
+  binding?: Record<string, unknown>;
+  options?: Record<string, unknown>;
+  vars?: Record<string, unknown>;
 }
