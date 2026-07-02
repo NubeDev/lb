@@ -43,15 +43,20 @@ interface Props {
   refreshKey?: number;
 }
 
-/** Read the persisted, versioned IR off the cell. Returns null when the cell isn't a well-formed genui
- *  cell (defense-in-depth — the host rejects these on save, but a hand-built/legacy cell degrades here to
- *  an honest message rather than a crash). Migrates an older `v` forward on load. */
-function cellIr(cell: Cell): IrSpec | null {
+/** Read the persisted, versioned IR off the cell. Three outcomes:
+ *   - `{ ir }`     — a well-formed IR (migrated forward) to render;
+ *   - `"draft"`    — an UN-AUTHORED cell (no `genui` block, or one with no `ir`): the author just added
+ *                    an "AI widget" and hasn't generated it yet — show an author-me placeholder, NOT an
+ *                    error (the host accepts this as a savable draft too);
+ *   - `"invalid"`  — a `genui` block with a present-but-broken `ir` (defense-in-depth; the host rejects
+ *                    these on save, but a hand-built/legacy cell degrades here honestly, never a crash). */
+function cellIr(cell: Cell): { ir: IrSpec } | "draft" | "invalid" {
   const g = (cell.options as Record<string, unknown> | undefined)?.genui as
-    | { v?: number; ir?: IrSpec }
+    | { v?: number; ir?: unknown }
     | undefined;
-  if (!g || !g.ir || typeof g.ir !== "object") return null;
-  return migrate(g.ir);
+  if (!g || g.ir == null) return "draft"; // no block, or block without an IR yet
+  if (typeof g.ir !== "object") return "invalid";
+  return { ir: migrate(g.ir as IrSpec) };
 }
 
 /** One data probe per target: it calls `usePanelData` (the hook can only run in a component) on a
@@ -85,7 +90,8 @@ function TargetProbe({
 }
 
 export function GenUiView({ cell, label, scope = emptyScope(), refreshKey = 0 }: Props) {
-  const ir = cellIr(cell);
+  const parsed = cellIr(cell);
+  const ir = typeof parsed === "object" ? parsed.ir : null;
   const targets = useMemo(() => genuiTargets(cell), [cell]);
   const tools = cellTools(cell);
   const toolsKey = tools.join("|");
@@ -111,8 +117,19 @@ export function GenUiView({ cell, label, scope = emptyScope(), refreshKey = 0 }:
     void bridge.call(toolName, (a.context ?? {}) as Record<string, unknown>);
   };
 
-  if (!ir) {
-    return <WidgetMessage tone="denied">invalid genui widget (no IR)</WidgetMessage>;
+  if (parsed === "draft") {
+    // Un-authored draft: guide the author to generate it, not an error. Matches "blank timeseries".
+    return (
+      <div className="flex h-full flex-col" data-view="genui">
+        <WidgetHeader label={label ?? ""} />
+        <WidgetMessage tone="muted">
+          AI widget — open the editor's “AI widget” tab and describe it to generate.
+        </WidgetMessage>
+      </div>
+    );
+  }
+  if (parsed === "invalid" || !ir) {
+    return <WidgetMessage tone="denied">invalid genui widget (malformed IR)</WidgetMessage>;
   }
 
   // Every target denied → the standard denied panel state, exactly like any other view (no genui-

@@ -1,8 +1,9 @@
 //! Host-side `view:"genui"` validation on `dashboard.save` (genui scope, Decision 6 — the ONE host
 //! change in the slice). Proves the loud-rejection contract every writer (shell, `POST /mcp/call`,
 //! routed Zenoh, external-agent) gets against a REAL store: a well-formed genui cell saves; a malformed
-//! one (unknown component, oversized, bad/absent `v`, dangling root, missing `options.genui`) is
-//! REFUSED at write time (`DashboardError::BadInput`), not degraded at view time. Plus the mandatory
+//! one (unknown component, oversized, bad/absent `v`, dangling root, non-object `ir`) is REFUSED at
+//! write time (`DashboardError::BadInput`), not degraded at view time. An UN-AUTHORED draft (no `genui`
+//! block, or one with no `ir` yet) is a legitimate savable draft, NOT a rejection. Plus the mandatory
 //! categories: capability-DENY (no save cap) and workspace-ISOLATION for a genui dashboard.
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
@@ -116,17 +117,33 @@ async fn rejects_dangling_root() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn rejects_missing_options_genui() {
-    // A `view:"genui"` cell whose `options` has no `genui` block.
-    let ws = "ws-genui-noopt";
+async fn allows_an_unauthored_draft() {
+    // A `view:"genui"` cell the author just ADDED but hasn't generated an IR for yet is a legitimate
+    // savable draft (no `genui` block, or one with no `ir`) — like a blank timeseries. It must NOT be
+    // rejected; the view renders an "author me" placeholder. Only a present-but-malformed IR is refused.
+    let ws = "ws-genui-draft";
     let store = Store::memory().await.unwrap();
-    let ada = principal("user:ada", ws, &[SAVE]);
-    let mut cell = genui_cell(json!({ "v": 1, "ir": good_ir() }));
-    cell.options = json!({}); // no `genui` key
-    let err = dashboard_save(&store, &ada, ws, "d", "D", vec![cell], vec![], 10)
+    let ada = principal("user:ada", ws, &[SAVE, "mcp:dashboard.get:call"]);
+
+    // (a) no `genui` block at all.
+    let mut c1 = genui_cell(json!({ "v": 1, "ir": good_ir() }));
+    c1.options = json!({});
+    dashboard_save(&store, &ada, ws, "d1", "D", vec![c1], vec![], 10)
         .await
-        .expect_err("genui cell with no options.genui is rejected");
-    assert!(matches!(err, DashboardError::BadInput(m) if m.contains("options.genui is missing")));
+        .expect("a genui cell with no options.genui is a savable draft");
+
+    // (b) a `genui` block with no `ir` yet.
+    let c2 = genui_cell(json!({ "v": 1 }));
+    dashboard_save(&store, &ada, ws, "d2", "D", vec![c2], vec![], 11)
+        .await
+        .expect("a genui block with no ir is a savable draft");
+
+    // (c) but a PRESENT, non-object `ir` is malformed → rejected.
+    assert_rejected(
+        json!({ "v": 1, "ir": "not-an-object" }),
+        "must be an object",
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

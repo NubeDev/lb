@@ -77,11 +77,22 @@ fn bad(cell_i: &str, msg: impl std::fmt::Display) -> DashboardError {
 fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
     let cat = catalog();
 
-    // The genui payload lives under `options.genui = { v, ir, meta? }`.
-    let genui = cell
-        .options
-        .get("genui")
-        .ok_or_else(|| bad(&cell.i, "view is \"genui\" but options.genui is missing"))?;
+    // The genui payload lives under `options.genui = { v, ir, meta? }`. An UN-AUTHORED draft — a genui
+    // cell the author just added but hasn't generated an IR for yet — has no `genui` block (or one with
+    // no `ir`). That is a legitimate savable draft (like a blank timeseries you configure later), NOT a
+    // malformed spec: the view renders an "author me" placeholder, not a broken widget. We only validate
+    // once an actual `ir` is present. A `genui` block with a NON-object `ir` is malformed and rejected.
+    let Some(genui) = cell.options.get("genui") else {
+        return Ok(());
+    };
+    let ir = match genui.get("ir") {
+        None => return Ok(()), // draft: block present but no IR authored yet.
+        Some(Value::Null) => return Ok(()),
+        Some(ir) if !ir.is_object() => {
+            return Err(bad(&cell.i, "options.genui.ir must be an object"));
+        }
+        Some(ir) => ir,
+    };
 
     // Size bound — measure the WHOLE block (IR + meta), as it will be persisted.
     let size = serde_json::to_vec(genui)
@@ -93,10 +104,6 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
             format!("spec is too large ({size} bytes > {GENUI_MAX_BYTES}); simplify the widget"),
         ));
     }
-
-    let ir = genui
-        .get("ir")
-        .ok_or_else(|| bad(&cell.i, "options.genui.ir is missing"))?;
 
     // IR schema version present and known (not newer than this node's catalog can render).
     let v = ir

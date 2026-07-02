@@ -7,8 +7,8 @@ import { genuiTargets, refDataOf, singleTargetCell, allDenied } from "./genuiDat
 import type { SourceState } from "../../builder/useSource";
 
 const baseCell: Cell = {
-  i: "g1", x: 0, y: 0, w: 6, h: 4, v: 3, widget_type: "genui",
-  view: "genui", binding: {},
+  i: "g1", x: 0, y: 0, w: 6, h: 4, v: 3, widget_type: "chart",
+  view: "genui", binding: { series: "" },
 };
 
 describe("genuiTargets", () => {

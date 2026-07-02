@@ -30,9 +30,9 @@ function genuiCell(overrides: Partial<Cell> = {}): Cell {
     w: 6,
     h: 4,
     v: 3,
-    widget_type: "genui",
+    widget_type: "chart",
     view: "genui",
-    binding: {},
+    binding: { series: "" },
     sources: [{ refId: "A", tool: "series.watch", args: { series: "office/temp" } }],
     options: {
       genui: {
@@ -78,6 +78,20 @@ describe("genui over the real gateway", () => {
       expect.anything(),
     );
     errSpy.mockRestore();
+  });
+
+  it("SAVES an un-authored draft genui cell (adding an AI widget before generating it)", async () => {
+    // The reported bug: picking "AI widget" adds a genui cell with no IR; saving it must NOT be
+    // rejected (`options.genui is missing`) — it's a draft the author generates later.
+    await signInReal("user:ada", `ws-genui-draft-${Date.now()}`);
+    const draft = genuiCell({ sources: [], options: {} }); // no genui block yet
+    await saveDashboard("gdraft", "Draft", [draft]); // must not throw
+    const reloaded = await getDashboard("gdraft");
+    const back = reloaded.cells[0];
+    // It renders the author-me placeholder, not an error.
+    const { container } = render(<WidgetView cell={back} workspace="x" />);
+    await waitFor(() => expect(container.textContent).toMatch(/AI widget/i));
+    expect(container.textContent).not.toMatch(/invalid/i);
   });
 
   it("REJECTS a malformed genui cell at save (Decision 6 — the headless-author loud rejection)", async () => {
