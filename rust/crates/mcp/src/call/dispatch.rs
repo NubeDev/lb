@@ -56,7 +56,7 @@ pub async fn dispatch(
                 hosted.instance.lock().await
             };
             instance
-                .call_tool_with(tool, input_json, ctx)
+                .call_tool(ws, tool, input_json, ctx)
                 .await
                 .map_err(map_err)
         }

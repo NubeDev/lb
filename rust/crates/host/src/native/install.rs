@@ -14,6 +14,7 @@
 
 use lb_assets::{record_install, Install};
 use lb_ext_loader::{grant, Manifest};
+use lb_mcp::ToolDescriptor;
 use lb_supervisor::{Launcher, Sidecar};
 
 use super::error::NativeServiceError;
@@ -96,6 +97,33 @@ pub async fn install_native<L: Launcher>(
     );
     let sidecar = Sidecar::spawn(spec, launcher).await?;
     node.sidecars.insert(ws, &manifest.id, sidecar);
+
+    // Make the native sidecar first-class in the ONE MCP routing registry (Tier-agnostic): register
+    // a `SidecarDispatch` adapter under the manifest id with its declared tool descriptors, so
+    // `resolve`/`dispatch`/`serve_call` reach it exactly like a wasm ext — a routed cross-node call
+    // to a native sidecar now answers with ZERO Tier knowledge in the call path (§3.1). The adapter
+    // holds `Arc<SidecarMap>` + id (node-global) and resolves `(ws, ext_id)` per call, so the
+    // registry entry serves every workspace's child while the workspace wall stays structural. This
+    // is idempotent on id like the wasm registry (a re-install swaps the entry in place).
+    // The registry matches on BARE tool names (the `<ext>.` prefix is the host's routing concern —
+    // `dispatch`/`serve_call` unqualify before calling the target, exactly as for a wasm ext). A
+    // native manifest MAY declare its tools already-qualified (`<ext>.<tool>`, the sidecar's own ABI
+    // shape); strip that prefix here so `resolve` matches the unqualified name the call path passes.
+    // The adapter re-qualifies with `ext_id` before handing the name to the child (its ABI expects
+    // the qualified form). A bare-name manifest is unaffected.
+    let descriptors = tools
+        .iter()
+        .map(|t| {
+            let bare = t.strip_prefix(&format!("{}.", manifest.id)).unwrap_or(t);
+            ToolDescriptor::name_only(bare)
+        })
+        .collect();
+    let adapter = super::call::SidecarDispatch::new(node.sidecars.clone(), manifest.id.clone());
+    node.registry.register_local_dispatch(
+        manifest.id.clone(),
+        descriptors,
+        std::sync::Arc::new(tokio::sync::Mutex::new(adapter)),
+    );
 
     // Durable status: Started, restart_count 0 — what a boot reconciler (follow-up) re-derives from.
     record_status(

@@ -46,6 +46,7 @@ mod role;
 mod rules;
 mod run_events;
 mod serve;
+mod store_mutate;
 mod store_query;
 mod sync;
 mod system;
@@ -211,6 +212,10 @@ pub use rules::{
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};
+pub use store_mutate::{
+    authorize_store_mutate, call_store_mutate_tool, store_delete_run, store_write_run,
+    StoreMutateError,
+};
 pub use store_query::{
     authorize_store_query, call_store_query_tool, ensure_read_only, store_query_run,
     store_schema_read, QueryResult, Schema, SchemaColumn, SchemaTable, StoreQueryError,

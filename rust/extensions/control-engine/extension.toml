@@ -24,11 +24,20 @@ restart     = "on-crash"               # auto-restart on crash; the client re-de
 [capabilities]
 # What the extension REQUESTS at install — intersected with admin approval (`grant`).
 # The net:* grant is the per-endpoint approval enforced PRE-CONNECT by the host: a CE
-# whose host:port the grant omits is refused, opaque. S3 requests ONLY the local CE
-# socket (127.0.0.1:7979, the canonical ce-studio port); the manifest grows per-slice,
-# never speculatively (store:ce_appliance:* + secret:* land in S4/S5).
+# whose host:port the grant omits is refused, opaque. The manifest grows per-slice,
+# never speculatively — S4 adds the `ce_appliance` registry, so it requests the generic
+# store verbs + the per-table `store:ce_appliance:*` grants they gate on. `secret:*`
+# lands in S5.
 request = [
   "net:tcp:127.0.0.1:7979:connect",   # the local CE ce-rest REST/WS socket
+  # The generic host store verbs the `ce_appliance` registry reaches via the callback:
+  "mcp:store.write:call",             # add   → store.write
+  "mcp:store.query:call",             # list/resolve → store.query (read-only SELECT)
+  "mcp:store.delete:call",            # remove → store.delete
+  # The per-TABLE store-surface grants those verbs gate on (the write path is scoped to
+  # THIS extension's own registry table — it can touch `ce_appliance` and nothing else):
+  "store:ce_appliance:read",
+  "store:ce_appliance:write",
 ]
 
 # The verbs the child serves over the control line. The tool NAME is the cap gate
@@ -41,6 +50,21 @@ description = "Read a CE component subtree (the structural source of truth); ret
 [[tools]]
 name        = "control-engine.schema"
 description = "Read the CE type catalogue (the add-node palette); returns {manifests}."
+
+# The S4 appliance registry (ce_appliance) CRUD. Registry writes are admin-ish, distinct
+# from graph writes (their own caps: mcp:control-engine.appliance.add:call etc.). Each verb
+# self-checks its cap in the sidecar (the inbound native.call carries no caller identity).
+[[tools]]
+name        = "control-engine.appliance.add"
+description = "Register (or replace) a ce_appliance record {id,name,mode,node,base}; returns {id}."
+
+[[tools]]
+name        = "control-engine.appliance.list"
+description = "List this workspace's registered appliances; returns {appliances}."
+
+[[tools]]
+name        = "control-engine.appliance.remove"
+description = "Delete a ce_appliance record by id; returns {id, removed}."
 
 [visibility]
 class = "private"

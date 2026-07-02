@@ -16,7 +16,34 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-02): control-engine v1 — slices S1 + S3 (branch `ce-v1`).** The CE
+**Just shipped (2026-07-02): control-engine v1 — slice S4 (appliance registry + routed hop, branch
+`ce-v1`).** S4 makes `appliance` a real, workspace-walled concept and proves the symmetric-nodes claim
+with two real in-process nodes. **Three layers:** (1) a **generic core** change — native Tier-2 sidecars
+are now first-class in the ONE MCP routing registry (a `LocalDispatch` trait in `lb_runtime`, a host
+`SidecarDispatch` adapter, `install_native` registers the native ext), so `resolve`/`dispatch`/
+`serve_call` treat wasm and native uniformly and a native ext is reachable over the **cross-node routed
+hop** with no per-tier branch and no CE strings in core. This corrects the kickoff's "no core change"
+premise: routing was generic, but *serving* (`serve_call`) was wasm-only, so a native ext was unreachable
+cross-node (Open Question #1, resolved as a generic router fix). (2) the **generic `store.write`/
+`store.delete`** host-native MCP verbs, gated per-table by the `store:<table>:<action>` grammar (the write
+half of the direct-store contract; the CE registry is the first caller, core stays `ce_appliance`-ignorant).
+(3) the **CE `ce_appliance` registry**: the record model + `store.*`-callback CRUD (via the adopted
+`lb-sidecar-client` `HostCtx`, the ROS idiom with a per-verb cap self-check), the `control-engine.appliance.
+add|list|remove` verbs, and `resolve.rs` (selector → CE base; empty → local, known → its base, unknown/
+other-ws → **not-found** — the isolation wall; no-gateway dev tier → literal base). **Tests (real infra,
+real seed):** generic `store_mutate` (4) + `native_routing` (1, routed native hop) + CE
+`appliance_registry` (6: CRUD · resolve · deny-per-verb · **ws-A invisible to ws-B** · stateless) + host
+`control_engine_appliance_routing` (1: **two-node routed `ce.tree` via the appliance record** + **offline
+fail-loud, nothing queued**) + CE units (3). Regressions green (`cross_node_routing`, `control_engine`
+S3 + hot-restart). Real-engine tier **green against live ce-studio `:7979`** (a no-gateway regression
+found + fixed, [debug](debugging/extensions/ce-tree-fails-without-gateway-real-engine-tier.md)).
+`cargo fmt` + sanity-grep clean. Exit gate **MET**. Session
+[`ce-v1-s4`](sessions/control-engine/ce-v1-s4-session.md) ·
+[core routing](sessions/control-engine/native-routing-registry-session.md). **Next up:** S5 write verbs.
+
+---
+
+**Shipped earlier (2026-07-02): control-engine v1 — slices S1 + S3 (branch `ce-v1`).** The CE
 bridge's first two slices, built in parallel. **S1 (the `EngineTransport` seam)** was cut
 **upstream** in `NubeIO/ce-wiresheet` (branch `lb-transport`, local — not pushed): a pure
 refactor that lifts the editor's hardwired transport (`rest.ts` `fetch` + `ws.ts` socket)

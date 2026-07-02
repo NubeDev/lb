@@ -68,6 +68,8 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("tools.")
         || qualified_tool == "store.query"
         || qualified_tool == "store.schema"
+        || qualified_tool == "store.write"
+        || qualified_tool == "store.delete"
 }
 
 /// Call `qualified_tool` as `principal` in `ws` with a JSON input string, returning the tool's JSON
@@ -357,6 +359,13 @@ async fn dispatch_at_depth(
             crate::call_telemetry_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "store.query" || qualified_tool == "store.schema" {
             crate::call_store_query_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool == "store.write" || qualified_tool == "store.delete" {
+            // The generic per-table mutation surface (the write half of the direct-store contract).
+            // The outer gate above already ran `mcp:store.<verb>:call`; the verb re-runs the
+            // per-table `store:<table>:write` gate inside. A write lands at depth 0, so it flows
+            // through the undo auto-capture wrapper like every other store mutation.
+            crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input)
+                .await?
         } else if qualified_tool.starts_with("bus.") {
             crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("reminder.") {

@@ -14,6 +14,10 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "control_engine"
+path = "src/lib.rs"
+
 [[bin]]
 name = "control-engine"
 path = "src/main.rs"
@@ -22,9 +26,17 @@ path = "src/main.rs"
 # Reuse the supervisor's wire protocol + framing verbatim — child and host agree on
 # the ABI by sharing the crate (no drift), exactly like federation/echo-sidecar.
 lb-supervisor = { workspace = true }
+# The host callback transport (S4): the sidecar reaches the store (`store.write`/
+# `store.query`/`store.delete` for the `ce_appliance` registry) via the node-signed
+# `LB_EXT_TOKEN` over `POST /mcp/call`. Shared crate, so the callback ABI cannot drift.
+lb-sidecar-client = { workspace = true }
+# Parse the injected `LB_EXT_TOKEN` grant for the per-verb capability self-check (the
+# inbound `native.call` carries no caller identity — the sidecar self-checks its grant).
+lb-auth = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 async-trait = "0.1"
+thiserror = { workspace = true }
 
 # The CE client crate (control-engine scope Decision: pinned git dependency, still
 # update-with-approval). `rest` pulls `ws`; `CeRestClient<WsStreamTransport>::new`
@@ -49,4 +61,10 @@ default = []
 ce-fake = []
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync", "net"] }
+# The S4 appliance-registry integration test drives the registry verbs against a REAL spawned gateway
+# + node + store + caps (the native-callback pattern from ros/tests/crud_test.rs). No mocks.
+lb-host = { workspace = true }
+lb-role-gateway = { workspace = true }
+lb-auth = { workspace = true }
+axum = { workspace = true }

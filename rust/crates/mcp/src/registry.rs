@@ -16,7 +16,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use lb_runtime::Instance;
+use lb_runtime::{Instance, LocalDispatch};
 use serde::Serialize;
 use serde_json::Value;
 use tokio::sync::Mutex;
@@ -65,13 +65,15 @@ impl ToolDescriptor {
     }
 }
 
-/// A locally hosted extension: its declared tool descriptors and its live instance.
+/// A locally hosted extension: its declared tool descriptors and its live dispatch target.
 #[derive(Clone)]
 pub struct Hosted {
     /// The tools this extension declares (descriptors; bare names without the `<ext>.` prefix).
     pub tools: Vec<ToolDescriptor>,
-    /// The live WASM instance, behind a mutex (a tool call needs `&mut` on the wasm store).
-    pub instance: Arc<Mutex<Instance>>,
+    /// The live dispatch target, behind a mutex (a tool call needs `&mut` on it). This is Tier-
+    /// agnostic: a wasm `Instance` and a native-sidecar adapter both impl [`LocalDispatch`], so
+    /// `dispatch`/`serve_call` reach either through the ONE trait — no per-Tier branch (§3.1).
+    pub instance: Arc<Mutex<dyn LocalDispatch>>,
 }
 
 /// Where an extension's tools run, as seen from this node.
@@ -132,11 +134,25 @@ impl Registry {
         tools: Vec<ToolDescriptor>,
         instance: Instance,
     ) {
+        // Box the wasm instance as the generic dispatch target — the registry is Tier-agnostic.
+        self.register_local_dispatch(ext_id, tools, Arc::new(Mutex::new(instance)));
+    }
+
+    /// Register a **local** extension by id with its tool descriptors and an arbitrary
+    /// [`LocalDispatch`] target. This is the Tier-agnostic entry: a wasm instance goes through
+    /// [`register_descriptors`](Registry::register_descriptors) (which boxes it); a native-sidecar
+    /// adapter goes here directly. `resolve`/`dispatch`/`serve_call` reach both identically.
+    pub fn register_local_dispatch(
+        &self,
+        ext_id: impl Into<String>,
+        tools: Vec<ToolDescriptor>,
+        dispatch: Arc<Mutex<dyn LocalDispatch>>,
+    ) {
         self.reachable.write().unwrap().insert(
             ext_id.into(),
             Target::Local(Hosted {
                 tools,
-                instance: Arc::new(Mutex::new(instance)),
+                instance: dispatch,
             }),
         );
     }

@@ -39,12 +39,20 @@ pub async fn serve_ext(
     Ok(ToolServer { _task: task })
 }
 
-/// The answer loop: await each routed request, run local dispatch, reply.
+/// The answer loop: await each routed request, run local dispatch, reply. The request's workspace is
+/// recovered from the concrete key it arrived on (`ws/{ws}/mcp/{ext}/call`) — the queryable is
+/// ws-wildcarded but each `get` targets a concrete ws — and threaded into `serve_call` so a
+/// Tier-agnostic target (a native sidecar keyed `(ws, ext_id)`) resolves THIS workspace's child.
 async fn answer_loop(responder: Responder, registry: Arc<Registry>) {
     while let Some(incoming) = responder.recv().await {
-        let reply = match serde_json::from_slice::<CallRequest>(&incoming.payload()) {
-            Ok(req) => serve_call(&registry, &req).await,
-            Err(e) => CallReply::Err(format!("malformed routed request: {e}")),
+        let ws = incoming.ws();
+        let reply = match (
+            ws,
+            serde_json::from_slice::<CallRequest>(&incoming.payload()),
+        ) {
+            (Some(ws), Ok(req)) => serve_call(&registry, &ws, &req).await,
+            (None, _) => CallReply::Err("routed request missing workspace in key".into()),
+            (_, Err(e)) => CallReply::Err(format!("malformed routed request: {e}")),
         };
         let bytes = serde_json::to_vec(&reply).unwrap_or_default();
         // Best-effort reply; if the caller went away, it observes a timeout — its concern.
