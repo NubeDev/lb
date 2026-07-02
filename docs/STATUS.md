@@ -16,7 +16,30 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-02): control-engine v1 — slice S7 (`BridgeTransport` + federated wiresheet page,
+**Just shipped (2026-07-02): control-engine v1 — node integration + a generic auth fix.** The shipped
+CE extension is now **installed, cap-reachable, and driven end to end against a real gateway** (not just
+green in tests). Three parts: (1) **boot-install** — `rust/node/src/control_engine.rs` (mirroring
+`federation.rs`) installs + supervises the CE sidecar env-gated by `LB_CONTROL_ENGINE_BASE`, approves its
+`net:tcp` connect, and seeds one appliance; `make dev` builds+wires it **opt-in** via `CE=1` /
+`CE_BASE=host:port` (OFF by default — needs a running ce-studio). (2) **Extension tools reach users via
+GRANTS, not a login hardcode** — the real fix for the page's `out_of_scope`/`denied`: `install_native`
+grants each `[ui]`/`[[widget]]` scope tool (∩ granted) to `role:workspace-admin` (new
+`crates/host/src/authz/grant_ui.rs`), `resolve_subject_caps` folds a role subject's direct grants, and
+login merges `resolve_caps` into the token — so installing ANY extension makes its page reachable by
+admins with **zero login edits**, durable + revocable (`authz-grants-scope.md` realized end to end). (3)
+**A native-callback boot-ordering fix** — native roles now mount AFTER `Gateway::new_live` installs the
+shared signing key, so a sidecar's `LB_EXT_TOKEN` verifies on callback (was a silent 401; `federation`
+benefits too). Proof: dev token carries the CE caps resolved from the store, `appliance.add`/`list`
+succeed through the real callback (200, was 401/403). Session
+[`ce-v1-node-integration`](sessions/control-engine/ce-v1-node-integration-session.md); debugging
+[auth](debugging/auth/ext-page-caps-require-grant-not-login-hardcode.md) ·
+[callback-key](debugging/extensions/sidecar-callback-401-key-minted-before-gateway.md). Branch
+`ce-node-wiring`. **Next up:** promote the grant-on-install behavior to `public/auth-caps/` once a second
+extension exercises it; wire the same `grant_ui_scope_to_admin` call into the wasm `install` path.
+
+---
+
+**Shipped (2026-07-02): control-engine v1 — slice S7 (`BridgeTransport` + federated wiresheet page,
 branch `ce-v1`).** The LB-authored UI half: a federated remote under `rust/extensions/control-engine/ui/`
 mounts the vendored `@nube/ce-wiresheet` `CeEditor` wired to a `BridgeTransport implements EngineTransport`.
 The vendored package is UNTOUCHED — the transport is injected. **Request half:** a table maps the

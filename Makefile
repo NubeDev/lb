@@ -107,13 +107,17 @@ FED_SEED_DSN   ?= host=127.0.0.1 port=5433 user=lb password=lb_secret dbname=lb 
 # The env block passed to the node for the federation role (empty when FED_ENDPOINTS is cleared).
 FED_ENV = $(if $(FED_ENDPOINTS),LB_FEDERATION_ENDPOINTS="$(FED_ENDPOINTS)" LB_FEDERATION_SEED_NAME="$(FED_SEED_NAME)" LB_FEDERATION_SEED_KIND="$(FED_SEED_KIND)" LB_FEDERATION_SEED_ENDPOINT="$(FED_SEED_EP)" LB_FEDERATION_SEED_DSN="$(FED_SEED_DSN)",)
 
-# Control Engine bridge (control-engine native extension). Setting CE_BASE installs + supervises the
-# `control-engine` sidecar at boot, pre-approves its `net:tcp:host:port` connect, and seeds one
-# appliance (CE_APPLIANCE) so the wiresheet page works on first boot. Points at a running ce-studio
-# engine (ce-rest on :7979). Override or clear to disable:
-#   make dev CE_BASE=              (no control-engine sidecar)
-# Requires the `control-engine` sidecar binary + UI bundle — built by the `control-engine` target below.
+# Control Engine bridge (control-engine native extension). OFF by default — the sidecar needs a
+# running ce-studio engine (ce-rest on :7979), so it is opt-in. Turn it on for `make dev` with:
+#   make dev CE=1                            (shorthand → CE_BASE=127.0.0.1:7979)
+#   make dev CE_BASE=host:port               (explicit; also enables it)
+# When on, `make dev` builds the `control-engine` sidecar + UI bundle, installs + supervises the
+# sidecar at boot, pre-approves its `net:tcp:host:port` connect, and seeds one appliance (CE_APPLIANCE)
+# so the wiresheet page works on first boot. Clear CE_BASE to disable an explicit override.
+ifeq ($(CE),1)
 CE_BASE       ?= 127.0.0.1:7979
+endif
+CE_BASE       ?=
 CE_APPLIANCE  ?= local
 # The env block passed to the node for the control-engine role (empty when CE_BASE is cleared).
 CE_ENV = $(if $(CE_BASE),LB_CONTROL_ENGINE_BASE="$(CE_BASE)" LB_CONTROL_ENGINE_APPLIANCE="$(CE_APPLIANCE)",)
@@ -188,7 +192,7 @@ build-ui:
 # it, in ONE foreground process group so Ctrl-C (or `make kill`) stops both. The trap
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
-dev: build-wasm trusted-pubkey federation control-engine
+dev: build-wasm trusted-pubkey federation $(if $(CE_BASE),control-engine,)
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
