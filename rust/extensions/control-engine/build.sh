@@ -7,8 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 # -p against the workspace so it shares the workspace lockfile and target dir.
+cargo build -p control-engine
 cargo build --release -p control-engine
-echo "built: control-engine (workspace target/release/control-engine)"
+echo "built: control-engine (workspace target/{debug,release}/control-engine)"
 
 # S7 federated UI bundle. The ext UI is a STANDALONE package (its own lockfile, --ignore-workspace) that
 # resolves the vendored `@nube/ce-wiresheet` by ALIAS to its BUILT dist (vite.config.ts) — so build the
