@@ -66,6 +66,23 @@ pub struct InspectReport {
     pub caps: Vec<String>,
     pub built: bool,
     pub toolchain: ToolchainReadiness,
+    /// The concrete build outputs found on disk (native/wasm binary, federated `remoteEntry.js`),
+    /// each with its current size + mtime. The UI snapshots these before a build and diffs against a
+    /// fresh inspect after, so "built" becomes *proof this build wrote a fresh artifact*, not just
+    /// "a release dir exists". Empty when nothing has been built yet.
+    pub artifacts: Vec<Artifact>,
+}
+
+/// One build output on disk. `kind` classifies it (`native-bin` | `wasm` | `remote-entry`); `path`
+/// is absolute; `size`/`mtime` come from the same `fs::metadata` facts `host.fs.stat` reports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Artifact {
+    pub kind: String,
+    pub path: PathBuf,
+    pub size: u64,
+    /// RFC3339 UTC modified time, seconds precision — matches `host.fs.stat`'s `mtime` format so the
+    /// UI can compare snapshots lexically.
+    pub mtime: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -57,7 +57,19 @@ POST /extensions {"path":"my-ext"}  # server-side sign from LB_DIR/keys/dev-publ
 
 `LB_DEVKIT_ROOT` is canonicalized; traversal and symlink escapes are rejected before any write or
 process spawn. Builds use the real toolchain only (`cargo` and, if `ui/` exists, `pnpm`) behind the
-SDK's single `Toolchain` trait.
+SDK's `Toolchain` trait, with two selectable executors (config, not a branch —
+`scope/extensions/devkit-container-build-scope.md`):
+
+- `ProcessToolchain` (default): spawns `cargo`/`pnpm` as a bare child of the node process — the fast
+  inner loop for a dev box that already has the toolchain set up.
+- `ContainerToolchain` (`LB_DEVKIT_BUILDER=container`): runs the same commands inside the pinned
+  `docker/build/` image, mounting the `rust/` workspace and a shared cargo/pnpm cache volume as the
+  **host uid/gid** (so build output isn't root-owned). No inherited `PATH`/`GIT_ASKPASS` from the node
+  process — this is what makes a private-dep extension (e.g. `control-engine`'s
+  `NubeIO/ce-client-rust`) build reproducibly regardless of the operator's shell, and on a cloud node
+  with no host `cargo` at all. A build-scoped git token, read from `lb-secrets` at
+  `devkit/build-git-token`, is injected as `LB_BUILD_GIT_TOKEN` and consumed by a git credential
+  helper baked into the image — never a tokenized URL, never in the streamed log.
 
 The built-in **Extension Studio** shell view drives that sequence: generate or select a folder, build
 while reading `GET /bus/stream?subject=devkit/build/<job_id>`, then publish through the same

@@ -7,9 +7,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { App } from "../App";
 import { ValueSourceContext } from "../data/use-values";
+import { SourceLoadersContext } from "../data/use-source-loaders";
 import { useSceneStore } from "../state/scene-store";
 import type { Bridge } from "./contract";
 import { createBridgeSource, collectChannels } from "./bridge-source";
+import { bridgeSourceLoaders } from "./source-loaders";
 import {
   listScenes,
   loadScene,
@@ -37,6 +39,9 @@ export function ScenePage({ bridge }: { bridge: Bridge }) {
     () => createBridgeSource(bridge, channelKey ? channelKey.split("|") : []),
     [bridge, channelKey],
   );
+  // The reusable @nube/source-picker's loaders, backed by THIS bridge — the same picker the dashboard
+  // uses, reaching the node through the extension bridge. The property rail's bind picker consumes it.
+  const loaders = useMemo(() => bridgeSourceLoaders(bridge), [bridge]);
 
   // The scene picker: list on mount (denied → empty list, the toolbar still works on the demo).
   useEffect(() => {
@@ -80,11 +85,12 @@ export function ScenePage({ bridge }: { bridge: Bridge }) {
   }, [bridge, doc, loaded, title]);
 
   return (
+    <SourceLoadersContext.Provider value={loaders}>
     <ValueSourceContext.Provider value={source}>
       <div className="flex h-screen flex-col">
         <div
           data-testid="scene-persistence-bar"
-          className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--tc-hairline)] bg-[var(--tc-panel)] px-3 text-xs text-slate-300 backdrop-blur-md"
+          className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--tc-hairline)] bg-[var(--tc-panel)] px-3 text-xs text-[var(--tc-text)] backdrop-blur-md"
         >
           <select
             data-testid="scene-picker"
@@ -109,7 +115,7 @@ export function ScenePage({ bridge }: { bridge: Bridge }) {
             type="button"
             data-testid="scene-save"
             onClick={doSave}
-            className="rounded px-2 py-0.5 text-[var(--tc-accent)] hover:bg-white/5"
+            className="rounded px-2 py-0.5 text-[var(--tc-accent)] hover:bg-[var(--tc-hairline)]"
           >
             Save
           </button>
@@ -136,5 +142,6 @@ export function ScenePage({ bridge }: { bridge: Bridge }) {
         </div>
       </div>
     </ValueSourceContext.Provider>
+    </SourceLoadersContext.Provider>
   );
 }

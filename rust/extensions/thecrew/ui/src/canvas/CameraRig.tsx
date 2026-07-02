@@ -52,6 +52,11 @@ function applyPose(cam: THREE.PerspectiveCamera, t: number): void {
  *  MapControls — no pan/zoom on a dashboard tile. The editor page leaves `fit` off (pan/zoom + morph). */
 export function CameraRig({ fit = false }: { fit?: boolean } = {}) {
   const mode = useSceneStore((s) => s.doc.camera);
+  // view lock (toolbar) + in-flight shape drag both freeze pan/zoom so the view
+  // holds still while arranging parts (builder-ux §lock; use-drag-move suppression)
+  const locked = useSceneStore((s) => s.locked);
+  const dragging = useSceneStore((s) => s.drag !== null);
+  const panEnabled = !locked && !dragging;
   const perspRef = useRef<THREE.PerspectiveCamera>(null);
   /** spring progress: 0 = flat/top-down pose, 1 = full persp pose */
   const progress = useRef(mode === "persp" ? 1 : 0);
@@ -122,9 +127,12 @@ export function CameraRig({ fit = false }: { fit?: boolean } = {}) {
         // read-only cell: FitCamera drives the ortho pose; no user pan/zoom/orbit.
         null
       ) : active === "ortho" ? (
-        // flat mode: pan + zoom only, orbit LOCKED (builder-ux)
+        // flat mode: pan + zoom only, orbit LOCKED (builder-ux). Pan/zoom freeze
+        // when the view is locked or a shape drag is in flight.
         <MapControls
           enableRotate={false}
+          enablePan={panEnabled}
+          enableZoom={panEnabled}
           screenSpacePanning
           minZoom={0.4}
           maxZoom={6}
@@ -134,7 +142,7 @@ export function CameraRig({ fit = false }: { fit?: boolean } = {}) {
         // 3D mode: orbit, but never under the floor. Disabled mid-spring so the
         // controls don't fight the animated camera.
         <OrbitControls
-          enabled={!animating}
+          enabled={!animating && !locked && !dragging}
           maxPolarAngle={Math.PI / 2 - 0.08}
           minDistance={80}
           maxDistance={2000}

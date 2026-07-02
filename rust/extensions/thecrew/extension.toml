@@ -27,6 +27,7 @@ request = [
     "mcp:series.latest:call",      # binding backfill
     "mcp:series.read:call",        # sparkline/history bindings (label trends)
     "mcp:series.watch:call",       # live values via the shipped SSE
+    "mcp:series.list:call",        # the source picker (@nube/source-picker): discover bindable series
 ]
 
 # The full graphics PAGE (ui-federation scope): browse/edit/create scenes. `entry` is the ESM
@@ -37,7 +38,7 @@ entry = "remoteEntry.js"
 label = "Graphics"
 icon  = "shapes"
 scope = ["assets.get_doc", "assets.put_doc", "assets.list_docs",
-         "series.latest", "series.read", "series.watch"]
+         "series.latest", "series.read", "series.watch", "series.list"]
 
 # The read-only scene CELL for dashboards. Its scope is deliberately NARROWER than the page's:
 # a cell can render a scene and its live values but can never save one (no assets.put_doc, no

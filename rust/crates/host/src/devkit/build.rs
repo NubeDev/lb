@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::Node;
 
+use super::builder::select_toolchain;
 use super::{authorize_devkit, DevkitError};
 
 #[derive(Debug, Clone, Serialize)]
@@ -38,6 +39,10 @@ pub async fn devkit_build(
     );
     create(&node.store, ws, &job).await?;
 
+    // Selected by config (README §3 rule 1), not a branch `build_extension` or the job/log
+    // contract knows about — devkit-container-build-scope.md.
+    let toolchain = select_toolchain(&node, ws).await;
+
     let node = Arc::clone(node);
     let ws = ws.to_string();
     let job_id_for_task = job_id.clone();
@@ -60,7 +65,7 @@ pub async fn devkit_build(
             }
         });
         let result = tokio::task::spawn_blocking(move || {
-            lb_devkit::build_extension(&safe, &lb_devkit::ProcessToolchain, &mut |line| {
+            lb_devkit::build_extension(&safe, toolchain.as_ref(), &mut |line| {
                 let _ = tx.blocking_send(line);
             })
         })

@@ -92,6 +92,44 @@ describe("scene-store gestures", () => {
     expect(useSceneStore.getState().future).toEqual([]);
   });
 
+  it("toggleLock flips the view lock without touching the doc or history", () => {
+    const id = store().placeShape("hvac.fan", 0, 0);
+    const before = store().doc.shapes[id];
+    expect(store().locked).toBe(false);
+    store().toggleLock();
+    expect(store().locked).toBe(true);
+    store().toggleLock();
+    expect(store().locked).toBe(false);
+    // lock is ephemeral: it never mutates the doc and adds no undo step
+    expect(store().doc.shapes[id]).toEqual(before);
+    expect(useSceneStore.getState().future).toEqual([]);
+  });
+
+  it("a drag gesture commits ONE undo step on endDrag (transient moves don't)", () => {
+    const id = store().placeShape("hvac.fan", 0, 0);
+    const depth = useSceneStore.getState().past.length;
+    // live drag: many transient positions, none of them undoable
+    store().setDrag({ id, x: 10, y: 0 });
+    store().setDrag({ id, x: 20, y: 8 });
+    store().setDrag({ id, x: 32, y: 16 });
+    expect(useSceneStore.getState().past.length).toBe(depth); // no steps yet
+    expect(store().doc.shapes[id].t).toMatchObject({ x: 0, y: 0 }); // doc unchanged mid-drag
+    store().endDrag();
+    // one step, final position committed, transient cleared
+    expect(useSceneStore.getState().past.length).toBe(depth + 1);
+    expect(store().doc.shapes[id].t).toMatchObject({ x: 32, y: 16 });
+    expect(store().drag).toBeNull();
+    store().undo();
+    expect(store().doc.shapes[id].t).toMatchObject({ x: 0, y: 0 });
+  });
+
+  it("endDrag with no active drag is a no-op (no phantom undo step)", () => {
+    store().placeShape("hvac.fan", 0, 0);
+    const depth = useSceneStore.getState().past.length;
+    store().endDrag();
+    expect(useSceneStore.getState().past.length).toBe(depth);
+  });
+
   it("camera toggle + demo switching work (not undo steps)", () => {
     expect(store().doc.camera).toBe("ortho-top");
     store().toggleCamera();

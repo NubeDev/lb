@@ -24,6 +24,16 @@ export interface BuildStarted {
   log_subject: string;
 }
 
+export type ArtifactKind = "native-bin" | "wasm" | "remote-entry";
+
+export interface Artifact {
+  kind: ArtifactKind;
+  path: string;
+  size: number;
+  /** RFC3339 UTC (seconds precision), or null if the mtime couldn't be read. */
+  mtime: string | null;
+}
+
 export interface InspectReport {
   id: string;
   tier: DevkitTier;
@@ -35,6 +45,8 @@ export interface InspectReport {
     pnpm: boolean;
     wasm32_wasip2: boolean;
   };
+  /** Concrete build outputs on disk with current size + mtime; empty before a first build. */
+  artifacts: Artifact[];
 }
 
 export interface DevkitRoot {

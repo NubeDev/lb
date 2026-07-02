@@ -76,7 +76,7 @@ pub async fn drive(
         let mut events = Vec::new();
         let mut turn: u32 = 0;
         // Collect an event AND tap it to the live sink (best-effort: a closed sink never fails the run).
-        let mut emit = |event: RunEvent, events: &mut Vec<RunEvent>| {
+        let emit = |event: RunEvent, events: &mut Vec<RunEvent>| {
             if let Some(tx) = sink {
                 let _ = tx.send(event.clone());
             }

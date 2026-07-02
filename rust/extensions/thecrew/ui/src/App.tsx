@@ -19,7 +19,7 @@ export function App() {
   const crosshair = useSceneStore((s) => !!s.armedType || s.tool === "chain");
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--tc-canvas)] text-slate-200">
+    <div className="flex h-screen flex-col bg-[var(--tc-canvas)] text-[var(--tc-text)]">
       <Toolbar />
       <div className="flex min-h-0 flex-1">
         <Palette />
@@ -27,14 +27,14 @@ export function App() {
           <SceneCanvas />
           {empty && (
             // blank page shows a centered ghost-text prompt, not darkness (§first-run)
-            <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-slate-600">
+            <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-[var(--tc-text-muted)]">
               drag a symbol from the palette to start
             </p>
           )}
         </main>
         <PropertyRail />
       </div>
-      <footer className="flex h-7 shrink-0 items-center justify-center border-t border-[var(--tc-hairline)] bg-[var(--tc-panel)] text-xs text-slate-500 backdrop-blur-md">
+      <footer className="flex h-7 shrink-0 items-center justify-center border-t border-[var(--tc-hairline)] bg-[var(--tc-panel)] text-xs text-[var(--tc-text-muted)] backdrop-blur-md">
         drag from the palette · double-click ends a duct run · Tab tilts to 3D · ? for keys
       </footer>
     </div>

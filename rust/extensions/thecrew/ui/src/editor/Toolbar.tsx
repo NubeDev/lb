@@ -7,7 +7,7 @@
 // use-undo.ts; chain-tool Enter/Esc inside use-drag-place.ts.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Box, Square, Magnet, Undo2, Redo2, Keyboard } from "lucide-react";
+import { Box, Square, Magnet, Undo2, Redo2, Keyboard, Lock, Unlock } from "lucide-react";
 import clsx from "clsx";
 import { useSceneStore, type DemoName } from "../state/scene-store";
 
@@ -26,6 +26,7 @@ const KEYMAP: [string, string][] = [
   ["⌘Z / ⇧⌘Z", "undo / redo"],
   ["⌘D", "duplicate"],
   ["G", "toggle grid snap"],
+  ["L", "lock / unlock canvas view"],
   ["Tab", "toggle flat / 3D"],
   ["← ↑ → ↓", "nudge (⇧ = ×4)"],
   ["?", "this overlay"],
@@ -52,8 +53,8 @@ function IconButton({
       onClick={onClick}
       className={clsx(
         "rounded p-1.5 outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]",
-        active ? "text-[var(--tc-accent)]" : "text-slate-400 hover:text-slate-200",
-        disabled && "cursor-default opacity-30 hover:text-slate-400",
+        active ? "text-[var(--tc-accent)]" : "text-[var(--tc-text-muted)] hover:text-[var(--tc-text)]",
+        disabled && "cursor-default opacity-30 hover:text-[var(--tc-text-muted)]",
       )}
     >
       {children}
@@ -65,6 +66,7 @@ export function Toolbar() {
   const demo = useSceneStore((s) => s.demo);
   const camera = useSceneStore((s) => s.doc.camera);
   const snapEnabled = useSceneStore((s) => s.snapEnabled);
+  const locked = useSceneStore((s) => s.locked);
   const canUndo = useSceneStore((s) => s.past.length > 0);
   const canRedo = useSceneStore((s) => s.future.length > 0);
   const [help, setHelp] = useState(false);
@@ -98,6 +100,10 @@ export function Toolbar() {
         case "G":
           s.toggleSnap();
           break;
+        case "l":
+        case "L":
+          s.toggleLock();
+          break;
         case "Tab":
           e.preventDefault();
           s.toggleCamera();
@@ -115,7 +121,7 @@ export function Toolbar() {
 
   return (
     <header className="relative z-30 flex h-11 shrink-0 items-center gap-3 border-b border-[var(--tc-hairline)] bg-[var(--tc-panel)] px-3 backdrop-blur-md">
-      <span className="text-sm font-medium tracking-wide text-slate-200">thecrew</span>
+      <span className="text-sm font-medium tracking-wide text-[var(--tc-text)]">thecrew</span>
 
       <nav className="flex items-center gap-1 text-xs">
         {DEMOS.map((d) => (
@@ -125,7 +131,7 @@ export function Toolbar() {
             onClick={() => store.loadDemo(d.name)}
             className={clsx(
               "rounded px-2 py-1 outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]",
-              demo === d.name ? "text-[var(--tc-accent)]" : "text-slate-400 hover:text-slate-200",
+              demo === d.name ? "text-[var(--tc-accent)]" : "text-[var(--tc-text-muted)] hover:text-[var(--tc-text)]",
             )}
           >
             {d.label}
@@ -146,6 +152,13 @@ export function Toolbar() {
         <IconButton title="Grid snap (G)" active={snapEnabled} onClick={() => store.toggleSnap()}>
           <Magnet size={16} />
         </IconButton>
+        <IconButton
+          title={locked ? "Canvas locked — pan/zoom frozen (L)" : "Lock canvas view (L)"}
+          active={locked}
+          onClick={() => store.toggleLock()}
+        >
+          {locked ? <Lock size={16} /> : <Unlock size={16} />}
+        </IconButton>
         <IconButton title="Undo (⌘Z)" disabled={!canUndo} onClick={() => store.undo()}>
           <Undo2 size={16} />
         </IconButton>
@@ -164,12 +177,12 @@ export function Toolbar() {
             className="absolute right-3 top-12 w-64 rounded-md border border-[var(--tc-hairline)] bg-[var(--tc-panel)] p-3 backdrop-blur-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="mb-2 text-xs font-medium text-slate-200">Keyboard</div>
+            <div className="mb-2 text-xs font-medium text-[var(--tc-text)]">Keyboard</div>
             <dl className="space-y-1 text-xs">
               {KEYMAP.map(([key, what]) => (
                 <div key={key} className="flex items-baseline justify-between gap-2">
                   <dt className="font-mono text-[var(--tc-accent)]">{key}</dt>
-                  <dd className="text-right text-slate-400">{what}</dd>
+                  <dd className="text-right text-[var(--tc-text-muted)]">{what}</dd>
                 </div>
               ))}
             </dl>

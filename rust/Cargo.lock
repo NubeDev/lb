@@ -4652,6 +4652,7 @@ name = "lb-devkit"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "ed25519-dalek",
  "lb-registry",
  "rand_core 0.6.4",

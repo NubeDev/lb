@@ -9,6 +9,7 @@ import { Text } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import type { SceneShape } from "../scene/scene.types";
 import { useValues } from "../data/use-values";
+import { useDragMove } from "../editor/use-drag-move";
 import { useSceneStore } from "../state/scene-store";
 import { haloMaterial } from "../theme/materials";
 import { tokens } from "../theme/tokens";
@@ -60,9 +61,15 @@ export function ShapeNode({ id, shape }: { id: string; shape: SceneShape }) {
   const hovered = useSceneStore((s) => s.hovered === id);
   const select = useSceneStore((s) => s.select);
   const setHovered = useSceneStore((s) => s.setHovered);
+  // transient drag position for THIS shape (null unless it's the one being dragged)
+  const drag = useSceneStore((s) => (s.drag?.id === id ? s.drag : null));
+  const dragHandlers = useDragMove(id);
 
   const def = SYMBOLS[shape.type];
   const bounds = def ? def.bounds(shape) : { w: 64, h: 48 };
+  // render at the live drag position while dragging, else the committed transform
+  const px = drag ? drag.x : shape.t.x;
+  const py = drag ? drag.y : shape.t.y;
 
   function onClick(e: ThreeEvent<MouseEvent>) {
     e.stopPropagation();
@@ -71,10 +78,11 @@ export function ShapeNode({ id, shape }: { id: string; shape: SceneShape }) {
 
   return (
     <group
-      position={[shape.t.x, shape.t.y, 0]}
+      position={[px, py, 0]}
       rotation={[0, 0, shape.t.r ?? 0]}
       scale={[shape.t.sx ?? 1, shape.t.sy ?? 1, 1]}
       onClick={onClick}
+      {...dragHandlers}
       onPointerOver={(e) => {
         e.stopPropagation();
         setHovered(id);

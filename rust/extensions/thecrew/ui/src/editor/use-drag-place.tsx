@@ -18,34 +18,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useThree, type ThreeEvent } from "@react-three/fiber";
 import { Line } from "@react-three/drei";
-import { snap, type SnapResult, type WorldAnchor } from "./use-snap";
+import { snap, type SnapResult } from "./use-snap";
+import { worldAnchors } from "./world-anchors";
 import { SYMBOLS } from "../canvas/ShapeNode";
 import { defaultShape } from "../scene/defaults";
-import type { SceneDoc } from "../scene/scene.types";
 import { useSceneStore } from "../state/scene-store";
 import { ghostMaterial } from "../theme/materials";
 import { tokens } from "../theme/tokens";
 
 const CHAIN_TYPES = new Set(["hvac.duct", "plan.wall"]);
 const MIME = "thecrew/type";
-
-/** every shape's anchors in world space (shape-local → t.sx/sy → t.r → t.x/y) */
-function worldAnchors(doc: SceneDoc): WorldAnchor[] {
-  const out: WorldAnchor[] = [];
-  for (const [shapeId, shape] of Object.entries(doc.shapes)) {
-    const def = SYMBOLS[shape.type];
-    if (!def) continue;
-    const r = shape.t.r ?? 0;
-    const cos = Math.cos(r);
-    const sin = Math.sin(r);
-    for (const a of def.anchors(shape)) {
-      const x = a.x * (shape.t.sx ?? 1);
-      const y = a.y * (shape.t.sy ?? 1);
-      out.push({ shapeId, name: a.name, x: shape.t.x + x * cos - y * sin, y: shape.t.y + x * sin + y * cos });
-    }
-  }
-  return out;
-}
 
 /** grid + anchor-magnetism snap against the current doc (anchor wins — use-snap.ts) */
 function snapPoint(x: number, y: number): SnapResult {

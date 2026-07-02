@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::{anyhow, Context, Result};
 use toml::Value;
 
+use crate::artifacts::collect_artifacts;
 use crate::toolchain::{ProcessToolchain, Toolchain};
 use crate::{InspectReport, Tier, ToolchainReadiness};
 
@@ -32,13 +33,20 @@ pub fn inspect_extension(path: &Path) -> Result<InspectReport> {
         .flatten()
         .filter_map(|c| c.as_str().map(str::to_string))
         .collect();
+    let artifacts = collect_artifacts(path, tier);
     Ok(InspectReport {
         id,
         tier,
         tools,
         caps,
-        built: built(path, tier),
+        // "built" is now grounded in a real compiled binary/component on disk, not just the presence
+        // of a `release/` dir (which `cargo` creates even for a failed or aborted build). A UI
+        // artifact alone doesn't count — the extension isn't loadable without its binary.
+        built: artifacts
+            .iter()
+            .any(|a| a.kind == "wasm" || a.kind == "native-bin"),
         toolchain: readiness(path),
+        artifacts,
     })
 }
 
@@ -49,13 +57,6 @@ fn table_str(parsed: &Value, table: &str, key: &str) -> Result<String> {
         .and_then(Value::as_str)
         .map(str::to_string)
         .ok_or_else(|| anyhow!("manifest missing [{table}] {key}"))
-}
-
-fn built(path: &Path, tier: Tier) -> bool {
-    match tier {
-        Tier::Wasm => path.join("target/wasm32-wasip2/release").is_dir(),
-        Tier::Native => path.join("target/release").is_dir(),
-    }
 }
 
 fn readiness(path: &Path) -> ToolchainReadiness {
