@@ -76,6 +76,22 @@ pub async fn resolve_effective_runtime(
     }
 }
 
+/// The **concrete** effective runtime id a run will use (the display label), resolving `None` to the
+/// registry's default id. Same precedence as [`resolve_effective_runtime`] (it delegates), so the
+/// label a caller shows can never disagree with the runtime that actually runs — e.g. an omitted
+/// `runtime` with a stored `open-interpreter-default` resolves to `"open-interpreter-default"`, not
+/// the misleading `"default"`. Used by the channel worker to stamp the `agent_result` label.
+pub async fn resolve_effective_runtime_id(
+    node: &Node,
+    registry: &RuntimeRegistry,
+    ws: &str,
+    explicit: Option<&str>,
+) -> String {
+    resolve_effective_runtime(node, registry, ws, explicit)
+        .await
+        .unwrap_or_else(|| registry.default_id().to_string())
+}
+
 /// Whether `registry` currently offers `id` (same membership check `agent.config.set` validates a
 /// write against, so read and write agree on "the node offers this").
 fn registry_offers(registry: &RuntimeRegistry, id: &str) -> bool {

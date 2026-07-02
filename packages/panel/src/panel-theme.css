@@ -32,4 +32,12 @@
 
   /* Mono stack for the dense tables/KV; falls back to a system mono when the host has none. */
   --lbp-font-mono: var(--font-mono, ui-monospace, 'SF Mono', Menlo, monospace);
+
+  /* The surface's OWN base look, set directly on the root — NOT via a `bg-lbp-panel`
+     utility. The scoped utilities are `.lb-panel .<util>` (descendant), which by design do
+     NOT match the `.lb-panel` element itself; if the surface relied on `bg-lbp-panel` for
+     its background it would be TRANSPARENT (see-through — the exact bug this fixes). So the
+     opaque surface background + text colour live here, where they always apply. */
+  background-color: hsl(var(--lbp-panel));
+  color: hsl(var(--lbp-fg));
 }

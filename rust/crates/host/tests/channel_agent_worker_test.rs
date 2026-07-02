@@ -22,8 +22,8 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    drain_channel_agent_runs, drain_channel_agent_runs_with_ceiling, history, post, AgentRuntime,
-    ErasedModel, Node, RunContext, RuntimeRegistry,
+    agent_config_set, drain_channel_agent_runs, drain_channel_agent_runs_with_ceiling, history,
+    post, AgentConfig, AgentRuntime, ErasedModel, Node, RunContext, RuntimeRegistry,
 };
 use lb_inbox::Item;
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
@@ -429,5 +429,98 @@ async fn the_result_is_workspace_scoped_and_not_visible_from_another_workspace()
     assert!(
         cross.is_empty(),
         "ws-B cannot see ws-A's agent exchange: {cross:?}"
+    );
+}
+
+/// A stub external runtime that returns a fixed sentinel — stands in for `open-interpreter-default`.
+struct StubExternal {
+    id: String,
+    answer: String,
+}
+
+impl AgentRuntime for StubExternal {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn run<'a>(
+        &'a self,
+        _node: &'a Node,
+        _ctx: RunContext<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, lb_host::AgentError>> + Send + 'a>> {
+        let a = self.answer.clone();
+        Box::pin(async move { Ok(a) })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
+    // The bug this guards (surfaced live in the channel UI): with the workspace default set to an
+    // external runtime, an `/agent` run that OMITS `runtime` must (a) actually RUN that runtime and
+    // (b) LABEL the `agent_result.runtime` as the resolved id — not the misleading `"default"`. The
+    // worker computed the label from the raw (omitted) runtime, so a resolved external run still
+    // read `"default"` in the card. Fixed to label from `resolve_effective_runtime_id`.
+    const STUB: &str = "open-interpreter-default";
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    // A node that OFFERS the external stub (a feature-on posture), installed like the real one.
+    let mut registry = RuntimeRegistry::with_default(answer_model("in-house"));
+    registry.register(Arc::new(StubExternal {
+        id: STUB.into(),
+        answer: "external ran".into(),
+    }));
+    node.install_runtimes(registry);
+
+    let ws = "acme";
+    let cid = "abc";
+    let admin = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+            "mcp:agent.config.set:call",
+        ],
+    );
+
+    // Seed the workspace default = the external stub via the REAL registry-validated write path.
+    agent_config_set(
+        &node,
+        &admin,
+        ws,
+        &AgentConfig {
+            default_runtime: Some(STUB.into()),
+            model_endpoint: None,
+        },
+    )
+    .await
+    .expect("admin sets the workspace default");
+
+    // Post an agent request with NO `runtime` (the /agent-with-default case).
+    let body = agent_request_body("do it", None, "run-oi");
+    post(
+        &node,
+        &admin,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+
+    drain_channel_agent_runs(&node, ws).await;
+
+    let result = worker_item(&node, &admin, ws, cid)
+        .await
+        .expect("the drain posted an agent_result");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json body");
+    assert_eq!(parsed["kind"], "agent_result");
+    // (a) the STORED external runtime actually ran (not the in-house default).
+    assert_eq!(
+        parsed["answer"], "external ran",
+        "the omitted-runtime run resolved and drove the workspace default (the stub), not in-house"
+    );
+    // (b) the label reflects the RESOLVED runtime, not the misleading `"default"`.
+    assert_eq!(
+        parsed["runtime"], STUB,
+        "agent_result.runtime must label the resolved runtime, not `default`"
     );
 }

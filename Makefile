@@ -51,6 +51,18 @@ BE_DIR  := rust
 UI_DIR  := ui
 NODE_BIN := node
 
+# Optional cargo features for the `node` binary in `make dev`/`make edge`. OFF by default (the
+# external agent is opt-in per its scope). Turn Open Interpreter on for the live UI with either:
+#   make dev EXTAGENT=1                       (shorthand → external-agent)
+#   make dev NODE_FEATURES=external-agent     (explicit; add more comma-separated features here)
+# When set, `make dev` ALSO checks `interpreter` is on PATH and warns if ZAI_API_KEY is unset (the
+# Open Interpreter run needs both — see docs/skills/external-agent/SKILL.md's "three gates").
+ifeq ($(EXTAGENT),1)
+NODE_FEATURES ?= external-agent
+endif
+NODE_FEATURES ?=
+NODE_FEATURE_FLAG := $(if $(NODE_FEATURES),--features $(NODE_FEATURES),)
+
 # The wasm guest components the node loads. `hello` is the S1 spine extension; the
 # node won't boot without it built (it reads the .wasm at startup). `hello-v2` is the
 # S2 hot-reload swap target. Both build to wasm32-wasip2 --release.
@@ -156,9 +168,14 @@ dev: build-wasm trusted-pubkey federation
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
+	@echo "node features → $(if $(NODE_FEATURES),$(NODE_FEATURES),<none> (external agent OFF; set EXTAGENT=1 to enable))"
+	@if [ -n "$(NODE_FEATURES)" ]; then \
+	  command -v interpreter >/dev/null 2>&1 || echo "⚠ external-agent on but 'interpreter' is not on PATH — Open Interpreter runs will fail"; \
+	  [ -n "$$ZAI_API_KEY" ] || echo "⚠ external-agent on but ZAI_API_KEY is unset — the model call will fail"; \
+	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 

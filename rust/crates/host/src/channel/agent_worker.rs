@@ -161,7 +161,12 @@ pub async fn drive_queued_run(
     // Reconstruct the poster as the co-trust routed principal — the run acts with the asker's
     // authority, bounded by the asker's grants (identical to `AgentInvokeRequest`'s hub-side rebuild).
     let poster = Principal::routed(poster_sub.clone(), ws.to_string(), poster_caps.clone());
-    let runtime_label = runtime.clone().unwrap_or_else(|| "default".to_string());
+    // The label must reflect the runtime that ACTUALLY runs — resolve it (explicit → workspace default
+    // → registry default) so an omitted `runtime` with a stored `open-interpreter-default` reads as
+    // that, not the misleading `"default"`. Same seam the run itself uses (no divergence).
+    let runtime_label =
+        crate::agent::resolve_effective_runtime_id(node, &node.runtimes(), ws, runtime.as_deref())
+            .await;
 
     match drive_run(
         node,

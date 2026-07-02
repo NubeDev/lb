@@ -1,6 +1,8 @@
 // The seeded AHU-1 demo scene — the look-scope hero shot (phase 1 exit gate).
 // Composes exactly the six hvac.* symbols: casing, OA damper, filter, coil, fan,
-// duct run — bindings onto simulator channels (data/simulator.ts).
+// duct runs — bindings onto simulator channels (data/simulator.ts).
+// Airflow reads left → right: OA duct → damper → filter → chw coil → supply fan → SA duct.
+// All coordinates are grid-aligned (tokens.grid.step = 8).
 
 import type { SceneDoc } from "../scene.types";
 
@@ -8,6 +10,92 @@ export const ahuDemo: SceneDoc = {
   v: 1,
   camera: "ortho-top",
   shapes: {
-    // TODO(phase 1): the full AHU-1 composition per symbols-scope.md family 1.
+    casing: {
+      type: "hvac.casing",
+      t: { x: 0, y: 0 },
+      props: { w: 320, h: 128, name: "AHU-1", label: "" },
+      bind: { status: { channel: "ahu1.sf1.running" } },
+    },
+    // outside-air run into the casing
+    "duct-oa": {
+      type: "hvac.duct",
+      t: { x: 0, y: 0 },
+      props: { points: [[-312, 0], [-160, 0]], width: 40, medium: "air", label: "" },
+      bind: { flow: { channel: "ahu1.sf1.speed" } },
+    },
+    // the internal airstream — continuous flow under the equipment (the "alive" spine)
+    "duct-int": {
+      type: "hvac.duct",
+      t: { x: 0, y: 0 },
+      props: { points: [[-160, 0], [160, 0]], width: 40, medium: "air", label: "" },
+      bind: { flow: { channel: "ahu1.sf1.speed" } },
+    },
+    // supply run out, with one elbow up to the riser
+    "duct-sa": {
+      type: "hvac.duct",
+      t: { x: 0, y: 0 },
+      props: {
+        points: [[160, 0], [264, 0], [264, 96]],
+        width: 40,
+        medium: "air",
+        label: "",
+      },
+      bind: { flow: { channel: "ahu1.sf1.speed" } },
+    },
+    oad: {
+      type: "hvac.damper",
+      t: { x: -120, y: 0 },
+      props: { width: 48, actuated: true, label: "OA damper" },
+      bind: { position: { channel: "ahu1.oad.position" } },
+    },
+    filter: {
+      type: "hvac.filter",
+      t: { x: -56, y: 0 },
+      props: { width: 48, stages: 1, label: "Filter" },
+      bind: { dp: { channel: "ahu1.filter.dp" } },
+    },
+    coil: {
+      type: "hvac.coil",
+      t: { x: 8, y: 0 },
+      props: { width: 48, medium: "chw", label: "CHW coil" },
+      bind: {
+        valve: { channel: "ahu1.chwv.valve" },
+        temp_in: { channel: "ahu1.rat" },
+        temp_out: { channel: "ahu1.sat" },
+      },
+    },
+    sf1: {
+      type: "hvac.fan",
+      t: { x: 96, y: 0 },
+      props: { diameter: 72, direction: "right", label: "SF-1" },
+      bind: {
+        running: { channel: "ahu1.sf1.running" },
+        speed: { channel: "ahu1.sf1.speed" },
+        fault: { channel: "ahu1.sf1.fault" },
+      },
+    },
+    // labels — one typeface, two sizes (look-scope §recipe)
+    "label-oa": {
+      type: "plan.label",
+      t: { x: -272, y: 40 },
+      props: { text: "OA", size: 14, label: "" },
+    },
+    "label-sa": {
+      type: "plan.label",
+      t: { x: 232, y: 96 },
+      props: { text: "SA", size: 14, label: "" },
+    },
+    "label-sat": {
+      type: "plan.label",
+      t: { x: 96, y: -88 },
+      props: { text: "SAT", size: 12, label: "" },
+      bind: { value: { channel: "ahu1.sat" } },
+    },
+    "label-dp": {
+      type: "plan.label",
+      t: { x: -56, y: -88 },
+      props: { text: "ΔP", size: 12, label: "" },
+      bind: { value: { channel: "ahu1.filter.dp" } },
+    },
   },
 };

@@ -78,6 +78,15 @@ so the component follows the app theme instead of shipping its own palette:
 - Theme-follow: `grep -c 'var(--card' dist/panel.css` / `grep -c 'var(--card' dist/nav-rail.css` → ≥1.
 - Green after fix: nav-rail 12/12, panel 7/7, `ui` unit 322/322, both editor gateway suites, `vite build`.
 
+## Follow-on: scoping makes the root see-through
+
+Scoping utilities under `.lb-panel` emits **descendant** selectors (`.lb-panel .bg-lbp-panel`).
+The panel surface carries BOTH `.lb-panel` and `bg-lbp-panel` on the *same* element, so the
+descendant selector never matches the root → the surface had **no background → transparent**.
+Fix: set the root's own base look **directly on the class** in `panel-theme.css`, not via a utility:
+`.lb-panel { background-color: hsl(var(--lbp-panel)); color: hsl(var(--lbp-fg)); }`. Descendant
+utilities (header, borders, …) still apply because they're genuine descendants.
+
 ## Lesson
 
 A Tailwind **library** stylesheet dropped into a Tailwind host must ship: **(1) utilities scoped

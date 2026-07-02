@@ -144,6 +144,37 @@ proving the omitted-runtime path is honored over the wire.
 # SettingsView.gateway (the sibling suite) — 3 passed, no regression.
 ```
 
+## UI follow-up (driving it from the running app — two real bugs found + fixed)
+
+Driving the actual channel `/agent` command from the browser surfaced two problems the automated tests
+didn't (the test gateway is default-only, and the label bug hid behind a `"default"` id):
+
+1. **`make dev` built the node feature-OFF.** The dev target ran `cargo run -p node` with no
+   `--features external-agent`, so the live node offered only `["default"]` — selecting
+   `open-interpreter-default` in Settings had nothing to resolve to, the run fell back to the
+   (unconfigured) in-house loop, and the card showed a useless "in-house agent". **Fix:** an opt-in
+   `NODE_FEATURES` / `EXTAGENT=1` knob on `make dev`/`make edge` (`cargo run -p node $(NODE_FEATURE_FLAG)`),
+   with a preflight that warns if `interpreter` isn't on PATH or `ZAI_API_KEY` is unset. Default stays
+   OFF (the feature is opt-in per scope). Run the live external agent with `make dev EXTAGENT=1`.
+2. **The `agent_result` label always read `"default"`.** The channel worker computed `runtime_label`
+   from the *raw* (omitted) runtime, so even a correctly-resolved external run was labelled "default"
+   in the card. **Fix:** a companion `resolve_effective_runtime_id` (same seam, resolves `None` → the
+   registry default id) that the worker uses for the label, so the label can never disagree with the
+   runtime that actually ran. Regression:
+   `channel_agent_worker_test::an_omitted_runtime_run_uses_and_labels_the_workspace_default` (8 green) —
+   a stub external default, omitted runtime → `answer:"external ran"` **and** `runtime:"open-interpreter-default"`.
+
+**Live end-to-end proof (feature-on node, provided Z.AI key, real channel `/agent` over the gateway):**
+with the workspace default set to `open-interpreter-default`, a `kind:"agent"` post with **no `runtime`**
+resolved to it and drove the real `interpreter` subprocess:
+
+```
+POST /channels/abc/messages  {"kind":"agent","goal":"What is 2+2? …","job":"r5"}   (no runtime)
+→ agent_result  {"runtime":"open-interpreter-default","answer":"2 plus 2 equals 4."}
+# vs. explicit runtime:"default" on the same node → "no in-house model is configured …" (proves it
+# was OI, not the in-house loop, that answered the omitted-runtime run).
+```
+
 ## Live verification (the "working in the UI" acceptance)
 
 Built `cargo build -p node --features external-agent`; booted with the provided Z.AI GLM-4.6 key as

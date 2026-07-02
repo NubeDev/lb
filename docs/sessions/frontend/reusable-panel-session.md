@@ -132,6 +132,25 @@ This generalises the earlier preflight lesson (`nav-rail.css`) to utilities and 
 Re-verified after fix 2: nav-rail 12/12, panel 7/7, ui unit 322/322, both editor gateway suites
 green, `vite build` clean.
 
+## Fix 3 — the panel was SEE-THROUGH (scoped utilities don't match their own root)
+
+Symptom: the panel surface rendered **transparent** — header/toolbar/content floated over the
+dashboard behind it.
+
+Root cause: fix 2 scoped utilities as `@layer utilities { .lb-panel { @tailwind utilities } }`, which
+emits **descendant** selectors — `.lb-panel .bg-lbp-panel`. But the panel surface element carries
+BOTH `.lb-panel` and `bg-lbp-panel` on the **same** element, so `.lb-panel .bg-lbp-panel` (a
+descendant combinator) never matches the root itself → no background → see-through. Scoped utilities
+by construction can't style the element that carries the scope class.
+
+Fix: the surface owns its base look **directly on `.lb-panel`** in `panel-theme.css`, not via a
+utility: `background-color: hsl(var(--lbp-panel)); color: hsl(var(--lbp-fg));`. Descendant utilities
+(header `bg-lbp-secondary`, borders, etc.) still work because they ARE descendants. Verified the app
+bundle carries `background-color:hsl(var(--lbp-panel))` on `.lb-panel`; panel 7/7, ui 322/322, editor
+gateway green. Lesson added to the debugging entry: when you scope a library's utilities under a root
+class, that root's OWN base styles (surface bg, text) must be set directly on the class, since the
+scoped (descendant) utilities won't match it.
+
 ## Follow-ups (not blocking)
 
 - The 4 baseline gateway failures + 2 baseline tsc errors pre-date this work; not chased.

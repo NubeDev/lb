@@ -43,6 +43,19 @@ cd rust
 cargo build -p node --features external-agent
 ```
 
+**Running it from the browser UI:** `make dev` builds the node **feature-OFF by default** — so the live
+UI would offer only `["default"]` and an `/agent` run can't reach Open Interpreter. Turn it on for the
+dev loop with the opt-in knob (also warns if `interpreter` / `ZAI_API_KEY` are missing):
+
+```bash
+ZAI_API_KEY=… make dev EXTAGENT=1          # or: make dev NODE_FEATURES=external-agent
+```
+
+If you already have a `make dev` node running, it is the feature-off build — **restart it** with
+`EXTAGENT=1` (the node does not hot-reload Rust). Confirm with `lb call agent.runtimes '{}'` → the list
+must include `open-interpreter-default`; if it shows only `["default"]`, you're still on a feature-off
+node.
+
 At boot the node prints what it registered (from `node/src/external_agent.rs::install`):
 
 ```
