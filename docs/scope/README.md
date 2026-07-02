@@ -157,6 +157,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
+- `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
+  its docs live with it (nothing in this central tree beyond this pointer), exactly like
+  `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of
+  ROS (Rubix) REST
+  appliances as caps-gated resources — CRUD over the `connection → network → device → point` tree
+  (`ros|network|device|point.list|get|create|update|delete`), a **reusable poller**
+  (`Poller/Source/Sink`) that appends point present-values to `series` via `ingest.write` with poll
+  enable/disable AND-gated at every tree level, and a must-deliver `point.write` staged through the
+  outbox — plus a federated shadcn/Tailwind-v4 page. The canonical "IoT is one caller" bridge that
+  keeps ROS vocabulary out of core (vendors `rust-ros`, ported to async).
 - `jobs/` — the SurrealDB-native durable job queue / resumable session (S5). Also
   `job-control-scope.md` (the **observe/control surface** — `job.list|get|cancel|retry|watch`,
   owner-routed through the owning service's chokepoint so callers can see/stop/recover durable work

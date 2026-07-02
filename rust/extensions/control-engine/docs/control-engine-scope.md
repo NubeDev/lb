@@ -67,10 +67,12 @@ use it." A raw proxy would keep `@nube/ce-wiresheet` byte-for-byte unforked but 
 un-gated-by-default host transport surface and gives agents nothing (they can't drive a raw
 REST/WS socket through the cap system). Making `ce.*` the one surface means the wiresheet, the
 CLI, the central agent, and other extensions all drive CE through the same gate. The cost —
-**re-pointing `@nube/ce-wiresheet`'s transport onto the bridge** — is a real fork of the package's
-core (its `src/lib/` rest/ws/wire/store layer). The user accepted this ("fork if it makes it
-better, or make a branch"): we vendor it to `packages/ce-wiresheet` and maintain a bridge-transport
-layer there, **approval-gated** on every change.
+**re-pointing `@nube/ce-wiresheet`'s transport onto the bridge** — is real, but we own
+`NubeIO/ce-wiresheet`, so it is **not a divergent fork**: we cut a generic `EngineTransport`
+seam on an **upstream branch** (`lb-transport`, mergeable to `main` — slice S1), vendor a
+byte-identical snapshot of that branch to `packages/ce-wiresheet` (S2, **approval-gated**
+pin bumps, never in-place edits), and keep the LB-specific `BridgeTransport` in this
+extension's own `ui/` folder (S7), injected via the seam.
 
 **Rejected — `ce-zenoh` direct transport:** implement `ce-client-rust`'s `zenoh` feature so the sidecar
 speaks Zenoh straight to a CE with `ce-ext-core`'s Zenoh extension. It couples us to a CE-specific
@@ -161,7 +163,7 @@ This invariant is **enforced by a regression test**, not just documented (see Te
 **Editing a remote appliance's wiresheet from the cloud UI:**
 
 1. An admin registers an appliance: `ce.appliance.add { id:"plant-1", mode:"appliance",
-   node:"edge-7", base:"http://127.0.0.1:7878" }` (gated `mcp:control-engine.appliance.add:call`).
+   node:"edge-7", base:"http://127.0.0.1:7979" }` (gated `mcp:control-engine.appliance.add:call`).
    A `ce_appliance:{ws}:plant-1` record persists.
 2. A user opens the **Control Engine** page (the vendored `@nube/ce-wiresheet`, mounted federated).
    It picks `plant-1` and calls `ce.tree { appliance:"plant-1" }` through the host bridge.
@@ -178,6 +180,30 @@ This invariant is **enforced by a regression test**, not just documented (see Te
 7. A ws-B user calling `ce.tree { appliance:"plant-1" }` is denied at gate 1 (not their workspace)
    — the appliance is invisible and unreachable across the wall.
 
+## Build plan — eight slices (the detailed asks)
+
+The scope is built in eight vertical slices, each its own doc in this folder and each an
+implementing session's ask (HOW-TO-CODE takes one slice + the current stage). Each slice
+carries its own deliverables, file map, mandatory tests, and exit gate — the table is the
+map, the slice docs are the detail.
+
+| # | Slice | Repo | Depends on | Exit gate (short form) |
+|---|---|---|---|---|
+| S1 | [`slice-1-wiresheet-transport-seam.md`](slice-1-wiresheet-transport-seam.md) — the `EngineTransport` seam, upstream branch `lb-transport` | **NubeIO/ce-wiresheet** | — | `CeEditor` runs against an injected `MockTransport`, no network; standalone byte-identical |
+| S2 | [`slice-2-vendor-wiresheet.md`](slice-2-vendor-wiresheet.md) — vendor the branch snapshot to `packages/ce-wiresheet` | LB | S1 | package tests green in LB; pin + approval rule in README; zero LB edits to vendored files |
+| S3 | [`slice-3-sidecar-local-mode.md`](slice-3-sidecar-local-mode.md) — sidecar crate, manifest, pinned `ce-client-rust`, `ce.tree`/`ce.schema`, both test tiers (`ce_fake.rs` + real-engine opt-in) | LB | — (parallel with S1/S2) | local read verbs green + deny tests + one real-engine run |
+| S4 | [`slice-4-appliance-registry-routing.md`](slice-4-appliance-registry-routing.md) — `ce_appliance` registry, `appliance.add/list/remove`, local-vs-routed resolution | LB | S3 | two-node routed `ce.tree` green + full isolation/deny matrix + offline fail-loud |
+| S5 | [`slice-5-write-verbs.md`](slice-5-write-verbs.md) — the seven v1 write verbs, local + routed | LB | S4 | all verbs green local, `ce.patch` green routed, per-verb deny tests |
+| S6 | [`slice-6-ce-watch-cov.md`](slice-6-ce-watch-cov.md) — `ce.watch` on the extension-watch primitive (or the series-bridge fallback), the `cov`/`topology`/`schema` frame contract, opt-in historian | LB | S4 (+ extension-watch, with fallback) | routed watch green end to end: subscribe → arm → frame → SSE |
+| S7 | [`slice-7-bridge-transport-ui.md`](slice-7-bridge-transport-ui.md) — `BridgeTransport` + the federated page + appliance picker | LB | S1+S2, S3–S5, S6 | `pnpm test:gateway` suite green; manual cloud-UI-edits-real-engine run |
+| S8 | [`slice-8-e2e-hardening-ship.md`](slice-8-e2e-hardening-ship.md) — core-ignorance test, latency/backpressure measurement, `SKILL.md`, public promotion | LB | all | all suites + core-ignorance green; skill verified live; `public/` promoted |
+
+**Critical path:** S3 → S4 → S5/S6 → S7 → S8, with S1 → S2 running in parallel on the
+wiresheet side (they join at S7). The external repos in play: `NubeIO/ce-wiresheet` (S1 —
+the only repo we branch), `NubeIO/ce-client-rust` (consumed as a pinned git dep, no branch
+needed), `ce-studio` (the runnable real engine for the opt-in test tier — not a dependency,
+a test harness).
+
 ## Testing plan
 
 Per `scope/testing/testing-scope.md`, with the mandatory categories:
@@ -193,9 +219,10 @@ Per `scope/testing/testing-scope.md`, with the mandatory categories:
   `cross_node_routing` pattern) prove the local **and** the routed-appliance path against the same
   code. The CE itself is the **one sanctioned true-external** (a C++20 engine we can't build in
   Rust CI): stubbed behind `ce-client-rust`'s `ControlEngine` trait in **one** named file
-  (`ce_fake.rs`), OR — preferred where feasible — a tiny **real** localhost HTTP/WS server
-  speaking the CE `/api/v0` + `/ws` subset so even the `ce-client-rust` transport is real. Pick one,
-  name it, keep it to one file behind the trait.
+  (`ce_fake.rs`) for CI, PLUS an **opt-in real-engine tier** — `ce-studio` ships the engine
+  prebuilt (`engine.tar.gz`, ce-rest on `:7979`), so an env-gated (`CE_ENGINE_BUNDLE`) integration
+  suite runs the same tests against the real engine and the real `ce-client-rust` REST/WS
+  transport on a dev box (S3 builds both tiers).
 - **Core-ignorance invariant (mandatory, prove-absence).** A `ce_core_ignorance_test` greps the
   host/core crates (`rust/crates/host`, `rust/crates/mcp`, `rust/crates/caps`, `rust/role/gateway`,
   …) and asserts **no** live reference to `control-engine`/`ce_appliance`/CE concepts outside the
@@ -211,11 +238,12 @@ Per `scope/testing/testing-scope.md`, with the mandatory categories:
 
 ## Risks & hard problems
 
-- **Forking `@nube/ce-wiresheet`'s transport is the biggest lift.** Its `src/lib/` (rest/ws/wire/
-  store) assumes a direct CE REST + **binary** WS. Re-pointing it onto `bridge.call('ce.*')` +
-  `bridge.watch` means re-encoding the binary COV codec into JSON frames and keeping the vendored
-  copy in sync with upstream — under the **approval-gated** update rule. Contain the change to a
-  single swappable transport module in the package.
+- **Re-pointing `@nube/ce-wiresheet`'s transport is the biggest lift.** Its `src/lib/` (rest/ws/
+  wire/store, ~1.3k lines) assumes a direct CE REST + **binary** WS with module-level state
+  (`rest.ts` `BASE`, `ws.ts` owning the socket/session/reconnect). Mitigated by owning the upstream
+  repo: the seam is an upstream branch (S1), the vendored copy stays byte-identical (S2), the
+  bridge transport is LB-side injection (S7) — so upstream sync is a pin bump, not a 3-way merge.
+  The binary-COV→JSON re-encode is bounded by S6's frame contract (`cov`/`topology`/`schema` kinds).
 - **Interactive latency over the routed hop.** Wiresheet editing against a remote appliance pays
   a Zenoh round trip per command; COV backpressure over the bus. Needs measuring; batch/debounce
   where CE allows.
@@ -247,12 +275,17 @@ with the rejected alternative, so the implementing session builds against them (
   `ingest.write`→`series.watch` bridge and migrates to `ce.watch` when the primitive ships — CE is
   never blocked on it. *Rejected: a bespoke `ce/{ws}/{id}/cov` subject + CE-specific SSE route* —
   it would put CE knowledge in core, breaking the 100%-extension invariant.
-- **Vendoring → `packages/ce-wiresheet` as a copied `workspace:*` package** (mirrors
-  `packages/nav-rail`), so our approval-gated transport fork lives in one build graph with no
-  publish/link dance. Track upstream by recording the imported `ce-wiresheet` commit in the
-  package README and re-syncing deliberately (approval-gated), **not** a live git submodule (a
-  submodule fights the workspace resolver and lets upstream drift in unreviewed). *Rejected:
-  submodule/branch of the external repo.*
+- **Wiresheet fork strategy → seam upstream, snapshot vendored, bridge LB-side** (revised
+  once we confirmed we own `NubeIO/ce-wiresheet`). (1) The generic `EngineTransport` seam is a
+  **branch of the upstream repo** (`lb-transport`), a pure refactor kept mergeable to `main`
+  (S1). (2) LB vendors that branch **byte-identical** into `packages/ce-wiresheet` as a
+  `workspace:*` package (mirrors `packages/nav-rail`), pinned by commit SHA in the package
+  README; re-sync is an approval-gated re-copy + pin bump — LB never edits vendored files (S2).
+  (3) The LB `BridgeTransport` lives in `rust/extensions/control-engine/ui/`, outside the
+  vendored package, injected via the `CeEditor` `transport` prop (S7). *Rejected: carving the
+  seam inside the vendored copy* — a permanently divergent fork, every upstream sync a 3-way
+  merge. *Rejected: a live git submodule* — fights the workspace resolver, lets upstream drift
+  in unreviewed.
 - **`ce-client-rust` → pinned git dependency** (reproducible, still update-with-approval), with a
   path dep as the local-dev-only override when both trees are checked out side by side. *Rejected:
   a bare path dep as the committed form* — non-reproducible off this machine.
