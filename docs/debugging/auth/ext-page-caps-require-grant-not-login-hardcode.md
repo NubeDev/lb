@@ -48,6 +48,26 @@ because `resolve_subject_caps` expanded a held `role:X` grant only via `role_cap
    the minted token's caps (best-effort — a store hiccup never fails login; the `dev_claims`
    wildcard base still mints a working session).
 
+### The bug that made it still return 0 caps: a subject-name mismatch
+
+After (1)–(3), an admin STILL resolved to 0 caps. Root cause: grants are stored under the **bare**
+user name — the boot seed and the first-member bootstrap both do
+`grant_assign(Subject::User(sub.strip_prefix("user:")), …)` → subject `user:ada`'s grant row is keyed
+`user:ada` from `Subject::User("ada")`. But `routes/login.rs` called `resolve_caps(ws, req.user)` with
+the **`user:`-prefixed** form, and `resolve_caps` re-wraps its arg as `Subject::User(arg)` →
+`Subject::User("user:ada")` → key `user:user:ada` → matches **zero** rows. So even the user's own
+`role:member`/`role:workspace-admin` grants didn't resolve, let alone the role's folded ext caps.
+Fixed by stripping an optional `user:` prefix before `resolve_caps` (grants live under the bare name).
+This was the last mile: with it, the dev token resolves **12** `mcp:control-engine.*:call` caps and
+`/mcp/call control-engine.tree` returns the live engine's real tree.
+
+### Also required for the callback path: `LB_GATEWAY_URL` in `make dev`
+
+The registry verbs (`appliance.*`) reach the store via the sidecar's host callback, which needs
+`LB_GATEWAY_URL` injected at spawn (`install_native` reads it from the node's env). The `make dev`
+(and `cloud`) recipe set only `LB_GATEWAY_ADDR`, not `LB_GATEWAY_URL`, so every callback failed with
+"no callback address". Fixed by adding `LB_GATEWAY_URL=$(GW_URL)` to both recipes.
+
 ## Proof (real gateway, e2e)
 
 The dev token now carries all `mcp:control-engine.*:call` caps resolved from the grant store (not a

@@ -80,7 +80,13 @@ pub async fn login(
     // `workspace-admin` role, and any admin resolves them here. The `dev_claims` wildcard set stays
     // as the base (back-compat); resolved grants are unioned on top. Best-effort — a store hiccup
     // never fails the login (the base caps still mint a working dev session).
-    if let Ok(resolved) = lb_host::resolve_caps(&gw.node.store, &req.workspace, &req.user).await {
+    // Grants are stored under the BARE user name (the seed + first-member bootstrap both
+    // `grant_assign(Subject::User(sub.strip_prefix("user:")), …)`), so resolve with the bare name —
+    // `resolve_caps` re-wraps it as `Subject::User`. Passing the `user:`-prefixed form would build
+    // `Subject::User("user:ada")` and match zero grant rows (the bug that made an admin resolve to no
+    // caps → every installed-extension page 403'd).
+    let bare_user = req.user.strip_prefix("user:").unwrap_or(&req.user);
+    if let Ok(resolved) = lb_host::resolve_caps(&gw.node.store, &req.workspace, bare_user).await {
         claims.caps.extend(resolved);
         claims.caps.sort();
         claims.caps.dedup();

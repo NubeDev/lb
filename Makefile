@@ -208,7 +208,7 @@ dev: build-wasm trusted-pubkey federation $(if $(CE_BASE),control-engine,)
 	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -276,7 +276,7 @@ cloud: build-wasm trusted-pubkey federation
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.
