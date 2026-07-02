@@ -1,7 +1,7 @@
 # Session — thecrew: the lift, playground → LB extension (graphics-canvas phases 1–2)
 
 - Topic: frontend / graphics-canvas
-- Status: done (2026-07-02)
+- Status: **shipped** — published + installed + driven live in a browser (Session 2, 2026-07-02)
 - Scope (the ask): `rust/extensions/thecrew/docs/thecrew-extension-scope.md`
   (parent, authoritative for schema/engine/phases 3–5:
   `docs/scope/frontend/graphics-canvas-scope.md`)
@@ -127,6 +127,94 @@ Rust: `cargo build --workspace` ✓, `cargo fmt --check` ✓, `cargo test` (thec
 Federation: `./build.sh` emits `ui/dist/remoteEntry.js` (1.9 MB; React external, three.js bundled,
 both `mountPage`+`mountWidget` present, CSS inlined). Hot-reload: both mounts return an unmount that
 empties the element (stateless), asserted in `mount.test.tsx`.
+
+---
+
+# Session 2 — publish + install + drive live (tested → shipped)
+
+Session 1 left thecrew **tested** but never PUBLISHED into a running node or driven in a real browser.
+This session finishes that: publish the signed artifact, install it with the requested grant, seed the
+AHU-1 demo through the real `assets.*`/`ingest` verbs, and verify LIVE in a built shell — the page AND
+the read-only dashboard widget — with green Playwright e2e + screenshots.
+
+## What shipped (live path)
+
+- **Publish/install is the generic `make publish-ext EXT=thecrew` path** (pack the signed artifact →
+  `POST /extensions` → verified+installed+loaded → deploy `ui/dist` to `extensions-ui/thecrew/`).
+  Confirmed live: HTTP 204, `GET /extensions` shows the `Graphics` `[ui]` slot + the `Scene`
+  `[[widget]]` tile, and `/extensions/thecrew/ui/remoteEntry.js` serves 200 at the exact path the
+  manifest `entry` resolves to (`remoteEntry.js`, no `assets/` prefix — self-consistent).
+- **Finding 3 resolved (the real save/load blocker):** the page bridge (`POST /mcp/call`) authorizes
+  against the **logged-in user's** caps, NOT the install grant. The dev-login `member_caps()` carried
+  `store:doc/*:write`/`mcp:*.write` wildcards but **none of the exact `assets.*` verb caps** nor
+  `series.watch` — so a live scene load/save/live-feed 403'd. Added the existing caps
+  `mcp:assets.{get_doc,put_doc,list_docs}:call` + `mcp:series.watch:call` to `member_caps`
+  (`rust/role/gateway/src/session/credentials.rs`) — **existing verbs, a grant-config change, zero
+  core additions** (proof-panel's precedent: "dev claims +mcp:…"). Gateway crate tests 13/0 after;
+  the TheCrew deny tests still deny (they mint a narrower `/_seed/session` token, not `member_caps`).
+- **`make seed-thecrew` + `seed-demo.sh`** (parent scope Open question 4, "first-run create demo
+  scenes"): seed the AHU-1 scene doc (`assets.put_doc`, id `scene:ahu-1`, content_type json, tag
+  `scene`) + its 8 bound `ahu1.*` series (`ingest`) + a read-only "Graphics Scene" dashboard
+  (`dashboard.save`). All through the REAL host verbs (no fakes); idempotent; `docs/ahu-1.scene.json`
+  is the canonical demo scene (mirrors `scene/demo/ahu-demo.ts`).
+
+## Two live-only bugs (green in unit+gateway, broke in the real browser) — found + fixed
+
+1. **`process is not defined`** on remote load — three.js/@react-three/fiber (bundled here) read
+   `process.env.NODE_ENV`, which a Vite **lib** build doesn't inject. Fixed with `define` in
+   `vite.config.ts`. [debug](../../debugging/extensions/federated-lib-build-leaks-process-env-node-env.md)
+2. **`remote does not export a \`mount\` function`** — the shell's `pickMount` wants the page export
+   named **`mount`** (frozen contract), but thecrew exported `mountPage`. Fixed: export `mount` +
+   `mountPage` alias. [debug](../../debugging/extensions/federated-page-export-must-be-named-mount.md)
+
+Both were invisible to Session 1's 50 unit + 6 gateway tests (Node/jsdom has `process`; the unit
+`mount.test.tsx` imports `mountPage` directly, bypassing `pickMount`). The honest guard is the
+live-shell e2e — added this session.
+
+## Live verification (real Chromium, built shell :4173, real node :8080)
+
+- `ui/e2e/thecrew.spec.ts` (**1/1 green**): login → **Graphics** nav slot → federated page mounts
+  in-process (no `process`/hook/module-specifier errors) → scene picker lists **AHU-1** (via
+  `assets.list_docs`, `scene:` prefix) → select → title populates → **SF-1's live speed `1800`**
+  reaches the PropertyRail (the same value that spins the impeller in `useFrame`) via `series.latest`
+  over the bridge → **drag** SF-1 (store `nudge`) → **Save** (`assets.put_doc`) → status "saved" →
+  **reload** the scene clean. Screenshot: `docs/shots/graphics-ahu-1-live.png` (full airflow train
+  rendered with live values: ΔP 0.4, SAT 14.1, coil 22.4°/14.1°, SF-1 running ring).
+- `ui/e2e/thecrew-widget.spec.ts` (**1/1 green**): open the seeded "Graphics Scene" dashboard → the
+  **`ext:thecrew/scene` cell mounts in-process**, renders the scene `<canvas>` (NOT the empty state),
+  and carries **NO persistence bar / Save button** (read-only widget tier). Screenshot:
+  `docs/shots/scene-widget-dashboard.png`.
+- Test seams (UI-layer, not fakes): `window.__tcStore` exposed in `mountPage` (deterministic
+  select/nudge — WebGL pointer-picking is unreliable headless; real save still flows through the
+  bridge); `mountWidget` now also reads `sceneId` from `ctx.vars` (the dashboard's `ExtWidget` passes
+  `vars`; `options`/`binding` are `{}` — see finding below). Contract `WidgetCtx` fields made optional.
+
+## New findings surfaced (Session 2) — STOP-and-surfaced, not built
+
+5. **A Vite lib federated remote must define `process.env.NODE_ENV` itself** (bug 1 above). A shared
+   federation-remote vite preset carrying it would stop every new bundling extension rediscovering it.
+6. **The federation PAGE export must be named `mount`** (bug 2). Consider a unit assertion that the
+   remoteEntry has a `mount` export, to fail fast without a browser.
+7. **The dashboard PanelEditor source picker dropped the "Extension widgets" group.** A concurrent viz
+   panel-editor rework superseded `WidgetBuilder.tsx` (which had the `widget` group) with
+   `editor/PanelEditor` → `QueryTab`, whose picker renders only `series`/`live`/`sql`/`extension` — so
+   a packaged `[[widget]]` tile **cannot be added through the live builder UI today**. This is core
+   dashboard-editor surface (not thecrew), so per "zero core additions, STOP and surface" I seeded the
+   `ext:thecrew/scene` cell directly via `dashboard.save` to exercise the identical render path.
+   Follow-up: restore the `widget` `PickerGroup` in `QueryTab` (`extWidgetEntries` still exists).
+8. **`ExtWidget.tsx` passes `options:{}`/`binding:{}` — a cell's `options.sceneId` never reaches the
+   widget.** The scope's intended cell shape is `{view, options:{sceneId}}`, but the renderer forwards
+   only `ctx.vars`. Interim: thecrew reads `sceneId` from `ctx.vars` (a `const` dashboard var) too; the
+   generic fix is `ExtWidget` forwarding `cell.options` into the widget ctx (a dashboard-core change).
+9. **SurrealKV `Invalid revision` on `assets.list_docs` after repeated writes** — the same pre-existing
+   persistent-engine bug proof-panel hit ([store/surrealkv-invalid-revision-on-drain-reread.md](../../debugging/store/surrealkv-invalid-revision-on-drain-reread.md)).
+   Repeated ingest/save cycles corrupted the on-disk store; the scan verb (`list_docs`) threw while a
+   keyed `get_doc` still worked. Live demo runs on the **in-memory** engine (no `LB_STORE_PATH`),
+   matching proof-panel's mitigation. Not a thecrew bug.
+
+The widget cell's canvas renders visually blank in a small grid cell (camera/viewport fit) though the
+doc loads and the tier/read-only contract hold — the parent scope's "WebGL contexts/fit per dashboard
+cell" risk; noted, functional contract proven.
 
 ## Not built (parent-scope phases 3–5)
 
