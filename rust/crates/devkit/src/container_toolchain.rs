@@ -112,8 +112,9 @@ impl Toolchain for ContainerToolchain {
         // Inserted right after the cargo subcommand (`build`), before the caller's args, so it
         // applies to `cargo build ...` without disturbing pnpm/other programs.
         if program == "cargo" {
-            docker_args
-                .push(r#"--config=target.x86_64-unknown-linux-gnu.linker="x86_64-linux-gnu-gcc""#.into());
+            docker_args.push(
+                r#"--config=target.x86_64-unknown-linux-gnu.linker="x86_64-linux-gnu-gcc""#.into(),
+            );
         }
         docker_args.extend(args.iter().map(|a| a.to_string()));
 

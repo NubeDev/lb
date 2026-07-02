@@ -71,6 +71,22 @@ Green: `cargo test -p lb-devkit -p lb-host --test devkit_test --test devkit_e2e_
 --test devkit_container_build_test` (12/12), `cargo build --workspace`,
 `cargo fmt --all -- --check`.
 
+## Follow-up (2026-07-03): host `.cargo/config.toml` zig linker leaked into the image
+
+First real container build after `make docker-build-image` failed with
+`linker /home/user/.local/bin/zigcc not found` — the mounted `rust/` workspace carries a
+host-only `.cargo/config.toml` pinning the x86_64 linker + `CC/AR/RANLIB` at this box's
+personal zig shims, which don't exist in the image. `ContainerToolchain` runs `cargo`
+directly (not via `lb-build`), so it never applied the `--config`/CC overrides that the
+cross-build path uses. Fix: `ContainerToolchain::run` now exports real-GCC `CC/AR/RANLIB`
+via `-e` and, for `cargo`, injects
+`--config=target.x86_64-unknown-linux-gnu.linker="x86_64-linux-gnu-gcc"` (a config
+`linker` can't be beaten by env — only by `--config`). Debugged in
+`../../debugging/extensions/devkit-container-build-inherits-host-zig-linker.md`. Verified:
+the exact failing `cargo build --target wasm32-wasip2 --release` now finishes in-container
+(artifact host-uid-owned) and `devkit_container_build_test` stays 5/5 green — the native
+parity test is the regression guard (host-triple link is the path that used to break).
+
 ## Open follow-ups (from the scope doc, unresolved by design)
 
 - Runtime target is Docker-only for v1 (no Podman abstraction yet).

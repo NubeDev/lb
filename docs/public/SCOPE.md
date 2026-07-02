@@ -652,6 +652,13 @@ A vertical slice through every layer, building the asset substrate the AI workfl
 - **Skills as versioned, grant-gated assets** — `skill:{id}@{version}` immutable per version
   (rollback = a prior version); `load_skill` returns the body **only when the workspace granted the
   skill** (`grant:skill/{id}` relation) — the §6.12 "load only when granted" rule. See `skills/skills.md`.
+- **Agent memory — durable, access-walled** (2026-07-03) — the workspace agent's learned knowledge
+  in the MEMORY.md shape: a SCHEMAFULL `agent_memory` table keyed `{ws, scope, slug}` (scopes
+  `workspace` + `member:{user}`, the member scope derived from the principal — never an argument),
+  four verbs `agent.memory.list|get|set|delete` (one cap each + a distinct workspace-scope write
+  gate), a derived index injected at session start into both runtimes (framed as recalled background),
+  bounds (desc ≤ 120, body ≤ 8 KB) + a best-effort secret lint. Memory changes quality, never
+  authority. See `agent-memory/agent-memory.md`.
 - **Skills — the core (developer) tier** (2026-07-03) — a second tier alongside user skills:
   `docs/skills/*/SKILL.md` embedded at build time, seeded at boot as immutable
   `skill:core.<name>@<node-version>` in a reserved namespace (`_lb_skills`), read-only to users

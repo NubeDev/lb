@@ -1,0 +1,191 @@
+/* The GenUI stylesheet — SCOPED under `.gu-root`, so it can NEVER touch the host app (the
+ * @nube/source-picker / @nube/nav-rail discipline; genui-scope "CSS discipline"). No preflight, no
+ * global utilities: only hand-authored `gu-*` classes, every rule prefixed `.gu-root`. Colors alias the
+ * host's shadcn vars with dark fallbacks, so a genui widget follows the app theme; a host overrides by
+ * setting `--gu-*` on any ancestor. Enum props (variant/align/…) map to these classes — there is NO
+ * user-controlled class/style injection (promotion-checklist item 5). */
+
+.gu-root {
+  --gu-bg: var(--card, hsl(222 14% 11%));
+  --gu-fg: var(--card-foreground, hsl(210 20% 92%));
+  --gu-muted: var(--muted-foreground, hsl(215 14% 58%));
+  --gu-border: var(--border, hsl(215 14% 24%));
+  --gu-accent: var(--primary, hsl(199 89% 48%));
+  --gu-ok: var(--gu-accent);
+  --gu-warn: hsl(38 92% 50%);
+  --gu-bad: hsl(0 72% 51%);
+  --gu-radius: 0.5rem;
+
+  color: var(--gu-fg);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.gu-root.gu-surface {
+  height: 100%;
+  width: 100%;
+  overflow: auto;
+  padding: 0.5rem;
+  box-sizing: border-box;
+}
+
+/* Layout */
+.gu-root .gu-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.gu-root .gu-stack.gu-horizontal {
+  flex-direction: row;
+  align-items: stretch;
+}
+.gu-root .gu-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(var(--gu-cols, 2), minmax(0, 1fr));
+}
+.gu-root .gu-card {
+  background: var(--gu-bg);
+  border: 1px solid var(--gu-border);
+  border-radius: var(--gu-radius);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.gu-root .gu-card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gu-muted);
+}
+
+/* Text / markdown */
+.gu-root .gu-text {
+  margin: 0;
+}
+.gu-root .gu-markdown > *:first-child {
+  margin-top: 0;
+}
+.gu-root .gu-markdown > *:last-child {
+  margin-bottom: 0;
+}
+.gu-root .gu-markdown a {
+  color: var(--gu-accent);
+}
+
+/* Stat */
+.gu-root .gu-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.gu-root .gu-stat-label {
+  font-size: 0.75rem;
+  color: var(--gu-muted);
+}
+.gu-root .gu-stat-value {
+  font-size: 1.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.gu-root .gu-stat.gu-tone-ok .gu-stat-value {
+  color: var(--gu-ok);
+}
+.gu-root .gu-stat.gu-tone-warn .gu-stat-value {
+  color: var(--gu-warn);
+}
+.gu-root .gu-stat.gu-tone-bad .gu-stat-value {
+  color: var(--gu-bad);
+}
+
+/* Tag / badge */
+.gu-root .gu-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--gu-border);
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--gu-fg);
+}
+.gu-root .gu-tag.gu-tone-ok {
+  border-color: var(--gu-ok);
+  color: var(--gu-ok);
+}
+.gu-root .gu-tag.gu-tone-warn {
+  border-color: var(--gu-warn);
+  color: var(--gu-warn);
+}
+.gu-root .gu-tag.gu-tone-bad {
+  border-color: var(--gu-bad);
+  color: var(--gu-bad);
+}
+
+/* Table */
+.gu-root .gu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+.gu-root .gu-table th,
+.gu-root .gu-table td {
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid var(--gu-border);
+}
+.gu-root .gu-table th {
+  color: var(--gu-muted);
+  font-weight: 600;
+}
+
+/* Charts */
+.gu-root .gu-chart {
+  width: 100%;
+  min-height: 3rem;
+}
+.gu-root .gu-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Controls */
+.gu-root .gu-btn {
+  appearance: none;
+  border: 1px solid var(--gu-border);
+  background: var(--gu-bg);
+  color: var(--gu-fg);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.gu-root .gu-btn:hover {
+  border-color: var(--gu-accent);
+}
+.gu-root .gu-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.gu-root .gu-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+.gu-root .gu-range {
+  width: 100%;
+}
+
+/* Placeholders (normalize + defense-in-depth) */
+.gu-root .gu-missing,
+.gu-root .gu-unknown,
+.gu-root .gu-empty,
+.gu-root .gu-placeholder {
+  border: 1px dashed var(--gu-border);
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--gu-muted);
+}

@@ -1,6 +1,10 @@
 # Agent-memory scope — durable, access-walled agent memory (the MEMORY.md shape)
 
-Status: scope (the ask). Promotes to `public/agent-memory/` once shipped.
+Status: **SHIPPED 2026-07-03** (was: scope). Promoted to `../../public/agent-memory/agent-memory.md`;
+session `../../sessions/agent-memory/agent-memory-session.md`; skill
+`../../skills/agent-memory/SKILL.md`. All "Decided" items realized (index overflow = inject-cap-only;
+external `set` opt-in; one shared pool per ws + member scope; UI freshness = plain list). The scope is
+retained as the ask-of-record.
 
 Give the workspace agent (in-house loop and external ACP runtimes alike) a **persistent memory** in
 the proven MEMORY.md shape: many small **fact records**, each with a one-line description, plus a

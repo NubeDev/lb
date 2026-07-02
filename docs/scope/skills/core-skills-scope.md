@@ -1,6 +1,9 @@
 # Skills scope — core (developer) skills + the user skill tier
 
-Status: scope (the ask). Promotes to `public/skills/` once shipped.
+Status: **SHIPPED 2026-07-03** (was: scope). Promoted to `../../public/skills/skills.md`; session
+`../../sessions/skills/core-skills-session.md`; skill `../../skills/skills/SKILL.md`. All "Decided"
+items realized as built (reserved `_lb_skills` namespace, default grant set at creation, republish
+un-hides, persona-as-pinned-catalog-entry). The scope is retained as the ask-of-record.
 
 The workspace skill asset shipped in S4 (`skills-scope.md`) gives users a grant-gated, versioned
 skill they author themselves. This scope adds the **second tier**: **core skills — authored by the

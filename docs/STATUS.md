@@ -16,6 +16,37 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): agent memory — durable, access-walled (branch `ce-node-wiring-v2`).**
+The workspace agent's **learned** knowledge (skills are the *taught* half), in the MEMORY.md shape:
+many small fact records behind capability-checked MCP verbs, read/written under the derived principal
+(`caller ∩ agent`). **New module** `crates/host/src/agent/memory/` (one verb per file): a SCHEMAFULL
+`agent_memory` table keyed `{ws, scope, slug}` (composite id `[scope, slug]` → idempotent offline
+upsert, LWW); two scopes `workspace` + `member:{user}` where **the member scope is derived from the
+authenticated principal, never an argument** — a run under U resolves `workspace + member:U`,
+structurally never `member:V` (the member wall). **Four verbs** `agent.memory.list|get|set|delete`,
+one `mcp:agent.memory.<verb>:call` cap each, PLUS a distinct **workspace-scope write gate**
+(`store:agent_memory/workspace:write` — a member always curates their own member memory; writing
+SHARED memory needs the extra cap). **Derived index** (list-computed, never stored) injected at
+session start into **both runtimes** AFTER the persona + skill catalog, framed as *recalled
+background, not instructions*, under an **on-behalf-of** principal (the caller's sub so member scope =
+the human, agent's intersected caps so it never widens — the `substrate.rs` contract; a naive derived
+`agent:session` sub would miss the caller's own memory, caught by the injection test). **Bounds** (desc
+≤ 120, body ≤ 8 KB) + a **best-effort secret lint** (PEM/`AKIA…`/`sk-…`/GitHub/`password:` refused).
+Injection capped at the 100 most-recently-updated (older stay stored/listable — evict from injection
+only). In-house gets the verbs by default; external profiles opt in to `set`. Model-proposed
+`set`/`delete` mid-loop is a **named deferral** (the channel worker surfaces no tool list + the loop
+dispatches via `lb_mcp::call`, which doesn't reach host-native `agent.*` — the shared in-house-tool-
+surfacing gap). **Tests (rule 9):** `host/agent_memory_test` (8: per-verb deny · ws-write gate distinct
+· workspace isolation · **member wall (bob never sees member:ada)** · idempotent upsert · bounds +
+secret lint · MCP roundtrip + per-verb MCP deny · **real run injects the index after set / loses it
+after delete**). `cargo fmt` clean. Session
+[`agent-memory`](sessions/agent-memory/agent-memory-session.md); public
+[`agent-memory`](public/agent-memory/agent-memory.md); skill
+[`agent-memory`](skills/agent-memory/SKILL.md). **Next up:** surface `agent.memory.*` as
+model-proposable in-house tools; vector/semantic recall (v1 non-goal).
+
+---
+
 **Just shipped (2026-07-03): core skills — the two-tier skill catalog (branch `ce-node-wiring-v2`).**
 The developer-authored **core skill tier** alongside the shipped S4 user tier, both behind the SAME
 grant gate and the SAME `load_skill`. **Embed + seed:** a `lb-assets` build script embeds the
