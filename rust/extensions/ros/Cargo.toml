@@ -44,7 +44,9 @@ reqwest = { workspace = true }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "net", "time"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
+# `test-util` for the poll-loop tests: `start_paused`/`advance` drive the scheduler deterministically
+# (no real sleeping) so the loop is asserted without wall-clock flakiness.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
 # The integration tests boot a REAL node + REAL axum gateway on a REAL port and drive the handlers
 # through a REAL SidecarClient (only the ROS box faked behind RosApi) — no mocks (CLAUDE rule 9).
 lb-host = { workspace = true }

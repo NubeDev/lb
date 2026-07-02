@@ -175,7 +175,14 @@ pub use native::{
     restart_native, status_native, stop_native, Lifecycle, NativeServiceError, NativeStatus,
     SidecarMap, Supervised,
 };
-pub use outbox::{enqueue_outbox, outbox_status, OutboxError, OutboxStatus};
+// The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
+// gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
+// into `lb_supervisor` internals.
+pub use lb_supervisor::OsLauncher;
+pub use outbox::{
+    enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed, outbox_status,
+    OutboxError, OutboxStatus,
+};
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,
     catalog_changed_subject, message_render, message_set_catalog, prefs_catalog, prefs_get,
