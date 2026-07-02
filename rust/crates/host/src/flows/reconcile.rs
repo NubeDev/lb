@@ -27,6 +27,9 @@ pub struct ReconcilePass {
     pub armed: usize,
     pub disarmed: usize,
     pub boot_fired: usize,
+    /// Orphaned armed sources released this pass (their flow was deleted/tombstoned or their source
+    /// node removed by an edit) — the leaked-socket collector (flow-deploy-ux-scope).
+    pub orphans_disarmed: usize,
 }
 
 /// Whether this node owns `flow` (placement matches its `role`). The single-owner election
@@ -64,9 +67,18 @@ pub async fn reconcile_flows(
         let source_nodes = source_node_ids(&flow);
         if flow.enabled && owned {
             for node_id in &source_nodes {
+                // Pass the node's config WITH its `_type` stamped in, so `arm_source` resolves the
+                // ext's arm tool AND persists `_type` for a later orphan disarm (the sweep has no flow
+                // to read the type from once the flow is deleted).
                 let cfg = flow
                     .node(node_id)
-                    .map(|n| n.config.clone())
+                    .map(|n| {
+                        let mut c = n.config.clone();
+                        if let serde_json::Value::Object(map) = &mut c {
+                            map.insert("_type".into(), serde_json::json!(n.node_type));
+                        }
+                        c
+                    })
                     .unwrap_or(serde_json::json!({}));
                 let _ = arm_source(node, principal, ws, &flow.id, node_id, cfg).await;
                 pass.armed += 1;
@@ -99,6 +111,9 @@ pub async fn reconcile_flows(
             }
         }
     }
+    // Leaked-socket collector: disarm any armed source whose flow was deleted/tombstoned or whose
+    // source node was removed by an edit (the per-flow pass above only converges flows still present).
+    pass.orphans_disarmed = super::orphan_sweep::sweep_orphan_sources(node, principal, ws).await?;
     Ok(pass)
 }
 

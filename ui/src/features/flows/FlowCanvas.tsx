@@ -7,7 +7,7 @@
 // unexecuted nodes (Decision 1/12). Import/export round-trips the flow JSON; undo restores a prior
 // graph (node + edges) atomically by re-saving the previous version.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -23,24 +23,9 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import {
-  Download,
-  Play,
-  RotateCcw,
-  Save,
-  Square,
-  Trash2,
-  Upload,
-  Pause,
-} from "lucide-react";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import {
   cancelFlow,
   deleteFlow,
   enableFlow,
-  getFlowNodeState,
   patchFlowRun,
   resumeFlow,
   runFlow,
@@ -48,7 +33,6 @@ import {
   updateFlowNode,
   type Flow,
   type FlowNode,
-  type FlowNodeState,
   type NodeDescriptor,
 } from "@/lib/flows";
 import {
@@ -68,6 +52,10 @@ import { Palette } from "./Palette";
 import { useFlowRun } from "./useFlowRun";
 import { deriveArmedState } from "./armedState";
 import { FlowArmedBanner } from "./FlowArmedBanner";
+import { FlowCanvasHeader } from "./FlowCanvasHeader";
+import { flowDirty } from "./flowDirty";
+import { useLiveValues } from "./useLiveValues";
+import { downloadFlow, parseImportedFlow } from "./flowTransfer";
 
 const nodeTypes = { flow: FlowNodeView };
 
@@ -104,8 +92,10 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const [saveError, setSaveError] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
-  const importedFile = useRef<HTMLInputElement>(null);
-
+  // The DEPLOYED graph — what the running system currently holds. The canvas is a draft; Deploy is
+  // enabled only when the buffer differs from this (Node-RED posture). Updated on every successful
+  // Deploy/per-node Save so the dirty flag clears (flow-deploy-ux scope).
+  const [deployedFlow, setDeployedFlow] = useState<Flow>(flow);
   const { snapshot, error: runError, runs, watch, reattach, refreshRuns, markTerminal } =
     useFlowRun();
 
@@ -118,36 +108,28 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     setSaveError(null);
     setPanelError(null);
     setUndoStack([]);
+    setDeployedFlow(flow); // a freshly-opened flow IS the deployed graph → Deploy starts clean.
     void reattach(flow.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.id]);
 
-  // The PERSISTENT runtime view (Decision 5): every node's current last-value from `flow_node_state`,
-  // updated in place each scan. This is the STEADY STATE the canvas paints — the Node-RED "each wire
-  // shows its current value" — independent of any single run. Fetched on open + refreshed on the
-  // armed tick so a cron flow's values track each firing without reopening.
-  const [nodeState, setNodeState] = useState<FlowNodeState | null>(null);
-  const loadNodeState = useCallback(async (flowId: string) => {
-    try {
-      setNodeState(await getFlowNodeState(flowId));
-    } catch {
-      /* a fresh flow with no state yet — leave null, nodes render blank */
-    }
-  }, []);
-  useEffect(() => {
-    void loadNodeState(flow.id);
-  }, [flow.id, loadNodeState]);
+  // The PERSISTENT runtime view + the live-values toggle + its polling live in the hook (Decision 5;
+  // the Node-RED "each wire shows its current value", opt-in). `armed.kind` is fed back in below to
+  // gate the armed re-poll — the canvas derives `armed` from the `nodeState` the hook returns.
+  const { nodeState, liveValues, loadNodeState, toggleLiveValues } = useLiveValues(
+    flow.id,
+    refreshRuns,
+  );
 
   // The flow's runtime posture for the banner — armed (headless trigger, enabled) vs idle (manual) vs
   // disabled — plus its latest run. The armed/enabled truth comes from the AUTHORITATIVE node_state
   // (the per-trigger cursors), so it's correct on reload with no run in flight; `runs` drives the
   // "last fired" + count. (deriveArmedState falls back to the flow record until node_state loads.)
   const armed = useMemo(() => deriveArmedState(flow, runs, nodeState), [flow, runs, nodeState]);
+  const enabled = nodeState?.enabled ?? flow.enabled ?? true;
 
-  // Deploy/Stop a headless flow by flipping the durable `enabled` flag (`flows.enable`). This is the
-  // Stop the user couldn't find for a cron/source flow (which has no live run to cancel) — and because
-  // it's durable, the stopped/running state is correct after a server restart. Re-read node_state +
-  // runs so the banner flips immediately.
+  // Enable/Disable the flow by flipping the durable `enabled` flag (`flows.enable`) — "should this ever
+  // fire" (durable, survives restart). Re-read node_state + runs so the banner flips immediately.
   const handleToggleEnabled = useCallback(async () => {
     const next = !(nodeState?.enabled ?? flow.enabled ?? true);
     setSaveError(null);
@@ -160,17 +142,16 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     }
   }, [flow.id, flow.enabled, nodeState, loadNodeState, refreshRuns]);
 
-  // While ARMED, re-poll the runs list AND the persistent node state on a slow tick so a NEW cron
-  // firing surfaces — the banner count + the live per-node values both advance — without reopening
-  // the flow. Idle/disabled flows don't poll. Keys on flow.id + armed.kind so it tears down cleanly.
+  // While ARMED + watching live values, re-poll runs + node-state on a slow tick so a NEW firing's
+  // count + values advance without reopening. Idle/disabled/off → no interval (tears down cleanly).
   useEffect(() => {
-    if (armed.kind !== "armed") return;
+    if (armed.kind !== "armed" || !liveValues) return;
     const t = setInterval(() => {
       void refreshRuns(flow.id);
       void loadNodeState(flow.id);
     }, ARMED_REFRESH_MS);
     return () => clearInterval(t);
-  }, [flow.id, armed.kind, refreshRuns, loadNodeState]);
+  }, [flow.id, armed.kind, liveValues, refreshRuns, loadNodeState]);
 
   // A 1s clock so the banner's "next fire in N" / "fired N ago" count down/up live.
   const [nowSecs, setNowSecs] = useState(() => Math.floor(Date.now() / 1000));
@@ -279,6 +260,10 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     [flow, nodes, edges, configs],
   );
 
+  // Dirty = the canvas buffer differs from the DEPLOYED graph → Deploy is enabled (Node-RED posture).
+  // Cleared on a successful Deploy/per-node Save (which advance `deployedFlow`). See flowDirty.ts.
+  const dirty = useMemo(() => flowDirty(deployedFlow, buildFlow()), [deployedFlow, buildFlow]);
+
   /** Save the current graph (a new version — Decision 1). Pushes the prior graph onto the undo stack
    *  so a later undo reverts the whole edit atomically. */
   const handleSave = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
@@ -289,6 +274,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
       setUndoStack((s) => [...s, prior]);
       setSaveError(null);
       setPanelError(null);
+      // Deploy landed: the buffer IS the deployed graph now → Deploy goes clean. Carry the host's new
+      // version so the compare (which ignores version) and the roster stay consistent.
+      setDeployedFlow({ ...next, version: res.version ?? next.version });
     } else {
       setSaveError(res.error ?? "save failed");
       setPanelError(res.error ?? "save failed");
@@ -315,11 +303,13 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     setSaveError(null);
     try {
       const { run_id } = await runFlow(flow.id);
-      watch(run_id);
+      // Open the live stream only when the operator is watching values; otherwise the run still drives
+      // headless (fire-and-forget) and the terminal state is read on the next refresh.
+      if (liveValues) watch(run_id);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : String(e));
     }
-  }, [flow.id, watch]);
+  }, [flow.id, watch, liveValues]);
 
   const handleLifecycle = useCallback(
     async (op: "suspend" | "resume" | "cancel") => {
@@ -350,6 +340,14 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     try {
       await updateFlowNode(flow.id, selectedId, configs[selectedId] ?? {});
       setPanelError(null);
+      // The node's config is deployed now → clear just that node's dirtiness by advancing the deployed
+      // graph's copy of it (a whole-graph Deploy isn't needed for a single-node tweak).
+      setDeployedFlow((d) => ({
+        ...d,
+        nodes: d.nodes.map((n) =>
+          n.id === selectedId ? { ...n, config: configs[selectedId] ?? {} } : n,
+        ),
+      }));
       return { ok: true };
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -378,36 +376,21 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   // ALSO emit a derived top-level `edges: [{from,to}]` so the connections are visible at a glance in
   // the exported file (the "I can't see the node connections" report) — it is informational; import
   // ignores it and re-derives the graph from `needs`.
-  const handleExport = useCallback(() => {
-    const exported = buildFlow();
-    const edges = exported.nodes.flatMap((n) =>
-      (n.needs ?? []).map((from) => ({ from, to: n.id })),
-    );
-    const blob = new Blob([JSON.stringify({ ...exported, edges }, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${flow.id}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [buildFlow, flow.id]);
+  const handleExport = useCallback(() => downloadFlow(buildFlow()), [buildFlow]);
 
   const handleImport = useCallback(
     async (file: File) => {
       try {
-        const text = await file.text();
-        const imported = JSON.parse(text) as Flow;
-        const next: Flow = { ...imported, id: flow.id, workspace: flow.workspace };
-        // Re-validate through the real save path (schema + DAG). Surfaces a 400 inline on mismatch.
+        // Re-validate the imported graph through the real save path (schema + DAG). Surfaces a 400
+        // inline on mismatch; on success the parent reopens the flow (re-seeding the canvas + deployed).
+        const next = await parseImportedFlow(file, flow);
         const res = await onSave(next);
         if (!res.ok) setSaveError(res.error ?? "import failed");
       } catch (e) {
         setSaveError(e instanceof Error ? e.message : String(e));
       }
     },
-    [flow.id, flow.workspace, onSave],
+    [flow, onSave],
   );
 
   const handleDelete = useCallback(async () => {
@@ -430,107 +413,26 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
 
   return (
     <section aria-label="flow canvas" className="flex min-w-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-card/60 px-3 py-2">
-        <Button aria-label="save flow" onClick={handleSave} variant="outline" size="sm" className="gap-1.5">
-          <Save size={13} />
-          Save
-        </Button>
-        <Button aria-label="run flow" onClick={handleRun} size="sm" className="gap-1.5">
-          <Play size={13} />
-          Run
-        </Button>
-        {runActive ? (
-          <>
-            <Button aria-label="suspend run" onClick={() => handleLifecycle("suspend")} variant="outline" size="sm" className="gap-1.5">
-              <Pause size={13} />
-              Suspend
-            </Button>
-            <Button aria-label="resume run" onClick={() => handleLifecycle("resume")} variant="outline" size="sm" className="gap-1.5">
-              <Play size={13} />
-              Resume
-            </Button>
-            <Button aria-label="stop run" onClick={() => handleLifecycle("cancel")} variant="destructive" size="sm" className="gap-1.5">
-              <Square size={13} />
-              Stop
-            </Button>
-          </>
-        ) : null}
-        <div className="mx-1 h-5 w-px bg-border" />
-        <Button aria-label="undo" onClick={handleUndo} variant="ghost" size="sm" disabled={undoStack.length === 0} className="gap-1.5">
-          <RotateCcw size={13} />
-          Undo
-        </Button>
-        <Button aria-label="export flow" onClick={handleExport} variant="ghost" size="sm" className="gap-1.5">
-          <Download size={13} />
-          Export
-        </Button>
-        <Button
-          aria-label="import flow"
-          onClick={() => importedFile.current?.click()}
-          variant="ghost"
-          size="sm"
-          className="gap-1.5"
-        >
-          <Upload size={13} />
-          Import
-        </Button>
-        {/* eslint-disable-next-line no-restricted-syntax -- a hidden native file picker; no shadcn equivalent */}
-        <input
-          ref={importedFile}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleImport(f);
-            e.target.value = "";
-          }}
-        />
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          {snapshot ? (
-            <Badge
-              variant="outline"
-              data-status={snapshot.status}
-              className={cn(
-                "rounded-full capitalize",
-                snapshot.status === "success" && "border-emerald-500/40 text-emerald-600 dark:text-emerald-400",
-                (snapshot.status === "failed" || snapshot.status === "partialFailure") &&
-                  "border-destructive/40 text-destructive",
-                snapshot.status === "running" && "border-amber-500/50 text-amber-600 dark:text-amber-400",
-              )}
-              aria-label="run status"
-            >
-              {snapshot.status}
-            </Badge>
-          ) : null}
-          {saveError ? (
-            <span aria-label="flow error" className="text-xs text-destructive">
-              {saveError}
-            </span>
-          ) : null}
-          {runError ? (
-            <span aria-label="run error" className="text-xs text-destructive">
-              {runError}
-            </span>
-          ) : null}
-          <Button
-            aria-label="delete flow"
-            onClick={handleDelete}
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-muted hover:text-destructive"
-          >
-            <Trash2 size={13} />
-            Delete
-          </Button>
-        </div>
-      </div>
-      <FlowArmedBanner
-        armed={armed}
-        nowSecs={nowSecs}
-        runCount={runs.length}
-        onToggle={handleToggleEnabled}
+      <FlowCanvasHeader
+        dirty={dirty}
+        runActive={runActive}
+        enabled={enabled}
+        liveValues={liveValues}
+        onDeploy={handleSave}
+        onRun={handleRun}
+        onLifecycle={handleLifecycle}
+        onToggleEnabled={handleToggleEnabled}
+        onToggleLiveValues={toggleLiveValues}
+        canUndo={undoStack.length > 0}
+        runStatus={snapshot?.status ?? null}
+        saveError={saveError}
+        runError={runError}
+        onUndo={handleUndo}
+        onExport={handleExport}
+        onImport={(f) => void handleImport(f)}
+        onDelete={handleDelete}
       />
+      <FlowArmedBanner armed={armed} nowSecs={nowSecs} runCount={runs.length} />
       {snapshot ? (
         <div aria-label="v-pinned banner" className="bg-accent/10 px-3 py-1 text-xs text-fg">
           This run is on v{snapshot.flowVersion}. Structural edits become a new version for the next

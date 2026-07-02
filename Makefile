@@ -107,6 +107,24 @@ FED_SEED_DSN   ?= host=127.0.0.1 port=5433 user=lb password=lb_secret dbname=lb 
 # The env block passed to the node for the federation role (empty when FED_ENDPOINTS is cleared).
 FED_ENV = $(if $(FED_ENDPOINTS),LB_FEDERATION_ENDPOINTS="$(FED_ENDPOINTS)" LB_FEDERATION_SEED_NAME="$(FED_SEED_NAME)" LB_FEDERATION_SEED_KIND="$(FED_SEED_KIND)" LB_FEDERATION_SEED_ENDPOINT="$(FED_SEED_EP)" LB_FEDERATION_SEED_DSN="$(FED_SEED_DSN)",)
 
+# Control Engine bridge (control-engine native extension). OFF by default — the sidecar needs a
+# running ce-studio engine (ce-rest on :7979), so it is opt-in. Turn it on for `make dev` with:
+#   make dev CE=1                            (shorthand → CE_BASE=127.0.0.1:7979)
+#   make dev CE_BASE=host:port               (explicit; also enables it)
+# When on, `make dev` builds the `control-engine` sidecar + UI bundle, installs + supervises the
+# sidecar at boot, pre-approves its `net:tcp:host:port` connect, and seeds one appliance (CE_APPLIANCE)
+# so the wiresheet page works on first boot. Clear CE_BASE to disable an explicit override.
+ifeq ($(CE),1)
+CE_BASE       ?= 127.0.0.1:7979
+endif
+CE_BASE       ?=
+CE_APPLIANCE  ?= local
+# The env block passed to the node for the control-engine role (empty when CE_BASE is cleared).
+CE_ENV = $(if $(CE_BASE),LB_CONTROL_ENGINE_BASE="$(CE_BASE)" LB_CONTROL_ENGINE_APPLIANCE="$(CE_APPLIANCE)",)
+# The control-engine UI bundle → the node's served ext-ui dir (like publish-ext does for wasm exts).
+CE_UI_DIST  := $(BE_DIR)/extensions/control-engine/ui/dist
+CE_UI_SERVE := $(BE_DIR)/extensions-ui/control-engine
+
 # devkit.build's executor is config-selected (docker/build/, devkit-container-build-scope.md), OFF
 # (in-process ProcessToolchain) by default. Turn on hermetic container builds for a `make dev` node:
 #   make dev DEVKIT_BUILDER=container         (needs `make docker-build-image` run once first)
@@ -174,10 +192,11 @@ build-ui:
 # it, in ONE foreground process group so Ctrl-C (or `make kill`) stops both. The trap
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
-dev: build-wasm trusted-pubkey federation
+dev: build-wasm trusted-pubkey federation $(if $(CE_BASE),control-engine,)
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
+	@echo "control-engine → CE bridge base: $(if $(CE_BASE),$(CE_BASE) (appliance=$(CE_APPLIANCE)),<disabled>)"
 	@echo "node features → $(if $(NODE_FEATURES),$(NODE_FEATURES),<none> (external agent OFF; set EXTAGENT=1 to enable))"
 	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	@if [ -n "$(NODE_FEATURES)" ]; then \
@@ -189,7 +208,7 @@ dev: build-wasm trusted-pubkey federation
 	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -199,6 +218,18 @@ dev: build-wasm trusted-pubkey federation
 .PHONY: federation
 federation:
 	cd $(BE_DIR) && cargo build -p federation --features postgres
+
+# Build the control-engine sidecar + its federated wiresheet UI bundle (via the ext's own build.sh),
+# then deploy the UI to the node's served ext-ui dir so `remoteEntry.js` resolves. The node's
+# control-engine role spawns the sidecar at boot (env-gated by CE_BASE). `make dev` depends on it.
+.PHONY: control-engine
+control-engine:
+	bash $(BE_DIR)/extensions/control-engine/build.sh
+	@if [ -d "$(CE_UI_DIST)" ]; then \
+		echo "-> deploy control-engine UI bundle -> $(CE_UI_SERVE)"; \
+		rm -rf "$(CE_UI_SERVE)"; mkdir -p "$(CE_UI_SERVE)"; \
+		cp -r "$(CE_UI_DIST)"/* "$(CE_UI_SERVE)"/; \
+	fi
 
 # ---------------------------------------------------------------------------------------------------
 # Reproducible Linux (cross) builds in Docker — see docker/build/. Use these when the host C toolchain
@@ -245,7 +276,7 @@ cloud: build-wasm trusted-pubkey federation
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_GATEWAY_URL=$(GW_URL) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(CE_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.

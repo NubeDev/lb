@@ -158,6 +158,36 @@ pub async fn set_with(
     Ok(())
 }
 
+/// Write a secret and TAKE ownership for `principal`, bypassing the gate-3 owner-overwrite wall.
+/// Gates 1 (workspace) and 2 (capability `secret:<path>:write`) still apply; only the "you must
+/// already be the owner to overwrite" check is skipped, and the record's `owner` is stamped to
+/// `principal.sub()`.
+///
+/// This is a NARROW, deliberate path for a **host-mediated secret** — one the host manages on behalf
+/// of an extension under a single stable principal (e.g. a federated datasource DSN owned by
+/// `ext:federation`). It exists to HEAL an ownership drift: a record written by an earlier,
+/// differently-named bootstrap principal is reclaimed by the canonical mediator so subsequent
+/// CRUD by any admin is collision-free. NOT for user-owned secrets — those keep the owner wall so
+/// one member can never overwrite another's secret. See `federation::secret::store_dsn`.
+pub async fn reclaim(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    path: &str,
+    value: &str,
+    visibility: Visibility,
+) -> Result<(), SecretsError> {
+    authorize(principal, ws, path, Action::Write)?;
+    let rec = json!({
+        "path": path,
+        "value": value,
+        "owner": principal.sub(),
+        "visibility": visibility,
+    });
+    write(store, ws, TABLE, &record_id(path), &rec).await?;
+    Ok(())
+}
+
 /// Pull a secret value at `path` in `ws`. Gated `secret:<path>:get` (gate 2), then gate 3:
 /// a `Private` secret resolves `caller.sub() == owner` — denied otherwise, even with the cap.
 /// The value is for an authorized direct consumer (the owner, or any ws member when `Workspace`),
@@ -524,6 +554,87 @@ mod tests {
                 .await
                 .unwrap_err(),
             SecretsError::NotFound
+        ));
+    }
+
+    /// `reclaim` HEALS an ownership drift the owner wall would otherwise deadlock: a record written
+    /// by one principal (an earlier bootstrap identity) is force-rewritten AND re-owned by the
+    /// canonical mediator, so subsequent owner-gated ops (overwrite/delete) by that mediator pass.
+    /// This is the federation-DSN CRUD regression: a datasource seeded under `ext:federation-bootstrap`
+    /// then updated under `ext:federation` must not be denied.
+    #[tokio::test]
+    async fn reclaim_takes_ownership_from_an_earlier_principal() {
+        let store = Store::memory().await.unwrap();
+        // The stale record: owned by the boot bootstrap principal.
+        let bootstrap = ext(
+            "federation-bootstrap",
+            "acme",
+            &["secret:federation/*:write", "secret:federation/*:get"],
+        );
+        set(
+            &store,
+            &bootstrap,
+            "acme",
+            "federation/tsdb",
+            "postgres://old",
+        )
+        .await
+        .unwrap();
+
+        // The canonical mediator (a DIFFERENT sub) cannot overwrite via the owner-walled `set`...
+        let fed = ext(
+            "federation",
+            "acme",
+            &["secret:federation/*:write", "secret:federation/*:get"],
+        );
+        assert!(matches!(
+            set(&store, &fed, "acme", "federation/tsdb", "postgres://new")
+                .await
+                .unwrap_err(),
+            SecretsError::Denied
+        ));
+
+        // ...but `reclaim` rewrites the value AND re-owns it.
+        reclaim(
+            &store,
+            &fed,
+            "acme",
+            "federation/tsdb",
+            "postgres://new",
+            Visibility::Workspace,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            get(&store, &fed, "acme", "federation/tsdb").await.unwrap(),
+            "postgres://new"
+        );
+        // Now the mediator is the owner: it may overwrite and delete without denial.
+        set(&store, &fed, "acme", "federation/tsdb", "postgres://newer")
+            .await
+            .unwrap();
+        delete(&store, &fed, "acme", "federation/tsdb")
+            .await
+            .unwrap();
+    }
+
+    /// `reclaim` still enforces gate 2 (the write capability). Owner-reset is not an auth bypass.
+    #[tokio::test]
+    async fn reclaim_still_requires_the_write_cap() {
+        let store = Store::memory().await.unwrap();
+        let no_write = ext("federation", "acme", &["secret:federation/*:get"]);
+        assert!(matches!(
+            reclaim(
+                &store,
+                &no_write,
+                "acme",
+                "federation/tsdb",
+                "x",
+                Visibility::Workspace,
+            )
+            .await
+            .unwrap_err(),
+            SecretsError::Denied
         ));
     }
 

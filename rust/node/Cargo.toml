@@ -19,6 +19,9 @@ lb-store.workspace = true
 lb-auth.workspace = true
 lb-authz.workspace = true
 lb-mcp.workspace = true
+# The control-engine bridge role seeds one appliance via a `control-engine.appliance.add` MCP call at
+# boot (env-gated in `main.rs`, §3.1) — it builds the JSON args with serde_json.
+serde_json.workspace = true
 # The native supervisor's `OsLauncher` — the federation role (datasources) installs + supervises the
 # `federation` sidecar at boot, env-gated in `main.rs` (§3.1), exactly like the github roles below.
 lb-supervisor.workspace = true

@@ -4,9 +4,8 @@
 // are accumulating (the count "going up"). A manual flow shows it's idle (runs on demand). One
 // component, presentational only — all state is derived in `armedState.ts`. (FILE-LAYOUT.)
 
-import { Radio, Clock, Pause, Power, Square } from "lucide-react";
+import { Radio, Clock, Pause } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import type { FlowArmedState } from "./armedState";
@@ -18,12 +17,12 @@ export interface FlowArmedBannerProps {
   nowSecs: number;
   /** How many runs the flow has (the "count going up" — shown for an armed flow). */
   runCount: number;
-  /** Flip the durable enabled flag (`flows.enable`): Deploy (arm) when disabled, Stop (disarm) when
-   *  armed. This is the headless-flow Stop — durable, so it survives a restart. Omit to hide it. */
-  onToggle?: () => void;
 }
 
-export function FlowArmedBanner({ armed, nowSecs, runCount, onToggle }: FlowArmedBannerProps) {
+// The armed banner is purely INFORMATIONAL (flow-deploy-ux scope): armed vs disabled, the schedule,
+// next fire, run count. Enable/Disable moved to the toolbar (`FlowToolbar`) so there is one clear
+// place to control the flow — the banner no longer owns a toggle.
+export function FlowArmedBanner({ armed, nowSecs, runCount }: FlowArmedBannerProps) {
   if (armed.kind === "idle") {
     // A manual flow needs no armed banner — Run drives it on demand; the v-pinned banner covers a run.
     return null;
@@ -71,18 +70,6 @@ export function FlowArmedBanner({ armed, nowSecs, runCount, onToggle }: FlowArme
         ) : (
           <span aria-label="last fired">no runs yet</span>
         )}
-        {onToggle ? (
-          <Button
-            aria-label={disabled ? "deploy flow" : "stop flow"}
-            onClick={onToggle}
-            size="sm"
-            variant={disabled ? "default" : "destructive"}
-            className="h-6 gap-1.5 px-2"
-          >
-            {disabled ? <Power size={12} aria-hidden /> : <Square size={12} aria-hidden />}
-            {disabled ? "Deploy" : "Stop"}
-          </Button>
-        ) : null}
       </span>
     </div>
   );

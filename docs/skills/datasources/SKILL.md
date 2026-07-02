@@ -163,10 +163,15 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
 - **`federation.query` / `.schema` / `.mirror` are MCP-only** — no dedicated REST route (only
   `datasource.add/remove/list/test` have REST routes).
 - **SELECT-only** — a non-read statement is refused host-side before the sidecar ever runs.
-- **Denials are opaque** — a missing cap, a missing source, and a `net:*`-omitted endpoint all look
-  the same (forbidden/absent). A registered source can still be refused if its endpoint isn't in the
-  extension's admin-approved `net:*` grant.
-- **The DSN is never returned** — if you need to change it, re-`add` (upsert) with a new `dsn`.
+- **Most denials are opaque** — a missing cap, a missing source, and a `net:*`-omitted endpoint all
+  look the same (forbidden/absent). A registered source can still be refused if its endpoint isn't in
+  the extension's admin-approved `net:*` grant. **Exception:** a source registered *without* a DSN
+  returns a distinct `datasource has no configured connection (add or update its DSN)` — not a
+  capability deny — so "no DSN" is not confused with "not allowed".
+- **The DSN is never returned** — if you need to change it, re-`add` (upsert) with a new `dsn`. This
+  is collision-free by design: every DSN secret is owned by the stable `ext:federation` principal, not
+  the admin who ran `add`, so ANY admin can update or remove a source (a store seeded under an older
+  bootstrap owner self-heals on the next `add`). A missing federation install still denies (no runtime).
 - **`add` needs `secret:federation/*:write`** to hand a DSN; without it, register the `secret_ref`
   and set the secret out of band.
 - **Postgres is a feature-gated build** (`--features postgres`, vendored OpenSSL); the default sidecar

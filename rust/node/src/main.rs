@@ -10,6 +10,7 @@ use std::sync::Arc;
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_enabled, load_extension, Node};
 
+mod control_engine;
 mod external_agent;
 mod federation;
 mod github;
@@ -123,8 +124,12 @@ async fn main() -> anyhow::Result<()> {
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
     github::mount(node.clone()).await;
-    // datasources role (federation native sidecar), env-gated by LB_FEDERATION_ENDPOINTS.
-    federation::mount(node.clone()).await;
+    // NOTE: native sidecar roles (federation, control-engine) are mounted AFTER the gateway installs
+    // its signing key onto the node (below), NOT here. `install_native` mints each sidecar's
+    // `LB_EXT_TOKEN` with `node.key()`, and the gateway VERIFIES those callback tokens with its own
+    // key — which it installs onto the node in `Gateway::new_live`. Mounting before that ran meant the
+    // token was minted with the node's throwaway boot key and every sidecar callback 401'd
+    // (native-callback-transport scope: one signing identity per node). See the gateway block below.
     println!(
         "loaded hello: tools={:?} granted_caps={:?}",
         loaded.tools, loaded.granted_caps
@@ -169,8 +174,19 @@ async fn main() -> anyhow::Result<()> {
         // request, so token iat/exp and any derived ts advance. `Gateway::new(.., now)` is the
         // fixed-clock TEST seam only.
         let gw = lb_role_gateway::Gateway::new_live(node.clone(), SigningKey::generate());
+        // The gateway just installed its signing key onto the node (`Gateway::new_live` →
+        // `node.install_key`), so NOW there is ONE signing identity. Mount the native sidecar roles
+        // here — `install_native` mints each child's `LB_EXT_TOKEN` with that shared `node.key()`, so
+        // the gateway verifies its callbacks (no 401). Env-gated, no-ops when unconfigured.
+        federation::mount(node.clone()).await;
+        control_engine::mount(node.clone()).await;
         println!("gateway: serving on http://{addr}");
         lb_role_gateway::serve(gw, addr).await?;
+    } else {
+        // No gateway (edge/solo posture): still mount the native roles for a headless node. Their
+        // callbacks need a gateway, so they degrade cleanly (a sidecar with no callback address).
+        federation::mount(node.clone()).await;
+        control_engine::mount(node.clone()).await;
     }
 
     Ok(())

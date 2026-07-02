@@ -7,11 +7,11 @@
 //! pre-connect, `net.rs`); registration here records the endpoint that grant gates.
 
 use lb_auth::Principal;
-use lb_secrets::{set_with as secret_set_with, Visibility};
 
 use super::authorize::authorize;
 use super::error::FederationError;
 use super::record::{put, Datasource};
+use super::secret::store_dsn;
 use crate::boot::Node;
 
 /// Register `name` as a `kind` source at `endpoint` in `ws`. `secret_ref` defaults to
@@ -35,23 +35,14 @@ pub async fn datasource_add(
         .map(str::to_string)
         .unwrap_or_else(|| format!("federation/{name}"));
 
-    // If the admin handed the DSN, mediate it into the secret store now (under the admin's
-    // authority) — the value never returns and never reaches the datasource record. The secret is
-    // `Workspace`-visible because the mediated pool runs as a DIFFERENT principal (`ext:federation`,
-    // see `secret::mediate_dsn`) than the admin who registered it; gate 3's owner wall would
-    // otherwise deny the pool. The capability grant (`secret:federation/*:get` on the install) is
-    // still required, so this is "shared with the workspace" not "public to the world".
+    // If the admin handed the DSN, mediate it into the secret store now — OWNED by the stable
+    // `ext:federation` principal, not this (varying) admin caller. That single-owner invariant is
+    // what makes CRUD collision-free: a later admin (a different login, the boot seed, a future IdP
+    // user) can overwrite or remove the source without hitting the secrets owner wall (gate 3),
+    // because the owner is always the extension, never whoever ran `add`. The value never returns
+    // and never reaches the datasource record (§6.7). See `secret::store_dsn`.
     if let Some(dsn) = dsn {
-        secret_set_with(
-            &node.store,
-            caller,
-            ws,
-            &secret_ref,
-            dsn,
-            Visibility::Workspace,
-        )
-        .await
-        .map_err(|_| FederationError::Denied)?;
+        store_dsn(node, ws, &secret_ref, dsn).await?;
     }
 
     let ds = Datasource::new(name, kind, endpoint, secret_ref, ts);

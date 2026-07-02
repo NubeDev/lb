@@ -75,6 +75,13 @@ pub async fn install_native<L: Launcher>(
     .with_nodes(manifest.nodes.clone());
     record_install(&node.store, ws, &install).await?;
 
+    // Make the extension's PAGE/WIDGET surface reachable by workspace admins WITHOUT any login edit
+    // (authz-grants scope: "granting an extension's tool to a user/team is an ordinary grant"). We
+    // grant each declared `[ui]`/`[[widget]]` scope tool — narrowed to what was actually `granted` —
+    // to the `workspace-admin` role, so `resolve_caps` folds them into an admin's token on next login.
+    // Generic + revocable (admin console): no per-extension code touches the login path.
+    crate::authz::grant_ui_scope_to_admin(&node.store, ws, &manifest, &granted).await;
+
     // If a sidecar for this id is already running here, stop it before swapping (re-install in
     // place — the durable id/records stay stable, only the process is replaced).
     stop_if_running(node, ws, &manifest.id).await;
