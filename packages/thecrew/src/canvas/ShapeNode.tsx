@@ -3,7 +3,7 @@
 // symbols-scope.md §placeholder), the cyan selection halo, and bound-value resolution
 // (subscribes shape.bind channels via the ValueSource seam, passes values down).
 
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import * as THREE from "three";
 import { Text } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
@@ -45,9 +45,11 @@ function Placeholder({ type }: { type: string }) {
       <lineSegments position={[0, 0, 0.6]} geometry={edges}>
         <lineBasicMaterial color={tokens.color.text.label} />
       </lineSegments>
-      <Text position={[0, 0, 0.7]} fontSize={9} color={tokens.color.text.label} anchorX="center">
-        {type}
-      </Text>
+      <Suspense fallback={null}>
+        <Text position={[0, 0, 0.7]} fontSize={9} color={tokens.color.text.label} anchorX="center">
+          {type}
+        </Text>
+      </Suspense>
     </group>
   );
 }
@@ -92,7 +94,11 @@ export function ShapeNode({ id, shape }: { id: string; shape: SceneShape }) {
             <meshBasicMaterial color={tokens.color.accent} transparent opacity={0.7} />
           </mesh>
         ))}
-      {def ? <def.component shape={shape} values={values} selected={selected} hovered={hovered} /> : <Placeholder type={shape.type} />}
+      {/* per-shape Suspense: drei Text suspends on its async SDF font — one slow
+          label must never blank a sibling shape (or the halo/anchors above) */}
+      <Suspense fallback={null}>
+        {def ? <def.component shape={shape} values={values} selected={selected} hovered={hovered} /> : <Placeholder type={shape.type} />}
+      </Suspense>
     </group>
   );
 }

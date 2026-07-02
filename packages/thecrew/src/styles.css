@@ -6,6 +6,7 @@
 :root {
   --tc-canvas: #0a0e14;
   --tc-panel: rgb(16 22 32 / 0.82); /* translucent glass panels */
+  --tc-panel-solid: #101620; /* opaque panel (native <option> popovers) */
   --tc-hairline: rgb(148 163 184 / 0.12);
   --tc-accent: #22d3ee; /* live data + selection only */
 }

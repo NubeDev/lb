@@ -145,7 +145,15 @@ export function ductFlowMaterial(medium: string): {
   const canvas = document.createElement("canvas");
   canvas.width = 64;
   canvas.height = 64;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    // no 2D canvas (headless test env): untextured but valid material
+    const texture = new THREE.CanvasTexture(canvas);
+    return {
+      material: new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 }),
+      texture,
+    };
+  }
   ctx.clearRect(0, 0, 64, 64);
   ctx.strokeStyle = mediumColor(medium);
   ctx.lineWidth = 7;

@@ -10,6 +10,7 @@ import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Grid } from "@react-three/drei";
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
+import { DropPlane } from "../editor/use-drag-place";
 import { useSceneStore } from "../state/scene-store";
 import { tokens } from "../theme/tokens";
 import { updateMaterials } from "../theme/materials";
@@ -111,6 +112,10 @@ export function SceneCanvas() {
       {Object.entries(doc.shapes).map(([id, shape]) => (
         <ShapeNode key={id} id={id} shape={shape} />
       ))}
+
+      {/* placement gestures: click/drag-drop placement, ghost preview, chain tool
+          (editor/use-drag-place.tsx — must live inside the <Canvas>) */}
+      <DropPlane />
 
       {/* ---- post (look-scope §glow) -------------------------------------------
           SELECTIVE bloom via the threshold convention: luminanceThreshold ≥ 1, so
