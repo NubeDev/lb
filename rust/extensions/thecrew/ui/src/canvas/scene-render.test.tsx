@@ -2,7 +2,8 @@
 // Render tests (thecrew-scope.md testing plan): the scene graph built from
 // ahu-demo contains the expected nodes; unknown type renders the placeholder;
 // the selection halo appears on select. r3f test renderer — no WebGL pixels in CI,
-// and no fakes: the REAL components, store, and simulator run (rule 9).
+// and no fakes: the REAL components + store run (rule 9). Bound values resolve through the
+// default inert ValueSource (empty-source) — this test asserts scene-GRAPH structure, not values.
 
 import ReactThreeTestRenderer from "@react-three/test-renderer";
 import { afterEach, describe, expect, it } from "vitest";

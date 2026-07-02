@@ -1,0 +1,20 @@
+# The `thecrew` extension — a 100%-UI graphics-canvas extension (parent scope
+# docs/scope/frontend/graphics-canvas-scope.md, phases 1–2). All real behavior lives in
+# `ui/` (the federated page + widget). Rust is a STUB: a wasm32-wasip2 component that
+# serves ZERO tools — it exists only because the manifest loader + registry publish path
+# require component bytes (there is no UI-only tier; adding one would be core surface,
+# rejected per the zero-core-additions posture — thecrew-extension-scope.md §Intent).
+#
+# EXCLUDED from the host workspace (it targets wasm, not the host), built in its own target/.
+# Build: cargo build --target wasm32-wasip2 --release
+[package]
+name = "thecrew-ext"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.40"

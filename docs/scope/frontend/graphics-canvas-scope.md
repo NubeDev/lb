@@ -1,8 +1,11 @@
 # Frontend scope — graphics canvas (plant graphics, floor plans, 3D — one engine, 100% extension)
 
-Status: scope (the ask). Promotes to `public/frontend/` once shipped. Per the
-`control-engine` precedent, the docs **co-locate with the extension** once it is
-scaffolded (`rust/extensions/graphics-canvas/docs/`) — the core stays canvas-ignorant.
+Status: scope (the ask); **phases 1–2 are now scoped for build** as the `thecrew`
+extension — see `rust/extensions/thecrew/docs/thecrew-extension-scope.md` (the
+playground proved the look/builder and moved to `rust/extensions/thecrew/`; the
+extension keeps that id rather than `graphics-canvas`). Promotes to
+`public/frontend/` once shipped. Per the `control-engine` precedent, the
+implementation docs **co-locate with the extension** — the core stays canvas-ignorant.
 
 We want a **free-form graphics surface** — the Tridium-Niagara "PX page" class of UI:
 AHU/plant graphics, floor plans, mimic diagrams, and 3D buildings — that is *not* the
@@ -281,10 +284,12 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 
 ## Open questions
 
-1. **Which shipped verbs persist scenes?** The `document-store/`/`files/` asset surface
-   is the intended home; confirm the exact verb set available at build time, and the
-   interim if its phases land later (a generic per-extension `kv.*` is the named
-   fallback in `extensions/reference-extensions-scope.md`).
+1. **Which shipped verbs persist scenes?** — **ANSWERED (2026-07-02):** the
+   `assets.*` surface is shipped: scenes = `assets.put_doc`/`get_doc`/`list_docs`,
+   packs = `assets.put_asset`/`get_asset`. No `kv.*` fallback needed. **Finding:**
+   `put_doc` has no revision check today (last-writer-wins) — the revision-checked
+   save this scope assumed is a generic `document-store/` ask; the interim mitigation
+   is in `rust/extensions/thecrew/docs/thecrew-extension-scope.md` §Risks.
 2. **Live repaint transport:** widget `refreshKey` polling is enough for phases 1–2;
    does phase 3's watch-the-AI-draw UX justify asking for a *generic* document watch
    feed (its own scope), or is 2s polling honestly fine?
@@ -299,10 +304,11 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 
 ## Related
 
-- **`packages/thecrew/`** — the standalone **UI/UX test bed** for this scope (its own
-  scope set lives at `packages/thecrew/docs/`): proves the look + builder feel on the
-  same engine and scene schema before the extension is built; its `src/scene|canvas|
-  theme|editor` are written to lift into this extension per its reuse contract.
+- **`rust/extensions/thecrew/`** — the extension this ships as. Began as the
+  standalone UI/UX test bed (scope set at `rust/extensions/thecrew/docs/`), which
+  proved the look + builder feel on the same engine and scene schema; the lift into
+  a real extension (phases 1–2 here) is scoped at
+  `rust/extensions/thecrew/docs/thecrew-extension-scope.md`.
 - `extensions/ui-federation-scope.md` — the `[ui]`/`[[widget]]` mount + bridge this
   rides; `rust/extensions/control-engine/docs/control-engine-scope.md` — the
   100%-extension precedent (core ignorant, docs co-located).

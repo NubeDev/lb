@@ -79,7 +79,21 @@ pub async fn install_native<L: Launcher>(
     stop_if_running(node, ws, &manifest.id).await;
 
     // Spawn the child with its scoped identity, and hold the live handle in the runtime map.
-    let spec = build_spec(native, install_dir, ws, &manifest.id, &granted);
+    // Mint the child token with the NODE's key (so the gateway verifies it on the callback) and tell
+    // the child where to POST its `/mcp/call` callbacks via `LB_GATEWAY_URL` (native-callback-transport
+    // scope). The URL is deployment config the boot layer sets; unset → no callback address injected
+    // and the child's callback client fails cleanly (a sidecar that never calls back is unaffected).
+    let key = node.key();
+    let gateway_url = std::env::var("LB_GATEWAY_URL").ok();
+    let spec = build_spec(
+        native,
+        install_dir,
+        ws,
+        &manifest.id,
+        &granted,
+        &key,
+        gateway_url.as_deref(),
+    );
     let sidecar = Sidecar::spawn(spec, launcher).await?;
     node.sidecars.insert(ws, &manifest.id, sidecar);
 

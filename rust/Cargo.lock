@@ -3252,6 +3252,7 @@ dependencies = [
 name = "fleet-monitor"
 version = "0.1.0"
 dependencies = [
+ "lb-sidecar-client",
  "lb-supervisor",
  "serde",
  "serde_json",
@@ -4860,6 +4861,7 @@ dependencies = [
  "lb-prefs",
  "lb-registry",
  "lb-run-events",
+ "lb-sidecar-client",
  "lb-supervisor",
  "lb-telemetry",
  "rand 0.8.6",
@@ -4980,6 +4982,17 @@ dependencies = [
  "lb-auth",
  "lb-caps",
  "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "lb-sidecar-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
