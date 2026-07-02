@@ -7,6 +7,10 @@
 # and the JSON-Schema config gate. It links ONLY serde + serde_json + thiserror + jsonschema: no
 # store, no bus, no jobs, no host seams — a flow reaches the platform only through host-mediated,
 # capability-checked calls (rule 5/7). The durable run engine + MCP verbs live in the host crate.
+#
+# The one dependency widening (data-nodes scope, Risk 4): four minimal, pure-Rust parse crates for
+# the `csv`/`xml`/`yaml`/`base64` built-in node ops. Still no store/bus/jobs — the ops are pure
+# functions of a JSON value, unit-tested in this crate; the host only calls them.
 [package]
 name = "lb-flows"
 version.workspace = true
@@ -19,6 +23,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 jsonschema.workspace = true
+csv.workspace = true
+quick-xml.workspace = true
+serde_yaml.workspace = true
+base64.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

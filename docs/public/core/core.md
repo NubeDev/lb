@@ -38,3 +38,11 @@ and workspace-isolation categories. See `auth-caps.md`, `mcp.md`, `crate-layout.
 ## Next
 
 S2 brings messaging (bus pub/sub + presence) and the React/Tauri UI, and proves hot-reload.
+
+## In scope (not yet shipped)
+
+- **Resource-verb convention** (`../../scope/core/resource-verbs-scope.md`) — the one grammar every
+  listable/runnable family speaks: `<resource>.list|get|create|update|delete|watch` plus a runnable
+  `.start|stop|status|restart|logs` trait, so reminders/jobs/flows/extensions/channels/agent-runs render
+  identically in the command palette and the `lb` CLI. Renames the outliers (`channel_list`,
+  `installed`) behind a one-release alias. Promotes here once ≥3 families conform.

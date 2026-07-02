@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { parsePayload, encodeQuery } from "./payload.types";
+import { parsePayload, encodeQuery, encodeAgent } from "./payload.types";
 
 describe("parsePayload", () => {
   it("parses a query body into the tagged union", () => {
@@ -59,6 +59,51 @@ describe("parsePayload", () => {
   it("a query_error parses its message", () => {
     const p = parsePayload(`{"kind":"query_error","source":"s","sql":"x","error":"not permitted"}`);
     expect(p).toEqual({ kind: "query_error", source: "s", sql: "x", error: "not permitted" });
+  });
+
+  // channels-agent: the three agent kinds parse, mirroring the host's payload.rs round-trip.
+  it("an agent request parses (runtime optional)", () => {
+    expect(parsePayload(`{"kind":"agent","goal":"summarize","job":"run-1"}`)).toEqual({
+      kind: "agent",
+      goal: "summarize",
+      job: "run-1",
+    });
+    const withRt = parsePayload(
+      `{"kind":"agent","goal":"hi","runtime":"open-interpreter-default","job":"run-2"}`,
+    );
+    if (withRt?.kind !== "agent") throw new Error("expected agent");
+    expect(withRt.runtime).toBe("open-interpreter-default");
+  });
+
+  it("an agent_result parses (truncated absent → undefined)", () => {
+    const p = parsePayload(
+      `{"kind":"agent_result","goal":"g","runtime":"default","job":"run-3","answer":"the answer"}`,
+    );
+    if (p?.kind !== "agent_result") throw new Error("expected agent_result");
+    expect(p.answer).toBe("the answer");
+    expect(p.runtime).toBe("default");
+    expect(p.truncated).toBeUndefined();
+  });
+
+  it("an agent_error parses its opaque message", () => {
+    expect(parsePayload(`{"kind":"agent_error","goal":"g","error":"agent not permitted"}`)).toEqual({
+      kind: "agent_error",
+      goal: "g",
+      error: "agent not permitted",
+    });
+  });
+});
+
+describe("encodeAgent", () => {
+  it("builds a kind:agent body that round-trips (default runtime omits the field)", () => {
+    const p = parsePayload(encodeAgent("do a thing", "run-9"));
+    expect(p).toEqual({ kind: "agent", goal: "do a thing", job: "run-9" });
+  });
+
+  it("includes the runtime when one is given", () => {
+    const p = parsePayload(encodeAgent("hi", "run-10", "open-interpreter-default"));
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.runtime).toBe("open-interpreter-default");
   });
 });
 

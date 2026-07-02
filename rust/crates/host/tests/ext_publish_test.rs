@@ -15,17 +15,11 @@
 //! Workspace-first throughout (the caller's token carries the ws). The publisher key is the only
 //! external (testing §3); store + wasm + runtime are real.
 
-use std::sync::Arc;
-
 use ed25519_dalek::{Signer, SigningKey as PublisherSigningKey};
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_bus::Bus;
-use lb_host::{
-    ext_disable, ext_publish, installed, load_enabled, ExtError, Node, Role as NodeRole,
-};
-use lb_mcp::{call, Registry};
+use lb_host::{ext_disable, ext_publish, installed, load_enabled, ExtError, Node};
+use lb_mcp::call;
 use lb_registry::{digest, digest_hex, Artifact, PublisherKey, TrustedKeys, Visibility};
-use lb_runtime::Engine;
 use lb_store::Store;
 
 const MANIFEST_V2: &str = include_str!("../../../extensions/hello-v2/extension.toml");
@@ -155,15 +149,11 @@ async fn publish_rejects_a_tampered_artifact_even_with_the_grant() {
 /// store handle we control — so we can open node1, drop it, and re-open the same bytes as node2: a
 /// real restart, in-process and race-free.
 async fn boot_on_path(path: &str) -> Node {
-    Node {
-        store: Store::open(path).await.expect("open on-disk store"),
-        bus: Bus::peer().await.expect("zenoh peer"),
-        engine: Engine::new().expect("runtime engine"),
-        registry: Arc::new(Registry::new()),
-        sidecars: Arc::new(lb_host::SidecarMap::new()),
-        apikeys: Arc::new(lb_host::ApiKeyCache::new()),
-        role: NodeRole::Solo,
-    }
+    // A custom on-disk store (durable across the restart this test asserts) + the default peer bus +
+    // Solo role — exactly `boot_with_store`, which also installs the encapsulated runtime registry.
+    Node::boot_with_store(Store::open(path).await.expect("open on-disk store"))
+        .await
+        .expect("node boots over the on-disk store")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

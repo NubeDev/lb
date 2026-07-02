@@ -1,5 +1,6 @@
 //! `lb-flows` — the node-graph flow engine's **pure model + descriptor contract** (flows scope,
-//! generalised from the shipped `chains` rule-DAG — Decision 6). This crate owns the data the editor
+//! generalised from the `rubix-cube` rule-DAG — Decision 6; `flows` is now the one DAG engine). This
+//! crate owns the data the editor
 //! renders and the engine schedules; it owns **no** execution, store, bus, or host seam.
 //!
 //! The thesis (flows-scope): a flow is **not a new engine**. It is a typed node-graph + a backend
@@ -16,7 +17,7 @@
 //!   validated node blocks (a read-time union, never stored — node-descriptor-scope).
 //! - [`config_schema`] — compile + validate a node config against JSON-Schema 2020-12 (Decision 3).
 //! - [`model`] — the typed `Flow` graph (`Node`/`Edge`/`needs`/`with`) + DAG math (Kahn cycle-detect,
-//!   indegrees/dependents/frontier), reusing the chain binding grammar verbatim.
+//!   indegrees/dependents/frontier), reusing the rubix-cube binding grammar verbatim.
 //! - [`binding`] — resolve a node's `with` bindings (whole-value `${steps.x}` / `${steps.x.payload}` /
 //!   `${params.y}` / literal) against recorded upstream **envelopes** + flow params — the message-
 //!   envelope grammar (flow-message-envelope-scope D5), no templating mini-language.
@@ -28,6 +29,7 @@ pub mod config_schema;
 pub mod descriptor;
 pub mod model;
 pub mod node_block;
+pub mod ops;
 pub mod registry;
 
 pub use binding::{resolve_bindings, NodeOutput};
@@ -62,4 +64,11 @@ pub mod table {
     /// never lose an update, and it survives a restart (PLC "rung holds its last result"). Keyed
     /// `{flow}:{node}`. This is the borrowed-from-Node-RED/FBP "a node holds state" seam.
     pub const FLOW_NODE_MEMORY: &str = "flow_node_memory";
+    /// Durable **bounded accumulator** — the per-node buffer the *buffering* stateful nodes hold
+    /// between firings (`batch` grouping N payloads; `unique` stream-mode's seen-set; a streaming
+    /// `join`). Distinct from `flow_node_memory` (a single scalar total): a buffer is a **capped**
+    /// list of items (the plc-reliability capped-ring precedent, data-nodes Risk 3 / Open Q3 —
+    /// `BATCH_MAX` bound, **force-release** on overflow so it never grows unbounded and never
+    /// silently drops data). Keyed `{flow}:{node}`; survives restart (Tier B two-firing parity).
+    pub const FLOW_NODE_BUFFER: &str = "flow_node_buffer";
 }

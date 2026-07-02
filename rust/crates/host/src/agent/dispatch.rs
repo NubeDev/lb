@@ -16,6 +16,7 @@ use super::error::AgentError;
 use super::in_house::DEFAULT_RUNTIME;
 use super::model_access::AllowedTool;
 use super::registry::RuntimeRegistry;
+use super::resolve_default::resolve_effective_runtime;
 use super::runtime::RunContext;
 use super::substrate::{load_substrate_skill, read_substrate_doc};
 use crate::boot::Node;
@@ -28,8 +29,12 @@ pub struct Substrate<'a> {
     pub doc: Option<&'a str>,
 }
 
-/// Resolve `runtime` against `registry` and run it. `runtime` follows the decided resolution rules
-/// (absent → default; named-unknown → error). Returns the run's final answer.
+/// Resolve `runtime` against `registry` and run it. `runtime` follows the decided resolution rules,
+/// now with the workspace default folded in: **explicit arg → workspace `agent.config.default_runtime`
+/// → registry default** (absent-and-unset → default; named-unknown → error; stored-but-unavailable →
+/// registry default, fail-open). Returns the run's final answer. The precedence lives in ONE place
+/// ([`resolve_effective_runtime`]); both entrypoints (`agent.invoke` via `serve`, the channel `/agent`
+/// worker) reach it here, so they resolve identically.
 ///
 /// **Substrate is the in-house loop's mechanism, applied only for the default runtime.** For the
 /// default path the granted skill/doc are baked into the goal exactly as [`invoke`](super::invoke)
@@ -54,8 +59,15 @@ pub async fn invoke_via_runtime(
     // Same gate for every runtime — the external path adds no new caller capability.
     authorize_invoke(caller, ws)?;
 
+    // Resolve the EFFECTIVE runtime id (the one seam): explicit arg → workspace stored default →
+    // registry default. Runs AFTER the gate (an unauthorized caller is refused before we read any
+    // config) and does NOT widen anything — it is pure selection. A stored id the node no longer
+    // offers falls back to the default (fail-open); an explicit id is returned verbatim so the
+    // registry lookup below still errors on a named-unknown (no silent downgrade). See resolve_default.
+    let effective = resolve_effective_runtime(node, registry, ws, runtime).await;
+
     // Selection is a registry lookup, not a `match` over kinds. An unknown named runtime errors here.
-    let runtime = registry.resolve(runtime)?;
+    let runtime = registry.resolve(effective.as_deref())?;
 
     // Bake substrate into the goal for the DEFAULT (in-house) runtime only — behaviourally identical
     // to `invoke`. The S4 gates (membership/ownership/grant) fire under the caller (see substrate.rs).

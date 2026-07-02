@@ -10,8 +10,18 @@
 
 use serde_json::Value;
 
-/// The keys a tabular tool result hides its rows under (mirrors the client `toRows`).
-const ROW_KEYS: &[&str] = &["samples", "items", "rows", "templates", "dashboards"];
+/// The keys a tabular tool result hides its rows under (mirrors the client `toRows`). A list verb that
+/// wraps its rows under its own plural (`reminder.list` → `{reminders:[…]}`) is added here so a
+/// `rich_result` table `source`-d at that verb unwraps to N rows instead of one JSON-blob row (the
+/// channel-rich-responses reminders tenant — keep in lock-step with the client mirror in `useSource.ts`).
+const ROW_KEYS: &[&str] = &[
+    "samples",
+    "items",
+    "rows",
+    "templates",
+    "dashboards",
+    "reminders",
+];
 
 /// The canonical time-column names a row may carry (first match wins). Used to TAG the frame's time
 /// field so the renderer/axis treats it as an instant — the value stays canonical epoch-ms.
@@ -110,6 +120,20 @@ mod tests {
     fn samples_shape_unchanged() {
         let result = json!({ "samples": [{"ts": 1, "value": 9}] });
         assert_eq!(result_to_rows(&result), vec![json!({"ts": 1, "value": 9})]);
+    }
+
+    // Regression (debugging/reminders/reminder-list-not-unwrapped-to-table-rows.md): `reminder.list`
+    // returns `{reminders:[…]}`; before `reminders` was added to ROW_KEYS this unwrapped to ONE
+    // JSON-blob row, so the channel `/reminders` table showed one cell instead of N per-reminder rows
+    // and a row control's `${id}` bound nothing.
+    #[test]
+    fn reminders_shape_unwraps_to_n_rows() {
+        let result = json!({ "reminders": [{"id": "r1"}, {"id": "r2"}] });
+        assert_eq!(
+            result_to_rows(&result),
+            vec![json!({"id": "r1"}), json!({"id": "r2"})],
+            "reminder.list unwraps to N reminder rows, not one blob row"
+        );
     }
 }
 

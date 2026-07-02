@@ -1,6 +1,21 @@
 # External-agent scope — the run as a durable job: resume, supervision, read surface
 
-Status: scope (the ask). Sub-scope #5 of `external-agent-scope.md`. Promotes to `public/external-agent/`.
+Status: scope (the ask) — **partial: durable-detached-run + wall-time supervision shipped for the
+in-channel path.** Sub-scope #5 of `external-agent-scope.md`. The **channel** agent run is now a durable
+enqueue job drained by a background reactor off the request connection (non-blocking, idempotent,
+survives restart) — see
+[channels-agent-background-session.md](../../sessions/channels/channels-agent-background-session.md) — and
+is now **bounded by a wall-clock ceiling**: a run that exceeds it is reaped (its drive future dropped,
+tearing down an external subprocess) and posts an honest `agent_error` instead of a card that spins
+forever — see
+[channels-agent-supervision-session.md](../../sessions/channels/channels-agent-supervision-session.md).
+The **`agent.runtimes`** read surface + the **composer runtime picker** are now **SHIPPED** (a first-class
+palette command routed to the `kind:"agent"` payload path, with a runtime dropdown backed by the
+`agent.runtimes` read verb) — see
+[agent-runtimes-scope.md](agent-runtimes-scope.md) +
+[agent-runtimes-picker-session.md](../../sessions/channels/agent-runtimes-picker-session.md). Still open
+here: the ACP **`session/cancel`** path for an explicit mid-run stop, and the **resume** contract for the
+foreign external loop. Promotes to `public/external-agent/`.
 
 Make an external-agent run a **first-class, durable, supervised** object — the same way the in-house
 loop's run is — so it survives the edge disconnecting, can be watched live, resumes without
@@ -21,8 +36,9 @@ the `RunEvent`s #2 emits, the **resume strategy** (the hard problem with a forei
   — not by replaying the foreign loop's state.
 - **Supervision:** a bounded run (wall-time + token/iteration ceiling), **killable** and **restartable**
   (supervisor crate), with a crashed/hung subprocess reaped so it never pins a job or leaks the sandbox.
-- **Read surface:** add **`agent.runtimes`** — list the runtimes/profiles this node has configured and
-  which is default (read-only, ws-scoped, gated by a read cap) — so the UI can show + pick the runtime.
+- **Read surface (SHIPPED):** **`agent.runtimes`** — list the runtimes/profiles this node has configured
+  and which is default (read-only, ws-scoped, gated by `mcp:agent.runtimes:call`) — so the UI can show +
+  pick the runtime. Built as the `RuntimeArg` dropdown on a first-class `agent.invoke` palette command.
 
 ## Non-goals
 
@@ -138,7 +154,13 @@ Mandatory categories (`scope/testing/testing-scope.md`):
   is the natural opt-in there; restart-from-goal remains the universal fallback for agents that don't
   advertise it. (Still: our transcript is authority regardless — see Risks.)
 - **Ceiling configuration:** per-workspace policy vs a fixed node default (mirrors the agent-scope open
-  question). Slice default: fixed node default.
+  question). Slice default: fixed node default. **SHIPPED** as `RUN_WALL_CEILING` (15 min) in
+  `channel::agent_worker`, enforced by wrapping the `invoke_via_runtime` future in `tokio::time::timeout`
+  in `drive_run`; the `drain_channel_agent_runs_with_ceiling` seam lets a test reap at a tiny wall-time.
+  Per-workspace policy remains the deferred open question. **Still open:** an *iteration/token* ceiling
+  distinct from wall-time (the in-house loop already self-bounds via `MAX_STEPS`; the external subprocess
+  is bounded only by wall-time today), and the explicit ACP `session/cancel` path for a user-driven stop
+  (the timeout reaps a *hung* run; cancel reaps a *running* one on request).
 - **Per-workspace run concurrency: DECIDED — unbounded per workspace, but ZERO cross-workspace
   bleed.** A workspace may have as many concurrent external-agent runs as the caller starts (like a
   user opening 100 `vtcode`/`codex` sessions on a PC). "One agent per workspace" means each run is
@@ -168,7 +190,11 @@ Mandatory categories (`scope/testing/testing-scope.md`):
   **Code gap today:** `driver::drive(.., workspace, ..)` treats `workspace` as a plain cwd. The
   per-run **scratch dir** (filesystem seal) is addable now and locally testable; the walled MCP
   endpoint + scoped token (data + secret seals) land with #3/#4.
-- **`agent.runtimes` shape:** just ids + default, or include health/version per profile? Start minimal.
+- **`agent.runtimes` shape:** ~~just ids + default, or include health/version per profile?~~
+  **RESOLVED — minimal: ids + default.** Shipped as `{ default, runtimes:[sorted ids] }`; a
+  health/version-rich shape is deferred until the registry has a health signal. See
+  [agent-runtimes-scope.md](agent-runtimes-scope.md) + session
+  [agent-runtimes-picker-session.md](../../sessions/channels/agent-runtimes-picker-session.md).
 - **Profile CRUD promotion:** keep profiles as deploy config, or add `agent.profile.*` + a UI later
   (ordinary ws-scoped, capability-gated CRUD if so).
 

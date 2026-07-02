@@ -30,6 +30,9 @@ async fn agent_drives_a_real_run() {
         provider: std::env::var("VTCODE_PROVIDER").unwrap_or_else(|_| "zai".into()),
         model: std::env::var("VTCODE_MODEL").unwrap_or_else(|_| "glm-5.2".into()),
         api_key_env: std::env::var("VTCODE_KEY_ENV").unwrap_or_else(|_| "ZAI_API_KEY".into()),
+        // vtcode takes provider/base_url via its own `--api-key-env` path, not codex `-c` overrides,
+        // so its ModelEndpoint carries no base_url here (the codex wrapper is the only base_url reader).
+        base_url: std::env::var("VTCODE_BASE_URL").ok(),
     };
 
     // Pick the wrapper + matching profile by env — the same call site drives either agent.
@@ -49,6 +52,7 @@ async fn agent_drives_a_real_run() {
         "Print exactly the word PONG and nothing else. Do not use any tools.",
         workspace,
         Duration::from_secs(120),
+        None, // no live sink in the standalone driver smoke — just collect + assert
     )
     .await
     .expect("agent run drove to completion");

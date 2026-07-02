@@ -95,9 +95,24 @@ impl AgentRuntime for AcpRuntime {
             let scratch = ScratchDir::create(&self.scratch_base, ctx.ws, ctx.job_id)
                 .map_err(|e| AgentError::BadInput(format!("scratch dir: {e}")))?;
 
-            // Drive the real subprocess over the shipped `exec --json` transport, collecting the
-            // projected `RunEvent`s. The cwd is the sealed scratch dir — NOT the caller's workspace
-            // path (the old `drive(.., workspace, ..)` cwd gap the run-lifecycle scope flagged).
+            // LIVE MOTION: publish each `RunEvent` the moment its stdout line decodes, so a watcher
+            // (agent-run Part 3 / the channel run-feed) sees the agent work in real time — tool calls,
+            // reasoning, text — not a burst at the end. `drive` taps every event to this unbounded
+            // channel as it streams; a detached publisher forwards them onto the ws-walled run subject.
+            // (Best-effort: the durable transcript is #5's job; this slice's authority is the answer.)
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RunEvent>();
+            let bus = node.bus.clone();
+            let ws = ctx.ws.to_string();
+            let job = ctx.job_id.to_string();
+            let publisher = tokio::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    lb_host::publish_run_event(&bus, &ws, &job, &event).await;
+                }
+            });
+
+            // Drive the real subprocess over the shipped `exec --json` transport, streaming each event
+            // live (above) AND collecting them for the final answer. The cwd is the sealed scratch dir —
+            // NOT the caller's workspace path (the `drive(.., workspace, ..)` cwd gap #5 flagged).
             let cwd = scratch.path().to_string_lossy().into_owned();
             let events = drive(
                 self.agent.wrapper.as_ref(),
@@ -105,16 +120,13 @@ impl AgentRuntime for AcpRuntime {
                 ctx.goal,
                 &cwd,
                 self.timeout,
+                Some(&tx),
             )
             .await
             .map_err(|e| AgentError::BadInput(format!("external agent run failed: {e}")))?;
-
-            // Forward each event as motion so a watcher observes an external run identically to an
-            // in-house one (agent-run Part 3). Best-effort publish (the transcript is authority in #5;
-            // this slice has no durable transcript yet — TODO(#5)).
-            for event in &events {
-                lb_host::publish_run_event(&node.bus, ctx.ws, ctx.job_id, event).await;
-            }
+            // Close the sink and let the publisher drain every streamed event before we return.
+            drop(tx);
+            let _ = publisher.await;
 
             // The answer + fail-closed terminal outcome. `terminal_outcome` maps the projected finish
             // (an unrecognised agent status → `Failed`, never `Done` — the untrusted-agent rule the
@@ -122,9 +134,16 @@ impl AgentRuntime for AcpRuntime {
             // #5 will make the *job/exit* authoritative over this hint.
             let answer = final_answer(&events);
             match run_outcome(&events) {
-                Some(RunOutcome::Failed) => Err(AgentError::BadInput(format!(
-                    "external agent run ended failed: {answer}"
-                ))),
+                Some(RunOutcome::Failed) => {
+                    // On failure the useful text is the terminal `RunFinish.answer` (e.g. a provider
+                    // "429 Too Many Requests" or a tool error) — NOT the assistant `TextDelta`s, which
+                    // are usually empty on a failed turn. Fall back to it so the channel `agent_error`
+                    // carries a real reason instead of an empty string.
+                    let reason = finish_message(&events).unwrap_or(answer);
+                    Err(AgentError::BadInput(format!(
+                        "external agent run ended failed: {reason}"
+                    )))
+                }
                 _ => Ok(answer),
             }
         })
@@ -142,6 +161,15 @@ fn final_answer(events: &[RunEvent]) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// The message carried by the terminal `RunFinish` (the failure reason on a failed run), if any and
+/// non-empty. Used to give a failed run an honest error string instead of the empty `TextDelta` join.
+fn finish_message(events: &[RunEvent]) -> Option<String> {
+    events.iter().rev().find_map(|e| match e {
+        RunEvent::RunFinish { answer, .. } if !answer.trim().is_empty() => Some(answer.clone()),
+        _ => None,
+    })
 }
 
 /// The run's terminal outcome, if the stream carried a `RunFinish`. `None` when the agent emitted no

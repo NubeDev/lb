@@ -1,0 +1,43 @@
+/* The Panel stylesheet — Tailwind v4, SCOPED so it can NEVER touch the host app.
+ *
+ * CRITICAL — this is a LIBRARY stylesheet dropped into a host app that ALSO ships Tailwind.
+ * A naive `@import 'tailwindcss/utilities.css'` emits GLOBAL `.flex`/`.grid`/`.border`/… rules
+ * that collide with the host's own utilities (esp. across Tailwind minor versions) and broke
+ * the app layout (the sidebar vanished). So we do two things:
+ *   1. NO preflight / base — a library must never reset its host (the earlier lesson).
+ *   2. SCOPE every generated utility under `.lb-panel` via the v4 nesting form
+ *      (`@layer utilities { .lb-panel { @tailwind utilities } }`), so the panel's classes only
+ *      apply INSIDE the panel and can't leak onto app elements.
+ *
+ * `@theme` maps the panel's Tailwind color utilities onto the `--lbp-*` tokens; the tokens live
+ * in panel-theme.css, scoped to `.lb-panel`, and ALIAS the host's shadcn vars so the panel
+ * follows the app theme. */
+
+@layer theme, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import './panel-theme.css';
+
+/* Scoped utilities: generated classes are emitted UNDER `.lb-panel` only. */
+@layer utilities {
+  .lb-panel {
+    @tailwind utilities;
+  }
+}
+
+@theme {
+  --color-lbp-bg: hsl(var(--lbp-bg));
+  --color-lbp-panel: hsl(var(--lbp-panel));
+  --color-lbp-secondary: hsl(var(--lbp-secondary));
+  --color-lbp-border: hsl(var(--lbp-border));
+  --color-lbp-input: hsl(var(--lbp-input));
+  --color-lbp-fg: hsl(var(--lbp-fg));
+  --color-lbp-muted: hsl(var(--lbp-muted));
+  --color-lbp-accent: hsl(var(--lbp-accent));
+  --color-lbp-amber: hsl(var(--lbp-amber));
+}
+
+/* The panel inherits the host's sans font; `font-mono` uses the host mono stack. */
+.lb-panel .font-mono {
+  font-family: var(--lbp-font-mono);
+}

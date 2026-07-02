@@ -232,6 +232,66 @@ async fn halt_policy_skips_failed_subtree() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn halt_with_a_successful_upstream_is_partial_failure() {
+    // Superset proof for the retired rule-DAG `halt_skips_the_subtree_of_a_failure` case: a MIXED
+    // run — an upstream node succeeds, a middle node fails, its dependent is skipped — settles
+    // `partialFailure` (not `failed`), and the skipped node records `skipped`. The sibling
+    // `halt_policy_skips_failed_subtree` covers the all-fail (`failed`) case; this covers the
+    // ok→err→skipped case the retired engine's test asserted.
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let mut f = flow(
+        "phalt",
+        vec![
+            rhai_node("a", &[], "1"),                 // ok
+            rhai_node("bad", &["a"], "syntax@#$err"), // err (rhai syntax error)
+            rhai_node("dep", &["bad"], "2"),          // depends on bad → skipped under Halt
+        ],
+    );
+    f.failure_policy = FailurePolicy::Halt;
+    save_flow(&node, &p, "ws", &f).await;
+    run_flow(&node, &p, "ws", "phalt", "phalt-run-1").await;
+    let snap = runs_get(&node, &p, "ws", "phalt-run-1").await;
+    assert_eq!(
+        snap["status"], "partialFailure",
+        "one ok + one err = partial"
+    );
+    let outcome = |id: &str| -> String {
+        snap["steps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == id)
+            .unwrap()["outcome"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(outcome("a"), "ok");
+    assert_eq!(outcome("bad"), "err");
+    assert_eq!(outcome("dep"), "skipped", "Halt prunes the failed subtree");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn save_rejects_a_flow_over_the_node_cap() {
+    // Superset proof for the retired rule-DAG `size_cap_is_rejected` case: the host `flows.save`
+    // write path enforces `MAX_FLOW_NODES` — a hand-edited over-cap record is refused as BadInput
+    // before any run. (The unit test `rejects_over_the_node_cap` in `lb_flows::model` covers the
+    // validator directly; this proves the save boundary re-checks it.)
+    let node = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let over: Vec<Node> = (0..=lb_flows::MAX_FLOW_NODES)
+        .map(|i| rhai_node(&format!("n{i}"), &[], "1"))
+        .collect();
+    let f = flow("toobig", over);
+    let body = serde_json::to_value(&f).unwrap().to_string();
+    let err = call_tool(&node, &p, "ws", "flows.save", &body)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, lb_mcp::ToolError::BadInput(_)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn no_widening_tool_node_denied_without_the_tool_cap() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     // caller holds flows.run but NOT `mcp:rules.run` — a tool node that dispatches `rules.run` is

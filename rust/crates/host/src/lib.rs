@@ -9,13 +9,13 @@
 //! and `load_extension` to bring a component online. Tool calls go through `lb_mcp::call`.
 
 mod agent;
+mod agent_reactor;
 mod apikey;
 mod assets;
 mod authz;
 mod boot;
 mod bus;
 mod callback;
-mod chains;
 mod channel;
 mod channel_registry;
 mod dashboard;
@@ -63,14 +63,23 @@ mod workflow;
 mod workspaces;
 
 pub use agent::{
-    activate_skill, agent_call_key, call_agent_tool, cancel_run, decision_id, evaluate_policy,
-    format_catalog, invoke, invoke_remote, invoke_via_runtime, load_decision, load_policy,
-    rehydrate, render_catalog, resume, run_session, save_policy, serve_agent, settle_decision,
-    Activation, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest, AgentRuntime,
-    AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect, ErasedModel,
-    InHouseRuntime, Invocation, LoopState, ModelAccess, Policy, ProposedCall, Rule, RunContext,
-    RuntimeRegistry, SettleOutcome, Substrate, Turn, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
-    DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS, POLICY_TABLE, SKILL_ACTIVATE,
+    activate_skill, agent_call_key, agent_config_get, agent_config_set, call_agent_tool,
+    cancel_run, decision_id, evaluate_policy, format_catalog, invoke, invoke_descriptor,
+    invoke_remote, invoke_via_runtime, list_runtimes, load_decision, load_policy, rehydrate,
+    render_catalog, resolve_effective_runtime, resolve_effective_runtime_id, resume, run_session,
+    save_policy, serve_agent, settle_decision, Activation, AgentConfig, AgentDecision, AgentError,
+    AgentInvokeReply, AgentInvokeRequest, AgentRuntime, AgentServer, AllowedTool, ArgMatch,
+    CallOutcome, DecisionState, Effect, ErasedModel, InHouseRuntime, Invocation, LoopState,
+    ModelAccess, ModelEndpointPatch, Policy, ProposedCall, Rule, RunContext, RuntimeRegistry,
+    SettleOutcome, Substrate, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
+    DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, MAX_STEPS,
+    POLICY_TABLE, SKILL_ACTIVATE,
+};
+/// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
+/// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
+/// deterministic drain a test (or a caller wanting an immediate flush) drives without the timer.
+pub use agent_reactor::{
+    drain_channel_agent_runs, drain_channel_agent_runs_with_ceiling, spawn_agent_reactors,
 };
 pub use apikey::{
     apikey_authenticate, apikey_create, apikey_get, apikey_list, apikey_revoke, apikey_rotate,
@@ -93,13 +102,9 @@ pub use boot::{Node, NodeError};
 pub use bus::{
     authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
 };
-pub use chains::{
-    call_chains_tool, chains_delete, chains_get, chains_list, chains_resume, chains_run,
-    chains_run_get, chains_save, ChainsError,
-};
 pub use channel::{
-    delete, edit, history, join, post, subscribe_channel, watch, watch_deletions, ChannelError,
-    ChannelPresence, ChannelSub, DeletionFeed, PresenceFeed,
+    call_channel_chart_pref_tool, delete, edit, history, join, post, subscribe_channel, watch,
+    watch_deletions, ChannelError, ChannelPresence, ChannelSub, DeletionFeed, PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
@@ -114,8 +119,8 @@ pub use dbview::{
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
 };
 pub use devkit::{
-    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_scaffold,
-    devkit_templates, BuildStarted, DevkitError,
+    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_root, devkit_scaffold,
+    devkit_templates, BuildStarted, DevkitError, DevkitRoot,
 };
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,
@@ -171,8 +176,9 @@ pub use native::{
 };
 pub use outbox::{enqueue_outbox, outbox_status, OutboxError, OutboxStatus};
 pub use prefs::{
-    authorize_prefs, call_format_tool, call_prefs_tool, prefs_get, prefs_resolve, prefs_set,
-    prefs_set_default, PrefsSvcError,
+    authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,
+    catalog_changed_subject, message_render, message_set_catalog, prefs_catalog, prefs_get,
+    prefs_resolve, prefs_set, prefs_set_default, CatalogView, PrefsSvcError,
 };
 pub use query::{
     call_query_tool, compile_descriptor, query_compile, query_delete, query_get, query_list,
@@ -187,9 +193,9 @@ pub use registry::{
 pub use reload::reload_extension;
 pub use reminder::{
     call_reminder_tool, fire_job_id, fire_reminder, react_to_reminders, reminder_create,
-    reminder_delete, reminder_get, reminder_list, reminder_update, Action as ReminderAction,
-    ReactorPass as ReminderReactorPass, Reminder, ReminderError, ReminderPatch, ReminderStatus,
-    FIRE_KIND as REMINDER_FIRE_KIND,
+    reminder_delete, reminder_fire, reminder_get, reminder_list, reminder_update,
+    Action as ReminderAction, ReactorPass as ReminderReactorPass, Reminder, ReminderError,
+    ReminderPatch, ReminderStatus, FIRE_KIND as REMINDER_FIRE_KIND,
 };
 pub use remote::register_remote_extension;
 pub use render_templates::{
@@ -199,9 +205,9 @@ pub use render_templates::{
 };
 pub use role::Role;
 pub use rules::{
-    ai_limits, call_rules_tool, max_chain_steps, params_to_rhai, rule_limits, rules_delete,
-    rules_get, rules_list, rules_run, rules_save, workspace_datasources, workspace_queries,
-    HostAiSeam, HostDataSeam, RuleModel, RulesError, RunResult, SavedRule,
+    ai_limits, call_rules_tool, params_to_rhai, rule_limits, rules_delete, rules_get, rules_list,
+    rules_run, rules_save, workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam,
+    RuleModel, RulesError, RunResult, SavedRule,
 };
 pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
 pub use serve::{serve_ext, ToolServer};

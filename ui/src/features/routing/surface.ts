@@ -10,7 +10,6 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   channels: "/channels",
   dashboards: "/dashboards",
   rules: "/rules",
-  chains: "/chains",
   flows: "/flows",
   datasources: "/datasources",
   reminders: "/reminders",
@@ -25,6 +24,7 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   admin: "/admin",
   extensions: "/extensions",
   studio: "/studio",
+  settings: "/settings",
 };
 
 /** Prefix a tenant-relative surface path with the workspace segment. */

@@ -14,9 +14,12 @@ import { cellFieldConfig } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 
+import { PlotChart } from "@/features/charts";
+
 import { WidgetHeader, WidgetMessage } from "../../widgets/chrome";
 import { TimeseriesChart } from "../../widgets/recharts";
 import { usePanelData } from "../../builder/usePanelData";
+import { cellPlot } from "../plot";
 import { rowNumber } from "../num";
 import { readTimeseriesOptions } from "./options";
 import { readTimeseriesCustom } from "./custom";
@@ -43,6 +46,26 @@ export function TimeseriesView({ cell, label, scope = emptyScope(), refreshKey =
 
   if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;
   if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;
+
+  // The x/y plot path (viz x/y builder): when the panel has a configured `plot` spec, render the full
+  // multi-series chart through the shared `PlotChart` (real titled axes, gridlines, legend) with numbers
+  // localized through the ONE user-prefs bridge. A cell with no plot spec keeps the legacy single-value
+  // chart below, byte-for-byte — this is purely additive.
+  const plot = cellPlot(cell);
+  if (plot) {
+    const optsP = resolveFieldOptions(cellFieldConfig(cell), { name: FIELD_NAME, type: "number" });
+    return (
+      <div className="flex h-full flex-col" aria-label={`timeseries ${label ?? ""}`}>
+        <WidgetHeader label={label ?? ""} />
+        <PlotChart
+          rows={rows}
+          spec={plot}
+          valueFormatter={(v) => formatValue(v, optsP).text}
+          ariaLabel="timeseries plot"
+        />
+      </div>
+    );
+  }
 
   const points = rows.map(rowNumber).filter((n): n is number => n !== null);
   if (points.length === 0) return <WidgetMessage tone="muted">no data yet</WidgetMessage>;

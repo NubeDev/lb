@@ -66,7 +66,11 @@ describe("App routing (real gateway)", () => {
     render(<App />);
 
     expect(await screen.findByRole("heading", { name: "#general" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "general" })).toBeInTheDocument();
+    // The channel roster now mounts alongside the message panel + workspace switcher on the same
+    // surface, so its list lands a beat later under the in-proc gateway — give it a real-async budget.
+    expect(
+      await screen.findByRole("button", { name: "general" }, { timeout: 3000 }),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Admin")).not.toBeInTheDocument();
 
     const denied = await fetch(`${gatewayUrl()}/admin/users`, {

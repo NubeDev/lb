@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::unit::Unit;
+
 /// A physical dimension a quantity can belong to. Closed: a value outside this set is rejected at
 /// the type level (serde fails the deserialize), never silently passed through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -35,6 +37,24 @@ impl Dimension {
             Dimension::Data => "data",
             Dimension::Percent => "percent",
             Dimension::Time => "time",
+        }
+    }
+
+    /// The **canonical (base) unit** a stored value of this dimension is expressed in — the SI/base
+    /// the platform stores canonically (prefs scope: "UTC instants, SI/base units"). A `{v, quantity,
+    /// <dim>}` catalog placeholder carries the *canonical* value, so this is the `from_unit` the
+    /// renderer converts from before applying the recipient's display unit. (Kept beside the closed
+    /// enum so the two never drift.)
+    pub fn canonical_unit(&self) -> Unit {
+        match self {
+            Dimension::Temperature => Unit::Celsius,
+            Dimension::Speed => Unit::MeterPerSecond,
+            Dimension::Distance => Unit::Meter,
+            Dimension::Mass => Unit::Kilogram,
+            Dimension::Pressure => Unit::Pascal,
+            Dimension::Data => Unit::Byte,
+            Dimension::Percent => Unit::Ratio,
+            Dimension::Time => Unit::Second,
         }
     }
 

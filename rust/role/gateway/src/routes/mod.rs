@@ -9,9 +9,10 @@ mod admin_members;
 mod admin_teams;
 mod admin_users;
 mod admin_workspaces;
+mod agent_config;
 mod assets;
 mod bus;
-mod chains;
+mod catalog;
 mod channel_registry;
 mod dashboard;
 mod datasources;
@@ -51,11 +52,14 @@ pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};
 pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_users};
 pub use admin_workspaces::{archive_workspace, purge_workspace, rename_workspace};
+pub use agent_config::{
+    get_agent_config as get_agent_config_route, set_agent_config as set_agent_config_route,
+};
 pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
 pub use bus::{bus_stream, publish_message};
-pub use chains::{delete_chain, get_chain, get_chain_run, list_chains, run_chain, save_chain};
+pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,

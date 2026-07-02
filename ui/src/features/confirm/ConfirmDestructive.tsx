@@ -6,14 +6,30 @@
 //                  workspace purge). The backend ALSO requires a confirm token == the id + the
 //                  `workspace.purge` cap — defense in depth (admin-crud session). This UI gate is
 //                  the human safety net, not the security boundary.
-//   - second-gate→ a second explicit "I understand" checkbox before Confirm enables.
+//   - second-gate→ a second explicit "I understand" toggle before Confirm enables.
 //
 // Cancel performs NOTHING (just closes). The dialog blocks the action until an explicit confirm.
 // Markup + local input state only; the caller owns the actual verb call in `onConfirm`.
+//
+// On the shadcn `Dialog` primitive (ui-standards-scope) — focus trapping + Escape/overlay dismissal
+// come for free; dismissing any way routes through `onCancel` (which does nothing but close).
 
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
 export type Escalation = "none" | "type-name" | "second-gate";
 
@@ -58,35 +74,29 @@ export function ConfirmDestructive({
     (escalation === "second-gate" && acked);
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-    >
-      <div className="w-96 rounded-lg border border-border bg-panel p-4 shadow-xl">
-        <header className="flex items-center gap-2">
-          <AlertTriangle size={16} className="text-accent" />
-          <h2 className="text-sm font-medium">{title}</h2>
-          <span
-            className={`ml-auto rounded px-2 py-0.5 text-xs ${
-              reversible ? "bg-accent/15 text-accent" : "bg-red-500/15 text-red-400"
-            }`}
-          >
-            {reversible ? "reversible" : "irreversible"}
-          </span>
-        </header>
+    <Dialog open onOpenChange={(o) => (o ? undefined : onCancel())}>
+      <DialogContent showClose={false} className="max-w-sm gap-3">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-accent" />
+            <DialogTitle>{title}</DialogTitle>
+            <Badge
+              variant={reversible ? "outline" : "destructive"}
+              className={reversible ? "ml-auto border-accent/25 bg-accent/10 text-accent" : "ml-auto"}
+            >
+              {reversible ? "reversible" : "irreversible"}
+            </Badge>
+          </div>
+        </DialogHeader>
 
-        <p className="mt-3 text-xs text-muted" data-testid="consequence">
-          {consequence}
-        </p>
+        <DialogDescription data-testid="consequence">{consequence}</DialogDescription>
 
         {escalation === "type-name" && (
-          <label className="mt-3 block text-xs text-muted">
+          <label className="block text-xs text-muted">
             Type <span className="font-mono text-accent">{confirmName}</span> to confirm:
-            <input
+            <Input
               aria-label="type to confirm"
-              className="mt-1 w-full rounded bg-bg px-2 py-1 text-sm"
+              className="mt-1 h-8"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
             />
@@ -94,39 +104,34 @@ export function ConfirmDestructive({
         )}
 
         {escalation === "second-gate" && (
-          <label className="mt-3 flex items-center gap-2 text-xs text-muted">
-            <input
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <Switch
               aria-label="acknowledge"
-              type="checkbox"
               checked={acked}
-              onChange={(e) => setAcked(e.target.checked)}
+              onCheckedChange={setAcked}
             />
             I understand this cannot be undone.
           </label>
         )}
 
-        {extra && <div className="mt-3">{extra}</div>}
+        {extra && <div>{extra}</div>}
 
-        <footer className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            aria-label="cancel"
-            onClick={onCancel}
-            className="rounded bg-bg px-3 py-1 text-xs"
-          >
+        <DialogFooter>
+          <Button type="button" variant="outline" size="sm" aria-label="cancel" onClick={onCancel}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="destructive"
+            size="sm"
             aria-label="confirm action"
             disabled={!gateSatisfied}
             onClick={onConfirm}
-            className="rounded bg-red-500/80 px-3 py-1 text-xs text-white disabled:opacity-40"
           >
             {confirmLabel}
-          </button>
-        </footer>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

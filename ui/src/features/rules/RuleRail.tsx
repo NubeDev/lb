@@ -7,6 +7,7 @@
 import { useState, type FormEvent } from "react";
 import { FileCode2, Plus, Trash2 } from "lucide-react";
 
+import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SavedRule } from "@/lib/rules";
@@ -39,13 +40,11 @@ export function RuleRail({ roster, selectedId, onOpen, onDelete, onCreate }: Rul
   }
 
   return (
-    <aside
-      aria-label="rule rail"
-      className="flex w-64 shrink-0 flex-col border-r border-border bg-card shadow-sm shadow-black/5"
-    >
-      <div className="border-b border-border p-2">
-        {creating ? (
-          <form className="space-y-2" onSubmit={submit}>
+    <AppRail
+      label="rule rail"
+      header={
+        creating ? (
+          <form className="w-full space-y-2" onSubmit={submit}>
             <Input
               aria-label="new rule name"
               autoFocus
@@ -95,9 +94,10 @@ export function RuleRail({ roster, selectedId, onOpen, onDelete, onCreate }: Rul
           >
             <Plus size={14} /> New rule
           </Button>
-        )}
-      </div>
-      <ul className="flex-1 space-y-1 overflow-auto p-2">
+        )
+      }
+    >
+      <ul className="space-y-1">
         {roster.length === 0 ? (
           <li className="rounded-md border border-dashed border-border bg-bg/60 px-3 py-3 text-xs text-muted">
             No saved rules yet.
@@ -139,6 +139,6 @@ export function RuleRail({ roster, selectedId, onOpen, onDelete, onCreate }: Rul
           })
         )}
       </ul>
-    </aside>
+    </AppRail>
   );
 }

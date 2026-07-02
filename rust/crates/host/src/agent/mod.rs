@@ -19,7 +19,9 @@
 mod activate;
 mod authorize;
 mod catalog;
+mod config;
 mod decision;
+mod descriptor;
 mod dispatch;
 mod error;
 mod in_house;
@@ -29,20 +31,28 @@ mod model_access;
 mod policy;
 mod registry;
 mod rehydrate;
+mod resolve_default;
 mod route;
 mod run;
 mod runtime;
+mod runtimes;
 mod serve;
 mod step;
 mod substrate;
 mod tool;
+mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog};
+pub use config::{
+    agent_config_get, agent_config_set, call_agent_config_tool, AgentConfig, ModelEndpointPatch,
+    AGENT_CONFIG_TABLE,
+};
 pub use decision::{
     decision_id, load_decision, settle_decision, AgentDecision, DecisionState, SettleOutcome,
     APPROVAL_CHANNEL as DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
 };
+pub use descriptor::invoke_descriptor;
 pub use dispatch::{invoke_via_runtime, Substrate};
 pub use error::AgentError;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
@@ -55,8 +65,12 @@ pub use policy::{
 };
 pub use registry::RuntimeRegistry;
 pub use rehydrate::{rehydrate, LoopState};
+pub use resolve_default::{resolve_effective_runtime, resolve_effective_runtime_id};
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
 pub use run::{cancel_run, run_session, MAX_STEPS};
 pub use runtime::{AgentRuntime, ErasedModel, RunContext};
+pub use runtimes::list_runtimes;
 pub use serve::{serve_agent, AgentServer};
 pub use tool::call_agent_tool;
+#[allow(unused_imports)]
+pub use unconfigured::{UnconfiguredModel, UNCONFIGURED_ANSWER};

@@ -8,6 +8,9 @@
 //!   - `agent.decide`      — first-settle a suspended tool call. Gated by `mcp:agent.decide:call` —
 //!     the same authority that resolves the surfaced inbox item, but the binding write is the
 //!     `agent_decision` record (first-settle), not the last-writer-wins inbox row.
+//!   - `agent.runtimes`    — the run-lifecycle #5 read surface: list the node's configured runtimes
+//!     for the composer runtime picker. Gated by `mcp:agent.runtimes:call` (a distinct read cap);
+//!     read-only, list-only, registry-derived (see `runtimes.rs`).
 //!
 //! `agent.watch` (Part 3) is **not** a JSON-returning verb here: it yields a live `RunEvent` *stream*,
 //! so — exactly like `bus.watch`/`channel.stream` — its transport is the gateway **SSE route**, which
@@ -25,6 +28,7 @@ use serde_json::{json, Value};
 
 use super::decision::{settle_decision, SettleOutcome};
 use super::policy::{save_policy, Policy};
+use super::runtimes::list_runtimes;
 use crate::boot::Node;
 
 /// Dispatch a qualified `agent.*` verb. The single entry `tool_call.rs` delegates to; it matches the
@@ -39,6 +43,18 @@ pub async fn call_agent_tool(
     match qualified_tool {
         "agent.policy.set" => call_agent_policy_tool(node, principal, ws, input).await,
         "agent.decide" => call_agent_decision_tool(node, principal, ws, input).await,
+        // agent.runtimes (run-lifecycle #5 read surface): list the node's configured runtimes for the
+        // composer runtime picker. Read-only, list-only; its own read cap gates it inside.
+        "agent.runtimes" => list_runtimes(node, principal, ws).await,
+        // agent-config scope: the per-workspace default-runtime + model-endpoint record.
+        // `agent.config.get` (member) / `agent.config.set` (admin). `call_agent_config_tool` returns
+        // `None` for a verb outside its surface, so it composes as a fall-through before `NotFound`.
+        "agent.config.get" | "agent.config.set" => {
+            match super::call_agent_config_tool(node, principal, ws, qualified_tool, input).await {
+                Some(r) => r,
+                None => Err(ToolError::NotFound),
+            }
+        }
         // agent.watch is added by Part 3 (the start/resume-vs-watch split). Left explicit so the two
         // parts share the `agent.` prefix without one swallowing the other's verbs.
         _ => Err(ToolError::NotFound),

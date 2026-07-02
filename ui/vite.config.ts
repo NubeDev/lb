@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
 
 // Vite + React. Tauri serves this build in the desktop shell; the same build is served to browsers via
@@ -17,7 +18,7 @@ export default defineConfig(({ command }) => {
   const nodeEnv = JSON.stringify(command === "build" ? "production" : "development");
 
   return {
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     define: {
       "process.env.NODE_ENV": nodeEnv,
     },

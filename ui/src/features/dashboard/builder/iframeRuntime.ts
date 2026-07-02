@@ -11,22 +11,30 @@
 // reply, or watch event. The frame validates `event.source === window.parent` on every inbound message.
 //
 // The engines (Plot/D3) are loaded from a pinned CDN INSIDE the sandbox; if offline they degrade to a
-// plain-rows render. The JSX `template` engine is a tiny interpreter over the rows (no eval of parent
-// scope). All author code executes here, never in the shell.
+// plain-rows render. The JSX `template` engine is the eval-free {@link interpolateTemplate} interpreter
+// over the panel's source rows (embedded via `.toString()` — ONE source of truth, unit-tested). The rows
+// arrive from the parent's ONE data hook (`usePanelData`) as an initial config value AND as live
+// `render-data` postMessages, so a template/plot/d3 view refreshes without rebuilding the frame. All
+// author code executes here, never in the shell.
+
+import { interpolateTemplate, type TemplateData } from "./templateInterpolate";
 
 /** Build the `srcdoc` HTML for a scripted/iframe widget. `engine` selects the renderer; `code` is the
  *  author snippet (Plot/D3/JSX); `tools` is the cell's tool set (the frame shows which writes it may
- *  call, but the parent is the real gate). The CSP forbids inline-script injection beyond our own
+ *  call, but the parent is the real gate); `data` is the panel's initial rows (the parent posts fresh
+ *  rows as `render-data` on every refresh). The CSP forbids inline-script injection beyond our own
  *  bootstrap and pins the engine origins. */
 export function buildIframeSrcdoc(opts: {
   engine: "plot" | "d3" | "template";
   code: string;
   tools: string[];
+  data?: TemplateData;
 }): string {
   const payload = JSON.stringify({
     engine: opts.engine,
     code: opts.code,
     tools: opts.tools,
+    data: opts.data ?? { rows: [], latest: null },
   }).replace(/</g, "\\u003c");
 
   // CSP: default-src 'none' (nothing by default); scripts only from self + the pinned engine CDN;
@@ -49,6 +57,9 @@ export function buildIframeSrcdoc(opts: {
 <div id="root"></div>
 <script id="cfg" type="application/json">${payload}</script>
 <script type="module">
+// The eval-free template interpreter, embedded from the SAME unit-tested shell export (it is closure-free
+// so its serialized form is complete) — the frame and the tests share one definition.
+const interpolateTemplate = ${interpolateTemplate.toString()};
 ${IFRAME_BOOTSTRAP}
 </script>
 </body>
@@ -76,6 +87,11 @@ window.addEventListener("message", (e) => {
   } else if (msg.type === "watch-event") {
     const cb = watchers.get(msg.id);
     if (cb) cb(msg.event);
+  } else if (msg.type === "render-data") {
+    // Fresh rows from the parent's data hook (initial handshake reply OR a live refresh) — re-render with
+    // them. Cheap for a template (interpolate + innerHTML); re-runs the plot/d3 snippet with new rows.
+    cfg.data = msg.data || { rows: [], latest: null };
+    render();
   }
 });
 
@@ -108,12 +124,13 @@ function showError(e) { root.innerHTML = '<div class="err">' + String(e && e.mes
 async function render() {
   try {
     if (cfg.engine === "template") {
-      // The JSX 'template' engine: a tiny, eval-free interpreter. The snippet is treated as an HTML
-      // template with {{path}} interpolation over a 'data' object the author builds via bridge.call.
-      // It exposes 'bridge' for onclick write hooks bound by data-call attributes.
+      // The 'template' engine: eval-free {{path}} + {{#each}} interpolation over the panel's source rows
+      // (cfg.data = {rows, latest, ...} from the parent's usePanelData). Data values are escaped by the
+      // interpreter; the author markup is set as innerHTML. [data-call] elements are wired to bridge
+      // WRITES (the friendly "Defrost" button) — the only place a template touches a tool.
       window.__bridge = bridge;
-      root.innerHTML = cfg.code;
-      // Wire any [data-call] element to a write through the bridge (the friendly "Defrost" button).
+      root.innerHTML = interpolateTemplate(cfg.code, cfg.data || { rows: [], latest: null });
+      // Wire any [data-call] element to a write through the bridge (re-wired each render; innerHTML reset).
       root.querySelectorAll("[data-call]").forEach((el) => {
         el.addEventListener("click", async () => {
           try {
@@ -125,9 +142,10 @@ async function render() {
         });
       });
     } else {
-      // plot / d3: load the pinned engine, hand it (rows via bridge, the root el, the bridge). If the
-      // CDN is unreachable (offline), degrade to a JSON dump — honest, never a fake chart.
-      const spec = new Function("bridge", "el", "engine", cfg.code);
+      // plot / d3: load the pinned engine, hand it (bridge, the root el, the engine module, the panel
+      // rows). The author may read rows straight from the 'rows' arg (the parent's usePanelData) OR call
+      // bridge itself. If the CDN is unreachable (offline), degrade to a JSON dump — never a fake chart.
+      const spec = new Function("bridge", "el", "engine", "rows", cfg.code);
       let engineMod = null;
       try {
         engineMod =
@@ -135,10 +153,14 @@ async function render() {
             ? await import("https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6/+esm")
             : await import("https://cdn.jsdelivr.net/npm/d3@7/+esm");
       } catch { engineMod = null; }
-      await spec(bridge, root, engineMod);
+      await spec(bridge, root, engineMod, (cfg.data && cfg.data.rows) || []);
     }
     PARENT.postMessage({ type: "rendered" }, "*");
   } catch (e) { showError(e); PARENT.postMessage({ type: "render-error", error: String(e && e.message || e) }, "*"); }
 }
+
+// First paint from the config's initial rows, then tell the parent we're live so it replies with the
+// freshest rows (covers the race where data resolved after the frame's srcdoc was built).
 render();
+PARENT.postMessage({ type: "frame-ready" }, "*");
 `;

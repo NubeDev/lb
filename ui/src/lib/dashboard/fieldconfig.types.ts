@@ -62,6 +62,17 @@ export interface FieldColor {
 export interface FieldOptions {
   displayName?: string;
   description?: string;
+  /** PRESENTATION (widget-kit scope): omit this field from a rendered surface (a table column / a form
+   *  field). This is PRESENTATION, NOT SECURITY — a hidden field was still returned by the tool and
+   *  crossed the bridge under the VIEWER'S grant; hiding removes it from the surface, it does NOT gate
+   *  access. Anything truly secret must be DENIED server-side (a denied source is denied whether or not a
+   *  field is hidden); secrets are never merely hidden. Additive (`serde(default)` on the Rust mirror,
+   *  rides the existing `dashboard.save` UPSERT — no new verb). Resolved through the ONE
+   *  `resolveFieldPresentation` both the form and the table use. */
+  hide?: boolean;
+  /** PRESENTATION (widget-kit scope): an OPTIONAL order override for this field's column/position. Absent
+   *  → the surface keeps its natural order (a table's first-seen/schema order). Never reorders implicitly. */
+  order?: number;
   /** Grafana unit id (`celsius`/`bytes`/`percent`/`velocitykmh`/`time:…`). Mapped to a dimension by
    *  `fieldconfig/units.ts` and rendered through the user-prefs bridge (`fieldconfig/format.ts`). */
   unit?: string;

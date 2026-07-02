@@ -4,15 +4,27 @@ The visual **node-graph flow engine** (node-red over the shipped plane). A `flow
 node graph authored on a React Flow canvas, run as a durable resumable `lb-jobs` session, with
 **extension-contributed backend node types** (`[[node]]` in `extension.toml`, identical for WASM and
 native — only the execution transport differs). The headline holds: **flows are not a new engine.** A
-flow is the generalisation of the shipped `chains` rule-DAG — a typed `Node` model + a backend node
+flow is the generalisation of the `rubix-cube` rule-DAG — a typed `Node` model + a backend node
 registry + an editor, run on `lb-jobs`, state in SurrealDB, motion on Zenoh (Decisions 1–13).
+
+> **Chains removed — flows is the one DAG engine.** The earlier `chains` rule-DAG (the `chains.*`
+> MCP verbs, the host `chains` module, the gateway `/chains` routes, the `lb_rules::workflow` model,
+> the React chain canvas, the `mcp:chains.*` grants) has been **deleted outright** — no alias, no
+> stub (`flows-scope.md` Decision 6, executed to its clean-cut end state). `flows` is a strict
+> superset: same binding grammar, same `manual|cron|event` triggers, same one-job-per-node topology,
+> the same frontier driver + CAS run-store (ported from `rubix-cube` via the retired chain engine),
+> plus `Subflow`/`Sink`/`Source` nodes, retained inputs, and the live-SSE canvas. To "chain rules
+> into a DAG", author a flow of `Rhai`/`Tool` nodes. A client still calling a retired `chains.*` verb
+> gets the host's **unknown-verb** refusal, and a `/chains…` HTTP call 404s — asserted by
+> `chains_retired_test.rs` + `chains_retired_routes_test.rs` (the guard against a stray re-add). See
+> [`chains-retirement-scope`](../../scope/flows/chains-retirement-scope.md) and its session doc.
 
 ## What's shipped (the backend spine — Waves 1–2)
 
 | Slice | What | Tests |
 |---|---|---|
-| **node-descriptor** | `lb-flows` crate: the `NodeDescriptor` keystone contract, the additive `[[node]]` manifest block (parse + validate), the five built-in descriptors, the merged `flows.nodes` registry (built-ins ∪ installed-ext nodes — a read-time union over `install` records), the JSON-Schema 2020-12 config gate, the typed `Flow` graph model + DAG math (Kahn), the chain binding grammar. `flows.nodes` verb. | lb-flows 26 · ext-loader 16 · host 5 |
-| **flow-run** | the durable run engine over `lb-jobs`: `flow_run` coordinator (pins `flow_version`) + one `flow-step` job per node, the `chains` frontier driver ported verbatim, CAS exactly-once (`Enqueued→Running`), `FailurePolicy`, suspend/resume/cancel, `flows.patch_run` (config-only to an unexecuted node, validated against the pinned schema), `ResumePointDrift`, subflow-parks-on-child, the full `flows.*` run MCP surface incl. `flows.runs.list` (reattach), the canonical `coalesce` enum. | host 12 |
+| **node-descriptor** | `lb-flows` crate: the `NodeDescriptor` keystone contract, the additive `[[node]]` manifest block (parse + validate), the five built-in descriptors, the merged `flows.nodes` registry (built-ins ∪ installed-ext nodes — a read-time union over `install` records), the JSON-Schema 2020-12 config gate, the typed `Flow` graph model + DAG math (Kahn), the rubix-cube binding grammar. `flows.nodes` verb. | lb-flows 26 · ext-loader 16 · host 5 |
+| **flow-run** | the durable run engine over `lb-jobs`: `flow_run` coordinator (pins `flow_version`) + one `flow-step` job per node, the rubix-cube frontier driver ported verbatim, CAS exactly-once (`Enqueued→Running`), `FailurePolicy`, suspend/resume/cancel, `flows.patch_run` (config-only to an unexecuted node, validated against the pinned schema), `ResumePointDrift`, subflow-parks-on-child, the full `flows.*` run MCP surface incl. `flows.runs.list` (reattach), the canonical `coalesce` enum. | host 12 |
 | **extension-nodes** | descriptor-aware ext-node dispatch under `caller ∩ install-grant` (the shipped `build_call_context` chokepoint — two-direction deny, no widening); the source shape (host-owned `flow:{ws}:{flow}:{node}` series, arm/disarm); the worked `mqtt` reference manifest. | host 5 |
 | **triggers-lifecycle** | the five trigger kinds; `flows.enable`; the two lifecycle passes — `react_to_flows_cron` (durable clock-scan, deterministic firing id, fire-once-then-skip) + `reconcile_flows` (single-owner election, arm/disarm, guarded teardown); `flows.inject` (Decision 9 retain-vs-fire); placement matched as data. | host 8 |
 | **runtime-control** (Wave 3) | the manual run is now a **background job** (`flows.run` spawns the drive + returns `run_id` at once); `cancel`/`suspend` **bite mid-run** (the driver checks the durable status between frontier batches — Stop actually stops); a **live SSE watch** (`flows.watch` → `GET /flows/runs/{run}/stream`, snapshot-then-`node-settled`/`run-finished` deltas over a workspace-walled `flow:{ws}:{run}` Zenoh subject — "fire on the eventbus if anyone's listening"); **per-node config CRUD** on the saved flow (`flows.node.get`/`flows.node.update`, schema-validated, version-bumped) so a node tweak isn't a whole-`Flow` post. | host 9 |
@@ -249,8 +261,44 @@ read-back, inject deny node- AND port-keyed, ws-isolation); `ui` unit `flowsPick
 `FlowDashboardBinding.gateway.test.ts` (picker offer, slider port-inject + precedence, current-value
 mount read, switch boolean, JSON validate/reject, JSON read view advance, ws read-isolation).
 
+## The data & JSON node pack — 20 built-in nodes (shipped 2026-07-01)
+
+Beyond the eight spine built-ins (`trigger`/`tool`/`rhai`/`count`/`json`/`counter`/`subflow`/`sink`),
+the registry now ships **twenty** host-resolved data/JSON nodes so a flow reshapes/routes/scales/parses
+a payload **without** dropping into a `rhai` cage. Same descriptor shape, same `{payload, topic}`
+envelope (Decision 6), same palette path — no new registry, no new cap (they run inside a `flows.run`,
+already gated by `mcp:flows.run:call`).
+
+- **Tier A — pure stateless transforms** (`ops::*`, unit-tested in `lb-flows`): `change` (ordered
+  set/move/copy/delete), `select` (keep paths), `merge` (deep-merge an array of objects), `map`
+  (per-element ops), `flatten`, `sort`, `range` (linear scale + clamp), `aggregate`
+  (sum/min/max/mean/count/concat), `template` (mustache-lite); `csv`/`xml`/`yaml`/`base64` (parse ↔
+  stringify — **malformed input fails the node**, `json`-node parity).
+- **Tier B — durable state** (the one additive `flow_node_buffer` record, capped `BATCH_MAX`,
+  force-release): `filter` (report-by-exception — pass on change / deadband, reusing the Decision-5
+  last-value record), `unique` (array dedupe + a durable stream seen-set), `batch` (group N).
+- **Tier C — engine-extending** (new spine Decisions **14/15/16**): `switch` (multi-output conditional
+  routing via **edge-gating** — settle `Ok`, release only the dependents a matched rule names, gate the
+  rest; `else` is a fallthrough, not a predicate); `split`/`join` (**array-carry** — one settle carries
+  the array + a `parts` sequence descriptor, `join` recombines from the carried `parts`; per-element
+  work is `map`); `delay` (durable **park** on the suspend/resume seam — a release instant in the store,
+  never an in-memory sleep, so it survives a restart; `rate` mode spaces releases).
+
+The frontier engine gained: a `Skipped` outcome that gates a subtree (RBE suppress + switch's unmatched
+branches), `run_store::{ready_one_dependent, skip_gated, park_step}`, and `flows.resume` clearing a
+`suspended` status before re-driving. No new MCP verb, no new capability.
+
+Proven (real store/caps/jobs, no mocks — CLAUDE §9): `lb-flows` unit (78: `ops::*` table-driven +
+descriptor + registry), `host::flows_data_nodes_test` (15: Tier A per-node incl. parse-fail +
+capability-deny), `host::flows_data_engine_test` (11: Tier B two-firing + **workspace-isolation of the
+accumulator**, switch gating, split→join + split→map→join, delay park+resume, rate-limit). Bug found +
+fixed: `debugging/flows/switch-else-branch-fires-unconditionally.md`.
+
 ## Where to read
-- Scope (the ask, Decisions 1–13): `scope/flows/` (`README.md` index + the seven sub-docs).
+- **Drive it (agent/API):** `skills/flows-mcp/SKILL.md` — the operating manual for the whole `flows.*`
+  surface over MCP/REST (CRUD flows + nodes, run/watch/lifecycle, the 28-node palette, inject/enable).
+- Scope (the ask, Decisions 1–16): `scope/flows/` (`README.md` index + the sub-docs; the data pack is
+  `scope/flows/data-nodes-scope.md`, session `sessions/flows/data-nodes-session.md`).
 - Sessions (the working logs): `sessions/flows/` (node-descriptor · flow-run · extension-triggers ·
   flows-canvas · dashboard-binding).
 - Spine primitives reused: `lb-rules/workflow/` (DAG math + binding grammar), `lb-jobs`,

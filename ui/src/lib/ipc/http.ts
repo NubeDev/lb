@@ -496,33 +496,6 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/datasources/${enc(name)}/test`, {});
     }
 
-    // ── chains (rules-workbench scope, Phase 2): the browser's `chains.*` DAG-canvas CRUD + run +
-    //    the per-step run snapshot poll. Each maps 1:1 to a `/chains/*` route; the gateway re-checks
-    //    `mcp:chains.<verb>:call` server-side and sets the workspace from the token (§7). The `chain`
-    //    body is POSTed verbatim (minus workspace, which the gateway injects). ──
-    case "chains_list":
-      return getJson<T>(`${base}/chains`);
-    case "chains_get": {
-      const { id } = args as { id: string };
-      return getJson<T>(`${base}/chains/${enc(id)}`);
-    }
-    case "chains_save": {
-      const { chain } = args as { chain: Record<string, unknown> };
-      return postJson<T>(`${base}/chains`, chain);
-    }
-    case "chains_delete": {
-      const { id } = args as { id: string };
-      return delJson<T>(`${base}/chains/${enc(id)}`);
-    }
-    case "chains_run": {
-      const { id, params } = args as { id: string; params?: unknown };
-      return postJson<T>(`${base}/chains/${enc(id)}/run`, { params: params ?? {} });
-    }
-    case "chains_run_get": {
-      const { id, runId } = args as { id: string; runId: string };
-      return getJson<T>(`${base}/chains/${enc(id)}/runs/${enc(runId)}`);
-    }
-
     // ── flows (flows-canvas + dashboard-binding scopes, Wave 3): the browser's `flows.*` typed-node
     //    canvas CRUD + run + the per-node run snapshot + reattach + enable/inject. Each maps 1:1 to a
     //    `/flows/*` route; the gateway re-checks `mcp:flows.<verb>:call` server-side and sets the
@@ -654,10 +627,19 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { override } = (args ?? {}) as { override?: Record<string, unknown> };
       return postJson<T>(`${base}/prefs/resolve`, { override });
     }
+    case "prefs_get": {
+      // The caller's OWN stored, nullable prefs record (`{ prefs: … | null }`). Mirrors `GET /prefs`.
+      return getJson<T>(`${base}/prefs`);
+    }
     case "prefs_set": {
       // Merge a patch into the caller's OWN prefs record (member-level, forced to the caller's `sub`).
       // The body IS the patch (nullable axes omitted). Mirrors `PUT /prefs`.
       return putJson<T>(`${base}/prefs`, (args ?? {}) as Record<string, unknown>);
+    }
+    case "prefs_set_default": {
+      // Merge a patch into the WORKSPACE-default prefs record (admin-gated by the host). The body IS
+      // the patch. Mirrors `PUT /prefs/default` (204).
+      return putJson<T>(`${base}/prefs/default`, (args ?? {}) as Record<string, unknown>);
     }
     case "format_datetime": {
       // `instant` is epoch MILLISECONDS (the host formatter's contract). Either a resolved `prefs`

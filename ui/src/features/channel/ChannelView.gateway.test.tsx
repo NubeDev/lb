@@ -8,7 +8,7 @@
 // hook performs after each post — the same path the original fake-backed test exercised.
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { ChannelView } from "./ChannelView";
@@ -62,7 +62,9 @@ describe("ChannelView (real gateway)", () => {
     await user.click(screen.getByLabelText("send"));
     await screen.findByText("second");
 
-    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    // Scope to the message list — the surface also renders the channel roster (its own <li>s).
+    const messages = within(screen.getByLabelText("messages"));
+    const items = messages.getAllByRole("listitem").map((li) => li.textContent);
     expect(items[0]).toContain("first");
     expect(items[1]).toContain("second");
   });
@@ -77,6 +79,20 @@ describe("ChannelView (real gateway)", () => {
 
     // Still empty — a blank submit posts nothing.
     expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
+  });
+
+  it("does not overflow horizontally at a narrow (phone) viewport", async () => {
+    // Responsive regression guard for the shadcn migration (ui-standards-scope): the canonical
+    // `flex h-full min-w-0 flex-col` surface must never exceed its container on a phone.
+    const ws = await signedInWs();
+    const { container } = render(
+      <div style={{ width: 360 }}>
+        <ChannelView ws={ws} channel="general" author="user:me" now={fixedClock()} />
+      </div>,
+    );
+    const section = await screen.findByLabelText("channel view");
+    expect(container.querySelector("section")).toBe(section);
+    expect(section.scrollWidth).toBeLessThanOrEqual(360);
   });
 
   it("re-posting the same message id is idempotent (durable history shows one)", async () => {

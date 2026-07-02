@@ -12,7 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { edit, history, post, remove } from "@/lib/channel/channel.api";
 import { openChannelStream } from "@/lib/channel/channel.stream";
-import { encodeQuery } from "@/lib/channel/payload.types";
+import { encodeAgent, encodeQuery, newRunId } from "@/lib/channel/payload.types";
 import type { Item } from "@/lib/channel/channel.types";
 import { invoke } from "@/lib/ipc/invoke";
 
@@ -42,8 +42,14 @@ export interface ChannelState {
   remove: (id: string) => Promise<void>;
   /** Post a `kind:"query"` channel Item — the structured payload the host query worker answers. */
   postQuery: (source: string, sql: string) => Promise<void>;
+  /** Post a `kind:"agent"` channel Item — the host agent worker drives the run and posts the answer
+   *  back. `runtime` selects the agent (absent → in-house default; a profile id → an external agent). */
+  postAgent: (goal: string, runtime?: string) => Promise<void>;
   /** Dispatch any other catalog tool via the host-mediated bridge (no channel Item). */
   callTool: (tool: string, args: Record<string, unknown>) => Promise<void>;
+  /** Post a pre-encoded `kind:"rich_result"` render-envelope body as a channel Item (the palette posts a
+   *  descriptor-declared interactive render this way, tool-agnostic — ResponseView renders it). */
+  postRich: (body: string) => Promise<void>;
 }
 
 /** Drive a channel view for `(ws, channel)` as `author`. `now` injects the logical
@@ -98,10 +104,31 @@ export function useChannel(
     [ws, channel, author, now, refresh],
   );
 
+  // Post a `kind:"agent"` request. The UI mints the run id (so the card subscribes to the run stream
+  // immediately) and builds the structured payload; the host agent worker answers it.
+  //
+  // The host now ENQUEUES a durable background run and returns at once (run-lifecycle #5) — the run is
+  // driven off the POST connection by the host reactor, so it survives this tab closing AND a node
+  // restart, and closing the tab no longer cancels it. We still fire-and-forget rather than await: the
+  // request item, the live run feed, and the durable answer all arrive over SSE, so blocking the
+  // composer buys nothing. `postBody` folds its own errors into `error`. In the Tauri shell / tests
+  // (no SSE), the request appears when the post resolves and the answer when the run drains.
+  const postAgent = useCallback(
+    async (goal: string, runtime?: string) => {
+      if (!goal.trim()) return;
+      void postBody(encodeAgent(goal.trim(), newRunId(), runtime));
+    },
+    [postBody],
+  );
+
   const send = useCallback(
     async (body: string) => {
       const trimmed = body.trim();
       if (!trimmed) return;
+      // Plain chat. The agent is NO LONGER a `/agent` chat string parsed here — it is a first-class
+      // palette command (`agent.invoke`) routed to `postAgent` by the CommandPalette, the same
+      // mechanism `federation.query` uses (external-agent run-lifecycle #5). The host never parses
+      // chat text for commands (channels-agent scope).
       await postBody(trimmed);
     },
     [postBody],
@@ -147,6 +174,17 @@ export function useChannel(
     [postBody],
   );
 
+  // Post a `kind:"rich_result"` render-envelope Item (already encoded by the caller via
+  // `encodeRichResult`) then reconcile against history — the same durable post path as chat/query, so a
+  // structured response appears for every channel member and survives a reload.
+  const postRich = useCallback(
+    async (body: string) => {
+      if (!body.trim()) return;
+      await postBody(body);
+    },
+    [postBody],
+  );
+
   // Dispatch a non-query catalog tool through the host-mediated bridge (the same `mcp_call` seam the
   // federation client uses). The palette routes federation.query to `postQuery` instead.
   const callTool = useCallback(
@@ -161,5 +199,16 @@ export function useChannel(
     [refresh],
   );
 
-  return { items, loading, error, send, edit: editMessage, remove: removeMessage, postQuery, callTool };
+  return {
+    items,
+    loading,
+    error,
+    send,
+    edit: editMessage,
+    remove: removeMessage,
+    postQuery,
+    postAgent,
+    callTool,
+    postRich,
+  };
 }

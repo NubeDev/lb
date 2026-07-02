@@ -105,6 +105,13 @@ agent.invoke (existing MCP tool, caps-checked)               scope/agent/ , scop
 | 4 | [model-routing](model-routing-scope.md) | Pointing the agent's model at the gateway's **OpenAI-compatible** endpoint, the short-lived scoped token, agent-originated audit attribution, no-key enforcement. Carries the **ai-gateway dependency**. | #2, `scope/ai-gateway/`, `scope/secrets/` |
 | 5 | [run-lifecycle](run-lifecycle-scope.md) | The run as a durable **job**, resume strategy per profile (the hard problem), subprocess supervision (timeout/kill/restart/zombie), and the read surface (`agent.watch` reuse + `agent.runtimes`). | #2, `scope/jobs/`, `scope/agent-run/` |
 
+**Companion (the #4×#5 seam):** [agent-key-lifecycle](agent-key-lifecycle-scope.md) — the scoped model
+token's **mint → refresh-on-resume → revoke** lifecycle across a long resumable run. It resolves the
+"token lifetime vs long runs" open question #4 and #5 each flag but neither owns: the token is minted
+per-dispatch from the durable principal (never persisted), re-minted with a **grant re-check at every
+resume**, and revocation bites within the TTL (plus an immediate run-status refusal on hard cancel). Ships
+alongside #4/#5.
+
 Ship order: **#1 → #2 → then #3 / #4 / #5 in parallel.** #3 (the wall) is the gate that makes driving
 an untrusted third-party loop *safe*; nothing that actually runs an external agent in anger ships
 before #3 is green.

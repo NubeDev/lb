@@ -63,6 +63,7 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
             title: "Store (create/overwrite) a secret".to_string(),
             group: "secret".to_string(),
             input_schema: Some(set_schema()),
+            result: None,
         },
         ToolDescriptor {
             name: "secret.get".to_string(),
@@ -70,24 +71,28 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
                 .to_string(),
             group: "secret".to_string(),
             input_schema: Some(get_schema()),
+            result: None,
         },
         ToolDescriptor {
             name: "secret.set_visibility".to_string(),
             title: "Toggle a secret's visibility (private | workspace) — owner only".to_string(),
             group: "secret".to_string(),
             input_schema: Some(set_visibility_schema()),
+            result: None,
         },
         ToolDescriptor {
             name: "secret.delete".to_string(),
             title: "Delete a secret — owner only".to_string(),
             group: "secret".to_string(),
             input_schema: Some(delete_schema()),
+            result: None,
         },
         ToolDescriptor {
             name: "secret.list".to_string(),
             title: "List secret metadata (path/owner/visibility) — never the values".to_string(),
             group: "secret".to_string(),
             input_schema: None,
+            result: None,
         },
     ]
 }

@@ -5,10 +5,11 @@ import { CAP, hasCap, isAdmin } from "@/lib/session";
 import type { CoreSurface } from "@/features/shell";
 
 export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
-  const allowed: CoreSurface[] = ["channels", "inbox", "outbox"];
+  // Settings is always shown — every member can edit their OWN preferences (prefs.set is member-level).
+  // The workspace-default + agent controls inside it are cap-gated per-control (admin), server-enforced.
+  const allowed: CoreSurface[] = ["channels", "inbox", "outbox", "settings"];
   if (hasCap(caps, CAP.dashboardList)) allowed.push("dashboards");
   if (hasCap(caps, CAP.rulesRun)) allowed.push("rules");
-  if (hasCap(caps, CAP.chainsGet)) allowed.push("chains");
   if (hasCap(caps, CAP.flowsList)) allowed.push("flows");
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");
   if (hasCap(caps, CAP.reminderList)) allowed.push("reminders");

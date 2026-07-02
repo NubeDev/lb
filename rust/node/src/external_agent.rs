@@ -18,7 +18,6 @@
 // where the gateway wires the agent, which is the serve-wiring TODO above. The function is the real,
 // compiled registration path the role-crate tests exercise; wiring the boot call is the next step.
 #[cfg(feature = "external-agent")]
-#[allow(dead_code)]
 pub fn register_external_runtimes(
     registry: &mut lb_host::RuntimeRegistry,
     model: lb_role_external_agent::ModelEndpoint,
@@ -26,3 +25,28 @@ pub fn register_external_runtimes(
 ) {
     lb_role_external_agent::register(registry, model, scratch_base);
 }
+
+/// Install the node's agent runtime registry from boot (external-agent runtime-seam #1). **Feature-ON:**
+/// build a registry with the in-house `default` (over the [`UnconfiguredModel`] placeholder — the
+/// in-house model provider is the separate `agent_invoke` gap) PLUS the external `AcpRuntime` entries
+/// (Open Interpreter default over Z.AI GLM-4.6, VT Code, Codex), then install it on the node — so the
+/// in-channel agent worker can drive `runtime:"open-interpreter-default"` for real. **Feature-OFF:** a
+/// no-op; the node keeps the default-only registry `Node::boot` installed. This is the ONE place the
+/// feature changes node behaviour (rule 1: feature + config, never `if cloud {…}`).
+///
+/// The default model endpoint comes from `default_model_endpoint()` (Z.AI coding endpoint, key env
+/// `ZAI_API_KEY` — the *name*, never a value); a real deployment overrides it by config.
+#[cfg(feature = "external-agent")]
+pub fn install(node: &lb_host::Node) {
+    use std::sync::Arc;
+    let model = lb_role_external_agent::profiles::default_model_endpoint();
+    let mut registry = lb_host::RuntimeRegistry::with_default(Arc::new(lb_host::UnconfiguredModel));
+    register_external_runtimes(&mut registry, model, None);
+    let ids = registry.ids();
+    node.install_runtimes(registry);
+    println!("external-agent: runtimes installed = {ids:?}");
+}
+
+/// Feature-OFF: installing external runtimes is a no-op (the node keeps its default-only registry).
+#[cfg(not(feature = "external-agent"))]
+pub fn install(_node: &lb_host::Node) {}

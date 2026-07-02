@@ -1,4 +1,5 @@
-//! The coordinator — `start` + `drive` (flow-run-scope, ported from the chain `coordinator`). `start`
+//! The coordinator — `start` + `drive` (flow-run-scope; the frontier driver ported from `rubix-cube`
+//! via the retired chain engine — see docs `rules/rule-chains-scope.md` lineage). `start`
 //! seeds the run + per-node state; `drive` runs the ready frontier (each node: CAS-claim → resolve
 //! bindings → execute under `caller ∩ grant` → record outcome → release dependents / fan-in / apply
 //! failure policy), looping until the frontier exhausts, then finalises. The durable per-node

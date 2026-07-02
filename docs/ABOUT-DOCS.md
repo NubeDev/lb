@@ -10,12 +10,14 @@ docs/
 ├── scope/      ← "hey, we want this"   — the ask, before any work
 ├── sessions/   ← the AI-agent sessions — what was done, while doing it
 ├── public/     ← production / shipped  — what actually got done
+├── skills/     ← runnable how-to guides — drive a shipped surface over MCP/REST
 ├── vision/     ← the north star        — the big-picture framework direction
 └── debugging/  ← the working history   — every issue and how it became working
 ```
 
-Two areas sit outside the three-stage flow: `vision/` (why the platform exists) and
-`debugging/` (the append-only debugging memory — see "Testing & debugging" below).
+Three areas sit outside the three-stage flow: `vision/` (why the platform exists),
+`debugging/` (the append-only debugging memory — see "Testing & debugging" below), and
+`skills/` (agent-runnable operational guides — see "`skills/`" below).
 
 Top-level guides tie it together: `STATUS.md` (the live "where are we" dashboard),
 `SCOPE-WRITTING.md` (how to write a scope), `HOW-TO-CODE.md` (how to build one), and
@@ -56,6 +58,28 @@ as built. This is what a new person reads.
 - `public/DIAGRAMS.md` — visual reference.
 - Topic subfolders (`public/tracing/`, `public/ce/`) hold per-area shipped docs.
 
+## `skills/` — runnable operational guides
+
+Separate from the three-stage flow. A **skill** is a self-contained, agent-runnable how-to for
+*driving a shipped surface* — the exact verbs, routes, payloads, and gotchas needed to operate a
+capability over MCP / REST (or the CLI), grounded in the **real** API. Where `public/` explains *what
+exists and why*, a skill is the *operating manual* an agent (or a person) follows to actually do the
+thing, end to end, with copy-pasteable calls.
+
+- One folder per skill: `skills/<name>/SKILL.md` (YAML frontmatter — `name` + a `description` that
+  says *when to use it* — then the body). It is drop-in compatible with `.claude/skills/`.
+- Write one when a feature ships (or changes) an **agent- or API-drivable surface**: a set of MCP
+  verbs / gateway routes, a workflow someone drives programmatically, an automatable admin task.
+  Example: `skills/dashboard-mcp/SKILL.md` — manage dashboards over `dashboard.*` + `/dashboards`.
+- **Ground it in a live run.** Exercise the real gateway/node while writing it; paste real request/
+  response shapes, not remembered ones. No `*.fake.ts` prose either (rule 9 applies to docs too).
+- **Maintain it.** A skill is durable like `public/`: any later change to the surface it documents
+  (a new verb, a changed payload, a renamed route) updates the skill in the SAME session — a stale
+  skill mis-drives an agent, which is worse than none.
+
+Not every feature needs a skill — a pure internal refactor with no external surface doesn't. But any
+change to *how the platform is driven* must leave the relevant skill current.
+
 ## `vision/` — the north star
 
 Separate from the three-stage flow. The **big-picture direction**: what the platform
@@ -67,6 +91,8 @@ understand *why*; read `scope → sessions → public` to follow a specific feat
 - **Starting something new?** Write a `scope/<topic>/<name>.md` — the ask.
 - **Building it (esp. with an agent)?** Log it in `sessions/<topic>/<name>.md`.
 - **Shipped it?** Promote the durable parts into `public/` (and update `public/SCOPE.md`).
+- **Shipped a drivable surface (MCP verbs / REST routes / an automatable task)?** Write or update the
+  matching `skills/<name>/SKILL.md` so an agent can operate it.
 - **Want the big picture?** Read `vision/`.
 
 Keep topic names consistent across folders (`tracing`, `dashboards`, `ce`) so a feature
@@ -102,6 +128,10 @@ docs is **incomplete** — treat the doc as a deliverable equal to the code.
 - **Promote durable truth to `public/`** if something shipped: update the per-area
   `public/<topic>/` doc and `public/SCOPE.md`. The session log stays as the messy history;
   `public/` is the trimmed source of truth a new person reads.
+- **Write/maintain the skill** if the change adds or alters an agent- or API-drivable surface:
+  create or update `skills/<name>/SKILL.md`, grounded in a live run against the real node (paste real
+  payloads). If the surface it documents changed, update it in this same session — a stale skill
+  mis-drives agents. (N/A for changes with no external/drivable surface — say so.)
 - Keep `README.md` section numbers stable — many docs cross-reference them (`§6.5`, etc.).
 - Cross-link: scope ↔ session ↔ public for the same topic.
 
@@ -125,8 +155,9 @@ not optional extras:
 A session is done when: the work is complete **and** the session doc exists and is filled
 in **and** the change is tested (mandatory categories included) **and** any debugging is
 captured in `debugging/` with a regression test **and** any shipped change is reflected in
-`public/` **and** the scope doc's open questions are current. If any of those is missing,
-the session is not done.
+`public/` **and** any agent-/API-drivable surface it touched has a current
+`skills/<name>/SKILL.md` **and** the scope doc's open questions are current. If any of those is
+missing, the session is not done.
 
 ### Session doc template
 
@@ -165,6 +196,10 @@ regression test. "None" if nothing broke.
 What was promoted to `public/<topic>/` + `public/SCOPE.md`, and which scope open questions
 were resolved or refreshed.
 
+## Skill docs
+Which `skills/<name>/SKILL.md` was written or updated (the drivable surface this touched), and the
+live run it was grounded in — or "n/a: no agent-/API-drivable surface" with the reason.
+
 ## Dead ends / surprises
 What didn't work, and what was learned.
 
@@ -179,6 +214,6 @@ What didn't work, and what was learned.
 ## Publishing (Nextra)
 
 The reader-facing docs are rendered by a [Nextra](https://nextra.site/) site in
-[`../doc-site/`](../doc-site/README.md). It publishes `public/` and `vision/`; `scope/` and
-`sessions/` are working material and are not published by default. **Author here in
+[`../doc-site/`](../doc-site/README.md). It publishes `public/`, `skills/`, and `vision/`; `scope/`
+and `sessions/` are working material and are not published by default. **Author here in
 `docs/`** — never fork content into `doc-site/`.

@@ -50,6 +50,12 @@ async fn main() -> anyhow::Result<()> {
     let sink = lb_telemetry::SinkConfig::from_env();
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), sink);
 
+    // External-agent runtimes (external-agent runtime-seam #1): with the `external-agent` feature ON,
+    // install the external `AcpRuntime` entries (Open Interpreter → Z.AI GLM-4.6 default, VT Code,
+    // Codex) alongside the in-house default, so an in-channel `kind:"agent"` request with
+    // `runtime:"open-interpreter-default"` reaches a real agent. Feature-OFF this is a no-op.
+    external_agent::install(&node);
+
     // Locate the built hello component. Override with HELLO_WASM; default to the cargo target.
     let wasm_path = std::env::var("HELLO_WASM")
         .map(PathBuf::from)
@@ -101,6 +107,17 @@ async fn main() -> anyhow::Result<()> {
         vec![ws.clone()],
         lb_host::Role::Solo,
         std::time::Duration::from_secs(5),
+    );
+
+    // CHANNEL AGENT REACTOR TICK (run-lifecycle #5): drain durable `channel-agent-run` enqueue jobs
+    // that `channel::post` writes when a member asks an agent in a channel, and drive each run OFF the
+    // POST connection — so an in-channel agent run survives the tab closing and (being durable +
+    // idempotent) a node restart. One detached owner per node, scanning the configured workspace on a
+    // few-second cadence (a freshly-posted request starts its run promptly; each tick is a cheap scan).
+    lb_host::spawn_agent_reactors(
+        node.clone(),
+        vec![ws.clone()],
+        std::time::Duration::from_secs(2),
     );
 
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the

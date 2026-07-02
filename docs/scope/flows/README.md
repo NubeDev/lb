@@ -16,6 +16,7 @@ canonical **Decisions (v1)** that every other doc references by number.
 |---|---|
 | [flows-scope.md](flows-scope.md) | **Spine.** The node model, the versioning principle, "generalises `chains`", the canonical **Decisions (v1)**, the rejected `crossflow` runtime, and the global testing/risk posture. Start here. |
 | [node-descriptor-scope.md](node-descriptor-scope.md) | **The keystone contract.** The `[[node]]` manifest block, the five node kinds, ports, the inline **JSON-Schema** config, the merged `flows.nodes` registry, and the built-in descriptors. The data-driven editor and extension nodes both key off this. |
+| [data-nodes-scope.md](data-nodes-scope.md) | **The data & JSON node pack — 20 new built-ins.** `change`/`select`/`merge`/`map`/`flatten`/`sort`/`range`/`aggregate`/`template` + `csv`/`xml`/`yaml`/`base64` (Tier A, stateless) · `filter`(RBE)/`unique`/`batch` (Tier B, durable state) · `switch`/`split`/`join`/`delay` (Tier C, engine-extending). Descriptors in the frozen node-descriptor shape — Node-RED's function/sequence/parse nodes over the shipped plane. Consumes the descriptor contract; no new mechanism. |
 | [extension-nodes-scope.md](extension-nodes-scope.md) | **Extensions add backend nodes — WASM *and* native.** The three interaction shapes (transform / sink / source), execution through the gated `caller ∩ install-grant` callback, source **arm/disarm** + the `ingest.write`→series bridge, and the worked `mqtt/extension.toml`. |
 | [flow-run-scope.md](flow-run-scope.md) | **Durable execution.** The run as an `lb-jobs` `flow-run` job, the frontier driver + CAS step-claim ported from `chains`, the run-store records, suspend/resume, **version-pinning**, `flows.patch_run`, `ResumePointDrift`, failure policy, and the high-frequency fan-out posture. |
 | [triggers-lifecycle-scope.md](triggers-lifecycle-scope.md) | **What starts a flow, and where.** The trigger kinds (`manual\|cron\|event\|inject\|boot`), enable/disable, `start_on_boot` via a `react_to_flows` reconciler, and `placement` across node roles. |
@@ -24,6 +25,7 @@ canonical **Decisions (v1)** that every other doc references by number.
 | [flow-dashboard-binding-ux-scope.md](flow-dashboard-binding-ux-scope.md) | **The binding made authorable.** A flow-aware **source picker** (pick flow → node → port/slot), switch/slider wired for you, **structured JSON in *and* out**, port-aware `flows.inject`, and controls that reflect a node's real current value. Builds on `dashboard-binding-scope.md` (the shipped mechanism) — adds the UX + read-back, no new transport. |
 | [flows-canvas-scope.md](flows-canvas-scope.md) | **The editor.** The React Flow canvas, the palette from `flows.nodes`, schema-driven config forms, the draft/version + executed-node-lock UX, import/export, and undo. |
 | [flow-runtime-control-scope.md](flow-runtime-control-scope.md) | **Observable + interruptible runtime.** Decouples the driver from the request (a run is a background job), makes `cancel`/`suspend` bite **mid-run**, streams per-node settles over a Zenoh subject + a gateway **SSE** `flows.watch` (the "fire on the eventbus if anyone's listening" feed), and adds **per-node config CRUD** (`flows.node.get`/`update`) so a node tweak isn't a whole-`Flow` post. |
+| [chains-retirement-scope.md](chains-retirement-scope.md) | **Retire `chains` — flows are the one DAG engine.** Executes Decision 6 to its end: **delete** the `chains.*` verbs, the host `chains` module, the `lb_rules::workflow` model, the gateway routes, and the React chain canvas (flows are a proven superset). No alias — a clean pre-1.0 cut. `rule-chains-scope.md` retires to lineage. |
 | [flow-plc-reliability-scope.md](flow-plc-reliability-scope.md) | **PLC-grade reliability + the reactive run model.** Fixes the frozen-`gw.now` constant-run-id bug (one finished run looked perpetually re-runnable → store `Invalid revision`/transaction-conflict, flickering controls), hardens the run-store write against concurrent rev RMW (per-key lock + retry, the capped-ring precedent), and wires **Run = deploy** for triggered/source flows (Node-RED reactive posture: arm via `flows.enable`+`start_on_boot`, reconciler-owned, survives restart; Stop disarms) while a manual chain stays one-shot. |
 
 ## Build order (suggested)
@@ -36,10 +38,17 @@ is the spine the triggers and editor drive; the canvas and dashboard binding are
 model — a breaking engine change, build first) → `flow-dashboard-binding-ux` (the flow-aware picker +
 switch/slider/JSON, which consumes the envelope's `payload`/`topic` ports).
 
+**Node pack (`data-nodes`):** consumes the descriptor contract, so it lands *after* `node-descriptor`
++ `flow-message-envelope` and builds in its own risk tiers — **Tier A** (stateless transforms/parse)
+any time, **Tier B** (durable-state nodes) once the accumulator record is settled, **Tier C**
+(`switch`/`split`/`join`/`delay`) only after the `flow-run` engine seam for gating/sequences is
+decided. Not a prerequisite for anything else; purely additive palette content.
+
 ## Related (platform primitives reused)
 
-- `../rules/rule-chains-scope.md` + `rules-engine-scope.md` — the DAG engine, run-store, and the
-  rhai cage this generalises.
+- `../rules/rules-engine-scope.md` — the single-rule `rhai` cage a `Rhai`/`Tool` node runs (stays).
+- `../rules/rule-chains-scope.md` — **retired to lineage** by `chains-retirement-scope.md`: the
+  `rubix-cube` workflow-DAG port that flows generalised and now *replaces* (read as history).
 - `../jobs/jobs-scope.md` — the durable resumable run + suspend/resume.
 - `../extensions/extensions-scope.md` (`extension.toml`), `host-callback-scope.md`,
   `reference-extensions-scope.md` (the native MQTT bridge), `ui-federation-scope.md`.

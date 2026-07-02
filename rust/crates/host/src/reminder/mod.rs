@@ -7,8 +7,10 @@
 //!   - `create` / `update` / `delete` / `get` / `list` — the gated CRUD verbs (the scope's MCP
 //!     surface; live-feed + batch are explicit non-goals).
 //!   - `fire` — dispatch one firing's action under the stored principal (the job's body).
+//!   - `fire_now` — the gated, idempotent run-now verb (reuses `fire`'s path; does not advance).
 //!   - `react` — the durable scan that finds due reminders, enqueues a job, fires, advances.
 //!   - `tool` — the `reminder.*` MCP bridge.
+//!   - `descriptor` — the `reminder.create` / `reminder.list` / `reminder.fire` palette descriptors.
 //!
 //! Holds no durable state of its own (stateless extensions, §3.4): every fact lives in the
 //! `reminder:{id}` record + the firing's lb-jobs job + the action's effect (inbox/outbox).
@@ -16,7 +18,9 @@
 mod authorize;
 mod create;
 mod delete;
+mod descriptor;
 mod fire;
+mod fire_now;
 mod get;
 mod react;
 mod tool;
@@ -24,7 +28,9 @@ mod update;
 
 pub use create::reminder_create;
 pub use delete::reminder_delete;
+pub use descriptor::{create_descriptor, fire_descriptor, list_descriptor};
 pub use fire::{fire_job_id, fire_reminder, FIRE_KIND};
+pub use fire_now::reminder_fire;
 pub use get::{reminder_get, reminder_list};
 pub use react::{react_to_reminders, ReactorPass};
 pub use tool::call_reminder_tool;

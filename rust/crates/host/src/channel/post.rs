@@ -48,6 +48,14 @@ pub async fn post(
     // case is a follow-up `query_error` item (or none if the worker itself could not persist).
     super::query_worker::run_if_query(node, principal, ws, cid, &delivered).await;
 
+    // BACKGROUND agent worker (channels-agent scope + run-lifecycle #5): a `kind:"agent"` item is the
+    // request; the host ENQUEUES a durable background run here (it no longer drives inline) and returns
+    // at once — the run is driven off the POST connection by the `agent_reactor`, so it survives the
+    // tab closing and a node restart. Only `kind:"agent"` enqueues work (re-entrancy guard); an enqueue
+    // failure never fails the originating post (the request item already durably landed). The request
+    // item is published BEFORE this runs, so a watcher already sees the run start live.
+    super::agent_worker::run_if_agent(node, principal, ws, cid, &delivered).await;
+
     Ok(delivered)
 }
 

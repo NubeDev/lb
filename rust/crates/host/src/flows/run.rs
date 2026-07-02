@@ -203,6 +203,19 @@ pub async fn flows_resume(
             run.flow_version, flow.version
         )));
     }
+    // A cancelled run is terminal + non-resumable (lifecycle-scope); refuse cleanly.
+    if run.status == "cancelled" {
+        return Err(FlowsError::BadInput(
+            "run is cancelled and cannot be resumed".into(),
+        ));
+    }
+    // Clear a `suspended` status so the drive's control-halt check doesn't bail before running the
+    // remaining frontier (a `delay` park or a `flows.suspend` left it suspended; resume re-drives it).
+    if run.status == "suspended" {
+        run_store::set_run_status(&node.store, ws, run_id, "pending")
+            .await
+            .map_err(FlowsError::Internal)?;
+    }
     let params = serde_json::from_value(run.params.clone()).unwrap_or_default();
     coordinator::drive(node, principal, ws, run_id, &flow, &params, now)
         .await

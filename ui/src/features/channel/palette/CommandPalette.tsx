@@ -1,67 +1,135 @@
 // The reusable command palette (channels-command-palette scope) — the channel input as a COMMAND
-// SURFACE, not a chat box. `/` at line start opens the catalog (cached, 0ms — no network in the open
-// path); accepting a tool drives an argument rail from its JSON Schema; an `x-lb-entity` arg
-// auto-opens the `@`-picker, an `x-lb-widget:sql` arg opens the mini SQL editor. Picked entities are
-// CHIP tokens that delete whole (one ⌫ removes a whole chip, never half a name). On submit it emits
-// a STRUCTURED payload — a `kind:"query"` channel Item for `federation.query`, else a `{tool,args}`
-// bridge call — never raw `/`-text. Keyboard-driven: / @ ↑ ↓ ⏎ ⌫ Esc Tab.
+// SURFACE. `/` opens the cached catalog; accepting a tool drives an argument rail from its JSON Schema.
+// An `x-lb-entity` arg auto-opens the `@`-picker; every other arg resolves through the x-lb WIDGET
+// REGISTRY (sql/runtime/select/cron/boolean/number/date/ext:<id>/<widget>, or the text fallback — an
+// unknown widget never crashes). Picked entities are CHIP tokens (one ⌫ deletes a whole chip). On submit
+// it is TOOL-AGNOSTIC: a descriptor that DECLARES a `result` render-envelope has that render POSTED (with
+// the collected args interpolated into `source.args`); everything else is a plain `{tool,args}` bridge
+// call. It has ZERO tool-specific knowledge — no branch on any tool NAME for the generic path.
 //
-// This file is the controller + render; the cached catalog (`useCatalog`), entity listers
-// (`useMentions`), the pure parser (`parsePalette`), and the widgets live in their own files
-// (FILE-LAYOUT). Data fetching is delegated; the post/dispatch is the parent's `onPostQuery` /
-// `onCallTool` / `onSendChat` (the existing `channel.post` / `mcp_call` seams).
+// (`agent.invoke` → `kind:"agent"` and `federation.query` → `kind:"query"` are the two shipped
+// first-class payload routes kept as-is; converting them to descriptor-declared routes like the generic
+// `result` path is a named follow-up, not this pass.)
+//
+// Controller + render only; the catalog (`useCatalog`), listers (`useMentions`), parser (`parsePalette`),
+// and arg widgets (`argWidgets/` + `argWidgets/registry`) live in their own files (FILE-LAYOUT). The
+// post/dispatch is the parent's on*/onPostRich seams.
 
 import { useMemo, useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
-import { argNames, hintFor } from "@/lib/channel/palette.types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { argNames, hintFor, isActiveRequired, isShown } from "@/lib/channel/palette.types";
 import type { ToolDescriptor } from "@/lib/channel/palette.types";
+import { encodeRichResult } from "@/lib/channel/payload.types";
+import { resolveWidget, resolveFieldPresentation } from "@/lib/widgets";
 import { useCatalog } from "./useCatalog";
 import { useMentions } from "./useMentions";
 import { parsePalette } from "./parsePalette";
 import { EntityPicker } from "./argWidgets/EntityPicker";
-import { SqlArg } from "./argWidgets/SqlArg";
+import { ActiveArgWidget } from "./argWidgets/ActiveArgWidget";
 
 interface Props {
   channel: string;
   /** Emit a `kind:"query"` channel Item (federation.query's structured payload). */
   onPostQuery: (source: string, sql: string) => void | Promise<void>;
+  /** Post a `kind:"agent"` request (the agent.invoke command's payload path — NOT a raw tool call).
+   *  `runtime` selects the agent (the picker's default id → the in-house default). */
+  onSendAgent: (goal: string, runtime?: string) => void | Promise<void>;
   /** Dispatch any other tool via the host-mediated bridge. */
   onCallTool: (tool: string, args: Record<string, unknown>) => void | Promise<void>;
+  /** Post a pre-encoded `kind:"rich_result"` render-envelope Item (a descriptor-declared interactive
+   *  response — the palette posts whatever render the tool's descriptor declared, tool-agnostic). */
+  onPostRich: (body: string) => void | Promise<void>;
   /** Send a plain chat message (no command). */
   onSendChat: (body: string) => void | Promise<void>;
 }
 
-/** One filled argument (a chip). `entity` chips delete whole; the SQL arg is edited inline. */
+/** One filled argument (a chip). `entity`/text/number/date chips delete whole; inline widgets stay live. */
 interface ArgChip {
   name: string;
   value: string;
 }
 
-export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }: Props) {
+export function CommandPalette({
+  channel,
+  onPostQuery,
+  onSendAgent,
+  onCallTool,
+  onPostRich,
+  onSendChat,
+}: Props) {
   const { tools, error: catalogError } = useCatalog();
   const [text, setText] = useState("");
   // Once a tool is accepted we leave free-typing and fill its args one at a time.
   const [tool, setTool] = useState<ToolDescriptor | null>(null);
   const [chips, setChips] = useState<ArgChip[]>([]);
   const [argText, setArgText] = useState(""); // the in-progress free-text/entity-query for the active arg
-  const [sql, setSql] = useState("");
+  // Inline-widget values keyed by arg name (sql/runtime/select/cron/boolean stay live until submit).
+  const [inlineVals, setInlineVals] = useState<Record<string, string>>({});
   const [sel, setSel] = useState(0);
 
-  // The arg rail: the ordered arg names, and the one we're currently filling. An arg is "satisfied"
-  // when it has a chip (entity/text args) — the sql arg is filled inline and stays active until
-  // submit. The active arg is the first unsatisfied one.
+  // The arg rail: the ordered arg names, and the one we're currently filling. An arg is "satisfied" when
+  // it has a chip (chip widgets) — an INLINE widget (sql/runtime/select/cron/boolean) is filled in place
+  // and stays active until submit. The active arg is the first unsatisfied chip arg, INLINE widgets last
+  // (so a required text arg like the agent's `goal` is filled before the runtime dropdown takes focus).
   const args = useMemo(() => argNames(tool?.input_schema), [tool]);
-  const filledNames = useMemo(() => new Set(chips.map((c) => c.name)), [chips]);
+  // An arg is "filled" once it has a chip (chip widgets) OR a non-empty inline value (inline widgets —
+  // sql/select/cron/…). Inline args were previously NEVER counted filled (chip-only), so a form with
+  // TWO required inline widgets (e.g. `/remind`'s cron `schedule` + `select` `action_kind`) stuck on the
+  // first one forever — the second widget never activated and its arg was dropped from the call
+  // ("missing string arg: action_kind"). Counting a valued inline arg as filled lets the rail advance
+  // through each required inline widget in turn.
+  const filledNames = useMemo(() => {
+    const s = new Set(chips.map((c) => c.name));
+    for (const [k, v] of Object.entries(inlineVals)) if (v !== undefined && v !== "") s.add(k);
+    return s;
+  }, [chips, inlineVals]);
+  // The currently-collected form VALUES (chips + inline widget values) — the input to conditional
+  // visibility (`x-lb.showIf`). A `select` like `action_kind` writes into `inlineVals`, so switching it
+  // re-computes which per-kind fields are shown/required. (The in-progress chip text is folded at submit,
+  // not here — a half-typed value shouldn't flip a condition mid-keystroke.)
+  const values = useMemo(() => {
+    const v: Record<string, string> = {};
+    for (const c of chips) v[c.name] = c.value;
+    for (const [k, val] of Object.entries(inlineVals)) if (val !== undefined) v[k] = val;
+    return v;
+  }, [chips, inlineVals]);
+  const widgetOf = (a: string) => resolveWidget(hintFor(tool?.input_schema, a));
+  const isInline = (a: string) => widgetOf(a).inline;
+  // ACTIVE-required = unconditionally `required`, or currently-shown AND `requiredWhenShown` (a
+  // conditional per-kind field, e.g. `channel` once `action_kind=channel-post`). This is what makes the
+  // rail walk `required ∪ shown-and-required` and surface the action fields Bug B left unreachable.
+  const required = (a: string) => isActiveRequired(tool?.input_schema, a, values);
+  const shown = (a: string) => isShown(tool?.input_schema, a, values);
+  // The rail auto-targets only ACTIVE-required unfilled args (a required chip arg first, then a required
+  // inline widget). An OPTIONAL/hidden arg never grabs focus and never blocks submit — so a command whose
+  // args are all optional (e.g. `reminder.list`'s `status`/`limit` filters) is runnable the instant it is
+  // picked, and a per-kind field only activates once its `action_kind` is chosen. As `action_kind` is
+  // filled the walk advances to `channel` (etc.) in turn — the `/remind` form completes field by field.
   const activeArg = tool
-    ? args.find((a) => hintFor(tool.input_schema, a)?.widget === "sql" || !filledNames.has(a))
+    ? args.find((a) => required(a) && !isInline(a) && !filledNames.has(a)) ??
+      args.find((a) => required(a) && isInline(a) && !filledNames.has(a))
     : undefined;
   const activeHint = activeArg ? hintFor(tool?.input_schema, activeArg) : undefined;
+  const activeWidget = activeArg ? widgetOf(activeArg) : undefined;
+  // The resolved PRESENTATION for the active arg (widget-kit scope) — the SAME `resolveFieldPresentation`
+  // the table headers funnel through, reading the form's `x-lb` label/description (humanize fallback). So
+  // a field's rail label and its table header never drift (`max_runs` → "Max Runs" in both).
+  const activePresentation = activeArg ? resolveFieldPresentation(activeArg, activeHint) : undefined;
   const entity = activeHint?.entity ?? null;
-  const isSqlArg = activeHint?.widget === "sql";
+  // Entity args keep the shared @-picker (↑↓⏎ mention-nav); every other active arg renders via the widget
+  // registry (ActiveArgWidget). An inline widget stays live until submit; a chip widget commits to a chip.
+  const showEntityPicker = !!activeArg && !!entity;
+  const showArgWidget = !!activeArg && !entity;
+  const isInlineActive = !!activeWidget?.inline;
 
   // The chosen `source` chip (drives SQL schema autocomplete) — the first `entity:datasource` chip.
   const source = chips.find((c) => c.name === "source")?.value ?? null;
+  // The active arg's live value: an inline widget reads its per-arg inline value; a chip widget reads
+  // the in-progress `argText`.
+  const activeValue = activeArg ? (isInlineActive ? inlineVals[activeArg] ?? "" : argText) : "";
 
   const mentions = useMentions(tool && entity ? entity : null);
   const filtered = useMemo(
@@ -78,7 +146,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
     setTool(null);
     setChips([]);
     setArgText("");
-    setSql("");
+    setInlineVals({});
     setSel(0);
   }
 
@@ -87,7 +155,21 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
     setText("");
     setChips([]);
     setArgText("");
-    setSql("");
+    setInlineVals({});
+    setSel(0);
+  }
+
+  /** Set the active arg's live value — into the inline map (inline widget) or `argText` (chip widget). */
+  function setActiveValue(v: string) {
+    if (activeArg && isInlineActive) setInlineVals((m) => ({ ...m, [activeArg]: v }));
+    else setArgText(v);
+  }
+
+  // Commit the in-progress text into a chip for the active chip arg (e.g. the agent's `goal`).
+  function commitTextArg() {
+    if (!activeArg || !argText.trim()) return;
+    setChips((c) => [...c, { name: activeArg, value: argText.trim() }]);
+    setArgText("");
     setSel(0);
   }
 
@@ -103,6 +185,20 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
     setArgText("");
   }
 
+  /** The full args object: chips + every inline widget value + a chip arg still being typed (folded).
+   *  HIDDEN fields are dropped: a per-kind field whose `x-lb.showIf` no longer matches (e.g. a `channel`
+   *  typed under `action_kind=channel-post`, then switched to `outbox`) must NOT leak a stale value into
+   *  the call — the verb would build the wrong action. Only currently-shown fields are collected. */
+  function buildArgs(): Record<string, string> {
+    const argsObj: Record<string, string> = {};
+    for (const chip of chips) if (shown(chip.name)) argsObj[chip.name] = chip.value;
+    for (const a of args) if (isInline(a) && inlineVals[a] !== undefined && shown(a)) argsObj[a] = inlineVals[a];
+    if (activeArg && !isInlineActive && argText.trim() && !(activeArg in argsObj)) {
+      argsObj[activeArg] = argText.trim();
+    }
+    return argsObj;
+  }
+
   async function submit() {
     if (tool === null) {
       // No command — a plain chat message (parse.mode === chat). Ignore a half-typed `/cmd`.
@@ -110,13 +206,30 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
       reset();
       return;
     }
-    // Build the args object from the chips + the SQL field.
-    const argsObj: Record<string, unknown> = {};
-    for (const chip of chips) argsObj[chip.name] = chip.value;
-    if (args.includes("sql")) argsObj.sql = sql;
-    if (tool.name === "federation.query" && typeof argsObj.source === "string") {
+    const argsObj = buildArgs();
+
+    // TODO(follow-up): make agent/query descriptor-declared routes like the generic result path.
+    // The agent command is a FIRST-CLASS palette command routed to the `kind:"agent"` payload path
+    // (`onSendAgent`); federation.query routes to `onPostQuery`. Both are shipped/green and stay as-is.
+    if (tool.name === "agent.invoke") {
+      const goal = String(argsObj.goal ?? "");
+      const runtime = argsObj.runtime;
+      if (goal.trim()) await onSendAgent(goal.trim(), runtime || undefined);
+    } else if (tool.name === "federation.query" && typeof argsObj.source === "string") {
       await onPostQuery(argsObj.source, String(argsObj.sql ?? ""));
+    } else if (tool.result) {
+      // The descriptor DECLARES a render — POST it, tool-agnostic. The collected args are interpolated
+      // into `source.args` (a shallow merge over the descriptor's own args), so a list command's filters
+      // (status/limit/…) reach the re-run source. ZERO tool knowledge: any descriptor.result flows here.
+      const render = {
+        ...tool.result,
+        source: tool.result.source
+          ? { ...tool.result.source, args: { ...tool.result.source.args, ...argsObj } }
+          : tool.result.source,
+      };
+      await onPostRich(encodeRichResult(render));
     } else {
+      // A plain bridge call — the collected form fields VERBATIM (the backend verb owns any reshaping).
       await onCallTool(tool.name, argsObj);
     }
     reset();
@@ -168,12 +281,21 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
     }
   }
 
-  const allArgsFilled = tool !== null && !activeArg && !isSqlArg;
+  // "Ready to run": every chip arg is filled and the active arg (if any) is an always-ready inline widget.
+  const allArgsFilled = tool !== null && (!activeArg || isInlineActive);
+  // Disabled only when a REQUIRED chip widget is still empty (the sql widget needs text; a runtime/
+  // select/cron/boolean is always runnable).
+  const submitDisabled =
+    tool === null
+      ? !text.trim()
+      : activeWidget?.kind === "sql"
+        ? !activeValue.trim()
+        : !!activeArg && !isInlineActive && chips.every((c) => c.name !== activeArg) && !argText.trim();
 
   return (
     <div className="border-t border-border bg-panel/70">
       {catalogError && (
-        <div role="alert" className="px-3 py-1 text-xs text-red-600 dark:text-red-300">
+        <div role="alert" className="px-3 py-1 text-xs text-destructive">
           {catalogError}
         </div>
       )}
@@ -227,10 +349,10 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
         </div>
       )}
 
-      {/* The active entity picker. */}
-      {tool && entity && (
+      {/* The active entity picker (keeps the shared @-mention keyboard nav). */}
+      {tool && showEntityPicker && (
         <div onKeyDownCapture={onArgKey}>
-          <input
+          <Input
             aria-label={`@${activeArg}`}
             value={argText}
             autoFocus
@@ -240,7 +362,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
             }}
             onKeyDown={onArgKey}
             placeholder={`@ pick a ${activeArg}`}
-            className="control-field mx-3 my-2 w-[calc(100%-1.5rem)]"
+            className="mx-3 my-2 w-[calc(100%-1.5rem)]"
           />
           <EntityPicker
             arg={activeArg!}
@@ -254,15 +376,42 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
         </div>
       )}
 
-      {/* The active SQL widget. */}
-      {tool && isSqlArg && (
-        <SqlArg
-          source={source}
-          value={sql}
-          onChange={setSql}
-          onSubmit={() => void submit()}
-          onCancel={reset}
-        />
+      {/* Every other active arg — resolved through the x-lb widget registry. A chip widget's ⏎ commits
+          the chip (or submits when it is the last arg); an inline widget stays live until submit. */}
+      {tool && showArgWidget && activeArg && (
+        <div
+          onKeyDownCapture={(e) => {
+            if (e.key === "Backspace" && argText === "" && !isInlineActive && chips.length > 0) {
+              e.preventDefault();
+              removeLastChip();
+            }
+          }}
+        >
+          {/* The resolved presentation label + help — same resolver the table headers use, so a form
+              field's label and its table header agree (widget-kit scope). */}
+          {activePresentation && (
+            <div className="px-3 pt-2" aria-label={`field ${activeArg}`}>
+              <span className="text-xs font-medium text-fg">{activePresentation.label}</span>
+              {activePresentation.description && (
+                <span className="ml-2 text-xs text-muted">{activePresentation.description}</span>
+              )}
+            </div>
+          )}
+          <ActiveArgWidget
+            name={activeArg}
+            hint={activeHint}
+            value={activeValue}
+            onChange={setActiveValue}
+            onSubmit={() => {
+              // A chip widget's ⏎: submit if it is the last arg (nothing inline follows), else chip it.
+              const moreArgsFollow = args.some((a) => a !== activeArg && isInline(a));
+              if (!moreArgsFollow) void submit();
+              else commitTextArg();
+            }}
+            onCancel={reset}
+            sqlSource={source}
+          />
+        </div>
       )}
 
       {/* The free-text input — command/chat entry, plus the submit affordance when args are done. */}
@@ -274,7 +423,7 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
         className="flex items-center gap-2 p-3"
       >
         {tool === null && (
-          <input
+          <Input
             aria-label="message"
             value={text}
             onChange={(e) => {
@@ -283,20 +432,15 @@ export function CommandPalette({ channel, onPostQuery, onCallTool, onSendChat }:
             }}
             onKeyDown={onInputKey}
             placeholder={`Message #${channel}  ·  / for commands`}
-            className="control-field min-w-0 flex-1"
+            className="min-w-0 flex-1"
           />
         )}
         {allArgsFilled && (
           <span className="flex-1 text-xs text-muted">Ready — press send to run</span>
         )}
-        <button
-          type="submit"
-          aria-label="send"
-          disabled={tool === null ? !text.trim() : isSqlArg && !sql.trim()}
-          className="soft-button h-9 px-3"
-        >
+        <Button type="submit" aria-label="send" disabled={submitDisabled} className="px-3">
           <SendHorizontal size={16} />
-        </button>
+        </Button>
       </form>
     </div>
   );

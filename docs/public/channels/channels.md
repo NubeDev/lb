@@ -73,7 +73,8 @@ The browser code is split into small files:
 - `ui/src/features/channel/useChannels.ts`: registry list/create.
 - `ui/src/features/channel/useChannel.ts`: one channel's history/send/live merge.
 - `ui/src/features/channel/usePresence.ts`: online roster.
-- `ChannelList`, `ChannelView`, `MessageList`, and `MessageComposer`: rendering.
+- `ChannelList`, `ChannelView`, `MessageList`, and `palette/CommandPalette` (the input as a `/`
+  command surface — supersedes the removed `MessageComposer`): rendering.
 
 `useChannel` loads durable history on mount, opens a live stream when a gateway is available, and
 merges live messages idempotently by id. After sending, it refreshes from durable history so the store
@@ -185,7 +186,67 @@ The shipped behavior is covered by host, gateway, and real-browser-path tests:
 - the command-palette `parsePalette` unit + `*.gateway.test.tsx` (catalog one-fetch, 0ms open,
   keyboard round-trip, reduced palette for a no-cap principal)
 
-Related docs: `../frontend/collaboration.md`, `../../scope/channels/channels-scope.md`,
+## Rich responses — the channel is a generic MCP front-end (descriptor-driven)
+
+A command, tool, or agent can answer in a channel with a **rich, typed response** — a chart, a table, a
+stat, or an interactive control — rendered by the **shipped dashboard widget contract**, not a bespoke
+channel renderer. The channel is a **second mount surface** for `WidgetView`/`views/*`, leashed to the
+viewer's grant, host-re-checked per call. There is **no new render system, view vocabulary, or trust
+tier** — adding a view is a widget-builder change, consumed here for free.
+
+**The frontend has zero tool-specific knowledge.** It names exactly one tool — `tools.catalog` — and for
+every command it: lists it, renders its `input_schema` widgets **by string** (the `x-lb.widget` hint),
+and posts its **declared** response render. There are **no `tool.name` branches**. Two additions carry
+the whole contract:
+
+- **`kind:"rich_result"`** — a v-stamped render envelope in a channel `Item` body:
+  `{ kind:"rich_result", v:2, view, source?|data?, options?, action?, tools? }`. Additive on the existing
+  `query_result`/`agent_result` payloads (a body with no recognized `kind` stays chat). `tools` is the
+  set the response's bridge may forward — the host intersects it with the viewer's install grant and
+  re-checks per call. Mirrored one-to-one in `channel/payload.rs` ↔ `payload.types.ts`.
+- **`ToolDescriptor.result`** — the **output** half of a command's contract (the `x-lb-render`
+  envelope). `input_schema` drives the *form* (the palette's arg rail); `result` drives the *response*.
+  Both are standard-JSON-Schema-compatible vendor extensions. A command with `result` → the palette
+  posts that render (the collected args interpolated into `source.args`); without → a plain call. New
+  response shapes ship from the backend/an extension with **zero** channel-UI change.
+
+**The widget/view vocabulary is open — UI built-ins ∪ extension-contributed widgets.** The arg-widget
+registry (`palette/argWidgets/registry.ts`) and the response views both resolve a string to a renderer:
+a built-in (`cron`/`select`/`sql`/`entity`/`text`/`number`/`boolean`/`date` for args;
+`table`/`chart`/`stat`/`switch`/`button`/… for responses) **or** an `ext:<id>/<widget>` (the shipped
+`ExtWidget` federation, install-gated, leashed by `[[widget]].scope ∩ grant`). An unknown widget/view
+degrades to an honest text/summary fallback — never a crash. (Arg-side `ext` widgets currently fall back
+to text: the shipped `mountWidget` contract has no value channel; response-side `ext` widgets mount for
+real.)
+
+**`ResponseView`** is the thin adapter — it reads the `render` block, builds a v2 `Cell`, and mounts it
+through the shipped `WidgetView`; `MessageItem` routes `kind:"rich_result"` to it beside `AgentCard`/
+`QueryCard`. An interactive **table** with `options.rowControls` renders through **`ResponseTable`**,
+which reuses the shipped `SwitchControl`/`ButtonControl` **per row**, passing the row object as the
+control's `VarScope.values` — so a per-row control binds the row's fields with `${id}` (the shipped vars
+engine) and the interaction value with `{{value}}`, no new templating slot.
+
+**Fixed vs generative:** built-in views render **in-process** (trusted, no author code);
+`template`/`plot`/`d3` render in the **sandboxed iframe** — the producer picks the tier by picking the
+view. No in-process path for generated UI. `view:"template"` is the Phase-1 generative surface; A2UI/
+JSON-render is a deferred additional sandboxed view.
+
+**Migration:** the shipped `kind:"query_result"` is now **expressible** as a `rich_result`
+(`view:"table"|"chart"`). The old `QueryCard` path is kept unchanged (a `query_result` still renders via
+`QueryCard`) with a no-regression test — additive, no rip-out.
+
+The first tenant is [reminders](../reminders/reminders.md#reminders-in-a-channel-the-first-rich-response-tenant):
+`/remind` (a backend-declared cron+action form) and `/reminders` (an interactive table with row
+controls), driven with zero reminders-specific UI.
+
+**Named follow-ups:** make the legacy `agent.invoke`/`federation.query` palette branches
+descriptor-declared routes too (finish the tool-agnostic palette); A2UI/JSON-render as an additional
+sandboxed view; pin a response to a dashboard; a live-updating card.
+
+Related docs: `../frontend/collaboration.md`, `../frontend/dashboard.md` (the widget contract this reuses),
+`../reminders/reminders.md`, `../../scope/channels/channels-scope.md`,
 `../../scope/channels/channels-command-palette-scope.md`,
-`../../scope/channels/channels-query-charts-scope.md`, and
-`../../sessions/channels/channels-docs-session.md`.
+`../../scope/channels/channels-query-charts-scope.md`,
+`../../scope/channels/channels-rich-responses-scope.md`,
+`../../sessions/channels/channels-docs-session.md`, and
+`../../sessions/channels/channels-rich-responses-session.md`.

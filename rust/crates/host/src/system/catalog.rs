@@ -197,6 +197,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "list the extension scaffold templates available in Studio",
     },
     HostTool {
+        tool: "devkit.root",
+        group: "devkit",
+        description: "the absolute devkit root directory the folder picker browses from",
+    },
+    HostTool {
         tool: "devkit.scaffold",
         group: "devkit",
         description: "scaffold a new extension from a template",

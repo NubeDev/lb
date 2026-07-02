@@ -6,21 +6,32 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import type { Cell } from "@/lib/dashboard";
+import type { VarScope } from "@/lib/vars";
+import { emptyScope } from "@/lib/vars";
 import { WidgetMessage } from "../widgets/chrome";
 import { makeWidgetBridge } from "../builder/widgetBridge";
 import { WidgetIframe } from "../builder/WidgetIframe";
+import { usePanelData } from "../builder/usePanelData";
+import { cellTools } from "./WidgetView";
 import { getTemplate } from "@/lib/dashboard/template.api";
 
 interface Props {
+  cell: Cell;
   engine: "plot" | "d3" | "template";
-  tools: string[];
-  options?: Record<string, unknown>;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function ScriptedView({ engine, tools, options }: Props) {
+export function ScriptedView({ cell, engine, scope = emptyScope(), refreshKey = 0 }: Props) {
+  const options = cell.options;
+  const tools = cellTools(cell);
   const toolsKey = tools.join("|");
   // eslint-disable-next-line react-hooks/exhaustive-deps -- re-create the bridge only when the tool SET changes
   const bridge = useMemo(() => makeWidgetBridge(tools), [toolsKey]);
+  // The panel's rows through the ONE data hook — the SAME path every read view uses, so a template/plot/
+  // d3 view is data-driven identically on a dashboard and in a channel response (both build a `Cell`).
+  const state = usePanelData(cell, scope, refreshKey);
   const inline = typeof options?.code === "string" ? (options.code as string) : null;
   const templateId = typeof options?.templateId === "string" ? (options.templateId as string) : null;
   const [code, setCode] = useState<string | null>(inline);
@@ -54,7 +65,13 @@ export function ScriptedView({ engine, tools, options }: Props) {
 
   return (
     <div className="h-full w-full" data-scripted={engine}>
-      <WidgetIframe engine={engine} code={code} tools={tools} bridge={bridge} />
+      <WidgetIframe
+        engine={engine}
+        code={code}
+        tools={tools}
+        bridge={bridge}
+        data={{ rows: state.rows, latest: state.latest, loading: state.loading, denied: state.denied }}
+      />
     </div>
   );
 }

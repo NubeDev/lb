@@ -8,20 +8,44 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Pencil, Trash2, X } from "lucide-react";
 
 import type { Item } from "@/lib/channel/channel.types";
+import type { ExtRow } from "@/lib/ext/ext.api";
+import type { RichResultPayload } from "@/lib/channel/payload.types";
 import { parsePayload } from "@/lib/channel/payload.types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QueryCard } from "./query/QueryCard";
+import { AgentCard } from "./AgentCard";
+import { ResponseView } from "./ResponseView";
 
 interface Props {
   item: Item;
   /** The current viewer's identity (`Item.author` shape) — own messages are editable/deletable. */
   author: string;
+  /** The viewer's session workspace — threaded to a `rich_result`'s mounted widget (ResponseView). */
+  ws: string;
+  /** Installed extensions (from `ext.list`) — threaded to ResponseView so an `ext:<id>` response view
+   *  mounts the extension's real tile. */
+  installed?: ExtRow[];
   onEdit: (id: string, body: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  /** Run ids that already have a durable answer/error (from MessageList) — a settled `agent` request
+   *  hides its "running…" placeholder. */
+  settledJobs?: Set<string>;
 }
 
-export function MessageItem({ item, author, onEdit, onDelete }: Props) {
+/** The agent payload kinds route to AgentCard; everything else kind-tagged goes to QueryCard. */
+function isAgentPayload(
+  p: ReturnType<typeof parsePayload>,
+): p is Extract<NonNullable<ReturnType<typeof parsePayload>>, { kind: `agent${string}` }> {
+  return !!p && (p.kind === "agent" || p.kind === "agent_result" || p.kind === "agent_error");
+}
+
+/** A `rich_result` render-envelope routes to ResponseView (mounts the shipped WidgetView). */
+function isRichResult(p: ReturnType<typeof parsePayload>): p is RichResultPayload {
+  return !!p && p.kind === "rich_result";
+}
+
+export function MessageItem({ item, author, ws, installed, onEdit, onDelete, settledJobs }: Props) {
   const payload = parsePayload(item.body);
   const isOwn = item.author === author;
   // Edit applies to plain chat text only — a kind-tagged payload is structured, not free text.
@@ -139,8 +163,15 @@ export function MessageItem({ item, author, onEdit, onDelete }: Props) {
             <X size={16} />
           </Button>
         </div>
+      ) : isAgentPayload(payload) ? (
+        <AgentCard
+          payload={payload}
+          settled={payload.kind === "agent" && !!settledJobs?.has(payload.job)}
+        />
+      ) : isRichResult(payload) ? (
+        <ResponseView payload={payload} workspace={ws} installed={installed} itemKey={item.id} />
       ) : payload ? (
-        <QueryCard payload={payload} />
+        <QueryCard payload={payload} channel={item.channel} itemId={item.id} />
       ) : (
         <div className="break-words leading-6 text-fg">{item.body}</div>
       )}

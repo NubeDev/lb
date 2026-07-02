@@ -1,0 +1,14 @@
+# Repo-root pnpm workspace. `ui/` is the app; `packages/*` are shared, independently
+# buildable libraries the app (and other Nube apps) consume — e.g. @nube/nav-rail, the
+# reusable sidebar. Promoting the workspace here (it used to live in ui/) lets `ui`
+# import a `workspace:*` sibling without a publish/link dance.
+packages:
+  - 'ui'
+  - 'packages/*'
+
+allowBuilds:
+  esbuild: true
+
+# Approve build scripts for these deps (pnpm blocks postinstall/build scripts by default).
+onlyBuiltDependencies:
+  - esbuild

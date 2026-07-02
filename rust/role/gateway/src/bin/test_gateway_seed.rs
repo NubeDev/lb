@@ -37,6 +37,22 @@ pub fn seed_routes(router: Router<Gateway>) -> Router<Gateway> {
         .route("/_seed/session", post(seed_session))
         .route("/_seed/flow_node", post(seed_flow_node))
         .route("/_seed/telemetry", post(seed_telemetry))
+        .route("/_seed/agent_drain", post(seed_agent_drain))
+}
+
+/// `POST /_seed/agent_drain` — drive the token's workspace channel-agent run queue to completion,
+/// then post the durable `agent_result`/`agent_error` back. This is **driving, not faking**: it calls
+/// the exact `drain_channel_agent_runs` the production background reactor (`spawn_agent_reactors`)
+/// calls — the test gateway does not spawn the timer-driven reactor (that lives in the `node` binary),
+/// so a UI test flushes the queue on demand through the real drive path. The default runtime over the
+/// unconfigured model returns a real (canned) answer, so the AgentCard settles without any provider.
+async fn seed_agent_drain(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let p = auth(&gw, &headers).await?;
+    lb_host::drain_channel_agent_runs(&gw.node, p.ws()).await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /_seed/telemetry` body — one telemetry row to plant into the token's workspace ring. All

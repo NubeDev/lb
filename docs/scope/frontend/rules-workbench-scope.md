@@ -1,4 +1,13 @@
-# Frontend scope — the rules workbench (Playground · chain canvas · datasources admin)
+# Frontend scope — the rules workbench (Playground · datasources admin)
+
+> **⚠ Phase 2 (the chain canvas) is RETIRED — the DAG story is now Flows.** The
+> [`chains-retirement-scope`](../flows/chains-retirement-scope.md) deleted the `chains` engine
+> outright (`flows` is the one DAG engine). The Phase-2 chain canvas below (`ChainCanvas`,
+> `chains.*` routes, `chains.watch` follow-up) shipped, then was **removed** — its DAG capability is
+> now the richer **Flows** canvas (`features/flows`, `flows.*`, live `flows.watch` SSE). The Playground
+> (Phase 1, `rules.*`) and datasources admin (Phase 3, `datasource.*`) are **unchanged and stay**.
+> Read the Phase-2 prose below as **history**; to author a rule-DAG, use Flows. See
+> [`public/flows/flows.md`](../../public/flows/flows.md).
 
 Status: **shipped** (Phases 1–3, 2026-06-29) → `public/frontend/rules-workbench.md`; built per
 `sessions/frontend/rules-workbench-session.md`. (Originally: scope/the ask.) Target stage:

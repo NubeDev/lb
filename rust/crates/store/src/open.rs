@@ -8,9 +8,13 @@
 //! toolchain, the "builds anywhere / on a Pi" posture; durability across restart and the
 //! LOAD-BEARING feature set verified — see `docs/scope/store/persistent-backend-scope.md`).
 
+use std::ops::Deref;
+use std::sync::Arc;
+
 use surrealdb::engine::local::{Db, Mem, SurrealKv};
 use surrealdb::Surreal;
 use thiserror::Error;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -32,9 +36,44 @@ impl From<surrealdb::Error> for StoreError {
 }
 
 /// A handle to the embedded datastore. Cloneable; cheap to pass around the host.
+///
+/// **Session-namespace safety.** Every clone shares ONE embedded SurrealDB connection, and that
+/// connection carries a single mutable session (its selected namespace + database). Selecting a
+/// workspace's namespace (`use_ns(ws)`) is therefore a *global* mutation of that shared session,
+/// not a per-operation scoping — and it is a distinct `await` from the query it is meant to guard.
+/// On a multi-thread runtime (every node) two operations targeting different workspaces would
+/// otherwise interleave (`use_ns(A)` … `use_ns(B)` … A's query runs against B's namespace),
+/// breaking the workspace wall non-deterministically (it surfaced as the flaky login "not a member
+/// of any workspace" — a bootstrap membership written into one namespace, read back from another;
+/// see debugging/store/concurrent-use-ns-namespace-race.md). The [`session`](Store::session) mutex
+/// makes the `use_ns` + query pair a critical section: only one namespace-scoped operation touches
+/// the shared session at a time, so a query always runs against the namespace *it* selected.
 #[derive(Clone)]
 pub struct Store {
     db: Surreal<Db>,
+    /// Serializes the "select namespace, then run the statement" window across all clones (they
+    /// share one connection + one session). Held from `use_ws` until the returned guard drops —
+    /// i.e. across the caller's query. See the type-level note above.
+    session: Arc<Mutex<()>>,
+}
+
+/// The namespace-scoped session, held for the duration of one store operation. Owning this guard
+/// means the shared connection's session is bound to *this* operation's workspace and cannot be
+/// re-pointed by a concurrent task until the guard drops. Deref to `&Surreal<Db>` so callers run
+/// their query exactly as before — the only change is that the query now runs *while holding* the
+/// lock, closing the `use_ns`↔query race.
+pub(crate) struct WsGuard<'a> {
+    db: &'a Surreal<Db>,
+    // The lifetime of the critical section. Dropped after the caller's query completes; `_guard`
+    // is never read, only held.
+    _guard: OwnedMutexGuard<()>,
+}
+
+impl Deref for WsGuard<'_> {
+    type Target = Surreal<Db>;
+    fn deref(&self) -> &Self::Target {
+        self.db
+    }
 }
 
 impl Store {
@@ -43,7 +82,10 @@ impl Store {
     /// a restart.
     pub async fn memory() -> Result<Self, StoreError> {
         let db = Surreal::new::<Mem>(()).await?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            session: Arc::new(Mutex::new(())),
+        })
     }
 
     /// Open a **persistent** embedded store at `path` (a real node). Durable across restart:
@@ -53,15 +95,30 @@ impl Store {
     /// the in-memory engine (all workspaces live in one on-disk store, scoped by `use_ns`).
     pub async fn open(path: &str) -> Result<Self, StoreError> {
         let db = Surreal::new::<SurrealKv>(path).await?;
-        Ok(Self { db })
+        Ok(Self {
+            db,
+            session: Arc::new(Mutex::new(())),
+        })
     }
 
-    /// Bind the connection to a workspace's namespace (and a fixed database within it).
-    /// Every read/write calls this first, so an operation can only ever touch its own
-    /// workspace's namespace — the hard wall, structurally (README §7).
-    pub(crate) async fn use_ws(&self, ws: &str) -> Result<&Surreal<Db>, StoreError> {
+    /// Bind the shared connection to a workspace's namespace (and a fixed database within it) and
+    /// return a guard that holds the session lock for the duration of the caller's query. Every
+    /// read/write calls this first, so an operation can only ever touch its own workspace's
+    /// namespace — the hard wall, structurally (README §7) — and, because the guard holds the lock
+    /// across the query, a concurrent operation for another workspace cannot re-point the shared
+    /// session mid-query (see the [`Store`] type note).
+    pub(crate) async fn use_ws(&self, ws: &str) -> Result<WsGuard<'_>, StoreError> {
+        // Acquire the session lock BEFORE selecting the namespace, and hold it (via the returned
+        // guard) across the caller's query. `OwnedMutexGuard` would need `'static`; we borrow the
+        // `Arc` and lock it, then bind that guard's lifetime to `&self` through the plain guard —
+        // but a plain `MutexGuard<'_>` borrows `self.session`, which conflicts with returning
+        // `&self.db`. Cloning the `Arc` and taking an owned guard sidesteps the borrow entirely.
+        let guard = Arc::clone(&self.session).lock_owned().await;
         self.db.use_ns(ws).use_db("main").await?;
-        Ok(&self.db)
+        Ok(WsGuard {
+            db: &self.db,
+            _guard: guard,
+        })
     }
 
     /// Run a raw SurrealQL statement, returning the response for the caller to extract. The
