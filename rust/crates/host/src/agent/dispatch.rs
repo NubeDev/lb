@@ -15,6 +15,7 @@ use super::authorize::authorize_invoke;
 use super::catalog::render_catalog;
 use super::error::AgentError;
 use super::in_house::DEFAULT_RUNTIME;
+use super::memory::memory_index_for_injection;
 use super::model_access::AllowedTool;
 use super::registry::RuntimeRegistry;
 use super::resolve_default::resolve_effective_runtime;
@@ -99,10 +100,12 @@ pub async fn invoke_via_runtime(
             goal = format!("{goal}\n\n{catalog}");
         }
         // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the skill catalog,
-        // under the same derived principal (member wall holds). Best-effort — a deny/empty is simply
-        // no injection. An external run RECALLS by default; whether it may `set` is its profile's
-        // `granted_tools` opt-in (the read/inject is not a write grant).
-        if let Some(index) = memory_index_for_injection(&node.store, &agent, ws).await {
+        // under an ON-BEHALF-OF principal — the CALLER's sub (so `member:{user}` resolves to the human
+        // behind the run) with the agent's intersected caps (never widening). Best-effort — a
+        // deny/empty is simply no injection. An external run RECALLS by default; whether it may `set`
+        // is its profile's `granted_tools` opt-in (the read/inject is not a write grant).
+        let on_behalf = caller.derive(caller.sub(), agent_caps.to_vec());
+        if let Some(index) = memory_index_for_injection(&node.store, &on_behalf, ws).await {
             goal = format!("{goal}\n\n{index}");
         }
         // The persona for an external run is a granted skill it loads itself via `load_skill`

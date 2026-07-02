@@ -11,6 +11,20 @@
 The blank canvas in the screenshot is caused by issue **#4** (the codec crash returns a bad host response,
 so the editor has no graph to render). Fix #4 first — it's the one that makes the page unusable.
 
+## Progress (2026-07-03)
+
+- **#4 codec crash — ✅ FIXED.** Extension-side tolerant raw fetch (`tools::raw_tree`) bypasses
+  `rubix-ce`'s strict `EdgeDto` decode; `serve.rs` routes the real `control-engine.tree` there. Rebuilt
+  `-p control-engine` (green) + rule-9 regression (23 lib tests pass). See
+  [../../debugging/frontend/ce-tree-missing-source-uid-blanks-canvas.md](../../debugging/frontend/ce-tree-missing-source-uid-blanks-canvas.md).
+- **#1 theme — ✅ FIXED.** `useDocumentColorMode` now reads `.dark` (host convention) instead of the
+  never-set `.light`. Rebuilt `build:lib` + ext UI (green).
+- **#3 node slots / streaming — ⏳ re-check after #4 with a live appliance** (likely was downstream of #4).
+- **#2 header clash — ⏳ not started** (layout decision below).
+
+**Remaining before this closes:** a live-appliance smoke test (needs `make dev … CE=1` + republish, since
+the node doesn't hot-reload Rust) to confirm the canvas now draws and to settle #3, then #2.
+
 ---
 
 ## Issue 1 — dark/light mode doesn't work in the CE canvas  ⭐ ROOT CAUSE FOUND

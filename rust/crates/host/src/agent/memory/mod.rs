@@ -26,8 +26,5 @@ mod verbs;
 
 pub use index::{render_index, INJECT_CAP, MEMORY_HEADER};
 pub use model::{Memory, MemoryKind, MemoryScope, MAX_BODY, MAX_DESCRIPTION};
-pub use resolve::{read_scopes, write_scope};
 pub use tool::call_agent_memory_tool;
-pub use verbs::{
-    memory_delete, memory_get, memory_index_for_injection, memory_list, memory_set,
-};
+pub use verbs::{memory_delete, memory_get, memory_index_for_injection, memory_list, memory_set};

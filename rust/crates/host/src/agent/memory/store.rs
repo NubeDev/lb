@@ -63,9 +63,7 @@ pub async fn read_memory(
     let mut resp = store
         .query_ws(
             ws,
-            &format!(
-                "SELECT {MEMORY_COLUMNS} FROM type::thing('{MEMORY_TABLE}', [$scope, $slug])"
-            ),
+            &format!("SELECT {MEMORY_COLUMNS} FROM type::thing('{MEMORY_TABLE}', [$scope, $slug])"),
             vec![
                 ("scope".into(), Value::String(scope.key())),
                 ("slug".into(), Value::String(slug.to_string())),

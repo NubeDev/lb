@@ -1596,6 +1596,7 @@ dependencies = [
  "lb-store",
  "lb-supervisor",
  "openssl",
+ "reqwest",
  "rubix-ce",
  "serde",
  "serde_json",

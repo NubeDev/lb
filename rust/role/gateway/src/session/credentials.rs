@@ -314,6 +314,17 @@ fn member_caps() -> Vec<String> {
         // The host re-checks each cap server-side (a token without `set` is refused).
         "mcp:agent.config.get:call",
         "mcp:agent.config.set:call",
+        // agent-memory scope: the durable memory verbs. `list`/`get` are member-level reads; `set`/
+        // `delete` are member-level writes on the caller's OWN scope (the target scope is derived from
+        // the principal, never an argument — the member wall). A write to the SHARED `workspace` scope
+        // ALSO needs the distinct `store:agent_memory/workspace:write` cap below, so an admin decides
+        // whether every member's agent may write shared memory. The dev login doubles as admin, so it
+        // holds it. The host re-checks each server-side (a token without a verb is refused).
+        "mcp:agent.memory.list:call",
+        "mcp:agent.memory.get:call",
+        "mcp:agent.memory.set:call",
+        "mcp:agent.memory.delete:call",
+        "store:agent_memory/workspace:write",
         // reminders-tenant scope: `reminder.fire` is the gated run-now verb (a "fire now" control).
         // Member-level — the same authority that creates/updates a reminder may fire one now; the
         // firing still re-checks the ACTION's own cap under the stored principal (no escalation).

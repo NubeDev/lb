@@ -219,10 +219,15 @@ interface Crumb {
 // palette inside the canvas — e.g. white `--card` nodes while `<html>` is dark.
 // Mirror the document's actual theme class onto colorMode so they always agree.
 function useDocumentColorMode(): "dark" | "light" {
+  // Match the HOST theme convention: it toggles a `.dark` class on <html>; light
+  // mode is the ABSENCE of `.dark` (there is no `.light` class — see
+  // ui/src/lib/theme/theme-dom.ts). Reading `.light` (as before) never matched, so
+  // the canvas was stuck dark. Default (neither class present) → light, matching the
+  // host's default; the editor root's `theme-light` palette flip keys off this.
   const read = (): "dark" | "light" =>
-    typeof document !== "undefined" && document.documentElement.classList.contains("light")
-      ? "light"
-      : "dark"; // default (`:root`) is the dark palette
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
   const [mode, setMode] = useState<"dark" | "light">(read);
   useEffect(() => {
     const el = document.documentElement;

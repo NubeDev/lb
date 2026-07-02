@@ -97,8 +97,9 @@ pub async fn memory_set(
             "body exceeds {MAX_BODY} bytes"
         )));
     }
-    let kind = MemoryKind::parse(kind)
-        .ok_or_else(|| ToolError::BadInput("kind must be user|feedback|project|reference".into()))?;
+    let kind = MemoryKind::parse(kind).ok_or_else(|| {
+        ToolError::BadInput("kind must be user|feedback|project|reference".into())
+    })?;
 
     // Best-effort secret lint (not a gate): reject an obvious credential shape so a careless/poisoned
     // write does not persist a key into memory.

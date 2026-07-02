@@ -49,7 +49,8 @@ responses, full pages, and extensions can reuse it — the same extraction move 
   catalog-constrained widget/panel UI.
 - **No new core verbs, capabilities, or tables** in v1 (the `source-picker` posture). Everything
   composes shipped surfaces: `agent.invoke`/`agent.watch`, `dashboard.save`, the widget bridge,
-  the run stream.
+  the run stream. The **one** host-side change is a validation branch *inside* the existing
+  `dashboard.save` handler for `view:"genui"` cells (Decision 6) — no new verb, cap, or table.
 - **No A2UI *adapter* in v1.** The IR keeps A2UI's shape (below) — that decision costs nothing —
   but the JSONL parse/serialize adapter ships only when something actually speaks it (Flutter/Lit
   client, A2A interop, an import). Shipping two emission adapters to "prove the seam" inverts the
@@ -197,6 +198,18 @@ contribute `[[widget]]` tiles today (follow-up slice).
 - **Emission format:** the skill teaches the agent to emit **OpenUI Lang** (roughly half the
   tokens of JSON, line-oriented so partial output renders cleanly). `meta.format` names it so a
   future A2UI (or other) authoring adapter is additive.
+- **Headless authoring — any MCP caller is a first-class author.** Because the widget is just a
+  cell written through `dashboard.save` (rule 7: MCP is the universal contract), the shell builder
+  is *one client*, not the gate. Any principal holding `mcp:dashboard.save:call` + the read caps
+  for the sources it binds can create a genui widget over the existing paths: the gateway's
+  `POST /mcp/call` (CLI, API-key machine principals per `auth-caps/api-keys-scope.md`), routed
+  MCP over Zenoh, or a third-party agent driven via the `external-agent` ACP runtime whose only
+  tools are this same caps-checked surface. Headless callers skip the streaming preview and emit
+  the **typed IR directly** (no Lang round-trip needed); the `genui-widget` skill documents both
+  choreographies. Headless writers get the **same loud rejection** the shell gives, because
+  `dashboard.save` structurally validates `options.genui` for `view:"genui"` cells (Decision 6):
+  a malformed genui cell is refused at write time, not degraded at view time. The renderer's
+  `validate` + placeholder pass stays as view-time defense-in-depth.
 
 ### The skill
 
@@ -267,7 +280,9 @@ get design-time privacy for free via the existing gateway routing.
   anywhere renders anywhere. No `if cloud`.
 - **MCP surface / API shape:** **consumes only** (`agent.invoke`, `agent.watch` SSE,
   `dashboard.save`, and the data verbs above). No new verbs — CRUD is the dashboard's, the live
-  feed is the run stream + `series.watch`/`bus.watch`, batch N/A.
+  feed is the run stream + `series.watch`/`bus.watch`, batch N/A. The only host-side code change
+  is a `view:"genui"` validation branch *inside* the existing `dashboard.save` handler
+  (Decision 6): same verb, same cap, same table.
 - **Data (SurrealDB):** state = the cell (`options.genui`: versioned IR + authoring meta,
   size-bounded at accept). No new tables, no second persistence path.
 - **Bus (Zenoh):** motion = the existing run-stream subject during authoring and the existing
@@ -360,21 +375,46 @@ session rules.
   tick; decimation (`series-decimation-scope.md`) and patch coalescing are the mitigations, and
   the concrete promotion checklist above is the exit.
 
-## Open questions
+## Decisions (v1 — build these; no open questions)
 
-1. **Promotion timing.** The in-process checklist is stated above; the open part is only *when* —
-   v1 ships iframe (standing decision), and the build session should say which checklist items
-   already hold vs need work, so promotion is a scheduled follow-up, not a debate.
-2. **Refine-turn context.** Resend the stored raw emission each turn vs teach the agent to emit
-   patch lines applied to the persisted IR (patches now compose cleanly since the IR is the
-   stored artifact; likely: full re-emit for v1, patches when it hurts).
-3. **Channel tenant timing.** Same slice or follow-up for `render:{view:"genui"}` in
-   rich-responses? (Recommend follow-up: the adapter from Item body → `WidgetView` already exists;
-   it should be a page of glue — and it inherits the persisted-IR contract unchanged.)
-4. **Sampling defaults.** Is first-≤20-rows-per-candidate the right egress/context bound, and
-   should a workspace policy knob (design-time sampling on/off) exist for regulated tenants?
-5. **Per-cell refresh vs surface patches.** Does `refreshKey` full-resolve stay acceptable, or do
-   watch-driven partial `/data/{refId}` patches need distinct cadence controls per target?
+Every prior open question is resolved below so the implementing session can build straight through.
+Deferrals are explicit follow-ups with a named trigger, **not** decisions to make mid-build.
+
+1. **Trust tier — iframe for v1.** Ship `GenUiView` in the sandboxed `WidgetIframe` tier
+   (the standing `channels-rich-responses` decision). Build the catalog to *already satisfy* the
+   five promotion-checklist items above (no `dangerouslySetInnerHTML`, sanitized markdown, no
+   code-valued props, all effects via the leashed bridge, no style injection) and add the CI
+   tests for them — but do **not** promote in this slice. In-process promotion is a follow-up
+   whose trigger is "checklist tests green in CI + one perf datapoint showing the iframe data
+   tax matters"; the session records which items already hold in its session doc.
+2. **Refine-turn context — full re-emit.** On a refine turn, resend the stored raw emission
+   (`meta.raw`) plus a one-paragraph data-shape summary into the agent's context and let it
+   re-emit the whole spec; parse/normalize/validate at accept exactly as the first turn. Do
+   **not** build IR patch-lines in v1 — the follow-up trigger is a measured pain point (specs
+   large enough that full re-emit is slow/expensive), at which point `updateComponents`-style
+   patches apply cleanly against the persisted IR.
+3. **Channel tenant — out of scope for this slice.** `render:{view:"genui"}` in rich responses is
+   a **follow-up**, tracked in `channels-rich-responses-scope.md`. This slice ships the package +
+   the dashboard tenant only; the package is built dashboard-independent so the channel consumer
+   is later glue, not a rebuild. Do not touch `features/channel/` in this session.
+4. **Design-time sampling — first ≤20 rows per candidate, no policy knob in v1.** The skill bounds
+   egress to `store.schema`/descriptors first, then at most 20 sampled rows per candidate source
+   (never table dumps). Local-provider workspaces get design-time privacy via existing gateway
+   routing. A per-workspace "design-time sampling off" policy knob is a **follow-up** for regulated
+   tenants (trigger: a tenant asks for it); v1 does not add the knob.
+5. **Data cadence — reuse the shipped panel cadence, no per-target controls.** `GenUiView` drives
+   the surface data model from `usePanelData` exactly as other panels: watch targets stream and
+   patch `/data/{refId}` on tick; non-watch targets resolve on `refreshKey`. Do **not** add
+   per-target cadence controls in v1 (follow-up only if a real dashboard needs mixed rates).
+6. **Host-side IR validation on save — build it in this slice.** `dashboard.save` structurally
+   validates `options.genui` when `view:"genui"`: IR schema `v` present and known, size within the
+   ~8 KB bound, and every `component` name resolves in the catalog JSON (the generated artifact,
+   not the TS). This closes the headless-MCP-author gap from day one — any MCP caller
+   (`POST /mcp/call`, routed Zenoh, `external-agent`) gets the same loud rejection the shell gives,
+   so a malformed genui cell is refused at write time, not degraded at view time. The view-time
+   `validate`/placeholder pass stays as defense-in-depth. This is the **one** host-side addition in
+   the slice and it adds no new verb/cap/table — it's a validation branch inside the existing
+   `dashboard.save` handler, gated on `view:"genui"`.
 
 ## Related
 
