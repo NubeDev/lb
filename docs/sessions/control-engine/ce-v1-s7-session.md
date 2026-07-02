@@ -134,6 +134,15 @@ engine on the same box through the full bridge, incl. a live COV frame updating 
 MANUALLY by the integrator against a live engine, not in `test:gateway`. No native-spawn / SSE plumbing was
 added to the harness (out of scope).
 
+**Live-engine proof (added at integration — now an automated opt-in tier):** rather than leave the live
+read path unproven, `src/bridge-transport.live.test.ts` spawns the REAL `control-engine` sidecar (real
+`rubix-ce` client, no fake) and drives the REAL `BridgeTransport` over its stdio control line against a
+live ce-studio. Env-gated (`CE_ENGINE_URL` + `CONTROL_ENGINE_BIN`), skipped by default so CI stays green.
+**Verified GREEN against a live engine on `:7979`** (2026-07-02): `GET /nodes` → the engine's real
+component tree, `GET /schema` → the live type catalogue — i.e. `BridgeTransport` (REST path → tool → args)
+→ sidecar → live CE → verbatim DTO → result-unwrap, no stub anywhere in the chain. The live COV frame →
+rendered value remains a Playwright/manual step (the SSE side still has no vitest transport).
+
 The test doubles (`bridge.stub.ts`, `ce-wiresheet.stub.tsx`) are doubles of the bridge INTERFACE and the
 vendored editor's SURFACE — allowed per testing-scope §0 (the real node isn't in the remote's process; the
 vendored editor is a UI component, not node behavior). The `ce-wiresheet.stub.tsx` re-exports the GENUINE
