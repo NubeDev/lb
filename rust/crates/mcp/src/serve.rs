@@ -13,10 +13,17 @@ use lb_runtime::RuntimeError;
 use crate::registry::{Registry, Target};
 use crate::route::{CallReply, CallRequest};
 
-/// Run `req` against this node's local registry and produce the reply to send back. A request
-/// for a tool this node does not host locally (or any extension error) maps to `CallReply::Err`
-/// — the calling node surfaces it as a `ToolError::Extension`.
-pub async fn serve_call(registry: &Registry, req: &CallRequest) -> CallReply {
+/// Run `req` against this node's local registry (in workspace `ws`) and produce the reply to send
+/// back. A request for a tool this node does not host locally (or any extension error) maps to
+/// `CallReply::Err` — the calling node surfaces it as a `ToolError::Extension`.
+///
+/// `ws` is the workspace the request arrived on (recovered from the routed key). It is threaded into
+/// the dispatch target so a Tier-agnostic local target can resolve per-workspace state — a native
+/// sidecar keyed `(ws, ext_id)` reaches THIS workspace's child, never another's (the workspace wall
+/// stays structural on the routed native path exactly as on the wasm path). A wasm instance ignores
+/// it. No routed call re-authorizes here: the calling node ran the gate workspace-first, and the
+/// queryable key means a ws-B call physically cannot reach a ws-A target (§7).
+pub async fn serve_call(registry: &Registry, ws: &str, req: &CallRequest) -> CallReply {
     let Some((ext_id, tool)) = req.tool.split_once('.') else {
         return CallReply::Err("malformed tool name".into());
     };
@@ -28,7 +35,9 @@ pub async fn serve_call(registry: &Registry, req: &CallRequest) -> CallReply {
     };
 
     let mut instance = hosted.instance.lock().await;
-    match instance.call_tool(tool, &req.input).await {
+    // No host-callback context on the routed path: the guest (if any) runs on THIS node and a
+    // cross-node callback identity is a separate scope. A native target ignores `ctx` regardless.
+    match instance.call_tool(ws, tool, &req.input, None).await {
         Ok(output) => CallReply::Ok(output),
         Err(RuntimeError::Tool(m)) => CallReply::Err(m),
         Err(other) => CallReply::Err(other.to_string()),

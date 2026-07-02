@@ -11,6 +11,7 @@
 //! allowed call (counter semantics) while the host integration test asserts the
 //! `Denied` at the `call_tool` boundary.
 
+pub mod appliance;
 pub mod schema;
 pub mod tree;
 
@@ -33,5 +34,87 @@ pub async fn dispatch(
         "control-engine.tree" => tree::run(engine, instance, input).await,
         "control-engine.schema" => schema::run(engine).await,
         other => Err(format!("unknown tool: {other}")),
+    }
+}
+
+// ---------------------------------------------------------------------------------
+// Crate-level unit tests: the graph dispatch layer's deny-before-call semantics + verbatim DTO shape,
+// driven against the ONE sanctioned fake (`ce_fake`, with its call counter). These prove "0 trait
+// calls before a denied call" at the dispatch seam (the host integration test proves the `Denied` at
+// the call_tool boundary). No process, no store, no bus — just dispatch × the trait.
+// ---------------------------------------------------------------------------------
+#[cfg(test)]
+mod dispatch_tests {
+    use super::dispatch;
+    use crate::ce_fake::CeFake;
+    use rubix_ce::EngineInstanceId;
+    use serde_json::json;
+    use std::sync::atomic::Ordering;
+
+    #[tokio::test]
+    async fn tree_returns_seeded_graph_verbatim_and_counts_one_call() {
+        let fake = CeFake::seeded();
+        let inst = EngineInstanceId::edge();
+
+        assert_eq!(
+            fake.calls.load(Ordering::SeqCst),
+            0,
+            "no trait call before dispatch"
+        );
+
+        let out = dispatch(
+            &*fake,
+            &inst,
+            "control-engine.tree",
+            &json!({ "appliance": "" }),
+        )
+        .await
+        .expect("tree dispatches");
+
+        let nodes = out["nodes"].as_array().expect("nodes array");
+        assert_eq!(nodes.len(), 1, "one seeded node: {out}");
+        assert_eq!(nodes[0]["uid"], 1);
+        assert_eq!(nodes[0]["type"], "test-math::add");
+        assert_eq!(out["edges"].as_array().expect("edges array").len(), 0);
+
+        assert_eq!(
+            fake.calls.load(Ordering::SeqCst),
+            1,
+            "one trait call per dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn schema_returns_manifest_list_verbatim() {
+        let fake = CeFake::seeded();
+        let inst = EngineInstanceId::edge();
+        let out = dispatch(
+            &*fake,
+            &inst,
+            "control-engine.schema",
+            &json!({ "appliance": "" }),
+        )
+        .await
+        .expect("schema dispatches");
+        let mans = out["manifests"].as_array().expect("manifests array");
+        assert_eq!(mans.len(), 1, "one seeded manifest: {out}");
+        assert_eq!(mans[0]["vendor"], "test");
+        assert_eq!(mans[0]["name"], "math");
+        assert_eq!(fake.calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn unknown_tool_errors_without_a_trait_call() {
+        let fake = CeFake::seeded();
+        let inst = EngineInstanceId::edge();
+        let err = dispatch(&*fake, &inst, "control-engine.bogus", &json!({}))
+            .await
+            .expect_err("unknown tool errors");
+        assert!(err.contains("unknown tool"), "got: {err}");
+        assert_eq!(
+            fake.calls.load(Ordering::SeqCst),
+            0,
+            "an unknown tool makes NO trait call (deny-before-call at dispatch)"
+        );
     }
 }

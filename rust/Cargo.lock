@@ -1585,10 +1585,16 @@ name = "control-engine"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
+ "lb-auth",
+ "lb-host",
+ "lb-role-gateway",
+ "lb-sidecar-client",
  "lb-supervisor",
  "rubix-ce",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
 ]
 

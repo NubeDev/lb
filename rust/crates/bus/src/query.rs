@@ -30,6 +30,21 @@ pub struct Incoming {
 }
 
 impl Incoming {
+    /// The **workspace** this request arrived for, recovered from the concrete key it landed on
+    /// (`ws/{ws}/…`). A queryable may be declared with a `*` workspace wildcard (one declaration
+    /// serves every workspace — see `serve_ext`), but each individual `get` targets a CONCRETE key,
+    /// so the `{ws}` segment is always present here. The serving side needs it to resolve a
+    /// per-workspace target (a native sidecar keyed `(ws, ext_id)`); `None` if the key is malformed.
+    pub fn ws(&self) -> Option<String> {
+        // key = `ws/{ws}/{rel}` — the workspace is the second `/`-segment.
+        self.query
+            .key_expr()
+            .as_str()
+            .split('/')
+            .nth(1)
+            .map(String::from)
+    }
+
     /// The request payload bytes (empty if the caller sent none).
     pub fn payload(&self) -> Vec<u8> {
         self.query

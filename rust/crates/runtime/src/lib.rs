@@ -13,9 +13,11 @@
 mod bindings;
 mod bridge;
 mod compat_v0_1;
+mod dispatch;
 mod engine;
 mod instance;
 
 pub use bridge::{BridgeError, CallContext, HostBridge};
+pub use dispatch::LocalDispatch;
 pub use engine::{Engine, RuntimeError};
 pub use instance::Instance;

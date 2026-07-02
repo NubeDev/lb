@@ -11,19 +11,6 @@
 use rubix_ce::{EngineInstanceId, NodeKey, NodeRef, UidKind};
 use serde::Deserialize;
 
-/// The base envelope carried by every `control-engine.*` call. For S3 the
-/// `appliance` field carries the CE base as `host:port` (or a bare port, or empty →
-/// the canonical local `127.0.0.1:7979`); S4 resolves it against the appliance
-/// registry instead. Kept small on purpose — verb-specific args are read off the
-/// same `serde_json::Value` by each verb.
-#[derive(Debug, Clone, Deserialize)]
-pub struct Envelope {
-    /// The appliance selector. In S3 this is the CE base `host:port` (local mode);
-    /// S4 turns it into a registry id resolved to a node + base.
-    #[serde(default)]
-    pub appliance: String,
-}
-
 /// The canonical CE REST/WS port (control-engine scope open-question resolution:
 /// ce-studio's `7979`, aligning the older `7878` mentions).
 pub const CANONICAL_PORT: u16 = 7979;

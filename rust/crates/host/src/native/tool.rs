@@ -75,27 +75,23 @@ pub async fn call_sidecar<L: Launcher>(
         .get(ws, ext_id)
         .ok_or(NativeServiceError::NotRunning)?;
 
-    // First attempt.
-    let first = {
-        let mut sidecar = handle.lock().await;
-        sidecar.call(tool, input).await
-    };
-    match first {
-        Ok(out) => Ok(out),
-        // The child died mid-call: apply the crash-restart policy, then retry once. This IS the
-        // supervision proof — a killed sidecar is restarted cleanly and the call still answers.
-        Err(SupervisorError::Transport(_)) | Err(SupervisorError::Child(_)) => {
-            let restarts = {
-                let mut sidecar = handle.lock().await;
-                sidecar.restart(launcher).await?;
-                sidecar.restarts()
-            };
-            bump_restart_count(node, ws, ext_id, restarts, ts).await?;
+    // Attempt-then-restart-and-retry is shared with the registry adapter via `call_once_or_restart`
+    // (one place owns the fault shape). Here the recovery IS the supervision proof: apply the
+    // crash-restart policy via the launcher and bump the durable restart count, so a killed sidecar
+    // is restarted cleanly and the call still answers.
+    let out = super::call::call_once_or_restart(&handle, tool, input, || async {
+        let restarts = {
             let mut sidecar = handle.lock().await;
-            Ok(sidecar.call(tool, input).await?)
-        }
-        Err(other) => Err(other.into()),
-    }
+            sidecar.restart(launcher).await?;
+            sidecar.restarts()
+        };
+        bump_restart_count(node, ws, ext_id, restarts, ts)
+            .await
+            .map_err(|e| SupervisorError::Transport(e.to_string()))?;
+        Ok(())
+    })
+    .await?;
+    Ok(out)
 }
 
 /// Map the native service error onto the MCP tool error. `Denied` stays opaque; the rest surface as

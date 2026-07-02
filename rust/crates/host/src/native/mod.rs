@@ -25,6 +25,7 @@
 //! Granted ≠ trusted; trusted ≠ granted — carried verbatim from the wasm/registry tiers.
 
 mod authorize;
+mod call;
 mod error;
 mod install;
 mod lifecycle;
