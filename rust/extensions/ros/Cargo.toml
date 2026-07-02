@@ -1,0 +1,53 @@
+# `ros-sidecar` — the native Tier-2 BACKEND of the `ros` driver extension (ros-scope). A host-target
+# binary AND a workspace member (builds for the host, not wasm), like `fleet-monitor`/`echo-sidecar`,
+# so it shares the workspace lockfile + target dir. The FRONTEND half is co-located under `ui/`.
+#
+# It vendors the `rust-ros` REST client (ported to async `reqwest`, `sqlx` dropped) under
+# `src/ros_client/`; the `RosApi` seam (`src/ros_api.rs`) is the one external-fake boundary. The poll
+# task + point writes call back into the host via `lb-sidecar-client` (slices 3-4).
+[package]
+name = "ros-sidecar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# Lib + bin: the lib holds the tool bodies (handlers/host/shadow/fake) so `tests/` integration tests
+# can drive them against a real gateway; the bin is the thin supervisor loop over the lib.
+[lib]
+name = "ros_sidecar"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ros-sidecar"
+path = "src/main.rs"
+
+[dependencies]
+# The supervisor wire protocol + framing — child and host agree on the ABI by sharing the crate.
+lb-supervisor = { workspace = true }
+# The generic native-sidecar → host MCP callback transport: the poller calls `ingest.write` and
+# `point.write` stages `outbox.enqueue` through this (slices 3-4). Nothing ROS-specific in it.
+lb-sidecar-client = { workspace = true }
+# The identity primitive: the sidecar reads its OWN grant (`LB_EXT_TOKEN` caps) via
+# `claims_unverified` for the per-verb capability self-check (host.rs). No key needed — the host
+# already verified the token to mint/inject it.
+lb-auth = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+# The vendored ROS client is async `reqwest` (poller runs many concurrent reads). `rustls-tls` so
+# there is no system OpenSSL dep (workspace default); `json` for the REST bodies.
+reqwest = { workspace = true }
+# Own tokio (not `workspace = true`): the child reads/writes its OWN stdio (`io-std`), and the client
+# + callback need the net + time reactor.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "net", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time"] }
+# The integration tests boot a REAL node + REAL axum gateway on a REAL port and drive the handlers
+# through a REAL SidecarClient (only the ROS box faked behind RosApi) — no mocks (CLAUDE rule 9).
+lb-host = { workspace = true }
+lb-role-gateway = { workspace = true }
+serde_json = { workspace = true }
+axum = { workspace = true }

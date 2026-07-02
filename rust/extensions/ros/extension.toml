@@ -27,10 +27,31 @@ restart     = "on-crash"
 # ingest.write; point writes stage outbox effects; the External token is mediated by lb-secrets.
 request = [
   "net:tcp:*:*",                 # reach the ROS appliances over HTTP (the native net:* escape hatch)
-  "secret:ros/*/token:get",      # per-connection External token, mediated by lb-secrets
-  "mcp:ingest.write:call",       # append polled present-values as series samples
+  # The External token per connection, mediated by lb-secrets (three-gate). Write on create/update,
+  # get to build a client, delete on ros.delete. The token is NEVER returned by get/list or logged.
+  "secret:ros/*/token:get",
+  "secret:ros/*/token:write",
+  "secret:ros/*/token:delete",
+  "mcp:secret.set:call",         # stash the connection token
+  "mcp:secret.get:call",         # read it to construct the REST client
+  "mcp:secret.delete:call",      # remove it on ros.delete
+  # The config shadow (ros connection records) rides the host's workspace-scoped document store —
+  # there is no generic "put a record" host verb; assets.* IS the key→doc store (see shadow.rs).
+  "mcp:assets.put_doc:call",
+  "mcp:assets.get_doc:call",
+  "mcp:assets.list_docs:call",
+  "mcp:assets.delete_doc:call",
+  # The second gate the assets verbs enforce: the doc resource itself (id = ros/{uuid}, slash-sep so
+  # it is one cap segment — a `:` would collide with the cap action delimiter). WRITE/DELETE are
+  # scoped to our own `ros/*` docs; READ is `doc/*` because `assets.list_docs` authorizes against the
+  # surface wildcard (`store:doc/**:read`) — it lists ids only, and each is re-read under `ros/*`.
+  "store:doc/**:read",
+  "store:doc/ros/*:write",
+  "store:doc/ros/*:delete",
+  "mcp:ingest.write:call",       # append polled present-values as series samples (slice 3)
   "mcp:series.latest:call",      # UI live value
   "mcp:series.read:call",        # UI trend chart
+  "mcp:outbox.enqueue:call",     # stage must-deliver point writes (slice 4)
 ]
 
 # CRUD over the connection → network → device → point tree (core/resource-verbs grammar).
