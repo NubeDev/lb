@@ -1,12 +1,42 @@
 @import "tailwindcss";
 
-/* DOM chrome only (palette / rail / toolbar) — quiet glass over the canvas,
-   look-scope.md §visual-language. Canvas colors come from theme/tokens.ts, and the
-   two must agree: change them together. */
+/* thecrew is a federated remote mounted INSIDE the host shell, so the shell's theme tokens
+   (ui/src/styles/globals.css: --bg/--panel/--border/--fg/--muted/--accent, swapped by the `.dark`
+   class + `[data-theme-accent]` on <html>) are already in scope here. We define ZERO colors of our
+   own — the DOM chrome derives every `--tc-*` from a host token, so thecrew follows the host's
+   light/dark toggle and accent swatch automatically. The canvas half reads the same tokens at
+   runtime (theme/host-tokens.ts). Change the look in the host, not here. */
 :root {
-  --tc-canvas: #0a0e14;
-  --tc-panel: rgb(16 22 32 / 0.82); /* translucent glass panels */
-  --tc-panel-solid: #101620; /* opaque panel (native <option> popovers) */
-  --tc-hairline: rgb(148 163 184 / 0.12);
-  --tc-accent: #22d3ee; /* live data + selection only */
+  --tc-canvas: hsl(var(--bg));
+  --tc-panel: hsl(var(--panel) / 0.82); /* translucent glass over the canvas */
+  --tc-panel-solid: hsl(var(--panel)); /* opaque panel (native <option> popovers) */
+  --tc-hairline: hsl(var(--border) / 0.6);
+  --tc-accent: hsl(var(--accent)); /* live data + selection */
+  --tc-text: hsl(var(--fg));
+  --tc-text-muted: hsl(var(--muted));
+}
+
+/* @nube/source-picker, themed to the host tokens (was thecrew's private glass palette). thecrew
+   injects ONLY this file (`styles.css?inline`) into the remote — NOT the package's own `.sp-root`
+   stylesheet — so these rules are self-complete (border/radius/focus). */
+.sp-root {
+  display: grid;
+  gap: 0.25rem;
+}
+.sp-root .sp-select {
+  width: 100%;
+  border-radius: 0.25rem;
+  border: 1px solid var(--tc-hairline);
+  background: var(--tc-panel);
+  color: var(--tc-text);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.sp-root .sp-select:focus-visible {
+  box-shadow: 0 0 0 1px var(--tc-accent);
+}
+.sp-root .sp-select option {
+  background: var(--tc-panel-solid);
+  color: var(--tc-text);
 }

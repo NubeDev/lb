@@ -120,8 +120,9 @@ pub use dbview::{
     DbViewError, Graph, GraphEdge, GraphNode, Page, Row, TableCount,
 };
 pub use devkit::{
-    authorize_devkit, call_devkit_tool, devkit_build, devkit_inspect, devkit_root, devkit_scaffold,
-    devkit_templates, BuildStarted, DevkitError, DevkitRoot,
+    authorize_devkit, call_devkit_tool, container_enabled, devkit_build, devkit_inspect,
+    devkit_root, devkit_scaffold, devkit_templates, select_toolchain, BuildStarted, DevkitError,
+    DevkitRoot,
 };
 pub use ext::{
     call_ext_tool, ext_disable, ext_enable, ext_list, ext_publish, ext_uninstall, load_enabled,

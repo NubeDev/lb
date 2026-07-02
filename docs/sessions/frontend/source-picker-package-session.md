@@ -1,7 +1,7 @@
 # Session — extract the source picker into `@nube/source-picker` (package + dashboard refactor)
 
 - Topic: frontend / dashboard (reusable source picker)
-- Status: **in-progress** — package built + dashboard migrated (parity green); thecrew consumer next.
+- Status: **shipped** — package built, dashboard migrated (parity green), thecrew consumer wired + LIVE.
 - Scope: [`docs/scope/frontend/dashboard/source-picker-package-scope.md`](../../scope/frontend/dashboard/source-picker-package-scope.md)
 - Branch: `crew-v2` (nothing committed).
 
@@ -61,9 +61,41 @@ predates this work (the panel editor's Field tab was renamed/removed by other wo
 
 Pure frontend. The package CONSUMES the same shipped reads via injected loaders; no new verb/cap/table/WIT.
 
-## Not done yet (this session continues)
+## Part 3 — thecrew consumer (the reuse payoff) — SHIPPED + LIVE
 
-- **thecrew consumer:** wire a bridge-backed `SourceLoaders` into `thecrew/ui` so a scene shape can bind
-  to a db/series/live/flow source through the SAME picker (scene `bind` stays `{channel}` for the first
-  cut per the scope decision; the picker fills the series name).
-- Promote to `public/frontend/dashboard.md` on ship.
+Wired the SAME package into the standalone `thecrew/ui`, reaching the node through the extension
+**bridge** instead of `@/lib/*` — proving transport-agnostic reuse across the shell/extension boundary.
+
+- **Dep:** `@nube/source-picker` as a `file:` dep (thecrew builds `--ignore-workspace`, so no
+  `workspace:*`); the package's built `dist/` + `exports` map resolves.
+- **Bridge-backed loaders** (`bridge/source-loaders.ts`): `bridgeSourceLoaders(bridge)` implements
+  `listSeries` over `bridge.call("series.list")`. Only `series.list` is wired (thecrew's grant covers
+  `series.*`/`assets.*`); the other loaders are omitted → their picker groups are simply absent (the
+  package's capability-scoped contract). A scene binds to series channels, so that's the whole surface.
+- **Manifest:** added `mcp:series.list:call` to `[capabilities].request` + the `[ui]` scope — a shipped
+  verb the picker needs to DISCOVER series (not a new verb/cap; consumer request, zero core additions).
+- **Loaders context** (`data/use-source-loaders.ts`): carries the loaders from the mount shell (which
+  holds the bridge) to the prop-less `App` tree; `ScenePage` provides it around `<App/>`.
+- **PropertyRail bind picker** (`editor/PropertyRail.tsx`): replaced the old `<select>` over
+  `source.channels()` (a closed loop — only channels ALREADY bound in the scene) with the reusable
+  `<SourcePicker>` over `useSourcePicker(loaders, ...)`. It now lists EVERY workspace series; a
+  `series`/`live` selection's `source.args.series` becomes the bind channel. `bind` stays `{channel}`
+  (scope decision). CSS: the picker's scoped `.sp-*` rules aliased to thecrew's glass tokens in
+  `styles.css` (thecrew injects only its own `?inline` stylesheet).
+
+**Live verification (real node in-mem :8080, built shell :4173, thecrew republished with the new
+manifest + reseeded):** `ui/e2e/thecrew-bind-picker.spec.ts` (**1/1**) — open Graphics → AHU-1 → select
+SF-1 → the `speed` bind slot's picker lists workspace series discovered over the bridge (incl.
+`ahu1.oad.position`, NOT bound to `speed` — proving discovery, not the old bound-only loop) → pick
+`ahu1.rat` → the store's bind channel updates. Screenshot: `docs/shots/scene-bind-picker-live.png` (the
+rail's three slots as pickers, live values beside each). The page + widget e2e still 2/2.
+
+Tests: thecrew unit **69/69** (+3 `PropertyRail.test.tsx`, driven through the real `mountPage`+stub
+bridge — no RTL dep, matching `mount.test.tsx`'s raw-DOM style); package 16/16; dashboard 124/124 (parity
+intact); all `tsc` clean.
+
+## Status
+
+Both consumers shipped + verified. Promote to `public/frontend/dashboard.md` when the whole slice is
+called done. Follow-up (filed, not this session): widen scene `bind` beyond `{channel}` to the full
+`{tool,args}` source vocab (`scene-source-binding`).

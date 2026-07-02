@@ -58,7 +58,7 @@ function Tile({ def }: { def: SymbolDef }) {
         "block w-full cursor-grab rounded-md border text-left outline-none transition-colors focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]",
         armed
           ? "border-transparent ring-1 ring-[var(--tc-accent)]"
-          : "border-[var(--tc-hairline)] hover:border-slate-500/40",
+          : "border-[var(--tc-hairline)] hover:border-[var(--tc-accent)]/40",
       )}
     >
       <div className="pointer-events-none h-20 w-full">
@@ -79,7 +79,7 @@ function Tile({ def }: { def: SymbolDef }) {
       <div
         className={clsx(
           "px-2 pb-1.5 text-xs",
-          armed ? "text-[var(--tc-accent)]" : "text-slate-400",
+          armed ? "text-[var(--tc-accent)]" : "text-[var(--tc-text-muted)]",
         )}
       >
         {def.label}
@@ -92,7 +92,7 @@ function Category({ title, defs }: { title: string; defs: SymbolDef[] }) {
   if (defs.length === 0) return null;
   return (
     <section className="space-y-2">
-      <h2 className="text-[10px] font-medium uppercase tracking-widest text-slate-500">{title}</h2>
+      <h2 className="text-[10px] font-medium uppercase tracking-widest text-[var(--tc-text-muted)]">{title}</h2>
       {defs.map((def) => (
         <Tile key={def.type} def={def} />
       ))}
@@ -110,19 +110,19 @@ export function Palette() {
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-[var(--tc-hairline)] bg-[var(--tc-panel)] backdrop-blur-md">
       <div className="relative shrink-0 p-2">
-        <Search size={13} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={13} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--tc-text-muted)]" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search symbols"
-          className="w-full rounded border border-[var(--tc-hairline)] bg-transparent py-1 pl-7 pr-2 text-sm text-slate-200 placeholder:text-slate-500 outline-none focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]"
+          className="w-full rounded border border-[var(--tc-hairline)] bg-transparent py-1 pl-7 pr-2 text-sm text-[var(--tc-text)] placeholder:text-[var(--tc-text-muted)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]"
         />
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-2 pb-3">
         <Category title="HVAC" defs={hvac} />
         <Category title="Floor plan" defs={plan} />
-        {defs.length === 0 && <p className="pt-2 text-xs text-slate-500">no symbols match “{query}”</p>}
+        {defs.length === 0 && <p className="pt-2 text-xs text-[var(--tc-text-muted)]">no symbols match “{query}”</p>}
       </div>
     </aside>
   );

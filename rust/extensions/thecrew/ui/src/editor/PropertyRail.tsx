@@ -4,13 +4,15 @@
 // No Apply button; every change reflects on-canvas immediately. No modals, ever.
 
 import { Trash2 } from "lucide-react";
+import { SourcePicker, useSourcePicker, type SourceSelection } from "@nube/source-picker";
 import { SYMBOLS } from "../canvas/ShapeNode";
-import { useChannelValue, useValueSource } from "../data/use-values";
+import { useChannelValue } from "../data/use-values";
+import { useSourceLoaders } from "../data/use-source-loaders";
 import type { SceneShape } from "../scene/scene.types";
 import { useSceneStore } from "../state/scene-store";
 
 const INPUT =
-  "w-full rounded border border-[var(--tc-hairline)] bg-transparent px-2 py-1 text-sm text-slate-200 outline-none focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]";
+  "w-full rounded border border-[var(--tc-hairline)] bg-transparent px-2 py-1 text-sm text-[var(--tc-text)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]";
 
 function fmt(v: unknown): string {
   if (v === null || v === undefined) return "—";
@@ -35,7 +37,7 @@ function Field({
 
   return (
     <label className="block space-y-1">
-      <span className="text-xs text-slate-400">{schema.label}</span>
+      <span className="text-xs text-[var(--tc-text-muted)]">{schema.label}</span>
       {schema.kind === "text" && (
         <input
           key={commitKey}
@@ -84,33 +86,56 @@ function Field({
   );
 }
 
-/** one binding slot: channel picker + the LIVE value beside it (tune-and-watch) */
-function BindRow({ id, slot, shape }: { id: string; slot: string; shape: SceneShape }) {
-  const source = useValueSource();
+// A scene bind is `{channel: <series name>}`. The reusable @nube/source-picker discovers workspace
+// series via the injected loaders (bridge-backed) — so the author picks from EVERY series the node has,
+// not just channels already bound in this scene (the old `source.channels()` was a closed loop). We
+// offer the `series` + `live` groups (both resolve to a series name); a picked selection's
+// `source.args.series` IS the channel. `bind` stays `{channel}` (scope decision) — the picker fills it.
+const SCENE_SOURCE_GROUPS = [
+  { group: "series" as const, label: "Series" },
+  { group: "live" as const, label: "Live (Zenoh)" },
+];
+
+/** The series name a picker selection carries (series/live groups), or null for anything else. */
+function seriesOf(sel: SourceSelection | null): string | null {
+  const s = sel?.source?.args?.series;
+  return typeof s === "string" && s.length > 0 ? s : null;
+}
+
+/** one binding slot: the reusable source picker + the LIVE value beside it (tune-and-watch) */
+function BindRow({
+  id,
+  slot,
+  shape,
+  entries,
+  loading,
+}: {
+  id: string;
+  slot: string;
+  shape: SceneShape;
+  entries: import("@nube/source-picker").SourceEntry[];
+  loading: boolean;
+}) {
   const setBind = useSceneStore((s) => s.setBind);
   const channel = shape.bind?.[slot]?.channel ?? "";
   const live = useChannelValue(channel || null);
+  // The picker's selected value: match the bound channel back to its `series:<name>` entry id.
+  const selectedId = channel ? (entries.find((e) => e.group === "series" && e.source?.args?.series === channel)?.id ?? "") : "";
 
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs text-slate-400">{slot}</span>
+        <span className="text-xs text-[var(--tc-text-muted)]">{slot}</span>
         <span className="text-xs tabular-nums text-[var(--tc-accent)]">{channel ? fmt(live) : ""}</span>
       </div>
-      <select
-        value={channel}
-        onChange={(e) => setBind(id, slot, e.target.value || null)}
-        className={`${INPUT} bg-[var(--tc-panel)]`}
-      >
-        <option value="" className="bg-[var(--tc-panel-solid)]">
-          —
-        </option>
-        {source.channels().map((c) => (
-          <option key={c} value={c} className="bg-[var(--tc-panel-solid)]">
-            {c}
-          </option>
-        ))}
-      </select>
+      <SourcePicker
+        aria-label={`bind ${slot}`}
+        entries={entries}
+        value={selectedId}
+        loading={loading}
+        groups={SCENE_SOURCE_GROUPS}
+        onSelect={(sel) => setBind(id, slot, seriesOf(sel))}
+      />
     </div>
   );
 }
@@ -119,19 +144,23 @@ export function PropertyRail() {
   const selection = useSceneStore((s) => s.selection);
   const doc = useSceneStore((s) => s.doc);
   const deleteSelection = useSceneStore((s) => s.deleteSelection);
+  // Load the reusable picker's entries ONCE for the whole rail (shared across every bind slot). The
+  // workspace comes from the token server-side; `"scene"` is just a stable re-key for this mount.
+  const loaders = useSourceLoaders();
+  const { entries, loading } = useSourcePicker(loaders, "scene");
 
   const body = (() => {
     if (selection.length === 0) {
-      return <p className="pt-6 text-center text-xs text-slate-500">select a shape</p>;
+      return <p className="pt-6 text-center text-xs text-[var(--tc-text-muted)]">select a shape</p>;
     }
     if (selection.length > 1) {
       return (
         <div className="space-y-3 pt-2">
-          <p className="text-sm text-slate-300">{selection.length} shapes selected</p>
+          <p className="text-sm text-[var(--tc-text)]">{selection.length} shapes selected</p>
           <button
             type="button"
             onClick={deleteSelection}
-            className="flex items-center gap-1.5 rounded border border-[var(--tc-hairline)] px-2 py-1 text-xs text-slate-400 outline-none transition-colors hover:text-slate-200 focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]"
+            className="flex items-center gap-1.5 rounded border border-[var(--tc-hairline)] px-2 py-1 text-xs text-[var(--tc-text-muted)] outline-none transition-colors hover:text-[var(--tc-text)] focus-visible:ring-1 focus-visible:ring-[var(--tc-accent)]"
           >
             <Trash2 size={12} /> delete
           </button>
@@ -145,8 +174,8 @@ export function PropertyRail() {
     return (
       <div className="space-y-4">
         <header className="border-b border-[var(--tc-hairline)] pb-2">
-          <div className="text-sm text-slate-200">{def?.label ?? shape.type}</div>
-          <div className="text-xs text-slate-500">{id}</div>
+          <div className="text-sm text-[var(--tc-text)]">{def?.label ?? shape.type}</div>
+          <div className="text-xs text-[var(--tc-text-muted)]">{id}</div>
         </header>
         {def &&
           Object.entries(def.propSchema).map(([prop, schema]) => (
@@ -154,9 +183,9 @@ export function PropertyRail() {
           ))}
         {def && def.bindSlots.length > 0 && (
           <section className="space-y-3 border-t border-[var(--tc-hairline)] pt-3">
-            <h2 className="text-[10px] font-medium uppercase tracking-widest text-slate-500">Bindings</h2>
+            <h2 className="text-[10px] font-medium uppercase tracking-widest text-[var(--tc-text-muted)]">Bindings</h2>
             {def.bindSlots.map((slot) => (
-              <BindRow key={`${id}:${slot}`} id={id} slot={slot} shape={shape} />
+              <BindRow key={`${id}:${slot}`} id={id} slot={slot} shape={shape} entries={entries} loading={loading} />
             ))}
           </section>
         )}

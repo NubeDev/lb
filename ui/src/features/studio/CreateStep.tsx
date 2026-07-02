@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { DevkitFeature, DevkitTier } from "@/lib/devkit/devkit.api";
 import { DirectoryPicker } from "./DirectoryPicker";
+import { RecentBuilds } from "./RecentBuilds";
 import type { StudioWizard } from "./studio.wizard";
 
 const FEATURE_LABELS: Record<DevkitFeature, string> = {
@@ -26,6 +27,13 @@ const TIER_HINT: Record<DevkitTier, string> = {
 export function CreateStep({ w }: { w: StudioWizard }) {
   return (
     <div className="flex flex-col gap-5">
+      <RecentBuilds
+        recent={w.recent}
+        busy={w.busy}
+        onRun={w.openRecent}
+        onForget={w.forgetRecent}
+      />
+
       <div className="grid gap-3 sm:grid-cols-2">
         <PathCard
           selected={w.mode === "new"}

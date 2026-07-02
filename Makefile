@@ -35,6 +35,10 @@
 #   make publish-ext pack + upload it to a RUNNING node (make cloud first) → installed + loaded live
 #   make trusted-pubkey  print the dev publisher's LB_TRUSTED_PUBKEYS value (key auto-generated)
 #
+#   make dev DEVKIT_BUILDER=container   run devkit.build (Extension Studio) in the hermetic
+#                                        docker/build/ image instead of the host cargo/pnpm.
+#                                        Run `make docker-build-image` once first.
+#
 #   make test        cargo test (host) + vitest (UI)
 #   make test-be     cargo test --workspace
 #   make test-ui     pnpm test (vitest)
@@ -103,6 +107,12 @@ FED_SEED_DSN   ?= host=127.0.0.1 port=5433 user=lb password=lb_secret dbname=lb 
 # The env block passed to the node for the federation role (empty when FED_ENDPOINTS is cleared).
 FED_ENV = $(if $(FED_ENDPOINTS),LB_FEDERATION_ENDPOINTS="$(FED_ENDPOINTS)" LB_FEDERATION_SEED_NAME="$(FED_SEED_NAME)" LB_FEDERATION_SEED_KIND="$(FED_SEED_KIND)" LB_FEDERATION_SEED_ENDPOINT="$(FED_SEED_EP)" LB_FEDERATION_SEED_DSN="$(FED_SEED_DSN)",)
 
+# devkit.build's executor is config-selected (docker/build/, devkit-container-build-scope.md), OFF
+# (in-process ProcessToolchain) by default. Turn on hermetic container builds for a `make dev` node:
+#   make dev DEVKIT_BUILDER=container         (needs `make docker-build-image` run once first)
+DEVKIT_BUILDER ?= process
+DEVKIT_ENV = $(if $(filter container,$(DEVKIT_BUILDER)),LB_DEVKIT_BUILDER=container LB_DEVKIT_BUILD_IMAGE="$(DOCKER_BUILD_IMAGE)" LB_DEVKIT_CACHE_VOLUME="$(DOCKER_CARGO_VOL)",)
+
 # All persistent local dev state lives under ONE root: `.lazybones/` (renamed from the too-generic
 # `.data/`). The node store, the dev publisher key, and packaged artifacts are subdirs of it, so a
 # single `rm -rf .lazybones` resets a dev box and one `.gitignore` line covers everything.
@@ -169,13 +179,17 @@ dev: build-wasm trusted-pubkey federation
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
 	@echo "node features → $(if $(NODE_FEATURES),$(NODE_FEATURES),<none> (external agent OFF; set EXTAGENT=1 to enable))"
+	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	@if [ -n "$(NODE_FEATURES)" ]; then \
 	  command -v interpreter >/dev/null 2>&1 || echo "⚠ external-agent on but 'interpreter' is not on PATH — Open Interpreter runs will fail"; \
 	  [ -n "$$ZAI_API_KEY" ] || echo "⚠ external-agent on but ZAI_API_KEY is unset — the model call will fail"; \
 	fi
+	@if [ "$(DEVKIT_BUILDER)" = "container" ]; then \
+	  docker image inspect $(DOCKER_BUILD_IMAGE) >/dev/null 2>&1 || echo "⚠ DEVKIT_BUILDER=container but image '$(DOCKER_BUILD_IMAGE)' is missing — run 'make docker-build-image' first"; \
+	fi
 	@trap 'kill 0' EXIT INT TERM; \
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
+	( cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN) $(NODE_FEATURE_FLAG) ) & \
 	( cd $(UI_DIR) && VITE_GATEWAY_URL=$(GW_URL) pnpm run dev ) & \
 	wait
 
@@ -213,7 +227,7 @@ docker-build:
 		-v $(CURDIR)/$(BE_DIR):/work \
 		-v $(DOCKER_CARGO_VOL):/usr/local/cargo/registry \
 		-e PKG="$(PKG)" -e PROFILE="$(PROFILE)" -e FEATURES="$(FEATURES)" \
-		$(DOCKER_BUILD_IMAGE) $(TARGET)
+		$(DOCKER_BUILD_IMAGE) lb-build $(TARGET)
 
 # EDGE posture: a solo node — its own authority, fully offline, NO gateway. This is
 # the same binary as `cloud`, just without LB_GATEWAY_ADDR set, so it runs the solo
@@ -229,8 +243,9 @@ cloud: build-wasm trusted-pubkey federation
 	@mkdir -p $(STORE_DIR)
 	@echo "cloud: node + gateway → $(GW_URL)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"
+	@echo "devkit builder → $(DEVKIT_BUILDER) $(if $(filter container,$(DEVKIT_BUILDER)),(image=$(DOCKER_BUILD_IMAGE)),(set DEVKIT_BUILDER=container for hermetic builds))"
 	TRUSTED=$$($(BE_DIR)/target/debug/lb-pack pubkey $(KEY_FILE) --key-id $(PUBLISHER_ID)); \
-	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) cargo run -p $(NODE_BIN)
+	cd $(BE_DIR) && LB_GATEWAY_ADDR=$(GW_ADDR) LB_WORKSPACE=$(WS) LB_STORE_PATH=$(STORE_PATH) LB_SEED_USER=$(SEED_USER) LB_TRUSTED_PUBKEYS=$$TRUSTED $(FED_ENV) $(DEVKIT_ENV) cargo run -p $(NODE_BIN)
 
 # Just the UI dev server, browser build, pointed at the gateway. Pair with `make
 # cloud` in another terminal.

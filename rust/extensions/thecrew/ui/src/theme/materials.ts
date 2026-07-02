@@ -24,6 +24,15 @@ function cached<T extends THREE.Material>(key: string, make: () => T): T {
   return m as T;
 }
 
+/** Drop every cached material so the next render rebuilds them from the current (theme-refreshed)
+ *  tokens. Called on a host theme change (SceneCanvas), AFTER refreshTokens() has updated the
+ *  token values, so the rebuilt materials pick up the new surface/accent colors. Disposes the old
+ *  GPU resources — a theme swap must not leak materials. */
+export function refreshMaterials(): void {
+  for (const m of cache.values()) m.dispose();
+  cache.clear();
+}
+
 /** Matte PBR equipment body — desaturated steel, never saturated (look-scope). */
 export function bodyMaterial(): THREE.MeshStandardMaterial {
   return cached(

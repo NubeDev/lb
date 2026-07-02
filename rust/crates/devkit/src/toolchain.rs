@@ -1,6 +1,8 @@
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::thread;
 
 use anyhow::{bail, Context, Result};
 
@@ -51,16 +53,29 @@ impl Toolchain for ProcessToolchain {
             .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("spawn {program} in {}", cwd.display()))?;
-        if let Some(stdout) = child.stdout.take() {
+        // Interleave stdout/stderr as they arrive instead of draining stdout fully before
+        // touching stderr — a failing `cargo` writes its error to stderr, and draining stdout
+        // first buried that line at the end of the log (looked like the build "stopped mid
+        // download" in the Studio UI; see devkit-container-build-scope.md "Log ordering").
+        let (tx, rx) = mpsc::channel::<String>();
+        let stdout = child.stdout.take().expect("piped stdout");
+        let stderr = child.stderr.take().expect("piped stderr");
+        let tx_out = tx.clone();
+        let out_thread = thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
-                log(line.unwrap_or_else(|e| format!("stdout read error: {e}")));
+                let _ = tx_out.send(line.unwrap_or_else(|e| format!("stdout read error: {e}")));
             }
-        }
-        if let Some(stderr) = child.stderr.take() {
+        });
+        let err_thread = thread::spawn(move || {
             for line in BufReader::new(stderr).lines() {
-                log(line.unwrap_or_else(|e| format!("stderr read error: {e}")));
+                let _ = tx.send(line.unwrap_or_else(|e| format!("stderr read error: {e}")));
             }
+        });
+        for line in rx {
+            log(line);
         }
+        let _ = out_thread.join();
+        let _ = err_thread.join();
         let status = child
             .wait()
             .with_context(|| format!("wait for {program}"))?;

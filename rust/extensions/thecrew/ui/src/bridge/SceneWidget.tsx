@@ -47,7 +47,7 @@ export function SceneWidget({ bridge, sceneId }: { bridge: WidgetBridge; sceneId
     return (
       <div
         data-testid="scene-widget-empty"
-        className="flex h-full w-full items-center justify-center bg-[var(--tc-canvas)] text-xs text-slate-500"
+        className="flex h-full w-full items-center justify-center bg-[var(--tc-canvas)] text-xs text-[var(--tc-text-muted)]"
       >
         {error}
       </div>
@@ -57,7 +57,7 @@ export function SceneWidget({ bridge, sceneId }: { bridge: WidgetBridge; sceneId
     return (
       <div
         data-testid="scene-widget-loading"
-        className="flex h-full w-full items-center justify-center bg-[var(--tc-canvas)] text-xs text-slate-600"
+        className="flex h-full w-full items-center justify-center bg-[var(--tc-canvas)] text-xs text-[var(--tc-text-muted)]"
       >
         loading scene…
       </div>

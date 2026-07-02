@@ -6,14 +6,16 @@
 // plane is XY and +Z is up. PlaneGeometry is XY-native so shapes/ground need no
 // rotation; drei's Grid is XZ-native and is rotated below.
 
+import { useEffect, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Grid } from "@react-three/drei";
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
 import { DropPlane } from "../editor/use-drag-place";
 import { useSceneStore } from "../state/scene-store";
-import { tokens } from "../theme/tokens";
-import { updateMaterials } from "../theme/materials";
+import { tokens, refreshTokens } from "../theme/tokens";
+import { updateMaterials, refreshMaterials } from "../theme/materials";
+import { subscribeThemeChange } from "../theme/host-tokens";
 import { CameraRig } from "./CameraRig";
 import { FitCamera } from "./FitCamera";
 import { ShapeNode } from "./ShapeNode";
@@ -37,6 +39,19 @@ function MaterialsTick() {
 export function SceneCanvas({ fit = false }: { fit?: boolean } = {}) {
   const doc = useSceneStore((s) => s.doc);
   const clearSelection = useSceneStore((s) => s.clearSelection);
+  // Follow the host theme (light/dark + accent swatch): on a change, re-read the host tokens,
+  // drop the cached materials so they rebuild from the new colors, then bump a key to re-render
+  // the r3f tree (its <color>/light/Grid props read tokens.color at render time).
+  const [themeGen, setThemeGen] = useState(0);
+  useEffect(
+    () =>
+      subscribeThemeChange(() => {
+        refreshTokens();
+        refreshMaterials();
+        setThemeGen((n) => n + 1);
+      }),
+    [],
+  );
 
   return (
     <Canvas
@@ -113,9 +128,13 @@ export function SceneCanvas({ fit = false }: { fit?: boolean } = {}) {
       />
 
       {/* ---- the document ---- */}
-      {Object.entries(doc.shapes).map(([id, shape]) => (
-        <ShapeNode key={id} id={id} shape={shape} />
-      ))}
+      {/* keyed by themeGen: a host theme change clears the material cache (refreshMaterials), so the
+          shapes must re-mount to rebuild their materials from the new tokens. */}
+      <group key={themeGen}>
+        {Object.entries(doc.shapes).map(([id, shape]) => (
+          <ShapeNode key={id} id={id} shape={shape} />
+        ))}
+      </group>
 
       {/* placement gestures: click/drag-drop placement, ghost preview, chain tool
           (editor/use-drag-place.tsx — must live inside the <Canvas>) */}

@@ -39,6 +39,14 @@ export interface SceneStore {
   selection: string[];
   hovered: string | null;
   snapEnabled: boolean;
+  /** camera pan/zoom lock (toolbar toggle). Shapes stay selectable/draggable —
+   *  only the view is pinned (builder-ux: "lock the canvas so I can arrange parts"). */
+  locked: boolean;
+  /** live drag gesture: the shape id + its transient (uncommitted) position, shown
+   *  during a pointer-drag so the shape follows the cursor without one undo step
+   *  per frame. Committed as a single moveShapes() step on pointer-up. null = idle.
+   *  Also suppresses MapControls pan while set. */
+  drag: { id: string; x: number; y: number } | null;
   tool: Tool;
   /** palette click-to-arm / drag payload: the type the next canvas click places */
   armedType: string | null;
@@ -60,6 +68,11 @@ export interface SceneStore {
   clearSelection: () => void;
   setHovered: (id: string | null) => void;
   toggleSnap: () => void;
+  toggleLock: () => void;
+  /** begin/track a live drag (transient, not undoable) */
+  setDrag: (drag: { id: string; x: number; y: number } | null) => void;
+  /** end a drag: commit the final position as ONE undo step and clear the transient */
+  endDrag: () => void;
   toggleCamera: () => void;
   setTool: (tool: Tool) => void;
   armType: (type: string | null) => void;
@@ -92,6 +105,8 @@ export const useSceneStore = create<SceneStore>((set, get) => {
     selection: [],
     hovered: null,
     snapEnabled: true,
+    locked: false,
+    drag: null,
     tool: "select",
     armedType: null,
     past: [],
@@ -189,6 +204,13 @@ export const useSceneStore = create<SceneStore>((set, get) => {
     clearSelection: () => set({ selection: [] }),
     setHovered: (id) => set({ hovered: id }),
     toggleSnap: () => set((s) => ({ snapEnabled: !s.snapEnabled })),
+    toggleLock: () => set((s) => ({ locked: !s.locked })),
+    setDrag: (drag) => set({ drag }),
+    endDrag: () => {
+      const { drag } = get();
+      set({ drag: null });
+      if (drag) get().moveShapes({ [drag.id]: { x: drag.x, y: drag.y } });
+    },
     toggleCamera: () =>
       set((s) => ({
         doc: { ...s.doc, camera: s.doc.camera === "ortho-top" ? "persp" : "ortho-top" },

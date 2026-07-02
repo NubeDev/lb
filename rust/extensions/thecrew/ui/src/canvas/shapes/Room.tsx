@@ -16,17 +16,25 @@ const REDUCED_MOTION =
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-// The threshold-ramp stops — all from tokens, never local hexes.
-const COLD = new THREE.Color(tokens.color.medium.chw); // ≤ 21 °C
-const NEUTRAL = new THREE.Color(tokens.color.steel).multiplyScalar(0.7); // ~23 °C comfortable
-const WARM = new THREE.Color(tokens.color.medium.hw); // ≥ 25 °C
+// The threshold-ramp stops — all from tokens, never local hexes. cold/warm are FIXED semantic hues;
+// the comfortable "neutral" stop derives from the host-themed steel, so it must be read at
+// call time (not frozen at module load) to follow a theme swap.
+const COLD = new THREE.Color(tokens.color.medium.chw); // ≤ 21 °C (fixed)
+const WARM = new THREE.Color(tokens.color.medium.hw); // ≥ 25 °C (fixed)
+/** ~23 °C comfortable — derived from the current (host-themed) steel each call. */
+function neutral(out: THREE.Color): THREE.Color {
+  return out.set(tokens.color.steel).multiplyScalar(0.7);
+}
+
+const _neutralScratch = new THREE.Color();
 
 /** cold ≤21 → comfortable 23 → warm ≥25, linear between the stops. */
 function tempColor(temp: number, out: THREE.Color): THREE.Color {
   if (temp <= 21) return out.copy(COLD);
   if (temp >= 25) return out.copy(WARM);
-  if (temp <= 23) return out.copy(COLD).lerp(NEUTRAL, (temp - 21) / 2);
-  return out.copy(NEUTRAL).lerp(WARM, (temp - 23) / 2);
+  const n = neutral(_neutralScratch);
+  if (temp <= 23) return out.copy(COLD).lerp(n, (temp - 21) / 2);
+  return out.copy(n).lerp(WARM, (temp - 23) / 2);
 }
 
 function readSize(v: unknown): number {
@@ -42,9 +50,9 @@ export function Room({ shape, values, hovered }: ShapeComponentProps) {
   const occupied = values.occupied === true;
 
   const matRef = useRef<THREE.MeshBasicMaterial>(null);
-  const target = useRef(new THREE.Color().copy(NEUTRAL));
+  const target = useRef(neutral(new THREE.Color()));
   if (temp !== undefined) tempColor(temp, target.current);
-  else target.current.copy(NEUTRAL);
+  else neutral(target.current);
 
   useFrame(() => {
     const m = matRef.current;
@@ -66,7 +74,7 @@ export function Room({ shape, values, hovered }: ShapeComponentProps) {
         <boxGeometry args={[w, h, 2]} />
         <meshBasicMaterial
           ref={matRef}
-          color={`#${NEUTRAL.getHexString()}`}
+          color={`#${neutral(new THREE.Color()).getHexString()}`}
           transparent
           opacity={0.35}
           toneMapped={false}

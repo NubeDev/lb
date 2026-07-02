@@ -10,6 +10,7 @@ debugged twice. **Append-only and symptom-led.**
 ## History (newest first)
 
 | Date | Area | Symptom | Status | Entry |
+| 2026-07-02 | extensions | Studio `devkit.build` of `control-engine` dies with `exit status: 101` fetching a private git dep — inherited `GIT_ASKPASS` from the VS Code-launched node process | resolved | [extensions/devkit-build-fails-exit-101-private-git-dep.md](extensions/devkit-build-fails-exit-101-private-git-dep.md) |
 | 2026-07-02 | extensions | real-engine `control-engine.tree` fails "LB_GATEWAY_URL is not set" after S4 routed graph verbs through the registry callback | resolved | [extensions/ce-tree-fails-without-gateway-real-engine-tier.md](extensions/ce-tree-fails-without-gateway-real-engine-tier.md) |
 | 2026-07-02 | extensions | a sidecar's `store.query` callback returns `Denied`, masking a SurrealQL parse error (gateway `/mcp/call` collapses every error to 403) | resolved | [extensions/mcp-call-collapses-all-errors-to-denied.md](extensions/mcp-call-collapses-all-errors-to-denied.md) |
 |---|---|---|---|---|

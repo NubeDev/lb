@@ -5,6 +5,7 @@
 
 mod authorize;
 mod build;
+mod builder;
 mod error;
 mod inspect;
 mod root;
@@ -14,6 +15,7 @@ mod tool;
 
 pub use authorize::authorize_devkit;
 pub use build::{devkit_build, BuildStarted};
+pub use builder::{container_enabled, select_toolchain};
 pub use error::DevkitError;
 pub use inspect::devkit_inspect;
 pub use root::{devkit_root, DevkitRoot};
