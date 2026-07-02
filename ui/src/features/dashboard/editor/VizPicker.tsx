@@ -20,6 +20,10 @@ const VIEWS: { id: View; label: string }[] = [
   { id: "bargauge", label: "Bar gauge" },
   { id: "piechart", label: "Pie chart" },
   { id: "table", label: "Table" },
+  // The AI-authored generative widget (genui-scope). Not shape-gated (`viewFitsShape` returns true for
+  // non-standard views) — its data comes through arbitrary `sources[]` the agent binds, not one query
+  // shape. Picking it swaps the Panel-options tab to the "AI widget" author surface.
+  { id: "genui", label: "AI widget" },
 ];
 
 /** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the
