@@ -17,7 +17,7 @@
 // where the bridge is `makeWidgetBridge(cellTools(cell))` — rejected locally if outside the leash and
 // re-capability-checked + workspace-checked at the host per call. The token never enters this layer.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { GenUiSurface, migrate, nubeCatalog, type IrSpec, type UiAction } from "@nube/genui";
 import "@nube/genui/style.css";
 
@@ -73,10 +73,14 @@ function TargetProbe({
   const cell = useMemo(() => singleTargetCell(parent, target), [parent, target]);
   const state = usePanelData(cell, scope, refreshKey);
   const data = refDataOf(state);
-  // Report on every change; the parent stores it keyed by refId. `useMemo` on the content signature
-  // avoids re-reporting an identical resolve (usePanelData returns a fresh object each render).
+  // Report to the parent AFTER commit (never during render — a setState-in-render on the parent). Keyed
+  // on the content signature so an identical resolve doesn't re-report (usePanelData returns a fresh
+  // object each render).
   const sig = JSON.stringify(data);
-  useMemo(() => onData(target.refId, data), [target.refId, sig]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    onData(target.refId, data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sig` is the content signature of `data`
+  }, [target.refId, sig]);
   return null;
 }
 

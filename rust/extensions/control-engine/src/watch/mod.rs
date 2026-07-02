@@ -20,6 +20,7 @@
 
 pub mod frame;
 pub mod pump;
+pub mod scope_uids;
 pub mod series;
 pub mod verb;
 

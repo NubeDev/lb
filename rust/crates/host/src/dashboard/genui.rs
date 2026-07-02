@@ -41,7 +41,8 @@ struct Catalog {
 fn catalog() -> &'static Catalog {
     static CATALOG: OnceLock<Catalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        let doc: Value = serde_json::from_str(CATALOG_JSON).expect("genui_catalog.json is valid JSON");
+        let doc: Value =
+            serde_json::from_str(CATALOG_JSON).expect("genui_catalog.json is valid JSON");
         let version = doc.get("v").and_then(Value::as_u64).unwrap_or(0);
         let names = doc
             .get("components")
@@ -83,7 +84,9 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
         .ok_or_else(|| bad(&cell.i, "view is \"genui\" but options.genui is missing"))?;
 
     // Size bound — measure the WHOLE block (IR + meta), as it will be persisted.
-    let size = serde_json::to_vec(genui).map(|v| v.len()).unwrap_or(usize::MAX);
+    let size = serde_json::to_vec(genui)
+        .map(|v| v.len())
+        .unwrap_or(usize::MAX);
     if size > GENUI_MAX_BYTES {
         return Err(bad(
             &cell.i,
@@ -103,7 +106,10 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
     if v == 0 || v > cat.version {
         return Err(bad(
             &cell.i,
-            format!("IR schema v{v} is unknown to this node (catalog v{})", cat.version),
+            format!(
+                "IR schema v{v} is unknown to this node (catalog v{})",
+                cat.version
+            ),
         ));
     }
 
@@ -135,7 +141,10 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
         .and_then(Value::as_str)
         .unwrap_or("");
     if root.is_empty() || !components.contains_key(root) {
-        return Err(bad(&cell.i, "surface root is empty or not a defined component"));
+        return Err(bad(
+            &cell.i,
+            "surface root is empty or not a defined component",
+        ));
     }
     Ok(())
 }

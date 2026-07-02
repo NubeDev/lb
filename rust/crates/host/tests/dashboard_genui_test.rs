@@ -165,5 +165,8 @@ async fn workspace_isolation_of_a_genui_dashboard() {
         .unwrap();
     // Bob in W2 cannot see W1's dashboard (a fresh id in his workspace is absent).
     let got = dashboard_get(&store, &bob, w2, "d").await;
-    assert!(got.is_err(), "W2 principal must not read the W1 genui dashboard");
+    assert!(
+        got.is_err(),
+        "W2 principal must not read the W1 genui dashboard"
+    );
 }

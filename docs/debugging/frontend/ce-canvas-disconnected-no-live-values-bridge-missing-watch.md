@@ -60,6 +60,19 @@ empty/missing series all yield a clean no-op unsubscribe, and a granted+valid ca
 returns a callable unsubscribe (the live SSE itself is covered by the Rust
 series-stream tests). Pure local logic, matching the sibling `call` out-of-scope test.
 
+## Necessary but NOT sufficient — the deeper cause
+
+Wiring `watch` was a real, required gap, but it did **not** by itself make values appear.
+Driving the live path directly (mint token → `control-engine.watch {appliance:"aaaa"}`
+→ read `/series/{s}/stream`) showed the series opens but carries **zero frames**. A raw
+WS probe to the engine proved why: `control-engine.watch` builds an **empty `CovScope`**,
+the crate sends `{"type":"subscribe"}` with no `components`, and the engine only pushes
+COV for explicitly-subscribed components — empty subscribe → 0 value frames (subscribing
+the 6 real child UIDs → 36 frames in 4s). That fix is tracked in
+[../../sessions/control-engine/ce-handover-live-values-empty-cov-scope.md](../../sessions/control-engine/ce-handover-live-values-empty-cov-scope.md)
+(`watch/series.rs` builds the scope). Both are needed: the bridge `watch` makes the
+stream *possible*; a non-empty subscribe scope makes it *carry data*.
+
 ## Lesson
 
 An OPTIONAL capability in a contract silently no-ops when the host forgets to provide
