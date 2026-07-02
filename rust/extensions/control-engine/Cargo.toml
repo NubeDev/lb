@@ -53,6 +53,17 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io
 # S6 COV pump consumes the `CovStream` (a `futures::Stream`) via `StreamExt::next`.
 futures = { workspace = true }
 
+# The `rubix-ce` REST/WS client (an external git dep we can't edit) pulls `reqwest` with its DEFAULT
+# `default-tls` feature → `native-tls` → `openssl-sys`, which needs a system OpenSSL + pkg-config to
+# link. This box is zig-only (no pkg-config/libssl), so that build fails. Our own crates all pin
+# `reqwest` to `rustls-tls`, but Cargo unifies features across the shared `reqwest`, so `rubix-ce`'s
+# `default-tls` still turns `openssl-sys` on for the whole graph. Force that single shared
+# `openssl-sys` to build VENDORED (compile OpenSSL from source, no system dep) — the `vendored`
+# feature on `openssl` forwards to `openssl-sys` and unifies globally. Mirrors federation's precedent
+# (its Postgres connector has the same native-tls pull). Needs a C toolchain to compile the vendored
+# source, which the zig shims (rust/.cargo/config.toml CC/AR/RANLIB) already provide.
+openssl = { version = "0.10", features = ["vendored"] }
+
 [features]
 default = []
 # Compile the ONE sanctioned CE stub (`ce_fake`) INTO the binary, so the host

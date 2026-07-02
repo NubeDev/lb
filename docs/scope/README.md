@@ -8,6 +8,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 ## Topics
 
 - `agent/` — the central, workspace-scoped AI agent (S5).
+- `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
+  `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
+  injected at session start, read/written over caps-checked `agent.memory.*` verbs under the
+  derived principal — so an agent remembers/recalls only what its invoking user may see. The
+  "learned" half of making the agent smarter (the "taught" half is `skills/core-skills-scope.md`).
 - `external-agent/` — a **compile-time-optional** (`external-agent` cargo feature, off by default),
   **swappable** runtime that drives a third-party ACP agent (VT Code default, dirge alternate; any
   [Agent-Client-Protocol](https://agentclientprotocol.com) agent) as a **subprocess** behind a
@@ -119,7 +124,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   enable/disable + `start_on_boot` + `placement`; **dashboard↔flow** binding (`flows.inject` in,
   bus-subject out); shared via the grant model; graph edits undo for free. Rejected adopting
   `open-rmf/crossflow` (in-process Bevy-ECS state breaks rules 1/4, bypasses the cap wall).
-- `files/`, `skills/`, `document-store/` — shared workspace assets (S4). `document-store/` now
+- `files/`, `skills/`, `document-store/` — shared workspace assets (S4). `skills/` also holds
+  `core-skills-scope.md`: the **two-tier skill catalog** — developer-authored **core skills**
+  (the `docs/skills/*/SKILL.md` corpus, embedded in the node and seeded at boot as immutable
+  `skill:core.<name>@<node-version>` records, user-write-rejected) alongside the shipped
+  user tier (full CRUD incl. a new `assets.deprecate_skill`), both behind the same grant gate,
+  surfaced to agents as one granted catalog (name+description in context, bodies on demand). `document-store/` now
   holds `document-store-scope.md` (the ask): a **reusable markdown document store** on the shipped
   S4 asset/file substrate — markdown body + **images/attachments** (the SurrealDB file store §6.12
   finally lands) + a queryable **link graph** (doc→doc links, doc→asset embeds), shared to a
