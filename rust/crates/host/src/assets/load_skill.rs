@@ -48,7 +48,9 @@ pub async fn load_skill(
     // system namespace, user ids against the workspace namespace.
     if is_core(id) {
         return match version {
-            Some(v) => get_core_skill(store, id, v).await?.ok_or(AssetError::NotFound),
+            Some(v) => get_core_skill(store, id, v)
+                .await?
+                .ok_or(AssetError::NotFound),
             None => list_core_skill_versions(store, id)
                 .await?
                 .pop()

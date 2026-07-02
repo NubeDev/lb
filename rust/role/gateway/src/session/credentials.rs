@@ -110,6 +110,18 @@ fn member_caps() -> Vec<String> {
         "mcp:assets.get_doc:call",
         "mcp:assets.put_doc:call",
         "mcp:assets.list_docs:call",
+        // skills / core-skills scope: the skill catalog + lifecycle verbs the browser/agent reach over
+        // the `POST /mcp/call` bridge. `list_skills` is the one agent-facing catalog (id+latest+
+        // description+tier), `load_skill` pulls a granted body, `grant_skill`/`revoke_skill` adopt/drop
+        // a skill for the workspace (admin acts), `deprecate_skill` soft-hides a user skill. None of the
+        // `mcp:*.<verb>:call` wildcards below cover these single-segment verb names, so each is granted
+        // explicitly. `put_skill`/`deprecate_skill` still reject the reserved `core.*` namespace regardless.
+        "mcp:assets.list_skills:call",
+        "mcp:assets.load_skill:call",
+        "mcp:assets.put_skill:call",
+        "mcp:assets.grant_skill:call",
+        "mcp:assets.revoke_skill:call",
+        "mcp:assets.deprecate_skill:call",
         // bus pub/sub (widget-config-vars "Platform fix") — member-level generic workspace-walled
         // motion. `bus.publish` (fire-and-forget) + `bus.watch` (subscribe). The subject is walled to
         // `ws/{id}/ext/{subject}` host-side from the token; a reserved prefix / cross-ws subject is refused.
@@ -325,8 +337,12 @@ fn member_caps() -> Vec<String> {
         // is gated by `store:doc/*:write` (an admin act at S4), so the dev admin can populate teams.
         "store:doc/*:read",
         "store:doc/*:write",
-        "store:skill/*:read",
-        "store:skill/*:write",
+        // Skill surface: `**` (recursive tail), NOT `*`. A core skill id contains a `.`
+        // (`core.lb-cli`), and the caps grammar splits a resource on BOTH `/` and `.`, so `skill/*`
+        // (one segment) would NOT cover `skill/core.lb-cli` — a real admin could neither grant nor
+        // load a core skill (core-skills scope). `skill/**` covers dotted core ids AND flat user ids.
+        "store:skill/**:read",
+        "store:skill/**:write",
         // api-keys scope: the management verb gate, plus the built-in role cap bundles. The dev admin
         // HOLDS the read-only/read-write cap sets so the no-widening guard lets it mint keys under
         // either built-in role (a key created by this admin never widens beyond it). The write role's

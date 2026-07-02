@@ -15,22 +15,29 @@
  * host hasn't loaded Geist.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/* Dark defaults on :root too — so Tailwind's @theme (which resolves
-   `hsl(var(--card))` at :root) has the tokens, AND so the editor works even
-   before its `.ce-wiresheet` class mounts. `.ce-wiresheet` repeats them so the
-   scope is self-sufficient when a host overrides at :root. */
-:root,
-.ce-wiresheet {
-  --background: 234 18% 6%;
-  --card: 232 15% 9%;
-  --secondary: 230 14% 12%;
-  --border: 230 10% 18%;
-  --input: 230 10% 18%;
-  --foreground: 220 16% 93%;
-  --muted-foreground: 220 8% 56%;
-  --muted: 220 8% 56%;
+/* SCOPED to `.ce-wiresheet` ONLY — never `:root`. When this library is INJECTED into
+   a host document (the LB shell), a `:root` write would leak the editor's dark palette
+   onto the host's OWN `--card`/`--border`/`--foreground`/… (same names), overriding the
+   whole shell — the slice-9 federated-CSS leak. So the tokens live only under the
+   editor's root class (the editor puts `.ce-wiresheet` on its container AND its portal
+   root — see lib/portal.ts — so every editor pixel is covered).
 
-  /* accents */
+   Tokens whose NAMES match host tokens are written as `var(--name, <default>)`: in a host
+   the self-reference resolves to the host's `:root --card` (so the editor tracks the host
+   light/dark theme — "look native"), and standalone it falls back to the editor's own
+   default. Editor-ONLY tokens (`--cool`/`--crit`/`--r1`/`--r2`) have no host equivalent, so
+   they keep fixed defaults; `.ce-wiresheet.theme-light` still flips them explicitly. */
+.ce-wiresheet {
+  --background: var(--background, 234 18% 6%);
+  --card: var(--card, 232 15% 9%);
+  --secondary: var(--secondary, 230 14% 12%);
+  --border: var(--border, 230 10% 18%);
+  --input: var(--input, 230 10% 18%);
+  --foreground: var(--foreground, 220 16% 93%);
+  --muted-foreground: var(--muted-foreground, 220 8% 56%);
+  --muted: var(--muted, 220 8% 56%);
+
+  /* accents (editor-only names — no host equivalent, so fixed defaults) */
   --cool: 200 86% 64%;   /* wires / primary accent (blue) */
   --green: 150 64% 52%;  /* ok / boolean-true */
   --amber: 32 92% 60%;   /* warning / override */

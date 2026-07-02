@@ -46,6 +46,9 @@ pub use error::AssetError;
 pub use get_asset::get_asset;
 pub use get_doc::get_doc;
 pub use grant_skill::{grant_skill, revoke_skill};
+/// The skill-grant relation kind + fixed `b` scope, re-exported for the default-grant-at-creation
+/// helper (`workspaces::default_skills`) so it writes the SAME edge `grant_skill`/`load_skill` use.
+pub(crate) use grant_skill::{GRANT, GRANT_SCOPE};
 pub use link_doc::link_doc;
 pub use list_assets::list_assets;
 pub use list_docs::list_docs;

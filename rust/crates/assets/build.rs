@@ -97,7 +97,9 @@ fn parse_skill(raw: &str) -> Option<(String, String, String)> {
 fn yaml_scalar(front: &str, key: &str) -> Option<String> {
     let lines: Vec<&str> = front.lines().collect();
     let prefix = format!("{key}:");
-    let idx = lines.iter().position(|l| l.trim_start().starts_with(&prefix))?;
+    let idx = lines
+        .iter()
+        .position(|l| l.trim_start().starts_with(&prefix))?;
     let first = lines[idx].trim_start()[prefix.len()..].trim();
     if !first.is_empty() && first != ">-" && first != ">" && first != "|" && first != "|-" {
         // Plain inline scalar — strip surrounding quotes if any.

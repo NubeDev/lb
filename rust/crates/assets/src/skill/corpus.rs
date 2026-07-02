@@ -15,9 +15,11 @@ pub struct CoreSkill {
 
 /// The embedded corpus as structured entries, in a stable (sorted) order.
 pub fn core_skill_corpus() -> impl Iterator<Item = CoreSkill> {
-    CORE_SKILLS.iter().map(|(name, description, body)| CoreSkill {
-        name,
-        description,
-        body,
-    })
+    CORE_SKILLS
+        .iter()
+        .map(|(name, description, body)| CoreSkill {
+            name,
+            description,
+            body,
+        })
 }

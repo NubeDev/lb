@@ -31,8 +31,12 @@ import { createPortal } from "react-dom";
 // Selected-edge highlight. RF adds .selected to .react-flow__edge when the
 // edge's `selected` flag is true; the default stylesheet's selected color is
 // hard to see on a dark canvas, so we paint a brighter stroke + drop shadow.
+// SCOPED under `.ce-wiresheet` — a `<style>` applies its rules DOCUMENT-WIDE no
+// matter where the element sits, so an unscoped `.react-flow__edge` here would
+// re-color the HOST shell's own React Flow canvases (system/data/flows views).
+// This is the slice-9 federated-CSS contract for a JS-injected style string.
 const EDGE_SELECTED_CSS = `
-  .react-flow__edge.selected .react-flow__edge-path {
+  .ce-wiresheet .react-flow__edge.selected .react-flow__edge-path {
     stroke: hsl(var(--amber)) !important;
     stroke-width: 2.5 !important;
     filter: drop-shadow(0 0 4px rgba(255,209,102,0.6));

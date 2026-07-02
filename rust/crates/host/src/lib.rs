@@ -94,6 +94,9 @@ pub use assets::{
     put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError,
     SkillCatalogEntry, SkillTier, MAX_ASSET_BYTES,
 };
+// Core-skill boot seeder (core-skills scope): the node binary calls `seed_core_skills` at boot to
+// write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
+// through `lb_host` without depending on `lb_assets` directly.
 pub use authz::{
     authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
     revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
@@ -140,6 +143,7 @@ pub use flows::{
     spawn_flow_reactors, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
+pub use lb_assets::{seed_core_skills, CORE_SKILLS_NS};
 /// Run-engine seams exposed for the runtime-control tests (deterministic mid-run cancel): seed a run,
 /// set its durable status, and drive it — so a test can prove the drive halts on a pre-written
 /// `cancelled` without a spawn race.
@@ -261,8 +265,9 @@ pub use workflow::{
     TRIAGE_CHANNEL,
 };
 pub use workspaces::{
-    call_workspaces_tool, workspace_create, workspace_delete, workspace_list, workspace_purge,
-    workspace_rename, WorkspaceRecord, WorkspaceStatus, WorkspacesError,
+    call_workspaces_tool, grant_default_core_skills, resolve_default_core_skills, workspace_create,
+    workspace_delete, workspace_list, workspace_purge, workspace_rename, WorkspaceRecord,
+    WorkspaceStatus, WorkspacesError, DEFAULT_CORE_SKILLS,
 };
 // The workflow **directory** register/deregister verbs — prefixed at the crate boundary so the public
 // API names the concept (a bare `register` would be ambiguous next to `register_remote_extension`).
