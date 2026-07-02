@@ -46,7 +46,7 @@ export function Page({ ctx, bridge }: { ctx: MountCtx; bridge: Bridge }) {
   );
 
   return (
-    <div className="flex h-full flex-col bg-bg text-fg" data-control-engine-page>
+    <div className="ce-page flex h-full flex-col bg-bg text-fg" data-control-engine-page>
       <header className="flex items-center gap-3 border-b border-border px-4 py-2">
         <span className="text-sm font-semibold">Control Engine</span>
         <span className="text-xs text-muted">· {ctx.workspace}</span>

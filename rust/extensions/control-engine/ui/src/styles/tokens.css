@@ -1,24 +1,37 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* The control-engine federated page's entry stylesheet. This is a LIBRARY stylesheet, not an app
+   stylesheet: `remoteEntry.ts` injects it into the HOST <head>, and the page renders in-process against
+   the host document. So it must (slice-9 contract):
+     1. ship NO Preflight — never a global `*`/`html`/`body` reset (the host owns that; ours would only
+        fight it and re-reset the live shell);
+     2. scope every generated utility under `.ce-page` so two independently-built Tailwinds (host v4 +
+        this v3) can't collide `.flex`/`.border`/… into one document; and
+     3. INHERIT the host's `:root` tokens (defined in ui/src/styles/globals.css, theme-swapped via `.dark`
+        + `[data-theme-accent]`) rather than re-declaring them — the page then follows host light/dark +
+        accent for free, with only a standalone-dev fallback of its own.
+   See docs/debugging/frontend/ce-page-css-preflight-leaks-into-shell.md and slice-9. */
 
-/* The SAME quiet control-surface tokens the shell defines, mirrored here so the federated page's own
-   chrome looks native. Dark = near-black panels, hairline borders, ONE warm amber accent; light = warm
-   paper. A theme is a `.dark` class swap. (The vendored CeEditor carries its own bundled theme.) */
-:root {
-  --bg: 40 30% 96%;
-  --panel: 40 24% 92%;
-  --border: 40 12% 82%;
-  --fg: 30 12% 14%;
-  --muted: 30 6% 44%;
-  --accent: 32 95% 48%;
+/* NO `@tailwind base` — Preflight is the host's. Scope the generated utility/component rules under the
+   page root so they emit `.ce-page .flex { … }` and are inert outside the extension's subtree. */
+@layer components {
+  .ce-page {
+    @tailwind components;
+  }
+}
+@layer utilities {
+  .ce-page {
+    @tailwind utilities;
+  }
 }
 
-.dark {
-  --bg: 24 8% 8%;
-  --panel: 24 7% 11%;
-  --border: 24 6% 18%;
-  --fg: 36 16% 90%;
-  --muted: 30 5% 56%;
-  --accent: 32 95% 56%;
+/* Fallback palette ONLY — the host `:root` (set on a higher element) wins whenever present, because
+   `hsl(var(--bg))` resolves `--bg` from the nearest ancestor that defines it. Scoped to `.ce-page` so a
+   standalone dev `vite` (no host `:root`) still has a palette, but this never redefines or overrides the
+   shell's tokens, and it tracks the host's light/dark + accent when the host IS present. */
+.ce-page {
+  --bg: var(--bg, 40 30% 96%);
+  --panel: var(--panel, 40 24% 92%);
+  --border: var(--border, 40 12% 82%);
+  --fg: var(--fg, 30 12% 14%);
+  --muted: var(--muted, 30 6% 44%);
+  --accent: var(--accent, 32 92% 34%);
 }
