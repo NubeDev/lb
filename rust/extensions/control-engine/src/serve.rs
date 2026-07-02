@@ -17,12 +17,15 @@ use tokio::io::{stdin, stdout};
 use crate::engine::Registry;
 use crate::host::{HostCtx, HostError};
 use crate::tools;
+use crate::watch::WatchRegistry;
 
 /// Run the control loop until the host closes the line (or a `Shutdown`). The binary's `main` is a
 /// thin wrapper over this.
 pub async fn serve() {
     let ext_id = std::env::var("LB_EXT_ID").unwrap_or_default();
     let registry = Registry::new();
+    // The live-watch pump registry (S6): an in-memory connection pool, not durable state (§3.4).
+    let watches = WatchRegistry::new();
 
     let mut input = stdin();
     let mut output = stdout();
@@ -45,7 +48,7 @@ pub async fn serve() {
                 let _ = write_frame(&mut output, &bytes).await;
                 break;
             }
-            Method::Call => handle_call(&registry, &req).await,
+            Method::Call => handle_call(&registry, &watches, &req).await,
         };
 
         let bytes = serde_json::to_vec(&reply).unwrap();
@@ -66,7 +69,7 @@ fn now_ts() -> u64 {
 }
 
 /// Handle a `call`: parse the tool + input, then route by family.
-async fn handle_call(registry: &Registry, req: &Request) -> Reply {
+async fn handle_call(registry: &Registry, watches: &WatchRegistry, req: &Request) -> Reply {
     let params: CallParams = match serde_json::from_str(&req.params) {
         Ok(p) => p,
         Err(e) => return Reply::err(req.id, format!("bad params: {e}")),
@@ -76,7 +79,7 @@ async fn handle_call(registry: &Registry, req: &Request) -> Reply {
         Err(e) => return Reply::err(req.id, format!("bad input json: {e}")),
     };
 
-    match dispatch(registry, &params.tool, &input).await {
+    match dispatch(registry, watches, &params.tool, &input).await {
         Ok(v) => Reply::ok(req.id, v.to_string()),
         Err(e) => Reply::err(req.id, host_err_message(e)),
     }
@@ -85,17 +88,29 @@ async fn handle_call(registry: &Registry, req: &Request) -> Reply {
 /// The tool router: registry family (`control-engine.appliance.*`) vs graph verbs. Each family builds
 /// the `HostCtx` (callback + grant) it needs; the graph family additionally resolves the appliance and
 /// binds a CE client. Returns the verb's JSON result or a `HostError`.
-async fn dispatch(registry: &Registry, tool: &str, input: &Value) -> Result<Value, HostError> {
+async fn dispatch(
+    registry: &Registry,
+    watches: &WatchRegistry,
+    tool: &str,
+    input: &Value,
+) -> Result<Value, HostError> {
     if let Some(verb) = tool.strip_prefix("control-engine.appliance.") {
         let host = HostCtx::from_env()?;
         return match verb {
             "add" => tools::appliance::add::run(&host, input, now_ts()).await,
             "list" => tools::appliance::list::run(&host).await,
-            "remove" => tools::appliance::remove::run(&host, input).await,
+            // `remove` force-disarms any live watch for the appliance (S6) before deleting the record.
+            "remove" => tools::appliance::remove::run(&host, watches, input).await,
             other => Err(HostError::BadInput(format!(
                 "unknown tool: control-engine.appliance.{other}"
             ))),
         };
+    }
+
+    // The live COV feed (S6): a self-contained arm — resolve, derive the series, spawn the pump.
+    if tool == "control-engine.watch" {
+        let host = HostCtx::from_env()?;
+        return crate::watch::verb::run(&host, registry, watches, input).await;
     }
 
     // A graph verb — resolve the appliance selector to a CE base, bind the client, dispatch.
@@ -105,6 +120,19 @@ async fn dispatch(registry: &Registry, tool: &str, input: &Value) -> Result<Valu
         .unwrap_or_default();
     let base = resolve_base(selector).await?;
     let bound = bind(registry, &base).map_err(HostError::BadResponse)?;
+
+    // Graph WRITE verbs thread a `HostCtx` so each self-checks its own per-verb cap FIRST — the
+    // inbound `native.call` carries no caller identity, so this is the finer gate the host's coarse
+    // `mcp:native.call:call` cannot express (mirrors the S4 registry verbs). Reads stay ungated here
+    // (S3's concern) — deny is enforced host-side by `authorize_tool` on the routed/native.call hop.
+    if tools::is_write_verb(tool) {
+        // Grant-only: the write path self-checks its per-verb cap but reaches CE directly (no
+        // `store.*` callback), so it must not require a gateway address (the real-engine/routing
+        // dev tiers run the sidecar with none).
+        let host = HostCtx::grant_only_from_env();
+        return tools::dispatch_write(&host, &*bound.engine, &bound.instance, tool, input).await;
+    }
+
     tools::dispatch(&*bound.engine, &bound.instance, tool, input)
         .await
         .map_err(HostError::BadResponse)

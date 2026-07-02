@@ -8,7 +8,7 @@ It is **100% an extension** — no CE concept leaks into core crates. Scope (co-
 `rust/extensions/control-engine/docs/control-engine-scope.md`. The generic live-feed primitive S6 builds
 on: `docs/scope/extensions/extension-watch-scope.md`.
 
-## Shipped (v1: S1, S3, S4)
+## Shipped (v1: S1, S2, S3, S4, S5, S6, S7)
 
 - **Graph reads (S3):** `control-engine.tree {appliance, node?, depth?}` → `{nodes, edges}` and
   `control-engine.schema {appliance}` → `{manifests}`, serving the engine's DTOs **verbatim** behind the
@@ -29,6 +29,59 @@ on: `docs/scope/extensions/extension-watch-scope.md`.
   cross-node routed-MCP hop to that node, whose identical sidecar serves it locally. Interactive graph
   commands are online request/response — an offline owner **fails loud** (no queue/retry).
 
+- **Graph writes (S5):** the seven v1 command verbs, each a thin caps-gated map onto one `ControlEngine`
+  trait method, working local AND routed:
+  `control-engine.add-node {appliance, type, parent?, name?, initial_values?}` → `{uid, kind}`;
+  `control-engine.patch {appliance, node, values}` → `{component}` (the DTO verbatim);
+  `control-engine.set-override {appliance, node, property, value, ttl_secs}` (`0` = permanent) → `{ok}`;
+  `control-engine.clear-override {appliance, node, property}` → `{ok}`;
+  `control-engine.add-edge {appliance, source, source_property, target, target_property}` → `{uid, kind}`;
+  `control-engine.remove-node {appliance, node}` → `{deleted:{component_uids, edge_uids}}` (the 24h-undo
+  handle S8's `restore` consumes);
+  `control-engine.call-action {appliance, node, action, params?}` → `{returns}`.
+  Node identity on the wire is always the **keyed** form (`{uid, kind?, path?}`) — a write MUST address a
+  concrete node (no root fallback). Each verb has its own gate `mcp:control-engine.<verb>:call` and
+  **self-checks it FIRST** in the sidecar (the inbound `native.call` carries no caller identity;
+  defense-in-depth alongside the host's `authorize_tool` at the routed boundary). No new store/net/secret
+  cap — the writes reach CE over the already-granted `net:tcp` socket. The optional `{session?, actor?}`
+  attribution is **deferred**: the pinned `ce-client-rust` exposes no per-call header hook, so the
+  "LB principal → CE actor" mapping is a later follow-up.
+
+- **Live COV feed (S6):** `control-engine.watch {appliance, scope?}` → `{series, subject}`. Arms a CE
+  change-of-value subscription for the appliance's scope and pumps each decoded event — re-encoded to a
+  plumbing-agnostic JSON **frame** — onto a workspace-scoped series; the shipped `series` motion + gateway
+  `GET /series/{series}/stream` SSE is the live read (S7 opens it). Frames:
+  `{kind:"cov", ts, values:[{uid,v}], status?:[{uid,s}]}` and `{kind:"topology", ts, msg}` — the sidecar
+  re-encodes `rubix-ce`'s already-decoded event, never the binary wire. Integers past `2^53` serialize as
+  strings (JS bigint safety). **Lifecycle:** arm-on-first / disarm-on-last per `(appliance, scope)` series
+  (an in-memory pump refcount, not durable state); `control-engine.appliance.remove` force-disarms a live
+  watch; the pump reconnects on a CE WS drop with bounded backoff (a gap, not a dead stream).
+  **Plumbing:** the zero-core-change fallback (`ingest.write` onto a series) behind the same tool name +
+  frame contract as the future generic extension-watch primitive — swappable without touching S7.
+
+- **Federated wiresheet page + `BridgeTransport` (S7):** a federated remote under
+  `rust/extensions/control-engine/ui/` mounts the vendored `@nube/ce-wiresheet` `CeEditor` wired to a
+  `BridgeTransport implements EngineTransport` (the S1 seam). The vendored package is **untouched** — the
+  transport is injected via `<CeEditor base transport={new BridgeTransport(bridge, appliance)} />`. The
+  browser never touches CE: the **request half** maps the wiresheet's `/api/v0` REST paths →
+  `control-engine.*` tools (tree · schema · add-node · patch · set/clear-override · add-edge · remove-node
+  · call-action), translating each body to the verb's arg shape (keyed node `{uid,kind}`, appliance always
+  injected) and unwrapping the result rest.ts expects; a path with no mapping throws a **loud error naming
+  it** (never a silent 404 — the signal a follow-up verb is owed). The **stream half** arms
+  `control-engine.watch {appliance}` then `bridge.watch('series.watch', {series})`; each S6 frame decodes
+  (browser-side) into the editor's `DecodedFrame`/`TopologyMsg` (the `>2^53`-as-string → bigint rule
+  mirrored). No `bridge.watch` (Tauri/tests) → a static canvas, no throw. The page adds an appliance picker
+  (`appliance.list`) + an empty-state `appliance.add` flow; the manifest `[ui] scope` lists exactly the
+  verbs the canvas emits, so a read-only grant yields a read-only canvas (bridge narrowing + host re-check).
+  **v1 gaps (absent-not-broken):** presence hidden, per-actor undo engine-shared, drag-position not
+  persisted (no `set-layout` verb yet). **`@nube/ce-wiresheet` resolution:** the ext UI is a standalone
+  package (own lockfile, `--ignore-workspace`, like proof-panel) resolving the vendored package by vite
+  ALIAS to its built `dist/` (react external in both builds → one React); `build.sh` builds the vendored
+  dist first, then the remote. A **seam gap** (the vendored `index.ts` doesn't re-export the
+  `DecodedFrame`/`TopologyMsg`/… types or the wire-tag constants) is resolved with no vendored edit —
+  types recovered via `Parameters<StreamHandlers[...]>`, tags declared as fixed protocol literals — and a
+  clean re-export is tracked as an upstream S1 follow-up.
+
 ## Platform primitives S4 added (generic, CE-ignorant — usable by any extension)
 
 - **Native sidecars are first-class in the MCP routing registry.** A `LocalDispatch` trait
@@ -36,6 +89,12 @@ on: `docs/scope/extensions/extension-watch-scope.md`.
   `SidecarDispatch` adapter registered at `install_native`) implement it, so `resolve`/`dispatch`/
   `serve_call`/the catalog treat every tier uniformly — a native ext is reachable locally AND over the
   cross-node routed hop, with no per-tier branch.
+- **`ingest.write` over the MCP bridge now publishes live motion (S6).** Previously only the gateway's
+  `POST /ingest` HTTP route published a sample onto its `ws/{id}/series/{series}` motion subject; the MCP
+  `ingest.write` verb was durable-only, so a sidecar-written sample never surfaced on the
+  `GET /series/{s}/stream` SSE. The MCP path now publishes motion after the durable write (best-effort,
+  producer stamped to the caller), matching the HTTP route — any MCP `ingest.write` caller benefits, not
+  just CE. Generic and domain-free; core stays CE-ignorant.
 - **`store.write` / `store.delete`** — generic host-native MCP verbs, gated per-table by the
   `store:<table>:<action>` capability grammar (the write half of the direct-store contract; `store.query`
   /`store.schema` are the read half). An extension gets a caps-scoped write path to its OWN table with no
@@ -43,9 +102,18 @@ on: `docs/scope/extensions/extension-watch-scope.md`.
 
 ## Deferred (additive, same path)
 
-- **S5** write verbs (`patch`/`set-override`/`call-action`/`add-node`/`add-edge`/`remove-node`) +
-  `secret_ref` mediation on the appliance record.
-- **S6** `control-engine.watch` change-of-value (COV) live feed; `appliance.remove` disarming a live watch.
-- **S7** the vendored `@nube/ce-wiresheet` federated page over a `BridgeTransport` (the S1 seam).
+- **S5 + S6 (shipped, above).** Still deferred, additive on the same path: `remove-edge`, `restore`,
+  `copy`, `bulk`, `set-layout`, graph-import-as-a-job, `secret_ref` mediation on the appliance record; the
+  COV `schema` frame kind (the pinned client's `CovEvent` surfaces only values + topology today); the
+  opt-in per-appliance historian (`history:[prop-uid]` mirrored to a durable series); swapping the live-COV
+  fallback plumbing to the generic extension-watch primitive when it lands; and **S8** batching/buffering
+  measured under load (v1 coalesces to CE's server-side tick only).
+- **The wiresheet paths S7 does NOT back yet** (each throws a loud `UnmappedPathError` in the transport,
+  naming the follow-up verb owed): `set-layout` (position/name persistence on `PATCH /nodes/uid/{uid}`),
+  undo/redo (`/undo` `/redo` `/changelog`), grouping (`/group` `/ungroup` `/facets/*`), `/copy/nodes`,
+  `/restore`, bulk (`/bulknodes`), the edges-GET (`/edges`) and edge mutate (`/edge/uid/{uid}`) paths, and
+  the override BATCH (v1 maps only the first set/clear op). The end-to-end live proof (cloud UI editing a
+  `ce-studio` engine through the full bridge, incl. a live COV frame updating a rendered value) is a MANUAL
+  run — the `test:gateway` harness has no SSE/native-sidecar transport (S7's automated gate is unit tests).
 - A discovery layer that reads `ce_appliance` records to populate the remote-routing entry (S4 stands it
   in with `register_remote_extension` in tests).

@@ -1,0 +1,119 @@
+{
+  "_comment": "Shared conformance vectors for folder exposed-port boundary + chain. BOTH the JS (lib/exposure.ts) and the C++ engine Folder component implement against these. See ../../EXPOSURE_SPEC.md. Tree used by most cases: root(0) > new_grp1(10) > { grp1(11) > {c2(2),c3(3)}, grp2(12) > {c6(6),c7(7)} }; c1(1),c4(4),c5(5),c8(8) at root. Props: c1.out=101, c2.in=202, c2.out=203, c3.in=302, c3.out=303, c4.in=404, c6.in=606, c7.out=707, c8.in=808. facetProp: c2=252,c3=353,c6=656,c7=757,grp1=2511,grp2=2512.",
+  "computeFolderExposure": [
+    {
+      "name": "direct: grp1 exposes its direct children's boundary props",
+      "in": {
+        "folder": 11,
+        "parents": { "11": 10, "12": 10, "2": 11, "3": 11, "6": 12, "7": 12, "1": 0, "4": 0, "10": 0 },
+        "edges": [
+          { "s": 1, "sp": 101, "t": 2, "tp": 202 },
+          { "s": 3, "sp": 303, "t": 4, "tp": 404 },
+          { "s": 2, "sp": 203, "t": 3, "tp": 302 }
+        ],
+        "facetProp": { "2": 252, "3": 353, "11": 2511 }
+      },
+      "out": [
+        { "prop": 202, "side": "input", "childComponent": 2, "facetProp": 252, "chain": false },
+        { "prop": 303, "side": "output", "childComponent": 3, "facetProp": 353, "chain": false }
+      ]
+    },
+    {
+      "name": "chain: new_grp1 re-projects grp1's ports (owner is a grandchild)",
+      "in": {
+        "folder": 10,
+        "parents": { "11": 10, "12": 10, "2": 11, "3": 11, "1": 0, "4": 0, "10": 0 },
+        "edges": [
+          { "s": 1, "sp": 101, "t": 2, "tp": 202 },
+          { "s": 3, "sp": 303, "t": 4, "tp": 404 }
+        ],
+        "facetProp": { "2": 252, "3": 353, "11": 2511 }
+      },
+      "out": [
+        { "prop": 202, "side": "input", "childComponent": 11, "facetProp": 2511, "chain": true },
+        { "prop": 303, "side": "output", "childComponent": 11, "facetProp": 2511, "chain": true }
+      ]
+    },
+    {
+      "name": "internal: an edge between two sub-folders' deep children is NOT new_grp1's boundary",
+      "in": {
+        "folder": 10,
+        "parents": { "11": 10, "12": 10, "3": 11, "6": 12, "1": 0, "10": 0 },
+        "edges": [{ "s": 3, "sp": 303, "t": 6, "tp": 606 }],
+        "facetProp": { "3": 353, "6": 656 }
+      },
+      "out": []
+    },
+    {
+      "name": "level-dependent: the same internal-to-new_grp1 edge DOES cross grp1's boundary",
+      "in": {
+        "folder": 11,
+        "parents": { "11": 10, "12": 10, "3": 11, "6": 12, "10": 0 },
+        "edges": [{ "s": 3, "sp": 303, "t": 6, "tp": 606 }],
+        "facetProp": { "3": 353 }
+      },
+      "out": [{ "prop": 303, "side": "output", "childComponent": 3, "facetProp": 353, "chain": false }]
+    },
+    {
+      "name": "external: an edge with both ends outside the folder yields nothing",
+      "in": {
+        "folder": 11,
+        "parents": { "11": 10, "2": 11, "1": 0, "4": 0, "10": 0 },
+        "edges": [{ "s": 1, "sp": 101, "t": 4, "tp": 404 }],
+        "facetProp": { "2": 252 }
+      },
+      "out": []
+    },
+    {
+      "name": "dedupe + missing facetProp omitted (not null)",
+      "in": {
+        "folder": 11,
+        "parents": { "11": 10, "2": 11, "1": 0, "5": 0, "10": 0 },
+        "edges": [
+          { "s": 1, "sp": 101, "t": 2, "tp": 202 },
+          { "s": 5, "sp": 505, "t": 2, "tp": 202 }
+        ],
+        "facetProp": {}
+      },
+      "out": [{ "prop": 202, "side": "input", "childComponent": 2, "chain": false }]
+    },
+    {
+      "name": "multi-level chain: outer folder chains through one sub-folder (owner two levels down)",
+      "in": {
+        "folder": 20,
+        "parents": { "20": 0, "10": 20, "11": 10, "2": 11, "1": 0 },
+        "edges": [{ "s": 1, "sp": 101, "t": 2, "tp": 202 }],
+        "facetProp": { "10": 2010 }
+      },
+      "out": [{ "prop": 202, "side": "input", "childComponent": 10, "facetProp": 2010, "chain": true }]
+    }
+  ],
+  "resolveChain": [
+    {
+      "name": "follows new_grp1 -> grp1 -> c2 to the real owner",
+      "in": {
+        "facets": {
+          "10": { "202": { "childComponent": 11, "chain": true } },
+          "11": { "202": { "childComponent": 2, "chain": false } }
+        },
+        "folder": 10,
+        "prop": 202
+      },
+      "out": 2
+    },
+    {
+      "name": "direct record resolves to its own childComponent",
+      "in": {
+        "facets": { "11": { "202": { "childComponent": 2, "chain": false } } },
+        "folder": 11,
+        "prop": 202
+      },
+      "out": 2
+    },
+    {
+      "name": "missing record resolves to undefined (encoded as null)",
+      "in": { "facets": {}, "folder": 10, "prop": 202 },
+      "out": null
+    }
+  ]
+}

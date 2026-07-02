@@ -26,8 +26,9 @@ restart     = "on-crash"               # auto-restart on crash; the client re-de
 # The net:* grant is the per-endpoint approval enforced PRE-CONNECT by the host: a CE
 # whose host:port the grant omits is refused, opaque. The manifest grows per-slice,
 # never speculatively — S4 adds the `ce_appliance` registry, so it requests the generic
-# store verbs + the per-table `store:ce_appliance:*` grants they gate on. `secret:*`
-# lands in S5.
+# store verbs + the per-table `store:ce_appliance:*` grants they gate on. S5 adds the
+# graph WRITE verbs, which need NO new cap (they reach CE over the already-granted
+# net:tcp socket; each self-checks its own mcp:control-engine.<verb>:call gate).
 request = [
   "net:tcp:127.0.0.1:7979:connect",   # the local CE ce-rest REST/WS socket
   # The generic host store verbs the `ce_appliance` registry reaches via the callback:
@@ -38,6 +39,20 @@ request = [
   # THIS extension's own registry table — it can touch `ce_appliance` and nothing else):
   "store:ce_appliance:read",
   "store:ce_appliance:write",
+  # S6 live COV feed (control-engine.watch): the fallback plumbing re-encodes each decoded COV
+  # event to a frame and writes it onto a series via the host `ingest.write` callback (the shipped
+  # `series` motion + gateway SSE is the live read). This is the ONE new cap the watch path needs.
+  "mcp:ingest.write:call",
+  # S5 graph WRITE verbs: the sidecar self-checks each `mcp:control-engine.<verb>:call` against its
+  # OWN grant (the inbound native.call carries no caller identity), so the grant must actually carry
+  # them — requested here, intersected with admin approval at install. No new store/net/secret cap.
+  "mcp:control-engine.add-node:call",
+  "mcp:control-engine.patch:call",
+  "mcp:control-engine.set-override:call",
+  "mcp:control-engine.clear-override:call",
+  "mcp:control-engine.add-edge:call",
+  "mcp:control-engine.remove-node:call",
+  "mcp:control-engine.call-action:call",
 ]
 
 # The verbs the child serves over the control line. The tool NAME is the cap gate
@@ -65,6 +80,77 @@ description = "List this workspace's registered appliances; returns {appliances}
 [[tools]]
 name        = "control-engine.appliance.remove"
 description = "Delete a ce_appliance record by id; returns {id, removed}."
+
+# The S5 graph WRITE verbs — the v1 command surface. Each is a thin caps-gated map onto
+# ONE ControlEngine trait method, self-checking its own mcp:control-engine.<verb>:call in
+# the sidecar FIRST (the inbound native.call carries no caller identity). They reach CE
+# over the already-granted net:tcp socket — no new store/net/secret cap is needed.
+[[tools]]
+name        = "control-engine.add-node"
+description = "Create a component under a parent (or the root); returns the new node's keyed identity {uid, kind}."
+
+[[tools]]
+name        = "control-engine.patch"
+description = "Write property values on a component; returns the resulting {component} DTO."
+
+[[tools]]
+name        = "control-engine.set-override"
+description = "Set a temporary manual override on a property with a TTL (ttl_secs, 0 = permanent)."
+
+[[tools]]
+name        = "control-engine.clear-override"
+description = "Clear a manual override on a property."
+
+[[tools]]
+name        = "control-engine.add-edge"
+description = "Wire a dataflow edge source→target property; returns the new edge's keyed identity {uid, kind}."
+
+[[tools]]
+name        = "control-engine.remove-node"
+description = "Soft-delete a component + descendants; returns {deleted:{component_uids,edge_uids}} (the 24h-undo handle)."
+
+[[tools]]
+name        = "control-engine.call-action"
+description = "Invoke a named action on a component; returns the action's {returns}."
+
+# S6 live change-of-value feed. Arms a CE COV subscription for the appliance's scope and pumps each
+# decoded event (re-encoded to a plumbing-agnostic frame) onto a workspace-scoped series; the shipped
+# `GET /series/{series}/stream` SSE is the live read. Returns {series, subject}. Self-checks its cap.
+[[tools]]
+name        = "control-engine.watch"
+description = "Live COV feed for an appliance; arms a CE subscription onto a series. Returns {series, subject}."
+
+# S7 federated wiresheet page (ui-federation scope). The shell dynamic-imports `remoteEntry.js` and
+# calls `mount(el, ctx, bridge)`; the page mounts the vendored `CeEditor` wired to a `BridgeTransport`
+# that routes every canvas action over `bridge.call('control-engine.*')` + `bridge.watch('series.watch')`.
+# The browser never touches CE. `scope` lists EXACTLY the tools the page can emit — the shell narrows the
+# page bridge to `scope ∩ caller-grant` (ui_decl::narrow), then the host re-checks each call server-side,
+# so a read-only user (granted only the read + watch verbs) gets a read-only canvas: the write verbs fall
+# outside their grant and the bridge rejects them `out_of_scope` before they ever reach the host.
+[ui]
+entry = "remoteEntry.js"
+label = "Control Engine"
+icon  = "workflow"
+route = "/control-engine"
+scope = [
+    # Reads the canvas issues (structure + type palette).
+    "control-engine.tree",
+    "control-engine.schema",
+    # The appliance picker + empty-state add flow.
+    "control-engine.appliance.list",
+    "control-engine.appliance.add",
+    # The write verbs the canvas emits (each falls outside a read-only user's grant → read-only canvas).
+    "control-engine.add-node",
+    "control-engine.patch",
+    "control-engine.set-override",
+    "control-engine.clear-override",
+    "control-engine.add-edge",
+    "control-engine.remove-node",
+    "control-engine.call-action",
+    # The live COV feed: arm the watch, then read its series SSE.
+    "control-engine.watch",
+    "series.watch",
+]
 
 [visibility]
 class = "private"

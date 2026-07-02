@@ -78,6 +78,34 @@ impl HostCtx {
         Ok(Self { client, caps, ws })
     }
 
+    /// Build a GRANT-ONLY handle from the injected env for the per-verb self-check, WITHOUT requiring
+    /// a callback address. The graph WRITE verbs reach CE directly (over the granted `net:tcp` socket)
+    /// and never use a `store.*` callback, so — unlike the registry verbs — they must still self-check
+    /// when the sidecar runs with no `LB_GATEWAY_URL` (the real-engine / routing dev tiers). The client
+    /// is a best-effort handle (a placeholder config when the gateway is absent); a write never calls
+    /// it. The grant is parsed from `LB_EXT_TOKEN` exactly as [`from_env`](Self::from_env).
+    #[must_use]
+    pub fn grant_only_from_env() -> Self {
+        let token = std::env::var(lb_sidecar_client::TOKEN_ENV).unwrap_or_default();
+        let (caps, ws) = match lb_auth::claims_unverified(&token) {
+            Some(c) => (c.caps, c.ws),
+            None => (
+                Vec::new(),
+                std::env::var(lb_sidecar_client::WS_ENV).unwrap_or_default(),
+            ),
+        };
+        // Prefer the real callback client; fall back to a placeholder the write path never calls.
+        let client = SidecarClient::from_env().unwrap_or_else(|_| {
+            SidecarClient::with_config(lb_sidecar_client::Config::new(
+                "http://127.0.0.1:0",
+                token,
+                ws.clone(),
+                std::env::var(lb_sidecar_client::ID_ENV).unwrap_or_default(),
+            ))
+        });
+        Self { client, caps, ws }
+    }
+
     /// Build from explicit parts (tests): a `SidecarClient` over a known gateway + an explicit grant.
     /// No process env — so a test never races the global env.
     pub fn with_parts(client: SidecarClient, caps: Vec<String>, ws: impl Into<String>) -> Self {
@@ -103,11 +131,16 @@ impl HostCtx {
     /// coarse `mcp:native.call:call` cannot express. `Err(Denied)` is opaque (no "which cap" oracle),
     /// exactly like the host gate. This runs FIRST in every handler, before any callback or CE call.
     pub fn require(&self, verb: &str) -> Result<(), HostError> {
-        let needed = format!("mcp:{verb}:call");
-        if self.caps.iter().any(|c| c == &needed) {
-            Ok(())
-        } else {
-            Err(HostError::Denied)
-        }
+        require_caps(&self.caps, verb)
+    }
+}
+
+/// The shared cap-membership check: opaque `Denied` unless `caps` contains `mcp:<verb>:call`.
+fn require_caps(caps: &[String], verb: &str) -> Result<(), HostError> {
+    let needed = format!("mcp:{verb}:call");
+    if caps.iter().any(|c| c == &needed) {
+        Ok(())
+    } else {
+        Err(HostError::Denied)
     }
 }

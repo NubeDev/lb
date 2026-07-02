@@ -8,8 +8,9 @@
 //! types. The uid-keyed form is `{ "uid": <u32>, "kind": "component"|"property"|
 //! "edge", "path"?: <string> }`; the root is `{ "root": true }` (or absent).
 
-use rubix_ce::{EngineInstanceId, NodeKey, NodeRef, UidKind};
+use rubix_ce::{EngineInstanceId, FlexValue, NodeKey, NodeRef, UidKind};
 use serde::Deserialize;
+use serde_json::Value;
 
 /// The canonical CE REST/WS port (control-engine scope open-question resolution:
 /// ce-studio's `7979`, aligning the older `7878` mentions).
@@ -94,6 +95,79 @@ impl Default for NodeRefArg {
             path: None,
         }
     }
+}
+
+/// The uid-keyed wire form of a CE node identity for a WRITE verb. Unlike
+/// [`NodeRefArg`] (which defaults to the root for a whole-tree read), a write
+/// verb MUST address a concrete node: an absent/empty `uid` is an error, never a
+/// silent root fallback (a write to "the root" is not a thing S5 exposes).
+///
+/// Reuses the same wire shape (`{ "uid": <u32>, "kind": ..., "path"?: ... }`) as
+/// [`NodeRefArg`] so a caller keys nodes identically on read and write.
+#[derive(Debug, Clone, Deserialize)]
+pub struct NodeKeyArg {
+    /// The per-instance, per-pool UID (REQUIRED for a write).
+    pub uid: u32,
+    /// Which pool the UID was drawn from: `component` (default) / `property` / `edge`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// A snapshotted path/name (optional; survives an engine restart re-numbering).
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+impl NodeKeyArg {
+    /// Map to `rubix-ce`'s [`NodeKey`], keying the UID against `instance`.
+    #[must_use]
+    pub fn to_node_key(&self, instance: &EngineInstanceId) -> NodeKey {
+        let mut key = NodeKey::new(instance.clone(), self.uid_kind(), self.uid);
+        if let Some(p) = &self.path {
+            key = key.with_path(p.clone());
+        }
+        key
+    }
+
+    fn uid_kind(&self) -> UidKind {
+        match self.kind.as_deref() {
+            Some("property") => UidKind::Property,
+            Some("edge") => UidKind::Edge,
+            _ => UidKind::Component,
+        }
+    }
+}
+
+/// Parse a JSON value into a [`FlexValue`]. `FlexValue` is `#[serde(untagged)]`
+/// (null/bool/int/float/string), so a JSON scalar deserializes straight into it;
+/// a non-scalar (object/array) is a `bad value` error (CE values are scalar).
+pub fn flex_value(v: &Value) -> Result<FlexValue, String> {
+    if v.is_object() || v.is_array() {
+        return Err(format!("bad value: expected a scalar, got {v}"));
+    }
+    serde_json::from_value(v.clone()).map_err(|e| format!("bad value: {e}"))
+}
+
+/// Parse a name-keyed JSON object of scalar values into a `Vec<(String, FlexValue)>`
+/// (the shape both [`rubix_ce::PropPatch`] batches and action [`rubix_ce::Params`]
+/// use). Order follows the object's insertion order (serde_json preserves it).
+pub fn value_pairs(v: &Value) -> Result<Vec<(String, FlexValue)>, String> {
+    let obj = v
+        .as_object()
+        .ok_or_else(|| format!("expected an object of name→value, got {v}"))?;
+    obj.iter()
+        .map(|(k, val)| Ok((k.clone(), flex_value(val)?)))
+        .collect()
+}
+
+/// Parse the required uid-keyed `node` field of a write verb's input into a
+/// [`NodeKey`]. A missing or malformed `node` (e.g. no `uid`) is a `bad node arg`
+/// error — a write with no target is invalid, never a root fallback.
+pub fn require_node_key(input: &Value, instance: &EngineInstanceId) -> Result<NodeKey, String> {
+    let v = input
+        .get("node")
+        .ok_or_else(|| "bad node arg: missing `node`".to_string())?;
+    let arg: NodeKeyArg =
+        serde_json::from_value(v.clone()).map_err(|e| format!("bad node arg: {e}"))?;
+    Ok(arg.to_node_key(instance))
 }
 
 #[cfg(test)]

@@ -15,24 +15,49 @@
 //! the real `rubix-ce` REST/WS client (CLAUDE §9: the fake never leaks into it).
 
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use rubix_ce::{
     cov_channel, ActionResult, BulkResult, BulkSpec, ComponentDto, ControlEngine, CopySpec,
-    CovScope, CovStream, DeletedItems, EdgeSpec, EngineInstanceId, ExtensionManifest, FlexValue,
-    ManifestComponent, NewNode, NodeKey, NodeRef, Params, PropPatch, RestoreResult, Result, Tree,
-    UidKind,
+    CovEvent, CovScope, CovSender, CovStream, DeletedItems, EdgeSpec, EngineInstanceId,
+    ExtensionManifest, FlexValue, ManifestComponent, NewNode, NodeKey, NodeRef, Params, PropChange,
+    PropPatch, RestoreResult, Result, Tree, UidKind, ValueFrame, MSG_UPDATE,
 };
 
+/// A guard that decrements the fake's active-COV-subscription counter when the pump task holding it
+/// exits (which happens when the consumer drops the `CovStream` → `CovSender::send` errors). This is
+/// how the arm/disarm test observes "the fake's COV subscription dropped" tied to the REAL stream
+/// lifecycle, not a fake bookkeeping call.
+struct ActiveGuard(Arc<AtomicUsize>);
+impl Drop for ActiveGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// An in-memory CE stub honouring the S3 read verbs, with a per-instance call
-/// counter (deny-before-call proof).
+/// counter (deny-before-call proof) and S6 COV instrumentation.
 #[derive(Default)]
 pub struct CeFake {
     /// Bumped by EVERY trait method — the deny test asserts this stays 0 until a
     /// call is actually dispatched.
     pub calls: AtomicUsize,
+    /// Live COV subscriptions currently held (a pump has a `CovStream` open). Bumped on
+    /// `subscribe_cov`, decremented when the consumer drops the stream (via `ActiveGuard`). The
+    /// arm-on-first / disarm-on-last test asserts this returns to 0.
+    pub active_cov: Arc<AtomicUsize>,
+    /// Total `subscribe_cov` calls. A value > the peak distinct subscriptions proves a **reconnect**
+    /// happened (the pump re-subscribed after a WS drop) — the reconnect test asserts on this.
+    pub cov_subscribes: Arc<AtomicUsize>,
+    /// The most-recent live subscriber's sender — a test injects extra COV events through it (drives
+    /// the routed-watch + real-engine-ish assertions).
+    pub last_sender: Arc<Mutex<Option<CovSender>>>,
+    /// A "stop the current feeder" flag set by `drop_ws` to end the live subscription's stream (a
+    /// simulated CE WS drop). The feeder observes it, drops its sender → the pump's `CovStream` ends →
+    /// the pump re-subscribes (bumping `cov_subscribes`) — a gap, not a dead stream.
+    pub drop_flag: Arc<std::sync::atomic::AtomicBool>,
     nodes: Vec<ComponentDto>,
     manifests: Vec<ExtensionManifest>,
 }
@@ -64,14 +89,57 @@ impl CeFake {
             }],
         };
         Arc::new(Self {
-            calls: AtomicUsize::new(0),
             nodes: vec![node],
             manifests: vec![manifest],
+            ..Default::default()
         })
     }
 
     fn bump(&self) {
         self.calls.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// Push one COV event to the current live subscriber (a test seam). Returns `false` if no
+    /// subscriber is live or it has gone away — the injected event is dropped (fire-and-forget motion).
+    pub async fn inject(&self, event: CovEvent) -> bool {
+        let sender = self.last_sender.lock().unwrap().clone();
+        match sender {
+            Some(tx) => tx.send(Ok(event)).await.is_ok(),
+            None => false,
+        }
+    }
+
+    /// Simulate a CE WS drop: signal the live feeder to stop and drop its sender so the pump's
+    /// `CovStream` ends. The pump re-subscribes (bumping `cov_subscribes`) — a gap, not a dead stream.
+    pub fn drop_ws(&self) {
+        self.drop_flag.store(true, Ordering::SeqCst);
+        *self.last_sender.lock().unwrap() = None;
+    }
+
+    /// A seeded first `cov` frame every subscription emits on arm (so a watcher observes a frame without
+    /// extra plumbing — the routed-watch exit gate). One property change, one clean value.
+    fn seed_frame() -> CovEvent {
+        CovEvent::Values(ValueFrame {
+            msg_type: MSG_UPDATE,
+            timestamp_ms: 1,
+            changes: vec![PropChange {
+                uid: 1_000_100,
+                value: FlexValue::Float(4.2),
+                status_flags: 0,
+            }],
+        })
+    }
+
+    /// An empty-changes `cov` tick the feeder sends periodically. Two jobs: it is the liveness probe
+    /// (the send errors once the consumer drops the `CovStream`, ending the feeder → dropping its
+    /// `ActiveGuard` → decrementing `active_cov` — the disarm signal), and it is a legitimate no-change
+    /// tick a real CE also emits. Watchers key on property UIDs, so an empty tick is inert to them.
+    fn heartbeat() -> CovEvent {
+        CovEvent::Values(ValueFrame {
+            msg_type: MSG_UPDATE,
+            timestamp_ms: 0,
+            changes: vec![],
+        })
     }
 }
 
@@ -158,8 +226,36 @@ impl ControlEngine for CeFake {
     }
     async fn subscribe_cov(&self, _scope: CovScope) -> Result<CovStream> {
         self.bump();
-        // S6 wires real COV; here return an empty, immediately-closed stream.
-        let (_tx, rx) = cov_channel(1);
+        self.cov_subscribes.fetch_add(1, Ordering::SeqCst);
+        self.active_cov.fetch_add(1, Ordering::SeqCst);
+
+        // A fresh subscription clears any prior drop signal (a reconnect re-arms cleanly).
+        self.drop_flag.store(false, Ordering::SeqCst);
+        let (tx, rx) = cov_channel(16);
+        // Publish the sender so a test can inject further events through it.
+        *self.last_sender.lock().unwrap() = Some(tx.clone());
+
+        // A background feeder holds the `ActiveGuard` for this subscription's lifetime. It seeds one
+        // frame, then a slow heartbeat doubles as the liveness probe: the send errors once the consumer
+        // drops the `CovStream`, ending the task → dropping the guard → decrementing `active_cov` (the
+        // disarm signal). `drop_flag` (set by `drop_ws`) ends the feeder to simulate a CE WS drop.
+        let guard = ActiveGuard(self.active_cov.clone());
+        let drop_flag = self.drop_flag.clone();
+        tokio::spawn(async move {
+            let _guard = guard; // decrements active_cov on task exit
+            if tx.send(Ok(CeFake::seed_frame())).await.is_err() {
+                return;
+            }
+            loop {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                if drop_flag.load(Ordering::SeqCst) {
+                    return; // simulated WS drop → CovStream ends → pump reconnects
+                }
+                if tx.send(Ok(CeFake::heartbeat())).await.is_err() {
+                    return; // consumer dropped the stream → disarm
+                }
+            }
+        });
         Ok(rx)
     }
 }
