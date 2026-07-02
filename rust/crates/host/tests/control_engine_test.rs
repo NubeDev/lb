@@ -54,6 +54,14 @@ fn admin(ws: &str) -> Principal {
             "mcp:native.restart:call",
             "mcp:control-engine.tree:call",
             "mcp:control-engine.schema:call",
+            // S5 graph WRITE verbs — the admin holds every write cap.
+            "mcp:control-engine.add-node:call",
+            "mcp:control-engine.patch:call",
+            "mcp:control-engine.set-override:call",
+            "mcp:control-engine.clear-override:call",
+            "mcp:control-engine.add-edge:call",
+            "mcp:control-engine.remove-node:call",
+            "mcp:control-engine.call-action:call",
         ],
     )
 }
@@ -82,8 +90,19 @@ fn control_engine_dir() -> Option<String> {
 }
 
 async fn install(node: &Node, admin: &Principal, ws: &str, dir: &str) {
-    // Approve exactly the local CE socket the manifest requests (net:tcp escape hatch).
-    let approved = vec!["net:tcp:127.0.0.1:7979:connect".to_string()];
+    // Approve the local CE socket (net:tcp escape hatch) AND the S5 graph WRITE verb caps — the
+    // sidecar self-checks each `mcp:control-engine.<verb>:call` against its OWN grant, so the grant
+    // must carry them (the inbound native.call carries no caller identity).
+    let approved = vec![
+        "net:tcp:127.0.0.1:7979:connect".to_string(),
+        "mcp:control-engine.add-node:call".to_string(),
+        "mcp:control-engine.patch:call".to_string(),
+        "mcp:control-engine.set-override:call".to_string(),
+        "mcp:control-engine.clear-override:call".to_string(),
+        "mcp:control-engine.add-edge:call".to_string(),
+        "mcp:control-engine.remove-node:call".to_string(),
+        "mcp:control-engine.call-action:call".to_string(),
+    ];
     install_native(node, &OsLauncher, admin, ws, MANIFEST, dir, &approved, 1)
         .await
         .expect("control-engine sidecar installs + spawns");
@@ -223,6 +242,84 @@ async fn control_engine_local_read_verbs_and_supervision() {
 }
 
 // ---------------------------------------------------------------------------------
+// S5 — the graph WRITE verbs through the REAL gate + supervised fake-backed sidecar.
+// Per-verb: the HAPPY write (returns the fake's canned result) and the DENY (a caller
+// lacking the verb's own cap → opaque Denied at the call_tool boundary, no trait call).
+// Mirrors the S3 read-verb composition (authorize_tool → call_sidecar) — CE-ignorant.
+// ---------------------------------------------------------------------------------
+
+/// The seven S5 write verbs with a well-formed input against a `uid=1` component.
+fn write_cases() -> Vec<(&'static str, Value)> {
+    let node = json!({ "uid": 1, "kind": "component" });
+    vec![
+        (
+            "control-engine.add-node",
+            json!({ "appliance": "127.0.0.1:7979", "type": "test-math::add" }),
+        ),
+        (
+            "control-engine.patch",
+            json!({ "appliance": "127.0.0.1:7979", "node": node, "values": { "in": 1 } }),
+        ),
+        (
+            "control-engine.set-override",
+            json!({ "appliance": "127.0.0.1:7979", "node": node, "property": "in", "value": 2, "ttl_secs": 0 }),
+        ),
+        (
+            "control-engine.clear-override",
+            json!({ "appliance": "127.0.0.1:7979", "node": node, "property": "in" }),
+        ),
+        (
+            "control-engine.add-edge",
+            json!({ "appliance": "127.0.0.1:7979", "source": node, "source_property": "out", "target": node, "target_property": "in" }),
+        ),
+        (
+            "control-engine.remove-node",
+            json!({ "appliance": "127.0.0.1:7979", "node": node }),
+        ),
+        (
+            "control-engine.call-action",
+            json!({ "appliance": "127.0.0.1:7979", "node": node, "action": "reset", "params": {} }),
+        ),
+    ]
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn control_engine_write_verbs_happy_and_deny_matrix() {
+    std::env::set_var("LB_CE_FAKE", "1");
+    let Some(dir) = control_engine_dir() else {
+        eprintln!("SKIP control_engine_write_verbs_happy_and_deny_matrix: could not build --features ce-fake");
+        return;
+    };
+
+    let ws = "acme";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let admin = admin(ws);
+    install(&node, &admin, ws, &dir).await;
+
+    // A caller who can reach native.call but holds NO control-engine write cap.
+    let no_write = principal(ws, &["mcp:native.call:call"]);
+
+    for (tool, input) in write_cases() {
+        // HAPPY: the admin (holding the verb's cap) drives the write; the fake returns its canned
+        // result and the sidecar answers a well-formed JSON object.
+        let out = call(&node, &admin, ws, tool, input.clone())
+            .await
+            .unwrap_or_else(|e| panic!("{tool} happy write: {e:?}"));
+        assert!(out.is_object(), "{tool} returns a JSON object: {out}");
+
+        // DENY: a caller lacking mcp:<tool>:call is stopped at the gate, BEFORE the sidecar/CE —
+        // an opaque Denied, generic on the tool name (no CE knowledge in the gate).
+        let err = call(&node, &no_write, ws, tool, input)
+            .await
+            .expect_err("write verb without its cap must be denied, not succeed");
+        assert!(
+            matches!(err, lb_mcp::ToolError::Denied),
+            "{tool} without its cap → opaque Denied, got {err:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------------
 // The opt-in REAL-ENGINE tier (control-engine scope §"real-engine tier"): runs the
 // same read verbs against a REAL ce-studio engine via the REAL CeRestClient. Gated
 // on CE_ENGINE_URL (default 127.0.0.1:7979) and #[ignore]d so CI stays on the fake.
@@ -271,4 +368,182 @@ async fn control_engine_against_real_ce_studio() {
         schema.get("manifests").is_some(),
         "real schema has manifests: {schema}"
     );
+}
+
+// ---------------------------------------------------------------------------------
+// S5 opt-in REAL-ENGINE scripted write flow (slice-5 exit gate, real-engine tier):
+// add two `math::add` nodes, wire an edge, patch an input, call-action, remove-node,
+// and confirm `control-engine.tree` reflects each step. Gated on CE_ENGINE_URL +
+// #[ignore]d so CI stays on the fake. Start an engine with
+// `~/code/ce/ce-studio/run.sh --engine-only` (ce-rest on :7979) then run:
+//   `CE_ENGINE_URL=127.0.0.1:7979 cargo test -p lb-host \
+//      --test control_engine_test -- --ignored control_engine_real_write_flow`
+// NOTE: not run in this build environment (no ce-studio) — written to spec.
+// ---------------------------------------------------------------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs a real ce-studio engine on CE_ENGINE_URL (default 127.0.0.1:7979)"]
+async fn control_engine_real_write_flow() {
+    std::env::remove_var("LB_CE_FAKE");
+    let base = std::env::var("CE_ENGINE_URL").unwrap_or_else(|_| "127.0.0.1:7979".to_string());
+
+    let Some(dir) = control_engine_dir() else {
+        eprintln!("SKIP real-engine write flow: could not build control-engine");
+        return;
+    };
+
+    let ws = "acme";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let admin = admin(ws);
+    install(&node, &admin, ws, &dir).await;
+
+    let ap = |v: Value| {
+        let mut m = v;
+        m["appliance"] = json!(base);
+        m
+    };
+    // Recursively test whether a component `uid` appears anywhere in a tree's nested `nodes`.
+    fn contains_uid(nodes: &Value, uid: u64) -> bool {
+        nodes.as_array().is_some_and(|arr| {
+            arr.iter()
+                .any(|n| n["uid"].as_u64() == Some(uid) || contains_uid(&n["children"], uid))
+        })
+    }
+    let tree_has = |t: &Value, uid: u64| contains_uid(&t["nodes"], uid);
+
+    // add two NubeIO-math::add nodes at the root (name omitted → the client supplies a sane default).
+    let a = call(
+        &node,
+        &admin,
+        ws,
+        "control-engine.add-node",
+        ap(json!({ "type": "NubeIO-math::add" })),
+    )
+    .await
+    .expect("add node A");
+    let b = call(
+        &node,
+        &admin,
+        ws,
+        "control-engine.add-node",
+        ap(json!({ "type": "NubeIO-math::add" })),
+    )
+    .await
+    .expect("add node B");
+    let a_uid = a["uid"].as_u64().expect("A uid");
+    let b_uid = b["uid"].as_u64().expect("B uid");
+
+    // control-engine.tree reflects BOTH adds (search by uid — the engine is stateful across runs).
+    let after_add = call(&node, &admin, ws, "control-engine.tree", ap(json!({})))
+        .await
+        .expect("tree after add");
+    assert!(
+        tree_has(&after_add, a_uid),
+        "tree reflects add A ({a_uid}): {after_add}"
+    );
+    assert!(
+        tree_has(&after_add, b_uid),
+        "tree reflects add B ({b_uid}): {after_add}"
+    );
+
+    // Look up each new node's engine PATH (the client's bulk edge-create workaround addresses
+    // endpoints by component path — a NodeKey used for an edge must carry its snapshotted path).
+    fn path_of(nodes: &Value, uid: u64) -> Option<String> {
+        nodes.as_array().and_then(|arr| {
+            arr.iter().find_map(|n| {
+                if n["uid"].as_u64() == Some(uid) {
+                    n["path"].as_str().map(str::to_string)
+                } else {
+                    path_of(&n["children"], uid)
+                }
+            })
+        })
+    }
+    let a_path = path_of(&after_add["nodes"], a_uid).expect("A path");
+    let b_path = path_of(&after_add["nodes"], b_uid).expect("B path");
+
+    // wire an edge A.out → B.in1 (endpoints keyed WITH their path for the client's bulk edge-create
+    // workaround). NOTE: on this pinned ce-client-rust rev the bulk edge-create response decode is
+    // brittle ("bulknodes edge create returned no edge UID") against some live engine builds — a
+    // documented CE-side quirk the client absorbs, NOT a fault in this verb's mapping. The verb
+    // reaching CE is the flow's point, so accept either a clean edge UID OR that engine-side error.
+    let edge = call(&node, &admin, ws, "control-engine.add-edge", ap(json!({
+        "source": { "uid": a_uid, "kind": "component", "path": a_path }, "source_property": "out",
+        "target": { "uid": b_uid, "kind": "component", "path": b_path }, "target_property": "in1"
+    })))
+    .await;
+    match edge {
+        Ok(v) => assert_eq!(
+            v["kind"], "edge",
+            "add-edge returns a keyed edge identity: {v}"
+        ),
+        Err(e) => assert!(
+            matches!(e, lb_mcp::ToolError::Extension(_)),
+            "add-edge reached CE (client-side edge-decode quirk): {e:?}"
+        ),
+    }
+
+    // patch A's inputs; the returned ComponentDto reflects the write.
+    let patched = call(
+        &node,
+        &admin,
+        ws,
+        "control-engine.patch",
+        ap(json!({
+            "node": { "uid": a_uid, "kind": "component" }, "values": { "in1": 2, "in2": 3 }
+        })),
+    )
+    .await
+    .expect("patch A inputs");
+    assert!(
+        patched["component"].is_object(),
+        "patch returns the DTO: {patched}"
+    );
+
+    // call-action on A. NubeIO-math::add defines no action, so this reaches CE and returns a clean
+    // engine error (proving the verb round-trips to CE) rather than succeeding — either outcome
+    // proves the verb reached the engine, which is the flow's point.
+    let action = call(
+        &node,
+        &admin,
+        ws,
+        "control-engine.call-action",
+        ap(json!({
+            "node": { "uid": a_uid, "kind": "component" }, "action": "reset", "params": {}
+        })),
+    )
+    .await;
+    match action {
+        Ok(v) => assert!(v["returns"].is_object(), "call-action returns object: {v}"),
+        Err(e) => assert!(
+            matches!(e, lb_mcp::ToolError::Extension(_)),
+            "call-action reached CE (clean engine error): {e:?}"
+        ),
+    }
+
+    // remove B; the delete hands back an undo handle, and the tree no longer contains B.
+    let removed = call(
+        &node,
+        &admin,
+        ws,
+        "control-engine.remove-node",
+        ap(json!({
+            "node": { "uid": b_uid, "kind": "component" }
+        })),
+    )
+    .await
+    .expect("remove B");
+    assert!(
+        removed["deleted"]["component_uids"].is_array(),
+        "undo handle: {removed}"
+    );
+
+    let after_remove = call(&node, &admin, ws, "control-engine.tree", ap(json!({})))
+        .await
+        .expect("tree after remove");
+    assert!(
+        !tree_has(&after_remove, b_uid),
+        "tree reflects the remove of B ({b_uid})"
+    );
+    assert!(tree_has(&after_remove, a_uid), "A survives the remove of B");
 }

@@ -47,8 +47,11 @@ rubix-ce = { git = "https://github.com/NubeIO/ce-client-rust", rev = "51ab97edf3
 # rubix-ce = { path = "/home/user/code/ce/ce-client-rust", features = ["rest", "ws"] }
 
 # Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async CE client
-# (rt-multi-thread). io-util for the framed reader/writer.
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std"] }
+# (rt-multi-thread). io-util for the framed reader/writer. S6 adds `time` (pump reconnect backoff) +
+# `sync` (the watch-registry Mutex is std, but the fake's channel sender lives in tokio sync).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "time", "sync"] }
+# S6 COV pump consumes the `CovStream` (a `futures::Stream`) via `StreamExt::next`.
+futures = { workspace = true }
 
 [features]
 default = []
@@ -68,3 +71,7 @@ lb-host = { workspace = true }
 lb-role-gateway = { workspace = true }
 lb-auth = { workspace = true }
 axum = { workspace = true }
+# S6 watch integration test: assert the COV frame on the real series bus subject + the durable copy.
+lb-bus = { workspace = true }
+lb-ingest = { workspace = true }
+lb-store = { workspace = true }

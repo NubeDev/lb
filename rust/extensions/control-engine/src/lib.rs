@@ -14,6 +14,7 @@ pub mod host;
 pub mod resolve;
 pub mod serve;
 pub mod tools;
+pub mod watch;
 
 // The ONE sanctioned CE stub — compiled in only for the crate's own tests OR under the `ce-fake` build
 // feature the host integration test uses. Never in a shipped binary's real call path.

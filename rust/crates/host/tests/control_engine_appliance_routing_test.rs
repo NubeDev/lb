@@ -50,6 +50,7 @@ fn admin(ws: &str) -> Principal {
         &[
             "mcp:native.install:call",
             "mcp:control-engine.tree:call",
+            "mcp:control-engine.patch:call",
             "store:ce_appliance:write",
         ],
     )
@@ -197,6 +198,120 @@ async fn appliance_record_routes_ce_tree_to_node_b_and_offline_fails_loud() {
     assert!(
         pending.rows.is_empty(),
         "no outbox rows queued for an interactive routed call: {:?}",
+        pending.rows
+    );
+}
+
+/// S5 — a routed graph WRITE (`control-engine.patch`) crosses the two-node hop with the workspace
+/// claim re-check, and fails LOUD (nothing queued) when the owning node is offline. Same harness as
+/// the routed read above; the write verb self-checks its own cap on node B's sidecar AND is gated
+/// host-side by `authorize_tool` at the routed boundary (both hold).
+async fn route_patch(
+    edge: &Node,
+    p: &Principal,
+    ws: &str,
+    appliance: &str,
+) -> Result<Value, ToolError> {
+    let input = json!({
+        "appliance": appliance,
+        "node": { "uid": 1, "kind": "component" },
+        "values": { "in": 42 }
+    })
+    .to_string();
+    call(
+        &edge.registry,
+        &edge.bus,
+        p,
+        ws,
+        "control-engine.patch",
+        &input,
+    )
+    .await
+    .map(|out| serde_json::from_str(&out).unwrap())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn appliance_record_routes_ce_patch_write_and_offline_fails_loud() {
+    std::env::set_var("LB_CE_FAKE", "1");
+    let Some(dir) = control_engine_dir() else {
+        eprintln!("SKIP appliance routed write: could not build control-engine --features ce-fake");
+        return;
+    };
+
+    let ws = "ce-route-write";
+    let port = {
+        let probe = std::net::TcpListener::bind("127.0.0.1:0").expect("free loopback port");
+        probe.local_addr().unwrap().port()
+    };
+    let endpoint = format!("tcp/127.0.0.1:{port}");
+
+    // Node B (hub): install + serve the native CE sidecar.
+    let hub_bus = Bus::peer_with(&[endpoint.clone()], &[])
+        .await
+        .expect("hub bus");
+    let hub = node_on_bus(hub_bus, NodeRole::Hub).await;
+    let admin = admin(ws);
+    // Approve the CE socket AND the patch write cap — so the sidecar's grant carries
+    // `mcp:control-engine.patch:call` for its per-verb self-check on the write path.
+    let approved = vec![
+        "net:tcp:127.0.0.1:7979:connect".to_string(),
+        "mcp:control-engine.patch:call".to_string(),
+    ];
+    install_native(&hub, &OsLauncher, &admin, ws, MANIFEST, &dir, &approved, 1)
+        .await
+        .expect("node B installs + spawns the native sidecar");
+    let server: ToolServer = serve_ext(&hub.bus, hub.registry.clone(), "control-engine")
+        .await
+        .expect("node B serves the native ext");
+
+    // Node A (edge): appliance record → node B; remote routing entry advertises `patch`.
+    let edge_bus = Bus::peer_with(&[], &[endpoint]).await.expect("edge bus");
+    let edge = node_on_bus(edge_bus, NodeRole::Edge).await;
+    seed_appliance(&edge, ws, "plant-1", "node-b", "http://127.0.0.1:7979").await;
+    register_remote_extension(&edge, "control-engine", &["patch".to_string()]);
+
+    // --- ROUTED WRITE: patch naming plant-1 routes to node B; the fake returns its ComponentDto. ---
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let patched = loop {
+        match tokio::time::timeout(
+            Duration::from_millis(500),
+            route_patch(&edge, &admin, ws, "plant-1"),
+        )
+        .await
+        {
+            Ok(Ok(v)) => break v,
+            _ if std::time::Instant::now() < deadline => continue,
+            other => panic!("routed ce.patch never became reachable: {other:?}"),
+        }
+    };
+    assert!(
+        patched.get("component").is_some(),
+        "routed write crossed the hop and returned the DTO: {patched}"
+    );
+
+    // --- OFFLINE FAIL-LOUD: drop node B; the write errors promptly + loud, and NOTHING is queued
+    //     (interactive request/response — the no-outbox decision, tested on the write path). ---
+    drop(server);
+    drop(hub);
+
+    let err = tokio::time::timeout(
+        Duration::from_secs(15),
+        route_patch(&edge, &admin, ws, "plant-1"),
+    )
+    .await
+    .expect("offline routed write returns promptly (does not hang)")
+    .expect_err("a routed write to an offline node fails loud");
+    assert!(
+        matches!(err, ToolError::Extension(_)),
+        "loud transport error, not a silent success: {err:?}"
+    );
+
+    let pending = lb_store::scan(&edge.store, ws, "outbox", 50, None)
+        .await
+        .expect("scan outbox");
+    assert!(
+        pending.rows.is_empty(),
+        "no outbox rows queued for an interactive routed WRITE: {:?}",
         pending.rows
     );
 }

@@ -16,7 +16,56 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-02): control-engine v1 — slice S4 (appliance registry + routed hop, branch
+**Just shipped (2026-07-02): control-engine v1 — slice S6 (`control-engine.watch` live COV feed, branch
+`ce-v1`).** `control-engine.watch {appliance, scope?}` → `{series, subject}` surfaces CE's change-of-value
+stream as a workspace-scoped live feed. The sidecar re-encodes each already-decoded `rubix-ce` `CovEvent`
+to a **plumbing-agnostic JSON frame** (`{kind:"cov", ts, values:[{uid,v}], status?}` /
+`{kind:"topology", ts, msg}`; integers past `2^53` → strings for JS-bigint safety) and pumps it onto a
+deterministic series (`ce-cov:{appliance}:{scope-hash}`) via the host `ingest.write` callback — the shipped
+`series` motion + gateway `GET /series/{series}/stream` SSE is the live read S7 opens. Shipped the
+**zero-core-change fallback** per the slice's sequencing decision (the generic extension-watch primitive is
+not in core), behind the same tool name + frame contract so S7 is plumbing-agnostic (swap tracked as a
+named follow-up). **Lifecycle:** arm-on-first / disarm-on-last per series (in-memory pump refcount, not
+durable state); `appliance.remove` force-disarms a live watch; the pump reconnects on a CE WS drop with
+bounded backoff (a gap, not a dead stream). **One generic core fix** (CE-ignorant): the MCP `ingest.write`
+verb now publishes live motion after its durable write, matching the `POST /ingest` HTTP route — it was
+durable-only, so a sidecar-written sample never reached the SSE. **Tests (real infra):** frame + series
+units (9) · watch lifecycle units (3: arm/disarm via the instrumented `ce_fake`, appliance.remove disarm,
+WS-drop reconnect) · integration (3: **exit gate** arm→frame→motion on the real series subject · deny ·
+ws-B-cannot-watch-ws-A isolation). Sanity-grep clean; `cargo fmt` clean. Real-engine COV tier left opt-in
+(ce-studio not run here). Exit gate **MET**. Session
+[`ce-v1-s6`](sessions/control-engine/ce-v1-s6-session.md). **Next up:** S7 wiresheet bridge over the frame.
+
+---
+
+**Shipped earlier (2026-07-02): control-engine v1 — slice S5 (graph WRITE verbs, branch `ce-v1`).**
+The seven v1 command verbs, each a thin caps-gated map onto ONE `ControlEngine` trait method, working
+local AND routed: `control-engine.add-node` · `.patch` · `.set-override` · `.clear-override` · `.add-edge`
+· `.remove-node` · `.call-action` (one file per verb under `src/tools/`). Node identity on the wire is
+the **keyed** form (`{uid, kind?, path?}`) — a write MUST address a concrete node (new `NodeKeyArg` +
+`require_node_key` in `args.rs`; no root fallback, unlike reads). `remove-node` returns the soft-deleted
+UIDs (CE's 24h-undo handle S8's `restore` consumes). **Caps:** each verb has its own gate
+`mcp:control-engine.<verb>:call`, added to the manifest `[[tools]]` AND `request` (so the grant carries
+them); **no new store/net/secret cap** — the writes reach CE over the already-granted `net:tcp` socket.
+**Self-check first (defense-in-depth):** each write verb calls `host.require("control-engine.<verb>")?`
+before resolve/parse/trait-call (the inbound `native.call` carries no caller identity), alongside the
+host-side `authorize_tool` on the routed boundary. `serve.rs` gained a minimal write-dispatch arm
+(`is_write_verb` → `HostCtx::grant_only_from_env` → `dispatch_write`) — reads stay as-is (S6 edits
+serve.rs in parallel). **Open question resolved:** the optional `{session?, actor?}` attribution is
+**deferred** — the pinned `ce-client-rust` (`51ab97e`) exposes no per-call header/session/actor hook, so
+the "LB principal → CE actor" mapping is a later follow-up (no client API invented). **Tests (real infra,
+fake-backed CI gate):** CE units (8: per-verb self-check→deny/counter + missing-node validation) + host
+`control_engine` (deny + happy write matrix across all 7 verbs) + host `control_engine_appliance_routing`
+(**routed `ce.patch` via the appliance record** + **offline write fails loud, nothing queued**) +
+opt-in `#[ignore]`d real-engine write flow (add-node/patch/remove-node/tree **proven against live
+ce-studio `:7979`**; add-edge + call-action best-effort due to documented `ce-client-rust`↔engine decode
+quirks, NOT S5 mapping faults). `cargo fmt` + sanity-grep **clean** (no CE strings in core src). Exit
+gate **MET**. Session [`ce-v1-s5`](sessions/control-engine/ce-v1-s5-session.md). **Next up:** S6
+(`control-engine.watch` COV live feed) / S7 (the `@nube/ce-wiresheet` federated page over `BridgeTransport`).
+
+---
+
+**Shipped earlier (2026-07-02): control-engine v1 — slice S4 (appliance registry + routed hop, branch
 `ce-v1`).** S4 makes `appliance` a real, workspace-walled concept and proves the symmetric-nodes claim
 with two real in-process nodes. **Three layers:** (1) a **generic core** change — native Tier-2 sidecars
 are now first-class in the ONE MCP routing registry (a `LocalDispatch` trait in `lb_runtime`, a host

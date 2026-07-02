@@ -26,7 +26,7 @@ use serde_json::{json, Value};
 
 use crate::boot::Node;
 use crate::callback::Bridge;
-use crate::ingest::call_ingest_tool;
+use crate::ingest::{call_ingest_tool, publish_sample};
 use crate::undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 use crate::{
     enqueue_outbox, list_inbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
@@ -379,7 +379,17 @@ async fn dispatch_at_depth(
         {
             call_undo_tool(node, principal, ws, qualified_tool, &input).await?
         } else {
-            call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?
+            let out = call_ingest_tool(&node.store, principal, ws, qualified_tool, &input).await?;
+            // Parity with the gateway's `POST /ingest` route (routes/ingest.rs): after the durable
+            // write+drain, publish each committed sample onto its series motion subject so a live
+            // subscriber (a dashboard widget, or the `GET /series/{s}/stream` SSE) advances without
+            // polling (state vs motion, rule 3). Without this, the MCP `ingest.write` path was
+            // durable-only — a sample written via MCP never surfaced on the live feed. Best-effort:
+            // a publish failure never fails the durable write. Generic + domain-free; no CE knowledge.
+            if qualified_tool == "ingest.write" {
+                publish_ingest_motion(node, principal, ws, &input).await;
+            }
+            out
         };
         return serde_json::to_string(&out).map_err(|e| ToolError::Extension(e.to_string()));
     }
@@ -664,4 +674,27 @@ fn descriptor_schema(node: &Node, qualified_tool: &str) -> Option<serde_json::Va
         }
     }
     None
+}
+
+/// Publish `ingest.write` samples onto their series motion subjects after the durable write — the
+/// live-feed half of `ingest.write` over the MCP bridge, mirroring the gateway's `POST /ingest` route.
+/// The producer is stamped to the authenticated principal (matching what `ingest_write` commits), so a
+/// live frame is consistent with the committed `series` row. Best-effort (state vs motion, rule 3): a
+/// malformed sample or a publish failure is skipped and never fails the call. Domain-free.
+async fn publish_ingest_motion(
+    node: &Node,
+    principal: &lb_auth::Principal,
+    ws: &str,
+    input: &Value,
+) {
+    let Some(samples) = input.get("samples").and_then(Value::as_array) else {
+        return;
+    };
+    for raw in samples {
+        let Ok(mut sample) = serde_json::from_value::<crate::ingest::Sample>(raw.clone()) else {
+            continue;
+        };
+        sample.producer = principal.sub().to_string();
+        let _ = publish_sample(&node.bus, ws, &sample).await;
+    }
 }

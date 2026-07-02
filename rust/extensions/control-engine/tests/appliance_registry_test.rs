@@ -141,9 +141,13 @@ async fn add_list_resolve_remove_round_trip() {
     );
 
     // remove — idempotent; after remove the list is empty and resolve is not-found
-    appliance::remove::run(&host, &json!({ "id": "plant-1" }))
-        .await
-        .expect("remove ok");
+    appliance::remove::run(
+        &host,
+        &control_engine::watch::WatchRegistry::new(),
+        &json!({ "id": "plant-1" }),
+    )
+    .await
+    .expect("remove ok");
     let after = appliance::list::run(&host)
         .await
         .expect("list after remove");
@@ -152,9 +156,13 @@ async fn add_list_resolve_remove_round_trip() {
         0,
         "empty after remove"
     );
-    appliance::remove::run(&host, &json!({ "id": "plant-1" }))
-        .await
-        .expect("second remove is idempotent");
+    appliance::remove::run(
+        &host,
+        &control_engine::watch::WatchRegistry::new(),
+        &json!({ "id": "plant-1" }),
+    )
+    .await
+    .expect("second remove is idempotent");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -218,9 +226,13 @@ async fn remove_without_its_cap_is_denied_and_nothing_is_erased() {
         .filter(|c| c != "mcp:control-engine.appliance.remove:call")
         .collect();
     let nocap = host_for(&key, &gw, ws, &caps);
-    let err = appliance::remove::run(&nocap, &json!({ "id": "keep" }))
-        .await
-        .expect_err("remove denied without its cap");
+    let err = appliance::remove::run(
+        &nocap,
+        &control_engine::watch::WatchRegistry::new(),
+        &json!({ "id": "keep" }),
+    )
+    .await
+    .expect_err("remove denied without its cap");
     assert!(matches!(err, HostError::Denied), "opaque deny: {err:?}");
 
     // Survives — a denied remove erases nothing.
@@ -261,9 +273,13 @@ async fn a_ws_a_appliance_is_invisible_to_ws_b() {
     );
 
     // ws-B remove of the ws-a id is idempotent (nothing there) and does NOT touch ws-a's record.
-    appliance::remove::run(&b, &json!({ "id": "plant-a" }))
-        .await
-        .expect("ws-b remove is a no-op in its own ns");
+    appliance::remove::run(
+        &b,
+        &control_engine::watch::WatchRegistry::new(),
+        &json!({ "id": "plant-a" }),
+    )
+    .await
+    .expect("ws-b remove is a no-op in its own ns");
     let a_list = appliance::list::run(&a).await.expect("ws-a list");
     assert_eq!(
         a_list["appliances"].as_array().unwrap().len(),
