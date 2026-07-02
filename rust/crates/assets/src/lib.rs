@@ -34,4 +34,8 @@ pub use install::{
 pub use relation::{
     list_related, list_related_inverse, list_skill_grants, relate, related, unrelate, Relation,
 };
-pub use skill::{get_skill, list_skills, put_skill, Skill};
+pub use skill::{
+    get_core_skill, get_skill, is_core, is_deprecated, list_core_skill_versions, list_skills,
+    put_skill, seed_core_skill, seed_core_skills, set_deprecated, Skill, SkillMeta, CORE_PREFIX,
+    CORE_SKILLS_NS,
+};

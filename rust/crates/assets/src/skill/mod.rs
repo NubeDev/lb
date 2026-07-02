@@ -7,15 +7,24 @@
 //! [`get_skill`] (load a specific version), [`list_skills`] (all versions of an id). The grant
 //! gate is the host's job — these are raw store verbs.
 
+mod core;
+mod corpus;
 mod get;
 mod list;
+mod meta;
 mod model;
 mod put;
+mod seed;
 
+pub use core::{
+    get_core_skill, is_core, list_core_skill_versions, seed_core_skill, CORE_PREFIX, CORE_SKILLS_NS,
+};
 pub use get::get_skill;
 pub use list::list_skills;
+pub use meta::{is_deprecated, set_deprecated, SkillMeta};
 pub use model::Skill;
 pub use put::put_skill;
+pub use seed::seed_core_skills;
 
 /// The store table all skill assets live in, within a workspace namespace.
 pub(crate) const TABLE: &str = "skill";

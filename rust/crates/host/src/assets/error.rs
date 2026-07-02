@@ -23,4 +23,9 @@ pub enum AssetError {
     /// path for larger blobs.
     #[error("asset too large")]
     TooLarge,
+    /// A write targeted the reserved `core.*` skill namespace (core-skills scope). Unlike `Denied`
+    /// this is NOT opaque — the `core.` namespace is a public, deliberate reservation, so the caller
+    /// is told plainly that core skills change only by shipping a new node build (not a caps signal).
+    #[error("reserved namespace: core skills are read-only to users")]
+    Reserved,
 }

@@ -146,6 +146,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (`git.commit_push`/`git.status`) backed by a ported `lb-gh` crate (the `gh`/`git` CLI wrapper).
   `systemd` supervises the node so the reactor ticks — it is **not** the scheduler (the cron is a
   record, symmetric edge↔cloud). The folder-of-verbs sibling of `host-tools/` for CLI-backed tools.
+- `genui/` — **agent-authored generative UI** (`genui-scope.md`): one reusable `@nube/genui` package —
+  an A2UI-shaped IR (surfaces, flat id-referenced component maps, JSON-Pointer data bindings, typed
+  action events) with `openui-lang` and `a2ui` **emission adapters** (Google A2UI v0.9 / Thesys OpenUI
+  Lang; patterns adopted, neither renderer taken as a dependency) rendered by our own shell-token-themed
+  catalog — and the `view:"genui"` **dashboard widget** as first tenant: the workspace agent designs a
+  widget from a prompt (skill-guided data discovery over `flows.*`/`store.query`/`series.*`), streams a
+  live preview over the shipped RunEvent SSE, and persists a normal v2/v3 cell whose steady-state data
+  flows through the existing `sources[]` bindings — the agent authors, it never serves. Sandboxed-view
+  tier per `channels/channels-rich-responses-scope.md` (which reserves the channel as second tenant);
+  zero new verbs/caps/tables.
 - `workspace/` — the workspace session boundary plus the node-level workspace directory and admin
   lifecycle: list/create in the switcher, archive/rename/purge in admin, with workspace data always
   selected from the signed token.

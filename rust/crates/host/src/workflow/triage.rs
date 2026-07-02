@@ -107,6 +107,7 @@ fn asset_err(e: crate::assets::AssetError) -> WorkflowError {
     match e {
         AssetError::Denied => WorkflowError::Denied,
         AssetError::TooLarge => WorkflowError::Denied,
+        AssetError::Reserved => WorkflowError::Denied,
         AssetError::NotFound => WorkflowError::NotFound,
         AssetError::Store(s) => WorkflowError::Store(s),
     }

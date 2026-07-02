@@ -64,6 +64,7 @@ fn asset_to_agent(e: AssetError) -> AgentError {
         AssetError::Denied => AgentError::Denied,
         AssetError::NotFound => AgentError::NotFound,
         AssetError::TooLarge => AgentError::Denied,
+        AssetError::Reserved => AgentError::Denied,
         AssetError::Store(s) => AgentError::Store(s),
     }
 }
