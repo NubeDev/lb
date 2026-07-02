@@ -40,6 +40,16 @@ To a rule author `source("series")` (platform) and `source("timescale")` (extern
 - **Secret mediation** — the DSN is `secret:federation/{source}` in `lb-secrets`, pulled by the host
   under the extension's own grant and handed to the pool; it is **never** in a record, a log, the page,
   a `datasource.list`, or a query result (a redaction assertion proves it).
+- **Single-owner DSN (CRUD invariant)** — every DSN secret is **owned by the stable `ext:federation`
+  principal**, never the (varying) admin who ran `datasource.add`. Write/read/delete all mediate as
+  `ext:federation`, so the secrets **owner wall** (gate 3: overwrite/delete are owner-only) is a no-op
+  between successive admins: any admin — a dev login, the boot seed, a future IdP user — may
+  add/update/remove a source without collision. `add` writes via `lb_secrets::reclaim`
+  (write-and-take-ownership; gates 1+2 still enforced), so a store poisoned by an earlier bootstrap
+  owner **self-heals** on the next add/update; `remove` forgets the secret so a re-add starts clean.
+  Coupling ownership to the caller was a real bug — every cross-admin update/remove collapsed to an
+  opaque `denied` (see `debugging/datasources/test-denied-secret-owner-wall-across-admins.md`). A
+  missing DSN now surfaces as a distinct `SecretUnavailable`, not a capability deny.
 - **SELECT-only** — a write/DDL is rejected (read-first v1) both host-side and in the sidecar
   validator; a `federation.write` is a separate, later, Ask-gated verb.
 - **Workspace wall** — `datasource:{ws}:{name}` is workspace-keyed; ws-B can neither name nor reach a
@@ -58,6 +68,7 @@ The external DB is the one sanctioned fake-boundary (testing §0), behind the si
 tests run against a **real spawned Postgres** (`postgres:16-alpine` via docker; a SQLite-file source is
 the documented fallback). Categories: capability-deny (incl. the **`net:*` deny**), workspace-
 isolation, SELECT-only enforcement, the `add → test → query` round-trip on seeded rows, secret
-redaction, and **mirror-resumes-mid-range** without double-writing. The real-Postgres e2e + the
-federation validator (7), host net/validate (7), `lb-secrets` (3), and `ext-loader` grant (12) unit
-suites all pass; `cargo build --workspace` is green.
+redaction, **CRUD-across-two-admins** without owner-wall denial (+ the stale-owner heal), and
+**mirror-resumes-mid-range** without double-writing. The real-Postgres e2e + the federation validator
+(7), host net/validate (7), the datasource-CRUD-ownership host suite (4), `lb-secrets` (14, incl. the
+`reclaim` owner-heal), and `ext-loader` grant (12) unit suites all pass.

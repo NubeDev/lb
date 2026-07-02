@@ -28,7 +28,12 @@ const WORKSPACE_ADMIN_ROLE: &str = "workspace-admin";
 
 /// Grant the manifest's `[ui]`/`[[widget]]` scope tools (∩ `granted`) to `role:workspace-admin` in
 /// `ws`. Idempotent (re-install re-upserts the same grant rows). Best-effort — logs, never fails.
-pub async fn grant_ui_scope_to_admin(store: &Store, ws: &str, manifest: &Manifest, granted: &[String]) {
+pub async fn grant_ui_scope_to_admin(
+    store: &Store,
+    ws: &str,
+    manifest: &Manifest,
+    granted: &[String],
+) {
     let admin = Subject::Role(WORKSPACE_ADMIN_ROLE.to_string());
     for tool in ui_scope_tools(manifest) {
         let cap = format!("mcp:{tool}:call");
@@ -37,7 +42,10 @@ pub async fn grant_ui_scope_to_admin(store: &Store, ws: &str, manifest: &Manifes
             continue;
         }
         if let Err(e) = grant_assign(store, ws, &admin, &cap).await {
-            eprintln!("grant_ui_scope_to_admin: {} → {cap} skipped ({e})", manifest.id);
+            eprintln!(
+                "grant_ui_scope_to_admin: {} → {cap} skipped ({e})",
+                manifest.id
+            );
         }
     }
 }

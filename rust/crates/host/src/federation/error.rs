@@ -17,6 +17,11 @@ pub enum FederationError {
     /// opaque, even with the binary present (the headline reference-extension deny).
     #[error("endpoint not permitted")]
     EndpointRefused,
+    /// The source has no readable DSN secret (never registered with one, or the federation install /
+    /// its `secret:federation/*:get` grant is absent). NOT a capability deny — a distinct, actionable
+    /// client error so "add a DSN / reinstall federation" is not confused with "you're not allowed".
+    #[error("datasource has no configured connection (add or update its DSN)")]
+    SecretUnavailable,
     /// The supplied SQL is not a single SELECT (read-first v1).
     #[error("rejected sql: {0}")]
     BadSql(String),
@@ -36,6 +41,9 @@ impl From<FederationError> for ToolError {
             FederationError::Denied => ToolError::Denied,
             FederationError::NotFound => ToolError::BadInput("no such datasource".into()),
             FederationError::EndpointRefused => ToolError::Denied,
+            FederationError::SecretUnavailable => ToolError::BadInput(
+                "datasource has no configured connection (add or update its DSN)".into(),
+            ),
             FederationError::BadSql(m) => ToolError::BadInput(format!("rejected sql: {m}")),
             FederationError::BadInput(m) => ToolError::BadInput(m),
             FederationError::Sidecar(m) => ToolError::Extension(m),

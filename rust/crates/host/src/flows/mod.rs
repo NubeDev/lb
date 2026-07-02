@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod node_config;
 pub mod node_state;
 pub mod nodes;
+pub mod orphan_sweep;
 pub mod patch_run;
 pub mod react_cron;
 pub mod reactor_loop;

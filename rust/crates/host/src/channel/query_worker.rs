@@ -112,6 +112,8 @@ fn federation_error_message(e: crate::federation::FederationError) -> String {
     match e {
         // Opaque collapse: no grant OR no such source → identical message (no existence leak).
         F::Denied | F::NotFound | F::EndpointRefused => "query not permitted".to_string(),
+        // No configured DSN is an actionable, non-secret-leaking state (not "forbidden").
+        F::SecretUnavailable => "datasource has no configured connection".to_string(),
         F::BadSql(m) => format!("rejected sql: {m}"),
         F::BadInput(m) => format!("bad request: {m}"),
         F::Sidecar(m) => format!("query failed: {m}"),

@@ -50,14 +50,16 @@ pub async fn arm_source(
     // Resolve the bound `<ext>.arm` tool from the descriptor (the node type's ext).
     let node_type = config.get("_type").and_then(|v| v.as_str()).unwrap_or("");
     let arm_tool = resolve_arm_tool(&node.store, ws, node_type).await;
-    // Record the armed series as the node's last-value state (stateless flow; the socket is motion
-    // owned by the extension). A re-arm overwrites (idempotent).
+    // Record the armed series + the node's `_type` as its last-value state (stateless flow; the socket
+    // is motion owned by the extension). The `_type` is persisted here so `disarm_source` can resolve
+    // the ext's `disarm` tool **even after the flow is deleted** — the orphan sweep has no flow to read
+    // it from. A re-arm overwrites (idempotent).
     lb_store::write(
         &node.store,
         ws,
         FLOW_NODE_STATE_TABLE,
         &format!("{flow_id}:{node_id}"),
-        &json!({ "armed": true, "series": series }),
+        &json!({ "armed": true, "series": series, "_type": node_type }),
     )
     .await
     .map_err(|e| ToolError::Extension(e.to_string()))?;

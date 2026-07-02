@@ -53,6 +53,17 @@ request = [
   "mcp:control-engine.add-edge:call",
   "mcp:control-engine.remove-node:call",
   "mcp:control-engine.call-action:call",
+  # S7: the read + registry + watch verbs the federated wiresheet page drives via the bridge. The
+  # page's effective `[ui] scope` is `scope ∩ granted`, so these caps MUST be in the grant or the
+  # bridge rejects the call `out_of_scope` before it reaches the host (e.g. appliance.list on load).
+  "mcp:control-engine.tree:call",
+  "mcp:control-engine.schema:call",
+  "mcp:control-engine.appliance.add:call",
+  "mcp:control-engine.appliance.list:call",
+  "mcp:control-engine.appliance.remove:call",
+  "mcp:control-engine.watch:call",
+  # The series SSE the watch stream half opens (bridge.watch('series.watch')).
+  "mcp:series.watch:call",
 ]
 
 # The verbs the child serves over the control line. The tool NAME is the cap gate
