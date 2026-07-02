@@ -1,6 +1,14 @@
 # HANDOVER — reusable ce-wiresheet-style panel (shadcn), first used on the dashboard Edit widget
 
-Status: **handover / scope**. Copy-paste this whole file to the implementing agent.
+Status: **SHIPPED** — built as `packages/panel` (`@nube/panel`) and the dashboard Edit panel
+(`ui/src/features/dashboard/editor/PanelEditor.tsx`) is rebuilt on it (wide + resizable, no longer
+a cramped fixed Sheet). `@nube/nav-rail` kept as an internal dependency (its `NavMenu` is the
+section rail, re-exported). Package CSS is preflight-free; `ui` unit 322/322 green, gateway adds
+zero new failures (the two editor suites stay green). See
+`docs/sessions/frontend/reusable-panel-session.md` for the full record. The original handover is
+kept below for reference.
+
+---
 
 ---
 

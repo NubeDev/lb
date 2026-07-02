@@ -48,8 +48,10 @@ function Harness({ initialWidth }: { initialWidth?: number }) {
   );
 }
 
+// Radix's dialog Content takes its accessible name from the SheetTitle it wires as
+// `aria-labelledby` (which wins over `aria-label`), so we query by the title text.
 function panel() {
-  return screen.getByRole("dialog", { name: "test panel" });
+  return screen.getByRole("dialog", { name: "Edit panel" });
 }
 
 describe("Panel", () => {
@@ -77,7 +79,7 @@ describe("Panel", () => {
   it("closes via the footer action (controlled onOpenChange)", () => {
     render(<Harness />);
     fireEvent.click(within(panel()).getByText("Save"));
-    expect(screen.queryByRole("dialog", { name: "test panel" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Edit panel" })).toBeNull();
   });
 
   it("resizes wider with ArrowLeft and narrower with ArrowRight on the handle", () => {
@@ -95,7 +97,7 @@ describe("Panel", () => {
         <div />
       </Panel>,
     );
-    const p = () => screen.getByRole("dialog", { name: "clamp panel" });
+    const p = () => screen.getByRole("dialog", { name: "t" });
     const handle = within(p()).getByRole("separator", { name: "resize panel" });
     // Step is 24; three ArrowLeft (=+72) would reach 472 but max is 420.
     fireEvent.keyDown(handle, { key: "ArrowLeft" });
@@ -107,7 +109,9 @@ describe("Panel", () => {
   it("widens on a left-drag of the handle (pointer)", () => {
     render(<Harness initialWidth={640} />);
     const handle = within(panel()).getByRole("separator", { name: "resize panel" });
-    // jsdom has no PointerEvent geometry / capture — stub what useResizable calls.
+    // jsdom has no PointerEvent (so `fireEvent.pointerDown({clientX})` would drop the
+    // geometry) and no pointer-capture methods — stub capture and dispatch real
+    // pointer-typed MouseEvents that DO carry clientX, so the hook's math runs for real.
     const target = handle as HTMLElement & {
       setPointerCapture: () => void;
       releasePointerCapture: () => void;
@@ -116,9 +120,11 @@ describe("Panel", () => {
     target.setPointerCapture = vi.fn();
     target.releasePointerCapture = vi.fn();
     target.hasPointerCapture = () => true;
-    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 800 });
-    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 700 }); // moved left 100 → +100 width
-    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 700 });
+    const ptr = (type: string, clientX: number) =>
+      new MouseEvent(type, { bubbles: true, clientX }) as unknown as PointerEvent;
+    fireEvent(handle, Object.assign(ptr("pointerdown", 800), { pointerId: 1 }));
+    fireEvent(handle, Object.assign(ptr("pointermove", 700), { pointerId: 1 })); // left 100 → +100 width
+    fireEvent(handle, Object.assign(ptr("pointerup", 700), { pointerId: 1 }));
     expect((panel() as HTMLElement).style.width).toBe("740px");
   });
 });

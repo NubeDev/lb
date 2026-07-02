@@ -37,6 +37,29 @@ admin-settable per-workspace default record):
   run) + the names-only endpoint fields. Editable for an admin; **read-only** for a member without
   `agent.config.set`; a stored-but-now-unavailable runtime is flagged as registry drift rather than
   erroring.
-- **Follow-up (named):** honoring the stored default in `agent.invoke` when `runtime` is omitted (a
-  one-line read on the invoke path, its own slice); full `AgentProfile` authoring
-  (`granted_tools`/`persona_skill`) deferred to when the feature ships in anger.
+### Honoring the stored default on a run (shipped)
+
+Session: [`invoke-default-runtime`](../../sessions/external-agent/invoke-default-runtime-session.md)
+
+A run that **omits `runtime`** now dispatches the workspace's stored default (not just the compiled-in
+one). One resolution seam (`rust/crates/host/src/agent/resolve_default.rs`,
+`resolve_effective_runtime`) with a single precedence — **explicit arg → workspace
+`agent.config.default_runtime` → registry default** — wired into `invoke_via_runtime`, the one place
+runtime selection happens, so BOTH entrypoints (`agent.invoke` via `serve`, the channel `/agent`
+worker) resolve identically with no second copy.
+
+- **Explicit wins:** a named `runtime` is used verbatim (an unknown named id still errors — no silent
+  downgrade).
+- **Registry drift is fail-open:** a stored default the node no longer offers (feature off / config
+  changed) falls back to the registry default with a `warn!`, never erroring a run. A store read
+  failure is likewise treated as "unset".
+- **No widening:** resolution runs AFTER the `mcp:agent.invoke:call` gate and is pure selection — every
+  tool the run calls is still re-checked under `agent ∩ caller`. Reading the config to resolve dispatch
+  needs no `agent.config.get` grant (the host resolves its own dispatch).
+
+- **Follow-up (named):** the per-workspace **`model_endpoint`** override at invoke time is deferred —
+  runtimes are built at boot with a fixed endpoint, so honoring the stored endpoint means threading it
+  through the stable `AgentRuntime::run`/`RunContext` seam + the external-agent wrapper (its own slice,
+  not a one-liner). Also: wiring `serve_agent`/a callable `agent.invoke` from the node binary (the
+  existing serve-wiring TODO) so the live channel run is drivable over the gateway; full `AgentProfile`
+  authoring (`granted_tools`/`persona_skill`) when the feature ships in anger.

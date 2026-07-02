@@ -26,9 +26,12 @@ that omits an explicit `runtime` honor it.
   ids is the workspace default and its endpoint — it never makes an unavailable runtime appear.
 - **No secret values.** `api_key_env` is an env-var **name**; the actual key stays in the node env /
   `lb-secrets`, never in this record (mirrors `profiles.rs`' `ModelEndpoint`).
-- **Not wiring the invoke default yet.** Honoring the stored default when `agent.invoke` omits
-  `runtime` is a thin, separate follow-up (named below) — this slice ships the record + verbs + UI so
-  the selection is real and visible; the invoke-path read is a one-line change once the record exists.
+- **Not wiring the invoke default yet.** ~~Honoring the stored default when `agent.invoke` omits
+  `runtime` is a thin, separate follow-up (named below).~~ **SHIPPED** in the
+  [`invoke-default-runtime`](../../sessions/external-agent/invoke-default-runtime-session.md) slice: a
+  single seam (`agent/resolve_default.rs::resolve_effective_runtime`) resolves **explicit → workspace
+  default → registry default**, wired into `invoke_via_runtime` (so both entrypoints agree), fail-open
+  on registry drift. The record + verbs + UI this scope ships remain the foundation it reads.
 - **Not per-user.** The agent default is a **workspace** setting (like `workspace_prefs`), not a
   per-member one.
 
@@ -81,8 +84,10 @@ schemas honest (one responsibility per record).
    registry, then `UPSERT`s `workspace_agent_config:[ws]`.
 3. A member reopens the tab; `agent.config.get` returns the stored selection (read-only for them, since
    they lack `agent.config.set`).
-4. **(follow-up)** An `agent.invoke` that omits `runtime` reads this record and dispatches
-   `vtcode-default` instead of the registry's compiled-in default.
+4. **(shipped — `invoke-default-runtime` slice)** An `agent.invoke` (or channel `/agent`) that omits
+   `runtime` reads this record via `resolve_effective_runtime` and dispatches `vtcode-default` instead
+   of the registry's compiled-in default (falling back to the registry default if the stored id is no
+   longer offered).
 
 ## Testing plan
 
@@ -104,13 +109,24 @@ real-gateway `SettingsView` test — admin can pick + persist + re-read; a membe
 - **Registry drift.** A stored `default_runtime` can name an id the node no longer offers (feature off,
   config changed). The write validates against the *current* registry; the read returns the stored id
   verbatim and the UI flags "not currently available" rather than erroring — so a config outlives a
-  transient registry change without breaking the page. (The invoke-path follow-up must fall back to the
-  registry default if the stored id is absent.)
+  transient registry change without breaking the page. (The invoke-path resolution does exactly this —
+  `resolve_effective_runtime` falls back to the registry default with a `warn!` if the stored id is
+  absent, fail-open; proven by `agent_default_runtime_test::a_stored_but_unavailable_default_falls_back…`.)
 - **Endpoint is names-only.** It is easy to accidentally accept a raw key; the schema stores only
   `api_key_env`. A test asserts no secret value round-trips.
 
 ## Open questions
 
+- **Should the stored `model_endpoint` override the runtime's endpoint at invoke time?** **Deferred
+  (named), decided in the `invoke-default-runtime` slice.** Runtimes are constructed **at boot** with a
+  fixed endpoint (`node/src/external_agent.rs` from `default_model_endpoint()`); the registry holds
+  built runtime objects that `invoke_via_runtime` selects **by id**, and `RunContext` carries no
+  endpoint. Honoring a per-workspace endpoint therefore means threading it through the stable
+  `AgentRuntime::run` seam + `RunContext` + the external-agent wrapper command builder — more than a
+  small change, touching a stable boundary. So this slice ships runtime-**id** resolution; the endpoint
+  override is its own slice. Today the stored endpoint is display/record data; the boot endpoint runs.
+  (Rejected: rebuilding a runtime per invoke from the stored endpoint — doubles the construction path
+  and puts endpoint selection in the hot invoke path.)
 - Should `agent.config.set` also accept `granted_tools`/`persona_skill` (the full `AgentProfile`
   surface from the umbrella)? **Deferred:** this slice ships runtime + endpoint (what a workspace picks
   today); the profile-authoring surface is its own scope when the external-agent feature ships in anger.

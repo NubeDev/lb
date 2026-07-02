@@ -14,14 +14,16 @@ import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import type { Cell, View } from "@/lib/dashboard";
 import { canonicalView } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 
 import { cellToEditorState, editorStateToCell, type EditorState } from "./cellEditorState";
-import { NavMenu, type NavItem } from "@nube/nav-rail";
+// The reusable, resizable ce-wiresheet-style panel (replaces the old cramped fixed-width
+// Sheet). Its NavMenu is the options rail. Widening the panel reveals more of the option
+// bodies — the "so many options on resize" behavior the CE panel has.
+import { Panel, NavMenu, type NavItem } from "@nube/panel";
 
 import { defaultOptionsForView } from "./viewOptions";
 import { VizPicker } from "./VizPicker";
@@ -112,7 +114,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   };
 
   const canPlot = PLOTTABLE_VIEWS.has(viewC);
-  // The options rail is the reusable @nube/nav-rail NavMenu (retired the in-house EditorTabs strip):
+  // The options rail is the reusable NavMenu (re-exported by @nube/panel from @nube/nav-rail;
   // one data-driven vertical nav, section ids = tab ids. Badges (transform/override counts) come
   // through NavMenu's `badge` fn below.
   const tabItems: NavItem[] = [
@@ -130,43 +132,59 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl" aria-label="panel editor">
-        <SheetHeader className="border-b border-border px-4 py-3">
-          <SheetTitle>Edit panel</SheetTitle>
-          <SheetDescription>One editor for add and edit — the full Grafana option surface.</SheetDescription>
-        </SheetHeader>
-
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-4 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
-          {/* Left: live preview + the viz picker (what the panel will look like). */}
-          <div className="flex min-h-0 flex-col gap-3">
-            <Input
-              aria-label="panel title"
-              className="h-8 text-sm"
-              placeholder="Panel title"
-              value={state.title}
-              onChange={(e) => patch({ title: e.target.value })}
-            />
-            <div className="h-56 shrink-0">
-              <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} />
-            </div>
-            <VizPicker view={viewC} onChange={switchView} shape={shape} flowKind={flowKind} />
+    <Panel
+      open={open}
+      onOpenChange={onOpenChange}
+      aria-label="panel editor"
+      title="Edit panel"
+      description="One editor for add and edit — the full Grafana option surface."
+      // Wide + resizable (was a fixed `sm:max-w-3xl` Sheet): drag the left edge to widen
+      // and the two-pane preview/options layout gets more room, revealing more option
+      // columns — the ce-wiresheet "so many options on resize" behavior.
+      initialWidth={960}
+      minWidth={560}
+      maxWidth={1400}
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button aria-label="save panel" size="sm" onClick={save}>
+            <Check size={12} /> Save
+          </Button>
+        </>
+      }
+    >
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-4 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
+        {/* Left: live preview + the viz picker (what the panel will look like). */}
+        <div className="flex min-h-0 flex-col gap-3">
+          <Input
+            aria-label="panel title"
+            className="h-8 text-sm"
+            placeholder="Panel title"
+            value={state.title}
+            onChange={(e) => patch({ title: e.target.value })}
+          />
+          <div className="h-56 shrink-0">
+            <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} />
           </div>
+          <VizPicker view={viewC} onChange={switchView} shape={shape} flowKind={flowKind} />
+        </div>
 
-          {/* Right: the options rail — search on top, then the reusable NavMenu (Query/Transform/…)
-              beside the active tab body. */}
-          <div className="flex min-h-0 flex-col gap-2">
-            <OptionsSearch value={search} onChange={setSearch} />
-            <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
-              <NavMenu
-                aria-label="panel editor sections"
-                className="border-r border-border pr-2"
-                items={tabItems}
-                active={tab}
-                badge={tabBadge}
-                onSelect={(id) => setTab(id as TabId)}
-              />
-              <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* Right: the options rail — search on top, then the reusable NavMenu (Query/Transform/…)
+            beside the active tab body. */}
+        <div className="flex min-h-0 flex-col gap-2">
+          <OptionsSearch value={search} onChange={setSearch} />
+          <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
+            <NavMenu
+              aria-label="panel editor sections"
+              className="border-r border-border pr-2"
+              items={tabItems}
+              active={tab}
+              badge={tabBadge}
+              onSelect={(id) => setTab(id as TabId)}
+            />
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} onRun={run} />}
               {tab === "plot" && canPlot && (
                 <PlotAxesTab draft={draft} state={state} patch={patch} scope={scope} refreshKey={refreshKey} />
@@ -175,20 +193,10 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} />}
               {tab === "field" && <FieldTab state={stateC} patch={patch} />}
               {tab === "overrides" && <OverridesTab state={state} patch={patch} />}
-              </div>
             </div>
           </div>
         </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
-          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button aria-label="save panel" size="sm" onClick={save}>
-            <Check size={12} /> Save
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </Panel>
   );
 }

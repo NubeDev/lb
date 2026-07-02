@@ -16,7 +16,35 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-02): the Settings surface — user preferences editor + per-workspace agent config.**
+**Just shipped (2026-07-02): the workspace default runtime is honored on a run (agent-config follow-up).**
+`agent.config.set` persisted a workspace default, but `agent.invoke` / the channel `/agent` path ignored
+it — an omitted `runtime` fell back to the compiled-in `default`. Closed with **one resolution seam**
+(`rust/crates/host/src/agent/resolve_default.rs::resolve_effective_runtime`, precedence **explicit arg →
+workspace `agent.config.default_runtime` → registry default**) wired into `invoke_via_runtime` — the ONE
+place runtime selection happens, so BOTH entrypoints (`agent.invoke` via `serve`, the channel worker)
+resolve identically with no second copy. **Registry drift is fail-open** (a stored id the node no longer
+offers → registry default + `warn!`, never an errored run; a store-read failure → treated as unset).
+**No widening:** resolution runs AFTER the `mcp:agent.invoke:call` gate and is pure selection (every tool
+still re-checked under `agent ∩ caller`; reading the config to dispatch needs no `agent.config.get`
+grant). The **`model_endpoint` override** at invoke time is a decided, **named-deferred** follow-up
+(runtimes are built at boot with a fixed endpoint; honoring the stored endpoint threads the stable
+`AgentRuntime`/`RunContext` seam — its own slice). Tests (rule 9, real infra, seeded via the real write
+path): host `agent_default_runtime_test` **5** (explicit-wins, absent→stored-default via a registered
+stub runtime, stored-but-unavailable→registry-default fallback, workspace-isolation, gate-still-denies);
+UI `AgentDefaultRuntime.gateway` **1** (admin sets default in Settings → an omitted-runtime `kind:"agent"`
+run resolves it and settles to a durable answer). Live: feature-on node boot lists
+`open-interpreter-default`, `agent.runtimes`/`agent.config.set/get` round-trip over `lb`, and the real
+`interpreter` subprocess answered `"PONG"` through the seam (role-crate smoke, provided Z.AI key). Scope
+[`agent-config`](scope/external-agent/agent-config-scope.md) (open Q resolved); session
+[`invoke-default-runtime`](sessions/external-agent/invoke-default-runtime-session.md); public
+[`external-agent`](public/external-agent/external-agent.md) ("Honoring the stored default on a run");
+skill [`external-agent`](skills/external-agent/SKILL.md) (§4/§5 now shipped). One pre-existing UI flake
+noted (`CommandPalette.agent.gateway` runtime-dropdown step; exonerated — fails identically with the seam
+bypassed). **Next up:** the `model_endpoint` invoke-time override; wire `serve_agent`/a callable
+`agent.invoke` from the node binary (the serve-wiring TODO) so the live channel run is drivable over the
+gateway; full `AgentProfile` authoring when the external-agent feature ships in anger.
+
+**Shipped (2026-07-02): the Settings surface — user preferences editor + per-workspace agent config.**
 A dedicated **Settings** nav surface (always visible — prefs are member-level) with two tabs. **Preferences**
 is the `lb-prefs` client half the prefs scope long deferred: an editor over **all eight axes** (language,
 timezone, date/time style, first-day-of-week, number format, unit system, and the closed dimension→unit

@@ -120,8 +120,10 @@ asserts no secret round-trips). Set the value in the node env (step 1), name it 
 - A non-admin `agent.config.set` → `DENIED  mcp:agent.config.set:call` (opaque, non-zero exit).
 - A patch naming an unavailable runtime (feature off, or a typo) → `400 BadInput` listing the offered
   ids. Confirm with `agent.runtimes` first.
-- Setting the record does **not** yet change what `agent.invoke` picks when it omits `runtime` — see
-  the follow-up note in §5. Today you still pass `runtime` explicitly (or use the picker).
+- Setting the record **now changes** what a run picks when it omits `runtime`: an `agent.invoke` /
+  channel `/agent` with no `runtime` resolves the stored default (§4). A stored id the node no longer
+  offers falls back to the registry default (never errors). You can still pass `runtime` explicitly to
+  override the workspace default for one run.
 
 ### From the UI
 
@@ -143,9 +145,13 @@ lb call agent.invoke '{
 }' -o json
 ```
 
-- **Absent `runtime`** → the in-house `"default"` loop.
-- **A known id** → that runtime (`open-interpreter-default` spawns the real `interpreter` subprocess).
-- **An unknown id** → error (never a silent downgrade to a different engine).
+- **Absent `runtime`** → resolves the **workspace's stored default** (`agent.config.default_runtime`),
+  else the in-house `"default"` loop. Precedence: **explicit arg → workspace default → registry
+  default** (one seam, `agent/resolve_default.rs`). A stored id the node no longer offers falls back to
+  the registry default (a `warn!`, never an error).
+- **A known id** → that runtime (`open-interpreter-default` spawns the real `interpreter` subprocess),
+  overriding the workspace default for this run.
+- **An unknown *named* id** → error (never a silent downgrade to a different engine).
 
 ### In a channel (the `/agent` palette command)
 
@@ -185,10 +191,20 @@ lb call agent.invoke '{ "runtime": "vtcode-default", "goal": "…" }' -o json
 # or persist it: lb call agent.config.set '{"patch":{"default_runtime":"vtcode-default"}}'
 ```
 
-**Named follow-up (not yet wired):** having `agent.invoke` read `agent.config.get` and use the stored
-`default_runtime` when `runtime` is omitted. Until that lands, the persisted default is
-displayed/authoritative for the UI but the invoke call must still name the runtime (or the picker
-does). Falling back to the registry default if the stored id is unavailable is part of the same slice.
+**Shipped:** an omitted `runtime` reads the workspace's stored `default_runtime` and dispatches it —
+the persisted default is now authoritative on a *run*, not just in the UI. One seam
+(`agent/resolve_default.rs::resolve_effective_runtime`, precedence **explicit → workspace default →
+registry default**) wired into `invoke_via_runtime`, so `agent.invoke` and the channel `/agent` path
+resolve identically; a stored-but-unavailable id falls back to the registry default (never errors).
+Persist it and drop the explicit runtime:
+
+```bash
+lb call agent.config.set '{"patch":{"default_runtime":"vtcode-default"}}'
+lb call agent.invoke '{ "goal": "…" }'   # no runtime → resolves vtcode-default
+```
+
+**Named follow-up (still deferred):** the per-workspace **`model_endpoint`** override at invoke time
+(runtimes are built at boot with a fixed endpoint; honoring the stored endpoint is its own slice).
 
 ---
 
@@ -202,8 +218,10 @@ lb call agent.runtimes '{}' -o json | grep open-interpreter-default
 lb call agent.config.set '{"patch":{"default_runtime":"open-interpreter-default"}}'
 lb call agent.config.get '{}' -o json
 
-# 3. Real run (needs ZAI_API_KEY + interpreter on PATH)
-lb call agent.invoke '{"runtime":"open-interpreter-default","goal":"print the current date"}' -o json
+# 3. Real run — omit `runtime` to use the workspace default set in step 2 (needs ZAI_API_KEY +
+#    interpreter on PATH); pass an explicit `runtime` to override for one run.
+lb call agent.invoke '{"goal":"print the current date"}' -o json                              # → the stored default
+lb call agent.invoke '{"runtime":"vtcode-default","goal":"print the current date"}' -o json   # → override
 ```
 
 The role crate also carries a real-subprocess smoke test — `#[ignore]` by default (it needs a real

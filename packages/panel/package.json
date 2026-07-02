@@ -4,7 +4,9 @@
   "description": "A reusable, resizable, dense-and-sectioned side panel for React — the ce-wiresheet InspectPanel look rebuilt on shadcn/ui primitives, self-themed via scoped hsl(var()) tokens, host-overridable. Data-driven via props: pass a header, Sections, dense rows/tables; drag the edge to widen and reveal more option columns.",
   "license": "UNLICENSED",
   "type": "module",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/panel.cjs",
   "module": "./dist/panel.js",
   "types": "./dist/index.d.ts",
@@ -28,6 +30,7 @@
   },
   "dependencies": {
     "@nube/nav-rail": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.18",
     "@radix-ui/react-slot": "^1.3.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

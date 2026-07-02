@@ -9,6 +9,7 @@ import ReactDOM from "react-dom/client";
 import { App } from "./App";
 import "./styles/globals.css";
 import "@nube/nav-rail/style.css"; // the reusable nav rail's self-contained tokens + utilities
+import "@nube/panel/style.css"; // the reusable resizable panel's self-contained tokens + utilities
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
