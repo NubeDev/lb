@@ -64,6 +64,10 @@ export interface SceneStore {
   setTool: (tool: Tool) => void;
   armType: (type: string | null) => void;
   loadDemo: (demo: DemoName) => void;
+  /** Load an externally-sourced doc (a scene fetched over the bridge) as the current document,
+   *  clearing history. Additive to the playground store — the lift needs a way to inject a
+   *  persisted scene the playground never had (thecrew-extension-scope.md §UI lift). */
+  loadDoc: (doc: SceneDoc) => void;
 
   undo: () => void;
   redo: () => void;
@@ -193,6 +197,10 @@ export const useSceneStore = create<SceneStore>((set, get) => {
     armType: (type) => set({ armedType: type, tool: "select" }),
     loadDemo: (demo) =>
       set({ doc: DEMOS[demo](), demo, selection: [], past: [], future: [] }),
+    loadDoc: (doc) =>
+      // Normalize on the way in (the same total path demos take) so a hand-authored or
+      // agent-written scene can never crash the render.
+      set({ doc: validateScene(doc).doc, selection: [], past: [], future: [] }),
 
     undo() {
       const { past, doc, future } = get();

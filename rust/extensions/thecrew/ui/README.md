@@ -1,34 +1,32 @@
 # @nube/thecrew
 
-The **graphics-canvas UI/UX test bed**: a standalone three.js (`@react-three/fiber`)
-playground for building AHU plant graphics and floor plans from a symbol palette —
-100% focused on how it **looks** and how the **builder feels**. What it proves lifts
-into the `graphics-canvas` extension (see `docs/scope/frontend/graphics-canvas-scope.md`
-at the repo root); what it disproves dies cheaply here.
+The **graphics-canvas UI**: a three.js (`@react-three/fiber`) app for building AHU
+plant graphics and floor plans from a symbol palette — proven as a standalone
+playground, now being lifted into the thecrew extension (see
+`../docs/thecrew-extension-scope.md`; parent feature scope:
+`docs/scope/frontend/graphics-canvas-scope.md` at the repo root).
+
+Since the move to `rust/extensions/thecrew/`, this app is **no longer a pnpm
+workspace member** (extensions are self-contained, like `proof-panel/ui/` — own
+install, own lockfile, built by the extension's `build.sh`).
 
 ## Start / dev
 
-```sh
-pnpm install                          # from the repo root (workspace member)
-pnpm --filter @nube/thecrew dev       # vite dev server, http://localhost:5173
-```
-
-Or from inside `packages/thecrew/`:
+From inside `rust/extensions/thecrew/ui/`:
 
 ```sh
 pnpm install
-pnpm dev
+pnpm dev          # vite dev server, http://localhost:5173
 ```
 
-Other scripts (run the same way, from the repo root with `--filter @nube/thecrew`
-or locally with just the bare script name):
+Other scripts:
 
 - `pnpm build` — production build (`vite build`)
 - `pnpm typecheck` — `tsc --noEmit`
 - `pnpm test` / `pnpm test:watch` — vitest
 
-This is a standalone playground, not a library — there's nothing to publish or link;
-just run `dev` and edit `src/`.
+The playground vite `dev`/`build` still works standalone; the extension lift adds a
+federation lib build (`dist/remoteEntry.js`) per the extension scope.
 
 Start with **[`docs/README.md`](docs/README.md)** — the four scopes (master · look ·
 builder UX · symbols) define what "done" means, including the screenshot test and the

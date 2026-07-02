@@ -3,6 +3,25 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — frontend: graphics-canvas phases 1–2 — the `thecrew` extension)
+
+The proven playground lifted into a real, publishable **100% UI extension** (`rust/extensions/thecrew/`)
+with **zero core additions** — a pure consumer of shipped `assets.*` + `series.*` verbs. Ships a zero-tool
+wasm32-wasip2 component (the loader + registry publish path need component bytes; there is no UI-only tier),
+a federated `remoteEntry.js` exporting `mountPage` (the full graphics page: palette + canvas + rail + scene
+picker/save) and `mountWidget` (a read-only dashboard scene cell, narrower grant — never saves), one build,
+React externalised + three.js bundled. Scenes are workspace docs (`assets.get_doc`/`put_doc`/`list_docs`,
+`content_type: json`, `scene:` id-prefix + `scene` tag); live values ride one ValueSource multiplexer
+(`series.latest` backfill + `series.watch`/poll) under the **viewer's** grant — denied series render a
+shape's no-access state, a denied save surfaces the deny. The one declared playground fake (`simulator.ts`)
+is **deleted** (rule 9). Saves are last-writer-wins (a client read-before-write conflict prompt is the
+interim; a generic `document-store/` revision check is the named ask). Findings recorded, none built:
+`list_docs` returns no tags (→ prefix discovery), the member cap set lacks `mcp:assets.put_doc:call` (a real
+save needs the install grant), `series.watch` SSE isn't in the gateway-vitest harness (backfill proven live,
+watch via stub/Playwright). Real-gateway tests: round-trip, backfill, capability-deny ×2, workspace-isolation,
+widget no-access. Parent-scope phases 3–5 (AI drawing + skill, symbol packs, 3D) not built. See
+[`frontend/graphics-canvas.md`](frontend/graphics-canvas.md).
+
 ## Shipped (post-S10 — frontend: Widget Kit Phase 1 — field presentation + a reusable widget library)
 
 A declarative per-field **presentation** vocabulary (`label`/`description`/`hide`/`order`) authored on the

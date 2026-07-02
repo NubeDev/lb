@@ -20,10 +20,16 @@ path = "src/main.rs"
 # Reuses the supervisor wire protocol + framing verbatim — the child and host agree on the ABI by
 # sharing the crate, exactly as the wasm tier shares the WIT world (no drift).
 lb-supervisor = { workspace = true }
+# The generic native-sidecar → host MCP callback transport (native-callback-transport scope): the
+# child CALLS a host tool (`series.find` here) over an authenticated `POST /mcp/call`, proving the
+# callback path end to end. Nothing fleet-specific is in that crate — `ros`/`mqtt` reuse the same one.
+lb-sidecar-client = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# Own tokio (not `workspace = true`): the child reads/writes its OWN stdio, so it needs `io-std`.
-tokio = { version = "1", features = ["rt", "macros", "io-util", "io-std"] }
+# Own tokio (not `workspace = true`): the child reads/writes its OWN stdio, so it needs `io-std`; the
+# callback client (reqwest) needs the net + time reactor, so enable `rt-multi-thread`.
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std", "net", "time"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt", "macros"] }

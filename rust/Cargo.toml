@@ -33,6 +33,7 @@ members = [
     "crates/run-events",
     "crates/runtime",
     "crates/secrets",
+    "crates/sidecar-client",
     "crates/store",
     "crates/supervisor",
     "crates/sync",
@@ -58,7 +59,7 @@ members = [
     "role/cli",
     "tools/pack",
 ]
-exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel"]
+exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel", "extensions/thecrew"]
 
 [workspace.package]
 version = "0.1.0"
@@ -91,6 +92,7 @@ lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
+lb-sidecar-client = { path = "crates/sidecar-client" }
 lb-store = { path = "crates/store" }
 lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }

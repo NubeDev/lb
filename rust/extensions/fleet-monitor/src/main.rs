@@ -41,7 +41,7 @@ async fn main() {
                 let _ = write_frame(&mut output, &bytes).await;
                 break;
             }
-            Method::Call => call::handle(&req, &ws),
+            Method::Call => call::handle(&req, &ws).await,
         };
 
         let bytes = serde_json::to_vec(&reply).unwrap();

@@ -6,10 +6,11 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ValueRef } from "../scene/scene.types";
 import type { ValueSource } from "./value-source";
-import { createSimulator } from "./simulator";
+import { createEmptySource } from "./empty-source";
 
-/** Default = the one declared fake. The framework's bridge swaps the provider value. */
-export const ValueSourceContext = createContext<ValueSource>(createSimulator());
+/** Default = the inert null source (the simulator is deleted in the lift — CLAUDE §9). The mount
+ *  shell provides the real bridge-backed source; tests provide a seeded/stub one. */
+export const ValueSourceContext = createContext<ValueSource>(createEmptySource());
 
 export function useValueSource(): ValueSource {
   return useContext(ValueSourceContext);

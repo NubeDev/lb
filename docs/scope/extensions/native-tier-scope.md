@@ -1,6 +1,8 @@
 # Native tier scope — the supervised Tier-2 sidecar
 
-Status: scope (the ask). Promotes to `public/extensions/` once shipped. The second S7 vertical
+Status: scope (the ask). Promotes to `public/extensions/` once shipped. **Follow-up shipped:** the
+deferred child→host callback transport (and the throwaway-token fix it required) is now built — see
+[`native-callback-transport-scope.md`](native-callback-transport-scope.md). The second S7 vertical
 slice and the **remaining half of the S7 exit gate**: "a native sidecar is supervised and restarts
 cleanly" (`STAGES.md` S7). It is the peer of the Tier-1 wasm runtime — same control plane, same
 identity/capability model, same workspace wall — for the class of extension that needs a real OS
@@ -262,9 +264,15 @@ paths. Real embedded SurrealDB + in-proc Zenoh everywhere else. Each test that b
   observability) is the natural next step — a sidecar that crashes between calls is only noticed on
   the next call today, and a hung-but-alive child is not noticed at all. Scoped in
   [`supervision-reactor-scope.md`](supervision-reactor-scope.md).
-- **The child→host callback transport.** This slice's sidecar uses only the control line; a sidecar
-  that calls host MCP tools needs the routed-MCP callback wired (the deferred gateway/Tauri work).
-  *Default: proxy through the control line (one transport), revisit if a firehose needs its own.*
+- ~~**The child→host callback transport.**~~ **RESOLVED:** shipped as its own slice — a supervised
+  child now calls host MCP tools over HTTP (`POST /mcp/call`) with its injected, **node-signed**
+  `LB_EXT_TOKEN` via the generic `lb-sidecar-client` crate (the out-of-process dual of the wasm
+  guest's in-process `host.call-tool` bridge). This also fixed the throwaway `SigningKey::generate()`
+  co-trust hack noted in *Identity* below: the node's one signing key now lives on `Node`, so the
+  child token is genuinely verifiable. Scoped in
+  [`native-callback-transport-scope.md`](native-callback-transport-scope.md).
+  *(Rejected the earlier default of proxying through the stdio control line — it forks the call
+  path from the page/guest transports; the gateway already speaks HTTP MCP.)*
 - **Native artifact platform-target enforcement.** The `[native] target` field exists (carried into
   the catalog); refusing a binary built for the wrong target on install is the follow-up.
 

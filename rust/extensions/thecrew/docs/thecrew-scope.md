@@ -1,7 +1,13 @@
 # thecrew scope — the graphics-canvas UI/UX test bed
 
-Status: scope (the ask). This package is a **playground**, deliberately outside the
-node/gateway stack; what it proves migrates into the `graphics-canvas` extension
+Status: **done as a playground** (phases 1–3 built, see
+`docs/sessions/frontend/thecrew-session.md`). The package has moved to
+`rust/extensions/thecrew/` (app code under `ui/`) and the next ask is the lift into
+a real LB extension — see **`thecrew-extension-scope.md`** (this folder). This doc
+is kept as the playground's contract and the visual/builder bar.
+
+This package began as a **playground**, deliberately outside the node/gateway stack;
+what it proves migrates into the extension
 (`docs/scope/frontend/graphics-canvas-scope.md`), and what it disproves dies cheaply here.
 
 We committed to one engine (three.js via `@react-three/fiber`) and a 100%-extension
@@ -60,7 +66,7 @@ persistence infrastructure, or federation.
 ## File layout
 
 ```
-packages/thecrew/
+rust/extensions/thecrew/          # (playground-era layout; src/ now lives at ui/src/)
 ├── docs/                      # these scopes
 ├── index.html                 # Vite entry
 ├── package.json               # @nube/thecrew (private playground app)

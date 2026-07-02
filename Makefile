@@ -133,7 +133,7 @@ EXT_UI_DIST  := $(BE_DIR)/extensions/$(EXT)/ui/dist
 EXT_UI_SERVE := $(BE_DIR)/extensions-ui/$(EXT)
 
 .PHONY: setup build build-be build-wasm build-ui \
-        dev edge cloud ui ui-preview pack publish-ext trusted-pubkey \
+        dev edge cloud ui ui-preview pack publish-ext trusted-pubkey seed-thecrew \
         test test-be test-ui lint fmt fmt-check size clean kill
 
 # One-time setup: install the UI deps and make sure the wasm target is installed (the
@@ -289,6 +289,14 @@ publish-ext: pack
 		echo "  UI deployed ($(GW_URL)/extensions/$(EXT)/ui/assets/remoteEntry.js)"; \
 		echo "  NOTE: extension pages load only in the BUILT shell -- use 'make ui-preview', not 'make ui'."; \
 	else echo "-> no ui/dist for $(EXT) -- skipping UI deploy"; fi
+
+# Seed the thecrew (Graphics) demo into a RUNNING node: the AHU-1 scene doc + its bound `ahu1.*`
+# series + a read-only "Graphics Scene" dashboard, all through the REAL host verbs (assets.put_doc /
+# ingest / dashboard.save). Idempotent. Run `make publish-ext EXT=thecrew` first so the extension is
+# installed (its grant carries the assets.* caps); the seed logs in as $(SEED_USER) (a member of $(WS))
+# — NOT `dev` — because a live scene save/load needs the member `assets.*` grant (session findings).
+seed-thecrew:
+	bash $(BE_DIR)/extensions/thecrew/seed-demo.sh $(GW_URL) $(SEED_USER) $(WS)
 
 # Serve the BUILT shell so extension pages actually load. The `dev`/`ui` targets run the Vite DEV
 # server, where @originjs/vite-plugin-federation's host runtime is absent -- every federated remote

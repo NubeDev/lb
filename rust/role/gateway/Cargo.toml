@@ -55,6 +55,10 @@ required-features = ["test-harness"]
 lb-outbox.workspace = true
 lb-registry.workspace = true
 lb-supervisor.workspace = true
+# The native-sidecar → host MCP callback transport under test: the callback test drives THIS client
+# against the REAL gateway over real HTTP (native-callback-transport scope), proving the child→host
+# path with no mocks (testing §0).
+lb-sidecar-client.workspace = true
 ed25519-dalek.workspace = true
 # The federation happy-path gateway test seeds a REAL on-disk SQLite file with real rows (the
 # sanctioned sqlite test source — testing §0), then queries it through the real federation sidecar.
