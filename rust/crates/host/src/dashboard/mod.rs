@@ -17,6 +17,7 @@ mod authorize;
 mod bounds;
 mod delete;
 mod error;
+mod genui;
 mod get;
 mod list;
 mod model;

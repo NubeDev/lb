@@ -380,13 +380,26 @@ session rules.
 Every prior open question is resolved below so the implementing session can build straight through.
 Deferrals are explicit follow-ups with a named trigger, **not** decisions to make mid-build.
 
-1. **Trust tier — iframe for v1.** Ship `GenUiView` in the sandboxed `WidgetIframe` tier
-   (the standing `channels-rich-responses` decision). Build the catalog to *already satisfy* the
-   five promotion-checklist items above (no `dangerouslySetInnerHTML`, sanitized markdown, no
-   code-valued props, all effects via the leashed bridge, no style injection) and add the CI
-   tests for them — but do **not** promote in this slice. In-process promotion is a follow-up
-   whose trigger is "checklist tests green in CI + one perf datapoint showing the iframe data
-   tax matters"; the session records which items already hold in its session doc.
+1. **Trust tier — AMENDED to in-process for v1 (see note).** *Original decision:* ship `GenUiView`
+   in the sandboxed `WidgetIframe` tier. **Amended during implementation** (genui-widget-session,
+   2026-07-03, with the scope owner's approval): the shipped `WidgetIframe` sandbox provably cannot
+   host the React `<GenUiSurface>` — it has no import map (bare `react` won't resolve), its CSP is
+   `connect-src 'none'` with no same-origin (it cannot load a local render bundle), and its engines
+   run eval'd NON-React code (`new Function`/`innerHTML`). This is the exact wall documented in
+   `debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md`. So mounting the surface
+   "inside the shipped `WidgetIframe`" as literally written is infeasible. Rather than fork the
+   renderer (a second, non-React DOM walker) or inline a per-cell React bundle, v1 renders
+   `<GenUiSurface>` **in-process** — which is exactly the promotion end-state this decision already
+   anticipated. The justification the promotion checklist demanded holds: a catalog IR is **trusted
+   DATA rendered by our own components**, not author code (genui widgets are admin-authored — the
+   `dashboard.save` cap IS the trust gate, like an installed extension widget), and the catalog is
+   built to satisfy all five checklist items (no `dangerouslySetInnerHTML`, sanitized markdown, no
+   code-valued props, all effects via the leashed `cellTools`-∩-grant bridge with host re-check, no
+   style injection) — **enforced by CI tests in this slice**. The iframe tax (double React runtime,
+   per-tick postMessage data patches) is thereby avoided, and offline rendering works (a CDN/bundle
+   load would have broken it). *If a future untrusted tenant (e.g. the channel consumer, or a
+   non-admin author path) needs genui, the sandbox question returns — but with a DOM-walker renderer
+   or an inlined bundle, not the current React-in-`allow-scripts` sandbox that cannot work.*
 2. **Refine-turn context — full re-emit.** On a refine turn, resend the stored raw emission
    (`meta.raw`) plus a one-paragraph data-shape summary into the agent's context and let it
    re-emit the whole spec; parse/normalize/validate at accept exactly as the first turn. Do

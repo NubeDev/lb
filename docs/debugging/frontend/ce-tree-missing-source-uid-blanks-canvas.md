@@ -17,21 +17,33 @@ at line 1 column 7041
 
 The editor received no graph, so nothing drew.
 
-## Root cause
+## Root cause (confirmed against the live ce-studio engine)
+
+The error message ("missing field `source_uid`") pointed at a single dangling edge,
+but capturing the REAL `/nodes` payload from the running engine (`curl
+127.0.0.1:7979/api/v0/nodes?depth=-1&withEdges=true`) showed the real story: the
+engine emits **camelCase** keys everywhere —
+
+```json
+{ "uid": 1000000, "sourceUid": 100010, "targetUid": 100011,
+  "sourcePropertyUid": 1000115, "sourceProperty": "out", ... }
+```
 
 The CE client crate `rubix-ce` (external git dep, pinned rev
-`51ab97edf32d622f94d00401aee3ae2daf8859c8`) declares `EdgeDto.source_uid: u32` and
-`target_uid: u32` as **required** (`src/types.rs:268`, no `#[serde(default)]`). The
-real appliance's `GET /nodes?depth=..&withEdges=true` response contains an edge (at
-byte ~7041) that **omits `source_uid`** — a dangling / half-formed edge. Serde fails
-the **whole** `Tree` decode inside the crate's `get_tree`, so `control-engine.tree`
-returns `CeError::Codec` → the extension replies "bad host response" → the editor has
-no `{nodes,edges}` to render → blank canvas.
+`51ab97edf32d622f94d00401aee3ae2daf8859c8`) declares `EdgeDto` with **snake_case**
+required fields `source_uid`/`target_uid` and **no** `#[serde(rename_all)]`
+(`src/types.rs:268`). So it isn't ONE edge that's malformed — **every** edge fails
+(`sourceUid` ≠ `source_uid`), and serde fails the whole `Tree` decode inside the
+crate's `get_tree` → `control-engine.tree` returns `CeError::Codec` → the extension
+replies "bad host response" → the editor has no `{nodes,edges}` → blank canvas.
 
-The strict typed hop bought the extension nothing: the wiresheet consumes the
-`{nodes,edges}` **JSON verbatim** (`tools/tree.rs` already re-serializes the DTOs
-straight through). Round-tripping edges through the crate's strict `EdgeDto` only
-adds a crash the wire shape doesn't warrant.
+The strict typed hop was **pure downside** and doubly wrong: the wiresheet's own
+`engine-types.ts` (`Edge.sourceUid`, `Component.childrenCount`, …) and its
+`rfbuild.ts` read the RAW **camelCase** engine shape directly (ce-wiresheet connects
+straight to the engine outside LB). Round-tripping through the crate's snake_case
+`EdgeDto` would (a) crash on the naming mismatch, and even if it hadn't, (b)
+re-serialize to snake_case the wiresheet can't read. The crate was the ONLY consumer
+in the whole chain that wanted snake_case.
 
 ## Fix
 
@@ -54,13 +66,25 @@ This is the extension-side fix (handover option #2) rather than the upstream
 wiresheet never needed the typed edge anyway. If the upstream crate later makes the
 fields optional, this path still works (it never decoded them).
 
+Note this ALSO explains issue #3 (nodes render without input/output slots; values
+don't stream): it was entirely downstream of this crash — the decode failed, so the
+editor never received the component graph, so `buildRfNodes`/`buildRfEdges` had no
+children/ports/edges to draw. With the tolerant fetch delivering the raw camelCase
+graph, the slots and wires resolve (the wiresheet reads `properties` for ports and
+`sourceUid`/`targetUid` + `sourceProperty`/`targetProperty` for edges).
+
 ## Regression test
 
-`tools::raw_tree::tests` — a **rule-9** fixture in the real `/nodes` envelope shape
-with a `source_uid`-less edge (`{"uid":9,"target_uid":1,...}`) asserts the edge passes
-through instead of failing the decode, plus empty-halves defaulting and root/keyed uid
-mapping. `cargo test -p control-engine --lib` → 23 passed (incl. the untouched fake
-`tree_returns_seeded_graph_verbatim` path).
+Two layers, both rule-9 (real captured shape / real live engine):
+- `tools::raw_tree::tests` (Rust) — a fixture in the real `/nodes` envelope shape with
+  a `source_uid`-less edge asserts pass-through, plus empty-halves defaulting and
+  root/keyed uid mapping. `cargo test -p control-engine --lib` → 23 passed (incl. the
+  untouched fake `tree_returns_seeded_graph_verbatim` path).
+- `bridge-transport.live.test.ts` (ext UI, env-gated `CE_ENGINE_URL` +
+  `CONTROL_ENGINE_BIN`) — spawns the REAL sidecar against the live ce-studio and
+  asserts `GET /nodes?withEdges=true` returns real **camelCase** edges
+  (`typeof e.sourceUid === "number"`) through the full bridge, i.e. the exact crash no
+  longer happens end-to-end. 4/4 passed against the running engine.
 
 ## Lesson
 

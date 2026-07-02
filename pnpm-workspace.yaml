@@ -12,3 +12,10 @@ allowBuilds:
 # Approve build scripts for these deps (pnpm blocks postinstall/build scripts by default).
 onlyBuiltDependencies:
   - esbuild
+
+# Pin electron-to-chromium (a transitive browserslist dep that publishes ~daily). Without a
+# pin, `pnpm install` re-resolves its `^` range to the newest release, which pnpm 11's default
+# minimumReleaseAge guard then rejects as too fresh — stalling the ext-UI build. Hold it at a
+# version already in the lockfile and old enough to pass the guard.
+overrides:
+  electron-to-chromium: 1.5.383

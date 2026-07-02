@@ -27,6 +27,7 @@ import { SliderControl } from "./SliderControl";
 import { ButtonControl } from "./ButtonControl";
 import { JsonControl } from "./JsonControl";
 import { JsonView } from "./JsonView";
+import { GenUiView } from "./genui/GenUiView";
 import { ExtWidget } from "../builder/ExtWidget";
 
 /** The tools a cell may forward through the bridge = its source + action + v3 target tools (host ∩
@@ -145,6 +146,11 @@ export function WidgetView({
       // A read view that pretty-prints a flow node's structured `payload` (collapsible). Reads the
       // primary target so a cell authored as v3 `sources[]` (the PanelEditor) resolves its flow source.
       return <JsonView source={primarySource} options={options} label={label} refreshKey={refreshKey} />;
+    case "genui":
+      // AI-authored, catalog-constrained widget rendered in-process from the persisted IR
+      // (`options.genui.ir`); data flows through the cell's v3 `sources[]` via `usePanelData`, actions
+      // through the leashed `cellTools` bridge (host re-checked). See genui/GenUiView.
+      return <GenUiView cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     default:
       return (
         <div className="flex h-full items-center justify-center text-xs text-muted" role="status">

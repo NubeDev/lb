@@ -16,6 +16,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@nube/genui": "workspace:*",
     "@nube/nav-rail": "workspace:*",
     "@nube/panel": "workspace:*",
     "@nube/source-picker": "workspace:*",

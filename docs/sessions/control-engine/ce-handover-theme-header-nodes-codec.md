@@ -19,11 +19,29 @@ so the editor has no graph to render). Fix #4 first — it's the one that makes 
   [../../debugging/frontend/ce-tree-missing-source-uid-blanks-canvas.md](../../debugging/frontend/ce-tree-missing-source-uid-blanks-canvas.md).
 - **#1 theme — ✅ FIXED.** `useDocumentColorMode` now reads `.dark` (host convention) instead of the
   never-set `.light`. Rebuilt `build:lib` + ext UI (green).
-- **#3 node slots / streaming — ⏳ re-check after #4 with a live appliance** (likely was downstream of #4).
-- **#2 header clash — ⏳ not started** (layout decision below).
+- **#3 node slots / streaming — ✅ FIXED (was downstream of #4).** Confirmed against the live ce-studio
+  engine: the decode crash was the sole cause — no graph decoded → no children/ports/edges. With the
+  tolerant fetch the wiresheet gets the raw camelCase graph (`properties` → ports;
+  `sourceUid`/`targetUid` + `sourceProperty`/`targetProperty` → wires). Proven by the live
+  `bridge-transport.live.test.ts` (spawns the real sidecar vs the running engine, asserts real camelCase
+  edges through the full bridge; 4/4).
+- **#2 header clash — ✅ FIXED.** Removed the CE page's own `<header>` (`Page.tsx`) — the host header owns
+  the title + workspace. The appliance **picker** now renders only when there's a real choice (≥2
+  appliances); the connected/disconnected badge already lives inside `CeEditor` (`ConnectionStatus`), so it
+  survives. `mount.test.tsx` updated (no "Control Engine" title, no single-appliance picker; a 2-appliance
+  test proves the picker). ext UI suite 36 passed, build clean.
 
-**Remaining before this closes:** a live-appliance smoke test (needs `make dev … CE=1` + republish, since
-the node doesn't hot-reload Rust) to confirm the canvas now draws and to settle #3, then #2.
+### Live-engine root cause (important — the handover's #4 hypothesis was half-right)
+
+Capturing the real payload (`curl 127.0.0.1:7979/api/v0/nodes?depth=-1&withEdges=true`) showed the engine
+emits **camelCase** keys (`sourceUid`, `childrenCount`, `sourcePropertyUid`, …). The crate's `EdgeDto` is
+snake_case with no `rename_all`, so it wasn't ONE dangling edge — **every** edge failed the decode. The
+wiresheet's own `engine-types.ts`/`rfbuild.ts` read the camelCase shape directly, so the tolerant raw
+pass-through is exactly what it wants. Full detail in the debugging entry.
+
+**Still to do (operational, not code):** republish the rebuilt `control-engine` sidecar to the live node
+(the node doesn't hot-reload Rust — `make kill && make dev … CE=1`, or the publish flow) so the running
+canvas picks up the fix. All code + tests are green.
 
 ---
 

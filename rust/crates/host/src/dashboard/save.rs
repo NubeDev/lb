@@ -36,6 +36,10 @@ pub async fn dashboard_save(
     // (panel-model scope: keep the dashboard record small for the roster/list read). The host is the
     // boundary; the editor mirrors the caps for a friendly error.
     super::bounds::check_cells_bounds(&cells)?;
+    // `view:"genui"` cells carry a typed IR in `options.genui`; validate it structurally at write time
+    // (genui-scope Decision 6) so a malformed genui cell is rejected loudly here, not degraded at view
+    // time. Same authority for every writer — shell, `POST /mcp/call`, routed Zenoh, external-agent.
+    super::genui::check_genui_cells(&cells)?;
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).

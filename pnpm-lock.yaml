@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  electron-to-chromium: 1.5.383
+
 importers:
 
   packages/ce-wiresheet:
@@ -312,6 +315,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.38.1
         version: 6.43.4
+      '@nube/genui':
+        specifier: workspace:*
+        version: link:../packages/genui
       '@nube/nav-rail':
         specifier: workspace:*
         version: link:../packages/nav-rail

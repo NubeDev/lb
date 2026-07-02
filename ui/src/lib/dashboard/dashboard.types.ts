@@ -52,6 +52,9 @@ export type View =
   | "status-history"
   | "heatmap"
   | "text"
+  // generative-UI: an AI-authored, catalog-constrained widget rendered from a persisted IR
+  // (genui-scope). `options.genui = { v, ir, meta? }`; data flows through ordinary v3 `sources[]`.
+  | "genui"
   | `ext:${string}`;
 
 /** A datasource reference (viz datasource-binding scope; Phase 1 is always native `surreal`). `uid`
