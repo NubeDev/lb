@@ -7239,6 +7239,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "ros-sidecar"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "lb-auth",
+ "lb-host",
+ "lb-role-gateway",
+ "lb-sidecar-client",
+ "lb-supervisor",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
 name = "rsa"
 version = "0.9.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

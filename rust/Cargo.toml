@@ -44,6 +44,7 @@ members = [
     "extensions/echo-sidecar",
     "extensions/federation",
     "extensions/fleet-monitor",
+    "extensions/ros",
     "sdk",
     "node",
     "role/acp",
