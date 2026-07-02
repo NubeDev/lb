@@ -12,6 +12,7 @@
 //! (revocation-on-delete). Keeping them here means the destructive verbs call one model, not two.
 
 mod error;
+mod grant_ui;
 mod grants;
 mod hold;
 mod resolve;
@@ -21,6 +22,7 @@ mod teams;
 mod tool;
 
 pub use error::AuthzError;
+pub use grant_ui::grant_ui_scope_to_admin;
 pub use grants::{grants_assign, grants_list, grants_revoke};
 pub use hold::holds_cap;
 pub use resolve::authz_resolve;

@@ -141,11 +141,15 @@ fn approved_grant(base: &str) -> Vec<String> {
         "mcp:store.delete:call".into(),
         "store:ce_appliance:read".into(),
         "store:ce_appliance:write".into(),
-        // The live-COV write path.
+        // The live-COV write path + the series SSE the watch stream half opens.
         "mcp:ingest.write:call".into(),
+        "mcp:series.watch:call".into(),
     ];
-    // The graph write + watch + registry verbs (self-checked in the sidecar against this grant).
+    // The read + graph-write + watch + registry verbs (self-checked in the sidecar against this grant;
+    // also what the S7 page's `[ui] scope` narrows against, so the whole page surface is granted here).
     for verb in [
+        "control-engine.tree",
+        "control-engine.schema",
         "control-engine.appliance.add",
         "control-engine.appliance.list",
         "control-engine.appliance.remove",

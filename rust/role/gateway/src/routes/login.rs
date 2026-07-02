@@ -73,7 +73,18 @@ pub async fn login(
                 "not a member of any workspace".into(),
             )
         })?;
-    let claims = dev_claims(&req.user, &req.workspace, gw.now(), SESSION_TTL_SECS);
+    let mut claims = dev_claims(&req.user, &req.workspace, gw.now(), SESSION_TTL_SECS);
+    // Fold the DURABLE grant store into the token (authz-grants scope: the token is a cached
+    // projection of `resolve_caps`). This is what lets an INSTALLED extension's tools reach a user
+    // WITHOUT editing this login: install grants the ext's `mcp:<ext>.<tool>:call` caps to the
+    // `workspace-admin` role, and any admin resolves them here. The `dev_claims` wildcard set stays
+    // as the base (back-compat); resolved grants are unioned on top. Best-effort — a store hiccup
+    // never fails the login (the base caps still mint a working dev session).
+    if let Ok(resolved) = lb_host::resolve_caps(&gw.node.store, &req.workspace, &req.user).await {
+        claims.caps.extend(resolved);
+        claims.caps.sort();
+        claims.caps.dedup();
+    }
     let caps = claims.caps.clone();
     let token = mint(&gw.key, &claims);
 

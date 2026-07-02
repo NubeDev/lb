@@ -64,8 +64,18 @@ pub async fn resolve_subject_caps(
     for cap in grant_list(store, ws, subject).await? {
         match cap.strip_prefix("role:") {
             Some(role) => {
+                // A role contributes BOTH its defined record caps (`role_define`) AND any caps granted
+                // directly to the role subject (`grant_assign(Subject::Role(name), cap)`). The latter
+                // is how an installed extension's page tools reach every holder of the role without
+                // touching a built-in role's (immutable) record — an ordinary grant, per authz-grants
+                // scope. Recurse through `resolve_subject_caps` so a role granted another `role:` also
+                // expands (bounded: role→role cycles just re-insert into the dedup set).
                 for rc in role_caps(store, ws, role).await? {
                     caps.insert(rc);
+                }
+                let role_subject = Subject::Role(role.to_string());
+                if &role_subject != subject {
+                    Box::pin(resolve_subject_caps(store, ws, &role_subject, caps)).await?;
                 }
             }
             None => {
