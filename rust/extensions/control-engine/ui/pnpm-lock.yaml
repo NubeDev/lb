@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  electron-to-chromium: 1.5.383
+
 importers:
 
   .:
