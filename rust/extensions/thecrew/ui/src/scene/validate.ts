@@ -4,10 +4,13 @@
 // depends on these errors being *teaching* (name the failing shape and why).
 
 import type { CameraMode, SceneDoc, SceneShape, Transform, ValueRef } from "./scene.types";
+import { knownTypes, catalogText } from "./catalog";
 
 export interface SceneIssue {
   shapeId: string;
   problem: string;
+  /** true when the issue is an unknown shape type — the one the teaching report cites the catalog for. */
+  unknownType?: boolean;
 }
 
 export interface ValidatedScene {
@@ -77,9 +80,16 @@ function normalizeShape(raw: unknown, shapeId: string, issues: SceneIssue[]): Sc
   }
   let type: string;
   if (typeof raw.type === "string" && raw.type.length > 0) {
-    type = raw.type; // unknown types are FINE — ShapeNode renders the placeholder
+    type = raw.type; // unknown types still RENDER (placeholder) — but we teach so an agent can fix them
+    if (!knownTypes().includes(type)) {
+      issues.push({
+        shapeId,
+        problem: `unknown shape type "${type}" — rendered as a placeholder box`,
+        unknownType: true,
+      });
+    }
   } else {
-    issues.push({ shapeId, problem: "missing shape type — rendering placeholder" });
+    issues.push({ shapeId, problem: "missing shape type — rendering placeholder", unknownType: true });
     type = "unknown";
   }
   const props = isRecord(raw.props) ? raw.props : {};
@@ -125,4 +135,19 @@ export function validateScene(input: unknown): ValidatedScene {
     doc.bg = { asset: input.bg.asset };
   }
   return { doc, issues };
+}
+
+/** A single teaching string for the AI-drawing loop: every issue, followed by the shape CATALOG when
+ *  an unknown type was seen (so the agent can pick a real type + its props/bind slots and re-save in
+ *  one step). Empty string when the scene is clean — the agent reads "no issues" as done. This is the
+ *  parent scope's "errors must teach (return the catalog + the failing shape)" made concrete; the skill
+ *  doc tells the agent to read exactly this shape. */
+export function teachingReport(issues: SceneIssue[]): string {
+  if (issues.length === 0) return "";
+  const lines = issues.map((i) => `- ${i.shapeId}: ${i.problem}`);
+  let out = `Scene has ${issues.length} issue(s):\n${lines.join("\n")}`;
+  if (issues.some((i) => i.unknownType)) {
+    out += `\n\nAvailable shape types (use one of these \`type\` values):\n${catalogText()}`;
+  }
+  return out;
 }

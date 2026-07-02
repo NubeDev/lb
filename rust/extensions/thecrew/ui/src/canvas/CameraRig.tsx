@@ -48,7 +48,9 @@ function applyPose(cam: THREE.PerspectiveCamera, t: number): void {
   cam.lookAt(0, 0, 0);
 }
 
-export function CameraRig() {
+/** `fit` (read-only cell): FitCamera owns the ortho pose (auto-fit to the cell), so the rig omits
+ *  MapControls — no pan/zoom on a dashboard tile. The editor page leaves `fit` off (pan/zoom + morph). */
+export function CameraRig({ fit = false }: { fit?: boolean } = {}) {
   const mode = useSceneStore((s) => s.doc.camera);
   const perspRef = useRef<THREE.PerspectiveCamera>(null);
   /** spring progress: 0 = flat/top-down pose, 1 = full persp pose */
@@ -116,7 +118,10 @@ export function CameraRig() {
         far={5000}
       />
 
-      {active === "ortho" ? (
+      {fit ? (
+        // read-only cell: FitCamera drives the ortho pose; no user pan/zoom/orbit.
+        null
+      ) : active === "ortho" ? (
         // flat mode: pan + zoom only, orbit LOCKED (builder-ux)
         <MapControls
           enableRotate={false}

@@ -1,0 +1,43 @@
+{
+  "name": "@nube/source-picker",
+  "version": "0.1.0",
+  "description": "A reusable, transport-agnostic data-source picker for React — the Lazybones dashboard's 'pick a value from the DB / datasources / Zenoh (live series) / flows / extension widgets' machinery, extracted so any surface (dashboard, extensions) reuses one picker. Headless model + hooks + a props-driven UI; the host injects how to reach the node (SourceLoaders), so it works from the shell gateway OR an extension bridge. Self-themed via scoped hsl(var()) tokens, host-overridable.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "files": ["dist"],
+  "main": "./dist/source-picker.cjs",
+  "module": "./dist/source-picker.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/source-picker.js",
+      "require": "./dist/source-picker.cjs"
+    },
+    "./style.css": "./dist/source-picker.css"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.2.0",
+    "jsdom": "^25.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.0.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^4.0.0",
+    "vitest": "^2.0.0"
+  }
+}

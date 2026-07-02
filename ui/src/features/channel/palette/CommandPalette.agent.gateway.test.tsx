@@ -73,14 +73,15 @@ describe("CommandPalette — the agent command (real gateway)", () => {
     await screen.findByRole("listbox", { name: "commands" });
     await user.keyboard("{Enter}");
 
-    // The arg rail opens on the required `goal` text field; type a goal.
+    // The required `goal` field AND the runtime dropdown are BOTH present the instant the command is
+    // picked — the runtime picker renders persistently, NOT gated behind committing `goal` (the bug: a
+    // user who just typed a goal never saw a runtime control). The dropdown is fed by the real
+    // `agent.runtimes` verb with the default preselected.
     const goal = await screen.findByLabelText("goal");
-    await user.type(goal, "summarize the incident");
-    await user.keyboard("{Enter}"); // commit goal → the runtime dropdown takes focus
-
-    // The runtime dropdown renders, fed by the real `agent.runtimes` verb, default preselected.
     const runtime = (await screen.findByLabelText("runtime")) as HTMLSelectElement;
     await waitFor(() => expect(runtime.value).toBe("default"));
+    await user.type(goal, "summarize the incident"); // typed, NOT committed with ⏎ — picker stays shown
+    expect(screen.getByLabelText("runtime")).toBeInTheDocument();
 
     // Submit → a STRUCTURED kind:"agent" Item lands in real history (no raw `/`-text, no tool call).
     await user.click(screen.getByLabelText("send"));

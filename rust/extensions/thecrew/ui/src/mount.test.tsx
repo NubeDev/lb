@@ -5,6 +5,7 @@
 // re-check + workspace wall live in the gateway suite (ui/).
 
 import { describe, expect, it } from "vitest";
+import * as remoteEntry from "./remoteEntry";
 import { mountPage, mountWidget } from "./remoteEntry";
 import { stubBridge, rejectingBridge, watchBridge } from "./bridge/bridge.stub";
 import { serializeScene } from "./bridge/scene-io";
@@ -24,6 +25,24 @@ async function flush() {
     await Promise.resolve();
   }
 }
+
+// Finding 6: the shell's `pickMount` resolves the PAGE by the frozen export name **`mount`** — thecrew
+// once exported only `mountPage`, so the live shell threw "remote does not export a `mount` function"
+// and the page never mounted. The unit suite imports `mountPage` directly, so it was blind to the name.
+// This asserts the built module exposes the frozen names, failing fast without a browser (the honest
+// guard alongside the live-shell e2e). A new bundling extension gets the same cheap check by copying it.
+describe("federation export contract (finding 6)", () => {
+  it("exports a `mount` function (the name the shell's pickMount resolves the PAGE by)", () => {
+    expect(typeof remoteEntry.mount).toBe("function");
+  });
+  it("exports a `mountWidget` function (the dashboard cell contract)", () => {
+    expect(typeof remoteEntry.mountWidget).toBe("function");
+  });
+  it("the default export also carries both (the object-form fallback pickMount accepts)", () => {
+    expect(typeof remoteEntry.default.mount).toBe("function");
+    expect(typeof remoteEntry.default.mountWidget).toBe("function");
+  });
+});
 
 describe("mountPage (the [ui] page)", () => {
   it("mounts through the federation entry and lists scenes, then unmounts cleanly", async () => {

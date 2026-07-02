@@ -15,6 +15,7 @@ import { useSceneStore } from "../state/scene-store";
 import { tokens } from "../theme/tokens";
 import { updateMaterials } from "../theme/materials";
 import { CameraRig } from "./CameraRig";
+import { FitCamera } from "./FitCamera";
 import { ShapeNode } from "./ShapeNode";
 
 /** Page-load preference; a module-level check keeps the render path flat
@@ -31,7 +32,9 @@ function MaterialsTick() {
   return null;
 }
 
-export function SceneCanvas() {
+/** `fit` (read-only cell): auto-frame the scene into the cell pixels and lock pan/zoom — the editor
+ *  page leaves it off and keeps its fixed framing + MapControls. */
+export function SceneCanvas({ fit = false }: { fit?: boolean } = {}) {
   const doc = useSceneStore((s) => s.doc);
   const clearSelection = useSceneStore((s) => s.clearSelection);
 
@@ -47,7 +50,8 @@ export function SceneCanvas() {
     >
       <color attach="background" args={[tokens.color.canvas]} />
 
-      <CameraRig />
+      <CameraRig fit={fit} />
+      {fit && <FitCamera />}
       {!REDUCED_MOTION && <MaterialsTick />}
 
       {/* ---- lighting rig (look-scope §recipe) --------------------------------

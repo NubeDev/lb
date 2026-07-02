@@ -53,5 +53,12 @@ call dashboard.save '{
             "view":"ext:thecrew/scene","options":{"sceneId":"scene:ahu-1"}}]
 }' >/dev/null
 
-echo "-> seeded: scene:ahu-1 + ahu1.* series + 'Graphics Scene' dashboard"
+echo "-> save 'Scene Builder' dashboard (EMPTY — the palette e2e adds the Scene tile through the UI)"
+# An empty editable dashboard so the widget e2e can DRIVE the restored builder palette (finding 7):
+# Add panel -> pick 'thecrew · Scene' -> pick the AHU-1 scene -> Save. Idempotent (dashboard.save UPSERT).
+call dashboard.save '{
+  "id":"scene-build","title":"Scene Builder","now":1,"cells":[]
+}' >/dev/null
+
+echo "-> seeded: scene:ahu-1 + ahu1.* series + 'Graphics Scene' + empty 'Scene Builder' dashboards"
 call assets.list_docs '{}' | jq -c '.docs'

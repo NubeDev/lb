@@ -2,7 +2,7 @@
 // transform, bad bind — never a crash, always a renderable doc + teaching issues.
 
 import { describe, expect, it } from "vitest";
-import { validateScene } from "./validate";
+import { validateScene, teachingReport } from "./validate";
 import { ahuDemo } from "./demo/ahu-demo";
 
 describe("validateScene", () => {
@@ -19,14 +19,33 @@ describe("validateScene", () => {
     expect(issues.length).toBeGreaterThan(0);
   });
 
-  it("keeps unknown shape types (placeholder render), reports nothing for them", () => {
+  it("keeps unknown shape types (placeholder render) but TEACHES — reports an unknownType issue", () => {
     const { doc, issues } = validateScene({
       v: 1,
       camera: "ortho-top",
       shapes: { x: { type: "hvac.unobtainium", t: { x: 8, y: 8 }, props: {} } },
     });
-    expect(doc.shapes.x.type).toBe("hvac.unobtainium");
-    expect(issues).toEqual([]); // unknown type is legal — ShapeNode shows placeholder
+    expect(doc.shapes.x.type).toBe("hvac.unobtainium"); // still renders (placeholder) — never a crash
+    // ...but the loop must LEARN: an unknownType issue naming the bad type (parent scope: errors teach).
+    const bad = issues.find((i) => i.shapeId === "x");
+    expect(bad?.unknownType).toBe(true);
+    expect(bad?.problem).toContain("hvac.unobtainium");
+  });
+
+  it("teachingReport appends the shape catalog when an unknown type was seen", () => {
+    const { issues } = validateScene({
+      v: 1,
+      camera: "ortho-top",
+      shapes: { x: { type: "hvac.fann", t: { x: 0, y: 0 }, props: {} } },
+    });
+    const report = teachingReport(issues);
+    expect(report).toContain("hvac.fann"); // the failing shape
+    expect(report).toContain("Available shape types"); // + the catalog so the agent can pick a real one
+    expect(report).toContain("hvac.fan"); // a real type IS listed
+  });
+
+  it("teachingReport is empty for a clean scene (the agent reads it as done)", () => {
+    expect(teachingReport(validateScene(ahuDemo).issues)).toBe("");
   });
 
   it("defaults a missing transform to origin and reports it", () => {

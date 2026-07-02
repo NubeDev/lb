@@ -220,3 +220,135 @@ cell" risk; noted, functional contract proven.
 
 AI drawing + `skills/graphics-canvas/SKILL.md`, symbol packs, 3D-first. Shape `action` wiring
 (click-to-command) and multi-user co-editing remain non-goals here.
+
+---
+
+# Session 3 — close the surfaced findings (5–9) + the blank-cell fit (tested → shipped)
+
+Session 2 shipped the live path but left the SURFACED findings open: a packaged `[[widget]]` couldn't be
+added through the live builder (finding 7), a cell's `options.sceneId` didn't reach the widget (finding
+8), the two live-only bundling bugs had no cheap guard (findings 5–6), and the widget cell rendered
+visually blank (the parent-scope "fit per dashboard cell" risk). This session closes all of them —
+verified LIVE, palette-driven, with the scene now framed in the cell.
+
+## What shipped
+
+**Finding 7 — restore the "Extension widgets" group in the reworked PanelEditor.** The viz panel-editor
+rework's `QueryTab` source picker rendered only series/live/sql/extension; the `widget` PickerGroup (with
+the finished packaged tiles) was dropped, so `extWidgetEntries` had no UI. Restored in
+`ui/src/features/dashboard/editor/tabs/QueryTab.tsx`: the group is back in the source `<select>`; selecting
+a tile sets `state.view = "ext:<id>/<widget>"` and clears the query target (a tile owns its data — no
+`{tool,args}`); `entryId` resolves a widget cell back from `state.view`; switching datasource off a widget
+cell drops the `ext:` view. This re-wires the EXISTING picker/serializer (the `view` round-trips verbatim
+through `cellEditorState`) — **no new verb/cap/table/WIT**.
+
+**Finding 8 — forward `cell.options`/`cell.binding` to the widget ctx.** `ExtWidget.tsx` hardcoded
+`options:{}`/`binding:{}`, so the scope's intended `{view, options:{sceneId}}` never reached the tile
+(Session 2 worked around it via a dashboard `const` var → `ctx.vars`). Now `WidgetView` passes
+`cell.options`/`cell.binding` and `ExtWidget` forwards them as `ctx.options`/`ctx.binding` (re-mount keyed
+on a `configKey` so a sceneId edit reframes). The **Scene picker** (finding 8's builder half):
+`QueryTab` renders a scene `<select>` for a Scene tile, sourced from `useSceneDocs` (the shipped, ws-walled
+`assets.list_docs`, `scene:` prefix), writing `cell.options.sceneId`. Verified live: a palette-built cell
+saved `options.sceneId:"scene:ahu-1"` and the widget rendered from it (no `ctx.vars` needed).
+
+**Findings 5–6 — cheap guards so a new bundling ext doesn't rediscover the live-only bugs.**
+`rust/extensions/thecrew/ui/federation-remote.preset.ts`: a copyable preset carrying BOTH invariants —
+`define: process.env.NODE_ENV` (Vite lib builds don't inject it → three.js "process is not defined") and
+the React externals (single-copy via the shell import map). `vite.config.ts` now uses it. Finding 6: a
+unit assertion in `mount.test.tsx` that the built `remoteEntry` exports a **`mount`** function (+ `mountWidget`
++ the default object) — fails fast without a browser (the Session-2 "remote does not export `mount`" bug).
+
+**The blank widget-cell canvas — fit per dashboard cell.** The editor page frames a fixed ±350 world
+units at zoom 1.6; a small read-only cell showed only a center crop → blank. New `canvas/fit-bounds.ts`
+(pure math: scene bounds → fit zoom clamped to the page's [0.4,6] → box center) + `canvas/FitCamera.tsx`
+(mounted inside `<Canvas>`, drives the ortho camera **every frame** so drei's declarative `makeDefault`
+props can't clobber the fit — the one-shot-effect version stayed blank). `SceneCanvas` takes a `fit` prop
+(the widget passes it; `CameraRig` omits MapControls in fit mode); the editor page is untouched. **Verified
+live: the AHU-1 train renders framed + centered in the cell** (`docs/shots/scene-widget-dashboard.png`).
+
+## Findings 9 note
+
+Ran live on the **in-memory** engine (no `LB_STORE_PATH`), per finding 9 (SurrealKV `Invalid revision`).
+No new persistence findings this session.
+
+## Tests + green output
+
+- thecrew UI unit (`rust/extensions/thecrew/ui`): **60/60** (was 57 pre-session) — +8 `fit-bounds.test.ts`,
+  +3 `mount.test.tsx` export-contract. (One pre-existing unhandled `unicode-font-resolver` fetch in
+  `scene-render.test.tsx` — a three.js text CDN fetch, unrelated; tests still pass.) `tsc --noEmit` clean.
+- Dashboard-core unit (`ui/`): new `QueryTab.test.tsx` (5 — group offered, tile selection sets the view,
+  scene picker sets `options.sceneId`) + `ExtWidget.test.tsx` (2 — options/binding reach ctx). The
+  dashboard suite (widgetBuilder/cellEditorState/FlowsQuerySection) stays green (41/41 together).
+- Gateway (real spawned node): `TheCrew.gateway.test.tsx` **6/6** (the mandatory capability-deny +
+  workspace-isolation still deny/isolate), `panelEditor.gateway.test.tsx` **6/6**.
+- **Live e2e** (real node in-mem :8080, built shell :4173, thecrew published + seeded):
+  `ui/e2e/thecrew*.spec.ts` **2/2**. The widget spec now **drives the restored palette** — Add panel →
+  pick "thecrew · Scene" → pick the AHU-1 scene → Save — instead of a seeded cell (finding 7 fixed), and
+  the cell renders the fit scene (blank fixed). Screenshots refreshed: `docs/shots/scene-widget-dashboard.png`
+  (palette-built, scene framed), `docs/shots/graphics-ahu-1-live.png` (page).
+- Live publish/install: `make publish-ext EXT=thecrew` (204 as the member `user:ada` — the dev-login user
+  isn't a member here) + `make seed-thecrew` (now also seeds an EMPTY `scene-build` dashboard the palette
+  e2e builds onto). Bundle rebuilt via the preset: `process.env.NODE_ENV` fully replaced (0 occurrences),
+  `mount`/`mountPage`/`mountWidget`/default all exported.
+
+## Zero-core-additions held
+
+Findings 7–8 re-wired the EXISTING dashboard picker/renderer + serializer (the `view`/`options` fields
+already round-trip); the preset + fit code live entirely in the extension. No new verb/cap/table/WIT.
+
+---
+
+# Session 4 — Phase 3 (AI drawing): skill + teaching-error validation (+ the one core-blocked piece)
+
+Phase 3 is "AI drawing": `skills/graphics-canvas/SKILL.md`, teaching-error validation, a draw-with-AI
+rail, and the channel rich-response embed. The AI-drawing LOOP is inherently zero-core (the agent edits
+the scene doc with the same shipped `assets.*` verbs), so most of the phase shipped; ONE piece — the
+in-page rail — is genuinely blocked on a core addition and was STOP-and-surfaced.
+
+## What shipped
+
+- **`docs/skills/graphics-canvas/SKILL.md`** — the agent-drivable surface: auth, the three `assets.*`
+  verbs + the `scene:` id / `content_type:"json"` / `tags:["scene"]` conventions, the scene schema, the
+  **shape catalog** (generated from the live registry), the `bind[slot]={channel:"<series>"}` contract,
+  the read-modify-save loop with self-correction via the teaching report, a **worked "draw AHU-1" run**
+  (real curl), the channel/dashboard embed payload, and the capability/isolation notes. Consumed
+  server-side via `agent::invoke`'s `skill` param (channels / workflow triage / ACP session).
+- **Teaching-error validation** — `scene/catalog.ts` turns the renderer's `SymbolDef` registry into a
+  compact catalog (`describeCatalog`/`knownTypes`/`catalogText`) — ONE source of truth, no
+  hand-maintained second list (a cross-check test asserts it matches `ShapeNode.SYMBOLS`). `validate.ts`
+  now flags an **unknown type** as an `unknownType` issue (still renders a placeholder — never a crash)
+  and `teachingReport(issues)` returns every issue + the catalog when a type is wrong, so an AI mid-draft
+  reads exactly what to fix and re-saves in one step (parent scope's "errors must teach"). Broke a cycle
+  building this: `ShapeNode → scene-store → validate → catalog` — `catalog.ts` imports the shape `*Def`s
+  directly (they depend only on `shape-props`), not `ShapeNode.SYMBOLS`.
+- **Channel / dashboard embed — verified shipped, no new code.** A rich-response
+  `{view:"ext:thecrew/scene", options:{sceneId}}` builds a v2 cell (`ResponseView.buildCell`, which
+  forwards `options`) → `WidgetView` → `ExtWidget`, whose finding-8 wiring now delivers `ctx.options.sceneId`.
+  Locked with a `ResponseView.test.tsx` case (the scene-embed contract) — the same path a dashboard cell
+  uses, so a graphic drops into a thread live.
+
+## STOP-and-surfaced (core-blocked): the in-page draw-with-AI RAIL
+
+An "ask the canvas to draw" rail that the extension page fires itself CANNOT be built zero-core:
+`agent.invoke` is **not an MCP tool** (`crates/host/src/agent/tool.rs` dispatches only
+`agent.policy.set`/`decide`/`runtimes`/`config`; `agent::invoke` is a Rust entry with no `/mcp/call` arm
+and no gateway route; the shell's `agent_invoke` command isn't mapped in the browser HTTP transport), and
+the extension page bridge speaks only `/mcp/call` over `cell.tools ∩ grant`. The rail needs a NEW surface
+(expose `agent.invoke` as an MCP verb, or a `/agent/invoke` gateway route). Surfaced in the extension
+scope §Risks; NOT built. Interim: drive the agent through an existing surface (channel / composer) with
+the `graphics-canvas` skill — the open canvas re-renders on each save.
+
+## Tests + verification
+
+- thecrew UI unit: **66/66** (+6: `catalog.test.ts` 4, `validate.test.ts` +2 teaching cases). `tsc` clean.
+  The unknown-type test was updated from "reports nothing" to "TEACHES" (the intended phase-3 behavior).
+- Dashboard-core unit: `ResponseView.test.tsx` +1 (the ext-widget scene-embed options contract) → 5/5.
+- **Live recipe check:** ran the SKILL §6 read-modify-save loop verbatim against the real node
+  (`assets.put_doc` → `get_doc` parses back the shapes → `list_docs` discovers it by the `scene:` prefix)
+  — the skill's instructions work as written (the honest stand-in for an LLM agent-path test, which needs
+  the invoke surface above).
+
+## Not built (parent-scope phases 4–5)
+
+Symbol packs (pack manifest + loader + `hvac` starter pack) and 3D (persp camera, GLTF import, extrusion,
+status-bound materials). Plus the draw-with-AI rail (above) once the agent-invoke surface exists.

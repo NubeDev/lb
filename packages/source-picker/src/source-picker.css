@@ -1,0 +1,32 @@
+/* The SourcePicker stylesheet — SCOPED, so it can NEVER touch the host app (the @nube/nav-rail
+ * discipline). No preflight, no global utilities: the component uses its own `sp-*` classes only, and
+ * every rule is prefixed `.sp-root`. Colors alias the host's shadcn vars with dark-ish fallbacks, so
+ * the picker follows the app theme; a host overrides by setting `--sp-*` on any ancestor. */
+
+.sp-root {
+  --sp-bg: var(--bg, hsl(222 14% 11%));
+  --sp-fg: var(--fg, hsl(210 20% 92%));
+  --sp-border: var(--border, hsl(215 14% 24%));
+  --sp-accent: var(--accent, hsl(199 89% 48%));
+
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+}
+
+.sp-root .sp-select {
+  height: 2rem;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-bg);
+  color: var(--sp-fg);
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+}
+
+.sp-root .sp-select:focus-visible {
+  outline: none;
+  border-color: var(--sp-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sp-accent) 20%, transparent);
+}
