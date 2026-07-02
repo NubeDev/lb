@@ -16,6 +16,38 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): core skills — the two-tier skill catalog (branch `ce-node-wiring-v2`).**
+The developer-authored **core skill tier** alongside the shipped S4 user tier, both behind the SAME
+grant gate and the SAME `load_skill`. **Embed + seed:** a `lb-assets` build script embeds the
+`docs/skills/*/SKILL.md` corpus (17 skills) into the node binary at build time — parsing/stripping
+frontmatter, flagging repo-relative links — and `node` boot seeds immutable
+`skill:core.<name>@<node-version>` records into a reserved system namespace (`_lb_skills`, the
+`_lb_identity` precedent; one constant + one resolver file, boot seeder is the only writer). Idempotent
+re-seed; a node upgrade seeds new versions, keeps old for rollback (proven live:
+`boot: seeded 17 core skills @0.1.0`). **Read-only to users:** `put_skill`/`deprecate_skill` reject any
+`core.*` id regardless of caps (a non-opaque `Reserved`→`BadInput`, checked before the caps gate).
+**New verb** `assets.deprecate_skill` (soft delete via a `skill_meta:{id}` flag — hidden from
+list/latest, pinned load still resolves, a new version un-hides). **`list_skills`** gains `{tier,
+description, latest, granted}` rows (the one agent catalog); wired `list_skills`/`deprecate_skill`/
+`revoke_skill` into MCP dispatch. **Default grant set** (`core.lb-cli`/`core.query`/`core.store-read`)
+applied at workspace creation (node config `LB_DEFAULT_CORE_SKILLS`), revocable like any grant — NO
+grant bypass for core. **Catalog injection both runtimes:** the in-house loop keeps its once-per-run
+inject; the external ACP runtime folds the granted catalog into the goal (its only channel), under the
+derived principal (`caller ∩ agent`); persona unified onto the same `load_skill` loader. **One real fix
+to the shipped path:** the caps grammar splits a resource on `/` AND `.`, so a dotted core id
+under-matched `store:skill/*` — the dev-login + grants now use `store:skill/**`
+([debug](debugging/auth/skill-star-cap-misses-dotted-core-id.md)). **Tests (rule 9, real store/loop/
+gateway):** `assets/core_skill_seed_test` (3) + `host/core_skills_test` (11: core.* put/deprecate
+rejected even for admin · ungranted-core deny · empty-catalog-without-read-cap · tier rows · deprecate
+hide/pin/un-hide · default grants at creation · ws isolation · **real-run catalog injection tracks
+grant→grow/revoke→shrink**) + `host/core_skills_mcp_test` (4: per-verb MCP deny + tier rows over the
+bridge). Also fixed a pre-existing red (`flows_nodes_test` `BUILTINS` missing `flipflop`). `cargo fmt`
+clean. Session [`core-skills`](sessions/skills/core-skills-session.md); public
+[`skills`](public/skills/skills.md); skill [`skills`](skills/skills/SKILL.md). **Next up:** durable
+**agent-memory** (the sibling "make the agent smarter" scope) — the same enforcement thesis.
+
+---
+
 **Just shipped (2026-07-02): control-engine v1 — node integration + a generic auth fix.** The shipped
 CE extension is now **installed, cap-reachable, and driven end to end against a real gateway** (not just
 green in tests). Three parts: (1) **boot-install** — `rust/node/src/control_engine.rs` (mirroring

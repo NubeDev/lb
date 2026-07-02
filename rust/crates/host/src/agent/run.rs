@@ -25,6 +25,7 @@ use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
 use super::activate::{activate_skill, SKILL_ACTIVATE};
 use super::catalog::render_catalog;
+use super::memory::memory_index_for_injection;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
 use super::model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall};
@@ -114,6 +115,16 @@ pub async fn run_session<M: ModelAccess>(
     // ungranted skill never reaches the rendered text.
     if let Some(catalog) = render_catalog(node, &agent, ws).await? {
         state.messages.push(("system".into(), catalog));
+    }
+
+    // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the persona + skill
+    // catalog, framed as recalled background (not instructions). Read under the DERIVED principal, so
+    // the member wall holds — a run under user U sees only `workspace` + `member:U`. Best-effort
+    // context (a deny/empty → no injection, never a run failure), like the skill catalog. Not
+    // persisted to the transcript, so each run/resume re-injects cleanly (the index is list-derived,
+    // never stale).
+    if let Some(index) = memory_index_for_injection(&node.store, &agent, ws).await {
+        state.messages.push(("system".into(), index));
     }
 
     // RESUME: re-inject the bodies of any skills activated in a PRIOR run segment (Part 5 survives

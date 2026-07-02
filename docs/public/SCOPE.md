@@ -652,6 +652,12 @@ A vertical slice through every layer, building the asset substrate the AI workfl
 - **Skills as versioned, grant-gated assets** — `skill:{id}@{version}` immutable per version
   (rollback = a prior version); `load_skill` returns the body **only when the workspace granted the
   skill** (`grant:skill/{id}` relation) — the §6.12 "load only when granted" rule. See `skills/skills.md`.
+- **Skills — the core (developer) tier** (2026-07-03) — a second tier alongside user skills:
+  `docs/skills/*/SKILL.md` embedded at build time, seeded at boot as immutable
+  `skill:core.<name>@<node-version>` in a reserved namespace (`_lb_skills`), read-only to users
+  (`put`/`deprecate` reject `core.*`), resolved through the SAME grant gate (no bypass). Adds
+  `assets.deprecate_skill` (soft delete), `list_skills` tier/description rows, a default grant set at
+  workspace creation, and granted-catalog injection into both agent runtimes. See `skills/skills.md`.
 - **Extension install records** — `install_extension` persists `granted = requested ∩ admin_approved`
   as an `install:{ext_id}` record (closing the S1 deferral); `installed` reads it back,
   workspace-isolated. See `extensions/extensions.md`.

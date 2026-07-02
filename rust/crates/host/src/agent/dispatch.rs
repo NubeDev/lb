@@ -98,6 +98,13 @@ pub async fn invoke_via_runtime(
         if let Some(catalog) = render_catalog(node, &agent, ws).await? {
             goal = format!("{goal}\n\n{catalog}");
         }
+        // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the skill catalog,
+        // under the same derived principal (member wall holds). Best-effort — a deny/empty is simply
+        // no injection. An external run RECALLS by default; whether it may `set` is its profile's
+        // `granted_tools` opt-in (the read/inject is not a write grant).
+        if let Some(index) = memory_index_for_injection(&node.store, &agent, ws).await {
+            goal = format!("{goal}\n\n{index}");
+        }
         // The persona for an external run is a granted skill it loads itself via `load_skill`
         // (dispatch.rs module docs) — the same loader, pinned by the profile, not a second path.
     }
