@@ -11,6 +11,7 @@ pub mod call;
 pub mod handlers;
 pub mod host;
 pub mod paging;
+pub mod poller;
 pub mod resolve;
 pub mod ros_api;
 pub mod ros_client;

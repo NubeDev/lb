@@ -21,6 +21,7 @@ use lb_role_gateway::{router, Gateway};
 use lb_sidecar_client::{Config, SidecarClient};
 use ros_sidecar::handlers::dispatch;
 use ros_sidecar::host::HostCtx;
+use ros_sidecar::poller::run::PollRegistry;
 use ros_sidecar::ros_fake::{FakeFactory, RosFake};
 use serde_json::{json, Value};
 
@@ -114,7 +115,8 @@ async fn call(
     tool: &str,
     input: Value,
 ) -> Result<Value, String> {
-    match dispatch(host, factory, tool, &input, NOW).await {
+    let registry = Arc::new(PollRegistry::new());
+    match dispatch(host, factory, &registry, tool, &input, NOW).await {
         Ok(Some(s)) => Ok(serde_json::from_str(&s).unwrap()),
         Ok(None) => Err(format!("unknown tool {tool}")),
         Err(e) => Err(e.to_string()),

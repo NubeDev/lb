@@ -51,7 +51,19 @@ request = [
   "mcp:ingest.write:call",       # append polled present-values as series samples (slice 3)
   "mcp:series.latest:call",      # UI live value
   "mcp:series.read:call",        # UI trend chart
+  "mcp:point.write:call",        # the setpoint verb (self-checked by the sidecar; slice 4)
   "mcp:outbox.enqueue:call",     # stage must-deliver point writes (slice 4)
+  # The sidecar-drivable relay surface: the relay loop pulls its own due `ros` effects and marks the
+  # outcome, delivering setpoints out-of-process through RosTarget (slice 4). Relay-operator caps.
+  "mcp:outbox.due:call",
+  "mcp:outbox.mark_delivered:call",
+  "mcp:outbox.mark_failed:call",
+  # The runnable poll verbs (slice 3) — each self-checked by the sidecar against this grant (the
+  # inbound native.call carries no caller identity; see host.rs). arm/park/inspect/restart the loop.
+  "mcp:ros.start:call",
+  "mcp:ros.stop:call",
+  "mcp:ros.status:call",
+  "mcp:ros.restart:call",
 ]
 
 # CRUD over the connection → network → device → point tree (core/resource-verbs grammar).
@@ -136,6 +148,9 @@ description = "Park the poll timer for a connection."
 [[tools]]
 name = "ros.status"
 description = "Poll health: last-ok / last-fail + sample count."
+[[tools]]
+name = "ros.restart"
+description = "Restart a connection's poll task (stop + start)."
 
 # [ui] — the federated shadcn page (fleet → connection → network → device → point drill-down, poll
 # toggles, point-write). Added by the implementing session with the ui-federation scope, per fleet-monitor.

@@ -28,7 +28,10 @@ use crate::boot::Node;
 use crate::callback::Bridge;
 use crate::ingest::call_ingest_tool;
 use crate::undo::{history_compensations, history_list, redo, undo, UndoSvcError};
-use crate::{enqueue_outbox, list_inbox, outbox_status, record_inbox, resolve_inbox};
+use crate::{
+    enqueue_outbox, list_inbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
+    outbox_status, record_inbox, resolve_inbox,
+};
 
 /// The host-native verb prefixes the bridge dispatches over the embedded store (not the runtime
 /// registry). Kept narrow on purpose — the read-only series surface a federated page reads, `ingest.*`
@@ -496,6 +499,38 @@ async fn call_workflow_tool(
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "ok": true }))
+        }
+        // The sidecar-drivable relay surface (native-tier delivery): a driver pulls its own due
+        // effects, delivers them through its own client, and marks the outcome. See
+        // `outbox/relay_ops.rs` for the invariant (never lost, never double-sent).
+        "outbox.due" => {
+            let target = input.get("target").and_then(|v| v.as_str());
+            let now = input.get("now").and_then(|v| v.as_u64()).unwrap_or(0);
+            let effects = outbox_due(&node.store, principal, ws, target, now)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "effects": effects }))
+        }
+        "outbox.mark_delivered" => {
+            let id = input
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
+            outbox_mark_delivered(&node.store, principal, ws, id)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "ok": true }))
+        }
+        "outbox.mark_failed" => {
+            let id = input
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: id".into()))?;
+            let now = input.get("now").and_then(|v| v.as_u64()).unwrap_or(0);
+            let status = outbox_mark_failed(&node.store, principal, ws, id, now)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "status": status }))
         }
         "inbox.resolve" => {
             let item_id = input

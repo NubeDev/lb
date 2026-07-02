@@ -10,12 +10,18 @@
 //! in the library (`lib.rs` → `handlers/`); this binary is the thin supervisor loop that builds the
 //! host handle once and dispatches each `call` through it.
 
+use std::sync::Arc;
+
 use ros_sidecar::call;
 use ros_sidecar::host::HostCtx;
+use ros_sidecar::poller::run::PollRegistry;
 use ros_sidecar::resolve::RealFactory;
 
 use lb_supervisor::{read_frame, write_frame, Method, Reply, Request};
 use tokio::io::{stdin, stdout};
+
+/// How often the sidecar relay scans for due `ros` outbox effects (setpoint deliveries).
+const RELAY_INTERVAL_SECS: u64 = 2;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -26,6 +32,23 @@ async fn main() {
     // control loop (health/shutdown) but every tool call fails its callback — surfaced, not panicked.
     let host = HostCtx::from_env();
     let factory = RealFactory;
+    // Process-lived poll-task registry (ros_uuid → running task). Holds only live counters, no durable
+    // state (rule 4): a respawn drops it and `ros.start` re-arms from the config records.
+    let registry = Arc::new(PollRegistry::new());
+
+    // Arm the sidecar relay loop: it delivers `point.write` outbox effects (must-deliver setpoints) by
+    // pulling `outbox.due {target:"ros"}` and writing the box via `RosTarget`. Stateless (rule 4): the
+    // durable `due` set is the state, so a respawn resumes delivery. Only armed when the host handle is
+    // present (a relay with no callback can deliver nothing).
+    if let Ok(host) = &host {
+        let relay_factory: Arc<dyn ros_sidecar::resolve::RosApiFactory> = Arc::new(RealFactory);
+        ros_sidecar::poller::relay::spawn_relay(
+            host.clone(),
+            relay_factory,
+            std::time::Duration::from_secs(RELAY_INTERVAL_SECS),
+            now_ts,
+        );
+    }
 
     let mut input = stdin();
     let mut output = stdout();
@@ -49,7 +72,7 @@ async fn main() {
                 break;
             }
             Method::Call => match &host {
-                Ok(host) => call::handle(&req, host, &factory, now_ts()).await,
+                Ok(host) => call::handle(&req, host, &factory, &registry, now_ts()).await,
                 Err(e) => Reply::err(req.id, format!("no host handle: {e}")),
             },
         };

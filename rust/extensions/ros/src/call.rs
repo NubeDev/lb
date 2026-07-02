@@ -8,17 +8,26 @@
 //! sidecar's job (see `host.rs`). A denial is an opaque error reply, indistinguishable from any other
 //! refusal.
 
+use std::sync::Arc;
+
 use lb_supervisor::{CallParams, Reply, Request};
 
 use crate::handlers::{dispatch, parse_input};
 use crate::host::{HostCtx, HostError};
+use crate::poller::run::PollRegistry;
 use crate::resolve::RosApiFactory;
 
 /// Handle a `call`: parse the tool + input, run the CRUD dispatcher, then (later slices) the poller /
 /// point.write. `host` is the callback + grant handle; `factory` builds a `RosApi` per connection;
 /// `ts` is the logical timestamp for shadow writes. Async because the verbs await REST round-trips and
 /// host callbacks.
-pub async fn handle(req: &Request, host: &HostCtx, factory: &dyn RosApiFactory, ts: u64) -> Reply {
+pub async fn handle(
+    req: &Request,
+    host: &HostCtx,
+    factory: &dyn RosApiFactory,
+    registry: &Arc<PollRegistry>,
+    ts: u64,
+) -> Reply {
     let params: CallParams = match serde_json::from_str(&req.params) {
         Ok(p) => p,
         Err(e) => return Reply::err(req.id, format!("bad params: {e}")),
@@ -29,7 +38,7 @@ pub async fn handle(req: &Request, host: &HostCtx, factory: &dyn RosApiFactory, 
         Err(e) => return Reply::err(req.id, e.to_string()),
     };
 
-    match dispatch(host, factory, &params.tool, &input, ts).await {
+    match dispatch(host, factory, registry, &params.tool, &input, ts).await {
         Ok(Some(result)) => Reply::ok(req.id, result),
         // Not a CRUD verb — slices 3/4 add the poller + point.write arms; until then it is unknown.
         Ok(None) => Reply::err(req.id, format!("unknown tool: {}", params.tool)),

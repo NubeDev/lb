@@ -17,11 +17,15 @@
 mod device;
 mod network;
 mod point;
+mod poll;
 mod ros;
+
+use std::sync::Arc;
 
 use serde_json::Value;
 
 use crate::host::{HostCtx, HostError};
+use crate::poller::run::PollRegistry;
 use crate::resolve::RosApiFactory;
 
 /// Parse the opaque-JSON `input` string a `call` carries into a `Value` (empty/absent → `{}`).
@@ -38,6 +42,7 @@ pub fn parse_input(input: &str) -> Result<Value, HostError> {
 pub async fn dispatch(
     host: &HostCtx,
     factory: &dyn RosApiFactory,
+    registry: &Arc<PollRegistry>,
     tool: &str,
     input: &Value,
     ts: u64,
@@ -58,6 +63,12 @@ pub async fn dispatch(
 
         "point.list" => point::list(host, factory, input).await?,
         "point.get" => point::get(host, factory, input).await?,
+        "point.write" => point::write(host, factory, input, ts).await?,
+
+        "ros.start" => poll::start(host, factory, registry, input).await?,
+        "ros.stop" => poll::stop(host, registry, input).await?,
+        "ros.status" => poll::status(host, registry, input).await?,
+        "ros.restart" => poll::restart(host, factory, registry, input).await?,
 
         _ => return Ok(None),
     };

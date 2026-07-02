@@ -30,6 +30,7 @@ mod mcp_catalog;
 mod members;
 mod membership;
 mod message;
+mod native;
 mod outbox;
 mod post;
 mod prefs;
@@ -91,6 +92,7 @@ pub use membership::{
     remove_member_route as remove_member,
 };
 pub use message::{delete_message, edit_message};
+pub use native::native_call;
 pub use outbox::get_outbox_status;
 pub use post::post_message;
 pub use prefs::{

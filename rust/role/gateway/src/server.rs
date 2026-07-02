@@ -22,14 +22,14 @@ use crate::routes::{
     list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_flow_nodes,
     list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_members, list_roles,
     list_rules, list_series, list_tables, list_team_members, list_teams, list_users,
-    list_workspaces, load_skill, login, mcp_call, mcp_catalog, patch_flow_run, post_message,
-    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
-    read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
-    rename_workspace, render_catalog_message, request_approval, resolve_caps, resolve_inbox,
-    resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant, revoke_tokens_route,
-    rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard, save_flow, save_rule,
-    scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
-    set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
+    list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, patch_flow_run,
+    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
+    read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
+    rename_team, rename_workspace, render_catalog_message, request_approval, resolve_caps,
+    resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
+    revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard,
+    save_flow, save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route,
+    set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc, start_job, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_datasource, uninstall_extension, update_flow_node, write_samples,
 };
@@ -141,6 +141,9 @@ pub fn router(gw: Gateway) -> Router {
         .route("/extensions/{ext}", delete(uninstall_extension))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))
         .route("/mcp/call", post(mcp_call))
+        // native-tier bridge: a browser page drives its extension's sidecar tools (ros.*, point.write,
+        // …), the peer of /mcp/call for the native tier (native-tier scope).
+        .route("/native/call", post(native_call))
         .route("/mcp/catalog", get(mcp_catalog))
         .route("/extensions/{ext}/enable", post(enable_extension))
         .route("/extensions/{ext}/disable", post(disable_extension))
