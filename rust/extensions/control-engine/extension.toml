@@ -1,0 +1,46 @@
+# The `control-engine` native (Tier-2) Control Engine bridge extension
+# (control-engine scope). A supervised host binary that holds the long-lived CE
+# REST/WS connection (via the `rubix-ce` client) and exposes the engine as a
+# caps-gated `control-engine.*` MCP surface. SurrealDB stays the platform authority;
+# CE is the authority for its own graph, reached only through this gated,
+# net:*-bounded process — never wired into core.
+[extension]
+id          = "control-engine"
+version     = "0.1.0"
+name        = "Control Engine"
+description = "Drive a Control Engine (CE) instance behind a caps-gated control-engine.* MCP surface."
+
+[runtime]
+tier        = "native"                          # Tier 2: an OS child owning the CE socket (§6.3)
+world       = "lazybones:ext/extension@0.1.0"   # WIT major still checked at load (ABI gate)
+placement   = "either"
+
+# The native supervision recipe the host turns into a lb_supervisor::Spec.
+[native]
+exec        = "control-engine"          # resolved by the host against the install/target dir
+args        = []
+restart     = "on-crash"               # auto-restart on crash; the client re-derives from the call
+
+[capabilities]
+# What the extension REQUESTS at install — intersected with admin approval (`grant`).
+# The net:* grant is the per-endpoint approval enforced PRE-CONNECT by the host: a CE
+# whose host:port the grant omits is refused, opaque. S3 requests ONLY the local CE
+# socket (127.0.0.1:7979, the canonical ce-studio port); the manifest grows per-slice,
+# never speculatively (store:ce_appliance:* + secret:* land in S4/S5).
+request = [
+  "net:tcp:127.0.0.1:7979:connect",   # the local CE ce-rest REST/WS socket
+]
+
+# The verbs the child serves over the control line. The tool NAME is the cap gate
+# (mcp:control-engine.<verb>:call — house rule). Declared so the host can register +
+# authorize them without instantiating the child.
+[[tools]]
+name        = "control-engine.tree"
+description = "Read a CE component subtree (the structural source of truth); returns {nodes, edges}."
+
+[[tools]]
+name        = "control-engine.schema"
+description = "Read the CE type catalogue (the add-node palette); returns {manifests}."
+
+[visibility]
+class = "private"

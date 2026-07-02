@@ -16,6 +16,32 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-02): control-engine v1 — slices S1 + S3 (branch `ce-v1`).** The CE
+bridge's first two slices, built in parallel. **S1 (the `EngineTransport` seam)** was cut
+**upstream** in `NubeIO/ce-wiresheet` (branch `lb-transport`, local — not pushed): a pure
+refactor that lifts the editor's hardwired transport (`rest.ts` `fetch` + `ws.ts` socket)
+behind one `EngineTransport`/`EngineStream` interface, with `DirectTransport` reproducing
+today's direct-to-CE behavior verbatim and `CeEditor` gaining an optional `transport?` prop —
+so the S7 LB MCP/Zenoh bridge becomes an *injection*, not a fork. Exit gate met: a
+`MockTransport` vitest renders a tree + applies a frame with **zero `fetch`/`WebSocket`
+globals touched**; `pnpm typecheck` + **145** tests + both vite builds green. **S3 (the sidecar
++ local read verbs)** stood up `rust/extensions/control-engine/` (native Tier-2, mirroring
+`federation`): the stdio control loop, `Arc<dyn ControlEngine>` per appliance via the pinned
+`rubix-ce` git dep, and `control-engine.tree` + `control-engine.schema` serving **verbatim**
+engine DTOs behind the caps gate (the tool NAME is the gate, no CE knowledge in core — sanity
+grep clean). The ONE sanctioned fake (`ce_fake`, behind the `ce-fake` feature, armed by
+`LB_CE_FAKE=1`) lets the host test drive the **real** supervisor + gate + stdio ABI; the
+opt-in real-engine tier ran **green against a live ce-studio engine on `:7979`**. Tests: crate
+unit **6** (dispatch deny-before-call + verbatim DTOs), host `control_engine_test` (capability-
+deny opaque · happy tree/schema · hot-restart `restart_count==1`), `cargo build --workspace`
+green. Workspace-isolation for the verbs is deferred to **S4** (needs the appliance registry —
+noted, not faked). Open questions resolved in both slice docs (DTO=verbatim; port=7979). Slices
+[S1](../rust/extensions/control-engine/docs/slice-1-wiresheet-transport-seam.md) /
+[S3](../rust/extensions/control-engine/docs/slice-3-sidecar-local-mode.md); session
+[`ce-v1-s1-s3`](sessions/control-engine/ce-v1-s1-s3-session.md). **Next up:** S4 (appliance
+registry + registry-routed `call_tool`), then S5 write verbs (which adopt the `ui-ext`
+native→host callback transport, the same mechanism the ROS driver uses).
+
 **Just shipped (2026-07-02): the workspace default runtime is honored on a run (agent-config follow-up).**
 `agent.config.set` persisted a workspace default, but `agent.invoke` / the channel `/agent` path ignored
 it — an omitted `runtime` fell back to the compiled-in `default`. Closed with **one resolution seam**

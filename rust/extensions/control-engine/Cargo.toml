@@ -1,0 +1,52 @@
+# `control-engine` — the native (Tier-2) Control Engine (CE) bridge extension
+# (control-engine scope). A supervised host binary that holds the long-lived CE
+# REST/WS connection (via the `rubix-ce` client crate) and serves the caps-gated
+# `control-engine.*` MCP surface. Like `federation`/`echo-sidecar` it is a native
+# binary for the host target, so it IS a workspace member, and it speaks the SAME
+# `lb-supervisor` wire protocol over stdio.
+#
+# The CE client (`rubix-ce`) and its REST/WS deps live ONLY here — core crates link
+# no CE code (control-engine scope §"100% extension": the core stays CE-ignorant).
+[package]
+name = "control-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "control-engine"
+path = "src/main.rs"
+
+[dependencies]
+# Reuse the supervisor's wire protocol + framing verbatim — child and host agree on
+# the ABI by sharing the crate (no drift), exactly like federation/echo-sidecar.
+lb-supervisor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = "0.1"
+
+# The CE client crate (control-engine scope Decision: pinned git dependency, still
+# update-with-approval). `rest` pulls `ws`; `CeRestClient<WsStreamTransport>::new`
+# needs both. The commented path line right below is the local-dev-only override for
+# side-by-side checkouts of ~/code/ce/ce-client-rust — never the committed default
+# (a bare path dep is non-reproducible off this machine).
+rubix-ce = { git = "https://github.com/NubeIO/ce-client-rust", rev = "51ab97edf32d622f94d00401aee3ae2daf8859c8", features = ["rest", "ws"] }
+# rubix-ce = { path = "/home/user/code/ce/ce-client-rust", features = ["rest", "ws"] }
+
+# Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async CE client
+# (rt-multi-thread). io-util for the framed reader/writer.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std"] }
+
+[features]
+default = []
+# Compile the ONE sanctioned CE stub (`ce_fake`) INTO the binary, so the host
+# integration test drives the real supervisor + real gate + real stdio ABI against a
+# CE we cannot build in Rust CI (the C++20 engine). Activated per-call by the
+# `LB_CE_FAKE=1` env the test sets — OFF by default, so a shipped binary always uses
+# the real `rubix-ce` REST/WS client (CLAUDE §9: the fake never leaks into the real
+# path). Mirrors federation's `--features postgres` build-flag precedent.
+ce-fake = []
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync"] }

@@ -71,11 +71,21 @@ slice because every later slice needs them:
 - **Exit gate:** `cargo test --workspace` green including the new extension; one
   documented real-engine run of `ce.tree` against ce-studio's engine.
 
-## Open questions (resolve in-slice)
+## Open questions (RESOLVED in-slice)
 
-- `Tree`/`ComponentDto` JSON shape over MCP: pass `ce-client-rust`'s serde form
-  through verbatim, or re-shape? **Default: verbatim** (the wiresheet already speaks
-  engine DTOs; re-shaping buys nothing and adds drift) — confirm the DTOs serialize
-  cleanly (no `bigint`-hostile u64s for the JS side).
-- Which CE port is canonical in examples — ce-studio's `7979`; the parent scope's
-  example says `7878`. Align the docs on `7979`.
+- **`Tree`/`ComponentDto` JSON shape over MCP — verbatim or re-shape? → VERBATIM,
+  confirmed.** The `tree`/`schema` verbs serialize `rubix-ce`'s own serde form straight
+  through (`serde_json::to_value(tree)` / `to_value(manifests)`); no re-shaping. The
+  wiresheet already speaks engine DTOs, so re-shaping buys nothing and only adds a second
+  place to drift. Confirmed clean by the crate unit tests
+  (`tree_returns_seeded_graph_verbatim_and_counts_one_call`,
+  `schema_returns_manifest_list_verbatim`) and the real-engine tier: the DTOs round-trip
+  through JSON with no `bigint`-hostile bare-u64 hazard for the JS side — uids ride the
+  keyed `NodeKey`/`Uid` form (`identity.rs`), not a raw 64-bit integer, so the values stay
+  within JS safe-integer range. If a later verb ever returns a genuinely >2^53 field, the
+  fix is a keyed/string form on that field in `rubix-ce`, not a reshape layer here.
+- **Canonical CE port → `7979` (ce-studio's default).** All control-engine docs, the
+  manifest capability request (`net:tcp:127.0.0.1:7979:connect`), the arg default
+  (`args.rs` `base_defaults_to_canonical_local`), and the real-engine test tier
+  (`CE_ENGINE_URL` default) use `7979`. The parent scope's stray `7878` example is
+  superseded (this line is the only remaining mention, kept for the audit trail).
