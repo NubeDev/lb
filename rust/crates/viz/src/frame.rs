@@ -124,6 +124,19 @@ impl Frame {
         self
     }
 
+    /// Cap the frame to at most `max` rows — truncate every field's values and `length`. Used by the
+    /// debug/stepwise view to keep an intermediate snapshot within the per-frame budget (viz
+    /// transformations scope, "the frame budget is the whole game").
+    pub fn truncate(&mut self, max: usize) {
+        if self.length <= max {
+            return;
+        }
+        for f in &mut self.fields {
+            f.values.truncate(max);
+        }
+        self.length = max;
+    }
+
     /// Find a field by name (first match — Grafana's `byName`).
     pub fn field(&self, name: &str) -> Option<&Field> {
         self.fields.iter().find(|f| f.name == name)

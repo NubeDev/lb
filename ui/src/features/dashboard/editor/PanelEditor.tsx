@@ -199,7 +199,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
               {tab === "plot" && canPlot && (
                 <PlotAxesTab draft={draft} state={state} patch={patch} scope={scope} refreshKey={refreshKey} />
               )}
-              {tab === "transform" && <TransformTab state={state} patch={patch} />}
+              {tab === "transform" && <TransformTab state={state} patch={patch} draft={draft} scope={scope} refreshKey={refreshKey} />}
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} ws={ws} />}
               {tab === "field" && <FieldTab state={stateC} patch={patch} search={search} />}
               {tab === "overrides" && <OverridesTab state={state} patch={patch} />}

@@ -18,4 +18,4 @@ mod transforms;
 pub use config::{Matcher, Transformation};
 pub use frame::{Field, FieldType, Frame, Frames};
 pub use reducer::reduce_field;
-pub use transform::transform;
+pub use transform::{transform, transform_stepwise};

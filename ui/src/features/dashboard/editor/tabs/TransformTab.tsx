@@ -5,19 +5,28 @@
 // raw-JSON textarea survives ONLY for an imported unsupported id. Add-transform is a searchable picker
 // with one-line descriptions. One responsibility: the transform-list surface + the add picker.
 
-import type { Transformation } from "@/lib/dashboard";
+import { useState } from "react";
+
+import type { Cell, Transformation } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
+import type { VarScope } from "@/lib/vars";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { TRANSFORM_DEFS, defaultOptions, transformLabel, type TransformId } from "./transformRegistry";
 import { TransformEditor } from "./transforms/TransformEditor";
+import { TransformDebug } from "./transforms/TransformDebug";
 
 interface Props {
   state: EditorState;
   patch: (next: Partial<EditorState>) => void;
+  /** The draft cell — needed by the per-step debug view to re-run the pipeline stepwise. */
+  draft?: Cell;
+  scope?: VarScope;
+  refreshKey?: number;
 }
 
-export function TransformTab({ state, patch }: Props) {
+export function TransformTab({ state, patch, draft, scope, refreshKey }: Props) {
+  const [showSteps, setShowSteps] = useState(false);
   const list = state.transformations;
   const write = (next: Transformation[]) => patch({ transformations: next });
 
@@ -80,6 +89,25 @@ export function TransformTab({ state, patch }: Props) {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Per-step debug view (editor-parity step 7): re-runs the pipeline stepwise via viz.query and
+          shows the input + the frames after each applied step, so an author sees what each transform did. */}
+      {list.length > 0 && draft && (
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={showSteps ? "default" : "outline"}
+            aria-label="toggle transform steps"
+            aria-pressed={showSteps}
+            className="h-7 justify-self-start px-2 text-xs"
+            onClick={() => setShowSteps((v) => !v)}
+          >
+            {showSteps ? "Hide" : "Show"} per-step result
+          </Button>
+          {showSteps && <TransformDebug draft={draft} scope={scope} refreshKey={refreshKey} />}
+        </div>
       )}
     </div>
   );

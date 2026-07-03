@@ -18,7 +18,7 @@
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_viz::{transform, Frame, Frames, Transformation};
+use lb_viz::{transform, transform_stepwise, Frame, Frames, Transformation};
 use serde_json::{json, Value};
 
 use super::error::VizError;
@@ -54,6 +54,27 @@ pub async fn viz_query(
         let rows = cap_rows(rows);
         let time = detect_time_field(&rows);
         frames.push(Frame::from_rows(&t.ref_id, &rows, time.as_deref()));
+    }
+
+    // DEBUG (editor-parity step 7): when the panel asks for per-step frames, run the pipeline stepwise
+    // and return a `steps[]` snapshot (input + one per applied step), honoring an optional `stopAt`.
+    // Additive + opt-in — inherits the same `mcp:viz.query:call` cap, no new verb. The same frame budget
+    // applies (it's the same `apply_step`), so the debug view can't blow past the cap either.
+    if let Some(debug) = panel_debug(panel) {
+        let snapshots = transform_stepwise(frames, &pipeline, debug.stop_at);
+        // The last snapshot's primary frame flattened to rows = the effective result (so the preview
+        // still renders while the debug view is on). Computed BEFORE serializing the snapshots.
+        let rows: Vec<Value> = snapshots
+            .last()
+            .and_then(|(_, f)| f.first())
+            .map(Frame::to_rows)
+            .unwrap_or_default();
+        // Cap each snapshot's frames to the per-frame budget (defense in depth) and emit.
+        let steps: Vec<Value> = snapshots
+            .into_iter()
+            .map(|(step, frames)| json!({ "step": step, "frames": cap_frames(frames) }))
+            .collect();
+        return Ok(json!({ "steps": steps, "rows": rows }));
     }
 
     // Run the transform pipeline — the ONE impl, server-side (invariant B).
@@ -175,4 +196,36 @@ fn cap_rows(mut rows: Vec<Value>) -> Vec<Value> {
         rows.truncate(MAX_ROWS_PER_FRAME);
     }
     rows
+}
+
+/// The per-step debug request on the panel (editor-parity step 7). `panel.debug = true` (or an object
+/// `{ stopAt?: number }`) turns on the stepwise view. Absent/false → no debug. `stopAt` bounds the
+/// number of APPLIED steps to run.
+struct DebugRequest {
+    stop_at: Option<usize>,
+}
+
+fn panel_debug(panel: &Value) -> Option<DebugRequest> {
+    match panel.get("debug") {
+        Some(Value::Bool(true)) => Some(DebugRequest { stop_at: None }),
+        Some(Value::Object(o)) => Some(DebugRequest {
+            stop_at: o
+                .get("stopAt")
+                .and_then(Value::as_u64)
+                .map(|n| n as usize),
+        }),
+        _ => None,
+    }
+}
+
+/// Cap each frame in a debug snapshot to the per-frame row budget (defense in depth: a stepwise view
+/// must not emit an unbounded intermediate frame). Re-serializes the capped frames to `Value`.
+fn cap_frames(frames: Frames) -> Vec<Value> {
+    frames
+        .into_iter()
+        .map(|mut f| {
+            f.truncate(MAX_ROWS_PER_FRAME);
+            serde_json::to_value(f).unwrap_or(Value::Null)
+        })
+        .collect()
 }
