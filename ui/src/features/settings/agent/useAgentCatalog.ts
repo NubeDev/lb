@@ -13,6 +13,7 @@ import {
   createAgentDef,
   updateAgentDef,
   deleteAgentDef,
+  setModelKey,
   type AgentDefinition,
   type DefinitionPatch,
 } from "@/lib/agent/agentDef.api";
@@ -27,6 +28,9 @@ export interface AgentCatalog {
   reload: () => void;
   /** Pick a definition as the workspace default — writes `agent.config` from its runtime + endpoint. */
   pick: (def: AgentDefinition) => Promise<void>;
+  /** Seal a model key (token) for the ACTIVE pick — even a built-in — without cloning it. Seals the
+   *  value through `secret.set` (Private) and writes only the resulting PATH onto `agent.config`. */
+  setActiveKey: (value: string) => Promise<void>;
   create: (def: AgentDefinition) => Promise<void>;
   update: (id: string, patch: DefinitionPatch) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -76,12 +80,33 @@ export function useAgentCatalog(): AgentCatalog {
           provider: def.model_endpoint.provider,
           model: def.model_endpoint.model,
           api_key_env: def.model_endpoint.api_key_env,
+          // A custom definition may already carry a sealed key path — preserve it on pick.
+          api_key_secret: def.model_endpoint.api_key_secret,
           base_url: def.model_endpoint.base_url,
         },
       });
       reload();
     },
     [reload],
+  );
+
+  const setActiveKey = useCallback(
+    async (value: string) => {
+      // Seal the token for the ACTIVE pick without cloning a built-in: the active `agent.config` is
+      // workspace-scoped and can own a sealed secret path (scope open-question #5). The value flows
+      // ONLY through `secret.set` (Private, owner-stamped); we store just the resulting PATH on
+      // `agent.config`. The path is stable per active endpoint so a rotate overwrites (owner-only).
+      const rt = config.default_runtime ?? "default";
+      const model = config.model_endpoint?.model ?? "model";
+      const path = `agent/config-${rt}-${model}-key`.replace(/[^a-z0-9/_-]+/gi, "-");
+      await setModelKey(path, value);
+      // Merge onto the existing endpoint — a partial patch keeps provider/model/env/base intact.
+      await setAgentConfig({
+        model_endpoint: { ...(config.model_endpoint ?? {}), api_key_secret: path },
+      });
+      reload();
+    },
+    [config, reload],
   );
 
   const create = useCallback(
@@ -106,5 +131,17 @@ export function useAgentCatalog(): AgentCatalog {
     [reload],
   );
 
-  return { definitions, runtimes, config, activeId, loading, reload, pick, create, update, remove };
+  return {
+    definitions,
+    runtimes,
+    config,
+    activeId,
+    loading,
+    reload,
+    pick,
+    setActiveKey,
+    create,
+    update,
+    remove,
+  };
 }

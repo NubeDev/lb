@@ -12,6 +12,9 @@ export interface ModelEndpointPatch {
   model?: string;
   /** The env-var NAME holding the key — never the key value. */
   api_key_env?: string;
+  /** A secret PATH into `lb-secrets` holding the key (a name, never the value). Lets a workspace key
+   *  its ACTIVE-pick model without cloning a built-in. Resolved at model-call time secret→env. */
+  api_key_secret?: string;
   base_url?: string;
 }
 

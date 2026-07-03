@@ -131,6 +131,44 @@ routing the in-house loop to a **per-workspace endpoint** waits on the ai-gatewa
 (below). The UI copy says so. The ask lives at `../../scope/agent/agent-catalog-scope.md`; the build
 session at `../../sessions/agent/agent-catalog-session.md`.
 
+## Testing a definition + sealing its model key
+
+Two gated additions to the catalog (`../../scope/agent/agent-catalog-test-and-secrets-scope.md`;
+`../../sessions/agent/agent-catalog-test-and-secrets-session.md`):
+
+**`agent.def.test {id?}` — the context-proving diagnostic** (`crates/host/src/agent/defs/test.rs`,
+gated `mcp:agent.def.test:call`, its own admin-tier cap — it spends a model turn). It resolves the
+target (the given id, or the active `agent.config` pick), assembles the caller's **real** run context
+exactly as `run.rs` does — `SYSTEM_PROMPT` + `reachable_tools` (the MCP/ACP tool surface) +
+`render_catalog` (granted skills) — and runs **one** turn (step ceiling 1, no tool execution) over the
+node's `default_model`. Returns `{ answer, runtime, model, context: { tool_count, tools, skill_count,
+skills }, provider_configured, ok }`. The **context line** ("context: N tools, M skills") is what proves
+the agent *was given* its Lazybones context even against the deterministic mock; `provider_configured`
+is honest (false on the `UnconfiguredModel` placeholder — the UI never implies a real LLM answered). The
+test inherits the wall (context is the caller's own ws- + grant-gated surface — never widened, never
+another tenant's) and is bounded (no durable session/transcript persisted). The key is resolved for the
+model transport out-of-band, never injected into the prompt — so the answer is structurally key-free.
+Gateway: `POST /agent/defs/{id}/test` (and `POST /agent/defs/test` for the active pick).
+
+**DB-sealed per-workspace model key.** The endpoint gains a names-only optional **`api_key_secret`** —
+a **secret PATH** (e.g. `agent/<id>-key`) into `lb-secrets`, beside `api_key_env`. Neither is a value.
+`api_key_secret` lives on BOTH `DefinitionEndpoint` (a custom definition) and `ModelEndpointPatch` (the
+active `agent.config` pick), so there are **two ways to add a token in the UI**:
+- **On the active pick — including a built-in — without cloning it.** The active entry carries a
+  write-only **"Set model key" / "Rotate key"** affordance; it seals the value via `secret.set` and
+  writes only the path onto `agent.config` (the active selection is workspace-scoped and can own a
+  sealed secret path — scope open-question #5). This is the self-serve "key the read-only in-house
+  model" path: you key your *selection*, not the built-in record.
+- **On a custom definition — the editor's write-only "Model key" field.** Seals on save; a re-edit
+  shows "key is set ✓ · rotate"; never a readback.
+
+At model-call time the one shared `resolve_endpoint_key` (`crates/host/src/agent/resolve_key.rs`)
+resolves **sealed secret (`lb_secrets::get`) → node env → unset** — the SAME resolver the test and a
+real run both consume, so "test passes" and "run works" can't diverge. A `builtin.*` *record* stays
+read-only + node-env (its write is rejected); the sealed key rides the workspace's `agent.config`
+selection instead. Names-only holds by construction: the value lives only in `lb-secrets`, never on a
+record, manifest, or log — the tests assert the record/config + the returned answer are value-free.
+
 ## Not yet (follow-ups)
 
 A real model **provider adapter** behind the gateway contract (the in-house model door + boot are now

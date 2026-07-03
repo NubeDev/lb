@@ -56,6 +56,7 @@ fn sample_custom(id: &str) -> AgentDefinition {
             provider: "zaicoding".into(),
             model: "glm-5.2".into(),
             api_key_env: Some("ZAI_STAGING_KEY".into()),
+            api_key_secret: None,
             base_url: Some("https://api.z.ai/api/coding/paas/v4".into()),
         },
         builtin: false,
@@ -249,6 +250,7 @@ async fn custom_crud_round_trips() {
                 provider: "zaicoding".into(),
                 model: "glm-5.1".into(),
                 api_key_env: Some("ZAI_STAGING_KEY".into()),
+                api_key_secret: None,
                 base_url: None,
             }),
             ..DefinitionPatch::default()

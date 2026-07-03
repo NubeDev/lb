@@ -112,9 +112,7 @@ pub async fn test_def(
     let result = agent_def_test(&gw.node, &p, p.ws(), Some(&id))
         .await
         .map_err(tool_status)?;
-    Ok(Json(
-        serde_json::to_value(result).unwrap_or(Value::Null),
-    ))
+    Ok(Json(serde_json::to_value(result).unwrap_or(Value::Null)))
 }
 
 /// `POST /agent/defs/test` — test the workspace's ACTIVE `agent.config` pick (no id). Same shape.
@@ -128,9 +126,7 @@ pub async fn test_active_def(
     let result = agent_def_test(&gw.node, &p, p.ws(), None)
         .await
         .map_err(tool_status)?;
-    Ok(Json(
-        serde_json::to_value(result).unwrap_or(Value::Null),
-    ))
+    Ok(Json(serde_json::to_value(result).unwrap_or(Value::Null)))
 }
 
 /// Map a tool error to an HTTP status. A denial is an opaque 403; a reserved/unknown-runtime is 400;

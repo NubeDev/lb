@@ -111,3 +111,61 @@ a solo node simply has no remote callers.
   tool's cap. The menu shows what the caller may run; the wall re-checks. Grant the cap to the caller.
 - **"I want a third-party coding agent, not the in-house loop."** That's the opt-in external runtime —
   see `../external-agent/SKILL.md` (compile-time `external-agent` feature + `runtime:` selection).
+
+---
+
+## Testing a definition + setting its model key (token)
+
+Both surfaces are agent-/API-drivable over the gateway (rule 7), so this skill covers them.
+
+### Test a definition — `agent.def.test {id?}`
+
+A gated diagnostic (`mcp:agent.def.test:call`, admin-tier — it spends a model turn) that runs **one**
+turn with the caller's **real** assembled context (system prompt + reachable MCP/ACP tools + granted
+skills) so you can confirm the agent has its Lazybones context:
+
+```
+POST /agent/defs/{id}/test        # a specific definition
+POST /agent/defs/test             # the active agent.config pick (no id)
+# → { answer, runtime, model, context: { tool_count, tools, skill_count, skills },
+#     provider_configured, ok }
+```
+
+Read the **context line** ("context: N tools, M skills"): it proves the agent *was given* its tools +
+skills even against the deterministic mock. `provider_configured` is honest — `false` when the node
+runs the `UnconfiguredModel` placeholder (no provider adapter wired), so the answer is a placeholder,
+not a real LLM.
+
+### Set / rotate the model key (the token) — sealed, DB-backed
+
+There **is** a way to add a token — it is a **sealed workspace secret**, not a field on the definition
+record (names-only, §6.7). The flow is two shipped verbs; the UI's "Model key" field does both for you:
+
+1. **Seal the value** through the shipped sealed secret store:
+   ```
+   POST /mcp/call  { "tool": "secret.set",
+                     "args": { "path": "agent/<id>-key", "value": "<THE-TOKEN>",
+                               "visibility": "private" } }
+   ```
+   The value lands **only** in `lb-secrets` (owner-stamped, workspace-scoped, never logged, never read
+   back to the browser). Needs `mcp:secret.set:call` + `secret:agent/*:write`.
+2. **Reference the path** (a name, never the value) on the definition:
+   ```
+   POST /agent/defs   { …, "model_endpoint": { …, "api_key_secret": "agent/<id>-key" } }
+   ```
+
+At model-call time the key resolves **sealed secret → node env (`api_key_env`) → unset** via the one
+shared `resolve_endpoint_key`. So: a workspace that sealed a key uses it; one that only set a node env
+var keeps working off the env.
+
+**Two UI paths to add a token (Settings → Agent):**
+- **On the active pick — including a built-in — no clone needed.** Pick the model, then use the
+  **"Set model key" / "Rotate key"** affordance on the active entry. It seals the token via `secret.set`
+  and writes only the resulting path onto **`agent.config`** (the active selection is workspace-scoped
+  and can own a sealed secret path — scope open-question #5). This is the answer to "the in-house model
+  is read-only, how do I give it my token?": you key your *selection* of it, not the built-in record.
+- **On a custom definition — the editor's write-only "Model key" field.** Seals on save; shows
+  "key is set ✓ · rotate" thereafter; never reads the value back.
+
+Both never show the value back and store only the path (names-only).
+

@@ -48,6 +48,23 @@ Full agent suite green (16 test bins) — no double-gate/deny/skill.activate reg
 [`skills/agent/SKILL.md`](skills/agent/SKILL.md). **Next up:** a real AI-gateway `Provider` adapter →
 the in-house agent answers with a real LLM (zero change here).
 
+**Just shipped (2026-07-03): catalog "Test" button + DB-sealed per-workspace model key.** Two gated
+additions to the shipped agent catalog, reusing shipped seams: `agent.def.test {id?}`
+(`crates/host/src/agent/defs/test.rs`, gated `mcp:agent.def.test:call`) — a **context-proving
+diagnostic** that assembles the caller's real run context (system prompt + `reachable_tools` +
+`render_catalog`) and runs ONE turn, returning `{ answer, runtime, model, context: {tools, skills},
+provider_configured, ok }` so an admin sees the agent *was given* its MCP/ACP/skill context (the
+context line is the proof pre-adapter; `provider_configured` is honest — the test node runs
+`UnconfiguredModel`); and a names-only **`api_key_secret`** endpoint field resolved secret → env by the
+ONE shared `resolve_endpoint_key` (`crates/host/src/agent/resolve_key.rs`), with the UI's write-only
+"Model key" field sealing the value through the shipped `secret.set` (the record carries only the
+path). **Tests (rule 9):** `agent_def_test_test` (10 — deny · context-proof · inherits-the-wall ·
+names-only · resolution precedence · ws-isolation of the key · built-in read-only · bounded ·
+`provider_configured` honest) + `AgentCatalogTestAndKey.gateway.test.tsx` (3, real spawned gateway).
+Build (default + `--features external-agent`) + fmt clean. See
+[`sessions/agent/agent-catalog-test-and-secrets-session.md`](sessions/agent/agent-catalog-test-and-secrets-session.md)
+· [`public/agent/agent.md`](public/agent/agent.md) · [`skills/agent/SKILL.md`](skills/agent/SKILL.md).
+
 ---
 
 **Just shipped (2026-07-03): GenUI — AI-authored dashboard widgets over one generative-UI layer

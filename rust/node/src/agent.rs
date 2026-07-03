@@ -74,11 +74,17 @@ impl InHouseModelConfig {
 /// OpenAI-compatible / local adapters). So every configured provider currently returns `None` here with
 /// a clear log — the seam is present and the swap point is explicit, but nothing is faked. When a real
 /// adapter lands, add its `match` arm: `"openai" => Some(Arc::new(AiGateway::new(OpenAiProvider::new(
-/// resolve_key(&cfg.api_key_env)?, &cfg.model, cfg.base_url.as_deref()))))` — no change anywhere else.
+/// key, &cfg.model, cfg.base_url.as_deref()))))` — no change anywhere else. The `key` there is resolved
+/// out-of-band through the ONE sanctioned helper
+/// [`lb_host::resolve_endpoint_key`](lb_host::resolve_endpoint_key) — precedence **sealed secret
+/// (`lb-secrets`) → node env → unset** — the SAME resolver `agent.def.test` uses, so "test passes"
+/// and "run works" can never diverge (agent-catalog test-and-secrets scope). It is async + needs a
+/// `(store, principal, ws)`, so it is called at model-build time on the node, not from this pure
+/// `cfg`-only shim; the shim exists only to prove the provider `match` seam.
 fn build_in_house_model(cfg: &InHouseModelConfig) -> Option<Arc<dyn ErasedModel>> {
     match cfg.provider.as_str() {
         // No real `Provider` adapter is implemented yet (ai-gateway scope owns them). The key would be
-        // resolved from `cfg.api_key_env` through the adapter's secrets path here — never logged.
+        // resolved via `lb_host::resolve_endpoint_key` (sealed secret → env) here — never logged.
         other => {
             eprintln!(
                 "agent: in-house model provider '{other}' has no adapter yet — keeping \

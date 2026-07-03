@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { AgentDefinition } from "@/lib/agent/agentDef.api";
 import type { AgentRuntimes } from "@/lib/agent/runtimes.api";
 import { AgentTestButton } from "./AgentTestButton";
+import { ActiveModelKey } from "./ActiveModelKey";
 
 interface Props {
   definitions: AgentDefinition[];
@@ -19,7 +20,11 @@ interface Props {
   canManage: boolean;
   /** May the caller run the context-proving `agent.def.test` (admin-tier — it spends a model turn)? */
   canTest: boolean;
+  /** Whether the ACTIVE pick already carries a sealed model-key path (drives the key affordance copy). */
+  activeHasKey: boolean;
   onPick: (def: AgentDefinition) => void;
+  /** Seal a model key (token) for the ACTIVE pick — even a built-in — without cloning it. */
+  onSetActiveKey: (value: string) => Promise<void>;
   onEdit: (def: AgentDefinition) => void;
   onDelete: (def: AgentDefinition) => void;
 }
@@ -36,7 +41,9 @@ export function AgentCatalog({
   canPick,
   canManage,
   canTest,
+  activeHasKey,
   onPick,
+  onSetActiveKey,
   onEdit,
   onDelete,
 }: Props) {
@@ -133,6 +140,16 @@ export function AgentCatalog({
             {canTest && available && (
               <div className="border-t border-border/50 pt-2">
                 <AgentTestButton id={def.id} />
+              </div>
+            )}
+
+            {/* Set / rotate the model key (token) on the ACTIVE pick — even a built-in — without
+                cloning it (the active `agent.config` is workspace-scoped and can own a sealed secret
+                path). Gated by `canPick` (same `agent.config.set` authority the pick uses). This is the
+                self-serve "add a token to the in-house model" path. */}
+            {active && canPick && (
+              <div className="border-t border-border/50 pt-2">
+                <ActiveModelKey hasKey={activeHasKey} onSet={onSetActiveKey} />
               </div>
             )}
           </li>

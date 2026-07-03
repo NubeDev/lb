@@ -108,7 +108,9 @@ export function AgentTab({ caps }: Props) {
           canPick={canPick}
           canManage={canManage}
           canTest={canTest}
+          activeHasKey={!!catalog.config.model_endpoint?.api_key_secret}
           onPick={(def) => void guard(() => catalog.pick(def))}
+          onSetActiveKey={(value) => guard(() => catalog.setActiveKey(value))}
           onEdit={(def) => setEditor({ open: true, editing: def })}
           onDelete={(def) => void guard(() => catalog.remove(def.id))}
         />
