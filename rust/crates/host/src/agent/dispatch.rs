@@ -78,9 +78,18 @@ pub async fn invoke_via_runtime(
     // The in-house loop drives THIS model instead of the node-level `LB_AGENT_MODEL_*` fallback it was
     // registered with. An external runtime reaches its model over its own transport (#4), so no override
     // is resolved for it. Resolved AFTER the gate, under the caller (the definition read inherits the
-    // wall); a workspace with no pick / no adapter falls back to the node model inside resolve_model.
+    // wall).
+    //
+    // Only override with a **configured** model. When the workspace has no pick and no configured node
+    // model, `resolve_workspace_model` returns the honest `UnconfiguredModel` placeholder — but forcing
+    // THAT as the override would shadow the model the in-house runtime was actually *registered* with
+    // (the registry served through this dispatch, which is not always `node.runtimes()` — e.g. a routed
+    // `serve_agent` carrying its own default). So an unconfigured resolution yields `None`, and
+    // `InHouseRuntime` falls back to its registered model — preserving the ladder: active pick →
+    // registered runtime model → (that model's own) unconfigured answer.
     let model_override = if runtime.id() == DEFAULT_RUNTIME {
-        Some(super::resolve_workspace_model(node, caller, ws).await)
+        let resolved = super::resolve_workspace_model(node, caller, ws).await;
+        resolved.is_configured().then_some(resolved)
     } else {
         None
     };

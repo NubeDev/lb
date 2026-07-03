@@ -153,36 +153,54 @@ agent_defs_test:              ok. 8 passed; 0 failed
 openai_compat_test:           ok. 4 passed; 0 failed # the adapter (Slice 1)
 ```
 
-**Rust — full workspace build + test:**
+**Rust — full workspace build + test (WASM extensions built first — close-out run):**
 ```
-$ cargo fmt                                         # clean
-$ cargo build --workspace                           # Finished (5m03s)
-$ cargo build --workspace --features external-agent # Finished (6m41s)
-$ cargo test --workspace --exclude lb-cli           # exit 0
+$ for e in hello hello-v2 proof-panel; do (cd rust/extensions/$e && bash build.sh); done  # all built
+$ cargo fmt --check                                 # clean (no-op — files fmt-clean)
+$ cargo build --workspace                           # Finished
+$ cargo build --workspace --features external-agent # Finished
+$ cargo test --workspace --no-fail-fast             # 319 test binaries, 0 failed
 ```
+
+Once the WASM artifacts were built, the previously WASM-dependent failures
+(`role/cli/tests/sign_test.rs` → `hello_v2_ext.wasm`,
+`crates/host/tests/agent_decision_test.rs` → `hello_ext.wasm`) **pass** — confirmed artifact-only,
+none in this diff.
+
+**One genuine regression surfaced by the full run — FOUND & FIXED (see debug entry).**
+`agent_routed_test::an_edge_invokes_the_hub_agent_over_the_routed_namespace` failed: the routed
+edge→hub invoke ran the honest `UnconfiguredModel` instead of the mock model the test installed via
+`RuntimeRegistry::with_default(mock)` → `serve_agent`. Cause: Slice 2's per-run `model_override` was
+set **unconditionally** for the default runtime, and `resolve_workspace_model` never returns `None`
+(it returns the `UnconfiguredModel` placeholder), so a workspace with no pick shadowed the model the
+runtime was actually registered with. The scope's own `agent_active_model_test` didn't catch it
+because it dispatches through `&node.runtimes()` (which coincides with the override's node-fallback)
+and configures a real pick; the routed test legitimately passes a *separate* mock-carrying registry.
+Fixed in `dispatch.rs` — override only with a **configured** model
+(`resolved.is_configured().then_some(resolved)`); an unconfigured resolution yields `None` so
+`InHouseRuntime` falls back to its registered model, preserving the ladder (active pick → registered
+runtime model → that model's own unconfigured answer). Debug entry:
+[`debugging/agent/model-override-shadows-registered-runtime-model.md`](../../debugging/agent/model-override-shadows-registered-runtime-model.md).
+Regression guard: the routed test (fails-before at `:120` / passes-after);
+`agent_active_model_test::the_in_house_loop_drives_the_picked_workspace_model` pins the configured
+direction. Both green after the fix.
 
 **UI:**
 ```
 $ pnpm test          # Test Files 66 passed (66) · Tests 424 passed (424)
-$ pnpm exec vitest run --config vitest.gateway.config.ts \
-    CommandPalette.agent AgentCatalog AgentDefaultRuntime AgentCatalogTestAndKey genui
-  # Test Files 5 passed (5) · Tests 15 passed (15)   — the agent/config/runtime/widget specs
+$ pnpm test:gateway  # ~272/273 across runs — only sqlSource / SystemView flake (see below)
 ```
 
-**Pre-existing, environment-only failures (NOT this change — confirmed outside the diff):** two classes,
-both orthogonal to this scope (`git diff HEAD` touches no `lb-cli`, `decision`, `hello`, `proof-panel`,
-`Studio`, `System`, `sqlSource` files):
-- **Missing pre-built WASM extensions** — several tests `include_bytes!` / seed an extension `.wasm` that
-  this environment never built. Rust: `role/cli/tests/sign_test.rs` (`hello_v2_ext.wasm`),
-  `crates/host/tests/agent_decision_test.rs` (`hello_ext.wasm`, its line-24 setup — before any
-  agent-config code runs). Gateway UI: `ProofPanel`/`Studio`/`System` specs (the error is explicit:
-  "proof-panel wasm missing … build it: bash rust/extensions/proof-panel/build.sh"). Fixed by running
-  the extensions' `build.sh`, not by code.
-- **Flaky real-node-spawn infra** — `sqlSource.gateway.test.tsx` waitFor timeouts + an undici
-  `Expected signal to be an instance of AbortSignal` quirk; the failing set shifts run-to-run
-  (6 files/9 tests → 5/8 across two runs), the signature of timing flake, not a deterministic break.
+The five agent/config/runtime/widget gateway specs (`CommandPalette.agent`, `AgentCatalog`,
+`AgentDefaultRuntime`, `AgentCatalogTestAndKey`, `genui`) run **15/15**, and `ProofPanel` (13/13)
+passes now that `proof_panel_ext.wasm` is built — across every close-out run.
 
-**My scope is green:** the changed rust crates pass in full; `pnpm test` is 424/424; and the five
-agent/config/runtime/widget gateway specs (`CommandPalette.agent`, `AgentCatalog`,
-`AgentDefaultRuntime`, `AgentCatalogTestAndKey`, `genui`) run **15/15** in isolation. Excluding the
-WASM-dependent bins, everything this change touches passes.
+**Pre-existing flaky real-node-spawn infra (NOT this change — outside the diff):**
+`sqlSource.gateway.test.tsx` (introspection `waitFor` timeout) and `SystemView.gateway.test.tsx`
+flake on node-spawn timing; across three close-out `pnpm test:gateway` runs the failing set shifted
+`2 → 2(different) → 1`, the signature of a timing flake, not a deterministic break. `git diff` touches
+neither file (nor any `sql/` / `system/` code).
+
+**My scope is green:** the full Rust workspace passes (0 failures) after the one regression fix;
+`pnpm test` is 424/424; the five agent gateway specs are 15/15 and ProofPanel 13/13 across runs.
+Only pre-existing node-spawn flakes remain, none in this diff.

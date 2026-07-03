@@ -65,7 +65,13 @@ HTTP the only fake):** new `agent_active_model_test` (6 — picked-endpoint→mo
 cache invalidation on re-pick · loop rides the per-ws model · sealed-secret→env **key precedence** ·
 `active_definition` LWW) + `node` adapter unit (2) + shipped `agent_invoke_route_test` (happy/**DENY**
 /ws-iso) + `rules_ai_wiring_test`/`agent_in_house_wiring_test`/config/runtimes suites green. Build
-(default + `--features external-agent`) + fmt clean. See
+(default + `--features external-agent`) + fmt clean. **Close-out (2026-07-03, WASM built):** full
+`cargo test --workspace` green (0 failed); `pnpm test` 424/424; agent gateway specs 15/15 + ProofPanel
+13/13. One regression the full run surfaced — the per-run `model_override` shadowed a runtime's
+*registered* model for a workspace with no pick (`agent_routed_test`) — **fixed** (`dispatch.rs`: override
+only with a configured model) + debug entry
+[`debugging/agent/model-override-shadows-registered-runtime-model.md`](debugging/agent/model-override-shadows-registered-runtime-model.md).
+See
 [`sessions/agent/active-agent-wiring-session.md`](sessions/agent/active-agent-wiring-session.md) ·
 [`public/agent/agent.md`](public/agent/agent.md) ("The active pick is the ONE implicit agent
 everywhere") · [`skills/agent/SKILL.md`](skills/agent/SKILL.md) §6 · scope open-questions all resolved.
