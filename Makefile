@@ -162,7 +162,7 @@ EXT_UI_SERVE := $(BE_DIR)/extensions-ui/$(EXT)
 
 .PHONY: setup build build-be build-wasm build-ui \
         dev edge cloud ui ui-preview pack publish-ext trusted-pubkey seed-thecrew \
-        test test-be test-ui lint fmt fmt-check size clean kill
+        test test-be test-ui lint fmt fmt-check size clean kill purge-store
 
 # One-time setup: install the UI deps and make sure the wasm target is installed (the
 # rust-toolchain.toml already pins it, but `rustup target add` is idempotent and saves
@@ -381,6 +381,15 @@ clean:
 	cd $(BE_DIR) && cargo clean
 	rm -rf $(UI_DIR)/dist
 	@echo "cleaned cargo target + ui/dist (node_modules kept)"
+
+# Wipe ONLY the dev node store — immediate relief for a dev box whose store bloated with terminal
+# job / flow_run / flow_step_output rows (the reactor-rescans-job-table CPU burn). The code fix
+# (indexed drain + bounded retention) keeps a fresh store from re-bloating; this clears one that
+# already did, WITHOUT a rebuild and without touching keys/extensions (unlike `rm -rf .lazybones`).
+# Stop the node first (`make kill`) so nothing is holding the store open.
+purge-store:
+	rm -rf $(STORE_PATH)
+	@echo "purged dev store at $(STORE_PATH) — next `make dev` boots a fresh, idle store"
 
 # Free the dev ports AND reap any orphaned node/cargo/vite left by a crashed run.
 # A crashed `make dev` never fires its trap: the children reparent to init and an

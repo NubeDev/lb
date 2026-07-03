@@ -1,6 +1,8 @@
 # Jobs scope — reactor drain scan + terminal-job retention
 
-Status: scope (the ask). Promotes to `public/jobs/jobs.md` once shipped.
+Status: **shipped** (2026-07-03) → `public/jobs/jobs.md`. Session:
+`sessions/jobs/job-retention-session.md`. Debug entry closed:
+`debugging/jobs/node-pegs-cpu-reactor-rescans-job-table.md`. Open questions resolved (below).
 
 A node with a long-lived workspace can peg a full CPU core doing nothing but re-scanning its
 own `job` table. The channel-agent reactor (`spawn_agent_reactors`, 2s tick) and the flow
@@ -193,22 +195,28 @@ seed real job/flow rows into a `mem://` store):
   flow left running), but the same unbounded growth hits any long-lived production workspace far
   harder. Treat it as a correctness/scaling fix, not a dev-QoL nicety.
 
-## Open questions
+## Open questions — RESOLVED (2026-07-03)
 
-- **Retention placement:** transactional-trim-at-write (option a) vs reactor-tick-sweep (option b)?
-  Decision hinges on whether the terminal transition for all three tables is a single chokepoint. If
-  yes, (a) is cleaner; if the three transitions are scattered, (b) trims them uniformly in one place.
-- **Bound shape and defaults:** count-bounded, age-bounded, or both? What default window per table?
-  (e.g. keep newest 500 terminal runs per ws, or 7 days — resolve with a real sense of what the flow
-  UI needs to show.)
-- **Where retention config lives:** a `prefs` key (per-workspace, self-serve) vs node config
-  (operator-set) vs a compiled default with a prefs override. `capped.rs` says defaults live in the
-  caller — likely a prefs-resolved value with a compiled fallback.
-- **Manual purge verb:** do we expose an admin `jobs.purge`/`flows.purge-runs` MCP tool (capped, for
-  "clean this up now")? Not built in this scope; decide whether to reserve the cap name.
-- **Immediate dev relief:** independent of the code fix — should the dev seed/`make` flow ship a
-  `make purge-store` (or just wipe `.lazybones/data/dev-store`) so an existing bloated dev store gets
-  cleared? Cheap to add; unblocks the person hitting this today before the real fix lands.
+- **Retention placement:** **option (b) reactor-tick sweep for all three tables.** `job` reaches
+  terminal through **two** verbs (`complete`, `cancel`) — no single chokepoint for (a). `flow_run` has
+  a single chokepoint (`set_run_status`), but its `flow_step_output` rows are keyed `{run_id}:{node}`
+  and written by a different verb, so a transactional trim at the run transition **cannot reach** the
+  step bulk; they must be purged in tandem, keyed by the purged run ids — which only a sweep does. So
+  (b) uniformly, for concrete per-table reasons (not convenience). Swept on the flow reactor tick,
+  throttled to every 30th tick (`flows/retention_sweep.rs`), fires on tick 0 for immediate reclaim.
+- **Bound shape and defaults:** **count-bounded per workspace, default 500** terminal jobs and 500
+  finished runs (`DEFAULT_TERMINAL_JOB_CAP`, `DEFAULT_FINISHED_RUN_CAP`). Generous so ordinary flow-run
+  history the UI shows isn't lost; the goal is bounding runaway growth, not aggressive GC. Age-bounding
+  deferred (count alone bounds the tables; add age if a time-window policy is later needed).
+- **Where retention config lives:** **a compiled caller-owned default.** Prefs here is a **closed
+  typed-axis** system (language/timezone/…) with no numeric key→value getter, so there is nowhere to
+  resolve a retention number from — the `capped.rs` "defaults live in the caller" default is the
+  mechanism; an operator override slots in at the constant. (Reopen if a numeric-prefs axis is added.)
+- **Manual purge verb:** **deferred, nothing reserved.** Retention is a raw node-internal verb with no
+  user-facing MCP surface (asserted by construction). A manual "purge now" admin verb, if ever wanted,
+  gets its own cap then — not built, no name reserved now.
+- **Immediate dev relief:** **shipped** as `make purge-store` (wipes `.lazybones/data/dev-store` only,
+  no rebuild, keys/extensions untouched).
 
 ## Related
 

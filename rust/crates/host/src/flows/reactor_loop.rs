@@ -23,6 +23,7 @@ use crate::Role;
 use super::react_cron::react_to_flows_cron;
 use super::react_interval::react_to_flows_interval;
 use super::reconcile::reconcile_flows;
+use super::retention_sweep::{should_sweep, sweep_retention};
 
 /// The caps the reactor's system principal needs to drive a flow run headless: the flows run surface
 /// + the store read/write the run-store + reconciler touch. Scoped per workspace (minted fresh for
@@ -51,16 +52,27 @@ pub fn spawn_flow_reactors(node: Arc<Node>, workspaces: Vec<String>, role: Role,
         // First tick after one period (boot bring-up already armed start_on_boot flows elsewhere).
         let mut ticker = tokio::time::interval(period);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        // Ticks since boot — gates the throttled retention sweep (fires on tick 0, then every N).
+        let mut tick_count: u64 = 0;
         loop {
             ticker.tick().await;
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
+            let sweep = should_sweep(tick_count);
             for ws in &workspaces {
                 let principal = Principal::routed("node:reactor", ws.clone(), reactor_caps());
                 tick_once(&node, &principal, ws, role, now).await;
+                // Bounded retention for the tables that grow from routine reactor traffic — trimmed on
+                // the same ws-scoped tick as the drain, throttled to every Nth tick (see
+                // `retention_sweep`). Keeps `job`/`flow_run`/`flow_step_output` finite so even a naïve
+                // scan stays cheap and the store stops bloating on disk.
+                if sweep {
+                    sweep_retention(&node, ws).await;
+                }
             }
+            tick_count = tick_count.wrapping_add(1);
         }
     });
 }

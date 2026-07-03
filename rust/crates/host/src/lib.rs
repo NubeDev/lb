@@ -158,6 +158,10 @@ pub use lb_assets::{seed_core_skills, CORE_SKILLS_NS};
 /// `cancelled` without a spawn race.
 pub mod flow_engine {
     pub use crate::flows::coordinator::{drive, start};
+    pub use crate::flows::record::{
+        ClaimState, FlowRunRecord, FlowStepRecord, FLOW_RUN_TABLE, FLOW_STEP_TABLE,
+    };
+    pub use crate::flows::retain_runs::{retain_runs, DEFAULT_FINISHED_RUN_CAP};
     pub use crate::flows::run_store::set_run_status;
 }
 pub use host_tools::{

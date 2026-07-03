@@ -16,6 +16,27 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): job/flow-run retention + indexed drain scan — the CPU-burn fix (branch
+`master`).** A long-lived node pegged a full CPU core re-scanning its own `job` table: the reactors'
+drain scan (`lb_jobs::pending`) walked every page and filtered in Rust, and terminal `job` /
+`flow_run` / `flow_step_output` rows accumulated forever (`debugging/jobs/node-pegs-cpu-reactor-
+rescans-job-table.md`). **Two fixes.** (1) **Indexed drain** — `pending` is now one
+`SELECT data FROM job WHERE data.kind=$kind AND data.status IN ['running','suspended']` backed by
+`DEFINE INDEX job_kind_status` (`crates/jobs/src/schema.rs`, ensured lazily per-namespace on first
+`create`) — O(pending), not O(table); strictly safer than the paged walk on the first-page property.
+(2) **Bounded retention** — count-bounded per ws (default 500), delete predicate `status IN (terminal)`
+and nothing else so a resumable job/run is never trimmed: `crates/jobs/src/retain.rs` (`retain_terminal`,
+`job`) and `crates/host/src/flows/retain_runs.rs` (`retain_runs`, `flow_run` + `flow_step_output` purged
+in tandem), swept on the flow reactor tick throttled to every 30th tick (`flows/retention_sweep.rs`).
+Config is a compiled caller-owned default (no numeric prefs axis exists). `make purge-store` added for
+immediate dev relief. **Tests (real `mem://` store, rule 9):** `crates/jobs/tests/retain_test.rs` **4/4**
+(perf@5k terminal + 2 resumable returns only the resumable / index-backed count / never-trim-resumable /
+newest-kept / ws-isolation) + `crates/host/tests/flows_retention_test.rs` **2/2** (live-run-safe + step
+tandem, ws-isolation); `pending_test` **2/2** still green. `cargo build --workspace` + `cargo fmt` clean;
+`cargo test --workspace` green except the pre-existing missing-WASM-fixture suites (github-bridge,
+webhook, proof-panel, agent_routed — unrelated). No UI touched. Scope `scope/jobs/job-retention-scope.md`
+(open questions resolved); session `sessions/jobs/job-retention-session.md`; public `public/jobs/jobs.md`.
+
 **Just shipped (2026-07-03): library panels — panels as their own reusable + standalone asset (branch
 `master`).** A chart is now a first-class asset: a `panel:{id}` record holding the **non-layout half of
 a v3 `Cell`** (the spec), cloned from the `dashboard` asset (slug id, owner, `private|team|workspace`

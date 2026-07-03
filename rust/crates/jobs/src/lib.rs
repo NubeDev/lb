@@ -30,6 +30,8 @@ mod create;
 mod load;
 mod model;
 mod pending;
+mod retain;
+mod schema;
 mod suspend;
 mod transcript;
 mod update;
@@ -41,6 +43,8 @@ pub use create::create;
 pub use load::load;
 pub use model::{Job, JobStatus, Step};
 pub use pending::pending;
+pub use retain::{retain_terminal, DEFAULT_TERMINAL_JOB_CAP};
+pub use schema::define_job_index;
 pub use suspend::{suspend, unsuspend};
 pub use transcript::{SuspensionDecision, TranscriptEvent, TRANSCRIPT_SCHEMA_VERSION};
 

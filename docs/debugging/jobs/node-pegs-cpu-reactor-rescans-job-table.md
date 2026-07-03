@@ -1,7 +1,7 @@
 # Node pegs a full CPU core; API responses feel progressively slower
 
-**Area:** jobs · **Status:** open (diagnosed; fix scoped in
-`scope/jobs/job-retention-scope.md`, not yet built)
+**Area:** jobs · **Status:** **resolved** (2026-07-03 — indexed drain scan + bounded retention shipped;
+scope `scope/jobs/job-retention-scope.md`, session `sessions/jobs/job-retention-session.md`)
 
 ## Symptom
 
@@ -54,26 +54,35 @@ late-sorting jobs (recorded only in `pending.rs`'s own doc-comment, never a debu
 same comment already flagged the unbounded-growth hazard: *"a workspace's `jobs` table
 accumulates rows from every kind forever."* This entry is that hazard coming true.
 
-## Fix (scoped, not yet applied)
+## Fix (applied 2026-07-03)
 
-See `scope/jobs/job-retention-scope.md`:
-1. Replace the full-walk in `pending` with an **indexed status/kind query** (`WHERE data.kind
-   = $kind AND data.status IN [...]`, backed by a `(kind,status)` index) so the drain scan is
-   O(pending), not O(table).
-2. **Bounded retention** for terminal `job` / `flow_run` / `flow_step_output` rows (reusing the
-   `store/capped.rs` transactional-trim precedent), workspace-scoped, threshold in config/prefs.
+Both changes shipped — see `sessions/jobs/job-retention-session.md`:
+1. `pending` (`crates/jobs/src/pending.rs`) is now an **indexed** `SELECT data FROM job WHERE
+   data.kind = $kind AND data.status IN ['running','suspended']`, backed by
+   `DEFINE INDEX job_kind_status ON TABLE job COLUMNS data.kind, data.status`
+   (`crates/jobs/src/schema.rs`, ensured lazily per-namespace on first `create`). O(pending), not
+   O(table); strictly safer than the paged walk on the first-page property (no pages to fall off).
+2. **Bounded retention**: `crates/jobs/src/retain.rs` (`retain_terminal`, `job`) and
+   `crates/host/src/flows/retain_runs.rs` (`retain_runs`, `flow_run` + `flow_step_output` in tandem),
+   count-bounded per workspace (default 500 each), run on the flow reactor tick throttled to every 30th
+   tick (`crates/host/src/flows/retention_sweep.rs`). Delete predicate is `status IN (terminal)` and
+   nothing else — a resumable job/run is never trimmed. Reuses `capped.rs`'s safe-delete idiom. Config
+   is a compiled caller-owned default (no numeric prefs axis exists — see the session doc).
 
-**Immediate relief** (no code): wipe `.lazybones/data/dev-store` (dev seed data) and
-`make kill && make dev`, or add a `make purge-store`. The CPU drops to idle.
+**Immediate relief** (no rebuild): `make purge-store` (added this session — wipes
+`.lazybones/data/dev-store` only) then `make kill && make dev`. The CPU drops to idle.
 
-## Guard (required on fix)
+## Guard (shipped — regression tests)
 
-A performance regression test: seed N (e.g. 5,000) terminal jobs + a few resumable ones into a
-**real** `mem://` ws and assert `pending` returns exactly the resumable set with cost **not**
-scaling with N (measure row-reads / index use, not wall-clock, so it's deterministic in CI).
-Plus the mandatory workspace-isolation test (a ws-B retention pass never touches ws-A rows) and
-a correctness test (a resumable job is never trimmed) — keeping `pending.rs`'s existing
-first-page-only guarantee (a late-sorting pending job is still found) intact.
+- **Performance regression:** `crates/jobs/tests/retain_test.rs::pending_is_indexed_and_returns_only_resumable_at_scale`
+  — 5,000 terminal + 2 resumable into a real `mem://` ws; `pending` returns exactly the 2 resumable, an
+  index-backed `count()` over the drain predicate equals 2 (not N), and `INFO FOR TABLE` confirms the
+  index exists. Deterministic (measures the DB-side filter, not wall-clock).
+- **Never-trim-resumable:** `retention_never_trims_a_resumable_job` (job) +
+  `flows_retention_test.rs::retain_runs_never_trims_a_live_run_and_trims_step_rows` (flow run).
+- **Workspace isolation:** `retention_is_workspace_scoped` (both crates).
+- **Bound respected / newest kept + step-row tandem:** the remaining `retain_test` / `flows_retention_test`
+  cases. The first-page-only guarantee is preserved (a late-sorting resumable job is returned directly).
 
 ## Lessons
 
