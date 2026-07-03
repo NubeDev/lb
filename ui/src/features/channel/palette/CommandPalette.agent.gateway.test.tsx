@@ -15,6 +15,7 @@ import userEvent from "@testing-library/user-event";
 
 import { ChannelView } from "../ChannelView";
 import { history } from "@/lib/channel/channel.api";
+import { setAgentConfig } from "@/lib/agent/config.api";
 import {
   useRealGateway,
   signInWithCaps,
@@ -30,11 +31,15 @@ function fixedClock() {
 }
 
 // The member cap set the agent palette command needs: the catalog read, the run gate (which also makes
-// the command appear), the runtime-picker read, and channel pub/sub.
+// the command appear), the runtime-picker read, and channel pub/sub. Plus (Slice 4) the admin
+// `agent.config.set` to SEED an active pick + `agent.def.list` so the picker can resolve its human
+// label — both real MCP verbs, no seed route needed.
 const AGENT_CAPS = [
   "mcp:tools.catalog:call",
   "mcp:agent.invoke:call",
   "mcp:agent.runtimes:call",
+  "mcp:agent.config.set:call",
+  "mcp:agent.def.list:call",
   "bus:chan/general:pub",
   "bus:chan/general:sub",
 ];
@@ -61,9 +66,12 @@ describe("CommandPalette — the agent command (real gateway)", () => {
     expect(screen.queryByText(/in-channel agent/i)).not.toBeInTheDocument();
   });
 
-  it("accepts the agent command, renders the runtime dropdown + goal, and settles to an answer", async () => {
+  it("untouched, the picker defaults to the workspace's Active pick and posts NO `runtime` field", async () => {
     const ws = nextWs();
     await signInWithCaps("user:me", ws, AGENT_CAPS);
+    // Seed a REAL active pick (the node offers `default`; a real registry-validated write). The picker
+    // must now read "Active — <label>" from `agent.runtimes.workspace_default` — no second fetch.
+    await setAgentConfig({ default_runtime: "default" });
     const user = userEvent.setup();
     render(<ChannelView ws={ws} channel="general" author="user:me" now={fixedClock()} />);
     await screen.findByText(/no messages yet/i);
@@ -74,21 +82,39 @@ describe("CommandPalette — the agent command (real gateway)", () => {
     await user.keyboard("{Enter}");
 
     // The required `goal` field AND the runtime dropdown are BOTH present the instant the command is
-    // picked — the runtime picker renders persistently, NOT gated behind committing `goal` (the bug: a
-    // user who just typed a goal never saw a runtime control). The dropdown is fed by the real
-    // `agent.runtimes` verb with the default preselected.
+    // picked — the runtime picker renders persistently, NOT gated behind committing `goal`.
     const goal = await screen.findByLabelText("goal");
     const runtime = (await screen.findByLabelText("runtime")) as HTMLSelectElement;
-    await waitFor(() => expect(runtime.value).toBe("default"));
-    await user.type(goal, "summarize the incident"); // typed, NOT committed with ⏎ — picker stays shown
-    expect(screen.getByLabelText("runtime")).toBeInTheDocument();
 
-    // Submit → a STRUCTURED kind:"agent" Item lands in real history (no raw `/`-text, no tool call).
+    // The Active option is selected on mount and maps to the EMPTY value — so an untouched picker sends
+    // NO runtime and the host's fallback (→ the workspace's active pick) runs. It reads "Active — …"
+    // from the real `workspace_default` label, NOT a hardcoded runtime literal (registry-driven, so a
+    // future arg widget cannot silently reintroduce the pre-fill regression).
+    await waitFor(() => {
+      const active = Array.from(runtime.options).find((o) => o.value === "");
+      expect(active?.textContent).toMatch(/^Active — /);
+    });
+    expect(runtime.value).toBe(""); // the Active entry — no explicit override selected
+
+    // Type the goal but NEVER touch the dropdown (the regression class: the composer pre-filling a
+    // runtime that outranks the workspace pick).
+    await user.type(goal, "summarize the incident");
+    expect((screen.getByLabelText("runtime") as HTMLSelectElement).value).toBe("");
+
+    // Submit → a STRUCTURED kind:"agent" Item lands in real history — and it carries NO `runtime` field
+    // (the empty pick omits it, so the backend fallback resolves the active pick). This is the guard
+    // against the whole regression class, kept registry-driven (no runtime literal asserted).
     await user.click(screen.getByLabelText("send"));
+    let agentBody = "";
     await waitFor(async () => {
       const hist = await history(ws, "general");
-      expect(hist.some((i) => i.body.includes('"kind":"agent"'))).toBe(true);
+      const item = hist.find((i) => i.body.includes('"kind":"agent"'));
+      expect(item).toBeDefined();
+      agentBody = item!.body;
     });
+    const payload = JSON.parse(agentBody) as Record<string, unknown>;
+    expect(payload.kind).toBe("agent");
+    expect("runtime" in payload).toBe(false); // NO runtime on the wire — the active pick wins at the host
 
     // Drive the queued run through the real host path; the durable answer posts back.
     await drainAgentRuns();

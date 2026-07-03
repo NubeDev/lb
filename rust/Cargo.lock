@@ -4889,7 +4889,9 @@ dependencies = [
 name = "lb-role-ai-gateway"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "lb-host",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",
@@ -4930,6 +4932,7 @@ dependencies = [
  "lb-flows",
  "lb-host",
  "lb-inbox",
+ "lb-jobs",
  "lb-mcp",
  "lb-outbox",
  "lb-prefs",

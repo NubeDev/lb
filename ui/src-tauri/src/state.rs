@@ -5,12 +5,16 @@
 //! is replaced by a real verified session (login → token → principal). Kept in one place so
 //! the commands stay thin.
 
+use std::sync::Arc;
+
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::Node;
 
-/// The live node + the principal the UI acts as. Held by the Tauri app as managed state.
+/// The live node + the principal the UI acts as. Held by the Tauri app as managed state. The node is
+/// `Arc`-wrapped so agent runs (`agent_invoke` → `lb_host::invoke_via_runtime`) can take the
+/// `&Arc<Node>` the run seam requires — the same node every channel verb reaches through `Deref`.
 pub struct NodeHandle {
-    pub node: Node,
+    pub node: Arc<Node>,
     pub principal: Principal,
     pub ws: String,
 }
@@ -32,7 +36,7 @@ impl NodeHandle {
         let token = mint(&key, &claims);
         let principal = verify(&key, &token, 1).map_err(|e| e.to_string())?;
         Ok(Self {
-            node,
+            node: Arc::new(node),
             principal,
             ws: ws.into(),
         })

@@ -13,6 +13,15 @@ lb-host.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
+# The real OpenAI-compatible adapter's HTTP client (the one outbound call to the model provider).
+# Workspace reqwest is rustls-only (no system OpenSSL) with `json` (active-agent-wiring scope).
+reqwest.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
+# The openai_compat test runs the real adapter against a REAL in-process chat-completions server
+# (no mock/fake backend, CLAUDE §9 / testing §0) — axum + reqwest over a real TCP port. The
+# workspace tokio omits `net`, so `TcpListener` needs the feature added here (test-only).
+tokio = { workspace = true, features = ["net"] }
+axum.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true

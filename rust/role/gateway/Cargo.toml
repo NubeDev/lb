@@ -52,6 +52,9 @@ name = "test_gateway"
 required-features = ["test-harness"]
 
 [dev-dependencies]
+# The active-agent-wiring route test loads the durable agent-session job back to prove it lands in the
+# caller's workspace (the hard wall) — `lb_jobs::load(store, ws, id)` is ws-scoped.
+lb-jobs.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
 lb-supervisor.workspace = true

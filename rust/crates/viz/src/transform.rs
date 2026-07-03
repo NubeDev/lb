@@ -106,7 +106,13 @@ mod stepwise_tests {
     }
 
     fn step(id: &str, options: Value) -> Transformation {
-        Transformation { id: id.into(), options, disabled: false, filter: None, topic: None }
+        Transformation {
+            id: id.into(),
+            options,
+            disabled: false,
+            filter: None,
+            topic: None,
+        }
     }
 
     #[test]
@@ -121,8 +127,11 @@ mod stepwise_tests {
         assert_eq!(snaps[0].0, None); // the input snapshot
         assert_eq!(snaps[1].0, Some(0)); // after sortBy
         assert_eq!(snaps[2].0, Some(1)); // after limit
-        // After sort: a ascending 1,2,3. After limit(2): first two rows.
-        assert_eq!(snaps[1].1[0].field("a").unwrap().values, vec![json!(1), json!(2), json!(3)]);
+                                         // After sort: a ascending 1,2,3. After limit(2): first two rows.
+        assert_eq!(
+            snaps[1].1[0].field("a").unwrap().values,
+            vec![json!(1), json!(2), json!(3)]
+        );
         assert_eq!(snaps[2].1[0].length, 2);
     }
 

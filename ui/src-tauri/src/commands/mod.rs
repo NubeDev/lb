@@ -4,11 +4,13 @@
 //! the shell command, and the client. These are plain async functions (headlessly testable); the
 //! Tauri `#[command]` glue that exposes them lives in the desktop bin behind the `desktop` feature.
 
+mod agent_invoke;
 mod delete;
 mod edit;
 mod history;
 mod post;
 
+pub use agent_invoke::{agent_invoke, AgentResult};
 pub use delete::channel_delete;
 pub use edit::channel_edit;
 pub use history::channel_history;

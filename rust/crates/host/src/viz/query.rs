@@ -209,10 +209,7 @@ fn panel_debug(panel: &Value) -> Option<DebugRequest> {
     match panel.get("debug") {
         Some(Value::Bool(true)) => Some(DebugRequest { stop_at: None }),
         Some(Value::Object(o)) => Some(DebugRequest {
-            stop_at: o
-                .get("stopAt")
-                .and_then(Value::as_u64)
-                .map(|n| n as usize),
+            stop_at: o.get("stopAt").and_then(Value::as_u64).map(|n| n as usize),
         }),
         _ => None,
     }

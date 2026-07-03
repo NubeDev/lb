@@ -23,7 +23,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `agent-catalog-test-and-secrets-scope.md` adds a `agent.def.test` **"does it have MCP/ACP/skills
   context" button** (a one-turn invoke with the real run context assembled) + a **DB-sealed per-workspace
   model key** (`lb-secrets` path on the endpoint, resolved secret→env at model-call time; the record
-  stays names-only).
+  stays names-only). `active-agent-wiring-scope.md` makes the catalog's active pick the **one implicit
+  agent everywhere** — the minimal OpenAI-compatible `Provider` adapter (the root unblock; the in-house
+  runtime stops being a de-facto mock), per-workspace model resolution off the active definition
+  (consumed by rules' `ai.complete` and the in-house loop), the channel composer no longer auto-sending
+  an explicit `runtime:"default"` that outranks the pick, and the missing `POST /agent/invoke`
+  transport so the dashboard AI widget's `agent_invoke` stops being an unknown command.
 - `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
   `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
   injected at session start, read/written over caps-checked `agent.memory.*` verbs under the

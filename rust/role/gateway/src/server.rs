@@ -10,7 +10,8 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
-    add_datasource, add_member, add_team_member, archive_workspace, assign_grant, bus_stream,
+    add_datasource, add_member, add_team_member, agent_invoke, archive_workspace, assign_grant,
+    bus_stream,
     channel_stream, convert_unit, create_apikey, create_channel, create_def, create_identity,
     create_team, create_user, create_workspace, define_role, delete_dashboard, delete_def,
     delete_flow, delete_message, delete_role, delete_rule, delete_team, delete_user,
@@ -94,6 +95,10 @@ pub fn router(gw: Gateway) -> Router {
             "/agent/defs/{id}",
             get(get_def).patch(update_def).delete(delete_def),
         )
+        // active-agent-wiring Slice 5: the dashboard "AI widget" (genui author flow) drives the
+        // workspace's ACTIVE agent. The run passes NO runtime → `invoke_via_runtime` resolves the
+        // workspace default (self-gates on `mcp:agent.invoke:call`); ws + caps from the token.
+        .route("/agent/invoke", post(agent_invoke))
         .route("/format/datetime", post(format_datetime))
         .route("/format/number", post(format_number))
         .route("/format/quantity", post(format_quantity))

@@ -1,36 +1,33 @@
 // The runtime arg widget (external-agent run-lifecycle #5). An `x-lb-widget:"runtime"` arg renders
-// this: a dropdown of the node's configured agent runtimes (`agent.runtimes` via `useRuntimes`),
-// with the default id preselected — replacing the old typed `@id`. Mirrors `SqlArg`'s shape (the
-// data hook is passed-in-by-import; this file is RENDER + local selection only, FILE-LAYOUT).
+// this: a dropdown whose FIRST entry is the workspace's ACTIVE pick and every other entry is a
+// concrete runtime id (an explicit per-message override). Mirrors `SqlArg`'s shape (the data hook is
+// passed-in-by-import; this file is RENDER + local selection only, FILE-LAYOUT).
 //
-// The empty parent `value` means "unset" → the widget shows the default id; picking any option calls
-// `onChange` with the chosen id. The agent command's `runtime` is optional (absent → in-house
-// default at the host), so a value equal to the default id may be sent verbatim or omitted upstream —
-// the host resolves both identically (absent → default).
-
-import { useEffect } from "react";
+// Value model: the EMPTY string means "active pick — send NO `runtime`" so the host's fallback runs
+// (explicit → agent.config.default_runtime → registry default). The Active entry maps to "" and is
+// selected on mount, so a composer that never touches the dropdown defeats nothing — it sends no
+// runtime and the workspace's active pick wins. A concrete id is an EXPLICIT override (sent verbatim).
 
 import { Select } from "@/components/ui/select";
 import { useRuntimes } from "./useRuntimes";
 
 interface Props {
-  /** The chosen runtime id (empty until the user picks / the default lands). */
+  /** The chosen runtime id — empty means "active pick, runtime omitted"; a concrete id is an override. */
   value: string;
   onChange: (runtime: string) => void;
 }
 
 export function RuntimeArg({ value, onChange }: Props) {
-  const { runtimes, defaultId, loading, error } = useRuntimes();
+  const { runtimes, defaultId, workspaceDefault, loading, error } = useRuntimes();
 
-  // Preselect the default once it loads (only if the parent hasn't already set a value).
-  useEffect(() => {
-    if (!value && defaultId) onChange(defaultId);
-  }, [value, defaultId, onChange]);
+  // The Active entry's label: the workspace pick's human label when one is set, else the registry
+  // default id (the effective active when the workspace has picked nothing).
+  const activeLabel = workspaceDefault
+    ? `Active — ${workspaceDefault.label}`
+    : `Active — ${defaultId} (in-house)`;
 
-  // The options: the fetched ids, or (until the fetch resolves / on error) just the default so the
-  // picker is never empty and the command stays runnable.
-  const options = runtimes.length > 0 ? runtimes : [defaultId];
-  const selected = value || defaultId;
+  // The concrete-override options: every configured id (or just the default until the fetch resolves).
+  const overrides = runtimes.length > 0 ? runtimes : [defaultId];
 
   return (
     <div className="border-t border-border bg-panel p-2" aria-label="runtime picker">
@@ -40,13 +37,16 @@ export function RuntimeArg({ value, onChange }: Props) {
       <Select
         id="runtime-arg"
         aria-label="runtime"
-        value={selected}
+        value={value}
         disabled={loading}
         onChange={(e) => onChange(e.target.value)}
       >
-        {options.map((id) => (
+        {/* The ACTIVE pick — maps to "" (no runtime on the wire, the host resolves the active pick). */}
+        <option value="">{activeLabel}</option>
+        {/* Explicit per-message overrides: the concrete runtime ids. */}
+        {overrides.map((id) => (
           <option key={id} value={id}>
-            {id === defaultId ? `${id} (in-house)` : id}
+            {id}
           </option>
         ))}
       </Select>

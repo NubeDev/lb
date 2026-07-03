@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use lazybones_shell::{
-    channel_delete as lib_delete, channel_edit as lib_edit, channel_history as lib_history,
-    channel_post as lib_post, NodeHandle,
+    agent_invoke as lib_agent_invoke, channel_delete as lib_delete, channel_edit as lib_edit,
+    channel_history as lib_history, channel_post as lib_post, AgentResult, NodeHandle,
 };
 use lb_inbox::Item;
 use tokio::sync::Mutex;
@@ -58,6 +58,33 @@ async fn channel_delete(
 ) -> Result<(), String> {
     let handle = state.lock().await;
     lib_delete(&handle, &channel, &id).await
+}
+
+// active-agent-wiring Slice 5: the desktop peer of the gateway's `POST /agent/invoke`. Drives the
+// workspace's ACTIVE agent (no runtime) and returns `{ jobId, answer }`. `ws`/`author`/`caps` the TS
+// client also passes are ignored — the session principal + workspace are the wall (like the gateway).
+#[tauri::command]
+async fn agent_invoke(
+    state: tauri::State<'_, Shared>,
+    goal: String,
+    job_id: Option<String>,
+    skill: Option<String>,
+    doc: Option<String>,
+) -> Result<AgentResult, String> {
+    let handle = state.lock().await;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    lib_agent_invoke(
+        &handle,
+        &goal,
+        job_id.as_deref(),
+        skill.as_deref(),
+        doc.as_deref(),
+        ts,
+    )
+    .await
 }
 
 pub fn run() {

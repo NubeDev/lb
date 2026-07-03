@@ -9,22 +9,26 @@
 //! on the **contract** ([`AiRequest`]/[`AiResponse`]/[`Provider`]), never the implementation
 //! (ai-gateway scope, symmetric nodes — placement is config).
 //!
-//! S5 ships: the contract types, the [`Provider`] seam, a deterministic [`MockProvider`] for tests
-//! (the only thing mocked — testing §3), and the replay-safe idempotency cache on [`AiGateway`].
-//! Streaming, embeddings, real adapters, audit, and secrets-backed keys are deferred (scope).
+//! S5 shipped: the contract types, the [`Provider`] seam, a deterministic [`MockProvider`] for
+//! tests (the only thing mocked — testing §3), and the replay-safe idempotency cache on
+//! [`AiGateway`]. The first real adapter — the OpenAI-compatible [`OpenAiCompat`] in `providers/` —
+//! now slots in behind the same `complete` (active-agent-wiring scope). Streaming, embeddings,
+//! audit, and secrets-backed keys are still deferred (scope).
 //!
 //! One responsibility per file (FILE-LAYOUT §3): the request, the response, the provider seam, the
-//! mock, the gateway.
+//! mock, the gateway, and one real adapter per file under `providers/`.
 
 mod bridge;
 mod gateway;
 mod mock;
 mod provider;
+mod providers;
 mod request;
 mod response;
 
 pub use gateway::AiGateway;
 pub use mock::MockProvider;
 pub use provider::Provider;
+pub use providers::OpenAiCompat;
 pub use request::{AiRequest, Message, ToolSchema};
 pub use response::{AiResponse, FinishReason, ToolCall, ToolResult};

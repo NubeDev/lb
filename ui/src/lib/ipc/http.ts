@@ -286,6 +286,21 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/mcp/call`, { tool, args: toolArgs ?? {} });
     }
 
+    // ── active-agent-wiring Slice 5: the dashboard "AI widget" (genui author flow) drives the
+    //    workspace's ACTIVE agent. Maps to `POST /agent/invoke`; the run passes NO runtime so the
+    //    gateway resolves the workspace's active pick and self-gates on `mcp:agent.invoke:call`. The
+    //    `ws`/`author`/`caps` the client passes are DROPPED — the gateway derives the principal +
+    //    workspace from the token (the hard wall, §7). Returns the durable `{ jobId, answer }`. ──
+    case "agent_invoke": {
+      const { goal, jobId, skill, doc } = args as {
+        goal: string;
+        jobId?: string;
+        skill?: string;
+        doc?: string;
+      };
+      return postJson<T>(`${base}/agent/invoke`, { goal, job_id: jobId, skill, doc });
+    }
+
     // ── shared assets (files/skills scope): the browser's `assets.*` surface over the gateway (was
     //    Tauri-only → `unknown command` in the browser). The `ws`/`author` the fake passes are
     //    DROPPED here — the gateway derives both from the token (the hard wall, §7). The host
