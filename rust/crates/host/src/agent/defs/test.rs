@@ -139,18 +139,59 @@ pub async fn agent_def_test(
     }
     messages.push(("user".into(), SELF_DESCRIBE.to_string()));
 
-    // (4) Run exactly ONE turn over the node's default model (the SAME model the in-house `default`
-    // runtime runs — `ModelAccess` via the erased handle). Step ceiling of 1: the proposed `calls` are
-    // deliberately ignored (no tool execution, no loop) — the model answers from the injected context.
-    let model = node.runtimes().default_model();
-    let provider_configured = model.is_configured();
-    let turn = model
-        .turn_boxed(ws, &messages, &[], &[], &format!("{ws}:agent-def-test"))
+    // (4) Run one bounded turn against the definition's ACTUAL runtime.
+    //
+    // Two paths, because a definition binds one of two runtime kinds — the test must exercise the SAME
+    // one a real run would, or it is not a test of THIS definition:
+    //   - **External** (e.g. `open-interpreter-default`): drive that registered runtime for one bounded
+    //     turn via `invoke_via_runtime`. This spawns the real agent subprocess, resolves the sealed key
+    //     the SAME way a real run does (host-mediated, secret → env), and returns its real answer — the
+    //     only thing that proves the sealed key + external provider actually work. Requires the caller
+    //     hold `mcp:agent.invoke:call` (the run gate); absent it, an honest error, never a placeholder.
+    //   - **In-house `default`**: one turn over the node's `default_model` (the in-house `ModelAccess`),
+    //     as before — its `is_configured()` is the honest "a real provider is wired" signal.
+    let registry = node.runtimes();
+    let is_external =
+        def.runtime != crate::agent::DEFAULT_RUNTIME && registry.ids().contains(&def.runtime);
+
+    let (answer, provider_configured) = if is_external {
+        // Drive the real external runtime for one bounded self-describe turn. The runtime resolves the
+        // definition's sealed model key itself (host-mediated) and spawns the agent — a true end-to-end
+        // test of the SELECTED runtime, not the in-house placeholder.
+        let job_id = format!("{ws}:agent-def-test:{}", def.id);
+        let out = crate::agent::invoke_via_runtime(
+            node,
+            &registry,
+            Some(&def.runtime),
+            caller,
+            &caller.caps().to_vec(),
+            ws,
+            &job_id,
+            SELF_DESCRIBE,
+            crate::agent::Substrate::default(),
+            &[],
+            0,
+        )
         .await;
+        match out {
+            Ok(answer) => (answer, true),
+            // A missing binary / unresolved key / run failure surfaces as an honest error string in the
+            // answer with `provider_configured=false` — never a silent placeholder that looks configured.
+            Err(e) => (format!("external runtime test failed: {e}"), false),
+        }
+    } else {
+        // In-house `default`: one turn over the node's default model, ignoring proposed calls.
+        let model = registry.default_model();
+        let configured = model.is_configured();
+        let turn = model
+            .turn_boxed(ws, &messages, &[], &[], &format!("{ws}:agent-def-test"))
+            .await;
+        (turn.content, configured)
+    };
 
     Ok(TestResult {
         id: def.id,
-        answer: turn.content,
+        answer,
         runtime: def.runtime,
         model: format!(
             "{}/{}",
