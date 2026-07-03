@@ -114,6 +114,25 @@ in every doc and (later) every PR:
    are allowed **only** for a true external you cannot run locally (a provider
    HTTP API, GitHub) — behind one trait, in one clearly-named file. See
    `docs/scope/testing/testing-scope.md` §0.
+10. **Core knows no extension.** *Everything else is an extension* (§ "What this is"),
+    and the core has **no idea any specific one exists**. No core crate (`rust/crates/*`)
+    and no core UI shell (`ui/src`, outside a feature's own dir) may **branch on an
+    extension id** — no `if ext == "github"`, no `match id { "mqtt" => … }`, no static
+    import of one extension, no hardcoded route/nav/icon/cap for a named ext. An extension
+    is reached **only** through the generic mediated seams — MCP tool resolution
+    (`<id>.<tool>` split + registry lookup), the capability grammar, the outbox `Target`
+    trait, the UI-federation `ext.list` discovery — each of which treats the id as
+    **opaque data**, never a special case. Extensions get **no special treatment**: a
+    "built-in" extension takes the exact same caps/auth/dispatch path as a third-party one;
+    nothing is pre-approved or bypasses `granted = requested ∩ admin_approved`. Naming an
+    extension in a *doc comment example* or a `#[cfg(test)]` fixture is fine — those are
+    not branches. An **application service** that orchestrates a specific extension (e.g.
+    `host/src/workflow/` naming the `github` outbox target) is allowed **only** when it
+    reaches that extension exclusively through the generic gated seams (a plain effect
+    string handed to the generic `Target`, a normal `lb_mcp::call` gated by
+    `mcp:<id>.<tool>:call`) — never by widening a core chokepoint. If a swap to an
+    equivalent extension (GitLab for GitHub) would force a change in a core mediation crate,
+    that is the leak. See `docs/scope/extensions/extensions-scope.md`.
 
 ## Conventions for editing docs
 

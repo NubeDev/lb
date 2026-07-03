@@ -20,6 +20,7 @@ import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-sessi
 // (transitively) needed the parser to render, this test would pull it in and the "render without the
 // adapter" guarantee would be false. The WidgetView dispatch mounts GenUiView.
 import { WidgetView } from "../WidgetView";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 /** A well-formed genui cell: a `stat` bound to `/data/A/value`, fed by one v3 series target. */
 function genuiCell(overrides: Partial<Cell> = {}): Cell {
@@ -69,7 +70,7 @@ describe("genui over the real gateway", () => {
     // the per-target data probe must report AFTER commit, not during render.
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     // Render the reloaded cell through the real dispatch — the label proves the IR rendered.
-    const { container } = render(<WidgetView cell={cell} workspace={ws} />);
+    const { container } = render(<WithDashboardCache ws={ws}><WidgetView cell={cell} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => expect(container.querySelector(".gu-root")).not.toBeNull());
     expect(container.textContent).toContain("Temp");
     expect(errSpy).not.toHaveBeenCalledWith(
@@ -89,7 +90,7 @@ describe("genui over the real gateway", () => {
     const reloaded = await getDashboard("gdraft");
     const back = reloaded.cells[0];
     // It renders the author-me placeholder, not an error.
-    const { container } = render(<WidgetView cell={back} workspace="x" />);
+    const { container } = render(<WithDashboardCache ws="x"><WidgetView cell={back} workspace="x" /></WithDashboardCache>);
     await waitFor(() => expect(container.textContent).toMatch(/AI widget/i));
     expect(container.textContent).not.toMatch(/invalid/i);
   });
@@ -117,7 +118,7 @@ describe("genui over the real gateway", () => {
     const reloaded = await getDashboard("ge");
     const back = reloaded.cells[0];
     // The genui targets resolver must pick the real sources[], NOT the empty placeholder source.
-    const { container } = render(<WidgetView cell={back} workspace="x" />);
+    const { container } = render(<WithDashboardCache ws="x"><WidgetView cell={back} workspace="x" /></WithDashboardCache>);
     await waitFor(() => expect(container.querySelector(".gu-root")).not.toBeNull());
     // The stat still renders its label (binding resolved from sources[], not shadowed by empty source).
     expect(container.textContent).toContain("Temp");

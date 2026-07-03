@@ -22,6 +22,7 @@ import { cellToEditorState, editorStateToCell } from "./cellEditorState";
 import { defaultCell } from "./defaultCell";
 import { TimeseriesView } from "../views/timeseries/TimeseriesView";
 import { emptySqlSource } from "../builder/sql/SqlQueryEditor";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `viz-${n++}`;
@@ -173,7 +174,7 @@ describe("live preview + format bridge (real gateway)", () => {
       sources: [{ refId: "A", tool: "series.read", args: { series: "cooler.temp" }, datasource: { type: "series" } }],
       fieldConfig: { defaults: { unit: "celsius", decimals: 1 }, overrides: [] },
     };
-    render(<TimeseriesView cell={cell} label="Cooler" />);
+    render(<WithDashboardCache ws={ws}><TimeseriesView cell={cell} label="Cooler" /></WithDashboardCache>);
 
     // The real seeded value (canonical 4) renders formatted through the bridge — "4.0 °C" (the fallback:
     // canonical + static label + decimals). NOT a stored string — computed at render from the canonical 4.
@@ -190,7 +191,7 @@ describe("live preview + format bridge (real gateway)", () => {
       binding: { series: "" },
       sources: [{ refId: "A", tool: "series.read", args: { series: "nope" }, datasource: { type: "series" } }],
     };
-    render(<TimeseriesView cell={cell} label="X" />);
+    render(<WithDashboardCache ws={ws}><TimeseriesView cell={cell} label="X" /></WithDashboardCache>);
     await waitFor(() => expect(screen.getByText(/no access to this source/i)).toBeInTheDocument());
   });
 });

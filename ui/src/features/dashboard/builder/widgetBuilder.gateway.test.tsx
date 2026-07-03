@@ -38,6 +38,7 @@ import { makeWidgetBridge } from "./widgetBridge";
 import { ExtWidget } from "./ExtWidget";
 import { extWidgetTier } from "./trust";
 import { buildSourceEntries, extWidgetEntries } from "./sourcePicker";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 /** proof-panel's packaged `[[widget]]` tile, exactly as `extension.toml` declares it (Proof Ping,
  *  scope = series.latest/series.find). Seeded into `ext.list` so the palette surfaces it for real. */
@@ -310,7 +311,11 @@ describe("packaged-tile palette round-trip (real gateway)", () => {
 
     // Render the REAL builder as an editor. Capture the cell it adds.
     let added: Cell | null = null;
-    render(<WidgetBuilder ws={ws} existing={[]} onAdd={(c) => (added = c)} canEdit />);
+    render(
+      <WithDashboardCache ws={ws}>
+        <WidgetBuilder ws={ws} existing={[]} onAdd={(c) => (added = c)} canEdit />
+      </WithDashboardCache>,
+    );
 
     // The "Extension widgets" group lists the packaged tile by `<ext> · <tile.label>`.
     const sourceSelect = await screen.findByLabelText<HTMLSelectElement>("widget source");
@@ -373,7 +378,9 @@ describe("edit-cap gate (real gateway)", () => {
     await seedExtension({ ext: "proof-panel", version: "0.1.0", tier: "wasm", enabled: true, widgets: [PROOF_PING] });
 
     const { container } = render(
-      <WidgetBuilder ws={ws} existing={[]} onAdd={() => {}} canEdit={false} />,
+      <WithDashboardCache ws={ws}>
+        <WidgetBuilder ws={ws} existing={[]} onAdd={() => {}} canEdit={false} />
+      </WithDashboardCache>,
     );
     // No builder surface at all — no source picker, no add button (the affordance is gated).
     expect(container).toBeEmptyDOMElement();

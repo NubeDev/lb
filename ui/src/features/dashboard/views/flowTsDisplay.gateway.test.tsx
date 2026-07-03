@@ -17,6 +17,7 @@ import { saveFlow, injectFlow, runFlow, getFlowRun, type Flow } from "@/lib/flow
 import { setPrefs } from "@/lib/prefs/set";
 import type { Cell } from "@/lib/dashboard";
 import { WidgetHost } from "../WidgetHost";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `flow-ts-${n++}`;
@@ -88,7 +89,7 @@ describe("flow timestamp renders in the viewer's resolved prefs (real gateway)",
     await setPrefs({ timezone: "Europe/Madrid", date_style: "eu", time_style: "h24" });
     await seedTsValue(TS_SECONDS);
 
-    const { getByLabelText, queryByText } = render(<WidgetHost cell={tsStatCell()} workspace={ws} />);
+    const { getByLabelText, queryByText } = render(<WithDashboardCache ws={ws}><WidgetHost cell={tsStatCell()} workspace={ws} /></WithDashboardCache>);
 
     // Madrid is UTC+2 in July → 02:05 on 01/07/2026 (EU order, 24h). Never 1970, never the raw epoch.
     await waitFor(() => expect(getByLabelText("stat value")).toHaveTextContent("01/07/2026 02:05"));
@@ -102,7 +103,7 @@ describe("flow timestamp renders in the viewer's resolved prefs (real gateway)",
     await setPrefs({ timezone: "America/New_York", date_style: "usa", time_style: "h12" });
     await seedTsValue(TS_SECONDS);
 
-    const { getByLabelText } = render(<WidgetHost cell={tsStatCell()} workspace={ws} />);
+    const { getByLabelText } = render(<WithDashboardCache ws={ws}><WidgetHost cell={tsStatCell()} workspace={ws} /></WithDashboardCache>);
 
     // New York is UTC-4 in July → 2026-06-30 20:05 → USA order + 12h.
     await waitFor(() => expect(getByLabelText("stat value")).toHaveTextContent("06/30/2026 8:05 PM"));
@@ -115,7 +116,7 @@ describe("flow timestamp renders in the viewer's resolved prefs (real gateway)",
     await signInReal("user:ada", wsA);
     await setPrefs({ timezone: "Europe/Madrid", date_style: "eu", time_style: "h24" });
     await seedTsValue(TS_SECONDS);
-    const a = render(<WidgetHost cell={tsStatCell()} workspace={wsA} />);
+    const a = render(<WithDashboardCache ws={wsA}><WidgetHost cell={tsStatCell()} workspace={wsA} /></WithDashboardCache>);
     await waitFor(() => expect(a.getByLabelText("stat value")).toHaveTextContent("01/07/2026 02:05"));
     a.unmount();
 
@@ -123,7 +124,7 @@ describe("flow timestamp renders in the viewer's resolved prefs (real gateway)",
     await signInReal("user:ada", wsB);
     await setPrefs({ timezone: "Asia/Tokyo", date_style: "iso", time_style: "h24" });
     await seedTsValue(TS_SECONDS);
-    const b = render(<WidgetHost cell={tsStatCell()} workspace={wsB} />);
+    const b = render(<WithDashboardCache ws={wsB}><WidgetHost cell={tsStatCell()} workspace={wsB} /></WithDashboardCache>);
     // Tokyo is UTC+9 → 2026-07-01 09:05, ISO order — NOT Madrid's 02:05.
     await waitFor(() => expect(b.getByLabelText("stat value")).toHaveTextContent("2026-07-01 09:05"));
   });

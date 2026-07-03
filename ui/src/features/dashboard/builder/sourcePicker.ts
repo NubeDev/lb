@@ -13,7 +13,7 @@ import {
   type NodeDescriptor as PkgNodeDescriptor,
 } from "@nube/source-picker";
 
-export type { SourceEntry } from "@nube/source-picker";
+export type { SourceEntry, SourceGroup } from "@nube/source-picker";
 export {
   seriesEntries,
   liveEntries,
@@ -23,6 +23,12 @@ export {
   sqlSourceEntry,
   SQL_SOURCE_ID,
   widgetIdOf,
+  // The shared grouping primitive + canonical group-label lists — a consumer that renders its OWN
+  // <select> (WidgetBuilder's FIELD select, QueryTab's shadcn Select) uses these instead of re-rolling
+  // an `<optgroup>` renderer + a hardcoded label list (source-picker-package: one picker vocabulary).
+  PickerGroup,
+  READ_SOURCE_GROUPS,
+  BUILDER_SOURCE_GROUPS,
 } from "@nube/source-picker";
 
 /** The dashboard's positional signature (unchanged for every call site) → the package's object form.

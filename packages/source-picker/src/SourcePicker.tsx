@@ -12,15 +12,30 @@
 import { selectionOf, type SourceEntry } from "./sourcePicker";
 import type { SourceSelection } from "./types";
 
-/** The groups this picker renders, in display order, with their section labels. `action` is omitted by
- *  default (write controls are a separate authoring intent); a host that wants them passes `groups`. */
-const DEFAULT_GROUPS: { group: SourceEntry["group"]; label: string }[] = [
+/** One entry in a picker's group list: which source `group` to render and its section label. */
+export type SourceGroup = { group: SourceEntry["group"]; label: string };
+
+/** The read/source groups, in display order, with their section labels. `action` is omitted (write
+ *  controls are a separate authoring intent); a host that wants them passes its own list (see
+ *  `BUILDER_SOURCE_GROUPS`). Exported so every consumer renders ONE canonical label set. */
+export const READ_SOURCE_GROUPS: SourceGroup[] = [
   { group: "series", label: "Series" },
   { group: "live", label: "Live (Zenoh)" },
   { group: "sql", label: "Direct SurrealDB" },
   { group: "extension", label: "Installed extension" },
   { group: "widget", label: "Extension widgets" },
   { group: "flows", label: "Flows" },
+];
+
+/** The builder's group list — the read groups plus the `action` (write control) group, ordered as the
+ *  widget builder shows them (action before widget). A host authoring controls uses this. */
+export const BUILDER_SOURCE_GROUPS: SourceGroup[] = [
+  { group: "series", label: "Series" },
+  { group: "live", label: "Live (Zenoh)" },
+  { group: "sql", label: "Direct SurrealDB" },
+  { group: "extension", label: "Installed extension" },
+  { group: "action", label: "Action (control)" },
+  { group: "widget", label: "Extension widgets" },
 ];
 
 export interface SourcePickerProps {
@@ -45,7 +60,7 @@ export function SourcePicker({
   value = "",
   onSelect,
   loading = false,
-  groups = DEFAULT_GROUPS,
+  groups = READ_SOURCE_GROUPS,
   "aria-label": ariaLabel = "source",
   className,
 }: SourcePickerProps) {
@@ -70,8 +85,10 @@ export function SourcePicker({
   );
 }
 
-/** One `<optgroup>` for a source group, empty-tolerant (no section when it has no entries). */
-function PickerGroup({
+/** One `<optgroup>` for a source group, empty-tolerant (no section when it has no entries). Exported so a
+ *  host that renders its own `<select>` (shadcn `Select`, a `FIELD`-classed native select) still uses the
+ *  ONE grouping/labelling implementation — the `<optgroup>` carries no styling, so it drops into any select. */
+export function PickerGroup({
   entries,
   group,
   label,

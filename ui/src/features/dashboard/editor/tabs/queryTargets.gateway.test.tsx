@@ -12,6 +12,7 @@ import { useRealGateway, signInReal } from "@/test/gateway-session";
 import type { Cell } from "@/lib/dashboard";
 import { QueryTargets } from "./QueryTargets";
 import { cellToEditorState, editorStateToCell, type EditorState } from "../cellEditorState";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `qt-${n++}`;
@@ -44,7 +45,7 @@ describe("multi-target query rows (real gateway)", () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
     const user = userEvent.setup();
-    render(<Harness ws={ws} />);
+    render(<WithDashboardCache ws={ws}><Harness ws={ws} /></WithDashboardCache>);
 
     // Starts with one query A.
     expect(targets().map((t) => t.refId)).toEqual(["A"]);
@@ -74,7 +75,7 @@ describe("multi-target query rows (real gateway)", () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
     const user = userEvent.setup();
-    render(<Harness ws={ws} />);
+    render(<WithDashboardCache ws={ws}><Harness ws={ws} /></WithDashboardCache>);
 
     await user.type(screen.getByLabelText("max data points"), "500");
     await user.type(screen.getByLabelText("min interval"), "1m");

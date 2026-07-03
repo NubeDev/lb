@@ -17,6 +17,7 @@ import { OverridesTab } from "./OverridesTab";
 import { cellToEditorState, type EditorState } from "../cellEditorState";
 import type { FieldConfig } from "@/lib/dashboard";
 import { resolveFieldOptions } from "../../fieldconfig/resolve";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `ovr-${n++}`;
@@ -51,7 +52,7 @@ describe("overrides usability (real gateway)", () => {
     await seedSeries({ series: "ovr.temp", seq: 1, payload: 19, key: "kind", value: "temperature" });
 
     const user = userEvent.setup();
-    render(<Harness cell={cellOver("ovr.temp")} />);
+    render(<WithDashboardCache ws={ws}><Harness cell={cellOver("ovr.temp")} /></WithDashboardCache>);
 
     const fieldsOut = await waitFor(
       () => {

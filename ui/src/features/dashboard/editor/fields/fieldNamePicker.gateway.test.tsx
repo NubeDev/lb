@@ -13,6 +13,7 @@ import { usePanelData } from "../../builder/usePanelData";
 import { fieldNamesOf } from "./resultFields";
 import { ResultFieldsProvider } from "./FieldsContext";
 import { FieldNamePicker } from "./FieldNamePicker";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `fnp-${n++}`;
@@ -49,7 +50,7 @@ describe("FieldNamePicker fed by a real viz.query result", () => {
     await seedSeries({ series: "picker.temp", seq: 1, payload: 21.5, key: "kind", value: "temperature" });
 
     const user = userEvent.setup();
-    render(<Harness cell={cellOver("picker.temp")} />);
+    render(<WithDashboardCache ws={ws}><Harness cell={cellOver("picker.temp")} /></WithDashboardCache>);
 
     // Wait for the REAL viz.query rows to land (debounced ~200ms + round-trip).
     const fieldsOut = await waitFor(
@@ -81,7 +82,7 @@ describe("FieldNamePicker fed by a real viz.query result", () => {
     const user = userEvent.setup();
     // A target-less cell → no rows → no offered fields; the picker must still accept typed text.
     const bare: Cell = { i: "b", x: 0, y: 0, w: 4, h: 3, widget_type: "chart", binding: { series: "" } };
-    render(<Harness cell={bare} />);
+    render(<WithDashboardCache ws={ws}><Harness cell={bare} /></WithDashboardCache>);
 
     const trigger = screen.getByRole("combobox", { name: "field" });
     expect(trigger.textContent).toContain("type a field name");

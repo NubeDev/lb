@@ -38,9 +38,10 @@ export type { SourcePickerData } from "./useSourcePicker";
 export { loadSourcePicker } from "./loadSourcePicker";
 export type { SourcePickerResult } from "./loadSourcePicker";
 
-// UI — the props-driven grouped <select>.
-export { SourcePicker } from "./SourcePicker";
-export type { SourcePickerProps } from "./SourcePicker";
+// UI — the props-driven grouped <select>, plus the shared grouping primitive + canonical group lists a
+// host reuses when it renders its own <select> (shadcn Select / a token-classed native select).
+export { SourcePicker, PickerGroup, READ_SOURCE_GROUPS, BUILDER_SOURCE_GROUPS } from "./SourcePicker";
+export type { SourcePickerProps, SourceGroup } from "./SourcePicker";
 
 // Types — the vocabulary + the injected seam.
 export type {

@@ -19,6 +19,7 @@ import { WidgetView } from "../../views/WidgetView";
 import type { Cell } from "@/lib/dashboard";
 import { emptyQuery } from "./query";
 import { toSurrealQL } from "./toSurrealQL";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `sql-${n++}`;
@@ -151,7 +152,7 @@ describe("visual-editor → Run → render e2e (real gateway)", () => {
       source: { tool: "store.query", args: { sql } },
       options: {},
     };
-    const { container } = render(<WidgetView cell={cell} installed={[]} workspace={ws} />);
+    const { container } = render(<WithDashboardCache ws={ws}><WidgetView cell={cell} installed={[]} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => {
       // The table renders a header from the introspected columns + at least one data row.
       expect(container.textContent ?? "").toMatch(/seq|payload/);
@@ -159,7 +160,7 @@ describe("visual-editor → Run → render e2e (real gateway)", () => {
 
     // The same source as a chart view also renders (rows over time).
     const chartCell: Cell = { ...cell, i: "sql-chart", view: "chart" };
-    const chart = render(<WidgetView cell={chartCell} installed={[]} workspace={ws} />);
+    const chart = render(<WithDashboardCache ws={ws}><WidgetView cell={chartCell} installed={[]} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => expect(chart.container.querySelector("svg")).toBeTruthy());
   });
 });

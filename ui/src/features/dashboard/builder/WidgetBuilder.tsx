@@ -17,7 +17,7 @@ import type { Cell, View } from "@/lib/dashboard";
 import { WidgetView } from "../views/WidgetView";
 import { cellTools } from "../views/WidgetView";
 import { useSourcePicker } from "./useSourcePicker";
-import { SQL_SOURCE_ID, type SourceEntry } from "./sourcePicker";
+import { SQL_SOURCE_ID, PickerGroup, BUILDER_SOURCE_GROUPS, type SourceEntry } from "./sourcePicker";
 import { PlotCodeField, DEFAULT_PLOT_CODE, DEFAULT_D3_CODE } from "./editors/PlotCodeField";
 import { TemplateSourceField, type TemplateValue, DEFAULT_INLINE_CODE } from "./editors/TemplateSourceField";
 import { SqlQueryEditor, emptySqlSource } from "./sql/SqlQueryEditor";
@@ -231,12 +231,9 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit, seed, onSave, bare
           }}
         >
           <option value="">{loading ? "loading sources…" : "— pick a source —"}</option>
-          <PickerGroup entries={entries} group="series" label="Series" />
-          <PickerGroup entries={entries} group="live" label="Live (Zenoh)" />
-          <PickerGroup entries={entries} group="sql" label="Direct SurrealDB" />
-          <PickerGroup entries={entries} group="extension" label="Installed extension" />
-          <PickerGroup entries={entries} group="action" label="Action (control)" />
-          <PickerGroup entries={entries} group="widget" label="Extension widgets" />
+          {BUILDER_SOURCE_GROUPS.map(({ group, label }) => (
+            <PickerGroup key={group} entries={entries} group={group} label={label} />
+          ))}
         </select>
 
         {/* View chooser — only the views valid for the chosen source. Hidden for a packaged extension
@@ -302,28 +299,5 @@ export function WidgetBuilder({ ws, existing, onAdd, canEdit, seed, onSave, bare
         </div>
       )}
     </div>
-  );
-}
-
-/** Render one `<optgroup>` of the picker for a source group, empty-tolerant. */
-function PickerGroup({
-  entries,
-  group,
-  label,
-}: {
-  entries: SourceEntry[];
-  group: SourceEntry["group"];
-  label: string;
-}) {
-  const items = entries.filter((e) => e.group === group);
-  if (items.length === 0) return null;
-  return (
-    <optgroup label={label}>
-      {items.map((e) => (
-        <option key={e.id} value={e.id}>
-          {e.label}
-        </option>
-      ))}
-    </optgroup>
   );
 }

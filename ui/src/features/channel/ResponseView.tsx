@@ -26,6 +26,7 @@ import type { Cell, View, Source, Action } from "@/lib/dashboard";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import { emptyScope } from "@/lib/vars";
 import { WidgetView } from "@/features/dashboard/views/WidgetView";
+import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { ResponseTable, type RowControl } from "./ResponseTable";
 
 /** The version of the render envelope this UI understands. A `v` above it degrades at render. */
@@ -91,7 +92,19 @@ export function buildCell(payload: RichResultPayload, itemKey: string): Cell {
   };
 }
 
-export function ResponseView({ payload, workspace, installed = [], itemKey = "rich" }: Props) {
+export function ResponseView(props: Props) {
+  // A rich_result reuses the shipped panel renderer (`usePanelData` → the dashboard read cache), so it
+  // needs the same read-cache boundary the dashboard route provides — a `QueryClient` + the `ws` context
+  // every cache key is prefixed by. Scope it to THIS response (keyed on `workspace`) so the cache lives
+  // with the message and never bleeds across workspaces (dashboard-query-cache-scope: reuse off-route).
+  return (
+    <DashboardCacheProvider key={props.workspace} ws={props.workspace}>
+      <ResponseViewInner {...props} />
+    </DashboardCacheProvider>
+  );
+}
+
+function ResponseViewInner({ payload, workspace, installed = [], itemKey = "rich" }: Props) {
   // Version gate: degrade a newer envelope honestly (fallback AT render — parsePayload still parsed it).
   if (payload.v > UNDERSTOOD_V) {
     return (

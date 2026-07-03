@@ -24,6 +24,7 @@ import { usePanelData } from "../builder/usePanelData";
 import { StatPanel } from "./stat/StatPanel";
 import { TransformTab } from "../editor/tabs/TransformTab";
 import { cellToEditorState, type EditorState } from "../editor/cellEditorState";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `viz3-${n++}`;
@@ -62,13 +63,15 @@ describe("usePanelData via viz.query (real gateway)", () => {
     const back = await getDashboard("d");
 
     // The hook returns the SAME SourceState shape; rows arrive via viz.query (debounced ~200ms).
-    const { result } = renderHook(() => usePanelData(back.cells.find((c) => c.i === "s")!));
+    const { result } = renderHook(() => usePanelData(back.cells.find((c) => c.i === "s")!), {
+      wrapper: ({ children }) => <WithDashboardCache ws={ws}>{children}</WithDashboardCache>,
+    });
     await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 4000 });
     expect(result.current.denied).toBe(false);
     expect(result.current.rows.length).toBeGreaterThan(0);
 
     // And the unchanged StatPanel renders the seeded value (7) through the one hook.
-    render(<StatPanel cell={back.cells.find((c) => c.i === "s")!} label="S" />);
+    render(<WithDashboardCache ws={ws}><StatPanel cell={back.cells.find((c) => c.i === "s")!} label="S" /></WithDashboardCache>);
     await waitFor(() => expect(screen.getByLabelText("stat value").textContent).toContain("7"), { timeout: 4000 });
   });
 });
@@ -114,7 +117,9 @@ describe("viz.query capability-deny (real gateway)", () => {
     const ws = nextWs();
     await signInWithCaps("user:ada", ws, ["mcp:series.read:call"]); // NO mcp:viz.query:call
     const cell = statCell("s", "nope");
-    const { result } = renderHook(() => usePanelData(cell));
+    const { result } = renderHook(() => usePanelData(cell), {
+      wrapper: ({ children }) => <WithDashboardCache ws={ws}>{children}</WithDashboardCache>,
+    });
     await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 4000 });
     expect(result.current.denied).toBe(true);
     expect(result.current.rows).toEqual([]);

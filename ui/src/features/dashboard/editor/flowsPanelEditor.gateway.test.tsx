@@ -17,6 +17,7 @@ import { WidgetView } from "../views/WidgetView";
 import { WidgetHost } from "../WidgetHost";
 import { PanelEditor } from "./PanelEditor";
 import { defaultCell } from "./defaultCell";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `flow-panel-${n++}`;
@@ -38,15 +39,17 @@ function ctlFlow(): Flow {
 function openEditor(ws: string): { saved: () => Cell | null } {
   let captured: Cell | null = null;
   render(
-    <PanelEditor
-      ws={ws}
-      cell={defaultCell("timeseries", "w1")}
-      open
-      onOpenChange={() => {}}
-      onSave={(c) => {
-        captured = c;
-      }}
-    />,
+    <WithDashboardCache ws={ws}>
+      <PanelEditor
+        ws={ws}
+        cell={defaultCell("timeseries", "w1")}
+        open
+        onOpenChange={() => {}}
+        onSave={(c) => {
+          captured = c;
+        }}
+      />
+    </WithDashboardCache>,
   );
   return { saved: () => captured };
 }
@@ -144,7 +147,7 @@ describe("Flows binding in the PanelEditor (real gateway)", () => {
 
     // END-TO-END: render the EXACT cell the editor saved through WidgetHost (the GRID's real render
     // path) — it must show the bound leaf (4), never "binding broken — re-pick".
-    const grid = render(<WidgetHost cell={cell!} workspace={ws} />);
+    const grid = render(<WithDashboardCache ws={ws}><WidgetHost cell={cell!} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => expect(grid.getByLabelText("json content")).toHaveTextContent("4"));
     expect(grid.queryByText(/binding broken/i)).toBeNull();
   });
@@ -183,13 +186,13 @@ describe("Flows binding in the PanelEditor (real gateway)", () => {
     };
 
     // JSON view renders the picked leaf (80), never "binding broken — re-pick" (the v3 source bug).
-    const json = render(<WidgetView cell={{ ...base, view: "jsonview" }} workspace={ws} />);
+    const json = render(<WithDashboardCache ws={ws}><WidgetView cell={{ ...base, view: "jsonview" }} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => expect(json.getByLabelText("json content")).toHaveTextContent("80"));
     expect(json.queryByText(/binding broken/i)).toBeNull();
     json.unmount();
 
     // And a Stat over the SAME v3 flow source shows the scalar (usePanelData flow path → rows).
-    const stat = render(<WidgetView cell={{ ...base, view: "stat" }} workspace={ws} />);
+    const stat = render(<WithDashboardCache ws={ws}><WidgetView cell={{ ...base, view: "stat" }} workspace={ws} /></WithDashboardCache>);
     await waitFor(() => expect(stat.container.textContent).toContain("80"));
   });
 });

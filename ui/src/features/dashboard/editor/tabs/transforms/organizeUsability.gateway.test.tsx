@@ -15,6 +15,7 @@ import { fieldNamesOf } from "../../fields/resultFields";
 import { ResultFieldsProvider } from "../../fields/FieldsContext";
 import { TransformTab } from "../TransformTab";
 import { cellToEditorState, type EditorState } from "../../cellEditorState";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `org-${n++}`;
@@ -51,7 +52,7 @@ describe("organize usability (real gateway)", () => {
     await seedSeries({ series: "org.temp", seq: 1, payload: 21, key: "kind", value: "temperature" });
 
     const user = userEvent.setup();
-    render(<Harness cell={cellOver("org.temp")} />);
+    render(<WithDashboardCache ws={ws}><Harness cell={cellOver("org.temp")} /></WithDashboardCache>);
 
     // Wait for the REAL viz.query frames to populate the organize row list.
     const fieldsOut = await waitFor(

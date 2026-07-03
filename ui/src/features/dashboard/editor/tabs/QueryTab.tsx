@@ -18,7 +18,7 @@ import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
 import { useSourcePicker } from "../../builder/useSourcePicker";
 import { seedEntryId } from "../../builder/WidgetBuilder";
-import { SQL_SOURCE_ID, type SourceEntry } from "../../builder/sourcePicker";
+import { SQL_SOURCE_ID, PickerGroup, READ_SOURCE_GROUPS } from "../../builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "../../builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
 import { FlowsQuerySection } from "./FlowsQuerySection";

@@ -110,6 +110,7 @@ The scope doc and the code map one-to-one. Use it as a worksheet, not background
 | How it fits the core → Capabilities | A capability **deny-test** (mandatory). |
 | How it fits the core → Tenancy/isolation | A **workspace-isolation** test (mandatory). |
 | How it fits the core → Data / Bus | The SurrealDB records + Zenoh subjects to implement. |
+| Extension surface (if any) | Reached only via generic seams — no core branch on the ext id (CLAUDE §10). If a core crate would name it, that's a leak: re-route through MCP/caps/outbox `Target`/`ext.list`. |
 | How it fits the core → Sync/authority | An offline/sync test, if synced. |
 | MCP surface | **Every** MCP tool the scope named (full CRUD + get/list + batch) — built end to end, not a subset (§3 step 4a) + their contract snapshot. |
 | Testing plan | The test files to write (backend **and** frontend, real infra + DB seed) — start here, not last. |
@@ -128,6 +129,13 @@ Hand back only when **all** are true (this consolidates the scattered checklists
       verb wired store→cap→MCP→UI) — no easy-subset, no silently-dropped verb (§3 step 4a).
 - [ ] Code respects **FILE-LAYOUT** (one verb/file, ≤400 lines, named concepts).
 - [ ] No `if cloud {…}` — role differences are config only (symmetric nodes).
+- [ ] **No core knowledge of any extension** — no core crate or core UI shell branches on
+      an extension id (`if ext == "github"`, `match id`, static import, hardcoded
+      route/nav/cap); extensions are reached only through the generic mediated seams (MCP
+      `<id>.<tool>` dispatch, cap grammar, outbox `Target`, `ext.list` discovery), which
+      treat the id as opaque data. A "built-in" ext takes the same caps/auth path as any
+      other. Swapping an equivalent extension must need **zero** core-crate change
+      (CLAUDE §10). Test fixtures / doc-comment examples don't count as branches.
 - [ ] **No mock data / no fake backend** — tests run on real infra, seeded via the real write
       path (CLAUDE §9, `testing-scope.md` §0).
 - [ ] Tests exist on **both backend and frontend**, including the **mandatory categories** and

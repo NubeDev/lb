@@ -18,6 +18,7 @@ import { useRealGateway, signInReal } from "@/test/gateway-session";
 import { saveFlow, injectFlow, runFlow, getFlowRun, type Flow } from "@/lib/flows";
 import type { Cell } from "@/lib/dashboard";
 import { WidgetHost } from "../WidgetHost";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `jsonview-map-${n++}`;
@@ -86,7 +87,7 @@ describe("jsonview value mappings apply to a scalar (real gateway)", () => {
     await signInReal("user:ada", ws);
     await seedBool(false);
 
-    const { getByLabelText } = render(<WidgetHost cell={jsonViewCell("on")} workspace={ws} />);
+    const { getByLabelText } = render(<WithDashboardCache ws={ws}><WidgetHost cell={jsonViewCell("on")} workspace={ws} /></WithDashboardCache>);
 
     await waitFor(() => expect(getByLabelText("json content")).toHaveTextContent("on"));
     expect(getByLabelText("json content")).not.toHaveTextContent("false");
@@ -98,14 +99,14 @@ describe("jsonview value mappings apply to a scalar (real gateway)", () => {
     const wsA = nextWs();
     await signInReal("user:ada", wsA);
     await seedBool(false);
-    const a = render(<WidgetHost cell={jsonViewCell("ON-A")} workspace={wsA} />);
+    const a = render(<WithDashboardCache ws={wsA}><WidgetHost cell={jsonViewCell("ON-A")} workspace={wsA} /></WithDashboardCache>);
     await waitFor(() => expect(a.getByLabelText("json content")).toHaveTextContent("ON-A"));
     a.unmount();
 
     const wsB = nextWs();
     await signInReal("user:ada", wsB);
     await seedBool(false);
-    const b = render(<WidgetHost cell={jsonViewCell("ON-B")} workspace={wsB} />);
+    const b = render(<WithDashboardCache ws={wsB}><WidgetHost cell={jsonViewCell("ON-B")} workspace={wsB} /></WithDashboardCache>);
     await waitFor(() => expect(b.getByLabelText("json content")).toHaveTextContent("ON-B"));
     expect(b.getByLabelText("json content")).not.toHaveTextContent("ON-A");
   });

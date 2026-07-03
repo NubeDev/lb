@@ -25,6 +25,7 @@ import { reduceFrame } from "./reduce";
 import { StatPanel } from "./stat/StatPanel";
 import { GaugePanel } from "./gauge/GaugePanel";
 import { TablePanel } from "./table/TablePanel";
+import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `viz2-${n++}`;
@@ -79,7 +80,7 @@ describe("alias fidelity (real gateway)", () => {
     }
 
     // And the stat renders through its NEW Phase-2 renderer over the real seeded value (7).
-    render(<StatPanel cell={back.cells.find((c) => c.i === "s")!} label="S" />);
+    render(<WithDashboardCache ws={ws}><StatPanel cell={back.cells.find((c) => c.i === "s")!} label="S" /></WithDashboardCache>);
     await waitFor(() => expect(screen.getByLabelText("stat value").textContent).toContain("7"));
   });
 });
@@ -166,7 +167,7 @@ describe("fieldConfig through the one bridge (real gateway)", () => {
     await saveDashboard("d", "D", [cell]);
     const back = await getDashboard("d");
 
-    render(<StatPanel cell={back.cells.find((c) => c.i === "s")!} label="Temp" />);
+    render(<WithDashboardCache ws={ws}><StatPanel cell={back.cells.find((c) => c.i === "s")!} label="Temp" /></WithDashboardCache>);
     // "42.0 °C" — computed from canonical 42 through the bridge (decimals=1 + the celsius label), never a
     // stored formatted string. The seeded cell carries NO formatted text.
     const val = await waitFor(() => screen.getByLabelText("stat value"));
@@ -183,9 +184,9 @@ describe("capability-deny (real gateway)", () => {
     const ws = nextWs();
     await signInWithCaps("user:ada", ws, ["mcp:dashboard.get:call"]); // no series.read grant
     const cell = readCell("s", "stat", "nope", { reduceOptions: { calcs: ["lastNotNull"] } });
-    render(<StatPanel cell={cell} label="X" />);
-    render(<GaugePanel cell={{ ...cell, i: "g", view: "gauge" }} label="X" />);
-    render(<TablePanel cell={{ ...cell, i: "t", view: "table" }} label="X" />);
+    render(<WithDashboardCache ws={ws}><StatPanel cell={cell} label="X" /></WithDashboardCache>);
+    render(<WithDashboardCache ws={ws}><GaugePanel cell={{ ...cell, i: "g", view: "gauge" }} label="X" /></WithDashboardCache>);
+    render(<WithDashboardCache ws={ws}><TablePanel cell={{ ...cell, i: "t", view: "table" }} label="X" /></WithDashboardCache>);
     await waitFor(() =>
       expect(screen.getAllByText(/no access to this source/i).length).toBeGreaterThanOrEqual(3),
     );
