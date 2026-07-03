@@ -303,6 +303,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/
   numbers through `prefs/` user-prefs, query any datasource (not just native SurrealDB), and import/export
   Grafana dashboard JSON — one scope file per part, additive over the shipped v2 widget contract.
+  `dashboard-query-cache-scope.md` (a **client-only caching / call-de-dup layer** — adopt
+  `@tanstack/react-query`, scoped to the dashboard route so the cache lives for the visit and clears on
+  leave: collapses the 2–3× `viz.query` per draft panel, the twice-fetched source-picker bundle, and the
+  per-cell series/flow reads to one shared call each; no host/verb/cap changes).
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.
