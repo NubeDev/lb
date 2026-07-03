@@ -36,6 +36,7 @@ mod membership;
 mod native;
 mod nav;
 mod outbox;
+mod panel;
 mod prefs;
 mod query;
 mod registry;
@@ -194,6 +195,11 @@ pub use nav::{
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_ITEMS as NAV_MAX_ITEMS,
     MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
+};
+pub use panel::{
+    call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
+    panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary, PanelUsageRow,
+    Visibility as PanelVisibility,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching

@@ -22,12 +22,18 @@ pub async fn dashboard_get(
     // Gates 1 + 2: workspace isolation, then the read capability — before any fetch.
     authorize_dashboard(principal, ws, "dashboard.get")?;
 
-    let dashboard = read_dashboard(store, ws, id)
+    let mut dashboard = read_dashboard(store, ws, id)
         .await?
         .filter(|d| !d.deleted)
         .ok_or(DashboardError::NotFound)?;
 
     // Gate 3: membership/visibility. Denied otherwise (the non-member deny).
     may_read_dashboard(store, principal, ws, &dashboard).await?;
+
+    // Hydrate library-panel refs host-side (library-panels scope Decision: the ONE hydration seam).
+    // Each ref cell's `panel_ref` expands to a resolved v3 cell under the VIEWER's three gates — an
+    // unreadable/dangling ref degrades to the placeholder, never a leaked spec. Inline cells untouched.
+    dashboard.cells =
+        crate::panel::hydrate_cells(store, principal, ws, std::mem::take(&mut dashboard.cells)).await;
     Ok(dashboard)
 }

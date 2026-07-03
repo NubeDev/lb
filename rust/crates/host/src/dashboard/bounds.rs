@@ -22,27 +22,39 @@ pub const MAX_MAPPINGS: usize = 64;
 pub const MAX_THRESHOLD_STEPS: usize = 64;
 
 /// Reject a cell whose v3 record would exceed the panel-model caps. Bounded growth keeps the
-/// dashboard record small for roster/list reads.
+/// dashboard record small for roster/list reads. Delegates to [`check_spec_bounds`] — the same
+/// non-layout-spec check a library panel reuses (library-panels scope: "same record-growth bounds").
 pub fn check_cell_bounds(cell: &Cell) -> Result<(), DashboardError> {
-    if cell.transformations.len() > MAX_TRANSFORMS {
-        return Err(DashboardError::BadInput(format!(
-            "cell {}: {} transformations exceeds cap {MAX_TRANSFORMS}",
-            cell.i,
-            cell.transformations.len()
-        )));
+    check_spec_bounds(&cell.transformations, &cell.field_config, &cell.i)
+        .map_err(DashboardError::BadInput)
+}
+
+/// Bound the non-layout spec pieces (`transformations[]` + `fieldConfig`) — the check shared by a
+/// dashboard `Cell` and a library `panel` record (both store the SAME v3 spec). `label` names the
+/// offending cell/panel in the error. Returns an error **message**; each caller wraps it in its own
+/// error type (`DashboardError::BadInput` / `PanelError::BadInput`).
+pub fn check_spec_bounds(
+    transformations: &[Value],
+    field_config: &Value,
+    label: &str,
+) -> Result<(), String> {
+    if transformations.len() > MAX_TRANSFORMS {
+        return Err(format!(
+            "{label}: {} transformations exceeds cap {MAX_TRANSFORMS}",
+            transformations.len()
+        ));
     }
-    check_field_options(&field_config_defaults(&cell.field_config), &cell.i)?;
-    for over in field_config_overrides(&cell.field_config) {
+    check_field_options(&field_config_defaults(field_config), label)?;
+    for over in field_config_overrides(field_config) {
         // An override carries `properties[]`; the field-option caps apply to the properties it sets,
         // counted leniently via the same mapping/threshold inspection on its `properties` values.
-        check_override(over, &cell.i)?;
+        check_override(over, label)?;
     }
-    let n_over = field_config_overrides(&cell.field_config).len();
+    let n_over = field_config_overrides(field_config).len();
     if n_over > MAX_OVERRIDES {
-        return Err(DashboardError::BadInput(format!(
-            "cell {}: {n_over} fieldConfig overrides exceeds cap {MAX_OVERRIDES}",
-            cell.i
-        )));
+        return Err(format!(
+            "{label}: {n_over} fieldConfig overrides exceeds cap {MAX_OVERRIDES}"
+        ));
     }
     Ok(())
 }
@@ -67,32 +79,32 @@ fn field_config_overrides(fc: &Value) -> &[Value] {
 }
 
 /// Bound the `mappings[]` / `thresholds.steps[]` of one field-option object.
-fn check_field_options(opts: &Value, cell_i: &str) -> Result<(), DashboardError> {
+fn check_field_options(opts: &Value, label: &str) -> Result<(), String> {
     if let Some(Value::Array(m)) = opts.get("mappings") {
         if m.len() > MAX_MAPPINGS {
-            return Err(DashboardError::BadInput(format!(
-                "cell {cell_i}: {} mappings exceeds cap {MAX_MAPPINGS}",
+            return Err(format!(
+                "{label}: {} mappings exceeds cap {MAX_MAPPINGS}",
                 m.len()
-            )));
+            ));
         }
     }
     if let Some(Value::Array(s)) = opts.get("thresholds").and_then(|t| t.get("steps")) {
         if s.len() > MAX_THRESHOLD_STEPS {
-            return Err(DashboardError::BadInput(format!(
-                "cell {cell_i}: {} threshold steps exceeds cap {MAX_THRESHOLD_STEPS}",
+            return Err(format!(
+                "{label}: {} threshold steps exceeds cap {MAX_THRESHOLD_STEPS}",
                 s.len()
-            )));
+            ));
         }
     }
     Ok(())
 }
 
 /// Bound a single override's property values (mappings/thresholds carried via `properties[].value`).
-fn check_override(over: &Value, cell_i: &str) -> Result<(), DashboardError> {
+fn check_override(over: &Value, label: &str) -> Result<(), String> {
     if let Some(Value::Array(props)) = over.get("properties") {
         for p in props {
             if let Some(v) = p.get("value") {
-                check_field_options(&json_wrap_property(p, v), cell_i)?;
+                check_field_options(&json_wrap_property(p, v), label)?;
             }
         }
     }

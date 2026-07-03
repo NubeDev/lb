@@ -31,6 +31,30 @@ key precedence + LWW idempotency all tested (rule 9; scripted provider HTTP the 
 `../scope/agent/active-agent-wiring-scope.md`, `../sessions/agent/active-agent-wiring-session.md`,
 `../skills/agent/SKILL.md` §6.
 
+## Shipped (S9+ frontend — the nav builder: user-/team-authored navigation over pages)
+
+A workspace-scoped `nav` **asset** (cloned from the `dashboard` pattern) whose ordered `items[]` link to
+core surfaces, dashboards, extension pages, or dynamic tag-groups. The menu is a **lens over existing
+access, never a grant path** — the headline invariant, tested.
+
+- **The asset + records:** `nav:{id}` (`title/owner/visibility/items[]`, S4 `share`-to-team edges),
+  plus `nav_pref:[ws,user]` (member-owned pick) and `workspace_nav_default:[ws]` (admin pointer). Four
+  item kinds (`surface`/`dashboard`/`ext`/`tag-group`) + one `group` level; bounded (100 items / 50 per
+  tag-group). `rust/crates/host/src/nav/`.
+- **Full MCP surface, wired end to end:** `nav.get/list/save/delete/share/set_default/resolve` +
+  `nav.pref.get/set`, each its own file/cap; store → cap → `call_nav_tool` → gateway (`/navs`,
+  `/nav/resolve`, `/nav/default`, `/nav/pref`) → `http.ts` → `ui/src/lib/nav`.
+- **The resolver `nav.resolve`:** picks the effective nav (personal pick → team-shared → workspace-
+  default → built-in `SURFACES` fallback), expands tag-groups (`tags.find`), and **strips every item
+  the caller can't reach** (surface gate cap / three-gate `dashboard.get` / `ext.list` install) — a pure
+  filter over caps already held. `nav.resolve` grants nothing; the server re-checks every verb on click.
+- **UI:** NavRail renders `nav.resolve` (fallback to `SURFACES`, route gates untouched); the builder is a
+  **Nav tab under the access console** picking from the three real sources.
+- **Tested (rule 9, real store/node/gateway):** CRUD, per-verb deny, ws-isolation, gate-3 non-member
+  deny, **"nav never widens"** (strip + direct read still denied), precedence, tag-group dynamism,
+  member-owned pref — 11 Rust + 8 Ui (4 unit + 4 real-gateway). See `nav/nav.md`,
+  `../scope/nav/nav-builder-scope.md`, `../sessions/nav/nav-builder-session.md`.
+
 ## Shipped (post-S8 — the in-house default agent, finished: model door + shared tool wall + boot)
 
 The always-registered `"default"` runtime is now a working, platform-native agent. Four wiring seams,

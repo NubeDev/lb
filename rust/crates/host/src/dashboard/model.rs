@@ -159,6 +159,31 @@ pub struct Cell {
     /// v3 plugin version, for import/export round-trip fidelity. Empty on a v1/v2 cell.
     #[serde(default, rename = "pluginVersion")]
     pub plugin_version: String,
+    /// **Library-panel reference** (library-panels scope). When non-empty (`panel:{id}`) this cell is
+    /// a *ref cell*: it carries only layout + the ref + bounded per-placement overrides (the `title`
+    /// override above and [`Cell::panel_vars`]), and NO spec. `dashboard.get` hydrates the spec from
+    /// the `panel` record at read time (host-side), keeping this marker so the editor can offer
+    /// link/unlink. The ref is authoritative — a stale hydrated spec echoed back on `save` is ignored.
+    /// Empty (the default) = an inline cell, unchanged. Additive `#[serde(default)]` so inline and ref
+    /// cells coexist by design.
+    #[serde(default, rename = "panelRef")]
+    pub panel_ref: String,
+    /// Per-placement variable bindings for a ref cell (library-panels scope, the bounded override set:
+    /// title + variable bindings). Opaque `Value` (a `{ name: value }` map); applied over the panel's
+    /// own variable defaults at hydration. Empty on an inline cell or a ref with no overrides.
+    #[serde(default, rename = "panelVars")]
+    pub panel_vars: Value,
+    /// Set by `dashboard.get` hydration when a ref cell's `panel_ref` cannot be resolved (deleted,
+    /// unshared, or unreadable by the viewer) — the cell renders an honest "panel not accessible"
+    /// placeholder, never a leaked spec (library-panels scope, "Dangling refs"). Never persisted:
+    /// `#[serde(skip_serializing_if)]` keeps it off the stored record and `dashboard.save` ignores it.
+    #[serde(default, rename = "panelMissing", skip_serializing_if = "is_false")]
+    pub panel_missing: bool,
+}
+
+/// serde `skip_serializing_if` helper — keeps a `false` [`Cell::panel_missing`] off the wire/record.
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// A dashboard VARIABLE definition (widget-config-vars scope, Slice 2). One model: a `name` bound to a

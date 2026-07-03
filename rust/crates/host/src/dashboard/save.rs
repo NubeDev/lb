@@ -41,6 +41,14 @@ pub async fn dashboard_save(
     // time. Same authority for every writer — shell, `POST /mcp/call`, routed Zenoh, external-agent.
     super::genui::check_genui_cells(&cells)?;
 
+    // Library-panel refs (library-panels scope: "validate at write, tolerate at read"). Every ref
+    // cell's `panel_ref` must resolve in-workspace under the saver NOW (loud `BadInput` otherwise); the
+    // ref is authoritative, so any echoed hydrated spec is stripped — a ref cell is stored with only
+    // layout + the ref + bounded overrides. Inline cells pass through untouched.
+    let cells = crate::panel::validate_and_strip_refs(store, principal, ws, cells)
+        .await
+        .map_err(DashboardError::BadInput)?;
+
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
     let (owner, visibility) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {

@@ -1,6 +1,8 @@
 # Nav scope — the nav builder (user-/team-authored navigation over pages)
 
-Status: scope (the ask). Promotes to `public/nav/nav.md` once shipped. Target stage:
+Status: **SHIPPED (2026-07-03)** — promoted to `public/nav/nav.md`; built end to end (store → cap →
+MCP → gateway → UI) with 11 Rust + 8 UI tests green. See
+[`sessions/nav/nav-builder-session.md`](../../sessions/nav/nav-builder-session.md). Target stage:
 **S9+ collaboration UI** (builds on the shipped S8 data plane and the S9 real-session shell,
 the shipped `dashboard.*` asset + share model, `lb-authz` teams/roles/grants, and `lb-tags`).
 

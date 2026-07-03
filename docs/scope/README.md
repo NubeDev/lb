@@ -218,6 +218,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `job-control-scope.md` (the **observe/control surface** — `job.list|get|cancel|retry|watch`,
   owner-routed through the owning service's chokepoint so callers can see/stop/recover durable work
   without a raw `jobs.*` table API; the runnable-trait member of `core/resource-verbs-scope.md`).
+  Also `job-retention-scope.md` (**reactor drain-scan cost + terminal-job retention** — makes
+  `lb_jobs::pending` an indexed O(pending) query instead of a full-table walk, and bounds the
+  terminal `job`/`flow_run`/`flow_step_output` rows that otherwise grow forever and peg a node's CPU
+  on the reactor tick — see `debugging/jobs/node-pegs-cpu-reactor-rescans-job-table.md`).
 - `reminders/` — a durable, workspace-scoped **scheduled trigger that fires an action**
   (`reminders-scope.md`): a `reminder:{id}` record with a cron schedule + optional `max_runs` +
   `enabled` switch, fired by a `react_to_reminders` durable scan (the same altitude as the S6

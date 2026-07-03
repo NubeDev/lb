@@ -16,7 +16,27 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-03): extension widgets over any source — frames-in + `echarts-panel` reference
+**Just shipped (2026-07-03): the nav builder — user-/team-authored navigation over pages (branch
+`master`).** A workspace-scoped `nav` **asset** (cloned from the `dashboard` pattern) whose ordered
+`items[]` link to core surfaces, dashboards, extension pages, or dynamic tag-groups — the menu is a
+**lens over existing access, never a grant path**. Built end to end: a new `rust/crates/host/src/nav/`
+module (the `nav`/`nav_pref`/`workspace_nav_default` records + the verbs), the full MCP surface
+(`nav.get/list/save/delete/share/set_default/resolve` + `nav.pref.get/set`, each its own cap, wired
+store → `call_nav_tool` → gateway `/navs`·`/nav/resolve`·`/nav/default`·`/nav/pref` → `http.ts` →
+`ui/src/lib/nav`), the composite **`nav.resolve`** (pick: personal→team→ws-default→built-in `SURFACES`
+fallback; tag-expand via `tags.find`; **cap-strip** every unreachable item), and the UI (NavRail renders
+`nav.resolve` with a `SURFACES` fallback, route gates untouched; a **Nav builder tab** under the access
+console picking from the three real sources). The nav grants nothing — the server re-checks every verb on
+click. Tests (rule 9, real store/node/gateway): **11 Rust** (`nav_test.rs` — CRUD, per-verb deny,
+ws-isolation, gate-3 non-member deny, the **"nav never widens"** headline, precedence, tag-group
+dynamism, member-owned pref) + **8 UI** (`NavRail.test.tsx` 4 + `NavAdmin.gateway.test.tsx` 4 real-
+gateway). `cargo build --workspace` + `cargo fmt` clean; `pnpm test` **430**. Scope
+`scope/nav/nav-builder-scope.md` (open questions resolved); public `public/nav/nav.md`; session
+`sessions/nav/nav-builder-session.md`. **Deferred (named):** `skills/nav/SKILL.md`, dashboard deep-board
+links, extension-authored navs. **Pre-existing unrelated fails (clean-tree):** `SystemView.gateway`,
+`sqlSource.gateway`, `agent_routed_test`.
+
+**Previously shipped (2026-07-03): extension widgets over any source — frames-in + `echarts-panel` reference
 (branch `master`).** An extension `[[widget]]` is now a **first-class view over the v3 panel model**: a
 `[[widget]]` declaring `data = true` opts into frames-in, so an `ext:<id>/<widget>` cell carries the same
 `sources[]` + `fieldConfig` + `transformations[]` as a built-in `timeseries`, and the **shell** resolves
