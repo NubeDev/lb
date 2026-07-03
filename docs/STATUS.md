@@ -16,6 +16,35 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-04): Data Studio v2 — the multi-pane data workbench + the extracted headless
+`panel-kit` lib (branch `master`).** Data Studio (`/t/$ws/data-studio`) is rebuilt from v1's
+single-picker/single-preview/modal into a **dockable multi-pane workbench** on `flexlayout-react` (ISC):
+N explore tabs + N panel-builder tabs open side by side; drag to split/tab/dock/float/close/rename; the
+whole arrangement (incl. each tab's draft cell) persists **per user** in SurrealDB. **The architectural
+move:** the panel-editing logic was lifted out of the dashboard's editor into `ui/src/lib/panel-kit/` — a
+**headless** lib (no JSX / `@/components` / `@/features`; only `@/lib/*` + `@nube/genui`; package-shaped
+for a later `@nube/panel-kit`): `cellToEditorState`/`editorStateToCell` (the ONE spec (de)serializer),
+`usePanelEditor` (the state machine), `defaultCell` (per-view options now injected), the SQL builder model
++ `toSurrealQL`, `draftFromSelection`, `saveDraftAsPanel`, `useGenUiAuthor`. The option-surface views moved
+to `features/panel-builder/` (+ a new inline `BuilderPane`, no modal); Data Studio's FlexLayout panes
+(`features/data-studio/`) are its own views on that logic — a third consumer can reuse the logic with
+different views. **Panel authoring was REMOVED from the dashboard** (deleted `AddPanel`/`EditCellButton`/
+the modal `PanelEditor`/the dead `WidgetBuilder`); the dashboard now only PLACES library panels (ref
+cells) + renders. **Layout persistence** is a new member-owned verb pair `layout.get`/`layout.set` over
+`ui_layout:[ws, user, surface]` (the `nav_pref` pattern generalized; the surface key is opaque, rule 10;
+keyed to the token `sub`, bounded 256 KB) — `crates/host/src/layout/`, gateway `GET/PUT /layout/{surface}`,
+member caps in `credentials.rs`, UI client `lib/layout/`. **Tests (real infra, rule 9):** UI unit
+**437/437**; `DataStudio.gateway.test.tsx` **4/4** (explore→build→save-as-library round-trip + layout
+persists + member-owned + ws-isolation + panel.save deny); `DashboardView.gateway.test.tsx` **8/8**
+(removal regression + library placement); the moved editor gateway tests re-target `BuilderPane`; Rust
+`layout_test.rs` **6/6** + `layout_routes_test.rs` **3/3**, existing nav/panel/gateway/session green.
+Pre-existing/out-of-scope reds untouched (missing-WASM fixtures github-bridge/proof-panel; `sqlSource`
+casing assertion). Scope `scope/frontend/data-studio-scope.md` (v2, promoted); session
+`sessions/frontend/data-studio-v2-workbench-session.md`; public `public/frontend/data-studio.md`.
+**Next up:** promote `panel-kit` to a `packages/@nube/panel-kit` workspace lib once the `@/lib/dashboard`
+type graph is extracted.
+
+
 **Just shipped (2026-07-03): job/flow-run retention + indexed drain scan — the CPU-burn fix (branch
 `master`).** A long-lived node pegged a full CPU core re-scanning its own `job` table: the reactors'
 drain scan (`lb_jobs::pending`) walked every page and filtered in Rust, and terminal `job` /

@@ -31,6 +31,9 @@ type Pending = { kind: "disable" | "uninstall"; ext: string } | null;
 
 interface Props {
   ws: string;
+  /** When embedded in `StudioShell` (the Extensions tab), the shell supplies the page header, so this
+   *  view renders only its list and surfaces the upload action inline instead. */
+  embedded?: boolean;
 }
 
 const SURFACE_PREVIEW_COUNT = 4;
@@ -281,19 +284,25 @@ function ExtensionSupport({ row }: { row: ExtRow }) {
   );
 }
 
-export function ExtensionsView({ ws }: Props) {
+export function ExtensionsView({ ws, embedded = false }: Props) {
   const { rows, error, setEnabled, reset, uninstall, upload } = useExtensions();
   const [pending, setPending] = useState<Pending>(null);
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-bg text-fg">
-      <AppPageHeader
-        icon={Boxes}
-        title="Extensions"
-        description="Installed extension tiers, health, and lifecycle actions."
-        workspace={ws}
-        actions={<UploadArtifact onUpload={upload} />}
-      />
+      {embedded ? (
+        <div className="flex shrink-0 justify-end px-4 pt-3">
+          <UploadArtifact onUpload={upload} />
+        </div>
+      ) : (
+        <AppPageHeader
+          icon={Boxes}
+          title="Extensions"
+          description="Installed extension tiers, health, and lifecycle actions."
+          workspace={ws}
+          actions={<UploadArtifact onUpload={upload} />}
+        />
+      )}
 
       {error && (
         <div

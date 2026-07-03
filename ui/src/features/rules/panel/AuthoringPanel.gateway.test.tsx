@@ -61,6 +61,20 @@ describe("AuthoringPanel (real gateway)", () => {
     expect(editorText()).toContain('history("series"');
   });
 
+  it("the preview disclosure reveals the exact snippet code before inserting", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    render(<RulesView ws={ws} />);
+
+    // The snippet is hidden until the user opens the per-function preview.
+    expect(screen.queryByText('history("series", "<point>", "24h")')).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("preview history snippet"));
+    expect(screen.getByText('history("series", "<point>", "24h")')).toBeInTheDocument();
+    // Previewing does NOT insert — the editor buffer stays untouched.
+    expect(editorText()).not.toContain('history("series"');
+  });
+
   it("search filters the palette by name", async () => {
     const user = userEvent.setup();
     const ws = nextWs();

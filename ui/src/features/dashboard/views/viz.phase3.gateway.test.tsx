@@ -22,8 +22,8 @@ import { saveDashboard, getDashboard } from "@/lib/dashboard/dashboard.api";
 import type { Cell } from "@/lib/dashboard";
 import { usePanelData } from "../builder/usePanelData";
 import { StatPanel } from "./stat/StatPanel";
-import { TransformTab } from "../editor/tabs/TransformTab";
-import { cellToEditorState, type EditorState } from "../editor/cellEditorState";
+import { TransformTab } from "@/features/panel-builder/tabs/TransformTab";
+import { cellToEditorState, type EditorState } from "@/lib/panel-kit/cellEditorState";
 import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;

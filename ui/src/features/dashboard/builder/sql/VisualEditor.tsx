@@ -15,8 +15,8 @@ import type {
   SqlBuilderQuery,
   SqlFilter,
   SqlOperator,
-} from "./query";
-import { toSurrealQL } from "./toSurrealQL";
+} from "@/lib/panel-kit/sql/query";
+import { toSurrealQL } from "@/lib/panel-kit/sql/toSurrealQL";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";

@@ -1,10 +1,11 @@
 // The Dashboards page, driven against a REAL in-process gateway (dashboard scope; CLAUDE §9 / testing
 // §0 — no fake backend). Each test logs in to a UNIQUE workspace, seeds real, tagged series through
 // the real ingest path, and drives the real `DashboardView` + hook + api client + HTTP transport.
-// Covers: create → select → add a widget bound to a real series → it renders + persists; a tag-bound
-// widget resolves via `series.find`; and workspace isolation (a fresh workspace shows no dashboards).
-// (The per-verb capability deny + gate-3 membership deny are proven server-side in the Rust tests;
-// the nav cap-gating is unit-tested separately.)
+// Covers: the data-studio-v2 REMOVAL REGRESSION (the dashboard has NO panel-authoring surface — no
+// "Add panel", no per-cell edit; it PLACES library panels and renders); create → place a library
+// panel → it renders + persists; seeded cells render with the full option surface; variables; rename;
+// delete; workspace isolation. Panel AUTHORING is covered by the Data Studio gateway tests.
+// (The per-verb capability deny + gate-3 membership deny are proven server-side in the Rust tests.)
 
 import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, within } from "@testing-library/react";
@@ -14,6 +15,9 @@ import { useState } from "react";
 
 import { DashboardView } from "./DashboardView";
 import { saveDashboard } from "@/lib/dashboard";
+import { savePanel } from "@/lib/panel";
+import { cellToSpec } from "@/lib/panel";
+import type { Cell } from "@/lib/dashboard";
 import { useRealGateway, signInReal, seedIotDemo } from "@/test/gateway-session";
 import { RoutingContextProvider } from "@/features/routing/RoutingContextProvider";
 import { getSession } from "@/lib/session";
@@ -85,6 +89,24 @@ function renderDashboardWithSearch(ws: string, searchRef: { current: DashboardSe
   return render(<Harness />);
 }
 
+/** A built v3 timeseries cell bound to the seeded `cooler.temp` series — what a Data Studio builder
+ *  tab produces. Seeded through the REAL write paths (`panel.save` / `dashboard.save`), per rule 9. */
+function builtSeriesCell(i = "w1", title?: string): Cell {
+  return {
+    i,
+    x: 0,
+    y: 0,
+    w: 8,
+    h: 4,
+    v: 3,
+    widget_type: "chart",
+    view: "timeseries",
+    binding: { series: "" },
+    ...(title ? { title } : {}),
+    sources: [{ refId: "A", tool: "series.read", args: { series: "cooler.temp" }, datasource: { type: "surreal" } }],
+  };
+}
+
 /** Create a dashboard titled `title` in the freshly-rendered view (it auto-selects on create). */
 async function createDashboard(user: ReturnType<typeof userEvent.setup>, title: string) {
   await user.type(await screen.findByLabelText("new dashboard title"), title);
@@ -92,34 +114,37 @@ async function createDashboard(user: ReturnType<typeof userEvent.setup>, title: 
 }
 
 describe("DashboardView (real gateway)", () => {
-  it("creates a dashboard, adds a timeseries panel bound to a real series, and persists it", async () => {
+  it("REMOVAL REGRESSION: no authoring on the dashboard — but a library panel places and renders", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
+    // A library panel authored in Data Studio (the REAL `panel.save` write path, rule 9).
+    await savePanel("cooler-temp", "Cooler temp", cellToSpec(builtSeriesCell("spec")));
+
     renderDashboard(ws);
     await createDashboard(user, "Ops");
 
-    // The ONE panel editor (panel-editor scope): click "Add panel" → the editor sheet opens on a fresh
-    // default timeseries cell. In the Query tab, source-pick the seeded `cooler.temp` series (a friendly
-    // label, NOT a tool name; resolves to `series.read` behind the scenes), then Save. Wait for the
-    // async `series.list` to populate the picker options first.
-    await user.click(await screen.findByLabelText("add panel"));
-    const source = await screen.findByLabelText("panel source");
-    await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(source, "series:cooler.temp");
-    await user.click(screen.getByLabelText("save panel"));
+    // The authoring surface is GONE from the dashboard (data-studio scope v2): no "Add panel", the
+    // panel factory lives at /t/$ws/data-studio now. "Add library panel" (placement) remains.
+    expect(screen.queryByLabelText("add panel")).toBeNull();
 
-    // The cell renders the timeseries over real rows read through the bridge (the SVG line + latest).
+    // Place the library panel: the ref-cell flow, the dashboard's only way to gain a panel.
+    await user.click(await screen.findByLabelText("add library panel"));
+    await user.click(await screen.findByRole("option", { name: /Cooler temp/ }));
+    await screen.findByLabelText("cell w1");
+
+    // NO per-cell edit affordance on the placed cell (authoring removed; geometry/remove remain).
+    expect(screen.queryByLabelText("edit cell w1")).toBeNull();
+
+    // Persisted + hydrated: a fresh render re-loads the dashboard, the host hydrates the ref cell on
+    // `dashboard.get`, and it renders the timeseries over real rows (the SVG line + latest).
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
     await screen.findByLabelText("cell w1");
     expect(await screen.findByLabelText("timeseries line")).toBeInTheDocument();
     expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
-
-    // Persisted: a fresh render of the same workspace re-loads the dashboard from the store.
-    renderDashboard(ws);
-    await user.click(await screen.findByLabelText("select dashboard ops"));
-    expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
   });
 
   it("renders a timeseries panel over a bridged source with the full option surface", async () => {
@@ -128,53 +153,31 @@ describe("DashboardView (real gateway)", () => {
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
-    renderDashboard(ws);
-    await createDashboard(user, "Tagged");
+    // The full option surface is authored in Data Studio now; the dashboard renders it. Seed a built
+    // cell with a fieldConfig unit through the REAL `dashboard.save` write path (rule 9).
+    const cell = builtSeriesCell("w1");
+    cell.fieldConfig = { defaults: { unit: "celsius" }, overrides: [] };
+    await saveDashboard("tagged", "Tagged", [cell]);
 
-    // Add a timeseries panel; set a unit in the Field tab (the fieldConfig surface) before saving.
-    await user.click(await screen.findByLabelText("add panel"));
-    await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
-    await user.click(screen.getByLabelText("Field"));
-    // The unit picker is now the searchable Combobox (editor-parity step 2), labelled by the registry
-    // option "Unit": open it, filter, pick.
-    await user.click(await screen.findByRole("combobox", { name: "Unit" }));
-    await user.type(screen.getByLabelText("Unit search"), "celsius");
-    await user.click(screen.getByRole("option", { name: /celsius/i }));
-    await user.click(screen.getByLabelText("save panel"));
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard tagged"));
 
     await screen.findByLabelText("cell w1");
     // The latest value renders a real (numeric) value formatted through the bridge — not a fake.
     expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
   });
 
-  it("one editor for add AND edit: add → reopen the editor → rename → save → reload shows the edit", async () => {
+  it("a studio-edited cell (title change through dashboard.save) renders + persists", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
-    renderDashboard(ws);
-    await createDashboard(user, "Cfg");
+    // Editing happens in Data Studio (BuilderPane, covered there); the dashboard consumes the saved
+    // record. Seed → rename through the REAL write path → the dashboard shows the edit.
+    await saveDashboard("cfg", "Cfg", [builtSeriesCell("w1")]);
+    await saveDashboard("cfg", "Cfg", [builtSeriesCell("w1", "Web01 CPU")]);
 
-    // Add a timeseries panel bound to the seeded series.
-    await user.click(await screen.findByLabelText("add panel"));
-    await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
-    await user.click(screen.getByLabelText("save panel"));
-    await screen.findByLabelText("cell w1");
-
-    // Reopen the SAME editor on the saved cell (the ⚙ edit button) — add and edit are one component, one
-    // path. Rename the panel and save; the title shows in the header.
-    await user.click(screen.getByLabelText("edit cell w1"));
-    const titleField = await screen.findByLabelText("panel title");
-    await user.clear(titleField);
-    await user.type(titleField, "Web01 CPU");
-    await user.click(screen.getByLabelText("save panel"));
-    // The renamed title shows in the cell header (≥1 match — the editor sheet may still be closing).
-    expect((await screen.findAllByText("Web01 CPU")).length).toBeGreaterThan(0);
-
-    // Persisted: reload re-renders the cell with the new title (the round-trip the slice guarantees).
     renderDashboard(ws);
     await user.click(await screen.findByLabelText("select dashboard cfg"));
     // The title renders in the cell header AND (as the series displayName) the legend — ≥1 is the point.
@@ -264,15 +267,12 @@ describe("DashboardView (real gateway)", () => {
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
-    renderDashboard(ws);
-    await createDashboard(user, "Ops");
-
     // Give it a real cell so we can prove the rename preserves the layout (title-only save must not
-    // blank the cells).
-    await user.click(await screen.findByLabelText("add panel"));
-    await screen.findByRole("option", { name: "cooler.temp" });
-    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
-    await user.click(screen.getByLabelText("save panel"));
+    // blank the cells). Seeded through the real write path (authoring lives in Data Studio now).
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
     await screen.findByLabelText("cell w1");
 
     // Rename inline from the roster: pencil → edit field → new title → confirm.

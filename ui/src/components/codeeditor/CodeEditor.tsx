@@ -5,9 +5,11 @@
 // the language extension (Rhai → `lang-javascript`, SurrealQL → `lang-sql`), so this stays language-
 // neutral. One component per file (FILE-LAYOUT).
 
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useContext, useImperativeHandle } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import type { Extension } from "@codemirror/state";
+
+import { ThemeContext } from "@/lib/theme/theme-context";
 
 import { useEditorInsert } from "./useEditorInsert";
 
@@ -33,6 +35,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   const { ref, insertSnippet } = useEditorInsert();
   useImperativeHandle(handleRef, () => ({ insertSnippet }), [insertSnippet]);
 
+  // Follow the app's light/dark preference (the `.dark` class on <html>). Without this CodeMirror pins
+  // its built-in light theme, so the editor stays white on the shell's dark surface. Read the context
+  // directly (not the throwing `useTheme` hook) so this shared editor also renders outside a
+  // ThemeProvider (e.g. isolated tests), defaulting to light.
+  const mode = useContext(ThemeContext)?.theme.mode ?? "light";
+
   return (
     <CodeMirror
       ref={ref as React.Ref<ReactCodeMirrorRef>}
@@ -40,6 +48,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       value={value}
       onChange={onChange}
       extensions={extensions}
+      theme={mode}
       height={height}
     />
   );

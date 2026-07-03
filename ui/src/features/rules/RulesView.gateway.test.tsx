@@ -8,11 +8,11 @@
 // server-side in the Rust gateway test (`rules_routes_test.rs`).
 
 import { describe, expect, it, beforeAll } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { RulesView } from "./RulesView";
-import { getRule, deleteRule } from "@/lib/rules";
+import { getRule, deleteRule, saveRule } from "@/lib/rules";
 import { useRealGateway, signInWithCaps, seedIotDemo } from "@/test/gateway-session";
 
 let n = 0;
@@ -139,6 +139,40 @@ describe("RulesView (real gateway)", () => {
     // `scan` returns the `{data, rev}` envelope — the record is under `row.data["data"]`). Once the
     // lead lands the one-line host fix, assert `screen.findByLabelText("open rule cooler-check")` here.
     expect(screen.getByLabelText("rule rail")).toBeInTheDocument();
+  });
+
+  it("URL-driven: a `ruleId` prop opens that saved rule (the `/rules/$rule` deep link)", async () => {
+    const ws = nextWs();
+    await signIn(ws);
+    // Seed a real saved rule through the shipped save path, then deep-link to it via the prop.
+    await saveRule({ id: "aidan", name: "aidan", body: "6 * 7" });
+
+    render(<RulesView ws={ws} ruleId="aidan" />);
+
+    // The effect fires `rules.get` for the URL param, opening the rule: the header reflects its name
+    // (not "Untitled rule") — proof the deep-linked rule loaded through the real path.
+    expect(await screen.findByRole("heading", { name: "aidan" })).toBeInTheDocument();
+
+    await deleteRule("aidan");
+  });
+
+  it("URL-sync: opening a rule from the rail fires `onSelectRule` with its id", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signIn(ws);
+    let navigated: string | null | undefined;
+
+    render(<RulesView ws={ws} onSelectRule={(id) => (navigated = id)} />);
+
+    // Name-first create → `onSelectRule` fires with the derived id so the surface can push the URL.
+    await typeBody(user, "1 + 1");
+    await user.click(screen.getByLabelText("new rule"));
+    await user.type(screen.getByLabelText("new rule name"), "Aidan two");
+    await user.click(screen.getByLabelText("create rule"));
+
+    // The create resolves asynchronously; wait for the surface callback to receive the derived id.
+    await waitFor(() => expect(navigated).toBe("aidan-two"));
+    await deleteRule("aidan-two");
   });
 
   it("rename: change the name of an open rule (same id) via the real path", async () => {

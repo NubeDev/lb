@@ -259,6 +259,8 @@ No open questions — these are the long-term answers the build follows.
 - `../ai-gateway/ai-gateway-scope.md` — the `ModelAccess` seam `ai.*` re-points at; the budget/idempotency.
 - `rules-ai-wiring-scope.md` — wires the `ai.*` model seam to the real agent (retires the hardcoded
   `DisabledModel` on the `rules.run` bridge; resolves the workspace's agent-catalog model selection).
+- `rules-messaging-scope.md` — the `inbox`/`outbox`/`channel` rhai handles: explicit, caller-gated
+  CRUD on the messaging planes (generalizes this scope's `alert` → inbox/outbox routing).
 - `../jobs/jobs-scope.md`, `../inbox-outbox/outbox-scope.md` — the durable job the chain reuses; the
   inbox/outbox `alert` routes to.
 - `../auth-caps/auth-caps-scope.md` — `caps::check`, the chokepoint every verb runs.

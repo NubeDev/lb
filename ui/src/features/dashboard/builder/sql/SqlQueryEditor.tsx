@@ -16,10 +16,10 @@
 import { useEffect, useState } from "react";
 
 import { readSchema, type Schema } from "@/lib/schema";
-import { emptyQuery, type SqlSourceState } from "./query";
+import { emptyQuery, emptySqlSource, type SqlSourceState } from "@/lib/panel-kit/sql/query";
 import { RawEditor } from "./RawEditor";
 import { SqlQueryHeader } from "./SqlQueryHeader";
-import { toSurrealQL } from "./toSurrealQL";
+import { toSurrealQL } from "@/lib/panel-kit/sql/toSurrealQL";
 import { VisualEditor } from "./VisualEditor";
 
 interface Props {
@@ -93,7 +93,4 @@ export function SqlQueryEditor({ value, onChange }: Props) {
   );
 }
 
-/** A fresh SQL source state — Builder mode, empty query, table format. */
-export function emptySqlSource(): SqlSourceState {
-  return { mode: "builder", rawSql: "", builder: emptyQuery(), format: "table" };
-}
+export { emptySqlSource };

@@ -19,7 +19,7 @@ import { useRealGateway, signInReal, signInWithCaps, seedSeries } from "@/test/g
 import { saveDashboard, getDashboard } from "@/lib/dashboard/dashboard.api";
 import { invoke } from "@/lib/ipc/invoke";
 import type { Cell } from "@/lib/dashboard";
-import { cellToEditorState, editorStateToCell } from "../editor/cellEditorState";
+import { cellToEditorState, editorStateToCell } from "@/lib/panel-kit/cellEditorState";
 import { detectShape, viewFitsShape } from "./shape";
 import { reduceFrame } from "./reduce";
 import { StatPanel } from "./stat/StatPanel";

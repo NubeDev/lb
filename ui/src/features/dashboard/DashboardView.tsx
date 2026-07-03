@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
-import { AddPanel } from "./editor/AddPanel";
+import { AddLibraryPanel } from "./AddLibraryPanel";
 import { VariableBar } from "./vars/VariableBar";
 import { VariableEditor } from "./vars/VariableEditor";
 import { RequiredVarGate, unboundRequiredVars } from "./vars/RequiredVarGate";
@@ -244,13 +244,16 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
             onOpenChange={setVarEditorOpen}
             onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
           />
-          <AddPanel
-            ws={ws}
-            existing={current.cells}
-            canEdit={canEdit}
-            scope={scope}
-            onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
-          />
+          {/* Panel AUTHORING lives in Data Studio now (data-studio scope v2) — the dashboard only
+              PLACES library panels (ref cells) and renders. Build/edit panels at /t/$ws/data-studio. */}
+          {canEdit && (
+            <div className="flex items-center gap-2 border-b border-border bg-panel px-3 py-2">
+              <AddLibraryPanel
+                existing={current.cells}
+                onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
+              />
+            </div>
+          )}
 
           <div className="min-h-0 flex-1">
             {unboundRequired.length > 0 ? (
@@ -260,7 +263,6 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
               <Grid
                 cells={current.cells}
                 editable
-                canEdit={canEdit}
                 range={range}
                 scope={scope}
                 refreshKey={refreshKey}
@@ -268,11 +270,6 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
-                onEditCell={(edited) =>
-                  void dash.saveCells(
-                    current.cells.map((c) => (c.i === edited.i ? edited : c)),
-                  )
-                }
               />
             )}
           </div>

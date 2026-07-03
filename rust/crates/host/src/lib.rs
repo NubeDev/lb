@@ -30,6 +30,7 @@ mod inbox;
 mod ingest;
 mod install;
 mod installed;
+mod layout;
 mod load;
 mod members;
 mod membership;
@@ -182,6 +183,9 @@ pub use ingest::{
 };
 pub use install::install_extension;
 pub use installed::installed;
+pub use layout::{
+    call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
+};
 pub use load::{load_extension, LoadError, Loaded};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{

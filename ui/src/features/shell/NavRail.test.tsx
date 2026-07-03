@@ -86,4 +86,33 @@ describe("NavRail resolved-nav rendering", () => {
     expect(screen.getByRole("button", { name: "Channels" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
+
+  it("groups the fallback rail into labelled categories, hiding a fully cap-stripped group", () => {
+    // channels+dashboards (Workspace) and flows (Automation) are allowed; nothing in Data/Build/System.
+    renderRail({ allowed: ["channels", "dashboards", "flows"], resolvedItems: null });
+    // The category labels for groups WITH visible members render…
+    expect(screen.getByText("Workspace")).toBeInTheDocument();
+    expect(screen.getByText("Automation")).toBeInTheDocument();
+    // …and a group whose members are all cap-stripped renders no label at all.
+    expect(screen.queryByText("Data")).not.toBeInTheDocument();
+    expect(screen.queryByText("Build")).not.toBeInTheDocument();
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
+    // The old flat "Core" label is gone.
+    expect(screen.queryByText("Core")).not.toBeInTheDocument();
+  });
+
+  it("shows a single merged 'Studio' rail entry when EITHER extensions or studio (build) is allowed", () => {
+    // Build-only session (studio cap, no extensions cap): the merged entry still shows — its click
+    // lands on the first tab the caps allow. There is no separate 'Extensions' rail entry.
+    renderRail({ allowed: ["channels", "studio"], resolvedItems: null });
+    expect(screen.getByText("Build")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Studio" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Extensions" })).not.toBeInTheDocument();
+  });
+
+  it("hides the 'Build' group when neither extensions, studio, nor data-studio is allowed", () => {
+    renderRail({ allowed: ["channels", "dashboards"], resolvedItems: null });
+    expect(screen.queryByText("Build")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Studio" })).not.toBeInTheDocument();
+  });
 });

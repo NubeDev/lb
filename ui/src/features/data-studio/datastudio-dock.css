@@ -1,0 +1,68 @@
+/* The FlexLayout → shell-token theme bridge (data-studio scope v2; the packages/* CSS rules applied
+   to a vendored stylesheet). `flexlayout-react/style/light.css` is imported alongside this file — it
+   is already fully scoped under `.flexlayout__*` classes (no preflight, no bare-element bleed) and
+   themes exclusively via `--color-*` custom properties declared on `.flexlayout__layout`. This file
+   re-declares those properties under the studio's root class, aliased to the shell's shadcn tokens
+   (`--bg`/`--panel`/`--border`/`--fg`/`--muted`/`--accent`), so dark/light parity is automatic: the
+   shell flips its tokens, the dock follows. Higher specificity than the vendor selector, so it wins
+   regardless of import order. */
+
+.data-studio-dock .flexlayout__layout {
+  --color-text: hsl(var(--fg));
+  --color-background: hsl(var(--bg));
+  --color-base: hsl(var(--bg));
+  --color-1: hsl(var(--panel));
+  --color-2: hsl(var(--panel));
+  --color-3: hsl(var(--border));
+  --color-4: hsl(var(--border));
+  --color-5: hsl(var(--border));
+  --color-6: hsl(var(--border));
+  --color-drag1: hsl(var(--accent));
+  --color-drag2: hsl(var(--accent));
+  --color-drag1-background: hsl(var(--accent) / 0.1);
+  --color-drag2-background: hsl(var(--accent) / 0.08);
+  --font-size: 0.75rem;
+  --font-family: inherit;
+  --splitter-size: 5px;
+  --color-overflow: hsl(var(--muted));
+  --color-icon: hsl(var(--muted));
+  --color-tabset-background: hsl(var(--bg));
+  --color-tabset-background-selected: hsl(var(--panel));
+  --color-tabset-background-maximized: hsl(var(--panel));
+  --color-tabset-divider-line: hsl(var(--border));
+  --color-border-tab-content: hsl(var(--bg));
+  --color-border-background: hsl(var(--bg));
+  --color-border-divider-line: hsl(var(--border));
+  --color-tab-content: hsl(var(--bg));
+  --color-tab-selected: hsl(var(--fg));
+  --color-tab-selected-background: hsl(var(--panel));
+  --color-tab-unselected: hsl(var(--muted));
+  --color-tab-unselected-background: transparent;
+  --color-tab-textbox: hsl(var(--fg));
+  --color-tab-textbox-background: hsl(var(--panel));
+  --color-border-tab-selected: hsl(var(--fg));
+  --color-border-tab-selected-background: hsl(var(--panel));
+  --color-border-tab-unselected: hsl(var(--muted));
+  --color-border-tab-unselected-background: hsl(var(--panel));
+  --color-splitter: hsl(var(--border));
+  --color-splitter-hover: hsl(var(--accent));
+  --color-splitter-drag: hsl(var(--accent));
+  --color-splitter-handle: hsl(var(--border));
+  --color-drag-rect-border: hsl(var(--border));
+  --color-drag-rect-background: hsl(var(--panel));
+  --color-drag-rect: hsl(var(--fg));
+  --color-popup-border: hsl(var(--border));
+  --color-popup-unselected: hsl(var(--fg));
+  --color-popup-unselected-background: hsl(var(--panel));
+  --color-popup-selected: hsl(var(--fg));
+  --color-popup-selected-background: hsl(var(--panel));
+  --color-edge-marker: hsl(var(--muted));
+  --color-edge-icon: hsl(var(--fg));
+}
+
+/* The dock fills the page body under the AppPage header; FlexLayout positions absolutely inside. */
+.data-studio-dock {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}

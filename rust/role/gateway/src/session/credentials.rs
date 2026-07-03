@@ -215,6 +215,12 @@ fn member_caps() -> Vec<String> {
         "mcp:nav.delete:call",
         "mcp:nav.share:call",
         "mcp:nav.resolve:call",
+        // data-studio scope v2 (the multi-pane workbench): the member-owned per-surface ui-layout
+        // record (`ui_layout:[ws, user, surface]`). Member-level — every member persists their OWN
+        // workbench arrangement; the verb keys the record to the token `sub`, so this grants nothing
+        // over any other user's layout.
+        "mcp:layout.get:call",
+        "mcp:layout.set:call",
         // viz Phase 3 (backend-resolved panel data): `viz.query(panel) -> { frames }` is THE render
         // path every panel now reads through (usePanelData). Member-level like `dashboard.get` — it
         // dispatches each target under `caller ∩ grant` (composing the target tool's own cap), so a

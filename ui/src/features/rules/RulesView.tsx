@@ -21,11 +21,28 @@ import type { CodeEditorHandle } from "@/components/codeeditor";
 
 interface RulesViewProps {
   ws: string;
+  /** The rule id from the URL (`/rules/$rule`), or null on the bare `/rules` (fresh buffer). */
+  ruleId?: string | null;
+  /** Reflect the open rule in the URL — id to open `/rules/$rule`, null for the bare `/rules`. */
+  onSelectRule?: (id: string | null) => void;
 }
 
-export function RulesView({ ws }: RulesViewProps) {
+export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   const r = useRules(ws);
   const editorRef = useRef<CodeEditorHandle>(null);
+
+  // The URL is the source of truth for which rule is open. When `ruleId` changes (deep link, back/
+  // forward, or a select that navigated), load it — or reset to a fresh buffer for the bare route.
+  // Guard on the currently-open id so this doesn't clobber an in-progress edit on unrelated re-renders.
+  useEffect(() => {
+    if (ruleId) {
+      if (ruleId !== r.selectedId) void r.open(ruleId);
+    } else if (r.selectedId !== null) {
+      r.newRule();
+    }
+    // Only react to the URL param; `r` is stable enough per-render for this sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ruleId]);
 
   // One inline name field serves both flows: rename an open rule, or name-on-first-save an ad-hoc
   // buffer. `mode` says which — so ⌘S on an unsaved buffer opens it in "save" mode instead of failing.
@@ -52,6 +69,12 @@ export function RulesView({ ws }: RulesViewProps) {
     }
   }
 
+  // After a save/create lands on a saved rule, reflect its id in the URL if the URL doesn't already
+  // carry it (name-first Save on a fresh buffer, or a ⌘S that promoted a buffer to a saved rule).
+  function syncUrlToOpen() {
+    if (onSelectRule && r.selectedId && r.selectedId !== ruleId) onSelectRule(r.selectedId);
+  }
+
   // ⌘S / Ctrl+S saves the current rule from anywhere on the page (the reflex a workbench must honour).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -74,7 +97,10 @@ export function RulesView({ ws }: RulesViewProps) {
       if (await r.rename(trimmed)) setNameField(null);
     } else {
       const res = await r.saveCurrent(trimmed);
-      if (res.ok) setNameField(null);
+      if (res.ok) {
+        setNameField(null);
+        syncUrlToOpen();
+      }
     }
   }
 
@@ -118,9 +144,19 @@ export function RulesView({ ws }: RulesViewProps) {
       <RuleRail
         roster={r.roster}
         selectedId={r.selectedId}
-        onOpen={r.open}
-        onDelete={r.remove}
-        onCreate={r.create}
+        // Navigate to the rule's URL; the effect above opens it. Falls back to a direct open when this
+        // view isn't URL-driven (e.g. an embedded/test render with no `onSelectRule`).
+        onOpen={(id) => (onSelectRule ? onSelectRule(id) : void r.open(id))}
+        onDelete={async (id) => {
+          await r.remove(id);
+          // Deleting the open rule drops back to the bare `/rules` URL (the buffer was reset).
+          if (onSelectRule && id === r.selectedId) onSelectRule(null);
+        }}
+        onCreate={async (name) => {
+          const id = await r.create(name);
+          if (id && onSelectRule) onSelectRule(id);
+          return id;
+        }}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

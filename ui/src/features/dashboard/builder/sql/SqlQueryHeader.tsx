@@ -5,7 +5,7 @@
 // string). A `format` (Table | Time series) toggle rides here too (Grafana's "Format").
 
 import { Button } from "@/components/ui/button";
-import type { SqlEditorMode, SqlFormat } from "./query";
+import type { SqlEditorMode, SqlFormat } from "@/lib/panel-kit/sql/query";
 
 interface Props {
   mode: SqlEditorMode;

@@ -24,6 +24,13 @@ export function RoutedShell() {
   const resolvedItems = useResolvedNav(ctx.workspace);
 
   const selectSurface = (surface: Surface) => {
+    // The merged Studio rail entry (keyed `extensions`) routes through the bare `/studio` redirect so
+    // the session lands on the first tab its caps allow (a build-only user gets Build, not a denied
+    // Extensions tab). Every other surface goes straight to its own path.
+    if (surface === "extensions") {
+      void navigate({ to: `/t/${encodeURIComponent(ctx.workspace)}/studio` });
+      return;
+    }
     void navigate({
       to: fullPathForSurface(ctx.workspace, surface),
       search: surface === "channels" ? { c: DEFAULT_CHANNEL } : undefined,

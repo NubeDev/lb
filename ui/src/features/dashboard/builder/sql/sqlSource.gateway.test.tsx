@@ -17,8 +17,8 @@ import { invoke } from "@/lib/ipc/invoke";
 import { runQuery, readSchema } from "@/lib/dashboard/sql.api";
 import { WidgetView } from "../../views/WidgetView";
 import type { Cell } from "@/lib/dashboard";
-import { emptyQuery } from "./query";
-import { toSurrealQL } from "./toSurrealQL";
+import { emptyQuery } from "@/lib/panel-kit/sql/query";
+import { toSurrealQL } from "@/lib/panel-kit/sql/toSurrealQL";
 import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;

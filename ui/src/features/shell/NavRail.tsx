@@ -16,7 +16,7 @@ import {
   ScrollText,
   Telescope,
   Workflow,
-  Wrench,
+  FlaskConical,
   Send,
   Settings,
   Shield,
@@ -57,6 +57,7 @@ export type CoreSurface =
   | "admin"
   | "extensions"
   | "studio"
+  | "data-studio"
   | "settings";
 
 /** A selected surface: a core one, or an **extension page** keyed `ext:<id>` (ui-federation scope). */
@@ -103,23 +104,69 @@ interface Props {
   onSelectDashboard?: (dashboard: string, vars?: Record<string, string>) => void;
 }
 
-const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
-  { key: "channels", icon: Hash, label: "Channels" },
-  { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
-  { key: "rules", icon: ScrollText, label: "Rules" },
-  { key: "flows", icon: Workflow, label: "Flows" },
-  { key: "datasources", icon: Plug, label: "Datasources" },
-  { key: "reminders", icon: CalendarClock, label: "Reminders" },
-  { key: "ingest", icon: Activity, label: "Ingest" },
-  { key: "data", icon: Database, label: "Data" },
-  { key: "system", icon: Network, label: "System" },
-  { key: "telemetry", icon: Telescope, label: "Telemetry" },
-  { key: "inbox", icon: Inbox, label: "Inbox" },
-  { key: "outbox", icon: Send, label: "Outbox" },
-  { key: "admin", icon: Shield, label: "Admin" },
-  { key: "extensions", icon: Boxes, label: "Extensions" },
-  { key: "studio", icon: Wrench, label: "Studio" },
-  { key: "settings", icon: Settings, label: "Settings" },
+interface SurfaceDef {
+  key: CoreSurface;
+  icon: typeof Hash;
+  label: string;
+}
+
+/** The built-in fallback rail, bucketed into labelled categories so it reads as sections rather than
+ *  one long flat list (sidebar-16 shape). This ONLY shapes the fallback: when a server-authored nav
+ *  applies (`resolvedItems`), that owns grouping instead (nav scope). `settings` lives in the footer,
+ *  not a group. A group whose members are all cap-stripped renders nothing (no empty label). */
+const SURFACE_GROUPS: { label: string; items: SurfaceDef[] }[] = [
+  {
+    label: "Workspace",
+    items: [
+      { key: "channels", icon: Hash, label: "Channels" },
+      { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
+      { key: "inbox", icon: Inbox, label: "Inbox" },
+      { key: "outbox", icon: Send, label: "Outbox" },
+    ],
+  },
+  {
+    label: "Automation",
+    items: [
+      { key: "rules", icon: ScrollText, label: "Rules" },
+      { key: "flows", icon: Workflow, label: "Flows" },
+      { key: "reminders", icon: CalendarClock, label: "Reminders" },
+    ],
+  },
+  {
+    label: "Data",
+    items: [
+      { key: "datasources", icon: Plug, label: "Datasources" },
+      { key: "ingest", icon: Activity, label: "Ingest" },
+      { key: "data", icon: Database, label: "Data" },
+    ],
+  },
+  {
+    label: "Build",
+    items: [
+      // Extensions + Studio are one merged, tabbed page — a single rail entry. `extensions` is the
+      // rail key (its tab lands first); the merged page shows whichever tabs the session's caps allow.
+      { key: "extensions", icon: Boxes, label: "Studio" },
+      { key: "data-studio", icon: FlaskConical, label: "Data Studio" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { key: "system", icon: Network, label: "System" },
+      { key: "telemetry", icon: Telescope, label: "Telemetry" },
+      { key: "admin", icon: Shield, label: "Admin" },
+    ],
+  },
+];
+
+/** The `settings` surface — rendered in the footer, not a category group. */
+const SETTINGS_SURFACE: SurfaceDef = { key: "settings", icon: Settings, label: "Settings" };
+
+/** Every surface, flattened — used to build the icon lookup so the resolved rail and the fallback
+ *  stay in lockstep. */
+const SURFACES: SurfaceDef[] = [
+  ...SURFACE_GROUPS.flatMap((g) => g.items),
+  SETTINGS_SURFACE,
 ];
 
 /** The surface → icon lookup a resolved `surface` item renders with (its own icon when known; a
@@ -258,18 +305,28 @@ export function NavRail({
           // A user-/team-authored nav applies — render the resolved (cap-stripped) menu (nav scope).
           resolvedMenu(resolvedItems!)
         ) : (
-          // Fallback: today's built-in `SURFACES`, cap-gated by `allowed` (never a blank rail).
+          // Fallback: the built-in `SURFACE_GROUPS`, cap-gated by `allowed` (never a blank rail). Each
+          // category is a labelled section; a group whose members are all cap-stripped renders nothing.
           <>
-            <SidebarGroup>
-              <SidebarGroupLabel>Core</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {SURFACES.filter((s) => allowed.includes(s.key)).map(({ key, icon, label }) =>
-                    item(key, label, icon),
-                  )}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            {SURFACE_GROUPS.map((grp) => {
+              // The merged "Studio" entry (keyed `extensions`) shows when EITHER of its tabs' caps is
+              // allowed — `studio` (Build) counts too. Clicking it lands on the bare `/studio` redirect,
+              // which forwards to the first tab the session can reach (a build-only user gets Build).
+              const canSee = (s: SurfaceDef) =>
+                allowed.includes(s.key) || (s.key === "extensions" && allowed.includes("studio"));
+              const visible = grp.items.filter(canSee);
+              if (visible.length === 0) return null;
+              return (
+                <SidebarGroup key={grp.label}>
+                  <SidebarGroupLabel>{grp.label}</SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      {visible.map(({ key, icon, label }) => item(key, label, icon))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              );
+            })}
 
             {extSlots.length > 0 && (
               <SidebarGroup>
@@ -288,6 +345,10 @@ export function NavRail({
       <SidebarFooter>
         <ThemeSwitcher />
         <SidebarMenu>
+          {/* Settings sits in the footer, near Sign out, where users expect it — only when permitted
+              and no server nav owns the rail (that nav places settings itself). */}
+          {!useResolved && allowed.includes("settings") &&
+            item("settings", SETTINGS_SURFACE.label, SETTINGS_SURFACE.icon)}
           <SidebarMenuItem>
             <SidebarMenuButton aria-label="Sign out" tooltip="Sign out" onClick={onSignOut}>
               <LogOut />

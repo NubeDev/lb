@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildSourceEntries, extensionEntries, extWidgetEntries } from "./sourcePicker";
-import { seedEntryId } from "./WidgetBuilder";
+import { seedEntryId } from "./sourcePicker";
 import { fillArgs } from "../views/argsTemplate";
 import { extWidgetTier, scriptedTier, isTrustedKey } from "./trust";
 import { cellLabel } from "@/lib/dashboard";

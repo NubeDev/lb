@@ -26,6 +26,7 @@ mod history;
 mod identity;
 mod inbox;
 mod ingest;
+mod layout;
 mod login;
 mod mcp;
 mod mcp_catalog;
@@ -92,6 +93,7 @@ pub use identity::{
 };
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{find_series, latest_sample, list_series, read_samples, write_samples};
+pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;

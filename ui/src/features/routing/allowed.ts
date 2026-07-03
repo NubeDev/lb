@@ -23,5 +23,9 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   if (isAdmin(caps)) allowed.push("admin");
   if (hasCap(caps, CAP.extList)) allowed.push("extensions");
   if (hasCap(caps, CAP.devkitTemplates)) allowed.push("studio");
+  // Data Studio (data-studio scope): the explore + panel-build workbench. Member-level — shown for any
+  // session that can read data (list series is the "can explore" proxy); the build/save-as-library
+  // action is separately gated on `panel.save`, and every explore call re-checks its source's own cap.
+  if (hasCap(caps, CAP.seriesList)) allowed.push("data-studio");
   return allowed;
 }

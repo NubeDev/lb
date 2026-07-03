@@ -46,7 +46,8 @@ function refCell(i: string, panelId: string): Cell {
     h: 4,
     widget_type: "chart",
     binding: { series: "" },
-    view: "STALE",
+    // A deliberately WRONG echoed spec (not a real View) — must be ignored (ref is authoritative).
+    view: "STALE" as unknown as Cell["view"],
     panelRef: `panel:${panelId}`,
   };
 }

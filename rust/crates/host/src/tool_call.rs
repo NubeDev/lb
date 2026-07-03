@@ -46,6 +46,8 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
         || qualified_tool.starts_with("nav.")
+        // data-studio scope v2: the member-owned per-surface layout record (`layout.get`/`set`).
+        || qualified_tool.starts_with("layout.")
         || qualified_tool.starts_with("panel.")
         // The per-viewer chart-preference verbs only (NOT all `channel.*`, so future channel
         // extension tools still route to the registry) — a query-result's plot override.
@@ -294,6 +296,9 @@ async fn dispatch_at_depth(
             // nav scope: the user-/team-authored menu asset. `resolve` + `pref.*` need the `&Node`
             // (ext discovery for `ext` items); the bridge takes it for all verbs.
             crate::call_nav_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("layout.") {
+            // data-studio scope v2: the member-owned per-surface ui-layout record (store-only).
+            crate::call_layout_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("panel.") {
             // library-panels scope: the reusable panel asset. Same store-only surface as dashboards.
             crate::call_panel_tool(&node.store, principal, ws, qualified_tool, &input).await?

@@ -555,6 +555,18 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/nav/pref`, { id });
     }
 
+    // ── ui-layout (data-studio scope v2): the member-owned per-surface workbench layout. The
+    //    gateway re-checks `mcp:layout.<verb>:call` server-side; the record is keyed to the token
+    //    `sub` (a caller can never touch another user's layout). ──
+    case "layout_get": {
+      const { surface } = args as { surface: string };
+      return getJson<T>(`${base}/layout/${enc(surface)}`);
+    }
+    case "layout_set": {
+      const { surface, model } = args as { surface: string; model: unknown };
+      return putJson<T>(`${base}/layout/${enc(surface)}`, { model });
+    }
+
     // ── datasources (rules-workbench scope, Phase 3): the browser's `datasource.*` admin surface over
     //    the gateway. Each maps 1:1 to a `/datasources` route; the gateway re-checks
     //    `mcp:datasource.<verb>:call` server-side. The DSN is sent ONLY on `datasource_add` and never

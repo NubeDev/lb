@@ -17,8 +17,8 @@ use crate::routes::{
     delete_team, delete_user, disable_extension, disable_user, edit_message, enable_extension,
     enable_flow, enable_user, find_series, flow_node_state, flow_run_stream, format_datetime,
     format_number, format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard,
-    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_nav,
-    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, grant_skill,
+    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_layout,
+    get_nav, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, grant_skill,
     identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
     list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
     list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
@@ -31,9 +31,9 @@ use crate::routes::{
     resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
     revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard,
     save_flow, save_nav, save_panel, save_rule, scan_table, series_stream, serve_ext_ui,
-    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_nav_pref,
-    set_prefs, share_dashboard, share_doc, share_nav, share_panel, start_job, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
+    set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel, start_job,
+    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, update_def, update_flow_node,
     write_samples,
 };
@@ -239,6 +239,8 @@ pub fn router(gw: Gateway) -> Router {
         .route("/nav/resolve", get(resolve_nav))
         .route("/nav/default", post(set_default_nav))
         .route("/nav/pref", get(get_nav_pref).post(set_nav_pref))
+        // ui-layout (data-studio scope v2) — the member-owned per-surface workbench layout.
+        .route("/layout/{surface}", get(get_layout).put(set_layout))
         // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.
         // Each route re-checks `mcp:rules.<verb>:call` server-side; ws + principal from the token.
         .route("/rules/run", post(run_rule))

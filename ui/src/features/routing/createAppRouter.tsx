@@ -17,10 +17,12 @@ import { AdminView } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
+import { DataStudioView } from "@/features/data-studio";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost, ExtErrorBoundary } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
+import { StudioShell, type StudioTab } from "@/features/studio";
 import { FlowsView } from "@/features/flows";
 import { TelemetryView } from "@/features/telemetry";
 import { InboxView } from "@/features/inbox";
@@ -109,6 +111,16 @@ const panelRoute = createRoute({
   component: PanelRoute,
 });
 
+// Data Studio (data-studio scope): explore any source + build a reusable panel. Reuses the dashboard
+// search grammar (range + `?var-`); cap-gated on `series.list` in the component (member-level explore),
+// the save-as-library action gated on `panel.save` inside the view.
+const dataStudioRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/data-studio",
+  validateSearch: validateDashboardSearch,
+  component: DataStudioRoute,
+});
+
 const datasourceDetailRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/datasources/$name",
@@ -121,10 +133,56 @@ const flowDetailRoute = createRoute({
   component: FlowDetailRoute,
 });
 
+// `/rules/$rule` opens that saved rule; bare `/rules` is a fresh buffer. Same view, URL reflects the
+// open rule so deep links + back/forward work (mirrors the flows detail route). Cap-gated below since
+// this detail route isn't wrapped by the bare `/rules` CoreGate.
+const rulesDetailRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/rules/$rule",
+  component: RulesDetailRoute,
+});
+
 const extRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/ext/$id",
   component: ExtRoute,
+});
+
+// Studio section: one page, two route-driven tabs. `extensions` (manage installed) and `build` (the
+// scaffold wizard) are distinct CoreSurfaces with their OWN caps — each tab renders behind its own
+// CoreGate, so a session with only one cap deep-links straight to the tab it can reach. Bare `/studio`
+// (and the legacy `/extensions`) redirect to the first tab the session is allowed.
+const studioExtensionsRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/studio/extensions",
+  component: () => (
+    <CoreGate surface="extensions">
+      <StudioSection tab="extensions" />
+    </CoreGate>
+  ),
+});
+
+const studioBuildRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/studio/build",
+  component: () => (
+    <CoreGate surface="studio">
+      <StudioSection tab="build" />
+    </CoreGate>
+  ),
+});
+
+const studioIndexRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/studio",
+  component: StudioDefaultRedirect,
+});
+
+// Legacy `/extensions` deep links land on the Extensions tab (or the first allowed tab).
+const extensionsRedirectRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/extensions",
+  component: StudioDefaultRedirect,
 });
 
 function coreRoute(path: string, surface: CoreSurface, component: () => JSX.Element) {
@@ -142,7 +200,9 @@ const routeTree = rootRoute.addChildren([
     channelsRoute,
     dashboardsRoute,
     panelRoute,
+    dataStudioRoute,
     coreRoute("/rules", "rules", () => <Rules />),
+    rulesDetailRoute,
     coreRoute("/flows", "flows", () => <Flows />),
     flowDetailRoute,
     coreRoute("/datasources", "datasources", () => <Datasources />),
@@ -157,8 +217,10 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/inbox", "inbox", () => <Inbox />),
     coreRoute("/outbox", "outbox", () => <Outbox />),
     coreRoute("/admin", "admin", () => <Admin />),
-    coreRoute("/extensions", "extensions", () => <Extensions />),
-    coreRoute("/studio", "studio", () => <Studio />),
+    studioExtensionsRoute,
+    studioBuildRoute,
+    studioIndexRoute,
+    extensionsRedirectRoute,
     coreRoute("/settings", "settings", () => <SettingsPage />),
     extRoute,
   ]),
@@ -248,6 +310,20 @@ function DashboardsRoute() {
   );
 }
 
+function DataStudioRoute() {
+  const ctx = useAppRoutingContext();
+  const range = dataStudioRoute.useSearch();
+  const navigate = useNavigate({ from: "/t/$ws/data-studio" });
+  if (!ctx.allowed.includes("data-studio")) return <DefaultRedirect />;
+  return (
+    <DataStudioView
+      ws={ctx.workspace}
+      range={range}
+      onSearchChange={(next) => void navigate({ search: next })}
+    />
+  );
+}
+
 function PanelRoute() {
   const ctx = useAppRoutingContext();
   const { id } = panelRoute.useParams();
@@ -287,8 +363,37 @@ function ExtRoute() {
   );
 }
 
+// Drives the rules surface with the open rule reflected in the URL: `/rules` (fresh buffer) and
+// `/rules/$rule` (that rule open) render the same view; opening/creating/deleting navigates between
+// them so deep links and back/forward work (mirrors FlowsSurface).
+function RulesSurface({ ruleId }: { ruleId: string | null }) {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <RulesView
+      ws={ctx.workspace}
+      ruleId={ruleId}
+      onSelectRule={(id) =>
+        void navigate({
+          to: id
+            ? `/t/${encodeURIComponent(ctx.workspace)}/rules/${encodeURIComponent(id)}`
+            : `/t/${encodeURIComponent(ctx.workspace)}/rules`,
+          replace: true,
+        })
+      }
+    />
+  );
+}
+
 function Rules() {
-  return <RulesView ws={useAppRoutingContext().workspace} />;
+  return <RulesSurface ruleId={null} />;
+}
+
+function RulesDetailRoute() {
+  const ctx = useAppRoutingContext();
+  const { rule } = rulesDetailRoute.useParams();
+  if (!ctx.allowed.includes("rules")) return <DefaultRedirect />;
+  return <RulesSurface ruleId={decodeURIComponent(rule)} />;
 }
 
 // Drives the flows surface with the open flow reflected in the URL: `/flows` (none open) and
@@ -419,12 +524,58 @@ function Admin() {
   return <AdminView ws={ctx.workspace} caps={ctx.caps} />;
 }
 
-function Extensions() {
-  return <ExtensionsView ws={useAppRoutingContext().workspace} />;
+// The Studio tabs a session may SEE, in display order, gated by their CoreSurface caps (extensions →
+// ext.list, build → devkit.templates). Drives the tab bar and the default-redirect target.
+function allowedStudioTabs(allowed: readonly CoreSurface[]): StudioTab[] {
+  const tabs: StudioTab[] = [];
+  if (allowed.includes("extensions")) tabs.push("extensions");
+  if (allowed.includes("studio")) tabs.push("build");
+  return tabs;
 }
 
-function Studio() {
-  return <StudioView ws={useAppRoutingContext().workspace} />;
+// One merged page; the active tab comes from the route and navigating a tab changes the URL, so each
+// tab is deep-linkable and back/forward works.
+function StudioSection({ tab }: { tab: StudioTab }) {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  const allowedTabs = allowedStudioTabs(ctx.allowed);
+  return (
+    <StudioShell
+      ws={ctx.workspace}
+      tab={tab}
+      allowedTabs={allowedTabs}
+      onSelectTab={(t) =>
+        void navigate({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/studio/${t === "build" ? "build" : "extensions"}`,
+        })
+      }
+    >
+      {tab === "extensions" ? (
+        <ExtensionsView ws={ctx.workspace} embedded />
+      ) : (
+        <StudioView ws={ctx.workspace} embedded />
+      )}
+    </StudioShell>
+  );
+}
+
+// Bare `/studio` (and legacy `/extensions`): jump to the first tab the session is allowed; if neither,
+// fall through to the workspace default (the cap-deny path).
+function StudioDefaultRedirect() {
+  const ctx = useAppRoutingContext();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const first = allowedStudioTabs(ctx.allowed)[0];
+  const href = first
+    ? `/t/${encodeURIComponent(ctx.workspace)}/studio/${first === "build" ? "build" : "extensions"}`
+    : null;
+  // Fire once via effect: a render-time <Navigate> to a dynamic href re-evaluates every commit and
+  // trips React's update cap (same pattern as TenantlessRedirect).
+  useEffect(() => {
+    if (href) void navigate({ to: href, replace: true });
+  }, [href, navigate, location.pathname]);
+  if (!first) return <DefaultRedirect />;
+  return null;
 }
 
 function SettingsPage() {

@@ -22,8 +22,10 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   inbox: "/inbox",
   outbox: "/outbox",
   admin: "/admin",
-  extensions: "/extensions",
-  studio: "/studio",
+  // Extensions + Studio are two tabs of one merged Studio page (each its own cap-gated route).
+  extensions: "/studio/extensions",
+  studio: "/studio/build",
+  "data-studio": "/data-studio",
   settings: "/settings",
 };
 

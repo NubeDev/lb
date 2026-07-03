@@ -27,9 +27,11 @@ interface TabsProps extends React.ComponentProps<"div"> {
 }
 
 function Tabs({ value, onValueChange, className, ...props }: TabsProps) {
+  // `useId` must be called at the top level, not inside the memo callback (rules of hooks).
+  const baseId = React.useId();
   const ctx = React.useMemo<TabsCtx>(
-    () => ({ value, setValue: onValueChange, baseId: React.useId() }),
-    [value, onValueChange],
+    () => ({ value, setValue: onValueChange, baseId }),
+    [value, onValueChange, baseId],
   );
   return (
     <Ctx.Provider value={ctx}>

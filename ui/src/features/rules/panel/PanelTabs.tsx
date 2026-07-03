@@ -3,7 +3,6 @@
 // is more than this needs). Accent marks the active tab; the rest are quiet ghosts (product register:
 // accent for selection only). Generic over a string tab id. One component per file (FILE-LAYOUT).
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export interface PanelTab<T extends string> {
@@ -17,35 +16,34 @@ interface PanelTabsProps<T extends string> {
   onChange: (id: T) => void;
 }
 
-/** A row of segmented tabs; the active one carries the accent. */
+/** A row of underline tabs; the active one carries an accent underline (quiet, IDE-like register). */
 export function PanelTabs<T extends string>({ tabs, active, onChange }: PanelTabsProps<T>) {
   return (
     <div
       role="tablist"
       aria-label="authoring panel tabs"
-      className="flex gap-1 border-b border-border bg-muted/40 p-1"
+      className="flex items-stretch gap-1 border-b border-border bg-card px-2"
     >
       {tabs.map((t) => {
         const selected = t.id === active;
         return (
-          <Button
+          <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={selected}
             aria-label={`tab ${t.label}`}
-            variant="ghost"
-            size="sm"
             onClick={() => onChange(t.id)}
             className={cn(
-              "h-7 flex-1 text-xs",
+              "relative -mb-px border-b-2 px-2.5 py-2 text-xs font-medium transition-colors",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
               selected
-                ? "bg-accent text-accent-foreground hover:bg-accent"
-                : "text-muted hover:text-fg",
+                ? "border-accent text-fg"
+                : "border-transparent text-muted hover:text-fg",
             )}
           >
             {t.label}
-          </Button>
+          </button>
         );
       })}
     </div>

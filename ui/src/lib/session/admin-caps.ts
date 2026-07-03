@@ -86,6 +86,11 @@ export const CAP = {
   navDelete: "mcp:nav.delete:call",
   navShare: "mcp:nav.share:call",
   navResolve: "mcp:nav.resolve:call",
+  // ui-layout (data-studio scope v2): the member-owned per-surface workbench layout. Member-level —
+  // `layoutSet` gates the debounced save of the caller's OWN Data Studio arrangement (the verb keys
+  // the record to the token `sub`); the gateway re-checks both verbs server-side regardless.
+  layoutGet: "mcp:layout.get:call",
+  layoutSet: "mcp:layout.set:call",
   // rules workbench (rules-workbench scope): member-level nav gates. The Playground shows for any
   // session that may run a rule; the datasources admin for datasource.list. Gate 3 / ownership + the
   // gateway's per-verb re-check are the real boundary. (The DAG canvas is Flows — see `flowsList`.)

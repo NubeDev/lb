@@ -34,31 +34,39 @@ export function FunctionPalette({ onInsert }: FunctionPaletteProps) {
 
   return (
     <div aria-label="function palette" className="flex h-full flex-col">
-      <div className="relative px-2 pb-2 pt-2">
-        <Search size={13} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
-        <Input
-          aria-label="search functions"
-          placeholder="Search functions…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          className="h-8 pl-7 text-xs"
-        />
+      <div className="sticky top-0 z-10 border-b border-border bg-card px-2 py-2">
+        <div className="relative">
+          <Search
+            size={13}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"
+          />
+          <Input
+            aria-label="search functions"
+            placeholder="Search functions…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="h-8 pl-7 text-xs"
+          />
+        </div>
+        <p className="px-0.5 pt-1.5 text-[10px] text-muted">
+          Click a function to insert it · Preview to see the code.
+        </p>
       </div>
 
-      <div className="flex-1 overflow-auto px-1 pb-2">
+      <div className="flex-1 overflow-auto px-1.5 py-1.5">
         {groups.length === 0 ? (
-          <p aria-label="no functions" className="px-2 py-6 text-center text-xs text-muted">
+          <p aria-label="no functions" className="px-2 py-8 text-center text-xs text-muted">
             No functions match “{q}”.
           </p>
         ) : (
           groups.map((g) => (
-            <section key={g.category} aria-label={`category ${g.label}`} className="mb-2">
-              <header className="px-2 pb-1 pt-1.5">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <section key={g.category} aria-label={`category ${g.label}`} className="mb-3">
+              <header className="px-1 pb-1.5 pt-1">
+                <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted">
                   {g.label}
                 </h3>
               </header>
-              <div className="grid gap-0.5">
+              <div className="grid gap-1">
                 {g.entries.map((e) => (
                   <FunctionEntry key={e.name + e.signature} entry={e} onInsert={onInsert} />
                 ))}

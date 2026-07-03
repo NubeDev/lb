@@ -20,34 +20,41 @@ import { useStudioWizard } from "./studio.wizard";
 
 interface Props {
   ws: string;
+  /** When embedded in `StudioShell` (the Build tab), the shell supplies the page header, so this view
+   *  renders only its wizard body and surfaces the "Start over" action inline instead. */
+  embedded?: boolean;
 }
 
-export function StudioView({ ws }: Props) {
+export function StudioView({ ws, embedded = false }: Props) {
   const w = useStudioWizard();
   const active = STUDIO_STEPS[w.step - 1];
 
+  const startOver = w.step > 1 && (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={w.reset}
+      className="gap-1.5 text-muted hover:text-fg"
+    >
+      <RotateCcw size={13} />
+      Start over
+    </Button>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg">
-      <AppPageHeader
-        icon={Wrench}
-        title="Extension Studio"
-        description="Scaffold, build, and publish a local extension"
-        workspace={ws}
-        actions={
-          w.step > 1 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={w.reset}
-              className="gap-1.5 text-muted hover:text-fg"
-            >
-              <RotateCcw size={13} />
-              Start over
-            </Button>
-          )
-        }
-      />
+      {embedded ? (
+        startOver && <div className="flex shrink-0 justify-end px-4 pt-3">{startOver}</div>
+      ) : (
+        <AppPageHeader
+          icon={Wrench}
+          title="Extension Studio"
+          description="Scaffold, build, and publish a local extension"
+          workspace={ws}
+          actions={startOver}
+        />
+      )}
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4">
         <div className="shrink-0 py-6">
