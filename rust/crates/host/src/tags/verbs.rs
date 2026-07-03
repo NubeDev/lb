@@ -5,8 +5,8 @@
 use lb_auth::Principal;
 use lb_store::Store;
 use lb_tags::{
-    add as tag_add, find as tag_find, of as tag_of, remove as tag_remove, AddError, Applied, Facet,
-    Provenance, Tag, DEFAULT_TAG_NODE_CAP,
+    add as tag_add, facet_values as tag_facet_values, find as tag_find, of as tag_of,
+    remove as tag_remove, AddError, Applied, Facet, Provenance, Tag, DEFAULT_TAG_NODE_CAP,
 };
 
 use super::authorize::authorize_tags;
@@ -62,4 +62,18 @@ pub async fn tags_find(
 ) -> Result<Vec<String>, TagsError> {
     authorize_tags(principal, ws, "tags.find")?;
     Ok(tag_find(store, ws, facets).await?)
+}
+
+/// The **distinct values** present for tag `key` in `ws` (reusable-pages template-group fan-out).
+/// Gated on the SAME `tags.find` cap — enumerating a key's values is the read privilege of finding
+/// by it, so no new cap is minted (reusable-pages scope: "no new caps"). A caller lacking `tags.find`
+/// is denied, so the template-group entry is stripped without leaking any option value (the lens).
+pub async fn tags_facet_values(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    key: &str,
+) -> Result<Vec<serde_json::Value>, TagsError> {
+    authorize_tags(principal, ws, "tags.find")?;
+    Ok(tag_facet_values(store, ws, key).await?)
 }

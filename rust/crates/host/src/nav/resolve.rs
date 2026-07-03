@@ -15,6 +15,9 @@
 //!
 //! Member-level: gated by `mcp:nav.resolve:call` (every member resolves their own menu).
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_store::Store;
 use lb_tags::Facet;
@@ -24,6 +27,7 @@ use super::error::NavError;
 use super::model::{
     Nav, NavFacet, NavItem, ResolvedItem, ResolvedNav, ResolvedSource, Visibility, MAX_TAG_GROUP,
 };
+use super::resolve_template_group::resolve_template_group;
 use super::store::{read_default, read_nav, read_pref, scan_navs};
 use super::surfaces::surface_gate_cap;
 use super::visibility::may_read_nav;
@@ -37,7 +41,7 @@ use crate::tags::tags_find;
 /// tag-groups, and strips every unreachable item. A `Fallback` result carries no items — the UI
 /// renders its built-in `SURFACES` (never a blank rail).
 pub async fn nav_resolve(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
 ) -> Result<ResolvedNav, NavError> {
@@ -133,7 +137,7 @@ async fn readable_nav(
 /// `tag-group` expands to a `group` of readable dashboards; a `group` recurses one level; every other
 /// kind maps 1:1 iff reachable.
 async fn resolve_item(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     item: &NavItem,
@@ -143,6 +147,9 @@ async fn resolve_item(
         "dashboard" => resolve_dashboard(node, principal, ws, item).await,
         "ext" => resolve_ext(node, principal, ws, item).await,
         "tag-group" => resolve_tag_group(node, principal, ws, item).await,
+        // reusable-pages scope: ONE dashboard fanned out per option value (`?var-<var>=<value>`).
+        // Depth 0 — the outermost resolve entry; the query option source re-enters at depth+1.
+        "template-group" => resolve_template_group(node, principal, ws, item, 0).await,
         "group" => resolve_group(node, principal, ws, item).await,
         // Unknown kind — drop it (defensive; `nav.save` bounds already reject unknown kinds).
         _ => Ok(None),
@@ -164,13 +171,14 @@ fn resolve_surface(principal: &Principal, ws: &str, item: &NavItem) -> Option<Re
         dashboard: String::new(),
         ext: String::new(),
         items: Vec::new(),
+        vars: BTreeMap::new(),
     })
 }
 
 /// A `dashboard` item survives iff the three-gate dashboard read passes (`dashboard.get`). A denied /
 /// absent dashboard is stripped silently (the lens); anything else is a real store error.
 async fn resolve_dashboard(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     item: &NavItem,
@@ -190,6 +198,8 @@ async fn resolve_dashboard(
             dashboard: format!("dashboard:{id}"),
             ext: String::new(),
             items: Vec::new(),
+            // reusable-pages scope: a pinned binding rides through to the href as `?var-<name>=…`.
+            vars: item.vars.clone(),
         })),
         // Denied / not-found → stripped (the caller can't read it). Any other is a real fault.
         Err(DashboardError::Denied) | Err(DashboardError::NotFound) => Ok(None),
@@ -202,7 +212,7 @@ async fn resolve_dashboard(
 /// is stripped silently, exactly like a cap-stripped item (nav scope, resolved open question). The id
 /// is treated as OPAQUE data — never branched on (rule 10).
 async fn resolve_ext(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     item: &NavItem,
@@ -231,6 +241,7 @@ async fn resolve_ext(
             dashboard: String::new(),
             ext: item.ext.clone(),
             items: Vec::new(),
+            vars: BTreeMap::new(),
         })),
         None => Ok(None), // uninstalled → stripped silently.
     }
@@ -240,7 +251,7 @@ async fn resolve_ext(
 /// each filtered to what the caller can read (a dashboard the caller lacks is dropped). Bounded by
 /// [`MAX_TAG_GROUP`]. An empty result yields an empty group (still rendered as a header).
 async fn resolve_tag_group(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     item: &NavItem,
@@ -273,6 +284,7 @@ async fn resolve_tag_group(
                 dashboard: format!("dashboard:{id}"),
                 ext: String::new(),
                 items: Vec::new(),
+                vars: BTreeMap::new(),
             });
         }
     }
@@ -284,6 +296,7 @@ async fn resolve_tag_group(
         dashboard: String::new(),
         ext: String::new(),
         items: children,
+        vars: BTreeMap::new(),
     }))
 }
 
@@ -291,7 +304,7 @@ async fn resolve_tag_group(
 /// `group`. A group whose children all strip away still renders (an empty section header) — the
 /// author put it there deliberately.
 async fn resolve_group(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     item: &NavItem,
@@ -313,6 +326,7 @@ async fn resolve_group(
         dashboard: String::new(),
         ext: String::new(),
         items: children,
+        vars: BTreeMap::new(),
     }))
 }
 

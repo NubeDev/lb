@@ -223,6 +223,13 @@ pub struct Variable {
     pub multi: bool,
     #[serde(default, rename = "includeAll")]
     pub include_all: bool,
+    /// reusable-pages scope: marks this variable a **page parameter**. A `required` variable left
+    /// unbound (no `?var-` URL value, no default) makes the dashboard render the honest "select a
+    /// `<label>`" gate (`RequiredVarGate`) instead of firing cells with a `$name`-literal query. This
+    /// is what turns an ordinary dashboard into a *template* — no new record type, just a flag.
+    /// Additive `#[serde(default)]` — a pre-reusable-pages dashboard round-trips unchanged.
+    #[serde(default)]
+    pub required: bool,
 }
 
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").

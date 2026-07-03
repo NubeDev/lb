@@ -8,6 +8,8 @@
 //! `save`/`delete`/`share`/`set_default`/`pref.set` take their logical `now` from the args (the
 //! caller's clock — determinism §3, never wall-clock in the verb), exactly as `dashboard.save` does.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_mcp::ToolError;
 use serde_json::{json, Value};
@@ -22,7 +24,7 @@ use crate::boot::Node;
 /// Dispatch a `nav.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the verb's
 /// JSON result. Each verb authorizes first; denials are opaque (`ToolError::Denied`).
 pub async fn call_nav_tool(
-    node: &Node,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     qualified_tool: &str,

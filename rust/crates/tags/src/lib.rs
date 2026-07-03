@@ -25,6 +25,7 @@ mod of;
 mod remove;
 mod search;
 mod tag;
+mod values;
 mod vector;
 
 pub use add::{add, AddError};
@@ -37,4 +38,5 @@ pub use of::{of, Applied};
 pub use remove::remove;
 pub use search::{define_text_index, find_text};
 pub use tag::{Tag, TAG_TABLE};
+pub use values::facet_values;
 pub use vector::{define_vector_index, find_similar, put_vector, DimMismatch, VECTOR_TABLE};

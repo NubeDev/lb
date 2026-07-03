@@ -8,6 +8,8 @@
 //! **lens over existing access, never a grant** — an item carries no caps and cannot widen reach; the
 //! resolver strips what the caller can't reach and the server re-checks every verb regardless.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 /// The table navs live in. Record id is `nav:{id}` (the id is a stable slug, unique per workspace).
@@ -72,9 +74,9 @@ pub struct NavFacet {
 /// The shape is a flat tagged union: `kind` selects which reference fields are meaningful; unused
 /// fields default. A `group` carries nested `items` (one level; a nested item's own `items` is
 /// ignored — the resolver never recurses past depth 1).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NavItem {
-    /// `"surface"` | `"dashboard"` | `"ext"` | `"tag-group"` | `"group"`.
+    /// `"surface"` | `"dashboard"` | `"ext"` | `"tag-group"` | `"template-group"` | `"group"`.
     pub kind: String,
     /// The display label. Optional for `surface`/`dashboard`/`ext` (the UI derives one from the
     /// target when empty); required-ish for `tag-group`/`group` (the section header).
@@ -98,6 +100,25 @@ pub struct NavItem {
     /// `group`: the nested items (one level of nesting only). Empty otherwise.
     #[serde(default)]
     pub items: Vec<NavItem>,
+    /// `dashboard` / `template-group`: an optional **pinned variable binding** (reusable-pages scope)
+    /// rendered into the link as `?var-<name>=<value>` — a curated, durable, named page instance
+    /// ("Plant-1 Overview"). Opaque data; the resolver carries it through to `ResolvedItem::vars` and
+    /// the UI folds it into the href. A `BTreeMap` for deterministic order (round-trip + `PartialEq`).
+    /// Empty for the other kinds.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
+    /// `template-group`: the template's **parameter** (a `Variable` name) this entry binds — one page
+    /// instance per enumerated option value (`?var-<var>=<value>`). Empty otherwise.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub var: String,
+    /// `template-group`: an **option-source tool** (the `Variable.query` `{tool,args}` shape) — the
+    /// general fan-out source, an alternative to `facets`. Empty otherwise; when set, the resolver
+    /// re-enters the generic dispatcher under the caller's caps to enumerate values (the lens).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub tool: String,
+    /// `template-group`: the option-source tool's args (opaque; re-checked per call). `Null` otherwise.
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub args: serde_json::Value,
 }
 
 /// A nav record. The persisted menu + sharing metadata (nav scope, "Data").
@@ -200,7 +221,13 @@ pub struct ResolvedItem {
     pub dashboard: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub ext: String,
-    /// Present only on a resolved `group` (from an author `group` OR an expanded `tag-group`).
+    /// Present only on a resolved `group` (from an author `group`, an expanded `tag-group`, OR an
+    /// expanded `template-group`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub items: Vec<ResolvedItem>,
+    /// The **resolved variable binding** the UI folds into the href as `?var-<name>=<value>`
+    /// (reusable-pages scope): a pinned `dashboard` entry's `vars`, or a template-group child's
+    /// `{ <var>: <value> }`. Empty for entries with no binding.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }

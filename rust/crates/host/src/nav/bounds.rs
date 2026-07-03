@@ -7,8 +7,16 @@
 use super::error::NavError;
 use super::model::{NavItem, MAX_ITEMS};
 
-/// The item kinds a nav may hold. A `group` nests one level of the non-group kinds.
-const KINDS: &[&str] = &["surface", "dashboard", "ext", "tag-group", "group"];
+/// The item kinds a nav may hold. A `group` nests one level of the non-group kinds. `template-group`
+/// (reusable-pages scope) is the one-dashboard-many-bindings fan-out — additive, next to `tag-group`.
+const KINDS: &[&str] = &[
+    "surface",
+    "dashboard",
+    "ext",
+    "tag-group",
+    "template-group",
+    "group",
+];
 
 /// Reject a nav whose `items[]` exceeds the caps: total count over [`MAX_ITEMS`], an unknown kind, or
 /// a `group` nested inside a `group` (only one nesting level — nav scope, "No deep nesting").
@@ -50,6 +58,28 @@ fn check_item(item: &NavItem, nested: bool) -> Result<(), NavError> {
         }
         for child in &item.items {
             check_item(child, true)?;
+        }
+    }
+    // A `template-group` (reusable-pages scope) must name the template dashboard, the parameter it
+    // binds (`var`), and exactly one option source (tag `facets` OR a `{tool,args}` query) — reject a
+    // malformed one at author time rather than emit an empty menu at resolve.
+    if item.kind == "template-group" {
+        if item.dashboard.is_empty() {
+            return Err(NavError::BadInput(
+                "template-group needs a `dashboard` (the template)".into(),
+            ));
+        }
+        if item.var.is_empty() {
+            return Err(NavError::BadInput(
+                "template-group needs a `var` (the template parameter to bind)".into(),
+            ));
+        }
+        let has_facets = !item.facets.is_empty();
+        let has_tool = !item.tool.is_empty();
+        if has_facets == has_tool {
+            return Err(NavError::BadInput(
+                "template-group needs exactly one option source: `facets` OR `tool`".into(),
+            ));
         }
     }
     Ok(())

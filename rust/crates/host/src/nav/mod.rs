@@ -30,6 +30,7 @@ mod list;
 mod model;
 mod pref;
 mod resolve;
+mod resolve_template_group;
 mod save;
 mod share;
 mod store;

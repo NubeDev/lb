@@ -14,7 +14,7 @@ mod verbs;
 pub use authorize::authorize_tags;
 pub use error::TagsError;
 pub use tool::call_tags_tool;
-pub use verbs::{tags_add, tags_find, tags_of, tags_remove};
+pub use verbs::{tags_add, tags_facet_values, tags_find, tags_of, tags_remove};
 
 // Re-export the graph value types so host callers / tests use one set.
 pub use lb_tags::{Applied, Facet, Provenance, Source, Tag};

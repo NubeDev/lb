@@ -261,8 +261,8 @@ pub use system::{
     SystemError, SystemOverview, SystemTools, SystemTopology, ToolInfo, TopoEdge, TopoNode,
 };
 pub use tags::{
-    authorize_tags, call_tags_tool, tags_add, tags_find, tags_of, tags_remove, Applied, Facet,
-    Provenance, Source as TagSource, Tag, TagsError,
+    authorize_tags, call_tags_tool, tags_add, tags_facet_values, tags_find, tags_of, tags_remove,
+    Applied, Facet, Provenance, Source as TagSource, Tag, TagsError,
 };
 pub use teams::{call_teams_tool, teams_delete, teams_rename, TeamsError};
 pub use telemetry::{

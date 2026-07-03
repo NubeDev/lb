@@ -62,6 +62,7 @@ fn surface_item(label: &str, surface: &str) -> NavItem {
         ext: String::new(),
         facets: vec![],
         items: vec![],
+        ..Default::default()
     }
 }
 
@@ -74,6 +75,7 @@ fn dashboard_item(label: &str, dashboard: &str) -> NavItem {
         ext: String::new(),
         facets: vec![],
         items: vec![],
+        ..Default::default()
     }
 }
 
@@ -86,6 +88,7 @@ fn tag_group_item(label: &str, facets: Vec<NavFacet>) -> NavItem {
         ext: String::new(),
         facets,
         items: vec![],
+        ..Default::default()
     }
 }
 
@@ -98,6 +101,7 @@ fn group_item(label: &str, items: Vec<NavItem>) -> NavItem {
         ext: String::new(),
         facets: vec![],
         items,
+        ..Default::default()
     }
 }
 
@@ -286,7 +290,7 @@ async fn each_verb_is_denied_without_its_cap() {
         NavError::Denied
     ));
     // resolve + pref both gate on `mcp:nav.resolve:call`.
-    let node = Node::boot_with_store(store.clone()).await.unwrap();
+    let node = std::sync::Arc::new(Node::boot_with_store(store.clone()).await.unwrap());
     assert!(matches!(
         nav_resolve(&node, &nobody, ws).await.unwrap_err(),
         NavError::Denied
@@ -307,7 +311,7 @@ async fn each_verb_is_denied_without_its_cap() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspace_isolation() {
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
     let ada = principal("user:ada", "ws-a", ALL);
     let ben = principal("user:ben", "ws-b", ALL);
@@ -352,7 +356,7 @@ async fn ada_sets_pick(store: &Store, ada: &Principal, ws: &str, id: &str) {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn team_shared_member_resolves_non_member_denied() {
     let ws = "ws-nav-share";
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
     // Ada owns + admins (needs `store:doc/*:write` to add a team member — the S4 edge).
     let ada = principal(
@@ -429,7 +433,7 @@ async fn team_shared_member_resolves_non_member_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn nav_never_widens_strips_and_direct_read_still_denied() {
     let ws = "ws-nav-lens";
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
 
     // Ada (admin) authors a workspace nav listing the `rules` surface AND a dashboard she owns.
@@ -507,7 +511,7 @@ async fn nav_never_widens_strips_and_direct_read_still_denied() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
     let ws = "ws-nav-prec";
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
     let ada = principal(
         "user:ada",
@@ -578,7 +582,7 @@ async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn tag_group_expands_dynamically_and_respects_reachability() {
     let ws = "ws-nav-taggroup";
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
     let ada = principal(
         "user:ada",
@@ -709,7 +713,7 @@ async fn member_owns_own_pref_cannot_touch_anothers() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn group_children_are_stripped_independently() {
     let ws = "ws-nav-group";
-    let node = Node::boot().await.unwrap();
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
     let store = &node.store;
     let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
     nav_save(
