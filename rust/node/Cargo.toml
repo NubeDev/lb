@@ -26,6 +26,11 @@ serde_json.workspace = true
 # `federation` sidecar at boot, env-gated in `main.rs` (§3.1), exactly like the github roles below.
 lb-supervisor.workspace = true
 lb-role-gateway = { path = "../role/gateway" }
+# The AI-gateway role (in-house model seam, default-agent-wiring). The node builds the real
+# `AiGateway<Provider>` as the in-house `ModelAccess` from node config and installs it on the runtime
+# registry (unconfigured → the honest `UnconfiguredModel`, symmetric on every node). NOT feature-gated:
+# the in-house default agent is present on every node regardless of the external-agent feature.
+lb-role-ai-gateway.workspace = true
 # The github workflow roles, mounted by config (§3.1): the webhook front door (ingress), the GitHub
 # HTTP `Target` (egress), and the background driver (the relay + reactor loop). All env-gated in
 # `main.rs` — absent config = the solo demo, never an `if cloud` in a core crate.

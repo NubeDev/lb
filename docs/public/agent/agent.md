@@ -16,9 +16,13 @@ Bounded by `MAX_STEPS`:
 
 1. ask the model for a turn via the **gateway** (`ModelAccess::turn`) — replay-safe by a per-step
    idempotency key;
-2. for each proposed tool call, run it through `lb_mcp::call` under the **derived** principal
-   (capability-checked, workspace-first, routed if the tool is on another node) — a denial is fed
-   back to the model, not a crash;
+2. for each proposed tool call, run it through the ONE host MCP bridge **`call_tool`** (the same entry
+   the gateway's `POST /mcp/call` uses) under the **derived** principal — so the loop reaches
+   **host-native** verbs (`agent.memory.*`, `assets.*`, `series.*`, `query.*`, …) AND extension tools,
+   each capability-checked, workspace-first, routed if the tool is on another node. A denial is fed
+   back to the model, not a crash. (`skill.activate` is the loop-internal built-in, intercepted before
+   dispatch.) Before the default-agent-wiring slice this went through `lb_mcp::call` (extension
+   registry only), so a proposed host-native verb `NotFound`ed — see "The finished in-house default";
 3. persist the step to the job (idempotent, append-addressed) and advance the cursor;
 4. repeat until the model is done or the ceiling is hit; then `complete` the job.
 
@@ -64,9 +68,43 @@ cache means the resumed turn is not re-spent — so resume is idempotent.
 - **Offline/sync:** a session interrupted mid-loop resumes from its cursor (no double-apply); a
   duplicated invocation does not re-spend the gateway or duplicate a step.
 
+## The finished in-house default (default-agent-wiring)
+
+The always-registered `"default"` runtime is now a *working, platform-native* agent, wired by four
+seams (the ask: `../../scope/agent/default-agent-wiring-scope.md`; session:
+`../../sessions/agent/default-agent-wiring-session.md`):
+
+- **A real model door.** The node builds the in-house `ModelAccess` from config (`LB_AGENT_MODEL_*`,
+  the `ModelEndpoint` shape — provider / model / api-key-env **NAME** / base-url) and installs it via
+  `Node::install_runtimes`, so the in-house `default` binds the real `AiGateway<Provider>` instead of
+  the placeholder. **No model configured → `UnconfiguredModel`** (the honest empty state — returns
+  "no in-house model configured", not a fake). The swap is the *registry*, never an `if cloud`. The
+  provider key is an env NAME resolved through the secrets path — never compiled in or logged.
+- **The shared tool wall.** The loop dispatches through `call_tool` (loop step 2 above), so the
+  default agent can call the platform's own host-native verbs AND extension tools through the identical
+  `authorize_tool` + caps wall — under `agent ∩ caller`. **This same fix serves the external agent**:
+  its tool bridge rides the one dispatch, so both fronts are platform-capable with no second path.
+- **The loop's menu = the reachable catalog.** Callers surface the caller's reachable
+  `tools.catalog` (registry + host-native descriptors ∩ grants) to the loop as its `AllowedTool` list.
+  The wall re-checks every call, so the menu is a *hint*, not a widening — a tool absent from the menu
+  is also denied if proposed.
+- **Boot.** The node builds the registry (in-house default over the wired model + external entries when
+  the `external-agent` feature is on) and calls `serve_agent`, mounted after the gateway installs its
+  signing key (the federation/control-engine ordering). So a routed `agent.invoke` and the in-channel
+  `/agent` path both drive the finished agent.
+
+**Note on the model provider:** as of this slice **no real `Provider` adapter exists** (only the
+sanctioned test `MockProvider`; the real adapters are ai-gateway-scope-deferred). The wiring seam,
+config, and unconfigured→configured **swap** are shipped and proven for real against
+`AiGateway<MockProvider>`; the day a real adapter lands it drops into `build_in_house_model` with no
+other change and the in-house agent answers with a real LLM.
+
 ## Not yet (follow-ups)
 
-A real model provider behind the gateway contract; streaming progress as Zenoh motion + the durable
-transcript via the outbox; token-on-the-bus for routed invocations (S5 is in-process co-trust);
-gateway/Tauri wiring for `agent_invoke` against a real node; per-workspace loop policy. The coding
-workflow that composes the agent (issue → triage → approval → job → outbox) is S6.
+A real model **provider adapter** behind the gateway contract (the in-house model door + boot are now
+wired; only the concrete `impl Provider` is deferred — the swap point is `build_in_house_model`);
+streaming progress as Zenoh motion + the durable transcript via the outbox; token-on-the-bus for
+routed invocations (S5 is in-process co-trust); an optional curated/bounded agent tool subset if the
+reachable-catalog context tax bites; an optional additive `agent.config` "in-house model:
+configured/unconfigured" read field for the UI; per-workspace loop policy. The coding workflow that
+composes the agent (issue → triage → approval → job → outbox) is S6.

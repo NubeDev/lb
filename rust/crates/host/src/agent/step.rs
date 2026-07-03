@@ -6,15 +6,17 @@
 //! Kept together because they share the loop's vocabulary (transcript events + `RunEvent` motion);
 //! the *policy* and *decision* and *catalog* mechanics live in their own sibling modules.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_jobs::{append_event, load, JobStatus, TranscriptEvent};
-use lb_mcp::call;
 use lb_run_events::project_one;
 
 use super::error::AgentError;
 use super::model_access::{CallOutcome, ProposedCall};
 use crate::boot::Node;
 use crate::run_events::publish_run_event;
+use crate::tool_call::call_tool;
 
 /// Re-read the durable job to see whether it was cancelled mid-run (agent-run scope Part 0). Cheap at
 /// S5 scale (one record); a tighter signal (a bus subject) is a follow-up, but the durable check is
@@ -56,19 +58,25 @@ pub(super) fn count_turns(events: &[&TranscriptEvent]) -> u32 {
         .count() as u32
 }
 
-/// Run each proposed tool call under the derived principal, collecting outcomes. `lb_mcp::call` runs
-/// the SAME `caps::check` chokepoint — so an agent call to a tool the intersection forbids is
-/// `Denied`, captured as an error outcome (the model is told; the loop continues). `pub(crate)` so the
-/// Part-2 `decision/resume` path can replay an `Allow→replay` call through the identical mechanism.
+/// Run each proposed tool call under the derived principal, collecting outcomes. The calls route
+/// through the host's ONE MCP bridge [`call_tool`] — the SAME entry the gateway's `POST /mcp/call`
+/// uses — so the loop reaches **host-native** verbs (`agent.memory.*`, `assets.*`, `series.*`, …) AND
+/// extension tools behind the identical `authorize_tool` + per-verb caps wall (the default-agent-wiring
+/// fix; previously `lb_mcp::call` resolved only the extension registry, so a host-native verb was
+/// `NotFound`). Authorization runs workspace-first under `agent = agent_caps ∩ caller.caps`, so a tool
+/// the intersection forbids is `Denied` — captured as an error outcome (the model is told; the loop
+/// continues). `skill.activate` is the loop-internal built-in intercepted in `run.rs` BEFORE this, so
+/// it never reaches the bridge. `pub(crate)` so the Part-2 `decision/resume` path can replay an
+/// `Allow→replay` call through the identical mechanism.
 pub(crate) async fn run_calls(
-    node: &Node,
+    node: &Arc<Node>,
     agent: &Principal,
     ws: &str,
     calls: &[ProposedCall],
 ) -> Vec<CallOutcome> {
     let mut outcomes = Vec::with_capacity(calls.len());
     for c in calls {
-        let outcome = match call(&node.registry, &node.bus, agent, ws, &c.name, &c.input).await {
+        let outcome = match call_tool(node, agent, ws, &c.name, &c.input).await {
             Ok(out) => CallOutcome {
                 id: c.id.clone(),
                 ok: Some(out),

@@ -28,6 +28,7 @@ mod in_house;
 mod invoke;
 mod invoke_remote;
 mod memory;
+mod menu;
 mod model_access;
 mod policy;
 mod registry;
@@ -64,6 +65,7 @@ pub use memory::{
     memory_set, render_index, Memory, MemoryKind, MemoryScope, INJECT_CAP, MAX_BODY,
     MAX_DESCRIPTION, MEMORY_HEADER,
 };
+pub use menu::reachable_tools;
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,

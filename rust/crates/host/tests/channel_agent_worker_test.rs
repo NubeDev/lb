@@ -297,7 +297,7 @@ impl AgentRuntime for HungRuntime {
 
     fn run<'a>(
         &'a self,
-        _node: &'a Node,
+        _node: &'a std::sync::Arc<Node>,
         _ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, lb_host::AgentError>> + Send + 'a>> {
         Box::pin(async move {
@@ -444,7 +444,7 @@ impl AgentRuntime for StubExternal {
     }
     fn run<'a>(
         &'a self,
-        _node: &'a Node,
+        _node: &'a std::sync::Arc<Node>,
         _ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, lb_host::AgentError>> + Send + 'a>> {
         let a = self.answer.clone();

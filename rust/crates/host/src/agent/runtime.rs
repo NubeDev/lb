@@ -74,7 +74,7 @@ pub trait AgentRuntime: Send + Sync {
     /// the same way) — so a watcher observes an external run identically to an in-house one.
     fn run<'a>(
         &'a self,
-        node: &'a Node,
+        node: &'a Arc<Node>,
         ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send + 'a>>;
 }

@@ -10,6 +10,7 @@ use std::sync::Arc;
 use lb_auth::{mint, Claims, Role, SigningKey};
 use lb_host::{load_enabled, load_extension, Node};
 
+mod agent;
 mod control_engine;
 mod external_agent;
 mod federation;
@@ -51,11 +52,10 @@ async fn main() -> anyhow::Result<()> {
     let sink = lb_telemetry::SinkConfig::from_env();
     lb_telemetry::sink_layers(node.store.clone(), node.bus.clone(), sink);
 
-    // External-agent runtimes (external-agent runtime-seam #1): with the `external-agent` feature ON,
-    // install the external `AcpRuntime` entries (Open Interpreter → Z.AI GLM-4.6 default, VT Code,
-    // Codex) alongside the in-house default, so an in-channel `kind:"agent"` request with
-    // `runtime:"open-interpreter-default"` reaches a real agent. Feature-OFF this is a no-op.
-    external_agent::install(&node);
+    // The in-house agent runtime registry + external entries are installed by `agent::mount` below,
+    // AFTER the gateway installs its signing key (the federation/control-engine ordering) so a served
+    // run's tool callbacks verify. The in-house `default` binds the node's configured model (or the
+    // honest `UnconfiguredModel`); the `external-agent` feature adds the external `AcpRuntime` entries.
 
     // Locate the built hello component. Override with HELLO_WASM; default to the cargo target.
     let wasm_path = std::env::var("HELLO_WASM")
@@ -212,6 +212,12 @@ async fn main() -> anyhow::Result<()> {
         // the gateway verifies its callbacks (no 401). Env-gated, no-ops when unconfigured.
         federation::mount(node.clone()).await;
         control_engine::mount(node.clone()).await;
+        // The in-house agent (default-agent-wiring): install the runtime registry (in-house default
+        // over the configured model + external entries when the feature is on) and serve routed
+        // `agent.invoke`. Mounted HERE, after the gateway key install, so a served run's tool callbacks
+        // verify — the same ordering federation/control-engine use. `_agent_server` is held to the end
+        // of `main` (dropping it stops serving); `serve(..)` below never returns in normal operation.
+        let _agent_server = agent::mount(node.clone()).await;
         println!("gateway: serving on http://{addr}");
         lb_role_gateway::serve(gw, addr).await?;
     } else {
@@ -219,6 +225,9 @@ async fn main() -> anyhow::Result<()> {
         // callbacks need a gateway, so they degrade cleanly (a sidecar with no callback address).
         federation::mount(node.clone()).await;
         control_engine::mount(node.clone()).await;
+        // Install the in-house agent registry even without a gateway, so the in-channel `/agent` path
+        // drives the configured model on a solo node (a solo node just has no remote callers to serve).
+        let _agent_server = agent::mount(node.clone()).await;
     }
 
     Ok(())

@@ -1,0 +1,55 @@
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --panel-2: #1a1e27;
+  --line: #262b36;
+  --text: #e6e9ef;
+  --muted: #8a93a3;
+  --accent: #6ab7ff;
+  --accent-2: #b9a7ff;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font: 13px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+#app { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr 280px; }
+#stage { display: block; width: 100%; height: 100%; cursor: grab; }
+#stage:active { cursor: grabbing; }
+
+.panel {
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  display: flex; flex-direction: column;
+  padding: 16px; gap: 16px; overflow: auto;
+}
+.panel__head h1 { margin: 0; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+.muted { color: var(--muted); margin: 4px 0 0; }
+
+.product-list { display: flex; flex-direction: column; gap: 6px; }
+.product-list button {
+  text-align: left; background: var(--panel-2); border: 1px solid var(--line);
+  color: var(--text); padding: 8px 10px; border-radius: 6px; cursor: pointer;
+  font: inherit;
+}
+.product-list button:hover { border-color: var(--accent); }
+.product-list button.active { border-color: var(--accent); color: var(--accent); }
+
+.info { flex: 1; }
+.info h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-2); }
+.info ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.info li { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+.info li b { color: var(--text); font-weight: 500; }
+
+.panel__foot { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.row { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.row span { flex: 1; }
+
+.hint {
+  position: fixed; left: 16px; bottom: 12px; color: var(--muted);
+  background: rgba(11,13,18,.6); padding: 6px 10px; border-radius: 6px;
+  border: 1px solid var(--line); pointer-events: none;
+  transition: opacity 1s ease-out;
+}
+.hint.fade { opacity: 0; }
+
+html, body { height: 100%; }

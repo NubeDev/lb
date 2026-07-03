@@ -21,6 +21,7 @@
 //! resume) — duplicate decide + reactor re-scan do not double-run the tool or re-spend.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use lb_auth::Principal;
 use lb_jobs::{append_event, SuspensionDecision, TranscriptEvent};
@@ -52,7 +53,7 @@ pub struct ResumeOutcome {
 /// appending the settle + result events starting at `index`. `agent` is the derived principal a
 /// replayed Allow runs under (same authority as the original dispatch).
 pub async fn resume_suspensions(
-    node: &Node,
+    node: &Arc<Node>,
     agent: &Principal,
     ws: &str,
     job_id: &str,

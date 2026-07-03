@@ -278,7 +278,11 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
 3. **AI drawing** — `skills/graphics-canvas/SKILL.md`, teaching-error validation,
    draw-with-AI rail, channel rich-response embed.
 4. **Symbol packs** — pack manifest + loader, palette merge, an `hvac` starter pack
-   (dogfooded as the first pack), placeholder-on-missing.
+   (dogfooded as the first pack), placeholder-on-missing. **Scoped for build
+   (2026-07-03):** `rust/extensions/thecrew/docs/symbol-packs-scope.md` — packs as
+   workspace docs in a parametric part spec (closed part/behavior vocabulary, affine
+   exprs, token materials), AI-authorable at runtime through the same `assets.*` verbs;
+   runtime code-gen explicitly rejected.
 5. **3D** — perspective camera, GLTF building/underlay import, extrusion helpers,
    status-bound materials; 3D *viewing* before 3D editing.
 
@@ -323,7 +327,8 @@ Per `scope/testing/testing-scope.md` — mandatory categories:
   standalone UI/UX test bed (scope set at `rust/extensions/thecrew/docs/`), which
   proved the look + builder feel on the same engine and scene schema; the lift into
   a real extension (phases 1–2 here) is scoped at
-  `rust/extensions/thecrew/docs/thecrew-extension-scope.md`.
+  `rust/extensions/thecrew/docs/thecrew-extension-scope.md`; phase 4 (symbol packs,
+  AI-authorable) at `rust/extensions/thecrew/docs/symbol-packs-scope.md`.
 - `extensions/ui-federation-scope.md` — the `[ui]`/`[[widget]]` mount + bridge this
   rides; `rust/extensions/control-engine/docs/control-engine-scope.md` — the
   100%-extension precedent (core ignorant, docs co-located).

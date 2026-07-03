@@ -34,6 +34,7 @@
 //!   - The worker holds NO durable state; a failure never fails the originating post (which already
 //!     durably landed) — the worst case is a follow-up `agent_error` (or nothing).
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use lb_auth::Principal;
@@ -44,7 +45,7 @@ use super::agent_job::{ChannelAgentJob, CHANNEL_AGENT_KIND};
 use super::payload::{
     agent_error_body, agent_result_body, parse_payload, AgentPayload, ItemPayload,
 };
-use crate::agent::{invoke_via_runtime, AgentError, Substrate};
+use crate::agent::{invoke_via_runtime, reachable_tools, AgentError, Substrate};
 use crate::boot::Node;
 
 /// The system identity the worker posts results/errors under (host answering its own request — no
@@ -135,7 +136,7 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
 /// run never leaves the card spinning forever. Production passes [`RUN_WALL_CEILING`]; a test passes a
 /// tiny ceiling against a scripted hung runtime.
 pub async fn drive_queued_run(
-    node: &Node,
+    node: &Arc<Node>,
     ws: &str,
     enqueue_id: &str,
     record: &ChannelAgentJob,
@@ -225,7 +226,7 @@ async fn finish_enqueue(node: &Node, ws: &str, enqueue_id: &str) {
 /// the ceiling (host authority) overrides whatever the run would have eventually reported.
 #[allow(clippy::too_many_arguments)]
 async fn drive_run(
-    node: &Node,
+    node: &Arc<Node>,
     poster: &Principal,
     ws: &str,
     goal: &str,
@@ -250,6 +251,15 @@ async fn drive_run(
     // inside `invoke_via_runtime` under the poster.)
     let agent_caps = poster.caps().to_vec();
 
+    // Surface the poster's REACHABLE tool menu to the loop (default-agent-wiring #3): the same
+    // `tools.catalog` gate that answers the `/`-palette computes "every tool the poster may run" — so
+    // the in-house model has real tools to propose, not the empty list this worker used to pass. The
+    // wall re-checks every proposed call under `agent ∩ caller`, so the menu is not a widening (a tool
+    // absent from the menu is also DENIED if proposed). Best-effort: a catalog read failure (e.g. the
+    // poster lacks `mcp:tools.catalog:call`) yields an empty menu — the run still drives (it just has
+    // no tools to propose), never fails here.
+    let tools = reachable_tools(node, poster, ws).await;
+
     let run = invoke_via_runtime(
         node,
         &registry,
@@ -260,7 +270,7 @@ async fn drive_run(
         job,
         goal,
         Substrate::default(),
-        &[], // no tool list surfaced this slice (the #3 MCP bridge is not built; in-house default too)
+        &tools,
         ts,
     );
 

@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lazybones Hardware Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="stage"></canvas>
+      <aside id="panel" class="panel">
+        <header class="panel__head">
+          <h1>Hardware Lab</h1>
+          <p class="muted">Reusable Three.js product viewer</p>
+        </header>
+        <section id="product-list" class="product-list"></section>
+        <section id="info" class="info">
+          <h2 id="info-title">—</h2>
+          <ul id="info-list"></ul>
+        </section>
+        <footer class="panel__foot">
+          <label class="row">
+            <input id="toggle-explode" type="range" min="0" max="100" value="0" />
+            <span>Explode</span>
+          </label>
+          <label class="row">
+            <input id="toggle-enclosure" type="checkbox" checked />
+            <span>Enclosure</span>
+          </label>
+          <label class="row">
+            <input id="toggle-labels" type="checkbox" checked />
+            <span>Labels</span>
+          </label>
+        </footer>
+      </aside>
+      <div id="hint" class="hint">drag to orbit · scroll to zoom · click a part</div>
+    </div>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

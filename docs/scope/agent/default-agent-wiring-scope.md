@@ -1,6 +1,11 @@
 # Agent scope — finishing the default agent (wire the in-house brain + shared tool dispatch + boot)
 
-Status: scope (the ask). Promotes to `public/agent/agent.md` once shipped.
+Status: **shipped** (2026-07-03) — see `../../sessions/agent/default-agent-wiring-session.md` and
+`../../public/agent/agent.md` ("The finished in-house default"). All four seams built + green; open
+questions resolved in the session doc. The only deferral is the real AI-gateway `Provider` adapter
+(ai-gateway scope) — the wiring seam + config + unconfigured→configured swap are shipped and proven
+against the sanctioned `MockProvider`; a real adapter drops into `build_in_house_model` with no other
+change.
 
 The in-house agent *engine* is built (the `run.rs` loop: caps-checked tool calls, durable resume,
 approval gates, skill catalog, memory injection) and it is the always-registered `"default"` runtime
@@ -203,6 +208,19 @@ Mandatory categories (`scope/testing/testing-scope.md`), all rule-9 (real store/
   secret (env NAME, never logged) — a leak here is a real credential leak, unlike the mock path.
 
 ## Open questions
+
+**All resolved (2026-07-03) — decisions recorded in the session doc.** Summary:
+- **Config shape** → a node-local `InHouseModelConfig` mirroring `ModelEndpoint` (`LB_AGENT_MODEL_*`),
+  NOT the feature-gated external `ModelEndpoint` (the in-house model must exist feature-OFF too).
+- **Where boot builds it** → a dedicated `node/src/agent.rs` mount module (mirroring `control_engine.rs`),
+  called after the gateway key install.
+- **Tool menu policy** → the full reachable `tools.catalog` for v1 (already curated to palette
+  descriptors ∩ grants, so bounded); a per-workspace subset is a follow-up if context tax bites.
+- **Direct provider vs served face** → in-house `ModelAccess` calls the provider directly (in-process);
+  the served OpenAI face is external-only (#4), not built here.
+- **`agent.config` in-house-model reporting** → deferred as a UI-only additive read field.
+
+Original text (for the record):
 
 - **Model endpoint config shape:** reuse the external `ModelEndpoint`
   (provider/model/`api_key_env`/`base_url`) as the node's in-house model config, or a dedicated

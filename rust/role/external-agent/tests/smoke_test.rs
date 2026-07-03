@@ -24,7 +24,7 @@ async fn drives_a_real_external_agent_through_the_seam() {
     let profile_id =
         std::env::var("EXTAGENT_PROFILE").unwrap_or_else(|_| OPEN_INTERPRETER_DEFAULT.to_string());
 
-    let node = Node::boot().await.expect("node boots");
+    let node = std::sync::Arc::new(Node::boot().await.expect("node boots"));
     let ws = "extagent-smoke";
     let caller = lb_auth::Principal::routed("user:smoke", ws, vec!["mcp:agent.invoke:call".into()]);
 

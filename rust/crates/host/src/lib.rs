@@ -68,7 +68,7 @@ pub use agent::{
     call_agent_tool, cancel_run, decision_id, evaluate_policy, format_catalog, invoke,
     invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes, load_decision,
     load_policy, memory_delete, memory_get, memory_index_for_injection, memory_list, memory_set,
-    rehydrate, render_catalog, render_index, resolve_effective_runtime,
+    reachable_tools, rehydrate, render_catalog, render_index, resolve_effective_runtime,
     resolve_effective_runtime_id, resume, run_session, save_policy, serve_agent, settle_decision,
     Activation, AgentConfig, AgentDecision, AgentError, AgentInvokeReply, AgentInvokeRequest,
     AgentRuntime, AgentServer, AllowedTool, ArgMatch, CallOutcome, DecisionState, Effect,
@@ -77,6 +77,7 @@ pub use agent::{
     SettleOutcome, Substrate, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
     DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP,
     MAX_BODY, MAX_DESCRIPTION, MAX_STEPS, MEMORY_HEADER, POLICY_TABLE, SKILL_ACTIVATE,
+    UNCONFIGURED_ANSWER,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,

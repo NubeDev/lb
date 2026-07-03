@@ -48,7 +48,7 @@ fn default_registry(answer: &str) -> RuntimeRegistry {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn absent_runtime_resolves_to_the_in_house_default() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-default";
     let caller = principal("user:ada", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
@@ -74,7 +74,7 @@ async fn absent_runtime_resolves_to_the_in_house_default() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn explicitly_named_default_resolves_the_same() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-named-default";
     let caller = principal("user:ada", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
@@ -101,7 +101,7 @@ async fn explicitly_named_default_resolves_the_same() {
 async fn an_explicitly_named_unknown_runtime_is_an_error_not_a_silent_downgrade() {
     // The decided resolution rule: a caller that asked for a specific runtime must NOT be silently
     // downgraded to the default engine. Feature-off / unconfigured node has no such entry → error.
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-unknown";
     let caller = principal("user:ada", ws, &[INVOKE]);
     let registry = default_registry("in-house answer");
@@ -132,7 +132,7 @@ async fn invoke_is_denied_without_the_cap_identically_through_the_seam() {
     // MANDATORY capability-deny (§2.1): the invoke gate is the SAME for every runtime — choosing a
     // runtime is an argument, not a grant. A caller lacking `mcp:agent.invoke:call` is refused before
     // any runtime is selected (so an unknown runtime + missing cap is still a Denied, not BadInput).
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     let ws = "seam-deny";
     let caller = principal("user:ada", ws, &[]); // no invoke cap
     let registry = default_registry("unreachable");

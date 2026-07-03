@@ -46,7 +46,7 @@ impl AgentRuntime for StubRuntime {
     }
     fn run<'a>(
         &'a self,
-        _node: &'a Node,
+        _node: &'a std::sync::Arc<Node>,
         _ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send + 'a>> {
         Box::pin(async { Ok(String::new()) })

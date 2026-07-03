@@ -20,6 +20,8 @@
 //! re-emitted (their model turn is cached by the gateway's idempotency key anyway), so a session
 //! that survived an edge disconnect continues without double-applying or re-spending.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
@@ -58,7 +60,7 @@ const AGENT_SUB: &str = "agent:session";
 /// failure — a tool denial *inside* the loop is fed to the model, not surfaced as an error.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_session<M: ModelAccess>(
-    node: &Node,
+    node: &Arc<Node>,
     model: &M,
     caller: &Principal,
     agent_caps: &[String],

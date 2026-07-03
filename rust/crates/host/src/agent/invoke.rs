@@ -9,6 +9,8 @@
 //! re-enters at the persisted cursor) — the offline/sync path (the edge disconnected; the hub
 //! resumes). Both are idempotent on `job_id`.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 
 use super::authorize::authorize_invoke;
@@ -34,7 +36,7 @@ pub struct Invocation<'a> {
 /// substrate, then drives the loop to completion — returning the agent's final answer. `agent_caps`
 /// are the agent actor's own capabilities; the effective grant is `agent_caps ∩ caller.caps`.
 pub async fn invoke<M: ModelAccess>(
-    node: &Node,
+    node: &Arc<Node>,
     model: &M,
     caller: &Principal,
     agent_caps: &[String],
@@ -70,7 +72,7 @@ pub async fn invoke<M: ModelAccess>(
 /// the loop picks up where the durable cursor left off.
 #[allow(clippy::too_many_arguments)]
 pub async fn resume<M: ModelAccess>(
-    node: &Node,
+    node: &Arc<Node>,
     model: &M,
     caller: &Principal,
     agent_caps: &[String],

@@ -63,7 +63,7 @@ impl AgentRuntime for StubRuntime {
     }
     fn run<'a>(
         &'a self,
-        _node: &'a Node,
+        _node: &'a std::sync::Arc<Node>,
         _ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send + 'a>> {
         let answer = self.answer.clone();
@@ -99,7 +99,7 @@ async fn set_default(node: &Node, admin: &Principal, ws: &str, runtime: &str) {
 /// Drive a run through the seam against the NODE's own registry (exactly what the production
 /// entrypoints pass), with no substrate/tools — the shared body of these cases.
 async fn run(
-    node: &Node,
+    node: &Arc<Node>,
     runtime: Option<&str>,
     caller: &Principal,
     ws: &str,
@@ -123,7 +123,7 @@ async fn run(
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn absent_runtime_uses_the_stored_workspace_default() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     // The node offers the stub (a `--features external-agent` node's posture).
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-stored";
@@ -142,7 +142,7 @@ async fn absent_runtime_uses_the_stored_workspace_default() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn explicit_runtime_overrides_the_stored_default() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-explicit";
     let admin = principal("user:ada", ws, &[SET, INVOKE]);
@@ -165,7 +165,7 @@ async fn a_stored_but_unavailable_default_falls_back_to_the_registry_default() {
     // offers (feature off / config changed). The run must NOT error — it falls back to the registry
     // default. Seed with a registry that HAS the stub (so `set` accepts it), then "drift" the node by
     // re-installing a default-only registry before the run.
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("unused", STUB_ID, "should-not-run"));
     let ws = "rt-drift";
     let admin = principal("user:ada", ws, &[SET, INVOKE]);
@@ -188,7 +188,7 @@ async fn a_stored_but_unavailable_default_falls_back_to_the_registry_default() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn workspaces_are_isolated_for_the_stored_default() {
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let admin_a = principal("user:ada", "ws-a", &[SET, INVOKE]);
     let admin_b = principal("user:bob", "ws-b", &[SET, INVOKE]);
@@ -212,7 +212,7 @@ async fn workspaces_are_isolated_for_the_stored_default() {
 async fn invoke_is_still_denied_without_the_cap_even_with_a_stored_default() {
     // Resolving a default widens NOTHING — the invoke gate still fires first. A caller lacking
     // `mcp:agent.invoke:call` is refused before any config read or runtime selection.
-    let node = Node::boot().await.expect("node boots");
+    let node = Arc::new(Node::boot().await.expect("node boots"));
     node.install_runtimes(registry_with_stub("in-house", STUB_ID, "external-ran"));
     let ws = "rt-deny";
     let admin = principal("user:ada", ws, &[SET, INVOKE]);

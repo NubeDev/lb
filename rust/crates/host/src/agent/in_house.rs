@@ -40,7 +40,7 @@ impl AgentRuntime for InHouseRuntime {
 
     fn run<'a>(
         &'a self,
-        node: &'a Node,
+        node: &'a Arc<Node>,
         ctx: RunContext<'a>,
     ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send + 'a>> {
         Box::pin(async move {

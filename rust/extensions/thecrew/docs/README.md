@@ -11,7 +11,8 @@ Read in this order:
 
 | Doc | The ask |
 |---|---|
-| [`thecrew-extension-scope.md`](thecrew-extension-scope.md) | **The current ask:** playground → publishable LB extension — manifest, wasm stub, bridge value source, `assets.*` scene persistence, `[ui]` page + `[[widget]]` cell, testing plan. |
+| [`thecrew-extension-scope.md`](thecrew-extension-scope.md) | Playground → publishable LB extension (graphics-canvas phases 1–2, **shipped**) — manifest, wasm stub, bridge value source, `assets.*` scene persistence, `[ui]` page + `[[widget]]` cell. |
+| [`symbol-packs-scope.md`](symbol-packs-scope.md) | **The current ask** (graphics-canvas phase 4): symbol packs — new symbols as workspace documents in a parametric part spec, authorable at runtime by hand or by AI; one interpreter, teaching validation, zero core additions. |
 | [`thecrew-scope.md`](thecrew-scope.md) | The playground's master scope (done): the reuse contract that makes the code liftable, file layout, phases, definition of done. |
 | [`look-scope.md`](look-scope.md) | The visual bar. Theme, lighting, materials, motion, glow — what "looks fucking amazing" means, concretely, and the screenshot test that enforces it. |
 | [`builder-ux-scope.md`](builder-ux-scope.md) | The builder feel. Palette → place → connect → tune, snapping, gizmos, property rail, keyboard — and the 60-second-AHU benchmark. |

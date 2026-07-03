@@ -3,6 +3,33 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S8 — the in-house default agent, finished: model door + shared tool wall + boot)
+
+The always-registered `"default"` runtime is now a working, platform-native agent. Four wiring seams,
+no new subsystems:
+
+- **Model door:** the node builds the in-house `ModelAccess` from config (`LB_AGENT_MODEL_*`, the
+  `ModelEndpoint` shape — provider/model/api-key-env **NAME**/base-url) as `AiGateway<Provider>` and
+  installs it via `Node::install_runtimes`. No model → `UnconfiguredModel` (the honest empty state).
+  Config-only, symmetric (no `if cloud`). Key is an env NAME via the secrets path, never logged.
+- **Shared tool wall (the load-bearing fix):** the loop's proposed calls
+  (`agent/step.rs::run_calls`) route through the ONE host MCP bridge `call_tool` (the `POST /mcp/call`
+  entry) instead of registry-only `lb_mcp::call` — so the loop reaches **host-native** verbs
+  (`agent.memory.*`/`assets.*`/`series.*`/…) AND extension tools under the identical `authorize_tool` +
+  caps wall (`agent ∩ caller`). `skill.activate` stays the loop-internal built-in. The same dispatch
+  serves the **external** agent (one path, both fronts platform-capable).
+- **Tool menu = reachable catalog:** the loop's `AllowedTool` list is the caller's reachable
+  `tools.catalog` (registry + host-native descriptors ∩ grants) — the wall re-checks, so it's a hint,
+  not a widening.
+- **Boot:** `node/src/agent.rs` builds the registry (default + external entries when the feature is on)
+  and calls `serve_agent`, after the gateway key install — closing the serve-wiring TODO.
+
+**No new MCP verbs.** Provider adapter is deferred (ai-gateway scope) — only `MockProvider` exists; the
+seam + config + unconfigured→configured **swap** are shipped and proven for real against it. Deny +
+workspace-isolation + external parity + offline-resume all tested (rule 9). See
+`agent/agent.md` ("The finished in-house default"), `../scope/agent/default-agent-wiring-scope.md`,
+`../sessions/agent/default-agent-wiring-session.md`, `../skills/agent/SKILL.md`.
+
 ## Shipped (post-S10 — frontend: GenUI — AI-authored dashboard widgets over one generative-UI layer)
 
 One reusable package `@nube/genui` (a versioned, A2UI-*shaped* IR + a trusted catalog renderer + the

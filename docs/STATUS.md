@@ -16,6 +16,40 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): default agent wiring — the in-house `"default"` agent finished (branch
+`master`).** The always-registered in-house loop now (1) binds a **real model** from node config
+(`LB_AGENT_MODEL_*`, the `ModelEndpoint` shape — provider/model/api-key-env NAME/base-url) built as
+`AiGateway<Provider>` and installed via `install_runtimes`; **no model → the honest `UnconfiguredModel`**
+(config-only, symmetric). (2) The **load-bearing fix**: the loop's proposed tool calls
+(`agent/step.rs::run_calls`) now route through the ONE host MCP bridge **`call_tool`** (the same entry
+`POST /mcp/call` uses) instead of registry-only `lb_mcp::call` — so the loop reaches **host-native**
+verbs (`agent.memory.*`/`assets.*`/`series.*`/…) AND extension tools under the identical
+`authorize_tool` + caps wall (`agent ∩ caller`); `skill.activate` stays the loop-internal built-in.
+This same dispatch serves the **external** agent (both fronts platform-capable, one path). Threaded
+`&Node → &Arc<Node>` along the agent path (the trait `AgentRuntime::run` + `AcpRuntime` + test stubs)
+so `call_tool`'s `Arc` reaches the loop; every call site already held an `Arc<Node>`. (3) The loop's
+`AllowedTool` menu is populated from the caller's **reachable `tools.catalog`** (new
+`agent/menu.rs::reachable_tools`), replacing the channel worker's empty `&[]`. (4) **Boot**: a new thin
+`node/src/agent.rs` mount (like `control_engine.rs`) builds the registry (in-house default + external
+entries when the feature is on) and calls `serve_agent`, mounted after the gateway key install —
+closing the serve-wiring TODO. **Provider adapter status (stated plainly):** no real `Provider` exists
+yet (only `MockProvider`; real adapters are ai-gateway-deferred) — the deliverable is the real wiring
+seam + config + the **unconfigured→configured swap**, proven for real against `AiGateway<MockProvider>`;
+a real adapter drops into `build_in_house_model` with no other change. **Tests (rule 9, real
+store/bus/caps/gateway/loop; MockProvider the only fake):** `agent_in_house_wiring_test` (8: the
+headline — the loop EXECUTES a host-native `agent.memory.set` through `call_tool`, was `NotFound` ·
+**capability-DENY** (intersection lacks the cap → denied, fed back, nothing persists) · **workspace-
+ISOLATION** (ws-B can't reach ws-A memory) · unconfigured→configured swap · menu = reachable catalog ·
+**external-agent parity** + its deny · **offline/sync** resume re-drives a host-native call cleanly).
+Full agent suite green (16 test bins) — no double-gate/deny/skill.activate regression. `cargo build
+--workspace` (default + `--features external-agent`) + `cargo fmt` clean. See
+[`public/agent/agent.md`](public/agent/agent.md) ("The finished in-house default") ·
+[`sessions/agent/default-agent-wiring-session.md`](sessions/agent/default-agent-wiring-session.md) ·
+[`skills/agent/SKILL.md`](skills/agent/SKILL.md). **Next up:** a real AI-gateway `Provider` adapter →
+the in-house agent answers with a real LLM (zero change here).
+
+---
+
 **Just shipped (2026-07-03): GenUI — AI-authored dashboard widgets over one generative-UI layer
 (branch `ce-node-wiring-v2`).** A dashboard widget the workspace agent designs from a natural-language
 prompt, rendered live from a persisted, versioned IR — **no model in the render path**. **New package**

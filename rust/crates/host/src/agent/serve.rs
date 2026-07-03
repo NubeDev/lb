@@ -70,7 +70,7 @@ async fn answer_loop(
 /// Run one routed invocation: reconstruct the caller, dispatch through the resolved runtime, map the
 /// outcome to a reply. The `runtime` field selects the runtime (absent → default; unknown → error).
 async fn run_one(
-    node: &Node,
+    node: &Arc<Node>,
     registry: &RuntimeRegistry,
     agent_caps: &[String],
     req: AgentInvokeRequest,

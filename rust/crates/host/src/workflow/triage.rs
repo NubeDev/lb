@@ -11,6 +11,8 @@
 //! Authorization: `mcp:workflow.triage:call`, workspace-first (the deny path), then the agent's own
 //! invoke gate + intersection inside `invoke`, then the asset/channel gates inside their verbs.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_inbox::Item;
 
@@ -31,7 +33,7 @@ pub struct Triaged {
 /// own grant (effective = `agent_caps ∩ caller`). `tools`/`skill`/`doc` are the agent's substrate.
 #[allow(clippy::too_many_arguments)]
 pub async fn triage<M: ModelAccess>(
-    node: &Node,
+    node: &Arc<Node>,
     model: &M,
     caller: &Principal,
     agent_caps: &[String],

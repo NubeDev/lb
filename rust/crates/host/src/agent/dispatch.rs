@@ -9,6 +9,8 @@
 //! external runtime that wants a persona loads it itself via the grant-gated `load_skill` (#2), so
 //! this seam does not bake the in-house substrate step into the external path.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 
 use super::authorize::authorize_invoke;
@@ -45,7 +47,7 @@ pub struct Substrate<'a> {
 /// goal here — the external agent's persona/tools are its profile's concern, not this seam's.
 #[allow(clippy::too_many_arguments)]
 pub async fn invoke_via_runtime(
-    node: &Node,
+    node: &Arc<Node>,
     registry: &RuntimeRegistry,
     runtime: Option<&str>,
     caller: &Principal,
