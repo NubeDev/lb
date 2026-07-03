@@ -23,7 +23,7 @@
 // it goes through `invoke`, exactly as it does for Tauri and the fake.
 
 import type { Item } from "@/lib/channel/channel.types";
-import { sessionToken } from "@/lib/session/session.store";
+import { sessionToken, setSession } from "@/lib/session/session.store";
 
 /** The gateway base URL, e.g. `http://127.0.0.1:8080`. In the browser this defaults to the local dev
  *  node so the app always talks to a REAL gateway out of the box (override with `VITE_GATEWAY_URL`;
@@ -659,7 +659,7 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
 /** DELETE a route. Returns undefined for `204`, else the JSON body (e.g. the revoked/removed count). */
 async function delJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { method: "DELETE", headers: authHeaders() });
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -671,7 +671,7 @@ async function putJson<T>(url: string, body: unknown): Promise<T> {
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -683,14 +683,14 @@ async function patchJson<T>(url: string, body: unknown): Promise<T> {
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   return (await res.json()) as T;
 }
 
@@ -701,9 +701,20 @@ async function postJson<T>(url: string, body: unknown, auth = true): Promise<T> 
     headers: { "content-type": "application/json", ...(auth ? authHeaders() : {}) },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) throw await requestError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** Turn a non-OK response into an `Error`. A `401` on a request we DID authenticate means the stored
+ *  session token no longer verifies (expired, or the node re-keyed on restart — its signing key was
+ *  ephemeral before `signing-seed` persistence). Clear the session so the app falls back to the login
+ *  screen instead of showing a logged-in shell whose every read silently rejected to an empty state
+ *  (the "No agent definitions available" symptom over a store that still held them). A `403` is a
+ *  capability `Denied` and is left as-is — the caller genuinely lacks the cap; don't log them out. */
+async function requestError(res: Response): Promise<Error> {
+  if (res.status === 401 && sessionToken()) setSession(null);
+  return new Error(await errorText(res));
 }
 
 /** A 401 is an unauthenticated session; a 403 is the host's capability `Denied`. Surface the body. */

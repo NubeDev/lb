@@ -12,6 +12,7 @@
 mod routes;
 mod server;
 mod session;
+mod signing_key;
 mod state;
 
 pub use server::{router, serve};

@@ -58,15 +58,20 @@ pub struct Gateway {
 }
 
 impl Gateway {
-    /// Boot a gateway-role node with a freshly generated signing key and the real wall clock.
+    /// Boot a gateway-role node with the resolved signing key and the real wall clock.
     /// Production entry point (the `node` binary / `serve`).
     pub async fn boot() -> Result<Self, String> {
         let node = Node::boot_as(lb_host::Role::Hub)
             .await
             .map_err(|e| e.to_string())?;
+        // The signing key is PERSISTED beside a durable store (`LB_STORE_PATH`) so a browser session
+        // survives a node restart — a fresh-per-boot key silently 401'd every rehydrated token and
+        // read paths fell back to empty (e.g. the agent catalog showed "No agent definitions
+        // available" over a store that still held them). See `crate::signing_key`. An in-memory node
+        // still gets a fresh ephemeral key (nothing durable to pair it with).
         // Production reads the live wall clock per request (fixed_now = None) — never a value frozen
         // at boot. The wall-clock read lives in `Gateway::now`.
-        Ok(Self::new_live(Arc::new(node), SigningKey::generate()).with_pepper_from_env())
+        Ok(Self::new_live(Arc::new(node), crate::signing_key::resolve()).with_pepper_from_env())
     }
 
     /// The current unix-seconds clock: the injected fixed clock if a test pinned one, else a live
