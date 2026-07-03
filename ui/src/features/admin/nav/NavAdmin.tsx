@@ -59,6 +59,10 @@ export function NavAdmin({ ws, caps }: Props) {
   const [addExt, setAddExt] = useState("");
   const [addFacetKey, setAddFacetKey] = useState("");
   const [addLabel, setAddLabel] = useState("");
+  // reusable-pages: template-group binds ONE dashboard's parameter (`addVar`) per facet value; a plain
+  // `dashboard` entry can carry a pinned binding (`addPinned`, `name=value, …`) as a named instance.
+  const [addVar, setAddVar] = useState("");
+  const [addPinned, setAddPinned] = useState("");
 
   // Share form state.
   const [shareVis, setShareVis] = useState<Visibility>("private");
@@ -88,19 +92,45 @@ export function NavAdmin({ ws, caps }: Props) {
     }
   };
 
+  // Parse a `name=value, name2=value2` pinned-binding string into a `vars` record (reusable-pages).
+  const parsePinned = (raw: string): Record<string, string> => {
+    const out: Record<string, string> = {};
+    for (const pair of raw.split(",")) {
+      const [k, ...rest] = pair.split("=");
+      const name = k.trim();
+      const value = rest.join("=").trim();
+      if (name && value) out[name] = value;
+    }
+    return out;
+  };
+
   const addItem = () => {
     let it: NavItem | null = null;
     if (addKind === "surface") it = { kind: "surface", surface: addSurface, label: addLabel };
-    else if (addKind === "dashboard" && addDashboard)
+    else if (addKind === "dashboard" && addDashboard) {
+      // A plain dashboard entry, optionally carrying a pinned binding (a named page instance).
+      const vars = parsePinned(addPinned);
       it = { kind: "dashboard", dashboard: addDashboard, label: addLabel };
-    else if (addKind === "ext" && addExt) it = { kind: "ext", ext: addExt, label: addLabel };
+      if (Object.keys(vars).length) it.vars = vars;
+    } else if (addKind === "ext" && addExt) it = { kind: "ext", ext: addExt, label: addLabel };
     else if (addKind === "tag-group" && addFacetKey)
       it = { kind: "tag-group", label: addLabel || addFacetKey, facets: [{ key: addFacetKey }] };
+    else if (addKind === "template-group" && addDashboard && addVar && addFacetKey)
+      // reusable-pages: ONE dashboard fanned out per distinct value of `addFacetKey`, bound to `addVar`.
+      it = {
+        kind: "template-group",
+        label: addLabel || addFacetKey,
+        dashboard: addDashboard,
+        var: addVar,
+        facets: [{ key: addFacetKey }],
+      };
     else if (addKind === "group") it = { kind: "group", label: addLabel || "Group", items: [] };
     if (it) {
       setItems((cur) => [...cur, it!]);
       setAddLabel("");
       setAddFacetKey("");
+      setAddVar("");
+      setAddPinned("");
     }
   };
 
@@ -301,7 +331,10 @@ export function NavAdmin({ ws, caps }: Props) {
               <option value="surface">Surface</option>
               <option value="dashboard">Dashboard</option>
               <option value="ext">Extension</option>
-              <option value="tag-group">Tag group</option>
+              {/* Two dynamism mechanisms, named side by side (reusable-pages scope, "one mental model"):
+                  tag-group = MANY dashboards (by tag); template-group = ONE dashboard, many bindings. */}
+              <option value="tag-group">Dashboards by tag</option>
+              <option value="template-group">One dashboard per ⟨value⟩</option>
               <option value="group">Group</option>
             </Select>
 
@@ -320,19 +353,62 @@ export function NavAdmin({ ws, caps }: Props) {
               </Select>
             )}
             {addKind === "dashboard" && (
-              <Select
-                className="w-48"
-                aria-label="Dashboard"
-                value={addDashboard}
-                onChange={(e) => setAddDashboard(e.target.value)}
-              >
-                <option value="">Pick a dashboard</option>
-                {dashOptions.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </Select>
+              <>
+                <Select
+                  className="w-48"
+                  aria-label="Dashboard"
+                  value={addDashboard}
+                  onChange={(e) => setAddDashboard(e.target.value)}
+                >
+                  <option value="">Pick a dashboard</option>
+                  {dashOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </Select>
+                {/* reusable-pages: an optional pinned binding → a curated named instance in the menu. */}
+                <Input
+                  aria-label="Pinned vars"
+                  placeholder="Pin vars (site=plant-2)"
+                  className="w-44"
+                  value={addPinned}
+                  onChange={(e) => setAddPinned(e.target.value)}
+                />
+              </>
+            )}
+            {addKind === "template-group" && (
+              // reusable-pages: pick the TEMPLATE dashboard, the parameter it binds, and the facet key
+              // whose distinct values fan it out (one menu page per value, no dashboard copy).
+              <>
+                <Select
+                  className="w-48"
+                  aria-label="Template dashboard"
+                  value={addDashboard}
+                  onChange={(e) => setAddDashboard(e.target.value)}
+                >
+                  <option value="">Pick a template</option>
+                  {dashOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </Select>
+                <Input
+                  aria-label="Template parameter"
+                  placeholder="Parameter (e.g. site)"
+                  className="w-36"
+                  value={addVar}
+                  onChange={(e) => setAddVar(e.target.value)}
+                />
+                <Input
+                  aria-label="Fan-out facet key"
+                  placeholder="Facet key (e.g. site)"
+                  className="w-36"
+                  value={addFacetKey}
+                  onChange={(e) => setAddFacetKey(e.target.value)}
+                />
+              </>
             )}
             {addKind === "ext" && (
               <Select

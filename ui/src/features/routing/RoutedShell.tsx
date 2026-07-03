@@ -6,7 +6,7 @@ import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NavRail, useResolvedNav, type Surface } from "@/features/shell";
 import { useAppRoutingContext } from "./RoutingContextProvider";
-import { DEFAULT_CHANNEL } from "./search";
+import { DEFAULT_CHANNEL, defaultDashboardSearch, type DashboardSearch } from "./search";
 import { fullPathForSurface, surfaceForPath } from "./surface";
 
 function sidebarDefaultOpen() {
@@ -30,6 +30,16 @@ export function RoutedShell() {
     });
   };
 
+  // reusable-pages: navigate to a specific board, applying a pinned/template binding as `?var-<name>=…`
+  // (the nav link SETS the URL; after that the URL is the single source of truth — the shipped model).
+  const selectDashboard = (dashboard: string, vars?: Record<string, string>) => {
+    const id = dashboard.replace(/^dashboard:/, "");
+    // Seed the default range (from/to) so the board opens with a valid window; the binding sets `?var-`.
+    const search: DashboardSearch = { ...defaultDashboardSearch(), d: id };
+    for (const [name, value] of Object.entries(vars ?? {})) search[`var-${name}`] = value;
+    void navigate({ to: fullPathForSurface(ctx.workspace, "dashboards"), search });
+  };
+
   return (
     <SidebarProvider defaultOpen={sidebarDefaultOpen()} className="h-full bg-bg">
       <NavRail
@@ -39,6 +49,7 @@ export function RoutedShell() {
         allowed={ctx.allowed}
         extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
         resolvedItems={resolvedItems}
+        onSelectDashboard={selectDashboard}
       />
 
       <SidebarInset className="min-w-0 overflow-hidden">

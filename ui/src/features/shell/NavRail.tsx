@@ -72,12 +72,15 @@ export interface ExtSlot {
  *  tag-expanded and cap-stripped. A `group` carries nested `items` (one level). The rail renders this
  *  directly when a nav applies, falling back to the built-in `SURFACES` otherwise. */
 export interface ResolvedNavItem {
-  kind: "surface" | "dashboard" | "ext" | "tag-group" | "group";
+  kind: "surface" | "dashboard" | "ext" | "tag-group" | "template-group" | "group";
   label: string;
   surface?: string;
   dashboard?: string;
   ext?: string;
   items?: ResolvedNavItem[];
+  /** reusable-pages: a resolved variable binding the rail folds into the board link as
+   *  `?var-<name>=<value>` — a pinned `dashboard` instance, or a template-group child. */
+  vars?: Record<string, string>;
 }
 
 interface Props {
@@ -95,6 +98,9 @@ interface Props {
    *  fall back to `SURFACES.filter(allowed)` — never a blank rail. Route gates are untouched: the nav
    *  only *hides*, it does not *block* (a deep link to a permitted-but-unlisted page still works). */
   resolvedItems?: ResolvedNavItem[] | null;
+  /** reusable-pages: navigate to a specific board (`dashboard:{id}`), optionally applying a pinned/
+   *  template binding as `?var-<name>=<value>`. Falls back to the plain Dashboards surface when absent. */
+  onSelectDashboard?: (dashboard: string, vars?: Record<string, string>) => void;
 }
 
 const SURFACES: { key: CoreSurface; icon: typeof Hash; label: string }[] = [
@@ -130,6 +136,7 @@ export function NavRail({
   allowed,
   extSlots = [],
   resolvedItems = null,
+  onSelectDashboard,
 }: Props) {
   const item = (key: Surface, label: string, Icon: typeof Hash, onClick?: () => void) => {
     const selected = active === key;
@@ -164,13 +171,19 @@ export function NavRail({
       return item(key, it.label, Puzzle);
     }
     if (it.kind === "dashboard") {
-      // Deep-board links land on the Dashboards page (the board host); the label is the board's.
+      // Deep-board links land on the specific board, applying any pinned/template binding as `?var-`
+      // (reusable-pages) — falling back to the plain Dashboards surface when no deep-link handler.
+      const varKey = it.vars ? `:${JSON.stringify(it.vars)}` : "";
       return (
-        <SidebarMenuItem key={`dash:${keyHint}:${it.dashboard ?? it.label}`}>
+        <SidebarMenuItem key={`dash:${keyHint}:${it.dashboard ?? it.label}${varKey}`}>
           <SidebarMenuButton
             aria-label={it.label}
             tooltip={it.label}
-            onClick={() => onSelect("dashboards")}
+            onClick={() =>
+              it.dashboard && onSelectDashboard
+                ? onSelectDashboard(it.dashboard, it.vars)
+                : onSelect("dashboards")
+            }
           >
             <LayoutDashboard />
             <span>{it.label}</span>
