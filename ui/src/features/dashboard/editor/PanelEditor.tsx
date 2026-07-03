@@ -197,7 +197,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
               )}
               {tab === "transform" && <TransformTab state={state} patch={patch} />}
               {tab === "options" && <PanelOptionsTab state={stateC} patch={patch} ws={ws} />}
-              {tab === "field" && <FieldTab state={stateC} patch={patch} />}
+              {tab === "field" && <FieldTab state={stateC} patch={patch} search={search} />}
               {tab === "overrides" && <OverridesTab state={state} patch={patch} />}
             </div>
           </div>

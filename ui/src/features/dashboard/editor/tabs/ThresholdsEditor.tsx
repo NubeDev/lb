@@ -6,12 +6,11 @@
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import { ColorSwatchPicker } from "@/components/ui/color-swatch";
 import type { ThresholdsConfig } from "@/lib/dashboard";
 import { MAX_THRESHOLD_STEPS } from "../../fieldconfig/caps";
 import { resolveColor } from "../../fieldconfig/color";
-
-const COLORS = ["green", "yellow", "orange", "red", "blue", "purple"];
+import { COLOR_SWATCHES } from "../options/palette";
 
 interface Props {
   value: ThresholdsConfig | undefined;
@@ -42,6 +41,26 @@ export function ThresholdsEditor({ value, onChange }: Props) {
 
   return (
     <div className="grid gap-1.5" aria-label="thresholds editor">
+      {/* Absolute ⇄ percentage mode (the config field existed; the editor never exposed it). */}
+      <label className="flex items-center gap-2 text-xs text-muted">
+        Mode
+        <span className="inline-flex overflow-hidden rounded-md border border-border" role="group" aria-label="threshold mode">
+          {(["absolute", "percentage"] as const).map((m) => (
+            <Button
+              key={m}
+              type="button"
+              size="sm"
+              variant={cfg.mode === m ? "default" : "ghost"}
+              aria-label={`threshold mode ${m}`}
+              aria-pressed={cfg.mode === m}
+              className="h-6 rounded-none px-2 text-[11px]"
+              onClick={() => onChange({ ...cfg, mode: m })}
+            >
+              {m === "absolute" ? "Absolute" : "Percentage"}
+            </Button>
+          ))}
+        </span>
+      </label>
       {cfg.steps.map((step, idx) => (
         <div key={idx} className="flex items-center gap-1.5">
           <span
@@ -49,38 +68,36 @@ export function ThresholdsEditor({ value, onChange }: Props) {
             style={{ background: resolveColor(step.color) }}
             aria-hidden
           />
-          <Select
-            aria-label={`threshold ${idx} color`}
-            className="h-8 w-24"
-            value={step.color}
-            onChange={(e) => setStep(idx, { color: e.target.value })}
-          >
-            {COLORS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
           {idx === 0 ? (
-            <span className="text-xs text-muted">base (−∞)</span>
+            <span className="flex-1 text-xs text-muted">base (−∞)</span>
           ) : (
             <>
               <Input
                 aria-label={`threshold ${idx} value`}
                 type="number"
-                className="h-8 w-24 text-xs"
+                className="h-8 w-20 text-xs"
                 value={step.value ?? 0}
                 onChange={(e) => setStep(idx, { value: Number(e.target.value) })}
               />
-              <Button
-                variant="ghost"
-                aria-label={`remove threshold ${idx}`}
-                className="h-auto px-1.5 text-xs text-muted hover:text-red-500"
-                onClick={() => removeStep(idx)}
-              >
-                ×
-              </Button>
+              {cfg.mode === "percentage" && <span className="text-xs text-muted">%</span>}
             </>
+          )}
+          <ColorSwatchPicker
+            aria-label={`threshold ${idx} color`}
+            palette={COLOR_SWATCHES}
+            value={step.color}
+            onChange={(color) => setStep(idx, { color })}
+            allowCustom={false}
+          />
+          {idx !== 0 && (
+            <Button
+              variant="ghost"
+              aria-label={`remove threshold ${idx}`}
+              className="h-auto px-1.5 text-xs text-muted hover:text-red-500"
+              onClick={() => removeStep(idx)}
+            >
+              ×
+            </Button>
           )}
         </div>
       ))}

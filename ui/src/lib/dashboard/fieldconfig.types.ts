@@ -57,6 +57,15 @@ export interface FieldColor {
   seriesBy?: "last" | "min" | "max";
 }
 
+/** A field data link (Grafana's `DataLink`) — a titled URL shown on a value's context menu. `url` may
+ *  carry `${__value.text}`/`${__field.name}` style interpolation (rendered by the view layer); the
+ *  editor authors the title + url + open-in-new-tab flag verbatim so import stays a copy. */
+export interface DataLink {
+  title: string;
+  url: string;
+  targetBlank?: boolean;
+}
+
 /** The per-field option set — Grafana's `FieldConfig` defaults. The `custom` bag holds per-view draw
  *  fields (lineWidth/fillOpacity/drawStyle/axis…), owned by the chart-types layer. */
 export interface FieldOptions {
@@ -83,6 +92,8 @@ export interface FieldOptions {
   mappings?: ValueMapping[];
   thresholds?: ThresholdsConfig;
   color?: FieldColor;
+  /** Field data links (Grafana's `links`). Authored in the Field tab / as an override property. */
+  links?: DataLink[];
   /** Per-view field options (lineWidth, fillOpacity, drawStyle, axisPlacement…). Grafana's
    *  `fieldConfig.custom`; the chart-types layer owns the per-view schema. */
   custom?: Record<string, unknown>;

@@ -136,7 +136,10 @@ describe("DashboardView (real gateway)", () => {
     await screen.findByRole("option", { name: "cooler.temp" });
     await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
     await user.click(screen.getByLabelText("Field"));
-    await user.selectOptions(await screen.findByLabelText("field unit"), "celsius");
+    // The unit picker is now the searchable Combobox (editor-parity step 2): open it, filter, pick.
+    await user.click(await screen.findByRole("combobox", { name: "field unit" }));
+    await user.type(screen.getByLabelText("field unit search"), "celsius");
+    await user.click(screen.getByRole("option", { name: /celsius/i }));
     await user.click(screen.getByLabelText("save panel"));
 
     await screen.findByLabelText("cell w1");

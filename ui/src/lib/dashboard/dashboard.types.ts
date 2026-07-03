@@ -16,6 +16,7 @@ export type {
   ThresholdsConfig,
   FieldColor,
   FieldColorModeId,
+  DataLink,
 } from "./fieldconfig.types";
 
 /** The Phase-1 built-in widget types (v1). v2's render vocabulary is {@link View}. */
