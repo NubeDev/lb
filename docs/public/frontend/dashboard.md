@@ -553,6 +553,32 @@ results** — real titled X/Y axes, gridlines, a themed tooltip, a legend, and a
   gated by the channel `sub` cap) and is merged over the host's auto-pick. The canonical worker-authored
   result stays immutable — two viewers can plot it differently.
 
+## Read cache & call de-duplication
+
+Dashboard **reads** run through one `@tanstack/react-query` cache scoped to the visit
+(`ui/src/features/dashboard/cache/`). A `DashboardCacheProvider` — mounted by `DashboardView` (and by the
+channel `ResponseView`, which reuses the panel renderer) — mints a per-visit `QueryClient` and puts the
+current `ws` in context; leaving the route drops the cache ("cache while here, clear on leave"). Every key
+is **ws-prefixed** (no cross-workspace bleed; the host still re-derives the ws from the token) and
+**canonicalised** (an unrelated edit doesn't re-key).
+
+- **`viz.query`** — keyed on the resolved spec `{sources, transformations, fieldConfig, source, scope, tick}`,
+  NOT the whole panel. The editor's probe/preview/plot consumers share one entry → one round-trip; a
+  title/layout/option edit no longer refetches. The 200ms debounce is on the key input (one, not per-consumer).
+- **Source picker + `datasource.list`** — one `["source-picker", ws]` bundle shared by the page and editor;
+  `datasource.list` routes through one `["datasource.list", ws]` key (bundle + Query-tab dropdown share it).
+  The package stays framework-light — a pure `loadSourcePicker(loaders)` in `@nube/source-picker` does the
+  assembly; only the shell adapter wraps it in `useQuery`.
+- **`flows.node_state`** — one whole-flow read per `(ws, flow, tick)`; N cells on one flow slice their own
+  node/port client-side. **`series.read`** backfill is cached per binding; the live SSE tail stays outside
+  the cache (state vs motion). Writes and streams are unchanged — this is a read-side layer only.
+
+The de-dup, workspace-isolation, and deny behaviour is proven against the real gateway in
+`cache/queryCache.gateway.test.tsx` (call counts instrumented on the `invoke` seam). SSE
+subscriber-sharing is a deferred follow-up. Scope:
+[`../../scope/frontend/dashboard-query-cache-scope.md`](../../scope/frontend/dashboard-query-cache-scope.md);
+session: [`../../sessions/frontend/dashboard-query-cache-session.md`](../../sessions/frontend/dashboard-query-cache-session.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

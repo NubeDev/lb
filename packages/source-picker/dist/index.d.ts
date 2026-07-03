@@ -7,6 +7,10 @@ export declare interface Action {
     argsTemplate?: Record<string, unknown>;
 }
 
+/** The builder's group list — the read groups plus the `action` (write control) group, ordered as the
+ *  widget builder shows them (action before widget). A host authoring controls uses this. */
+export declare const BUILDER_SOURCE_GROUPS: SourceGroup[];
+
 /** Assemble the whole picker from loader results. Series/live from `series`; extension + widget from
  *  `extensions`; flows from `flows`+`descriptors`; the SQL entry is always offered (the host's parse
  *  gate + ws wall make it safe regardless of which tables exist). Datasources are the DROPDOWN roster
@@ -84,6 +88,20 @@ export declare interface NodeDescriptor {
     outputs?: string[];
 }
 
+/** One `<optgroup>` for a source group, empty-tolerant (no section when it has no entries). Exported so a
+ *  host that renders its own `<select>` (shadcn `Select`, a `FIELD`-classed native select) still uses the
+ *  ONE grouping/labelling implementation — the `<optgroup>` carries no styling, so it drops into any select. */
+export declare function PickerGroup({ entries, group, label, }: {
+    entries: SourceEntry[];
+    group: SourceEntry["group"];
+    label: string;
+}): JSX_2.Element | null;
+
+/** The read/source groups, in display order, with their section labels. `action` is omitted (write
+ *  controls are a separate authoring intent); a host that wants them passes its own list (see
+ *  `BUILDER_SOURCE_GROUPS`). Exported so every consumer renders ONE canonical label set. */
+export declare const READ_SOURCE_GROUPS: SourceGroup[];
+
 /** Fold a chosen entry into a `SourceSelection` (drop the labelling fields; keep what the host stores). */
 export declare function selectionOf(entry: SourceEntry): {
     id: string;
@@ -122,6 +140,12 @@ export declare interface SourceEntry {
     /** True if the entry's tool writes (drives the Action group + write-capable views). */
     writes: boolean;
 }
+
+/** One entry in a picker's group list: which source `group` to render and its section label. */
+export declare type SourceGroup = {
+    group: SourceEntry["group"];
+    label: string;
+};
 
 /** Inputs to `buildSourceEntries` — the loader results, each optional (absent → that group is absent). */
 export declare interface SourceInputs {

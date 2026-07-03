@@ -1,6 +1,7 @@
 # Frontend scope — dashboard query cache & call de-duplication
 
-Status: scope (the ask). Promotes to `public/frontend/dashboard.md` once shipped.
+Status: **shipped** (see `public/frontend/dashboard.md` → "Read cache & call de-duplication";
+session `sessions/frontend/dashboard-query-cache-session.md`). Open questions resolved below.
 
 The dashboard fires far too many gateway/MCP calls. Every data hook is a hand-rolled
 `useEffect` + `invoke("mcp_call", …)` with its own private `useState` — there is **no

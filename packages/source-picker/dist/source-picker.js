@@ -1,5 +1,5 @@
-import { useState as g, useRef as $, useEffect as m } from "react";
-import { jsx as a, jsxs as b } from "react/jsx-runtime";
+import { useState as w, useRef as b, useEffect as $ } from "react";
+import { jsx as a, jsxs as m } from "react/jsx-runtime";
 function h(e) {
   return e.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
@@ -71,7 +71,7 @@ function y(e) {
       }
   return o;
 }
-function q(e, o) {
+function _(e, o) {
   const s = new Map(o.map((t) => [t.type, t])), r = [];
   for (const t of e)
     for (const l of t.nodes ?? []) {
@@ -103,74 +103,81 @@ function q(e, o) {
     }
   return r;
 }
-const _ = "sql:query";
+const q = "sql:query";
 function D() {
   return {
-    id: _,
+    id: q,
     group: "sql",
     label: "SQL query (direct SurrealDB)",
     source: { tool: "store.query", args: { sql: "" } },
     writes: !1
   };
 }
-function F(e) {
+function R(e) {
   return [
     ...S(e.series ?? []),
     ...E(e.series ?? []),
     ...P(e.extensions ?? []),
     ...y(e.extensions ?? []),
-    ...q(e.flows ?? [], e.descriptors ?? []),
+    ..._(e.flows ?? [], e.descriptors ?? []),
     D()
   ];
 }
 function L(e) {
   return { id: e.id, source: e.source, action: e.action, viewKey: e.viewKey };
 }
-async function k(e) {
-  var n, u, f, p, w;
+async function O(e) {
+  var n, u, f, p, g;
   const [o, s, r, t, l] = await Promise.all([
     ((n = e.listSeries) == null ? void 0 : n.call(e).catch(() => [])) ?? Promise.resolve([]),
     ((u = e.listExtensions) == null ? void 0 : u.call(e).catch(() => [])) ?? Promise.resolve([]),
     ((f = e.listFlows) == null ? void 0 : f.call(e).catch(() => [])) ?? Promise.resolve([]),
     ((p = e.listFlowNodes) == null ? void 0 : p.call(e).catch(() => [])) ?? Promise.resolve([]),
-    ((w = e.listDatasources) == null ? void 0 : w.call(e).catch(() => [])) ?? Promise.resolve([])
+    ((g = e.listDatasources) == null ? void 0 : g.call(e).catch(() => [])) ?? Promise.resolve([])
   ]), c = e.getFlow, i = c ? (await Promise.all(r.map((d) => c(d.id).catch(() => null)))).filter((d) => d != null) : [];
   return {
-    entries: F({ series: o, extensions: s, flows: i, descriptors: t }),
+    entries: R({ series: o, extensions: s, flows: i, descriptors: t }),
     installed: s
   };
 }
-function j(e, o) {
-  const [s, r] = g({
+function F(e, o) {
+  const [s, r] = w({
     entries: [],
     installed: [],
     loading: !0
-  }), t = $(e);
-  return t.current = e, m(() => {
+  }), t = b(e);
+  return t.current = e, $(() => {
     const l = t.current;
     let c = !1;
     return r((i) => ({ ...i, loading: !0 })), (async () => {
-      const { entries: i, installed: n } = await k(l);
+      const { entries: i, installed: n } = await O(l);
       c || r({ entries: i, installed: n, loading: !1 });
     })(), () => {
       c = !0;
     };
   }, [o]), s;
 }
-const T = [
+const I = [
   { group: "series", label: "Series" },
   { group: "live", label: "Live (Zenoh)" },
   { group: "sql", label: "Direct SurrealDB" },
   { group: "extension", label: "Installed extension" },
   { group: "widget", label: "Extension widgets" },
   { group: "flows", label: "Flows" }
+], B = [
+  { group: "series", label: "Series" },
+  { group: "live", label: "Live (Zenoh)" },
+  { group: "sql", label: "Direct SurrealDB" },
+  { group: "extension", label: "Installed extension" },
+  { group: "action", label: "Action (control)" },
+  { group: "widget", label: "Extension widgets" }
 ];
-function C({
+function T({
   entries: e,
   value: o = "",
   onSelect: s,
   loading: r = !1,
-  groups: t = T,
+  groups: t = I,
   "aria-label": l = "source",
   className: c
 }) {
@@ -178,7 +185,7 @@ function C({
     const u = e.find((f) => f.id === n) ?? null;
     s(u ? L(u) : null);
   };
-  return /* @__PURE__ */ a("label", { className: `sp-root${c ? ` ${c}` : ""}`, children: /* @__PURE__ */ b(
+  return /* @__PURE__ */ a("label", { className: `sp-root${c ? ` ${c}` : ""}`, children: /* @__PURE__ */ m(
     "select",
     {
       className: "sp-select",
@@ -187,12 +194,12 @@ function C({
       onChange: (n) => i(n.target.value),
       children: [
         /* @__PURE__ */ a("option", { value: "", children: r ? "loading sources…" : "— pick a source —" }),
-        t.map(({ group: n, label: u }) => /* @__PURE__ */ a(I, { entries: e, group: n, label: u }, n))
+        t.map(({ group: n, label: u }) => /* @__PURE__ */ a(U, { entries: e, group: n, label: u }, n))
       ]
     }
   ) });
 }
-function I({
+function U({
   entries: e,
   group: o,
   label: s
@@ -201,17 +208,20 @@ function I({
   return r.length === 0 ? null : /* @__PURE__ */ a("optgroup", { label: s, children: r.map((t) => /* @__PURE__ */ a("option", { value: t.id, children: t.label }, t.id)) });
 }
 export {
-  _ as SQL_SOURCE_ID,
-  C as SourcePicker,
-  F as buildSourceEntries,
+  B as BUILDER_SOURCE_GROUPS,
+  U as PickerGroup,
+  I as READ_SOURCE_GROUPS,
+  q as SQL_SOURCE_ID,
+  T as SourcePicker,
+  R as buildSourceEntries,
   y as extWidgetEntries,
   P as extensionEntries,
-  q as flowsEntries,
+  _ as flowsEntries,
   E as liveEntries,
-  k as loadSourcePicker,
+  O as loadSourcePicker,
   L as selectionOf,
   S as seriesEntries,
   D as sqlSourceEntry,
-  j as useSourcePicker,
+  F as useSourcePicker,
   h as widgetIdOf
 };

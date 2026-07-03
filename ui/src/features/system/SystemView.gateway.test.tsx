@@ -14,7 +14,6 @@ import userEvent from "@testing-library/user-event";
 import { SystemView } from "./SystemView";
 import { writeSample } from "@/lib/ingest/ingest.api";
 import { useRealGateway, signInReal, seedOutbox } from "@/test/gateway-session";
-import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
 const nextWs = () => `system-${n++}`;
@@ -143,7 +142,7 @@ describe("SystemView (real gateway)", () => {
     const ws = nextWs();
     await signInReal("user:root", ws);
 
-    render(<WithDashboardCache ws={ws}><SystemView ws={ws} /></WithDashboardCache>);
+    render(<SystemView ws={ws} />);
 
     // The bus card has no owning page → clicking it opens the in-place detail sheet (not a navigation).
     await user.click(await screen.findByLabelText("subsystem bus"));

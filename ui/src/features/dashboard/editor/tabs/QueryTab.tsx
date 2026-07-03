@@ -18,7 +18,7 @@ import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
 import { useSourcePicker } from "../../builder/useSourcePicker";
 import { seedEntryId } from "../../builder/WidgetBuilder";
-import { SQL_SOURCE_ID, PickerGroup, READ_SOURCE_GROUPS } from "../../builder/sourcePicker";
+import { SQL_SOURCE_ID, PickerGroup, READ_SOURCE_GROUPS, type SourceEntry } from "../../builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "../../builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
 import { FlowsQuerySection } from "./FlowsQuerySection";
@@ -182,13 +182,13 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
             onChange={(e) => selectEntry(e.target.value)}
           >
             <option value="">{loading ? "loading sources…" : "— pick a source —"}</option>
-            <PickerGroup entries={entries} group="series" label="Series" />
-            <PickerGroup entries={entries} group="live" label="Live (Zenoh)" />
-            <PickerGroup entries={entries} group="sql" label="Direct SurrealDB" />
-            <PickerGroup entries={entries} group="extension" label="Installed extension" />
-            {/* The finished packaged tiles (`[[widget]]`) — restored here (finding 7). Selecting one makes
-                a `view:"ext:<id>/<widget>"` cell that owns its own render + data (no view chooser). */}
-            <PickerGroup entries={entries} group="widget" label="Extension widgets" />
+            {/* The read groups minus `flows` — Flows has its own `FlowsQuerySection` above (node→port
+                shaping), and this read-only tab shows no `action` control group. The packaged `[[widget]]`
+                tiles ride in as the "Extension widgets" group: selecting one makes a `view:"ext:<id>/<widget>"`
+                cell that owns its own render + data (finding 7). Labels come from the package's ONE list. */}
+            {READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows").map(({ group, label }) => (
+              <PickerGroup key={group} entries={entries} group={group} label={label} />
+            ))}
           </Select>
         </label>
       )}
@@ -294,16 +294,3 @@ function optionValue(o: DatasourceOption): string {
   return o.type === "federation" ? `federation:${o.name}` : o.type;
 }
 
-function PickerGroup({ entries, group, label }: { entries: SourceEntry[]; group: SourceEntry["group"]; label: string }) {
-  const items = entries.filter((e) => e.group === group);
-  if (items.length === 0) return null;
-  return (
-    <optgroup label={label}>
-      {items.map((e) => (
-        <option key={e.id} value={e.id}>
-          {e.label}
-        </option>
-      ))}
-    </optgroup>
-  );
-}

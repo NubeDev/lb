@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Variable, VariableType } from "@/lib/vars";
 import { useSourcePicker } from "../builder/useSourcePicker";
-import type { SourceEntry } from "../builder/sourcePicker";
+import { PickerGroup, READ_SOURCE_GROUPS, type SourceEntry } from "../builder/sourcePicker";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
@@ -142,6 +142,9 @@ function VariableRow({
   onMoveDown: () => void;
 }) {
   const isQuery = variable.type === "query" || variable.type === "source";
+  // Only READ sources can resolve a variable: source-bearing, non-write entries (excludes flow input
+  // ports + the action group). Grouped for display by the package's canonical group list below.
+  const queryEntries = entries.filter((e) => e.source && !e.writes);
   // The current query entry id (match the picker entry whose source.tool/args equals the variable's).
   const selectedEntryId =
     entries.find(
@@ -208,13 +211,17 @@ function VariableRow({
             }}
           >
             <option value="">— pick a source —</option>
-            {entries
-              .filter((e) => e.source && !e.writes)
-              .map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.label}
-                </option>
-              ))}
+            {/* A variable resolver must be a READ source — pre-filter to source-bearing, non-write entries
+                (drops flow INPUT ports, which write and have no source), then group by the package's ONE
+                label list so the grouping/labelling matches the widget builder + Query tab exactly. */}
+            {READ_SOURCE_GROUPS.map(({ group, label }) => (
+              <PickerGroup
+                key={group}
+                entries={queryEntries}
+                group={group}
+                label={label}
+              />
+            ))}
           </select>
         )}
         {variable.type === "custom" && (
