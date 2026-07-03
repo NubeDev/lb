@@ -19,25 +19,27 @@ export type TransformId =
   | "merge"
   | "seriesToRows";
 
-/** One catalog entry — the id + a human label for the "Add transformation" dropdown. */
+/** One catalog entry — the id + a human label + a one-line description for the searchable add picker. */
 export interface TransformDef {
   id: TransformId;
   label: string;
+  description: string;
 }
 
-/** The catalog, in dropdown order. */
+/** The catalog, in dropdown order. Descriptions mirror Grafana's one-liners so the searchable picker
+ *  reads like the real thing. */
 export const TRANSFORM_DEFS: TransformDef[] = [
-  { id: "reduce", label: "Reduce" },
-  { id: "organize", label: "Organize fields" },
-  { id: "filterFieldsByName", label: "Filter fields by name" },
-  { id: "filterByValue", label: "Filter data by values" },
-  { id: "groupBy", label: "Group by" },
-  { id: "joinByField", label: "Join by field" },
-  { id: "calculateField", label: "Add field from calculation" },
-  { id: "sortBy", label: "Sort by" },
-  { id: "limit", label: "Limit" },
-  { id: "merge", label: "Merge series/tables" },
-  { id: "seriesToRows", label: "Series to rows" },
+  { id: "reduce", label: "Reduce", description: "Reduce all rows to a single value per field" },
+  { id: "organize", label: "Organize fields", description: "Reorder, hide, and rename fields" },
+  { id: "filterFieldsByName", label: "Filter fields by name", description: "Keep only fields matching a name or regex" },
+  { id: "filterByValue", label: "Filter data by values", description: "Keep rows whose field values match conditions" },
+  { id: "groupBy", label: "Group by", description: "Group rows and aggregate each group" },
+  { id: "joinByField", label: "Join by field", description: "Join frames on a shared field" },
+  { id: "calculateField", label: "Add field from calculation", description: "Derive a new field from a formula" },
+  { id: "sortBy", label: "Sort by", description: "Sort rows by a field" },
+  { id: "limit", label: "Limit", description: "Keep the first N rows" },
+  { id: "merge", label: "Merge series/tables", description: "Merge multiple frames into one" },
+  { id: "seriesToRows", label: "Series to rows", description: "Turn multiple series into labelled rows" },
 ];
 
 /** A human label for an id (falls back to the id for an unknown/imported one). */
