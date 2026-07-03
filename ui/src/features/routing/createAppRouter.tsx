@@ -103,6 +103,12 @@ const datasourceDetailRoute = createRoute({
   component: DatasourceDetailRoute,
 });
 
+const flowDetailRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/flows/$id",
+  component: FlowDetailRoute,
+});
+
 const extRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/ext/$id",
@@ -125,6 +131,7 @@ const routeTree = rootRoute.addChildren([
     dashboardsRoute,
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/flows", "flows", () => <Flows />),
+    flowDetailRoute,
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
     coreRoute("/reminders", "reminders", () => <Reminders />),
@@ -253,8 +260,38 @@ function Rules() {
   return <RulesView ws={useAppRoutingContext().workspace} />;
 }
 
+// Drives the flows surface with the open flow reflected in the URL: `/flows` (none open) and
+// `/flows/$id` (that flow open) render the same view; selecting/creating/deleting navigates between
+// them so deep links and back/forward work. Cap gate is inherited from the parent (CoreGate wraps
+// the bare `/flows`; the detail route re-checks below since it isn't wrapped).
+function FlowsSurface({ flowId }: { flowId: string | null }) {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  return (
+    <FlowsView
+      ws={ctx.workspace}
+      flowId={flowId}
+      onSelectFlow={(id) =>
+        void navigate({
+          to: id
+            ? `/t/${encodeURIComponent(ctx.workspace)}/flows/${encodeURIComponent(id)}`
+            : `/t/${encodeURIComponent(ctx.workspace)}/flows`,
+          replace: true,
+        })
+      }
+    />
+  );
+}
+
 function Flows() {
-  return <FlowsView ws={useAppRoutingContext().workspace} />;
+  return <FlowsSurface flowId={null} />;
+}
+
+function FlowDetailRoute() {
+  const ctx = useAppRoutingContext();
+  const { id } = flowDetailRoute.useParams();
+  if (!ctx.allowed.includes("flows")) return <DefaultRedirect />;
+  return <FlowsSurface flowId={decodeURIComponent(id)} />;
 }
 
 function Reminders() {

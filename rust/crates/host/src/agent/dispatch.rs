@@ -94,23 +94,30 @@ pub async fn invoke_via_runtime(
         None
     };
 
-    // Bake substrate into the goal for the DEFAULT (in-house) runtime only — behaviourally identical
-    // to `invoke`. The S4 gates (membership/ownership/grant) fire under the caller (see substrate.rs).
-    // The persona rides this SAME grant-gated `load_skill` loader (core-skills scope: "unify
-    // persona_skill onto the loader path" — a pinned catalog entry, one loader not two).
+    // Bake the EXPLICITLY-REQUESTED substrate (a `skill`/`doc` the CALLER named on the invoke) into the
+    // goal for BOTH runtimes. An explicit `substrate.skill` is a caller directive, not the model's own
+    // menu choice: the AI-widget builder invokes with `skill:core.genui-widget` precisely so the run
+    // authors OpenUI-Lang against the catalog — it must NOT be left to the agent to (maybe) self-load.
+    // An external agent cannot call the loop-internal `skill.activate`, and a general coding agent
+    // (Open Interpreter) that only sees the one-line catalog description ignores the contract entirely
+    // and answers with prose → an empty-components IR the host rejects ("IR has no components"). So the
+    // body must reach its goal directly, exactly as the in-house loop bakes it. The S4 gates
+    // (membership/ownership/grant) fire under the caller (see substrate.rs), so this is not a widening:
+    // an ungranted/unreadable skill/doc still fails the read here, identically for either runtime.
     let mut goal = goal.to_string();
-    if runtime.id() == DEFAULT_RUNTIME {
-        if let Some(skill_id) = substrate.skill {
-            let body = load_substrate_skill(&node.store, caller, agent_caps, ws, skill_id).await?;
-            goal = format!("{goal}\n\n[skill {skill_id}]\n{body}");
-        }
-        if let Some(doc_id) = substrate.doc {
-            let content = read_substrate_doc(&node.store, caller, agent_caps, ws, doc_id).await?;
-            goal = format!("{goal}\n\n[doc {doc_id}]\n{content}");
-        }
-        // The in-house loop injects its OWN granted-skills catalog once per run (run.rs — it can
-        // `skill.activate` mid-run), so we do NOT inject it here for the default runtime.
-    } else {
+    if let Some(skill_id) = substrate.skill {
+        let body = load_substrate_skill(&node.store, caller, agent_caps, ws, skill_id).await?;
+        goal = format!("{goal}\n\n[skill {skill_id}]\n{body}");
+    }
+    if let Some(doc_id) = substrate.doc {
+        let content = read_substrate_doc(&node.store, caller, agent_caps, ws, doc_id).await?;
+        goal = format!("{goal}\n\n[doc {doc_id}]\n{content}");
+    }
+
+    // The GRANTED-SKILL CATALOG (the model's own menu, name+description only) differs by runtime:
+    // the in-house loop injects its own once per run (run.rs — it can `skill.activate` mid-run), so we
+    // do NOT inject it here for the default runtime; an external runtime gets it folded into the goal.
+    if runtime.id() != DEFAULT_RUNTIME {
         // EXTERNAL runtime catalog injection (core-skills scope: "both runtimes list granted skills
         // … and inject name+description only"). An external agent's only injection channel is the
         // goal (it drives `ctx.goal` verbatim over `exec --json`), and it cannot call the

@@ -48,4 +48,13 @@ export const EXAMPLES: RuleExample[] = [
     summary: "Query a registered external datasource by name (needs a datasource registered first).",
     body: 'query("timescale", "SELECT point, value FROM readings ORDER BY ts DESC LIMIT 100")',
   },
+  {
+    id: "ai-over-query",
+    title: "Ask AI about a query",
+    summary: "Query an external datasource, then hand the rows to the workspace model to answer in words.",
+    body: [
+      'let sites = query("timescale", "SELECT * from site");',
+      'ai.complete("how many sites are there", sites)',
+    ].join("\n"),
+  },
 ];

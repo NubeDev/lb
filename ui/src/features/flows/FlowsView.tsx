@@ -7,7 +7,7 @@
 // `<AppPageHeader>`-led `<section>` with the roster aside + the canvas body, the same shape as the
 // dashboard page so the two read as one app.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Workflow } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
@@ -20,6 +20,10 @@ import { useFlows } from "./useFlows";
 
 export interface FlowsViewProps {
   ws: string;
+  /** The flow id from the URL (`/flows/$id`), or null on the bare `/flows` surface. */
+  flowId?: string | null;
+  /** Sync the URL when the open flow changes (open/new/delete). */
+  onSelectFlow?: (id: string | null) => void;
 }
 
 /** A fresh blank flow seeded with one trigger node (the entry point every flow needs). */
@@ -34,14 +38,40 @@ function blankFlow(): Flow {
   };
 }
 
-export function FlowsView({ ws }: FlowsViewProps) {
+export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
   const { roster, open, palette, error, load, save, remove, setOpen } = useFlows(ws);
   const [draftId, setDraftId] = useState(0); // bump to force a fresh canvas on "new"
 
+  // Deep-link: open the flow named in the URL. Runs when the id changes (paste/back/forward) but not
+  // for a blank draft (no id in the URL) or when that flow is already open — the load re-fetches.
+  useEffect(() => {
+    if (flowId && open?.id !== flowId) void load(flowId);
+    if (!flowId && open) setOpen(null);
+    // `open` is intentionally omitted: reacting to it would re-close on every open. Only the URL drives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flowId, load, setOpen]);
+
+  const onOpen = useCallback(
+    (id: string) => {
+      onSelectFlow?.(id);
+      void load(id);
+    },
+    [onSelectFlow, load],
+  );
+
   const onNew = useCallback(() => {
+    onSelectFlow?.(null);
     setOpen(blankFlow());
     setDraftId((n) => n + 1);
-  }, [setOpen]);
+  }, [onSelectFlow, setOpen]);
+
+  const onRemove = useCallback(
+    async (id: string) => {
+      await remove(id);
+      if (open?.id === id) onSelectFlow?.(null);
+    },
+    [remove, open, onSelectFlow],
+  );
 
   return (
     <AppPage
@@ -62,8 +92,8 @@ export function FlowsView({ ws }: FlowsViewProps) {
       <FlowRail
         roster={roster}
         openId={open?.id ?? null}
-        onOpen={load}
-        onDelete={remove}
+        onOpen={onOpen}
+        onDelete={onRemove}
         onNew={onNew}
       />
       {open ? (
@@ -71,8 +101,15 @@ export function FlowsView({ ws }: FlowsViewProps) {
           key={`${open.id}-${draftId}`}
           flow={open}
           palette={palette}
-          onSave={save}
-          onDeleted={() => setOpen(null)}
+          onSave={async (flow) => {
+            const res = await save(flow);
+            if (res.ok) onSelectFlow?.(flow.id); // a saved draft now has a real, linkable id
+            return res;
+          }}
+          onDeleted={() => {
+            setOpen(null);
+            onSelectFlow?.(null);
+          }}
         />
       ) : (
         <AppEmptyState
