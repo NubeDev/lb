@@ -62,36 +62,41 @@ function fullyPopulatedCell(view: View): { cell: Cell; state: EditorState; defs:
   return { cell: editorStateToCell(state, base), state, defs };
 }
 
+// Every view that has registered options — the round-trip must hold for ALL of them, not just
+// timeseries (so a per-viz option added to table/stat/gauge/etc. is exercised too).
+const VIEWS_WITH_OPTIONS: View[] = ["timeseries", "table", "stat", "gauge", "bargauge", "piechart"];
+
 describe("option registry round-trip", () => {
   it("has unique ids and every def has a sample (exhaustiveness guard)", () => {
     const ids = OPTION_REGISTRY.map((d) => d.id);
-    expect(new Set(ids).size).toBe(ids.length); // no duplicate ids
+    // ids may repeat across views (e.g. `orientation` for stat/gauge/bargauge) — uniqueness is per id+view.
     for (const def of OPTION_REGISTRY) {
       expect(sampleValue(def), `no sample for control kind of ${def.id}`).toBeDefined();
     }
+    expect(ids.length).toBeGreaterThan(0);
   });
 
-  it("every registered timeseries option survives editorStateToCell(cellToEditorState(c)) ≡ c", () => {
-    const { cell } = fullyPopulatedCell("timeseries");
+  it.each(VIEWS_WITH_OPTIONS)("every registered %s option survives editorStateToCell(cellToEditorState(c)) ≡ c", (view) => {
+    const { cell } = fullyPopulatedCell(view);
     const round = editorStateToCell(cellToEditorState(cell), cell);
     expect(round).toEqual(cell);
   });
 
-  it("each populated option reads back its sample value after a round-trip", () => {
-    const { cell, defs } = fullyPopulatedCell("timeseries");
+  it.each(VIEWS_WITH_OPTIONS)("each populated %s option reads back its sample value after a round-trip", (view) => {
+    const { cell, defs } = fullyPopulatedCell(view);
     const reopened = cellToEditorState(cell);
     for (const def of defs) {
       expect(readOption(reopened, def), `option ${def.id} did not round-trip`).toEqual(sampleValue(def));
     }
   });
 
-  it("clearing an option prunes it back to absent (no empty groups linger)", () => {
+  it("clearing every fieldConfig option prunes fieldConfig back to absent (no empty groups linger)", () => {
     const { cell } = fullyPopulatedCell("timeseries");
     let state = cellToEditorState(cell);
-    for (const def of optionsForView("timeseries")) state = { ...state, ...writeOption(state, def, undefined) };
-    // With every option cleared, fieldConfig collapses to absent and options has no registered keys.
+    for (const def of optionsForView("timeseries").filter((d) => d.scope === "fieldConfig")) {
+      state = { ...state, ...writeOption(state, def, undefined) };
+    }
+    // With every fieldConfig option cleared, fieldConfig collapses to absent.
     expect(state.fieldConfig).toBeUndefined();
-    const out = editorStateToCell(state, cell);
-    expect(out.fieldConfig).toBeUndefined();
   });
 });

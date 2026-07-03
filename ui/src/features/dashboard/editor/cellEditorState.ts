@@ -115,6 +115,7 @@ const OWNED_OPTION_KEYS = new Set([
   "cellHeight",
   "enablePagination",
   "sortBy",
+  "footer",
 ]);
 
 /** Rebuild the full editor state from a cell. ADD passes `defaultCell(view)`; EDIT passes the saved

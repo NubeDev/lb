@@ -8,9 +8,18 @@ import type { View } from "@/lib/dashboard";
 import type { OptionDef } from "./types";
 import { STANDARD_OPTIONS } from "./defs/standard";
 import { TIMESERIES_GRAPH_OPTIONS } from "./defs/timeseriesGraph";
+import { TIMESERIES_VIZ_OPTIONS } from "./defs/timeseriesViz";
+import { TABLE_OPTIONS } from "./defs/table";
+import { SINGLE_STAT_OPTIONS } from "./defs/singleStat";
 
 /** Every registered option, in tab/display order (standard first, then per-viz groups). */
-export const OPTION_REGISTRY: OptionDef[] = [...STANDARD_OPTIONS, ...TIMESERIES_GRAPH_OPTIONS];
+export const OPTION_REGISTRY: OptionDef[] = [
+  ...STANDARD_OPTIONS,
+  ...TIMESERIES_GRAPH_OPTIONS,
+  ...TIMESERIES_VIZ_OPTIONS,
+  ...TABLE_OPTIONS,
+  ...SINGLE_STAT_OPTIONS,
+];
 
 /** The storage path for an option (its explicit `path` or, by default, its `id`). */
 export function optionPath(def: OptionDef): string {

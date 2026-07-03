@@ -1,11 +1,11 @@
-// The `piechart` per-viz options editor (viz panel-editor scope). Edits the typed `PieChartOptions` —
-// reduceOptions + pieType + displayLabels + legend show. One responsibility: edit a piechart cell's
-// `options`.
+// The `piechart` per-viz options editor — registry-driven (editor-parity step 5): pieType + legend show
+// from the registry; displayLabels (a `PieChartLabel[]` array, not a scalar) keeps its bespoke
+// multi-toggle; reduceOptions calc as a bespoke extra. One responsibility: compose the pie per-viz opts.
 
 import { Button } from "@/components/ui/button";
 import type { EditorState } from "../../cellEditorState";
-import { readPieChartOptions, type PieChartType, type PieChartLabel } from "../../../views/piechart/options";
-import { SelectField, ToggleField } from "./controls";
+import { readPieChartOptions, type PieChartLabel } from "../../../views/piechart/options";
+import { VizOptions } from "./VizOptions";
 import { ReduceOptionsEditor } from "./ReduceOptionsEditor";
 
 const LABELS: PieChartLabel[] = ["name", "value", "percent"];
@@ -17,39 +17,34 @@ export function PieChartOptionsEditor({ state, patch }: { state: EditorState; pa
     const has = o.displayLabels.includes(l);
     set({ displayLabels: has ? o.displayLabels.filter((x) => x !== l) : [...o.displayLabels, l] });
   };
-
   return (
-    <div className="grid gap-3 py-3 text-xs" aria-label="panel options tab">
-      <ReduceOptionsEditor value={o.reduceOptions} onChange={(reduceOptions) => set({ reduceOptions })} />
-      <SelectField<PieChartType>
-        label="Pie type"
-        value={o.pieType}
-        options={["pie", "donut"]}
-        onChange={(pieType) => set({ pieType })}
-      />
-      <div className="grid gap-1 text-muted">
-        Display labels
-        <div className="flex flex-wrap gap-1.5">
-          {LABELS.map((l) => (
-            <Button
-              key={l}
-              variant={o.displayLabels.includes(l) ? "default" : "outline"}
-              size="sm"
-              aria-label={`pie label ${l}`}
-              aria-pressed={o.displayLabels.includes(l)}
-              className="h-auto px-2 py-0.5 text-[11px]"
-              onClick={() => toggleLabel(l)}
-            >
-              {l}
-            </Button>
-          ))}
+    <VizOptions
+      view="piechart"
+      state={state}
+      patch={patch}
+      extras={
+        <div className="grid gap-2 text-xs">
+          <div className="grid gap-1 text-muted">
+            Display labels
+            <div className="flex flex-wrap gap-1.5">
+              {LABELS.map((l) => (
+                <Button
+                  key={l}
+                  variant={o.displayLabels.includes(l) ? "default" : "outline"}
+                  size="sm"
+                  aria-label={`pie label ${l}`}
+                  aria-pressed={o.displayLabels.includes(l)}
+                  className="h-auto px-2 py-0.5 text-[11px]"
+                  onClick={() => toggleLabel(l)}
+                >
+                  {l}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <ReduceOptionsEditor value={o.reduceOptions} onChange={(reduceOptions) => set({ reduceOptions })} />
         </div>
-      </div>
-      <ToggleField
-        label="Show legend"
-        checked={o.legend.showLegend}
-        onChange={(showLegend) => set({ legend: { ...o.legend, showLegend } })}
-      />
-    </div>
+      }
+    />
   );
 }
