@@ -18,3 +18,11 @@ export function useDashboardWs(): string {
   if (ws === null) throw new Error("useDashboardWs: no DashboardCacheProvider in tree");
   return ws;
 }
+
+/** The current dashboard workspace, or `null` outside a `DashboardCacheProvider`. For a consumer that
+ *  is ALSO valid without the cache (an ext widget may mount standalone — a v2 self-fetching tile needs
+ *  no frames): it reads the ws when present and does no cache read when absent. A DATA tile only reaches
+ *  its `viz.query` when a provider supplies the ws, so this never keys under an unscoped ws. */
+export function useDashboardWsOptional(): string | null {
+  return useContext(DashboardWsContext);
+}

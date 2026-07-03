@@ -10,12 +10,12 @@
 // for the built-in stat/table/timeseries renderers). Same call, same cache entry — different projection.
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { QueryClient, useQuery } from "@tanstack/react-query";
 
 import type { Cell, Target } from "@/lib/dashboard";
 import { cellPrimaryTarget, cellSources } from "@/lib/dashboard";
 import { cellTools } from "../views/WidgetView";
-import { useDashboardWs } from "../cache/useDashboardWs";
+import { useDashboardWsOptional } from "../cache/useDashboardWs";
 import { useDebounced } from "../cache/useDebounced";
 import { vizQueryKey } from "../cache/queryKeys";
 import type { VarScope } from "@/lib/vars";
@@ -41,10 +41,18 @@ export interface FramesState {
   denied: boolean;
 }
 
+/** A throwaway client for the standalone case (no `DashboardCacheProvider`): a non-data ext tile may
+ *  mount outside a dashboard — it fetches through its own bridge, not frames — so `useQuery` needs SOME
+ *  client to satisfy rules-of-hooks even though we never enable it there (no ws → `enabled:false`). */
+const STANDALONE_CLIENT = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
 /** Resolve a cell's `sources[]` to frames via `viz.query`, on the shared read cache. Mirrors
- *  `useVizQuery`'s bridge/interpolation/key exactly so the two share one cache entry. */
+ *  `useVizQuery`'s bridge/interpolation/key exactly so the two share one cache entry. Resilient to a
+ *  missing `DashboardCacheProvider`: without a ws (an ext tile mounted standalone) it does no fetch and
+ *  returns empty — a v2 self-fetching tile needs no frames, and a data tile only resolves under the
+ *  dashboard/channel cache that supplies the ws. */
 export function useVizFrames(panel: Cell, scope: VarScope = emptyScope(), refreshKey = 0): FramesState {
-  const ws = useDashboardWs();
+  const ws = useDashboardWsOptional();
 
   const tools = cellTools(panel);
   const toolsKey = [...tools, VIZ_QUERY_TOOL].join("|");
@@ -76,12 +84,21 @@ export function useVizFrames(panel: Cell, scope: VarScope = emptyScope(), refres
 
   const debouncedSpec = useDebounced(spec, DEBOUNCE_MS);
 
-  const query = useQuery({
-    queryKey: vizQueryKey(ws, debouncedSpec),
-    enabled: hasTarget,
-    queryFn: () => bridge.call<VizQueryResult>(VIZ_QUERY_TOOL, { panel: resolvedPanel, scope }),
-  });
+  // Fetch only when a ws is in scope (a provider supplied it). Without one, `enabled:false` + the
+  // standalone client keep the hook inert — no unscoped key, no cross-ws bleed. When a provider IS in
+  // the tree, `queryClient` here is the SAME instance context resolves (both come from the provider), so
+  // this and `useVizQuery` still share ONE cache entry.
+  const enabled = hasTarget && ws !== null;
+  const query = useQuery(
+    {
+      queryKey: vizQueryKey(ws ?? "", debouncedSpec),
+      enabled,
+      queryFn: () => bridge.call<VizQueryResult>(VIZ_QUERY_TOOL, { panel: resolvedPanel, scope }),
+    },
+    ws !== null ? undefined : STANDALONE_CLIENT,
+  );
 
+  if (!enabled) return { frames: [], loading: false, denied: true };
   if (!hasTarget) return { frames: [], loading: false, denied: true };
   if (query.isError) return { frames: [], loading: false, denied: true };
   const frames = Array.isArray(query.data?.frames) ? query.data!.frames! : [];

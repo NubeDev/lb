@@ -41,6 +41,8 @@ export declare interface ExtUi {
     label: string;
     icon: string;
     scope: string[];
+    /** `true` for a frames-in DATA widget (manifest `data = true`) — it keeps the cell's `sources[]`. */
+    data?: boolean;
 }
 
 /** Packaged-tile entries — ONE per `row.widgets[]` `[[widget]]`. Selecting it yields a
@@ -133,6 +135,10 @@ export declare interface SourceEntry {
     icon?: string;
     /** For a `widget` entry: the `ext:<id>/<widget>` view key the tile resolves to. */
     viewKey?: string;
+    /** For a `widget` entry: `true` if the tile is a frames-in DATA view (its manifest set `data = true`).
+     *  A data widget KEEPS the cell's `sources[]` (the shell resolves them to `ctx.data`) and shows the
+     *  Query + Field tabs; a non-data widget owns its own data and clears targets when picked. */
+    data?: boolean;
     /** The resolved read source `{tool,args}` (read/scripted views + a control's optional self-read). */
     source?: Source;
     /** The resolved write action (control views) — `argsTemplate` gets a `{{value}}` slot filled later. */

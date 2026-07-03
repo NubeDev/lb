@@ -16,7 +16,38 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-03): dashboard read cache & call de-duplication (branch `master`).**
+**Just shipped (2026-07-03): extension widgets over any source — frames-in + `echarts-panel` reference
+(branch `master`).** An extension `[[widget]]` is now a **first-class view over the v3 panel model**: a
+`[[widget]]` declaring `data = true` opts into frames-in, so an `ext:<id>/<widget>` cell carries the same
+`sources[]` + `fieldConfig` + `transformations[]` as a built-in `timeseries`, and the **shell** resolves
+them through the shipped `viz.query` path under the **viewer's** grant and hands the tile **resolved
+frames** (`ctx.data`) — the tile renders, never fetches, needs no read caps. (1) **Manifest**: `data`
+bool through `ext-loader`/`assets`/`ui_decl` → client `ExtUi.data` → source-picker `SourceEntry.data`.
+(2) **ctx v3** (additive, all THREE contract mirrors moved together — host `federationWidget.ts`, the new
+devkit `src_contract.ts.tmpl`, the extension copy): `v:3`, `data: WidgetFrame[]`, `fieldConfig`, and a
+`{ update?, teardown? }` return so a data/vars/range tick re-renders **in place** (the hard-won ExtWidget
+StrictMode per-run-slot lifecycle preserved; a v2 tile is byte-identical). (3) **`useVizFrames`** shares
+`useVizQuery`'s bridge/interpolation/`vizQueryKey` → one round-trip per spec, no per-tile duplicate
+stream; resilient to a missing cache provider (a v2 tile mounts standalone). (4) **Editor**: a `data`
+widget KEEPS its `sources[]` + shows Query/Field tabs (the widget is the view, the source its binding); a
+bare v2 widget clears targets (unchanged). (5) **`echarts-panel`** (`rust/extensions/echarts-panel`, cloned
+from proof-panel): a `data = true` "Chart" widget rendering `ctx.data` with Apache ECharts, driven by the
+Field-tab options, `{ update }` for live re-render. Security unchanged (per-target deny → honest empty
+frame, workspace-walled; zero new ext caps). ONE render path: the same cell mounts through `WidgetView`
+from a dashboard AND a channel `rich_result`. Scope
+`scope/frontend/dashboard/ext-widget-source-binding-scope.md` (open questions resolved); session
+`sessions/frontend/ext-widget-frames-in-session.md`; public `public/frontend/dashboard.md` → "frames-in";
+debug `debugging/frontend/ext-widget-standalone-mount-throws-no-dashboard-cache-provider.md`. Tests:
+`cargo build --workspace` clean, `lb-host`/`lb-ext-loader`/echarts backend green; UI `pnpm test` **426**;
+new `builder/framesIn.gateway.test.tsx` **8/8** real-gateway (deny · ws-isolation · v2-compat ·
+frames-resolution · data-flag projection · dashboard+channel parity); echarts `framesToOption` **7/7**.
+**Deferred:** Part C (`@nube/widget` package extraction) + the `useSceneDocs` `scene:` cleanup rider (own
+slices); a dedicated `series.watch`-into-`update` live streaming test. **Blocked (env, not code):**
+`make publish-ext EXT=echarts-panel` packs+signs the wasm but the running node's dev-login 403/401'd
+(`missing bearer credential`) — likely a stale node (`make kill && make dev`); the palette entry is proven
+by the gateway data-flag test.
+
+**Previously shipped (2026-07-03): dashboard read cache & call de-duplication (branch `master`).**
 One `@tanstack/react-query` cache, scoped to the dashboard visit (`features/dashboard/cache/`,
 `DashboardCacheProvider` mounted by `DashboardView` + channel `ResponseView`), collapses the burst of
 redundant reads the surface fired. `viz.query` is keyed on the **canonical resolved spec** (not whole-panel

@@ -52,7 +52,7 @@ const EMPTY_CELL: Cell = {
   w: 0,
   h: 0,
   widget_type: "chart",
-  binding: {},
+  binding: { series: "" },
 };
 
 interface Props {

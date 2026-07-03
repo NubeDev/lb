@@ -579,6 +579,49 @@ subscriber-sharing is a deferred follow-up. Scope:
 [`../../scope/frontend/dashboard-query-cache-scope.md`](../../scope/frontend/dashboard-query-cache-scope.md);
 session: [`../../sessions/frontend/dashboard-query-cache-session.md`](../../sessions/frontend/dashboard-query-cache-session.md).
 
+## Extension widgets over any source — frames-in (shipped 2026-07-03)
+
+An extension `[[widget]]` tile can now be a **first-class visualization over the v3 panel model**, not
+just a self-fetching tile calling its own tools. A `[[widget]]` that declares `data = true` opts into
+frames-in: an `ext:<id>/<widget>` cell carries the SAME `sources[]` + `fieldConfig` + `transformations[]`
+as a built-in `timeseries` cell, and the **shell** resolves them through the shipped `viz.query` path
+under the **viewer's** grant and hands the tile **resolved frames**. The tile renders; it never fetches,
+needs no read caps, and never sees a token or the DB.
+
+- **Manifest opt-in.** `data = true` on `[[widget]]` (default `false`) projects through the existing
+  Install→ExtUi path (`Widget.data` → `ExtUi.data`, `ui_decl::narrow`; a page is always `false`). A v2
+  tile without it behaves exactly as before.
+- **ctx v3 (additive).** The widget mount ctx gains `v: 3`, `data: Frame[]` (the `lb-viz` frame shape
+  the built-in renderers consume), and `fieldConfig`; `mountWidget` MAY return `{ update?, teardown? }`
+  instead of a bare teardown. On a data/vars/range tick the shell calls `update(ctx)` with fresh frames
+  **in place — no re-mount** (the hard-won ExtWidget StrictMode per-run-slot lifecycle is preserved). A
+  v2 tile (bare-fn return, no `data`) is byte-identical under the v3 shell. The contract's three mirrors
+  (host `federationWidget.ts`, the devkit `src_contract.ts.tmpl` template, the extension copy) moved
+  together in one slice; version-gate on `ctx.v`.
+- **Shared resolution.** `useVizFrames` resolves a data cell's `sources[]` with the SAME bridge leash,
+  interpolation, and `vizQueryKey` cache key as `useVizQuery`, so an ext data tile and a built-in bound
+  to the same spec **share one gateway round-trip** (no per-tile duplicate stream).
+- **Editor.** Picking a `data = true` widget in the Query tab's "Extension widgets" group KEEPS the
+  cell's `sources[]` and shows the Query + Field tabs (reusing the built-in option registry verbatim) —
+  the widget is the VIEW, the source is its binding, exactly like a built-in `timeseries`. A bare v2
+  widget still owns its own data and clears targets.
+- **Security unchanged.** The viewer's grant gates each source target (per-target deny in `viz.query`
+  degrades to an honest empty frame, workspace-walled); the extension's grant is untouched — a data tile
+  needs no new caps.
+- **One render path across surfaces.** The same `ext:<id>/<widget>` data cell mounts through the ONE
+  `WidgetView` dispatcher from a dashboard AND a channel `rich_result` (`ResponseView`), resolving
+  identical frames on both.
+
+The reference extension is **`echarts-panel`** (`rust/extensions/echarts-panel`): a `data = true` "Chart"
+widget that renders `ctx.data` with Apache ECharts, mapping frames → an ECharts option driven by the
+Field-tab options (units/decimals/thresholds/legend/axes) — no bespoke config UI, honest no-data/error
+states, `{ update }` for in-place live re-render.
+
+Proven against the real gateway in `builder/framesIn.gateway.test.tsx` (8/8): capability-deny,
+workspace-isolation, v2-compat, frames-resolution, data-flag projection, and dashboard+channel parity.
+Scope: [`../../scope/frontend/dashboard/ext-widget-source-binding-scope.md`](../../scope/frontend/dashboard/ext-widget-source-binding-scope.md);
+session: [`../../sessions/frontend/ext-widget-frames-in-session.md`](../../sessions/frontend/ext-widget-frames-in-session.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

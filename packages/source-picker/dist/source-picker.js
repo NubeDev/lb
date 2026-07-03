@@ -66,6 +66,7 @@ function y(e) {
           label: `${s.ext} · ${r.label}`,
           icon: r.icon,
           viewKey: `ext:${s.ext}/${t}`,
+          data: r.data === !0,
           writes: !1
         });
       }

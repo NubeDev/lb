@@ -1,6 +1,11 @@
 # Dashboard scope — extension widgets over any source (frames-in)
 
-Status: scope (the ask), 2026-07-03. Promotes to `public/frontend/dashboard.md` once shipped.
+Status: **SHIPPED 2026-07-03** (branch `master`). Promoted to `public/frontend/dashboard.md` → "Extension
+widgets over any source — frames-in"; session `sessions/frontend/ext-widget-frames-in-session.md`.
+Open questions resolved: transformations run before frames reach the tile (parity with built-ins);
+`data` is a **bool** (an enum can come later, additively); the Query tab is NOT hideable per tile in v1
+(full parity). Deferred: Part C (`@nube/widget` package extraction) and the `useSceneDocs` cleanup rider
+(their own slices — see the session doc). Original ask below.
 
 An extension-shipped `[[widget]]` tile should be a **first-class visualization over the shipped
 v3 panel model** — not just a self-contained tile calling its own tools. A cell whose view is
