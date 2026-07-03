@@ -33,7 +33,7 @@ import { fieldNamesOf } from "./fields/resultFields";
 import { ResultFieldsProvider } from "./fields/FieldsContext";
 import { OptionsSearch } from "./OptionsSearch";
 import { PreviewPane } from "./PreviewPane";
-import { QueryTab } from "./tabs/QueryTab";
+import { QueryTargets } from "./tabs/QueryTargets";
 import { PlotAxesTab } from "./tabs/PlotAxesTab";
 import { TransformTab } from "./tabs/TransformTab";
 import { PanelOptionsTab } from "./tabs/PanelOptionsTab";
@@ -72,6 +72,10 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   // An explicit "Run" nonce: the Query tab's Run button bumps it to force a preview re-query even when
   // the spec is byte-identical (re-running the same SQL). It's folded into the refresh tick below.
   const [runNonce, setRunNonce] = useState(0);
+  // A table-view toggle on the preview: inspect the transformed frames as a table regardless of the
+  // chosen viz (editor-parity step 6). Renders the draft through the `table` view without changing the
+  // saved cell.
+  const [tableView, setTableView] = useState(false);
   const run = () => setRunNonce((n) => n + 1);
   // A debounce-ish tick so the preview re-queries when the source changes (cheap: state edits are rare),
   // plus the explicit Run nonce so pressing Run always re-fires the query.
@@ -172,7 +176,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             onChange={(e) => patch({ title: e.target.value })}
           />
           <div className="h-56 shrink-0">
-            <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} />
+            <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} tableView={tableView} onToggleTableView={() => setTableView((v) => !v)} />
           </div>
           <VizPicker view={viewC} onChange={switchView} shape={shape} flowKind={flowKind} />
         </div>
@@ -191,7 +195,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
               onSelect={(id) => setTab(id as TabId)}
             />
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {tab === "query" && <QueryTab ws={ws} state={state} patch={patch} onRun={run} />}
+              {tab === "query" && <QueryTargets ws={ws} state={state} patch={patch} onRun={run} />}
               {tab === "plot" && canPlot && (
                 <PlotAxesTab draft={draft} state={state} patch={patch} scope={scope} refreshKey={refreshKey} />
               )}

@@ -76,6 +76,15 @@ export interface Target {
   hide?: boolean;
 }
 
+/** Per-panel query options (Grafana's query-options row). All optional — absent means "use defaults".
+ *  `maxDataPoints` soft-caps the returned point count; `minInterval` is a floor on the sampling step
+ *  (e.g. `"1m"`); `relativeTime` overrides the dashboard range for this panel (e.g. `"now-6h"`). */
+export interface QueryOptions {
+  maxDataPoints?: number;
+  minInterval?: string;
+  relativeTime?: string;
+}
+
 /** A client-side transformation (viz transformations scope; shape only in Phase 1). */
 export interface Transformation {
   id: string;
@@ -155,6 +164,10 @@ export interface Cell {
   sources?: Target[];
   /** The client-side transformation pipeline (shape only in Phase 1). */
   transformations?: Transformation[];
+  /** Query options (Grafana's panel query options row): a soft cap on returned points, a minimum
+   *  sampling interval, and a per-panel relative time window. Additive/optional; forwarded to the
+   *  resolver with the whole panel. Absent on a cell that never set them (byte-clean round-trip). */
+  queryOptions?: QueryOptions;
   /** Per-field option defaults + overrides (units/decimals/thresholds/mappings/color). The render
    *  bridge (`features/dashboard/fieldconfig/*`) formats values through it via user-prefs. */
   fieldConfig?: FieldConfig;

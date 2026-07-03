@@ -20,6 +20,7 @@
 import type {
   Cell,
   FieldConfig,
+  QueryOptions,
   Target,
   Transformation,
   View,
@@ -47,6 +48,9 @@ export interface EditorState {
   fieldConfig?: FieldConfig;
   /** The transformation pipeline CONFIG (shape only in Phase 1; no client execution — invariant B). */
   transformations: Transformation[];
+  /** Per-panel query options (max data points / min interval / relative time). Undefined when the cell
+   *  had none (so it stays absent — byte-clean round-trip). */
+  queryOptions?: QueryOptions;
   /** The opaque carry-over the editor doesn't model field-by-field but must round-trip (v1 binding,
    *  v2 action, scripted `code`/`templateId`, the v contract number, widget_type). Preserved verbatim. */
   carry: {
@@ -148,6 +152,7 @@ export function cellToEditorState(cell: Cell): EditorState {
     options: ownedOptions,
     fieldConfig: cell.fieldConfig,
     transformations: cell.transformations ?? [],
+    queryOptions: cell.queryOptions,
     carry: {
       v: cell.v,
       widget_type: cell.widget_type,
@@ -213,6 +218,10 @@ export function editorStateToCell(state: EditorState, base: Cell): Cell {
 
   if (state.fieldConfig) cell.fieldConfig = state.fieldConfig;
   if (state.transformations.length > 0) cell.transformations = state.transformations;
+  // Query options round-trip only when present + non-empty (absent stays absent — byte-clean).
+  if (state.queryOptions && Object.values(state.queryOptions).some((v) => v !== undefined && v !== "")) {
+    cell.queryOptions = state.queryOptions;
+  }
   if (state.carry.pluginVersion) cell.pluginVersion = state.carry.pluginVersion;
 
   return cell;
