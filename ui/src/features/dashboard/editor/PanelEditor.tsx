@@ -32,6 +32,7 @@ import { detectShape } from "../views/shape";
 import { fieldNamesOf } from "./fields/resultFields";
 import { ResultFieldsProvider } from "./fields/FieldsContext";
 import { OptionsSearch } from "./OptionsSearch";
+import { LibraryPanelBar } from "./LibraryPanelBar";
 import { PreviewPane } from "./PreviewPane";
 import { QueryTargets } from "./tabs/QueryTargets";
 import { PlotAxesTab } from "./tabs/PlotAxesTab";
@@ -174,6 +175,13 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
             placeholder="Panel title"
             value={state.title}
             onChange={(e) => patch({ title: e.target.value })}
+          />
+          <LibraryPanelBar
+            draft={draft}
+            onSave={(c) => {
+              onSave(c);
+              onOpenChange(false);
+            }}
           />
           <div className="h-56 shrink-0">
             <PreviewPane cell={draft} ws={ws} scope={scope} refreshKey={refreshKey} tableView={tableView} onToggleTableView={() => setTableView((v) => !v)} />

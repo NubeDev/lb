@@ -33,6 +33,21 @@ export function WidgetHost({
   scope?: VarScope;
   refreshKey?: number;
 }) {
+  // A ref cell whose panel the host could not resolve (deleted/unshared/unreadable) hydrates with
+  // `panelMissing` — render the honest "panel not accessible" placeholder, never a blank chart or a
+  // crash (library-panels scope, "Dangling refs").
+  if (cell.panelMissing) {
+    return (
+      <div
+        className="flex h-full flex-col items-center justify-center gap-1 text-center text-xs text-muted"
+        role="status"
+        data-testid="panel-missing"
+      >
+        <span className="font-medium">Panel not accessible</span>
+        <span className="opacity-70">This library panel was removed or isn’t shared with you.</span>
+      </div>
+    );
+  }
   if (isV2(cell)) {
     return (
       <WidgetView

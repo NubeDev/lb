@@ -64,7 +64,18 @@ export const CAP = {
   // dashboard (Dashboards page): member-level — the nav entry shows for any session that may list
   // dashboards; gate 3 / ownership still decides which specific ones they see/edit.
   dashboardList: "mcp:dashboard.list:call",
+  dashboardGet: "mcp:dashboard.get:call",
   dashboardSave: "mcp:dashboard.save:call",
+  // library panels (library-panels scope): the reusable + standalone panel asset. Member-level like
+  // dashboards — `panelGet` gates the standalone `/panel/{id}` page + the editor's link/unlink reads;
+  // `panelSave` gates Save-as-library. Sharing a panel shares its DEFINITION only — its `sources[]`
+  // re-check under the viewer's caps at render (the gateway re-checks every verb regardless).
+  panelGet: "mcp:panel.get:call",
+  panelList: "mcp:panel.list:call",
+  panelSave: "mcp:panel.save:call",
+  panelDelete: "mcp:panel.delete:call",
+  panelShare: "mcp:panel.share:call",
+  panelUsage: "mcp:panel.usage:call",
   // nav builder (nav scope): the user-/team-authored navigation menu. The reads (`list`/`get`/
   // `resolve`) are member-level — every member resolves their own menu; `navSave`/`navShare` are the
   // admin-ish authoring caps that gate the builder tab (revocable like any grant). The nav grants

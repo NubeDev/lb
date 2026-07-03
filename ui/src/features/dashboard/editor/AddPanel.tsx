@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { PanelEditor } from "./PanelEditor";
+import { AddLibraryPanel } from "./AddLibraryPanel";
 import { defaultCell } from "./defaultCell";
 
 interface Props {
@@ -44,10 +45,11 @@ export function AddPanel({ ws, existing, canEdit, onAdd, scope }: Props) {
   };
 
   return (
-    <div className="border-b border-border bg-panel px-3 py-2">
+    <div className="flex items-center gap-2 border-b border-border bg-panel px-3 py-2">
       <Button aria-label="add panel" size="sm" onClick={openEditor}>
         <Plus size={12} /> Add panel
       </Button>
+      <AddLibraryPanel existing={existing} onAdd={onAdd} />
       {draft && (
         <PanelEditor
           ws={ws}

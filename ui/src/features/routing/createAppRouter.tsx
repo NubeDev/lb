@@ -16,6 +16,7 @@ import {
 import { AdminView } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
+import { PanelPage } from "@/features/panel";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { ExtHost, ExtErrorBoundary } from "@/features/ext-host";
@@ -42,6 +43,7 @@ import {
   validateDashboardSearch,
 } from "./search";
 import { fullPathForSurface, pathForSurface, surfaceForPath, tenantPath } from "./surface";
+import { CAP, hasCap } from "@/lib/session";
 
 const rootRoute = createRootRouteWithContext<RoutingContext>()({
   component: RootRoute,
@@ -97,6 +99,16 @@ const dashboardsRoute = createRoute({
   component: DashboardsRoute,
 });
 
+// The standalone library-panel page (library-panels scope): a directly-linkable single panel, no
+// dashboard. Reuses the dashboard search grammar (range + `?var-`); cap-gated on `panel.get` in the
+// component (it isn't a nav CoreSurface — a deep link/nav entry points here, but it's not in the rail).
+const panelRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/panel/$id",
+  validateSearch: validateDashboardSearch,
+  component: PanelRoute,
+});
+
 const datasourceDetailRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/datasources/$name",
@@ -129,6 +141,7 @@ const routeTree = rootRoute.addChildren([
     tenantIndexRoute,
     channelsRoute,
     dashboardsRoute,
+    panelRoute,
     coreRoute("/rules", "rules", () => <Rules />),
     coreRoute("/flows", "flows", () => <Flows />),
     flowDetailRoute,
@@ -229,6 +242,24 @@ function DashboardsRoute() {
   return (
     <DashboardView
       ws={ctx.workspace}
+      range={range}
+      onSearchChange={(next) => void navigate({ search: next })}
+    />
+  );
+}
+
+function PanelRoute() {
+  const ctx = useAppRoutingContext();
+  const { id } = panelRoute.useParams();
+  const range = panelRoute.useSearch();
+  const navigate = useNavigate({ from: "/t/$ws/panel/$id" });
+  // Cap-gate the standalone page on `panel.get` (library-panels Decision: distinct read cap, no
+  // piggybacking on dashboard.list). The gateway re-checks server-side regardless; this is the UI lens.
+  if (!hasCap(ctx.caps, CAP.panelGet)) return <DefaultRedirect />;
+  return (
+    <PanelPage
+      ws={ctx.workspace}
+      id={decodeURIComponent(id)}
       range={range}
       onSearchChange={(next) => void navigate({ search: next })}
     />
