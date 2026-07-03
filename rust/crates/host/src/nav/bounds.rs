@@ -37,7 +37,10 @@ fn count(items: &[NavItem]) -> usize {
 /// only); an unknown kind is rejected.
 fn check_item(item: &NavItem, nested: bool) -> Result<(), NavError> {
     if !KINDS.contains(&item.kind.as_str()) {
-        return Err(NavError::BadInput(format!("unknown nav item kind: {}", item.kind)));
+        return Err(NavError::BadInput(format!(
+            "unknown nav item kind: {}",
+            item.kind
+        )));
     }
     if item.kind == "group" {
         if nested {

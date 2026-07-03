@@ -197,22 +197,30 @@ records (no mocks, rule 9):
 - **Stale pick** — a `nav_pref` pointing at a deleted/unshared nav must fall through to the next
   resolution tier, not error.
 
+## Decisions (open questions resolved — 2026-07-03, owner-approved: "best long term")
+
+- **Builder home: a tab in the access-console** (`scope/auth-caps/access-console-scope.md`) — it's an
+  authz-adjacent authoring tool, so it belongs with teams/roles/grants, not a new top-level surface. Its
+  own cap-gated route (gated on `mcp:nav.save:call`). *Rejected:* a standalone admin surface — needless
+  new nav entry for something that lives next to sharing.
+- **Item cap: 100 items per nav** (counting authored entries incl. `group` children, NOT expanded
+  tag-group results), **50 dashboards per expanded tag-group** at resolve time. `nav.save` enforces the
+  authored cap (`BadInput` over it); `nav.resolve` caps each tag-group's expansion (and logs when it
+  truncates — no silent drop, per the testing rule).
+- **Workspace-default: explicit `nav.set_default{id}`** (admin verb, like `prefs.set_default`) writing a
+  single `workspace_nav_default:[ws]` pointer record. `nav.resolve` reads that pointer for the
+  workspace-default tier. *Rejected:* "first/most-recent `visibility:workspace` nav wins" — nondeterministic
+  and surprising when a second workspace nav appears.
+- **Per-user pick: a dedicated `nav_pref:[ws, user]` record** owned by the nav module — NOT a `lb-prefs`
+  axis (its axis set stays closed to formatting/localization). Member-owned (`store:nav_pref:read|write`).
+- **Uninstalled-ext entries: strip silently at resolve**, exactly like a cap-stripped item (an `ext` page
+  absent from `ext.list` is simply not reachable). No error, no placeholder in the rail. Tested.
+- **Persistence shape: `items[]` a flat ordered array** with `group` carrying nested `items[]` (one
+  level), the `dashboard.cells` precedent — one source of truth for order, no separate index.
+
 ## Open questions
 
-- **Where does the builder live** — a new admin surface, or a tab under the existing access-console
-  (`scope/auth-caps/access-console-scope.md`)? Lean: a tab in access-console (it's an authz-adjacent
-  authoring tool), with its own cap-gated route.
-- **Item cap per nav** — pick a bound (proposal: 100 items incl. expanded tag-group results capped
-  separately, e.g. 50 per group) and enforce it in `nav.save` / `nav.resolve`.
-- **Workspace-default nav** — is "the workspace default" a `visibility:workspace` nav (first/most-recent
-  wins), or an explicit `nav.set_default{id}` admin verb (like `prefs.set_default`)? Lean: explicit
-  `nav.set_default` for determinism; resolve reads a single `workspace_nav_default:[ws]` pointer.
-- **`nav_pref` vs a `lb-prefs` axis** — confirm the dedicated `nav_pref` record over adding a closed
-  `active_nav` axis to prefs. Lean: dedicated record (keeps the prefs axis set closed).
-- **Ext-page entries and uninstalled extensions** — if a nav lists an `ext` page whose extension is no
-  longer installed (`ext.list` doesn't return it), strip it silently (like a cap-stripped item) — confirm.
-- **Ordering & grouping persistence shape** — `items[]` as a flat ordered array with `group` children
-  vs. a separate order index. Lean: flat ordered array (one source of truth, matches `dashboard.cells`).
+None — resolved above. Anything new the build surfaces goes here per HOW-TO-CODE.
 
 ## Related
 

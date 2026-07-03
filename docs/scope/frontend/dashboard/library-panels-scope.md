@@ -19,6 +19,14 @@ per-dashboard placement; **everything else** (`view`, `title`, `description`, `s
 `transformations`, `fieldConfig`, `options`, `action`, `binding`/`source` for v1/v2) is the panel
 spec. This scope lifts the spec into its own record and leaves placement where it belongs.
 
+> **No backwards migration required.** There is no production dashboard data to preserve — existing
+> dashboards may be **deleted and re-created** if that makes the cleanest design (confirmed by the
+> owner). We are NOT obligated to keep old dashboard records readable, to write a migrator, or to bend
+> the record shape to stay round-trip-compatible with what's on disk today. The `panel_ref` field is
+> still **additive** on `Cell` (so an inline cell and a ref cell coexist by design — that's the
+> feature, not a compat concession), but if a decision here is cleaner with a schema bump + a wipe of
+> the current seed/dev dashboards, take it. This removes migration from the risk list entirely.
+
 ---
 
 ## Goals
@@ -35,9 +43,12 @@ spec. This scope lifts the spec into its own record and leaves placement where i
 - **Reference cells** — an additive `panel_ref: "panel:{id}"` field on `Cell`
   (`#[serde(default)]`, empty = inline cell, unchanged). A ref cell carries **layout + the ref +
   bounded per-placement overrides** (title override, variable bindings) and **no spec**;
-  `dashboard.get` (or the UI adapter) hydrates the spec from the panel record at read time. Every
-  existing dashboard round-trips byte-identical — inline cells remain first-class forever (a one-off
-  chart should NOT be forced to become an asset).
+  `dashboard.get` hydrates the spec from the panel record at read time, **host-side** (see
+  Decisions). Inline
+  cells remain first-class forever (a one-off chart should NOT be forced to become an asset) — but
+  this is a **design choice, not a migration constraint**: there's no obligation to keep on-disk
+  dashboards readable across the change (see "No backwards migration" above), only to keep inline and
+  ref cells coexisting going forward.
 - **Link / unlink in the editor** — the shipped panel editor gains: "Save as library panel" (extract
   this cell's spec → `panel.save`, cell becomes a ref), "Add library panel" in the builder's source/
   widget picker (`panel.list`), and "Unlink" (copy the spec back inline — fork, stop tracking).
@@ -53,8 +64,10 @@ spec. This scope lifts the spec into its own record and leaves placement where i
 
 ## Non-goals
 
-- **No forced migration.** Inline cells are not deprecated; nothing rewrites existing dashboards. Refs
-  are opt-in per cell.
+- **No migration, in either direction.** We don't force inline cells to become panels (refs are opt-in
+  per cell), AND we don't owe old on-disk dashboards compatibility — there's no production data, so a
+  schema bump + re-seed is fair game (see the callout in Intent). Migration is simply not a
+  requirement here.
 - **No per-dashboard spec overrides beyond the bounded set** (title, variable bindings). If a
   placement needs different queries/options, **unlink** — a half-shared spec with deep per-placement
   patches is the complexity that sinks this feature. (Grafana's library panels made the same call.)
@@ -86,8 +99,8 @@ as an inline cell does today. A panel shared to the workspace whose query needs 
 renders as "denied/no data" for a viewer without that cap. Sharing a panel **never widens data
 access** — same thesis as the nav scope (`scope/nav/nav-builder-scope.md`).
 
-**Hydration lives in one seam.** One resolver (host-side on `dashboard.get`, or the one UI adapter —
-Open question 1) expands `panel_ref` → spec, so the grid, the editor, the read cache, and the
+**Hydration lives in one seam.** One resolver — **host-side, on `dashboard.get`** (Decisions) —
+expands `panel_ref` → spec, so the grid, the editor, the read cache, and the
 standalone page all see plain v3 panels and need no ref-awareness beyond the editor's link/unlink
 affordances.
 
@@ -158,8 +171,10 @@ Per `scope/testing/testing-scope.md`, real store/caps/gateway, real seeded recor
   with a ws-A `panel_ref` does **not** hydrate (the cross-ws ref test is the headline isolation case).
 - **"Sharing never widens data access" (headline):** workspace-visible panel + viewer lacking the
   source cap → definition readable, data denied at `viz.query` — asserted at the real gateway.
-- **Round-trip compatibility:** every existing dashboard fixture (v1/v2/v3 cells) round-trips
-  byte-identical with the feature shipped; an inline cell never grows a `panel_ref`.
+- **Inline/ref coexistence (not on-disk compat):** an inline cell and a ref cell coexist on the same
+  dashboard and each round-trips through `save`/`get` unchanged; an inline cell never silently grows a
+  `panel_ref`. (We do NOT test old-on-disk-dashboard compatibility — there's no data to preserve; a
+  schema bump may re-seed dev/demo dashboards.)
 - **Propagation:** edit panel → both referencing dashboards reflect it on reload; unlink → edits stop
   propagating to the forked cell.
 - **Delete safety:** delete-in-use refused with usage list; forced tombstone → placeholder cell; new
@@ -186,23 +201,33 @@ Per `scope/testing/testing-scope.md`, real store/caps/gateway, real seeded recor
 - **Ref cycles are impossible by construction** (panels cannot reference panels) — keep it that way;
   a "panel of panels" is a dashboard.
 
+## Decisions (open questions resolved — 2026-07-03, owner-approved: "best long term")
+
+- **Hydration seam: host-side.** `dashboard.get` returns **hydrated** cells (the resolved v3 spec)
+  with the `panel_ref` kept on each ref cell as the marker. Why: headless MCP callers, export, and any
+  future render host (channels, GenUI, nav) get resolved dashboards for free; the placeholder/
+  isolation/deny logic lives behind the capability wall exactly once, instead of being re-implemented
+  per client. The UI editor uses the marker for its link/unlink affordances; `dashboard.save` accepts
+  a ref cell **without** spec (the ref is authoritative — a stale hydrated copy sent back by a client
+  is ignored, preventing accidental de-linking). *Rejected:* UI-adapter hydration — it makes every
+  non-shell caller (agent, CLI, export) ref-aware and duplicates the deny/placeholder logic outside
+  the wall.
+- **`dashboard.save` validates refs: yes.** A save whose `panel_ref` doesn't resolve in-workspace is
+  rejected loudly at author time (`BadInput`, naming the ref). Later dangling (panel force-deleted
+  after the save) degrades to the placeholder at hydration — validate at write, tolerate at read.
+- **Standalone-page cap: distinct.** The `/panel/{id}` route gates on `store:panel:read` (surfaced
+  through `allowedSurfaces` like every core route); panel record reads pass the normal three gates.
+  No piggybacking on `dashboard.list` caps — panels are their own asset and get their own read cap.
+- **`panel.list` summary: cheap, no usage count.** `PanelSummary` = id/title/view/visibility/
+  updated_ts (the `DashboardSummary` precedent); usage is computed on demand by `panel.usage{id}`
+  (the editor banner and delete-safety call it when needed). No per-row usage query on every list.
+- **Slug: title is free, slug is forever.** The extract flow derives the slug from the title +
+  a disambiguator on collision, shown once and editable **at creation only**; after that, rename
+  changes `title` only (dashboards ref by id — the dashboard precedent). No slug-rename/aliasing.
+
 ## Open questions
 
-- **Hydration seam:** host-side (`dashboard.get` returns hydrated cells + a `panel_ref` marker) vs the
-  one UI adapter (fetch `panel.get` per distinct ref, cache-deduped). Lean: **host-side** — headless
-  MCP callers and export get resolved dashboards for free, and the placeholder/isolation logic lives
-  behind the wall once; the response marks ref cells so the editor keeps its affordances.
-- **Does `dashboard.save` validate refs?** Lean: yes — reject a save whose `panel_ref` doesn't resolve
-  in-workspace (loud at author time), but tolerate later dangling (delete-after-save) via the
-  placeholder.
-- **Standalone-page cap:** ride `dashboard.list`-level read caps or a distinct `panel` read cap the
-  route gates on? Lean: distinct `store:panel:read` surfaced through `allowedSurfaces` like other
-  routes.
-- **`panel.list` summary fields:** confirm usage-count-in-summary (one extra query) vs `panel.usage`
-  only on demand. Lean: on demand; summaries stay cheap like `DashboardSummary`.
-- **Slug collisions with extracted cells:** derive the panel slug from title + disambiguator at
-  extract time; confirm the UX for renaming the slug (dashboards ref by id, so rename = new record —
-  probably "title is free, slug is forever," the dashboard precedent).
+None — resolved above. Anything new the build surfaces goes here per HOW-TO-CODE.
 
 ## Related
 

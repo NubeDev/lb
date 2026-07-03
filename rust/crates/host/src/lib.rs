@@ -189,8 +189,8 @@ pub use native::{
     NativeServiceError, NativeStatus, SidecarMap, Supervised,
 };
 pub use nav::{
-    call_nav_tool, nav_delete, nav_get, nav_list, nav_pref_get, nav_pref_set, nav_resolve, nav_save,
-    nav_set_default, nav_share, Nav, NavError, NavFacet, NavItem, NavPref, NavSummary,
+    call_nav_tool, nav_delete, nav_get, nav_list, nav_pref_get, nav_pref_set, nav_resolve,
+    nav_save, nav_set_default, nav_share, Nav, NavError, NavFacet, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_ITEMS as NAV_MAX_ITEMS,
     MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,

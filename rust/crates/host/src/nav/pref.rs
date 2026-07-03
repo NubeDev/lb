@@ -22,7 +22,9 @@ pub async fn nav_pref_get(
 ) -> Result<NavPref, NavError> {
     // Gated by the resolve cap — reading one's own pick is a read of one's own menu state.
     authorize_nav(principal, ws, "nav.resolve")?;
-    Ok(read_pref(store, ws, principal.sub()).await?.unwrap_or_default())
+    Ok(read_pref(store, ws, principal.sub())
+        .await?
+        .unwrap_or_default())
 }
 
 /// Set the caller's OWN active pick to `nav_id` (empty clears it), at logical time `now`. Always keyed

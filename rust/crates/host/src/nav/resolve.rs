@@ -175,7 +175,10 @@ async fn resolve_dashboard(
     ws: &str,
     item: &NavItem,
 ) -> Result<Option<ResolvedItem>, NavError> {
-    let id = item.dashboard.strip_prefix("dashboard:").unwrap_or(&item.dashboard);
+    let id = item
+        .dashboard
+        .strip_prefix("dashboard:")
+        .unwrap_or(&item.dashboard);
     if id.is_empty() {
         return Ok(None);
     }
@@ -219,7 +222,10 @@ async fn resolve_ext(
             // falling back to the opaque id itself.
             label: label_or(
                 &item.label,
-                row.ui.as_ref().map(|u| u.label.as_str()).unwrap_or(&row.ext),
+                row.ui
+                    .as_ref()
+                    .map(|u| u.label.as_str())
+                    .unwrap_or(&row.ext),
             ),
             surface: String::new(),
             dashboard: String::new(),

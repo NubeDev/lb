@@ -65,6 +65,16 @@ export const CAP = {
   // dashboards; gate 3 / ownership still decides which specific ones they see/edit.
   dashboardList: "mcp:dashboard.list:call",
   dashboardSave: "mcp:dashboard.save:call",
+  // nav builder (nav scope): the user-/team-authored navigation menu. The reads (`list`/`get`/
+  // `resolve`) are member-level — every member resolves their own menu; `navSave`/`navShare` are the
+  // admin-ish authoring caps that gate the builder tab (revocable like any grant). The nav grants
+  // NOTHING — `nav.resolve` is a pure lens; the gateway re-checks every page verb server-side.
+  navList: "mcp:nav.list:call",
+  navGet: "mcp:nav.get:call",
+  navSave: "mcp:nav.save:call",
+  navDelete: "mcp:nav.delete:call",
+  navShare: "mcp:nav.share:call",
+  navResolve: "mcp:nav.resolve:call",
   // rules workbench (rules-workbench scope): member-level nav gates. The Playground shows for any
   // session that may run a rule; the datasources admin for datasource.list. Gate 3 / ownership + the
   // gateway's per-verb re-check are the real boundary. (The DAG canvas is Flows — see `flowsList`.)

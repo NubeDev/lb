@@ -72,10 +72,6 @@ pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,
 };
-pub use nav::{
-    delete_nav, get_nav, get_nav_pref, list_navs, resolve_nav, save_nav, set_default_nav,
-    set_nav_pref, share_nav,
-};
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
 pub use ext::{
@@ -105,6 +101,10 @@ pub use membership::{
 };
 pub use message::{delete_message, edit_message};
 pub use native::native_call;
+pub use nav::{
+    delete_nav, get_nav, get_nav_pref, list_navs, resolve_nav, save_nav, set_default_nav,
+    set_nav_pref, share_nav,
+};
 pub use outbox::get_outbox_status;
 pub use post::post_message;
 pub use prefs::{

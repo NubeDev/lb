@@ -36,7 +36,9 @@ pub async fn call_nav_tool(
             Ok(serde_json::to_value(n).unwrap_or(Value::Null))
         }
         "nav.list" => {
-            let rows = nav_list(&node.store, principal, ws).await.map_err(to_tool)?;
+            let rows = nav_list(&node.store, principal, ws)
+                .await
+                .map_err(to_tool)?;
             Ok(json!({ "navs": rows }))
         }
         "nav.save" => {

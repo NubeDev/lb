@@ -18,8 +18,9 @@ import { PeopleAdmin } from "./PeopleAdmin";
 import { TeamsAdmin } from "./TeamsAdmin";
 import { RolesAdmin } from "./RolesAdmin";
 import { WorkspacesAdmin } from "./WorkspacesAdmin";
+import { NavAdmin } from "./nav/NavAdmin";
 
-type Tab = "overview" | "people" | "teams" | "roles" | "workspaces" | "apikeys";
+type Tab = "overview" | "people" | "teams" | "roles" | "workspaces" | "apikeys" | "nav";
 
 interface Props {
   ws: string;
@@ -36,6 +37,9 @@ export function AdminView({ ws, caps }: Props) {
     { key: "roles", label: "Roles", show: hasCap(caps, CAP.grantsAssign) },
     { key: "workspaces", label: "Workspaces", show: hasCap(caps, CAP.workspaceDelete) },
     { key: "apikeys", label: "API Keys", show: hasCap(caps, CAP.apikeyManage) },
+    // nav builder (nav scope): an authz-adjacent authoring tool — shape the team's menu (the role
+    // grants; the nav shapes). Cap-gated for display by `nav.save`; the gateway is the boundary.
+    { key: "nav", label: "Nav", show: hasCap(caps, CAP.navSave) },
   ];
   const visible = tabs.filter((t) => t.show);
   const [tab, setTab] = useState<Tab>(visible[0]?.key ?? "overview");
@@ -74,6 +78,9 @@ export function AdminView({ ws, caps }: Props) {
         </TabsContent>
         <TabsContent value="apikeys" className="min-h-0 flex-1">
           <ApiKeysAdmin ws={ws} />
+        </TabsContent>
+        <TabsContent value="nav" className="min-h-0 flex-1">
+          <NavAdmin ws={ws} caps={caps} />
         </TabsContent>
       </Tabs>
     </section>

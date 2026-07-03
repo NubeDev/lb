@@ -491,6 +491,42 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/dashboards/${enc(id)}/share`, { visibility, team });
     }
 
+    // ── nav (nav scope): the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
+    //    renders + the member-owned pick + the workspace-default pointer. The owner + workspace come
+    //    from the token (§7); the per-user pick is keyed to the token `sub` (a caller cannot curate
+    //    another user's pick). The nav grants NOTHING — the gateway re-checks every page verb on
+    //    click regardless; `nav.resolve` is a pure lens over the caps the session holds. ──
+    case "nav_list":
+      return getJson<T>(`${base}/navs`);
+    case "nav_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/navs/${enc(id)}`);
+    }
+    case "nav_save": {
+      const { id, title, items } = args as { id: string; title: string; items: unknown[] };
+      return postJson<T>(`${base}/navs`, { id, title, items });
+    }
+    case "nav_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/navs/${enc(id)}`);
+    }
+    case "nav_share": {
+      const { id, visibility, team } = args as { id: string; visibility: string; team?: string };
+      return postJson<T>(`${base}/navs/${enc(id)}/share`, { visibility, team });
+    }
+    case "nav_set_default": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/nav/default`, { id });
+    }
+    case "nav_resolve":
+      return getJson<T>(`${base}/nav/resolve`);
+    case "nav_pref_get":
+      return getJson<T>(`${base}/nav/pref`);
+    case "nav_pref_set": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/nav/pref`, { id });
+    }
+
     // ── datasources (rules-workbench scope, Phase 3): the browser's `datasource.*` admin surface over
     //    the gateway. Each maps 1:1 to a `/datasources` route; the gateway re-checks
     //    `mcp:datasource.<verb>:call` server-side. The DSN is sent ONLY on `datasource_add` and never

@@ -67,7 +67,9 @@ impl AgentRuntime for CapturingRuntime {
 }
 
 fn answer_model() -> Arc<dyn ErasedModel> {
-    Arc::new(AiGateway::new(MockProvider::new(vec![AiResponse::stop("x", 1)])))
+    Arc::new(AiGateway::new(MockProvider::new(vec![AiResponse::stop(
+        "x", 1,
+    )])))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -78,9 +80,18 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
 
     // Seed + grant the skill whose BODY must reach the external agent (the genui contract, in miniature).
     let body = "Emit OpenUI-Lang: root = Stat(...). Never prose.";
-    put_skill(&node.store, &caller, ws, "genui", "1", "author a widget", body, 1)
-        .await
-        .expect("put skill");
+    put_skill(
+        &node.store,
+        &caller,
+        ws,
+        "genui",
+        "1",
+        "author a widget",
+        body,
+        1,
+    )
+    .await
+    .expect("put skill");
     grant_skill(&node.store, &caller, ws, "genui")
         .await
         .expect("grant skill");
@@ -104,7 +115,10 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
         ws,
         "job-ext",
         "a stat tile of open alerts",
-        Substrate { skill: Some("genui"), doc: None },
+        Substrate {
+            skill: Some("genui"),
+            doc: None,
+        },
         &[] as &[AllowedTool],
         1,
     )
@@ -112,7 +126,11 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
     .expect("external runtime runs");
     assert_eq!(answer, "external ran");
 
-    let goal = captured.lock().unwrap().clone().expect("runtime captured a goal");
+    let goal = captured
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("runtime captured a goal");
     assert!(
         goal.contains("a stat tile of open alerts"),
         "the caller's goal is present:\n{goal}"
