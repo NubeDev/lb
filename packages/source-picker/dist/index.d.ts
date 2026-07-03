@@ -72,6 +72,11 @@ export declare interface FlowSummary {
 /** Live (Zenoh) entries — each series also offers a live `series.watch` stream. */
 export declare function liveEntries(seriesNames: string[]): SourceEntry[];
 
+/** Run every loader (deny-tolerant) and fold the results into picker entries. The Flows group composes
+ *  `flows.list` (flows the caller may reach) + `flows.nodes` (descriptors) + a `flows.get` per flow; a
+ *  flow the caller cannot `flows.get` is silently skipped. */
+export declare function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePickerResult>;
+
 /** A node descriptor (from `flows.nodes`) — the port lists the picker offers as bindings. */
 export declare interface NodeDescriptor {
     type: string;
@@ -174,6 +179,12 @@ export declare interface SourcePickerProps {
     "aria-label"?: string;
     /** Extra className on the root <label> (host layout). */
     className?: string;
+}
+
+/** The assembled picker data (sans loading flag — the caller owns that). */
+export declare interface SourcePickerResult {
+    entries: SourceEntry[];
+    installed: ExtRow[];
 }
 
 /** What selecting a picker entry yields — the host maps this onto whatever it persists (a dashboard

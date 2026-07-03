@@ -12,10 +12,12 @@
 // Refreshes on `refreshKey` (the canvas-cadence tick the dashboard already drives) — the v1 liveness;
 // a `flows.node.watch` SSE is a later slice. A denied/missing flow degrades to `null` (honest empty).
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { getFlowNodeState } from "@/lib/flows/flows.api";
 import type { NodeStateEntry } from "@/lib/flows/flows.types";
+import { useDashboardWs } from "../cache/useDashboardWs";
+import { flowNodeStateKey } from "../cache/queryKeys";
 import { valueAtPath, type PathSeg } from "./jsonPaths";
 
 export interface FlowNodeValue {
@@ -77,41 +79,25 @@ export function useFlowNodeValue(
   refreshKey = 0,
   path?: PathSeg[],
 ): FlowNodeValue {
-  const [state, setState] = useState<FlowNodeValue>({
-    value: null,
-    rev: null,
-    loading: true,
-    denied: false,
+  const ws = useDashboardWs();
+
+  // The WHOLE-flow node_state read is the shared cache entry, keyed on (ws, flow, tick) — NOT the node/
+  // port/path. So N cells on one flow issue ONE `flows.node_state` read (scope goal 4); each cell slices
+  // its OWN node/port/path client-side from the shared result below (a re-slice, not a re-fetch).
+  const query = useQuery({
+    queryKey: flowNodeStateKey(ws, flowId ?? "", refreshKey),
+    enabled: !!flowId && !!node,
+    queryFn: () => getFlowNodeState(flowId!),
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    if (!flowId || !node) {
-      setState({ value: null, rev: null, loading: false, denied: true });
-      return;
-    }
-    (async () => {
-      try {
-        const st = await getFlowNodeState(flowId);
-        if (cancelled) return;
-        const entry = st.nodes.find((n) => n.node === node);
-        setState({
-          value: extractFlowValue(entry, kind, port, path),
-          rev: entry?.rev ?? null,
-          loading: false,
-          denied: false,
-        });
-      } catch {
-        if (cancelled) return;
-        setState({ value: null, rev: null, loading: false, denied: true });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // `path` is folded into the dep key as a string so a new selection re-extracts (arrays differ by ref).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowId, node, port, kind, refreshKey, JSON.stringify(path ?? null)]);
-
-  return state;
+  if (!flowId || !node) return { value: null, rev: null, loading: false, denied: true };
+  if (query.isError) return { value: null, rev: null, loading: false, denied: true };
+  if (query.isLoading || !query.data) return { value: null, rev: null, loading: true, denied: false };
+  const entry = query.data.nodes.find((n) => n.node === node);
+  return {
+    value: extractFlowValue(entry, kind, port, path),
+    rev: entry?.rev ?? null,
+    loading: false,
+    denied: false,
+  };
 }

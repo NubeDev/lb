@@ -1,162 +1,163 @@
-import { useState as v, useRef as x, useEffect as E } from "react";
-import { jsx as u, jsxs as S } from "react/jsx-runtime";
-function P(e) {
+import { useState as g, useRef as $, useEffect as m } from "react";
+import { jsx as a, jsxs as b } from "react/jsx-runtime";
+function h(e) {
   return e.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
-function y(e) {
+function v(e) {
   return /\.(publish|write|enqueue|command|set|send|record|create|delete|resolve|derive|simulate)$/.test(
     e
   );
 }
-function q(e, s) {
-  const i = s.startsWith(`${e}.`) ? s.slice(e.length + 1) : s;
-  return `${e} · ${i}`;
+function x(e, o) {
+  const s = o.startsWith(`${e}.`) ? o.slice(e.length + 1) : o;
+  return `${e} · ${s}`;
 }
-function _(e) {
-  return e.map((s) => ({
-    id: `series:${s}`,
+function S(e) {
+  return e.map((o) => ({
+    id: `series:${o}`,
     group: "series",
-    label: s,
-    source: { tool: "series.read", args: { series: s } },
+    label: o,
+    source: { tool: "series.read", args: { series: o } },
     writes: !1
   }));
 }
-function D(e) {
-  return e.map((s) => ({
-    id: `live:${s}`,
+function E(e) {
+  return e.map((o) => ({
+    id: `live:${o}`,
     group: "live",
-    label: `${s} (live)`,
-    source: { tool: "series.watch", args: { series: s } },
+    label: `${o} (live)`,
+    source: { tool: "series.watch", args: { series: o } },
     writes: !1
   }));
 }
-function F(e) {
-  var i, n, t;
-  const s = [];
-  for (const o of e) {
-    if (!o.enabled) continue;
+function P(e) {
+  var s, r, t;
+  const o = [];
+  for (const l of e) {
+    if (!l.enabled) continue;
     const c = /* @__PURE__ */ new Set();
-    (n = (i = o.ui) == null ? void 0 : i.scope) == null || n.forEach((r) => c.add(r)), (t = o.widgets) == null || t.forEach((r) => {
-      var l;
-      return (l = r.scope) == null ? void 0 : l.forEach((a) => c.add(a));
+    (r = (s = l.ui) == null ? void 0 : s.scope) == null || r.forEach((i) => c.add(i)), (t = l.widgets) == null || t.forEach((i) => {
+      var n;
+      return (n = i.scope) == null ? void 0 : n.forEach((u) => c.add(u));
     });
-    for (const r of c) {
-      const l = y(r);
-      s.push({
-        id: `ext:${o.ext}:${r}`,
-        group: l ? "action" : "extension",
-        label: q(o.ext, r),
-        source: l ? void 0 : { tool: r, args: {} },
-        action: l ? { tool: r, argsTemplate: {} } : void 0,
-        writes: l
+    for (const i of c) {
+      const n = v(i);
+      o.push({
+        id: `ext:${l.ext}:${i}`,
+        group: n ? "action" : "extension",
+        label: x(l.ext, i),
+        source: n ? void 0 : { tool: i, args: {} },
+        action: n ? { tool: i, argsTemplate: {} } : void 0,
+        writes: n
       });
     }
   }
-  return s;
+  return o;
 }
-function L(e) {
-  const s = [];
-  for (const i of e)
-    if (i.enabled)
-      for (const n of i.widgets ?? []) {
-        const t = P(n);
-        s.push({
-          id: `widget:${i.ext}/${t}`,
+function y(e) {
+  const o = [];
+  for (const s of e)
+    if (s.enabled)
+      for (const r of s.widgets ?? []) {
+        const t = h(r);
+        o.push({
+          id: `widget:${s.ext}/${t}`,
           group: "widget",
-          label: `${i.ext} · ${n.label}`,
-          icon: n.icon,
-          viewKey: `ext:${i.ext}/${t}`,
+          label: `${s.ext} · ${r.label}`,
+          icon: r.icon,
+          viewKey: `ext:${s.ext}/${t}`,
           writes: !1
         });
       }
-  return s;
+  return o;
 }
-function T(e, s) {
-  const i = new Map(s.map((t) => [t.type, t])), n = [];
+function q(e, o) {
+  const s = new Map(o.map((t) => [t.type, t])), r = [];
   for (const t of e)
-    for (const o of t.nodes ?? []) {
-      const c = i.get(o.type);
+    for (const l of t.nodes ?? []) {
+      const c = s.get(l.type);
       if (c) {
-        for (const r of c.inputs ?? [])
-          n.push({
-            id: `flows:in:${t.id}:${o.id}:${r}`,
+        for (const i of c.inputs ?? [])
+          r.push({
+            id: `flows:in:${t.id}:${l.id}:${i}`,
             group: "flows",
-            label: `${t.name || t.id} › ${o.id} › ${r} (input)`,
+            label: `${t.name || t.id} › ${l.id} › ${i} (input)`,
             action: {
               tool: "flows.inject",
-              argsTemplate: { id: t.id, node: o.id, port: r, value: "{{value}}" }
+              argsTemplate: { id: t.id, node: l.id, port: i, value: "{{value}}" }
             },
             writes: !0
           });
-        for (const r of c.outputs ?? [])
-          n.push({
-            id: `flows:out:${t.id}:${o.id}:${r}`,
+        for (const i of c.outputs ?? [])
+          r.push({
+            id: `flows:out:${t.id}:${l.id}:${i}`,
             group: "flows",
-            label: `${t.name || t.id} › ${o.id} › ${r} (output)`,
+            label: `${t.name || t.id} › ${l.id} › ${i} (output)`,
             source: {
               tool: "flows.node_state",
-              args: { id: t.id, __flowNode: o.id, __flowPort: r }
+              args: { id: t.id, __flowNode: l.id, __flowPort: i }
             },
             writes: !1
           });
       }
     }
-  return n;
+  return r;
 }
-const k = "sql:query";
-function I() {
+const _ = "sql:query";
+function D() {
   return {
-    id: k,
+    id: _,
     group: "sql",
     label: "SQL query (direct SurrealDB)",
     source: { tool: "store.query", args: { sql: "" } },
     writes: !1
   };
 }
-function O(e) {
+function F(e) {
   return [
-    ..._(e.series ?? []),
-    ...D(e.series ?? []),
-    ...F(e.extensions ?? []),
-    ...L(e.extensions ?? []),
-    ...T(e.flows ?? [], e.descriptors ?? []),
-    I()
+    ...S(e.series ?? []),
+    ...E(e.series ?? []),
+    ...P(e.extensions ?? []),
+    ...y(e.extensions ?? []),
+    ...q(e.flows ?? [], e.descriptors ?? []),
+    D()
   ];
 }
-function R(e) {
+function L(e) {
   return { id: e.id, source: e.source, action: e.action, viewKey: e.viewKey };
 }
-function W(e, s) {
-  const [i, n] = v({
+async function k(e) {
+  var n, u, f, p, w;
+  const [o, s, r, t, l] = await Promise.all([
+    ((n = e.listSeries) == null ? void 0 : n.call(e).catch(() => [])) ?? Promise.resolve([]),
+    ((u = e.listExtensions) == null ? void 0 : u.call(e).catch(() => [])) ?? Promise.resolve([]),
+    ((f = e.listFlows) == null ? void 0 : f.call(e).catch(() => [])) ?? Promise.resolve([]),
+    ((p = e.listFlowNodes) == null ? void 0 : p.call(e).catch(() => [])) ?? Promise.resolve([]),
+    ((w = e.listDatasources) == null ? void 0 : w.call(e).catch(() => [])) ?? Promise.resolve([])
+  ]), c = e.getFlow, i = c ? (await Promise.all(r.map((d) => c(d.id).catch(() => null)))).filter((d) => d != null) : [];
+  return {
+    entries: F({ series: o, extensions: s, flows: i, descriptors: t }),
+    installed: s
+  };
+}
+function j(e, o) {
+  const [s, r] = g({
     entries: [],
     installed: [],
     loading: !0
-  }), t = x(e);
-  return t.current = e, E(() => {
-    const o = t.current;
+  }), t = $(e);
+  return t.current = e, m(() => {
+    const l = t.current;
     let c = !1;
-    return n((r) => ({ ...r, loading: !0 })), (async () => {
-      var w, g, $, m, b;
-      const [r, l, a, f, K] = await Promise.all([
-        ((w = o.listSeries) == null ? void 0 : w.call(o).catch(() => [])) ?? Promise.resolve([]),
-        ((g = o.listExtensions) == null ? void 0 : g.call(o).catch(() => [])) ?? Promise.resolve([]),
-        (($ = o.listFlows) == null ? void 0 : $.call(o).catch(() => [])) ?? Promise.resolve([]),
-        ((m = o.listFlowNodes) == null ? void 0 : m.call(o).catch(() => [])) ?? Promise.resolve([]),
-        ((b = o.listDatasources) == null ? void 0 : b.call(o).catch(() => [])) ?? Promise.resolve([])
-      ]), p = o.getFlow, h = p ? (await Promise.all(
-        a.map((d) => p(d.id).catch(() => null))
-      )).filter((d) => d != null) : [];
-      c || n({
-        entries: O({ series: r, extensions: l, flows: h, descriptors: f }),
-        installed: l,
-        loading: !1
-      });
+    return r((i) => ({ ...i, loading: !0 })), (async () => {
+      const { entries: i, installed: n } = await k(l);
+      c || r({ entries: i, installed: n, loading: !1 });
     })(), () => {
       c = !0;
     };
-  }, [s]), i;
+  }, [o]), s;
 }
-const j = [
+const T = [
   { group: "series", label: "Series" },
   { group: "live", label: "Live (Zenoh)" },
   { group: "sql", label: "Direct SurrealDB" },
@@ -164,52 +165,53 @@ const j = [
   { group: "widget", label: "Extension widgets" },
   { group: "flows", label: "Flows" }
 ];
-function B({
+function C({
   entries: e,
-  value: s = "",
-  onSelect: i,
-  loading: n = !1,
-  groups: t = j,
-  "aria-label": o = "source",
+  value: o = "",
+  onSelect: s,
+  loading: r = !1,
+  groups: t = T,
+  "aria-label": l = "source",
   className: c
 }) {
-  const r = (l) => {
-    const a = e.find((f) => f.id === l) ?? null;
-    i(a ? R(a) : null);
+  const i = (n) => {
+    const u = e.find((f) => f.id === n) ?? null;
+    s(u ? L(u) : null);
   };
-  return /* @__PURE__ */ u("label", { className: `sp-root${c ? ` ${c}` : ""}`, children: /* @__PURE__ */ S(
+  return /* @__PURE__ */ a("label", { className: `sp-root${c ? ` ${c}` : ""}`, children: /* @__PURE__ */ b(
     "select",
     {
       className: "sp-select",
-      "aria-label": o,
-      value: s,
-      onChange: (l) => r(l.target.value),
+      "aria-label": l,
+      value: o,
+      onChange: (n) => i(n.target.value),
       children: [
-        /* @__PURE__ */ u("option", { value: "", children: n ? "loading sources…" : "— pick a source —" }),
-        t.map(({ group: l, label: a }) => /* @__PURE__ */ u(C, { entries: e, group: l, label: a }, l))
+        /* @__PURE__ */ a("option", { value: "", children: r ? "loading sources…" : "— pick a source —" }),
+        t.map(({ group: n, label: u }) => /* @__PURE__ */ a(I, { entries: e, group: n, label: u }, n))
       ]
     }
   ) });
 }
-function C({
+function I({
   entries: e,
-  group: s,
-  label: i
+  group: o,
+  label: s
 }) {
-  const n = e.filter((t) => t.group === s);
-  return n.length === 0 ? null : /* @__PURE__ */ u("optgroup", { label: i, children: n.map((t) => /* @__PURE__ */ u("option", { value: t.id, children: t.label }, t.id)) });
+  const r = e.filter((t) => t.group === o);
+  return r.length === 0 ? null : /* @__PURE__ */ a("optgroup", { label: s, children: r.map((t) => /* @__PURE__ */ a("option", { value: t.id, children: t.label }, t.id)) });
 }
 export {
-  k as SQL_SOURCE_ID,
-  B as SourcePicker,
-  O as buildSourceEntries,
-  L as extWidgetEntries,
-  F as extensionEntries,
-  T as flowsEntries,
-  D as liveEntries,
-  R as selectionOf,
-  _ as seriesEntries,
-  I as sqlSourceEntry,
-  W as useSourcePicker,
-  P as widgetIdOf
+  _ as SQL_SOURCE_ID,
+  C as SourcePicker,
+  F as buildSourceEntries,
+  y as extWidgetEntries,
+  P as extensionEntries,
+  q as flowsEntries,
+  E as liveEntries,
+  k as loadSourcePicker,
+  L as selectionOf,
+  S as seriesEntries,
+  D as sqlSourceEntry,
+  j as useSourcePicker,
+  h as widgetIdOf
 };

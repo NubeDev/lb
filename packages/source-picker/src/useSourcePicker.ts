@@ -6,8 +6,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { buildSourceEntries, type SourceEntry } from "./sourcePicker";
-import type { ExtRow, Flow, NodeDescriptor, SourceLoaders } from "./types";
+import type { SourceEntry } from "./sourcePicker";
+import { loadSourcePicker } from "./loadSourcePicker";
+import type { ExtRow, SourceLoaders } from "./types";
 
 export interface SourcePickerData {
   entries: SourceEntry[];
@@ -34,30 +35,9 @@ export function useSourcePicker(loaders: SourceLoaders, ws: string): SourcePicke
     let cancelled = false;
     setData((d) => ({ ...d, loading: true }));
     (async () => {
-      // Each read tolerates a deny/empty. The Flows group composes `flows.list` (flows the caller may
-      // reach) + `flows.nodes` (descriptors); a flow the caller cannot `flows.get` is silently skipped.
-      const [series, installed, flowSummaries, descriptors, datasources] = await Promise.all([
-        loaders.listSeries?.().catch(() => [] as string[]) ?? Promise.resolve([] as string[]),
-        loaders.listExtensions?.().catch(() => [] as ExtRow[]) ?? Promise.resolve([] as ExtRow[]),
-        loaders.listFlows?.().catch(() => []) ?? Promise.resolve([]),
-        loaders.listFlowNodes?.().catch(() => [] as NodeDescriptor[]) ??
-          Promise.resolve([] as NodeDescriptor[]),
-        loaders.listDatasources?.().catch(() => []) ?? Promise.resolve([]),
-      ]);
-      const getFlow = loaders.getFlow;
-      const flows = getFlow
-        ? (
-            await Promise.all(
-              flowSummaries.map((s) => getFlow(s.id).catch(() => null as Flow | null)),
-            )
-          ).filter((f): f is Flow => f != null)
-        : [];
+      const { entries, installed } = await loadSourcePicker(loaders);
       if (cancelled) return;
-      setData({
-        entries: buildSourceEntries({ series, extensions: installed, flows, descriptors, datasources }),
-        installed,
-        loading: false,
-      });
+      setData({ entries, installed, loading: false });
     })();
     return () => {
       cancelled = true;

@@ -34,6 +34,10 @@ export type { SourceEntry, SourceInputs } from "./sourcePicker";
 export { useSourcePicker } from "./useSourcePicker";
 export type { SourcePickerData } from "./useSourcePicker";
 
+// Pure loader — the async assembly (no React), for a host that drives it through its own cache layer.
+export { loadSourcePicker } from "./loadSourcePicker";
+export type { SourcePickerResult } from "./loadSourcePicker";
+
 // UI — the props-driven grouped <select>.
 export { SourcePicker } from "./SourcePicker";
 export type { SourcePickerProps } from "./SourcePicker";

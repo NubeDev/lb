@@ -57,6 +57,12 @@ because existing session docs point at them; new dashboard notes should live her
    ordinary v3 `sources[]` — the agent authors, it never serves. Lives as its own top-level topic
    because channels rich responses and other surfaces reuse the package (the `source-picker`
    extraction precedent).
+3h. [`ext-widget-source-binding-scope.md`](ext-widget-source-binding-scope.md) — **extension widgets
+   over any source (frames-in)**: make an `ext:<id>/<widget>` tile a first-class *view* over the v3
+   panel model — the cell carries ordinary `sources[]` (SurrealDB `store.query` / series history+live /
+   federation datasources / flow node ports), the shell resolves them via `viz.query` under the
+   *viewer's* grant, and the tile receives resolved frames (`ctx v3` + optional `update()`), never
+   fetching platform data itself. Additive over the v2 mount contract; zero new extension caps.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -91,6 +97,9 @@ because existing session docs point at them; new dashboard notes should live her
   [`../../flows/flow-dashboard-binding-ux-scope.md`](../../flows/flow-dashboard-binding-ux-scope.md). It
   extends this dashboard's source picker + control views; the underlying `flows.inject`/`flows.node_state`
   mechanism already shipped ([`../../flows/dashboard-binding-scope.md`](../../flows/dashboard-binding-scope.md)).
+- **Extension widgets bound to platform sources** — an `ext:` tile receiving resolved frames from
+  cell `sources[]` (datasource / flow / series / SurrealDB) instead of only its own manifest tools —
+  is **scoped, not built**: [`ext-widget-source-binding-scope.md`](ext-widget-source-binding-scope.md).
 - The **reusable source-picker package** (`@nube/source-picker`) — extract the shipped picker (db /
   datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
   **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard

@@ -19,3 +19,9 @@ onlyBuiltDependencies:
 # version already in the lockfile and old enough to pass the guard.
 overrides:
   electron-to-chromium: 1.5.383
+  # Pin the React type packages to 18 across the whole workspace. Adding a dep whose peer range admits
+  # React 19 (e.g. @tanstack/react-query) otherwise lets pnpm hoist a second `@types/react@19` that
+  # collides with the app's React 18 JSX types (`bigint`-in-ReactNode errors on every lucide/radix icon).
+  # The app runs React 18; force one type version so JSX stays coherent.
+  "@types/react": "18.3.31"
+  "@types/react-dom": "18.3.7"

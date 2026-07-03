@@ -4,9 +4,9 @@
 // SurrealDB and Series. A denied `datasource.list` is an HONEST empty federation list (the built-ins
 // still show), never a fabricated roster (CLAUDE §9). One hook per file (FILE-LAYOUT).
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
-import { listDatasources } from "@/lib/datasources";
+import { datasourceListQueryOptions } from "../../cache/datasourceListQuery";
 
 /** One option in the datasource dropdown — a built-in or a registered federation source. */
 export interface DatasourceOption {
@@ -27,31 +27,19 @@ const BUILTINS: DatasourceOption[] = [
 ];
 
 /** Load the datasource options for `ws`: the two built-ins + each registered federation source. A
- *  denied/failed list collapses to just the built-ins (honest), never invented entries. */
+ *  denied/failed list collapses to just the built-ins (honest), never invented entries. Routes through the
+ *  SHARED `["datasource.list", ws]` cache (dashboard-query-cache-scope), so this and the source-picker
+ *  bundle collapse to ONE `datasource.list` call per workspace. */
 export function useDatasourceList(ws: string): { options: DatasourceOption[]; loading: boolean } {
-  const [federation, setFederation] = useState<DatasourceOption[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    listDatasources()
-      .then((rows) => {
-        if (cancelled) return;
-        setFederation(rows.map((d) => ({ type: "federation" as const, label: `${d.name} (${d.kind})`, name: d.name })));
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setFederation([]); // denied → built-ins only, never a fabricated roster
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [ws]);
-
-  return { options: [...BUILTINS, ...federation], loading };
+  // `retry:false` in the client default means a denied list rejects → `data` stays undefined → built-ins
+  // only (honest, never a fabricated roster).
+  const { data, isLoading } = useQuery(datasourceListQueryOptions(ws));
+  const federation: DatasourceOption[] = (data ?? []).map((d) => ({
+    type: "federation" as const,
+    label: `${d.name} (${d.kind})`,
+    name: d.name,
+  }));
+  return { options: [...BUILTINS, ...federation], loading: isLoading };
 }
 
 /** Build the `DataSourceRef` for a chosen option (`uid` set for federation: `datasource:{ws}:{name}`). */

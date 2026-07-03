@@ -23,6 +23,7 @@ import { RefreshControl } from "./RefreshControl";
 import { useAutoRefresh } from "./useAutoRefresh";
 import { useDashboard } from "./useDashboard";
 import { useSourcePicker } from "./builder/useSourcePicker";
+import { DashboardCacheProvider } from "./cache/DashboardQueryProvider";
 import type { Cell, Variable, Visibility } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
 import { varsFromSearch, withVar } from "@/features/routing/search";
@@ -39,7 +40,18 @@ interface Props {
   onSearchChange?: (search: DashboardSearch) => void;
 }
 
-export function DashboardView({ ws, range, onSearchChange }: Props) {
+/** The dashboard surface, wrapped in its per-visit read cache. `DashboardCacheProvider` is keyed on `ws`
+ *  so a workspace switch remounts it (fresh query client + fresh ws-prefixed keys — no cross-ws bleed),
+ *  and leaving the route unmounts it (the cache clears, the scope's "clear on leave"). */
+export function DashboardView(props: Props) {
+  return (
+    <DashboardCacheProvider key={props.ws} ws={props.ws}>
+      <DashboardViewInner {...props} />
+    </DashboardCacheProvider>
+  );
+}
+
+function DashboardViewInner({ ws, range, onSearchChange }: Props) {
   const dash = useDashboard(ws);
   const picker = useSourcePicker(ws);
   const current = dash.current;
