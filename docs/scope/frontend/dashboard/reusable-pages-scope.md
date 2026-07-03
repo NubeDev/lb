@@ -1,6 +1,12 @@
 # Dashboard scope — reusable pages (template dashboards, instances as bindings, tag-driven fan-out)
 
-Status: scope (the ask). Promotes to `public/frontend/dashboard.md` → "Reusable pages" once shipped.
+Status: **SHIPPED (2026-07-03)** — built end to end (store → cap → MCP → gateway → UI) with 8 Rust
+(`crates/host/tests/reusable_pages_test.rs`) + 2 real-gateway UI tests
+(`ui/src/features/dashboard/ReusablePages.gateway.test.tsx`) + a vars-gate unit test, all green.
+Promoted to [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md) → "Reusable pages";
+session: [`sessions/frontend/reusable-pages-session.md`](../../../sessions/frontend/reusable-pages-session.md).
+No new tables/verbs/caps — `Variable.required` on the dashboard record + `vars`/`template-group` inside
+`nav.items[]`; fan-out expansion lives in `nav.resolve` next to the tag-group expansion.
 Builds on the **shipped** variable system ([`widget-config-vars-scope.md`](widget-config-vars-scope.md)),
 the **shipped** tags graph (`scope/tags/tags-scope.md`), the **in-flight** nav builder
 (`scope/nav/nav-builder-scope.md`), and the **next-up** library panels

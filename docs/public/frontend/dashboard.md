@@ -663,6 +663,55 @@ Scope: [`../../scope/frontend/dashboard/library-panels-scope.md`](../../scope/fr
 session: [`../../sessions/frontend/library-panels-session.md`](../../sessions/frontend/library-panels-session.md);
 skill: [`../../skills/panels/SKILL.md`](../../skills/panels/SKILL.md).
 
+## Reusable pages (template dashboards, instance = binding, tag-driven fan-out) — shipped 2026-07-03
+
+**One dashboard page, used many times** — a "Site Overview" authored once and navigable as Plant-1,
+Plant-2, Plant-3, …, with a new page appearing the moment a new site is tagged, and **zero copies** of
+the dashboard JSON. A *template* is not a new record type — it is an ordinary dashboard whose
+`variables[]` are treated as **parameters**; an *instance* is a **binding** of values onto those
+parameters, never a copy. No new tables, verbs, or caps — deliberately additive.
+
+- **`Variable.required`** (additive `#[serde(default)]` on the shipped `Variable`). Marks a variable a
+  **page parameter**. A template opened with a required variable **unbound** (no `?var-` URL value, no
+  default) renders the honest **`RequiredVarGate`** ("select a `<site>`") **in place of the grid** — the
+  gate holds cell firing *before any bridge call*, so cells never splice a `$site`-literal query. The
+  header shows a **"template · N params"** hint; the variable editor gains a **"required (page
+  parameter)"** toggle. Round-trips `dashboard.save`/`get`; an old record loads unchanged.
+- **Three binding carriers, ephemeral → dynamic:**
+  1. **The URL** (shipped) — `?var-site=plant-1` *is* an instance; shareable, per-viewer.
+  2. **A nav `dashboard` entry's pinned `vars`** (additive `Record<String,String>`) — a curated,
+     durable, named instance ("Plant-2 Overview"), rendered into the link as `?var-<name>=<value>`.
+  3. **A `template-group` nav entry** (the new kind) — `{ dashboard, var, facets|{tool,args} }` that
+     **`nav.resolve` expands** into one link **per option value** (tag facets — the common case — or any
+     `{tool,args}` option query — the general case). Tag a new site → a new page appears in the menu, no
+     nav edit, no dashboard edit.
+- **Binding precedence, stated once:** explicit URL value > nav-entry pinned `vars` > the variable's own
+  default > unbound (→ the required gate). The nav link *sets* the URL; after that the URL is the single
+  source of truth.
+- **Fan-out lives server-side in `nav.resolve`**, next to the `tag-group` expansion — one resolver file
+  (`crates/host/src/nav/resolve_template_group.rs`). It reuses the same option resolution the variable
+  bar does: tag-facet values via a new **`tags.facet_values`** raw read (gated on the *existing*
+  `tags.find` cap — no new cap), or a `{tool,args}` query that **re-enters the generic dispatcher under
+  the caller's caps** (the `viz` re-entrancy precedent). Capped at 50 per group (the tag-group rule).
+- **The lens holds (a binding never widens access).** Expansion runs under the **caller's** caps: a
+  caller lacking the option-source cap → the whole entry is stripped, **no option value leaks**
+  (opaque); a caller who cannot *read* the template dashboard → the entry is stripped even holding the
+  option cap; every emitted link is data — the dashboard + its cell sources re-check server-side on
+  visit. The wall holds: a `template-group` in ws-B enumerates only ws-B tag values.
+- **The builder** names the two dynamism mechanisms side by side — **"Dashboards by tag"** (`tag-group`,
+  many dashboards) vs **"One dashboard per ⟨value⟩"** (`template-group`, one dashboard, many bindings) —
+  plus a **"Pin vars"** field on `dashboard` entries.
+
+Proven against real infra: backend `crates/host/tests/reusable_pages_test.rs` (8/8 — the required-var
+round-trip, facet + query expansion, the mandatory capability-deny + workspace-isolation, the headline
+lens (unreadable template stripped), pinned-vars round-trip, bounds); UI
+`features/dashboard/ReusablePages.gateway.test.tsx` (2/2, real spawned gateway — the required gate holds
+then binds; a template-group authored in the real builder fans out one bound instance per site value)
++ `features/dashboard/vars/RequiredVarGate.test.tsx` (6/6). Scope:
+[`../../scope/frontend/dashboard/reusable-pages-scope.md`](../../scope/frontend/dashboard/reusable-pages-scope.md);
+session: [`../../sessions/frontend/reusable-pages-session.md`](../../sessions/frontend/reusable-pages-session.md);
+skill: [`../../skills/nav/SKILL.md`](../../skills/nav/SKILL.md) ("publish a template dashboard as a per-site menu").
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

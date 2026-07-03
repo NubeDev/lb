@@ -148,6 +148,10 @@ fn member_caps() -> Vec<String> {
         // tag a series entity (member-level): the discovery edges `series.find` intersects. A member
         // may tag their own series; the test gateway's `/_seed/series` route uses this real write path.
         "mcp:tags.add:call",
+        // find/enumerate over the tag graph (member-level read): the dashboard variable Query source,
+        // the nav `tag-group`/`template-group` fan-out (reusable-pages scope), and any tag-driven
+        // discovery. Paired with `tags.add` above — a member who may tag may also find by tag.
+        "mcp:tags.find:call",
         // data-console (Data page, the DB browser): the raw-store lens verbs. **ADMIN-ONLY** by
         // decision — they relax the per-record membership gate (gate 3): a raw scan answers "every
         // record in the workspace". The dev principal is a workspace admin (it holds the destructive

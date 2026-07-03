@@ -118,15 +118,15 @@ describe("Reusable pages (real gateway)", () => {
     const gated = renderWithSearch(ws, { ...defaultDashboardSearch(), d: "site-overview" }, ref);
 
     expect(await screen.findByTestId("required-var-gate")).toBeInTheDocument();
-    // The "template · 1 param" hint is shown; the cell title is NOT (the grid didn't render).
+    // The "template · 1 param" hint is shown; the cell (`cell c1`) is NOT (the grid didn't render).
     expect(screen.getByText(/template · 1 param/)).toBeInTheDocument();
-    expect(screen.queryByText("Site temp")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("cell c1")).not.toBeInTheDocument();
     gated.unmount();
 
     // Bind the parameter via the URL selection → the gate clears and the grid (the cell) renders.
     const bound = { ...defaultDashboardSearch(), d: "site-overview", "var-site": "plant-1" };
     renderWithSearch(ws, bound, ref);
-    await waitFor(() => expect(screen.getByText("Site temp")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("cell c1")).toBeInTheDocument());
     expect(screen.queryByTestId("required-var-gate")).not.toBeInTheDocument();
   });
 
