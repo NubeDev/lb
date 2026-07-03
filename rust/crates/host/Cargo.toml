@@ -54,6 +54,9 @@ hostname.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
+# The per-workspace model memoization cache on the `Node` (active-agent-wiring scope, Slice 2). State
+# on the node spine — not a role concern, so it lives here in core host.
+dashmap.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

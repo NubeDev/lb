@@ -43,6 +43,33 @@ tests (fieldNamePicker/valueMapping/organize/overrides/queryTargets/transformDeb
 backend clamp for the new `queryOptions` (maxDataPoints/minInterval/relativeTime — authored + on the wire
 now, resolver honoring is the follow-up); BarChart per-viz options; then Phase 4 (import/export).
 
+**Just shipped (2026-07-03): active-agent wiring — the active pick is the ONE implicit agent
+everywhere (branch `master`).** A workspace picks one agent and no surface asks again; the pick's
+`model_endpoint` is now consumed **per workspace**, and the missing primitive under it — a real
+OpenAI-compatible provider adapter — is live. (1) **Adapter:** `openai_compat.rs` (`Provider`, OpenAI
+chat-completions) with an honest-failure contract; `node/src/agent.rs::adapter_for` maps
+`zaicoding`/`openai`/`openai-compat` to it (both the node fallback AND the per-ws builder route through
+it). (2) **Per-workspace model:** `resolve_active_definition` (promoted from `agent.def.test`) +
+`resolve_workspace_model` — active def → endpoint → key (sealed-ws-secret → env, host-mediated) → a
+model built by a host-owned **`ModelBuilder` seam** the binary installs (rule 1: host never
+build-deps the role crate — a **deviation from the scope's "host builds it directly"**), memoized in a
+`DashMap<(ws, endpoint-hash)>` on the `Node`, **invalidated on `agent.config.set`**. Additive
+`active_definition` field on `agent.config`. (3) **Rules** ride it (`resolve_rule_model` →
+`resolve_workspace_model`; unconfigured workspace keeps the honest `DisabledModel`). (4) **In-house
+loop** rides it via a per-run `RunContext.model_override` at run start (node env stays the fallback
+tier). (5) **Channels** (already shipped in `72b0651` — verified: `RuntimeArg` "Active — <label>" omits
+`runtime`; `agent.runtimes.workspace_default`) + **widget transport** (`POST /agent/invoke` →
+`invoke_via_runtime(runtime=None)`, `http.ts`, `desktop.rs` — also already shipped, verified). UI
+`pick()` now writes `active_definition`. **Tests (rule 9, real store/caps/loop/rules; scripted provider
+HTTP the only fake):** new `agent_active_model_test` (6 — picked-endpoint→model · **ws-ISOLATION** ·
+cache invalidation on re-pick · loop rides the per-ws model · sealed-secret→env **key precedence** ·
+`active_definition` LWW) + `node` adapter unit (2) + shipped `agent_invoke_route_test` (happy/**DENY**
+/ws-iso) + `rules_ai_wiring_test`/`agent_in_house_wiring_test`/config/runtimes suites green. Build
+(default + `--features external-agent`) + fmt clean. See
+[`sessions/agent/active-agent-wiring-session.md`](sessions/agent/active-agent-wiring-session.md) ·
+[`public/agent/agent.md`](public/agent/agent.md) ("The active pick is the ONE implicit agent
+everywhere") · [`skills/agent/SKILL.md`](skills/agent/SKILL.md) §6 · scope open-questions all resolved.
+
 **Earlier on 2026-07-03: default agent wiring — the in-house `"default"` agent finished (branch
 `master`).** The always-registered in-house loop now (1) binds a **real model** from node config
 (`LB_AGENT_MODEL_*`, the `ModelEndpoint` shape — provider/model/api-key-env NAME/base-url) built as
@@ -72,8 +99,9 @@ Full agent suite green (16 test bins) — no double-gate/deny/skill.activate reg
 --workspace` (default + `--features external-agent`) + `cargo fmt` clean. See
 [`public/agent/agent.md`](public/agent/agent.md) ("The finished in-house default") ·
 [`sessions/agent/default-agent-wiring-session.md`](sessions/agent/default-agent-wiring-session.md) ·
-[`skills/agent/SKILL.md`](skills/agent/SKILL.md). **Next up:** a real AI-gateway `Provider` adapter →
-the in-house agent answers with a real LLM (zero change here).
+[`skills/agent/SKILL.md`](skills/agent/SKILL.md). **Done (2026-07-03, active-agent-wiring):** the real
+`Provider` adapter (`openai_compat`) landed → the in-house agent answers with a real LLM (see the
+active-agent-wiring entry above).
 
 **Just shipped (2026-07-03): catalog "Test" button + DB-sealed per-workspace model key.** Two gated
 additions to the shipped agent catalog, reusing shipped seams: `agent.def.test {id?}`

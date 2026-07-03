@@ -3,6 +3,34 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S8 — the active pick is the ONE implicit agent everywhere + a real provider adapter)
+
+A workspace picks one agent ("Use") and no surface asks again; the pick's `model_endpoint` is consumed
+**per workspace**, over a real OpenAI-compatible adapter. No new MCP verbs, caps, or tables.
+
+- **Adapter (the unblock):** `role/ai-gateway/src/providers/openai_compat.rs` — one `Provider` speaking
+  OpenAI chat-completions against a configurable `base_url` (covers `zaicoding`/`openai`/`openai-compat`).
+  Honest failure: any fault → an attributed terminal stop, never a silent empty answer, key never logged.
+  `node/src/agent.rs::adapter_for` maps providers to it (node fallback + per-ws builder share it).
+- **`active_definition` first-class:** one additive optional field on `agent.config`, written by the
+  pick. The shared `resolve_active_definition` (promoted from `agent.def.test`) answers "which definition
+  is active" for the badge, rules, and the test button.
+- **Per-workspace model:** `resolve_workspace_model` → the active def's endpoint → a live model, keyed
+  **sealed-workspace-secret → node-env** (`resolve_endpoint_key_host`), memoized in a `DashMap<(ws,
+  endpoint-hash)>` on the `Node`, invalidated on `agent.config.set`; node fallback then honest
+  placeholder. `lb-host` never build-deps the gateway crate — the concrete adapter is built by a
+  host-owned **`ModelBuilder`** the `node` binary installs (rule 1).
+- **Every consumer rides it implicitly:** channels (`RuntimeArg` "Active — <label>" omits `runtime`;
+  `agent.runtimes.workspace_default`), the in-house loop (per-run `RunContext.model_override`), rules
+  (`resolve_rule_model`; no pick → honest `DisabledModel`), and the AI widget (`POST /agent/invoke` →
+  `invoke_via_runtime(runtime=None)`, ws+caps from the token).
+
+The wall holds: ws-B never resolves ws-A's endpoint or key. Deny + ws-isolation + cache invalidation +
+key precedence + LWW idempotency all tested (rule 9; scripted provider HTTP the only fake). See
+`agent/agent.md` ("The active pick is the ONE implicit agent everywhere"),
+`../scope/agent/active-agent-wiring-scope.md`, `../sessions/agent/active-agent-wiring-session.md`,
+`../skills/agent/SKILL.md` §6.
+
 ## Shipped (post-S8 — the in-house default agent, finished: model door + shared tool wall + boot)
 
 The always-registered `"default"` runtime is now a working, platform-native agent. Four wiring seams,
@@ -24,8 +52,8 @@ no new subsystems:
 - **Boot:** `node/src/agent.rs` builds the registry (default + external entries when the feature is on)
   and calls `serve_agent`, after the gateway key install — closing the serve-wiring TODO.
 
-**No new MCP verbs.** Provider adapter is deferred (ai-gateway scope) — only `MockProvider` exists; the
-seam + config + unconfigured→configured **swap** are shipped and proven for real against it. Deny +
+**No new MCP verbs.** (The provider adapter that was deferred here landed in active-agent-wiring above —
+`openai_compat`.) The seam + config + unconfigured→configured **swap** are shipped and proven. Deny +
 workspace-isolation + external parity + offline-resume all tested (rule 9). See
 `agent/agent.md` ("The finished in-house default"), `../scope/agent/default-agent-wiring-scope.md`,
 `../sessions/agent/default-agent-wiring-session.md`, `../skills/agent/SKILL.md`.

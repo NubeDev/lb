@@ -42,6 +42,7 @@ async fn drives_a_real_external_agent_through_the_seam() {
         caller: &caller,
         agent_caps: &["mcp:agent.invoke:call".to_string()],
         tools: &[] as &[AllowedTool],
+        model_override: None,
         ts: 1,
     };
     let answer = runtime

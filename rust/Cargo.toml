@@ -209,6 +209,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 clap = { version = "4", features = ["derive", "env"] }
 tabled = "0.17"
 dirs = "5"
+# The per-workspace model memoization cache (active-agent-wiring scope, Slice 2): a concurrent map
+# `(ws, endpoint-hash) → Arc<dyn ErasedModel>` on the `Node`, so rules/loop don't rebuild an
+# `AiGateway` per call. Lock-free reads (the hot path); invalidated on `agent.config.set`. Used by
+# core `lb-host` only — it is state on the node spine, not a role concern.
+dashmap = "6"
 # Test-only: a scratch config/key dir for the CLI's config-persistence + 0600-perms unit tests, and a
 # throwaway `LB_DIR` for the live gateway/local integration tests (real store, real socket — no mocks).
 tempfile = "3"

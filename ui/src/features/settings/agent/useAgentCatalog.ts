@@ -36,9 +36,11 @@ export interface AgentCatalog {
   remove: (id: string) => Promise<void>;
 }
 
-/** Does the active `config` resolve to `def`? A definition is active when its runtime AND endpoint
- *  (provider + model) match the stored selection — the copy the pick wrote into `agent.config`. */
+/** Does the active `config` resolve to `def`? The first-class `active_definition` id is authoritative
+ *  when present (the pick writes it — active-agent-wiring scope); otherwise fall back to matching the
+ *  copied runtime + endpoint (provider + model) for a config written before the field existed. */
 function matchesActive(def: AgentDefinition, config: AgentConfig): boolean {
+  if (config.active_definition) return config.active_definition === def.id;
   if (config.default_runtime !== def.runtime) return false;
   const ep = config.model_endpoint;
   return (
@@ -73,8 +75,11 @@ export function useAgentCatalog(): AgentCatalog {
   const pick = useCallback(
     async (def: AgentDefinition) => {
       // Picking writes the shipped `agent.config` from the definition's fields — the invoke path's
-      // `resolve_effective_runtime` already honors `default_runtime`, so no new resolution seam.
+      // `resolve_effective_runtime` already honors `default_runtime`, so no new resolution seam. The
+      // `active_definition` id makes "which agent is active" first-class (active-agent-wiring scope):
+      // the badge, rules, and the per-workspace model resolver read it instead of re-deriving.
       await setAgentConfig({
+        active_definition: def.id,
         default_runtime: def.runtime,
         model_endpoint: {
           provider: def.model_endpoint.provider,

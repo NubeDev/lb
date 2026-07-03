@@ -76,6 +76,7 @@ fn install_model(node: &Node, gw: AiGateway<MockProvider>) {
 async fn select_model(node: &Arc<Node>, ws: &str) {
     let admin = principal("user:admin", ws, &[CONFIG_SET]);
     let patch = AgentConfig {
+        active_definition: None,
         default_runtime: None,
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some("zaicoding".into()),

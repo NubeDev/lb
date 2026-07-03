@@ -33,6 +33,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 /// A patch selecting the always-present `default` runtime plus a names-only endpoint.
 fn sample_patch() -> AgentConfig {
     AgentConfig {
+        active_definition: None,
         default_runtime: Some("default".into()),
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some("zaicoding".into()),
@@ -154,6 +155,7 @@ async fn setting_an_unknown_runtime_is_rejected() {
     let admin = principal("user:ada", ws, &[GET, SET]);
 
     let patch = AgentConfig {
+        active_definition: None,
         default_runtime: Some("no-such-runtime".into()),
         model_endpoint: None,
     };

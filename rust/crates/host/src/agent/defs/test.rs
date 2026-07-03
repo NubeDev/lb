@@ -27,9 +27,7 @@ use lb_auth::Principal;
 use lb_mcp::{authorize_tool, ToolError};
 use serde::Serialize;
 
-use super::get::agent_def_get;
-use super::model::AgentDefinition;
-use crate::agent::{get_agent_config, reachable_tools, render_catalog, SYSTEM_PROMPT};
+use crate::agent::{reachable_tools, render_catalog, SYSTEM_PROMPT};
 use crate::assets::list_granted_skills;
 use crate::boot::Node;
 
@@ -98,10 +96,11 @@ pub async fn agent_def_test(
     // read-ish `agent.def.list`) — opaque `Denied`. Workspace-first is inside `authorize_tool`.
     authorize_tool(caller, ws, "agent.def.test").map_err(|_| ToolError::Denied)?;
 
-    // (1) Resolve the target definition: the given id, or the active `agent.config` pick. `agent_def_get`
-    // re-runs its OWN member gate + the built-in/custom namespace split (the hard wall), so the test
-    // can never reach a definition the caller couldn't `get`.
-    let def = resolve_target(node, caller, ws, id).await?;
+    // (1) Resolve the target definition: the given id, or the workspace's active pick. The shared
+    // `resolve_active_definition` re-runs `agent_def_get`'s OWN member gate + the built-in/custom
+    // namespace split (the hard wall), so the test can never reach a definition the caller couldn't
+    // `get`. Promoted out of this file so the UI badge, rules, and the model resolver all agree.
+    let def = crate::agent::resolve_active_definition(node, caller, ws, id).await?;
 
     // (2) Assemble the REAL run context for the caller, exactly as `run.rs` does at run start — under
     // the caller's own identity (so the member-scoped grants resolve to the human behind the run) with
@@ -206,36 +205,4 @@ pub async fn agent_def_test(
         provider_configured,
         ok: true,
     })
-}
-
-/// Resolve which definition the test targets: the explicit `id`, or the workspace's active
-/// `agent.config.default_runtime` matched to a catalog entry. When neither an id nor an active-pick
-/// definition is available, `BadInput` (nothing to test) — a clear signal, not a panic.
-async fn resolve_target(
-    node: &Node,
-    caller: &Principal,
-    ws: &str,
-    id: Option<&str>,
-) -> Result<AgentDefinition, ToolError> {
-    if let Some(id) = id {
-        return agent_def_get(node, caller, ws, id).await;
-    }
-    // No id → the active pick. The stored `default_runtime` is a runtime id; the active DEFINITION is
-    // the catalog entry whose `runtime` matches it. We read the config (best-effort) and look up the
-    // definition. If the workspace has no active pick, there is nothing to test.
-    let cfg = get_agent_config(&node.store, ws)
-        .await
-        .map_err(|_| ToolError::Denied)?;
-    let runtime = cfg.and_then(|c| c.default_runtime).ok_or_else(|| {
-        ToolError::BadInput("no id given and no active agent is configured".into())
-    })?;
-    // The active runtime id doubles as a definition lookup: try it directly as an id (custom/built-in),
-    // falling back to the first catalog entry binding that runtime.
-    if let Ok(def) = agent_def_get(node, caller, ws, &runtime).await {
-        return Ok(def);
-    }
-    let defs = super::list::agent_def_list(node, caller, ws).await?;
-    defs.into_iter()
-        .find(|d| d.runtime == runtime)
-        .ok_or_else(|| ToolError::BadInput("no catalog definition binds the active runtime".into()))
 }

@@ -171,6 +171,7 @@ async fn a_sealed_key_from_the_config_reaches_the_external_run() {
         &p,
         ws,
         &AgentConfig {
+            active_definition: None,
             default_runtime: Some(OPEN_INTERPRETER_DEFAULT.to_string()),
             model_endpoint: Some(ModelEndpointPatch {
                 api_key_secret: Some(secret_path.to_string()),

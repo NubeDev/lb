@@ -45,8 +45,14 @@ impl AgentRuntime for InHouseRuntime {
     ) -> Pin<Box<dyn Future<Output = Result<String, AgentError>> + Send + 'a>> {
         Box::pin(async move {
             // Round-trip the erased model back into a `ModelAccess` and drive the SAME loop. No new
-            // path: this is `run.rs` verbatim, reached through the seam.
-            let model = ModelHandle(self.model.clone());
+            // path: this is `run.rs` verbatim, reached through the seam. Prefer the per-run
+            // `model_override` (the workspace's active pick, resolved at run start —
+            // active-agent-wiring #2) over the model bound at registration (the node-level fallback).
+            let model = ModelHandle(
+                ctx.model_override
+                    .clone()
+                    .unwrap_or_else(|| self.model.clone()),
+            );
             run_session(
                 node,
                 &model,

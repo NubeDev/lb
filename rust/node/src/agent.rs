@@ -19,17 +19,23 @@
 //!    `main.rs` AFTER the gateway installs its signing key (the same ordering federation/control-engine
 //!    use), so the served run's tool callbacks verify.
 //!
-//! **Provider adapters are the ai-gateway scope's job.** Today the only `Provider` in the tree is the
-//! test-only `MockProvider`; no real HTTP adapter exists yet (ai-gateway lists them deferred). So
-//! [`build_in_house_model`] has the real construction seam but currently finds no adapter for any
-//! configured provider — it logs that and keeps `UnconfiguredModel`. The moment a real adapter lands it
-//! slots in behind the same `AiGateway<Provider>` with no change to the boot path or the loop. The
+//! **The real adapter is wired (active-agent-wiring scope).** [`adapter_for`] maps the catalog's
+//! providers (`zaicoding`, `openai`, the generic `openai-compat`) to a real `AiGateway<OpenAiCompat>`
+//! — the OpenAI chat-completions wire shape. Both the node-level in-house fallback
+//! ([`build_in_house_model`]) and the per-workspace [`NodeModelBuilder`] route through it, so "the
+//! node's default model" and "a workspace's picked model" never diverge on which providers are real.
+//! An unknown provider still keeps `UnconfiguredModel` (the honest empty state). The
 //! unconfigured→configured **swap** is proven for real against `MockProvider` at the test boundary
-//! (`crates/host/tests/agent_in_house_wiring_test.rs`).
+//! (`crates/host/tests/agent_in_house_wiring_test.rs`); the OpenAI-compat adapter itself is tested
+//! against a scripted in-process server (`role/ai-gateway/tests/openai_compat_test.rs`).
 
 use std::sync::Arc;
 
-use lb_host::{serve_agent, AgentServer, ErasedModel, Node, RuntimeRegistry, UnconfiguredModel};
+use lb_host::{
+    serve_agent, AgentServer, DefinitionEndpoint, ErasedModel, ModelBuilder, Node, RuntimeRegistry,
+    UnconfiguredModel,
+};
+use lb_role_ai_gateway::{AiGateway, OpenAiCompat};
 
 /// The node's in-house model config — the `ModelEndpoint` shape (provider / model / api-key-env NAME /
 /// base-url), read from env at boot. Present on every node regardless of the external-agent feature
@@ -38,11 +44,8 @@ use lb_host::{serve_agent, AgentServer, ErasedModel, Node, RuntimeRegistry, Unco
 #[derive(Debug, Clone)]
 struct InHouseModelConfig {
     provider: String,
-    #[allow(dead_code)] // consumed by a real provider adapter (ai-gateway scope), absent today.
     model: String,
-    #[allow(dead_code)]
     api_key_env: String,
-    #[allow(dead_code)]
     base_url: Option<String>,
 }
 
@@ -82,17 +85,82 @@ impl InHouseModelConfig {
 /// `(store, principal, ws)`, so it is called at model-build time on the node, not from this pure
 /// `cfg`-only shim; the shim exists only to prove the provider `match` seam.
 fn build_in_house_model(cfg: &InHouseModelConfig) -> Option<Arc<dyn ErasedModel>> {
-    match cfg.provider.as_str() {
-        // No real `Provider` adapter is implemented yet (ai-gateway scope owns them). The key would be
-        // resolved via `lb_host::resolve_endpoint_key` (sealed secret → env) here — never logged.
-        other => {
-            eprintln!(
-                "agent: in-house model provider '{other}' has no adapter yet — keeping \
-                 UnconfiguredModel (ai-gateway provider adapters are deferred). The seam is wired: a \
-                 real AiGateway<Provider> drops in here with no other change."
-            );
-            None
+    // The node-level fallback model (the `LB_AGENT_MODEL_*` tier) is built from the SAME adapter
+    // selection the per-workspace [`NodeModelBuilder`] uses (below), so "the node's default model" and
+    // "a workspace's picked model" can never diverge on which providers are real. The key is resolved
+    // from the configured env NAME (the node-level tier is env-only; the per-ws path adds sealed
+    // secrets via `resolve_endpoint_key_host`). Never logged.
+    let key = if cfg.api_key_env.is_empty() {
+        None
+    } else {
+        std::env::var(&cfg.api_key_env).ok()
+    };
+    let model = adapter_for(
+        &cfg.provider,
+        &cfg.model,
+        cfg.base_url.as_deref(),
+        key.as_deref(),
+    );
+    if model.is_none() {
+        eprintln!(
+            "agent: in-house model provider '{}' has no adapter — keeping UnconfiguredModel (the \
+             honest empty state). Known providers: zaicoding, openai-compat, openai.",
+            cfg.provider
+        );
+    }
+    model
+}
+
+/// Map a `(provider, model, base_url, key)` to a concrete [`ErasedModel`] — the ONE adapter-selection
+/// point (active-agent-wiring scope, Slice 1 node-wiring). Both the node-level in-house fallback
+/// ([`build_in_house_model`]) and the per-workspace [`NodeModelBuilder`] route here, so a provider is
+/// real for one exactly when it is real for the other. Today one wire shape covers the catalog: the
+/// OpenAI-compatible chat-completions [`OpenAiCompat`] (`zaicoding`, `openai`, and the generic
+/// `openai-compat`). An unknown provider → `None` (the honest unconfigured path — never a fake). The
+/// key goes only to the adapter transport; it is never logged.
+fn adapter_for(
+    provider: &str,
+    model: &str,
+    base_url: Option<&str>,
+    key: Option<&str>,
+) -> Option<Arc<dyn ErasedModel>> {
+    match provider {
+        // Every endpoint currently in the catalog speaks the OpenAI chat-completions shape; the
+        // difference is base_url + key + model, never a code branch (§1 symmetric). `zaicoding` is
+        // Z.AI's coding endpoint; `openai` is the public API (base_url None → api.openai.com);
+        // `openai-compat` is any other server speaking the same shape (ollama/llama.cpp, a proxy).
+        "zaicoding" | "openai" | "openai-compat" => {
+            let key = key.unwrap_or("").to_string();
+            let base_url = base_url.map(str::to_string);
+            Some(Arc::new(AiGateway::new(OpenAiCompat::new(
+                key,
+                model.to_string(),
+                base_url,
+            ))))
         }
+        _ => None,
+    }
+}
+
+/// The node's [`ModelBuilder`] (active-agent-wiring scope, Slice 2). Installed on the [`Node`] so
+/// [`lb_host::resolve_workspace_model`] can build a workspace's picked model without `lb-host`
+/// build-depending on this role crate (rule 1 — host holds only the trait; the binary names the
+/// provider). It delegates to the same [`adapter_for`] the in-house fallback uses. The key arrives
+/// already resolved (host-mediated sealed secret → env) — this builder never touches secrets or logs.
+struct NodeModelBuilder;
+
+impl ModelBuilder for NodeModelBuilder {
+    fn build(
+        &self,
+        endpoint: &DefinitionEndpoint,
+        key: Option<&str>,
+    ) -> Option<Arc<dyn ErasedModel>> {
+        adapter_for(
+            &endpoint.provider,
+            &endpoint.model,
+            endpoint.base_url.as_deref(),
+            key,
+        )
     }
 }
 
@@ -160,6 +228,11 @@ pub async fn mount(node: Arc<Node>) -> Option<AgentServer> {
     node.install_runtimes(registry);
     println!("agent: runtimes installed = {ids:?}");
 
+    // 1b. INSTALL THE MODEL BUILDER (active-agent-wiring #2): the per-workspace model resolver in host
+    //     builds a workspace's picked `model_endpoint` through THIS builder (host names no provider —
+    //     rule 1). Without it, `resolve_workspace_model` falls back to the node model / placeholder.
+    node.install_model_builder(Arc::new(NodeModelBuilder));
+
     // 2. SERVE IT: declare the routed `agent/invoke` queryable so an edge's `agent.invoke` reaches this
     //    node's finished agent (the serve-wiring TODO, now closed). The registry the server resolves
     //    against is the SAME one just installed (read back via `node.runtimes()`), so routed and
@@ -173,5 +246,49 @@ pub async fn mount(node: Arc<Node>) -> Option<AgentServer> {
             eprintln!("agent: serve_agent failed: {e}");
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn endpoint(provider: &str, model: &str) -> DefinitionEndpoint {
+        DefinitionEndpoint {
+            provider: provider.into(),
+            model: model.into(),
+            api_key_env: None,
+            api_key_secret: None,
+            base_url: None,
+        }
+    }
+
+    /// The catalog's OpenAI-compatible providers each map to a real, CONFIGURED adapter (never the
+    /// unconfigured placeholder) — the regression against silently dropping a provider from the match.
+    #[test]
+    fn known_providers_build_a_configured_model() {
+        for provider in ["zaicoding", "openai", "openai-compat"] {
+            let model = adapter_for(provider, "some-model", None, Some("k"))
+                .unwrap_or_else(|| panic!("{provider} must have an adapter"));
+            assert!(
+                model.is_configured(),
+                "{provider} builds a real (configured) provider adapter"
+            );
+        }
+    }
+
+    /// An unknown provider → `None`: the honest unconfigured path (the caller keeps `UnconfiguredModel`
+    /// / the node fallback), never a fake. Both `build_in_house_model` and `NodeModelBuilder` rely on it.
+    #[test]
+    fn an_unknown_provider_has_no_adapter() {
+        assert!(adapter_for("mystery-llm", "m", None, Some("k")).is_none());
+        assert!(NodeModelBuilder
+            .build(&endpoint("mystery-llm", "m"), Some("k"))
+            .is_none());
+        // And a known provider through the builder is configured (the seam host installs).
+        assert!(NodeModelBuilder
+            .build(&endpoint("zaicoding", "glm-4.6"), Some("k"))
+            .map(|m| m.is_configured())
+            .unwrap_or(false));
     }
 }

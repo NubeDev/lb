@@ -42,4 +42,12 @@ pub struct AgentConfig {
     /// The model endpoint the agent routes through (names only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_endpoint: Option<ModelEndpointPatch>,
+    /// The **active definition id** the workspace picked (`agent.def` catalog id). First-class so
+    /// "which agent is active" is a stored fact, not re-derived from `default_runtime` (active-agent-
+    /// wiring scope): the UI badge, rules, and the per-workspace model resolver read this ONE field.
+    /// Additive + optional (back-compat: an old config with no `active_definition` still resolves via
+    /// the `default_runtime` fallback). Written by the pick alongside the copied endpoint fields; LWW
+    /// like every other field (an offline double-deliver UPSERTs idempotently).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_definition: Option<String>,
 }

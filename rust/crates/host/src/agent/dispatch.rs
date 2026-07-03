@@ -73,6 +73,18 @@ pub async fn invoke_via_runtime(
     // Selection is a registry lookup, not a `match` over kinds. An unknown named runtime errors here.
     let runtime = registry.resolve(effective.as_deref())?;
 
+    // Resolve the per-run model override for the DEFAULT (in-house) runtime only (active-agent-wiring
+    // #2): the workspace's active pick's `model_endpoint` → a live model, memoized per (ws, endpoint).
+    // The in-house loop drives THIS model instead of the node-level `LB_AGENT_MODEL_*` fallback it was
+    // registered with. An external runtime reaches its model over its own transport (#4), so no override
+    // is resolved for it. Resolved AFTER the gate, under the caller (the definition read inherits the
+    // wall); a workspace with no pick / no adapter falls back to the node model inside resolve_model.
+    let model_override = if runtime.id() == DEFAULT_RUNTIME {
+        Some(super::resolve_workspace_model(node, caller, ws).await)
+    } else {
+        None
+    };
+
     // Bake substrate into the goal for the DEFAULT (in-house) runtime only — behaviourally identical
     // to `invoke`. The S4 gates (membership/ownership/grant) fire under the caller (see substrate.rs).
     // The persona rides this SAME grant-gated `load_skill` loader (core-skills scope: "unify
@@ -121,6 +133,7 @@ pub async fn invoke_via_runtime(
         caller,
         agent_caps,
         tools,
+        model_override,
         ts,
     };
     runtime.run(node, ctx).await

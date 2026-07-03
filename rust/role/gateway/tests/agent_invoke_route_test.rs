@@ -66,7 +66,12 @@ async fn invoke_without_the_cap_is_denied() {
     let (gw, key) = gateway().await;
     // A session token WITHOUT mcp:agent.invoke:call — the self-gate inside `invoke_via_runtime`
     // refuses and the route maps it to an opaque 403 (no capability/existence leak).
-    let tok = token(&key, "user:bob", "gw-agent-deny", &["mcp:series.latest:call"]);
+    let tok = token(
+        &key,
+        "user:bob",
+        "gw-agent-deny",
+        &["mcp:series.latest:call"],
+    );
 
     let resp = router(gw)
         .oneshot(bearer(
@@ -106,7 +111,10 @@ async fn the_run_is_keyed_to_the_tokens_workspace() {
     let in_b = lb_jobs::load(&node.store, "ws-b", &reply.job_id)
         .await
         .unwrap();
-    assert!(in_b.is_some(), "the run's job lands in the caller's ws (ws-b)");
+    assert!(
+        in_b.is_some(),
+        "the run's job lands in the caller's ws (ws-b)"
+    );
     let in_a = lb_jobs::load(&node.store, "ws-a", &reply.job_id)
         .await
         .unwrap();

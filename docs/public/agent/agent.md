@@ -169,12 +169,58 @@ read-only + node-env (its write is rejected); the sealed key rides the workspace
 selection instead. Names-only holds by construction: the value lives only in `lb-secrets`, never on a
 record, manifest, or log — the tests assert the record/config + the returned answer are value-free.
 
+## The active pick is the ONE implicit agent everywhere (active-agent-wiring)
+
+A workspace picks ONE agent ("Use") and **no surface asks again**. This closes the three breaks the
+pick used to have and lands the primitive under them — a real provider adapter consumed per workspace.
+
+**The adapter (the unblock).** `role/ai-gateway/src/providers/openai_compat.rs` — one `Provider`
+speaking the OpenAI **chat-completions** shape against a configurable `base_url` (covers `zaicoding`,
+`openai`, and any `openai-compat` server). Honest-failure contract: any network/non-2xx/unparseable
+fault → a terminal `AiResponse::stop` attributed `"model call failed: openai-compat/{model}: …"`, never
+a silent empty answer, never a panic, key never logged. The node's `adapter_for` (`node/src/agent.rs`)
+maps those providers to it; the in-house `default` is now honest, not a de-facto mock.
+
+**`active_definition` is first-class.** `agent.config` gains one additive optional `active_definition`
+id, written by the pick alongside the copied endpoint fields. The shared
+`resolve_active_definition` (`crates/host/src/agent/resolve_definition.rs`, promoted out of
+`agent.def.test`) is the single answer to "which definition is active" for the UI badge, rules, and the
+test button: explicit id → `active_definition` → `default_runtime` (as id, then as a runtime match).
+
+**Per-workspace model resolution.** `resolve_workspace_model(node, caller, ws)`
+(`crates/host/src/agent/resolve_model.rs`) resolves the active definition's `model_endpoint` → a live
+model, keyed by the host-mediated **sealed-workspace-secret → node-env** key
+(`resolve_endpoint_key_host`), **memoized** in a `DashMap<(ws, endpoint-hash), Arc<dyn ErasedModel>>` on
+the `Node` and **invalidated on `agent.config.set`** (a rotated key / re-pick never answers stale). It
+falls back to the node-level `LB_AGENT_MODEL_*` model, else the honest `UnconfiguredModel`. `lb-host`
+never build-depends on the gateway crate: the concrete `AiGateway<OpenAiCompat>` is built by a
+host-owned **`ModelBuilder`** seam the `node` binary installs (rule 1 — the resolver/cache/wall stay in
+host; only the `new()` lives in the binary).
+
+**Every consumer rides it, implicitly.**
+- **Channels** — `RuntimeArg`'s default entry is "Active — <label>" and sends **no** `runtime`; the
+  shipped `resolve_effective_runtime` fallback runs the pick. `agent.runtimes` gained an additive
+  `workspace_default` so the dropdown labels without a second fetch. Picking a concrete id stays an
+  explicit per-message override.
+- **The in-house loop** — an implicit `runtime:default` run drives the workspace's picked model via a
+  per-run `RunContext.model_override` (`resolve_workspace_model` at run start), node env as fallback.
+- **Rules** — `resolve_rule_model` rides the same resolver: a workspace that configured a model gets a
+  real `ai.*`; one with no pick keeps the honest "AI not configured for rules". (A node-level model
+  alone is NOT enough for a rule — the workspace must have chosen.)
+- **The AI widget** — `POST /agent/invoke` (`role/gateway/src/routes/agent_invoke.rs`) drives
+  `invoke_via_runtime` with `runtime=None` (workspace + caps from the token, never the body), so the
+  genui author flow resolves the active agent. Browser `agent_invoke` case in `http.ts`; Tauri command
+  in `desktop.rs`.
+
+The wall holds throughout: `active_definition` + the resolved model live on the workspace-scoped
+`agent.config`; a ws-B rule/widget can never resolve ws-A's endpoint or key (the DashMap key carries
+`ws`, the secret read is namespace-walled). No new caps or tables.
+
 ## Not yet (follow-ups)
 
-A real model **provider adapter** behind the gateway contract (the in-house model door + boot are now
-wired; only the concrete `impl Provider` is deferred — the swap point is `build_in_house_model`);
-streaming progress as Zenoh motion + the durable transcript via the outbox; token-on-the-bus for
+Streaming progress as Zenoh motion + the durable transcript via the outbox; token-on-the-bus for
 routed invocations (S5 is in-process co-trust); an optional curated/bounded agent tool subset if the
-reachable-catalog context tax bites; an optional additive `agent.config` "in-house model:
-configured/unconfigured" read field for the UI; per-workspace loop policy. The coding workflow that
+reachable-catalog context tax bites; provider fallback chains + the served OpenAI face for external
+agents (`model-routing-scope` #4); a real per-provider token count surfaced on `Turn` (rules' budget
+meter currently estimates from content length); per-workspace loop policy. The coding workflow that
 composes the agent (issue → triage → approval → job → outbox) is S6.

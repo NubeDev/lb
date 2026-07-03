@@ -226,6 +226,7 @@ async fn workspace_default_carries_the_picks_human_label() {
         &admin,
         ws,
         &AgentConfig {
+            active_definition: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },
@@ -256,6 +257,7 @@ async fn workspace_default_falls_back_to_the_id_when_no_definition_matches() {
         &admin,
         ws,
         &AgentConfig {
+            active_definition: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },
@@ -307,6 +309,7 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
         &admin_a,
         "ws-a",
         &AgentConfig {
+            active_definition: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },
@@ -323,8 +326,13 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
     );
 
     // And ws-A does see its own label (isolation is a wall, not a blackout).
-    let out_a = list_runtimes(&node, &admin_a, "ws-a").await.expect("ws-a list");
-    assert_eq!(out_a["workspace_default"]["label"], "Acme Cloud (ws-a only)");
+    let out_a = list_runtimes(&node, &admin_a, "ws-a")
+        .await
+        .expect("ws-a list");
+    assert_eq!(
+        out_a["workspace_default"]["label"],
+        "Acme Cloud (ws-a only)"
+    );
 }
 
 /// Rebuild the boot default-only registry (the in-house `default` over the unconfigured placeholder),

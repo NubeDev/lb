@@ -56,25 +56,41 @@ impl RuleModel for DisabledModel {
 }
 
 /// Resolve the model a `rules.run` uses — the single source of truth for "which model do this
-/// workspace's rules use" is the agent-catalog pick (`agent.config`), the SAME record the agent
-/// reads (rules-ai-wiring-scope). A rule's model is real only when BOTH hold:
-///   1. the workspace has **selected** a model endpoint in `agent.config` (the catalog wrote one), and
-///   2. the node actually has a **real** provider wired ([`ErasedModel::is_configured`] — not the
-///      `UnconfiguredModel` placeholder boot binds before a provider exists).
-/// Either missing → the honest [`DisabledModel`] (a rule's `ai.*` errors clearly; data-only rules run).
-/// This reads the workspace-scoped `agent.config` (the hard wall) on the already-authorized
-/// `rules.run` path — a host-internal read, not a new caller-facing verb.
-async fn resolve_rule_model(node: &Arc<Node>, ws: &str, idem: String) -> Arc<dyn RuleModel> {
-    // (1) Did this workspace select a model endpoint? (best-effort: a read error → treat as unset).
-    let selected = matches!(
+/// workspace's rules use" is the workspace's **active agent** (active-agent-wiring scope), resolved
+/// through the same [`resolve_workspace_model`](crate::agent::resolve_workspace_model) the in-house loop
+/// rides at run start. That maps the active definition's `model_endpoint` through the OpenAI-compatible
+/// adapter (so a workspace whose active agent is external over GLM-4.6 gets working `ai.*` from that
+/// endpoint), falling back to the node-level in-house model.
+///
+/// **A rule's `ai.*` requires the workspace to have configured a model — a node-level model alone is
+/// NOT enough** (unlike the in-house *loop*, whose fallback tier IS the node model). A workspace with no
+/// `agent.config` (no active pick AND no selected `model_endpoint`) keeps the honest [`DisabledModel`]:
+/// a rule that only reads data + emits still runs; only `ai.*` errors. So the two gates are:
+///   1. the workspace **configured** a model in `agent.config` (an `active_definition` OR a
+///      `model_endpoint` — the catalog pick writes both; a bare endpoint selection sets the latter), and
+///   2. the resolved model is a **real** provider ([`ErasedModel::is_configured`] — not the placeholder).
+/// Either missing → [`DisabledModel`]. The reads are workspace-scoped `agent.config` under the caller
+/// (the hard wall) on the already-authorized `rules.run` path — a host-internal read, not a new verb.
+async fn resolve_rule_model(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    idem: String,
+) -> Arc<dyn RuleModel> {
+    // (1) Did this workspace configure a model at all? (best-effort: a read error → treat as unconfigured).
+    // A node-level model is the in-house LOOP's fallback, not a rule's — a rule needs the workspace to
+    // have chosen one, so `ai.*` stays honestly disabled for a workspace that picked nothing.
+    let configured_ws = matches!(
         crate::agent::get_agent_config(&node.store, ws).await,
-        Ok(Some(cfg)) if cfg.model_endpoint.is_some()
+        Ok(Some(cfg)) if cfg.active_definition.is_some() || cfg.model_endpoint.is_some()
     );
-    if !selected {
+    if !configured_ws {
         return Arc::new(DisabledModel);
     }
-    // (2) Does the node have a real model provider? (the in-house `default` runtime's model).
-    let model = node.runtimes().default_model();
+    // (2) Resolve the workspace's model (active pick's endpoint → node fallback → placeholder), memoized.
+    // Only a REAL provider drives `ai.*`; the placeholder keeps the honest "not configured" (a selected
+    // endpoint on a provider-less node still errors, never fabricates).
+    let model = crate::agent::resolve_workspace_model(node, principal, ws).await;
     if !model.is_configured() {
         return Arc::new(DisabledModel);
     }
@@ -126,7 +142,7 @@ pub async fn call_rules_tool(
             // A configured workspace gets the real model; an unconfigured one gets the honest
             // `DisabledModel` error (now a *resolved* outcome, not a hardcoded default).
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
-            let model = resolve_rule_model(node, ws, idem).await;
+            let model = resolve_rule_model(node, principal, ws, idem).await;
             let result = rules_run(node, principal, ws, body, rule_id, params, model, now).await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))
         }

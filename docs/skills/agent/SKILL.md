@@ -45,13 +45,16 @@ At boot `node/src/agent.rs` reads these, builds the real `AiGateway<Provider>` f
 installs it as the in-house `default`, and calls `serve_agent`. **No provider set → the in-house
 `default` stays `UnconfiguredModel`** — the honest empty state, symmetric on every node (no `if cloud`).
 
-> **Provider adapters — the current truth.** As of the default-agent-wiring slice **no real `Provider`
-> adapter is implemented yet** (only the test `MockProvider`; the real OpenAI-compatible / local
-> adapters are ai-gateway-scope-deferred). So setting `LB_AGENT_MODEL_PROVIDER` today logs
-> "provider '<x>' has no adapter yet — keeping UnconfiguredModel" and the seam waits. The wiring, the
-> config, and the unconfigured→configured **swap** are done and proven against `MockProvider`; the day
-> a real adapter lands it drops into `build_in_house_model`'s match and the same config answers with a
-> real LLM — no other change.
+> **Provider adapters — the current truth (active-agent-wiring, shipped).** The real adapter is **live**:
+> `adapter_for` (`node/src/agent.rs`) maps `zaicoding` / `openai` / `openai-compat` to a real
+> `AiGateway<OpenAiCompat>` — the OpenAI chat-completions wire shape
+> (`role/ai-gateway/src/providers/openai_compat.rs`). So `LB_AGENT_MODEL_PROVIDER=zaicoding` +
+> `…_MODEL=glm-4.6` + `…_API_KEY_ENV=ZAI_API_KEY` answers with a real LLM. An **unknown** provider still
+> logs "has no adapter" and keeps `UnconfiguredModel` (the honest empty state). A model call that fails
+> (network / non-2xx / unparseable) returns an attributed terminal stop —
+> `"model call failed: openai-compat/<model>: …"` — never a silent empty answer, never a panic, key never
+> logged. The node-level `LB_AGENT_MODEL_*` model is the **fallback tier**; a *workspace* that picked an
+> agent in the catalog rides its OWN endpoint per run (next section).
 
 ## 2. Confirm the runtime is offered
 
@@ -103,10 +106,45 @@ a solo node simply has no remote callers.
 
 ---
 
+## 6. The active pick is the ONE implicit agent — everywhere (active-agent-wiring)
+
+Once a workspace picks an agent in Settings → Agent ("Use"), **no surface asks again**. The pick writes
+`agent.config { active_definition, default_runtime, model_endpoint }`; from there every consumer that
+isn't given an *explicit* override resolves that pick — and rides its `model_endpoint` per workspace
+(not just the node-level `LB_AGENT_MODEL_*`). Drive them all implicitly:
+
+- **A channel** — post `/agent <goal>` **without touching the runtime dropdown** (it reads
+  "Active — <label>"). The payload carries **no** `runtime`; the worker resolves the active pick and
+  streams back. (Grounded: `agent_default_runtime_test`,
+  `ui …/CommandPalette.agent.gateway.test.tsx` — an untouched palette posts no `runtime`.)
+- **A rule** — `ai.complete("summarize", grid)` reaches the workspace's active model through
+  `resolve_workspace_model`; a workspace with no pick keeps the honest "AI not configured for rules".
+  (Grounded: `rules_ai_wiring_test`.)
+- **The dashboard AI widget** — a `genui` cell → `agent_invoke` → `POST /agent/invoke` (workspace +
+  caps from the token, never the body; `runtime=None`) → the active agent authors the widget. (Grounded:
+  `role/gateway/tests/agent_invoke_route_test.rs`.)
+
+How "active" resolves (one shared seam, `resolve_active_definition`): explicit id → `active_definition`
+→ `default_runtime` (as an id, then as a runtime match). The model behind it
+(`resolve_workspace_model`) is: the active definition's `model_endpoint` → the adapter, keyed
+**sealed-workspace-secret → node-env**, memoized per `(ws, endpoint)` and **invalidated on re-pick**;
+else the node fallback model; else the honest `UnconfiguredModel`. The wall holds: ws-B never resolves
+ws-A's endpoint or key. (Grounded: `crates/host/tests/agent_active_model_test.rs`.)
+
+> **A quick live check.** With `LB_AGENT_MODEL_*` unset and no pick, `agent.invoke {goal}` returns
+> `UNCONFIGURED_ANSWER` and `ai.complete` errors "AI not configured for rules". Pick a `zaicoding`
+> definition (seal `ZAI_API_KEY` or set the env), and the SAME channel post / rule / widget answer with
+> the real model — no runtime named anywhere. Re-pick a different model and the next run reflects it
+> (the cache invalidated).
+
+---
+
 ## Common "why isn't it working?"
 
-- **"It says no in-house model is configured."** No `LB_AGENT_MODEL_PROVIDER`, or the named provider
-  has no adapter yet (see §1). This is the honest empty state, not a bug.
+- **"It says no in-house model is configured."** No workspace pick AND no `LB_AGENT_MODEL_PROVIDER`
+  (or the named provider is unknown to `adapter_for` — `zaicoding`/`openai`/`openai-compat` are the
+  known ones; see §1). This is the honest empty state, not a bug. Pick an agent (§6) or set the node
+  env to wire a model.
 - **"The agent proposed a tool but it was denied."** The caller (or `agent ∩ caller`) lacks that
   tool's cap. The menu shows what the caller may run; the wall re-checks. Grant the cap to the caller.
 - **"I want a third-party coding agent, not the in-house loop."** That's the opt-in external runtime —

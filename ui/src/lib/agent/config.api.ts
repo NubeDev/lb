@@ -23,6 +23,10 @@ export interface AgentConfig {
   /** The chosen default runtime id (must be one the node offers — validated on write). */
   default_runtime?: string;
   model_endpoint?: ModelEndpointPatch;
+  /** The active definition id the workspace picked (active-agent-wiring scope) — first-class so
+   *  "which agent is active" is a stored fact, not re-derived from `default_runtime` + endpoint.
+   *  Written by the pick alongside the copied fields; additive + optional (back-compat). */
+  active_definition?: string;
 }
 
 /** Read the workspace's agent config (`null` when unset). Member-level. */

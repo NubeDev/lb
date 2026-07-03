@@ -3,6 +3,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use dashmap::DashMap;
 use lb_auth::SigningKey;
 use lb_bus::{Bus, BusError};
 use lb_mcp::Registry;
@@ -10,7 +11,7 @@ use lb_runtime::{Engine, RuntimeError};
 use lb_store::{Store, StoreError};
 use thiserror::Error;
 
-use crate::agent::{RuntimeRegistry, UnconfiguredModel};
+use crate::agent::{ErasedModel, ModelBuilder, RuntimeRegistry, UnconfiguredModel};
 use crate::apikey::ApiKeyCache;
 use crate::native::SidecarMap;
 use crate::role::Role;
@@ -53,6 +54,17 @@ pub struct Node {
     /// so the binary can install after boot; readers [`clone`](Node::runtimes) the inner `Arc` out
     /// and never hold the lock across the (long) run.
     runtimes: Mutex<Arc<RuntimeRegistry>>,
+    /// The **per-workspace model cache** (active-agent-wiring scope, Slice 2): `(ws, endpoint-hash) →`
+    /// the built [`ErasedModel`], so rules/loop don't rebuild an `AiGateway` per call. Lock-free reads
+    /// (the hot path). Invalidated per-ws on `agent.config.set` ([`invalidate_workspace_model`]) so a
+    /// rotated key / changed pick can't answer with the stale model. `ws` is part of the key → the wall
+    /// holds (ws-B never reads ws-A's entry). Runtime-only — the durable truth is `agent.config`.
+    workspace_models: DashMap<(String, u64), Arc<dyn ErasedModel>>,
+    /// The installed **model-builder seam** (active-agent-wiring scope, Slice 2). `lb-host` never names
+    /// a concrete provider (rule 1 — no build-dep on a role crate); the `node` binary installs a builder
+    /// that turns a resolved endpoint + key into an `AiGateway<Provider>`. `None` until installed (a
+    /// minimal/test node with no builder resolves the node-fallback/unconfigured path — honest).
+    model_builder: Mutex<Option<Arc<dyn ModelBuilder>>>,
     /// The node's **token-signing key** — the one identity root the whole node trusts. It mints and
     /// verifies session tokens (the gateway's `login`/`authenticate` read it) AND the scoped
     /// `LB_EXT_TOKEN` a native sidecar carries when it calls back through `POST /mcp/call`
@@ -87,6 +99,8 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            workspace_models: DashMap::new(),
+            model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             role: Role::Solo,
         })
@@ -108,6 +122,8 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            workspace_models: DashMap::new(),
+            model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             role,
         })
@@ -128,6 +144,8 @@ impl Node {
             sidecars: Arc::new(SidecarMap::new()),
             apikeys: Arc::new(ApiKeyCache::new()),
             runtimes: Mutex::new(Arc::new(default_runtimes())),
+            workspace_models: DashMap::new(),
+            model_builder: Mutex::new(None),
             key: Mutex::new(Arc::new(SigningKey::generate())),
             role,
         })
@@ -144,6 +162,42 @@ impl Node {
     /// (A feature-off node never calls this and keeps the default-only registry.)
     pub fn install_runtimes(&self, registry: RuntimeRegistry) {
         *self.runtimes.lock().expect("runtimes lock") = Arc::new(registry);
+    }
+
+    /// A cached per-workspace model, if one is memoized under `key` (active-agent-wiring #2). Lock-free
+    /// read — the hot path for rules/loop. The key is `(ws, endpoint-hash)`; see `resolve_model.rs`.
+    pub fn workspace_model_cached(&self, key: &(String, u64)) -> Option<Arc<dyn ErasedModel>> {
+        self.workspace_models.get(key).map(|m| m.clone())
+    }
+
+    /// Memoize `model` under `key` for future resolves (active-agent-wiring #2). Called by
+    /// `resolve_workspace_model` after it builds a fresh adapter.
+    pub fn workspace_model_insert(&self, key: (String, u64), model: Arc<dyn ErasedModel>) {
+        self.workspace_models.insert(key, model);
+    }
+
+    /// Invalidate **every** cached model for `ws` (active-agent-wiring #2). Called by `agent.config.set`
+    /// so a rotated key / changed pick can never answer with a stale model. Drops all endpoint-hash
+    /// variants for the workspace (a re-pick may change the endpoint; all prior entries are now stale).
+    pub fn invalidate_workspace_model(&self, ws: &str) {
+        self.workspace_models
+            .retain(|(cached_ws, _), _| cached_ws != ws);
+    }
+
+    /// The installed model-builder seam (active-agent-wiring #2), if the binary installed one. Clones the
+    /// inner `Arc` out under a brief lock. `None` on a node with no builder (minimal/test).
+    pub fn model_builder(&self) -> Option<Arc<dyn ModelBuilder>> {
+        self.model_builder
+            .lock()
+            .expect("model builder lock")
+            .clone()
+    }
+
+    /// Install the model-builder seam (active-agent-wiring #2). Called ONCE by the `node` binary with a
+    /// builder that constructs `AiGateway<Provider>` — host never names the provider (rule 1). Idempotent
+    /// replace; a re-install invalidates nothing (the cache keys by endpoint, and picks bust per-ws).
+    pub fn install_model_builder(&self, builder: Arc<dyn ModelBuilder>) {
+        *self.model_builder.lock().expect("model builder lock") = Some(builder);
     }
 
     /// The node's token-signing key. The gateway mints/verifies session tokens with it, and the

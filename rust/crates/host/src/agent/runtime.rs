@@ -52,6 +52,12 @@ pub struct RunContext<'a> {
     /// The qualified MCP tools the run may propose. For an external agent this is the granted set the
     /// bridge (#2/#3) exposes; for the in-house loop it is the model's allowed-tools list.
     pub tools: &'a [AllowedTool],
+    /// An optional **per-run model override** (active-agent-wiring #2). When set, the in-house
+    /// [`InHouseRuntime`](super::in_house) drives the run with THIS model — the workspace's active pick,
+    /// resolved at run start via `resolve_workspace_model` — instead of the model bound at registration
+    /// (the node-level `LB_AGENT_MODEL_*` fallback). `None` keeps the registered model (the fallback
+    /// tier). External runtimes ignore it (they reach their model over their own transport, #4).
+    pub model_override: Option<Arc<dyn ErasedModel>>,
     /// Wall-clock stamp (test seam: a fixed clock in tests, live at boot).
     pub ts: u64,
 }

@@ -56,5 +56,12 @@ pub async fn agent_config_set(
 
     set_agent_config(&node.store, ws, patch)
         .await
-        .map_err(|_| ToolError::Denied)
+        .map_err(|_| ToolError::Denied)?;
+
+    // Invalidate any memoized per-workspace model (active-agent-wiring #2): this write may have changed
+    // the active pick or rotated its key, so a stale `AiGateway` must not keep answering. The next
+    // `resolve_workspace_model` rebuilds from the fresh config. Cheap (per-ws retain); the hard wall
+    // holds (only this `ws`'s entries drop).
+    node.invalidate_workspace_model(ws);
+    Ok(())
 }

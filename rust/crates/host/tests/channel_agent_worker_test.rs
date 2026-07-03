@@ -487,6 +487,7 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
         &admin,
         ws,
         &AgentConfig {
+            active_definition: None,
             default_runtime: Some(STUB.into()),
             model_endpoint: None,
         },

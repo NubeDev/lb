@@ -11,10 +11,9 @@ use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_datasource, add_member, add_team_member, agent_invoke, archive_workspace, assign_grant,
-    bus_stream,
-    channel_stream, convert_unit, create_apikey, create_channel, create_def, create_identity,
-    create_team, create_user, create_workspace, define_role, delete_dashboard, delete_def,
-    delete_flow, delete_message, delete_role, delete_rule, delete_team, delete_user,
+    bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
+    create_identity, create_team, create_user, create_workspace, define_role, delete_dashboard,
+    delete_def, delete_flow, delete_message, delete_role, delete_rule, delete_team, delete_user,
     disable_extension, disable_user, edit_message, enable_extension, enable_flow, enable_user,
     find_series, flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
     get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow,

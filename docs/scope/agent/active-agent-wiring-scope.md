@@ -203,20 +203,24 @@ Mandatory categories (`scope/testing/testing-scope.md`), rule 9 throughout:
   since edited (or deleted) must resolve sanely: re-resolve from the definition when present,
   fall back to the copied fields, never a panic — and the UI badge must reflect which one won.
 
-## Open questions
+## Open questions — RESOLVED (all four taken as proposed; shipped 2026-07-03)
 
-- **Adapter home:** `role/ai-gateway/src/providers/openai_compat.rs` behind the existing
-  `Provider` trait (proposal: yes — it's the gateway's job; the host only sees `ModelAccess`).
-- **Memoization shape:** a `DashMap<(ws, endpoint-hash), Arc<dyn ModelAccess>>` on the node vs
-  rebuild-per-run? Proposal: memoize with invalidation on `agent.config.set` (rules may call
-  per row-batch; rebuild-per-call is measurable waste).
-- **`workspace_default` on `agent.runtimes` vs the UI composing `agent.config.get` +
-  `agent.def.list` it already fetches?** Proposal: the additive field — the dropdown is
-  rendered in the channel composer where the settings queries aren't otherwise loaded.
-- **Does the in-house loop consume the per-workspace endpoint in this scope,** or only rules
-  (the loop keeps the node-level `LB_AGENT_MODEL_*` model)? Proposal: yes, same
-  `resolve_workspace_model` call at run start — it's the catalog's named follow-up and the
-  seam is being built anyway; keep node-level env as the fallback tier.
+- **Adapter home:** ✅ `role/ai-gateway/src/providers/openai_compat.rs` behind `Provider` (as proposed).
+  Shipped + green (`openai_compat_test.rs`). The host still only sees `ModelAccess` (via the bridge).
+- **Memoization shape:** ✅ `DashMap<(ws, endpoint-hash), Arc<dyn ErasedModel>>` on the `Node`,
+  invalidated on `agent.config.set` (as proposed). **One realization detail (deviation from the scope's
+  "host builds `AiGateway<OpenAiCompat>` directly"):** host must not build-depend on the role crate
+  (rule 1), so the concrete adapter is constructed by a host-owned **`ModelBuilder` trait seam** the
+  `node` binary installs; host holds only the trait + the erased result. The resolver, cache, wall, and
+  invalidation all live in `crates/host/src/agent/resolve_model.rs`. Same behavior, correct layering.
+- **`workspace_default` on `agent.runtimes`:** ✅ the additive read field (as proposed). Shipped — the
+  composer dropdown labels "Active — <label>" without a second fetch.
+- **In-house loop consumes the per-workspace endpoint:** ✅ yes (as proposed) — `invoke_via_runtime`
+  resolves `resolve_workspace_model` at run start for the DEFAULT runtime and threads it in via a per-run
+  `RunContext.model_override`; node-level `LB_AGENT_MODEL_*` stays the fallback tier.
+
+See `sessions/agent/active-agent-wiring-session.md` (work log + green output) and
+`public/agent/agent.md` ("The active pick is the ONE implicit agent everywhere").
 
 ## Related
 
