@@ -15,11 +15,11 @@ const OPTIONS: ComboboxOption[] = [
   { value: "bytes", label: "B", group: "Data" },
 ];
 
-function Harness({ allowCustom = false }: { allowCustom?: boolean }) {
-  const [value, setValue] = useState("");
+function Harness({ allowCustom = false, clearable = false, initial = "" }: { allowCustom?: boolean; clearable?: boolean; initial?: string }) {
+  const [value, setValue] = useState(initial);
   return (
     <>
-      <Combobox aria-label="unit" options={OPTIONS} value={value} onChange={setValue} allowCustom={allowCustom} />
+      <Combobox aria-label="unit" options={OPTIONS} value={value} onChange={setValue} allowCustom={allowCustom} clearable={clearable} />
       <output aria-label="picked">{value}</output>
     </>
   );
@@ -65,6 +65,20 @@ describe("Combobox", () => {
     expect(screen.getByText("no matches")).toBeInTheDocument();
     await user.keyboard("{Enter}");
     expect(screen.getByLabelText("picked").textContent).toBe("");
+  });
+
+  it("clearable shows a clear (×) only when a value is set, and clearing commits the empty value", async () => {
+    const user = userEvent.setup();
+    // No value → no clear affordance (nothing to clear).
+    const empty = render(<Harness clearable />);
+    expect(empty.queryByLabelText("clear unit")).not.toBeInTheDocument();
+    empty.unmount();
+    // A set value → the clear appears; clicking it resets to "" (— none —) without opening the list.
+    render(<Harness clearable initial="celsius" />);
+    expect(screen.getByRole("combobox", { name: "unit" })).toHaveTextContent("°C");
+    await user.click(screen.getByLabelText("clear unit"));
+    expect(screen.getByLabelText("picked").textContent).toBe("");
+    expect(screen.queryByLabelText("unit search")).not.toBeInTheDocument();
   });
 
   it("Escape closes without committing", async () => {

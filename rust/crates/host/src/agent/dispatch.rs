@@ -5,9 +5,13 @@
 //!
 //! The invoke **gate** (`mcp:agent.invoke:call`, workspace-first) fires here — identically for a
 //! default-runtime and an external-runtime invoke (the gate is the same; choosing a runtime is an
-//! argument, not a new grant). Substrate (skill/doc) loading stays with the in-house `invoke`; an
-//! external runtime that wants a persona loads it itself via the grant-gated `load_skill` (#2), so
-//! this seam does not bake the in-house substrate step into the external path.
+//! argument, not a new grant). An **explicitly-requested** substrate (a `skill`/`doc` the caller
+//! named on the invoke) is baked into the goal for BOTH runtimes — it is a caller directive, not the
+//! model's own menu choice (the AI-widget builder invokes with `skill:core.genui-widget` so the run
+//! authors OpenUI-Lang; an external agent can't `skill.activate` and must not be left to self-load).
+//! The model's own **granted-skills catalog** (name+description, the menu it may activate from) still
+//! differs by runtime: the in-house loop renders its own; the external path folds a compact catalog
+//! into the goal, and the agent pulls a discovered skill's body on demand via `load_skill` (#2).
 
 use std::sync::Arc;
 
@@ -40,11 +44,12 @@ pub struct Substrate<'a> {
 /// ([`resolve_effective_runtime`]); both entrypoints (`agent.invoke` via `serve`, the channel `/agent`
 /// worker) reach it here, so they resolve identically.
 ///
-/// **Substrate is the in-house loop's mechanism, applied only for the default runtime.** For the
-/// default path the granted skill/doc are baked into the goal exactly as [`invoke`](super::invoke)
-/// does (the S4 three gates fire under the caller). An external runtime loads its persona itself via
-/// the grant-gated `load_skill` (#2, best-effort persona), so the skill/doc are NOT smuggled into its
-/// goal here — the external agent's persona/tools are its profile's concern, not this seam's.
+/// **An explicitly-requested substrate is baked into the goal for BOTH runtimes.** A `skill`/`doc`
+/// the caller named on the invoke is a directive: its body is baked into the goal exactly as
+/// [`invoke`](super::invoke) does (the S4 three gates fire under the caller), for the in-house and the
+/// external path alike — the AI-widget builder's `skill:core.genui-widget` must reach the model even
+/// when the active agent is external. The external agent's own *persona* (an unrequested profile
+/// skill) is still its profile's concern, loaded via the grant-gated `load_skill` (#2).
 #[allow(clippy::too_many_arguments)]
 pub async fn invoke_via_runtime(
     node: &Arc<Node>,
@@ -123,8 +128,9 @@ pub async fn invoke_via_runtime(
         // goal (it drives `ctx.goal` verbatim over `exec --json`), and it cannot call the
         // loop-internal `skill.activate`; so we fold the compact catalog into the goal here, under the
         // DERIVED principal (`caller ∩ agent`) — an ungranted/unreadable skill never reaches the text
-        // (render_catalog is grant- + ws-gated, empty catalog → no injection). Bodies stay on demand
-        // via the granted `load_skill` tool in the profile's `granted_tools`.
+        // (render_catalog is grant- + ws-gated, empty catalog → no injection). Bodies for a skill the
+        // agent DISCOVERS in this catalog stay on demand via the granted `load_skill` tool in the
+        // profile's `granted_tools`; an EXPLICITLY-requested skill's body is already baked above.
         let agent = caller.derive("agent:session", agent_caps.to_vec());
         if let Some(catalog) = render_catalog(node, &agent, ws).await? {
             goal = format!("{goal}\n\n{catalog}");

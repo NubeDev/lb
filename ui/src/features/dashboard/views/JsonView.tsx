@@ -10,16 +10,21 @@ import { useState } from "react";
 import { WidgetHeader, WidgetMessage } from "../widgets/chrome";
 import { useFlowNodeValue } from "./useFlowNodeValue";
 import { flowBindingOfSource } from "./flowBinding";
-import type { Source } from "@/lib/dashboard";
+import { valueFieldOptions } from "./field";
+import { applyMappings } from "../fieldconfig/mappings";
+import { resolveColor } from "../fieldconfig/color";
+import type { Cell, Source } from "@/lib/dashboard";
 
 interface Props {
   source?: Source;
   options?: Record<string, unknown>;
   label?: string;
   refreshKey?: number;
+  /** The full cell — carries `fieldConfig` so a SCALAR value honors value mappings (false→on, etc.). */
+  cell?: Cell;
 }
 
-export function JsonView({ source, options, label, refreshKey = 0 }: Props) {
+export function JsonView({ source, options, label, refreshKey = 0, cell }: Props) {
   const flow = flowBindingOfSource(source);
   // Read views default to the `payload` field (flow-dashboard-binding-ux-scope); `options.envelope`
   // opts into showing the WHOLE `{payload, topic, …}` envelope. Both ride one `flows.node_state` read.
@@ -36,6 +41,13 @@ export function JsonView({ source, options, label, refreshKey = 0 }: Props) {
     flow?.path,
   );
   const [collapsed, setCollapsed] = useState(false);
+
+  // Value mappings (false→on, 1→"ok", …) apply to a SCALAR value only — an object/array renders as
+  // raw JSON. When a mapping hits, its `text` replaces the raw scalar and its `color` tints it, the
+  // same fieldConfig bridge stat/gauge use (never a re-implemented match here). No cell / no mapping /
+  // non-scalar value ⇒ the raw pretty-print, unchanged.
+  const isScalar = value == null || typeof value !== "object";
+  const mapped = cell && isScalar ? applyMappings(value, valueFieldOptions(cell).mappings) : null;
 
   return (
     <div className="flex h-full flex-col" aria-label={`json view ${flow?.node ?? ""}`}>
@@ -57,7 +69,15 @@ export function JsonView({ source, options, label, refreshKey = 0 }: Props) {
         ) : denied ? (
           <WidgetMessage tone="denied">binding broken — re-pick</WidgetMessage>
         ) : collapsed ? (
-          <span className="text-xs text-muted">{summarize(value)}</span>
+          <span className="text-xs text-muted">{mapped?.text ?? summarize(value)}</span>
+        ) : mapped ? (
+          <span
+            aria-label="json content"
+            className="font-mono text-xs"
+            style={{ color: mapped.color ? resolveColor(mapped.color) : "hsl(var(--fg))" }}
+          >
+            {mapped.text}
+          </span>
         ) : (
           <pre aria-label="json content" className="whitespace-pre-wrap break-words font-mono text-xs text-fg">
             {pretty(value)}

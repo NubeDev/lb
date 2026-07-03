@@ -152,7 +152,7 @@ export function WidgetView({
     case "jsonview":
       // A read view that pretty-prints a flow node's structured `payload` (collapsible). Reads the
       // primary target so a cell authored as v3 `sources[]` (the PanelEditor) resolves its flow source.
-      return <JsonView source={primarySource} options={options} label={label} refreshKey={refreshKey} />;
+      return <JsonView source={primarySource} options={options} label={label} refreshKey={refreshKey} cell={cell} />;
     case "genui":
       // AI-authored, catalog-constrained widget rendered in-process from the persisted IR
       // (`options.genui.ir`); data flows through the cell's v3 `sources[]` via `usePanelData`, actions

@@ -68,6 +68,20 @@ describe("per-viz options parity", () => {
     expect(opts.colorMode).toBe("background");
   });
 
+  it("color scheme defaults to None and lets the author clear back to it", async () => {
+    const user = userEvent.setup();
+    render(<Harness view="stat" which="field" />);
+    const modeSelect = screen.getByRole("combobox", { name: "color mode" });
+    // Unset color → the control reads "None", not a silently-defaulted "From thresholds".
+    expect(modeSelect).toHaveValue("");
+    // Pick a real scheme → it materializes in fieldConfig…
+    await user.selectOptions(modeSelect, "From thresholds");
+    expect(JSON.parse(screen.getByLabelText("fieldConfig").textContent!)?.defaults?.color?.mode).toBe("thresholds");
+    // …then choosing None clears the scheme back to absent (no `color` key).
+    await user.selectOptions(modeSelect, "None");
+    expect(JSON.parse(screen.getByLabelText("fieldConfig").textContent!)?.defaults?.color).toBeUndefined();
+  });
+
   it("timeseries offers stacking + threshold display in the Field tab graph styles", () => {
     render(<Harness view="timeseries" which="field" />);
     expect(screen.getByRole("combobox", { name: "Stacking" })).toBeInTheDocument();

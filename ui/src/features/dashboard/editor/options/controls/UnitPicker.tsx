@@ -38,6 +38,7 @@ export function UnitPicker({ value, onChange, "aria-label": ariaLabel = "field u
       value={value}
       onChange={onChange}
       allowCustom
+      clearable
       placeholder="— none —"
     />
   );

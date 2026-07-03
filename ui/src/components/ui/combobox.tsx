@@ -5,7 +5,7 @@
 // degrade path for a field picker with no preview frames yet). One primitive per file (FILE-LAYOUT).
 
 import * as React from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,8 @@ interface ComboboxProps {
   "aria-label": string;
   /** Commit free-typed text as the value on Enter (the labeled escape hatch, e.g. no frames yet). */
   allowCustom?: boolean;
+  /** Show an inline clear (×) on the trigger when a value is set; clicking it commits `""` (— none —). */
+  clearable?: boolean;
   disabled?: boolean;
   className?: string;
 }
@@ -52,6 +54,7 @@ export function Combobox({
   placeholder = "— select —",
   "aria-label": ariaLabel,
   allowCustom = false,
+  clearable = false,
   disabled = false,
   className,
 }: ComboboxProps) {
@@ -115,6 +118,9 @@ export function Combobox({
     else groups.push({ name: o.group, items: [{ o, idx }] });
   });
 
+  // Show the clear affordance only when clearable AND a value is actually set (nothing to clear otherwise).
+  const showClear = clearable && !disabled && value !== "";
+
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
@@ -124,7 +130,10 @@ export function Combobox({
         aria-label={ariaLabel}
         disabled={disabled}
         data-slot="combobox-trigger"
-        className="flex h-8 w-full items-center justify-between gap-1 rounded-md border border-border bg-bg px-2.5 text-left text-xs text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50"
+        className={cn(
+          "flex h-8 w-full items-center justify-between gap-1 rounded-md border border-border bg-bg py-0 pl-2.5 text-left text-xs text-fg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50",
+          showClear ? "pr-8" : "pr-2.5",
+        )}
         onClick={() => setOpen((o) => !o)}
       >
         <span className={cn("flex min-w-0 items-center gap-1.5 truncate", !current && "text-muted")}>
@@ -135,6 +144,22 @@ export function Combobox({
         </span>
         <ChevronsUpDown size={12} className="shrink-0 text-muted" aria-hidden />
       </button>
+      {showClear && (
+        // A sibling (not nested — the trigger is a <button>), absolutely positioned over the trigger's
+        // right pad. Clears to "" (— none —) without opening the list.
+        // eslint-disable-next-line no-restricted-syntax -- a tiny inline affordance, not a Button
+        <button
+          type="button"
+          aria-label={`clear ${ariaLabel}`}
+          className="absolute right-6 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+          onClick={() => {
+            onChange("");
+            setOpen(false);
+          }}
+        >
+          <X size={12} aria-hidden />
+        </button>
+      )}
 
       {open && (
         <div
