@@ -89,6 +89,32 @@ Verb families available in the cage (ported from rubix-cube): **data** (`source`
 `col`/`size`/`head`), **ai** (`ai.ask`/`complete`/`classify`/`embed` — metered + fenced), and
 **emit** (`emit`/`alert`/`log`).
 
+### `ai.*` runs against the workspace's SELECTED model (rules-ai-wiring)
+
+`ai.*` in a rule reaches the **same model the workspace picked for its agent** — the agent-catalog
+selection written to `agent.config` (Settings → Agent). The `rules.run` bridge resolves that pick to
+the node's model and drives a **single-turn** completion (no tools, no agent loop): `ai.complete` is
+one model turn; `ai.ask` asks the model to propose SQL, which is then **re-fenced** through the same
+`collect` a hand-written `query()` takes before it can run. A rule never gets the agent's tool-calling
+loop — its data/emit power comes from the *rule verbs*, gated by the cage + caps.
+
+```bash
+# a configured workspace: ai.complete reaches the real model, the result lands in `findings`
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"tool":"rules.run","args":{"ts":1,"body":
+"let summary = ai.complete(\"which coolers ran hot today?\"); emit(#{ summary: summary });"}}'
+# → {"output":{"kind":"findings"},"findings":[{"summary":"…the model answer…"}], "ai":{"calls":1,…}}
+```
+
+**Honest "AI configured?" — the model is real only when BOTH hold:** (1) the workspace **selected** a
+model endpoint in `agent.config` (the catalog pick), and (2) the node has a **real provider** wired
+(not the boot placeholder). Either missing → `ai.*` returns the clear `"AI not configured for rules"`
+error, while a **data-only rule still runs**. Today only the sanctioned deterministic `MockProvider`
+exists; a rule's `ai.ask` does not hit a live LLM until a real provider adapter is configured — do not
+promise otherwise in a workbench prompt. Picking a *different* definition in the catalog changes which
+model a subsequent rule run uses — the pick is the single source of truth for "which model do my rules
+use", exactly as for the agent.
+
 ## 4. The cage (why a rule is safe)
 
 Security is "absence of capability + presence of limits", in-process:
@@ -113,8 +139,11 @@ Security is "absence of capability + presence of limits", in-process:
   a handler.
 - **`save` never executes** — saving persists the body; only `run` evaluates it.
 - **`id` defaults to `name`** and upserts in place (no version history).
-- **The script sees no secrets** — no provider key (AI-gateway holds it), no DB DSN (`federation`
-  holds it). Same posture for both seams.
+- **The script sees no secrets** — no provider key (AI-gateway holds it; the rule adapter passes the
+  resolved `ModelAccess`, never a key), no DB DSN (`federation` holds it). Same posture for both seams.
+- **`ai.*` errors when unconfigured, never fabricates** — a workspace with no selected model (or a node
+  with no provider) gets the honest `"AI not configured for rules"` error, not a made-up answer; the
+  rest of the rule (data reads, `emit`) runs regardless.
 - **Workspace wall** — ws-B can neither `get`/`run` a ws-A saved rule nor read a ws-A source;
   `ai.ask` schema introspection sees only the workspace's own sources.
 - **Denials are opaque** — a blocked `source`, a tripped budget, and a rejected `eval` all surface as
@@ -123,7 +152,9 @@ Security is "absence of capability + presence of limits", in-process:
 ## Related
 
 - Scope: `docs/scope/rules/rules-engine-scope.md`; the DAG that chains rules on `lb-jobs`:
-  `docs/scope/rules/rule-chains-scope.md`.
+  `docs/scope/rules/rule-chains-scope.md`; the `ai.*`→real-model binding:
+  `docs/scope/rules/rules-ai-wiring-scope.md`.
+- The catalog pick a rule's `ai.*` honors: `docs/scope/agent/agent-catalog-scope.md` (`agent.config`).
 - The external-source engine `source("…")` reaches: `docs/skills/datasources/SKILL.md`
   (`federation.query`) — and the SurrealDB-never-a-DataFusion-source hard line.
 - Platform series a rule reads: `docs/skills/ingest-series/SKILL.md` (`series.*`).

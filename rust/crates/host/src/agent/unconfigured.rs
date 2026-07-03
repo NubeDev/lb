@@ -41,4 +41,11 @@ impl ModelAccess for UnconfiguredModel {
             }
         }
     }
+
+    /// This is the placeholder, not a real provider — so a non-agent caller (the rules engine)
+    /// keeps the honest "AI not configured" path rather than returning [`UNCONFIGURED_ANSWER`] as
+    /// if it were a model answer.
+    fn is_configured(&self) -> bool {
+        false
+    }
 }

@@ -23,7 +23,10 @@ export interface SavedRule {
  *  the result is the emitted findings list; `nothing` is an empty run. */
 export type RuleOutput =
   | { kind: "scalar"; value: unknown }
-  | { kind: "grid"; columns: string[]; rows: Record<string, unknown>[] }
+  // A row is EITHER an object keyed by column name (platform/SurrealDB) OR a column-aligned array
+  // (federation/datasource — the sidecar re-projects Arrow objects to arrays). `GridTable.cellAt`
+  // reads both; declaring only the object shape is why federated grids rendered every cell NULL.
+  | { kind: "grid"; columns: string[]; rows: (Record<string, unknown> | unknown[])[] }
   | { kind: "findings" }
   | { kind: "nothing" };
 

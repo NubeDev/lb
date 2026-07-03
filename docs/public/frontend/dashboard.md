@@ -1,7 +1,7 @@
 # Dashboard
 
 The shipped dashboard surface is a workspace-scoped grid of widgets over real series data. A user can
-list, create, open, edit, share, and delete dashboards through the shell. Layout edits persist in the
+list, create, open, edit, rename, share, and delete dashboards through the shell. Layout edits persist in the
 store, widgets read real series, and live values arrive over the series stream.
 
 ## What exists
@@ -10,6 +10,11 @@ store, widgets read real series, and live values arrive over the series stream.
   react-grid-layout geometry plus `widget_type`, `binding`, and `options`.
 - **Host verbs and routes:** `dashboard.list`, `dashboard.get`, `dashboard.save`, `dashboard.delete`, and
   `dashboard.share` are exposed through the host and mirrored by gateway routes.
+- **Roster management:** the left roster lists every reachable dashboard and, for editors
+  (`mcp:dashboard.save:call`), exposes per-item **rename** (inline title edit → a title-only
+  `dashboard.save` that preserves cells + variables) and **delete** (routed through the shared
+  `ConfirmDestructive` gate → `dashboard.delete`; the host re-checks owner + capability). Rename is a
+  title-only save on the same `dashboard:{id}` record — the id and layout never change.
 - **Sharing:** dashboards use the S4 asset-sharing model: private, team, and workspace visibility.
   Workspace is the hard wall; capability and membership checks still apply per call.
 - **Built-in widgets:** `chart`, `stat`, and `gauge` render in dashboard grid cells today.

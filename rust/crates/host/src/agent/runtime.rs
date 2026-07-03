@@ -93,6 +93,11 @@ pub trait ErasedModel: Send + Sync {
         prior: &'a [super::model_access::CallOutcome],
         idempotency_key: &'a str,
     ) -> Pin<Box<dyn Future<Output = Turn> + Send + 'a>>;
+
+    /// Mirrors [`ModelAccess::is_configured`] through the erasure — whether this is a real provider
+    /// vs. the placeholder. Lets a registry-stored (erased) model tell a non-agent caller (the rules
+    /// engine) whether AI is configured, without un-erasing the concrete type.
+    fn is_configured(&self) -> bool;
 }
 
 impl<M: ModelAccess + Send + Sync> ErasedModel for M {
@@ -105,6 +110,10 @@ impl<M: ModelAccess + Send + Sync> ErasedModel for M {
         idempotency_key: &'a str,
     ) -> Pin<Box<dyn Future<Output = Turn> + Send + 'a>> {
         Box::pin(self.turn(ws, messages, tools, prior, idempotency_key))
+    }
+
+    fn is_configured(&self) -> bool {
+        ModelAccess::is_configured(self)
     }
 }
 
@@ -132,5 +141,9 @@ impl ModelAccess for ModelHandle {
         let prior = prior.to_vec();
         let key = idempotency_key.to_string();
         async move { model.turn_boxed(&ws, &messages, &tools, &prior, &key).await }
+    }
+
+    fn is_configured(&self) -> bool {
+        self.0.is_configured()
     }
 }

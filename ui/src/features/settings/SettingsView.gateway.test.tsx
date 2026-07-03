@@ -59,8 +59,8 @@ describe("SettingsView — Preferences (real gateway)", () => {
   });
 });
 
-describe("SettingsView — Agent (real gateway)", () => {
-  it("an admin picks a runtime + endpoint and it persists", async () => {
+describe("SettingsView — Agent catalog (real gateway)", () => {
+  it("an admin creates a custom definition + picks it, and the selection persists", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     const session = await signInReal("user:ada", ws);
@@ -68,20 +68,17 @@ describe("SettingsView — Agent (real gateway)", () => {
     render(<SettingsView ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
-    // The picker lists the node's runtimes (at least `default`); wait for the async fetch to populate
-    // the option, then pick it explicitly and fill the endpoint.
-    const picker = (await screen.findByLabelText("Default agent runtime")) as HTMLSelectElement;
-    await waitFor(() =>
-      expect(
-        Array.from(picker.options).some((o) => o.value === "default"),
-      ).toBe(true),
-    );
-    await user.selectOptions(picker, "default");
+    // The seeded in-house built-in lists (node-runnable). Create a custom definition over the same
+    // `default` runtime, names-only endpoint, then pick it — picking writes the real `agent.config`.
+    await screen.findByLabelText("definition builtin.in-house-glm-4.6");
+    await user.click(screen.getByLabelText("new custom definition"));
+    await user.type(screen.getByLabelText("Label"), "Custom — GLM-4.6");
     await user.type(screen.getByLabelText("Provider"), "zaicoding");
-    await user.type(screen.getByLabelText("Model"), "glm-4.6");
+    await user.type(screen.getByLabelText("Model"), "glm-4.6-custom");
     await user.type(screen.getByLabelText("API key env var"), "ZAI_API_KEY");
-    await user.click(screen.getByLabelText("save agent config"));
-    await screen.findByText("Saved.");
+    await user.click(screen.getByLabelText("save definition"));
+
+    await user.click(await screen.findByLabelText("pick custom-glm-4-6"));
 
     await waitFor(async () => {
       const cfg = await getAgentConfig();
@@ -92,10 +89,12 @@ describe("SettingsView — Agent (real gateway)", () => {
     });
   });
 
-  it("a member without the write cap sees the agent controls read-only, and the server denies a write", async () => {
+  it("a member with read caps only sees the catalog read-only, and the server denies a write", async () => {
     const ws = nextWs();
-    // Grant only the READ caps a normal member needs to render the tab — NOT `agent.config.set`.
+    // Grant only the READ caps a normal member needs to render the catalog — NOT the write caps.
     const session = await signInWithCaps("user:eve", ws, [
+      "mcp:agent.def.list:call",
+      "mcp:agent.def.get:call",
       "mcp:agent.config.get:call",
       "mcp:agent.runtimes:call",
     ]);
@@ -104,10 +103,10 @@ describe("SettingsView — Agent (real gateway)", () => {
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Agent"));
 
-    // The picker + endpoint fields are disabled; the "save" button is absent for a read-only viewer.
-    expect((await screen.findByLabelText("Default agent runtime")) as HTMLSelectElement).toBeDisabled();
-    expect(screen.getByLabelText("Provider")).toBeDisabled();
-    expect(screen.queryByLabelText("save agent config")).not.toBeInTheDocument();
+    // The catalog renders read-only: no "new definition", no "use"/pick affordance on a built-in.
+    await screen.findByLabelText("definition builtin.in-house-glm-4.6");
+    expect(screen.queryByLabelText("new custom definition")).toBeNull();
+    expect(screen.queryByLabelText("pick builtin.in-house-glm-4.6")).toBeNull();
 
     // The server is the real wall: a direct write is refused (opaque) despite any client state.
     await expect(setAgentConfig({ default_runtime: "default" })).rejects.toThrow();

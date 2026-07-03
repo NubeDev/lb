@@ -314,6 +314,24 @@ fn member_caps() -> Vec<String> {
         // The host re-checks each cap server-side (a token without `set` is refused).
         "mcp:agent.config.get:call",
         "mcp:agent.config.set:call",
+        // agent-catalog scope: the definition catalog. `list`/`get` are member-level (the picker
+        // reads them); create/update/delete are admin (custom definitions only — built-ins are
+        // read-only regardless of caps). The dev login doubles as admin, so it holds all five; the
+        // host re-checks each server-side.
+        "mcp:agent.def.list:call",
+        "mcp:agent.def.get:call",
+        "mcp:agent.def.create:call",
+        "mcp:agent.def.update:call",
+        "mcp:agent.def.delete:call",
+        // agent-catalog test-and-secrets scope: the context-proving diagnostic. Its OWN admin-tier cap
+        // (distinct from the read-ish `agent.def.list`) because the test SPENDS model budget — "who may
+        // spend model budget" is a distinct authority. The dev login doubles as admin; the host
+        // re-checks it server-side. Setting a sealed MODEL KEY for a definition rides the shipped
+        // secrets surface — `mcp:secret.set:call` + `secret:agent/*:write` below (the key value flows
+        // ONLY through `secret.set`, sealed; the record stores just the path, names-only).
+        "mcp:agent.def.test:call",
+        "mcp:secret.set:call",
+        "secret:agent/*:write",
         // agent-memory scope: the durable memory verbs. `list`/`get` are member-level reads; `set`/
         // `delete` are member-level writes on the caller's OWN scope (the target scope is derived from
         // the principal, never an argument — the member wall). A write to the SHARED `workspace` scope

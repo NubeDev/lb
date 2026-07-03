@@ -93,6 +93,16 @@ export const CAP = {
   prefsSetDefault: "mcp:prefs.set_default:call",
   agentConfigGet: "mcp:agent.config.get:call",
   agentConfigSet: "mcp:agent.config.set:call",
+  // agent-catalog scope: the definition catalog. `list`/`get` are member-level (the picker reads
+  // them); create/update/delete are admin (custom definitions only — built-ins are read-only).
+  agentDefList: "mcp:agent.def.list:call",
+  agentDefGet: "mcp:agent.def.get:call",
+  agentDefCreate: "mcp:agent.def.create:call",
+  agentDefUpdate: "mcp:agent.def.update:call",
+  agentDefDelete: "mcp:agent.def.delete:call",
+  // agent-catalog test-and-secrets scope: the context-proving diagnostic. Its OWN admin-tier cap
+  // (distinct from the read-ish `list`) because the test spends a model turn.
+  agentDefTest: "mcp:agent.def.test:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

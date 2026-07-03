@@ -118,6 +118,17 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => eprintln!("boot: core-skill seed failed: {e}"),
     }
 
+    // AGENT-DEFINITION CATALOG seed (agent-catalog scope): boot-seed the built-in agent definitions
+    // (named (runtime, model_endpoint) presets) into the reserved `_lb_agents` namespace from the
+    // embedded `agents.toml` manifest (overridable via `LB_AGENT_CATALOG_TOML`). Idempotent (LWW
+    // UPSERT); the ONLY writer of that namespace, mirroring `seed_core_skills`. A node without the
+    // `external-agent` feature still seeds the open-interpreter entries — they are filtered from the
+    // catalog list at read time (symmetric, no `if cloud`).
+    match lb_host::seed_agent_definitions(&node.store).await {
+        Ok(ids) => println!("boot: seeded {} agent definitions ({:?})", ids.len(), ids),
+        Err(e) => eprintln!("boot: agent-definition seed failed: {e}"),
+    }
+
     // DEFAULT CORE-SKILL GRANTS for the boot workspace (core-skills scope): `workspace_create` applies
     // the default set on a genuinely-new workspace, but the dev boot workspace is seeded directly (not
     // through that verb), so grant the resolved set here too. The set is node config —

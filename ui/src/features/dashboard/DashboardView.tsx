@@ -3,7 +3,7 @@
 // `dashboard.save` (the SurrealDB record, rule 4); widgets read `series.read`/`series.latest` and go
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
@@ -18,6 +18,7 @@ import { AddPanel } from "./editor/AddPanel";
 import { VariableBar } from "./vars/VariableBar";
 import { VariableEditor } from "./vars/VariableEditor";
 import { useVarScope } from "./vars/useVarScope";
+import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import { RefreshControl } from "./RefreshControl";
 import { useAutoRefresh } from "./useAutoRefresh";
 import { useDashboard } from "./useDashboard";
@@ -42,7 +43,26 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
   const dash = useDashboard(ws);
   const picker = useSourcePicker(ws);
   const current = dash.current;
+  // The selected dashboard id lives in the URL (`?d=<id>`) so a pasted/copied link re-opens the same
+  // dashboard. Load the URL's dashboard whenever the id changes and doesn't match what's loaded; write
+  // the id back to the URL on a roster select so the link is always honest + shareable.
+  const selectedId = range?.d;
+  useEffect(() => {
+    if (selectedId && selectedId !== current?.id) void dash.select(selectedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, ws]);
+  const selectDashboard = (id: string) => {
+    if (range) onSearchChange?.({ ...range, d: id });
+    else void dash.select(id);
+  };
+  const removeDashboard = (id: string) => {
+    void dash.remove(id);
+    // Drop the URL id when the removed dashboard was the selected one, so the link never dangles at a
+    // deleted id (falls back to the roster).
+    if (range && range.d === id) onSearchChange?.({ ...range, d: undefined });
+  };
   const [varEditorOpen, setVarEditorOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // The edit cap, sourced from the session grant the shell already holds (the same `caps` the nav gates
   // editing surfaces on) — no new backend read. The host re-checks `dashboard.save` regardless.
   const { caps } = useAppRoutingContext();
@@ -144,7 +164,7 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
                 aria-label="delete dashboard"
                 variant="destructive"
                 size="sm"
-                onClick={() => void dash.remove(current.id)}
+                onClick={() => setConfirmDelete(true)}
               >
                 Delete
               </Button>
@@ -156,9 +176,27 @@ export function DashboardView({ ws, range, onSearchChange }: Props) {
       <DashboardRoster
         roster={dash.roster}
         selectedId={current?.id ?? null}
-        onSelect={dash.select}
+        onSelect={selectDashboard}
         onCreate={dash.create}
+        onRename={(id, title) => void dash.rename(id, title)}
+        onRemove={removeDashboard}
+        canEdit={canEdit}
       />
+
+      {current && confirmDelete && (
+        <ConfirmDestructive
+          title={`Delete ${current.title}`}
+          consequence="This dashboard and its widget layout will be removed. It can be recreated but its current layout is not recoverable."
+          reversible={false}
+          escalation="none"
+          confirmLabel="Delete"
+          onConfirm={() => {
+            removeDashboard(current.id);
+            setConfirmDelete(false);
+          }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
 
       {!current ? (
         <AppEmptyState

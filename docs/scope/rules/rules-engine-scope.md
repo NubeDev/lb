@@ -257,6 +257,8 @@ No open questions — these are the long-term answers the build follows.
 - `../datasources/datasources-scope.md` — the `federation` native extension a rule reaches for external
   sources via `federation.query`; the SurrealDB-native-vs-federated split.
 - `../ai-gateway/ai-gateway-scope.md` — the `ModelAccess` seam `ai.*` re-points at; the budget/idempotency.
+- `rules-ai-wiring-scope.md` — wires the `ai.*` model seam to the real agent (retires the hardcoded
+  `DisabledModel` on the `rules.run` bridge; resolves the workspace's agent-catalog model selection).
 - `../jobs/jobs-scope.md`, `../inbox-outbox/outbox-scope.md` — the durable job the chain reuses; the
   inbox/outbox `alert` routes to.
 - `../auth-caps/auth-caps-scope.md` — `caps::check`, the chokepoint every verb runs.

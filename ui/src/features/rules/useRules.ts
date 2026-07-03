@@ -43,6 +43,13 @@ export interface RulesState {
   loadExample: (body: string) => void;
   run: () => Promise<void>;
   save: (id: string, name: string) => Promise<void>;
+  /** The single "persist what I'm looking at" action the toolbar/⌘S calls. If a saved rule is open it
+   *  updates it in place; if this is a fresh ad-hoc buffer it needs a name — returns
+   *  `{ needsName: true }` so the caller can open the inline name field instead of silently failing. */
+  saveCurrent: (nameForNew?: string) => Promise<{ ok: boolean; needsName: boolean }>;
+  /** True once a run has completed (success or typed error) — lets the result region distinguish
+   *  "you haven't run yet" from "ran and returned nothing". */
+  hasRun: boolean;
   /** Rename the currently-open rule (same id, new name). Preserves the persisted body. */
   rename: (name: string) => Promise<boolean>;
   remove: (id: string) => Promise<void>;
@@ -82,6 +89,7 @@ export function useRules(_ws: string): RulesState {
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const [hasRun, setHasRun] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -99,6 +107,7 @@ export function useRules(_ws: string): RulesState {
   const open = useCallback(async (id: string) => {
     setError(null);
     setResult(null);
+    setHasRun(false);
     try {
       const rule = await getRule(id);
       setSelectedId(rule.id);
@@ -117,6 +126,7 @@ export function useRules(_ws: string): RulesState {
     setSavedBody(null);
     setResult(null);
     setError(null);
+    setHasRun(false);
   }, []);
 
   const create = useCallback(
@@ -178,6 +188,7 @@ export function useRules(_ws: string): RulesState {
       setBuffer(body);
       setResult(null);
       setError(null);
+      setHasRun(false);
     },
     [buffer, savedBody],
   );
@@ -193,6 +204,7 @@ export function useRules(_ws: string): RulesState {
       setError(msg(e));
     } finally {
       setRunning(false);
+      setHasRun(true);
     }
   }, [buffer]);
 
@@ -209,6 +221,22 @@ export function useRules(_ws: string): RulesState {
       }
     },
     [buffer, refresh],
+  );
+
+  const saveCurrent = useCallback(
+    async (nameForNew?: string): Promise<{ ok: boolean; needsName: boolean }> => {
+      // A saved rule is open → update it in place under its existing id + name.
+      if (selectedId) {
+        await save(selectedId, name ?? selectedId);
+        return { ok: true, needsName: false };
+      }
+      // Fresh ad-hoc buffer → it needs a name before it can become a saved rule.
+      const trimmed = nameForNew?.trim();
+      if (!trimmed) return { ok: false, needsName: true };
+      const id = await create(trimmed);
+      return { ok: id !== null, needsName: false };
+    },
+    [selectedId, name, save, create],
   );
 
   const remove = useCallback(
@@ -244,6 +272,8 @@ export function useRules(_ws: string): RulesState {
     loadExample,
     run,
     save,
+    saveCurrent,
+    hasRun,
     remove,
   };
 }

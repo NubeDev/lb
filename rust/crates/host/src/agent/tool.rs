@@ -55,6 +55,15 @@ pub async fn call_agent_tool(
                 None => Err(ToolError::NotFound),
             }
         }
+        // agent-catalog scope: the definition catalog verbs (`agent.def.list|get|create|update|
+        // delete`). Each runs its own MCP gate + reserved-tier + runtime validation inside; the
+        // dispatcher returns `None` for a verb outside its surface (fall-through before `NotFound`).
+        _ if qualified_tool.starts_with("agent.def.") => {
+            match super::call_agent_catalog_tool(node, principal, ws, qualified_tool, input).await {
+                Some(r) => r,
+                None => Err(ToolError::NotFound),
+            }
+        }
         // agent-memory scope: the durable memory verbs (`agent.memory.list|get|set|delete`). Each
         // runs its own MCP + member-wall + ws-write gate inside; the dispatcher returns `None` for a
         // verb outside its surface, so it composes as a fall-through before `NotFound`.

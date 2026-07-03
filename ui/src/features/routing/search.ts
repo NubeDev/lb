@@ -15,6 +15,9 @@ export interface ChannelSearch {
 export interface DashboardSearch {
   from: string;
   to: string;
+  /** The selected dashboard id, URL `?d=<id>`. Lives in the URL so a pasted link re-opens the same
+   *  dashboard (shareable, Grafana parity). Absent = show the roster, no dashboard selected. */
+  d?: string;
   /** The auto-refresh interval (widget-config-vars Slice 4), URL `?refresh=30s`. Absent/`""` = off. */
   refresh?: string;
   /** Flat `var-<name>` selection params (one string, or a string[] for a multi-value selection). */
@@ -64,6 +67,10 @@ export function validateDashboardSearch(search: Record<string, unknown>): Dashbo
   const range = from <= to ? { from, to } : fallback;
 
   const out: DashboardSearch = { ...range };
+
+  // The selected dashboard id — carried through as-is (a bad id just fails the load, never throws).
+  const d = scalar(search.d)?.trim();
+  if (d) out.d = d;
 
   // The refresh interval — keep only a known option; anything else degrades to off (drop the key).
   const refresh = scalar(search.refresh)?.trim();

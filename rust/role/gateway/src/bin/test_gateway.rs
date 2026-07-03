@@ -29,6 +29,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // dev-login stand-in (collaboration scope).
     let gw = lb_role_gateway::Gateway::boot().await?;
 
+    // Boot-seed the built-in agent definitions into the reserved `_lb_agents` namespace, mirroring the
+    // production `node` binary (agent-catalog scope). The UI catalog test reads these back over the
+    // real read routes — seeding through the real boot path, not faking (testing §0).
+    if let Err(e) = lb_host::seed_agent_definitions(&gw.node.store).await {
+        eprintln!("test_gateway: agent-definition seed failed: {e}");
+    }
+
     // Bind first so we can print the actual assigned port (when PORT=0) before serving.
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
     let addr = listener.local_addr()?;

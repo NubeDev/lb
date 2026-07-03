@@ -4,9 +4,13 @@
 // generic `store.ts`). A tiny observable: `get`/`set`/`subscribe` — no state library needed for one
 // value, and `useSession` adapts it to React via `useSyncExternalStore`.
 
+import { loadSession, saveSession } from "./session.storage";
 import type { Session } from "./session.types";
 
-let current: Session | null = null;
+// Rehydrate from durable storage so a page refresh keeps the login (the token lives outside React and
+// outside this module's lifetime). The gateway re-checks the token on every verb, so a stale/expired
+// one just fails auth and the UI falls back to login.
+let current: Session | null = loadSession();
 const listeners = new Set<() => void>();
 
 /** The current session, or `null` when logged out. Read by the IPC layer on every request. */
@@ -22,6 +26,7 @@ export function sessionToken(): string {
 /** Replace the session (login → a `Session`, logout → `null`) and notify subscribers. */
 export function setSession(next: Session | null): void {
   current = next;
+  saveSession(next);
   for (const l of listeners) l();
 }
 

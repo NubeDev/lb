@@ -36,6 +36,15 @@ describe("route search validation", () => {
     const parsed = validateDashboardSearch({ from: "2026-03-31", to: "2026-01-01" });
     expect(parsed.from <= parsed.to).toBe(true);
   });
+
+  it("carries the selected dashboard id (?d=) so a link is shareable", () => {
+    expect(validateDashboardSearch({ from: "2026-01-01", to: "2026-01-02", d: "sales" }).d).toBe(
+      "sales",
+    );
+    // A blank/whitespace id degrades to no selection (the roster), never a bad key.
+    expect(validateDashboardSearch({ from: "2026-01-01", to: "2026-01-02", d: "  " }).d).toBeUndefined();
+    expect(validateDashboardSearch({ from: "2026-01-01", to: "2026-01-02" }).d).toBeUndefined();
+  });
 });
 
 describe("dashboard variable + refresh URL round-trip (widget-config-vars Slices 2/4)", () => {

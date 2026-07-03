@@ -27,11 +27,26 @@ export function ExtHost({ ext, ui, workspace }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let unmount: void | (() => void);
-    let cancelled = false;
-    const el = elRef.current;
-    if (!el) return;
-    el.replaceChildren();
+    const host = elRef.current;
+    if (!host) return;
+
+    // The extension's `mount()` is ASYNC and it owns its OWN React root (`createRoot`). StrictMode
+    // double-invokes this effect (mount → cleanup → mount) in dev, so run A can still be awaiting its
+    // remote when run B starts. Mounting every run into the SAME `host` and clearing it with
+    // `host.replaceChildren()` (the old code) let run B wipe the DOM run A's root still owned — and when
+    // A's orphaned root later unmounted (on nav), it removed nodes already gone → "removeChild: not a
+    // child" INSIDE React's commit → the shell's commit aborts → the sidebar/nav wedge. (Deferring the
+    // unmount to a microtask never helped: it changed WHEN the orphan unmounted, not that it was orphaned.)
+    //
+    // Fix: give THIS effect-run its own child <div> under `host`. Runs mount into DIFFERENT nodes, so
+    // neither wipes the other's DOM, and a mount that resolves after cleanup can't leak — its teardown
+    // lives in the same `alive`/holder closure and always unmounts the root THIS run created.
+    const slot = document.createElement("div");
+    slot.className = "h-full w-full";
+    host.appendChild(slot);
+
+    let alive = true;
+    const holder: { unmount?: () => void } = {};
     setError(null);
 
     // The manifest `entry` (e.g. `assets/remoteEntry.js`) is the federation container, served under
@@ -40,29 +55,29 @@ export function ExtHost({ ext, ui, workspace }: Props) {
     (async () => {
       try {
         const mount = await loadRemoteMount(ext, remoteUrl);
-        if (cancelled) return;
-        unmount = mount(el, { workspace }, makeBridge(ui.scope));
+        if (!alive) return;
+        const teardown = mount(slot, { workspace }, makeBridge(ui.scope));
+        if (!alive) {
+          if (typeof teardown === "function") teardown();
+        } else {
+          holder.unmount = typeof teardown === "function" ? teardown : undefined;
+        }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (alive) setError(e instanceof Error ? e.message : String(e));
       }
     })();
 
     return () => {
-      cancelled = true;
-      // Let the extension tear down its own tree first (it may own a React root in `el`). Guard both
-      // steps: a throw here runs during the shell's own render/commit and would surface as React's
-      // "synchronously unmount a root while rendering" / "removeChild: not a child" errors, unwinding
-      // the shell. Swallow — teardown of a page we're navigating away from must never crash the shell.
+      alive = false;
+      // Unmount the extension's root (if it mounted) and remove OUR slot — never `host`, which the shell
+      // owns. The root's `unmount()` only removes children of OUR slot, a node no other run and no shell
+      // commit touches, so this is safe to run synchronously (no shared-DOM double-remove); no defer.
       try {
-        if (typeof unmount === "function") unmount();
+        holder.unmount?.();
       } catch {
         /* extension unmount threw — already leaving the page; ignore */
       }
-      try {
-        el.replaceChildren();
-      } catch {
-        /* DOM already reconciled away by the extension's own root; ignore */
-      }
+      slot.remove();
     };
   }, [ext, ui.entry, ui.scope, workspace]);
 

@@ -29,6 +29,8 @@ export interface DashboardState {
   saveCells: (cells: Cell[]) => Promise<void>;
   /** Persist the variable definitions (the variable editor → `dashboard.save`, cells preserved). */
   saveVariables: (variables: Variable[]) => Promise<void>;
+  /** Rename a dashboard (title-only `dashboard.save`, cells + variables preserved; owner-only). */
+  rename: (id: string, title: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   share: (visibility: Visibility, team?: string) => Promise<void>;
 }
@@ -106,6 +108,25 @@ export function useDashboard(ws: string): DashboardState {
     [current],
   );
 
+  const rename = useCallback(
+    async (id: string, title: string) => {
+      const t = title.trim();
+      if (!t) return;
+      try {
+        // Preserve cells + variables: use the loaded copy when it's the current dashboard, otherwise
+        // read the target first (a title-only save must not blank its layout).
+        const target = current && current.id === id ? current : await getDashboard(id);
+        const d = await saveDashboard(id, t, target.cells, target.variables ?? []);
+        setCurrent((c) => (c && c.id === id ? d : c));
+        await refresh();
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [current, refresh],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       try {
@@ -133,5 +154,17 @@ export function useDashboard(ws: string): DashboardState {
     [current, refresh],
   );
 
-  return { roster, current, error, refresh, select, create, saveCells, saveVariables, remove, share };
+  return {
+    roster,
+    current,
+    error,
+    refresh,
+    select,
+    create,
+    saveCells,
+    saveVariables,
+    rename,
+    remove,
+    share,
+  };
 }

@@ -254,6 +254,57 @@ describe("DashboardView (real gateway)", () => {
     expect((await screen.findByLabelText("timeseries latest")).textContent).not.toBe("");
   });
 
+  it("renames a dashboard from the roster (title-only save, layout preserved) and it persists", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    renderDashboard(ws);
+    await createDashboard(user, "Ops");
+
+    // Give it a real cell so we can prove the rename preserves the layout (title-only save must not
+    // blank the cells).
+    await user.click(await screen.findByLabelText("add panel"));
+    await screen.findByRole("option", { name: "cooler.temp" });
+    await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
+    await user.click(screen.getByLabelText("save panel"));
+    await screen.findByLabelText("cell w1");
+
+    // Rename inline from the roster: pencil → edit field → new title → confirm.
+    await user.click(await screen.findByLabelText("rename dashboard ops"));
+    const field = await screen.findByLabelText("rename dashboard ops");
+    await user.clear(field);
+    await user.type(field, "Operations");
+    await user.click(screen.getByLabelText("confirm rename ops"));
+
+    // The roster row now shows the new title (same id `ops`, title changed).
+    expect(await screen.findByText("Operations")).toBeInTheDocument();
+
+    // Persisted + layout preserved: reload, reselect, the cell is still there under the new title.
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
+    expect(await screen.findByText("Operations")).toBeInTheDocument();
+    expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
+  });
+
+  it("deletes a dashboard from the roster through the confirm gate; it disappears from the list", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+
+    renderDashboard(ws);
+    await createDashboard(user, "Doomed");
+    expect(await screen.findByLabelText("select dashboard doomed")).toBeInTheDocument();
+
+    // Trash icon → the shared destructive confirm → Delete.
+    await user.click(await screen.findByLabelText("delete dashboard doomed"));
+    await user.click(await screen.findByLabelText("confirm action"));
+
+    // Gone from the roster (real tombstone via `dashboard.delete`; `dashboard.list` no longer returns it).
+    expect(await screen.findByText("No dashboards yet.")).toBeInTheDocument();
+  });
+
   it("is workspace isolated — a fresh workspace shows no dashboards", async () => {
     const user = userEvent.setup();
 

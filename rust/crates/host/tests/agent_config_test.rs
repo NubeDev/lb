@@ -38,6 +38,7 @@ fn sample_patch() -> AgentConfig {
             provider: Some("zaicoding".into()),
             model: Some("glm-4.6".into()),
             api_key_env: Some("ZAI_API_KEY".into()),
+            api_key_secret: None,
             base_url: Some("https://api.z.ai/api/coding/paas/v4".into()),
         }),
     }

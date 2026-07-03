@@ -2,9 +2,14 @@
 // are NO fakes to reset here — the backend is a real spawned node. We only load the jest-dom matchers
 // and clear the session after each test (the next test logs in fresh against the real gateway).
 
-import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeEach, vi } from "vitest";
+// jest-dom matchers — extended onto the runner's own `expect` (NOT via the `/vitest` entry, whose
+// internal `import { expect } from "vitest"` binds a different instance and silently no-ops, making
+// every matcher throw "Invalid Chai property"). See `setup.ts` for the full note.
+import * as jestDomMatchers from "@testing-library/jest-dom/matchers";
+import { afterEach, beforeEach, expect, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+expect.extend(jestDomMatchers);
 
 import { setSession } from "@/lib/session/session.store";
 

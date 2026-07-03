@@ -56,4 +56,12 @@ pub trait ModelAccess {
         prior: &[CallOutcome],
         idempotency_key: &str,
     ) -> impl Future<Output = Turn> + Send;
+
+    /// Whether this is a **real** model provider vs. the [`UnconfiguredModel`](super::unconfigured)
+    /// placeholder a node binds before a provider is wired. Defaults to `true` (a real model);
+    /// the placeholder overrides it to `false`. A non-agent caller (the rules engine) reads it to
+    /// keep the honest "AI not configured" path — an unconfigured model must not pretend to answer.
+    fn is_configured(&self) -> bool {
+        true
+    }
 }

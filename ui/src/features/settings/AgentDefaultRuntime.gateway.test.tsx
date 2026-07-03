@@ -32,6 +32,10 @@ const ADMIN_CAPS = [
   "mcp:agent.config.get:call",
   "mcp:agent.config.set:call",
   "mcp:agent.runtimes:call",
+  // agent-catalog scope: the Agent tab is now a catalog manager — reading the catalog + picking a
+  // built-in (which writes `agent.config`) needs the def read caps beside the config caps.
+  "mcp:agent.def.list:call",
+  "mcp:agent.def.get:call",
   "mcp:agent.invoke:call",
   "bus:chan/general:pub",
   "bus:chan/general:sub",
@@ -45,20 +49,16 @@ describe("Agent default runtime — set in Settings, honored by an omitted-runti
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    // 1) Set the workspace default via the real Settings → Agent UI (a real `agent.config.set`).
+    // 1) Set the workspace default via the real Settings → Agent UI: pick the seeded in-house
+    //    built-in (runtime `default`) from the catalog. Picking writes a real `agent.config.set` with
+    //    that definition's runtime + endpoint — the catalog is the library, `agent.config` the pick.
     render(<SettingsView ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
-    const picker = (await screen.findByLabelText(
-      "Default agent runtime",
-    )) as HTMLSelectElement;
-    await waitFor(() =>
-      expect(Array.from(picker.options).some((o) => o.value === "default")).toBe(
-        true,
-      ),
-    );
-    await user.selectOptions(picker, "default");
-    await user.click(screen.getByLabelText("save agent config"));
-    await screen.findByText("Saved.");
+    // The seeded in-house built-in over `default` — filtered to node-runnable, so it lists here.
+    const useBtn = await screen.findByLabelText("pick builtin.in-house-glm-4.6");
+    await user.click(useBtn);
+    // The picked entry becomes Active (the list highlights the resolved selection).
+    await screen.findByLabelText("definition builtin.in-house-glm-4.6");
 
     // The stored record now carries the choice (a read against the live gateway, not component state).
     await waitFor(async () => {

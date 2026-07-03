@@ -1,0 +1,81 @@
+# Built-in agent-definition manifest (agent-catalog scope). Boot-seeded into the reserved `_lb_agents`
+# namespace, read-only to users. Each `[[agent]]` is a named `(runtime, model_endpoint)` preset. The
+# id is stamped `builtin.<id>` by the seeder — do NOT include the prefix here.
+#
+# NAMES ONLY: `api_key_env` is the NAME of an env var, never the key value. The key stays in the node
+# env / lb-secrets. Model ids are provider data — a drift is a one-line edit + re-seed, no code change.
+#
+# Six built-ins: in-house (runtime `default`) and open-interpreter (runtime `open-interpreter-default`)
+# × Z.AI glm-4.6 / glm-5.1 / glm-5.2, over the `zaicoding` coding endpoint (ZAI_API_KEY). A node
+# without the `external-agent` feature still seeds the open-interpreter entries but filters them from
+# the catalog list (registry drift — symmetric, no `if cloud`).
+
+# --- In-house (runtime `default`) ---
+
+[[agent]]
+id = "in-house-glm-4.6"
+label = "In-house — Z.AI GLM-4.6"
+description = "The in-house agent loop over Z.AI GLM-4.6 (coding endpoint)."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-4.6"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "in-house-glm-5.1"
+label = "In-house — Z.AI GLM-5.1"
+description = "The in-house agent loop over Z.AI GLM-5.1 (coding endpoint)."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-5.1"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "in-house-glm-5.2"
+label = "In-house — Z.AI GLM-5.2"
+description = "The in-house agent loop over Z.AI GLM-5.2 (coding endpoint)."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-5.2"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+# --- Open Interpreter (runtime `open-interpreter-default`; external-agent feature) ---
+
+[[agent]]
+id = "open-interpreter-glm-4.6"
+label = "Open Interpreter — Z.AI GLM-4.6"
+description = "The Open Interpreter external agent over Z.AI GLM-4.6 (coding endpoint)."
+runtime = "open-interpreter-default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-4.6"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "open-interpreter-glm-5.1"
+label = "Open Interpreter — Z.AI GLM-5.1"
+description = "The Open Interpreter external agent over Z.AI GLM-5.1 (coding endpoint)."
+runtime = "open-interpreter-default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-5.1"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "open-interpreter-glm-5.2"
+label = "Open Interpreter — Z.AI GLM-5.2"
+description = "The Open Interpreter external agent over Z.AI GLM-5.2 (coding endpoint)."
+runtime = "open-interpreter-default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-5.2"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"

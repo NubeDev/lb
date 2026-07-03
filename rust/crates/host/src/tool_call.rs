@@ -292,6 +292,14 @@ async fn dispatch_at_depth(
             crate::call_template_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("devkit.") {
             crate::call_devkit_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool == "agent.def.test" {
+            // agent-catalog test-and-secrets scope: the context-proving diagnostic. Handled HERE
+            // (not in `call_agent_tool`) because it needs the `&Arc<Node>` this dispatcher holds — it
+            // assembles the caller's reachable tool menu (which needs the Arc) and runs one model turn
+            // over the node's default model. Its own `mcp:agent.def.test:call` gate runs inside.
+            let id = input.get("id").and_then(Value::as_str);
+            let result = crate::agent_def_test(node, principal, ws, id).await?;
+            serde_json::to_value(result).map_err(|e| ToolError::Extension(e.to_string()))?
         } else if qualified_tool.starts_with("agent.") {
             // agent-run scope Part 2: the policy/decision verbs (`agent.policy.set`, `agent.decide`).
             // One branch; `call_agent_tool` matches the verb and delegates. `agent.watch` (Part 3)

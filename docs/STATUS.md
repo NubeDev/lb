@@ -809,6 +809,16 @@ external DB behind the one `Source` trait). Sessions: `sessions/rules/rules-sess
 `sessions/datasources/datasources-session.md`; public: `public/rules/rules.md`,
 `public/datasources/datasources.md`.
 
+**Rules `ai.*` → real model wired** (2026-07-03): the `rules.run` bridge no longer hardcodes
+`DisabledModel` — a rule's `ai.*` reaches the node's real `ModelAccess`, resolved per-workspace from the
+agent-catalog pick (`agent.config`). Single-turn, no tools; the nsql fence + budget meter unchanged. An
+unconfigured workspace (or provider-less node) still gets the honest `"AI not configured for rules"`
+error and runs data-only rules. +8 host integration tests over the real bridge against
+`AiGateway<MockProvider>` (AI-wired · not-configured · ws-isolation · fence regression · budget ·
+adapter unit), all green. Scope `scope/rules/rules-ai-wiring-scope.md`; session
+`sessions/rules/rules-ai-wiring-session.md`. Known gap: token accounting is a length estimate until
+`Turn` surfaces the provider's real count (named in `model.rs`).
+
 **S8 — data plane (durable store + generic ingest + tagging): exit gate MET** (2026-06-27). All three
 slices shipped on the pinned **SurrealKV** persistent engine — (0) `Store::open` + the capability-spike
 matrix + crash-consistency set, (1) `lb-ingest` durable exactly-once buffer (proven across a

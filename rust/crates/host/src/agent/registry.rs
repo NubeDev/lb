@@ -26,6 +26,11 @@ use super::runtime::{AgentRuntime, ErasedModel};
 pub struct RuntimeRegistry {
     entries: HashMap<String, Arc<dyn AgentRuntime>>,
     default_id: String,
+    /// The in-house `default` runtime's model, kept here as a `ModelAccess`-shaped handle so a
+    /// host service OTHER than the agent loop (the rules engine, rules-ai-wiring-scope) can reach
+    /// the node's model for a single bounded turn without going through the whole `AgentRuntime`
+    /// loop. It is the SAME `Arc` the in-house runtime holds — one model, not a copy.
+    default_model: Arc<dyn ErasedModel>,
 }
 
 impl RuntimeRegistry {
@@ -33,13 +38,24 @@ impl RuntimeRegistry {
     /// registry (and the feature-ON registry before any external profile is registered): exactly the
     /// posture a minimal node has — default-only, no external surface.
     pub fn with_default(model: Arc<dyn ErasedModel>) -> Self {
-        let default: Arc<dyn AgentRuntime> = Arc::new(InHouseRuntime::new(model));
+        let default: Arc<dyn AgentRuntime> = Arc::new(InHouseRuntime::new(model.clone()));
         let mut entries = HashMap::new();
         entries.insert(DEFAULT_RUNTIME.to_string(), default);
         Self {
             entries,
             default_id: DEFAULT_RUNTIME.to_string(),
+            default_model: model,
         }
+    }
+
+    /// The in-house `default` runtime's model handle (for a non-agent host caller that needs one
+    /// bounded turn — the rules engine's `ai.*`). This is the model the node's `default` runtime
+    /// runs; a rule's model routes here so "the workspace's model" is the SAME model its agent uses
+    /// (rules-ai-wiring-scope). Whether it is a REAL provider vs. the `UnconfiguredModel` placeholder
+    /// is [`ErasedModel::is_configured`] — the caller uses that to keep the honest "AI not configured"
+    /// path (a resolved outcome, not a hardcoded default).
+    pub fn default_model(&self) -> Arc<dyn ErasedModel> {
+        self.default_model.clone()
     }
 
     /// Register an external runtime under its own id. Called by the node's `external-agent`

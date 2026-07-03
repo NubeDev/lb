@@ -99,6 +99,38 @@ config, and unconfigured→configured **swap** are shipped and proven for real a
 `AiGateway<MockProvider>`; the day a real adapter lands it drops into `build_in_house_model` with no
 other change and the in-house agent answers with a real LLM.
 
+## Agent catalog (shipped)
+
+A **library of named agent definitions** — each a `(runtime, model_endpoint)` preset — that a
+workspace admin manages and picks from. Two tiers, one record shape (the core-skills pattern, reused
+wholesale):
+
+- **Built-ins** — six presets boot-seeded from an embedded `agents.toml` manifest into the reserved
+  `_lb_agents` namespace, **read-only to users** (a `builtin.*` id rejects create/update/delete with
+  `BadInput`, checked before the caps gate). Ships in-house (runtime `default`) and Open Interpreter
+  (runtime `open-interpreter-default`) × Z.AI **GLM-4.6 / 5.1 / 5.2** over the `zaicoding` coding
+  endpoint (`ZAI_API_KEY`). Names only — no secret values in the manifest or a record. A node without
+  the `external-agent` feature still seeds the open-interpreter entries but **filters them from the
+  list** (registry drift, symmetric — no `if cloud`). Idempotent re-seed on boot/upgrade.
+- **Custom** — workspace-scoped `agent_definition` records with full admin CRUD (custom-only writes;
+  the workspace hard wall). LWW UPSERT on the slug (offline-replay-safe).
+
+**Verbs** (`crates/host/src/agent/defs/`, one per file): `agent.def.list` / `agent.def.get` (member),
+`agent.def.create` / `update` / `delete` (admin, custom-only). Gateway routes mirror them
+(`GET|POST /agent/defs`, `GET|PATCH|DELETE /agent/defs/{id}`). A custom write validates its `runtime`
+against the node registry (an unrunnable id is `BadInput`, the shipped `agent.config.set` rule).
+
+**Selection reuses the shipped seam.** Picking a definition writes `agent.config.set { default_runtime,
+model_endpoint }` from its fields, so `resolve_effective_runtime` honors the choice with **no new
+resolution path**. The catalog is the library; `agent.config` stays the one active selection. The
+Settings → **Agent** tab is the catalog manager: built-ins read-only, custom editable, active pick
+highlighted.
+
+**Honest limit:** picking sets the workspace default **runtime** today (the invoke path honors it);
+routing the in-house loop to a **per-workspace endpoint** waits on the ai-gateway provider adapter
+(below). The UI copy says so. The ask lives at `../../scope/agent/agent-catalog-scope.md`; the build
+session at `../../sessions/agent/agent-catalog-session.md`.
+
 ## Not yet (follow-ups)
 
 A real model **provider adapter** behind the gateway contract (the in-house model door + boot are now

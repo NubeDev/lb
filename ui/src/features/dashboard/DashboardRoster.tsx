@@ -1,15 +1,18 @@
 // The dashboard roster — the left list of dashboards the caller can reach + a create control
 // (dashboard scope). Selecting one loads it into the grid; creating one UPSERTs an empty dashboard.
-// The roster is exactly the set `dashboard.list` returns (own + team-shared + workspace) — the
-// gateway membership-filters it, so a non-member never sees a dashboard's title here. On the shared
-// `AppRail` chrome + shadcn primitives (ui-standards-scope), matching Flows' rail.
+// Editors (`canEdit`, i.e. `mcp:dashboard.save:call`) also get per-item **rename** (inline title
+// edit → title-only `dashboard.save`) and **delete** (routed through the shared `ConfirmDestructive`
+// gate; the host re-checks owner + cap). The roster is exactly the set `dashboard.list` returns
+// (own + team-shared + workspace) — the gateway membership-filters it, so a non-member never sees a
+// dashboard's title here. On the shared `AppRail` chrome + shadcn primitives (ui-standards-scope).
 
 import { useState } from "react";
-import { LayoutDashboard, Plus } from "lucide-react";
+import { LayoutDashboard, Pencil, Plus, Trash2, Check, X } from "lucide-react";
 
 import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import { cn } from "@/lib/utils";
 import type { DashboardSummary } from "@/lib/dashboard";
 
@@ -18,6 +21,12 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: (id: string, title: string) => void;
+  /** Rename a dashboard (title-only save). Only wired when the caller may edit. */
+  onRename?: (id: string, title: string) => void;
+  /** Delete a dashboard (owner-only, host-checked). Only wired when the caller may edit. */
+  onRemove?: (id: string) => void;
+  /** Whether to show the rename/delete controls (the session `dashboard.save` grant). */
+  canEdit?: boolean;
 }
 
 /** Slugify a title into a stable, unique-ish id (the record id `dashboard:{id}`). */
@@ -28,8 +37,21 @@ function slug(title: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-export function DashboardRoster({ roster, selectedId, onSelect, onCreate }: Props) {
+export function DashboardRoster({
+  roster,
+  selectedId,
+  onSelect,
+  onCreate,
+  onRename,
+  onRemove,
+  canEdit = false,
+}: Props) {
   const [title, setTitle] = useState("");
+  // The dashboard currently being renamed inline, and the draft title.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  // The dashboard pending a delete confirm.
+  const [pendingDelete, setPendingDelete] = useState<DashboardSummary | null>(null);
 
   const create = () => {
     const t = title.trim();
@@ -37,6 +59,22 @@ export function DashboardRoster({ roster, selectedId, onSelect, onCreate }: Prop
     const id = slug(t) || `dash-${roster.length + 1}`;
     onCreate(id, t);
     setTitle("");
+  };
+
+  const startEdit = (d: DashboardSummary) => {
+    setEditingId(d.id);
+    setDraft(d.title);
+  };
+
+  const commitEdit = () => {
+    if (editingId && draft.trim()) onRename?.(editingId, draft);
+    setEditingId(null);
+    setDraft("");
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setDraft("");
   };
 
   return (
@@ -72,14 +110,49 @@ export function DashboardRoster({ roster, selectedId, onSelect, onCreate }: Prop
         )}
         {roster.map((d) => {
           const active = selectedId === d.id;
+          if (editingId === d.id) {
+            return (
+              <li key={d.id} className="flex items-center gap-1">
+                <Input
+                  aria-label={`rename dashboard ${d.id}`}
+                  className="h-8 min-w-0 flex-1 text-sm"
+                  autoFocus
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitEdit();
+                    if (e.key === "Escape") cancelEdit();
+                  }}
+                />
+                <Button
+                  aria-label={`confirm rename ${d.id}`}
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={commitEdit}
+                >
+                  <Check size={14} />
+                </Button>
+                <Button
+                  aria-label={`cancel rename ${d.id}`}
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  onClick={cancelEdit}
+                >
+                  <X size={14} />
+                </Button>
+              </li>
+            );
+          }
           return (
-            <li key={d.id}>
+            <li key={d.id} className="group flex items-center gap-1">
               <Button
                 aria-label={`select dashboard ${d.id}`}
                 variant="ghost"
                 onClick={() => onSelect(d.id)}
                 className={cn(
-                  "h-auto w-full justify-start gap-2 border px-2.5 py-2 text-left text-sm font-normal",
+                  "h-auto min-w-0 flex-1 justify-start gap-2 border px-2.5 py-2 text-left text-sm font-normal",
                   active
                     ? "border-accent/25 bg-accent/15 text-accent shadow-sm shadow-black/5 hover:bg-accent/15"
                     : "border-transparent text-fg hover:border-border hover:bg-bg",
@@ -89,10 +162,49 @@ export function DashboardRoster({ roster, selectedId, onSelect, onCreate }: Prop
                 <span className="min-w-0 flex-1 truncate">{d.title}</span>
                 <span className="text-[10px] uppercase text-muted">{d.visibility}</span>
               </Button>
+              {canEdit && (
+                <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                  <Button
+                    aria-label={`rename dashboard ${d.id}`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    title="Rename"
+                    onClick={() => startEdit(d)}
+                  >
+                    <Pencil size={13} />
+                  </Button>
+                  <Button
+                    aria-label={`delete dashboard ${d.id}`}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted hover:text-danger"
+                    title="Delete"
+                    onClick={() => setPendingDelete(d)}
+                  >
+                    <Trash2 size={13} />
+                  </Button>
+                </div>
+              )}
             </li>
           );
         })}
       </ul>
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title={`Delete ${pendingDelete.title}`}
+          consequence="This dashboard and its widget layout will be removed. It can be recreated but its current layout is not recoverable."
+          reversible={false}
+          escalation="none"
+          confirmLabel="Delete"
+          onConfirm={() => {
+            onRemove?.(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </AppRail>
   );
 }

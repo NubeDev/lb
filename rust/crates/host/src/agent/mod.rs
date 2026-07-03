@@ -21,6 +21,7 @@ mod authorize;
 mod catalog;
 mod config;
 mod decision;
+mod defs;
 mod descriptor;
 mod dispatch;
 mod error;
@@ -34,6 +35,7 @@ mod policy;
 mod registry;
 mod rehydrate;
 mod resolve_default;
+mod resolve_key;
 mod route;
 mod run;
 mod runtime;
@@ -47,12 +49,18 @@ mod unconfigured;
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog};
 pub use config::{
-    agent_config_get, agent_config_set, call_agent_config_tool, AgentConfig, ModelEndpointPatch,
-    AGENT_CONFIG_TABLE,
+    agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
+    ModelEndpointPatch, AGENT_CONFIG_TABLE,
 };
 pub use decision::{
     decision_id, load_decision, settle_decision, AgentDecision, DecisionState, SettleOutcome,
     APPROVAL_CHANNEL as DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DENIED_BY_POLICY,
+};
+pub use defs::{
+    agent_def_create, agent_def_delete, agent_def_get, agent_def_list, agent_def_test,
+    agent_def_update, builtin_definitions, call_agent_catalog_tool, seed_agent_definitions,
+    AgentDefinition, DefinitionEndpoint, DefinitionPatch, TestContext, TestResult, AGENT_DEFS_NS,
+    AGENT_DEFS_TABLE, BUILTIN_PREFIX,
 };
 pub use descriptor::invoke_descriptor;
 pub use dispatch::{invoke_via_runtime, Substrate};
@@ -74,8 +82,9 @@ pub use policy::{
 pub use registry::RuntimeRegistry;
 pub use rehydrate::{rehydrate, LoopState};
 pub use resolve_default::{resolve_effective_runtime, resolve_effective_runtime_id};
+pub use resolve_key::resolve_endpoint_key;
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
-pub use run::{cancel_run, run_session, MAX_STEPS};
+pub use run::{cancel_run, run_session, MAX_STEPS, SYSTEM_PROMPT};
 pub use runtime::{AgentRuntime, ErasedModel, RunContext};
 pub use runtimes::list_runtimes;
 pub use serve::{serve_agent, AgentServer};

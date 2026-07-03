@@ -10,6 +10,7 @@ mod admin_teams;
 mod admin_users;
 mod admin_workspaces;
 mod agent_config;
+mod agent_defs;
 mod assets;
 mod bus;
 mod catalog;
@@ -55,6 +56,9 @@ pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_
 pub use admin_workspaces::{archive_workspace, purge_workspace, rename_workspace};
 pub use agent_config::{
     get_agent_config as get_agent_config_route, set_agent_config as set_agent_config_route,
+};
+pub use agent_defs::{
+    create_def, delete_def, get_def, list_defs, test_active_def, test_def, update_def,
 };
 pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,

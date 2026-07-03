@@ -31,7 +31,10 @@ authority (rule 5). `lb-rules` links only `rhai` + `serde` — no DataFusion, no
   `gapfill`, `resample`.
 - **AI (gateway-seamed):** `ai.complete`, `ai.ask` (proposes SQL, **re-validated through the same gate
   a hand-written query takes — the fence**), `ai.classify`, `ai.embed`. A per-run `AiMeter` caps calls
-  + summed tokens.
+  + summed tokens. **Status:** the meter + fence ship, but the production `rules.run` bridge currently
+  binds a `DisabledModel` — a rule calling `ai.*` gets `"AI not configured for rules"` until the model
+  seam is wired to the real agent (`../../scope/rules/rules-ai-wiring-scope.md`, which routes it to the
+  workspace's selected agent-catalog model). The data verbs (`query`/`source`/`series.*`) are fully wired.
 - **Emit:** `emit(map)` (a finding), `alert(map)` (a finding + an inbox item + an outbox notification),
   `log(msg)`.
 

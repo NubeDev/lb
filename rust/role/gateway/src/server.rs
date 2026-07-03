@@ -11,27 +11,28 @@ use tower_http::cors::CorsLayer;
 
 use crate::routes::{
     add_datasource, add_member, add_team_member, archive_workspace, assign_grant, bus_stream,
-    channel_stream, convert_unit, create_apikey, create_channel, create_identity, create_team,
-    create_user, create_workspace, define_role, delete_dashboard, delete_flow, delete_message,
-    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
-    edit_message, enable_extension, enable_flow, enable_user, find_series, flow_node_state,
-    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
-    get_apikey, get_catalog, get_dashboard, get_doc, get_flow, get_flow_node, get_flow_run,
-    get_history, get_identity, get_outbox_status, get_prefs, get_rule, grant_skill,
-    identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
-    list_channels, list_dashboards, list_datasources, list_docs, list_extensions, list_flow_nodes,
-    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_members, list_roles,
-    list_rules, list_series, list_tables, list_team_members, list_teams, list_users,
-    list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, patch_flow_run,
-    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
-    read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, render_catalog_message, request_approval, reset_extension,
-    resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval, revoke_apikey,
-    revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream,
-    save_dashboard, save_flow, save_rule, scan_table, series_stream, serve_ext_ui,
+    channel_stream, convert_unit, create_apikey, create_channel, create_def, create_identity,
+    create_team, create_user, create_workspace, define_role, delete_dashboard, delete_def,
+    delete_flow, delete_message, delete_role, delete_rule, delete_team, delete_user,
+    disable_extension, disable_user, edit_message, enable_extension, enable_flow, enable_user,
+    find_series, flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
+    get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow,
+    get_flow_node, get_flow_run, get_history, get_identity, get_outbox_status, get_prefs, get_rule,
+    grant_skill, identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc,
+    list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
+    list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
+    list_inbox, list_members, list_roles, list_rules, list_series, list_tables, list_team_members,
+    list_teams, list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
+    patch_flow_run, post_message, publish_extension, publish_message, purge_workspace, put_doc,
+    put_skill, read_graph, read_samples, read_schema, remove_datasource, remove_member,
+    remove_team_member, rename_team, rename_workspace, render_catalog_message, request_approval,
+    reset_extension, resolve_caps, resolve_inbox, resolve_prefs, resolve_workflow_approval,
+    revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule,
+    run_stream, save_dashboard, save_flow, save_rule, scan_table, series_stream, serve_ext_ui,
     set_agent_config_route, set_catalog, set_default_prefs, set_prefs, share_dashboard, share_doc,
     start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_datasource, uninstall_extension, update_flow_node, write_samples,
+    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, update_def,
+    update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -80,6 +81,18 @@ pub fn router(gw: Gateway) -> Router {
         .route(
             "/agent/config",
             get(get_agent_config_route).put(set_agent_config_route),
+        )
+        // agent-catalog scope: the definition catalog. `GET`/list is member-level; create/update/delete
+        // are admin-gated by the host (re-checked server-side). Routes mirror the `agent.def.*` verbs.
+        .route("/agent/defs", get(list_defs).post(create_def))
+        // agent-catalog test-and-secrets scope: the context-proving diagnostic. `POST /agent/defs/test`
+        // tests the active `agent.config` pick; `POST /agent/defs/{id}/test` tests one definition. Both
+        // admin-gated by the host (`mcp:agent.def.test:call`, re-checked server-side).
+        .route("/agent/defs/test", post(test_active_def))
+        .route("/agent/defs/{id}/test", post(test_def))
+        .route(
+            "/agent/defs/{id}",
+            get(get_def).patch(update_def).delete(delete_def),
         )
         .route("/format/datetime", post(format_datetime))
         .route("/format/number", post(format_number))

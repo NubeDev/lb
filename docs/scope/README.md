@@ -12,6 +12,18 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   one host MCP bridge so it can call platform tools (`agent.memory.*`/`assets.*`/…) under the wall —
   a fix that also lets the external agent reach host tools — surface the caller's reachable tools to
   the loop, and boot `serve_agent`. Closes the "internal agent has no brain and can't use tools" gap.
+  `agent-catalog-scope.md` adds a **manageable catalog of named agent definitions** — `(runtime, model
+  endpoint)` presets in two tiers (read-only **built-ins** boot-seeded from a TOML manifest into a
+  reserved namespace, the core-skills pattern; workspace-authored **custom** with full CRUD) — shipping
+  the in-house **default** + **Open Interpreter** over Z.AI **GLM-4.6/5.1/5.2** by default, plus the
+  Settings → Agent catalog manager UI. The library the shipped one-selection `agent.config` picks from.
+  **Shipped** (`agent.def.*` verbs, `_lb_agents` seed, `/agent/defs*` routes, the catalog UI;
+  `crates/host/src/agent/defs/`) — picking sets the workspace default runtime today, per-workspace
+  endpoint consumption is the named follow-up (ai-gateway provider adapter).
+  `agent-catalog-test-and-secrets-scope.md` adds a `agent.def.test` **"does it have MCP/ACP/skills
+  context" button** (a one-turn invoke with the real run context assembled) + a **DB-sealed per-workspace
+  model key** (`lb-secrets` path on the endpoint, resolved secret→env at model-call time; the record
+  stays names-only).
 - `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
   `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
   injected at session start, read/written over caps-checked `agent.memory.*` verbs under the
@@ -58,7 +70,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
   `data.query`/`series.*`/`federation.query`, `ai.*` via the AI-gateway, `emit`/`alert` via inbox/outbox).
-  Exposed as `rules.*` MCP verbs. **Chaining rules into a DAG is now `flows/`** — the standalone
+  Exposed as `rules.*` MCP verbs. `rules-ai-wiring-scope.md` closes the **`ai.*`-not-hooked-up** gap: the
+  data half is wired, but the production `rules.run` bridge hardcodes a `DisabledModel` — the scope binds
+  the rule engine's model seam to the real agent (`RuleModel` over `ModelAccess`), resolving the
+  workspace's selected model from the agent-catalog `agent.config` pick. **Chaining rules into a DAG is now `flows/`** — the standalone
   `chains.*` surface is retired (`flows/chains-retirement-scope.md`); `rule-chains-scope.md` stays as
   lineage (the `rubix-cube` workflow-DAG port history), not a shipping surface.
 - `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds

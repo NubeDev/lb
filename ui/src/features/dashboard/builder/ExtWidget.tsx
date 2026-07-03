@@ -83,18 +83,33 @@ export function ExtWidget({
 
   useEffect(() => {
     if (!row || !tile || !bridge) return;
-    let unmount: void | (() => void);
-    let cancelled = false;
-    const el = elRef.current;
-    if (!el) return;
-    el.replaceChildren();
+    const host = elRef.current;
+    if (!host) return;
+
+    // StrictMode double-invokes this effect (mount → cleanup → mount) in dev, and a var/config change
+    // re-runs it too. The tile's `mount()` is ASYNC, so effect-run A can still be awaiting its remote
+    // when run B starts. The old code mounted every run into the SAME `host` node and cleared it with
+    // `host.replaceChildren()` — so run B wiped the DOM that run A's React root (`createRoot`) still
+    // owned. When A's orphaned root later unmounted (on nav), it tried to remove nodes that were already
+    // gone → "removeChild: not a child" INSIDE React's commit → the shell's commit aborts → nav wedges.
+    // (The microtask defer never helped: it changed WHEN the orphan unmounted, not that it was orphaned.)
+    //
+    // Fix: give THIS effect-run its own child <div> under `host`. Run A and run B mount into DIFFERENT
+    // nodes, so neither can wipe the other's DOM, and the async mount resolving after cleanup can't leak:
+    // its teardown lives in the same `alive`/holder closure and always unmounts the root THIS run created.
+    const slot = document.createElement("div");
+    slot.className = "h-full w-full";
+    host.appendChild(slot);
+
+    let alive = true;
+    const holder: { unmount?: () => void } = {};
     setError(null);
 
     const remoteUrl = `${gatewayUrl()}/extensions/${encodeURIComponent(row.ext)}/ui/${tile.entry}`;
     (async () => {
       try {
         const mount = await loadRemoteWidgetMount(row.ext, remoteUrl);
-        if (cancelled) return;
+        if (!alive) return;
         // v2 ctx: additive `vars` (resolved selections) + `timeRange` (the URL range, shell-resolved
         // from the token — the tile never resolves identity/query vars itself). `v` marks the contract.
         const ctx = {
@@ -109,16 +124,31 @@ export function ExtWidget({
               ? { from: Number(fromMs), to: Number(toMs) }
               : undefined,
         };
-        unmount = mount(el, ctx, bridge, parsed?.widget ?? "");
+        const teardown = mount(slot, ctx, bridge, parsed?.widget ?? "");
+        // If cleanup already ran while we were awaiting `mount`, tear this root down immediately —
+        // otherwise stash it for cleanup. Either way the root THIS run created is always unmounted once.
+        if (!alive) {
+          if (typeof teardown === "function") teardown();
+        } else {
+          holder.unmount = typeof teardown === "function" ? teardown : undefined;
+        }
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (alive) setError(e instanceof Error ? e.message : String(e));
       }
     })();
 
     return () => {
-      cancelled = true;
-      if (typeof unmount === "function") unmount();
-      el.replaceChildren();
+      alive = false;
+      // Unmount the tile's root (if it mounted) and remove OUR slot — never `host` itself, which the
+      // shell owns. The tile's `root.unmount()` only removes the children of OUR slot; because that slot
+      // is a node no other effect-run and no shell commit touches, this is safe to run synchronously
+      // (no shared-DOM double-remove), so we no longer need the microtask defer.
+      try {
+        holder.unmount?.();
+      } catch {
+        /* a tile that throws on its own teardown is already leaving; ignore */
+      }
+      slot.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `scopeKey`/`configKey` re-mount the tile on a var/range/config change
   }, [row?.ext, tile?.entry, workspace, scopeKey, configKey]);

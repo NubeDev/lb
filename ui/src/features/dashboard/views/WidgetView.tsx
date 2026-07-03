@@ -29,6 +29,7 @@ import { JsonControl } from "./JsonControl";
 import { JsonView } from "./JsonView";
 import { GenUiView } from "./genui/GenUiView";
 import { ExtWidget } from "../builder/ExtWidget";
+import { ExtErrorBoundary } from "@/features/ext-host/ExtErrorBoundary";
 
 /** The tools a cell may forward through the bridge = its source + action + v3 target tools (host ∩
  *  grant). v3 cells carry `sources[]` (targets); a v2 cell carries the single `source`. Both are folded
@@ -89,15 +90,21 @@ export function WidgetView({
     // Forward the cell's author-set `options` (e.g. `{sceneId}`) + `binding` so the scope's intended
     // `{view, options:{sceneId}}` cell shape reaches the tile as `ctx.options`/`ctx.binding` (no more
     // `ctx.vars` workaround). The tile still reads data only through the bridge; the host re-gates it.
+    // Crash wall around the in-process federated tile: a tile renders against the shell's React, so a
+    // throw during ITS render (a heavy WebGL/three.js scene, a bad mount) would otherwise unwind the
+    // whole shell tree — the nav, the sidebar, everything (same symptom the ext-host page path already
+    // guards with this boundary). Keyed on the cell so navigating to another dashboard re-arms it.
     return (
-      <ExtWidget
-        viewKey={view}
-        installed={installed}
-        workspace={workspace}
-        scope={scope}
-        options={options as Record<string, unknown> | undefined}
-        binding={cell.binding as Record<string, unknown> | undefined}
-      />
+      <ExtErrorBoundary ext={view.slice("ext:".length)} resetKey={`${view}:${cell.i}`}>
+        <ExtWidget
+          viewKey={view}
+          installed={installed}
+          workspace={workspace}
+          scope={scope}
+          options={options as Record<string, unknown> | undefined}
+          binding={cell.binding as Record<string, unknown> | undefined}
+        />
+      </ExtErrorBoundary>
     );
   }
 

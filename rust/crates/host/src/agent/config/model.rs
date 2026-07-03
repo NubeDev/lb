@@ -20,6 +20,13 @@ pub struct ModelEndpointPatch {
     /// The env-var NAME holding the key — never the key value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_key_env: Option<String>,
+    /// A **secret PATH** into `lb-secrets` holding the key (a name, never the value). Lets a workspace
+    /// key its ACTIVE-pick model without cloning a built-in (the active `agent.config` is
+    /// workspace-scoped and can own a sealed secret path). Resolution precedence at model-call time:
+    /// `api_key_secret` (sealed) → `api_key_env` (node env) → unset — see
+    /// [`resolve_endpoint_key`](crate::agent::resolve_endpoint_key).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_key_secret: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
 }
