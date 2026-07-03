@@ -16,6 +16,22 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): dashboard read cache & call de-duplication (branch `master`).**
+One `@tanstack/react-query` cache, scoped to the dashboard visit (`features/dashboard/cache/`,
+`DashboardCacheProvider` mounted by `DashboardView` + channel `ResponseView`), collapses the burst of
+redundant reads the surface fired. `viz.query` is keyed on the **canonical resolved spec** (not whole-panel
+JSON) → the editor's probe/preview/plot share one round-trip and a title/layout edit no longer refetches;
+the source-picker bundle + `datasource.list` are one shared fetch per ws (pure `loadSourcePicker` extracted
+in `@nube/source-picker`); N cells on one flow → one `flows.node_state` (client-side slicing); `series.read`
+backfill cached, live SSE tail left outside the cache (state vs motion). Keys are ws-prefixed + canonicalised.
+Real-gateway `queryCache.gateway.test.tsx` asserts the de-dup counts (viz.query=1 across 3 cells,
+node_state=1 across 2), workspace-isolation, and the deny path (instrumented on the `invoke` seam). SSE
+subscriber-sharing + a `<SourcePicker>` component consolidation are noted follow-ups. Scope
+`scope/frontend/dashboard-query-cache-scope.md` (open questions resolved); session
+`sessions/frontend/dashboard-query-cache-session.md`; public `public/frontend/dashboard.md` → "Read cache".
+Tests: UI `pnpm test` **426** (+ the new gateway file); `test:gateway` dashboard/channel suites green (two
+unrelated pre-existing flakes: SystemView bus-peer-count, sqlSource e2e). **Next up:** SSE subscriber-sharing.
+
 **Just shipped (2026-07-03): viz panel-editor parity — Phase 3.5, all 7 steps (branch `master`).**
 Closed the gap between the shipped viz spine and a *usable* editor: a user can now build every
 editor-supported panel end to end **without ever seeing JSON, a free-typed property id, or a field name

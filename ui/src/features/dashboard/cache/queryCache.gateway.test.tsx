@@ -13,9 +13,10 @@
 //   - a session without the read cap → an HONEST denied state, never a fabricated value.
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 
-import type { Cell, Flow } from "@/lib/dashboard";
+import type { Cell } from "@/lib/dashboard";
+import type { Flow } from "@/lib/flows/flows.types";
 import { StatPanel } from "../views/stat/StatPanel";
 import { WidgetView } from "../views/WidgetView";
 import { WithDashboardCache } from "./testCacheWrapper";

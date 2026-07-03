@@ -197,21 +197,23 @@ seed real dashboard/series/flow/datasource records into the real store (CLAUDE �
   the app root — root placement would leak the cache across the whole app and defeat the
   "clear on leave" requirement.
 
-## Open questions
+## Open questions — RESOLVED (as shipped)
 
-- **Provider scope:** dashboard route only (recommended, matches "clear on leave"), or a
-  shared app-level client with route-scoped cache-clearing? Decide before wiring.
-- **`staleTime` per read class:** what windows for (a) source/datasource/flow lists, (b)
-  `viz.query` results, (c) `flows.node_state`? Propose: lists ~30–60s, query results keyed on
-  refresh tick (effectively "until next tick"), node-state on the tick.
-- **Ship SSE subscriber-sharing in this slice or defer it?** Recommendation: defer to a
-  follow-up if it adds risk; the query-cache de-dup is the majority of the flagged calls.
-- **How much of `@nube/source-picker` moves?** Does the package hook itself adopt react-query
-  (making it a package dependency), or does only the **shell adapter** (`builder/useSourcePicker.ts`)
-  wrap the package loaders in `useQuery`? Recommendation: wrap in the shell adapter so the
-  package stays framework-light and reusable from an extension bridge.
-- **Devtools:** include `@tanstack/react-query-devtools` in dev builds for verifying de-dup?
-  (Low-cost, high-signal for this exact work.)
+- **Provider scope:** dashboard route only. `DashboardView` self-wraps its body in
+  `DashboardCacheProvider` (keyed on `ws`), so leaving the route drops the client — "clear on leave".
+  Not the app root (would leak the cache). The channel `ResponseView` gets its own boundary because it
+  reuses the shipped panel renderer off-route.
+- **`staleTime` per read class:** lists (source picker / datasource / flow roster) = **30s**
+  (`LIST_STALE_MS`); `viz.query` + `flows.node_state` keyed on the **refresh tick** (effectively "fresh
+  until the next tick" — no time-based staleness needed).
+- **SSE subscriber-sharing:** **deferred** to a follow-up. The query-cache de-dup is the majority of the
+  flagged calls; sharing one `EventSource` across N cells (correct ref-counted teardown) is the smaller,
+  fiddlier win.
+- **How much of `@nube/source-picker` moves:** only the **shell adapter** adopts react-query. A pure
+  `loadSourcePicker(loaders)` was extracted in the package (the package hook now delegates to it), keeping
+  the package framework-light and reusable from an extension bridge.
+- **Devtools:** **not added** — kept the dependency surface minimal. Can be added to dev builds later if
+  verifying de-dup by hand proves tedious (the gateway test already asserts the call counts).
 
 ## Related
 
