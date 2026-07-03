@@ -45,6 +45,7 @@ fn is_host_native(qualified_tool: &str) -> bool {
         || qualified_tool.starts_with("outbox.")
         || qualified_tool.starts_with("inbox.")
         || qualified_tool.starts_with("dashboard.")
+        || qualified_tool.starts_with("nav.")
         // The per-viewer chart-preference verbs only (NOT all `channel.*`, so future channel
         // extension tools still route to the registry) — a query-result's plot override.
         || qualified_tool.starts_with("channel.chart_pref.")
@@ -268,6 +269,16 @@ async fn dispatch_at_depth(
             // `mcp:telemetry.read:call` grant; purge on `mcp:telemetry.purge:call`. Collapsed here
             // (and re-checked inside the service) so one read grant covers the whole read surface.
             crate::read_or_admin_cap(qualified_tool)
+        } else if qualified_tool.starts_with("nav.pref.") {
+            // nav scope: the member-owned active pick (`nav.pref.get`/`set`) gates on the SAME
+            // `mcp:nav.resolve:call` read grant its verb re-checks — curating which nav you use is
+            // part of resolving your own menu, so no separate `mcp:nav.pref.*:call` cap exists.
+            "nav.resolve"
+        } else if qualified_tool == "nav.set_default" {
+            // nav scope: the workspace-default pointer is an authoring action — it gates on the same
+            // `mcp:nav.save:call` grant that creates the navs it points at (no separate cap for one
+            // pointer). Re-checked inside the verb.
+            "nav.save"
         } else {
             qualified_tool
         };
@@ -278,6 +289,10 @@ async fn dispatch_at_depth(
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("nav.") {
+            // nav scope: the user-/team-authored menu asset. `resolve` + `pref.*` need the `&Node`
+            // (ext discovery for `ext` items); the bridge takes it for all verbs.
+            crate::call_nav_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("channel.chart_pref.") {
             // channel query charts: a viewer's per-item plot override. The outer gate ran
             // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.

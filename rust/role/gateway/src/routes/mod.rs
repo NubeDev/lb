@@ -33,6 +33,7 @@ mod members;
 mod membership;
 mod message;
 mod native;
+mod nav;
 mod outbox;
 mod post;
 mod prefs;
@@ -70,6 +71,10 @@ pub use catalog::{get_catalog, render_message as render_catalog_message, set_cat
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,
+};
+pub use nav::{
+    delete_nav, get_nav, get_nav_pref, list_navs, resolve_nav, save_nav, set_default_nav,
+    set_nav_pref, share_nav,
 };
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};

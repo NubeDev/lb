@@ -63,6 +63,12 @@ because existing session docs point at them; new dashboard notes should live her
    federation datasources / flow node ports), the shell resolves them via `viz.query` under the
    *viewer's* grant, and the tile receives resolved frames (`ctx v3` + optional `update()`), never
    fetching platform data itself. Additive over the v2 mount contract; zero new extension caps.
+3i. [`library-panels-scope.md`](library-panels-scope.md) — **panels as their own asset**: a
+   `panel:{id}` record (the non-layout half of a `Cell` — the v3 spec) with `panel.*` verbs + S4
+   sharing, referenced from dashboards via an additive `panel_ref` cell field (edit once, every
+   referencing dashboard updates; explicit Unlink to fork) and rendered **standalone** on a
+   `/t/$ws/panel/{id}` page (a chart with no dashboard — the page a nav entry or shared link points
+   at). Sharing a panel never widens data access — `sources[]` re-check under the viewer's caps.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 

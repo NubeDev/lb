@@ -34,6 +34,7 @@ mod load;
 mod members;
 mod membership;
 mod native;
+mod nav;
 mod outbox;
 mod prefs;
 mod query;
@@ -186,6 +187,13 @@ pub use native::{
     authorize_native, build_spec, call_native_tool, call_sidecar, install_native, read_status,
     record_status, reset_native, restart_native, status_native, stop_native, Lifecycle,
     NativeServiceError, NativeStatus, SidecarMap, Supervised,
+};
+pub use nav::{
+    call_nav_tool, nav_delete, nav_get, nav_list, nav_pref_get, nav_pref_set, nav_resolve, nav_save,
+    nav_set_default, nav_share, Nav, NavError, NavFacet, NavItem, NavPref, NavSummary,
+    ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
+    ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_ITEMS as NAV_MAX_ITEMS,
+    MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching

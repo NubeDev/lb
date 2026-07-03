@@ -273,7 +273,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   made buildable), and `dashboard-widgets-scope.md` (Phase 2 — widgets as installed extensions: how a
   widget accesses data through the host-mediated read-only bridge without ever holding the token or
   touching the DB, trust tiers, the `[widget]` manifest); `frontend/dashboard/` now holds the dashboard
-  subtopic index plus the widget-focused reconciliation scope, `ui-standards-scope.md` (the cross-cutting UI
+  subtopic index plus the widget-focused reconciliation scope — including
+  `library-panels-scope.md` (panels as their own `panel:{id}` asset: reused across dashboards via
+  `panel_ref` cells, edit-once-propagates with explicit unlink-to-fork, and rendered **standalone**
+  on a `/panel/{id}` page; sharing a panel never widens data access), `ui-standards-scope.md` (the cross-cutting UI
   standard: shadcn-first primitives, the Members/NavRail canonical look, and responsive/mobile
   auto-resize — what every surface here must obey), `routing-scope.md` (shareable, deep-linkable
   URLs with typed search-param args — @tanstack/router in hash mode, working in both the Tauri

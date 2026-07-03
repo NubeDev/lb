@@ -188,6 +188,18 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // nav scope (the user-/team-authored navigation menu): the `nav.*` verbs the nav routes check.
+        // The reads (`get`/`list`/`resolve`) are member-level — every member resolves their own menu
+        // and curates their own pick (`nav.pref.*` gate on `nav.resolve`); the writes
+        // (`save`/`delete`/`share`/`set_default`) are admin-ish (the dev principal is a ws-admin). The
+        // nav grants NOTHING — `nav.resolve` is a pure lens over the caps above; the gateway re-checks
+        // every page verb on click regardless. A token without a given verb is refused per verb.
+        "mcp:nav.get:call",
+        "mcp:nav.list:call",
+        "mcp:nav.save:call",
+        "mcp:nav.delete:call",
+        "mcp:nav.share:call",
+        "mcp:nav.resolve:call",
         // viz Phase 3 (backend-resolved panel data): `viz.query(panel) -> { frames }` is THE render
         // path every panel now reads through (usePanelData). Member-level like `dashboard.get` — it
         // dispatches each target under `caller ∩ grant` (composing the target tool's own cap), so a

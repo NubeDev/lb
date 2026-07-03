@@ -169,6 +169,52 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "dashboard",
         description: "share a dashboard with another principal/team",
     },
+    // nav.* — the user-/team-authored navigation menu asset (nav scope).
+    HostTool {
+        tool: "nav.get",
+        group: "nav",
+        description: "read one navigation menu by id",
+    },
+    HostTool {
+        tool: "nav.list",
+        group: "nav",
+        description: "list the navigation menus visible to the caller",
+    },
+    HostTool {
+        tool: "nav.save",
+        group: "nav",
+        description: "create or update a navigation menu the caller owns",
+    },
+    HostTool {
+        tool: "nav.delete",
+        group: "nav",
+        description: "delete a navigation menu the caller owns",
+    },
+    HostTool {
+        tool: "nav.share",
+        group: "nav",
+        description: "share a navigation menu with a team / set its visibility",
+    },
+    HostTool {
+        tool: "nav.set_default",
+        group: "nav",
+        description: "set the workspace-default navigation menu",
+    },
+    HostTool {
+        tool: "nav.resolve",
+        group: "nav",
+        description: "resolve the caller's effective menu (picked, tag-expanded, cap-stripped)",
+    },
+    HostTool {
+        tool: "nav.pref.get",
+        group: "nav",
+        description: "read the caller's own active-nav pick",
+    },
+    HostTool {
+        tool: "nav.pref.set",
+        group: "nav",
+        description: "set the caller's own active-nav pick",
+    },
     // template.* — the durable scripted-view snippets the widget builder persists (widget-builder scope).
     HostTool {
         tool: "template.get",

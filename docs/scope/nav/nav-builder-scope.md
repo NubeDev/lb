@@ -219,6 +219,8 @@ records (no mocks, rule 9):
 - README `§3` (the non-negotiable rules — 5 capability-first, 6 workspace wall, 10 core-knows-no-ext),
   `§6.5` (dashboards / assets), the MCP contract (`§7`).
 - `scope/frontend/dashboard-scope.md` — the asset + `share`-to-team model this clones (`dashboard/share.rs`).
+- `scope/frontend/dashboard/library-panels-scope.md` — standalone panel pages (`/panel/{id}`) are a
+  natural later `panel` entry kind alongside `dashboard`.
 - `scope/auth-caps/authz-grants-scope.md` — teams/roles/grants (`user:|team:|role:` subjects,
   `role`/`team` primitives) this attaches to; `scope/auth-caps/access-console-scope.md` (likely builder home);
   `scope/auth-caps/admin-crud-scope.md` (team management).

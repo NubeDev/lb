@@ -22,7 +22,9 @@ use crate::routes::{
     list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
     list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
     list_inbox, list_members, list_roles, list_rules, list_series, list_tables, list_team_members,
-    list_teams, list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
+    list_navs, list_teams, list_users, list_workspaces, load_skill, login, mcp_call, mcp_catalog,
+    native_call, delete_nav, get_nav, get_nav_pref, resolve_nav, save_nav, set_default_nav,
+    set_nav_pref, share_nav,
     patch_flow_run, post_message, publish_extension, publish_message, purge_workspace, put_doc,
     put_skill, read_graph, read_samples, read_schema, remove_datasource, remove_member,
     remove_team_member, rename_team, rename_workspace, render_catalog_message, request_approval,
@@ -220,6 +222,15 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        // nav (nav scope) — the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
+        // renders + the member-owned pick + the workspace-default pointer. Each route re-checks the
+        // gates server-side; ws + owner from the token; the per-user pick keyed to the token `sub`.
+        .route("/navs", get(list_navs).post(save_nav))
+        .route("/navs/{id}", get(get_nav).delete(delete_nav))
+        .route("/navs/{id}/share", post(share_nav))
+        .route("/nav/resolve", get(resolve_nav))
+        .route("/nav/default", post(set_default_nav))
+        .route("/nav/pref", get(get_nav_pref).post(set_nav_pref))
         // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.
         // Each route re-checks `mcp:rules.<verb>:call` server-side; ws + principal from the token.
         .route("/rules/run", post(run_rule))
