@@ -103,6 +103,13 @@ pub struct Widget {
     /// bounded by the install grant. Validated at install: a non-series/write verb is rejected.
     #[serde(default)]
     pub scope: Vec<String>,
+    /// Frames-in opt-in (ext-widget-source-binding scope). `true` = this tile is a first-class
+    /// **view** over the v3 panel model: the editor shows the Query + Field tabs, and the shell
+    /// resolves the cell's `sources[]` through `viz.query` under the viewer's grant and hands the
+    /// tile resolved frames (`ctx.data`). Default `false` = a v2 self-fetching tile, unchanged.
+    /// Additive + serde-defaulted: a manifest written before this field parses as `false`.
+    #[serde(default)]
+    pub data: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

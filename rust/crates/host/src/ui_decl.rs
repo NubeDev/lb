@@ -17,12 +17,14 @@ use lb_ext_loader::Manifest;
 /// one entry per `[[widget]]` table (empty if none).
 pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>, Vec<ExtUi>) {
     let page = manifest.ui.as_ref().map(|u| {
+        // A page is never a data view — `data` stays false.
         narrow(
             &u.scope,
             granted,
             u.entry.clone(),
             u.label.clone(),
             u.icon.clone(),
+            false,
         )
     });
     let widgets = manifest
@@ -35,6 +37,7 @@ pub(crate) fn project(manifest: &Manifest, granted: &[String]) -> (Option<ExtUi>
                 w.entry.clone(),
                 w.label.clone(),
                 w.icon.clone(),
+                w.data,
             )
         })
         .collect();
@@ -49,6 +52,7 @@ fn narrow(
     entry: String,
     label: String,
     icon: String,
+    data: bool,
 ) -> ExtUi {
     let allowed = scope
         .iter()
@@ -60,6 +64,7 @@ fn narrow(
         label,
         icon,
         scope: allowed,
+        data,
     }
 }
 
@@ -84,6 +89,7 @@ scope = ["series.find", "series.latest"]
 entry = "a.mjs"
 label = "A"
 scope = ["series.latest"]
+data = true
 [[widget]]
 entry = "b.mjs"
 label = "B"
@@ -105,6 +111,22 @@ class = "private"
         assert_eq!(widgets.len(), 2);
         assert_eq!(widgets[0].label, "A");
         assert_eq!(widgets[1].label, "B");
+    }
+
+    #[test]
+    fn data_flag_projects_and_defaults_false() {
+        // Widget A opts into frames-in (`data = true`); widget B omits it (defaults false); a page is
+        // never a data view. The flag carries through `project`/`narrow` onto the durable `ExtUi`.
+        let m = Manifest::parse(TOML).unwrap();
+        let granted = vec![
+            "mcp:series.find:call".to_string(),
+            "mcp:series.latest:call".to_string(),
+            "mcp:series.read:call".to_string(),
+        ];
+        let (page, widgets) = project(&m, &granted);
+        assert!(!page.unwrap().data, "a page is never a data view");
+        assert!(widgets[0].data, "widget A declared data = true");
+        assert!(!widgets[1].data, "widget B omitted data → false");
     }
 
     #[test]

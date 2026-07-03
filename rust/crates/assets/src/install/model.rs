@@ -35,6 +35,12 @@ pub struct ExtUi {
     /// intersected against the install grant when written.
     #[serde(default)]
     pub scope: Vec<String>,
+    /// Frames-in opt-in for a widget (ext-widget-source-binding scope): `true` = a data tile that
+    /// carries `sources[]` and receives shell-resolved frames; `false` = a v2 self-fetching tile.
+    /// Always `false` for a page. Serde-defaulted so installs written before this field read as
+    /// `false`.
+    #[serde(default)]
+    pub data: bool,
 }
 
 /// The constant `kind` discriminant so `list_installs` can equality-filter every install row in a
