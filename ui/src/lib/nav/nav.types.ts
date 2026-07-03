@@ -6,8 +6,15 @@
 /** The S4 asset-sharing visibility tiers (identical to a dashboard's). */
 export type Visibility = "private" | "team" | "workspace";
 
-/** The four entry kinds plus one level of `group` (nav scope, "Four entry kinds"). */
-export type NavItemKind = "surface" | "dashboard" | "ext" | "tag-group" | "group";
+/** The entry kinds plus one level of `group` (nav scope, "Four entry kinds"). `template-group`
+ *  (reusable-pages scope) is the one-dashboard-many-bindings fan-out — additive, next to `tag-group`. */
+export type NavItemKind =
+  | "surface"
+  | "dashboard"
+  | "ext"
+  | "tag-group"
+  | "template-group"
+  | "group";
 
 /** One faceted tag query on a `tag-group` item — `{ key, value? }`. A value present is exact; absent
  *  is key-only. Opaque data (never branched on). */
@@ -31,6 +38,18 @@ export interface NavItem {
   facets?: NavFacet[];
   /** `group`: the nested items (one level). */
   items?: NavItem[];
+  /** `dashboard` / `template-group`: a **pinned variable binding** (reusable-pages scope) rendered into
+   *  the link as `?var-<name>=<value>` — a curated, durable, named page instance. Opaque data. */
+  vars?: Record<string, string>;
+  /** `template-group`: the template's **parameter** (a `Variable` name) this entry binds — one page
+   *  instance per enumerated option value. */
+  var?: string;
+  /** `template-group`: an **option-source tool** (the `Variable.query` `{tool,args}` shape) — the
+   *  general fan-out source, an alternative to `facets`. */
+  tool?: string;
+  /** `template-group`: the option-source tool's args (opaque; re-checked per call under the viewer's
+   *  caps at resolve time). */
+  args?: unknown;
 }
 
 /** A full nav record (the menu + sharing metadata). */
@@ -66,6 +85,9 @@ export interface ResolvedItem {
   dashboard?: string;
   ext?: string;
   items?: ResolvedItem[];
+  /** The resolved variable binding the UI folds into the href as `?var-<name>=<value>` (reusable-pages
+   *  scope): a pinned `dashboard` entry's `vars`, or a template-group child's `{ <var>: <value> }`. */
+  vars?: Record<string, string>;
 }
 
 /** The `nav.resolve` payload — the caller's effective menu. On `fallback`, `items` is empty and the

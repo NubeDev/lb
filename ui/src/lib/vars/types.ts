@@ -41,6 +41,11 @@ export interface Variable {
   /** Selection affordances. */
   multi?: boolean;
   includeAll?: boolean;
+  /** reusable-pages scope: marks this variable a **page parameter**. A `required` variable left unbound
+   *  (no `?var-` URL value, no default) makes the dashboard render the honest "select a `<label>`" gate
+   *  (`RequiredVarGate`) instead of firing cells with a `$name`-literal — this is what turns an ordinary
+   *  dashboard into a *template*. Additive/optional — a pre-reusable-pages record loads unchanged. */
+  required?: boolean;
 }
 
 /** The shell-resolved built-in globals (`$__from`/`${__user.login}`/`${__workspace}`/…). PURE given

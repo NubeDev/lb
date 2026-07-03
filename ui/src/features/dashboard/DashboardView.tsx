@@ -17,6 +17,7 @@ import { Grid } from "./Grid";
 import { AddPanel } from "./editor/AddPanel";
 import { VariableBar } from "./vars/VariableBar";
 import { VariableEditor } from "./vars/VariableEditor";
+import { RequiredVarGate, unboundRequiredVars } from "./vars/RequiredVarGate";
 import { useVarScope } from "./vars/useVarScope";
 import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import { RefreshControl } from "./RefreshControl";
@@ -87,6 +88,10 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
   // Resolve the variable scope shell-side (Slice 3): the URL selection + the built-ins from the token +
   // time range. Interpolated into every cell call + handed to extension tiles as ctx.vars/ctx.timeRange.
   const scope = useVarScope(current?.variables ?? [], range, current?.id ?? "", ws);
+  // reusable-pages: a template dashboard's `required` variables that are still UNBOUND (no URL value,
+  // no default). While any is unbound the grid must NOT fire (a `$site`-literal query is a footgun) —
+  // we render the honest `RequiredVarGate` in place of the grid, before any cell bridge call.
+  const unboundRequired = unboundRequiredVars(current?.variables ?? [], scope);
   // Auto-refresh (Slice 4): the URL interval drives a tick that re-resolves query variables + re-runs
   // each read cell's source (the watch streams compose — motion vs state). Pauses when the tab is hidden.
   const refreshKey = useAutoRefresh(range?.refresh);
@@ -109,6 +114,14 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
           {current && (
             <Badge variant="outline" className="rounded-full uppercase">
               {current.visibility}
+            </Badge>
+          )}
+          {current && (current.variables ?? []).some((v) => v.required) && (
+            // reusable-pages: this dashboard is a TEMPLATE — surface its parameter count (a small hint,
+            // not a new record type; a template is just a dashboard with required variables).
+            <Badge variant="outline" className="rounded-full" title="A template page — a required variable must be picked to load it.">
+              template · {(current.variables ?? []).filter((v) => v.required).length} param
+              {(current.variables ?? []).filter((v) => v.required).length === 1 ? "" : "s"}
             </Badge>
           )}
           {range && (
@@ -240,23 +253,28 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
           />
 
           <div className="min-h-0 flex-1">
-            <Grid
-              cells={current.cells}
-              editable
-              canEdit={canEdit}
-              range={range}
-              scope={scope}
-              refreshKey={refreshKey}
-              installed={picker.installed}
-              workspace={ws}
-              onLayout={(cells) => void dash.saveCells(cells)}
-              onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
-              onEditCell={(edited) =>
-                void dash.saveCells(
-                  current.cells.map((c) => (c.i === edited.i ? edited : c)),
-                )
-              }
-            />
+            {unboundRequired.length > 0 ? (
+              // A template with an unbound page parameter — gate the grid (no cell fires until picked).
+              <RequiredVarGate unbound={unboundRequired} />
+            ) : (
+              <Grid
+                cells={current.cells}
+                editable
+                canEdit={canEdit}
+                range={range}
+                scope={scope}
+                refreshKey={refreshKey}
+                installed={picker.installed}
+                workspace={ws}
+                onLayout={(cells) => void dash.saveCells(cells)}
+                onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
+                onEditCell={(edited) =>
+                  void dash.saveCells(
+                    current.cells.map((c) => (c.i === edited.i ? edited : c)),
+                  )
+                }
+              />
+            )}
           </div>
         </div>
       )}

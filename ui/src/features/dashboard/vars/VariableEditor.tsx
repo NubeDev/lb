@@ -199,6 +199,22 @@ function VariableRow({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
+        {/* reusable-pages: mark this variable a page PARAMETER. A required var left unbound makes the
+            dashboard render the "select a <label>" gate — this is what makes it a template. */}
+        <label
+          className="flex items-center gap-1.5 text-[11px] text-muted"
+          title="A required variable must be picked before the page loads (template page parameter)."
+        >
+          {/* eslint-disable-next-line no-restricted-syntax -- token-bound native checkbox */}
+          <input
+            aria-label="variable required page parameter"
+            type="checkbox"
+            className="h-3.5 w-3.5 rounded border-border accent-accent"
+            checked={!!variable.required}
+            onChange={(e) => onChange({ required: e.target.checked })}
+          />
+          required (page parameter)
+        </label>
         {isQuery && (
           /* eslint-disable-next-line no-restricted-syntax -- token-bound native select; the friendly source picker */
           <select
