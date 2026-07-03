@@ -142,6 +142,16 @@ The user's instinct is right: prove the spine on **one** chart before fanning ou
   follow-ups (deferred, not silent): `viz.stream` (live frames), `federation.datasource.schema` (federation
   SQL-builder dropdowns), the `format.ts`→`format.*` swap. Phases 1–2 kept the shipped client fetch
   **behind the one data hook** so this swap was confined to one file.
+- **Phase 3.5 — editor parity (the usability gap). ✅ SHIPPED (2026-07-03).** A hands-on review found the
+  shipped editor was a stub over the (correct) spine: `organize` and 6 other transforms edited through a
+  raw-JSON textarea, overrides took free-typed property ids, value mappings/color schemes existed in the
+  render path but had no editor, per-viz options covered ~20% of Grafana's surface, and the Query tab was
+  single-target despite the `targets[]` model. All 7 steps shipped (primitives → option registry → typed
+  transform editors → overrides pickers → per-viz parity → multi-target → per-step debug), each green,
+  one commit per step, scoped + logged in [`editor-parity-scope.md`](editor-parity-scope.md) +
+  [`../../../../sessions/frontend/dashboard-editor-parity-build-session.md`](../../../../sessions/frontend/dashboard-editor-parity-build-session.md).
+  Exit gate MET: **build any supported panel without ever typing JSON or a remembered field name.** The
+  one additive backend change was `viz.query`'s opt-in `debug`/`stopAt` per-step frames (no new verb).
 - **Phase 4 — Grafana JSON import/export** + `schemaVersion` migration.
   ([`import-export`](import-export-scope.md).)
 

@@ -16,7 +16,34 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-03): default agent wiring — the in-house `"default"` agent finished (branch
+**Just shipped (2026-07-03): viz panel-editor parity — Phase 3.5, all 7 steps (branch `master`).**
+Closed the gap between the shipped viz spine and a *usable* editor: a user can now build every
+editor-supported panel end to end **without ever seeing JSON, a free-typed property id, or a field name
+they must remember and retype** (the phase exit gate, MET). (1) **Primitives + FieldNamePicker** — a
+searchable `Combobox`/`Checkbox`/`ColorSwatchPicker` and a field picker fed by the live preview's REAL
+`viz.query` result fields; every "no shadcn primitive yet" suppression burned down. (2) **Option
+registry** (`editor/options/`) — one `OptionDef` per option, the Field tab renders entirely from it via
+one `Control`; value-mappings/color-scheme/data-links finally have editors; searchable unit picker;
+thresholds mode toggle. (3) **Typed editors for all 11 transform ids** — headline **Organize fields** is
+now a row list (reorder/hide/rename) over the real result fields, not a JSON textarea; filterByValue
+condition rows, groupBy per-field rows, calculateField operands. (4) **Overrides on the registry** —
+matcher pickers + "add property" over the registry + typed control per property + multi-property;
+aligned `byRegex`→`byRegexp` to the backend. (5) **Per-viz options to parity** — table
+width/align/cell-type/filter/footer, timeseries stacking/threshold-display, stat/gauge/bargauge/pie value
+options. (6) **Multi-target queries** — A/B/C rows (add/dup/delete/hide/reorder) + query-options row +
+preview table-view toggle. (7) **Per-step transform debug** — the one additive backend flag
+(`lb-viz::transform_stepwise` + `viz.query` `panel.debug`/`stopAt` → `steps[]`, same cap, no new verb)
+surfaced as a Transform-tab "Show per-step result". The registry-driven round-trip test iterates the
+WHOLE registry (a new option can't dodge it) and usability gates are tests (author a mapping/organize/
+override through the UI, no JSON). Scope `scope/frontend/dashboard/viz/editor-parity-scope.md`; session
+`sessions/frontend/dashboard-editor-parity-build-session.md`; debug
+`debugging/frontend/panel-editor-tab-label-stale-after-navmenu.md`. Tests: UI `pnpm test` **422**,
+`cargo test -p lb-viz` **53** (+4 stepwise), `cargo build --workspace` clean; the editor-parity gateway
+tests (fieldNamePicker/valueMapping/organize/overrides/queryTargets/transformDebug) green. **Next up:**
+backend clamp for the new `queryOptions` (maxDataPoints/minInterval/relativeTime — authored + on the wire
+now, resolver honoring is the follow-up); BarChart per-viz options; then Phase 4 (import/export).
+
+**Earlier on 2026-07-03: default agent wiring — the in-house `"default"` agent finished (branch
 `master`).** The always-registered in-house loop now (1) binds a **real model** from node config
 (`LB_AGENT_MODEL_*`, the `ModelEndpoint` shape — provider/model/api-key-env NAME/base-url) built as
 `AiGateway<Provider>` and installed via `install_runtimes`; **no model → the honest `UnconfiguredModel`**
@@ -1080,6 +1107,14 @@ pages, this slice) (+ `public/SCOPE.md`).
 
 ## Next up
 
+000. **Dashboard editor parity — Phase 3.5 (scoped 2026-07-03, NOT built, user-reported).** A
+    hands-on pass found the panel editor unusable for a real person despite the green spine:
+    `organize` + 6 other transforms edit via a raw-JSON textarea, overrides take free-typed dotted
+    property ids, value mappings/color schemes have no editor (though the render path applies them),
+    per-viz options cover ~20% of Grafana's surface, and the Query tab is single-target. Plan:
+    [`editor-parity-scope.md`](scope/frontend/dashboard/viz/editor-parity-scope.md) (primitives →
+    option registry → typed transform editors → overrides pickers → per-viz parity → multi-target).
+    Session: [`dashboard-editor-parity-review`](sessions/frontend/dashboard-editor-parity-review-session.md).
 00. **Retire the `*.fake.ts` mock backend — DONE (2026-06-27, CLAUDE §9, testing §0).** The UI's 14
     `lib/ipc/*.fake.ts` files + the `fake.ts` dispatcher (a hand-written parallel backend that let work
     *look* shipped on an unbuilt path) are **deleted**. `src/lib/ipc/` now holds only `invoke.ts` (the
