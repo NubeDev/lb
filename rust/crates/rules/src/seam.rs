@@ -75,3 +75,35 @@ pub struct AiCompletion {
     pub text: String,
     pub tokens: u32,
 }
+
+/// The messaging-plane seam — the ONE bridge from a rule body to the inbox, outbox, and channel MCP
+/// verbs (rules-messaging-scope). Implemented host-side as a thin `block_on(call_tool(...))` closed
+/// over the caller's principal + the pinned workspace, so **every** call re-runs the host's workspace
+/// pin + `caps::check` under `caller ∩ grant` — a rule reaches these planes exactly as the UI/agent do
+/// (rule 7), and `tool` is opaque data the seam never branches on (rule 10).
+///
+/// `call` returns the tool's JSON on success; on a capability/workspace deny it returns
+/// [`SeamError::Denied`] (opaque — the handle maps it to a rhai error with no plane/cap detail), and
+/// any other host fault is [`SeamError::Failed`] (author feedback, surfaced verbatim).
+pub trait MessagingSeam: Send + Sync {
+    fn call(&self, tool: &str, input: serde_json::Value) -> Result<serde_json::Value, SeamError>;
+}
+
+/// The outcome of a denied-or-failed [`MessagingSeam::call`]. `Denied` stays opaque at the handle (a
+/// rule cannot tell a capability deny from "empty"); `Failed` is author feedback surfaced verbatim.
+#[derive(Debug, Clone)]
+pub enum SeamError {
+    /// A capability/workspace deny — opaque, indistinguishable from a missing tool.
+    Denied,
+    /// Any other host fault (bad input, an internal error) — surfaced to the author verbatim.
+    Failed(String),
+}
+
+impl std::fmt::Display for SeamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SeamError::Denied => write!(f, "denied"),
+            SeamError::Failed(m) => write!(f, "{m}"),
+        }
+    }
+}

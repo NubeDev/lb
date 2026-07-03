@@ -1,10 +1,17 @@
-// The INLINE panel builder (panel-builder views; data-studio scope v2) — the full Grafana-style option
-// surface (Query / Plot / Transform / Panel options / Field / Overrides, incl. the GenUI "AI widget"
-// tab) rendered to FILL ITS PARENT, no modal chrome. The logic is the headless `usePanelEditor` state
-// machine (`@/lib/panel-kit`); this file is only a VIEW over it: live preview + viz picker on the left,
-// the options rail on the right, save/save-as-library actions on top. Data Studio mounts one of these
-// per FlexLayout builder tab (N side by side); the old dashboard modal `PanelEditor` is deleted — the
-// dashboard only places library panels now.
+// The INLINE panel builder (panel-builder views; data-studio scope v2/v3) — the full Grafana-style
+// option surface (Query / Plot / Transform / Panel options / Field / Overrides, incl. the GenUI "AI
+// widget" tab) rendered to FILL ITS PARENT, no modal chrome. The logic is the headless `usePanelEditor`
+// state machine (`@/lib/panel-kit`); this file is only a VIEW over it: the live preview + viz picker and
+// the options rail, plus save/save-as-library actions. Data Studio mounts one of these per FlexLayout
+// builder tab (N side by side); the old dashboard modal `PanelEditor` is deleted — the dashboard only
+// places library panels now.
+//
+// The `layout` prop chooses the arrangement of the two halves (v3):
+//   - "split"   — preview+viz LEFT, options rail RIGHT (the default; dashboard-parity tests use it);
+//   - "stacked" — the rendered PREVIEW on TOP (full-width), the options rail (Query first → the SQL
+//     editor when the source needs it) BELOW. Data Studio's ONE stacked query/preview view: the user
+//     sees the data and shapes the chart together, and an opened chart is the focus with its source
+//     beneath it.
 
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
@@ -45,12 +52,24 @@ interface Props {
   scope?: VarScope;
   /** The Save button label ("Save" | "Save to library" …) — the consumer names the persistence. */
   saveLabel?: string;
+  /** The arrangement of the two halves (v3): "split" (preview LEFT, options RIGHT — the default) or
+   *  "stacked" (preview on TOP, options BELOW — Data Studio's one stacked query/preview view). */
+  layout?: "split" | "stacked";
 }
 
 const TAB_IDS = ["query", "plot", "transform", "options", "field", "overrides"] as const;
 type TabId = (typeof TAB_IDS)[number];
 
-export function BuilderPane({ ws, cell, onSave, onDraftChange, scope = emptyScope(), saveLabel = "Save" }: Props) {
+export function BuilderPane({
+  ws,
+  cell,
+  onSave,
+  onDraftChange,
+  scope = emptyScope(),
+  saveLabel = "Save",
+  layout = "split",
+}: Props) {
+  const stacked = layout === "stacked";
   const ed = usePanelEditor(cell, { defaultOptionsForView });
   const [tab, setTab] = useState<TabId>("query");
   const [search, setSearch] = useState("");
@@ -86,65 +105,83 @@ export function BuilderPane({ ws, cell, onSave, onDraftChange, scope = emptyScop
     return undefined;
   };
 
+  // The preview half — title + save actions, the library bar, the live preview, and the viz picker.
+  // Stacked: the preview fills the top (grows); split: a fixed-height preview above the picker.
+  const previewHalf = (
+    <div className="flex min-h-0 flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label="panel title"
+          className="h-8 text-sm"
+          placeholder="Panel title"
+          value={ed.state.title}
+          onChange={(e) => patch({ title: e.target.value })}
+        />
+        <Button aria-label="save panel" size="sm" className="shrink-0" onClick={() => onSave(ed.toCell())}>
+          <Check size={12} /> {saveLabel}
+        </Button>
+      </div>
+      <LibraryPanelBar draft={ed.draft} onSave={onSave} />
+      <div className={stacked ? "min-h-0 flex-1" : "h-56 shrink-0"}>
+        <PreviewPane
+          cell={ed.draft}
+          ws={ws}
+          scope={scope}
+          refreshKey={ed.refreshKey}
+          tableView={tableView}
+          onToggleTableView={() => setTableView((v) => !v)}
+        />
+      </div>
+      <VizPicker view={ed.viewC} onChange={ed.switchView} shape={shape} flowKind={ed.flowKind} />
+    </div>
+  );
+
+  // The options half — Query first (the SQL editor surfaces here when the source needs it), then the
+  // rest of the option surface beside the section nav.
+  const optionsHalf = (
+    <div className="flex min-h-0 flex-col gap-2">
+      <OptionsSearch value={search} onChange={setSearch} />
+      <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
+        <NavMenu
+          aria-label="panel builder sections"
+          className="border-r border-border pr-2"
+          items={tabItems}
+          active={tab}
+          badge={tabBadge}
+          onSelect={(id) => setTab(id as TabId)}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {tab === "query" && <QueryTargets ws={ws} state={ed.state} patch={patch} onRun={ed.run} />}
+          {tab === "plot" && ed.canPlot && (
+            <PlotAxesTab draft={ed.draft} state={ed.state} patch={patch} scope={scope} refreshKey={ed.refreshKey} />
+          )}
+          {tab === "transform" && (
+            <TransformTab state={ed.state} patch={patch} draft={ed.draft} scope={scope} refreshKey={ed.refreshKey} />
+          )}
+          {tab === "options" && <PanelOptionsTab state={ed.stateC} patch={patch} ws={ws} />}
+          {tab === "field" && <FieldTab state={ed.stateC} patch={patch} search={search} />}
+          {tab === "overrides" && <OverridesTab state={ed.state} patch={patch} />}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div aria-label="panel builder" className="flex h-full min-h-0 flex-col">
       <ResultFieldsProvider fields={resultFields}>
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-3 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
-          {/* Left: live preview + the viz picker (what the panel will look like). */}
-          <div className="flex min-h-0 flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <Input
-                aria-label="panel title"
-                className="h-8 text-sm"
-                placeholder="Panel title"
-                value={ed.state.title}
-                onChange={(e) => patch({ title: e.target.value })}
-              />
-              <Button aria-label="save panel" size="sm" className="shrink-0" onClick={() => onSave(ed.toCell())}>
-                <Check size={12} /> {saveLabel}
-              </Button>
-            </div>
-            <LibraryPanelBar draft={ed.draft} onSave={onSave} />
-            <div className="h-56 shrink-0">
-              <PreviewPane
-                cell={ed.draft}
-                ws={ws}
-                scope={scope}
-                refreshKey={ed.refreshKey}
-                tableView={tableView}
-                onToggleTableView={() => setTableView((v) => !v)}
-              />
-            </div>
-            <VizPicker view={ed.viewC} onChange={ed.switchView} shape={shape} flowKind={ed.flowKind} />
+        {stacked ? (
+          // Stacked (Data Studio v3): preview on TOP (grows), options BELOW — one query/preview view.
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
+            <div className="flex min-h-[12rem] flex-[3] flex-col overflow-hidden">{previewHalf}</div>
+            <div className="min-h-0 flex-[2] overflow-hidden border-t border-border pt-3">{optionsHalf}</div>
           </div>
-
-          {/* Right: the options rail — search on top, then the NavMenu beside the active tab body. */}
-          <div className="flex min-h-0 flex-col gap-2">
-            <OptionsSearch value={search} onChange={setSearch} />
-            <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
-              <NavMenu
-                aria-label="panel builder sections"
-                className="border-r border-border pr-2"
-                items={tabItems}
-                active={tab}
-                badge={tabBadge}
-                onSelect={(id) => setTab(id as TabId)}
-              />
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {tab === "query" && <QueryTargets ws={ws} state={ed.state} patch={patch} onRun={ed.run} />}
-                {tab === "plot" && ed.canPlot && (
-                  <PlotAxesTab draft={ed.draft} state={ed.state} patch={patch} scope={scope} refreshKey={ed.refreshKey} />
-                )}
-                {tab === "transform" && (
-                  <TransformTab state={ed.state} patch={patch} draft={ed.draft} scope={scope} refreshKey={ed.refreshKey} />
-                )}
-                {tab === "options" && <PanelOptionsTab state={ed.stateC} patch={patch} ws={ws} />}
-                {tab === "field" && <FieldTab state={ed.stateC} patch={patch} search={search} />}
-                {tab === "overrides" && <OverridesTab state={ed.state} patch={patch} />}
-              </div>
-            </div>
+        ) : (
+          // Split (default): preview LEFT, options RIGHT.
+          <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-3 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
+            {previewHalf}
+            {optionsHalf}
           </div>
-        </div>
+        )}
       </ResultFieldsProvider>
     </div>
   );

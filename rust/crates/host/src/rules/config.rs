@@ -47,3 +47,10 @@ pub fn ai_limits() -> AiLimits {
         context_rows: env_usize("LB_RULES_AI_CONTEXT_ROWS", 200),
     }
 }
+
+/// The per-run messaging write budget (`env::rules::MAX_WRITES`, default 32 — rules-messaging-scope
+/// "Resolved decisions"). Every motion-producing messaging write (inbox record/resolve, outbox
+/// enqueue, channel post/edit/delete) charges it; reads are free. A per-workspace override is additive.
+pub fn max_writes() -> u32 {
+    env_u32("LB_RULES_MAX_WRITES", 32)
+}

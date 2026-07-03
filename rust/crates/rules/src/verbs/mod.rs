@@ -7,10 +7,14 @@ mod ai;
 mod data;
 mod duration;
 mod emit;
+pub(crate) mod inbox;
+pub(crate) mod outbox;
 mod timeseries;
 
 pub use ai::AiHandle;
 pub use emit::Collectors;
+pub use inbox::InboxHandle;
+pub use outbox::OutboxHandle;
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -18,11 +22,19 @@ use std::sync::Arc;
 use rhai::Engine;
 
 use crate::grid::{Col, Grid, GridCtx, GroupedGrid, Span};
-use crate::meter::AiMeter;
-use crate::seam::{AiSeam, DataSeam};
+use crate::meter::{AiMeter, WriteMeter};
+use crate::seam::{AiSeam, DataSeam, MessagingSeam};
 
-/// Register the grid value types + every verb family into `engine`. Returns the `AiHandle` to push
-/// into the scope as the `ai` variable.
+/// The three scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox` (the
+/// `channel` handle is slice 3). Returned so the engine can push them after registering the verbs.
+pub struct RunHandles {
+    pub ai: AiHandle,
+    pub inbox: InboxHandle,
+    pub outbox: OutboxHandle,
+}
+
+/// Register the grid value types + every verb family into `engine`. Returns the scope handles to push
+/// (`ai`/`inbox`/`outbox`).
 #[allow(clippy::too_many_arguments)]
 pub fn register(
     engine: &mut Engine,
@@ -34,14 +46,23 @@ pub fn register(
     ai_seam: Arc<dyn AiSeam>,
     meter: Arc<AiMeter>,
     context_rows: usize,
-) -> AiHandle {
+    messaging: Arc<dyn MessagingSeam>,
+    write_meter: Arc<WriteMeter>,
+    now: u64,
+) -> RunHandles {
     register_types(engine);
     register_grid_methods(engine);
     data::register(engine, ctx.clone(), allow.clone(), inputs);
     timeseries::register(engine);
     emit::register(engine, collectors);
     ai::register(engine);
-    AiHandle::new(ai_seam, ctx, data, allow, meter, context_rows)
+    inbox::register(engine);
+    outbox::register(engine);
+    RunHandles {
+        ai: AiHandle::new(ai_seam, ctx, data, allow, meter, context_rows),
+        inbox: InboxHandle::new(messaging.clone(), write_meter.clone(), now),
+        outbox: OutboxHandle::new(messaging, write_meter, now),
+    }
 }
 
 /// Register the opaque grid value types so rhai can pass them around.

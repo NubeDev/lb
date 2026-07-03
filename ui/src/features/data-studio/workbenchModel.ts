@@ -6,19 +6,15 @@
 
 import type { IJsonModel, IJsonTabNode } from "flexlayout-react";
 
-import type { Cell, View } from "@/lib/dashboard";
+import type { Cell } from "@/lib/dashboard";
 
 /** The surface key the workbench persists under (`ui_layout:[ws, user, "data-studio"]`). */
 export const DATA_STUDIO_SURFACE = "data-studio";
 
-/** The tab components the factory can mount. `sources`/`library` are the border dock panes;
- *  `explore`/`builder` are the center working tabs (N of each, opened/closed/split freely). */
-export type PaneKind = "sources" | "library" | "explore" | "builder";
-
-/** An explore tab's persisted config: the draft cell (source + view baked in). */
-export interface ExploreConfig {
-  cell: Cell;
-}
+/** The tab components the factory can mount. `sources`/`library` are the border dock panes; `builder`
+ *  is the ONE center working tab (v3: the read-only `explore` kind is retired — a picked source opens a
+ *  builder directly, the stacked preview-on-top / query-on-bottom view). N builders open/close/split. */
+export type PaneKind = "sources" | "library" | "builder";
 
 /** A builder tab's persisted config: the working draft + the library id it was last saved as. */
 export interface BuilderConfig {
@@ -74,18 +70,7 @@ export function defaultWorkbenchModel(): IJsonModel {
   };
 }
 
-/** A fresh explore tab for a picked source. */
-export function exploreTabJson(id: string, name: string, cell: Cell): IJsonTabNode {
-  return {
-    type: "tab",
-    id,
-    name,
-    component: "explore" satisfies PaneKind,
-    config: { cell } satisfies ExploreConfig,
-  };
-}
-
-/** A fresh builder tab for a draft cell (a new panel, an explored source, or a library panel). */
+/** A fresh builder tab for a draft cell (a new panel, a picked source, or a library panel). */
 export function builderTabJson(id: string, name: string, config: BuilderConfig): IJsonTabNode {
   return {
     type: "tab",
@@ -95,13 +80,6 @@ export function builderTabJson(id: string, name: string, config: BuilderConfig):
     config,
   };
 }
-
-/** The explore preview's view toggle set — the shipped `views/*` renderers, one render path. */
-export const EXPLORE_VIEWS: { view: View; label: string }[] = [
-  { view: "table", label: "Table" },
-  { view: "timeseries", label: "Chart" },
-  { view: "json", label: "JSON" },
-];
 
 /** A collision-proof tab id (unique within this browser session AND across persisted reloads). */
 export function mintTabId(kind: PaneKind): string {

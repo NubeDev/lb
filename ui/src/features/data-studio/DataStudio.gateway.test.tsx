@@ -1,11 +1,14 @@
-// Data Studio v2 — the multi-pane workbench, driven against a REAL in-process gateway (data-studio
-// scope v2, "v2 testing plan"; CLAUDE §9 / testing §0 — no fake backend). Each test signs into a
-// UNIQUE workspace and drives the real view + FlexLayout + api clients + HTTP transport. Covers the
-// headline (pick a seeded source → an EXPLORE TAB renders real rows through `viz.query` → a BUILDER
-// TAB opens from it → Save-as-library `panel.save` round-trips), the per-user LAYOUT PERSISTENCE
-// (the real `layout.get`/`set` verbs: a reload restores the tabs + drafts; another member sees THEIR
-// OWN default — member-owned), the mandatory capability-deny (no `panel.save` → no save affordance +
-// the verb denied server-side), and workspace isolation (nothing crosses to ws-B).
+// Data Studio v2/v3 — the multi-pane workbench, driven against a REAL in-process gateway (data-studio
+// scope v3, "v3 testing plan"; CLAUDE §9 / testing §0 — no fake backend). Each test signs into a
+// UNIQUE workspace and drives the real view + FlexLayout + api clients + HTTP transport. v3 collapses
+// explore + build into ONE stacked builder tab: picking a source opens a builder DIRECTLY (preview on
+// TOP, Query/SQL on the BOTTOM) — no read-only explore hop. Covers the headline (pick a seeded source →
+// a BUILDER TAB renders real rows through `viz.query` → Save-as-library `panel.save` round-trips), the
+// SQL-editor-when-needed (surfaces for a Direct-SurrealDB source, absent for a series source), opening
+// an existing panel from the Library into the stacked builder, the per-user LAYOUT PERSISTENCE (the real
+// `layout.get`/`set` verbs: a reload restores the tabs + drafts; another member sees THEIR OWN default —
+// member-owned), the mandatory capability-deny (no `panel.save` → no save affordance + the verb denied
+// server-side), and workspace isolation (nothing crosses to ws-B).
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -68,31 +71,28 @@ async function mountStudio(ws: string) {
   return view;
 }
 
-/** Pick the seeded `cooler.temp` series in the Sources pane → opens an explore tab. */
+/** Pick the seeded `cooler.temp` series in the Sources pane → opens a BUILDER tab directly (v3). */
 async function openCoolerExplore(user: ReturnType<typeof userEvent.setup>) {
   const source = await screen.findByLabelText("explore source");
   await screen.findByRole("option", { name: "cooler.temp" });
   await user.selectOptions(source, "series:cooler.temp");
-  // The explore tab mounted: its toolbar (view toggle + Build) is live.
-  await screen.findByLabelText("build panel from explore");
+  // v3: no explore hop — the stacked builder mounts directly.
+  await screen.findByLabelText("panel builder");
 }
 
 describe("Data Studio v2 workbench (real gateway)", () => {
-  it("explore → build → save as library panel round-trips; the layout + draft persist per user", async () => {
+  it("pick source → stacked builder → save as library panel round-trips; the layout + draft persist per user", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
     await seedIotDemo();
 
     const first = await mountStudio(ws);
+    // v3: picking a source lands DIRECTLY in the stacked builder (preview top, query bottom) — no hop.
     await openCoolerExplore(user);
 
-    // The explore preview renders through the ONE render path (`WidgetHost` → `viz.query`).
-    expect(await screen.findByTestId("explore-preview")).toBeInTheDocument();
-
-    // Build: a BUILDER TAB opens on the explored draft — the full option surface, inline (no modal).
-    await user.click(screen.getByLabelText("build panel from explore"));
-    expect(await screen.findByLabelText("panel builder")).toBeInTheDocument();
+    // The live preview renders through the ONE render path (`PreviewPane` → `WidgetView` → `viz.query`).
+    expect(await screen.findByLabelText("panel preview")).toBeInTheDocument();
 
     // Name it and save it to the library (the shipped `panel.save` flow; the slug prompt is stubbed).
     const title = await screen.findByLabelText("panel title");
@@ -138,12 +138,12 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     const ada = await mountStudio(ws);
     await openCoolerExplore(user);
     await waitFor(
-      async () => expect(JSON.stringify((await getLayout(DATA_STUDIO_SURFACE)).model)).toContain("explore"),
+      async () => expect(JSON.stringify((await getLayout(DATA_STUDIO_SURFACE)).model)).toContain("builder"),
       { timeout: 8000 },
     );
     ada.unmount();
 
-    // Ben, SAME workspace: his own (absent) layout — the default workbench, no explore tab. (Minted
+    // Ben, SAME workspace: his own (absent) layout — the default workbench, no builder tab. (Minted
     // via the seed-session route — dev login only auto-provisions a FRESH workspace.)
     await signInWithCaps("user:ben", ws, [
       "mcp:series.list:call",
@@ -156,7 +156,7 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     expect(l.model).toBeNull();
     await mountStudio(ws);
     await screen.findByLabelText("explore source");
-    expect(screen.queryByLabelText("build panel from explore")).toBeNull();
+    expect(screen.queryByLabelText("panel builder")).toBeNull();
   }, 30000);
 
   it("workspace isolation — the layout and the saved panel never cross to ws-B", async () => {
@@ -168,12 +168,10 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     const a = await mountStudio(wsA);
     await openCoolerExplore(user);
     window.prompt = () => "walled-panel";
-    await user.click(screen.getByLabelText("build panel from explore"));
-    await screen.findByLabelText("panel builder");
     await user.click(screen.getByLabelText("save as library panel"));
     await waitFor(async () => expect((await listPanels()).length).toBe(1));
     await waitFor(
-      async () => expect(JSON.stringify((await getLayout(DATA_STUDIO_SURFACE)).model)).toContain("explore"),
+      async () => expect(JSON.stringify((await getLayout(DATA_STUDIO_SURFACE)).model)).toContain("builder"),
       { timeout: 8000 },
     );
     a.unmount();
@@ -205,12 +203,51 @@ describe("Data Studio v2 workbench (real gateway)", () => {
 
     await mountStudio(ws);
     await openCoolerExplore(user);
-    await user.click(screen.getByLabelText("build panel from explore"));
-    await screen.findByLabelText("panel builder");
 
     // The affordance is gone (the palette-gate precedent)…
     expect(screen.queryByLabelText("save as library panel")).toBeNull();
     // …and the host is the real boundary regardless.
     await expect(savePanel("sneak", "Sneak", { widget_type: "chart", binding: { series: "" } })).rejects.toThrow();
+  }, 30000);
+
+  it("SQL editor surfaces for a Direct-SurrealDB source and is absent for a series source (v3 stacked)", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    await mountStudio(ws);
+
+    // A series source → the friendly picker, NO SQL editor (the conditional stays hidden).
+    await openCoolerExplore(user);
+    await screen.findByLabelText("panel preview");
+    expect(screen.queryByLabelText("sql query editor")).toBeNull();
+
+    // Pick the "SQL query (direct SurrealDB)" source in the same builder tab's bottom Query section →
+    // the Builder⇄Code `SqlQueryEditor` appears (surfaced in the new stacked layout, not rebuilt).
+    const panelSource = await screen.findByLabelText("panel source");
+    await user.selectOptions(panelSource, "sql:query");
+    expect(await screen.findByLabelText("sql query editor")).toBeInTheDocument();
+  }, 30000);
+
+  it("opening an existing library panel lands in the stacked builder (preview + query, one tab)", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    // Seed a real library panel to open.
+    await savePanel("existing-chart", "Existing chart", {
+      view: "timeseries",
+      sources: [{ refId: "A", tool: "series.read", args: { series: "cooler.temp" } }],
+    } as never);
+
+    await mountStudio(ws);
+    // Open it from the Library dock pane → ONE stacked builder tab (preview on top, query on bottom).
+    await user.click(await screen.findByLabelText("open library panel Existing chart"));
+    expect(await screen.findByLabelText("panel builder")).toBeInTheDocument();
+    expect(await screen.findByLabelText("panel preview")).toBeInTheDocument();
+    // The title round-tripped into the editor — the chart is the focus, its source available below.
+    await waitFor(() => expect((screen.getByLabelText("panel title") as HTMLInputElement).value).toBe("Existing chart"));
   }, 30000);
 });

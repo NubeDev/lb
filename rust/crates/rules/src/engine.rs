@@ -9,10 +9,10 @@
 use std::sync::Arc;
 
 use crate::grid::GridCtx;
-use crate::meter::AiMeter;
+use crate::meter::{AiMeter, WriteMeter};
 use crate::runtime::{AiBudget, GridJson, Rule, RuleError, RuleOutput, RuleRun};
 use crate::sandbox::{build_engine, RuleLimits};
-use crate::seam::{AiSeam, DataSeam};
+use crate::seam::{AiSeam, DataSeam, MessagingSeam};
 use crate::verbs::{register, Collectors};
 
 /// The AI budget knobs for a run (mirrors rubix-cube's `env::rules::AI_*`).
@@ -38,22 +38,30 @@ impl Default for AiLimits {
 pub struct RuleEngine {
     data: Arc<dyn DataSeam>,
     ai: Arc<dyn AiSeam>,
+    messaging: Arc<dyn MessagingSeam>,
     limits: RuleLimits,
     ai_limits: AiLimits,
+    /// The per-run write budget (`env::rules::MAX_WRITES`, default 32). Charged by every
+    /// motion-producing messaging write; reads are uncharged (rules-messaging-scope).
+    max_writes: u32,
 }
 
 impl RuleEngine {
     pub fn new(
         data: Arc<dyn DataSeam>,
         ai: Arc<dyn AiSeam>,
+        messaging: Arc<dyn MessagingSeam>,
         limits: RuleLimits,
         ai_limits: AiLimits,
+        max_writes: u32,
     ) -> Self {
         Self {
             data,
             ai,
+            messaging,
             limits,
             ai_limits,
+            max_writes,
         }
     }
 
@@ -73,8 +81,9 @@ impl RuleEngine {
             self.ai_limits.max_calls,
             self.ai_limits.max_tokens,
         ));
+        let write_meter = Arc::new(WriteMeter::new(self.max_writes));
 
-        let ai_handle = register(
+        let handles = register(
             &mut engine,
             ctx,
             self.data.clone(),
@@ -84,11 +93,16 @@ impl RuleEngine {
             self.ai.clone(),
             meter.clone(),
             self.ai_limits.context_rows,
+            self.messaging.clone(),
+            write_meter,
+            run.now,
         );
 
-        // Build the scope: the `ai` handle + each bound param as a top-level variable.
+        // Build the scope: the `ai`/`inbox`/`outbox` handles + each bound param as a top-level var.
         let mut scope = rhai::Scope::new();
-        scope.push("ai", ai_handle);
+        scope.push("ai", handles.ai);
+        scope.push("inbox", handles.inbox);
+        scope.push("outbox", handles.outbox);
         for (name, value) in inputs.iter() {
             scope.push_dynamic(name.as_str(), value.clone());
         }

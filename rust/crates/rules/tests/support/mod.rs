@@ -7,8 +7,70 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use lb_rules::seam::{AiSeam, DataSeam, SchemaColumn, SourceKind};
+use lb_rules::seam::{AiSeam, DataSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind};
 use lb_rules::{AiCompletion, GridJson};
+use serde_json::{json, Value};
+
+/// A messaging seam standing in for the HOST's `HostMessagingSeam` (the sanctioned trait boundary —
+/// the real `call_tool`/caps path is exercised in the host integration tests). Records every
+/// `(tool, input)` so a test can assert what the handles dispatched, and returns a canned reply per
+/// tool. A `deny` set makes named tools return the opaque `SeamError::Denied` (the caller ∩ grant deny
+/// the real chokepoint produces), so a test can prove the handle surfaces an opaque error with no
+/// partial write.
+pub struct RecordingMessaging {
+    pub calls: Mutex<Vec<(String, Value)>>,
+    pub deny: Vec<String>,
+}
+
+impl RecordingMessaging {
+    pub fn new() -> Self {
+        Self {
+            calls: Mutex::new(Vec::new()),
+            deny: Vec::new(),
+        }
+    }
+
+    pub fn deny(tools: &[&str]) -> Self {
+        Self {
+            calls: Mutex::new(Vec::new()),
+            deny: tools.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    pub fn calls(&self) -> Vec<(String, Value)> {
+        self.calls.lock().unwrap().clone()
+    }
+
+    pub fn count(&self, tool: &str) -> usize {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(t, _)| t == tool)
+            .count()
+    }
+}
+
+impl MessagingSeam for RecordingMessaging {
+    fn call(&self, tool: &str, input: Value) -> Result<Value, SeamError> {
+        if self.deny.iter().any(|d| d == tool) {
+            // Opaque deny — recorded so a test can assert NO write reached the store for a denied verb.
+            return Err(SeamError::Denied);
+        }
+        self.calls
+            .lock()
+            .unwrap()
+            .push((tool.to_string(), input.clone()));
+        // Canned, plausible replies for the read verbs; writes just ack.
+        Ok(match tool {
+            "inbox.list" => json!({ "items": [] }),
+            "outbox.status" => json!({ "effects": [] }),
+            "channel.history" => json!({ "messages": [] }),
+            "channel.list" => json!({ "channels": [] }),
+            _ => json!({ "ok": true }),
+        })
+    }
+}
 
 /// A data seam that resolves a fixed source map, records every collected query, and returns seeded
 /// rows for the matching source. `Federation` sources resolve to the federation kind.

@@ -14,10 +14,13 @@ use serde_json::{json, Value};
 
 use crate::boot::Node;
 
-use super::config::{ai_limits, rule_limits};
+use super::config::{ai_limits, max_writes, rule_limits};
 use super::error::RulesError;
 use super::get::rules_get;
-use super::seam::{workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, RuleModel};
+use super::seam::{
+    workspace_datasources, workspace_queries, HostAiSeam, HostDataSeam, HostMessagingSeam,
+    RuleModel,
+};
 
 /// The JSON-shaped result of a run.
 #[derive(Serialize)]
@@ -70,8 +73,22 @@ pub async fn rules_run(
     ));
     let allowed: HashSet<String> = data.allowed_sources();
     let ai = Arc::new(HostAiSeam::new(model));
+    // The messaging seam — the caller's own authority to the inbox/outbox/channel MCP verbs.
+    let messaging = Arc::new(HostMessagingSeam::new(
+        node.clone(),
+        principal.clone(),
+        ws.to_string(),
+        tokio::runtime::Handle::current(),
+    ));
 
-    let engine = RuleEngine::new(data, ai, rule_limits(), ai_limits());
+    let engine = RuleEngine::new(
+        data,
+        ai,
+        messaging,
+        rule_limits(),
+        ai_limits(),
+        max_writes(),
+    );
     let rule = Rule {
         workspace: ws.to_string(),
         name,
@@ -83,7 +100,7 @@ pub async fn rules_run(
     // methods block_on the host's async surface (so the engine must NOT run on the async worker itself).
     let allowed = Arc::new(allowed);
     let result = tokio::task::spawn_blocking(move || {
-        let mut run = RuleRun::new(rule.workspace.clone(), allowed, params);
+        let mut run = RuleRun::new(rule.workspace.clone(), allowed, params, now);
         let out = engine.run(&rule, &mut run);
         (out, run)
     })

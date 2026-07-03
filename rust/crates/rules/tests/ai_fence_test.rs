@@ -64,14 +64,21 @@ fn proposed_sql_is_revalidated_through_the_gate() {
     let data = Arc::new(FencingData {
         proposed_reached_collect: reached.clone(),
     });
-    let eng = RuleEngine::new(data, ai, RuleLimits::default(), AiLimits::default());
+    let eng = RuleEngine::new(
+        data,
+        ai,
+        Arc::new(support::RecordingMessaging::new()),
+        RuleLimits::default(),
+        AiLimits::default(),
+        32,
+    );
     let rule = Rule {
         workspace: "acme".into(),
         name: "adhoc".into(),
         body: r#"ai.ask("how much is payroll?").records()"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new());
+    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     // The proposed SQL was rejected at the collect gate — the fence held (routed through the same
     // deny the host's caps::check + workspace pin produces; never reached execution).
@@ -100,14 +107,21 @@ fn budget_caps_calls_a_loop_cannot_overspend() {
         max_tokens: 1_000_000,
         context_rows: 100,
     };
-    let eng = RuleEngine::new(data, ai, RuleLimits::default(), limits);
+    let eng = RuleEngine::new(
+        data,
+        ai,
+        Arc::new(support::RecordingMessaging::new()),
+        RuleLimits::default(),
+        limits,
+        32,
+    );
     let rule = Rule {
         workspace: "acme".into(),
         name: "adhoc".into(),
         body: r#"for i in 0..100 { ai.complete("hi"); } 1"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new());
+    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
     // exactly the cap was charged (the rejected call rolled back, not counted past the cap)
@@ -129,14 +143,21 @@ fn budget_caps_summed_tokens() {
         max_tokens: 1200,
         context_rows: 100,
     };
-    let eng = RuleEngine::new(data, ai, RuleLimits::default(), limits);
+    let eng = RuleEngine::new(
+        data,
+        ai,
+        Arc::new(support::RecordingMessaging::new()),
+        RuleLimits::default(),
+        limits,
+        32,
+    );
     let rule = Rule {
         workspace: "acme".into(),
         name: "adhoc".into(),
         body: r#"for i in 0..100 { ai.complete("hi"); } 1"#.into(),
         params: vec![],
     };
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new());
+    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
     // 500 + 500 ok (1000), third call's tokens push over 1200 -> abort after 3 calls
@@ -153,7 +174,14 @@ fn source_not_in_allowlist_is_denied_mid_run() {
     let data = Arc::new(FencingData {
         proposed_reached_collect: Arc::new(Mutex::new(false)),
     });
-    let eng = RuleEngine::new(data, ai, RuleLimits::default(), AiLimits::default());
+    let eng = RuleEngine::new(
+        data,
+        ai,
+        Arc::new(support::RecordingMessaging::new()),
+        RuleLimits::default(),
+        AiLimits::default(),
+        32,
+    );
     let rule = Rule {
         workspace: "acme".into(),
         name: "adhoc".into(),
@@ -161,7 +189,7 @@ fn source_not_in_allowlist_is_denied_mid_run() {
         params: vec![],
     };
     // allowlist has only "series" — payroll_db is denied before any query runs.
-    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new());
+    let mut rr = RuleRun::new("acme".into(), allow_series(), rhai::Map::new(), 0);
     let err = eng.run(&rule, &mut rr).unwrap_err();
     assert!(matches!(err, RuleError::SourceNotAllowed(_)), "got {err:?}");
 }

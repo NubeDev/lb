@@ -117,6 +117,9 @@ pub struct RuleRun {
     pub allowed_sources: Arc<HashSet<String>>,
     /// Param name → bound value (also pushed as scope vars).
     pub inputs: rhai::Map,
+    /// The run's logical clock — the injected `now` (no wall-clock in core). Feeds deterministic
+    /// messaging-write ids (`now` + per-run counter) so a re-run upserts (rules-messaging-scope).
+    pub now: u64,
     /// `emit`/`alert` append here.
     pub findings: Vec<Finding>,
     pub log: Vec<LogLine>,
@@ -128,11 +131,13 @@ impl RuleRun {
         workspace: String,
         allowed_sources: Arc<HashSet<String>>,
         inputs: rhai::Map,
+        now: u64,
     ) -> Self {
         Self {
             workspace,
             allowed_sources,
             inputs,
+            now,
             findings: Vec::new(),
             log: Vec::new(),
             ai_spend: AiBudget::default(),

@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_rules::{AiLimits, GridJson, Rule, RuleEngine, RuleLimits, RuleOutput, RuleRun};
-use support::{RecordingData, ScriptedAi};
+use support::{RecordingData, RecordingMessaging, ScriptedAi};
 
 fn seeded() -> Arc<RecordingData> {
     Arc::new(RecordingData::platform(
@@ -31,7 +31,15 @@ fn run(
         tokens: 1,
         proposed_sql: "SELECT 1 AS v".into(),
     });
-    let eng = RuleEngine::new(data.clone(), ai, RuleLimits::default(), AiLimits::default());
+    let messaging = Arc::new(RecordingMessaging::new());
+    let eng = RuleEngine::new(
+        data.clone(),
+        ai,
+        messaging,
+        RuleLimits::default(),
+        AiLimits::default(),
+        32,
+    );
     let rule = Rule {
         workspace: "acme".into(),
         name: "adhoc".into(),
@@ -40,7 +48,7 @@ fn run(
     };
     let mut allow = HashSet::new();
     allow.insert("series".to_string());
-    let mut rr = RuleRun::new("acme".into(), Arc::new(allow), rhai::Map::new());
+    let mut rr = RuleRun::new("acme".into(), Arc::new(allow), rhai::Map::new(), 0);
     let out = eng.run(&rule, &mut rr).unwrap();
     (out, rr, data)
 }

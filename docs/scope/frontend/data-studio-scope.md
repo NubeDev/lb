@@ -183,10 +183,79 @@ keeps placing library panels (ref cells) and rendering.
 - **Shared/team layouts, named layout presets** — one layout per (ws, user, surface) for now.
 - **A conversational data agent** — unchanged from v1, still a named follow-up.
 
+## v3: one stacked query/preview view (owner directive)
+
+v2 shipped explore and build as **two separate tabs**: picking a source opened a read-only `explore`
+tab (Table/Chart/JSON over `WidgetHost` + a "Build panel" button), and building opened a *different*
+`builder` tab with its own small preview. Opening an existing chart landed the user on the explore
+Table view — a wall of raw JSON payload rows — with the actual panel controls one tab away. That is
+the wrong model: the user sees the data and shapes the chart in **two places**, not one.
+
+v3 collapses them into **ONE stacked view** — the rendered preview on **top**, the query/panel builder
+on the **bottom** — so a user sees the data and shapes the chart together. Opening an existing chart
+puts the chart in focus (top) with its source/query available beneath it (bottom). The SQL/query editor
+appears in that bottom section **only when the datasource needs it** (SurrealDB / federation datasource),
+which the shipped conditional `QueryTab` already does — v3 just surfaces it in the new stacked layout.
+
+### Decisions (v3)
+
+- **Stack inside the ONE builder — a `layout` prop on `BuilderPane`, not a FlexLayout sub-split.**
+  `BuilderPane` already holds both halves (the live `PreviewPane` + viz picker AND the full Query /
+  Transform / Field / Overrides option surface); v2 laid them **left/right**. v3 adds a
+  `layout: "split" | "stacked"` prop (default `"split"` — backward compatible for the dashboard-parity
+  gateway tests and any other consumer). Data Studio mounts it **`stacked`**: the live preview + viz
+  picker fill the **top** full-width, the options rail (Query first → the SQL editor lives here) sits
+  **below**. *Rejected:* a nested FlexLayout `row`/`column` inside the tab (a second dock model per tab
+  to persist + the jsdom rect-cull quirk ×2 — needless complexity for a fixed top/bottom split);
+  a bespoke top/bottom flex *outside* `BuilderPane` (would fork the preview + option surface, breaking
+  rule 9's "one editor" — the arrangement is a `BuilderPane` concern, so the prop lives there).
+- **The `explore` tab-kind MERGES INTO `builder` — one working-tab kind.** v2's `explore`/`builder`
+  distinction was the two-tab model; v3 has one. Picking a source in the Sources pane now opens a
+  **builder tab directly** (seeded from the selection via `draftFromSelection`, chart view by default).
+  `ExplorePane`, `BuilderTabPane`'s old role, `ExploreConfig`, `exploreTabJson`, `EXPLORE_VIEWS`, and
+  the "Build panel" hop are **retired** — the Table/Chart/JSON inspection they gave is covered by the
+  builder's own preview (the `PreviewPane` table-view toggle + the viz picker + a JSON view). The
+  workbench keeps `sources`/`library` (border docks) + `builder` (the one center working kind). A
+  persisted v2 layout with `explore` tabs still loads: an unknown component renders the fallback pane,
+  and the user reopens from Sources — no crash (the `modelFrom` try/catch already guards shape drift).
+- **SQL editor: surfaced, not rebuilt.** `QueryTab` already renders the SurrealDB Builder⇄Code
+  `SqlQueryEditor` (`isSql`), the raw federation `Textarea` (`isFederation`), and the friendly picker
+  for series/flows — driven off the target's datasource. v3's only job is to prove that conditional
+  editor shows correctly in the new **stacked bottom** section for a Direct-SurrealDB source. No new SQL
+  editor.
+- **Opening an existing chart = source at the bottom, chart on top** — the natural consequence of the
+  stacked layout: `LibraryPane.onOpen` → a builder tab (stacked) seeded via `specToCell`; the rendered
+  panel is the top preview, its Query/source controls sit beneath it.
+- **Persistence unchanged.** Each builder tab still stows its draft cell in the FlexLayout tab `config`
+  (`BuilderConfig`), so `layout.get`/`layout.set` still restore tabs + drafts. No host/verb/cap change.
+
+### v3 testing plan (adds to / re-targets v2's)
+
+- **Real gateway (headline):** seed a series + a SurrealDB source → pick the SurrealDB source in Sources
+  → a builder tab opens **stacked**: the preview renders on top (through `viz.query`), and the SQL editor
+  is visible in the bottom Query section; edit the panel → save as library → `panel.get` round-trips;
+  reload → layout + draft persist.
+- **Open existing → stacked:** save a panel, open it from the Library pane → it opens as ONE stacked
+  builder tab (preview on top, query on bottom), not a read-only explore Table.
+- **SQL-editor-when-needed:** the SQL editor (`SqlQueryEditor`) is present for a `store.query`/surreal
+  source and ABSENT for a series source (the friendly picker instead) — in the stacked layout.
+- **Removal regression (re-target v2 asserts):** `DataStudio.gateway.test.tsx` no longer asserts a
+  separate "build panel from explore" affordance or a two-tab hop — picking a source lands directly in
+  the builder. The mandatory capability-deny (`panel.save`) + workspace-isolation + member-owned layout
+  cases carry over unchanged.
+- **Unit:** `pnpm test` stays green (panel-kit round-trip untouched; `BuilderPane` split-vs-stacked is a
+  layout prop, no logic change).
+
+### v3 non-goals
+
+- No new host verbs / caps / tables (unchanged from v1/v2 — pure UI recomposition).
+- No change to the panel-kit logic layer, `viz.query`, `WidgetHost`, or `@nube/source-picker`.
+- The conversational data agent + a standalone raw-query console remain named follow-ups.
+
 ## Open questions
 
-None for v1 — the conversational data agent + a per-source "run raw query" console (beyond the picker) are
-named follow-ups, not open questions. Anything the build surfaces goes here per HOW-TO-CODE.
+None for v1–v3 — the conversational data agent + a per-source "run raw query" console (beyond the picker)
+are named follow-ups, not open questions. Anything the build surfaces goes here per HOW-TO-CODE.
 
 ## Related
 

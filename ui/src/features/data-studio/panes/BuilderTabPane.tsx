@@ -1,8 +1,11 @@
-// One builder tab (data-studio scope v2) — a full panel builder (`BuilderPane`: manual Query /
-// Transform / Field / Overrides + the GenUI "AI widget" tab) over the headless panel-kit machine.
-// N of these are open side by side for compare/debug. Saving to the library (the pane's
-// `LibraryPanelBar`, `panel.save`) marks the tab; every draft edit is stowed back into the tab's
-// FlexLayout config so a persisted layout restores the working draft.
+// One builder tab (data-studio scope v2/v3) — the ONE stacked query/preview view: a full panel builder
+// (`BuilderPane` in `stacked` layout — the rendered preview on TOP, the Query/option surface incl. the
+// SQL editor and the GenUI "AI widget" tab BELOW) over the headless panel-kit machine. This is the only
+// center working-tab kind in v3 (the v2 read-only `explore` tab is retired — the builder's own preview +
+// table-view toggle + viz picker cover data inspection). It seeds from a picked source, an existing
+// library panel, or a fresh default. N are open side by side for compare/debug. Saving to the library
+// (the pane's `LibraryPanelBar`, `panel.save`) marks the tab; every draft edit is stowed back into the
+// tab's FlexLayout config so a persisted layout restores the working draft.
 
 import { useState } from "react";
 
@@ -52,6 +55,7 @@ export function BuilderTabPane({ config, ws, scope, onConfigChange, onSavedToLib
           ws={ws}
           cell={seed}
           scope={scope}
+          layout="stacked"
           saveLabel="Apply"
           onSave={onSave}
           onDraftChange={(cell) => onConfigChange({ ...config, cell })}

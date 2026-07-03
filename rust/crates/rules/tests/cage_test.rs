@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lb_rules::{AiLimits, Rule, RuleEngine, RuleError, RuleLimits, RuleRun};
-use support::{RecordingData, ScriptedAi};
+use support::{RecordingData, RecordingMessaging, ScriptedAi};
 
 fn engine(limits: RuleLimits) -> RuleEngine {
     let data = Arc::new(RecordingData::platform(
@@ -24,7 +24,8 @@ fn engine(limits: RuleLimits) -> RuleEngine {
         tokens: 1,
         proposed_sql: "SELECT 1 AS v".into(),
     });
-    RuleEngine::new(data, ai, limits, AiLimits::default())
+    let messaging = Arc::new(RecordingMessaging::new());
+    RuleEngine::new(data, ai, messaging, limits, AiLimits::default(), 32)
 }
 
 fn run_body(eng: &RuleEngine, body: &str) -> Result<lb_rules::RuleOutput, RuleError> {
@@ -34,7 +35,7 @@ fn run_body(eng: &RuleEngine, body: &str) -> Result<lb_rules::RuleOutput, RuleEr
         body: body.into(),
         params: vec![],
     };
-    let mut run = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new());
+    let mut run = RuleRun::new("acme".into(), Arc::new(HashSet::new()), rhai::Map::new(), 0);
     eng.run(&rule, &mut run)
 }
 

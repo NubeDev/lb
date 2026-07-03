@@ -28,9 +28,12 @@ first-paint cache.
   mode, import, custom "brand" colors) behind a slide-out `Sheet`, reachable from the nav/footer.
 - Make preset selection drive the project's **base design tokens** so **all existing token-driven UI
   re-themes instantly** (the user's core requirement), with **zero** per-component color branches.
-- Promote theme persistence from browser-only `localStorage` to **per-member, workspace-scoped** prefs
-  via the existing `prefs.get/set/resolve` MCP verbs — no new backend verb — keeping localStorage as an
-  offline/first-paint cache so there is no theme flash on boot.
+- Promote theme persistence from browser-only `localStorage` to **prefs** via the existing
+  `prefs.get/set/resolve` MCP verbs — no new backend verb — keeping localStorage as an offline/first-paint
+  cache so there is no theme flash on boot.
+- Support a **per-workspace default theme**: an admin sets the workspace's default via the shipped
+  admin-gated `prefs.set_default`, and each member may still override it for themselves — the two compose
+  through the prefs resolve chain (member → workspace default → built-in), no new machinery.
 - Preserve the shipped amber-default identity and the compact quick mode/accent toggle; the Customizer
   is the *superset* surface, not a rip-and-replace of the small control.
 - Add the shadcn primitives the port needs (`accordion`, `label`, `separator`, a `color-picker`) under
@@ -84,6 +87,17 @@ severs the base-token cascade: charts/panels/switcher read `--accent`/`--bg`/`--
 never sets, so they stay on the compiled defaults while buttons change — a visibly half-themed app. The
 adapter is a little more code once, versus a permanent per-component divergence. Rejected.
 
+**Per-workspace default + per-member override — for free from the prefs chain.** The `prefs` crate
+already resolves `request override → user pref → workspace default → built-in fallback`, each axis
+independently. So theming needs **no new precedence logic**: an admin writes the workspace's default
+`ui.theme` with the admin-gated `prefs.set_default` (it targets the `workspace_prefs:[ws]` record), a
+member writes their own `ui.theme` with `prefs.set`, and `prefs.resolve` folds them so the member's
+choice wins where set and the workspace default fills the rest. A workspace can thus ship a branded
+house theme that every member sees on first load, while still letting individuals opt into light/dark or
+their own accent — unless we later choose to *lock* the workspace theme (see Open questions). The
+Customizer surfaces this as two levels: a normal member view, plus an **admin-only "set as workspace
+default"** action gated on `mcp:prefs.set_default:call`.
+
 **Rejected alternative — keep persistence in `localStorage` only (as the switcher shipped).** Fails the
 platform's one-datastore / workspace-first posture and won't roam between a user's browser and desktop
 shell. The switcher scope explicitly deferred synced prefs to the `prefs` topic; this scope collects that
@@ -94,9 +108,12 @@ debt. localStorage stays only as a first-paint cache to avoid a boot flash.
 - **Tenancy / isolation:** the theme pref is a **per-member** record, and `prefs.get/set/resolve` are
   already workspace-scoped and read/write **own** prefs only — so a member's theme cannot read or write
   across the workspace wall. Isolation is inherited from the `prefs` crate, and its test proves it here.
-- **Capabilities:** writing the pref requires `mcp:prefs.set:call`; reading requires `prefs.get`/
-  `prefs.resolve`. A member without `prefs.set` cannot persist a theme (the UI degrades to local-only,
-  and the deny is opaque). No new grant is minted — theming reuses the shipped prefs grants.
+- **Capabilities:** writing the member's own pref requires `mcp:prefs.set:call`; reading requires
+  `prefs.get`/`prefs.resolve`; setting the **workspace default** theme requires the admin-gated
+  `mcp:prefs.set_default:call`. A member without `prefs.set` cannot persist a personal theme (the UI
+  degrades to local-only, opaque deny); a non-admin cannot set the workspace default (the "set as
+  workspace default" action is hidden/denied). No new grant is minted — theming reuses the shipped prefs
+  grants and their existing deny paths.
 - **Symmetric nodes:** none of this branches on cloud vs edge. The same React shell runs in the browser
   (SSE/HTTP to the gateway) and the Tauri webview (local host); storage prefers `prefs`, then
   `localStorage`, then compiled defaults — config/role, never `if cloud`.
@@ -165,7 +182,11 @@ mandatory platform categories from `scope/testing/testing-scope.md` apply.
   member sets `ui.theme` via `prefs.set` and reads it back via `prefs.resolve`; a second boot restores it.
   **No fake backend.**
 - **Capability deny (mandatory):** a member token **without** `mcp:prefs.set:call` is denied on persist
-  (opaque deny) and the UI stays local-only — assert the honest deny, not a silent success.
+  (opaque deny) and the UI stays local-only; a **non-admin** token is denied on `prefs.set_default`
+  (workspace-default theme) — assert both honest denies, not a silent success.
+- **Workspace-default resolve (real gateway):** an admin sets `ui.theme` via `prefs.set_default`; a
+  member with no personal theme resolves to that default, and a member *with* a personal theme resolves
+  to their own — proving the member → workspace-default → built-in fold on the real store.
 - **Workspace isolation (mandatory):** member A's `ui.theme` is invisible/unwritable to member B / another
   workspace via the prefs path; seed two real members and assert no cross-read.
 - **Component/interaction (`pnpm test`):** the Customizer sheet opens, tabs switch, preset select + radius
@@ -213,11 +234,24 @@ mandatory platform categories from `scope/testing/testing-scope.md` apply.
   real time) — worth it, or is next-load reconcile enough? Deferred; revisit if users run split shells.
 - **Does the compact `ThemeSwitcher` stay?** Recommendation: keep it as the quick mode/accent control in
   the collapsed rail; the Customizer is the full surface. Both write the same theme layer.
+- **Locked vs. suggested workspace theme.** Can an admin *force* the workspace theme (members cannot
+  override), or is the workspace theme only a **default** members may override? Recommendation: default
+  only (member choice wins) — a lock is a follow-up flag, not this slice. This is distinct from the
+  workspace **branding** (logo/favicon/site name), which is admin-owned and *not* member-overridable —
+  scoped separately in `workspace-branding-scope.md`.
 
 ## Related
 
 - `theme-switcher-scope.md` — the shipped predecessor this supersedes; it deferred synced prefs to
   `prefs/` and named the base-vs-shadcn token compatibility risk this scope resolves.
+- `workspace-branding-scope.md` — the sibling that owns admin workspace **branding** (logo, favicon,
+  site/login heading). Theme = per-member preference with a workspace default; branding = admin-only
+  workspace identity. They share the workspace-default prefs seam but differ in ownership and in the
+  pre-auth login-rendering problem, so they are separate scopes.
+- `../prefs/user-prefs-scope.md` — the resolve chain (`user → workspace default → built-in`) and
+  `prefs.set_default` (admin) that the per-workspace theme rides.
+- `../workspace/workspace-scope.md`, `../tenancy/tenancy-scope.md` — the workspace-as-tenant wall the
+  workspace-default theme is scoped by.
 - `../prefs/*` and `../../public/prefs/prefs.md` — the `prefs.get/set/resolve` surface persistence rides;
   README §6.6 (identity/caps) for the grant that gates `prefs.set`.
 - `ui-standards-scope.md`, `ui-design-scope.md` — shadcn-first control layer, token discipline, and the

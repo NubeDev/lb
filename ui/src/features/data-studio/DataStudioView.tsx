@@ -28,16 +28,13 @@ import type { SourceSelection } from "@nube/source-picker";
 
 import {
   builderTabJson,
-  exploreTabJson,
   mintTabId,
   MAIN_TABSET_ID,
   type BuilderConfig,
-  type ExploreConfig,
 } from "./workbenchModel";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
 import { SourcesPane } from "./panes/SourcesPane";
 import { LibraryPane } from "./panes/LibraryPane";
-import { ExplorePane } from "./panes/ExplorePane";
 import { BuilderTabPane } from "./panes/BuilderTabPane";
 
 interface Props {
@@ -68,7 +65,7 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
   const scope = useVarScope([], range, "data-studio", ws);
 
   /** Add a tab to the model — into the main tabset (recreated if the user closed it). */
-  const addTab = (json: ReturnType<typeof exploreTabJson>) => {
+  const addTab = (json: ReturnType<typeof builderTabJson>) => {
     const model = bench.model;
     if (!model) return;
     const active = model.getActiveTabset();
@@ -77,15 +74,18 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
     model.doAction(Actions.addNode(json, target, DockLocation.CENTER, -1, true));
   };
 
-  const openExplore = (sel: SourceSelection, label: string) => {
-    const cell = draftFromSelection(sel, "table", "explore", defaultOptionsForView("table"));
-    addTab(exploreTabJson(mintTabId("explore"), label, cell));
-  };
-
   const openBuilder = (cell: Cell, name: string, savedAs?: string) => {
     const id = mintTabId("builder");
     // A builder draft keeps its own stable cell key (the editor re-seeds on key change).
     addTab(builderTabJson(id, name, { cell: { ...cell, i: id }, savedAs }));
+  };
+
+  // v3: picking a source opens a BUILDER tab directly (the stacked query/preview view) — no read-only
+  // explore hop. Seed a chart draft from the selection; the builder's own preview + viz picker cover
+  // data inspection, and its Query section shows the SQL editor when the source needs it.
+  const openExplore = (sel: SourceSelection, label: string) => {
+    const cell = draftFromSelection(sel, "timeseries", "explore", defaultOptionsForView("timeseries"));
+    openBuilder(cell, label);
   };
 
   const newPanel = () =>
@@ -107,20 +107,6 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
             onOpen={(panelId, title, cell) => openBuilder(cell, title, panelId)}
           />
         );
-      case "explore": {
-        const config = node.getConfig() as ExploreConfig;
-        return (
-          <ExplorePane
-            config={config}
-            ws={ws}
-            scope={scope}
-            range={range}
-            installed={picker.installed}
-            onConfigChange={updateConfig}
-            onBuild={(cell) => openBuilder(cell, `Build: ${node.getName()}`)}
-          />
-        );
-      }
       case "builder": {
         const config = node.getConfig() as BuilderConfig;
         return (

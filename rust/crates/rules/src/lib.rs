@@ -26,9 +26,11 @@ mod verbs;
 
 pub use engine::{AiLimits, RuleEngine};
 pub use grid::{dynamic_to_json, json_to_dynamic};
-pub use meter::AiMeter;
+pub use meter::{AiMeter, WriteMeter};
 pub use runtime::{
     AiBudget, Finding, GridJson, LogLine, Rule, RuleError, RuleOutput, RuleParam, RuleRun,
 };
 pub use sandbox::RuleLimits;
-pub use seam::{AiCompletion, AiSeam, DataSeam, SchemaColumn, SourceKind};
+pub use seam::{
+    AiCompletion, AiSeam, DataSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind,
+};

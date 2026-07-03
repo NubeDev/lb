@@ -135,7 +135,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
   host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
   ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
-  `ce.watch` is its first tenant).
+  `ce.watch` is its first tenant). The **`extensions/ui/`** subtopic (`ui/README.md` index) owns the two
+  extension-UI contracts the theme customizer forces: `theme-inheritance-scope.md` (an extension page/
+  widget **re-themes live** with the host when the user changes theme — CSS-var cascade for in-process
+  DOM, injected+refreshed vars for the iframe tier, and resolved token values in `ctx.theme` so a JS/
+  canvas widget like `echarts-panel` recolors via the v-next `update` hook) and `css-isolation-scope.md`
+  (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
+  regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
+  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence).
 - `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
   earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
   over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed
@@ -288,6 +295,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
   with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL), and
   `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
+  and its successor `theme-customizer-scope.md` (the ported shadcn-store Customizer: a preset library +
+  radius + import + custom colors that write the project's **base** design tokens so every existing
+  chart/panel re-themes live, persisted **per member** via `prefs` with an admin-set **per-workspace
+  default** — member override wins), and `workspace-branding-scope.md` (admin-owned workspace **identity**
+  — logo, favicon, site/login heading — via workspace-default prefs + `assets.*`, including the narrow
+  read-only pre-auth `/public/branding/{ws}` seam that brands the login page before any token exists),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a
   React Flow chain canvas that colours steps as they settle, and a datasources admin page — first-party
   shell driving the shipped `rules.*`/`flows.*`/`datasource.*` verbs over the gateway, mirroring the

@@ -14,7 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_rules::seam::{AiSeam, DataSeam, SchemaColumn, SourceKind};
+use lb_rules::seam::{AiSeam, DataSeam, MessagingSeam, SchemaColumn, SeamError, SourceKind};
 use lb_rules::{AiCompletion, GridJson};
 use serde_json::{json, Value};
 use tokio::runtime::Handle;
@@ -242,6 +242,51 @@ impl DataSeam for HostDataSeam {
             ],
         );
         Ok(out)
+    }
+}
+
+/// The host messaging seam — the ONE bridge from a rule's `inbox`/`outbox`/`channel` handles to the
+/// inbox/outbox/channel MCP verbs (rules-messaging-scope). A thin `block_on(call_tool(...))` closed
+/// over the caller's principal + the pinned workspace: **every** call re-runs `call_tool`'s
+/// workspace-first pin + `mcp:<tool>:call` `caps::check` under `caller ∩ grant`, so a rule reaches these
+/// planes exactly as the UI/agent do (rule 7) and can touch none its invoker couldn't. `tool` is opaque
+/// data the seam never branches on (rule 10). The runtime `Handle` bridges the synchronous rhai thread
+/// to the async `call_tool` — the same pattern `HostDataSeam` uses for `store.query`/`federation.query`.
+pub struct HostMessagingSeam {
+    node: Arc<Node>,
+    principal: Principal,
+    ws: String,
+    handle: Handle,
+}
+
+impl HostMessagingSeam {
+    pub fn new(node: Arc<Node>, principal: Principal, ws: String, handle: Handle) -> Self {
+        Self {
+            node,
+            principal,
+            ws,
+            handle,
+        }
+    }
+}
+
+impl MessagingSeam for HostMessagingSeam {
+    fn call(&self, tool: &str, input: Value) -> Result<Value, SeamError> {
+        let node = self.node.clone();
+        let principal = self.principal.clone();
+        let ws = self.ws.clone();
+        let tool_owned = tool.to_string();
+        let body = input.to_string();
+        let out = self.handle.block_on(async move {
+            crate::call_tool(&node, &principal, &ws, &tool_owned, &body).await
+        });
+        match out {
+            Ok(s) => serde_json::from_str(&s).map_err(|e| SeamError::Failed(e.to_string())),
+            // A capability/workspace deny stays OPAQUE (the handle maps it to a bare "denied").
+            Err(lb_mcp::ToolError::Denied) => Err(SeamError::Denied),
+            // Any other host fault (bad input, internal) is author feedback, surfaced verbatim.
+            Err(e) => Err(SeamError::Failed(e.to_string())),
+        }
     }
 }
 
