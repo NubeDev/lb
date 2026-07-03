@@ -229,6 +229,10 @@ None — resolved above. Anything new the build surfaces goes here per HOW-TO-CO
 - `scope/frontend/dashboard-scope.md` — the asset + `share`-to-team model this clones (`dashboard/share.rs`).
 - `scope/frontend/dashboard/library-panels-scope.md` — standalone panel pages (`/panel/{id}`) are a
   natural later `panel` entry kind alongside `dashboard`.
+- `scope/frontend/dashboard/reusable-pages-scope.md` — template dashboards: adds (later, additively)
+  an optional `vars` binding on `dashboard` entries and a `template-group` entry kind (one dashboard
+  fanned out per tag/option value). **Build hook for this scope now:** keep `items[]` typed with entry
+  kinds as an open enum so both land as additive fields, no schema rework.
 - `scope/auth-caps/authz-grants-scope.md` — teams/roles/grants (`user:|team:|role:` subjects,
   `role`/`team` primitives) this attaches to; `scope/auth-caps/access-console-scope.md` (likely builder home);
   `scope/auth-caps/admin-crud-scope.md` (team management).

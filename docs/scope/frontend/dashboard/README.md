@@ -69,6 +69,13 @@ because existing session docs point at them; new dashboard notes should live her
    referencing dashboard updates; explicit Unlink to fork) and rendered **standalone** on a
    `/t/$ws/panel/{id}` page (a chart with no dashboard — the page a nav entry or shared link points
    at). Sharing a panel never widens data access — `sources[]` re-check under the viewer's caps.
+3j. [`reusable-pages-scope.md`](reusable-pages-scope.md) — **one page, reused many times**: a
+   template dashboard is an ordinary dashboard whose `variables[]` are its parameters
+   (`Variable.required` additive flag → an honest "select a site" gate); an **instance is a binding,
+   never a copy** — carried by the URL (`?var-`, shipped), a nav `dashboard` entry's pinned `vars`
+   (additive), or a **`template-group`** nav entry that fans out one link per tag-facet/option value
+   at `nav.resolve` (tag a new site → a new page, zero edits). No new tables, verbs, or caps.
+   Build order: nav builder → library panels → this.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
