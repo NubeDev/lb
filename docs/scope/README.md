@@ -236,6 +236,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
   Phase 2 (MF1 message catalogs + per-recipient server-side localization) is scoped in
   `i18n-catalogs-scope.md`.
+- `nav/` — the **nav builder** (`nav-builder-scope.md`): user-/team-authored navigation menus. A `nav`
+  is a workspace asset cloned from the `dashboard` pattern (slug id, `owner`, `visibility`, ordered
+  `items[]`), shared to teams via the shipped `share` edges; entries link to a **dashboard page**, a
+  **system surface** (channels/rules/…), an **extension page** (opaque id, rule 10), or a **dynamic
+  tag-group** (dashboards matching a tag facet). `nav.resolve` returns the caller's effective menu —
+  pick + tag-expand + **cap-strip** — the menu is a **lens over existing access, never a grant path**;
+  the sidebar (`NavRail`) renders it, falling back to the built-in `SURFACES` set.
 - `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
   **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
   (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.

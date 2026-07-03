@@ -1,0 +1,61 @@
+# `echarts-panel` — a SINGLE self-contained Tier-1 WASM extension whose whole point is ONE dashboard
+# WIDGET: a frames-in chart tile rendered with Apache ECharts. It is the reference "data tile":
+#   • BACKEND  → a trivial wasm32-wasip2 component (`src/lib.rs`) serving one static MCP tool
+#                (`echarts.about`) — the Tier-1 backend proof (reachable through the cap gate), nothing more.
+#   • FRONTEND → a module-federated page + a `[[widget]]` tile. The tile is a PURE RENDERER: it never
+#                fetches, never sees a token or DB — it renders `ctx.data` (Frame[]) + `ctx.fieldConfig`
+#                the SHELL fetches and pushes in. `data = true` is the frames-in opt-in.
+# This proves ONE render path (frames + the shared Field-tab options → a chart) works across every
+# surface that can hand a tile frames — dashboard cells and channel surfaces alike.
+[extension]
+id          = "echarts-panel"
+version     = "0.1.0"
+name        = "ECharts Panel"
+description = "A Tier-1 WASM extension shipping ONE frames-in chart widget (Apache ECharts) — the reference data tile that renders ctx.data driven by the shared Field-tab options."
+
+[runtime]
+tier        = "wasm"                            # Tier 1: a WASM component in the host runtime (§6.3)
+world       = "lazybones:ext/extension@0.2.0"   # uses the @0.2.0 `host.call-tool` import; major still 0 so the loader accepts it
+placement   = "either"
+
+[capabilities]
+# A PURE-RENDER data tile needs NO read verbs: the shell fetches the frames and pushes them in as
+# `ctx.data`, so the tile calls no tool and needs no `mcp:*:call` grant. The `echarts.about` tool is
+# authorized on the CALLER's token (the hello convention), not requested here.
+request = []
+
+# The tool the WASM component serves — a static snapshot proving the Tier-1 backend half is a real,
+# reachable MCP tool (the WASM analogue of `proof.ping`, minus any input echo).
+[[tools]]
+name        = "echarts.about"
+description = "A static snapshot { ok, ext } served by the WASM component — proves the Tier-1 backend tool is reachable through the cap gate. The chart tile does NOT bind to it; the tile is pure-render (frames in)."
+
+# The PAGE this extension contributes to the sidebar (ui-federation scope). Trivial: it just states the
+# extension is installed — the real surface is the `[[widget]]` tile below. `entry` is the ESM remote
+# entry, resolved under the gateway's `/extensions/echarts-panel/ui/` route; the lib build emits
+# `dist/remoteEntry.js`, so the served path is `…/ui/remoteEntry.js`.
+[ui]
+entry = "remoteEntry.js"
+label = "Echarts"
+icon  = "bar-chart-3"
+# The page reads nothing over the bridge (it only says "installed"); the tile reads nothing either
+# (frames are pushed in). No UI scope.
+scope = []
+
+# The dashboard WIDGET this extension contributes (widget-builder scope). The palette surfaces ONE
+# picker entry (label "Chart" → slug `chart`), and selecting it creates an `ext:echarts-panel/chart`
+# cell. The remote exposes ONE `mountWidget(el, ctx, bridge, widgetId)` export that dispatches by slug.
+#
+# `data = true` is the FRAMES-IN OPT-IN (the new manifest field): it tells the shell this tile consumes
+# `ctx.data` (a Frame[]) + `ctx.fieldConfig`, so the SHELL runs `viz.query` and pushes fresh frames into
+# the tile — the tile never fetches. Because the shell fetches, the tile needs NO read verbs of its own:
+# `scope = []`.
+[[widget]]
+entry = "remoteEntry.js"
+label = "Chart"
+icon  = "bar-chart-3"
+data  = true
+scope = []
+
+[visibility]
+class = "public"

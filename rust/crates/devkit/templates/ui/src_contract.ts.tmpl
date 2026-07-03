@@ -1,0 +1,70 @@
+// The extension-side copy of the FROZEN widget mount contract (mirror 3 of 3). It MUST stay
+// byte-compatible with the host mirror in `ui/src/features/dashboard/builder/federationWidget.ts`
+// and the other extensions' `app/contract.ts` copies — the three move together, always. It is
+// additive over v2; version-gate every v3-only field on `ctx.v`.
+//
+// A PAGE extension (the default scaffold) only needs `MountCtx`/`Bridge`. A WIDGET extension also
+// implements `mountWidget` against `WidgetCtx`/`WidgetBridge` and returns a `WidgetHandle`. A DATA
+// widget (its `[[widget]]` sets `data = true`) reads `ctx.data` frames + `ctx.fieldConfig` and never
+// fetches — the shell resolves its `sources[]` under the viewer's grant and hands it the frames.
+
+/** The page mount ctx. */
+export interface MountCtx {
+  workspace: string;
+}
+
+/** The page/widget bridge — a leashed `call` (and, for widgets, `watch`). Token never crosses it. */
+export interface Bridge {
+  call: <T = unknown>(tool: string, args?: Record<string, unknown>) => Promise<T>;
+}
+
+/** One resolved field in a frame — the `lb-viz` `Frame.fields[]` shape. */
+export interface WidgetField {
+  name: string;
+  type?: string;
+  values: unknown[];
+}
+
+/** A resolved data frame handed to a v3 data tile via `ctx.data`. Frozen public contract; version it. */
+export interface WidgetFrame {
+  refId?: string;
+  name?: string;
+  fields: WidgetField[];
+  length?: number;
+}
+
+/** The v3 widget mount ctx (additive over v2). */
+export interface WidgetCtx {
+  /** Contract version. `3` = frames-in; gate `data`/`fieldConfig` use on `v >= 3`. */
+  v: number;
+  workspace: string;
+  binding: Record<string, unknown>;
+  options: Record<string, unknown>;
+  vars?: Record<string, unknown>;
+  builtins?: Record<string, unknown>;
+  timeRange?: { from: number; to: number };
+  /** v3 data tiles only: the shell-resolved frames for the cell's `sources[]`. The tile renders these. */
+  data?: WidgetFrame[];
+  /** v3 data tiles only: the cell's Field-tab `fieldConfig` (units/decimals/thresholds/legend/…). */
+  fieldConfig?: unknown;
+}
+
+/** The widget bridge — a data tile needs neither method; it renders `ctx.data`. */
+export interface WidgetBridge {
+  call: <T = unknown>(tool: string, args?: Record<string, unknown>) => Promise<T>;
+  watch?: (tool: string, args: Record<string, unknown>, onEvent: (e: unknown) => void) => () => void;
+}
+
+/** A v3 tile MAY return this handle: `update(ctx)` re-renders in place, `teardown()` disposes. A v2
+ *  tile returns a bare teardown function (or void) and the shell re-mounts on config change. */
+export interface WidgetHandle {
+  update?: (ctx: WidgetCtx) => void;
+  teardown?: () => void;
+}
+
+export type WidgetMount = (
+  el: HTMLElement,
+  ctx: WidgetCtx,
+  bridge: WidgetBridge,
+  widgetId: string,
+) => void | (() => void) | WidgetHandle;

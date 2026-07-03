@@ -169,7 +169,7 @@ export function seedExtension(ext: {
   tier?: "wasm" | "native";
   enabled?: boolean;
   ui?: { entry: string; label: string; icon?: string; scope?: string[] };
-  widgets?: { entry: string; label: string; icon?: string; scope?: string[] }[];
+  widgets?: { entry: string; label: string; icon?: string; scope?: string[]; data?: boolean }[];
   /** Native only: seed a durable native_status with this restart count (surfaces the count + the
    *  Reset affordance in the console without a live child). */
   restart_count?: number;

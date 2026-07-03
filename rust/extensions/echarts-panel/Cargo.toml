@@ -1,0 +1,18 @@
+# The `echarts-panel` WASM extension — a Tier-1 counterpart to `proof-panel`. A wasm32-wasip2 component,
+# EXCLUDED from the host workspace (it targets wasm, not the host), built in its own target/. It ships
+# ONE trivial static MCP tool (`echarts.about`) alongside a federated page + a frames-in chart widget,
+# proving a single Tier-1 extension can carry both a backend tool and a data tile.
+# Build: cargo build --target wasm32-wasip2 --release
+[package]
+name = "echarts-panel-ext"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.40"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

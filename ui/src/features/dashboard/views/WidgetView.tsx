@@ -103,6 +103,8 @@ export function WidgetView({
           scope={scope}
           options={options as Record<string, unknown> | undefined}
           binding={cell.binding as Record<string, unknown> | undefined}
+          cell={cell}
+          refreshKey={refreshKey}
         />
       </ExtErrorBoundary>
     );

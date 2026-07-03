@@ -75,21 +75,32 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   // it lives in the source picker's "Extension widgets" group (finding 7: the group the viz-editor rework
   // dropped, restored here so a packaged tile is pickable in the live builder again).
   const isWidgetView = (state.view ?? "").startsWith("ext:");
+  // A frames-in DATA widget is a first-class VIEW over `sources[]` (ext-widget-source-binding scope):
+  // unlike a self-fetching v2 tile, it KEEPS the cell's targets and shows the full Query surface (the
+  // shell resolves the sources to `ctx.data`). We learn a picked widget is a data tile from its picker
+  // entry (`entry.data`), and a round-tripped data-widget cell keeps its `ext:` view alongside `sources[]`.
+  const currentEntry = entries.find((e) => e.viewKey === state.view);
+  const isDataWidgetView = isWidgetView && currentEntry?.data === true;
+  // A BARE widget (v2 self-fetching) fully collapses the Query surface — it has no target. A DATA widget
+  // keeps the datasource/source dropdowns (it binds real sources the shell resolves to `ctx.data`).
+  const isBareWidgetView = isWidgetView && !isDataWidgetView;
 
   // Match the current selection back to a picker entry id: a widget cell → its `viewKey` entry; else the
   // series/sql target path (federation uses raw SQL, so it has no picker entry).
   const entryId = useMemo(() => {
-    if (isWidgetView) return entries.find((e) => e.viewKey === state.view)?.id ?? "";
+    // A BARE widget (v2 self-fetching) shows itself selected in the source dropdown. A DATA widget is a
+    // view over `sources[]`, so its dropdown reflects the BOUND source (like a built-in), not the widget.
+    if (isBareWidgetView) return entries.find((e) => e.viewKey === state.view)?.id ?? "";
     return seedEntryId(
       primary ? ({ source: { tool: primary.tool, args: primary.args } } as never) : undefined,
       entries,
     );
-  }, [isWidgetView, state.view, primary, entries]);
+  }, [isBareWidgetView, state.view, primary, entries]);
   const entry = entries.find((e) => e.id === entryId) ?? null;
   const isSql =
-    !isWidgetView && dsKind === "surreal" && (entry?.id === SQL_SOURCE_ID || primary?.tool === "store.query");
-  const isFederation = !isWidgetView && dsKind === "federation";
-  const isFlows = !isWidgetView && dsKind === "flows";
+    !isBareWidgetView && dsKind === "surreal" && (entry?.id === SQL_SOURCE_ID || primary?.tool === "store.query");
+  const isFederation = !isBareWidgetView && dsKind === "federation";
+  const isFlows = !isBareWidgetView && dsKind === "flows";
   // The datasource dropdown's selected value (flows takes precedence over the target-derived value when
   // an inject action is carried — an input control has no read target to derive from).
   const dsValue = isFlows ? "flows" : dsValueOf(primary);
@@ -105,24 +116,24 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
       const opt = dsOptions.find((o) => o.type === "federation" && o.name === name);
       const ds = opt ? refForOption(opt, ws) : { type: "federation" };
       patch({
-        view: isWidgetView ? "" : state.view,
+        view: isBareWidgetView ? "" : state.view,
         sql: undefined,
         targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: name, sql: fedSql }, datasource: ds }],
       });
       return;
     }
     if (value === "series") {
-      patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }], carry: { ...state.carry, action: undefined } });
+      patch({ view: isBareWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "series" } }], carry: { ...state.carry, action: undefined } });
       return;
     }
     if (value === "flows") {
       // Flows: an empty `flows`-typed target; the FlowsQuerySection picks the node port (input → an
       // inject action + control view; output → a node_state source + read view).
-      patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "flows" } }], carry: { ...state.carry, action: undefined } });
+      patch({ view: isBareWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "flows" } }], carry: { ...state.carry, action: undefined } });
       return;
     }
     // surreal (native) — reset to an empty native target; the source picker / SQL editor takes over.
-    patch({ view: isWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }], carry: { ...state.carry, action: undefined } });
+    patch({ view: isBareWidgetView ? "" : state.view, sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }], carry: { ...state.carry, action: undefined } });
   };
 
   const selectEntry = (id: string) => {
@@ -131,11 +142,20 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
     // its data via `scope ∩ grant`, re-checked at the host). Clear any prior query target + SQL. The tile
     // keeps whatever `options` the cell already carried (e.g. a set `sceneId`), edited via the field below.
     if (next?.group === "widget" && next.viewKey) {
-      patch({ view: next.viewKey as never, sql: undefined, targets: [], carry: { ...state.carry, action: undefined } });
+      // A DATA widget is a VIEW over `sources[]` — set the view but KEEP the cell's targets so the
+      // existing binding survives (the shell resolves them to `ctx.data`). A bare v2 tile owns its own
+      // data, so it clears targets. Either way the Query + Field tabs are available for a data tile.
+      if (next.data === true) {
+        patch({ view: next.viewKey as never, carry: { ...state.carry, action: undefined } });
+      } else {
+        patch({ view: next.viewKey as never, sql: undefined, targets: [], carry: { ...state.carry, action: undefined } });
+      }
       return;
     }
-    // Leaving a widget view for a real source: drop the `ext:` view so the chosen source's view takes over.
-    if (isWidgetView) {
+    // Leaving a BARE widget view for a real source: drop the `ext:` view so the source's view takes over.
+    // A DATA widget KEEPS its `ext:` view while its source changes — the widget is the view, the source
+    // is just its binding (exactly like a built-in timeseries keeps its view while you rebind its source).
+    if (isBareWidgetView) {
       patch({ view: "" });
     }
     if (next?.id === SQL_SOURCE_ID) {

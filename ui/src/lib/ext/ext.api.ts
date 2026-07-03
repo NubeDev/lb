@@ -14,6 +14,11 @@ export interface ExtUi {
   label: string;
   icon: string;
   scope: string[];
+  /** Frames-in opt-in for a widget (ext-widget-source-binding scope): `true` = a data tile that
+   *  carries `sources[]` and receives shell-resolved frames (`ctx.data`); the editor shows the Query
+   *  + Field tabs for it. `false`/absent = a v2 self-fetching tile (unchanged). Always false for a
+   *  page. Mirrors `lb_assets::ExtUi::data`; serde-defaulted server-side so older installs read false. */
+  data?: boolean;
 }
 
 export interface ExtRow {

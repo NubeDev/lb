@@ -27,6 +27,10 @@ export interface SourceEntry {
   icon?: string;
   /** For a `widget` entry: the `ext:<id>/<widget>` view key the tile resolves to. */
   viewKey?: string;
+  /** For a `widget` entry: `true` if the tile is a frames-in DATA view (its manifest set `data = true`).
+   *  A data widget KEEPS the cell's `sources[]` (the shell resolves them to `ctx.data`) and shows the
+   *  Query + Field tabs; a non-data widget owns its own data and clears targets when picked. */
+  data?: boolean;
   /** The resolved read source `{tool,args}` (read/scripted views + a control's optional self-read). */
   source?: Source;
   /** The resolved write action (control views) — `argsTemplate` gets a `{{value}}` slot filled later. */
@@ -117,6 +121,7 @@ export function extWidgetEntries(rows: ExtRow[]): SourceEntry[] {
         label: `${row.ext} · ${tile.label}`,
         icon: tile.icon,
         viewKey: `ext:${row.ext}/${widgetId}`,
+        data: tile.data === true,
         writes: false,
       });
     }

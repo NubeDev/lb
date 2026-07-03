@@ -30,6 +30,8 @@ export interface ExtUi {
   label: string;
   icon: string;
   scope: string[];
+  /** `true` for a frames-in DATA widget (manifest `data = true`) — it keeps the cell's `sources[]`. */
+  data?: boolean;
 }
 
 /** An installed extension row (the subset the picker needs from `ext.list`). */
