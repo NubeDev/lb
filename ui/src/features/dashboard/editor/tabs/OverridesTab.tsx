@@ -7,12 +7,11 @@
 // the override list.
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { EditorState } from "../cellEditorState";
 import type { FieldConfig, FieldOverride, Matcher } from "@/lib/dashboard";
 import { MAX_OVERRIDES } from "../../fieldconfig/caps";
-
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 interface Props {
   state: EditorState;
@@ -42,20 +41,18 @@ export function OverridesTab({ state, patch }: Props) {
       {overrides.map((over, idx) => (
         <div key={idx} className="grid gap-1.5 rounded-md border border-border bg-bg p-2" aria-label={`override ${idx}`}>
           <div className="flex items-center gap-1.5">
-            {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet */}
-            <select
+            <Select
               aria-label={`override ${idx} matcher`}
-              className={`${FIELD} w-28`}
+              className="h-8 w-28"
               value={over.matcher.id}
               onChange={(e) => setMatcher(idx, { id: e.target.value as Matcher["id"], options: over.matcher.options })}
             >
               <option value="byName">by name</option>
               <option value="byType">by type</option>
-            </select>
-            {/* eslint-disable-next-line no-restricted-syntax -- styled native input */}
-            <input
+            </Select>
+            <Input
               aria-label={`override ${idx} match`}
-              className={`${FIELD} flex-1`}
+              className="h-8 flex-1 text-xs"
               placeholder={over.matcher.id === "byType" ? "number | string | time" : "field name"}
               value={String(over.matcher.options ?? "")}
               onChange={(e) => setMatcher(idx, { id: over.matcher.id, options: e.target.value })}
@@ -70,18 +67,16 @@ export function OverridesTab({ state, patch }: Props) {
             </Button>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* eslint-disable-next-line no-restricted-syntax -- styled native input; dotted Grafana id verbatim */}
-            <input
+            <Input
               aria-label={`override ${idx} prop id`}
-              className={`${FIELD} w-32`}
+              className="h-8 w-32 text-xs"
               placeholder="unit | decimals | custom.lineWidth"
               value={over.properties[0]?.id ?? ""}
               onChange={(e) => setProp(idx, e.target.value, String(over.properties[0]?.value ?? ""))}
             />
-            {/* eslint-disable-next-line no-restricted-syntax -- styled native input */}
-            <input
+            <Input
               aria-label={`override ${idx} prop value`}
-              className={`${FIELD} flex-1`}
+              className="h-8 flex-1 text-xs"
               placeholder="value"
               value={String(over.properties[0]?.value ?? "")}
               onChange={(e) => setProp(idx, over.properties[0]?.id ?? "", e.target.value)}

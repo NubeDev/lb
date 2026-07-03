@@ -12,6 +12,8 @@ import { useMemo } from "react";
 import { Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
 import { useSourcePicker } from "../../builder/useSourcePicker";
@@ -21,9 +23,6 @@ import { SqlQueryEditor, emptySqlSource } from "../../builder/sql/SqlQueryEditor
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
 import { FlowsQuerySection } from "./FlowsQuerySection";
 import { useSceneDocs } from "./useSceneDocs";
-
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 interface Props {
   ws: string;
@@ -154,10 +153,9 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
     <div className="grid gap-3 py-3" aria-label="query tab">
       <label className="grid gap-1 text-xs text-muted">
         Datasource
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (see dashboard.md follow-up) */}
-        <select
+        <Select
           aria-label="panel datasource"
-          className={`${FIELD} w-full`}
+          className="h-8 w-full"
           value={dsValue}
           onChange={(e) => selectDatasource(e.target.value)}
         >
@@ -167,7 +165,7 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
               {o.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       {/* Flows — the flow→node→port picker (input port → control + inject action; output → read view). */}
@@ -177,10 +175,9 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
       {!isFederation && !isFlows && (
         <label className="grid gap-1 text-xs text-muted">
           Source
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (see dashboard.md follow-up) */}
-          <select
+          <Select
             aria-label="panel source"
-            className={`${FIELD} w-full`}
+            className="h-8 w-full"
             value={entryId}
             onChange={(e) => selectEntry(e.target.value)}
           >
@@ -192,7 +189,7 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
             {/* The finished packaged tiles (`[[widget]]`) — restored here (finding 7). Selecting one makes
                 a `view:"ext:<id>/<widget>"` cell that owns its own render + data (no view chooser). */}
             <PickerGroup entries={entries} group="widget" label="Extension widgets" />
-          </select>
+          </Select>
         </label>
       )}
 
@@ -223,10 +220,9 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
         <div className="grid gap-2">
           <label className="grid gap-1 text-xs text-muted">
             SQL ({fedSource || "no source"})
-            {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive in this repo (see WidgetBuilder.tsx) */}
-            <textarea
+            <Textarea
               aria-label="federation sql"
-              className={`${FIELD} h-24 w-full resize-y py-1.5 font-mono`}
+              className="h-24 w-full resize-y py-1.5 font-mono text-xs"
               value={fedSql}
               placeholder="SELECT …"
               // Cmd/Ctrl+Enter runs the query — the editor convention alongside the Run button.
@@ -276,10 +272,9 @@ function SceneOptionsField({
   return (
     <label className="grid gap-1 text-xs text-muted">
       Scene
-      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (see QueryTab note) */}
-      <select
+      <Select
         aria-label="scene doc"
-        className={`${FIELD} w-full`}
+        className="h-8 w-full"
         value={sceneId}
         onChange={(e) => setScene(e.target.value)}
       >
@@ -289,7 +284,7 @@ function SceneOptionsField({
             {s.title}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   );
 }

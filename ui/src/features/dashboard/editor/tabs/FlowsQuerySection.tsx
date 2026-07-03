@@ -15,9 +15,7 @@ import type { SourceEntry } from "../../builder/sourcePicker";
 import { flowBindingOfAction, flowBindingOfSource } from "../../views/flowBinding";
 import { asPath, type PathSeg } from "../../views/jsonPaths";
 import { JsonPathPicker } from "./JsonPathPicker";
-
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
+import { Select } from "@/components/ui/select";
 
 interface Props {
   state: EditorState;
@@ -134,10 +132,9 @@ export function FlowsQuerySection({ state, patch, entries, loading }: Props) {
     <div className="grid gap-2" aria-label="flows query section">
       <label className="grid gap-1 text-xs text-muted">
         Flow node port
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (dashboard.md follow-up) */}
-        <select
+        <Select
           aria-label="flow node port"
-          className={`${FIELD} w-full`}
+          className="h-8 w-full"
           value={selectedId ?? ""}
           disabled={loading}
           onChange={(e) => selectPort(e.target.value)}
@@ -148,7 +145,7 @@ export function FlowsQuerySection({ state, patch, entries, loading }: Props) {
               {e.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
       {broken && (
         <p className="text-xs text-danger" role="status">

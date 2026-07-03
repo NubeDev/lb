@@ -4,6 +4,7 @@
 // create time; authoritative validation is at fire time (the host re-enters call_tool).
 
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ReminderAction } from "@/lib/reminders/reminders.types";
 
@@ -34,9 +35,9 @@ export function ActionEditor({ action, onChange }: Props) {
   return (
     <div className="space-y-2">
       <label className="text-xs font-medium text-muted">Action</label>
-      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (matches the dashboard QueryTab pattern) */}
-      <select
-        className="h-9 w-full rounded-md border border-border bg-card px-2 text-sm text-fg"
+      <Select
+        aria-label="action kind"
+        className="bg-card text-sm"
         value={action.kind}
         onChange={(e) => onChange(blank(e.target.value as ReminderAction["kind"]))}
       >
@@ -45,7 +46,7 @@ export function ActionEditor({ action, onChange }: Props) {
             {k.label}
           </option>
         ))}
-      </select>
+      </Select>
 
       {action.kind === "channel-post" && (
         <div className="space-y-2">

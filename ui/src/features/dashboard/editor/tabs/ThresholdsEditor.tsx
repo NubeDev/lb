@@ -5,12 +5,11 @@
 // not painted raw here. One responsibility: author the threshold steps.
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { ThresholdsConfig } from "@/lib/dashboard";
 import { MAX_THRESHOLD_STEPS } from "../../fieldconfig/caps";
 import { resolveColor } from "../../fieldconfig/color";
-
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 const COLORS = ["green", "yellow", "orange", "red", "blue", "purple"];
 
@@ -50,10 +49,9 @@ export function ThresholdsEditor({ value, onChange }: Props) {
             style={{ background: resolveColor(step.color) }}
             aria-hidden
           />
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (dashboard.md follow-up) */}
-          <select
+          <Select
             aria-label={`threshold ${idx} color`}
-            className={`${FIELD} w-24`}
+            className="h-8 w-24"
             value={step.color}
             onChange={(e) => setStep(idx, { color: e.target.value })}
           >
@@ -62,16 +60,15 @@ export function ThresholdsEditor({ value, onChange }: Props) {
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
           {idx === 0 ? (
             <span className="text-xs text-muted">base (−∞)</span>
           ) : (
             <>
-              {/* eslint-disable-next-line no-restricted-syntax -- styled native number input */}
-              <input
+              <Input
                 aria-label={`threshold ${idx} value`}
                 type="number"
-                className={`${FIELD} w-24`}
+                className="h-8 w-24 text-xs"
                 value={step.value ?? 0}
                 onChange={(e) => setStep(idx, { value: Number(e.target.value) })}
               />

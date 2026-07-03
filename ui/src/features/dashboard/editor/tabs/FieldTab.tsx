@@ -6,14 +6,13 @@
 // responsibility: edit the default field options. Thresholds get their own small sub-component to keep
 // this file focused.
 
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import type { EditorState } from "../cellEditorState";
 import type { FieldConfig, FieldOptions } from "@/lib/dashboard";
 import { unitOptions } from "../../fieldconfig/units";
 import { defaultTimeseriesCustom, readTimeseriesCustom, type GraphDrawStyle } from "../../views/timeseries/custom";
 import { ThresholdsEditor } from "./ThresholdsEditor";
-
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 interface Props {
   state: EditorState;
@@ -34,10 +33,9 @@ export function FieldTab({ state, patch }: Props) {
     <div className="grid gap-3 py-3 text-xs" aria-label="field tab">
       <label className="grid gap-1 text-muted">
         Display name
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Input variant; styled native */}
-        <input
+        <Input
           aria-label="field displayName"
-          className={FIELD}
+          className="h-8 text-xs"
           value={defaults.displayName ?? ""}
           onChange={(e) => setDefaults({ displayName: e.target.value || undefined })}
         />
@@ -45,10 +43,9 @@ export function FieldTab({ state, patch }: Props) {
 
       <label className="grid gap-1 text-muted">
         Unit
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (dashboard.md follow-up) */}
-        <select
+        <Select
           aria-label="field unit"
-          className={FIELD}
+          className="h-8"
           value={defaults.unit ?? ""}
           onChange={(e) => setDefaults({ unit: e.target.value || undefined })}
         >
@@ -58,39 +55,36 @@ export function FieldTab({ state, patch }: Props) {
               {u.id} {u.label ? `(${u.label})` : ""}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       <div className="grid grid-cols-3 gap-2">
         <label className="grid gap-1 text-muted">
           Decimals
-          {/* eslint-disable-next-line no-restricted-syntax -- styled native number input */}
-          <input
+          <Input
             aria-label="field decimals"
             type="number"
-            className={FIELD}
+            className="h-8 text-xs"
             value={defaults.decimals ?? ""}
             onChange={(e) => setDefaults({ decimals: e.target.value === "" ? undefined : Number(e.target.value) })}
           />
         </label>
         <label className="grid gap-1 text-muted">
           Min
-          {/* eslint-disable-next-line no-restricted-syntax -- styled native number input */}
-          <input
+          <Input
             aria-label="field min"
             type="number"
-            className={FIELD}
+            className="h-8 text-xs"
             value={defaults.min ?? ""}
             onChange={(e) => setDefaults({ min: e.target.value === "" ? undefined : Number(e.target.value) })}
           />
         </label>
         <label className="grid gap-1 text-muted">
           Max
-          {/* eslint-disable-next-line no-restricted-syntax -- styled native number input */}
-          <input
+          <Input
             aria-label="field max"
             type="number"
-            className={FIELD}
+            className="h-8 text-xs"
             value={defaults.max ?? ""}
             onChange={(e) => setDefaults({ max: e.target.value === "" ? undefined : Number(e.target.value) })}
           />
@@ -99,10 +93,9 @@ export function FieldTab({ state, patch }: Props) {
 
       <label className="grid gap-1 text-muted">
         No value
-        {/* eslint-disable-next-line no-restricted-syntax -- styled native input */}
-        <input
+        <Input
           aria-label="field noValue"
-          className={FIELD}
+          className="h-8 text-xs"
           value={defaults.noValue ?? ""}
           placeholder="text when null/empty"
           onChange={(e) => setDefaults({ noValue: e.target.value || undefined })}
@@ -112,17 +105,16 @@ export function FieldTab({ state, patch }: Props) {
       {state.view === "timeseries" && (
         <label className="grid gap-1 text-muted" data-options-group="drawstyle">
           Draw style
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive yet (dashboard.md follow-up) */}
-          <select
+          <Select
             aria-label="field drawStyle"
-            className={FIELD}
+            className="h-8"
             value={custom.drawStyle}
             onChange={(e) => setCustom({ drawStyle: e.target.value as GraphDrawStyle })}
           >
             <option value="line">line</option>
             <option value="bars">bars</option>
             <option value="points">points</option>
-          </select>
+          </Select>
         </label>
       )}
 

@@ -135,7 +135,7 @@ describe("DashboardView (real gateway)", () => {
     await user.click(await screen.findByLabelText("add panel"));
     await screen.findByRole("option", { name: "cooler.temp" });
     await user.selectOptions(await screen.findByLabelText("panel source"), "series:cooler.temp");
-    await user.click(screen.getByLabelText("tab Field"));
+    await user.click(screen.getByLabelText("Field"));
     await user.selectOptions(await screen.findByLabelText("field unit"), "celsius");
     await user.click(screen.getByLabelText("save panel"));
 

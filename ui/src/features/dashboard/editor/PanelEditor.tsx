@@ -27,7 +27,10 @@ import { Panel, NavMenu, type NavItem } from "@nube/panel";
 
 import { defaultOptionsForView } from "./viewOptions";
 import { VizPicker } from "./VizPicker";
-import { usePanelShape } from "./usePanelShape";
+import { usePanelData } from "../builder/usePanelData";
+import { detectShape } from "../views/shape";
+import { fieldNamesOf } from "./fields/resultFields";
+import { ResultFieldsProvider } from "./fields/FieldsContext";
 import { OptionsSearch } from "./OptionsSearch";
 import { PreviewPane } from "./PreviewPane";
 import { QueryTab } from "./tabs/QueryTab";
@@ -103,10 +106,12 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
   // The draft cell = what save would persist (also the preview's input). Built from the SAME serializer.
   const draft = useMemo(() => editorStateToCell(state, cell), [state, cell]);
 
-  // The draft's data shape — drives which views the picker offers (result-shape ↔ type validation).
-  // Read through the ONE data hook (invariant A), so no separate fetch and the Phase-3 swap stays
-  // one-file.
-  const shape = usePanelShape(draft, scope, refreshKey);
+  // The draft's data — ONE read through the one data hook (invariant A; no separate fetch) feeds BOTH
+  // the shape probe (which views the picker offers) AND the result-field names every tab's field
+  // picker offers (editor-parity step 1: the editor OFFERS real field names, never makes you retype).
+  const data = usePanelData(draft, scope, refreshKey);
+  const shape = data.loading ? "unknown" : detectShape(data.rows);
+  const resultFields = useMemo(() => fieldNamesOf(data.rows), [data.rows]);
 
   const save = () => {
     onSave(editorStateToCell(state, cell));
@@ -155,6 +160,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
         </>
       }
     >
+      <ResultFieldsProvider fields={resultFields}>
       <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-4 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
         {/* Left: live preview + the viz picker (what the panel will look like). */}
         <div className="flex min-h-0 flex-col gap-3">
@@ -197,6 +203,7 @@ export function PanelEditor({ ws, cell, open, onOpenChange, onSave, scope = empt
           </div>
         </div>
       </div>
+      </ResultFieldsProvider>
     </Panel>
   );
 }

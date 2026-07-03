@@ -8,14 +8,12 @@
 import type { Transformation } from "@/lib/dashboard";
 import type { EditorState } from "../cellEditorState";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { FieldNamePicker } from "../fields/FieldNamePicker";
 import { TRANSFORM_DEFS, defaultOptions, transformLabel, type TransformId } from "./transformRegistry";
-
-// No shadcn Select/Textarea primitive exists in this repo yet (only Button/Input/Badge/Card/…), so a raw
-// `<select>`/`<textarea>` is used with a per-element rule suppression + justification (same pattern as
-// `WidgetBuilder.tsx`). `<button>`/`<input>` DO have primitives and use them.
-const FIELD =
-  "h-7 rounded-md border border-border bg-bg px-2 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 interface Props {
   state: EditorState;
@@ -43,10 +41,9 @@ export function TransformTab({ state, patch }: Props) {
     <div className="grid gap-3 py-3" aria-label="transform tab">
       <label className="grid gap-1 text-xs text-muted">
         Add transformation
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive in this repo (see WidgetBuilder.tsx) */}
-        <select
+        <Select
           aria-label="add transformation"
-          className={`${FIELD} h-8 w-full`}
+          className="h-8 w-full"
           value=""
           onChange={(e) => {
             if (e.target.value) add(e.target.value as TransformId);
@@ -58,7 +55,7 @@ export function TransformTab({ state, patch }: Props) {
               {d.label}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
 
       {list.length === 0 ? (
@@ -125,10 +122,9 @@ function OptionsEditor({ t, onChange }: { t: Transformation; onChange: (o: Recor
     return (
       <label className="flex items-center gap-2 text-xs text-muted">
         Calculation
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive in this repo (see WidgetBuilder.tsx) */}
-        <select
+        <Select
           aria-label="reduce calc"
-          className={`${FIELD} w-36`}
+          className="h-7 w-36"
           value={reducers[0] ?? "lastNotNull"}
           onChange={(e) => onChange({ ...opts, reducers: [e.target.value] })}
         >
@@ -137,7 +133,7 @@ function OptionsEditor({ t, onChange }: { t: Transformation; onChange: (o: Recor
               {c}
             </option>
           ))}
-        </select>
+        </Select>
       </label>
     );
   }
@@ -147,19 +143,17 @@ function OptionsEditor({ t, onChange }: { t: Transformation; onChange: (o: Recor
     const first = sort[0] ?? {};
     return (
       <div className="flex items-center gap-2 text-xs text-muted">
-        <label className="flex items-center gap-1">
+        <span className="flex items-center gap-1">
           Field
-          <Input
+          <FieldNamePicker
             aria-label="sort field"
-            className="h-7 w-28 text-xs"
+            className="w-40"
             value={first.field ?? ""}
-            onChange={(e) => onChange({ ...opts, sort: [{ ...first, field: e.target.value }] })}
+            onChange={(field) => onChange({ ...opts, sort: [{ ...first, field }] })}
           />
-        </label>
+        </span>
         <label className="flex items-center gap-1">
-          {/* eslint-disable-next-line no-restricted-syntax -- a checkbox has no shadcn primitive in this repo */}
-          <input
-            type="checkbox"
+          <Checkbox
             aria-label="sort desc"
             checked={!!first.desc}
             onChange={(e) => onChange({ ...opts, sort: [{ ...first, desc: e.target.checked }] })}
@@ -177,19 +171,17 @@ function OptionsEditor({ t, onChange }: { t: Transformation; onChange: (o: Recor
       <div className="flex items-center gap-2 text-xs text-muted">
         <label className="flex items-center gap-1">
           Action
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive in this repo (see WidgetBuilder.tsx) */}
-          <select aria-label="filter type" className={`${FIELD} w-24`} value={type} onChange={(e) => onChange({ ...opts, type: e.target.value })}>
+          <Select aria-label="filter type" className="h-7 w-24" value={type} onChange={(e) => onChange({ ...opts, type: e.target.value })}>
             <option value="include">Include</option>
             <option value="exclude">Exclude</option>
-          </select>
+          </Select>
         </label>
         <label className="flex items-center gap-1">
           Match
-          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive in this repo (see WidgetBuilder.tsx) */}
-          <select aria-label="filter match" className={`${FIELD} w-20`} value={match} onChange={(e) => onChange({ ...opts, match: e.target.value })}>
+          <Select aria-label="filter match" className="h-7 w-20" value={match} onChange={(e) => onChange({ ...opts, match: e.target.value })}>
             <option value="all">All</option>
             <option value="any">Any</option>
-          </select>
+          </Select>
         </label>
       </div>
     );
@@ -206,10 +198,9 @@ function RawJsonOptions({ opts, onChange }: { opts: Record<string, unknown>; onC
   return (
     <label className="grid gap-1 text-xs text-muted">
       Options (JSON)
-      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Textarea primitive in this repo (see WidgetBuilder.tsx) */}
-      <textarea
+      <Textarea
         aria-label="transform options json"
-        className={`${FIELD} h-16 w-full resize-y py-1 font-mono`}
+        className="h-16 w-full resize-y py-1 font-mono text-xs"
         defaultValue={JSON.stringify(opts, null, 0)}
         onBlur={(e) => {
           try {
