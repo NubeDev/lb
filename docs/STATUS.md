@@ -16,6 +16,31 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-03): library panels — panels as their own reusable + standalone asset (branch
+`master`).** A chart is now a first-class asset: a `panel:{id}` record holding the **non-layout half of
+a v3 `Cell`** (the spec), cloned from the `dashboard` asset (slug id, owner, `private|team|workspace`
+visibility, S4 `share` edge, tombstone, cap-gated verbs). (1) **Backend** `rust/crates/host/src/panel/`:
+the six verbs `panel.get|list|save|delete|share|usage` (each own file + cap `mcp:panel.<verb>:call`),
+plus the two host-side ref seams — `hydrate_cells` (`dashboard.get` expands each `panelRef` ref cell →
+resolved v3 cell under the VIEWER's gates; dangling/unreadable → an honest `panel_missing` placeholder,
+never a leaked spec) and `validate_and_strip_refs` (`dashboard.save` validates each ref resolves
+in-workspace — loud `BadInput` — and strips the echoed spec, so the ref is authoritative). Additive
+`panel_ref`/`panel_vars`/`panel_missing` on `Cell` (inline + ref cells coexist). Delete-safety refuses a
+delete-in-use with the usage list unless `force`. (2) **Gateway** `routes/panel.rs` (6 routes) + the caps
+in the dev-login set. (3) **UI** `lib/panel/` (types + api + the `Panel↔Cell` bridge), `panel_*` in
+`http.ts`, editor affordances (`LibraryPanelBar`: Save-as-library / "used on N dashboards" banner /
+Save-to-library / Unlink; `AddLibraryPanel` picker), the `panel_missing` placeholder in `WidgetHost`, and
+the standalone page `features/panel/PanelPage.tsx` at `/t/$ws/panel/$id` (reuses `WidgetHost`/
+`usePanelData`/the viz bridge — no parallel renderer — cap-gated on `panel.get`). **A panel is a LENS
+over data access, never a grant** — sharing shares the DEFINITION; its `sources[]` re-check under the
+viewer's caps at render. Scope `scope/frontend/dashboard/library-panels-scope.md` (open questions: None);
+session `sessions/frontend/library-panels-session.md`; public `public/frontend/dashboard.md` → "Library
+panels"; skill `docs/skills/panels/SKILL.md`. **Tests:** backend `panel_test.rs` **9/9** (the "sharing
+never widens data access" + cross-ws `panel_ref` no-hydrate headlines, per-verb deny, ws-isolation,
+coexistence, propagation, delete-safety); UI `PanelPage.gateway.test.tsx` **8/8** real gateway; `pnpm
+test` **430**; dashboard + nav gateway suites green; `cargo build --workspace`/`fmt` clean. Nav-builder
+skill also written this session at `docs/skills/nav/SKILL.md`.
+
 **Just shipped (2026-07-03): the nav builder — user-/team-authored navigation over pages (branch
 `master`).** A workspace-scoped `nav` **asset** (cloned from the `dashboard` pattern) whose ordered
 `items[]` link to core surfaces, dashboards, extension pages, or dynamic tag-groups — the menu is a

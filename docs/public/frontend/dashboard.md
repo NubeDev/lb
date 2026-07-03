@@ -622,6 +622,47 @@ workspace-isolation, v2-compat, frames-resolution, data-flag projection, and das
 Scope: [`../../scope/frontend/dashboard/ext-widget-source-binding-scope.md`](../../scope/frontend/dashboard/ext-widget-source-binding-scope.md);
 session: [`../../sessions/frontend/ext-widget-frames-in-session.md`](../../sessions/frontend/ext-widget-frames-in-session.md).
 
+## Library panels (reusable + standalone)
+
+A **library panel** lifts the **non-layout half of a v3 `Cell`** into its own asset — a `panel:{id}`
+record (the `dashboard` asset cloned one level down: slug id, owner, `private|team|workspace`
+visibility, S4 `share` edge, tombstone delete, cap-gated verbs). It does two things an inline cell
+cannot: many dashboards **reference** it (edit once, every referencing dashboard updates) and it renders
+**standalone** on its own page, no dashboard grid.
+
+- **The verbs** (`panel.get|list|save|delete|share|usage`, each its own file + cap
+  `mcp:panel.<verb>:call`) mirror `dashboard.*` 1:1 — REST `/panels…` + the `POST /mcp/call` bridge,
+  ws + owner from the token. `panel.list` is a cheap summary (id/title/view/visibility/updated_ts);
+  `panel.usage` returns which dashboards reference a panel (delete-safety + the editor banner).
+- **Ref cells + host-side hydration.** An additive `panelRef` on `Cell` makes a *ref cell*: layout + the
+  ref + bounded overrides (title, `panelVars`), **no spec**. `dashboard.get` **hydrates** the spec from
+  the panel record at read time under the viewer's gates; `dashboard.save` **validates** each ref
+  resolves in-workspace (loud `BadInput`) and **strips the echoed spec** (the ref is authoritative — a
+  stale hydrated copy a client re-sends can't de-link the cell). Inline and ref cells coexist by design.
+- **Dangling / unreadable refs** degrade to an honest `panelMissing` placeholder in every host (grid,
+  editor, standalone) — never a crash, never a leaked spec.
+- **A lens over data access, never a grant.** Sharing a panel shares its *definition*; its `sources[]`
+  re-check under the **viewer's** caps at render (`viz.query`'s per-target leash). A workspace-visible
+  panel whose query needs a cap the viewer lacks renders "no data", not a leak.
+- **Delete-safety.** `panel.delete` refuses while dashboards reference the panel (returns the usage
+  list); `force=true` tombstones it and referencing cells show the placeholder until relinked; re-saving
+  the panel un-hides them.
+- **Editor affordances.** The panel editor gains **Save as library panel** (extract the spec → the cell
+  becomes a ref), a **"Library panel — used on N dashboards"** banner (`panel.usage`) with **Save to
+  library** (edits the shared record) and **Unlink** (copy the spec back inline — explicit drift), and
+  the builder's **Add library panel** picker (`panel.list` → insert a ref cell).
+- **The standalone page** `/t/$ws/panel/{id}` renders ONE panel full-bleed through the **same** shipped
+  render path (`WidgetHost` → `WidgetView`/`usePanelData` → the viz bridge — no parallel renderer), with
+  its own range picker + `?var-` selections, cap-gated on `panel.get`. This is the "chart not on a
+  dashboard" surface, and a natural nav-entry target.
+
+Proven against real infra: backend `crates/host/tests/panel_test.rs` (9/9 — the "sharing never widens
+data access" + cross-ws `panel_ref` no-hydrate headlines, per-verb deny, ws-isolation, coexistence,
+propagation, delete-safety); UI `features/panel/PanelPage.gateway.test.tsx` (8/8, real spawned gateway).
+Scope: [`../../scope/frontend/dashboard/library-panels-scope.md`](../../scope/frontend/dashboard/library-panels-scope.md);
+session: [`../../sessions/frontend/library-panels-session.md`](../../sessions/frontend/library-panels-session.md);
+skill: [`../../skills/panels/SKILL.md`](../../skills/panels/SKILL.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)
