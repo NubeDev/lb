@@ -1,26 +1,44 @@
-// The Overrides tab (viz panel-editor scope: ship the tab from day one; field-config scope: Phase 1
-// matchers are `byName`/`byType`). Authors `fieldConfig.overrides[]` — a matcher + the properties it
-// sets — bounded by the shared cap (mirroring the host). Phase 1 keeps the property editor minimal (a
-// dotted Grafana id + a value), accepted verbatim so import stays a copy; the deeper per-property UI is
-// a Phase-2 follow-up. The point of shipping it now is that overrides round-trip through the ONE
-// (de)serializer, so add≠edit can never reappear when the property UI grows. One responsibility: edit
-// the override list.
+// The Overrides tab (viz panel-editor scope; field-config scope) — authors `fieldConfig.overrides[]`:
+// a matcher + the properties it sets per matching field. Since step 4 (editor-parity) this is done
+// RIGHT, on the option registry: the matcher value is a real-field picker (byName) / type dropdown
+// (byType) / pattern input (byRegex) / refId picker (byFrameRefID = "by query"); "add property" is a
+// searchable picker over the SAME registry the Field tab uses, and each property renders its NORMAL
+// typed control inline (via `Control`). Multiple properties per override. Bounded by the shared cap.
+// One responsibility: edit the override list.
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import type { EditorState } from "../cellEditorState";
-import type { FieldConfig, FieldOverride, Matcher } from "@/lib/dashboard";
+import type { FieldConfig, FieldOverride, Matcher, View } from "@/lib/dashboard";
+import { canonicalView } from "@/lib/dashboard";
 import { MAX_OVERRIDES } from "../../fieldconfig/caps";
+import { FieldNamePicker } from "../fields/FieldNamePicker";
+import { Control } from "../options/Control";
+import { optionById, optionsForView } from "../options/registry";
 
 interface Props {
   state: EditorState;
   patch: (next: Partial<EditorState>) => void;
 }
 
+const MATCHER_LABELS: Array<{ id: Matcher["id"]; label: string }> = [
+  { id: "byName", label: "Fields with name" },
+  { id: "byType", label: "Fields with type" },
+  { id: "byRegexp", label: "Fields matching regex" },
+  { id: "byFrameRefID", label: "Fields returned by query" },
+];
+
 export function OverridesTab({ state, patch }: Props) {
   const fc: FieldConfig = state.fieldConfig ?? { defaults: {}, overrides: [] };
   const overrides = fc.overrides ?? [];
+  const view = canonicalView((state.view || "timeseries") as View);
+  // The properties an override can set for THIS viz — the same registry options the Field/per-viz tabs
+  // render (universal + view-scoped). This is what makes "add property" cheap and consistent.
+  const propOptions = optionsForView(view);
+  // The refIds the panel's targets expose (for the byFrameRefID matcher).
+  const refIds = state.targets.map((t) => t.refId).filter(Boolean);
 
   const setOverrides = (next: FieldOverride[]) => patch({ fieldConfig: { ...fc, overrides: next } });
   const addOverride = () => {
@@ -29,61 +47,80 @@ export function OverridesTab({ state, patch }: Props) {
   };
   const setMatcher = (idx: number, matcher: Matcher) =>
     setOverrides(overrides.map((o, i) => (i === idx ? { ...o, matcher } : o)));
-  const setProp = (idx: number, id: string, value: string) =>
-    setOverrides(
-      overrides.map((o, i) => (i === idx ? { ...o, properties: id ? [{ id, value }] : [] } : o)),
-    );
-  const remove = (idx: number) => setOverrides(overrides.filter((_, i) => i !== idx));
+  const setProps = (idx: number, properties: Array<{ id: string; value: unknown }>) =>
+    setOverrides(overrides.map((o, i) => (i === idx ? { ...o, properties } : o)));
+  const removeOverride = (idx: number) => setOverrides(overrides.filter((_, i) => i !== idx));
 
   return (
     <div className="grid gap-3 py-3 text-xs" aria-label="overrides tab">
       {overrides.length === 0 && <p className="text-muted">No field overrides. Add one to style a specific field.</p>}
-      {overrides.map((over, idx) => (
-        <div key={idx} className="grid gap-1.5 rounded-md border border-border bg-bg p-2" aria-label={`override ${idx}`}>
-          <div className="flex items-center gap-1.5">
-            <Select
-              aria-label={`override ${idx} matcher`}
-              className="h-8 w-28"
-              value={over.matcher.id}
-              onChange={(e) => setMatcher(idx, { id: e.target.value as Matcher["id"], options: over.matcher.options })}
-            >
-              <option value="byName">by name</option>
-              <option value="byType">by type</option>
-            </Select>
-            <Input
-              aria-label={`override ${idx} match`}
-              className="h-8 flex-1 text-xs"
-              placeholder={over.matcher.id === "byType" ? "number | string | time" : "field name"}
-              value={String(over.matcher.options ?? "")}
-              onChange={(e) => setMatcher(idx, { id: over.matcher.id, options: e.target.value })}
-            />
-            <Button
-              variant="ghost"
-              aria-label={`remove override ${idx}`}
-              className="h-auto px-1.5 text-muted hover:text-red-500"
-              onClick={() => remove(idx)}
-            >
-              ×
-            </Button>
+      {overrides.map((over, idx) => {
+        const usedIds = new Set(over.properties.map((p) => p.id));
+        const addable = propOptions.filter((d) => !usedIds.has(d.id));
+        const addProp = (id: string) => {
+          const def = optionById(id);
+          setProps(idx, [...over.properties, { id, value: def?.default }]);
+        };
+        const setPropValue = (pid: string, value: unknown) =>
+          setProps(idx, over.properties.map((p) => (p.id === pid ? { ...p, value } : p)));
+        const removeProp = (pid: string) => setProps(idx, over.properties.filter((p) => p.id !== pid));
+
+        return (
+          <div key={idx} className="grid gap-2 rounded-md border border-border bg-bg p-2" aria-label={`override ${idx}`}>
+            {/* Matcher row: kind + its typed value control. */}
+            <div className="flex items-center gap-1.5">
+              <Select
+                aria-label={`override ${idx} matcher`}
+                className="h-8 w-40"
+                value={over.matcher.id}
+                onChange={(e) => setMatcher(idx, { id: e.target.value as Matcher["id"], options: "" })}
+              >
+                {MATCHER_LABELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+              <MatcherValue matcher={over.matcher} idx={idx} refIds={refIds} onChange={(options) => setMatcher(idx, { ...over.matcher, options })} />
+              <Button variant="ghost" aria-label={`remove override ${idx}`} className="ml-auto h-auto px-1.5 text-muted hover:text-red-500" onClick={() => removeOverride(idx)}>
+                ×
+              </Button>
+            </div>
+
+            {/* Properties: each renders its NORMAL typed control (from the registry). */}
+            <div className="grid gap-1.5 pl-1">
+              {over.properties.map((p) => {
+                const def = optionById(p.id);
+                return (
+                  <div key={p.id} className="grid gap-1" aria-label={`override ${idx} property ${p.id}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-28 shrink-0 truncate text-muted">{def?.label ?? p.id}</span>
+                      {def ? (
+                        <div className="flex-1">
+                          <Control control={def.control} label={`${p.id} value`} value={p.value} onChange={(v) => setPropValue(p.id, v)} />
+                        </div>
+                      ) : (
+                        <Input aria-label={`${p.id} value`} className="h-8 flex-1 text-xs" value={String(p.value ?? "")} onChange={(e) => setPropValue(p.id, e.target.value)} />
+                      )}
+                      <Button variant="ghost" aria-label={`remove property ${p.id}`} className="h-auto px-1.5 text-muted hover:text-red-500" onClick={() => removeProp(p.id)}>
+                        ×
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+              <Combobox
+                aria-label={`override ${idx} add property`}
+                className="w-56"
+                options={addable.map((d) => ({ value: d.id, label: d.label, group: d.group }))}
+                value=""
+                placeholder="+ Add override property"
+                onChange={addProp}
+              />
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Input
-              aria-label={`override ${idx} prop id`}
-              className="h-8 w-32 text-xs"
-              placeholder="unit | decimals | custom.lineWidth"
-              value={over.properties[0]?.id ?? ""}
-              onChange={(e) => setProp(idx, e.target.value, String(over.properties[0]?.value ?? ""))}
-            />
-            <Input
-              aria-label={`override ${idx} prop value`}
-              className="h-8 flex-1 text-xs"
-              placeholder="value"
-              value={String(over.properties[0]?.value ?? "")}
-              onChange={(e) => setProp(idx, over.properties[0]?.id ?? "", e.target.value)}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
       <Button
         variant="outline"
         size="sm"
@@ -95,4 +132,48 @@ export function OverridesTab({ state, patch }: Props) {
       </Button>
     </div>
   );
+}
+
+/** The matcher's value control, typed per matcher kind: byName -> a real-field picker; byType -> a type
+ *  dropdown; byRegex -> a pattern input; byFrameRefID -> a refId dropdown. */
+function MatcherValue({
+  matcher,
+  idx,
+  refIds,
+  onChange,
+}: {
+  matcher: Matcher;
+  idx: number;
+  refIds: string[];
+  onChange: (options: unknown) => void;
+}) {
+  const value = String(matcher.options ?? "");
+  if (matcher.id === "byName") {
+    return <FieldNamePicker aria-label={`override ${idx} match`} className="flex-1" value={value} onChange={onChange} />;
+  }
+  if (matcher.id === "byType") {
+    return (
+      <Select aria-label={`override ${idx} match`} className="h-8 flex-1" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">— pick a type —</option>
+        {["number", "string", "time", "boolean"].map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </Select>
+    );
+  }
+  if (matcher.id === "byFrameRefID") {
+    return (
+      <Select aria-label={`override ${idx} match`} className="h-8 flex-1" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">— pick a query —</option>
+        {refIds.map((r) => (
+          <option key={r} value={r}>
+            Query {r}
+          </option>
+        ))}
+      </Select>
+    );
+  }
+  return <Input aria-label={`override ${idx} match`} className="h-8 flex-1 text-xs" placeholder="/pattern/" value={value} onChange={(e) => onChange(e.target.value)} />;
 }

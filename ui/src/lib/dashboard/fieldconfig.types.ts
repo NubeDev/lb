@@ -7,10 +7,13 @@
 // not a re-model. Phase 1 ships `defaults` fully + `overrides[]` with `byName`/`byType` matchers;
 // `byRegex`/`byFrameRefID` are accepted-but-deferred-render (named follow-ups), never silently wrong.
 
-/** A matcher selecting which fields an override applies to. Phase 1 evaluates `byName`/`byType`. */
+/** A matcher selecting which fields an override applies to. The backend (`rust/crates/viz` config.rs)
+ *  evaluates `byName`/`byType`/`byRegexp` (field matchers) + `byFrameRefID` (a frame matcher). The id
+ *  spellings are the backend's VERBATIM — note `byRegexp` (Grafana's spelling), not `byRegex`. */
 export interface Matcher {
-  id: "byName" | "byType" | "byRegex" | "byFrameRefID";
-  /** `byName`: the field name; `byType`: `"number"|"string"|"time"|…`; `byRegex`: the pattern. */
+  id: "byName" | "byType" | "byRegexp" | "byFrameRefID";
+  /** `byName`: the field name; `byType`: `"number"|"string"|"time"|…`; `byRegexp`: the pattern;
+   *  `byFrameRefID`: the target refId (A/B/…). */
   options?: unknown;
 }
 

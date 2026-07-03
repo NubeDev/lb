@@ -69,4 +69,17 @@ describe("resolve defaults + overrides", () => {
     );
     expect(opts.custom?.lineWidth).toBe(3);
   });
+
+  // byRegexp matcher (wired when the editor started authoring it — editor-parity step 4).
+  it("a byRegexp matcher applies to fields whose name matches the pattern", () => {
+    const cfg = { defaults: {}, overrides: [{ matcher: { id: "byRegexp" as const, options: "cpu.*" }, properties: [{ id: "unit", value: "percent" }] }] };
+    expect(resolveFieldOptions(cfg, { name: "cpu_load", type: "number" }).unit).toBe("percent");
+    expect(resolveFieldOptions(cfg, { name: "mem_used", type: "number" }).unit).toBeUndefined();
+  });
+  it("a byRegexp `/pattern/i` literal honors flags; an invalid pattern never matches (no throw)", () => {
+    const ci = { defaults: {}, overrides: [{ matcher: { id: "byRegexp" as const, options: "/^CPU/i" }, properties: [{ id: "unit", value: "percent" }] }] };
+    expect(resolveFieldOptions(ci, { name: "cpu_load", type: "number" }).unit).toBe("percent");
+    const bad = { defaults: {}, overrides: [{ matcher: { id: "byRegexp" as const, options: "[" }, properties: [{ id: "unit", value: "percent" }] }] };
+    expect(resolveFieldOptions(bad, { name: "cpu_load", type: "number" }).unit).toBeUndefined();
+  });
 });

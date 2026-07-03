@@ -10,6 +10,8 @@ import { unitOptions } from "../../../fieldconfig/units";
 interface Props {
   value: string;
   onChange: (unitId: string) => void;
+  /** Accessible name (defaults to "field unit"; the override property control passes "<id> value"). */
+  "aria-label"?: string;
 }
 
 /** A friendly group label per unit kind/dimension for the picker headers. */
@@ -23,7 +25,7 @@ function groupOf(u: ReturnType<typeof unitOptions>[number]): string {
   return "Misc";
 }
 
-export function UnitPicker({ value, onChange }: Props) {
+export function UnitPicker({ value, onChange, "aria-label": ariaLabel = "field unit" }: Props) {
   const options: ComboboxOption[] = unitOptions().map((u) => ({
     value: u.id,
     label: u.label ? `${u.id} (${u.label})` : u.id,
@@ -31,7 +33,7 @@ export function UnitPicker({ value, onChange }: Props) {
   }));
   return (
     <Combobox
-      aria-label="field unit"
+      aria-label={ariaLabel}
       options={options}
       value={value}
       onChange={onChange}

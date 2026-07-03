@@ -81,7 +81,7 @@ export function Control({ control, label, value, onChange }: Props) {
         />
       );
     case "unit":
-      return <UnitPicker value={typeof value === "string" ? value : ""} onChange={(v) => onChange(v || undefined)} />;
+      return <UnitPicker aria-label={label} value={typeof value === "string" ? value : ""} onChange={(v) => onChange(v || undefined)} />;
     case "field-name":
       return <FieldNamePicker aria-label={label} value={typeof value === "string" ? value : ""} onChange={(v) => onChange(v || undefined)} />;
     case "thresholds":
