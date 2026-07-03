@@ -34,6 +34,7 @@ pub async fn dashboard_get(
     // Each ref cell's `panel_ref` expands to a resolved v3 cell under the VIEWER's three gates — an
     // unreadable/dangling ref degrades to the placeholder, never a leaked spec. Inline cells untouched.
     dashboard.cells =
-        crate::panel::hydrate_cells(store, principal, ws, std::mem::take(&mut dashboard.cells)).await;
+        crate::panel::hydrate_cells(store, principal, ws, std::mem::take(&mut dashboard.cells))
+            .await;
     Ok(dashboard)
 }

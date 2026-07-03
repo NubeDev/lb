@@ -188,6 +188,17 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // library-panels scope (panels as their own reusable + standalone asset): the six `panel.*`
+        // verbs the panel routes check. Member-level like dashboards — any member may build/share their
+        // own panels (gate 3 / ownership still decides which *specific* panel they read/edit); the
+        // panel is a LENS, its `sources[]` re-checked under the viewer's caps at render. The gateway
+        // re-checks each cap server-side; a token without them is refused per verb.
+        "mcp:panel.get:call",
+        "mcp:panel.list:call",
+        "mcp:panel.save:call",
+        "mcp:panel.delete:call",
+        "mcp:panel.share:call",
+        "mcp:panel.usage:call",
         // nav scope (the user-/team-authored navigation menu): the `nav.*` verbs the nav routes check.
         // The reads (`get`/`list`/`resolve`) are member-level — every member resolves their own menu
         // and curates their own pick (`nav.pref.*` gate on `nav.resolve`); the writes

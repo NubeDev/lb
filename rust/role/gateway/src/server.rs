@@ -13,25 +13,26 @@ use crate::routes::{
     add_datasource, add_member, add_team_member, agent_invoke, archive_workspace, assign_grant,
     bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
     create_identity, create_team, create_user, create_workspace, define_role, delete_dashboard,
-    delete_def, delete_flow, delete_message, delete_nav, delete_role, delete_rule, delete_team,
-    delete_user, disable_extension, disable_user, edit_message, enable_extension, enable_flow,
-    enable_user, find_series, flow_node_state, flow_run_stream, format_datetime, format_number,
-    format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def,
-    get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_nav,
-    get_nav_pref, get_outbox_status, get_prefs, get_rule, grant_skill, identity_workspaces_route,
-    inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels,
-    list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
-    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_members, list_navs,
-    list_roles, list_rules, list_series, list_tables, list_team_members, list_teams, list_users,
-    list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, patch_flow_run,
-    post_message, publish_extension, publish_message, purge_workspace, put_doc, put_skill,
-    read_graph, read_samples, read_schema, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, render_catalog_message, request_approval, reset_extension,
-    resolve_caps, resolve_inbox, resolve_nav, resolve_prefs, resolve_workflow_approval,
-    revoke_apikey, revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule,
-    run_stream, save_dashboard, save_flow, save_nav, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
-    set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, start_job, system_acp,
+    delete_def, delete_flow, delete_message, delete_nav, delete_panel, delete_role, delete_rule,
+    delete_team, delete_user, disable_extension, disable_user, edit_message, enable_extension,
+    enable_flow, enable_user, find_series, flow_node_state, flow_run_stream, format_datetime,
+    format_number, format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard,
+    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_nav,
+    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, grant_skill,
+    identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
+    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
+    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
+    list_members, list_navs, list_panels, list_roles, list_rules, list_series, list_tables,
+    list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
+    mcp_catalog, native_call, panel_usage, patch_flow_run, post_message, publish_extension,
+    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
+    remove_datasource, remove_member, remove_team_member, rename_team, rename_workspace,
+    render_catalog_message, request_approval, reset_extension, resolve_caps, resolve_inbox,
+    resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
+    revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard,
+    save_flow, save_nav, save_panel, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_nav_pref,
+    set_prefs, share_dashboard, share_doc, share_nav, share_panel, start_job, system_acp,
     system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, update_def, update_flow_node,
     write_samples,
@@ -222,6 +223,13 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        // library panels (library-panels scope) — the browser's `panel.*` CRUD + share + the `usage`
+        // read (which dashboards reference a panel). Each route re-checks the gates server-side; ws +
+        // owner from the token. Standalone panel pages read `GET /panels/{id}` through the same gate.
+        .route("/panels", get(list_panels).post(save_panel))
+        .route("/panels/{id}", get(get_panel).delete(delete_panel))
+        .route("/panels/{id}/share", post(share_panel))
+        .route("/panels/{id}/usage", get(panel_usage))
         // nav (nav scope) — the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
         // renders + the member-owned pick + the workspace-default pointer. Each route re-checks the
         // gates server-side; ws + owner from the token; the per-user pick keyed to the token `sub`.

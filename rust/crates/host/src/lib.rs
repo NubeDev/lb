@@ -198,8 +198,8 @@ pub use nav::{
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
-    panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary, PanelUsageRow,
-    Visibility as PanelVisibility,
+    panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary,
+    PanelUsageRow, Visibility as PanelVisibility,
 };
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching

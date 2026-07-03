@@ -35,6 +35,7 @@ mod message;
 mod native;
 mod nav;
 mod outbox;
+mod panel;
 mod post;
 mod prefs;
 mod rules;
@@ -106,6 +107,7 @@ pub use nav::{
     set_nav_pref, share_nav,
 };
 pub use outbox::get_outbox_status;
+pub use panel::{delete_panel, get_panel, list_panels, panel_usage, save_panel, share_panel};
 pub use post::post_message;
 pub use prefs::{
     convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,

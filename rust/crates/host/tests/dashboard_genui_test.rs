@@ -48,6 +48,9 @@ fn genui_cell(options_genui: Value) -> Cell {
         transformations: Vec::new(),
         field_config: json!(null),
         plugin_version: String::new(),
+        panel_ref: String::new(),
+        panel_vars: json!(null),
+        panel_missing: false,
     }
 }
 

@@ -49,7 +49,9 @@ pub async fn panel_share(
         }
         relate(store, ws, SHARE, id, team).await?;
     } else if visibility == Visibility::Team {
-        return Err(PanelError::BadInput("team visibility requires a team".into()));
+        return Err(PanelError::BadInput(
+            "team visibility requires a team".into(),
+        ));
     }
 
     panel.visibility = visibility;

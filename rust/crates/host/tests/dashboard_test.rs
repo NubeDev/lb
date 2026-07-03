@@ -61,6 +61,9 @@ fn chart_cell(series: &str) -> Cell {
         transformations: Vec::new(),
         field_config: json!(null),
         plugin_version: String::new(),
+        panel_ref: String::new(),
+        panel_vars: json!(null),
+        panel_missing: false,
     }
 }
 
@@ -431,6 +434,9 @@ fn v3_timeseries_cell() -> Cell {
             "overrides": []
         }),
         plugin_version: "lb-viz@1".into(),
+        panel_ref: String::new(),
+        panel_vars: json!(null),
+        panel_missing: false,
     }
 }
 

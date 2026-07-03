@@ -173,6 +173,17 @@ export interface Cell {
   fieldConfig?: FieldConfig;
   /** Plugin version, for import/export round-trip fidelity. */
   pluginVersion?: string;
+
+  // --- library-panels scope — a REF cell (additive; absent on an inline cell) ---
+  /** When set (`panel:{id}`) this cell is a REF cell: it carries only layout + the ref + bounded
+   *  per-placement overrides (`title`, `panelVars`) and NO spec — `dashboard.get` hydrates the spec
+   *  from the panel record host-side, keeping this marker so the editor can offer link/unlink. */
+  panelRef?: string;
+  /** Per-placement variable bindings for a ref cell (the bounded override set). */
+  panelVars?: Record<string, unknown>;
+  /** Set by host hydration when a ref cannot be resolved (deleted/unshared/unreadable) — the cell
+   *  renders the honest "panel not accessible" placeholder, never a leaked spec. Never persisted. */
+  panelMissing?: boolean;
 }
 
 /** A cell's targets, v3 — `sources[]` when present, else the v2 single `source` as a one-element

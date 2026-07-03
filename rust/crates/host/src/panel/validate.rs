@@ -36,9 +36,12 @@ pub async fn validate_and_strip_refs(
         }
         let id = cell.panel_ref.trim_start_matches("panel:");
         // The ref must resolve for the saver right now (in-workspace, readable) — loud on failure.
-        panel_get(store, principal, ws, id)
-            .await
-            .map_err(|_| format!("panel_ref does not resolve in workspace: {}", cell.panel_ref))?;
+        panel_get(store, principal, ws, id).await.map_err(|_| {
+            format!(
+                "panel_ref does not resolve in workspace: {}",
+                cell.panel_ref
+            )
+        })?;
         out.push(stripped_ref(cell));
     }
     Ok(out)

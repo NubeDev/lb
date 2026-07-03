@@ -491,6 +491,34 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       return postJson<T>(`${base}/dashboards/${enc(id)}/share`, { visibility, team });
     }
 
+    // ── panel (library-panels scope): the browser's `panel.*` CRUD + share + the `usage` read (which
+    //    dashboards reference a panel). A panel is the reusable non-layout half of a v3 cell; sharing a
+    //    panel shares its DEFINITION only — its `sources[]` re-check under the viewer's caps at render
+    //    (a lens, never a grant). The owner + workspace come from the token (§7); visibility is set via
+    //    `/share`. The standalone panel page reads `panel_get` through the same gate. ──
+    case "panel_list":
+      return getJson<T>(`${base}/panels`);
+    case "panel_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/panels/${enc(id)}`);
+    }
+    case "panel_save": {
+      const { id, title, spec } = args as { id: string; title: string; spec: unknown };
+      return postJson<T>(`${base}/panels`, { id, title, spec });
+    }
+    case "panel_delete": {
+      const { id, force } = args as { id: string; force?: boolean };
+      return delJson<T>(`${base}/panels/${enc(id)}${force ? "?force=true" : ""}`);
+    }
+    case "panel_share": {
+      const { id, visibility, team } = args as { id: string; visibility: string; team?: string };
+      return postJson<T>(`${base}/panels/${enc(id)}/share`, { visibility, team });
+    }
+    case "panel_usage": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/panels/${enc(id)}/usage`);
+    }
+
     // ── nav (nav scope): the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
     //    renders + the member-owned pick + the workspace-default pointer. The owner + workspace come
     //    from the token (§7); the per-user pick is keyed to the token `sub` (a caller cannot curate
