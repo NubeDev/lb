@@ -54,3 +54,40 @@ pub async fn resolve_endpoint_key(
     // (3) Neither → unset. The caller treats this as "no key configured" (honest), never a panic.
     None
 }
+
+/// **Host-mediated** twin of [`resolve_endpoint_key`], for a run resolving its OWN model key as
+/// workspace infrastructure — same precedence **sealed secret → node env → unset**, but the secret is
+/// read through [`lb_secrets::get_workspace`] (workspace-walled, `Workspace`-visibility only, no
+/// per-user cap/delegation gate) rather than the cap-gated [`lb_secrets::get`].
+///
+/// **Why a distinct entry.** An external agent RUN executes under a derived `agent:` actor that does
+/// not (and should not) carry `secret:<path>:get`; the delegation clamp (gate 2b) would block the
+/// cap-gated read even for a `Workspace` key the workspace's own agent is meant to use. This path lets
+/// the HOST resolve the workspace's model key on the run's behalf, WITHOUT widening any user authority:
+/// the workspace wall still holds (`ws`), and a `Private` key is never resolvable here (only
+/// `Workspace`). The value is handed only to the provider transport (the child env), never logged.
+pub async fn resolve_endpoint_key_host(
+    store: &Store,
+    ws: &str,
+    secret_path: Option<&str>,
+    env_name: Option<&str>,
+) -> Option<String> {
+    // (1) Sealed WORKSPACE secret first — host-mediated, wall-enforced. Best-effort: a Private/absent
+    // path is NOT an error, it falls through to the env.
+    if let Some(path) = secret_path.filter(|p| !p.is_empty()) {
+        if let Ok(value) = lb_secrets::get_workspace(store, ws, path).await {
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    // (2) Node env var by NAME — the fallback so a workspace that set no sealed key keeps working.
+    if let Some(name) = env_name.filter(|n| !n.is_empty()) {
+        if let Ok(value) = std::env::var(name) {
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+    }
+    None
+}

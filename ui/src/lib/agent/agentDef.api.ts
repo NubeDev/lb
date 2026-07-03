@@ -112,11 +112,16 @@ export function testAgentDef(id?: string): Promise<TestResult> {
 }
 
 /** Set (or rotate) a definition's sealed MODEL KEY. The value flows ONLY through the shipped sealed
- *  `secret.set` (owner-stamped, workspace-scoped, `Private`); the caller then stores just the
- *  resulting `path` on the definition (names-only). The value is never read back. Returns the path. */
+ *  `secret.set` (owner-stamped, workspace-scoped); the caller then stores just the resulting `path` on
+ *  the definition (names-only). The value is never read back. Returns the path.
+ *
+ *  Sealed **`workspace`** visibility on purpose: an agent RUN resolves this key under a derived
+ *  `agent:` principal (not the admin who set it), so a `Private` key (owner-only) would be unreadable
+ *  at run time. `workspace` keeps it behind the workspace wall + the `secret:<path>:get` cap while
+ *  letting the run's actor resolve it — overwrite/rotate stays owner-only regardless. */
 export function setModelKey(path: string, value: string): Promise<string> {
   return invoke<{ ok?: boolean }>("mcp_call", {
     tool: "secret.set",
-    args: { path, value, visibility: "private" },
+    args: { path, value, visibility: "workspace" },
   }).then(() => path);
 }

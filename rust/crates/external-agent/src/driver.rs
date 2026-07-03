@@ -46,8 +46,15 @@ pub enum DriveError {
 /// agent work live (tool calls, reasoning, text) instead of a burst at the end. The collected `Vec` is
 /// still returned (the caller assembles the final answer from it); the sink is an additive live tap.
 ///
-/// `goal` is the prompt; `workspace` is the cwd the agent runs in. The caller owns env (the API-key
-/// var the profile names must be set in this process; the wrapper passes the *name*, never the value).
+/// `goal` is the prompt; `workspace` is the cwd the agent runs in.
+///
+/// `key` is the **resolved** API-key `(env_name, value)` to inject into the child process env, so the
+/// child reads it under the name the wrapper passed (`profile.model.api_key_env`). This is how a
+/// per-workspace **sealed key** reaches the agent WITHOUT living in the node's process env: the caller
+/// resolves it (secret → env) and hands only the value here, for one child, never a record or log.
+/// `None` keeps the pre-sealed-key behavior — the child inherits whatever the operator set in the node
+/// env (the fallback). Only the value crosses here; it never enters the [`AgentProfile`] (pure data).
+///
 /// `sink` is an unbounded channel (never blocks the read loop); a closed receiver is ignored (the run
 /// keeps going and still returns its collected events).
 pub async fn drive(
@@ -56,20 +63,25 @@ pub async fn drive(
     goal: &str,
     workspace: &str,
     timeout: Duration,
+    key: Option<(&str, &str)>,
     sink: Option<&tokio::sync::mpsc::UnboundedSender<RunEvent>>,
 ) -> Result<Vec<RunEvent>, DriveError> {
     let args = wrapper.command_args(profile, goal, workspace);
-    let mut child = Command::new(&profile.binary)
-        .args(&args)
+    let mut cmd = Command::new(&profile.binary);
+    cmd.args(&args)
         .current_dir(workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|source| DriveError::Spawn {
-            binary: profile.binary.clone(),
-            source,
-        })?;
+        .stderr(Stdio::null());
+    // Inject the resolved key under its env NAME for THIS child only — the sealed-key value never
+    // touches the node's own env, a record, or a log (it is set on the child's env map, not ours).
+    if let Some((name, value)) = key {
+        cmd.env(name, value);
+    }
+    let mut child = cmd.spawn().map_err(|source| DriveError::Spawn {
+        binary: profile.binary.clone(),
+        source,
+    })?;
 
     let stdout = child.stdout.take().expect("stdout was piped");
     let collect = async {

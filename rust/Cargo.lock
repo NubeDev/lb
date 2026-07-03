@@ -4908,6 +4908,7 @@ dependencies = [
  "lb-host",
  "lb-inbox",
  "lb-run-events",
+ "lb-secrets",
  "serde_json",
  "tokio",
  "tracing",

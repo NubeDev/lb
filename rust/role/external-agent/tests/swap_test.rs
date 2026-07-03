@@ -77,6 +77,10 @@ impl ErasedModel for NullModel {
             }
         })
     }
+
+    fn is_configured(&self) -> bool {
+        false
+    }
 }
 
 #[test]

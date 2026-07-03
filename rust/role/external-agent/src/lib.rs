@@ -32,7 +32,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use lb_external_agent::drive;
-use lb_host::{AgentError, AgentRuntime, Node, RunContext, RuntimeRegistry};
+use lb_host::{
+    get_agent_config, resolve_endpoint_key_host, AgentError, AgentRuntime, Node, RunContext,
+    RuntimeRegistry,
+};
 use lb_run_events::{RunEvent, RunOutcome};
 
 pub mod profiles;
@@ -110,6 +113,40 @@ impl AgentRuntime for AcpRuntime {
                 }
             });
 
+            // SEALED-KEY RESOLUTION (agent-catalog test-and-secrets scope): resolve the model key with
+            // precedence **workspace `agent.config` sealed secret → node env → unset**. The active
+            // `agent.config.model_endpoint.api_key_secret` (set self-serve via the UI/`secret.set`) is a
+            // PATH into `lb-secrets`; absent it, the profile's `api_key_env` NAME is the fallback (the
+            // pre-sealed-key behavior — the operator's node env). The resolved VALUE is injected into the
+            // child env under the name the WRAPPER tells the CLI to read (`env_key=<profile.api_key_env>`)
+            // so the injected value and the CLI's `env_key` always agree — for that one child, never a
+            // record or log (names-only holds; §6.7).
+            //
+            // HOST-MEDIATED read: the model key is workspace INFRASTRUCTURE (like a federated DSN),
+            // resolved by the HOST on the run's behalf — NOT under the end user's caps. A run executes
+            // under a derived `agent:` actor that legitimately holds no `secret:<path>:get`, and the
+            // delegation clamp (gate 2b) would block even a handed-in cap; `resolve_endpoint_key_host`
+            // reads the `Workspace`-visibility key wall-first (this `ws`) without that per-user gate. It
+            // cannot widen isolation (a ws-B run can't name ws-A's path) and a `Private` key is never
+            // resolvable here — only the workspace-shared model key the admin sealed for the run.
+            let key_env = self.agent.profile.model.api_key_env.as_str();
+            let secret_path = get_agent_config(&node.store, ctx.ws)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|c| c.model_endpoint)
+                .and_then(|e| e.api_key_secret);
+            let key_value = resolve_endpoint_key_host(
+                &node.store,
+                ctx.ws,
+                secret_path.as_deref(),
+                Some(key_env),
+            )
+            .await;
+            // Only inject when we resolved a value; `None` lets the child inherit the process env
+            // (the fallback), so a workspace that set nothing keeps working exactly as before.
+            let key = key_value.as_deref().map(|v| (key_env, v));
+
             // Drive the real subprocess over the shipped `exec --json` transport, streaming each event
             // live (above) AND collecting them for the final answer. The cwd is the sealed scratch dir —
             // NOT the caller's workspace path (the `drive(.., workspace, ..)` cwd gap #5 flagged).
@@ -120,6 +157,7 @@ impl AgentRuntime for AcpRuntime {
                 ctx.goal,
                 &cwd,
                 self.timeout,
+                key,
                 Some(&tx),
             )
             .await

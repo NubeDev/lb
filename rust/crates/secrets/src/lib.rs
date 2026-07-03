@@ -207,6 +207,28 @@ pub async fn get(
     Ok(rec.value)
 }
 
+/// **Host-mediated** read of a `Workspace`-visibility secret at `path` in `ws` — for the HOST itself
+/// resolving workspace INFRASTRUCTURE on a run's behalf (e.g. the agent model key an external run
+/// injects into its child), where the acting principal is a derived `agent:` actor that legitimately
+/// should not carry `secret:<path>:get` and whose delegation clamp (gate 2b) would otherwise block a
+/// cap it was handed.
+///
+/// The wall still holds: gate 1 (workspace) is enforced by `ws` — a ws-B call can never name ws-A's
+/// path — and **only a `Workspace`-visibility secret resolves** (a `Private` one returns `Denied`,
+/// never leaks to the host). It is exactly the `Workspace` contract ("any principal past the wall may
+/// read") applied by the host on the workspace's behalf; it does NOT bypass isolation, only the
+/// per-user capability/delegation gate that does not apply to host infrastructure. NOT for user- or
+/// extension-driven reads — those use [`get`] (cap + owner-gated). `NotFound` when absent.
+pub async fn get_workspace(store: &Store, ws: &str, path: &str) -> Result<String, SecretsError> {
+    let rec = load(store, ws, path).await?.ok_or(SecretsError::NotFound)?;
+    // A Private secret is NEVER host-resolvable this way — the host mediates only workspace-shared
+    // secrets. This keeps a member's Private key unreadable even by the host's infrastructure path.
+    if rec.visibility != Visibility::Workspace {
+        return Err(SecretsError::Denied);
+    }
+    Ok(rec.value)
+}
+
 /// Flip a secret's visibility at runtime (owner-only). Gated `secret:<path>:write`, then gate 3:
 /// only the owner may toggle. This is the owner-owned runtime decision — NOT an admin capability
 /// re-grant — so the owner can flip `Workspace → Private` back without chasing down grants.

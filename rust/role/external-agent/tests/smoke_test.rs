@@ -73,6 +73,10 @@ fn null_model() -> std::sync::Arc<dyn lb_host::ErasedModel> {
                 }
             })
         }
+
+        fn is_configured(&self) -> bool {
+            false
+        }
     }
     std::sync::Arc::new(M)
 }

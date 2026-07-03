@@ -82,7 +82,7 @@ pub use policy::{
 pub use registry::RuntimeRegistry;
 pub use rehydrate::{rehydrate, LoopState};
 pub use resolve_default::{resolve_effective_runtime, resolve_effective_runtime_id};
-pub use resolve_key::resolve_endpoint_key;
+pub use resolve_key::{resolve_endpoint_key, resolve_endpoint_key_host};
 pub use route::{agent_call_key, AgentInvokeReply, AgentInvokeRequest};
 pub use run::{cancel_run, run_session, MAX_STEPS, SYSTEM_PROMPT};
 pub use runtime::{AgentRuntime, ErasedModel, RunContext};

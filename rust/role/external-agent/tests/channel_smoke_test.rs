@@ -12,7 +12,10 @@
 //!   EXTAGENT_SMOKE=1 ZAI_API_KEY=… cargo test -p lb-role-external-agent --test channel_smoke_test -- --nocapture
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{drain_channel_agent_runs, history, post, Node, RuntimeRegistry, UnconfiguredModel};
+use lb_host::{
+    agent_config_set, drain_channel_agent_runs, history, post, AgentConfig, ModelEndpointPatch,
+    Node, RuntimeRegistry, UnconfiguredModel,
+};
 use lb_inbox::Item;
 use lb_role_external_agent::profiles::{default_model_endpoint, OPEN_INTERPRETER_DEFAULT};
 use lb_role_external_agent::register;
@@ -104,4 +107,121 @@ async fn asking_in_a_channel_drives_open_interpreter_against_zai() {
         "the agent produced a non-empty answer (fail loud on a throttled/mis-keyed run)"
     );
     eprintln!("in-channel external agent answered: {answer:?}");
+}
+
+/// The **sealed-key** end-to-end (agent-catalog test-and-secrets scope): the model key is set via the
+/// real `lb-secrets` store (as the self-serve `secret.set` API does) and referenced from the
+/// workspace's `agent.config.api_key_secret` — the key is then REMOVED from the process env, so the
+/// ONLY place it exists is the sealed secret. The external run must still reach Z.AI GLM-4.6, proving
+/// `AcpRuntime::run` resolves the sealed key (host-mediated) and `drive` injects it into the child env.
+/// This closes the loop: "a user adds the token through the API → the real run uses it", with NO
+/// dependency on the operator's node env.
+///
+/// Same gate (`EXTAGENT_SMOKE=1` + a live `ZAI_API_KEY` seed value + `interpreter` on PATH). Run it
+/// alone (`--test-threads=1`) — it mutates the process env, and restores it before returning.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_sealed_key_from_the_config_reaches_the_external_run() {
+    if std::env::var("EXTAGENT_SMOKE").ok().as_deref() != Some("1") {
+        eprintln!("EXTAGENT_SMOKE!=1 — skipping sealed-key external run (offline default)");
+        return;
+    }
+    // The real key to seal — read ONCE from the env the operator provided, then removed below so the
+    // run cannot fall back to it. If it's unset, there's nothing to prove; skip loudly.
+    let Ok(real_key) = std::env::var("ZAI_API_KEY") else {
+        eprintln!("ZAI_API_KEY unset — cannot seed the sealed-key smoke; skipping");
+        return;
+    };
+
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let mut registry = RuntimeRegistry::with_default(Arc::new(UnconfiguredModel));
+    register(&mut registry, default_model_endpoint(), None);
+    node.install_runtimes(registry);
+
+    let ws = "extagent-sealed-key-smoke";
+    let cid = "ops";
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            "mcp:agent.invoke:call",
+            "mcp:agent.config.set:call",
+            "secret:agent/*:write",
+        ],
+    );
+
+    // (1) SEAL the key through the real secrets store. `Workspace` visibility so the run's DERIVED
+    //     `agent:` principal (not this admin) can resolve it at model-call time (the UI seals it the
+    //     same way). The value lands ONLY in lb-secrets.
+    let secret_path = "agent/sealed-model-key";
+    lb_secrets::set_with(
+        &node.store,
+        &p,
+        ws,
+        secret_path,
+        &real_key,
+        lb_secrets::Visibility::Workspace,
+    )
+    .await
+    .expect("seal the model key");
+
+    // (2) POINT the workspace's active config at that sealed path (names-only — a path, no value).
+    agent_config_set(
+        &node,
+        &p,
+        ws,
+        &AgentConfig {
+            default_runtime: Some(OPEN_INTERPRETER_DEFAULT.to_string()),
+            model_endpoint: Some(ModelEndpointPatch {
+                api_key_secret: Some(secret_path.to_string()),
+                ..Default::default()
+            }),
+        },
+    )
+    .await
+    .expect("write agent.config with the sealed path");
+
+    // (3) REMOVE the key from the process env — the sealed secret is now its ONLY home. If the run
+    //     works, the value came from the seal (resolved by `AcpRuntime::run`, injected by `drive`).
+    // SAFETY: this test is serialised (it mutates process env) and restores the var before returning.
+    std::env::remove_var("ZAI_API_KEY");
+
+    let body = serde_json::json!({
+        "kind": "agent",
+        "goal": "Reply with exactly: PONG",
+        "runtime": OPEN_INTERPRETER_DEFAULT,
+        "job": "run-sealed-key-smoke",
+    })
+    .to_string();
+    let post_res = post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await;
+    drain_channel_agent_runs(&node, ws).await;
+
+    // Restore the env for any sibling test BEFORE asserting (so a panic can't leak the removal).
+    std::env::set_var("ZAI_API_KEY", &real_key);
+    post_res.expect("the agent request posts");
+
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let result = items
+        .iter()
+        .find(|i| i.author == "system:agent-worker")
+        .expect("the agent worker posted a result/error");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&result.body).expect("the worker body is JSON");
+    assert_eq!(
+        parsed["kind"], "agent_result",
+        "the run keyed ONLY by the sealed secret succeeded (not an agent_error): {parsed}"
+    );
+    let answer = parsed["answer"].as_str().unwrap_or_default();
+    assert!(
+        !answer.trim().is_empty(),
+        "GLM-4.6 answered using the SEALED key alone (no process env) — the loop is closed"
+    );
+    eprintln!("sealed-key external agent answered: {answer:?}");
 }
