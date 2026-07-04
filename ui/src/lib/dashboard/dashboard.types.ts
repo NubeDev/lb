@@ -199,9 +199,13 @@ export function cellPrimaryTarget(cell: Cell): Target | undefined {
 
 /** Resolve a cell's effective render view — `view` (v2) when present, else `widget_type` (v1) —
  *  CANONICALIZED through the alias map so `chart`/`timeseries` render via the one timeseries renderer.
- *  `ext:`/scripted/control views pass through unchanged. */
+ *  `ext:`/scripted/control views pass through unchanged. A cell with NEITHER a view nor a widget_type
+ *  (a malformed / half-authored cell) defaults to `timeseries` — the same default the editor's viz picker
+ *  shows — so it renders a chart instead of the raw "unsupported view:" fallback. A real, non-empty but
+ *  unknown view still falls through to the dispatcher's unsupported state (an honest "this view id isn't a
+ *  thing"), which this default does NOT mask. */
 export function cellView(cell: Cell): View {
-  return canonicalView((cell.view as View) || (cell.widget_type as View));
+  return canonicalView((cell.view as View) || (cell.widget_type as View) || "timeseries");
 }
 
 /** A cell's effective field-config, defaulted to empty (so a v1/v2 cell renders with no field options

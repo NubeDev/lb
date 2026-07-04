@@ -242,16 +242,26 @@ export function useVizQuery(
 
   return useMemo<SourceState>(() => {
     const fetchedAt = fetchQuery.data?.at;
+    // The resolved request the author reads in the inspector: the interpolated targets that actually ran
+    // (post-`${var}` — the real SQL/tool+args), not the pre-interpolation template.
+    const request = { sources: resolvedSources, source: resolvedSource };
     const baseMeta: QueryMeta = { fetchedAt };
 
     // No resolvable target → honest empty (the status bar distinguishes this "never ran" case).
     if (!hasTarget) {
       return { rows: [], latest: null, loading: false, denied: true, meta: { ...baseMeta, source: "fetch" } };
     }
-    // A fetch error (denied/tool error) → honest denied WITH the error text for the status bar.
+    // A fetch error (denied/tool error) → honest denied WITH the error text for the status bar. The
+    // inspector still shows the request that failed (so the author can see the bad SQL/tool).
     if (fetchQuery.isError) {
       const error = errText(fetchQuery.error);
-      return { rows: [], latest: null, loading: false, denied: true, meta: { ...baseMeta, error, source: "fetch" } };
+      return {
+        rows: [],
+        latest: null,
+        loading: false,
+        denied: true,
+        meta: { ...baseMeta, error, source: "fetch", inspect: { request } },
+      };
     }
     const fetchLoading = fetchQuery.isLoading && !frozen;
 
@@ -265,12 +275,24 @@ export function useVizQuery(
           latest: toLatest(rows),
           loading: fetchLoading,
           denied: false,
-          meta: { ...baseMeta, frames: rawFrames.length, ms: fetchQuery.data?.ms, source: "fetch" },
+          meta: {
+            ...baseMeta,
+            frames: rawFrames.length,
+            ms: fetchQuery.data?.ms,
+            source: "fetch",
+            inspect: { request, rawFrames },
+          },
         };
       }
       if (shapeQuery.isError) {
         const error = errText(shapeQuery.error);
-        return { rows: [], latest: null, loading: false, denied: true, meta: { ...baseMeta, error, source: "shaped" } };
+        return {
+          rows: [],
+          latest: null,
+          loading: false,
+          denied: true,
+          meta: { ...baseMeta, error, source: "shaped", inspect: { request, rawFrames } },
+        };
       }
       const shaped = shapeQuery.data?.frames;
       const usingShaped = !!shaped;
@@ -287,6 +309,7 @@ export function useVizQuery(
           ms: (fetchQuery.data?.ms ?? 0) + (shapeQuery.data?.ms ?? 0),
           // A reshape that did NOT re-fetch (fetch settled, only the shape key moved) is the payoff.
           source: usingShaped && !fetchQuery.isFetching ? "shaped" : "fetch",
+          inspect: { request, rawFrames, shapedFrames: shaped },
         },
       };
     }
@@ -298,7 +321,13 @@ export function useVizQuery(
       latest: toLatest(rows),
       loading: fetchLoading,
       denied: false,
-      meta: { ...baseMeta, frames: rawFrames?.length ?? 0, ms: fetchQuery.data?.ms, source: "fetch" },
+      meta: {
+        ...baseMeta,
+        frames: rawFrames?.length ?? 0,
+        ms: fetchQuery.data?.ms,
+        source: "fetch",
+        inspect: { request, rawFrames },
+      },
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- derived purely from the query states below
   }, [
@@ -307,6 +336,8 @@ export function useVizQuery(
     needsShape,
     overBudget,
     rawFrames,
+    resolvedSources,
+    resolvedSource,
     fetchQuery.isError,
     fetchQuery.isLoading,
     fetchQuery.isFetching,

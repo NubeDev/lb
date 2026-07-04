@@ -193,7 +193,34 @@ an existing dashboard they don't own (owner-only-update). A hallucinated `view` 
 (`"heatmap"`) is rejected through the pin path — the Slice A view-validator still fires.
 
 **Headless agent.** Given `reminder.list`'s `result` from `tools.catalog`, an AI agent pins it the SAME
-way — `POST /mcp/call dashboard.pin { dashboard, envelope: <descriptor.result>, now }`. No shell in the
-loop; the host is the boundary. The resulting cell is byte-identical to a channel-origin pin (same mint
-function). That is the "widgets are system-wide" payoff: every tool that declares a `result` is
+way — `POST /mcp/call dashboard.pin { dashboard, envelope: <descriptor.result>, now }`. No shell in
+the loop; the host is the boundary. The resulting cell is byte-identical to a channel-origin pin (same
+mint function). That is the "widgets are system-wide" payoff: every tool that declares a `result` is
 dashboard-addable, by any client, through one generic MCP verb.
+
+## Which tools declare a `result` render today (Slice C coverage)
+
+(widget-platform scope, Slice C) A tool that declares a `descriptor.result` is a widget source #2 —
+the catalog (`tools.catalog`) exposes its OUTPUT contract; `dashboard.pin` mints a persisted cell
+from it generically (no tool-specific code in the pin path). To discover the live list, call
+`tools.catalog` and filter for entries whose `result` is present. As of Slice C (grounded in a real
+`tools.catalog` run against a booted node, principal granted the relevant tool caps):
+
+| Tool | `result.view` | Source model | Pin shape | Notes |
+|---|---|---|---|---|
+| **`reminder.list`** | `table` | source-rerun (`reminder.list`); row-control write verbs `reminder.update`/`fire`/`delete` | `pin-reminder-list` | The shipped example (rich-responses). Per-field presentation via `fieldConfig`; per-row controls via `options.rowControls`. |
+| **`federation.query`** | `table` | source-rerun (`federation.query`); pure read (no row-control verbs) | `pin-federation-query` | Slice C. The `{columns, rows}` answer zips into named rows via `viz::frame::result_to_rows`. The cell captures `source`/`sql` at pin time → "this query against this source, live." |
+| **`query.run`** | `table` | source-rerun (`query.run`); pure read | `pin-query-run` | Slice C. Same `{columns, rows}` shape. Carries `{id}` verbatim if pinned by id → an edit to the saved query propagates to the dashboard ("the daily query, live"). |
+
+**Deliberately deferred (Slice D, not Slice C):** `agent.invoke`. Its render is streaming +
+nondeterministic (the run feed → durable `agent_result`); a pinned cell that re-runs the agent on
+every dashboard load is semantically wrong (cost, changing data). The right path is Slice D:
+snapshot the agent's one-shot ANSWER as a `data`-backed envelope, pin THAT (the pinned widget shows
+the captured answer, not a live re-run). The shipped `kind:"agent"` palette route carries the
+streaming workflow a static descriptor cannot replace. `query.save` (a write verb) and
+`query.compile` (a dry-run returning SQL text) also do not declare a render — named follow-ups.
+
+**Capability visibility.** The catalog's per-tool `authorize_tool` gate drops a tool the caller
+can't call — so a principal WITHOUT `mcp:federation.query:call` doesn't see the command, doesn't see
+the render, doesn't get the envelope (no existence leak, no envelope leak). The menu IS the
+permission model, extended to the `result` envelope.

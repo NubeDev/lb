@@ -45,6 +45,19 @@
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
 
+  /* Categorical ramp (chart + identity hues). Eight well-separated hues, tuned per mode in
+     `:root`/`.dark` below. Charts read them via `chartTheme.ts`; UI surfaces may use them for
+     *identity* color (a subsystem's icon tile, a series swatch) — never for state (state stays
+     success/warning/destructive/accent). */
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+  --color-chart-6: hsl(var(--chart-6));
+  --color-chart-7: hsl(var(--chart-7));
+  --color-chart-8: hsl(var(--chart-8));
+
   /* Font tokens (theme-appearance scope): Tailwind's `font-sans`/`font-mono` utilities resolve these,
      and `theme-dom` writes the member's chosen family stack to `--font-sans`/`--font-mono` on <html>.
      The `@theme` values here are the SYSTEM-STACK defaults, so text has a stack before any font is
@@ -105,6 +118,15 @@
   --accent-2: 178 60% 32%;
   --success: 142 55% 34%;
   --warning: 36 92% 42%;
+  /* Categorical ramp (light): deeper cuts of the same eight hues so they hold ≥3:1 against paper. */
+  --chart-1: 262 68% 50%;
+  --chart-2: 173 62% 32%;
+  --chart-3: 25 85% 45%;
+  --chart-4: 199 82% 38%;
+  --chart-5: 340 70% 48%;
+  --chart-6: 142 55% 36%;
+  --chart-7: 43 92% 36%;
+  --chart-8: 217 78% 48%;
 }
 
 :root[data-theme-accent="teal"] {
@@ -155,6 +177,15 @@
   --accent-2: 176 62% 52%;
   --success: 142 52% 52%;
   --warning: 38 92% 58%;
+  /* Categorical ramp (dark): brighter, higher-chroma cuts so they carry on near-black. */
+  --chart-1: 258 88% 70%;
+  --chart-2: 172 62% 52%;
+  --chart-3: 27 90% 62%;
+  --chart-4: 197 85% 60%;
+  --chart-5: 340 78% 66%;
+  --chart-6: 142 58% 56%;
+  --chart-7: 46 92% 58%;
+  --chart-8: 217 88% 68%;
 }
 
 .dark[data-theme-accent="teal"] {
@@ -342,28 +373,66 @@ body {
     --shadow-1: 0 1px 3px hsl(var(--fg) / 0.12);
     --shadow-2: 0 8px 24px -8px hsl(var(--fg) / 0.28);
     --shadow-3: 0 20px 48px -12px hsl(var(--fg) / 0.42);
+    /* Ambient-field glow strength (see the `body`/`.bg-bg` rule below). */
+    --glow-1: 0.10;
+    --glow-2: 0.08;
+    --glow-scale: 1;
   }
   :root[data-surface="glass"][data-glass="subtle"] {
     --surface-alpha: 0.86;
     --blur: 8px;
     --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.05), transparent 55%);
+    --glow-1: 0.10;
+    --glow-2: 0.08;
   }
   :root[data-surface="glass"][data-glass="medium"] {
     --surface-alpha: 0.76;
     --blur: 14px;
     --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.08), transparent 60%);
+    --glow-1: 0.17;
+    --glow-2: 0.13;
   }
   :root[data-surface="glass"][data-glass="heavy"] {
     --surface-alpha: 0.62;
     --blur: 22px;
     --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.12), transparent 65%);
+    --glow-1: 0.25;
+    --glow-2: 0.19;
   }
+  /* Light glass tones the field down — a colored wash on paper turns muddy far sooner than on
+     near-black, so the same intensity dial maps to roughly half the alpha. */
+  :root[data-surface="glass"]:not(.dark) {
+    --glow-scale: 0.55;
+  }
+
+  /* THE AMBIENT FIELD — glass is invisible over a flat ground; translucency only reads when there is
+     something colorful behind the pane to blur. Two viewport-anchored brand glows (accent top-right,
+     secondary accent bottom-left) paint that ground. `background-attachment: fixed` is load-bearing:
+     every `.bg-bg` element (page roots, chips, inputs) shows its viewport-aligned slice of the SAME
+     field, so the glow reads as one continuous scene behind all the chrome, and every translucent
+     `[data-panel]` above it has something real to refract. `body` is listed explicitly because it
+     takes `bg-bg` via @apply (the utility class never lands on it). The `background-size/repeat`
+     resets guard against per-element utilities (e.g. the dashboard dot grid) re-tiling the field. */
+  :root[data-surface="glass"] body,
+  :root[data-surface="glass"] .bg-bg {
+    background-image:
+      radial-gradient(90rem 62rem at 86% -18%, hsl(var(--accent) / calc(var(--glow-1) * var(--glow-scale))), transparent 62%),
+      radial-gradient(80rem 56rem at -12% 112%, hsl(var(--accent-2) / calc(var(--glow-2) * var(--glow-scale))), transparent 58%),
+      radial-gradient(64rem 44rem at 52% 60%, hsl(var(--accent) / calc(var(--glow-1) * var(--glow-scale) * 0.35)), transparent 72%);
+    background-attachment: fixed;
+    background-size: auto;
+    background-repeat: no-repeat;
+  }
+
   :root[data-surface="glass"] [data-panel],
   :root[data-surface="glass"] .surface-panel {
     background-color: hsl(var(--panel) / var(--surface-alpha));
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
-    box-shadow: var(--shadow-2);
+    /* The physical glass edge: a light inner rim on top of the drop shadow — without it a translucent
+       panel reads as a smudge, not a pane. */
+    box-shadow: inset 0 1px 0 hsl(var(--fg) / 0.08), var(--shadow-2);
+    border-color: hsl(var(--fg) / 0.13);
     /* A top light sheen (neutral) layered UNDER the accent wash — the physical glass cue is a light edge,
        not a colored fill. Both are subtle; the panel stays legible. */
     background-image: linear-gradient(hsl(var(--fg) / 0.04), transparent 40%), var(--gradient-accent);

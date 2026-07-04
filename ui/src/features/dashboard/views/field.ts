@@ -25,14 +25,16 @@ export function valueFieldOptions(cell: Cell): FieldOptions {
 /** The classic categorical palette (theme tokens) for multi-slice/bar panels (piechart/barchart) when
  *  the field has no thresholds — Grafana's `palette-classic` analog over our resolved color tokens. */
 const PALETTE = [
-  "hsl(217 91% 60%)",
-  "hsl(142 71% 45%)",
-  "hsl(28 90% 55%)",
-  "hsl(270 70% 60%)",
-  "hsl(0 72% 51%)",
-  "hsl(45 93% 47%)",
-  "hsl(190 80% 50%)",
-  "hsl(330 70% 55%)",
+  // Token-bound (`--chart-N`, globals.css) so slices/bars share ONE mode-tuned categorical ramp with
+  // the timeseries charts (`chartTheme.ts`) instead of a second hardcoded palette that drifts.
+  "hsl(var(--chart-8))", // blue
+  "hsl(var(--chart-6))", // green
+  "hsl(var(--chart-3))", // orange
+  "hsl(var(--chart-1))", // violet
+  "hsl(var(--chart-5))", // rose
+  "hsl(var(--chart-7))", // gold
+  "hsl(var(--chart-4))", // cyan
+  "hsl(var(--chart-2))", // teal
 ];
 
 /** The color for one category (slice/bar) at `index` with `value`: the threshold step color when the

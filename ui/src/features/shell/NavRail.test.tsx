@@ -85,7 +85,8 @@ describe("NavRail resolved-nav rendering", () => {
   it("falls back to SURFACES (never blank) when the resolved menu is empty", () => {
     renderRail({ allowed: ["channels", "settings"], resolvedItems: [] });
     expect(screen.getByRole("button", { name: "Channels" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+    // Settings moved to the page-header gear — the rail footer no longer renders it.
+    expect(screen.queryByRole("button", { name: "Settings" })).not.toBeInTheDocument();
   });
 
   it("groups the fallback rail into labelled categories, hiding a fully cap-stripped group", () => {

@@ -62,7 +62,7 @@ export const THEME_LOOKS: readonly LookPack[] = [
   {
     id: "retro",
     label: "Retro Terminal",
-    blurb: "Phosphor green on near-black, square corners, JetBrains Mono.",
+    blurb: "Amber phosphor on true black, square corners, JetBrains Mono.",
     defaults: { mode: "dark", preset: "retro", fontSans: "jetbrains-mono", fontMono: "jetbrains-mono", radius: "0rem", surface: "flat", motion: "subtle" },
     // Retro's identity IS its palette — pin the preset so it survives even an explicit member preset.
     pins: ["preset"],

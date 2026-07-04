@@ -9,14 +9,17 @@
  *  both the warm-sand light surface and the charcoal dark surface. A SINGLE-series chart uses the brand
  *  accent instead (see `seriesColor`) so a lone line/bar reads as "the app", not a random hue. */
 const PALETTE = [
-  "hsl(243 70% 60%)", // indigo
-  "hsl(178 60% 40%)", // teal
-  "hsl(340 72% 58%)", // rose
-  "hsl(142 52% 42%)", // green
-  "hsl(270 62% 62%)", // violet
-  "hsl(196 78% 46%)", // cyan
-  "hsl(24 82% 54%)", // orange
-  "hsl(48 88% 46%)", // gold
+  // Token-bound (`--chart-N`, globals.css) so the ramp is tuned PER MODE (brighter cuts on dark,
+  // deeper cuts on paper) and any preset/theme can re-voice it — the old literal hsl() values were
+  // the reason multi-series charts ignored the theme entirely.
+  "hsl(var(--chart-1))", // violet
+  "hsl(var(--chart-2))", // teal
+  "hsl(var(--chart-3))", // orange
+  "hsl(var(--chart-4))", // cyan
+  "hsl(var(--chart-5))", // rose
+  "hsl(var(--chart-6))", // green
+  "hsl(var(--chart-7))", // gold
+  "hsl(var(--chart-8))", // blue
 ] as const;
 
 /** The color for series `index` of `total`. One series → the accent token (brand cohesion); many →

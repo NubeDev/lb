@@ -357,7 +357,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 const sidebarMenuButtonVariants = cva(
   // Active-nav pill uses the PRIMARY accent tint — one signal color across the shell (the roster and
   // chips already select with `accent`); a second hue on the rail read as a clashing theme, not a tone.
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-muted outline-none ring-accent transition-[width,height,padding,color,background-color] hover:bg-fg/[0.06] hover:text-fg focus-visible:ring-2 active:bg-accent/10 active:text-fg disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-accent/10 data-[active=true]:font-medium data-[active=true]:text-accent [&>span:last-child]:truncate [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-muted outline-none ring-accent transition-[width,height,padding,color,background-color] hover:bg-fg/[0.06] hover:text-fg focus-visible:ring-2 active:bg-accent/10 active:text-fg disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-accent/10 data-[active=true]:font-medium data-[active=true]:text-accent data-[active=true]:shadow-[inset_0_0_0_1px_hsl(var(--accent)/0.22)] [&>span:last-child]:truncate [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {

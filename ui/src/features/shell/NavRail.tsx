@@ -162,6 +162,22 @@ const SURFACE_GROUPS: { label: string; items: SurfaceDef[] }[] = [
 /** The `settings` surface — rendered in the footer, not a category group. */
 const SETTINGS_SURFACE: SurfaceDef = { key: "settings", icon: Settings, label: "Settings" };
 
+/** The brand mark — a two-hue (accent → secondary accent) tile, the same signature gradient the page
+ *  headers carry. `--accent-foreground` keeps the glyph legible on the accent in every preset/mode. */
+function BrandMark() {
+  return (
+    <div
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold shadow-sm"
+      style={{
+        background: "linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-2)))",
+        color: "hsl(var(--accent-foreground))",
+      }}
+    >
+      lb
+    </div>
+  );
+}
+
 /** Every surface, flattened — used to build the icon lookup so the resolved rail and the fallback
  *  stay in lockstep. */
 const SURFACES: SurfaceDef[] = [
@@ -283,18 +299,14 @@ export function NavRail({
     <Sidebar collapsible={collapsible} variant={variant} side={side}>
       <SidebarHeader>
         <div className="hidden h-8 w-full items-center justify-center group-data-[collapsible=icon]:flex">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">
-            lb
-          </div>
+          <BrandMark />
         </div>
         <SidebarMenu className="group-data-[collapsible=icon]:hidden">
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" tooltip="Lazybones" aria-label="Lazybones">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">
-                lb
-              </div>
+              <BrandMark />
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">Lazybones</span>
+                <span className="truncate font-semibold tracking-tight">Lazybones</span>
                 <span className="truncate text-xs text-muted">workspace ops</span>
               </div>
             </SidebarMenuButton>
@@ -349,10 +361,8 @@ export function NavRail({
 
       <SidebarFooter>
         <SidebarMenu>
-          {/* Settings sits in the footer, near Sign out, where users expect it — only when permitted
-              and no server nav owns the rail (that nav places settings itself). */}
-          {!useResolved && allowed.includes("settings") &&
-            item("settings", SETTINGS_SURFACE.label, SETTINGS_SURFACE.icon)}
+          {/* Settings moved to the page-header top-right (the gear next to the workspace chip) — the
+              rail footer keeps only Sign out. A server-authored nav can still place settings itself. */}
           <SidebarMenuItem>
             <SidebarMenuButton aria-label="Sign out" tooltip="Sign out" onClick={onSignOut}>
               <LogOut />

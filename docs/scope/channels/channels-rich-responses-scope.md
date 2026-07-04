@@ -385,6 +385,22 @@ Decisions taken so the build has no blocking gap; residuals are named follow-ups
    `federation.query` routes — are still **hardcoded** in the client. Make them **descriptor-declared routes
    like the generic result path** (each command's descriptor carries the render/route, the palette posts it
    with no branch), so the client holds zero per-tool knowledge for those too. Additive; a follow-up.
+   **REFRAMED by widget-platform Slice C (2026-07-04):** this follow-up conflated two concerns. (a) The
+   RENDERING half — "a tool's answer can mount via the shipped `WidgetView` from a descriptor-declared
+   envelope, no hardcoded client render branch" — is **CLOSED** for `federation.query` and `query.run`
+   (each now carries a `descriptor.result = table`; proven by `ResponseViewResultRender.gateway.test.tsx`).
+   (b) The ROUTING half — "the palette emits a specific payload KIND per tool" — is **intentional, not a
+   leak**: the `kind:"query"` route carries the ASYNC query-worker workflow (post Item → host worker runs
+   `federation.query` → posts `query_result` back) and the `kind:"agent"` route carries the STREAMING run
+   (post Item → host agent worker → `agent_step`/`agent_result` events), neither of which a static
+   descriptor template can replace. The palette's `kind:"query"`/`kind:"agent"` branches STAY; the
+   descriptor-driven `kind:"rich_result"` path is NEWLY available for the new envelopes (proven). The
+   follow-up is realized as "the rendering half is descriptor-driven for the tabular tools; the routing
+   half is the workflow-carrying seam (intentional, documented here)." `agent.invoke`'s render is deferred
+   to widget-platform Slice D (its streaming/nondeterministic answer fits Slice D's snapshot model, not
+   the source-rerun model). See
+   [`../widgets/result-render-coverage-scope.md`](../widgets/result-render-coverage-scope.md) § "Why
+   `agent.invoke` is deferred" + "Non-goals".
 
 ## Related
 

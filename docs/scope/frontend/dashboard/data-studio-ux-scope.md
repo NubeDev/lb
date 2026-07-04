@@ -204,9 +204,6 @@ Per `docs/scope/testing/testing-scope.md` — real gateway, no fakes:
 
 ## Not-yet-done (deferred refinements)
 
-- The **data inspector drawer** (raw frames table + JSON + the exact request sent) is scoped
-  but not built — the status bar + table-view toggle cover inspection for v1; the inspector
-  is the next slice.
 - A **visible auto-run toggle** (per open question 4) — behavior is correct, the control is
   implicit.
 - **Entry short-name + description split** in the picker — the combobox makes long labels

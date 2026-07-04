@@ -28,7 +28,9 @@ interface Props {
 }
 
 export function PreviewPane({ cell, ws, scope = emptyScope(), refreshKey = 0, tableView = false, frozen = false }: Props) {
-  // Display-only view override: the SAVED cell is untouched; only what the preview draws changes.
+  // Display-only view override: the SAVED cell is untouched; only what the preview draws changes. A cell
+  // with no view of its own renders via `cellView`'s timeseries default (WidgetView), so a viewless cell
+  // previews as a chart rather than "unsupported view:".
   const previewCell: Cell = { ...cell, i: "preview", ...(tableView ? { view: "table" } : {}) };
   return (
     <div className="flex h-full min-h-[12rem] flex-col rounded-lg border border-border bg-panel p-3" aria-label="panel preview">

@@ -191,6 +191,11 @@ describe("fetch/shape split + freeze (real gateway)", () => {
     await waitFor(() => expect(result.current.rows.length).toBe(4), { timeout: 4000 });
     // The pipeline ran server-side over the ALREADY-fetched frames — the reshape path, not a raw fetch.
     await waitFor(() => expect(result.current.meta?.source).toBe("shaped"), { timeout: 4000 });
+    // The inspector payload carries the resolved request + raw + shaped frames (Panel Inspect feeds off it).
+    const inspect = result.current.meta?.inspect;
+    expect(inspect?.request).toBeTruthy();
+    expect(Array.isArray(inspect?.rawFrames)).toBe(true);
+    expect(Array.isArray(inspect?.shapedFrames)).toBe(true);
   });
 });
 

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { CoreSurface } from "@/features/shell";
 import { useSystem } from "./useSystem";
 import { HEALTH_STYLES, healthRank } from "./health";
+import { hueColors, subsystemIdentity } from "./identity";
 import { surfaceForSubsystem } from "./navigate";
 import { SubsystemDetailSheet } from "./SubsystemDetailSheet";
 import type { ServiceStatus } from "@/lib/system/system.types";
@@ -129,11 +130,7 @@ export function SystemView({ ws, onNavigate, allowedSurfaces = [] }: Props) {
           </Suspense>
         ) : (
           <div className="h-full overflow-y-auto p-4">
-            {degraded > 0 && (
-              <p className="mb-3 text-xs text-muted" aria-label="degraded summary">
-                {degraded} subsystem{degraded === 1 ? "" : "s"} want attention.
-              </p>
-            )}
+            {services.length > 0 && <HealthStrip services={services} degraded={degraded} />}
             {services.length === 0 ? (
               <p className="text-sm text-muted">{loading ? "Reading snapshot…" : "No subsystems."}</p>
             ) : (
@@ -160,6 +157,45 @@ export function SystemView({ ws, onNavigate, allowedSurfaces = [] }: Props) {
 
       <SubsystemDetailSheet subsystemId={detailId} onClose={() => setDetailId(null)} />
     </section>
+  );
+}
+
+/** The one-line verdict above the grid: overall state (the sentence an operator opens this page for)
+ *  plus honest per-health counts. Pure derivation from the snapshot — no extra fetch. */
+function HealthStrip({ services, degraded }: { services: ServiceStatus[]; degraded: number }) {
+  const count = (h: ServiceStatus["health"]) => services.filter((s) => s.health === h).length;
+  const counts = (["ok", "idle", "degraded", "down"] as const)
+    .map((h) => ({ h, n: count(h), style: HEALTH_STYLES[h] }))
+    .filter((c) => c.n > 0);
+  const allGood = degraded === 0;
+  return (
+    <div
+      aria-label="health summary"
+      className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-panel/50 px-3.5 py-2.5"
+      data-panel=""
+    >
+      <span className="inline-flex items-center gap-2 text-sm font-medium text-fg">
+        <span
+          className={cn("h-2 w-2 rounded-full", allGood ? "bg-success" : "bg-warning")}
+          aria-hidden
+        />
+        {allGood
+          ? "All subsystems operational."
+          : `${degraded} subsystem${degraded === 1 ? "" : "s"} want attention.`}
+      </span>
+      <span className="ml-auto flex flex-wrap items-center gap-2">
+        {counts.map(({ h, n, style }) => (
+          <span
+            key={h}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-bg/60 px-2.5 py-0.5 text-xs"
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full", style.dot)} aria-hidden />
+            <span className="text-muted">{style.label}</span>
+            <span className="font-mono font-semibold tabular-nums text-fg">{n}</span>
+          </span>
+        ))}
+      </span>
+    </div>
   );
 }
 
@@ -201,11 +237,16 @@ function StatusCard({
   // Page cards announce as "open <id>" (they navigate away); detail-sheet cards keep "subsystem <id>"
   // (they open a panel in place) — both still clickable.
   const Affordance = hasPage ? ArrowUpRight : Plus;
+  // Identity, not state: each subsystem carries its own icon + categorical hue so the grid reads as a
+  // map of distinct services rather than nine clones. Health stays the only state color.
+  const identity = subsystemIdentity(service.id);
+  const hue = hueColors(identity.hue);
+  const IdentityIcon = identity.icon;
   return (
     <Card
       className={cn(
         style.border,
-        "cursor-pointer transition-colors hover:border-accent/40 hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
+        "group/card cursor-pointer transition-colors hover:border-accent/40 hover:bg-accent/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
       )}
       aria-label={hasPage ? `open ${service.id}` : `subsystem ${service.id}`}
       role="button"
@@ -219,30 +260,45 @@ function StatusCard({
       }}
     >
       <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate">{service.label}</span>
-            <Affordance size={13} className="shrink-0 text-muted" aria-hidden />
-          </CardTitle>
-          <span className="inline-flex shrink-0 items-center gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
+              style={{ color: hue.fg, backgroundColor: hue.bg, borderColor: hue.border }}
+              aria-hidden
+            >
+              <IdentityIcon size={16} />
+            </span>
+            <div className="min-w-0">
+              <CardTitle className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate">{service.label}</span>
+                <Affordance
+                  size={13}
+                  className="shrink-0 text-muted opacity-0 transition-opacity group-hover/card:opacity-100"
+                  aria-hidden
+                />
+              </CardTitle>
+              <CardDescription className="mt-1 line-clamp-2">{service.detail}</CardDescription>
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-1.5 pt-0.5">
             <span className={`h-2 w-2 rounded-full ${style.dot}`} aria-hidden />
             <span className={`text-xs font-medium ${style.text}`} aria-label={`health ${style.label}`}>
               {style.label}
             </span>
           </span>
         </div>
-        <CardDescription>{service.detail}</CardDescription>
       </CardHeader>
       {service.metrics.length > 0 && (
         <CardContent className="flex flex-wrap gap-2">
           {service.metrics.map((m) => (
             <span
               key={m.label}
-              className="inline-flex items-baseline gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs"
+              className="inline-flex items-baseline gap-1.5 rounded-md border border-border bg-bg/60 px-2 py-1 text-xs"
               aria-label={`${service.id} ${m.label}`}
             >
               <span className="text-muted">{m.label}</span>
-              <span className="font-medium tabular-nums text-fg">{m.value}</span>
+              <span className="font-mono text-[11px] font-semibold tabular-nums text-fg">{m.value}</span>
             </span>
           ))}
         </CardContent>

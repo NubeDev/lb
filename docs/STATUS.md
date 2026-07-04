@@ -16,6 +16,72 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-04): Widgets Slice C — result-render coverage (`descriptor.result` on the
+tabular tools).** Closes G1 of the widget umbrella: today only `reminder.list` declared a
+`descriptor.result` render envelope; the remaining tabular host tools (`federation.query`,
+`query.run`) now declare their own `result = table` envelope — so the channel CAN render them
+descriptor-driven (the `kind:"rich_result"` → `ResponseView` → `WidgetView` path), the AI discovers
+the render via `tools.catalog`, and Slice B's `dashboard.pin` can pin them with ZERO tool-specific
+code in the pin path. **This is BACKEND CONFIG** — a `result:` field on each tool's descriptor, no
+new verb / cap / table / WIT, no UI component. The headline: pinning `federation.query`'s NEW
+`result` envelope mints a persisted `pin-federation-query` cell that reloads via `dashboard.get`
+and renders through the real `WidgetView`, treating the tool id as opaque data (rule 10 — Slice B's
+mint proven, re-asserted for the new envelope).
+
+**Backend** — `rust/crates/host/src/federation/query.rs`: `query_result_render()` (the
+`x-lb-render` envelope) + `query_descriptor()` now carries `result: Some(query_result_render())`.
+The envelope is `{ v:2, view:"table", source:{tool:"federation.query", args:{}},
+tools:["federation.query"] }` — same shape `reminder/descriptor.rs::list_render()` established; the
+`source.tool` names the tool itself (the re-runnable read); the palette interpolates collected
+`source`/`sql` into `source.args`; `viz::frame::result_to_rows` zips the verb's `{columns, rows}`
+into named row objects. `rust/crates/host/src/query/descriptors.rs`: `run_result_render()` +
+`run_descriptor()` carries the same envelope for `query.run` (carries `{id}` verbatim → an edit to
+the saved query propagates to the dashboard). Per-tool descriptor unit tests assert each envelope's
+shape.
+
+**Why `agent.invoke` is deferred to Slice D** (recorded, not silently dropped): the agent's render
+is streaming + nondeterministic (run feed → durable `agent_result`); a pinned cell that RE-RUNS the
+agent on every dashboard load is semantically wrong (cost, changing data). Slice D snapshots the
+agent's one-shot ANSWER as a `data`-backed envelope, pin THAT. The shipped `kind:"agent"` palette
+route carries the streaming workflow a static descriptor cannot replace.
+
+**Reframes rich-responses follow-up #5** (rendering ≠ routing): the RENDERING half — a tool's
+answer can mount via `WidgetView` from a descriptor-declared envelope — is CLOSED for
+`federation.query`/`query.run` (proven by the UI gateway test). The ROUTING half — the palette
+emits a specific payload KIND per tool (`kind:"query"` for the async query-worker, `kind:"agent"`
+for the streaming run) — is INTENTIONAL: those payload kinds carry workflow semantics a static
+descriptor template cannot express. The palette routing branches STAY; the descriptor-driven
+`kind:"rich_result"` path is NEWLY available for the new envelopes. Nothing is deleted.
+
+**Tests (real gateway + store, rule 9):** Rust `widget_result_render_test.rs` **8/8** — the catalog
+serves the new envelopes to a granted caller AND HIDES them when the tool cap is absent (the menu IS
+the permission model, extended to the `result` envelope); the HEADLINE (pin `federation.query`'s
+NEW `result` → reload → cell intact, ZERO federation-specific code in the pin path);
+generic-over-tool-id (an arbitrary `__test__.*` mints); workspace-isolation (a ws-B principal can't
+read ws-A's pinned cell); shell-vs-headless-path-parity; `query.run` envelope parity
+(`pin-query-run`); idempotent re-pin (replacing, not duplicating). Per-tool descriptor units
+(`federation::query::tests::query_descriptor_carries_the_table_render`,
+`query::descriptors::tests::run_descriptor_carries_the_table_render`,
+`query::descriptors::tests::save_and_compile_do_not_declare_a_render`). UI
+`ResponseViewResultRender.gateway.test.tsx` **3/3** (real spawned gateway) — the HEADLINE (a
+`federation.query` `rich_result` mounts through `ResponseView`, NOT `QueryCard` — the
+`PinToDashboard` affordance is the structural marker) + `query.run` parity + an arbitrary
+unknown-tool-id envelope also mounts (rule 10). Slice A `widget_catalog_test` 8/8 + Slice B
+`widget_pin_test` 10/10 stay GREEN. `pnpm test` (unit) **561/561** green. `cargo build --workspace`
++ `cargo fmt` clean. **Pre-existing red surfaced (NOT this slice's):**
+`CommandPalette.gateway.test.tsx` (6 cases) + `CommandPalette.agent.gateway.test.tsx` (2+ cases)
+fail with `useTheme must be used within ThemeProvider` from in-flight motion/theme work in the tree
+(Slice C touched none of that; the failing files fail identically in isolation, and the four sibling
+gateway tests that mount `<MessageItem>` directly — including Slice C's new file — are green).
+Logged at
+[`debugging/frontend/channel-palette-gateway-useTheme-not-in-provider.md`](debugging/frontend/channel-palette-gateway-useTheme-not-in-provider.md).
+Scope [`scope/widgets/result-render-coverage-scope.md`](scope/widgets/result-render-coverage-scope.md);
+session [`sessions/widgets/result-render-coverage-session.md`](sessions/widgets/result-render-coverage-session.md);
+public [`public/frontend/dashboard.md`](public/frontend/dashboard.md) (Slice C section); skill
+[`skills/dashboard-widgets/SKILL.md`](skills/dashboard-widgets/SKILL.md) (§ "Which tools declare a
+`result` render today"). **Next up:** Slice D (channel-origin AI authoring — response → widget →
+preview → `dashboard.pin`) and Slice E (extension capability introspection).
+
 **Just shipped (2026-07-04): Widgets Slice B — pin a tool result-render to a dashboard (`dashboard.pin`,
 branch `master`).** The keystone for "widgets are system-wide": a GENERIC host-side path that takes ANY
 `x-lb-render` envelope (a tool's `ToolDescriptor.result`, or a live channel `rich_result` body) and mints
@@ -78,8 +144,8 @@ validator passes AND the hydration-overwrite intent is preserved). Scope
 [`sessions/widgets/pin-to-dashboard-session.md`](sessions/widgets/pin-to-dashboard-session.md); public
 [`public/frontend/dashboard.md`](public/frontend/dashboard.md) (Slice B section); skill
 [`skills/dashboard-widgets/SKILL.md`](skills/dashboard-widgets/SKILL.md) (§ "Pin a tool result").
-**Next up:** Slice C (result-render coverage — give the remaining tools a `descriptor.result` envelope)
-and Slice D (channel-origin AI authoring — response → widget → preview → `dashboard.pin`).
+**Next up (now):** Slice D (channel-origin AI authoring — response → widget → preview →
+`dashboard.pin`) and Slice E (extension capability introspection).
 
 **Just shipped (2026-07-04): Dashboards viewer mode — editing is admin-only (branch `master`).**
 The Dashboards surface (`ui/src/features/dashboard/`) now has two role-decided postures: an **admin**

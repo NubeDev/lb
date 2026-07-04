@@ -81,12 +81,63 @@ pub async fn federation_query<L: Launcher>(
 /// (channels-command-palette scope). Declared in code next to the verb (FILE-LAYOUT); collected by
 /// `tools::host_descriptors`. Carries the JSON-Schema input (`source`, `sql`) with the `x-lb-entity`
 /// / `x-lb-widget` hints the palette renders its guided rail from.
+///
+/// **The OUTPUT half of the contract** (widget-platform scope, Slice C — closes G1): a `result = table`
+/// envelope, the same shape `reminder/descriptor.rs::list_render()` established. The verb returns
+/// `{columns, rows}` — the columnar shape `viz::frame::result_to_rows` is written for (column-aligned
+/// arrays zipped into named row objects), so a `rich_result` table `source`-d at `federation.query`
+/// renders unchanged through the shipped `WidgetView`, and Slice B's `dashboard.pin` mints a persisted
+/// `pin-federation-query` cell from this envelope with ZERO federation-specific code in the pin path
+/// (the mint treats `source.tool` as opaque data — rule 10). The `source.tool` names the tool itself
+/// (the re-runnable read); the palette interpolates collected `source`/`sql` into `source.args`; the
+/// bridge re-checks `mcp:federation.query:call` under the viewer's grant at render. `tools[]` is just
+/// the read (a pure read has no row-control write verbs).
 pub fn query_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
         name: "federation.query".to_string(),
         title: "Run a read-only SQL query against a registered datasource".to_string(),
         group: "federation".to_string(),
         input_schema: Some(crate::tools::federation_query_schema()),
-        result: None,
+        result: Some(query_result_render()),
+    }
+}
+
+/// The interactive-table **response render envelope** `federation.query` declares (`x-lb-render`),
+/// widget-platform Slice C. Same shape as `reminder::list_render`: the palette posts this verbatim
+/// (interpolating collected args into `source.args`), the channel mounts it through the shipped
+/// `WidgetView`, and `dashboard.pin` mints a persisted cell from it (generic over the tool id). The
+/// source re-runs the verb at render under the viewer's grant; `viz::frame::result_to_rows` zips the
+/// verb's `{columns, rows}` answer into named row objects. No `options.rowControls` (a pure read has
+/// no row-control write verbs); no `fieldConfig` (the columns are caller-determined, so per-field
+/// presentation is the viewer's choice, not the descriptor's).
+pub(crate) fn query_result_render() -> serde_json::Value {
+    serde_json::json!({
+        "v": 2,
+        "view": "table",
+        "source": { "tool": "federation.query", "args": {} },
+        "tools": ["federation.query"]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The descriptor carries a `result = table` envelope (the OUTPUT contract) — same shape
+    /// `reminder.list`'s render established. The source names the tool itself; the bridge re-runs it
+    /// under the viewer's grant at render. Widget-platform Slice C headline.
+    #[test]
+    fn query_descriptor_carries_the_table_render() {
+        let render = query_descriptor()
+            .result
+            .expect("federation.query declares a result render");
+        assert_eq!(render["v"], 2);
+        assert_eq!(render["view"], "table");
+        assert_eq!(render["source"]["tool"], "federation.query");
+        assert!(render["source"]["args"].is_object());
+        // `tools[]` is just the read itself — a pure read has no row-control write verbs.
+        let tools = render["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 1);
+        assert!(tools.contains(&serde_json::json!("federation.query")));
     }
 }

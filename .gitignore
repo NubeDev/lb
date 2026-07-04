@@ -49,3 +49,5 @@ rust/extensions-ui/
 .claude/
 .codex/
 .impeccable/
+
+docker/postgres/__pycache__/

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import { Settings } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface AppPageHeaderProps {
@@ -13,16 +13,17 @@ interface AppPageHeaderProps {
   className?: string;
 }
 
+/** The workspace-wall chip — same voice as the StatusBar strip (mono, accent dot): the boundary is a
+ *  fact, so it reads as data, not decoration. */
 function WorkspaceBadge({ workspace }: { workspace: string }) {
   return (
-    <Badge
-      variant="outline"
+    <span
       title={`Workspace ${workspace}`}
-      className="max-w-[18rem] gap-1.5 rounded-full shadow-sm"
+      className="inline-flex max-w-[18rem] items-center gap-1.5 rounded-full border border-border bg-bg/60 px-2.5 py-1 font-mono text-[11px] text-fg/80 shadow-sm"
     >
-      <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden />
       <span className="truncate">{workspace}</span>
-    </Badge>
+    </span>
   );
 }
 
@@ -37,20 +38,64 @@ function AppPageHeader({
   return (
     <header
       className={cn(
-        "flex min-h-[3.75rem] items-center gap-3 border-b border-border bg-card/60 px-4 py-2.5",
+        "relative flex min-h-[3.75rem] items-center gap-3 bg-card/60 px-4 py-2.5",
         className,
       )}
     >
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-bg text-accent">
+      {/* A committed accent wash rising from the title side — the header owns its band instead of
+          being a grey strip with text in it. Low alpha; content contrast is untouched. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(90deg, hsl(var(--accent) / 0.09), hsl(var(--accent-2) / 0.04) 32%, transparent 60%)",
+        }}
+      />
+      {/* The shell signature: a two-hue hairline (accent → secondary accent → neutral) instead of a
+          flat border-b — one line that makes every page read as THIS product, not stock chrome. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px"
+        style={{
+          background:
+            "linear-gradient(90deg, hsl(var(--accent) / 0.6), hsl(var(--accent-2) / 0.4) 34%, hsl(var(--border)) 72%)",
+        }}
+      />
+      <div
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-accent"
+        style={{
+          borderColor: "hsl(var(--accent) / 0.25)",
+          background:
+            "linear-gradient(135deg, hsl(var(--accent) / 0.16), hsl(var(--accent-2) / 0.10))",
+        }}
+      >
         <Icon size={16} />
       </div>
-      <div className="min-w-0">
-        <h1 className="truncate text-sm font-semibold text-fg">{title}</h1>
+      <div className="relative min-w-0">
+        <h1 className="truncate text-[15px] font-semibold leading-tight tracking-tight text-fg">
+          {title}
+        </h1>
         {description && <p className="mt-0.5 truncate text-xs text-muted">{description}</p>}
       </div>
-      <div className="ml-auto flex min-w-0 items-center gap-2">
+      <div className="relative ml-auto flex min-w-0 items-center gap-2">
         {actions}
-        {workspace && <WorkspaceBadge workspace={workspace} />}
+        {workspace && (
+          <>
+            <WorkspaceBadge workspace={workspace} />
+            <span className="h-5 w-px bg-border" aria-hidden />
+            {/* Settings lives here now (top-right, where users look for it) — a plain hash link so
+                this component stays router-free; the route gate re-checks caps regardless. */}
+            <a
+              href={`#/t/${encodeURIComponent(workspace)}/settings`}
+              aria-label="Open settings"
+              title="Settings"
+              className="icon-button"
+            >
+              <Settings size={15} />
+            </a>
+          </>
+        )}
       </div>
     </header>
   );

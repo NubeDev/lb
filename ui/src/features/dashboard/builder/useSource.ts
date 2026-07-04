@@ -43,6 +43,22 @@ export interface QueryMeta {
   source?: "fetch" | "shaped" | "live" | "flow";
   /** Epoch ms the underlying RAW frames were fetched (so "as of …" reflects the data, not a reshape). */
   fetchedAt?: number;
+  /** The data inspector's payload (data-studio-ux): the RESOLVED request that ran (post-interpolation
+   *  targets/SQL — what the user should read to debug), the raw + shaped frames, and the effective rows.
+   *  Populated only on the viz.query path; the inspector drawer renders it. Kept behind `inspect` so the
+   *  status bar's hot path doesn't carry the frame arrays around. */
+  inspect?: InspectPayload;
+}
+
+/** What the data-inspector drawer shows for one resolution. */
+export interface InspectPayload {
+  /** The resolved request the fetch sent — interpolated `sources[]`/`source` (the SQL/tool+args that
+   *  actually ran), so the author reads the real query, not the pre-interpolation template. */
+  request?: unknown;
+  /** The raw frames the datasource returned (pre-pipeline). */
+  rawFrames?: unknown;
+  /** The shaped frames after the transform/field-config pipeline (absent when there is no pipeline). */
+  shapedFrames?: unknown;
 }
 
 const BACKFILL = 200;

@@ -46,6 +46,10 @@ refresh with the data that's already there, without re-querying the datasource**
 - `PreviewToolbar.tsx` — a real **Run/Refresh** button for every datasource (not just
   federation), a **Freeze** toggle, and the table-view inspect toggle (moved off PreviewPane).
 - `BuilderPane.tsx` — wires the toolbar + status bar, freeze state, and ⌘/Ctrl+Enter Run.
+  Also fixed the options rail not scrolling: a CSS grid track is content-sized by default, so
+  the section grid needed `grid-rows-[minmax(0,1fr)]` for the inner `overflow-y-auto` to
+  engage — without it the tall tabs (Plot/Field/Overrides) overflowed the pane with no
+  scrollbar (reported live during the session).
 - Renamed the Data Studio save button **"Apply" → "Save to tab"** (`BuilderTabPane.tsx`) —
   it persists the draft, it was never the thing that fetches.
 
@@ -55,6 +59,30 @@ refresh with the data that's already there, without re-querying the datasource**
   Added `onSelectEntry` (raw entry) so a host keying on id (QueryTab — `rules.run` is shared
   across rule entries) isn't forced through the folded selection.
 - `QueryTab.tsx` swaps the native `<Select>` source picker for `SourceCombobox`.
+
+**Data inspector (Panel Inspect) — added after review.**
+- `DataInspector.tsx` — a right drawer (Data / JSON / Query tabs) opened from a new **Inspect**
+  button in `PreviewToolbar.tsx`. Data = the effective rows as a grid; JSON = raw frames
+  (pre-pipeline) + shaped frames (post-pipeline); Query = the resolved request that ran
+  (interpolated targets — the real SQL/tool+args, not the template), shown even on error.
+- Backed by a new optional `QueryMeta.inspect` (`{request, rawFrames, shapedFrames}`)
+  populated in `useVizQuery` from the fetch + shape results. The status-bar hot path doesn't
+  carry the frame arrays (they ride behind `inspect`).
+- Tests: `DataInspector.test.tsx` (×4, wrapped in ThemeProvider — Sheet pulls the themed
+  portal), plus a gateway assertion that `meta.inspect.request/rawFrames/shapedFrames` are
+  populated end-to-end.
+
+**In-session follow-ups (reported live).**
+- **Options rail wouldn't scroll** — the section grid's row is content-sized (`auto`) by
+  default, so tall tabs overflowed with no scrollbar. Fixed with
+  `grid-rows-[minmax(0,1fr)]` + `min-h-0 overflow-y-auto` on both grid children
+  (`BuilderPane.tsx`).
+- **"unsupported view:" in the preview** — a malformed/half-authored cell (a federation
+  panel "left for inspection" saved with an empty `view` AND empty `widget_type`) rendered
+  as the dispatcher's unsupported fallback. Fixed in `cellView` (`dashboard.types.ts`): an
+  empty view/widget_type defaults to `timeseries` (the picker's default), so it renders a
+  chart everywhere (editor, grid, `/panel/{id}`). A real-but-unknown view still falls through
+  honestly. Regression test: `lib/dashboard/cellView.test.ts` (×4).
 
 ## Decisions & alternatives
 - **Server stays the one transform impl.** Rejected a client-side transform mirror (rule 9 —
@@ -78,8 +106,8 @@ refresh with the data that's already there, without re-querying the datasource**
   new `freeze keeps the fetched rows even when the source changes to an empty series` and
   `a panel with a transform pipeline reports shaped provenance`, plus the existing mandatory
   cap-deny + ws-isolation. No mocks — real spawned node, real ingest/series.read/viz.query.
-- **UI unit** (`pnpm test`): 554 passed (added QueryStatusBar ×7; updated the 3 QueryTab
-  extension-widget tests to drive the combobox).
+- **UI unit** (`pnpm test`): 561 passed (added QueryStatusBar ×7, cellView ×4, DataInspector
+  ×4; updated the 3 QueryTab extension-widget tests to drive the combobox).
 - **Package** (`@nube/source-picker`): 29 passed (added SourceCombobox ×5).
 
 ```

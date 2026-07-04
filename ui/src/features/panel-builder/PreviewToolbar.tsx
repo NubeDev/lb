@@ -5,7 +5,7 @@
 //
 // One responsibility: the preview action row. State lives in BuilderPane; this is a pure view.
 
-import { RefreshCw, Snowflake, Table2 } from "lucide-react";
+import { RefreshCw, ScanSearch, Snowflake, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -23,6 +23,8 @@ interface Props {
   /** Table-view inspect state + toggle (render the frames as a grid regardless of the chosen viz). */
   tableView: boolean;
   onToggleTableView: () => void;
+  /** Open the data inspector drawer (frames / JSON / the resolved query). */
+  onInspect: () => void;
 }
 
 export function PreviewToolbar({
@@ -33,6 +35,7 @@ export function PreviewToolbar({
   onToggleFreeze,
   tableView,
   onToggleTableView,
+  onInspect,
 }: Props) {
   return (
     <div className="flex items-center gap-1.5" aria-label="preview toolbar">
@@ -65,6 +68,18 @@ export function PreviewToolbar({
         <Snowflake size={12} /> {frozen ? "Frozen" : "Freeze"}
       </Button>
       <span className="flex-1" />
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        aria-label="inspect data"
+        className="h-7 px-2 text-xs"
+        disabled={!hasTarget}
+        title="Inspect the data, JSON frames, and the resolved query"
+        onClick={onInspect}
+      >
+        <ScanSearch size={12} /> Inspect
+      </Button>
       <Button
         type="button"
         size="sm"

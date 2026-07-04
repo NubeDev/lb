@@ -31,6 +31,7 @@ import { defaultOptionsForView } from "./viewOptions";
 import { VizPicker } from "./VizPicker";
 import { QueryStatusBar } from "./QueryStatusBar";
 import { PreviewToolbar } from "./PreviewToolbar";
+import { DataInspector } from "./DataInspector";
 import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { detectShape } from "@/features/dashboard/views/shape";
 import { fieldNamesOf } from "./fields/resultFields";
@@ -85,6 +86,8 @@ export function BuilderPane({
   // Freeze (edit-without-requery): while frozen the datasource is NOT re-hit — option/source edits
   // reshape the frames already fetched. Unfreeze re-fetches once. Lets a user iterate against a slow query.
   const [frozen, setFrozen] = useState(false);
+  // The data inspector drawer (Panel Inspect): frames / JSON / the resolved query.
+  const [inspecting, setInspecting] = useState(false);
 
   // The draft's data — ONE read through the one data hook (invariant A) feeds BOTH the shape probe
   // (which views the picker offers) AND the result-field names every tab's field picker offers. `frozen`
@@ -141,6 +144,7 @@ export function BuilderPane({
         onToggleFreeze={() => setFrozen((f) => !f)}
         tableView={tableView}
         onToggleTableView={() => setTableView((v) => !v)}
+        onInspect={() => setInspecting(true)}
       />
       <div className={stacked ? "min-h-[8rem] flex-1" : "h-56 shrink-0"}>
         <PreviewPane
@@ -160,18 +164,22 @@ export function BuilderPane({
   // The options half — Query first (the SQL editor surfaces here when the source needs it), then the
   // rest of the option surface beside the section nav.
   const optionsHalf = (
-    <div className="flex min-h-0 flex-col gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <OptionsSearch value={search} onChange={setSearch} />
-      <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] gap-3">
+      {/* `grid-rows-[minmax(0,1fr)]` is load-bearing: a grid track is content-sized (`auto`) by default,
+          so without an explicit minmax(0,…) row the section content grows the track instead of scrolling —
+          the tall option tabs (Plot/Field/Overrides) then overflow the pane with NO scrollbar. The
+          minmax(0,1fr) caps the row at the available height so the inner `overflow-y-auto` engages. */}
+      <div className="grid min-h-0 flex-1 grid-cols-[9rem_1fr] grid-rows-[minmax(0,1fr)] gap-3">
         <NavMenu
           aria-label="panel builder sections"
-          className="border-r border-border pr-2"
+          className="min-h-0 overflow-y-auto border-r border-border pr-2"
           items={tabItems}
           active={tab}
           badge={tabBadge}
           onSelect={(id) => setTab(id as TabId)}
         />
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 overflow-y-auto">
           {tab === "query" && <QueryTargets ws={ws} state={ed.state} patch={patch} onRun={ed.run} />}
           {tab === "plot" && ed.canPlot && (
             <PlotAxesTab draft={ed.draft} state={ed.state} patch={patch} scope={scope} refreshKey={ed.refreshKey} />
@@ -198,6 +206,7 @@ export function BuilderPane({
 
   return (
     <div aria-label="panel builder" className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
+      <DataInspector open={inspecting} onOpenChange={setInspecting} state={data} />
       <ResultFieldsProvider fields={resultFields}>
         {stacked ? (
           // Stacked (Data Studio v3): preview on TOP, options BELOW — one query/preview view. A draggable

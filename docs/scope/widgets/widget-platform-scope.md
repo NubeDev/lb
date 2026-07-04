@@ -37,7 +37,7 @@ workspace from the token, not the message).
 | # | Source | Declared in | Discovered via | Status |
 |---|---|---|---|---|
 | 1 | **Built-in view kinds** + per-view config schema | `WidgetView` switch + `widget_catalog.json` | `dashboard.catalog` (Slice A) | building |
-| 2 | **Tool result-renders** — a tool declares *how its answer renders* (`ToolDescriptor.result` = the `x-lb-render` envelope). **The reminder widget is this**: `reminder.list` → a `table` view with row-controls. | `<tool>/descriptor.rs` `result` | `tools.catalog` | shipped, but **~1 tool** declares it |
+| 2 | **Tool result-renders** — a tool declares *how its answer renders* (`ToolDescriptor.result` = the `x-lb-render` envelope). **The reminder widget is this**: `reminder.list` → a `table` view with row-controls. | `<tool>/descriptor.rs` `result` | `tools.catalog` | shipped — `reminder.list` (rich-responses), `federation.query`/`query.run` (Slice C) |
 | 3 | **Extension `[[widget]]` tiles** | ext manifest `[[widget]]` | `ext.list.widgets[]` | shipped |
 | 4 | **genui** (AI-authored, catalog-constrained IR) | `genui_catalog.json` | `dashboard.catalog` (Slice A) | shipped (dashboard-only) |
 
@@ -71,9 +71,14 @@ placeable on **any** surface, through the same generic seams.
 ## The gaps this program closes
 
 - **G1 — schema coverage is thin on the OUTPUT half.** `input_schema` is broad, but a `result` render
-  envelope is declared by **~one** host tool (`reminder.list`). `federation.query`, `agent.invoke`,
-  `query.*` still render via hardcoded client branches (rich-responses follow-up #5). "Every tool/API is a
-  widget with a JSON schema in **and** out" is not yet true.
+  envelope was declared by **~one** host tool (`reminder.list`) before Slice C. `federation.query`,
+  `agent.invoke`, `query.*` rendered via hardcoded client branches (rich-responses follow-up #5). "Every
+  tool/API is a widget with a JSON schema in **and** out" is now true for the **tabular** tools (Slice C
+  gave `federation.query` and `query.run` a `result = table` envelope); `agent.invoke` is deferred to
+  Slice D (streaming/nondeterministic — the snapshot model fits, not source-rerun), and `query.save`/
+  `query.compile` are named follow-ups. Follow-up #5's RENDERING half is closed for the tabular tools;
+  its ROUTING half is intentional (the palette's `kind:"query"`/`kind:"agent"` branches carry async/
+  streaming workflow semantics a static descriptor cannot express).
 - **G2 — a tool/channel widget cannot be pinned to a dashboard.** A `result` render is **ephemeral in a
   channel** (lives in the channel `Item` body, not a `dashboard:{id}` cell). Nothing mints a persisted cell
   from a tool's render — so the **reminder widget cannot be added to a dashboard** (rich-responses
@@ -113,12 +118,19 @@ data. Named in rich-responses as follow-up #2. Full scope:
 [`pin-to-dashboard-scope.md`](pin-to-dashboard-scope.md); session
 [`../../sessions/widgets/pin-to-dashboard-session.md`](../../sessions/widgets/pin-to-dashboard-session.md).
 
-### Slice C — Result-render coverage: every tool declares its output widget (closes G1)
+### Slice C — Result-render coverage: every tool declares its output widget (closes G1) — *shipped 2026-07-04*
 Give the remaining host tools a `descriptor.result` envelope (start with `federation.query` → `table`,
 `agent.invoke` → its render, `query.run` → `table`) so the channel renders them descriptor-driven, not via
 hardcoded client branches — retiring rich-responses follow-up #5. Each new envelope is backend config; the
 generic palette + `WidgetView` render it with no UI change. This is also what makes **every** tool
-pin-able (Slice B) and app-renderable.
+pin-able (Slice B) and app-renderable. **SHIPPED for the tabular tools (`federation.query`, `query.run`):
+each carries a `result = table` envelope; `agent.invoke` is DEFERRED to Slice D** (its streaming +
+nondeterministic render belongs to Slice D's snapshot model, not the source-rerun model — see the slice
+scope's "Why agent.invoke is deferred"). Follow-up #5 is **reframed by Slice C**: the RENDERING half is
+descriptor-driven for the tabular tools (closed); the ROUTING half (which payload KIND the palette emits)
+is intentional workflow-carrying seam, not a leak. Full scope:
+[`result-render-coverage-scope.md`](result-render-coverage-scope.md); session
+[`../../sessions/widgets/result-render-coverage-session.md`](../../sessions/widgets/result-render-coverage-session.md).
 
 ### Slice D — Channel-origin authoring: response → widget → preview → dashboard (closes G3)
 The user-facing through-line. From a channel: (1) take the last `rich_result` (or a query result), (2) ask

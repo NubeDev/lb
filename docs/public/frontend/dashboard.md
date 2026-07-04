@@ -854,6 +854,111 @@ umbrella: [`../../scope/widgets/widget-platform-scope.md`](../../scope/widgets/w
 session: [`../../sessions/widgets/pin-to-dashboard-session.md`](../../sessions/widgets/pin-to-dashboard-session.md);
 skill: [`../../skills/dashboard-widgets/SKILL.md`](../../skills/dashboard-widgets/SKILL.md) (§ "Pin a tool result").
 
+## Result-render coverage (widget-platform Slice C, shipped 2026-07-04)
+
+The remaining **tabular** host tools get a `descriptor.result = table` envelope — closing G1 of the
+widget umbrella ("every tool/API is a widget with a JSON schema in AND out" is now true for the
+tabular tools). **`federation.query` and `query.run` each declare a `result` envelope** so the
+channel CAN render them descriptor-driven (the `kind:"rich_result"` → `ResponseView` → `WidgetView`
+path, newly available for these tools), the AI discovers the render via `tools.catalog`, and Slice
+B's `dashboard.pin` can pin them with ZERO tool-specific code in the pin path. **This is BACKEND
+CONFIG** — a `result:` field on each tool's descriptor, no new verb / cap / table / WIT.
+
+- **`federation.query`'s `result = table`** (`rust/crates/host/src/federation/query.rs`'s
+  `query_result_render()` + `query_descriptor()`) — the headline. The verb returns `{columns, rows}`
+  (the columnar shape `viz::frame::result_to_rows` is written for — column-aligned arrays zipped
+  into named row objects), so a `rich_result` table `source`-d at `federation.query` renders
+  unchanged through the shipped `WidgetView`, and Slice B's `dashboard.pin` mints a persisted
+  `pin-federation-query` cell from this envelope (generic over the tool id — rule 10). The cell
+  captures `source`/`sql` at pin time → "this query against this source, live"; the bridge re-checks
+  `mcp:federation.query:call` under the viewer's grant at render.
+- **`query.run`'s `result = table`** (`rust/crates/host/src/query/descriptors.rs`'s
+  `run_result_render()` + `run_descriptor()`) — the same shape, same story. Carries `{id}` verbatim
+  if pinned by id → an edit to the saved query propagates to the dashboard ("the daily query,
+  live"); or `{lang,text,target}` for an inline one-shot. `query_run` already handles both shapes.
+- **`tools[] = [<self>]`** — a pure read has NO row-control write verbs, so the declared bridge set
+  is just the read itself (vs `reminder.list`'s four-element set). The minted cell's `sources[]` is
+  empty (the `tools` fold drops the `source.tool`, leaving nothing); the bridge leash covers just
+  the read. Verified by the headline test.
+- **Catalog visibility.** The catalog's per-tool `authorize_tool` gate (unchanged) drops a tool the
+  caller can't call — so a principal WITHOUT `mcp:federation.query:call` doesn't see the command,
+  doesn't see the render, doesn't get the envelope (no existence leak, no envelope leak). The menu
+  IS the permission model, extended to the `result` envelope.
+- **The palette routing branches STAY (intentional).** Rich-responses follow-up #5 conflated
+  RENDERING (a tool's answer mounts as a widget — Slice C closes this half for the tabular tools)
+  with ROUTING (which payload KIND the palette emits — `kind:"query"` for the async query-worker,
+  `kind:"agent"` for the streaming run, `kind:"rich_result"` for the source-rerun model). The
+  routing branches carry ASYNC/STREAMING workflow semantics a static descriptor cannot express, so
+  they stay. Slice C reframes follow-up #5: the rendering half is descriptor-driven for the tabular
+  tools; the routing half is the workflow-carrying seam (intentional). Nothing is DELETED.
+- **`agent.invoke` is DEFERRED to Slice D** (with reasoning, not silently dropped). Its render is
+  streaming + nondeterministic (the run feed → durable `agent_result`); a pinned cell that re-runs
+  the agent on every dashboard load is semantically wrong (cost, changing data). Slice D snapshots
+  the agent's one-shot ANSWER as a `data`-backed envelope, pin THAT. `query.save` (write) and
+  `query.compile` (dry-run) are named follow-ups.
+
+Tests (real gateway + store, no fakes): host `widget_result_render_test` **8/8** — the catalog
+serves the new envelopes to a granted caller; the catalog HIDES the envelope when the tool cap is
+absent (the menu IS the permission model); the HEADLINE (pin `federation.query`'s NEW `result`
+envelope → reload → cell intact, ZERO federation-specific code in the pin path);
+generic-over-tool-id (an arbitrary `__test__.*` mints); workspace-isolation (a ws-B principal can't
+read ws-A's pinned cell); shell-vs-headless-path-parity (the SAME cell from `dashboard_pin` and
+`call_tool` → `dashboard.pin`); `query.run` envelope parity (mints `pin-query-run`); idempotent
+re-pin (replacing, not duplicating). Per-tool descriptor units (`federation::query::tests`,
+`query::descriptors::tests`) assert each envelope's shape. UI
+`ResponseViewResultRender.gateway.test.tsx` **3/3** (real spawned gateway) — the HEADLINE (a
+`federation.query` `rich_result` mounts through `ResponseView`, NOT `QueryCard`; the
+`PinToDashboard` affordance is the structural marker) + `query.run` parity + an arbitrary
+unknown-tool-id envelope also mounts (rule 10, tool-agnostic). Slice A `widget_catalog_test` 8/8 +
+Slice B `widget_pin_test` 10/10 stay GREEN (no regression — the new envelopes mint through the same
+generic path). `pnpm test` (unit) **561/561** green. `cargo build --workspace` + `cargo fmt` clean.
+**Pre-existing red surfaced (NOT this slice's):** `CommandPalette.gateway.test.tsx` (6 cases) +
+`CommandPalette.agent.gateway.test.tsx` (2+ cases) fail with `useTheme must be used within
+ThemeProvider` from in-flight motion/theme work in the tree (Slice C touched none of that code; the
+failing files fail identically in isolation, and the four sibling gateway tests that mount
+`<MessageItem>` directly — including Slice C's new file — are green). Logged at
+[`../../debugging/frontend/channel-palette-gateway-useTheme-not-in-provider.md`](../../debugging/frontend/channel-palette-gateway-useTheme-not-in-provider.md).
+Scope:
+[`../../scope/widgets/result-render-coverage-scope.md`](../../scope/widgets/result-render-coverage-scope.md);
+umbrella: [`../../scope/widgets/widget-platform-scope.md`](../../scope/widgets/widget-platform-scope.md);
+session: [`../../sessions/widgets/result-render-coverage-session.md`](../../sessions/widgets/result-render-coverage-session.md);
+skill: [`../../skills/dashboard-widgets/SKILL.md`](../../skills/dashboard-widgets/SKILL.md) (§ "Which tools declare a `result` render today").
+
+## Data Studio editing loop (shipped 2026-07-04)
+
+The panel-builder loop is Grafana-Explore-grade — query, see data, tweak with instant, honest feedback.
+
+- **Query status bar** under the preview (`panel-builder/QueryStatusBar.tsx`): running / ok
+  (`N rows · M frames · Xms · as of HH:MM:SS`) / **error text inline** (a deny reads "Denied") /
+  **`0 rows for <range>`** (ran-and-empty) / **"No source selected"** (never-ran — says what's missing),
+  replacing the old silent "no data yet". Reads the panel-data hook's new optional `SourceState.meta`
+  (`frames`/`ms`/`error`/`source`/`fetchedAt`); renderers ignore `meta`.
+- **Data inspector** (`panel-builder/DataInspector.tsx`, a right drawer opened from the preview toolbar's
+  **Inspect** button): **Data** (effective rows as a grid), **JSON** (raw frames pre-pipeline + shaped
+  frames post-pipeline), **Query** (the RESOLVED request that ran — interpolated targets, the real
+  SQL/tool+args, not the `${var}` template; shown even on error). Pure view over the panel-data hook's new
+  `meta.inspect` payload — it fetches nothing.
+- **Run semantics** (`panel-builder/PreviewToolbar.tsx`): a real **Run/Refresh** for every datasource
+  (not just federation) + **⌘/Ctrl+Enter** anywhere in the builder. Data Studio's save button is
+  **"Save to tab"** (was "Apply") — it persists the draft, it never fetched.
+- **Searchable source picker**: `@nube/source-picker` gains `SourceCombobox` (type-to-filter grouped
+  popover, keyboard nav) alongside the kept `<select>`; the Query tab uses it. `onSelectEntry` returns
+  the raw entry for a host keying on id (`rules.run` is shared across rule entries).
+- **Edit-without-requery** — `viz.query` is split into **fetch** (`sources` → raw frames, keyed
+  `vizFetchKey`) and **shape** (an additive inline-`frames` **compute-only** mode, keyed `vizShapeKey`
+  on `{framesHash, transformations, fieldConfig}`). A field/override/transform edit re-keys only the
+  shape → it reshapes the cached raw frames server-side (the ONE `lb-viz` pipeline, no client mirror)
+  instead of re-hitting the datasource; the status bar shows a "shaped from cached data" chip. Same
+  `mcp:viz.query:call` cap; a frames-in request resolves no source (reaches no gated read). Over a ~4 MB
+  frames budget it falls back to a normal fetch. A **Freeze** ("use current data") toggle pins the fetch
+  so a user iterates against an expensive query without re-running it — implemented as an ambient
+  `FreezeProvider` (`dashboard/cache/useFreeze.ts`) so the rendered preview freezes with no renderer edits.
+- **Layout**: the options rail's grid row is `minmax(0,1fr)` so tall option tabs (Plot/Field/Overrides)
+  scroll inside the pane instead of overflowing without a scrollbar.
+
+Scope: [`../../scope/frontend/dashboard/data-studio-ux-scope.md`](../../scope/frontend/dashboard/data-studio-ux-scope.md);
+session: [`../../sessions/frontend/dashboard/data-studio-ux-session.md`](../../sessions/frontend/dashboard/data-studio-ux-session.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

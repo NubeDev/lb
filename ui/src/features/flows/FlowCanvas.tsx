@@ -50,8 +50,8 @@ import { FlowNodeView } from "./FlowNodeView";
 import { NodeConfigPanel } from "./NodeConfigPanel";
 import { Palette } from "./Palette";
 import { useFlowRun } from "./useFlowRun";
-import { deriveArmedState } from "./armedState";
-import { FlowArmedBanner } from "./FlowArmedBanner";
+import { deriveRuntimeState } from "./runtimeState";
+import { FlowRuntimeBanner } from "./FlowRuntimeBanner";
 import { FlowCanvasHeader } from "./FlowCanvasHeader";
 import { flowDirty } from "./flowDirty";
 import { useLiveValues } from "./useLiveValues";
@@ -59,10 +59,10 @@ import { downloadFlow, parseImportedFlow } from "./flowTransfer";
 
 const nodeTypes = { flow: FlowNodeView };
 
-/** How often the canvas re-polls a cron/source flow's runs so a new firing surfaces in the banner
- *  (the count "going up"). A few seconds matches the reactor tick — frequent enough to feel live,
- *  cheap enough (one ws-scoped runs scan). Only an ARMED flow polls. */
-const ARMED_REFRESH_MS = 4000;
+/** How often the canvas re-polls a RUNNING flow's node-state + runs so live values (and the count
+ *  "going up") surface without reopening. A few seconds matches the reactor tick — frequent enough to
+ *  feel live, cheap enough (one ws-scoped read). Any enabled flow polls while live values are on. */
+const RUNTIME_REFRESH_MS = 4000;
 
 export interface FlowCanvasProps {
   flow: Flow;
@@ -114,19 +114,18 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   }, [flow.id]);
 
   // The PERSISTENT runtime view + the live-values toggle + its polling live in the hook (Decision 5;
-  // the Node-RED "each wire shows its current value", opt-in). `armed.kind` is fed back in below to
-  // gate the armed re-poll — the canvas derives `armed` from the `nodeState` the hook returns.
+  // the Node-RED "each wire shows its current value"). It re-polls whenever the flow is RUNNING so a
+  // live runtime's values advance without reopening.
   const { nodeState, liveValues, loadNodeState, toggleLiveValues } = useLiveValues(
     flow.id,
     refreshRuns,
   );
 
-  // The flow's runtime posture for the banner — armed (headless trigger, enabled) vs idle (manual) vs
-  // disabled — plus its latest run. The armed/enabled truth comes from the AUTHORITATIVE node_state
-  // (the per-trigger cursors), so it's correct on reload with no run in flight; `runs` drives the
-  // "last fired" + count. (deriveArmedState falls back to the flow record until node_state loads.)
-  const armed = useMemo(() => deriveArmedState(flow, runs, nodeState), [flow, runs, nodeState]);
-  const enabled = nodeState?.enabled ?? flow.enabled ?? true;
+  // The flow's runtime posture for the banner — running (enabled) vs stopped (disabled) — plus its
+  // latest run. `enabled` comes from the AUTHORITATIVE node_state (the per-trigger cursors), so it's
+  // correct on reload with no run in flight; `runs` drives the "last fired" + count.
+  const runtime = useMemo(() => deriveRuntimeState(flow, runs, nodeState), [flow, runs, nodeState]);
+  const enabled = runtime.running;
 
   // Enable/Disable the flow by flipping the durable `enabled` flag (`flows.enable`) — "should this ever
   // fire" (durable, survives restart). Re-read node_state + runs so the banner flips immediately.
@@ -142,16 +141,19 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     }
   }, [flow.id, flow.enabled, nodeState, loadNodeState, refreshRuns]);
 
-  // While ARMED + watching live values, re-poll runs + node-state on a slow tick so a NEW firing's
-  // count + values advance without reopening. Idle/disabled/off → no interval (tears down cleanly).
+  // While the flow is RUNNING + watching live values, re-poll runs + node-state on a slow tick so a
+  // live runtime's values + count advance without reopening — regardless of what drives it (cron,
+  // flipflop, or manual runs). Stopped/off → no interval (tears down cleanly). This keys off `running`,
+  // NOT the graph shape: a self-driving flow the old "armed" guess didn't recognise (e.g. a flipflop)
+  // used to freeze here even though the host was advancing it every second.
   useEffect(() => {
-    if (armed.kind !== "armed" || !liveValues) return;
+    if (!enabled || !liveValues) return;
     const t = setInterval(() => {
       void refreshRuns(flow.id);
       void loadNodeState(flow.id);
-    }, ARMED_REFRESH_MS);
+    }, RUNTIME_REFRESH_MS);
     return () => clearInterval(t);
-  }, [flow.id, armed.kind, liveValues, refreshRuns, loadNodeState]);
+  }, [flow.id, enabled, liveValues, refreshRuns, loadNodeState]);
 
   // A 1s clock so the banner's "next fire in N" / "fired N ago" count down/up live.
   const [nowSecs, setNowSecs] = useState(() => Math.floor(Date.now() / 1000));
@@ -160,20 +162,20 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     return () => clearInterval(t);
   }, []);
 
-  // Paint nodes from the persistent node-state as the BASE (steady-state current values), with the
-  // live run snapshot OVERLAID on top while a run is being watched (its in-flight progress + values
-  // take precedence for the nodes it touches). So an armed flow with no live run still shows every
-  // node's current value, and a run-in-progress shows live deltas — never a frozen "DONE".
-  const colours = useMemo(() => (snapshot ? snapshotColours(snapshot) : {}), [snapshot]);
+  const runActive = !!snapshot && !isTerminalStatus(snapshot.status);
+  // Paint nodes from the persistent node-state (the live steady-state values). While a run is genuinely
+  // IN FLIGHT, overlay that run's in-progress values/colours on top so the operator sees live deltas.
+  // A TERMINAL snapshot must NOT overlay — otherwise a finished run's frozen "DONE" values would mask
+  // the advancing steady-state (the reported "stuck on 26 / both DONE" freeze). node_state is always
+  // the source of truth once a run settles.
+  const colours = useMemo(() => (runActive ? snapshotColours(snapshot) : {}), [runActive, snapshot]);
   const values = useMemo(() => {
     const base = nodeState ? nodeStateValues(nodeState) : {};
-    const overlay = snapshot ? snapshotValues(snapshot) : {};
+    const overlay = runActive && snapshot ? snapshotValues(snapshot) : {};
     return { ...base, ...overlay };
-  }, [nodeState, snapshot]);
-  const runActive = !!snapshot && !isTerminalStatus(snapshot.status);
+  }, [nodeState, runActive, snapshot]);
   // The executed-node lock — gated on a genuinely in-flight run by `lockedNodeIds`. A terminal
-  // snapshot (a finished manual run, or the latest finite firing of an armed cron flow) locks nothing,
-  // so the operator edits without a page refresh. (See lockedNodeIds for the bug it fixes.)
+  // snapshot locks nothing, so the operator edits without a page refresh. (See lockedNodeIds.)
   const locked = useMemo(() => lockedNodeIds(snapshot), [snapshot]);
 
   // The merged registry keyed by type — used to resolve a node's `kind` (so a trigger renders no
@@ -416,7 +418,6 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
       <FlowCanvasHeader
         dirty={dirty}
         runActive={runActive}
-        scheduled={armed.scheduled}
         enabled={enabled}
         liveValues={liveValues}
         onDeploy={handleSave}
@@ -433,7 +434,7 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
         onImport={(f) => void handleImport(f)}
         onDelete={handleDelete}
       />
-      <FlowArmedBanner armed={armed} nowSecs={nowSecs} runCount={runs.length} />
+      <FlowRuntimeBanner runtime={runtime} nowSecs={nowSecs} runCount={runs.length} />
       {snapshot ? (
         <div aria-label="v-pinned banner" className="bg-accent/10 px-3 py-1 text-xs text-fg">
           This run is on v{snapshot.flowVersion}. Structural edits become a new version for the next

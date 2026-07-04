@@ -17,10 +17,12 @@ export interface HealthStyle {
 }
 
 export const HEALTH_STYLES: Record<Health, HealthStyle> = {
+  // Semantic tokens (`--success`/`--warning`, globals.css), not raw Tailwind hues — so health tracks
+  // the theme's own state vocabulary in every preset/mode instead of a hardcoded emerald/amber.
   ok: {
     label: "Ok",
-    dot: "bg-emerald-500",
-    text: "text-emerald-600 dark:text-emerald-400",
+    dot: "bg-success",
+    text: "text-success",
     border: "border-border",
   },
   idle: {
@@ -31,9 +33,9 @@ export const HEALTH_STYLES: Record<Health, HealthStyle> = {
   },
   degraded: {
     label: "Degraded",
-    dot: "bg-amber-500",
-    text: "text-amber-600 dark:text-amber-400",
-    border: "border-amber-500/40",
+    dot: "bg-warning",
+    text: "text-warning",
+    border: "border-warning/40",
   },
   down: {
     label: "Down",

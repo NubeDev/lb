@@ -1,12 +1,9 @@
 // The live-values hook (flow-deploy-ux scope) — owns the OBSERVE cost so FlowCanvas owns rendering
-// (FILE-LAYOUT). It holds the persistent node-state (`flow_node_state` last-values, Decision 5), the
-// live-values on/off toggle, and the two polling effects that keep an armed flow's values fresh. When
-// live values are OFF nothing is fetched and no interval runs — the canvas paints the last snapshot
-// statically (Node-RED debug is opt-in). When ON, it fetches once immediately and re-polls on a slow
-// tick while the flow is armed so each firing's values surface without reopening.
-//
-// `armedKind` is passed IN (the canvas derives it from the nodeState this hook returns — no
-// circularity; the effect just reads the latest value each render). Default OFF.
+// (FILE-LAYOUT). It holds the persistent node-state (`flow_node_state` last-values, Decision 5) and
+// the live-values on/off toggle. It fetches node-state on open when live values are on; the re-poll
+// interval (keyed off the flow being RUNNING) lives in the canvas. Default ON — a flow is a live
+// runtime, so opening it should show current values. OFF stops all fetching (the canvas paints the
+// last snapshot statically).
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -23,12 +20,14 @@ export interface LiveValues {
   toggleLiveValues: (next: boolean) => void;
 }
 
-/** Owns the persistent node-state + the live-values toggle. The polling that keeps an armed flow's
- *  values fresh lives in the canvas (it needs the derived `armed.kind`); this hook owns the state and
- *  the loader it calls. Fetches once on open when on; OFF fetches nothing (opt-in observe cost). */
+/** Owns the persistent node-state + the live-values toggle. The re-poll that keeps a RUNNING flow's
+ *  values fresh lives in the canvas (it needs the derived `enabled`); this hook owns the state and the
+ *  loader it calls. Fetches on open when on (default on); OFF fetches nothing. */
 export function useLiveValues(flowId: string, refreshRuns: (flowId: string) => Promise<void>): LiveValues {
   const [nodeState, setNodeState] = useState<FlowNodeState | null>(null);
-  const [liveValues, setLiveValues] = useState(false);
+  // Default ON: a flow is a live runtime, so opening it should show its current values without the
+  // operator hunting for a toggle (the PLC expectation). Turning it OFF stops the observe cost.
+  const [liveValues, setLiveValues] = useState(true);
 
   const loadNodeState = useCallback(async (id: string) => {
     try {

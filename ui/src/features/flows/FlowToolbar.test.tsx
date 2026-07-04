@@ -11,7 +11,6 @@ function props(over: Partial<FlowToolbarProps> = {}): FlowToolbarProps {
   return {
     dirty: false,
     runActive: false,
-    scheduled: false,
     enabled: true,
     liveValues: false,
     onDeploy: vi.fn(),
@@ -73,14 +72,11 @@ describe("FlowToolbar", () => {
     expect((screen.getByLabelText("run flow") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("a manual flow shows 'Run'; a scheduled flow shows 'Test run' (24/7 firing is Enable's job)", () => {
-    const { rerender } = render(<FlowToolbar {...props({ scheduled: false })} />);
+  it("Run is always 'Run' — the toolbar does not inspect the graph to relabel it", () => {
+    // No 'Test run' distinction: a flow is a live runtime; Run fires it once now regardless of whether
+    // it also self-fires. (The old 'scheduled → Test run' relabel keyed off graph shape and is gone.)
+    render(<FlowToolbar {...props()} />);
     expect(screen.getByLabelText("run flow").textContent).toContain("Run");
     expect(screen.queryByLabelText("test run flow")).toBeNull();
-
-    rerender(<FlowToolbar {...props({ scheduled: true })} />);
-    const testRun = screen.getByLabelText("test run flow");
-    expect(testRun.textContent).toContain("Test run");
-    expect(screen.queryByLabelText("run flow")).toBeNull();
   });
 });

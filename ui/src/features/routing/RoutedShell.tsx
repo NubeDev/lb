@@ -4,7 +4,7 @@
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { NavRail, useResolvedNav, type Surface } from "@/features/shell";
+import { NavRail, StatusBar, useResolvedNav, type Surface } from "@/features/shell";
 import { useAppRoutingContext } from "./RoutingContextProvider";
 import { DEFAULT_CHANNEL, defaultDashboardSearch, type DashboardSearch } from "./search";
 import { fullPathForSurface, surfaceForPath } from "./surface";
@@ -60,8 +60,16 @@ export function RoutedShell() {
       />
 
       <SidebarInset className="min-w-0 overflow-hidden">
-        <div className="h-full min-w-0 overflow-hidden">
-          <Outlet />
+        <div className="flex h-full min-w-0 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+          {/* The ops strip: session facts (workspace wall, identity, cap count) always in view. */}
+          <StatusBar
+            workspace={ctx.workspace}
+            principal={ctx.principal}
+            capCount={ctx.caps?.length ?? 0}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>
