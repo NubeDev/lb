@@ -65,9 +65,18 @@ MF2 host with `react`/`react-native`/`@nube/app-sdk` as shared singletons; stand
 seam, streaming-fetch SSE with reconnect + `channel.history` catch-up). Login → workspace switcher →
 Channels end to end (REST + live SSE + kill/resume) → cap-gated `ext.list` nav (list only; mount is
 the next slice). Tested against the REAL spawned `test_gateway` (`app/sdk$ pnpm test:gateway`,
-12/12): session/switch, channels+SSE, **deny-per-verb**, **workspace isolation**, ext nav. Scope:
+**17/17**): session/switch, channels+SSE, **deny-per-verb**, **workspace isolation**, ext nav, the
+**client-singleton regression** (login-established session stays observable on the one client —
+the "stuck on login" fix), and the **restore-liveness regression** (a rehydrated-but-invalid session
+is dropped to login, not shown empty). A **browser preview** (`make -C app dev` → react-native-web on
+5310 against its own throwaway `test_gateway` on **8087**, off the root node's 8080) renders the real
+App.tsx; prefilled ada/acme signs straight through to Channels. The preview node is in-memory, so a
+restart re-keys tokens — the shell's **validated restore** (`client.restore()` probes the node and
+drops a dead session) now falls to the login screen instead of a confusing empty channel list
+(`debugging/app/stale-preview-session-shows-empty.md`). Scope:
 `app-shell-scope.md` (transport decided there: **REST + SSE via the gateway**, zenoh-ts rejected);
-session `sessions/app/app-shell-session.md`; public `public/app/app.md`. Remaining asks:
+sessions `sessions/app/app-shell-session.md` + `sessions/app/app-preview-login-session.md` +
+`sessions/app/app-preview-stale-session-session.md`; public `public/app/app.md`. Remaining asks:
 `app-extensions-scope.md` (MF2 remotes, `[app]` manifest block, reference exts `proof-panel-app` +
 `channel-chat`), then `app-sdk-scope.md` (extract the full web verb map as the authored source).
 

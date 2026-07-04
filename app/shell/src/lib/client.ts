@@ -19,8 +19,19 @@ export function gatewayClient(): GatewayClient | null {
   const url = nodeUrl();
   if (!url) return client; // null until the first node URL is configured
   if (!client) {
-    client = createGatewayClient({ baseUrl: url, storage: keychainSessionStorage() });
-    void client.session.restore();
+    // Preview note: the preview gateway is an in-memory `test_gateway` — every `make dev` restart
+    // wipes its store AND mints a fresh signing key, so any token persisted in localStorage is dead
+    // after a restart. `client.restore()` (not the raw `session.restore()`) probes the node once and
+    // DROPS a session it no longer honours, so the shell falls to login instead of rendering a stale
+    // empty channel list ("my channels vanished"). `onUnreachable: "drop"` extends that to a node
+    // that's simply down: a throwaway preview session we can't verify is worthless. A device build
+    // pointed at a durable node would pass `"keep"` to stay logged in offline.
+    client = createGatewayClient({
+      baseUrl: url,
+      storage: keychainSessionStorage(),
+      onUnreachable: "drop",
+    });
+    void client.restore();
   }
   return client;
 }

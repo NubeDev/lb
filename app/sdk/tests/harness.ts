@@ -61,15 +61,21 @@ export async function seedExtension(
 
 /** Add `sub` to the current session's workspace roster through the REAL admin route
  *  (`POST /admin/members` — global-identity scope): a bootstrapped workspace refuses a second
- *  user's login until an admin admits them (decision #4). The caller must be workspace-admin. */
+ *  user's login until an admin admits them (decision #4). The caller must be workspace-admin.
+ *
+ *  `sub` is canonicalized to the `user:<name>` principal the identity model keys on — the same form
+ *  the gateway's login now resolves a bare handle to, and the form `membership_add` documents it
+ *  wants (the member-role grant only lands for a `user:`-prefixed sub). A bare `"bob"` here would
+ *  write a roster row that `login("bob")` (→ `user:bob`) does not match, and skip the role grant. */
 export async function addMember(client: GatewayClient, sub: string): Promise<void> {
+  const principal = sub.startsWith("user:") ? sub : `user:${sub}`;
   const res = await fetch(`${inject("gatewayUrl")}/admin/members`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${client.session.token()}`,
     },
-    body: JSON.stringify({ sub }),
+    body: JSON.stringify({ sub: principal }),
   });
   if (!res.ok) throw new Error(`add member failed: ${res.status} ${await res.text()}`);
 }

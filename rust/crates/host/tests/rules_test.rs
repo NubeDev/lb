@@ -34,6 +34,7 @@ const FULL: &[&str] = &[
     "mcp:rules.get:call",
     "mcp:rules.list:call",
     "mcp:rules.delete:call",
+    "mcp:rules.help:call",
     "mcp:store.query:call",
     "mcp:series.read:call",
     "mcp:ingest.write:call",
@@ -98,9 +99,41 @@ async fn each_rules_verb_is_denied_without_its_cap() {
         ("rules.get", serde_json::json!({ "id": "r" })),
         ("rules.list", serde_json::json!({})),
         ("rules.delete", serde_json::json!({ "id": "r" })),
+        ("rules.help", serde_json::json!({})),
     ] {
         let err = call_tool(&node, &p, ws, tool, &input.to_string()).await;
         assert!(err.is_err(), "{tool} must be denied without its cap");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rules_help_returns_the_catalog() {
+    // The introspection surface: `rules.help` returns the lb_rules::CATALOG entries (name, family,
+    // signature, description) so an agent/UI can discover the verb surface. Gated like the other
+    // verbs; the catalog itself is the source of truth in the rules crate.
+    let ws = "rules-help";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let p = principal(ws, &["mcp:rules.help:call"]);
+    let out = call_tool(&node, &p, ws, "rules.help", "{}")
+        .await
+        .expect("rules.help succeeds with its cap");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let fns = v.get("functions").and_then(|f| f.as_array()).unwrap();
+    assert!(!fns.is_empty(), "catalog must be non-empty");
+    // Spot-check a known entry (the source verb — every cage has it) carries all four fields.
+    let source = fns
+        .iter()
+        .find(|e| e.get("name").and_then(|n| n.as_str()) == Some("source"))
+        .expect("catalog contains `source`");
+    assert_eq!(source["family"], "data");
+    assert!(source["signature"].as_str().unwrap().contains("source"));
+    assert!(!source["description"].as_str().unwrap().is_empty());
+    // Every entry has all four fields non-empty.
+    for e in fns {
+        for k in ["name", "family", "signature", "description"] {
+            let s = e.get(k).and_then(|v| v.as_str()).unwrap_or("");
+            assert!(!s.is_empty(), "entry {:?} has empty {k}", e["name"]);
+        }
     }
 }
 

@@ -29,6 +29,8 @@ export { createSessionStore } from "./session/session.store";
 export type { SessionStore } from "./session/session.store";
 export { memorySessionStorage } from "./session/session.storage";
 export type { SessionStorage } from "./session/session.storage";
+export { probeSession } from "./session/validate";
+export type { SessionLiveness } from "./session/validate";
 export type { Session, StoredSessions } from "./session/session.types";
 
 // Domain types + nav derivation.

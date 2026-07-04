@@ -351,11 +351,17 @@ Mandatory categories (`scope/testing/testing-scope.md`) — real engine, real se
 
 ## Open questions
 
-- **Polars feature set + version pin:** exact minimal feature list that still covers the catalog
-  (does `pivot` pull `dtype-categorical`? does `sql` pull I/O features that need disabling?) —
-  resolve in the build's first compile-and-measure task.
-- **`max_frame_rows` default:** 200k rows / 2M cells is a guess; calibrate against the Playground
-  on dev hardware and expose as `env::rules::MAX_FRAME_ROWS` beside `MAX_WRITES`.
+- **Polars feature set + version pin — RESOLVED (Phase 0):** exact minimal feature list that covers
+  the catalog is the 17-feature curated set in `crates/frame/Cargo.toml` (`lazy`, `sql`,
+  `rolling_window`, `pivot`, `strings`, `temporal`, `dtype-full`, `json`, `describe`, `is_in`,
+  `round_series`, `cum_agg`, `rank`, `diff`, `pct_change`, `ewma`, `zip_with`), `default-features =
+  false`, version pinned `=0.54.4`. `sql`+`lazy` DO pull `polars-io`'s csv/parquet/cloud crates
+  transitively, but **runtime-proven unreachable from the SQL namespace** (`read_csv`/`read_parquet`
+  are not registered as table functions — see the security probe in `crates/frame/src/lib.rs` tests),
+  so no further feature disabling is needed.
+- **`max_frame_rows` default — RESOLVED (Phase 0, recommendation taken):** 200k rows / 2M cells is
+  the default carried in `FrameLimits`; calibration against the Playground on dev hardware + the
+  `env::rules::MAX_FRAME_ROWS` wiring lands in Phase 2/3.
 - **Timezone table:** is fixed-offset formatting enough for v1 message bodies, or do dashboards need
   IANA names (`"Australia/Sydney"`) rule-side? If yes, `chrono-tz` is the additive path.
 - **Does `interpolate`/`gapfill` on the Grid (today identity plans, see `verbs/timeseries.rs`) get

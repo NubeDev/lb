@@ -36,7 +36,7 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login \
 ```
 
 Capabilities — one per verb: `mcp:rules.run:call`, `rules.save`, `rules.get`, `rules.list`,
-`rules.delete`. **A run cannot widen its invoker (`caller ∩ grant`):** inside the run, every data verb
+`rules.delete`, `rules.help`. **A run cannot widen its invoker (`caller ∩ grant`):** inside the run, every data verb
 (`data.query`/`series.*`/`federation.query`) hits the host `caps::check` under the *invoker's*
 authority — a rule reading a source the caller lacks is denied mid-run, even though the body is valid.
 `ai.*` needs the AI-gateway cap.
@@ -50,6 +50,7 @@ authority — a rule reading a source the caller lacks is denied mid-run, even t
 | Get one | `GET /rules/{id}` | `{"tool":"rules.get","args":{"id":"…"}}` | `id` |
 | List | `GET /rules` | `{"tool":"rules.list","args":{}}` | — |
 | Delete | `DELETE /rules/{id}` | `{"tool":"rules.delete","args":{"id":"…"}}` | `id` |
+| **Catalog** | — | `{"tool":"rules.help","args":{}}` | — |
 
 - **`rules.run`** takes EITHER an inline `body` (ad-hoc Playground run) OR a saved `rule_id`, plus
   `params` (bound into the script) and `ts` (a logical clock — determinism, no wall-clock). It's the
@@ -59,6 +60,10 @@ authority — a rule reading a source the caller lacks is denied mid-run, even t
 - **`rules.save`** upserts `rule:{ws}:{id}` — `id` is the stable key (defaults to `name`); `body` is
   the Rhai source; `params` is a typed declared-param list. A save does NOT execute the body.
 - **`output.kind`** is one of `scalar | grid | findings | nothing`.
+- **`rules.help`** is the introspection verb: it returns the **function catalog** (the single source
+  of truth, `lb_rules::CATALOG`) — `{"functions":[{name,family,signature,description}, …]}` — so an
+  agent or the UI can discover every available in-cage function and its description without reading
+  this doc. Gated `mcp:rules.help:call` like the others.
 
 ## 3. Writing a rule
 
@@ -87,7 +92,9 @@ Verb families available in the cage (ported from rubix-cube): **data** (`source`
 `history`/`span`/`last`/`param`), **timeseries** (`rollup`/`align`/`interpolate`/`gapfill`/`resample`/
 `lag`/`delta`/`rate`), **Grid** reductions (`filter`/`select`/`add_col`/`rename`/`group_by`/`join`/
 `col`/`size`/`head`), **ai** (`ai.ask`/`complete`/`classify`/`embed` — metered + fenced), and
-**emit** (`emit`/`alert`/`log`).
+**emit** (`emit`/`alert`/`log`). **The authoritative list — name, family, signature, description for
+every function — is `rules.help`** (the catalog in `lb_rules::CATALOG`); this paragraph is a map, the
+catalog is the territory.
 
 ### `ai.*` runs against the workspace's SELECTED model (rules-ai-wiring)
 

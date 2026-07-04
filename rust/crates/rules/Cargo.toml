@@ -13,6 +13,15 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+[features]
+# `frames` — wire in the polars-backed `Frame` surface (the data stdlib's heavy half,
+# docs/scope/rules/data-stdlib-scope.md). Default ON: the cage ships the full data stdlib. Severable
+# for a target that can't carry the polars weight — turn it off and `g.frame()`/`f.*` are absent
+# (the pure verb families — time/json/stats — are unaffected; they live in this crate). Phase 0 wires
+# the dependency only; the rhai `register` surface lands in Phase 2.
+default = ["frames"]
+frames = ["dep:lb-frame"]
+
 [dependencies]
 # The rule-author's sandboxed language. `sync` makes every registered verb closure Send+Sync (so the
 # engine runs on a blocking thread); `serde` bridges rhai <-> serde_json at the seam boundary.
@@ -21,6 +30,10 @@ async-trait.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# The polars `Frame` surface — optional + feature-gated so `lb-rules` stays "links only rhai + serde"
+# in its doctrine legibility (scope "Placement of polars"). `dep:` keeps the name `lb-frame` even
+# though the feature is also `frames`.
+lb-frame = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true

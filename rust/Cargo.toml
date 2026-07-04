@@ -18,6 +18,7 @@ members = [
     "crates/devkit",
     "crates/ext-loader",
     "crates/external-agent",
+    "crates/frame",
     "crates/flows",
     "crates/host",
     "crates/inbox",
@@ -79,6 +80,7 @@ lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
 lb-devkit = { path = "crates/devkit" }
 lb-ext-loader = { path = "crates/ext-loader" }
+lb-frame = { path = "crates/frame" }
 lb-flows = { path = "crates/flows" }
 lb-inbox = { path = "crates/inbox" }
 lb-ingest = { path = "crates/ingest" }

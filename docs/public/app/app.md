@@ -31,6 +31,12 @@ app extensions and the shell use (a pnpm-workspace member; the shell links it vi
   (`app/shell/src/features/session/keychain.storage.ts`), `memorySessionStorage()` in
   tests. The active workspace is always the signed token's; switch re-activates a stored
   token or re-mints by re-login (no server re-mint route yet).
+- **Validated restore** (`client.restore()` → `probeSession`): on boot the shell doesn't just
+  rehydrate the stored token — it probes the node once (`GET /workspaces`) and **drops a session
+  the node no longer honours** (401 = token dead; network error = node unreachable, dropped under
+  `onUnreachable:"drop"`, kept under `"keep"`; 403/2xx = live, kept). So a token that outlived its
+  node (e.g. after an in-memory preview restart re-keys the gateway) falls to the login screen
+  instead of rendering a stale empty channel list. Fix lives in the SDK, so native gets it too.
 - **SSE** (`openChannelStream`/`openSse`): streaming-fetch transport with
   auto-reconnect. The gateway emits no SSE ids, so resume = reconnect + a
   `channel.history` catch-up read on every `onOpen` (durable-inbox-backed — nothing is
@@ -48,6 +54,24 @@ full rationale is in [app-shell-scope.md](../../scope/app/app-shell-scope.md).
 ## How it's tested (rule 9)
 
 `app/sdk$ pnpm test:gateway` spawns the **real** `test_gateway` node (the same bin as
-`ui/ pnpm test:gateway`) — 12 tests: session/switch, channels REST+SSE incl. kill+resume
-catch-up, **capability-deny per verb**, **workspace isolation**, ext.list nav gating.
-Green output in the session doc.
+`ui/ pnpm test:gateway`) — 17 tests: session/switch, channels REST+SSE incl. kill+resume
+catch-up, **capability-deny per verb**, **workspace isolation**, ext.list nav gating, a
+**client-singleton regression** (a login-established session stays observable on the one
+client — the shell's "stuck on the login screen" fix), and a **restore-liveness regression**
+(a rehydrated-but-invalid session is dropped to login, not shown empty — 401 dead, unreachable
+drop/keep, live kept). Green output in the session doc.
+
+## Running the browser preview (dev)
+
+`make -C app dev` runs the react-native-web preview (the real `App.tsx` in a browser, no
+emulator) on `127.0.0.1:5310` against its **own** throwaway in-memory `test_gateway` on
+`8087` — deliberately off `8080`, where the root `make dev` node's persistent store may
+already have `acme` claimed by another user (that would 403 the ada/acme prefill with "not
+a member", global-identity decision #4). Open `http://127.0.0.1:5310/?node=http://127.0.0.1:8087`;
+the prefilled `ada`/`acme` sign straight through to Channels. `make -C app gateway` refuses to
+kill a non-`test_gateway` holding `8087` (won't clobber another terminal's node — pass
+`GW_PORT=<free>` instead). The preview node is **in-memory**, so restarting it wipes channels and
+re-keys tokens; the shell's validated restore now catches the dead token and shows the login screen
+(prefilled — one click back in) rather than an empty channel list. See
+[app-preview-login-session.md](../../sessions/app/app-preview-login-session.md) and
+[app-preview-stale-session-session.md](../../sessions/app/app-preview-stale-session-session.md).

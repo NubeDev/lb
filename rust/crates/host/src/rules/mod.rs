@@ -171,6 +171,24 @@ pub async fn call_rules_tool(
             rules_delete(&node.store, principal, ws, id).await?;
             Ok(json!({ "ok": true }))
         }
+        "rules.help" => {
+            // The introspection surface: return the rule-cage function catalog verbatim (the single
+            // source of truth in `lb_rules::CATALOG`). Lets an agent/UI discover the verb surface +
+            // descriptions without reading the skill doc. Gated `mcp:rules.help:call` like the other
+            // verbs; no per-verb host code beyond serialization.
+            let functions = lb_rules::CATALOG
+                .iter()
+                .map(|e| {
+                    json!({
+                        "name": e.name,
+                        "family": e.family,
+                        "signature": e.signature,
+                        "description": e.description,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({ "functions": functions }))
+        }
         _ => Err(ToolError::NotFound),
     }
 }

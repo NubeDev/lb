@@ -2,6 +2,11 @@
 // This is NOT for production web (a token in localStorage is XSS-reachable) — it exists so the
 // RN-Web preview keeps you logged in across reloads. The device build uses the real keychain.
 
+// This `.web.ts` file runs ONLY in the browser preview, so it may use DOM globals the RN tsconfig
+// (no `dom` lib) otherwise omits. The file-local lib reference keeps `localStorage` typed here
+// without pulling DOM types into the native build.
+/// <reference lib="dom" />
+
 import type { SessionStorage, StoredSessions } from '@nube/app-sdk';
 
 const KEY = 'lazybones.preview.sessions';

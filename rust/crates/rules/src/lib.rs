@@ -16,6 +16,7 @@
 //! `federation.query`) instead of a local DataFusion engine; `ai.*` re-points at the AI-gateway;
 //! `alert` routes to inbox/outbox (host-side). **Re-keyed:** `project_id` → `workspace`.
 
+pub mod catalog;
 mod engine;
 pub mod grid;
 mod meter;
@@ -23,6 +24,15 @@ mod runtime;
 mod sandbox;
 pub mod seam;
 mod verbs;
+
+pub use catalog::{FnEntry, CATALOG};
+
+// The polars-backed `Frame` surface (data-stdlib-scope). Linked only behind the `frames` cargo
+// feature (default on); Phase 0 wires the dependency so the link resolves + the artifact-size delta
+// is measurable. The rhai `register` entry point + the Frame verb surface land in Phase 2; until
+// then this re-export is the single seam a future `verbs/frame.rs` reaches through.
+#[cfg(feature = "frames")]
+pub use lb_frame as frame;
 
 pub use engine::{AiLimits, RuleEngine};
 pub use grid::{dynamic_to_json, json_to_dynamic};

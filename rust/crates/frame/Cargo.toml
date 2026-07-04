@@ -1,0 +1,64 @@
+# lb-frame — polars-in-the-cage, the `Frame` surface of the rules data stdlib
+# (docs/scope/rules/data-stdlib-scope.md).
+#
+# A NEW crate (not folded into lb-rules) so the cage crate's "links only rhai + serde" doctrine stays
+# legible: the one heavy dependency (polars) is bounded here and severable behind lb-rules' `frames`
+# feature. This crate exposes ONE entry point — `register(engine, &FrameLimits, seam)` — that wires the
+# `Frame` value type + its methods + the free `frame()`/`frame(records)` constructors into a rhai engine.
+# It performs ZERO I/O: a Frame is post-collect, in-memory compute over rows the DataSeam already gated.
+#
+# The polars version is a SECURITY PIN, not just a stability pin (scope Risk "f.sql is a wide surface"):
+# a minor bump could add I/O functions to the SQL namespace and widen the cage silently. Upgrades are a
+# reviewed change.
+[package]
+name = "lb-frame"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Pinned exact (`=`) — security pin (see header). Minimal feature set covering the Frame catalog:
+#   lazy            — LazyFrame + the expression engine every group/agg/window verb compiles to
+#   sql             — SQLContext for `f.sql("… FROM self")` (the long-tail method)
+#   rolling_window  — rolling_mean/sum/min/max/std
+#   pivot           — pivot / value_counts
+#   strings         — string column ops (rename/select over str cols, csv/json export)
+#   temporal        — epoch-aware `bucket()` (truncate) + datetime dtypes
+#   dtype-full      — the dtypes real SurrealDB/federation rows arrive as (i64/f64/str/bool/null)
+#   json            — to_json_string / records round-trip through serde_json
+#   describe        — f.describe()
+#   is_in           — filter_in
+#   round_series    — clip/round on series
+#   cum_agg         — cumsum
+#   rank            — rank(col)
+#   diff            — diff / pct_change
+#   ewma            — ewm_mean
+#   pct_change      — pct_change(col)
+#   zip_with        — fill_null strategies compose
+# `default-features = false` keeps the surface exactly the audited list — no scan_csv/read_parquet/
+# cloud reader is ever pulled (the cage stays zero-I/O; scope Non-goal).
+polars = { version = "=0.54.4", default-features = false, features = [
+    "lazy",
+    "sql",
+    "rolling_window",
+    "pivot",
+    "strings",
+    "temporal",
+    "dtype-full",
+    "json",
+    "describe",
+    "is_in",
+    "round_series",
+    "cum_agg",
+    "rank",
+    "diff",
+    "pct_change",
+    "ewma",
+    "zip_with",
+] }
+rhai = { version = "1.20", features = ["sync", "serde"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]

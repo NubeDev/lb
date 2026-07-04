@@ -23,8 +23,10 @@ SDK_DIR  := $(HERE)sdk
 
 # The gateway the preview points at, and the vite preview server port (must match
 # vite.config.web.mts `server.port`). Override on the command line if they collide.
+# GW_PORT is deliberately NOT 8080: that's the root Makefile's dev node (persistent store,
+# possibly owned by another terminal). The preview gets its own throwaway node on its own port.
 GW_HOST  ?= 127.0.0.1
-GW_PORT  ?= 8080
+GW_PORT  ?= 8087
 GW_URL   := http://$(GW_HOST):$(GW_PORT)
 WEB_PORT ?= 5310
 WEB_URL  := http://127.0.0.1:$(WEB_PORT)
@@ -39,15 +41,42 @@ setup:
 	cd $(SDK_DIR) && pnpm install
 	cd $(SHELL_DIR) && pnpm install --ignore-workspace
 
-## build (if needed) and run the REAL gateway node the preview/tests talk to.
+## build (if needed) and run the REAL gateway node the preview/tests talk to. The store is
+## IN-MEMORY (test_gateway sets no LB_STORE_PATH → Store::memory in host boot), so every boot is
+## fresh by construction and the prefilled dev login (ada/acme) always bootstraps cleanly — a
+## workspace is owned by whoever logs in FIRST (global-identity decision #4). If ada/acme ever
+## 403s "not a member", the cause is a STALE test_gateway still holding $(GW_PORT) (the new one
+## fails to bind and exits, so you keep talking to the old node's memory) — which is why we free
+## the port first. LB_DIR below only holds node keys/config, not the store.
 gateway:
-	cargo build --manifest-path $(RUST)/Cargo.toml -p lb-role-gateway --features test-harness --bin test_gateway
+	cd $(RUST) && cargo build -p lb-role-gateway --features test-harness --bin test_gateway
+	@pid=$$(fuser $(GW_PORT)/tcp 2>/dev/null | tr -d ' '); \
+	if [ -n "$$pid" ]; then \
+		exe=$$(readlink /proc/$$pid/exe 2>/dev/null); \
+		case "$$exe" in \
+		*test_gateway) \
+			kill -TERM $$pid 2>/dev/null; i=0; \
+			while kill -0 $$pid 2>/dev/null; do \
+				i=$$((i+1)); \
+				if [ $$i -ge 50 ]; then kill -KILL $$pid 2>/dev/null; break; fi; \
+				sleep 0.1; \
+			done ;; \
+		*) \
+			echo "ERROR: port $(GW_PORT) is held by PID $$pid ($$exe) — NOT a test_gateway."; \
+			echo "That's someone else's node (e.g. the root 'make dev' node). Refusing to kill it."; \
+			echo "Run with another port: make gateway GW_PORT=<free-port>"; \
+			exit 1 ;; \
+		esac; \
+	fi
 	PORT=$(GW_PORT) \
 	LB_DEVKIT_ROOT=$(RUST)/extensions \
 	LB_DIR=$(RUST)/target/app-preview-lb \
 	$(GW_BIN)
 
 ## the react-native-web preview (browser). Point a browser at $(WEB_URL)/?node=$(GW_URL).
+## NOTE: HMR reflects edits live, but ADDING/REMOVING a module export (vite caches a `?t=` copy)
+## can serve a stale module → "does not provide an export named X" + a blank root. Restart `make web`
+## (or `rm -rf shell/node_modules/.vite`) after an export change; HMR alone won't pick it up.
 web:
 	@echo "preview → $(WEB_URL)/?node=$(GW_URL)"
 	cd $(SHELL_DIR) && pnpm web
@@ -82,19 +111,21 @@ typecheck:
 # SIGTERM first, then poll pgrep and escalate stragglers to SIGKILL after ~5s. The wait is both the
 # graceful-shutdown grace period AND the race-closer so a returning `make kill` immediately followed
 # by `make dev` doesn't fight the dying process for the port. We match the test_gateway binary and
-# vite by pattern (bracketed first char so the pgrep/pkill don't match themselves).
+# ONLY the app-shell vite (vite.config.web.mts) by pattern — a bare '[v]ite' would also kill the
+# web shell's ui/ vite from another terminal. (Bracketed first char so pgrep/pkill don't match
+# themselves.)
 kill:
 	-@fuser -TERM -k $(GW_PORT)/tcp 2>/dev/null || true
 	-@fuser -TERM -k $(WEB_PORT)/tcp 2>/dev/null || true
 	-@pkill -TERM -f '[t]est_gateway' 2>/dev/null || true
-	-@pkill -TERM -f '[v]ite' 2>/dev/null || true
+	-@pkill -TERM -f '[v]ite.*vite.config.web.mts' 2>/dev/null || true
 	@i=0; \
 	while pgrep -f '[t]est_gateway' >/dev/null 2>&1 \
-	   || pgrep -f '[v]ite' >/dev/null 2>&1; do \
+	   || pgrep -f '[v]ite.*vite.config.web.mts' >/dev/null 2>&1; do \
 		i=$$((i+1)); \
 		if [ $$i -ge 50 ]; then \
 			pkill -KILL -f '[t]est_gateway' 2>/dev/null || true; \
-			pkill -KILL -f '[v]ite' 2>/dev/null || true; \
+			pkill -KILL -f '[v]ite.*vite.config.web.mts' 2>/dev/null || true; \
 			break; \
 		fi; \
 		sleep 0.1; \

@@ -120,6 +120,53 @@ async fn login_bootstraps_empty_workspace_and_refuses_a_non_member() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn login_canonicalizes_a_bare_handle_to_the_user_principal() {
+    // The dev-login accepts a bare handle (`ada`) as a convenience, but the identity model keys on
+    // the `user:<name>` principal (the seed writes `user:ada`, membership rows + `created_by` use it).
+    // A bare handle must resolve to that SAME identity — not a distinct principal literally named
+    // "ada". Regression for the RN-preview "Failed to fetch / not a member" against the persistent
+    // `make dev` node: `ada` was treated as a stranger and 403'd a workspace already holding
+    // `user:ada`. See docs/debugging/app/bare-login-handle-not-a-member.md.
+    #[derive(serde::Deserialize)]
+    struct Reply {
+        principal: String,
+    }
+
+    // First contact into a fresh workspace with the PREFIXED form bootstraps `user:ada`.
+    let (gw, _key) = gateway().await;
+    let resp = router(gw.clone())
+        .oneshot(json_post(
+            "/login",
+            json!({ "user": "user:ada", "workspace": "canon" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let prefixed: Reply = json_body(resp).await;
+    assert_eq!(prefixed.principal, "user:ada");
+
+    // Now the BARE handle logs into the same (no-longer-empty) workspace and is admitted as the SAME
+    // member — proving `ada` canonicalized to `user:ada` rather than being refused as a non-member.
+    let resp = router(gw.clone())
+        .oneshot(json_post(
+            "/login",
+            json!({ "user": "ada", "workspace": "canon" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "bare `ada` must resolve to the seeded `user:ada` member, not a stranger"
+    );
+    let bare: Reply = json_body(resp).await;
+    assert_eq!(
+        bare.principal, "user:ada",
+        "the minted principal is the canonical form regardless of the handle typed"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn membership_remove_is_a_clean_exit() {
     let (gw, key) = gateway().await;
     let tok = token(&key, "user:alice", "acme", MANAGE);
