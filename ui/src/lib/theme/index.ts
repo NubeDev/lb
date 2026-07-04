@@ -29,6 +29,7 @@ export { readComputedBasePalette } from "./read-palette";
 export { adaptPreset } from "./preset-adapter";
 export { parseImportedTheme } from "./theme-import";
 export { colorToHslTriplet } from "./color-to-hsl";
+export { parseTriplet, formatTriplet, hslToHex, tripletToCss, type Hsl } from "./hsl-triplet";
 export { THEME_PRESETS } from "./theme-presets.data";
 export type { PresetEntry, ThemePreset } from "./theme-preset";
 export {

@@ -59,6 +59,32 @@ Green: `radius-scale.guard.test.ts` 4/4; full unit suite 475/475 (was 472 + 3, t
 
 ---
 
-## Slice 0b — brand-color picker bug
+## Slice 0b — brand-color picker bug (shipped)
+
+**Symptom (shipped).** In Brand Colors, only the tiny 24×32px swatch was clickable — the rest of the
+row was dead. On the Tauri Linux desktop (WebKitGTK) the click did **nothing at all**: WebKitGTK ships
+no native `<input type="color">`, so the whole control was a no-op there.
+
+**Root cause.** `components/ui/color-picker.tsx` was a native `<input type="color">` wrapper. The hit
+target was the OS swatch; the row wasn't a trigger; and the OS picker doesn't exist on WebKitGTK.
+
+**Fix.** Replaced it in place with a hand-authored, token-bound **in-DOM popover** (no new dep, no
+native input): whole labelled row is the `<button>` trigger (`aria-haspopup="dialog"`); the popover has
+three H/S/L `type="range"` sliders + a hex text field; outside-click / Escape dismiss. Value math moved
+to a new `lib/theme/hsl-triplet.ts` (`parseTriplet`/`formatTriplet`/`hslToHex`/`tripletToCss`) so it is
+unit-testable without a DOM; hex input reuses the existing `colorToHslTriplet`. Same
+`{label,value,onChange}` contract, so `BrandColors.tsx` is untouched.
+
+**Tests.**
+- `components/ui/color-picker.test.tsx` (6): no native `input[type=color]` in the DOM; row-click opens
+  the dialog; a channel change emits a valid triplet; a hex value converts (`#ffffff`→`0 0% 100%`); an
+  unparseable hex is ignored (fail-closed); Escape closes.
+- `lib/theme/hsl-triplet.test.ts` (5): parse/format/clamp/wrap, HSL→hex primaries, CSS wrap.
+
+Green: 487/487 unit (was 476 + 11 new).
+
+---
+
+## Slice 1 — tone widening + migration fold
 
 (in progress)
