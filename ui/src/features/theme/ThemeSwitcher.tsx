@@ -1,22 +1,29 @@
+// The compact quick-toggle in the nav rail — mode + the three built-in accent presets. The FULL theme
+// surface (preset library, radius, import, brand colors) is the `Customizer` sheet; both write the same
+// theme layer. Post-customizer, an "accent" is just the built-in preset id, so selecting a swatch calls
+// `setPreset` and the selected state reads `theme.preset`.
+
 import { Check, Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { THEME_ACCENT_OPTIONS, THEME_MODE_OPTIONS, type ThemeAccent, type ThemeMode, useTheme } from "@/lib/theme";
+import { BUILTIN_PRESETS, THEME_MODE_OPTIONS, type BuiltinPreset, type ThemeMode, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
-const ACCENT_SWATCH_CLASS: Record<ThemeAccent, string> = {
+const ACCENT_SWATCH_CLASS: Record<BuiltinPreset, string> = {
   amber: "bg-[hsl(var(--theme-swatch-amber))]",
   teal: "bg-[hsl(var(--theme-swatch-teal))]",
   blue: "bg-[hsl(var(--theme-swatch-blue))]",
 };
+
+const ACCENT_LABEL: Record<BuiltinPreset, string> = { amber: "Amber", teal: "Teal", blue: "Blue" };
 
 function modeIcon(mode: ThemeMode) {
   return mode === "dark" ? Moon : Sun;
 }
 
 export function ThemeSwitcher() {
-  const { theme, setMode, setAccent } = useTheme();
+  const { theme, setMode, setPreset } = useTheme();
   const nextMode = theme.mode === "dark" ? "light" : "dark";
   const CollapsedModeIcon = modeIcon(theme.mode);
 
@@ -51,34 +58,34 @@ export function ThemeSwitcher() {
         </div>
 
         <div className="grid grid-cols-3 gap-1">
-          {THEME_ACCENT_OPTIONS.map((option) => {
-            const selected = theme.accent === option.value;
+          {BUILTIN_PRESETS.map((accent) => {
+            const selected = theme.preset === accent;
             return (
-              <Tooltip key={option.value}>
+              <Tooltip key={accent}>
                 <TooltipTrigger asChild>
                   <Button
                     type="button"
                     size="icon"
                     variant="ghost"
-                    aria-label={`Use ${option.label.toLowerCase()} accent`}
+                    aria-label={`Use ${ACCENT_LABEL[accent].toLowerCase()} accent`}
                     aria-pressed={selected}
                     className={cn(
                       "h-8 w-full hover:bg-panel",
                       selected && "bg-panel ring-1 ring-accent/45 hover:bg-panel",
                     )}
-                    onClick={() => setAccent(option.value)}
+                    onClick={() => setPreset(accent)}
                   >
                     <span
                       className={cn(
                         "flex h-4 w-4 items-center justify-center rounded-full border border-black/10 shadow-sm shadow-black/10",
-                        ACCENT_SWATCH_CLASS[option.value],
+                        ACCENT_SWATCH_CLASS[accent],
                       )}
                     >
                       {selected && <Check className="h-3 w-3 text-bg" />}
                     </span>
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="right">{option.label}</TooltipContent>
+                <TooltipContent side="right">{ACCENT_LABEL[accent]}</TooltipContent>
               </Tooltip>
             );
           })}
@@ -102,31 +109,31 @@ export function ThemeSwitcher() {
           <TooltipContent side="right">{theme.mode === "dark" ? "Dark" : "Light"}</TooltipContent>
         </Tooltip>
 
-        {THEME_ACCENT_OPTIONS.map((option) => {
-          const selected = theme.accent === option.value;
+        {BUILTIN_PRESETS.map((accent) => {
+          const selected = theme.preset === accent;
           return (
-            <Tooltip key={option.value}>
+            <Tooltip key={accent}>
               <TooltipTrigger asChild>
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
-                  aria-label={`Use ${option.label.toLowerCase()} accent`}
+                  aria-label={`Use ${ACCENT_LABEL[accent].toLowerCase()} accent`}
                   aria-pressed={selected}
                   className={cn("h-8 w-8 hover:bg-bg", selected && "bg-bg ring-1 ring-accent/45")}
-                  onClick={() => setAccent(option.value)}
+                  onClick={() => setPreset(accent)}
                 >
                   <span
                     className={cn(
                       "flex h-4 w-4 items-center justify-center rounded-full border border-black/10 shadow-sm shadow-black/10",
-                      ACCENT_SWATCH_CLASS[option.value],
+                      ACCENT_SWATCH_CLASS[accent],
                     )}
                   >
                     {selected && <Check className="h-3 w-3 text-bg" />}
                   </span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">{option.label}</TooltipContent>
+              <TooltipContent side="right">{ACCENT_LABEL[accent]}</TooltipContent>
             </Tooltip>
           );
         })}

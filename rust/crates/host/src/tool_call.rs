@@ -49,9 +49,12 @@ fn is_host_native(qualified_tool: &str) -> bool {
         // data-studio scope v2: the member-owned per-surface layout record (`layout.get`/`set`).
         || qualified_tool.starts_with("layout.")
         || qualified_tool.starts_with("panel.")
-        // The per-viewer chart-preference verbs only (NOT all `channel.*`, so future channel
-        // extension tools still route to the registry) — a query-result's plot override.
-        || qualified_tool.starts_with("channel.chart_pref.")
+        // The per-viewer chart-preference verbs (a query-result's plot override) + the channel
+        // read/write MCP surface (post/history/edit/delete/list — rules-messaging-scope): a channel
+        // is a host-native plane over the embedded store + bus, not a runtime-registry extension.
+        // (A future channel *extension* tool would carry its own `<ext>.` id and still route to the
+        // registry — `channel.` here is the host's own channel service, one owner.)
+        || qualified_tool.starts_with("channel.")
         || qualified_tool.starts_with("viz.")
         || qualified_tool.starts_with("template.")
         || qualified_tool.starts_with("devkit.")
@@ -307,6 +310,12 @@ async fn dispatch_at_depth(
             // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.
             crate::call_channel_chart_pref_tool(&node.store, principal, ws, qualified_tool, &input)
                 .await?
+        } else if qualified_tool.starts_with("channel.") {
+            // rules-messaging scope: the channel read/write MCP surface (post/history/edit/delete/
+            // list). Thin wrappers over the existing host fns, each gate-identical to the WS path —
+            // the outer gate ran `mcp:channel.<verb>:call`; the host fn re-runs the `bus:chan/{cid}:
+            // {Pub|Sub}` gate inside. Reached here AFTER `channel.chart_pref.` (matched above).
+            crate::call_channel_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("viz.") {
             // The panel-data resolver. It RE-ENTERS this dispatcher (`call_tool_at_depth`) per target
             // under the caller's authority — so `depth` is threaded through to re-enter at depth+1

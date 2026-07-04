@@ -117,8 +117,9 @@ pub use bus::{
     authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
 };
 pub use channel::{
-    call_channel_chart_pref_tool, delete, edit, history, join, post, subscribe_channel, watch,
-    watch_deletions, ChannelError, ChannelPresence, ChannelSub, DeletionFeed, PresenceFeed,
+    call_channel_chart_pref_tool, call_channel_tool, delete, edit, history, join, post,
+    subscribe_channel, watch, watch_deletions, ChannelError, ChannelPresence, ChannelSub,
+    DeletionFeed, PresenceFeed,
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{

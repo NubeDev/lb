@@ -98,11 +98,12 @@ impl RuleEngine {
             run.now,
         );
 
-        // Build the scope: the `ai`/`inbox`/`outbox` handles + each bound param as a top-level var.
+        // Build the scope: the `ai`/`inbox`/`outbox`/`channel` handles + each bound param as a var.
         let mut scope = rhai::Scope::new();
         scope.push("ai", handles.ai);
         scope.push("inbox", handles.inbox);
         scope.push("outbox", handles.outbox);
+        scope.push("channel", handles.channel);
         for (name, value) in inputs.iter() {
             scope.push_dynamic(name.as_str(), value.clone());
         }

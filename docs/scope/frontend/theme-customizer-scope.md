@@ -41,9 +41,16 @@ first-paint cache.
 
 ## Non-goals
 
-- **No Layout tab** in this slice. The template's Layout tab configures a shadcn `Sidebar`
-  (variant / collapsible / side) the project does not use — the shell is `NavRail` + `StudioShell`.
-  Sidebar-layout controls are deferred to `nav-rail-scope.md`, not smuggled in here.
+- ~~**No Layout tab** in this slice.~~ **REVERSED (now in scope).** The original deferral assumed the
+  shell "does not use a shadcn `Sidebar`". That is **factually wrong**: `NavRail` renders inside the
+  shipped shadcn `components/ui/sidebar.tsx` (435 lines) via `SidebarProvider`, and that component
+  already implements `variant` (sidebar/floating/inset), `collapsible` (offcanvas/icon/none), and
+  `side` (left/right) — it is currently just **hardcoded** at the `<Sidebar collapsible="icon"
+  variant="sidebar">` call site. So the template's Layout tab maps 1:1 onto real, already-built props.
+  The Layout tab is added as a **superset** alongside the Theme tab: a new `layout: {variant,
+  collapsible, side}` field on `ThemePreference` (riding the SAME opaque `ui_theme` prefs blob — zero
+  backend change), read by `NavRail` and spread onto `<Sidebar>`. No `nav-rail-scope.md` dependency;
+  the plumbing already exists.
 - No new MCP tool, table, or capability *invented* for theming — persistence rides the existing `prefs`
   verbs and pref key. If that proves too coarse, a `theme`-specific verb is a follow-up, flagged below.
 - No public/anonymous theme sharing, no cross-workspace theme marketplace, no extension-contributed
@@ -77,10 +84,30 @@ presets (which speak the shadcn vocabulary) are mapped **back** onto base tokens
 `--border`/`--input`/`--ring` → `--border`/`--accent`), with light/dark variants kept distinct.
 
 The theme layer (`lib/theme`) already centralizes options, validation, DOM application, storage, provider,
-and hook — we **extend** it, not fork it. `ThemePreference` grows from `{ mode, accent }` to
-`{ mode, preset, radius, custom?, imported? }` (accent becomes one built-in preset among many);
-`theme-dom.ts` gains base-token application from a resolved palette; `theme-storage.ts` keeps its
-localStorage fallback but the provider now **reads/writes the member's `prefs` record** as the authority.
+and hook — we **extend** it, not fork it. `ThemePreference` is **replaced outright** from `{ mode, accent }`
+to `{ mode, preset, radius, custom?, imported? }` (the three built-in accents amber/teal/blue become three
+built-in presets among many). **No backward-compat shim** — this is a young project with no persisted
+member themes worth migrating, so `accent` is **hard-deleted**, not aliased; every caller of the old
+`{mode, accent}` shape (`ThemeSwitcher`, `theme-context`, any test) is updated to the new shape in the same
+slice. A `normalizeThemePreference` that quietly upgraded a legacy record is explicitly **not** built — a
+malformed/legacy stored value normalizes to `DEFAULT_THEME`, nothing more. `theme-dom.ts` gains base-token
+application from a resolved palette; `theme-storage.ts` keeps its localStorage fallback but the provider now
+**reads/writes the member's `prefs` record** as the authority.
+
+**Persistence correction — a structural `ui_theme` axis, not a mythical key/value `ui.theme`.** This scope
+originally said "persist via existing `prefs.set`/`get` under key `ui.theme`, no new verb/table". That
+assumed a **generic key/value** prefs store. The shipped reality is that `lb_prefs::Prefs` is a **closed
+struct of eight named i18n axes** (`rust/crates/prefs/src/prefs.rs`) with **no free-form key** —
+`unit_overrides` is even a deliberately *closed* enum map ("never open free text"). So a theme blob cannot
+ride `prefs.set` as-is. The **resolved** decision: add **one nullable structural axis**
+`ui_theme: Option<ThemePreference-as-JSON>` to `Prefs`/`ResolvedPrefs`, folded by the **same** `resolve()`
+chain and written/read/defaulted by the **same** `prefs.set` / `prefs.set_default` / `prefs.resolve` verbs
+under their **same** capability gates. This keeps the scope's real intent — **no new MCP verb, no new table,
+no new capability, per-member override + per-workspace default for free from the resolve chain** — while
+respecting that this crate stores *structured records*, not a bag. It is a small Rust change the scope had
+assumed away; it is **not** a new verb/table/cap. (Alternative rejected: abuse a typed i18n axis, or pollute
+the pure i18n crate with an untyped `serde_json::Value` grab-bag — both violate the crate's closed-record
+discipline worse than one honestly-typed axis.)
 
 **Rejected alternative — apply shadcn tokens directly (a literal port).** Simplest to copy, but it
 severs the base-token cascade: charts/panels/switcher read `--accent`/`--bg`/`--panel`, which the preset
@@ -219,17 +246,20 @@ mandatory platform categories from `scope/testing/testing-scope.md` apply.
 
 ## Open questions
 
-- **Pref key + shape.** Reserve `ui.theme` (recommended) vs a namespaced `frontend.theme`? Store the whole
-  `ThemePreference` JSON as one pref value, or split mode/preset/radius into sibling keys? Recommendation:
-  one key, one JSON value — atomic, one write, easy reset. Confirm against the `prefs` value-shape rules.
+- **Pref key + shape.** ~~Reserve `ui.theme` vs `frontend.theme`; one JSON value vs sibling keys.~~
+  **RESOLVED:** there is no key/value prefs store to reserve a key in — `lb_prefs::Prefs` is a closed
+  struct. Persist as **one new nullable structural axis `ui_theme`** holding the whole `ThemePreference`
+  as a single JSON value (atomic write, easy reset = set null), flowing through the existing resolve chain.
+  See "Persistence correction" in Intent/approach. No `prefs` value-shape rule is broken — it is a typed
+  field, not open free text.
 - **How much of the preset library ships.** The template bundles large shadcn + tweakcn preset packs.
   Ship the full packs as data, or a curated subset that we've contrast-checked? Recommendation: curate a
   vetted subset for the built-in library, keep **Import** for the long tail.
 - **Contrast policy** for imported/random presets: warn-only, auto-nudge accent to AA, or accept as the
   member's explicit choice? (Leaning warn-only — it's their workspace.)
-- **New verb vs. reuse `prefs`.** Is a single JSON blob under `prefs` enough, or do we want a first-class
-  `theme.get/set` for validation/versioning? Recommendation: reuse `prefs` now; promote to a dedicated
-  verb only if migration/versioning pain shows up.
+- **New verb vs. reuse `prefs`.** ~~Single JSON blob under `prefs` vs a first-class `theme.get/set`?~~
+  **RESOLVED:** reuse the `prefs` verbs (`set`/`set_default`/`resolve`) — but via a new **typed `ui_theme`
+  axis** on the record, not a generic key. No dedicated `theme.*` verb; promote only if versioning pain shows.
 - **Live cross-session sync** (a `watch`/live feed so two open sessions of the same member converge in
   real time) — worth it, or is next-load reconcile enough? Deferred; revisit if users run split shells.
 - **Does the compact `ThemeSwitcher` stay?** Recommendation: keep it as the quick mode/accent control in

@@ -20,6 +20,7 @@
     "@codemirror/lang-sql": "^6.9.1",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.1",
+    "@microlink/react-json-view": "^1.31.21",
     "@nube/genui": "workspace:*",
     "@nube/nav-rail": "workspace:*",
     "@nube/panel": "workspace:*",

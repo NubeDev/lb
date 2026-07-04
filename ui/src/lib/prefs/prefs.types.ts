@@ -22,4 +22,8 @@ export interface ResolvedPrefs {
   number_format?: string;
   unit_system?: string;
   unit_overrides?: Record<string, string>;
+  /** The member's (or workspace-default's) UI theme — an OPAQUE blob owned by the theme layer
+   *  (`lib/theme` parses it into a `ThemePreference`). Prefs stores/folds it whole; this layer never
+   *  inspects its shape. `undefined` when neither the member nor the workspace set one. */
+  ui_theme?: unknown;
 }

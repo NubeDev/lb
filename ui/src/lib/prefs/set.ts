@@ -20,6 +20,7 @@ export type PrefsPatch = Partial<
     | "number_format"
     | "unit_system"
     | "unit_overrides"
+    | "ui_theme"
   >
 >;
 

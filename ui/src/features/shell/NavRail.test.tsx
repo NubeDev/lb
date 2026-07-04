@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NavRail, type CoreSurface, type ResolvedNavItem } from "./NavRail";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThemeProvider } from "@/lib/theme/ThemeProvider";
+import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 afterEach(cleanup);
 
@@ -114,5 +115,25 @@ describe("NavRail resolved-nav rendering", () => {
     renderRail({ allowed: ["channels", "dashboards"], resolvedItems: null });
     expect(screen.queryByText("Build")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Studio" })).not.toBeInTheDocument();
+  });
+
+  it("spreads the member's theme layout (variant/side) onto the shadcn <Sidebar>", () => {
+    // Seed a non-default sidebar layout into the theme cache; NavRail reads it via useTheme and passes
+    // it to <Sidebar>, which reflects it as data-variant / data-side on the rail element.
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({
+        mode: "dark",
+        preset: "amber",
+        radius: "0.5rem",
+        layout: { variant: "floating", collapsible: "icon", side: "right" },
+      }),
+    );
+    const { container } = renderRail({ allowed: ["channels"], resolvedItems: null });
+    const sidebar = container.querySelector("[data-variant]");
+    expect(sidebar).not.toBeNull();
+    expect(sidebar).toHaveAttribute("data-variant", "floating");
+    expect(sidebar).toHaveAttribute("data-side", "right");
+    localStorage.clear();
   });
 });

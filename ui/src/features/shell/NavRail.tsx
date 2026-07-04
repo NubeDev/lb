@@ -36,7 +36,8 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { ThemeSwitcher } from "@/features/theme";
+import { Customizer, ThemeSwitcher } from "@/features/theme";
+import { useTheme } from "@/lib/theme";
 
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
@@ -185,6 +186,11 @@ export function NavRail({
   resolvedItems = null,
   onSelectDashboard,
 }: Props) {
+  // The sidebar variant/collapsible/side come from the member's theme (Customizer → Layout tab), so
+  // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
+  const { theme } = useTheme();
+  const { variant, collapsible, side } = theme.layout;
+
   const item = (key: Surface, label: string, Icon: typeof Hash, onClick?: () => void) => {
     const selected = active === key;
     return (
@@ -275,7 +281,7 @@ export function NavRail({
   const useResolved = !!resolvedItems && resolvedItems.length > 0;
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    <Sidebar collapsible={collapsible} variant={variant} side={side}>
       <SidebarHeader>
         <div className="hidden h-8 w-full items-center justify-center group-data-[collapsible=icon]:flex">
           <div className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg text-[11px] font-semibold text-accent shadow-sm">
@@ -344,6 +350,7 @@ export function NavRail({
 
       <SidebarFooter>
         <ThemeSwitcher />
+        <Customizer />
         <SidebarMenu>
           {/* Settings sits in the footer, near Sign out, where users expect it — only when permitted
               and no server nav owns the rail (that nav places settings itself). */}

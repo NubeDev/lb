@@ -137,6 +137,13 @@ fn member_caps() -> Vec<String> {
         // query result; the verb re-checks the channel `sub` gate.
         "mcp:channel.chart_pref.get:call",
         "mcp:channel.chart_pref.set:call",
+        // rules-messaging scope: the channel read/write MCP surface a rule/agent/UI reaches over the
+        // one contract. `post`/`list`/`delete` are already covered by the `mcp:*.<verb>:call`
+        // wildcards below; `history` and `edit` have no such wildcard, so they're granted explicitly
+        // here. Each verb still re-runs the `bus:chan/{cid}:{Pub|Sub}` gate (held above) inside the
+        // host fn — this only opens the outer MCP door.
+        "mcp:channel.history:call",
+        "mcp:channel.edit:call",
         // host-callback scope: the proof-panel guest's own backend tool `proof.derive`, reachable over
         // the live `POST /mcp/call` bridge. The dev member may run it; the guest's INNER callbacks
         // (series.latest/ingest.write) authorize against `caller ∩ install-grant` — both held here.

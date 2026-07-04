@@ -31,6 +31,9 @@ pub fn builtin() -> ResolvedPrefs {
         number_format: NumberFormat::DotComma,
         unit_system: UnitSystem::Metric,
         unit_overrides: BTreeMap::new(),
+        // No built-in theme at the prefs layer — the frontend owns the compiled default
+        // (`DEFAULT_THEME`). `None` here means "the shell falls back to its own default".
+        ui_theme: None,
     }
 }
 
@@ -54,6 +57,11 @@ pub fn resolve(links: &[Prefs]) -> ResolvedPrefs {
     let number_format = first(links, |p| p.number_format).unwrap_or(base.number_format);
     let unit_system = first(links, |p| p.unit_system).unwrap_or(base.unit_system);
 
+    // ui_theme folds WHOLE (not per-sub-field): the first link that set a theme wins entirely, so a
+    // member's theme completely overrides the workspace default rather than merging into it. Built-in
+    // is `None` (the shell's compiled default).
+    let ui_theme = first(links, |p| p.ui_theme.clone()).or(base.ui_theme);
+
     // unit_overrides merges per-dimension, highest-priority link wins each key. Iterate
     // lowest→highest so a higher link overwrites; start empty (built-in has none).
     let mut unit_overrides = BTreeMap::new();
@@ -72,6 +80,7 @@ pub fn resolve(links: &[Prefs]) -> ResolvedPrefs {
         number_format,
         unit_system,
         unit_overrides,
+        ui_theme,
     }
 }
 

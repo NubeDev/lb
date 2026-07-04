@@ -185,3 +185,160 @@ fn denied_verb_is_opaque_with_no_partial_write() {
     assert_eq!(m.count("inbox.record"), 1);
     assert_eq!(m.count("outbox.enqueue"), 0);
 }
+
+// --- Slice 3 — the `channel` rhai handle + the worker-kind fence -----------------------------------
+
+#[test]
+fn channel_post_history_edit_delete_list_dispatch() {
+    // The full channel surface round-trips through the handle → the right MCP tool + caller JSON.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 32);
+    run(
+        &eng,
+        r#"
+        channel.post("ops", #{ id: "m1", body: "hello" });
+        channel.history("ops", 5);
+        channel.edit("ops", "m1", #{ body: "edited" });
+        channel.delete("ops", "m1");
+        channel.list();
+        "#,
+        99,
+    )
+    .unwrap();
+    let calls = m.calls();
+    let post = calls.iter().find(|(t, _)| t == "channel.post").unwrap();
+    assert_eq!(post.1["cid"], "ops");
+    assert_eq!(post.1["id"], "m1");
+    assert_eq!(post.1["body"], "hello");
+    assert_eq!(post.1["ts"], 99);
+    let hist = calls.iter().find(|(t, _)| t == "channel.history").unwrap();
+    assert_eq!(hist.1["cid"], "ops");
+    assert_eq!(hist.1["n"], 5);
+    let edit = calls.iter().find(|(t, _)| t == "channel.edit").unwrap();
+    assert_eq!(edit.1["id"], "m1");
+    assert_eq!(edit.1["body"], "edited");
+    let del = calls.iter().find(|(t, _)| t == "channel.delete").unwrap();
+    assert_eq!(del.1["id"], "m1");
+    assert_eq!(m.count("channel.list"), 1);
+}
+
+#[test]
+fn channel_reads_are_uncharged_writes_are_charged() {
+    // cap = 1. Many reads (history/list) + exactly one write (post) succeed; reads never charge.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 1);
+    run(
+        &eng,
+        r#"
+        channel.history("ops", 3); channel.history("ops"); channel.list(); channel.list();
+        channel.post("ops", #{ body: "one" });
+        "#,
+        1,
+    )
+    .unwrap();
+    assert_eq!(m.count("channel.history"), 2);
+    assert_eq!(m.count("channel.list"), 2);
+    assert_eq!(m.count("channel.post"), 1);
+}
+
+#[test]
+fn channel_post_loop_is_bounded_by_the_write_meter() {
+    // A DoS loop posting to a channel aborts at the per-run cap; exactly the budget reaches the seam.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 3);
+    let err = run(
+        &eng,
+        r#"for i in 0..1000 { channel.post("ops", #{ body: `msg ${i}` }); }"#,
+        1,
+    )
+    .unwrap_err();
+    assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
+    assert_eq!(m.count("channel.post"), 3);
+}
+
+#[test]
+fn channel_post_rejects_agent_kind_before_any_write() {
+    // The fence: a `kind:"agent"` post is rejected AT THE HANDLE with an author error — a rule cannot
+    // spawn a run — and NO write reaches the seam AND the write meter is not charged (the reject is
+    // before `charge()`).
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 32);
+    let err = run(
+        &eng,
+        r#"channel.post("ops", #{ kind: "agent", goal: "summarize" });"#,
+        1,
+    )
+    .unwrap_err();
+    match err {
+        RuleError::Eval(msg) => {
+            assert!(msg.contains("cannot spawn a run"), "got {msg}");
+            assert!(
+                msg.contains("flow"),
+                "author is pointed at a flow, got {msg}"
+            );
+        }
+        other => panic!("expected the fence author error, got {other:?}"),
+    }
+    // The fence fired BEFORE the seam — no channel write at all.
+    assert_eq!(m.count("channel.post"), 0);
+}
+
+#[test]
+fn channel_post_rejects_query_kind() {
+    // The same fence for `kind:"query"` — a rule cannot kick an inline query worker either.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 32);
+    let err = run(
+        &eng,
+        r#"channel.post("ops", #{ kind: "query", source: "s", sql: "SELECT 1" });"#,
+        1,
+    )
+    .unwrap_err();
+    assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
+    assert_eq!(m.count("channel.post"), 0);
+}
+
+#[test]
+fn channel_post_text_kind_passes_the_fence() {
+    // `kind:"text"` (an explicit plain chat) is NOT a worker kind — it posts, body is the raw text.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 32);
+    run(
+        &eng,
+        r#"channel.post("ops", #{ kind: "text", body: "just chat" });"#,
+        1,
+    )
+    .unwrap();
+    let calls = m.calls();
+    let post = calls.iter().find(|(t, _)| t == "channel.post").unwrap();
+    assert_eq!(post.1["body"], "just chat");
+}
+
+#[test]
+fn channel_post_denied_is_opaque_with_no_partial_write() {
+    // The caller lacks the channel `Pub` cap (the seam denies `channel.post`). The rule surfaces an
+    // OPAQUE "denied" and the denied post produced NO write.
+    let m = Arc::new(RecordingMessaging::deny(&["channel.post"]));
+    let eng = engine(m.clone(), 32);
+    let err = run(&eng, r#"channel.post("ops", #{ body: "hi" });"#, 1).unwrap_err();
+    match err {
+        RuleError::Eval(msg) => assert!(msg.contains("denied"), "expected opaque deny, got {msg}"),
+        other => panic!("expected the opaque deny, got {other:?}"),
+    }
+    assert_eq!(m.count("channel.post"), 0);
+}
+
+#[test]
+fn channel_post_ids_are_deterministic_across_a_rerun() {
+    // Same `now` + body ⇒ same derived post id (a re-run upserts, no duplicate); the id embeds the
+    // logical clock, not a wall-clock/random value.
+    let body = r#"channel.post("ops", #{ body: "a" });"#;
+    let m1 = Arc::new(RecordingMessaging::new());
+    run(&engine(m1.clone(), 32), body, 555).unwrap();
+    let m2 = Arc::new(RecordingMessaging::new());
+    run(&engine(m2.clone(), 32), body, 555).unwrap();
+    let id1 = m1.calls()[0].1["id"].as_str().unwrap().to_string();
+    let id2 = m2.calls()[0].1["id"].as_str().unwrap().to_string();
+    assert_eq!(id1, id2, "same now+counter ⇒ same id");
+    assert!(id1.contains("555"), "id {id1} embeds the logical now");
+}

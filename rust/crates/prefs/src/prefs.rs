@@ -17,7 +17,9 @@ use crate::axis::{DateStyle, Dimension, FirstDay, NumberFormat, TimeStyle, Unit,
 /// A stored preference record (user OR workspace-default). Every axis is nullable: `None` means
 /// "inherit from the next link in the chain". A patch (`prefs.set`) is the same shape — a present
 /// field sets that axis, an absent field leaves it untouched.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+// NB: no `Eq` — `ui_theme: Option<serde_json::Value>` is not `Eq` (JSON numbers can be floats).
+// `PartialEq` is enough for every caller (tests compare with `assert_eq!`, which uses `PartialEq`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Prefs {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
@@ -42,6 +44,13 @@ pub struct Prefs {
         skip_serializing_if = "BTreeMap::is_empty"
     )]
     pub unit_overrides: BTreeMap<Dimension, Unit>,
+    /// The member's (or workspace-default's) UI theme, an **opaque** JSON blob owned by the frontend
+    /// (`ThemePreference`: mode/preset/radius/custom/imported). Prefs stores and folds it whole —
+    /// it never inspects the shape (the theme layer validates it client-side). `None` = inherit the
+    /// next link. This is a UI presentation axis riding the prefs record so a theme roams and a
+    /// workspace can ship a default; it is not an i18n axis and no `format.*` reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_theme: Option<serde_json::Value>,
 }
 
 /// Deserialize an `option<object>` column: a present map decodes normally, a stored `null` (the
@@ -56,7 +65,8 @@ where
 
 /// A fully-resolved set of preferences — every axis decided by the resolution chain. The input to
 /// every `format.*` call; never `Option`, never inherits further.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// NB: no `Eq` — carries the same non-`Eq` `ui_theme` blob as `Prefs`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolvedPrefs {
     pub language: String,
     pub timezone: String,
@@ -66,6 +76,10 @@ pub struct ResolvedPrefs {
     pub number_format: NumberFormat,
     pub unit_system: UnitSystem,
     pub unit_overrides: BTreeMap<Dimension, Unit>,
+    /// The resolved UI theme blob (member → workspace-default → built-in `None`). Opaque; the theme
+    /// layer parses it. `None` when neither the member nor the workspace set one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_theme: Option<serde_json::Value>,
 }
 
 impl ResolvedPrefs {

@@ -4,6 +4,7 @@
 use std::collections::BTreeMap;
 
 use lb_prefs::{resolve, DateStyle, Dimension, NumberFormat, Prefs, TimeStyle, Unit, UnitSystem};
+use serde_json::json;
 
 fn empty() -> Prefs {
     Prefs::default()
@@ -124,4 +125,30 @@ fn disabled_language_falls_back_to_en() {
         ..empty()
     };
     assert_eq!(resolve(&[user]).language, "en");
+}
+
+#[test]
+fn ui_theme_folds_whole_first_link_wins() {
+    // The theme blob is opaque and folds WHOLE — the highest-priority link that set it wins entirely,
+    // it does not merge sub-fields. built-in is None.
+    let member = Prefs {
+        ui_theme: Some(json!({ "mode": "dark", "preset": "teal" })),
+        ..empty()
+    };
+    let ws_default = Prefs {
+        ui_theme: Some(json!({ "mode": "light", "preset": "amber" })),
+        ..empty()
+    };
+    // [member, ws_default] — member wins whole.
+    assert_eq!(
+        resolve(&[member.clone(), ws_default.clone()]).ui_theme,
+        Some(json!({ "mode": "dark", "preset": "teal" }))
+    );
+    // member unset → ws default fills in.
+    assert_eq!(
+        resolve(&[empty(), ws_default.clone()]).ui_theme,
+        Some(json!({ "mode": "light", "preset": "amber" }))
+    );
+    // nothing set → None.
+    assert_eq!(resolve(&[empty()]).ui_theme, None);
 }

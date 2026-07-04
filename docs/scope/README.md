@@ -29,6 +29,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (consumed by rules' `ai.complete` and the in-house loop), the channel composer no longer auto-sending
   an explicit `runtime:"default"` that outranks the pick, and the missing `POST /agent/invoke`
   transport so the dashboard AI widget's `agent_invoke` stops being an unknown command.
+- `app/` — the **React Native mobile app** (iOS/Android): a thin RN shell that is the fourth
+  client of the gateway (login → many workspaces → REST + SSE; **zenoh-ts rejected** — it would
+  expose a second, unmediated server surface beside the gateway), plus **federated app extensions**
+  via Re.Pack 5 + Module Federation 2 — an additive `[app]` manifest block beside `[ui]`, JS-only
+  remotes published through the unchanged signed-`Artifact` path, mounted as React components over
+  the same `ctx`/`bridge` contract as the web. `app-shell-scope.md` (host + transport + session),
+  `app-extensions-scope.md` (the model + two reference exts: `proof-panel-app` pairing the wasm
+  `proof-panel`, and pure-app `channel-chat` over channels + the in-channel agent),
+  `app-sdk-scope.md` (`@nube/app-sdk` — the authored contract source + shared verb map, aligning
+  with the `panel-kit` promotion toward one shared panel/widget SDK). Source workshop: `app/`.
 - `agent-memory/` — durable, access-walled **agent memory** in the MEMORY.md shape: per-fact
   `agent_memory` records (`workspace` + `member:{user}` scopes) with a **derived** compact index
   injected at session start, read/written over caps-checked `agent.memory.*` verbs under the

@@ -8,20 +8,23 @@ data or render path.
 
 ## What exists
 
-- **A dockable workbench (FlexLayout).** Built on `flexlayout-react` (ISC): N explore tabs + N
-  panel-builder tabs open simultaneously; drag to split, tab, dock, float (pop out to a window), close;
-  double-click to rename. Two border-docked panes — **Sources** and **Library** — plus the center
-  working area.
-- **Explore any source, one render path.** The **Sources** pane is the shipped `@nube/source-picker`
-  across every source type (series / Direct SurrealDB / flows / installed-extension tools / federation
-  datasources). Picking one opens an **explore tab** that renders the live data through the shipped path
-  (`WidgetHost` → `usePanelData` → `viz.query`), toggleable Table / Chart / JSON — no parallel renderer,
-  no parallel query.
-- **Build panels — the full option surface, inline.** An explore tab's **Build panel** (or the toolbar's
-  **New panel**, or opening a **Library** panel) opens a **builder tab**: the complete Grafana-style
+- **A dockable workbench (FlexLayout).** Built on `flexlayout-react` (ISC): N builder tabs open
+  simultaneously; drag to split, tab, dock, float (pop out to a window), close; double-click to rename.
+  Two border-docked panes — **Sources** and **Library** — plus the center working area.
+- **One stacked query/preview view (v3).** Picking a source in the **Sources** pane (the shipped
+  `@nube/source-picker` across series / Direct SurrealDB / flows / installed-extension tools / federation
+  datasources) — or **New panel**, or opening a **Library** panel — opens a single **builder tab** that
+  stacks the live **preview on top** and the **Query / option surface on the bottom**. The user sees the
+  data and shapes the chart together; opening an existing chart puts the chart in focus with its source
+  beneath it. The preview renders through the shipped path (`PreviewPane` → `WidgetView` → `viz.query`),
+  with a table-view toggle + the viz picker for inspection — no parallel renderer, no parallel query.
+  (v2 shipped explore and build as *two separate tabs*; v3 collapsed them into one stacked builder.)
+- **Build panels — the full option surface, inline.** The bottom section is the complete Grafana-style
   option surface (Query / Transform / Field / Overrides) plus the GenUI **"AI widget"** authoring tab —
-  the same option model a dashboard cell has, rendered inline (no modal). Many builder tabs open at once
-  for compare/debug.
+  the same option model a dashboard cell has, rendered inline (no modal). The **Query** section shows the
+  right editor for the source: the Builder⇄Code **SQL editor** for a Direct-SurrealDB source, raw SQL for
+  a federation datasource, the friendly picker for series/flows. Many builder tabs open at once for
+  compare/debug.
 - **Save to the library.** Any builder tab's **Save as library panel** persists the built spec as a
   `panel:{id}` (`panel.save`) — immediately reusable on any dashboard (Add library panel → a ref cell)
   and renderable standalone at `/t/$ws/panel/{id}`. No dashboard is required to produce a panel.

@@ -18,6 +18,7 @@ import { ResultBar, type ResultView } from "./ResultBar";
 import { RunResult } from "./RunResult";
 import { AuthoringPanel } from "./panel/AuthoringPanel";
 import type { CodeEditorHandle } from "@/components/codeeditor";
+import { useVerticalSplit, SplitHandle } from "@/lib/split";
 
 interface RulesViewProps {
   ws: string;
@@ -51,6 +52,9 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   // Table (typed views) vs. JSON (verbatim) — the result-region view toggle, owned here so the
   // ResultBar toggle and the RunResult body stay in sync.
   const [resultView, setResultView] = useState<ResultView>("table");
+  // A draggable divider between the CodeMirror editor (top) and the run-result region (bottom):
+  // the editor is the larger half by default; drag up to grow the result, down to grow the editor.
+  const split = useVerticalSplit(0.7);
 
   const insert = (snippet: string) => editorRef.current?.insertSnippet(snippet);
   const selectedName = r.name ?? null;
@@ -202,9 +206,18 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
         ) : null}
 
         <div className="flex min-h-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col">
-            <RuleEditor ref={editorRef} body={r.buffer} onChange={r.setBuffer} />
-            <div className="flex max-h-[45%] min-h-[9rem] flex-col border-t border-border">
+          <div ref={split.containerRef} className="flex min-w-0 flex-1 flex-col">
+            <div
+              className="flex min-h-[6rem] shrink-0 flex-col overflow-hidden"
+              style={{ flexBasis: split.topBasis, pointerEvents: split.dragging ? "none" : undefined }}
+            >
+              <RuleEditor ref={editorRef} body={r.buffer} onChange={r.setBuffer} />
+            </div>
+            <SplitHandle onPointerDown={split.onHandleDown} label="resize editor and result" />
+            <div
+              className="flex min-h-[6rem] flex-1 flex-col"
+              style={{ pointerEvents: split.dragging ? "none" : undefined }}
+            >
               <ResultBar
                 result={r.result}
                 error={r.error}

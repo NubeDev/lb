@@ -1,0 +1,27 @@
+# channel-chat — pure-app extension manifest (scaffold; fields per
+# docs/scope/extensions/extensions-scope.md + the additive [app] block from
+# docs/scope/app/app-extensions-scope.md). No [runtime]/[[tools]]: this extension
+# has no backend component — it is only a phone surface over granted verbs.
+
+[extension]
+id = "channel-chat"
+version = "0.0.0"
+name = "Channel chat"
+description = "Mobile channels + in-channel AI agent (reference app extension)"
+
+[capabilities]
+request = [
+  "mcp:channel.list:call",
+  "mcp:channel.history:call",
+  "mcp:channel.post:call",
+  "mcp:agent.invoke:call",
+  "bus:chan/*:sub",
+  "bus:chan/*:pub",
+]
+
+[app]
+entry = "dist/remote.container.js.bundle"
+scope = ["channel.*", "agent.invoke", "agent.watch"]
+
+[visibility]
+class = "public"

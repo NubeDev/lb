@@ -112,6 +112,58 @@ describe("RulesView (real gateway)", () => {
     expect(screen.getByLabelText("budget")).toBeInTheDocument();
   });
 
+  it("a structured scalar renders as a parsed tree in the Table view, not an escaped blob", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signIn(ws);
+
+    render(<RulesView ws={ws} />);
+    // A channel.history-shaped result: an ARRAY whose element's `body` is a JSON string. In the default
+    // Table view this is a "scalar" of kind array — it must render the deep-parsed tree, never the raw
+    // one-line `JSON.stringify` blob the old ScalarCard produced.
+    await typeBody(
+      user,
+      String.raw`[#{ author: "system:agent-worker", body: "{\"kind\":\"agent_result\",\"answer\":\"2+2 equals 4.\"}" }]`,
+    );
+    await user.click(screen.getByLabelText("run rule"));
+
+    const card = await screen.findByLabelText("scalar result");
+    const text = card.textContent ?? "";
+    // The nested payload parsed — its keys/values are present, and NOT as an escaped `\"kind\"` blob.
+    expect(text).toContain("kind");
+    expect(text).toContain("agent_result");
+    expect(text).toContain("answer");
+    expect(text).not.toContain('{\\"kind\\"');
+  });
+
+  it("the JSON view deep-parses an embedded JSON-string field into an expandable tree", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signIn(ws);
+
+    render(<RulesView ws={ws} />);
+    // Return a record whose `body` is itself a JSON string (the real channel-payload shape). Verbatim
+    // it would read as an escaped `"{\"kind\":...}"` blob; the JSON view parses it into a real object.
+    await typeBody(
+      user,
+      String.raw`#{ author: "system:agent-worker", body: "{\"kind\":\"agent_result\",\"answer\":\"2+2 equals 4.\"}" }`,
+    );
+    await user.click(screen.getByLabelText("run rule"));
+
+    // Toggle to the JSON view and confirm the tree parsed the nested payload. The inner keys render as
+    // their own nodes (react-json-view splits keys/values across elements and quotes string values, so
+    // we assert on the container's text content, not exact-node matches).
+    await user.click(await screen.findByLabelText("view json"));
+    const json = await screen.findByLabelText("json result");
+    const text = json.textContent ?? "";
+    // The nested payload's keys AND values are present as parsed content (not an escaped string).
+    expect(text).toContain("kind");
+    expect(text).toContain("agent_result");
+    expect(text).toContain("answer");
+    // The raw escaped form is NOT what the user sees — no backslash-escaped brace blob.
+    expect(text).not.toContain('{\\"kind\\"');
+  });
+
   it("CRUD round-trip: create (name-first) → reopen the buffer (via the real path)", async () => {
     const user = userEvent.setup();
     const ws = nextWs();

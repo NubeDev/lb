@@ -4,6 +4,7 @@
 //! budget are enforced at every call (rule 5). One file per verb family (FILE-LAYOUT).
 
 mod ai;
+pub(crate) mod channel;
 mod data;
 mod duration;
 mod emit;
@@ -12,6 +13,7 @@ pub(crate) mod outbox;
 mod timeseries;
 
 pub use ai::AiHandle;
+pub use channel::ChannelHandle;
 pub use emit::Collectors;
 pub use inbox::InboxHandle;
 pub use outbox::OutboxHandle;
@@ -25,12 +27,13 @@ use crate::grid::{Col, Grid, GridCtx, GroupedGrid, Span};
 use crate::meter::{AiMeter, WriteMeter};
 use crate::seam::{AiSeam, DataSeam, MessagingSeam};
 
-/// The three scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox` (the
-/// `channel` handle is slice 3). Returned so the engine can push them after registering the verbs.
+/// The four scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox`, `channel`.
+/// Returned so the engine can push them after registering the verbs.
 pub struct RunHandles {
     pub ai: AiHandle,
     pub inbox: InboxHandle,
     pub outbox: OutboxHandle,
+    pub channel: ChannelHandle,
 }
 
 /// Register the grid value types + every verb family into `engine`. Returns the scope handles to push
@@ -58,10 +61,12 @@ pub fn register(
     ai::register(engine);
     inbox::register(engine);
     outbox::register(engine);
+    channel::register(engine);
     RunHandles {
         ai: AiHandle::new(ai_seam, ctx, data, allow, meter, context_rows),
         inbox: InboxHandle::new(messaging.clone(), write_meter.clone(), now),
-        outbox: OutboxHandle::new(messaging, write_meter, now),
+        outbox: OutboxHandle::new(messaging.clone(), write_meter.clone(), now),
+        channel: ChannelHandle::new(messaging, write_meter, now),
     }
 }
 

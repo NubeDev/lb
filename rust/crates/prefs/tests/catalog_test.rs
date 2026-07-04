@@ -23,6 +23,7 @@ fn prefs(lang: &str, tz: &str, date: DateStyle, number: NumberFormat) -> Resolve
         number_format: number,
         unit_system: UnitSystem::Metric,
         unit_overrides: BTreeMap::new(),
+        ui_theme: None,
     }
 }
 

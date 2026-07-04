@@ -238,11 +238,19 @@ describe("Data Studio v2 workbench (real gateway)", () => {
 
     // Seed a real library panel to open.
     await savePanel("existing-chart", "Existing chart", {
+      title: "Existing chart",
       view: "timeseries",
       sources: [{ refId: "A", tool: "series.read", args: { series: "cooler.temp" } }],
     } as never);
 
     await mountStudio(ws);
+    // The Library pane is border-docked (Sources is the selected border tab by default); click the
+    // Library border tab button to mount its content, then open the seeded panel.
+    const libTab = (await screen.findAllByText("Library")).find((el) =>
+      el.closest(".flexlayout__border_button"),
+    );
+    await user.click(libTab!);
+    fireEvent(window, new Event("resize"));
     // Open it from the Library dock pane → ONE stacked builder tab (preview on top, query on bottom).
     await user.click(await screen.findByLabelText("open library panel Existing chart"));
     expect(await screen.findByLabelText("panel builder")).toBeInTheDocument();

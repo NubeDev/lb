@@ -75,22 +75,40 @@ Quiet control-surface tokens (CSS variables, themed by a `.dark` class): near-bl
 paper light, one warm amber accent, hairline borders, lucide icons. Tailwind utilities; shadcn-
 style primitives to be pulled in as the component set grows.
 
-## Theme preferences
+## Theme preferences — the Customizer (supersedes the switcher)
 
-The shell now has a local theme preference layer (`ui/src/lib/theme/`) and a shadcn-style
-`ThemeSwitcher` in the sidebar footer. Users can choose explicit **dark** or **light** mode and one of
-three accent palettes: **amber** (default), **teal**, or **blue**. The preference is browser/webview
-local under `lb.theme`, validated before use, and applied to `<html>` as `.dark` plus
-`data-theme-accent="<accent>"`.
+The shell has a full **Customizer** (`features/theme/Customizer.tsx`, a slide-out sheet from the nav
+footer) over the theme layer (`ui/src/lib/theme/`), plus the compact `ThemeSwitcher` kept as the quick
+mode/preset toggle. The member's preference is `{ mode, preset, radius, layout, custom?, imported? }`
+(`ThemePreference`), and the Customizer has two tabs:
 
-All palettes flow through the existing CSS-variable contract (`bg`, `panel`, `fg`, `muted`,
-`accent`, `border`, plus the shadcn aliases such as `primary`, `card`, and `ring`) so first-party
-screens, shadcn primitives, graphs, and extension UI inherit the selected palette without per-screen
-branches. A small guarded script in `index.html` applies the saved preference before React mounts to
-avoid a first-paint flash; `ThemeProvider` then owns the live React state.
+- **Theme** — light/dark, a preset library (three built-in accents amber/teal/blue + a curated
+  shadcn/tweakcn subset), a radius control, **paste-to-import** a tweakcn CSS block, and per-token
+  **brand colors**.
+- **Layout** — the sidebar **variant** (sidebar/floating/inset), **collapsible mode**
+  (offcanvas/icon/none), and **position** (left/right), spread by `NavRail` onto the shipped shadcn
+  `<Sidebar>`.
 
-Contrast was checked for accent text against the base background: light amber 4.66:1, light teal
-4.80:1, light blue 6.38:1, dark amber 8.98:1, dark teal 10.13:1, and dark blue 6.46:1.
+**The load-bearing choice: presets write the project's BASE tokens, not shadcn tokens.**
+`styles/globals.css` DERIVES the shadcn tokens (`--primary`/`--background`/`--card`) FROM a small base
+palette (`--bg`/`--panel`/`--fg`/`--muted`/`--muted-foreground`/`--accent`/`--border`), and every host
+surface (charts via `features/charts/chartTheme.ts`, panels, nav, the switcher) reads the BASE tokens.
+So a preset is normalized **back onto base tokens** by the adapter (`lib/theme/preset-adapter.ts`:
+`--primary`→`--accent`, `--background`→`--bg`, `--card`/`--popover`→`--panel`,
+`--border`/`--input`/`--ring`→`--border`, …), written as inline HSL-triplet overrides on `<html>`, and
+the CSS derivation re-themes **charts, panels, dashboards, nav rail, and editor chrome at once**. A
+built-in accent instead uses `data-theme-accent` (values in `globals.css`); custom/imported/library
+presets write inline base tokens and clear the attribute. Import/oklch/hex/hsl all normalize through
+`lib/theme/color-to-hsl.ts`.
+
+**Persistence rides the shipped `prefs` verbs** — a new nullable, opaque `ui_theme` axis on the
+`lb_prefs::Prefs`/`ResolvedPrefs` record (NOT a generic key/value store — the prefs record is a closed
+struct). The whole `ThemePreference` (incl. `layout`) is stored as one JSON blob and folds **whole**
+through the existing resolve chain: **member → workspace-default → built-in**. So a member's theme
+roams across browser/desktop, an admin can set a **workspace-default** theme via the admin-gated
+`prefs.set_default`, and a member override wins where set. `localStorage` (`lb.theme`) is only the
+first-paint cache; `prefs` is the authority, reconciled on mount. No new MCP verb, table, or
+capability — persistence reuses `prefs.get`/`set`/`resolve`/`set_default` and their gates.
 
 ## Tested
 
@@ -101,10 +119,19 @@ Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, e
 `gateway_test` proves the HTTP/SSE path (incl. a live message pushed to the browser over a real
 socket).
 
-Theme preference coverage: `theme-storage.test.ts`, `theme-dom.test.ts`, `ThemeProvider.test.tsx`,
-and `ThemeSwitcher.test.tsx` cover validation/fallback, DOM application, persistence, and accessible
-switcher interaction. The shipped slice was verified with `pnpm test` (56 tests), `pnpm test:gateway`
-(110 real-gateway tests), `pnpm build`, and `pnpm lint` (0 errors; legacy allowlist warnings remain).
+Customizer coverage (unit, `pnpm test`): `preset-adapter.test.ts` (the load-bearing shadcn→base
+round-trip — the "existing UI re-themes" guard), `theme-import.test.ts` (tweakcn paste → base tokens,
+fail-closed on malformed), `color-to-hsl.test.ts` (hex/oklch/hsl→triplet), `theme-dom.test.ts` (inline
+base tokens vs. built-in accent path, light↔dark variant re-apply, radius), `theme-storage.test.ts`
+(validation/fallback, no legacy compat), `ThemeProvider.test.tsx` (cache→apply→persist),
+`LayoutTab.test.tsx` (sidebar variant/collapsible/side pickers), and `NavRail.test.tsx` (the themed
+layout reaches the `<Sidebar>` as `data-variant`/`data-side`). Persistence over the REAL gateway
+(`pnpm test:gateway` — `theme-prefs.gateway.test.ts`): member round-trip + roam, workspace-default
+fold, **capability-deny** (member without `prefs.set`; non-admin without `prefs.set_default`), and
+**workspace-isolation** (ws-A theme never resolves in ws-B). Rust `cargo test -p lb-prefs`
+(`ui_theme_test`, `resolve_test`) proves the axis round-trip, whole-fold, and isolation on the real
+store. Verified with `pnpm test` (466), the gateway suite, `cargo test -p lb-prefs -p lb-host` (green),
+`cargo fmt`, `tsc`, and `eslint` (0 errors on new files).
 
 ## Make collaboration real (shipped)
 

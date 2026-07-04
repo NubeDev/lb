@@ -24,6 +24,8 @@ import { emptyScope } from "@/lib/vars";
 import { usePanelEditor } from "@/lib/panel-kit";
 import { NavMenu, type NavItem } from "@nube/panel";
 
+import { useVerticalSplit, SplitHandle } from "@/lib/split";
+
 import { defaultOptionsForView } from "./viewOptions";
 import { VizPicker } from "./VizPicker";
 import { usePanelData } from "@/features/dashboard/builder/usePanelData";
@@ -70,6 +72,7 @@ export function BuilderPane({
   layout = "split",
 }: Props) {
   const stacked = layout === "stacked";
+  const split = useVerticalSplit();
   const ed = usePanelEditor(cell, { defaultOptionsForView });
   const [tab, setTab] = useState<TabId>("query");
   const [search, setSearch] = useState("");
@@ -108,7 +111,7 @@ export function BuilderPane({
   // The preview half — title + save actions, the library bar, the live preview, and the viz picker.
   // Stacked: the preview fills the top (grows); split: a fixed-height preview above the picker.
   const previewHalf = (
-    <div className="flex min-h-0 flex-col gap-3">
+    <div className={`flex min-h-0 flex-col gap-3 ${stacked ? "h-full overflow-y-auto pr-1" : ""}`}>
       <div className="flex items-center gap-2">
         <Input
           aria-label="panel title"
@@ -122,7 +125,7 @@ export function BuilderPane({
         </Button>
       </div>
       <LibraryPanelBar draft={ed.draft} onSave={onSave} />
-      <div className={stacked ? "min-h-0 flex-1" : "h-56 shrink-0"}>
+      <div className={stacked ? "min-h-[8rem] flex-1" : "h-56 shrink-0"}>
         <PreviewPane
           cell={ed.draft}
           ws={ws}
@@ -170,10 +173,23 @@ export function BuilderPane({
     <div aria-label="panel builder" className="flex h-full min-h-0 flex-col">
       <ResultFieldsProvider fields={resultFields}>
         {stacked ? (
-          // Stacked (Data Studio v3): preview on TOP (grows), options BELOW — one query/preview view.
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-3">
-            <div className="flex min-h-[12rem] flex-[3] flex-col overflow-hidden">{previewHalf}</div>
-            <div className="min-h-0 flex-[2] overflow-hidden border-t border-border pt-3">{optionsHalf}</div>
+          // Stacked (Data Studio v3): preview on TOP, options BELOW — one query/preview view. A draggable
+          // divider sets how the height splits; each half scrolls internally so nothing is clipped.
+          <div ref={split.containerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+            <div
+              className="min-h-0 shrink-0 overflow-hidden"
+              style={{ flexBasis: split.topBasis, pointerEvents: split.dragging ? "none" : undefined }}
+            >
+              {previewHalf}
+            </div>
+            {/* Drag up/down to shrink the preview and grow the options rail (and vice-versa). */}
+            <SplitHandle onPointerDown={split.onHandleDown} label="resize preview and options" />
+            <div
+              className="min-h-0 flex-1 overflow-hidden"
+              style={{ pointerEvents: split.dragging ? "none" : undefined }}
+            >
+              {optionsHalf}
+            </div>
           </div>
         ) : (
           // Split (default): preview LEFT, options RIGHT.

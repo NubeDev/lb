@@ -1,0 +1,12 @@
+{
+  "name": "@nube/app-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Contract types + gateway client for Lazybones app (React Native) extensions. Scaffold — see docs/scope/app/app-sdk-scope.md.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "peerDependencies": {
+    "react": "*"
+  }
+}

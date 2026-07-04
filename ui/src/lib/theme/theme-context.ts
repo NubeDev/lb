@@ -1,12 +1,25 @@
 import { createContext } from "react";
 
-import type { ThemeAccent, ThemeMode, ThemePreference } from "./theme-options";
+import type { ThemeLayout, ThemeMode, ThemePreference, ThemeRadius } from "./theme-options";
+import type { CustomTheme } from "./theme-tokens";
 
 export interface ThemeContextValue {
   theme: ThemePreference;
+  /** True once the authoritative prefs value has been reconciled over the first-paint cache. */
+  hydrated: boolean;
   setMode: (mode: ThemeMode) => void;
-  setAccent: (accent: ThemeAccent) => void;
+  setPreset: (preset: string) => void;
+  setRadius: (radius: ThemeRadius) => void;
+  /** Patch the sidebar layout (variant/collapsible/side). */
+  setLayout: (patch: Partial<ThemeLayout>) => void;
+  /** Apply a hand-tweaked/library custom theme (both modes) — clears `preset`/`imported` precedence. */
+  setCustom: (custom: CustomTheme | undefined) => void;
+  /** Apply a pasted/imported theme (both modes). */
+  setImported: (imported: CustomTheme | undefined) => void;
+  /** Replace the whole preference (the Customizer's bulk setter). */
   setTheme: (theme: ThemePreference) => void;
+  /** Reset to the built-in default and persist the reset. */
+  reset: () => void;
 }
 
 export const ThemeContext = createContext<ThemeContextValue | null>(null);

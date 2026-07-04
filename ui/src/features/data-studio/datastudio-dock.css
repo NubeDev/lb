@@ -66,3 +66,11 @@
   flex: 1;
   min-height: 0;
 }
+
+/* FlexLayout's tab content defaults to `overflow: auto`, which would scroll the WHOLE builder tab
+   as one block — defeating each pane's own scrollbar and letting the preview push the options rail
+   off the bottom (cut off, no inner scroll). Bound the tab content instead: the pane's flex chain
+   (`min-h-0 flex-1 overflow-y-auto`) then owns scrolling per-half. */
+.data-studio-dock .flexlayout__tab {
+  overflow: hidden;
+}

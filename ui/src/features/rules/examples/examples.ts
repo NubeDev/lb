@@ -57,4 +57,31 @@ export const EXAMPLES: RuleExample[] = [
       'ai.complete("how many sites are there", sites)',
     ].join("\n"),
   },
+  {
+    id: "channel-post",
+    title: "Post to a channel",
+    summary: "Post a chat message to the `ops` channel with your own authority (needs bus:chan/ops:Pub).",
+    body: 'channel.post("ops", #{ body: "posted from a rule" });',
+  },
+  {
+    id: "channel-read",
+    title: "Read a channel's history",
+    summary: "Read the last 5 messages on `ops` — a bounded snapshot (an uncharged read).",
+    body: 'channel.history("ops", 5)',
+  },
+  {
+    id: "escalate-and-notify",
+    title: "Escalate: inbox + outbox + channel",
+    summary:
+      "The full messaging surface — raise an attention item, stage a must-deliver page, and post to the live channel.",
+    body: [
+      'let hot = history("series", "cooler.temp", "24h").filter("value > 5.0");',
+      'if hot.size() > 0 {',
+      '  inbox.record(#{ channel: "ops", id: "cooler-breach", body: "cooler ran hot" });',
+      '  outbox.enqueue(#{ id: "cooler-page", target: "notify", action: "page",',
+      '                    payload: #{ level: "critical", series: "cooler.temp" } });',
+      '  channel.post("ops", #{ body: "⚠ cooler breach — paging on-call" });',
+      '}',
+    ].join("\n"),
+  },
 ];
