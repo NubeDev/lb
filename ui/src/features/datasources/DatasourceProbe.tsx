@@ -30,7 +30,7 @@ export function DatasourceProbe({ name, result, onTest }: Props) {
       <span
         aria-label={`probe ${name}`}
         data-state="green"
-        className="rounded bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
+        className="rounded-md bg-green-500/15 px-2 py-0.5 text-xs text-green-400"
       >
         Connected
       </span>
@@ -41,7 +41,7 @@ export function DatasourceProbe({ name, result, onTest }: Props) {
       aria-label={`probe ${name}`}
       data-state="red"
       title={result.error}
-      className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+      className="rounded-md bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
     >
       Failed{result.error ? `: ${result.error}` : ""}
     </span>

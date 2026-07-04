@@ -49,7 +49,7 @@ export function SchemaBuilder({ fields, onChange, depth = 0 }: Props) {
       <button
         type="button"
         onClick={add}
-        className="mt-2 inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-muted transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none"
+        className="mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none"
       >
         <Plus size={13} />
         {depth === 0 ? "Add field" : "Add sub-field"}
@@ -97,7 +97,7 @@ function FieldRow({
           placeholder={field.type === "array" ? "list name" : "field name"}
           value={field.name}
           onChange={(e) => onChange({ ...field, name: e.target.value })}
-          className="min-w-0 flex-1 rounded border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
         />
 
         <TypePicker value={field.type} onChange={setType} />
@@ -106,7 +106,7 @@ function FieldRow({
           type="button"
           aria-label={`remove ${field.name || "field"}`}
           onClick={onRemove}
-          className="shrink-0 rounded p-1 text-muted/50 opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none hover:text-red-400"
+          className="shrink-0 rounded-md p-1 text-muted/50 opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none hover:text-red-400"
         >
           <X size={14} />
         </button>
@@ -146,7 +146,7 @@ function TypePicker({
         aria-label="field type"
         value={value}
         onChange={(e) => onChange(e.target.value as FieldType)}
-        className={`appearance-none rounded border border-border bg-panel py-1 pl-2 pr-6 text-xs font-medium transition-colors focus-visible:border-accent focus-visible:outline-none ${
+        className={`appearance-none rounded-md border border-border bg-panel py-1 pl-2 pr-6 text-xs font-medium transition-colors focus-visible:border-accent focus-visible:outline-none ${
           isContainer(value) ? "text-accent" : "text-fg"
         }`}
       >

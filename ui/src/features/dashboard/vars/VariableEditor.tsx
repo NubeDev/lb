@@ -209,7 +209,7 @@ function VariableRow({
           <input
             aria-label="variable required page parameter"
             type="checkbox"
-            className="h-3.5 w-3.5 rounded border-border accent-accent"
+            className="h-3.5 w-3.5 rounded-md border-border accent-accent"
             checked={!!variable.required}
             onChange={(e) => onChange({ required: e.target.checked })}
           />

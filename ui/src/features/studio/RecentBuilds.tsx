@@ -68,7 +68,7 @@ function RecentRow({
             <span className="truncate font-mono text-xs font-medium text-fg">
               {entry.id}
             </span>
-            <span className="shrink-0 rounded bg-border/50 px-1.5 py-0 text-[10px] text-muted">
+            <span className="shrink-0 rounded-md bg-border/50 px-1.5 py-0 text-[10px] text-muted">
               {entry.tier}
             </span>
             <span className="shrink-0 text-[10px] text-muted">

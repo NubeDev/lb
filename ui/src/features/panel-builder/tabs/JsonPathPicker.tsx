@@ -140,7 +140,7 @@ function TreeNode({ label, value, path, depth, open, toggle, selectedPath, onPic
   return (
     <div>
       <div
-        className={`flex items-center gap-1 rounded px-1 py-0.5 ${selected ? "bg-accent/15" : "hover:bg-card"}`}
+        className={`flex items-center gap-1 rounded-md px-1 py-0.5 ${selected ? "bg-accent/15" : "hover:bg-card"}`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
       >
         {isContainer ? (

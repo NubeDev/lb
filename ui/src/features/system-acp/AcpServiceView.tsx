@@ -80,7 +80,7 @@ export function AcpServiceView({ ws, onBack }: Props) {
                 {info.methods.map((m) => (
                   <code
                     key={m}
-                    className="rounded border border-border bg-bg px-2 py-1 font-mono text-xs text-fg"
+                    className="rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs text-fg"
                   >
                     {m}
                   </code>
@@ -146,7 +146,7 @@ function KeyValueGrid({ pairs }: { pairs: AcpInfo["capabilities"] }) {
       {pairs.map((p) => (
         <span
           key={p.label}
-          className="inline-flex items-baseline justify-between gap-2 rounded border border-border bg-bg px-2 py-1.5 text-xs"
+          className="inline-flex items-baseline justify-between gap-2 rounded-md border border-border bg-bg px-2 py-1.5 text-xs"
           aria-label={p.label}
         >
           <span className="font-mono text-muted">{p.label}</span>

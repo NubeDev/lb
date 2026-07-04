@@ -173,7 +173,7 @@ function ModeTab({ mode, active, onClick }: { mode: Mode; active: boolean; onCli
       variant="ghost"
       size="sm"
       className={cn(
-        "h-7 rounded px-2.5 text-xs",
+        "h-7 rounded-md px-2.5 text-xs",
         active ? "bg-accent/15 text-accent hover:bg-accent/20" : "text-muted",
       )}
       onClick={onClick}
@@ -238,7 +238,7 @@ function StatusCard({
           {service.metrics.map((m) => (
             <span
               key={m.label}
-              className="inline-flex items-baseline gap-1 rounded border border-border bg-bg px-2 py-1 text-xs"
+              className="inline-flex items-baseline gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs"
               aria-label={`${service.id} ${m.label}`}
             >
               <span className="text-muted">{m.label}</span>

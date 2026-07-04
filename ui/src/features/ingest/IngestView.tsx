@@ -61,7 +61,7 @@ export function IngestView({ ws }: Props) {
             <input
               aria-label="search series"
               placeholder="prefix, or kind:temperature"
-              className="min-w-0 flex-1 rounded border border-border bg-panel px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
+              className="min-w-0 flex-1 rounded-md border border-border bg-panel px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && void search(query)}
@@ -71,7 +71,7 @@ export function IngestView({ ws }: Props) {
               aria-label="new series"
               title="New series"
               onClick={() => setWizardOpen(true)}
-              className="shrink-0 rounded bg-accent/15 p-1.5 text-accent transition-colors hover:bg-accent/25 focus-visible:outline-none"
+              className="shrink-0 rounded-md bg-accent/15 p-1.5 text-accent transition-colors hover:bg-accent/25 focus-visible:outline-none"
             >
               <Plus size={15} />
             </button>
@@ -296,7 +296,7 @@ function WriteForm({
           <input
             aria-label="payload"
             placeholder="61.4, or a JSON value"
-            className="rounded border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none"
+            className="rounded-md border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none"
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
           />
@@ -308,7 +308,7 @@ function WriteForm({
           <span className="text-[11px] text-muted">seq</span>
           <input
             aria-label="seq"
-            className="w-20 rounded border border-border bg-bg px-2 py-1 text-sm tabular-nums focus-visible:border-accent focus-visible:outline-none"
+            className="w-20 rounded-md border border-border bg-bg px-2 py-1 text-sm tabular-nums focus-visible:border-accent focus-visible:outline-none"
             value={seq}
             onChange={(e) => setSeq(e.target.value)}
           />
@@ -318,7 +318,7 @@ function WriteForm({
           <input
             aria-label="label"
             placeholder="host:pi-7"
-            className="min-w-0 rounded border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none"
+            className="min-w-0 rounded-md border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none"
             value={label}
             onChange={(e) => setLabel(e.target.value)}
           />

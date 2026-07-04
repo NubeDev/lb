@@ -43,14 +43,14 @@ export function WorkspacesAdmin({ ws }: Props) {
                   <div className="flex justify-end gap-1">
                     <button
                       aria-label={`archive ${w.ws}`}
-                      className="rounded bg-panel px-2 py-0.5 text-xs"
+                      className="rounded-md bg-panel px-2 py-0.5 text-xs"
                       onClick={() => setPending({ kind: "archive", ws: w.ws })}
                     >
                       Archive
                     </button>
                     <button
                       aria-label={`purge ${w.ws}`}
-                      className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                      className="rounded-md bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
                       onClick={() => setPending({ kind: "purge", ws: w.ws })}
                     >
                       Purge

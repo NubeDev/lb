@@ -103,11 +103,11 @@ function render<T>(
   ready: (data: T) => React.ReactNode,
 ): React.ReactNode {
   if (section.status === "loading") {
-    return <div aria-label="loading" className="h-6 animate-pulse rounded bg-muted" />;
+    return <div aria-label="loading" className="h-6 animate-pulse rounded-md bg-muted" />;
   }
   if (section.status === "denied") {
     return (
-      <p aria-label="denied" className="rounded bg-muted px-2 py-1.5 text-[11px] text-muted">
+      <p aria-label="denied" className="rounded-md bg-muted px-2 py-1.5 text-[11px] text-muted">
         Not permitted.
       </p>
     );

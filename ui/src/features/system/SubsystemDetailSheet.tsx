@@ -71,7 +71,7 @@ export function SubsystemDetailSheet({ subsystemId, onClose }: Props) {
                         {detail.service.metrics.map((m) => (
                           <span
                             key={m.label}
-                            className="inline-flex items-baseline gap-1 rounded border border-border bg-bg px-2 py-1 text-xs"
+                            className="inline-flex items-baseline gap-1 rounded-md border border-border bg-bg px-2 py-1 text-xs"
                             aria-label={`${detail.service.id} ${m.label}`}
                           >
                             <span className="text-muted">{m.label}</span>
@@ -141,7 +141,7 @@ function ZidList({ label, zids }: { label: string; zids: string[] }) {
           {zids.map((z) => (
             <li
               key={z}
-              className="truncate rounded border border-border bg-bg px-2 py-1 font-mono text-xs text-fg"
+              className="truncate rounded-md border border-border bg-bg px-2 py-1 font-mono text-xs text-fg"
             >
               {z}
             </li>

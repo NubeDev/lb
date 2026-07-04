@@ -139,7 +139,7 @@ function Columns({
         Columns
       </div>
       {columns.map((c) => (
-        <div key={c.name} className="flex items-center gap-2 rounded px-1 py-1 text-xs">
+        <div key={c.name} className="flex items-center gap-2 rounded-md px-1 py-1 text-xs">
           <ChevronRight size={11} className="shrink-0 text-muted" />
           <span className="min-w-0 truncate font-mono">{c.name}</span>
           <Badge variant="secondary" className="ml-auto shrink-0 font-mono text-[10px]">

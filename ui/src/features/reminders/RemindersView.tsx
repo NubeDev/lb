@@ -135,7 +135,7 @@ export function RemindersView({ ws }: Props) {
                 >
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{r.id}</span>
-                    <code className="rounded bg-panel px-1 text-xs text-muted">{r.schedule}</code>
+                    <code className="rounded-md bg-panel px-1 text-xs text-muted">{r.schedule}</code>
                     <span
                       aria-label={`reminder ${r.id} status`}
                       className="ml-auto text-xs text-muted"

@@ -121,7 +121,7 @@ function ArtifactRow({ delta }: { delta: ArtifactDelta }) {
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border/60 bg-panel/50 px-2.5 py-1.5 text-[11px]">
       <FileCode2 size={12} className="shrink-0 text-muted" />
       <span className="font-mono text-fg">{name}</span>
-      <span className="rounded bg-border/50 px-1.5 py-0 text-[10px] text-muted">
+      <span className="rounded-md bg-border/50 px-1.5 py-0 text-[10px] text-muted">
         {KIND_LABEL[delta.kind] ?? delta.kind}
       </span>
 
@@ -163,7 +163,7 @@ function ChangeBadge({
   return (
     <span
       className={cn(
-        "flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
         fresh
           ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300"
           : "bg-rose-500/20 text-rose-700 dark:text-rose-300",

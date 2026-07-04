@@ -49,7 +49,7 @@ export function FunctionEntry({ entry, onInsert }: FunctionEntryProps) {
           aria-label={`preview ${entry.name} snippet`}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="flex items-center gap-1 rounded text-[10px] font-medium uppercase tracking-wide text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          className="flex items-center gap-1 rounded-md text-[10px] font-medium uppercase tracking-wide text-muted transition-colors hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           <ChevronDown
             size={11}
@@ -61,7 +61,7 @@ export function FunctionEntry({ entry, onInsert }: FunctionEntryProps) {
 
       {open ? (
         <div className="px-2.5 pb-2">
-          <div className="flex items-start gap-1.5 rounded border border-border bg-muted-bg px-2 py-1.5">
+          <div className="flex items-start gap-1.5 rounded-md border border-border bg-muted-bg px-2 py-1.5">
             <Code2 size={11} className="mt-0.5 shrink-0 text-muted" />
             <code className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-fg">
               {entry.snippet}

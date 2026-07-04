@@ -215,7 +215,7 @@ function ScopeSwitch({
             onChange();
           }}
           className={
-            "rounded px-3 py-1 transition-colors " +
+            "rounded-md px-3 py-1 transition-colors " +
             (scope === s ? "bg-accent text-bg" : "text-muted hover:text-fg")
           }
         >

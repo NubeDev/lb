@@ -129,7 +129,7 @@ export default function SystemTopologyGraph({ topology }: Props) {
             {edges.length === 1 ? "" : "s"}
           </div>
         </div>
-        <div className="hidden rounded border border-border bg-panel px-2 py-1 text-xs text-muted sm:block">
+        <div className="hidden rounded-md border border-border bg-panel px-2 py-1 text-xs text-muted sm:block">
           Node colour = live health · edges = fixed wiring
         </div>
       </div>

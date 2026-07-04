@@ -91,12 +91,12 @@ function FieldInput({
         </div>
         <div className="ml-3 flex flex-col gap-2 border-l border-border/60 pl-3">
           {items.map((item, i) => (
-            <div key={i} className="group relative rounded border border-border/60 bg-bg/40 p-2">
+            <div key={i} className="group relative rounded-md border border-border/60 bg-bg/40 p-2">
               <button
                 type="button"
                 aria-label={`remove ${field.name} item ${i + 1}`}
                 onClick={() => onChange(items.filter((_, j) => j !== i))}
-                className="absolute right-1 top-1 rounded p-0.5 text-muted/50 opacity-0 transition group-hover:opacity-100 hover:text-red-400 focus-visible:opacity-100"
+                className="absolute right-1 top-1 rounded-md p-0.5 text-muted/50 opacity-0 transition group-hover:opacity-100 hover:text-red-400 focus-visible:opacity-100"
               >
                 <X size={13} />
               </button>
@@ -118,7 +118,7 @@ function FieldInput({
                 ),
               ])
             }
-            className="inline-flex items-center gap-1 self-start rounded px-1.5 py-1 text-xs text-muted transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none"
+            className="inline-flex items-center gap-1 self-start rounded-md px-1.5 py-1 text-xs text-muted transition-colors hover:text-accent focus-visible:text-accent focus-visible:outline-none"
           >
             <Plus size={13} /> Add item
           </button>
@@ -146,7 +146,7 @@ function ScalarInput({
   onChange: (v: unknown) => void;
 }) {
   const cls =
-    "rounded border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none";
+    "rounded-md border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/50 focus-visible:border-accent focus-visible:outline-none";
 
   if (field.type === "boolean") {
     return (

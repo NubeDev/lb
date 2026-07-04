@@ -39,21 +39,21 @@ export function WorkflowView({ ws, approvalId, jobId, author, caps }: Props) {
         <button
           type="button"
           onClick={() => void resolve("approved")}
-          className="rounded bg-accent px-3 py-1 text-sm text-bg"
+          className="rounded-md bg-accent px-3 py-1 text-sm text-bg"
         >
           Approve
         </button>
         <button
           type="button"
           onClick={() => void resolve("rejected")}
-          className="rounded border border-border px-3 py-1 text-sm"
+          className="rounded-md border border-border px-3 py-1 text-sm"
         >
           Reject
         </button>
         <button
           type="button"
           onClick={() => void start()}
-          className="ml-auto rounded bg-accent px-3 py-1 text-sm text-bg"
+          className="ml-auto rounded-md bg-accent px-3 py-1 text-sm text-bg"
         >
           Start coding job
         </button>

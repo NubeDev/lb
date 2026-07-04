@@ -15,7 +15,7 @@ export function ScalarCard({ value }: ScalarCardProps) {
   // A structured value (array/object) is not a "scalar" a headline can show — render the tree.
   if (value !== null && typeof value === "object") {
     return (
-      <div aria-label="scalar result" className="rounded border border-border p-1">
+      <div aria-label="scalar result" className="rounded-md border border-border p-1">
         <div className="px-3 pt-2 text-xs uppercase tracking-wide text-muted">Result</div>
         <div className="p-2">
           <JsonTree src={value} />
@@ -26,7 +26,7 @@ export function ScalarCard({ value }: ScalarCardProps) {
 
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return (
-    <div aria-label="scalar result" className="rounded border border-border p-4">
+    <div aria-label="scalar result" className="rounded-md border border-border p-4">
       <div className="text-xs uppercase tracking-wide text-muted">Result</div>
       <div aria-label="scalar value" className="mt-1 font-mono text-2xl">
         {text}

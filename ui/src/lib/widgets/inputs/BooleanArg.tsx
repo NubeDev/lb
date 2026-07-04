@@ -19,7 +19,7 @@ export function BooleanArg({ name, value, onChange }: Props) {
         aria-label={name}
         checked={checked}
         onChange={(e) => onChange(e.target.checked ? "true" : "false")}
-        className="h-4 w-4 rounded border-border"
+        className="h-4 w-4 rounded-md border-border"
       />
       {name}
     </label>

@@ -28,11 +28,11 @@ export function FindingsList({ findings }: FindingsListProps) {
         <li
           key={i}
           aria-label={`finding ${f.level}`}
-          className={`rounded border px-3 py-2 text-sm ${levelClass(f.level)}`}
+          className={`rounded-md border px-3 py-2 text-sm ${levelClass(f.level)}`}
         >
           <span className="font-semibold uppercase">{f.level}</span>
           {f.data.alert ? (
-            <span aria-label="alert mark" className="ml-2 rounded bg-red-600 px-1 text-xs text-white">
+            <span aria-label="alert mark" className="ml-2 rounded-md bg-red-600 px-1 text-xs text-white">
               ALERT
             </span>
           ) : null}

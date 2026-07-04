@@ -84,7 +84,7 @@ function DataRecordNode({ data, selected }: NodeProps<Node<DataNode>>) {
         <span className="min-w-0 truncate font-mono text-xs font-medium text-accent">
           {data.kind}
         </span>
-        <span className="rounded border border-border bg-panel px-1.5 py-0.5 text-[10px] text-muted">
+        <span className="rounded-md border border-border bg-panel px-1.5 py-0.5 text-[10px] text-muted">
           record
         </span>
       </div>
@@ -135,7 +135,7 @@ export default function DataGraph({ graph, onExpand }: Props) {
             {edges.length === 1 ? "" : "s"} · {graphKinds(graph.nodes)}
           </div>
         </div>
-        <div className="hidden rounded border border-border bg-panel px-2 py-1 text-xs text-muted sm:block">
+        <div className="hidden rounded-md border border-border bg-panel px-2 py-1 text-xs text-muted sm:block">
           Click a node to expand neighbours
         </div>
       </div>

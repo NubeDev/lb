@@ -87,7 +87,7 @@ export function DataView({ ws }: Props) {
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="page-title">Data</h1>
-            <span className="rounded border border-border bg-bg px-1.5 py-0.5 text-[11px] text-muted">
+            <span className="rounded-md border border-border bg-bg px-1.5 py-0.5 text-[11px] text-muted">
               read-only
             </span>
           </div>
@@ -175,7 +175,7 @@ function ModeTab({
     <button
       role="tab"
       aria-selected={active}
-      className={`inline-flex h-7 items-center gap-1.5 rounded px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+      className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
         active ? "bg-accent/15 text-accent" : "text-muted hover:bg-panel hover:text-fg"
       }`}
       onClick={onClick}
@@ -188,7 +188,7 @@ function ModeTab({
 
 function Metric({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
-    <span className="inline-flex items-baseline gap-1 rounded border border-border bg-bg px-2 py-1">
+    <span className="inline-flex items-baseline gap-1 rounded-md border border-border bg-bg px-2 py-1">
       <span>{label}</span>
       <span className={mono ? "font-mono text-fg" : "font-medium tabular-nums text-fg"}>
         {value}
@@ -240,7 +240,7 @@ function TablePicker({
               >
                 <span className="min-w-0 truncate font-mono text-xs">{t.table}</span>
                 <span
-                  className={`rounded px-1.5 py-0.5 text-[11px] tabular-nums ${
+                  className={`rounded-md px-1.5 py-0.5 text-[11px] tabular-nums ${
                     active ? "bg-bg/70 text-accent" : "bg-bg text-muted group-hover:text-fg"
                   }`}
                 >

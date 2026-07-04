@@ -151,7 +151,7 @@ export function Combobox({
         <button
           type="button"
           aria-label={`clear ${ariaLabel}`}
-          className="absolute right-6 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+          className="absolute right-6 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
           onClick={() => {
             onChange("");
             setOpen(false);
@@ -169,7 +169,7 @@ export function Combobox({
           <input
             ref={inputRef}
             aria-label={`${ariaLabel} search`}
-            className="mb-1 h-7 w-full rounded border border-border bg-bg px-2 text-xs text-fg focus-visible:outline-none"
+            className="mb-1 h-7 w-full rounded-md border border-border bg-bg px-2 text-xs text-fg focus-visible:outline-none"
             placeholder={allowCustom ? "search or type…" : "search…"}
             value={query}
             onChange={(e) => {
@@ -186,7 +186,7 @@ export function Combobox({
               <li>
                 <button
                   type="button"
-                  className="w-full rounded px-2 py-1.5 text-left text-xs text-fg hover:bg-bg"
+                  className="w-full rounded-md px-2 py-1.5 text-left text-xs text-fg hover:bg-bg"
                   onClick={() => commit(query.trim())}
                 >
                   Use “{query.trim()}”
@@ -207,7 +207,7 @@ export function Combobox({
                       role="option"
                       aria-selected={o.value === value}
                       className={cn(
-                        "flex w-full items-start gap-1.5 rounded px-2 py-1.5 text-left text-xs text-fg hover:bg-bg",
+                        "flex w-full items-start gap-1.5 rounded-md px-2 py-1.5 text-left text-xs text-fg hover:bg-bg",
                         idx === active && "bg-bg",
                       )}
                       onClick={() => commit(o.value)}

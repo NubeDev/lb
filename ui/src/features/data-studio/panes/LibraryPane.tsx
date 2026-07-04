@@ -67,7 +67,7 @@ export function LibraryPane({ onOpen, refreshKey = 0 }: Props) {
               <button
                 type="button"
                 aria-label={`open library panel ${p.title}`}
-                className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-accent/10"
+                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent/10"
                 onClick={() => void open(p)}
               >
                 <span className="flex min-w-0 items-center gap-1.5">

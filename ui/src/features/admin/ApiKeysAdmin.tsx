@@ -45,11 +45,11 @@ export function ApiKeysAdmin({ ws }: Props) {
     <AdminPanel icon={KeyRound} title="API Keys" ws={ws} action={action} error={error}>
       <div className="space-y-3 px-4 py-3">
         {newSecret && (
-          <div role="alert" className="space-y-2 rounded border border-accent/25 bg-accent/10 px-3 py-2">
+          <div role="alert" className="space-y-2 rounded-md border border-accent/25 bg-accent/10 px-3 py-2">
             <p className="text-xs font-medium text-accent">
               Copy the key now — you won&apos;t see this secret again.
             </p>
-            <code className="block break-all rounded bg-bg px-2 py-1 font-mono text-xs">{newSecret}</code>
+            <code className="block break-all rounded-md bg-bg px-2 py-1 font-mono text-xs">{newSecret}</code>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -67,7 +67,7 @@ export function ApiKeysAdmin({ ws }: Props) {
         )}
 
         {creating && (
-          <div className="space-y-3 rounded border border-border bg-panel px-3 py-3">
+          <div className="space-y-3 rounded-md border border-border bg-panel px-3 py-3">
             <label className="block text-xs text-muted">
               Label
               <Input

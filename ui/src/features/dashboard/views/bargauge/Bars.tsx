@@ -51,12 +51,12 @@ export function BarGaugeBars({
           className={horizontal ? "flex items-center gap-2" : "flex h-full flex-col items-center justify-end gap-1"}
         >
           <div
-            className={`overflow-hidden rounded ${horizontal ? "h-3.5 flex-1" : "h-full w-3.5"} ${showUnfilled ? "bg-border/40" : ""}`}
+            className={`overflow-hidden rounded-md ${horizontal ? "h-3.5 flex-1" : "h-full w-3.5"} ${showUnfilled ? "bg-border/40" : ""}`}
             role="img"
             aria-label={`bargauge bar ${i}`}
           >
             <div
-              className="rounded transition-[width,height]"
+              className="rounded-md transition-[width,height]"
               style={{
                 ...fillStyle(bar.color, displayMode),
                 ...(horizontal

@@ -35,9 +35,20 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  /* Declare the FULL rounded scale in `@theme` so Tailwind GENERATES the `rounded-xs…rounded-3xl`
+     utilities (it only emits a utility whose theme key exists). The actual token *values* are
+     re-asserted in a trailing `:root` override at the bottom of this file — because `tw-animate-css`
+     re-imports Tailwind's default theme AFTER this block and would otherwise win the cascade with the
+     static `--radius-md:.375rem` etc., which is exactly the shipped "radius does nothing" bug. See the
+     `RADIUS SCALE` block at the end. */
+  --radius-xs: max(0px, calc(var(--radius) - 4px));
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-DEFAULT: max(0px, calc(var(--radius) - 2px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
   --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 14px);
 }
 
 /* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper;
@@ -283,4 +294,25 @@ body {
   .wizard-panel {
     animation: none;
   }
+}
+
+/* ── RADIUS SCALE (cascade-last override) ─────────────────────────────────────────────────────────
+   Re-assert the derived rounded ladder LAST so it wins over `tw-animate-css`'s re-import of Tailwind's
+   default theme (which re-declares `--radius-sm/md/lg` statically further down the compiled sheet).
+   Without this, `.rounded-md` resolves to the static `.375rem` and the Customizer's radius control is a
+   no-op for every card/input/chip — the exact shipped bug this slice fixes. The `@theme` block above
+   still declares the same keys so the utilities are generated; these are the values that actually apply.
+   The sm/md/lg anchors keep their shipped offsets (shadcn reads them → no visual regression); `rounded`
+   (DEFAULT) is pinned to the `md` stop and the bare-`rounded` call sites were swept onto `rounded-md`.
+   `rounded-full`/`rounded-none` stay literal. `max(0px, …)` clamps so radius `0rem` gives true squares.
+   The doubled `:root:root` selector raises specificity to (0,2,0) so it beats `tw-animate-css`'s plain
+   `:root` re-emission by SPECIFICITY, not just source order (which the bundler reorders past us). */
+:root:root {
+  --radius-xs: max(0px, calc(var(--radius) - 4px));
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: max(0px, calc(var(--radius) - 2px));
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 14px);
 }

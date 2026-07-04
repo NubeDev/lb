@@ -39,7 +39,7 @@ export function AgentView({ ws, jobId, author, caps }: Props) {
       >
         <input
           aria-label="goal"
-          className="flex-1 rounded border border-border bg-panel px-2 py-1 text-sm"
+          className="flex-1 rounded-md border border-border bg-panel px-2 py-1 text-sm"
           placeholder="Ask the agent…"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
@@ -47,7 +47,7 @@ export function AgentView({ ws, jobId, author, caps }: Props) {
         <button
           type="submit"
           disabled={running}
-          className="rounded bg-accent px-3 py-1 text-sm text-bg disabled:opacity-50"
+          className="rounded-md bg-accent px-3 py-1 text-sm text-bg disabled:opacity-50"
         >
           {running ? "Running…" : "Run"}
         </button>

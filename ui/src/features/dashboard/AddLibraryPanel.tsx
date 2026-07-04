@@ -85,7 +85,7 @@ export function AddLibraryPanel({ existing, onAdd }: Props) {
                 type="button"
                 role="option"
                 aria-selected="false"
-                className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs hover:bg-accent/10"
+                className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent/10"
                 onClick={() => add(p)}
               >
                 <span className="truncate">{p.title}</span>

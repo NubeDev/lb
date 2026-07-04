@@ -11,10 +11,10 @@ import type { SidebarCollapsible, SidebarSide, SidebarVariant } from "@/lib/them
 function Lines({ vertical = false }: { vertical?: boolean }) {
   return (
     <div className={cn("flex flex-1 flex-col gap-0.5 p-1", vertical && "items-center")}>
-      <div className="h-0.5 w-full rounded bg-fg/60" />
-      <div className="h-0.5 w-3/4 rounded bg-fg/50" />
-      <div className="h-0.5 w-2/3 rounded bg-fg/40" />
-      <div className="h-0.5 w-3/4 rounded bg-fg/30" />
+      <div className="h-0.5 w-full rounded-md bg-fg/60" />
+      <div className="h-0.5 w-3/4 rounded-md bg-fg/50" />
+      <div className="h-0.5 w-2/3 rounded-md bg-fg/40" />
+      <div className="h-0.5 w-3/4 rounded-md bg-fg/30" />
     </div>
   );
 }
@@ -26,18 +26,18 @@ function Pane() {
 
 export function VariantDiagram({ variant }: { variant: SidebarVariant }) {
   return (
-    <div className={cn("flex h-12 rounded border border-border", variant === "inset" ? "bg-panel" : "bg-bg")}>
+    <div className={cn("flex h-12 rounded-md border border-border", variant === "inset" ? "bg-panel" : "bg-bg")}>
       <div
         className={cn(
           "flex w-3 flex-shrink-0 flex-col gap-0.5 bg-panel p-1",
-          variant === "floating" && "m-1 rounded border-r border-border",
-          variant === "inset" && "m-1 ms-0 rounded bg-panel/80",
+          variant === "floating" && "m-1 rounded-md border-r border-border",
+          variant === "inset" && "m-1 ms-0 rounded-md bg-panel/80",
           variant === "sidebar" && "border-r border-border",
         )}
       >
-        <div className="h-0.5 w-full rounded bg-fg/60" />
-        <div className="h-0.5 w-3/4 rounded bg-fg/50" />
-        <div className="h-0.5 w-2/3 rounded bg-fg/40" />
+        <div className="h-0.5 w-full rounded-md bg-fg/60" />
+        <div className="h-0.5 w-3/4 rounded-md bg-fg/50" />
+        <div className="h-0.5 w-2/3 rounded-md bg-fg/40" />
       </div>
       <Pane />
     </div>
@@ -46,13 +46,13 @@ export function VariantDiagram({ variant }: { variant: SidebarVariant }) {
 
 export function CollapsibleDiagram({ collapsible }: { collapsible: SidebarCollapsible }) {
   return (
-    <div className="flex h-12 rounded border border-border bg-bg">
+    <div className="flex h-12 rounded-md border border-border bg-bg">
       {collapsible === "offcanvas" ? (
         <div className="m-1 flex flex-1 items-center justify-start rounded-sm border border-dashed border-muted/40 bg-bg/50 pl-2">
           <div className="flex flex-col gap-0.5">
-            <div className="h-0.5 w-3 rounded bg-fg/60" />
-            <div className="h-0.5 w-3 rounded bg-fg/60" />
-            <div className="h-0.5 w-3 rounded bg-fg/60" />
+            <div className="h-0.5 w-3 rounded-md bg-fg/60" />
+            <div className="h-0.5 w-3 rounded-md bg-fg/60" />
+            <div className="h-0.5 w-3 rounded-md bg-fg/60" />
           </div>
         </div>
       ) : collapsible === "icon" ? (
@@ -83,7 +83,7 @@ export function SideDiagram({ side }: { side: SidebarSide }) {
     </div>
   );
   return (
-    <div className="flex h-12 rounded border border-border bg-bg">
+    <div className="flex h-12 rounded-md border border-border bg-bg">
       {side === "left" ? (
         <>
           {rail}

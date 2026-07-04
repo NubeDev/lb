@@ -23,7 +23,7 @@ const VARIANT_LABEL: Record<SidebarVariant, string> = { sidebar: "Default", floa
 const VARIANT_HINT: Record<SidebarVariant, string> = {
   sidebar: "Standard sidebar layout",
   floating: "Floating sidebar with border",
-  inset: "Inset with rounded corners",
+  inset: "Inset with rounded-md corners",
 };
 const COLLAPSIBLE_LABEL: Record<SidebarCollapsible, string> = { offcanvas: "Off Canvas", icon: "Icon", none: "None" };
 const COLLAPSIBLE_HINT: Record<SidebarCollapsible, string> = {

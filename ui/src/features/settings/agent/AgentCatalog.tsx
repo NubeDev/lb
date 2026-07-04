@@ -76,16 +76,16 @@ export function AgentCatalog({
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium text-fg">{def.label}</span>
                 {def.builtin ? (
-                  <span className="rounded bg-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                  <span className="rounded-md bg-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
                     Built-in
                   </span>
                 ) : (
-                  <span className="rounded bg-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                  <span className="rounded-md bg-panel px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
                     Custom
                   </span>
                 )}
                 {active && (
-                  <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent">
+                  <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-accent">
                     Active
                   </span>
                 )}

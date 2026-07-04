@@ -64,7 +64,7 @@ export function CreateSeriesWizard({ existing, onCancel, onCreate }: Props) {
             type="button"
             aria-label="close"
             onClick={onCancel}
-            className="rounded p-1 text-muted transition-colors hover:text-fg focus-visible:text-fg focus-visible:outline-none"
+            className="rounded-md p-1 text-muted transition-colors hover:text-fg focus-visible:text-fg focus-visible:outline-none"
           >
             <X size={16} />
           </button>

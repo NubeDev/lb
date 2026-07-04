@@ -51,7 +51,7 @@ export function TeamsAdmin({ ws }: Props) {
   const action = (
     <button
       aria-label="new team"
-      className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-xs text-accent"
+      className="flex items-center gap-1 rounded-md bg-accent/15 px-2 py-1 text-xs text-accent"
       onClick={() => setCreating((c) => !c)}
     >
       <UsersRound size={13} /> New team
@@ -78,12 +78,12 @@ export function TeamsAdmin({ ws }: Props) {
               <input
                 autoFocus
                 aria-label="new team id"
-                className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+                className="min-w-0 flex-1 rounded-md bg-panel px-2 py-1 text-sm"
                 placeholder="team id"
                 value={newTeam}
                 onChange={(e) => setNewTeam(e.target.value)}
               />
-              <button className="rounded bg-accent/15 px-3 text-xs text-accent">Create</button>
+              <button className="rounded-md bg-accent/15 px-3 text-xs text-accent">Create</button>
             </form>
           )}
           {teams.length === 0 ? (
@@ -127,7 +127,7 @@ export function TeamsAdmin({ ws }: Props) {
                 <h2 className="text-sm font-medium">{selected}</h2>
                 <button
                   aria-label={`delete team ${selected}`}
-                  className="ml-auto rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                  className="ml-auto rounded-md bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
                   onClick={() =>
                     setPending({ kind: "deleteTeam", team: selected, count: members.length })
                   }
@@ -149,7 +149,7 @@ export function TeamsAdmin({ ws }: Props) {
                         <span>{bare(m)}</span>
                         <button
                           aria-label={`remove ${bare(m)}`}
-                          className="ml-auto flex items-center gap-1 rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                          className="ml-auto flex items-center gap-1 rounded-md bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
                           onClick={() =>
                             setPending({ kind: "removeMember", team: selected, user: bare(m) })
                           }
@@ -173,14 +173,14 @@ export function TeamsAdmin({ ws }: Props) {
                 >
                   <input
                     aria-label="add member"
-                    className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+                    className="min-w-0 flex-1 rounded-md bg-panel px-2 py-1 text-sm"
                     placeholder="user id to add"
                     value={newMember}
                     onChange={(e) => setNewMember(e.target.value)}
                   />
                   <button
                     aria-label="add member to team"
-                    className="flex items-center gap-1 rounded bg-accent/15 px-3 text-xs text-accent"
+                    className="flex items-center gap-1 rounded-md bg-accent/15 px-3 text-xs text-accent"
                   >
                     <UserPlus size={13} /> Add
                   </button>

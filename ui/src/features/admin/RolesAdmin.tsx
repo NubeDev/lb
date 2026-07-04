@@ -69,7 +69,7 @@ export function RolesAdmin({ ws, caps }: Props) {
   const action = (
     <button
       aria-label="new role"
-      className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-xs text-accent"
+      className="flex items-center gap-1 rounded-md bg-accent/15 px-2 py-1 text-xs text-accent"
       onClick={startNew}
     >
       <KeyRound size={13} /> New role
@@ -146,7 +146,7 @@ export function RolesAdmin({ ws, caps }: Props) {
               </label>
               <input
                 aria-label="role name"
-                className="w-full rounded bg-panel px-2 py-1 text-sm disabled:opacity-60"
+                className="w-full rounded-md bg-panel px-2 py-1 text-sm disabled:opacity-60"
                 placeholder="e.g. operator"
                 value={draftName}
                 disabled={selRole !== null}
@@ -184,7 +184,7 @@ export function RolesAdmin({ ws, caps }: Props) {
 
             <button
               aria-label="save role"
-              className="rounded bg-accent/15 px-3 py-1 text-xs text-accent disabled:opacity-40"
+              className="rounded-md bg-accent/15 px-3 py-1 text-xs text-accent disabled:opacity-40"
               disabled={!draftName.trim()}
               onClick={() => void save()}
             >

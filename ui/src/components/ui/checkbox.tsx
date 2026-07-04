@@ -12,7 +12,7 @@ function Checkbox({ className, ...props }: React.ComponentProps<"input">) {
       type="checkbox"
       data-slot="checkbox"
       className={cn(
-        "h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-border accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50",
+        "h-3.5 w-3.5 shrink-0 cursor-pointer rounded-md border-border accent-[hsl(var(--accent))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

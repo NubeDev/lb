@@ -83,14 +83,14 @@ export function FlowNodeView({ id, data }: NodeProps<FlowCanvasNode>) {
       {data.error ? (
         <div
           aria-label={`node ${id} error`}
-          className="mt-1.5 max-h-28 overflow-auto break-words rounded bg-destructive/10 px-1.5 py-1 font-mono text-[10px] leading-tight text-destructive"
+          className="mt-1.5 max-h-28 overflow-auto break-words rounded-md bg-destructive/10 px-1.5 py-1 font-mono text-[10px] leading-tight text-destructive"
         >
           {data.error}
         </div>
       ) : out ? (
         <div
           aria-label={`node ${id} output`}
-          className="mt-1.5 max-h-28 overflow-auto break-words rounded bg-bg/80 px-1.5 py-1 font-mono text-[10px] leading-tight text-fg"
+          className="mt-1.5 max-h-28 overflow-auto break-words rounded-md bg-bg/80 px-1.5 py-1 font-mono text-[10px] leading-tight text-fg"
         >
           {out}
         </div>

@@ -45,7 +45,7 @@ export function PeopleAdmin({ ws, caps }: Props) {
   const action = (
     <button
       aria-label="new user"
-      className="flex items-center gap-1 rounded bg-accent/15 px-2 py-1 text-xs text-accent"
+      className="flex items-center gap-1 rounded-md bg-accent/15 px-2 py-1 text-xs text-accent"
       onClick={() => setCreating((c) => !c)}
     >
       <UserPlus size={13} /> New user
@@ -72,12 +72,12 @@ export function PeopleAdmin({ ws, caps }: Props) {
               <input
                 autoFocus
                 aria-label="new user id"
-                className="min-w-0 flex-1 rounded bg-panel px-2 py-1 text-sm"
+                className="min-w-0 flex-1 rounded-md bg-panel px-2 py-1 text-sm"
                 placeholder="user id"
                 value={newUser}
                 onChange={(e) => setNewUser(e.target.value)}
               />
-              <button className="rounded bg-accent/15 px-3 text-xs text-accent">Create</button>
+              <button className="rounded-md bg-accent/15 px-3 text-xs text-accent">Create</button>
             </form>
           )}
           {members.length === 0 ? (
@@ -122,7 +122,7 @@ export function PeopleAdmin({ ws, caps }: Props) {
                 <div className="ml-auto flex gap-1">
                   <button
                     aria-label={`remove ${bare(sel.sub)}`}
-                    className="rounded bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
+                    className="rounded-md bg-red-500/15 px-2 py-0.5 text-xs text-red-400"
                     onClick={() => setPending({ kind: "remove", sub: sel.sub })}
                   >
                     Remove
@@ -137,7 +137,7 @@ export function PeopleAdmin({ ws, caps }: Props) {
                 ) : (
                   <ul className="flex flex-wrap gap-1.5">
                     {(teamsByUser[bare(sel.sub)] ?? []).map((t) => (
-                      <li key={t} className="rounded bg-panel px-2 py-0.5 text-xs text-muted">
+                      <li key={t} className="rounded-md bg-panel px-2 py-0.5 text-xs text-muted">
                         {t}
                       </li>
                     ))}

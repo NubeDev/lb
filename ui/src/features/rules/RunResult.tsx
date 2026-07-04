@@ -28,9 +28,9 @@ export function RunResult({ result, error, running, hasRun, view }: RunResultPro
     // A skeleton, not a spinner-in-content (product register): the shape the result will take.
     return (
       <div aria-label="run running" className="space-y-2">
-        <div className="h-4 w-40 animate-pulse rounded bg-muted/25" />
-        <div className="h-4 w-full animate-pulse rounded bg-muted/20" />
-        <div className="h-4 w-3/4 animate-pulse rounded bg-muted/15" />
+        <div className="h-4 w-40 animate-pulse rounded-md bg-muted/25" />
+        <div className="h-4 w-full animate-pulse rounded-md bg-muted/20" />
+        <div className="h-4 w-3/4 animate-pulse rounded-md bg-muted/15" />
       </div>
     );
   }

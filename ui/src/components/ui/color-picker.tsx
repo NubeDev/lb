@@ -63,7 +63,7 @@ export function ColorPicker({ label, value, onChange, className }: ColorPickerPr
             const triplet = colorToHslTriplet(e.target.value);
             if (triplet) onChange(triplet);
           }}
-          className="h-6 w-8 cursor-pointer rounded border border-border bg-bg p-0.5"
+          className="h-6 w-8 cursor-pointer rounded-md border border-border bg-bg p-0.5"
         />
         <span className="font-mono text-[11px] text-muted">{value || "—"}</span>
       </span>
