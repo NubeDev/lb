@@ -321,7 +321,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and its successor `theme-customizer-scope.md` (the ported shadcn-store Customizer: a preset library +
   radius + import + custom colors that write the project's **base** design tokens so every existing
   chart/panel re-themes live, persisted **per member** via `prefs` with an admin-set **per-workspace
-  default** — member override wins), and `workspace-branding-scope.md` (admin-owned workspace **identity**
+  default** — member override wins), and *its* successor `theme-appearance-scope.md` (the full look-and-feel:
+  one-click **look packs** — code editor, professional, retro, modern dashboard, liquid glass — plus font
+  tokens, surface treatments (translucency/blur/elevation/gradients), a motion.dev-backed motion system with
+  an off switch, a wider tone palette, the radius-coverage and color-picker fixes, and the widened `ctx.theme`
+  live re-theme signal for extensions), and `workspace-branding-scope.md` (admin-owned workspace **identity**
   — logo, favicon, site/login heading — via workspace-default prefs + `assets.*`, including the narrow
   read-only pre-auth `/public/branding/{ws}` seam that brands the login page before any token exists),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a

@@ -112,6 +112,45 @@ roams across browser/desktop, an admin can set a **workspace-default** theme via
 first-paint cache; `prefs` is the authority, reconciled on mount. No new MCP verb, table, or
 capability — persistence reuses `prefs.get`/`set`/`resolve`/`set_default` and their gates.
 
+### Appearance — looks, fonts, surfaces, motion (theme-appearance scope)
+
+The Theme tab was widened past colors into the whole **look and feel** — the preference is now
+`{ mode, preset, radius, layout, look, fontSans?, fontMono?, surface?, motion?, custom?, imported? }`,
+still one opaque `ui_theme` blob (zero backend change; a v1 seven-token custom palette migrates by
+**deriving** the new tones, never a fail-closed drop).
+
+- **Look packs** (`lib/theme/theme-looks.data.ts`) — six one-click looks as DATA (Operator Console,
+  Code Editor, Professional, Retro Terminal, Modern Dashboard, Liquid Glass), each a bundle of per-axis
+  defaults. The resolver (`look-resolve.ts`) folds per-axis: **pinned look axis → explicit member
+  override → look default → built-in**. Picking a look resets the axes it defines (lands like its
+  thumbnail); only `retro` *pins* its preset (data `pins:["preset"]`, no code branch — rule 10).
+- **Fonts** — `--font-sans`/`--font-mono` tokens; a curated self-hosted list (Inter/Geist/IBM Plex
+  Sans + Source Serif 4; JetBrains Mono/IBM Plex Mono). woff2 is **lazy-loaded on selection** via
+  dynamic `import()` (`font-loader.ts`); the system stack is the zero-cost default and stays in the
+  main bundle — a picked family is a separate chunk, never eager.
+- **Surfaces** — a `data-surface` attribute (flat/elevated/glass) + tokens (`--surface-alpha`/`--blur`/
+  `--shadow-1..3`/`--gradient-accent`) restyle every `[data-panel]` (card/sheet/dialog) by CASCADE. Glass
+  degrades **glass→elevated→flat** via `@supports (backdrop-filter …)` — a runtime capability degrade,
+  never an `if desktop` branch (WebKitGTK falls back to opaque elevated).
+- **Motion** — a `data-motion` attribute (off/subtle/full) fences CSS transitions; a `useMotionPref`
+  hook gates the springy `motion` (motion.dev) animations. `motion` is imported in EXACTLY ONE seam
+  (`lib/motion/motion.ts`) so the off switch is trustworthy. `prefers-reduced-motion` forces off unless
+  the member explicitly chose full.
+- **Wider tones** — `--panel-2`/`--overlay`/`--accent-2` (derivable from the base seven) + semantic
+  `--success`/`--warning` (fixed hues, like `--destructive`).
+- **The color picker** is a hand-authored in-DOM popover (H/S/L + hex, whole-row clickable) — no native
+  `<input type="color">` (WebKitGTK ships none, so the old desktop click was a no-op).
+- **Radius** now derives the FULL `rounded` scale from `--radius` in `@theme` + a cascade-last
+  `:root:root` override (so a radius nudge visibly re-rounds every card/input/chip — the shipped bug).
+
+**Extensions re-theme live (v4).** A single `lb:themechange` emitter (`theme-events.ts`) fires once per
+application; `ExtWidget` resolves the widened `ctx.theme` (base + tones + radius + fonts + surface +
+motion + the core chart ramp, from `getComputedStyle` so custom colors are honored) and pushes it
+through the shipped `update(ctx)` path — a canvas widget (ECharts) recolors **in place, no re-mount**.
+The widget contract bumped `WIDGET_CTX_V` 3→4 (additive, `ctx.theme`) in all three mirrors together
+(host `federationWidget.ts`, devkit template, extension copies). DOM widgets re-theme for free via the
+cascade. The core never names an extension — every widget gets the same signal (rule 10).
+
 ## Tested
 
 Vitest `ChannelView.test.tsx` — **post a message, see it appear** (ordering, empty-message guard);

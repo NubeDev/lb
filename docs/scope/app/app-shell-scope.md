@@ -166,7 +166,9 @@ Per `scope/testing/testing-scope.md` — real infra, rule 9, no fakes:
 Resolved by the shell slice (`sessions/app/app-shell-session.md`, 2026-07-04):
 
 - ~~Version pins~~ → **RN 0.86.0, React 19.2.3, Re.Pack 5.2.5** (+ react-native-keychain,
-  react-navigation 7 — the assumed default held; Expo not adopted).
+  react-navigation 7 — the assumed default held; Expo not adopted **in the shell
+  slice**. Adopting Expo's native modules (bare install) without losing Re.Pack/MF is
+  scoped separately in `app-expo-scope.md`.
 - ~~Workspace switch: re-mint vs re-login~~ → **re-login IS the re-mint** (no server
   re-mint route yet) with a stored-token fast path per workspace; only
   `switchWorkspace` changes when a real re-mint route lands.

@@ -96,6 +96,51 @@ would be the escape hatch if durability is ever wanted — not added now (no con
 - Docs: this session, `docs/debugging/app/stale-preview-session-shows-empty.md` (+ README row),
   `docs/public/app/app.md`, `docs/STATUS.md`, memory `app-preview-port-and-prefill.md`.
 
+## Second bug, found on live-verify: bare login handle ≠ member (the actual "can't login")
+
+After the restore fix, the user still couldn't log in — the screenshot showed **"Failed to fetch"**
+on Sign in. Driving the real path exposed a **separate, deeper** bug (full card:
+[bare-login-handle-not-a-member.md](../../debugging/app/bare-login-handle-not-a-member.md)):
+
+- **"Failed to fetch"** = the preview defaulted `?node=` to **8087** (the app's own `test_gateway`),
+  but the user runs root `make dev`, whose node is on **8080**. Nothing on 8087 → `fetch` rejects.
+- Pointing at 8080 turned it into the real error: **403 "not a member of any workspace"** for the
+  prefilled `ada`/`acme`.
+- Root cause: the identity model keys on the **`user:<name>` principal** (token `sub`, membership
+  row, `created_by`, seed `LB_SEED_USER=user:ada`), but `role/gateway/src/routes/login.rs` used the
+  request `user` string **verbatim**. Bare `ada` was therefore a principal literally named `ada` — a
+  *different* identity from the seeded `user:ada` — so `membership_login_resolve` refused it against
+  the already-populated `acme`. It only ever worked against an empty in-memory `test_gateway`
+  (where the stranger bootstraps as first member), which is why the preview looked fine until it met
+  the user's persistent store.
+
+**Fix (gateway login edge — canonicalize the handle):**
+```rust
+let principal = if req.user.starts_with("user:") { req.user.clone() }
+                else { format!("user:{}", req.user) };
+```
+applied to `user_login_check`, `membership_login_resolve`, `dev_claims` (token `sub`), grant-resolve
+(re-strips the prefix), and `LoginReply.principal`. `ada` and `user:ada` now resolve to the same
+identity on any node; an empty node still bootstraps. Edge normalization only — no core membership /
+`Subject` change, no extension branch.
+
+**Follow-ons this exposed:**
+- Preview default port + prefill moved **8087 → 8080** (the `make dev` node the user actually runs):
+  `app/shell/src/lib/dev-defaults.ts` + `app/shell/web/index.web.tsx`. `?node=` still overrides for
+  `make -C app dev`. The old "8087 dodges the 403" comment is corrected — the 403 is fixed at source.
+- `app/sdk/tests/harness.ts` `addMember` passed a bare `"bob"` — which wrote a `bob` roster row AND
+  skipped the member-role grant (`membership_add`'s `bare_user()` only grants for a `user:` sub). It
+  "worked" only because the old `login("bob")` matched the bare row; once login canonicalizes to
+  `user:bob` the mismatch surfaced as 403 in `channels.gateway.test.ts`. Canonicalized the harness to
+  `user:bob` (the form `membership_add` documents), which also lands the grant.
+
+**Verification:** `cargo test -p lb-role-gateway` incl. the new
+`identity_routes_test::login_canonicalizes_a_bare_handle_to_the_user_principal`, and
+`cargo test -p lb-host --test identity_membership_test --test authz_test` — green;
+`app/sdk$ pnpm test:gateway` 17/17; Playwright e2e (`…5310/?node=http://127.0.0.1:8080`, bare `ada`)
+logs in and shows the real channels (`#123`, `#abc`, `#general`); and a bare-`ada` login curl against
+the user's **live `make dev` node** returned 200 with `principal: user:ada`.
+
 ## Gotcha for the next session
 
 The shell consumes `@nube/app-sdk` as a pnpm `file:` dep that is **copied, not symlinked**. After

@@ -8,6 +8,10 @@ wall is never quietly breached.**
 
 > Companion: `../debugging/debugging-scope.md` (how to debug + the working-history system).
 > Every bug fix ends as a regression test here — that is where the two systems meet.
+>
+> Runbooks: `../../testing/` holds the **e2e runbooks** — the imperative "how to actually
+> drive a real backend/frontend end to end" (`e2e-backend.md`, `e2e-frontend.md`). This
+> doc is the *policy* they obey; that folder is the *procedure* an AI executes.
 
 ---
 

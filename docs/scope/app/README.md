@@ -17,6 +17,9 @@ Read order (each scope is one ask; build them in this order):
 3. **`app-sdk-scope.md`** — `@nube/app-sdk` (`app/sdk/`): the contract package every
    app extension builds against, and the long-term **shared panel/widget SDK** story
    with the dashboard (`ui/src/lib/panel-kit/`, the v3 frames-in `WidgetCtx`).
+4. **`app-expo-scope.md`** — adopt Expo's native module library (`expo-*`, bare
+   install) and keep EAS Build available **without** losing Re.Pack + Module
+   Federation; rejects the Metro-coupled managed workflow. Additive to the shell.
 
 Source tree this topic owns (workshop layout, see each scope):
 

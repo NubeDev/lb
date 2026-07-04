@@ -40,8 +40,10 @@
 #                                        Run `make docker-build-image` once first.
 #
 #   make test        cargo test (host) + vitest (UI)
-#   make test-be     cargo test --workspace
+#   make test-be     cargo test --workspace   (run `make build-wasm` first — see the target)
 #   make test-ui     pnpm test (vitest)
+#     e2e runbooks (drive a REAL node/gateway end to end): docs/testing/e2e-backend.md,
+#     docs/testing/e2e-frontend.md — policy in docs/scope/testing/testing-scope.md.
 #   make lint        cargo clippy + UI type-check
 #   make fmt         cargo fmt + (the UI has no formatter wired yet)
 #   make fmt-check   cargo fmt --check (what CI runs)
@@ -354,6 +356,12 @@ ui-preview:
 
 test: test-be test-ui
 
+# Backend AUTOMATED tests (the scope/session's suite). NOTE: does NOT depend on `build-wasm`
+# on purpose (fast iteration on pure-Rust crates), but the runtime tests load the
+# `hello`/`hello-v2` .wasm guests at startup — run `make build-wasm` first or those fail for
+# an unrelated reason. On clean master everything is green EXCEPT one pre-existing failure
+# (agent_routed_test). Real-world verification of the RUNNING system (drive a live node, not
+# re-run this suite) is a separate thing: docs/testing/e2e-backend.md.
 test-be:
 	cd $(BE_DIR) && cargo test --workspace
 

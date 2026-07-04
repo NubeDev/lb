@@ -11,13 +11,16 @@ docs/
 ├── sessions/   ← the AI-agent sessions — what was done, while doing it
 ├── public/     ← production / shipped  — what actually got done
 ├── skills/     ← runnable how-to guides — drive a shipped surface over MCP/REST
+├── testing/    ← e2e runbooks          — drive the real backend/frontend end to end
 ├── vision/     ← the north star        — the big-picture framework direction
 └── debugging/  ← the working history   — every issue and how it became working
 ```
 
-Three areas sit outside the three-stage flow: `vision/` (why the platform exists),
-`debugging/` (the append-only debugging memory — see "Testing & debugging" below), and
-`skills/` (agent-runnable operational guides — see "`skills/`" below).
+Four areas sit outside the three-stage flow: `vision/` (why the platform exists),
+`debugging/` (the append-only debugging memory — see "Testing & debugging" below),
+`skills/` (agent-runnable operational guides — see "`skills/`" below), and `testing/`
+(the **e2e runbooks** an AI executes to drive the real backend/frontend end to end —
+grounded in a live node, obeying `scope/testing/testing-scope.md`; see its `README.md`).
 
 Top-level guides tie it together: `STATUS.md` (the live "where are we" dashboard),
 `SCOPE-WRITTING.md` (how to write a scope), `HOW-TO-CODE.md` (how to build one), and
