@@ -33,15 +33,17 @@ import type { Cell } from "@/lib/dashboard";
 import { cellFieldConfig } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
+import { useThemeTokens } from "@/lib/theme";
 import { loadRemoteWidgetMount } from "./federationWidget";
 import type { WidgetCtx, WidgetFrame, WidgetHandle } from "./federationWidget";
 import { makeWidgetBridge, type WidgetBridge } from "./widgetBridge";
 import { useVizFrames } from "./useVizFrames";
 
-/** The current widget ctx contract version. v3 = frames-in (`ctx.data` + `ctx.fieldConfig`, optional
- *  `{ update, teardown }` return). A v2 tile that ignores the extra fields is unaffected; a v3 data
- *  tile reads them. The single version field the whole contract gates on. */
-const WIDGET_CTX_V = 3;
+/** The current widget ctx contract version. v4 = frames-in + theme (`ctx.data` + `ctx.fieldConfig` from
+ *  v3, plus `ctx.theme` resolved tokens, re-delivered via `update` on theme change). A v2/v3 tile that
+ *  ignores the extra fields is unaffected; a v4 tile reads `ctx.theme`. The single version field the
+ *  whole contract gates on. */
+const WIDGET_CTX_V = 4;
 
 /** An empty cell for `useVizFrames` when this tile is NOT a data tile — no primary target, so the hook
  *  makes no `viz.query` call (rules-of-hooks: the hook is always mounted, gated by `enabled` inside). */
@@ -120,8 +122,15 @@ export function ExtWidget({
   // instead (no re-mount on every new sample), so a live tick never tears the tile down.
   const configKey = JSON.stringify({ options, binding });
 
+  // v4: the resolved theme tokens, re-resolved on every theme change (the single `lb:themechange`
+  // emitter). A new object identity on a theme change flows through the ctx memo → `update(ctx)`, so a
+  // canvas widget recolors in place — no re-mount. A DOM widget ignores it and re-themes via the cascade.
+  const theme = useThemeTokens();
+  const themeKey = JSON.stringify(theme);
+
   // Build the ctx the mount/update both receive. Memoized on the inputs so `update` fires only on a real
-  // data/scope change. `data`/`fieldConfig` are present only for a data tile (a v2 tile ignores them).
+  // data/scope/theme change. `data`/`fieldConfig` are present only for a data tile (a v2 tile ignores
+  // them); `theme` rides along for a v4 tile (a v2/v3 tile ignores it).
   const ctx: WidgetCtx = useMemo(
     () => ({
       v: WIDGET_CTX_V,
@@ -134,9 +143,10 @@ export function ExtWidget({
         fromMs !== undefined && toMs !== undefined ? { from: Number(fromMs), to: Number(toMs) } : undefined,
       data: isData ? (frames as WidgetFrame[]) : undefined,
       fieldConfig: isData ? fieldConfig : undefined,
+      theme,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- serialized keys stand in for the object deps
-    [workspace, configKey, scopeKey, isData, frames, fieldConfig, fromMs, toMs],
+    [workspace, configKey, scopeKey, isData, frames, fieldConfig, fromMs, toMs, themeKey],
   );
   // A ref so the async mount closure always reads the LATEST ctx without re-running the mount effect.
   const ctxRef = useRef(ctx);

@@ -23,6 +23,21 @@ import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-sessi
 let n = 0;
 const nextWs = () => `theme-${n++}`;
 
+// The WIDENED blob — carries the look/font/surface/motion axes the theme-appearance scope added. Its
+// round-trip on the real store proves the widened shape persists through the untouched `ui_theme` axis
+// (zero backend change: the blob is opaque JSON to the prefs crate).
+const WIDENED: ThemePreference = {
+  mode: "dark",
+  preset: "violet",
+  radius: "0.75rem",
+  look: "glass",
+  fontSans: "inter",
+  fontMono: "jetbrains-mono",
+  surface: "glass",
+  motion: "full",
+  layout: { variant: "floating", collapsible: "offcanvas", side: "right" },
+};
+
 const TEAL: ThemePreference = {
   mode: "dark",
   preset: "teal",
@@ -56,6 +71,24 @@ describe("theme persistence over prefs (real gateway)", () => {
     // A "fresh boot": re-sign-in the same identity/workspace and read again — the theme roamed.
     await signInReal("user:ada", ws);
     expect(await readResolvedTheme()).toEqual(TEAL);
+  });
+
+  it("round-trips the WIDENED blob (look/font/surface/motion) through the untouched ui_theme axis", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+
+    await persistTheme(WIDENED);
+    // The whole widened preference persists + reads back verbatim — the prefs crate treats it as opaque
+    // JSON, so no backend change was needed to add the axes.
+    expect(await readResolvedTheme()).toEqual(WIDENED);
+
+    // Second boot restores it, widened axes intact.
+    await signInReal("user:ada", ws);
+    const restored = await readResolvedTheme();
+    expect(restored?.look).toBe("glass");
+    expect(restored?.surface).toBe("glass");
+    expect(restored?.motion).toBe("full");
+    expect(restored?.fontSans).toBe("inter");
   });
 
   it("folds member over workspace-default; a member with none inherits the default", async () => {

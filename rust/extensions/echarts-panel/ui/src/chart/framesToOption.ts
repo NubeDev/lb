@@ -13,6 +13,7 @@
 
 import type { EChartsOption, LineSeriesOption, BarSeriesOption } from "echarts";
 import type { Frame, Field, FieldConfig, FieldOptions } from "./frame.types";
+import type { ChartTheme } from "./mountChart";
 
 /** Is this field's declared type or its values numeric? (lb-viz may omit `type`.) */
 function isNumericField(f: Field): boolean {
@@ -48,9 +49,11 @@ function thresholdMarkLines(defaults: FieldOptions) {
   };
 }
 
-/** Map the lb-viz frames + field-config into an ECharts option. Pure; safe on empty/degenerate input
- *  (an empty frame set → an option with no series, which the tile treats as "no data"). */
-export function framesToOption(frames: Frame[], fieldConfig?: FieldConfig): EChartsOption {
+/** Map the lb-viz frames + field-config (+ optional resolved theme) into an ECharts option. Pure; safe on
+ *  empty/degenerate input (an empty frame set → an option with no series, which the tile treats as "no
+ *  data"). When `theme` is present (ctx v4) the chart recolors — series from `theme.chart`, axis/text from
+ *  `theme.fg`/`muted`/`border` — so an extension chart matches the core charts on every theme change. */
+export function framesToOption(frames: Frame[], fieldConfig?: FieldConfig, theme?: ChartTheme): EChartsOption {
   const defaults: FieldOptions = fieldConfig?.defaults ?? {};
   const drawStyle = defaults.custom?.drawStyle === "bar" ? "bar" : "line";
   const markLine = thresholdMarkLines(defaults);
@@ -81,28 +84,44 @@ export function framesToOption(frames: Frame[], fieldConfig?: FieldConfig): ECha
 
   const showLegend = defaults.custom?.showLegend === true || series.length > 1;
 
+  // Theme-derived colors (ctx v4). Absent theme → ECharts defaults (a v3 host / standalone dev build).
+  const ramp = theme?.chart && theme.chart.length ? theme.chart : undefined;
+  const single = ramp && series.length <= 1 ? [theme?.accent ?? ramp[0]] : ramp;
+  const textColor = theme?.fg;
+  const mutedColor = theme?.muted ?? theme?.fg;
+  const lineColor = theme?.border;
+
   return {
+    color: single,
     grid: { left: 48, right: 16, top: showLegend ? 32 : 12, bottom: 28 },
     tooltip: {
       trigger: "axis",
       valueFormatter: (v) => formatValue(v, defaults),
+      backgroundColor: theme?.panel,
+      borderColor: lineColor,
+      textStyle: textColor ? { color: textColor } : undefined,
     },
-    legend: showLegend ? { show: true, top: 4, textStyle: { fontSize: 10 } } : undefined,
+    legend: showLegend
+      ? { show: true, top: 4, textStyle: { fontSize: 10, color: mutedColor } }
+      : undefined,
     xAxis: {
       type: "category",
       data: categories,
-      axisLabel: { fontSize: 10 },
+      axisLabel: { fontSize: 10, color: mutedColor },
+      axisLine: lineColor ? { lineStyle: { color: lineColor } } : undefined,
     },
     yAxis: {
       type: "value",
       min: defaults.min,
       max: defaults.max,
       name: defaults.displayName ?? defaults.unit,
-      nameTextStyle: { fontSize: 10 },
+      nameTextStyle: { fontSize: 10, color: mutedColor },
       axisLabel: {
         fontSize: 10,
+        color: mutedColor,
         formatter: (v: number) => formatValue(v, defaults),
       },
+      splitLine: lineColor ? { lineStyle: { color: lineColor, opacity: 0.4 } } : undefined,
     },
     series,
   };

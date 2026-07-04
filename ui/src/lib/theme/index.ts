@@ -1,5 +1,5 @@
 export { ThemeProvider } from "./ThemeProvider";
-export { useTheme } from "./useTheme";
+export { useTheme, useThemeOptional } from "./useTheme";
 export {
   BUILTIN_PRESETS,
   DEFAULT_LAYOUT,
@@ -61,6 +61,9 @@ export { resolveAppearance, applyLook, type ResolvedAppearance } from "./look-re
 export { resolveMotion, prefersReducedMotion } from "./resolve-motion";
 export { loadFont } from "./font-loader";
 export { contrastRatio, AA_NORMAL, AA_LARGE } from "./contrast";
+export { onThemeChange, emitThemeChange } from "./theme-events";
+export { resolveThemeTokens, type ThemeTokens } from "./resolve-theme-tokens";
+export { useThemeTokens } from "./useThemeTokens";
 export { readComputedBasePalette } from "./read-palette";
 export { adaptPreset } from "./preset-adapter";
 export { parseImportedTheme } from "./theme-import";

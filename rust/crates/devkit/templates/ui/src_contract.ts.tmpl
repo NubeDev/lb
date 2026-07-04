@@ -1,7 +1,7 @@
 // The extension-side copy of the FROZEN widget mount contract (mirror 3 of 3). It MUST stay
 // byte-compatible with the host mirror in `ui/src/features/dashboard/builder/federationWidget.ts`
 // and the other extensions' `app/contract.ts` copies — the three move together, always. It is
-// additive over v2; version-gate every v3-only field on `ctx.v`.
+// additive; version-gate every version-only field on `ctx.v` (v3: `data`/`fieldConfig`; v4: `theme`).
 //
 // A PAGE extension (the default scaffold) only needs `MountCtx`/`Bridge`. A WIDGET extension also
 // implements `mountWidget` against `WidgetCtx`/`WidgetBridge` and returns a `WidgetHandle`. A DATA
@@ -33,9 +33,30 @@ export interface WidgetFrame {
   length?: number;
 }
 
-/** The v3 widget mount ctx (additive over v2). */
+/** The resolved theme tokens (v4) — concrete strings for a JS/canvas widget that can't read a CSS var.
+ *  Re-delivered via `update(ctx)` on every theme change. A DOM widget re-themes via the cascade. */
+export interface WidgetTheme {
+  bg: string;
+  panel: string;
+  fg: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  border: string;
+  panel2: string;
+  overlay: string;
+  accent2: string;
+  radius: string;
+  fontSans: string;
+  fontMono: string;
+  surface: string;
+  motion: string;
+  chart: string[];
+}
+
+/** The v4 widget mount ctx (additive over v2/v3). */
 export interface WidgetCtx {
-  /** Contract version. `3` = frames-in; gate `data`/`fieldConfig` use on `v >= 3`. */
+  /** Contract version. `4` = frames-in + theme; gate `data`/`fieldConfig` on `v >= 3`, `theme` on `v >= 4`. */
   v: number;
   workspace: string;
   binding: Record<string, unknown>;
@@ -47,6 +68,8 @@ export interface WidgetCtx {
   data?: WidgetFrame[];
   /** v3 data tiles only: the cell's Field-tab `fieldConfig` (units/decimals/thresholds/legend/…). */
   fieldConfig?: unknown;
+  /** v4: resolved theme tokens for a JS/canvas widget. DOM widgets re-theme via the cascade and ignore it. */
+  theme?: WidgetTheme;
 }
 
 /** The widget bridge — a data tile needs neither method; it renders `ctx.data`. */

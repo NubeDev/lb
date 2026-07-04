@@ -5,18 +5,20 @@
 // Used ONLY on the in-process tier (an allow-listed publisher key); untrusted widgets load inside the
 // iframe sandbox instead.
 
-// ── FROZEN WIDGET MOUNT CONTRACT — v3 (frames-in) ────────────────────────────────────────────────
+// ── FROZEN WIDGET MOUNT CONTRACT — v4 (frames-in + theme) ────────────────────────────────────────
 // This type is one of THREE mirrors that MUST move together (ext-widget-source-binding scope):
 //   1. this host-side `RemoteWidgetMount` / `WidgetCtx`,
 //   2. the extension-side `app/contract.ts` copies (proof-panel, echarts-panel, thecrew, …),
 //   3. the ext-sdk / devkit template.
-// It is strictly ADDITIVE over v2: v3 adds `ctx.data` (resolved frames) + `ctx.fieldConfig`, and
-// widens the return to an optional `{ update?, teardown? }` object. Version-gate on `ctx.v`.
+// It is strictly ADDITIVE. v3 added `ctx.data` (resolved frames) + `ctx.fieldConfig` and widened the
+// return to `{ update?, teardown? }`. v4 adds `ctx.theme` — the resolved theme tokens (concrete color
+// strings + radius + fonts + surface + motion + the chart ramp) for JS/canvas widgets that can't read a
+// CSS var, delivered again through `update(ctx)` on every theme change (no re-mount). Version-gate on
+// `ctx.v`:
 //   - v2 tile: reads `binding`/`options`/`vars`/`timeRange`, returns a bare teardown fn (or void).
-//   - v3 data tile: reads `ctx.data` frames (the shell resolved its `sources[]` via `viz.query`),
-//     returns `{ update, teardown }` so live/vars/range ticks re-render in place (no re-mount).
-// A v2 tile under this v3 host is byte-identical: extra ctx fields are ignored, a fn return still
-// tears down. See ExtWidget.tsx for how the shell chooses update-vs-remount.
+//   - v3 data tile: reads `ctx.data` frames, returns `{ update, teardown }` for live/vars/range ticks.
+//   - v4 tile: ALSO reads `ctx.theme` and recolors on an `update` fired by a theme change.
+// A v2/v3 tile under this v4 host is byte-identical: extra ctx fields are ignored; gate on `ctx.v`.
 
 /** One resolved field in a frame — the `lb-viz` `Frame.fields[]` shape (mirrors `useVizQuery.ts`). */
 export interface WidgetField {
@@ -35,11 +37,34 @@ export interface WidgetFrame {
   length?: number;
 }
 
-/** The v3 widget mount ctx. v2 fields (`binding`/`options`/`vars`/`builtins`/`timeRange`) remain;
- *  v3 adds `data` (resolved frames — present iff the tile's manifest set `data = true`) and
- *  `fieldConfig` (the Field-tab options, passed through so the tile drives its render from them). */
+/** The resolved theme tokens handed to a JS/canvas widget as `ctx.theme` (v4) — concrete strings, no
+ *  `var()`. A widget that can't read a CSS var (ECharts, three.js) recolors from these on every theme
+ *  change via `update(ctx)`. Additive; a widget reads what it needs and ignores the rest. */
+export interface WidgetTheme {
+  bg: string;
+  panel: string;
+  fg: string;
+  muted: string;
+  mutedForeground: string;
+  accent: string;
+  border: string;
+  panel2: string;
+  overlay: string;
+  accent2: string;
+  radius: string;
+  fontSans: string;
+  fontMono: string;
+  surface: string;
+  motion: string;
+  /** The categorical chart ramp (matches core charts). */
+  chart: string[];
+}
+
+/** The v4 widget mount ctx. v2 fields (`binding`/`options`/`vars`/`builtins`/`timeRange`) remain; v3
+ *  adds `data` (resolved frames — present iff the tile's manifest set `data = true`) and `fieldConfig`;
+ *  v4 adds `theme` (resolved tokens for JS/canvas widgets, re-delivered via `update` on theme change). */
 export interface WidgetCtx {
-  /** Contract version. `3` = frames-in; a tile gates its use of `data`/`fieldConfig` on `v >= 3`. */
+  /** Contract version. `4` = frames-in + theme; a tile gates on `v >= 3` (data) / `v >= 4` (theme). */
   v: number;
   workspace: string;
   binding: Record<string, unknown>;
@@ -52,6 +77,9 @@ export interface WidgetCtx {
   data?: WidgetFrame[];
   /** v3 (data tiles only): the cell's Field-tab `fieldConfig` (units/decimals/thresholds/legend/…). */
   fieldConfig?: unknown;
+  /** v4: the resolved theme tokens (concrete strings) — for JS/canvas widgets. DOM widgets re-theme via
+   *  the CSS cascade and can ignore this. Re-supplied on every theme change through `update(ctx)`. */
+  theme?: WidgetTheme;
 }
 
 /** The widget bridge — the leashed `call`/`watch` seam (a data tile needs neither; it renders `ctx.data`). */

@@ -5,11 +5,13 @@
 //     the ECharts `setOption` in-place — no root teardown, no chart re-init, no flicker);
 //   • `teardown()` unmounts the root (which disposes the ECharts instance via the tile's cleanup).
 //
-// CONTRACT (ctx v3 — the frames-in shape this tile assumes; see SCOPE.md "Assumed ctx v3 shape"):
-//   ctx.v === 3, ctx.data: Frame[], ctx.fieldConfig?: FieldConfig, ctx.workspace: string.
-// The tile is pure-render: it reads ONLY ctx.data/ctx.fieldConfig, never a bridge, token, or fetch. On a
-// host that predates v3 (`ctx.v < 3` or missing), there are no frames to render — we show an honest
-// "requires a frames-capable (v3) host" message rather than fabricate a series.
+// CONTRACT (ctx v4 — frames-in + theme; see SCOPE.md "Assumed ctx shape"):
+//   ctx.v >= 3, ctx.data: Frame[], ctx.fieldConfig?: FieldConfig, ctx.workspace: string;
+//   ctx.v >= 4 ALSO carries ctx.theme (resolved tokens) — the reference consumer of the live-re-theme
+//   contract. ECharts can't read a CSS var, so it recolors from ctx.theme.chart/accent/fg on every
+//   `update(ctx)` the shell fires on a theme change — no re-mount. The tile is pure-render: it reads ONLY
+//   ctx.data/ctx.fieldConfig/ctx.theme, never a bridge, token, or fetch. On a host that predates v3
+//   (`ctx.v < 3`) there are no frames — we show an honest "requires a frames-capable (v3) host" message.
 
 import { createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -17,13 +19,26 @@ import { createRoot, type Root } from "react-dom/client";
 import { ChartTile } from "./ChartTile";
 import type { Frame, FieldConfig } from "./frame.types";
 
-/** The frames-in widget context (ctx v3) the shell pushes into a `data = true` tile. Additive: older
- *  hosts omit `v`/`data`; the handler version-gates on `v >= 3`. */
+/** The resolved theme tokens the shell passes at ctx v4 (subset the chart uses; the full shape is the
+ *  host's WidgetTheme). Additive — absent on a v3 host, in which case the chart uses ECharts defaults. */
+export interface ChartTheme {
+  fg?: string;
+  muted?: string;
+  border?: string;
+  accent?: string;
+  panel?: string;
+  chart?: string[];
+}
+
+/** The frames-in widget context the shell pushes into a `data = true` tile. Additive: older hosts omit
+ *  `v`/`data`/`theme`; the handler version-gates on `v >= 3` (frames) and reads `theme` when present (v4). */
 export interface ChartCtx {
   v?: number;
   workspace?: string;
   data?: Frame[];
   fieldConfig?: FieldConfig;
+  /** v4: resolved theme tokens. ECharts recolors from these (it can't read a CSS var). */
+  theme?: ChartTheme;
   // Older-host fields (v2 binding/options) may still ride along; the chart tile ignores them.
   binding?: Record<string, unknown>;
   options?: Record<string, unknown>;
@@ -58,7 +73,7 @@ function renderFor(ctx: ChartCtx) {
       ),
     );
   }
-  return createElement(ChartTile, { frames: ctx.data ?? [], fieldConfig: ctx.fieldConfig });
+  return createElement(ChartTile, { frames: ctx.data ?? [], fieldConfig: ctx.fieldConfig, theme: ctx.theme });
 }
 
 /** createRoot the chart tile and return `{ update, teardown }`. `update` re-renders the SAME root with

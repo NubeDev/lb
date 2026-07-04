@@ -39,4 +39,27 @@ export interface WidgetCtx {
   binding?: Record<string, unknown>;
   options?: Record<string, unknown>;
   vars?: Record<string, unknown>;
+  /** Contract version (`4` when the shell carries theme). Absent on an older host. */
+  v?: number;
+  /** v4: the resolved theme tokens (concrete strings). This scene widget currently self-reads host CSS
+   *  vars via a MutationObserver (theme/host-tokens.ts); once it consumes `ctx.theme` it can drop that.
+   *  Kept in the contract so this mirror stays in lockstep with the host/devkit/echarts copies. */
+  theme?: {
+    bg: string;
+    panel: string;
+    fg: string;
+    muted: string;
+    mutedForeground: string;
+    accent: string;
+    border: string;
+    panel2: string;
+    overlay: string;
+    accent2: string;
+    radius: string;
+    fontSans: string;
+    fontMono: string;
+    surface: string;
+    motion: string;
+    chart: string[];
+  };
 }

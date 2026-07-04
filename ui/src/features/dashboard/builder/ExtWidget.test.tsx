@@ -10,7 +10,7 @@ import { render, waitFor } from "@testing-library/react";
 import { ExtWidget } from "./ExtWidget";
 import type { ExtRow } from "@/lib/ext/ext.api";
 
-let captured: { workspace: string; options: unknown; binding: unknown; widgetId: string; el: HTMLElement } | null = null;
+let captured: { workspace: string; options: unknown; binding: unknown; widgetId: string; el: HTMLElement; theme: unknown } | null = null;
 // Records how the tile's unmount was invoked. The nav-breaks bug was `ExtWidget` mounting the tile into
 // the SAME container every effect-run and clearing it with `replaceChildren()`, so a StrictMode
 // double-invoke / dep-change orphaned the prior React root's DOM → "removeChild: not a child" inside the
@@ -23,8 +23,8 @@ let onMountEnter: (() => void) | null = null;
 vi.mock("./federationWidget", () => ({
   loadRemoteWidgetMount: async () => {
     // A fake remote mount that records the ctx + the exact node it was handed (the assertion target).
-    return (el: HTMLElement, ctx: { workspace: string; options: unknown; binding: unknown }, _bridge: unknown, widgetId: string) => {
-      captured = { workspace: ctx.workspace, options: ctx.options, binding: ctx.binding, widgetId, el };
+    return (el: HTMLElement, ctx: { workspace: string; options: unknown; binding: unknown; theme?: unknown }, _bridge: unknown, widgetId: string) => {
+      captured = { workspace: ctx.workspace, options: ctx.options, binding: ctx.binding, widgetId, el, theme: ctx.theme };
       el.textContent = "mounted";
       onMountEnter?.();
       return () => {
@@ -74,6 +74,21 @@ describe("ExtWidget — cell options/binding reach ctx (finding 8)", () => {
     await waitFor(() => expect(captured).not.toBeNull());
     expect(captured?.options).toEqual({});
     expect(captured?.binding).toEqual({});
+  });
+
+  // ctx.theme v4 fan-out: the widget receives the resolved theme tokens (the widened shape) at mount,
+  // even standalone (no ThemeProvider — useThemeTokens degrades to DEFAULT_THEME + the live DOM). Proves
+  // the additive v4 field reaches the tile and carries the widened keys.
+  it("forwards ctx.theme (v4 resolved tokens, widened shape) to the tile", async () => {
+    render(<ExtWidget viewKey="ext:thecrew/scene" installed={[thecrew]} workspace="acme" />);
+    await waitFor(() => expect(captured).not.toBeNull());
+    const theme = captured?.theme as Record<string, unknown> | undefined;
+    expect(theme, "ctx.theme must be present at v4").toBeTruthy();
+    // Widened keys: base + new tones + non-color axes + the chart ramp.
+    for (const key of ["bg", "panel", "fg", "accent", "border", "panel2", "overlay", "accent2", "radius", "fontSans", "surface", "motion", "chart"]) {
+      expect(theme, `ctx.theme missing ${key}`).toHaveProperty(key);
+    }
+    expect(Array.isArray(theme?.chart)).toBe(true);
   });
 
   // Regression (thecrew graphics-canvas nav-breaks): the tile owns its own React root. ExtWidget must

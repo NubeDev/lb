@@ -15,10 +15,14 @@ import * as echarts from "echarts";
 
 import type { Frame, FieldConfig } from "./frame.types";
 import { framesToOption } from "./framesToOption";
+import type { ChartTheme } from "./mountChart";
 
 interface Props {
   frames: Frame[];
   fieldConfig?: FieldConfig;
+  /** v4 resolved theme tokens — the chart recolors from these on a theme change (ECharts can't read a
+   *  CSS var). Absent on a v3 host → ECharts defaults. */
+  theme?: ChartTheme;
 }
 
 /** True when there is nothing plottable — no frames, or every frame has no rows. Honest empty, no fake. */
@@ -42,12 +46,14 @@ function errorMessage(frames: Frame[]): string | null {
 
 /** A frames-in ECharts tile. Re-renders (setOption) on every fresh `frames`/`fieldConfig`; disposes on
  *  unmount. `notMerge: true` so a shrinking series set does not leave stale series behind. */
-export function ChartTile({ frames, fieldConfig }: Props) {
+export function ChartTile({ frames, fieldConfig, theme }: Props) {
   const divRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
 
   const error = errorMessage(frames);
   const empty = !error && isEmpty(frames);
+  // Re-key the effect on the theme so a live theme change re-applies the option with the new colors.
+  const themeKey = JSON.stringify(theme ?? null);
 
   useEffect(() => {
     // Nothing to draw in the error/empty branches — tear any existing chart down so the honest message
@@ -61,8 +67,9 @@ export function ChartTile({ frames, fieldConfig }: Props) {
     if (!chartRef.current) {
       chartRef.current = echarts.init(divRef.current);
     }
-    chartRef.current.setOption(framesToOption(frames, fieldConfig), { notMerge: true });
-  }, [frames, fieldConfig, error, empty]);
+    chartRef.current.setOption(framesToOption(frames, fieldConfig, theme), { notMerge: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- themeKey stands in for the theme object dep
+  }, [frames, fieldConfig, error, empty, themeKey]);
 
   // Resize the chart with its container (the dashboard cell is resizable). Cheap ResizeObserver, torn
   // down with the tile; disposes the instance on final unmount.

@@ -15,6 +15,7 @@ import { BASE_TOKENS } from "./theme-tokens";
 import { resolveAccentAttr, resolvePalette } from "./theme-resolve";
 import { resolveAppearance } from "./look-resolve";
 import { resolveMotion } from "./resolve-motion";
+import { emitThemeChange } from "./theme-events";
 import { fontById } from "./theme-fonts.data";
 import type { ThemePreference } from "./theme-options";
 
@@ -56,4 +57,8 @@ export function applyThemePreference(doc: Document, pref: ThemePreference) {
   // Surface + motion attributes — CSS + lib/motion read these. Motion honors prefers-reduced-motion.
   root.dataset.surface = appearance.surface;
   root.dataset.motion = resolveMotion(appearance.motion, doc);
+
+  // One emitter, one fan-out: notify the single ext-host subscriber so it resolves the new tokens and
+  // fans them to mounted extensions (rule 10 — no extension is named). DOM consumers re-theme by cascade.
+  emitThemeChange();
 }
