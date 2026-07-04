@@ -17,16 +17,20 @@
 //! - [`enqueue`] — write a domain change AND its effect in one transaction (the seam).
 //! - [`pending`] — scan the workspace's undelivered effects (the relay's durable backstop).
 //! - [`mark_delivered`] / [`mark_failed`] — record the outcome of a delivery attempt.
+//! - [`release`] / [`discard`] — the approval reactor's guarded `held → pending`/`held → discarded`
+//!   transitions (rules-approvals scope).
 
 mod enqueue;
 mod mark;
 mod model;
 mod pending;
+mod release;
 
 pub use enqueue::enqueue;
 pub use mark::{mark_delivered, mark_failed};
 pub use model::{backoff, Effect, EffectStatus, DEFAULT_MAX_ATTEMPTS};
-pub use pending::{dead_lettered, delivered, due, pending};
+pub use pending::{dead_lettered, delivered, due, held, pending};
+pub use release::{discard, release};
 
 /// The outbox table within a workspace namespace. One place owns the name so every verb agrees.
 pub(crate) const TABLE: &str = "outbox";

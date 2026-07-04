@@ -1,6 +1,9 @@
 //! The `inbox.*` rhai handle — `inbox.list(channel)`, `inbox.record(#{channel, id, body})`,
-//! `inbox.resolve(item_id, decision)` (rules-messaging-scope). The full attention-item surface a rule
-//! needs to raise, read, and resolve items — routed through the ONE MCP contract via [`MessagingSeam`],
+//! `inbox.resolve(item_id, decision)` (rules-messaging-scope), and
+//! `inbox.request_approval(#{id, channel, body, route, on_approve})` (rules-approvals-scope): raise a
+//! `needs:approval` item that stages a **held** gated effect the approval reactor releases on approval.
+//! The full attention-item surface a rule needs to raise, read, resolve, and gate items — routed
+//! through the ONE MCP contract via [`MessagingSeam`],
 //! so each call re-runs the host's workspace pin + `caps::check` under `caller ∩ grant`. A deny is
 //! opaque (a rhai error the rule can catch but not distinguish from "empty"); reads are uncharged, the
 //! two writes (`record`, `resolve`) are charged against the shared per-run [`WriteMeter`].
@@ -71,6 +74,67 @@ impl InboxHandle {
         Ok(())
     }
 
+    /// inbox.request_approval(#{ id, channel, body, route, on_approve }) → the approval item id.
+    /// Raises a `needs:approval` item addressed to `route` AND durably stages the `on_approve` effect
+    /// it should fire IF approved — the effect is enqueued **`held`** (the relay skips it) and released
+    /// to the outbox only when the item resolves `Approved` (rules-approvals scope). Two writes, both
+    /// charged against the shared per-run [`WriteMeter`].
+    ///
+    /// **Compound-write order (partial-failure contract):** the held effect is staged FIRST, then the
+    /// item is recorded — so a `needs:approval` item never exists without its gated effect. A mid-verb
+    /// fault (e.g. the item write is denied) leaves at most the effect staged, which is harmless: it is
+    /// held, never delivered, and GC-able. Both writes route through the ONE MCP contract under
+    /// `caller ∩ grant` (`outbox.enqueue` cap for the effect, `inbox.record` cap for the item); a deny
+    /// on either step is opaque.
+    ///
+    /// `on_approve` is `#{ target, action, payload }` — a normal outbox effect. `route` (e.g.
+    /// `"team:managers"`) is advisory addressing folded into the item body's tag.
+    pub fn request_approval(&self, req: Map) -> Result<String, Box<EvalAltResult>> {
+        let channel = map_str(&req, "channel")
+            .ok_or_else(|| rhai_err("inbox.request_approval: missing `channel`"))?;
+        let body = map_str(&req, "body").unwrap_or_default();
+        let route = map_str(&req, "route").unwrap_or_default();
+        let on_approve = req
+            .get("on_approve")
+            .and_then(|v| v.clone().try_cast::<Map>())
+            .ok_or_else(|| {
+                rhai_err(
+                    "inbox.request_approval: missing `on_approve` #{ target, action, payload }",
+                )
+            })?;
+        let target = map_str(&on_approve, "target")
+            .ok_or_else(|| rhai_err("inbox.request_approval: `on_approve` missing `target`"))?;
+        let action = map_str(&on_approve, "action")
+            .ok_or_else(|| rhai_err("inbox.request_approval: `on_approve` missing `action`"))?;
+        let payload = on_approve
+            .get("payload")
+            .map(crate::grid::dynamic_to_json)
+            .unwrap_or(Value::Null);
+
+        // The `needs:approval` tag + route ride the existing body-tag convention (v1 — no Item schema
+        // change), so the same reviewer UI / reactor parse it as they do the coding-workflow's.
+        let tagged_body = if route.is_empty() {
+            format!("needs:approval {body}")
+        } else {
+            format!("needs:approval route:{route} {body}")
+        };
+
+        // Stage the HELD effect FIRST (partial-failure contract), then record the item. Both charged.
+        let seq = self.meter.charge().map_err(rhai_err)?;
+        let item_id = map_str(&req, "id").unwrap_or_else(|| self.derived_id("approval", seq));
+        self.call(
+            "outbox.enqueue_held",
+            json!({ "item_id": item_id, "target": target, "action": action,
+                    "payload": payload, "ts": self.now }),
+        )?;
+        let _seq2 = self.meter.charge().map_err(rhai_err)?;
+        self.call(
+            "inbox.record",
+            json!({ "channel": channel, "id": item_id, "body": tagged_body, "ts": self.now }),
+        )?;
+        Ok(item_id)
+    }
+
     /// A deterministic id from the run's logical clock + the write's ordinal (no wall-clock/random).
     fn derived_id(&self, kind: &str, seq: u32) -> String {
         format!("rule-{kind}-{}-{seq}", self.now)
@@ -110,5 +174,8 @@ pub fn register(engine: &mut Engine) {
     engine.register_fn("record", |h: &mut InboxHandle, item: Map| h.record(item));
     engine.register_fn("resolve", |h: &mut InboxHandle, id: &str, d: &str| {
         h.resolve(id, d)
+    });
+    engine.register_fn("request_approval", |h: &mut InboxHandle, req: Map| {
+        h.request_approval(req)
     });
 }

@@ -27,6 +27,18 @@ pub enum EffectStatus {
     /// kept for audit/observability and a manual replay. This is the backoff/dead-letter answer the
     /// outbox scope deferred: a perpetually-failing effect stops retrying and is parked here.
     DeadLettered,
+    /// Staged but **gated on a human approval** — an effect a rule proposed via
+    /// `inbox.request_approval` that must NOT be delivered until its `needs:approval` item is
+    /// `Approved` (rules-approvals scope). **Not schedulable:** the relay skips a `held` effect
+    /// (it is not in [`pending`](super::pending)'s set), so an un-approved effect is never sent. The
+    /// approval reactor releases it (`held → pending`) on approval, or discards it on rejection. This
+    /// is the security-load-bearing bit: a `held` effect treated as `pending` would deliver
+    /// un-approved motion.
+    Held,
+    /// Rejected at approval — the gated effect the reviewer declined. **Terminal:** the relay never
+    /// delivers a discarded effect; the row is kept for audit (what was proposed and refused). Set by
+    /// the approval reactor when its `needs:approval` item resolves `Rejected` (rules-approvals scope).
+    Discarded,
 }
 
 /// A must-deliver effect = a durable, idempotent intent to the outside world. `id` is
@@ -105,6 +117,14 @@ impl Effect {
     /// effect must get at least one attempt before it can be dead-lettered.
     pub fn with_max_attempts(mut self, max_attempts: u32) -> Self {
         self.max_attempts = max_attempts.max(1);
+        self
+    }
+
+    /// Stage this effect **held** (gated on approval) instead of `Pending` (builder style). A held
+    /// effect is not schedulable — the relay skips it until the approval reactor releases it
+    /// (`held → pending`) or discards it (rules-approvals scope).
+    pub fn held(mut self) -> Self {
+        self.status = EffectStatus::Held;
         self
     }
 }

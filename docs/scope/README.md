@@ -96,6 +96,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `inbox.request_approval` raises a `needs:approval` item that stages a **held** outbox effect, and a
   resolution reactor **releases the effect only on `Approved`** (discards on reject) — the "a rule
   proposes, a human disposes" loop, reusing the coding-workflow's `Item`+`Resolution`+reactor mechanism.
+  `data-stdlib-scope.md` fills the cage's *compute* gap (the complement to datasources' *fetch*): a
+  ~180-function data standard library that registers once in the one rhai cage, so **rules AND the flows
+  `rhai` node (via `rules.eval`)** both get it — a `time` handle over the run's injected logical clock
+  (no wall-clock; `timestamp()` disabled), JSON + SurrealDB-shape helpers (`thing_id`, `epoch`,
+  deep-path get), scalar/array stats (median, percentiles, z-scores, rolling windows, linreg, outliers),
+  and a **polars-backed `Frame`** (`g.frame()`, method verbs + in-memory `f.sql("… FROM self")`) in a new
+  feature-severable `lb-frame` crate. Pure, deterministic, zero-I/O compute that adds **no new authority**
+  — rows still enter only through the gated seams; no new MCP verbs.
 - `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds
   DataFusion + connectors to query external SQL sources (MySQL, PostgreSQL/TimescaleDB, …) under `net:*`
   + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+

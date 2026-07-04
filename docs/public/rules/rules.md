@@ -40,6 +40,24 @@ authority (rule 5). `lb-rules` links only `rhai` + `serde` — no DataFusion, no
 
 A run returns `{output: scalar|grid|findings|nothing, findings, log, ms, ai}`.
 
+## Messaging + the approval loop (`inbox`/`outbox`/`channel` handles)
+
+A rule drives the inbox, outbox, and channels explicitly — `inbox.record`/`list`/`resolve`,
+`outbox.enqueue`/`status`, `channel.post`/`history`/`edit`/`delete`/`list` — each routed through the one
+MCP contract under `caller ∩ grant` (a rule can do nothing its invoker couldn't; a deny is opaque). A
+shared per-run **write meter** (default 32) caps motion-producing writes; reads are free.
+
+**The approval loop (rules-approvals):** `inbox.request_approval(#{ id, channel, body, route,
+on_approve })` raises a `needs:approval` item AND stages the `on_approve` effect in a new **`held`**
+outbox status — the relay skips a held effect, so it is **never delivered until approved**. A reviewer
+`inbox.resolve(id, "approved"|"rejected"|"deferred")`s the item, and a generic **approval-release
+reactor** (a node-boot tick, twin of the flow/agent reactors) closes the loop: `held → pending` on
+approve (the relay then delivers it exactly once), `held → discarded` on reject, left held on defer. The
+release is a guarded (idempotent) transition. Reuses the exact `Item` + `Resolution` + outbox trio the
+coding workflow ships — no new approval primitive, no new cap (`request_approval` gates on the
+`outbox.enqueue` + `inbox.record` caps; the *release* is a system transition gated by the resolution
+existing, not a user cap — so no token can force a release).
+
 ## MCP surface — `rules.*`
 
 | Verb | Cap | Does |

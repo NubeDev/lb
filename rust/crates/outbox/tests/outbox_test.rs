@@ -209,3 +209,83 @@ async fn an_effect_is_invisible_across_the_workspace_wall() {
     assert_eq!(from_a.len(), 1);
     assert_eq!(from_a[0].status, EffectStatus::Pending);
 }
+
+/// Enqueue a gated effect in the `held` status (a rule's `inbox.request_approval` stages this shape).
+async fn enqueue_held_effect(store: &Store, ws: &str, eff_id: &str, ts: u64) {
+    let change = json!({ "held": true });
+    let effect = Effect::new(eff_id, "email", "send", r#"{"to":"x"}"#, eff_id, ts).held();
+    enqueue(store, ws, "approval_held_change", eff_id, &change, &effect)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_held_effect_is_never_schedulable_until_released() {
+    // rules-approvals: a `held` effect is EXCLUDED from the relay's schedulable scan (`pending`/`due`)
+    // — an un-approved effect is never delivered. `held()` surfaces it for the reviewer/reactor.
+    let store = Store::memory().await.unwrap();
+    let ws = "held-scan";
+    enqueue_held_effect(&store, ws, "held:refund", 1).await;
+
+    assert!(
+        pending(&store, ws).await.unwrap().is_empty(),
+        "a held effect is not schedulable"
+    );
+    assert!(
+        due(&store, ws, 99).await.unwrap().is_empty(),
+        "not due either"
+    );
+    let held_set = lb_outbox::held(&store, ws).await.unwrap();
+    assert_eq!(held_set.len(), 1);
+    assert_eq!(held_set[0].status, EffectStatus::Held);
+
+    // Release → it becomes schedulable (pending) and delivers via the normal relay path.
+    assert!(lb_outbox::release(&store, ws, "held:refund").await.unwrap());
+    assert_eq!(pending(&store, ws).await.unwrap().len(), 1);
+    assert!(lb_outbox::held(&store, ws).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn release_and_discard_are_guarded_on_held_and_idempotent() {
+    // rules-approvals: the transitions act ONLY on a currently-`Held` effect, so a replay is a no-op —
+    // an effect releases exactly once, and a reject-after-approve cannot claw a released effect back.
+    let store = Store::memory().await.unwrap();
+    let ws = "held-guard";
+    enqueue_held_effect(&store, ws, "e1", 1).await;
+
+    // First release transitions (returns true); a second is a no-op (already pending → false).
+    assert!(lb_outbox::release(&store, ws, "e1").await.unwrap());
+    assert!(
+        !lb_outbox::release(&store, ws, "e1").await.unwrap(),
+        "replay releases nothing"
+    );
+    // A late discard cannot touch an already-released effect (not held anymore).
+    assert!(
+        !lb_outbox::discard(&store, ws, "e1").await.unwrap(),
+        "cannot claw back a released effect"
+    );
+    let eff = &pending(&store, ws).await.unwrap()[0];
+    assert_eq!(eff.status, EffectStatus::Pending);
+
+    // Discard is symmetric: a fresh held effect discards once, then is a no-op.
+    enqueue_held_effect(&store, ws, "e2", 2).await;
+    assert!(lb_outbox::discard(&store, ws, "e2").await.unwrap());
+    assert!(!lb_outbox::discard(&store, ws, "e2").await.unwrap());
+    // Discarded is terminal — never schedulable, never re-releasable.
+    assert!(!lb_outbox::release(&store, ws, "e2").await.unwrap());
+    assert!(pending(&store, ws)
+        .await
+        .unwrap()
+        .iter()
+        .all(|e| e.id != "e2"));
+}
+
+#[tokio::test]
+async fn releasing_an_absent_effect_is_a_harmless_no_op() {
+    // The reactor scans ALL approved resolutions; many have no held effect (a plain resolve, or a
+    // coding-job approval). Release of an absent id must be a no-op (false), not an error.
+    let store = Store::memory().await.unwrap();
+    let ws = "held-absent";
+    assert!(!lb_outbox::release(&store, ws, "nope").await.unwrap());
+    assert!(!lb_outbox::discard(&store, ws, "nope").await.unwrap());
+}

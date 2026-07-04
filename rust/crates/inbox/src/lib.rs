@@ -17,6 +17,7 @@ mod get;
 mod item;
 mod list;
 mod record;
+mod rejected;
 mod resolution;
 
 pub use approved::approved;
@@ -25,4 +26,5 @@ pub use get::get;
 pub use item::Item;
 pub use list::list;
 pub use record::{record, record_id, TABLE};
+pub use rejected::rejected;
 pub use resolution::{resolution, resolve, Decision, Resolution, RESOLUTION_TABLE};

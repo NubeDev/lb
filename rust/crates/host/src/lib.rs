@@ -11,6 +11,7 @@
 mod agent;
 mod agent_reactor;
 mod apikey;
+mod approval_reactor;
 mod assets;
 mod authz;
 mod boot;
@@ -97,6 +98,13 @@ pub use apikey::{
     ensure_builtin_roles, is_auth_failure, ApiKeyCache, ApiKeyError, ApiKeyFull, ApiKeyView,
     KINDS as APIKEY_KINDS, KIND_DISCRIM as APIKEY_KIND_DISCRIM, TABLE as APIKEY_TABLE,
     TOMBSTONE_STATUS as APIKEY_TOMBSTONE_STATUS,
+};
+/// The generic approval-release reactor (rules-approvals scope): `spawn_approval_reactors` is the
+/// node-boot tick (beside the flow/agent reactors); `react_to_approval_releases` is the synchronous,
+/// deterministic pass a test drives directly without the timer. `held_effect_id` is the shared id
+/// derivation the rule verb and the reactor agree on.
+pub use approval_reactor::{
+    held_effect_id, react_to_approval_releases, spawn_approval_reactors, ApprovalReleasePass,
 };
 pub use assets::{
     add_member, backlinks, call_asset_tool, delete_asset, delete_doc, deprecate_skill, get_asset,
@@ -215,8 +223,8 @@ pub use panel::{
 // into `lb_supervisor` internals.
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
-    enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed, outbox_status,
-    OutboxError, OutboxStatus,
+    enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
+    outbox_status, OutboxError, OutboxStatus,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

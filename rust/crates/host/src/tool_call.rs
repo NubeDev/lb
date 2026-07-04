@@ -29,8 +29,8 @@ use crate::callback::Bridge;
 use crate::ingest::{call_ingest_tool, publish_sample};
 use crate::undo::{history_compensations, history_list, redo, undo, UndoSvcError};
 use crate::{
-    enqueue_outbox, list_inbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, record_inbox, resolve_inbox,
+    enqueue_held_outbox, enqueue_outbox, list_inbox, outbox_due, outbox_mark_delivered,
+    outbox_mark_failed, outbox_status, record_inbox, resolve_inbox,
 };
 
 /// The host-native verb prefixes the bridge dispatches over the embedded store (not the runtime
@@ -270,6 +270,13 @@ async fn dispatch_at_depth(
         // denied (opaque) even for a caller holding `mcp:federation.query:call`.
         let gate_tool = if qualified_tool == "federation.schema" {
             "federation.query"
+        } else if qualified_tool == "outbox.enqueue_held" {
+            // rules-approvals scope: staging a gated effect is the SAME authority as staging any effect
+            // — the *release* on approval is the gated step (the reactor's system authority), not the
+            // stage. So `outbox.enqueue_held` gates on the `mcp:outbox.enqueue:call` grant a rule
+            // already needs to `outbox.enqueue`; no new `outbox.enqueue_held` cap exists. The host fn
+            // re-checks the same `outbox.enqueue` gate inside.
+            "outbox.enqueue"
         } else if qualified_tool.starts_with("telemetry.") {
             // telemetry-console scope: the three read verbs (query/trace/tail) gate on the ONE
             // `mcp:telemetry.read:call` grant; purge on `mcp:telemetry.purge:call`. Collapsed here
@@ -556,6 +563,37 @@ async fn call_workflow_tool(
             };
             let ts = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
             enqueue_outbox(&node.store, principal, ws, id, target, action, &payload, ts)
+                .await
+                .map_err(|_| ToolError::Denied)?;
+            Ok(json!({ "ok": true }))
+        }
+        // Stage a gated effect in the `held` status — proposed by a rule's `inbox.request_approval`,
+        // NOT deliverable until the matching `needs:approval` item is approved (rules-approvals scope).
+        // Same cap as `outbox.enqueue` (staging is not the gated step; the *release* is). The caller
+        // passes the `needs:approval` item id; the effect id is derived here (`held:{item_id}`) — the
+        // SAME derivation the release reactor uses — so the rule never owns the id scheme.
+        "outbox.enqueue_held" => {
+            let item_id = input
+                .get("item_id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: item_id".into()))?;
+            let id = crate::held_effect_id(item_id);
+            let id = id.as_str();
+            let target = input
+                .get("target")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: target".into()))?;
+            let action = input
+                .get("action")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing arg: action".into()))?;
+            let payload = match input.get("payload") {
+                Some(Value::String(s)) => s.clone(),
+                Some(v) => v.to_string(),
+                None => String::new(),
+            };
+            let ts = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            enqueue_held_outbox(&node.store, principal, ws, id, target, action, &payload, ts)
                 .await
                 .map_err(|_| ToolError::Denied)?;
             Ok(json!({ "ok": true }))

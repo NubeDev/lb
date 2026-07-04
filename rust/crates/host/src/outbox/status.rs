@@ -7,7 +7,7 @@
 
 use lb_auth::Principal;
 use lb_mcp::authorize_tool;
-use lb_outbox::{dead_lettered, delivered, pending, Effect};
+use lb_outbox::{dead_lettered, delivered, held, pending, Effect};
 use lb_store::Store;
 
 use super::error::OutboxError;
@@ -21,6 +21,11 @@ pub struct OutboxStatus {
     pub delivered: Vec<Effect>,
     /// Poison effects parked after exhausting their retries (terminal).
     pub dead_lettered: Vec<Effect>,
+    /// Effects staged but **gated on a human approval** — proposed via `inbox.request_approval`,
+    /// awaiting sign-off, NOT yet deliverable (rules-approvals scope). The reviewer sees exactly what
+    /// approving will send. `#[serde(default)]` so an older client omitting the field still decodes.
+    #[serde(default)]
+    pub held: Vec<Effect>,
 }
 
 /// Read the outbox status for workspace `ws` as `principal`. Read-only — no effect is mutated.
@@ -34,5 +39,6 @@ pub async fn outbox_status(
         pending: pending(store, ws).await?,
         delivered: delivered(store, ws).await?,
         dead_lettered: dead_lettered(store, ws).await?,
+        held: held(store, ws).await?,
     })
 }

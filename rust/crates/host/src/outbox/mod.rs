@@ -13,11 +13,13 @@
 //! verb (FILE-LAYOUT §3).
 
 mod enqueue;
+mod enqueue_held;
 mod error;
 mod relay_ops;
 mod status;
 
 pub use enqueue::enqueue_outbox;
+pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
 pub use status::{outbox_status, OutboxStatus};

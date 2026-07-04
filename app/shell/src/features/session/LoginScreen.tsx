@@ -6,11 +6,12 @@ import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { nodeUrl, setNodeUrl } from '../../lib/node-url.store';
 import { gatewayClient } from '../../lib/client';
+import { devLogin } from '../../lib/dev-defaults';
 
 export function LoginScreen(): React.JSX.Element {
-  const [url, setUrl] = useState(nodeUrl() || 'http://192.168.1.10:8080');
-  const [user, setUser] = useState('');
-  const [workspace, setWorkspace] = useState('');
+  const [url, setUrl] = useState(nodeUrl() || devLogin.nodeUrl || 'http://192.168.1.10:8080');
+  const [user, setUser] = useState(devLogin.user);
+  const [workspace, setWorkspace] = useState(devLogin.workspace);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -23,7 +24,16 @@ export function LoginScreen(): React.JSX.Element {
       if (!client) throw new Error('enter the node URL');
       await client.login(user.trim(), workspace.trim());
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      // The gateway's "not a member" refusal is opaque out of context. Explain the membership rule
+      // (global-identity decision #4) so a dev isn't stuck: this user doesn't own this workspace.
+      setError(
+        /not a member/i.test(msg)
+          ? `"${user.trim()}" isn't a member of workspace "${workspace.trim()}". ` +
+              `Someone else bootstrapped it — use a fresh workspace name (the first login owns it) ` +
+              `or sign in as its admin.`
+          : msg,
+      );
     } finally {
       setBusy(false);
     }

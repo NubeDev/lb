@@ -261,6 +261,9 @@ No open questions — these are the long-term answers the build follows.
   `DisabledModel` on the `rules.run` bridge; resolves the workspace's agent-catalog model selection).
 - `rules-messaging-scope.md` — the `inbox`/`outbox`/`channel` rhai handles: explicit, caller-gated
   CRUD on the messaging planes (generalizes this scope's `alert` → inbox/outbox routing).
+- `data-stdlib-scope.md` — the data standard library *inside* this cage: the `time`
+  handle (logical clock), JSON/SurrealDB-shape helpers, array stats, and the polars-backed `Frame`
+  (`lb-frame`) for post-collect compute. Pure verbs, no new authority; extends `verbs::register`.
 - `../jobs/jobs-scope.md`, `../inbox-outbox/outbox-scope.md` — the durable job the chain reuses; the
   inbox/outbox `alert` routes to.
 - `../auth-caps/auth-caps-scope.md` — `caps::check`, the chokepoint every verb runs.

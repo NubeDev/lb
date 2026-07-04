@@ -1,7 +1,10 @@
 //! Scan a workspace's **schedulable** effects — the relay's durable backstop (outbox scope).
 //!
-//! "Schedulable" = not yet `Delivered`: both `Pending` (never tried) and `Failed` (tried, still
-//! owed). A LIVE query gives instant pickup, but it is ephemeral (§6.2) — this durable scan is the
+//! "Schedulable" = `Pending` (never tried) or `Failed` (tried, still owed) — the two statuses the
+//! relay delivers. `Delivered`/`DeadLettered` are terminal; `Held` (gated on approval) and
+//! `Discarded` (approval refused) are **deliberately excluded** so the relay never sends an
+//! un-approved effect (rules-approvals scope). A LIVE query gives instant pickup, but it is
+//! ephemeral (§6.2) — this durable scan is the
 //! source of truth, so a relay that restarts simply re-reads the same set and an effect that
 //! crashed mid-delivery is found again (never lost). The namespace is selected from `ws`, so a
 //! ws-B scan can physically only return ws-B effects (the hard wall, §7).
@@ -51,6 +54,19 @@ pub async fn due(store: &Store, ws: &str, now: u64) -> Result<Vec<Effect>, Store
 pub async fn dead_lettered(store: &Store, ws: &str) -> Result<Vec<Effect>, StoreError> {
     let mut effects = Vec::new();
     for v in store_list(store, ws, TABLE, "status", "dead-lettered").await? {
+        effects.push(serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?);
+    }
+    effects.sort_by_key(|e: &Effect| e.ts);
+    Ok(effects)
+}
+
+/// The **held** effects in workspace `ws` — staged but gated on a human approval, awaiting release
+/// (rules-approvals scope). **Not** schedulable — [`pending`]/[`due`] deliberately exclude `held`, so
+/// the relay never delivers an un-approved effect; this scan is only the read-only/reactor view of
+/// what is awaiting sign-off. Oldest→newest. Never another workspace's (the hard wall §7).
+pub async fn held(store: &Store, ws: &str) -> Result<Vec<Effect>, StoreError> {
+    let mut effects = Vec::new();
+    for v in store_list(store, ws, TABLE, "status", "held").await? {
         effects.push(serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?);
     }
     effects.sort_by_key(|e: &Effect| e.ts);

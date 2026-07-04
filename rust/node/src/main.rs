@@ -164,6 +164,16 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(2),
     );
 
+    // APPROVAL-RELEASE REACTOR TICK (rules-approvals scope): release a rule's `held` gated effect to
+    // the outbox the moment its `needs:approval` item is approved (or discard it on reject). One
+    // detached owner per node, scanning the configured workspace's resolutions on a few-second
+    // cadence; each tick is a cheap ws-scoped scan, the release is a guarded (idempotent) transition.
+    lb_host::spawn_approval_reactors(
+        node.clone(),
+        vec![ws.clone()],
+        std::time::Duration::from_secs(2),
+    );
+
     // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
     // environment configures them. A no-op otherwise — the binary stays the solo demo below.
     github::mount(node.clone()).await;

@@ -1,6 +1,9 @@
 # Rules scope — a rule raises a `needs:approval` item and an approval closes the loop
 
-Status: scope (the ask). Promotes to `public/rules/rules.md` once shipped.
+Status: SHIPPED (2026-07-04). Built per this ask; promoted to `public/rules/rules.md`. Session:
+`sessions/rules/rules-approvals-session.md`. The Open questions below were resolved at build as
+recommended (body-tag convention kept; a sibling `approval_release` reactor; effect-held-first
+compound write; `defer` inert + `route` advisory in v1) — see the session doc.
 
 A rule can already raise a plain inbox notice (`inbox.record`) and resolve one (`inbox.resolve`), but the
 two ends do not yet form the **approval loop** the platform already uses for coding jobs: *raise an item a

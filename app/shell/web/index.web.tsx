@@ -3,7 +3,8 @@
 // gateway) so the login screen is one tap. Native-only modules (keychain, the streaming-fetch
 // polyfill) are swapped for web equivalents via vite aliases — see vite.config.web.mts.
 
-import 'react-native/Libraries/Utilities/PolyfillFunctions'; // aliased to a web no-op
+// No streaming-fetch polyfill on web: the browser's native fetch already streams (res.body is a
+// real ReadableStream) and ships TextDecoder, so the sdk's SSE client works as-is.
 import React from 'react';
 import { AppRegistry } from 'react-native';
 import { setNodeUrl } from '../src/lib/node-url.store';

@@ -141,4 +141,24 @@ export const EXAMPLES: RuleExample[] = [
       'channel.post("ops", #{ body: "⚠ cooler breach — paging on-call" });',
     ].join("\n"),
   },
+
+  // --- Propose a change, gate an effect on a human approval ---------------------------------------
+  {
+    id: "propose-and-approve",
+    title: "Propose & approve: gate an effect on sign-off",
+    summary:
+      "Raise a needs:approval item AND stage the effect it will fire IF approved — the email is HELD until a reviewer approves the item (rules-approvals). A rule proposes; a human disposes.",
+    body: [
+      "// Raise an approval item AND stage the email it sends only IF approved (staged HELD).",
+      "inbox.request_approval(#{",
+      '  id: "refund-proposed",',
+      '  channel: "ops",',
+      '  body: "Refund proposed — cooler breached",',
+      '  route: "team:managers",              // who should sign off (advisory)',
+      '  on_approve: #{ target: "notify", action: "page",   // the HELD effect',
+      '                 payload: #{ level: "info", msg: "refund approved" } },',
+      "});",
+      "// A manager then approves via the Inbox (inbox.resolve), and the reactor releases the effect.",
+    ].join("\n"),
+  },
 ];

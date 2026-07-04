@@ -130,6 +130,47 @@ Security is "absence of capability + presence of limits", in-process:
   **outbox**, never raw pub/sub or a sandbox-internal marker. `emit` collects a finding; `log` records
   a line.
 
+## 5. Propose & approve — gate an effect on a human sign-off (rules-approvals)
+
+A rule can **propose a change and stage the effect it will fire only if a human approves** — "a rule
+proposes, a human disposes". `inbox.request_approval` raises a `needs:approval` item AND durably stages
+the `on_approve` effect in a **held** state; the outbox relay skips a held effect, so it is *never*
+delivered until the item is approved:
+
+```rhai
+// Raise an approval item AND stage the page it sends IF approved (staged HELD, not delivered yet).
+inbox.request_approval(#{
+    id: "refund-proposed",
+    channel: "ops",
+    body: "Refund proposed — cooler breached",
+    route: "team:managers",                              // who should sign off (advisory in v1)
+    on_approve: #{ target: "notify", action: "page",     // the HELD effect
+                   payload: #{ level: "info", msg: "refund approved" } },
+});
+```
+
+Then a reviewer (via the Inbox UI, or another rule) resolves the item — and the **approval reactor**
+closes the loop:
+
+```rhai
+inbox.resolve("refund-proposed", "approved");   // → reactor releases the held effect (held→pending)
+// inbox.resolve("refund-proposed", "rejected"); // → reactor DISCARDS it (never delivered)
+// inbox.resolve("refund-proposed", "deferred"); // → left held (inert in v1, re-resolve later)
+```
+
+The relay then delivers the released effect **exactly once**. Reuses the exact `Item` + `Resolution` +
+outbox trio the coding workflow ships — no new approval primitive.
+
+- **Two writes, effect-first.** `request_approval` stages the held effect FIRST, then records the item,
+  so a `needs:approval` item never exists without its gated effect (a mid-verb deny leaves at most a
+  harmless held effect). Both charge the per-run write budget; both are `caller ∩ grant` gated
+  (`mcp:outbox.enqueue:call` for the effect, `mcp:inbox.record:call` for the item).
+- **The request is caller-gated; the release is a system transition.** The requester needs the outbox
+  stage cap; the *release* runs under the reactor's host authority, gated only by the resolution
+  existing — never by re-checking a user cap. So there is **no user verb to force a release**, and a
+  released effect can never exceed what was staged. The reviewer sees the exact held effect before
+  approving (informed consent).
+
 ## Gotchas
 
 - **A run can't widen its invoker** — a data verb hitting a source the *caller* lacks is denied
@@ -148,6 +189,10 @@ Security is "absence of capability + presence of limits", in-process:
   `ai.ask` schema introspection sees only the workspace's own sources.
 - **Denials are opaque** — a blocked `source`, a tripped budget, and a rejected `eval` all surface as
   opaque errors before anything runs.
+- **A held effect is never delivered until approved** — `request_approval`'s `on_approve` is staged
+  `held`, so the relay skips it; nothing fires on the mere *request*. It fires only after
+  `inbox.resolve(id, "approved")` and the reactor's release. A rule resolving its *own* request is
+  possible (if the caller holds `inbox.resolve`) but is a foot-gun, not the intent — human sign-off is.
 
 ## Related
 
@@ -159,6 +204,8 @@ Security is "absence of capability + presence of limits", in-process:
   (`federation.query`) — and the SurrealDB-never-a-DataFusion-source hard line.
 - Platform series a rule reads: `docs/skills/ingest-series/SKILL.md` (`series.*`).
 - `alert` targets: `docs/skills/channels-inbox-outbox/SKILL.md` (inbox/outbox).
+- Propose-and-approve loop: `docs/scope/rules/rules-approvals-scope.md` (the `needs:approval` item +
+  held effect + release reactor); the messaging verbs it builds on: `rules-messaging-scope.md`.
 - README §3 (rules 1/2/4/5/6/7), §6.5 (MCP), §6.7 (AI-gateway), §6.9 (jobs), §6.10 (inbox/outbox).
   Source: `rust/crates/host/src/rules/`; ported from `rust/rubix-cube/rbx-server/src/rules/`
   (MIT/Apache-2.0). Routes: `rust/role/gateway/src/server.rs`.

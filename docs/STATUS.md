@@ -38,6 +38,25 @@ removal regression **13/13** (default `split` layout, unchanged). Pre-existing/o
 updated. **Next up:** promote `panel-kit` to a `packages/@nube/panel-kit` workspace lib once the
 `@/lib/dashboard` type graph is extracted.
 
+**Also shipped (2026-07-04): rules approval loop — a rule proposes, a human disposes.** A rule body can
+now `inbox.request_approval(#{ id, channel, body, route, on_approve })`: it raises a `needs:approval`
+item AND stages the `on_approve` effect in a new **`held`** outbox status — the relay skips a held
+effect, so it is never delivered until approved. A reviewer `inbox.resolve(id, "approved")`s the item,
+and a generic **approval-release reactor** (a node-boot tick beside the flow/agent reactors) releases
+the held effect (`held → pending`, the relay then delivers it exactly once), discards it on reject
+(`held → discarded`), or leaves it held on defer. Reuses the shipped `Item` + `Resolution` + outbox
+trio — no new primitive, no new cap (`request_approval` gates on `outbox.enqueue` + `inbox.record`; the
+release is a system transition, so no token can force it). Reactor is **domain-free** (keys on
+`(resolution, held-effect-id)`, coding path untouched — rule 10). **Tests (real infra, rule 9):**
+`lb-outbox` **9/9** (held never schedulable; release/discard guarded + idempotent); `lb-host`
+`approval_release_test` **8/8** (gated release delivers once; reject/defer; cap-deny; no forced release;
+ws-isolation; durable re-scan); `lb-rules` `approvals_test` **4/4** (effect-first two writes; opaque
+deny, no partial write); `RulesApprovals.gateway.test.tsx` **4/4** (full loop through the real spawned
+gateway + reactor tick). Scope `scope/rules/rules-approvals-scope.md` (SHIPPED); session
+`sessions/rules/rules-approvals-session.md`; public `public/rules/rules.md` + `skills/rules/SKILL.md`
+(§5 propose-and-approve) updated. **Next up (out of scope):** typed item facet if a second tag consumer
+appears; enforced reviewer routing (a policy scope).
+
 **React Native mobile app (`docs/scope/app/`, workshop `app/`): SHELL SLICE SHIPPED (2026-07-04);
 next up: app-extensions.** The RN host (`app/shell/` — RN 0.86.0 / React 19.2.3 / Re.Pack 5.2.5,
 MF2 host with `react`/`react-native`/`@nube/app-sdk` as shared singletons; standalone install, see

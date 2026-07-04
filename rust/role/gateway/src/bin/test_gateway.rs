@@ -36,6 +36,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("test_gateway: agent-definition seed failed: {e}");
     }
 
+    // APPROVAL-RELEASE REACTOR TICK (rules-approvals scope): the production `node` binary spawns this
+    // beside the flow/agent reactors; the UI's `RulesApprovals.gateway.test.tsx` drives the full loop
+    // (request_approval → held effect → approve → RELEASED) end to end, so the tick must run here too.
+    // Scans the fixed `rules-approvals` workspace the approvals gateway test signs into (the reactor
+    // needs a known ws list; the test uses distinct item ids per case within it). A 1s cadence keeps
+    // the test's approve→released wait short; each tick is a cheap ws-scoped scan and the release is a
+    // guarded (idempotent) transition.
+    lb_host::spawn_approval_reactors(
+        gw.node.clone(),
+        vec!["rules-approvals".to_string()],
+        std::time::Duration::from_secs(1),
+    );
+
     // Bind first so we can print the actual assigned port (when PORT=0) before serving.
     let listener = tokio::net::TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
     let addr = listener.local_addr()?;

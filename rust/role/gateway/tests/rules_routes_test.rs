@@ -272,7 +272,10 @@ async fn interactive_channel_posts_append_with_distinct_ids_and_ascending_ts() {
         async move {
             let gw = Gateway::new(node, key, clock);
             let resp = router(gw)
-                .oneshot(bearer(json_post("/rules/run", json!({ "body": body })), &tok))
+                .oneshot(bearer(
+                    json_post("/rules/run", json!({ "body": body })),
+                    &tok,
+                ))
                 .await
                 .unwrap();
             if resp.status() != StatusCode::OK {
@@ -306,7 +309,10 @@ async fn interactive_channel_posts_append_with_distinct_ids_and_ascending_ts() {
     );
 
     let ts: Vec<u64> = rows.iter().map(|r| r["ts"].as_u64().unwrap()).collect();
-    assert!(ts.iter().all(|t| *t != 0), "no message stamped ts 0, got {ts:?}");
+    assert!(
+        ts.iter().all(|t| *t != 0),
+        "no message stamped ts 0, got {ts:?}"
+    );
     assert!(ts[0] < ts[1], "messages sort by ascending ts, got {ts:?}");
 
     // The idempotency contract is intact: a run at the SAME clock re-derives the SAME id and upserts —

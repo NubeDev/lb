@@ -313,6 +313,47 @@ into an expandable tree` — each runs a rule returning a JSON-string `body` and
 `kind`/`agent_result`/`answer` render as parsed tree content (not the escaped blob).
 `pnpm test:gateway rules/RulesView` → **11 passed**; `pnpm test parseEmbeddedJson` → **5 passed**.
 
+## Slice: interactive messaging writes collapsed to `now=0` (id + ts) — 2026-07-04
+
+**Bug (user-reported):** two `channel.post`s in the Playground showed only ONE message (each
+replaced the last), and the message had no timestamp (sorted oldest).
+
+**Cause:** `rules.run` derives the run's logical clock `now` from the request `ts`, defaulting
+to `0` when absent (`host/src/rules/mod.rs:140`). The messaging handles derive a **deterministic**
+id from `now` (`rule-channel-{now}-{seq}`) for scheduled-re-run idempotency — but the interactive
+path never sends `ts`: the UI client doesn't, and the gateway `run_rule` route (unlike
+`datasources`/`dashboard`, which thread `gw.now()`) didn't inject the live clock. So every
+interactive run got `now=0` → same id (store upserts the same row) and `ts:0` (sorts oldest).
+All three handles (`channel.post`/`inbox.record`/`outbox.enqueue`) share `now`, so all three were
+affected.
+
+**Fix:** inject the live wall clock at the gateway edge when the caller omitted `ts` —
+`rust/role/gateway/src/routes/rules.rs::run_rule`:
+
+```rust
+if input.get("ts").is_none() {
+    input["ts"] = json!(gw.now());
+}
+```
+
+`Gateway::now()` returns the pinned test clock or live unix-seconds. The clock is injected at the
+edge; core crates stay clock-free ("no wall-clock in core"). A caller that supplies its own `ts`
+(scheduler/programmatic re-run) keeps its deterministic, idempotent write — `ts` is only filled
+when missing, so the idempotency contract (`rules-messaging-scope.md`, "Deterministic, idempotent
+writes") is untouched.
+
+**Test:** `rules_routes_test.rs::interactive_channel_posts_append_with_distinct_ids_and_ascending_ts`
+— two runs over gateways with an advancing fixed clock (one shared node) post one message each; a
+read-only run asserts the history holds **2** distinct-id, ascending-, non-zero-`ts` rows; a fourth
+run at the SAME clock upserts (still 2), proving idempotency survives. Green:
+`cargo test -p lb-role-gateway --test rules_routes_test` → 14 passed; `cargo test -p lb-rules` → 15
+passed; `cargo test -p lb-host --test rules_test` → 12 passed; `pnpm test:gateway RulesMessaging` →
+4 passed. (Pre-existing flake unrelated to this change: `lb-host`'s
+`control_engine_appliance_routing_test` — a Zenoh cross-node queryable-reachability timeout, see the
+flaky-bus-timing history.)
+
+Debug entry: ../../debugging/rules/interactive-rule-messaging-writes-collapse-to-now-0.md
+
 ## Related
 - Scope: ../../scope/rules/rules-messaging-scope.md
 - Sibling: ../../scope/rules/rules-ai-wiring-scope.md (the `ai.*` seam this mirrors).

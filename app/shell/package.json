@@ -7,7 +7,8 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "start": "react-native start",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "web": "vite --config vite.config.web.mts"
   },
   "dependencies": {
     "@nube/app-sdk": "file:../sdk",
@@ -33,9 +34,22 @@
     "@react-native/babel-preset": "0.86.0",
     "@rspack/core": "^1.5.8",
     "@types/react": "^19.2.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^5.4.11",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react-native-web": "^0.19.13",
+    "react-dom": "19.2.3",
+    "@react-navigation/stack": "^7.4.10",
+    "react-native-gesture-handler": "^2.20.2",
+    "vite-plugin-react-native-web": "^3.1.2",
+    "puppeteer": "^23.11.1"
   },
   "engines": {
     "node": ">= 22.11.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
