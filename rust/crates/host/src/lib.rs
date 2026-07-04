@@ -71,8 +71,8 @@ pub use agent::{
     activate_skill, agent_call_key, agent_config_get, agent_config_set, agent_def_create,
     agent_def_delete, agent_def_get, agent_def_list, agent_def_test, agent_def_update,
     builtin_definitions, call_agent_catalog_tool, call_agent_memory_tool, call_agent_tool,
-    cancel_run, decision_id, evaluate_policy, format_catalog, get_agent_config, invoke,
-    invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes, load_decision,
+    cancel_run, decision_id, evaluate_policy, fence_into_goal, format_catalog, get_agent_config,
+    invoke, invoke_descriptor, invoke_remote, invoke_via_runtime, list_runtimes, load_decision,
     load_policy, memory_delete, memory_get, memory_index_for_injection, memory_list, memory_set,
     reachable_tools, rehydrate, render_catalog, render_index, resolve_active_definition,
     resolve_effective_runtime, resolve_effective_runtime_id, resolve_endpoint_key,
@@ -84,8 +84,8 @@ pub use agent::{
     ModelAccess, ModelBuilder, ModelEndpointPatch, Policy, ProposedCall, Rule, RunContext,
     RuntimeRegistry, SettleOutcome, Substrate, TestContext, TestResult, Turn, UnconfiguredModel,
     AGENT_CONFIG_TABLE, AGENT_DEFS_NS, AGENT_DEFS_TABLE, BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL,
-    DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_DESCRIPTION,
-    MAX_STEPS, MEMORY_HEADER, POLICY_TABLE, SKILL_ACTIVATE, UNCONFIGURED_ANSWER,
+    DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES,
+    MAX_DESCRIPTION, MAX_STEPS, MEMORY_HEADER, POLICY_TABLE, SKILL_ACTIVATE, UNCONFIGURED_ANSWER,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,

@@ -18,13 +18,16 @@
 //! never collide: the enqueue job id is `q:<run_job>`, the run job id is `<run_job>`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// The `lb_jobs` kind tag for a queued channel agent run — what the reactor scans for.
 pub const CHANNEL_AGENT_KIND: &str = "channel-agent-run";
 
 /// The durable payload of a queued channel agent run. Serialized into the enqueue job's opaque
 /// `payload` field; the reactor deserializes it to drive the run and post the result back.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// `Eq` is intentionally NOT derived: the additive `context` field is a `serde_json::Value`, which is
+// only `PartialEq` (floats). `PartialEq` is all the tests need (round-trip equality).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelAgentJob {
     /// The channel the request was posted into (where the `agent_result`/`agent_error` goes back).
     pub cid: String,
@@ -36,6 +39,12 @@ pub struct ChannelAgentJob {
     /// The durable *run* id (the `job` the UI minted). The run job is keyed on this; the posted
     /// answer item's id is `a:<run_job>`, which is ALSO the idempotency key (skip if it already exists).
     pub run_job: String,
+    /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
+    /// object carried from the `kind:"agent"` payload so the reactor fences it into the run's goal
+    /// exactly as an inline drive would. `#[serde(default)]` so an older enqueue record (no context)
+    /// deserializes as `None`, and absent → the drive is byte-identical to today.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<Value>,
     /// The poster's global identity — carried so the reactor reconstructs the poster principal
     /// (`Principal::routed`) and drives the run under the ASKER's authority (audit shows the asker).
     pub poster_sub: String,
@@ -79,6 +88,7 @@ mod tests {
             goal: "summarize the logs".into(),
             runtime: Some("open-interpreter-default".into()),
             run_job: "run-9".into(),
+            context: Some(serde_json::json!({ "surface": "dashboards" })),
             poster_sub: "user:ada".into(),
             poster_caps: vec!["mcp:agent.invoke:call".into()],
             ts: 42,
@@ -95,6 +105,7 @@ mod tests {
             goal: "hi".into(),
             runtime: None,
             run_job: "run-2".into(),
+            context: None,
             poster_sub: "user:ada".into(),
             poster_caps: vec![],
             ts: 1,
@@ -104,7 +115,12 @@ mod tests {
             !payload.contains("runtime"),
             "absent runtime dropped from wire"
         );
+        assert!(
+            !payload.contains("context"),
+            "absent context dropped from wire (byte-identical to today)"
+        );
         let back: ChannelAgentJob = serde_json::from_str(&payload).unwrap();
         assert_eq!(back.runtime, None);
+        assert_eq!(back.context, None);
     }
 }

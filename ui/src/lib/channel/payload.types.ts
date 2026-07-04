@@ -62,6 +62,18 @@ export interface QueryErrorPayload {
   error: string;
 }
 
+/** The client-reported PAGE CONTEXT (agent-dock scope) — where the user is when they ask. The host
+ *  fences it into the run's goal as untrusted context (rule 10: the surface id is opaque data, never
+ *  branched on). Mirrors the Rust `AgentPayload.context` / `InvokeRequest.context` opaque `Value`. */
+export interface PageContext {
+  /** The Surface the user is on (from `surfaceForPath`) — an opaque string. */
+  surface: string;
+  /** The tenant-stripped pathname (no `/t/<ws>` prefix). */
+  path: string;
+  /** The typed search params, flat. */
+  search: Record<string, string>;
+}
+
 /** `kind: "agent"` — a member's request to ask an agent `goal` (channels-agent scope). */
 export interface AgentPayload {
   kind: "agent";
@@ -70,6 +82,9 @@ export interface AgentPayload {
   runtime?: string;
   /** The durable run id (the UI mints it so it can subscribe to the run stream immediately). */
   job: string;
+  /** Optional page context (agent-dock scope) — fenced into the run's goal as untrusted context.
+   *  Absent → byte-identical to a plain channel agent post. */
+  context?: PageContext;
 }
 
 /** `kind: "agent_result"` — the agent worker's durable final answer. */
@@ -192,9 +207,17 @@ export function newRunId(): string {
 /** Encode an `agent` request body (channels-agent scope). `runtime` omitted → the in-house default;
  *  pass a profile id (e.g. `open-interpreter-default`) to drive an external agent. The UI mints `job`
  *  (via {@link newRunId}) so it can watch the run stream the instant the request lands. */
-export function encodeAgent(goal: string, job: string, runtime?: string): string {
+export function encodeAgent(
+  goal: string,
+  job: string,
+  runtime?: string,
+  context?: PageContext,
+): string {
   const payload: AgentPayload = { kind: "agent", goal, job };
   if (runtime) payload.runtime = runtime;
+  // Page context rides on the payload only when captured (agent-dock); absent → byte-identical to a
+  // plain channel agent post (the host fences it in; the UI is a thin client).
+  if (context) payload.context = context;
   return JSON.stringify(payload);
 }
 

@@ -119,6 +119,7 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
             skill: Some("genui"),
             doc: None,
         },
+        None,
         &[] as &[AllowedTool],
         1,
     )

@@ -83,6 +83,18 @@ because existing session docs point at them; new dashboard notes should live her
    requery**: split `viz.query` fetch vs shape (additive inline-`frames` compute-only mode,
    same cap) + a freeze-current-data toggle, so option/transform edits re-shape cached
    frames instead of re-hitting the datasource.
+3l. [`render-template-inprocess-scope.md`](render-template-inprocess-scope.md) — **SHIPPED (2026-07-05)**
+    — **the render-template widget, in-process (no iframe)**: promoted the eval-free `template` engine
+    off the sandboxed-iframe tier to a first-class **in-process** view (`TemplateView`, sibling of
+    `GenUiView`) — same `usePanelData` rows (so it binds ANY source the panel-data hook resolves, with
+    no per-source code), same leashed host-re-checked write bridge, editable in Data Studio via the
+    (formerly orphaned) CodeMirror HTML editor. The one new guard replacing the sandbox: **DOMPurify**
+    (`sanitizeTemplateHtml.ts`, one file) for the author HTML (+ the existing `dashboard.save`/
+    `template.save` cap as the authoring trust gate); an exhaustive **XSS-vector suite** is the
+    definition of done. `plot`/`d3` stay on the iframe tier (they `eval`). One host gap surfaced (a view
+    bound to `rules.run` renders empty for every view — out of scope, tracked in
+    `debugging/frontend/rules-as-source-render-path-empty.md`). See the shipped iframe reference
+    [`render-template-widget.md`](render-template-widget.md).
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 

@@ -116,6 +116,62 @@ describe("cell ↔ editorState round-trip", () => {
     }
   });
 
+  it("a v3 template cell's inline `options.code` round-trips (the save/reload contract)", () => {
+    // render-template-inprocess scope: a template cell carries its body in `options.code` (inline) — this
+    // is the exact field the builder's TemplateOptionsEditor patches through `carry.extraOptions`. If the
+    // round-trip dropped it, saving a template would lose the body on reload.
+    const tpl: Cell = {
+      i: "t1",
+      x: 0, y: 0, w: 6, h: 4, v: 3,
+      widget_type: "chart",
+      view: "template",
+      binding: { series: "" },
+      sources: [{ refId: "A", tool: "federation.query", args: { source: "timescale", sql: "select * from site" }, datasource: { type: "federation" } }],
+      options: { code: `<ul>{{#each rows}}<li>{{site}}</li>{{/each}}</ul>` },
+    };
+    const back = roundTrip(tpl);
+    expect(back).toEqual(tpl);
+    expect(back.view).toBe("template");
+    // The body survives under options.code (not dropped, not moved to a typed group).
+    expect(back.options?.code).toBe(tpl.options?.code);
+  });
+
+  it("a v3 template cell's `options.templateId` (Saved mode) round-trips too", () => {
+    const tpl: Cell = {
+      i: "t2",
+      x: 0, y: 0, w: 6, h: 4, v: 3,
+      widget_type: "chart",
+      view: "template",
+      binding: { series: "" },
+      sources: [{ refId: "A", tool: "store.query", args: { sql: "SELECT 1" }, datasource: { type: "surreal" } }],
+      options: { templateId: "defrost" },
+    };
+    const back = roundTrip(tpl);
+    expect(back).toEqual(tpl);
+    expect(back.options?.templateId).toBe("defrost");
+  });
+
+  it("typing template code in the editor reaches the saved cell (the save/reload flow, end-to-end)", () => {
+    // Regression for the reported "I save the code and it's not persisted": simulate the EXACT builder
+    // flow — a fresh default template cell → cellToEditorState → the editor patches `carry.extraOptions.code`
+    // (what TemplateOptionsEditor.onChange does) → editorStateToCell (what Save persists). The body must
+    // land on cell.options.code.
+    const fresh = defaultCell("template", "new", undefined, {});
+    const state = cellToEditorState(fresh);
+    // The TemplateOptionsEditor patches code through carry.extraOptions (NOT state.options — `code` is
+    // not an OWNED_OPTION_KEY, so it rides the carry).
+    const patched: typeof state = {
+      ...state,
+      carry: { ...state.carry, extraOptions: { ...state.carry.extraOptions, code: "<p>hi {{rows.length}}</p>" } },
+    };
+    const saved = editorStateToCell(patched, fresh);
+    expect(saved.view).toBe("template");
+    expect((saved.options as { code?: string }).code).toBe("<p>hi {{rows.length}}</p>");
+    // And the body survives a reload (cellToEditorState reads it back into extraOptions).
+    const reloaded = cellToEditorState(saved);
+    expect((reloaded.carry.extraOptions as { code?: string }).code).toBe("<p>hi {{rows.length}}</p>");
+  });
+
   it("a fresh default cell (ADD) serializes losslessly through the editor", () => {
     // The per-view option defaults are INJECTED (the view substrate's registry owns them; panel-kit
     // stays headless) — pass a representative block, as a real caller does.

@@ -1,14 +1,15 @@
-// The JSX `template` source field (widget-builder Slice B) — ported from rubix-cube's
-// `TemplateSourceField.tsx`, with its SWR/`next`/REST data layer swapped for the shipped
-// `template.*` MCP verbs over the bridge. The author either writes inline JSX (saved into
+// The JSX `template` source field (widget-builder Slice B; render-template-inprocess scope) — ported
+// from rubix-cube's `TemplateSourceField.tsx`, with its SWR/`next`/REST data layer swapped for the
+// shipped `template.*` MCP verbs over the bridge. The author either writes inline JSX/HTML (saved into
 // `cell.options.code`, ≤ INLINE_MAX_BYTES) OR picks a saved `render_template:{id}` row (saved into
 // `cell.options.templateId`, ≤ TEMPLATE_MAX_BYTES). The saved-template list reads `template.list`
 // (the shipped verb) — never REST.
 //
-// The lazybones `template` engine is the iframe runtime's eval-free HTML interpreter: `{{path}}` +
+// The lazybones `template` engine is the eval-free HTML interpreter: `{{path}}` +
 // `{{#each rows}}…{{/each}}` interpolation over the panel's source rows (loaded by the ONE data hook,
 // `usePanelData` — the SAME data every read view gets) + `[data-call]` write buttons. The default inline
-// snippet matches it. Code runs ONLY in the sandboxed iframe (the v2 trust contract is unchanged).
+// snippet matches it. Code renders IN-PROCESS (`TemplateView`), sanitized by `sanitizeTemplateHtml`
+// before it touches the DOM (the iframe sandbox is no longer used for `template`; `plot`/`d3` still do).
 
 import { useEffect, useState } from "react";
 
@@ -16,14 +17,22 @@ import { Button } from "@/components/ui/button";
 import { listTemplates, type RenderTemplateSummary } from "@/lib/dashboard/template.api";
 import { CodeEditor } from "./CodeEditor";
 
-/** A working default inline JSX/HTML template — interpolates over `data` (the rows a bridge.call
- *  produced), the convention the shipped iframe `template` engine interprets. */
-export const DEFAULT_INLINE_CODE = `<div class="p-2 text-xs">
-  <div class="text-muted">{{rows.length}} rows</div>
-  <ul>
-    {{#each rows}}<li>{{seq}}</li>{{/each}}
+/** A working default inline template — a per-site building summary. Bind a `federation.query` source
+ *  over the seeded building data (`docker/postgres/seed.py`: sites / meters / points / readings), e.g.
+ *  `SELECT s.name AS site, AVG(pr.value) AS avg_val FROM point_reading pr
+ *   JOIN point p ON p.id = pr.point_id JOIN meter m ON m.id = p.meter_id
+ *   JOIN site s ON s.id = m.site_id GROUP BY s.name ORDER BY avg_val DESC LIMIT 12` — the template
+ *  renders one row per site the query returns. `{{#each rows}}` iterates; `{{site}}`/`{{avg_val}}` read
+ *  the row fields; the `[data-call]` button is a host-mediated refresh (add the tool to the cell's tools). */
+export const DEFAULT_INLINE_CODE = `<div class="p-3 text-xs">
+  <div class="mb-2 text-muted">{{rows.length}} sites</div>
+  <ul class="space-y-1">
+    {{#each rows}}<li>
+      <span class="font-medium">{{site}}</span>
+      <span class="ml-2 tabular-nums text-muted">{{avg_val}}</span>
+    </li>{{/each}}
   </ul>
-  <button data-call="store.query" data-args='{"sql":"SELECT seq FROM series LIMIT 1"}'>Refresh</button>
+  <button class="mt-2 rounded border border-border px-2 py-1" data-call="federation.query" data-args='{}'>Refresh</button>
 </div>`;
 
 /** What the field edits: an inline snippet, or a reference to a saved template id. */
@@ -112,8 +121,10 @@ export function TemplateSourceField({ value, onChange }: Props) {
       <p className="text-[10px] text-muted">
         Binds the source rows with <span className="font-mono">{"{{rows.length}}"}</span> /{" "}
         <span className="font-mono">{"{{#each rows}}…{{/each}}"}</span>; wire writes with{" "}
-        <span className="font-mono">data-call</span>. Inline ≤ 4&nbsp;KB; larger snippets save as a render
-        template (≤ 64&nbsp;KB).
+        <span className="font-mono">data-call</span>. The default body is a per-site building summary —
+        bind a <span className="font-mono">federation.query</span> source over the seeded building data
+        (<span className="font-mono">docker/postgres/seed.py</span>: site / meter / point / point_reading)
+        to see it. Inline ≤ 4&nbsp;KB; larger snippets save as a render template (≤ 64&nbsp;KB).
       </p>
     </div>
   );

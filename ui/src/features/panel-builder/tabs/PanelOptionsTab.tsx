@@ -12,6 +12,7 @@ import { BarGaugeOptionsEditor } from "./options/BarGaugeOptionsEditor";
 import { BarChartOptionsEditor } from "./options/BarChartOptionsEditor";
 import { PieChartOptionsEditor } from "./options/PieChartOptionsEditor";
 import { TableOptionsEditor } from "./options/TableOptionsEditor";
+import { TemplateOptionsEditor } from "./options/TemplateOptionsEditor";
 import { GenUiAuthorTab } from "./GenUiAuthorTab";
 
 interface Props {
@@ -40,6 +41,11 @@ export function PanelOptionsTab({ state, patch, ws }: Props) {
       return <PieChartOptionsEditor state={state} patch={patch} />;
     case "table":
       return <TableOptionsEditor state={state} patch={patch} />;
+    case "template":
+      // The eval-free HTML template body — Inline↔Saved + the CodeMirror HTML editor (the orphaned
+      // TemplateSourceField, now wired). `code`/`templateId` ride `carry.extraOptions`; the live preview
+      // is the real in-process TemplateView (render-template-inprocess scope).
+      return <TemplateOptionsEditor state={state} patch={patch} />;
     case "genui":
       // The "AI widget" authoring surface: prompt → agent → live preview → accept → options.genui.
       return <GenUiAuthorTab state={state} patch={patch} ws={ws} />;

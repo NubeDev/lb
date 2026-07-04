@@ -6,10 +6,12 @@
 // `ConfirmDestructive` gate; the host re-checks owner + cap). The roster is exactly the set
 // `dashboard.list` returns
 // (own + team-shared + workspace) — the gateway membership-filters it, so a non-member never sees a
-// dashboard's title here. On the shared `AppRail` chrome + shadcn primitives (ui-standards-scope).
+// dashboard's title here. A single minimize affordance in the header (`onCollapse`) folds the rail to
+// a thin strip (the symmetric expand lives in `DashboardView`). On the shared `AppRail` chrome +
+// shadcn primitives (ui-standards-scope).
 
 import { useState } from "react";
-import { LayoutDashboard, Pencil, Plus, Trash2, Check, X } from "lucide-react";
+import { LayoutDashboard, PanelLeftClose, Pencil, Plus, Trash2, Check, X } from "lucide-react";
 
 import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,9 @@ interface Props {
   /** Whether the caller may author (the workspace-admin role, `isAdmin`) — gates rename/delete. The
    *  roster itself only mounts for an admin, so in practice this is always true when rendered. */
   canEdit?: boolean;
+  /** Collapse the roster rail (a single minimize affordance in the header). Only wired when the caller
+   *  may collapse — the host (DashboardView) supplies a symmetric expand control when collapsed. */
+  onCollapse?: () => void;
 }
 
 /** Slugify a title into a stable, unique-ish id (the record id `dashboard:{id}`). */
@@ -48,6 +53,7 @@ export function DashboardRoster({
   onRename,
   onRemove,
   canEdit = false,
+  onCollapse,
 }: Props) {
   const [title, setTitle] = useState("");
   // The dashboard currently being renamed inline, and the draft title.
@@ -102,6 +108,18 @@ export function DashboardRoster({
           >
             <Plus size={14} />
           </Button>
+          {onCollapse && (
+            <Button
+              aria-label="minimize dashboard rail"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              title="Minimize"
+              onClick={onCollapse}
+            >
+              <PanelLeftClose size={14} />
+            </Button>
+          )}
         </>
       }
     >

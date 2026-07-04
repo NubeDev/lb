@@ -12,7 +12,7 @@
 import { sql } from "@codemirror/lang-sql";
 import CodeMirror from "@uiw/react-codemirror";
 
-import { baseExtensions } from "./theme";
+import { useCodeMirrorTheme } from "./theme";
 
 interface Props {
   /** The current SurrealQL string. */
@@ -33,6 +33,7 @@ export function SqlEditor({
   placeholder = "SELECT … FROM … (read-only — a single SELECT)",
   height = "120px",
 }: Props) {
+  const cm = useCodeMirrorTheme();
   return (
     <div
       className="overflow-hidden rounded-md border border-border bg-bg"
@@ -43,7 +44,8 @@ export function SqlEditor({
         onChange={onChange}
         editable={editable}
         placeholder={placeholder}
-        extensions={[sql(), ...baseExtensions]}
+        extensions={[sql(), ...cm.extensions]}
+        theme={cm.theme}
         height={height}
         basicSetup={{ lineNumbers: false, foldGutter: false }}
         className="text-xs"

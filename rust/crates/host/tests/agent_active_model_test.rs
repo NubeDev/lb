@@ -278,6 +278,7 @@ async fn the_in_house_loop_drives_the_picked_workspace_model() {
         "loop-1",
         "do the thing",
         Substrate::default(),
+        None,
         &tools,
         1,
     )

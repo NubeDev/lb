@@ -1,10 +1,18 @@
 # Frontend scope — a saved rule is a picker source (Data Studio: query-with-a-rule → chart)
 
-Status: **scope (the ask)** — 2026-07-04. Parent: the reusable source picker
+Status: **partially shipped** — 2026-07-05. The **picker** half shipped end-to-end (a saved rule
+surfaces in the source picker's Rules group as a `rules.run {rule_id}` READ source, workspace-isolated,
+deny-tolerant — `rulesEntries`/`listRules` in the package + `useSourcePicker.ts` +
+`rulesSource.gateway.test.tsx`). The **render** half — a view (chart/table/template) bound to
+`{tool:"rules.run"}` rendering the rule's rows through `viz.query` — is **blocked by a host gap**
+(`viz.query`'s recursive dispatch of `rules.run` returns empty for every view, regardless of caps;
+the `RuleOutput` envelope is also not unwrapped). Tracked in
+[`../../../debugging/frontend/rules-as-source-render-path-empty.md`](../../../debugging/frontend/rules-as-source-render-path-empty.md).
+Parent: the reusable source picker
 ([`source-picker-package-scope.md`](source-picker-package-scope.md)) and the rules cage
 ([`../../rules/rules-engine-scope.md`](../../rules/rules-engine-scope.md),
 [`../../rules/data-stdlib-scope.md`](../../rules/data-stdlib-scope.md)).
-Promotes to `public/frontend/` once shipped.
+Promotes fully to `public/frontend/` once the host render gap is closed.
 
 ## The ask
 

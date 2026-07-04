@@ -76,4 +76,17 @@ describe("DashboardRoster", () => {
     expect(screen.queryByLabelText("rename dashboard ops")).toBeNull();
     expect(screen.queryByLabelText("delete dashboard ops")).toBeNull();
   });
+
+  it("renders no minimize button when onCollapse is not wired", () => {
+    renderRoster();
+    expect(screen.queryByLabelText("minimize dashboard rail")).toBeNull();
+  });
+
+  it("fires onCollapse when the minimize button is clicked", async () => {
+    const user = userEvent.setup();
+    const onCollapse = vi.fn();
+    renderRoster({ onCollapse });
+    await user.click(screen.getByLabelText("minimize dashboard rail"));
+    expect(onCollapse).toHaveBeenCalledTimes(1);
+  });
 });

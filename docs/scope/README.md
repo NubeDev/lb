@@ -241,6 +241,8 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
+  Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
+  emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes).
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of
@@ -307,7 +309,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   legible, denies surfaced honestly. It is only ever as authorized as the token it presents. v1 auth = the dev-login token; it is the **named first consumer** of
   `auth-caps/api-keys-scope.md` when API keys ship. Adds **no new MCP verbs, capabilities, or tables**;
   retires the `curl + jq` publish flow and folds `lb-pack` into `lb devkit sign` over the `lb-devkit` lib.
-- `frontend/` — the React/Tauri UI shell; `collaboration-scope.md` (the real multi-user app),
+- `frontend/` — the React/Tauri UI shell; `agent-dock-scope.md` (the persistent
+  `@nube/panel` right-dock AI panel — open on every page, survives navigation, durable
+  channel-backed session history with new-session, always the active catalog agent,
+  page-context injected, answers streamed with live progress over the run-event SSE),
+  `collaboration-scope.md` (the real multi-user app),
   `admin-console-scope.md` (the management UI for workspaces·teams·users·members·extensions), and
   `dashboard-scope.md` (the grid-of-widgets dashboard over real series — Phase 1 first-party/seeded,
   with the full asset-sharing authz model; Phase 3 the real edge fleet; the `vision/0003` IoT dashboard

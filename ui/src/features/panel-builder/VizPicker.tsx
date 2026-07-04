@@ -24,6 +24,11 @@ const VIEWS: { id: View; label: string }[] = [
   // non-standard views) — its data comes through arbitrary `sources[]` the agent binds, not one query
   // shape. Picking it swaps the Panel-options tab to the "AI widget" author surface.
   { id: "genui", label: "AI widget" },
+  // The eval-free HTML template — author markup bound to the source rows via `{{path}}`/`{{#each}}`,
+  // rendered IN-PROCESS (render-template-inprocess scope). Not shape-gated (data flows through any
+  // `sources[]` like genui); picking it swaps the Panel-options tab to the template body editor. Stays
+  // on the standard viz row (a template is a data view, not a flow control/read view).
+  { id: "template", label: "Template" },
 ];
 
 /** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the

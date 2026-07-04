@@ -168,6 +168,7 @@ pub async fn agent_def_test(
             &job_id,
             SELF_DESCRIBE,
             crate::agent::Substrate::default(),
+            None,
             &[],
             0,
         )

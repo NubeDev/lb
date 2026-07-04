@@ -46,6 +46,12 @@ pub struct AgentInvokeRequest {
     /// omits the field decodes as `None` (default runtime) — the wire stays backward-compatible.
     #[serde(default)]
     pub runtime: Option<String>,
+    /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
+    /// object the run fences into its goal as untrusted context. `#[serde(default)]` so an older edge
+    /// that omits it decodes as `None` (behavior byte-identical to today). Opaque `Value`: the host
+    /// never branches on a surface id (rule 10), it only serializes + fences it.
+    #[serde(default)]
+    pub context: Option<serde_json::Value>,
     /// Allowed tools, as `(name, description)` pairs (the host `AllowedTool` shape on the wire).
     pub tools: Vec<(String, String)>,
     pub ts: u64,

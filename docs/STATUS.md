@@ -16,6 +16,42 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-05): the agent dock — a persistent, page-context-aware AI side panel.** A
+shell-mounted, resizable, **non-modal** right dock on every authenticated page (StatusBar launcher +
+run pip, global `mod+j`, `Escape` closes + refocuses launcher, mobile auto-close). It **survives
+navigation** (mounted beside `<Outlet/>` in `RoutedShell.tsx`; the page reflows) and is a **THIN CLIENT**
+over three shipped pieces — **no new persistence/transport/agent plumbing**: (1) storage/history =
+channels, one session per `dock-{user-slug}-{ulid}` channel (create-on-post; the `-` separator keeps the
+id ONE capability segment so the member's `bus:chan/*:pub` grant covers it — the dotted form was a silent
+403, see debugging); (2) the answer = the durable channel agent worker resolving the workspace's **active**
+agent; (3) progress = the run-event SSE folded into **six honest states** (Sent→Working→Answering→Stalled→
+Done→Error; degrades honestly to "no live deltas + durable answer" without `mcp:agent.watch:call`). Each
+message captures router **page context** (`{surface, path, search}`, tenant-stripped) that the host
+**fences into the run's goal as untrusted, client-reported context** (labelled block, **4 KB cap that
+REJECTS oversize**, absent ⇒ byte-identical) on the ONE seam both agent doors reach (`invoke_via_runtime`)
+— so the channel `kind:"agent"` payload and `POST /agent/invoke` fence identically. **The ONLY host
+change is one additive optional `context` field** on the agent item payload + `InvokeRequest` — **no new
+verb, cap, or table**; the host never knows the `dock-` prefix (the wall is caps, not the name). UI
+feature `ui/src/features/agent-dock/` (one responsibility per file), built on `@nube/panel`'s **non-modal
+primitives** (`useResizable`+`ResizeHandle`), NOT its modal `Panel`/`Sheet`.
+
+**Tests (real gateway + store, rule 9):** Rust host `agent_page_context_test.rs` **3/3** (context fenced;
+>4 KB rejected before any model call; absent byte-identical); gateway `agent_invoke_route_test.rs`
+**5/5** (incl. the two new context accept/oversize cases); host units `agent::page_context` 5/5,
+`channel::agent_job`/`payload` green; the 5 affected `invoke_via_runtime` caller tests **25/25** after
+threading `context`. UI **gateway `AgentDock.gateway.test.tsx` 7/7** (create-on-post; Done via drain;
+history-restore on remount; new-session mints a second; channels surface excludes `dock-*`; MANDATORY
+capability-deny — no pub → 403 error state; MANDATORY workspace-isolation — ws-B can't read ws-A dock
+history). UI **units 30/30** (dockId/pageContext/stall-timer/dockRunState/pendingRun). `cargo build
+--workspace` + `cargo fmt` clean. **Pre-existing red NOT this slice:** `radius-scale.guard` flags a bare
+`rounded` in another session's in-flight `TemplateSourceField.tsx`; `sqlSource.gateway`/`SystemView.gateway`
+fail on clean master. Scope [`scope/frontend/agent-dock-scope.md`](scope/frontend/agent-dock-scope.md);
+session [`sessions/frontend/agent-dock-session.md`](sessions/frontend/agent-dock-session.md); public
+[`public/frontend/frontend.md`](public/frontend/frontend.md) ("The agent dock"); debug
+[`debugging/frontend/dock-channel-id-dotted-cap-deny.md`](debugging/frontend/dock-channel-id-dotted-cap-deny.md).
+
+---
+
 **Just shipped (2026-07-04): Widgets Slice C — result-render coverage (`descriptor.result` on the
 tabular tools).** Closes G1 of the widget umbrella: today only `reminder.list` declared a
 `descriptor.result` render envelope; the remaining tabular host tools (`federation.query`,

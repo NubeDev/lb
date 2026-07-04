@@ -38,6 +38,13 @@ pub struct InvokeRequest {
     pub skill: Option<String>,
     #[serde(default)]
     pub doc: Option<String>,
+    /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
+    /// object the run fences into its goal as untrusted context (parity with the channel `kind:"agent"`
+    /// payload). `#[serde(default)]` so an omitting caller is byte-identical to today; oversize (>4 KB
+    /// serialized) is rejected as a `400` by the fence. Never a workspace/cap source — those stay
+    /// token-derived (§7).
+    #[serde(default)]
+    pub context: Option<serde_json::Value>,
 }
 
 /// The run's result — the UI's `AgentResult` shape (`agent.types.ts`): the agent's final answer + the
@@ -91,6 +98,7 @@ pub async fn agent_invoke(
             skill: req.skill.as_deref(),
             doc: req.doc.as_deref(),
         },
+        req.context.as_ref(),
         &tools,
         gw.now(),
     )

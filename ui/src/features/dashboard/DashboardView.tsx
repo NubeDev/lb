@@ -4,7 +4,7 @@
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
 import { useEffect, useState } from "react";
-import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
+import { LayoutGrid, PanelLeftOpen, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
@@ -79,6 +79,9 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: P
   };
   const [varEditorOpen, setVarEditorOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The roster rail folds to a thin strip (the minimize affordance in its header toggles this) so the
+  // grid gets the full body width. Defaults open; the symmetric expand control lives in the strip.
+  const [rosterOpen, setRosterOpen] = useState(true);
   // Editing the dashboard surface is ADMIN-only (viewer-mode scope). We gate on the workspace-admin
   // role signal (`isAdmin`), NOT `dashboard.save` — that verb is member-level (dev-login/every member
   // holds it, see admin-caps.ts + credentials.rs), so gating on it would make every member an editor.
@@ -211,18 +214,38 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: P
     >
       {/* The roster (left switcher + create/rename/delete controls) is an AUTHORING surface — hidden
           entirely for a viewer (viewer-mode scope). A viewer lands directly on their nav-selected /
-          default dashboard (the `?d=` id) with no way to switch or create. */}
-      {canEdit && (
-        <DashboardRoster
-          roster={dash.roster}
-          selectedId={current?.id ?? null}
-          onSelect={selectDashboard}
-          onCreate={dash.create}
-          onRename={(id, title) => void dash.rename(id, title)}
-          onRemove={removeDashboard}
-          canEdit={canEdit}
-        />
-      )}
+          default dashboard (the `?d=` id) with no way to switch or create. An admin may minimize the
+          rail to a thin strip (the grid then takes the full body width). */}
+      {canEdit &&
+        (rosterOpen ? (
+          <DashboardRoster
+            roster={dash.roster}
+            selectedId={current?.id ?? null}
+            onSelect={selectDashboard}
+            onCreate={dash.create}
+            onRename={(id, title) => void dash.rename(id, title)}
+            onRemove={removeDashboard}
+            canEdit={canEdit}
+            onCollapse={() => setRosterOpen(false)}
+          />
+        ) : (
+          <aside
+            aria-label="dashboard rail collapsed"
+            data-panel=""
+            className="flex w-10 shrink-0 flex-col items-center border-r border-border bg-panel-2 py-2"
+          >
+            <Button
+              aria-label="expand dashboard rail"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="Expand"
+              onClick={() => setRosterOpen(true)}
+            >
+              <PanelLeftOpen size={14} />
+            </Button>
+          </aside>
+        ))}
 
       {current && confirmDelete && (
         <ConfirmDestructive

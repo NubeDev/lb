@@ -29,8 +29,17 @@ export interface RunStream {
 /** Open the SSE run feed for `job`. Returns `null` when no gateway is configured (Tauri shell / tests)
  *  — the caller simply has no live feed there, by design (the durable answer still arrives). The token
  *  rides as `?token=` (EventSource can't set headers); the gateway checks `mcp:agent.watch:call` and
- *  walls the run subject by workspace, so a ws-B session can never observe a ws-A run. */
-export function openRunStream(job: string, onEvent: (event: RunEvent) => void): RunStream | null {
+ *  walls the run subject by workspace, so a ws-B session can never observe a ws-A run.
+ *
+ *  `onError` (agent-dock scope) fires on an `EventSource` error — a 403 (no `mcp:agent.watch:call` /
+ *  cross-workspace), a 401, or a dropped/killed stream. The dock uses it to degrade honestly (no live
+ *  deltas, the durable answer still renders) and to surface a killed-stream error with retry. The
+ *  callback is additive: existing callers that pass only `onEvent` are unaffected. */
+export function openRunStream(
+  job: string,
+  onEvent: (event: RunEvent) => void,
+  onError?: () => void,
+): RunStream | null {
   const base = gatewayUrl();
   if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
   if (typeof EventSource === "undefined") return null;
@@ -48,6 +57,11 @@ export function openRunStream(job: string, onEvent: (event: RunEvent) => void): 
       // a malformed frame never breaks the stream
     }
   });
+
+  // An EventSource error covers a connect refusal (403/401 before any frame) AND a mid-stream drop.
+  // We report it and let the caller decide (degrade / show retry); EventSource itself would otherwise
+  // silently retry forever, which reads as a dead spinner.
+  if (onError) es.addEventListener("error", () => onError());
 
   return { close: () => es.close() };
 }

@@ -198,6 +198,40 @@ gateway mints + verifies a signed `lb_auth` token per request; the demo principa
 and a **read-only outbox status** view. The workspace is the token's hard wall, so the two-session
 isolation test is finally real. See `frontend/collaboration.md`.
 
+## The agent dock (shipped)
+
+A persistent, resizable, **non-modal** AI panel docked to the right of every authenticated page. It is
+**shell-mounted** (`RoutedShell.tsx`, beside `<Outlet/>`), so it survives navigation — the page reflows
+narrower, the run keeps streaming, the user keeps working. Open it from the **StatusBar launcher** (with
+a run-in-progress pip) or the global **`mod+j`** (one shell keydown listener; `Escape` closes and returns
+focus to the launcher; auto-closes below the mobile width floor). Built on `@nube/panel`'s **non-modal
+primitives** (`useResizable` + `ResizeHandle`) — not its modal `Panel`/`Sheet`. Feature: `features/agent-dock/`.
+
+It is a **thin client** over three shipped pieces — it adds **no** persistence, transport, or agent
+plumbing:
+- **Storage + history = channels.** Each dock session is an ordinary channel with a reserved id
+  `dock-{user-slug}-{ulid}` (created on first post; the `-` separator keeps the id one capability segment
+  so the member's `bus:chan/*:pub` grant covers it). History is `channel.history`; live items are the
+  channel SSE. "New session" mints a fresh ulid (old sessions stay reopenable); the picker lists the
+  user's own `dock-` sessions; the channels surface filters `dock-*` OUT.
+- **The answer = the durable channel agent worker**, which resolves the workspace's **active** agent and
+  posts `agent_result`/`agent_error` back. Switching the active agent in Settings changes the dock's brain
+  with zero dock code.
+- **Progress = the run-event SSE stream**, folded into **six honest states** — Sent → Working (live
+  activity + elapsed timer) → Answering (text deltas) → Stalled (15 s no-delta hint, *not* an error) →
+  Done (the durable `agent_result` is the message of record) → Error (with retry). Never a bare spinner.
+  If the caller lacks `mcp:agent.watch:call` the dock **degrades honestly**: no live deltas, a notice, and
+  the durable answer still renders.
+
+**Page context.** Each message captures where the user is — `{ surface, path, search }`, tenant-stripped,
+derived from the router by a shell `PageContextProvider` (with an override `source` seam for later
+features). The host fences it into the run's goal as **untrusted, client-reported context** (a labelled
+block, **4 KB** cap that *rejects* oversize, absent ⇒ byte-identical), on the ONE seam both agent doors
+reach (`invoke_via_runtime`) — so the channel `kind:"agent"` payload and `POST /agent/invoke` fence it
+identically. This is the **only** host change: an additive optional `context` field on the agent item
+payload + `InvokeRequest` — **no new verb, cap, or table**; the host never knows the `dock-` prefix (the
+wall is caps, not the name). See `scope/frontend/agent-dock-scope.md`.
+
 ## Not yet built
 
 The full operational shell (dashboard / extensions / settings, the rest of the P0 plan in

@@ -3,6 +3,22 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (2026-07-05 — the agent dock: a persistent, page-context-aware AI side panel)
+
+A shell-mounted, resizable, **non-modal** AI dock on the right of every authenticated page (launcher +
+`mod+j`; survives navigation; the page reflows). A **thin client** over shipped pieces — no new
+persistence/transport/agent plumbing: each session is a channel (`dock-{user-slug}-{ulid}`, create-on-post,
+the `-` keeps it one cap segment so the member's `bus:chan/*:pub` covers it); the answer is the durable
+channel agent worker resolving the workspace **active** agent; progress is the run-event SSE folded into
+**six honest states** (Sent→Working→Answering→Stalled→Done→Error, honest degrade without `agent.watch`).
+Each message captures router **page context** (`{surface, path, search}`, tenant-stripped) that the host
+**fences into the run's goal as untrusted context** (4 KB cap, absent ⇒ byte-identical) on the ONE seam
+both agent doors reach — the ONLY host change is an additive optional `context` field on the agent item
+payload + `InvokeRequest`: **no new verb, cap, or table**; the host never knows the `dock-` prefix.
+Proven against the REAL gateway (host 3/3 + gateway route 5/5 + UI gateway 7/7 incl. mandatory
+capability-deny + workspace-isolation; 30 UI units). See `frontend/frontend.md` ("The agent dock"),
+`../scope/frontend/agent-dock-scope.md`, `../sessions/frontend/agent-dock-session.md`.
+
 ## Shipped (post-S10 — mobile app, shell slice: the RN host + `@nube/app-sdk` client)
 
 The phone is the **fourth thin client** of the gateway (browser, Tauri, `lb` CLI, mobile) — REST +

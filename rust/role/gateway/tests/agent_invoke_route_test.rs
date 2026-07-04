@@ -123,3 +123,54 @@ async fn the_run_is_keyed_to_the_tokens_workspace() {
         "the run never leaks into ws-a — the run is keyed to the token's ws"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn invoke_accepts_the_optional_page_context() {
+    // agent-dock scope: `POST /agent/invoke` accepts the additive `context` object (parity with the
+    // channel `kind:"agent"` payload). A well-formed context drives the run normally (the fence is
+    // appended to the goal server-side; the unconfigured model still answers).
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "gw-agent-ctx", INVOKE);
+    let resp = router(gw)
+        .oneshot(bearer(
+            json_post(
+                "/agent/invoke",
+                json!({
+                    "goal": "why did throughput dip?",
+                    "context": { "surface": "dashboards", "path": "/dashboards", "search": { "d": "sales" } }
+                }),
+            ),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "a well-formed context is accepted"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn invoke_rejects_an_oversize_page_context() {
+    // The 4 KB cap is enforced at the fence: an oversize context is a `400` (BadInput), not a run
+    // fault — the client sent too much prompt material, and the reject is honest (not the opaque 403).
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "gw-agent-ctx-big", INVOKE);
+    let big = "x".repeat(5000); // > 4 KB serialized
+    let resp = router(gw)
+        .oneshot(bearer(
+            json_post(
+                "/agent/invoke",
+                json!({ "goal": "hi", "context": { "surface": "s", "path": big, "search": {} } }),
+            ),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "an oversize context is rejected as 400, not run as a fault"
+    );
+}

@@ -22,6 +22,7 @@ import { TablePanel } from "./table/TablePanel";
 import { BarChartPanel } from "./barchart/BarChartPanel";
 import { PieChartPanel } from "./piechart/PieChartPanel";
 import { ScriptedView } from "./ScriptedView";
+import { TemplateView } from "./TemplateView";
 import { SwitchControl } from "./SwitchControl";
 import { SliderControl } from "./SliderControl";
 import { ButtonControl } from "./ButtonControl";
@@ -139,7 +140,12 @@ export function WidgetView({
     case "d3":
       return <ScriptedView cell={cell} engine="d3" scope={scope} refreshKey={refreshKey} />;
     case "template":
-      return <ScriptedView cell={cell} engine="template" scope={scope} refreshKey={refreshKey} />;
+      // The eval-free `template` engine renders IN-PROCESS (render-template-inprocess scope): pure
+      // `{{path}}`/`{{#each}}` interpolation over `usePanelData` rows + a sanitized `innerHTML` commit
+      // + a leashed `[data-call]` bridge. The iframe sandbox bought nothing for it (it runs no author
+      // JS) and cost a second document + a per-tick postMessage tax. `plot`/`d3` stay on `ScriptedView`
+      // (their author JS `eval`s — real RCE; the sandbox is load-bearing there). See TemplateView.
+      return <TemplateView cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
     case "switch":
       return (
         <SwitchControl source={primarySource} action={cell.action} tools={tools} options={options} label={label} scope={scope} refreshKey={refreshKey} />

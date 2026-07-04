@@ -67,9 +67,9 @@ block, and bridge message carries a `v` field.
   all serde-defaulted. `view` is the render vocabulary; `source` is the read/stream tool; `action` is the
   control's write tool.
 - **The view vocabulary:** read views `chart`/`stat`/`gauge`/`table`; scripted views `plot` (Observable
-  Plot), `d3`, `template` (JSX) — author code rendered in a **sandboxed iframe**, which **may write** a
-  granted tool; control views `switch`/`slider`/`button` that call a write tool; and `ext:<id>/<widget>`
-  extension tiles.
+  Plot), `d3` — author JS rendered in a **sandboxed iframe**; the eval-free `template` engine renders
+  **in-process** (`TemplateView`, sanitized — see "Render-template widget, in-process" below); control
+  views `switch`/`slider`/`button` that call a write tool; and `ext:<id>/<widget>` extension tiles.
 - **The bridge, v2:** `mount(el, ctx, bridge)` unchanged; `bridge.call(tool, args)` forwards any tool in
   `cell.tools ∩ install-grant` (the host re-checks the cap + workspace on every call); `bridge.watch(tool,
   args, onEvent)` streams `series.watch`/`bus.watch` over the shipped series SSE. **No token reaches the
@@ -84,11 +84,58 @@ block, and bridge message carries a `v` field.
 - **Trust tiers:** an **installed extension widget** federates **in-process** (against the shell's React
   singleton) — installing an extension already passes the publish/install capability gate, so the install
   *is* the trust decision, and a federated remote externalizes React to the shell import map, which only
-  exists in-process. **Scripted views** (`plot`/`d3`/`template`) — author code typed into a cell — render
-  in an opaque-origin iframe (`sandbox="allow-scripts"`, CSP, postMessage bridge); that sandbox is for
-  untrusted author code only, never an installed widget. (Earlier the iframe tier also tried to host
-  non-allow-listed extension widgets; it couldn't — see
+  exists in-process. **The eval-free `template` engine** renders **in-process** too (it runs NO author
+  JavaScript — pure interpolation + a sanitized `innerHTML`; the iframe sandbox bought nothing for it).
+  **Scripted views** (`plot`/`d3`) — author code typed into a cell — render in an opaque-origin iframe
+  (`sandbox="allow-scripts"`, CSP, postMessage bridge); that sandbox is for untrusted author JS only
+  (snippets `eval` via `new Function` — real RCE), never an installed widget and never the eval-free
+  `template` engine. (Earlier the iframe tier also tried to host non-allow-listed extension widgets; it
+  couldn't — see
   [`../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md`](../../debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md).)
+
+## Render-template widget, in-process (shipped 2026-07-05)
+
+The eval-free `template` engine — an author-written HTML snippet that binds the panel's source rows via
+`{{path}}`/`{{#each}}` and calls granted write tools from `[data-call]` buttons — renders **in-process**
+(`TemplateView`), a sibling of `GenUiView`, not in the sandboxed iframe. The iframe sandbox bought
+nothing for `template` (it runs **no author JavaScript** — only pure interpolation + `innerHTML`) and
+cost a second document, a per-tick `postMessage` data tax, no shell theme/fonts, and an embedded-frame
+feel next to the in-process chart/stat/genui/ext tiles.
+
+- **Same data contract.** Rows arrive through the ONE `usePanelData` hook (the same path every read view
+  uses), so the template binds ANY source the panel-data hook resolves (Series / SQL / Live / Extension
+  / Flows) with no per-source code. (`[data-call]` writes are routed through the same leashed
+  `makeWidgetBridge` — local `cell.tools` gate + host re-check per call; the token never enters the
+  view.)
+- **The one new guard replacing the sandbox: a markup sanitizer.** Author HTML is sanitized
+  (`sanitizeTemplateHtml.ts` — DOMPurify wrapped in ONE file with our config: conservative structural
+  tag/attribute set; `data-call`/`data-args` admitted; `on*`/`<script>`/`<iframe>`/`<object>`/`<embed>`/
+  `<link>`/`<meta>`/`<base>`/`javascript:`/non-image `data:` stripped) before it touches the DOM via
+  `innerHTML`. An exhaustive **XSS-vector suite** (`sanitizeTemplateHtml.test.ts`) is the security gate
+  — it replaces the sandbox and is the definition of done.
+- **Defense in depth.** The `dashboard.save`/`template.save` cap is the authoring trust gate (the same
+  trust class as genui — the population trusted to author dashboards); the `[data-call]` click wiring
+  reads ONLY `data-call`/`data-args` (never an author inline handler), so even a hypothetical sanitizer
+  miss has no inline-script sink.
+- **Editable in Data Studio.** The (formerly orphaned) CodeMirror HTML editor (`CodeEditor lang="html"`)
+  is wired through `TemplateOptionsEditor` in the Panel Options tab; the live in-process `TemplateView`
+  preview re-renders on each keystroke against the frames already fetched (no iframe rebuild, no
+  `viz.query` re-fetch — the editor's fetch/shape split already gives this). Inline (`options.code`,
+  ≤4 KB) and Saved (`options.templateId` → a `render_template` row, ≤64 KB) both resolve.
+- **`plot`/`d3` STAY on the iframe tier.** Their snippets `eval` via `new Function` — real RCE; the
+  sandbox is load-bearing for them. The `engine` type on `WidgetIframe`/`ScriptedView`/
+  `buildIframeSrcdoc` is narrowed to `"plot" | "d3"` so a future caller cannot route `template` to the
+  iframe path. `scriptedTier()` governs `plot`/`d3` only.
+
+> **Known gap (out of scope, tracked):** a view bound to `{tool:"rules.run"}` renders zero rows through
+> `viz.query` for EVERY view (not just template) — the rules-as-source RENDER path was never driven
+> against the real gateway. The in-process `TemplateView` is source-agnostic and renders whatever
+> `usePanelData` resolves (Series/SQL proven), so it needs no template-side change once the host gap is
+> fixed. See
+> [`../../debugging/frontend/rules-as-source-render-path-empty.md`](../../debugging/frontend/rules-as-source-render-path-empty.md).
+
+Session: [`../../sessions/frontend/dashboard/render-template-inprocess-session.md`](../../sessions/frontend/dashboard/render-template-inprocess-session.md).
+Scope: [`../../scope/frontend/dashboard/render-template-inprocess-scope.md`](../../scope/frontend/dashboard/render-template-inprocess-scope.md).
 
 The reference extension `proof-panel` ships **two** `[[widget]]` tiles via one `mountWidget` export
 (dispatched by `widgetId`) on the same remote — the model for an extension-shipped widget, and the proof

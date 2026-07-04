@@ -4,6 +4,8 @@
 // §3). Honest data only: everything here comes from the verified session + the member's resolved
 // theme — no polling, no invented "connected" signals. One responsibility: render the strip.
 
+import type { ReactNode } from "react";
+
 import { useTheme, lookById } from "@/lib/theme";
 
 interface Props {
@@ -11,9 +13,12 @@ interface Props {
   principal: string;
   /** Granted capability count (from the verified token) — the honest "how much can I do" number. */
   capCount: number;
+  /** Trailing controls (agent-dock scope: the dock launcher + run pip live here). Rendered at the far
+   *  right of the strip. Optional — a shell without a dock (tests) simply omits it. */
+  trailing?: ReactNode;
 }
 
-export function StatusBar({ workspace, principal, capCount }: Props) {
+export function StatusBar({ workspace, principal, capCount, trailing }: Props) {
   const { theme } = useTheme();
   const look = lookById(theme.look)?.label ?? theme.look;
 
@@ -49,6 +54,7 @@ export function StatusBar({ workspace, principal, capCount }: Props) {
         />
         {look}
       </span>
+      {trailing && <span className="shrink-0">{trailing}</span>}
     </footer>
   );
 }

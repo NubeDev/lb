@@ -104,6 +104,7 @@ async fn run_one(
         &req.job_id,
         &req.goal,
         substrate,
+        req.context.as_ref(),
         &tools,
         req.ts,
     )

@@ -1,14 +1,26 @@
 # Render Template Widget (the sandboxed-iframe scripted view)
 
 **Status:** shipped (part of the widget-builder scope, "Scripted views").
-**Trust tier:** untrusted author code → **opaque-origin sandboxed iframe**.
+**Trust tier:** untrusted author code → **opaque-origin sandboxed iframe** (now `plot`/`d3` only).
+
+> **The eval-free `template` engine was promoted IN-PROCESS** (2026-07-05, render-template-inprocess
+> scope) — it runs NO author JavaScript (pure `{{path}}`/`{{#each}}` interpolation + a sanitized
+> `innerHTML`), so the iframe sandbox bought nothing for it and cost a second document + a per-tick
+> `postMessage` tax. It now renders as a first-class `TemplateView` (sibling of `GenUiView`) over the
+> same `usePanelData` rows + the same leashed bridge; the sandbox is replaced by **DOMPurify**
+> (`sanitizeTemplateHtml.ts`) + the existing `dashboard.save`/`template.save` cap as the authoring trust
+> gate. See [`render-template-inprocess-scope.md`](render-template-inprocess-scope.md) (the scope) +
+> [`../../../sessions/frontend/dashboard/render-template-inprocess-session.md`](../../../sessions/frontend/dashboard/render-template-inprocess-session.md)
+> (the shipped session). **This doc remains the reference for the `plot`/`d3` engines**, which keep the
+> sandboxed-iframe tier (their snippets `eval` via `new Function` — real RCE; the sandbox is load-
+> bearing). The `engine` type on `WidgetIframe`/`ScriptedView`/`buildIframeSrcdoc` is now narrowed to
+> `"plot" | "d3"` so a future caller cannot route `template` here (the class of bug is unrepresentable).
 
 This is the widget you remembered as "a render template widget that's an iframe."
 There is **no single `RenderTemplate` component** — it's a small stack. The dashboard
-cell picks `view: "template"`, and that mounts a scripted view whose author-written
-HTML/JSX runs inside a sandboxed `<iframe srcdoc>`, talking to the host only through a
-`postMessage` bridge. The same stack also powers the `plot` and `d3` engines; `template`
-is the eval-free HTML variant.
+cell picks `view: "plot"` or `view: "d3"`, and that mounts a scripted view whose author-written
+JS runs inside a sandboxed `<iframe srcdoc>`, talking to the host only through a `postMessage`
+bridge. (A `view:"template"` cell used to mount here too; it now mounts `TemplateView` in-process.)
 
 ---
 
@@ -16,7 +28,7 @@ is the eval-free HTML variant.
 
 | Concern | Where |
 |---|---|
-| Registered as | `view: "template"` in [WidgetView.tsx](../../../../ui/src/features/dashboard/views/WidgetView.tsx#L119-L120) (alongside `plot`, `d3`) |
+| Registered as | `view: "plot"` / `view: "d3"` in [WidgetView.tsx](../../../../ui/src/features/dashboard/views/WidgetView.tsx) (the eval-free `view:"template"` now routes to [TemplateView](../../../../ui/src/features/dashboard/views/TemplateView.tsx) in-process) |
 | React view (mounts it) | [ScriptedView.tsx](../../../../ui/src/features/dashboard/views/ScriptedView.tsx) |
 | Iframe host + bridge parent | [WidgetIframe.tsx](../../../../ui/src/features/dashboard/builder/WidgetIframe.tsx) |
 | `srcdoc` + in-frame bootstrap | [iframeRuntime.ts](../../../../ui/src/features/dashboard/builder/iframeRuntime.ts) |
@@ -90,84 +102,42 @@ in the iframe tier.
 
 ---
 
-## The `template` engine (eval-free, data-driven)
+## The `template` engine — now in-process
 
-Unlike `plot`/`d3` (which run author code via `new Function(...)`), the `template` engine
-does **no eval**. It binds the panel's **source rows** into the author markup via a small,
-pure, unit-tested interpolator ([templateInterpolate.ts](../../../../ui/src/features/dashboard/builder/templateInterpolate.ts)),
-then wires `[data-call]` write buttons ([iframeRuntime.ts](../../../../ui/src/features/dashboard/builder/iframeRuntime.ts)):
+> The eval-free `template` engine USED to share this iframe stack. It was promoted IN-PROCESS
+> (2026-07-05) because it runs NO author JavaScript — only pure `{{path}}`/`{{#each}}` interpolation
+> (the eval-free [templateInterpolate.ts](../../../../ui/src/features/dashboard/builder/templateInterpolate.ts))
+> over the panel's source rows + `innerHTML`, with `[data-call]` buttons routed through the leashed
+> bridge. The iframe sandbox bought nothing for it and cost a second document + a per-tick postMessage
+> tax + a broken embedded-frame feel. It now renders as **`TemplateView`**
+> ([TemplateView.tsx](../../../../ui/src/features/dashboard/views/TemplateView.tsx)) — a sibling of
+> `GenUiView` — over the SAME `usePanelData` rows + the SAME leashed, host-re-checked bridge. The one
+> new guard replacing the sandbox is a markup sanitizer — **DOMPurify** wrapped in one file
+> ([sanitizeTemplateHtml.ts](../../../../ui/src/features/dashboard/builder/sanitizeTemplateHtml.ts))
+> — plus the existing `dashboard.save`/`template.save` cap as the authoring trust gate (the same trust
+> class as genui). The `[data-call]` wiring lives in
+> [wireTemplateDataCalls.ts](../../../../ui/src/features/dashboard/builder/wireTemplateDataCalls.ts)
+> (Decision 5: reads ONLY `data-call`/`data-args`, never an author inline handler). See
+> [`render-template-inprocess-scope.md`](render-template-inprocess-scope.md) +
+> the shipped session for the full security model (the XSS-vector suite is the new definition of done).
 
-```js
-if (cfg.engine === "template") {
-  window.__bridge = bridge;
-  root.innerHTML = interpolateTemplate(cfg.code, cfg.data); // {{path}} + {{#each}}, data escaped
-  root.querySelectorAll("[data-call]").forEach((el) => {
-    el.addEventListener("click", async () => {
-      const tool = el.getAttribute("data-call");
-      const args = JSON.parse(el.getAttribute("data-args") || "{}");
-      await bridge.call(tool, args);                          // host-mediated write
-      el.setAttribute("data-called", "ok");
-    });
-  });
-}
-```
+The template **contract** (data binding + `data-call` writes) is unchanged by the tier move — an author
+who wrote `<ul>{{#each rows}}<li>{{seq}}</li>{{/each}}</ul>` + a `<button data-call="…" data-args='…'>`
+sees identical behavior, just rendered in the shell document (theme/fonts, no frame flicker) instead of
+an opaque-origin iframe.
 
-So the template contract has three parts:
+`plot`/`d3` (below) STAY on the iframe tier — their snippets `eval` via `new Function`, which is real
+RCE; the sandbox is load-bearing for them.
 
-1. **Data binding** — `{{path}}` scalar interpolation + `{{#each list}}…{{/each}}` iteration
-   over the panel's rows. The data context is the `SourceState`:
-   `{ rows, latest, loading, denied }`. Inside an `each` block the context **is the item**,
-   so `{{field}}` reads the row and `{{.}}` is the whole row. **Every interpolated data value
-   is HTML-escaped** — a row value can't inject markup (the template *markup* is author-owned
-   and trusted for structure; the *data* is the viewer's grant and is escaped).
-2. **Markup** is set as `innerHTML` (the CSP + opaque origin bound what it can do).
-3. **Write buttons** are declared with attributes:
-   ```html
-   <button data-call="store.query" data-args='{"sql":"SELECT seq FROM series LIMIT 1"}'>
-     Refresh
-   </button>
-   ```
-   On click, the runtime routes `data-call`/`data-args` through the bridge and stamps
-   `data-called="ok" | "err"` for feedback.
+---
 
-The default inline snippet
-([TemplateSourceField.tsx](../../../../ui/src/features/dashboard/builder/editors/TemplateSourceField.tsx)):
+## The `plot`/`d3` engines (author JS, sandboxed)
 
-```html
-<div class="p-2 text-xs">
-  <div class="text-muted">{{rows.length}} rows</div>
-  <ul>
-    {{#each rows}}<li>{{seq}}</li>{{/each}}
-  </ul>
-  <button data-call="store.query" data-args='{"sql":"SELECT seq FROM series LIMIT 1"}'>Refresh</button>
-</div>
-```
-
-### Where the rows come from (the one data hook)
-
-The template does **not** fetch its own data. `ScriptedView` loads the cell's source rows
-through **`usePanelData`** — the *same* hook every read view (chart/stat/gauge/table) uses —
-and passes them to the frame. This is the whole point of the design: a template is
-data-driven **identically on a dashboard and in a channel response**, because both build a
-`Cell` with a `source`, and both flow through `usePanelData → ScriptedView → WidgetIframe`.
-It also inherits the Phase-3 `viz.query` backend transform pipeline and auto-refresh
-(`refreshKey`) for free.
-
-### Live updates without rebuilding the frame
-
-Rows reach the sandbox as an **initial `srcdoc` config value** and then as live
-`render-data` `postMessage`s. On first paint the frame posts `{type:"frame-ready"}` and the
-parent replies with the freshest rows (covering the race where data resolved after the
-`srcdoc` was built); thereafter every refresh re-posts changed rows and the frame
-re-renders — **the iframe is never rebuilt on a data change** (no CDN re-fetch or flicker
-for `plot`/`d3`; a `template` just re-runs the cheap `innerHTML`). `plot`/`d3` snippets also
-receive the rows as a 4th `rows` argument, so they can render pre-fetched data without a
-bridge round-trip.
-
-> **Limitations.** `{{#each}}` is **single-level** (the first `{{/each}}` closes the block —
-> no nested `each`). There are no conditionals (`{{#if}}`) yet. An object value interpolated
-> with `{{path}}` renders as compact JSON (honest, not `[object Object]`). Unknown paths
-> render empty, never crash.
+Unlike the (now in-process) `template` engine, `plot`/`d3` **run author code** via
+`new Function("bridge","el","engine","rows", cfg.code)`. The author may read rows straight from the
+`rows` arg (the parent's `usePanelData`) OR fetch via `bridge.call`; a mounted element replaces the
+`#root`. The sandbox + grant + host re-check are the three guards (widget-builder scope, "Scripted
+views ... may write").
 
 ---
 

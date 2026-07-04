@@ -116,6 +116,7 @@ async fn run(
         "job",
         "do a thing",
         Substrate::default(),
+        None,
         &[] as &[AllowedTool],
         1,
     )

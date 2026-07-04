@@ -31,6 +31,7 @@ mod invoke_remote;
 mod memory;
 mod menu;
 mod model_access;
+mod page_context;
 mod policy;
 mod registry;
 mod rehydrate;
@@ -77,6 +78,7 @@ pub use memory::{
 };
 pub use menu::reachable_tools;
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
+pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,
     POLICY_TABLE,

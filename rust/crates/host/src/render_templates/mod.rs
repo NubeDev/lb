@@ -2,8 +2,9 @@
 //! (widget-builder scope, "Data (SurrealDB)"). A scripted view (`plot`/`d3`/`template`) whose code is
 //! larger than the inline `cell.options` cap persists as a workspace-scoped, author-owned
 //! `render_template:{id}` record — code is state, so SurrealDB, never `localStorage` (rule 2/4). A cell
-//! references the template by id; the host never executes it (it renders in the client's sandboxed
-//! iframe tier).
+//! references the template by id; the host never executes it. On the client: the eval-free `template`
+//! engine renders IN-PROCESS (`TemplateView`, sanitized — render-template-inprocess scope); `plot`/`d3`
+//! render in the sandboxed iframe tier (their snippets `eval`).
 //!
 //! The verbs (one per file, FILE-LAYOUT) — the full CRUD the scope named:
 //!   - `template.save`   ([`template_save`])   — idempotent UPSERT for create+update (author-only update).

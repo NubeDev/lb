@@ -95,6 +95,13 @@ pub struct AgentPayload {
     /// The durable run/job id the UI mints up front so it can watch the run stream (`agent.watch`)
     /// the instant the request item lands. The worker drives the run under this id.
     pub job: String,
+    /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
+    /// object the worker fences into the run's goal as untrusted context. `#[serde(default)]` so a
+    /// request without it is byte-identical to today (existing channels/agent posts are unaffected).
+    /// Opaque `Value`: the host never branches on a surface id (rule 10). Oversize (>4 KB serialized)
+    /// is rejected by the fence and surfaces as an `agent_error`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<Value>,
 }
 
 /// `kind: "agent_result"` — the agent worker's durable final answer.

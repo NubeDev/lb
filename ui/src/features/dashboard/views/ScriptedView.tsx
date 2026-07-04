@@ -1,8 +1,11 @@
-// The v2 scripted view (`plot` / `d3` / `template`) — author code over the source rows, rendered in a
-// SANDBOXED IFRAME (widget-builder scope, "Scripted views"). The code is either inline in
-// `options.code` (small snippets, ≤ a few KB) or a durable `render_template:{id}` referenced by
-// `options.templateId` (loaded via `template.get`). The iframe may WRITE a granted tool — the sandbox +
-// the cell's tool set + the host re-check are the three guards. The token never crosses into the frame.
+// The v2 scripted view (`plot` / `d3`) — author code over the source rows, rendered in a SANDBOXED
+// IFRAME (widget-builder scope, "Scripted views"). The code is either inline in `options.code` (small
+// snippets, ≤ a few KB) or a durable `render_template:{id}` referenced by `options.templateId` (loaded
+// via `template.get`). The eval-free JSX `template` engine USED to render here too; it was promoted
+// IN-PROCESS (`TemplateView`, render-template-inprocess scope) because it runs no author JavaScript.
+// This view now serves ONLY `plot`/`d3` — whose snippets `eval` via `new Function`, so the sandbox is
+// load-bearing. The iframe may WRITE a granted tool — the sandbox + the cell's tool set + the host
+// re-check are the three guards. The token never crosses into the frame.
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,7 +21,7 @@ import { getTemplate } from "@/lib/dashboard/template.api";
 
 interface Props {
   cell: Cell;
-  engine: "plot" | "d3" | "template";
+  engine: "plot" | "d3";
   scope?: VarScope;
   refreshKey?: number;
 }

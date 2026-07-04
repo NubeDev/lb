@@ -363,6 +363,7 @@ async fn run_default(node: &Arc<Node>, caller: &Principal, ws: &str, job: &str) 
         job,
         "remember boiler-1 runs hot",
         Substrate::default(),
+        None,
         &tools,
         1,
     )
@@ -478,6 +479,7 @@ async fn an_external_run_reaches_a_host_native_verb_through_the_same_wall() {
         "ext-1",
         "write via external",
         Substrate::default(),
+        None,
         &[],
         1,
     )
@@ -521,6 +523,7 @@ async fn an_external_run_host_native_call_is_denied_when_the_intersection_forbid
         "ext-deny-1",
         "write via external",
         Substrate::default(),
+        None,
         &[],
         1,
     )

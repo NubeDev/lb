@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { createChannel, listChannels } from "@/lib/channel/channel.api";
 import type { ChannelRecord } from "@/lib/channel/channel.types";
+import { isDockChannel } from "@/features/agent-dock/dockId";
 
 export interface ChannelsState {
   channels: ChannelRecord[];
@@ -21,7 +22,10 @@ export function useChannels(ws: string): ChannelsState {
 
   const refresh = useCallback(async () => {
     try {
-      setChannels(await listChannels(ws));
+      // Filter `dock.*` sessions OUT of the channels surface (agent-dock scope non-goal): a dock session
+      // is the dock's STORAGE, not another room in the channel list. The prefix is a UI convention only
+      // (the host never knows it — the wall is caps, not the name).
+      setChannels((await listChannels(ws)).filter((c) => !isDockChannel(c.id)));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

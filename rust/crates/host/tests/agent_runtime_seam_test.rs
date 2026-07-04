@@ -64,6 +64,7 @@ async fn absent_runtime_resolves_to_the_in_house_default() {
         "job-default",
         "do a thing",
         Substrate::default(),
+        None,
         &[] as &[AllowedTool],
         1,
     )
@@ -89,6 +90,7 @@ async fn explicitly_named_default_resolves_the_same() {
         "job-named-default",
         "do a thing",
         Substrate::default(),
+        None,
         &[] as &[AllowedTool],
         1,
     )
@@ -116,6 +118,7 @@ async fn an_explicitly_named_unknown_runtime_is_an_error_not_a_silent_downgrade(
         "job-unknown",
         "do a thing",
         Substrate::default(),
+        None,
         &[] as &[AllowedTool],
         1,
     )
@@ -147,6 +150,7 @@ async fn invoke_is_denied_without_the_cap_identically_through_the_seam() {
         "job-deny",
         "do a thing",
         Substrate::default(),
+        None,
         &[] as &[AllowedTool],
         1,
     )

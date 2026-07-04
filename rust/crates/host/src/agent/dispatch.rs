@@ -61,6 +61,7 @@ pub async fn invoke_via_runtime(
     job_id: &str,
     goal: &str,
     substrate: Substrate<'_>,
+    context: Option<&serde_json::Value>,
     tools: &[AllowedTool],
     ts: u64,
 ) -> Result<String, AgentError> {
@@ -118,6 +119,13 @@ pub async fn invoke_via_runtime(
         let content = read_substrate_doc(&node.store, caller, agent_caps, ws, doc_id).await?;
         goal = format!("{goal}\n\n[doc {doc_id}]\n{content}");
     }
+
+    // Fence the optional client-reported PAGE CONTEXT into the goal (agent-dock scope). This is the ONE
+    // seam both front doors reach, so the channel worker and the invoke route fence identically. Absent
+    // → `goal` unchanged (byte-identical to today); an oversize object is REJECTED here (a `BadInput`
+    // the door maps to a reject). Context is untrusted (the fence says so) and never widens the run —
+    // the wall stays the caller's captured caps.
+    goal = crate::agent::fence_into_goal(&goal, context)?;
 
     // The GRANTED-SKILL CATALOG (the model's own menu, name+description only) differs by runtime:
     // the in-house loop injects its own once per run (run.rs — it can `skill.activate` mid-run), so we

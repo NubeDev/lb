@@ -85,7 +85,12 @@ const TIMEOUT_MESSAGE: &str = "agent run exceeded its time limit and was stopped
 pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, item: &Item) {
     // RE-ENTRANCY GUARD: only a `kind:"agent"` item triggers work. A result/error item (or plain chat,
     // or a query payload) parses to another variant / None and returns here — never feeds on its output.
-    let Some(ItemPayload::Agent(AgentPayload { goal, runtime, job })) = parse_payload(&item.body)
+    let Some(ItemPayload::Agent(AgentPayload {
+        goal,
+        runtime,
+        job,
+        context,
+    })) = parse_payload(&item.body)
     else {
         return;
     };
@@ -95,6 +100,9 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
         goal,
         runtime,
         run_job: job.clone(),
+        // The client-reported page context rides on the durable enqueue record so the reactor fences it
+        // into the run's goal exactly as an inline drive would (agent-dock scope). Absent → unchanged.
+        context,
         // The poster's identity + caps — the reactor reconstructs the poster principal from these
         // (`Principal::routed`) so the run acts with the ASKER's authority, bounded by the asker's
         // grants (`agent ∩ poster`). Co-trust reconstruction, in-process + ws-scoped, exactly as the
@@ -147,6 +155,7 @@ pub async fn drive_queued_run(
         goal,
         runtime,
         run_job,
+        context,
         poster_sub,
         poster_caps,
         ts,
@@ -175,6 +184,7 @@ pub async fn drive_queued_run(
         ws,
         goal,
         runtime.as_deref(),
+        context.as_ref(),
         run_job,
         *ts,
         ceiling,
@@ -231,6 +241,7 @@ async fn drive_run(
     ws: &str,
     goal: &str,
     runtime: Option<&str>,
+    context: Option<&serde_json::Value>,
     job: &str,
     ts: u64,
     ceiling: Duration,
@@ -270,6 +281,7 @@ async fn drive_run(
         job,
         goal,
         Substrate::default(),
+        context,
         &tools,
         ts,
     );

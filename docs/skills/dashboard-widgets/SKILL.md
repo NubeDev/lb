@@ -66,8 +66,11 @@ Read each view's fields, not just its id:
   `store.query`, an ext tool). `data: false` (a control) instead writes an `action`.
 - **`action: true`** — the view calls a write tool on interaction (`switch`, `slider`, `button`, …).
 - **`buildable`** — `true` = author new cells of this kind freely. `false` = an alias / escape hatch
-  (`chart` aliases `timeseries`; `plot`/`d3`/`template`/`button` are compatibility/scripted). The save
+  (`chart` aliases `timeseries`; `plot`/`d3`/`button` are compatibility/scripted). The save
   validator ACCEPTS both, but as an author **choose only `buildable: true` views** for new cells.
+  (`template` was a scripted/compatibility view; it now renders **in-process** as a first-class view —
+  `TemplateView` — sanitized HTML over `usePanelData` rows, no iframe. `plot`/`d3` remain sandboxed
+  iframe scripted views — their author JS `eval`s.)
 
 Match by shape: a single number → `stat` or `gauge`; a value over time → `timeseries`; rows →
 `table`; parts of a whole → `piechart`. A live value plus a threshold → `gauge` with `thresholds`.

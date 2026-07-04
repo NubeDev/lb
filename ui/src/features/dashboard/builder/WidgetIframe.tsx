@@ -1,9 +1,13 @@
-// WidgetIframe — the sandboxed render host for a scripted view (plot/d3/template) or an untrusted
-// extension widget (widget-builder scope, "No in-process untrusted code"). The author code runs in an
-// opaque-origin iframe (`sandbox="allow-scripts"`, NO `allow-same-origin`); this component is the
-// PARENT side of the postMessage bridge: it receives `{tool,args}` requests from the frame, re-checks
-// the tool against the cell's tool set (defense in depth), forwards through the WidgetBridge to the
-// host (which re-checks the cap + workspace), and posts the reply back.
+// WidgetIframe — the sandboxed render host for a scripted view (plot/d3) or an untrusted extension
+// widget (widget-builder scope, "No in-process untrusted code"). The author code runs in an opaque-origin
+// iframe (`sandbox="allow-scripts"`, NO `allow-same-origin`); this component is the PARENT side of the
+// postMessage bridge: it receives `{tool,args}` requests from the frame, re-checks the tool against the
+// cell's tool set (defense in depth), forwards through the WidgetBridge to the host (which re-checks
+// the cap + workspace), and posts the reply back.
+//
+// The eval-free `template` engine USED to render here too; it was promoted IN-PROCESS (`TemplateView`,
+// render-template-inprocess scope) because it runs no author JavaScript. This host now serves ONLY
+// `plot`/`d3` (whose snippets `eval` via `new Function` — the sandbox is load-bearing).
 //
 // The session token NEVER crosses into the frame — not in srcdoc, not in any reply or watch event. The
 // WidgetBridge attaches it server-side. We validate every inbound message came from THIS iframe's
@@ -16,7 +20,7 @@ import { buildIframeSrcdoc } from "./iframeRuntime";
 import type { TemplateData } from "./templateInterpolate";
 
 interface Props {
-  engine: "plot" | "d3" | "template";
+  engine: "plot" | "d3";
   code: string;
   /** The cell's tool set = `{source, action}` tools ∩ grant — the bridge enforces it; we re-check too. */
   tools: string[];

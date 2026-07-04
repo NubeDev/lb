@@ -23,21 +23,26 @@ pub const INLINE_MAX_BYTES: usize = 4 * 1024;
 /// the larger case, but still bounded.
 pub const TEMPLATE_MAX_BYTES: usize = 64 * 1024;
 
-/// The render engine a template's `code` targets — the scripted-view trust tier renders all of these
-/// in a sandboxed iframe (widget-builder scope, "Scripted views").
+/// The render engine a template's `code` targets. The trust tier SPLITs these (render-template-
+/// inprocess scope): the eval-free `Template` engine renders **in-process** on the client
+/// (`TemplateView` — pure `{{path}}`/`{{#each}}` interpolation + a sanitized `innerHTML`, no author
+/// JS); `Plot`/`D3` render in the **sandboxed iframe** tier (their snippets `eval` via `new
+/// Function` — real RCE; the sandbox is load-bearing). The host treats them identically — it only
+/// stores the code; rendering is client-side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Engine {
-    /// A JSX render template over the source rows.
+    /// A JSX render template over the source rows. Renders IN-PROCESS on the client (eval-free).
     Template,
-    /// An Observable Plot snippet over the source rows.
+    /// An Observable Plot snippet over the source rows. Renders in the sandboxed iframe (author JS).
     Plot,
-    /// A D3 / Observable snippet over the source rows.
+    /// A D3 / Observable snippet over the source rows. Renders in the sandboxed iframe (author JS).
     D3,
 }
 
 /// A durable scripted-view template. The code is author-owned and workspace-scoped; a cell references
-/// it by `id`. The host never executes it — it is rendered in the sandboxed iframe tier on the client.
+/// it by `id`. The host never executes it — `Template` is rendered in-process on the client (sanitized);
+/// `Plot`/`D3` in the sandboxed iframe tier.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RenderTemplate {
     /// Stable slug, unique per workspace (the record id `render_template:{id}`).

@@ -8,10 +8,16 @@
 //     trust gate. A federated remote externalizes React expecting the shell's import map to resolve
 //     it, which only exists in-process; the sandbox can't load it anyway. (See
 //     debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md.)
-//   - A SCRIPTED VIEW (Plot/D3/JSX `template`) renders in a SANDBOXED IFRAME, always. That code is
-//     typed by a dashboard EDITOR into a cell — untrusted, never in-process.
+//   - A SCRIPTED VIEW (Plot/D3) renders in a SANDBOXED IFRAME, always. That code is typed by a dashboard
+//     EDITOR into a cell — untrusted, never in-process.
 //
-// So: extension widget ⇒ in-process; scripted author code ⇒ iframe. The `VITE_TRUSTED_WIDGET_KEYS`
+// Note: the eval-free JSX `template` engine USED to be a scripted tier (`plot`/`d3`/`template`), but it
+// runs NO author JavaScript (pure `{{path}}`/`{{#each}}` interpolation + `innerHTML`), so it was
+// promoted IN-PROCESS (`TemplateView`, render-template-inprocess scope) backed by `sanitizeTemplateHtml`
+// as the security boundary. `scriptedTier()` therefore governs `plot`/`d3` ONLY now; `template` renders
+// like `genui` (an in-process, `usePanelData`-driven, leashed-bridge view) and never asks for a tier.
+//
+// So: extension widget ⇒ in-process; scripted author code (plot/d3) ⇒ iframe; template ⇒ in-process. The `VITE_TRUSTED_WIDGET_KEYS`
 // allow-list remains for a future tier that would further restrict WHICH installed publishers may
 // federate (default: every installed widget federates — the install is the gate); it is shell
 // configuration, never data an extension can influence.
@@ -40,7 +46,9 @@ export function extWidgetTier(_publisherKeyId?: string | undefined | null): Trus
   return "in-process";
 }
 
-/** Scripted views (plot/d3/template) are ALWAYS sandboxed — author code never runs in-process. */
+/** Scripted views (plot/d3) are ALWAYS sandboxed — author code never runs in-process. (The eval-free
+ *  `template` engine is NOT a scripted tier anymore — it renders in-process via `TemplateView`; this
+ *  function governs only the two `eval`-based engines whose sandbox is load-bearing.) */
 export function scriptedTier(): TrustTier {
   return "iframe";
 }
