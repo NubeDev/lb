@@ -15,6 +15,7 @@
 
 mod authorize;
 mod bounds;
+mod catalog;
 mod delete;
 mod error;
 mod genui;
@@ -26,9 +27,11 @@ mod seed;
 mod share;
 mod store;
 mod tool;
+mod views;
 mod visibility;
 
 pub use bounds::{check_spec_bounds, MAX_OVERRIDES, MAX_TRANSFORMS};
+pub use catalog::{catalog_descriptor, dashboard_catalog, ExtWidget, WidgetCatalog};
 pub use delete::dashboard_delete;
 pub use error::DashboardError;
 pub use get::dashboard_get;
@@ -39,4 +42,5 @@ pub use seed::{seed_iot_demo, SeedReport};
 pub use share::dashboard_share;
 pub use store::scan_dashboards;
 pub use tool::call_dashboard_tool;
+pub use views::{builtin_view_ids, check_view_cells};
 pub use visibility::may_read_dashboard;

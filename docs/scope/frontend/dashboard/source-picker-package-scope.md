@@ -210,5 +210,7 @@ Per `scope/testing/testing-scope.md`:
   binding the picker's `flows` group produces.
 - [`../graphics-canvas-scope.md`](../graphics-canvas-scope.md) + `rust/extensions/thecrew/` — the first
   new consumer (a scene shape binds through the picker).
+- [`rules-as-source-scope.md`](rules-as-source-scope.md) — adds the `rules` group: a saved rule is a
+  `rules.run` read source (Data Studio: query-with-a-rule → chart).
 - `packages/panel`, `packages/nav-rail` — the shared-package pattern this follows (pure, props-driven,
   scoped tokens, React peer dep, ESM+CJS+dts+CSS build).

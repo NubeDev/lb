@@ -48,6 +48,13 @@ export interface FlowSummary {
   name: string;
 }
 
+/** A saved rule's summary (the subset of `rules.list` the picker needs) — a rule is a read source
+ *  (`rules.run {rule_id}` → records), so it mirrors `FlowSummary`. */
+export interface RuleSummary {
+  id: string;
+  name: string;
+}
+
 /** A flow node (the subset the picker reads to enumerate ports). */
 export interface FlowNode {
   id: string;
@@ -92,6 +99,9 @@ export interface SourceLoaders {
   listFlowNodes?: () => Promise<NodeDescriptor[]>;
   /** Registered federation datasources (from `datasource.list`). Drives the Datasource dropdown. */
   listDatasources?: () => Promise<DatasourceRow[]>;
+  /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
+   *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
+  listRules?: () => Promise<RuleSummary[]>;
 }
 
 /** What selecting a picker entry yields — the host maps this onto whatever it persists (a dashboard

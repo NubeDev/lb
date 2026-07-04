@@ -10,6 +10,7 @@ import type {
   ExtRow,
   Flow,
   NodeDescriptor,
+  RuleSummary,
   Source,
 } from "./types";
 
@@ -20,7 +21,7 @@ export interface SourceEntry {
   id: string;
   /** The grouping origin (the picker's sections). `widget` is a packaged `[[widget]]` tile (a finished
    *  widget the developer shipped — distinct from `extension`, which offers an extension's raw tools). */
-  group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows";
+  group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules";
   /** What the author sees — never a raw tool name. */
   label: string;
   /** For a `widget` entry: the icon name the tile declared (lucide id). */
@@ -169,6 +170,21 @@ export function flowsEntries(flows: Flow[], descriptors: NodeDescriptor[]): Sour
   return out;
 }
 
+/** Rules entries — one per saved rule. Each ⇒ a read `rules.run {rule_id}` source: the rule fetches
+ *  from the gated sources, computes over the rows in the cage (the data-stdlib: time/stats/`Frame`),
+ *  and RETURNS records the panel draws (rules-as-source-scope). A rule is the most general query — the
+ *  picker offers it as one opaque tool source, re-gated at the host per call (`mcp:rules.run:call`);
+ *  whether its output is chart-shaped is the rule author's concern, an honest failure if not. */
+export function rulesEntries(rules: RuleSummary[]): SourceEntry[] {
+  return rules.map((r) => ({
+    id: `rule:${r.id}`,
+    group: "rules" as const,
+    label: r.name || r.id,
+    source: { tool: "rules.run", args: { rule_id: r.id } },
+    writes: false,
+  }));
+}
+
 /** The id of the "SQL query" entry — the visual SQL builder + raw-SQL source over `store.query`. */
 export const SQL_SOURCE_ID = "sql:query";
 
@@ -191,6 +207,7 @@ export interface SourceInputs {
   flows?: Flow[];
   descriptors?: NodeDescriptor[];
   datasources?: DatasourceRow[];
+  rules?: RuleSummary[];
 }
 
 /** Assemble the whole picker from loader results. Series/live from `series`; extension + widget from
@@ -204,6 +221,7 @@ export function buildSourceEntries(inputs: SourceInputs): SourceEntry[] {
     ...extensionEntries(inputs.extensions ?? []),
     ...extWidgetEntries(inputs.extensions ?? []),
     ...flowsEntries(inputs.flows ?? [], inputs.descriptors ?? []),
+    ...rulesEntries(inputs.rules ?? []),
     sqlSourceEntry(),
   ];
 }

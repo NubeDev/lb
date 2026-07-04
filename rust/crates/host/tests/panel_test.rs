@@ -639,4 +639,3 @@ async fn dashboard_save_returns_hydrated_ref_cells() {
     );
     assert_eq!(saved2.cells[0].panel_ref, "panel:cooler");
 }
-

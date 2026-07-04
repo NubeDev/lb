@@ -734,6 +734,50 @@ then binds; a template-group authored in the real builder fans out one bound ins
 session: [`../../sessions/frontend/reusable-pages-session.md`](../../sessions/frontend/reusable-pages-session.md);
 skill: [`../../skills/nav/SKILL.md`](../../skills/nav/SKILL.md) ("publish a template dashboard as a per-site menu").
 
+## Widget catalog + save-validation (widget-platform Slice A, shipped 2026-07-04)
+
+The palette an AI (or any MCP client) reads to discover which views exist — and the host-side gate that
+**rejects a hallucinated view at write time** instead of degrading it to a broken tile at render time
+(closes G4). Backend-owned and client-agnostic: the web UI, an agent over `POST /mcp/call`, and the
+future RN app all read one authority.
+
+- **`dashboard.catalog` MCP verb** (`rust/crates/host/src/dashboard/catalog.rs`) — one read returning
+  `{ v, views, extWidgets, genuiComponents }`. `views` is the hand-authored, host-owned
+  `widget_catalog.json` (17 built-in views, each with `kind`/`version`/`buildable`/`data`/`action` and
+  a per-view config-field schema — `{id,label,scope,path,control,choices?}`). `extWidgets` folds the
+  workspace's installed extension `[[widget]]` tiles **generically** from `ext.list` (id opaque — no
+  core branch on any ext id, rule 10) as `{ext,widget,label,icon,data,scope}`. `genuiComponents` is the
+  genui component names. Dispatched with `&Arc<Node>` (like `nav.resolve`, for `ext.list` discovery) via
+  its own branch before the generic store-only `dashboard.` branch; self-describes via a `ToolDescriptor`
+  in `tools.catalog`. Gated `mcp:dashboard.catalog:call` (**member-level** — reading the palette grants
+  knowledge, not access; the write stays gated on `dashboard.save`). Workspace-first: a ws-B caller sees
+  only ws-B's ext tiles; the built-in view set is workspace-independent.
+- **Save-validation** (`rust/crates/host/src/dashboard/views.rs`, `check_view_cells`) — called from
+  `dashboard.save` beside `check_genui_cells`, **store-only** (no `Node`, signature unchanged). Per
+  cell: a known built-in view passes; a well-formed `ext:<id>/<widget>` key passes **structurally** (NOT
+  resolved against installs — resolving would couple save to install-lifecycle and force `&Node`, so an
+  un-installed tile still saves and renders the existing "unknown widget" placeholder); `genui` defers
+  to the IR check; anything else is `BadInput("cell {i}: unknown view '{view}' — call dashboard.catalog
+  for the palette")`. Because `dashboard.save` validates the whole `cells[]`, one bad cell blocks the
+  save — so the message names the cell index and the bad view (the fix is one edit away). **View-NAME
+  only** this slice; option-key validation is a named follow-up. The same authority fires for the shell,
+  a headless `POST /mcp/call`, a routed-Zenoh writer, and an external agent alike.
+- **Capability wiring** — `mcp:dashboard.catalog:call` is enumerated in the gateway `member_caps()`;
+  the `mcp:*.{get,list,write,…}:call` wildcards do **not** cover `.catalog`, so this line is load-bearing
+  (the same trap `tools.catalog` sits behind).
+- **One list, three surfaces** — the trimmed TS `View` union, the `WidgetView` render switch (17 cases),
+  and `widget_catalog.json` are kept identical; a UI-side consistency test imports the host JSON and
+  asserts the sets match, so catalog↔renderer drift fails the build rather than resurfacing G4.
+
+Tests (real gateway + store, no fakes): host `widget_catalog_test` (capability-deny + a plain-member
+happy path, two-workspace isolation with a real seeded `[[widget]]` install, save-validation across the
+shell + headless paths, round-trip authoring), `views.rs`/`credentials.rs` units, and the TS
+catalog↔renderer guard. Scope:
+[`../../scope/frontend/dashboard/widget-catalog-scope.md`](../../scope/frontend/dashboard/widget-catalog-scope.md);
+umbrella: [`../../scope/widgets/widget-platform-scope.md`](../../scope/widgets/widget-platform-scope.md);
+session: [`../../sessions/widgets/widget-catalog-session.md`](../../sessions/widgets/widget-catalog-session.md);
+skill: [`../../skills/dashboard-widgets/SKILL.md`](../../skills/dashboard-widgets/SKILL.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

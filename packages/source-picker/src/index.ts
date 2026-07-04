@@ -25,6 +25,7 @@ export {
   extensionEntries,
   extWidgetEntries,
   flowsEntries,
+  rulesEntries,
   sqlSourceEntry,
   SQL_SOURCE_ID,
 } from "./sourcePicker";
@@ -54,6 +55,7 @@ export type {
   Flow,
   FlowNode,
   FlowSummary,
+  RuleSummary,
   NodeDescriptor,
   DatasourceRow,
 } from "./types";

@@ -16,6 +16,7 @@ const full: SourceLoaders = {
   getFlow: async (id) => ({ id, name: "F1", nodes: [{ id: "n", type: "t" }] }),
   listFlowNodes: async () => [{ type: "t", outputs: ["state"] }],
   listDatasources: async () => [{ name: "pg", kind: "postgres" }],
+  listRules: async () => [{ id: "r1", name: "Hourly mean" }],
 };
 
 describe("useSourcePicker", () => {
@@ -27,6 +28,7 @@ describe("useSourcePicker", () => {
     expect(groups).toContain("live");
     expect(groups).toContain("widget"); // the packaged tile
     expect(groups).toContain("flows"); // the output port
+    expect(groups).toContain("rules"); // the saved rule → rules.run source
     expect(groups).toContain("sql"); // always offered
     expect(result.current.installed).toHaveLength(1);
   });
@@ -43,6 +45,20 @@ describe("useSourcePicker", () => {
     expect(result.current.entries.some((e) => e.group === "series")).toBe(false);
     // other groups still present
     expect(result.current.entries.some((e) => e.group === "flows")).toBe(true);
+    expect(result.current.entries.some((e) => e.group === "rules")).toBe(true);
+  });
+
+  it("a rejected listRules yields no Rules group while the rest still load", async () => {
+    const loaders: SourceLoaders = {
+      ...full,
+      listRules: async () => {
+        throw new Error("denied");
+      },
+    };
+    const { result } = renderHook(() => useSourcePicker(loaders, "acme"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.entries.some((e) => e.group === "rules")).toBe(false);
+    expect(result.current.entries.some((e) => e.group === "series")).toBe(true);
   });
 
   it("an omitted loader yields that group absent (no getFlow → no flows)", async () => {

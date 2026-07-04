@@ -48,11 +48,6 @@ export type View =
   | "barchart"
   | "bargauge"
   | "piechart"
-  | "histogram"
-  | "state-timeline"
-  | "status-history"
-  | "heatmap"
-  | "text"
   // generative-UI: an AI-authored, catalog-constrained widget rendered from a persisted IR
   // (genui-scope). `options.genui = { v, ir, meta? }`; data flows through ordinary v3 `sources[]`.
   | "genui"

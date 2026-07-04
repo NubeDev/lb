@@ -20,6 +20,7 @@ import {
 import { listSeries } from "@/lib/ingest/ingest.api";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
 import { listFlows, getFlow, listFlowNodes } from "@/lib/flows/flows.api";
+import { listRules } from "@/lib/rules/rules.api";
 import { sourcePickerKey } from "../cache/queryKeys";
 import { fetchDatasourceList } from "../cache/datasourceListQuery";
 import { LIST_STALE_MS } from "../cache/dashboardQueryClient";
@@ -43,6 +44,10 @@ function shellLoaders(client: QueryClient, ws: string): SourceLoaders {
     getFlow: (id) => getFlow(id),
     listFlowNodes: () => listFlowNodes(),
     listDatasources: () => fetchDatasourceList(client, ws),
+    // Saved rules → the Rules group (each ⇒ a `rules.run {rule_id}` read source). `SavedRule` is a
+    // structural superset of the package's `RuleSummary` ({id,name}); a workspace without the
+    // `mcp:rules.list:call` grant sees `rules_list` reject → an empty group (deny-tolerant).
+    listRules: () => listRules(),
   };
 }
 

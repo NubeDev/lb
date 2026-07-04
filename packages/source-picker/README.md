@@ -32,6 +32,7 @@ const loaders: SourceLoaders = {
   getFlow: (id) => getFlow(id),                // flows.get    ├ Flows group (node ports)
   listFlowNodes: () => listFlowNodes(),        // flows.nodes  ┘
   listDatasources: () => listDatasources(),    // datasource.list → federation roster
+  listRules: () => listRules(),                // rules.list    → Rules group (rules.run source)
 };
 
 function Picker({ ws }: { ws: string }) {

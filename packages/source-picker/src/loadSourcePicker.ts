@@ -6,7 +6,7 @@
 // (CLAUDE §9). One responsibility: turn a `SourceLoaders` bag into `{entries, installed}`.
 
 import { buildSourceEntries, type SourceEntry } from "./sourcePicker";
-import type { ExtRow, Flow, NodeDescriptor, SourceLoaders } from "./types";
+import type { ExtRow, Flow, NodeDescriptor, RuleSummary, SourceLoaders } from "./types";
 
 /** The assembled picker data (sans loading flag — the caller owns that). */
 export interface SourcePickerResult {
@@ -18,13 +18,14 @@ export interface SourcePickerResult {
  *  `flows.list` (flows the caller may reach) + `flows.nodes` (descriptors) + a `flows.get` per flow; a
  *  flow the caller cannot `flows.get` is silently skipped. */
 export async function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePickerResult> {
-  const [series, installed, flowSummaries, descriptors, datasources] = await Promise.all([
+  const [series, installed, flowSummaries, descriptors, datasources, rules] = await Promise.all([
     loaders.listSeries?.().catch(() => [] as string[]) ?? Promise.resolve([] as string[]),
     loaders.listExtensions?.().catch(() => [] as ExtRow[]) ?? Promise.resolve([] as ExtRow[]),
     loaders.listFlows?.().catch(() => []) ?? Promise.resolve([]),
     loaders.listFlowNodes?.().catch(() => [] as NodeDescriptor[]) ??
       Promise.resolve([] as NodeDescriptor[]),
     loaders.listDatasources?.().catch(() => []) ?? Promise.resolve([]),
+    loaders.listRules?.().catch(() => [] as RuleSummary[]) ?? Promise.resolve([] as RuleSummary[]),
   ]);
   const getFlow = loaders.getFlow;
   const flows = getFlow
@@ -33,7 +34,14 @@ export async function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePi
       ).filter((f): f is Flow => f != null)
     : [];
   return {
-    entries: buildSourceEntries({ series, extensions: installed, flows, descriptors, datasources }),
+    entries: buildSourceEntries({
+      series,
+      extensions: installed,
+      flows,
+      descriptors,
+      datasources,
+      rules,
+    }),
     installed,
   };
 }

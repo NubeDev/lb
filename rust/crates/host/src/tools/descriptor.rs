@@ -35,6 +35,10 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         crate::reminder::create_descriptor(),
         crate::reminder::list_descriptor(),
         crate::reminder::fire_descriptor(),
+        // The widget palette read (widget-catalog scope). Named `dashboard.catalog` on purpose: the
+        // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own
+        // `mcp:dashboard.catalog:call` gate decides its visibility — no new cap, no `if` in the catalog.
+        crate::dashboard::catalog_descriptor(),
     ];
     out.extend(crate::host_tools::secret_descriptors());
     out

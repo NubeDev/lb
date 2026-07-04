@@ -300,6 +300,12 @@ async fn dispatch_at_depth(
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
             call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool == "dashboard.catalog" {
+            // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
+            // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
+            // `dashboard.` branch. Workspace-first; folds only the caller's installed `[[widget]]` tiles.
+            let cat = crate::dashboard_catalog(node, principal, ws).await?;
+            serde_json::to_value(cat).unwrap_or(Value::Null)
         } else if qualified_tool.starts_with("dashboard.") {
             crate::call_dashboard_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("nav.") {

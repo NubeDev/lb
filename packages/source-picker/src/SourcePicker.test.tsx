@@ -12,13 +12,30 @@ const ext: ExtRow = {
   enabled: true,
   widgets: [{ entry: "r.js", label: "Scene", icon: "box", scope: ["assets.get_doc"] }],
 };
-const entries = buildSourceEntries({ series: ["ahu1.speed"], extensions: [ext] });
+const entries = buildSourceEntries({
+  series: ["ahu1.speed"],
+  extensions: [ext],
+  rules: [{ id: "r1", name: "Hourly mean" }],
+});
 
 describe("SourcePicker", () => {
   it("renders a group per non-empty origin and its options", () => {
     render(<SourcePicker entries={entries} onSelect={() => {}} />);
     expect((screen.getByRole("option", { name: "ahu1.speed" }) as HTMLOptionElement).closest("optgroup")?.label).toBe("Series");
     expect((screen.getByRole("option", { name: "thecrew · Scene" }) as HTMLOptionElement).closest("optgroup")?.label).toBe("Extension widgets");
+    expect((screen.getByRole("option", { name: "Hourly mean" }) as HTMLOptionElement).closest("optgroup")?.label).toBe("Rules");
+  });
+
+  it("fires onSelect with a rules.run source when a rule is picked", () => {
+    const onSelect = vi.fn();
+    render(<SourcePicker entries={entries} onSelect={onSelect} />);
+    fireEvent.change(screen.getByLabelText("source"), { target: { value: "rule:r1" } });
+    expect(onSelect).toHaveBeenCalledWith({
+      id: "rule:r1",
+      source: { tool: "rules.run", args: { rule_id: "r1" } },
+      action: undefined,
+      viewKey: undefined,
+    });
   });
 
   it("fires onSelect with the chosen entry's selection", () => {

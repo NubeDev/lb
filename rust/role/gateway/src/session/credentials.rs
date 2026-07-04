@@ -199,6 +199,12 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // widget-catalog scope (Slice A): the widget palette read. Member-level — every member may
+        // read the palette (it grants knowledge, not access; the write stays gated on dashboard.save).
+        // LOAD-BEARING: the `mcp:*.{get,list,write,create,update,delete,post}:call` wildcards below do
+        // NOT match `.catalog`, so without this line every member call is denied (same trap as
+        // `tools.catalog`, individually listed above). The gateway re-checks it server-side.
+        "mcp:dashboard.catalog:call",
         // library-panels scope (panels as their own reusable + standalone asset): the six `panel.*`
         // verbs the panel routes check. Member-level like dashboards — any member may build/share their
         // own panels (gate 3 / ownership still decides which *specific* panel they read/edit); the
@@ -454,6 +460,22 @@ mod tests {
     /// federation sidecar via `call_sidecar` (gated `mcp:native.call:call`) after mediating the DSN
     /// (`secret:federation/*:write` for Add). A dev login missing ANY of these silently 500s the live
     /// page even though the route-level cap is present — the end-to-end gap this guards against.
+    /// widget-catalog scope (Slice A): `dashboard.catalog` is a member-level read, but the
+    /// `mcp:*.<verb>:call` wildcards do NOT cover `.catalog` (there is no `mcp:*.catalog:call`), so a
+    /// member token gets the cap ONLY if it is individually listed. Without it every member's palette
+    /// read is denied — the verb is dead on arrival. This guards the load-bearing grant line (the same
+    /// trap `tools.catalog` sits behind, asserted alongside it here).
+    #[test]
+    fn dev_login_carries_the_widget_catalog_read() {
+        let caps = member_caps();
+        for needed in ["mcp:dashboard.catalog:call", "mcp:tools.catalog:call"] {
+            assert!(
+                caps.iter().any(|c| c == needed),
+                "member set must grant {needed} — the `.catalog` wildcards don't cover it"
+            );
+        }
+    }
+
     #[test]
     fn dev_login_carries_the_full_datasources_chain() {
         let caps = member_caps();

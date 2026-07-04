@@ -40,6 +40,12 @@ pub async fn dashboard_save(
     // (genui-scope Decision 6) so a malformed genui cell is rejected loudly here, not degraded at view
     // time. Same authority for every writer — shell, `POST /mcp/call`, routed Zenoh, external-agent.
     super::genui::check_genui_cells(&cells)?;
+    // Every cell's `view` NAME is validated against the embedded widget catalog (widget-catalog scope,
+    // Slice A): a hallucinated view (an unknown built-in, a malformed `ext:` key) is rejected loudly
+    // HERE — same authority for every writer — so a broken tile never persists (the reported G4 bug).
+    // Structural only (view name, not option keys); `ext:<id>/<widget>` is checked well-formed, not
+    // resolved against installs (so the save stays store-only). `genui`'s IR is validated above.
+    super::views::check_view_cells(&cells)?;
 
     // Library-panel refs (library-panels scope: "validate at write, tolerate at read"). Every ref
     // cell's `panel_ref` must resolve in-workspace under the saver NOW (loud `BadInput` otherwise); the

@@ -7,6 +7,7 @@ import {
   extensionEntries,
   extWidgetEntries,
   flowsEntries,
+  rulesEntries,
   selectionOf,
   widgetIdOf,
   SQL_SOURCE_ID,
@@ -75,6 +76,29 @@ describe("flowsEntries", () => {
 
   it("skips a node whose descriptor is missing (honest empty, no guess)", () => {
     expect(flowsEntries([{ id: "f1", name: "F1", nodes: [{ id: "n", type: "UNKNOWN" }] }], descriptors)).toHaveLength(0);
+  });
+});
+
+describe("rulesEntries", () => {
+  it("maps a saved rule to a rules.run read source keyed by rule_id", () => {
+    const [rule] = rulesEntries([{ id: "r1", name: "Hourly mean" }]);
+    expect(rule.group).toBe("rules");
+    expect(rule.id).toBe("rule:r1");
+    expect(rule.label).toBe("Hourly mean");
+    expect(rule.writes).toBe(false);
+    expect(rule.source).toEqual({ tool: "rules.run", args: { rule_id: "r1" } });
+  });
+
+  it("falls back to the id when a rule has no name", () => {
+    expect(rulesEntries([{ id: "r2", name: "" }])[0].label).toBe("r2");
+  });
+
+  it("is folded into buildSourceEntries under the rules group", () => {
+    const entries = buildSourceEntries({ rules: [{ id: "r1", name: "R1" }] });
+    expect(entries.find((e) => e.group === "rules")?.source).toEqual({
+      tool: "rules.run",
+      args: { rule_id: "r1" },
+    });
   });
 });
 
