@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DashboardRoster } from "./DashboardRoster";
 import { Grid } from "./Grid";
-import { AddLibraryPanel } from "./AddLibraryPanel";
+import { AddLibraryPanel, nextKey } from "./AddLibraryPanel";
 import { VariableBar } from "./vars/VariableBar";
 import { VariableEditor } from "./vars/VariableEditor";
 import { RequiredVarGate, unboundRequiredVars } from "./vars/RequiredVarGate";
@@ -283,6 +283,16 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
+                onDuplicate={(i) => {
+                  const src = current.cells.find((c) => c.i === i);
+                  if (!src) return;
+                  // Shallow copy is correct: only the cell key must change. Geometry, binding, options,
+                  // sources, fieldConfig, panelRef/panelVars all carry over — the copy lands on top of
+                  // the source and the user drags it away (the panel-builder query-target duplicate uses
+                  // the same spread pattern).
+                  const copy: Cell = { ...src, i: nextKey(current.cells) };
+                  void dash.saveCells([...current.cells, copy]);
+                }}
               />
             )}
           </div>

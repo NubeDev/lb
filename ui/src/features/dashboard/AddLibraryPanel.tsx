@@ -18,7 +18,7 @@ interface Props {
 }
 
 /** A fresh cell key that doesn't collide (mirrors AddPanel's `nextKey`). */
-function nextKey(existing: Cell[]): string {
+export function nextKey(existing: Cell[]): string {
   let n = existing.length + 1;
   const keys = new Set(existing.map((c) => c.i));
   while (keys.has(`w${n}`)) n += 1;

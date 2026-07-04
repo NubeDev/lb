@@ -9,8 +9,10 @@ surface's public doc).
 `{ view, source|data, options, action, tools }` envelope, mounted by one renderer
 ([`WidgetView`](../../../ui/src/features/dashboard/views/WidgetView.tsx)) on every surface: a dashboard grid
 cell, a **channel** rich response ([`ResponseView`](../../../ui/src/features/channel/ResponseView.tsx) is a
-thin adapter over the same renderer), and — via the same backend contracts — the **RN app**
-([`app/`](../../../app)). This umbrella records the whole picture so the individual slices hang off one
+thin adapter over the same renderer), and — *once its render surface is built* — the **RN app**
+([`app/`](../../../app)), which consumes the same backend contracts (`dashboard.catalog` + `dashboard.get`)
+but does not render widgets today (Slice A *enables* it; the app page is its own `app/` task). This umbrella
+records the whole picture so the individual slices hang off one
 frame instead of re-deciding it each time: **widgets are a system-wide capability, not a dashboard feature**,
 and the **channel is the integration test-bench** where a user can exercise every tool/API, turn a response
 into a widget, preview it, and pin it to a dashboard — all through generic, capability-gated MCP seams.
@@ -157,6 +159,17 @@ the client holds no tool- or extension-specific knowledge (rule 7 + rule 10).
 - **MCP is the universal contract (rule 7).** Every seam is an MCP verb read/consumed identically by the
   web UI, the channel, the RN app, and AI agents. No surface holds tool-specific rendering knowledge; new
   widgets ship as backend/extension config.
+- **Backend-driven rendering = two documents, composed (the app-render contract).** "A surface knows what
+  to render" is *two* backend answers, never one: the **catalog** (`dashboard.catalog`, Slice A) supplies
+  the *vocabulary* — what `view` kinds exist and how each is configured — and the **page/response document**
+  (`dashboard.get` for a grid; a channel `rich_result` for a response) supplies the *content* — which cells,
+  which `view` each, its `options`, its data `source`. A client renders by walking the document, resolving
+  each `view` against the catalog, and binding data through the one gated bridge. This is what lets the
+  **RN app** render a page with **no app-side palette and no code release** when a view or ext tile is added
+  — the app holds the same zero tool/ext knowledge the web shell does. Slice A ships the catalog half;
+  `dashboard.get` is shipped; the app's *renderer* (the `view`→native-component map) is the app task's own
+  work. The full contract + its honest gaps (ext-tile config, unknown-option tolerance) live in the Slice A
+  scope's "How the app renders a page".
 - **Core knows no extension (rule 10).** Sources #2/#3 and Slices B/E treat tool ids and extension ids as
   **opaque data** — a render envelope, an `ext.list` row, a capability string — never a branch on a named
   id. A GitLab-for-GitHub swap forces no core change.
@@ -188,9 +201,13 @@ dashboard cell.
 
 ## Open questions
 
-- **One catalog or two?** `dashboard.catalog` (view kinds) vs `tools.catalog` (tool renders) are distinct
-  concerns the AI reads together. Keep separate (recommended) or a future `widget.catalog` façade that
-  composes both? Decide when the AI-authoring prompt (Slice D) is built.
+- **One catalog or two?** `dashboard.catalog` (view kinds + ext tiles + genui components) vs
+  `tools.catalog` (callable tools + their result-renders) are distinct concerns the AI reads together.
+  Keep separate (recommended — a render kind is not a tool, and `dashboard.catalog` self-describes via a
+  `ToolDescriptor` so it's discoverable *from* `tools.catalog`) or a future `widget.catalog` façade that
+  composes both? Decide when the AI-authoring prompt (Slice D) is built — and that Slice D scope must open
+  with the "read both catalogs; this one answers *what can render*, that one answers *what can be called
+  and how its answer renders*" table, so the split is taught, not rediscovered.
 - **Where does "pin" live?** A `dashboard.pin(render)` verb, or the client builds the cell and calls
   `dashboard.save`? Recommend the client/AI builds the cell from the envelope + `dashboard.save` (no new
   verb) unless a server-side mint proves necessary. Resolve in Slice B.

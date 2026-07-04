@@ -554,3 +554,89 @@ async fn delete_refused_while_in_use_unless_forced() {
     );
     assert_eq!(d.cells[0].view, "timeseries");
 }
+
+// --- REGRESSION: `dashboard.save` returns hydrated ref cells -------------------------------------
+//
+// The headline library-panels invariant: every render host (grid, editor, standalone) sees plain
+// hydrated v3 cells, ref-aware ONLY in the editor's link/unlink. The client `setCurrent`s the save's
+// return after every dashboard edit (drag/resize/add/remove/duplicate), so `dashboard_save` MUST
+// return ref cells HYDRATED — same as `dashboard.get` — not the stripped layout+ref form that gets
+// persisted. Otherwise any edit to a dashboard containing a ref cell blanks those cells ("Unsupported
+// widget") until the next reload. The persisted record stays stripped (the ref is authoritative); only
+// the RETURNED value is re-hydrated for display.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn dashboard_save_returns_hydrated_ref_cells() {
+    let ws = "ws-save-hydrate";
+    let store = Store::memory().await.unwrap();
+    let store = &store;
+    let ada = principal("user:ada", ws, &[SAVE, GET, DASH_SAVE, DASH_GET]);
+
+    panel_save(store, &ada, ws, "cooler", "Cooler", series_spec(), 1)
+        .await
+        .unwrap();
+
+    // A dashboard with one ref cell. The cell carries a deliberately-wrong echoed spec to prove the
+    // returned value is the panel's spec (re-hydrated), not the client's echoed copy.
+    let saved = lb_host::dashboard_save(
+        store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![ref_cell("c1", "panel:cooler")],
+        vec![],
+        2,
+    )
+    .await
+    .unwrap();
+
+    // The SAVE's return must carry the hydrated spec — view from the panel, NOT the echoed "STALE",
+    // NOT the empty-string stripped form. This is the exact gap that surfaced as "Unsupported widget"
+    // on every dashboard edit (drag/resize/duplicate) before the fix.
+    let cell = &saved.cells[0];
+    assert_eq!(cell.panel_ref, "panel:cooler", "marker kept");
+    assert!(!cell.panel_missing, "panel resolves → not the placeholder");
+    assert_eq!(
+        cell.view, "timeseries",
+        "save returns the hydrated spec (the panel record's view)"
+    );
+    assert_eq!(
+        cell.widget_type, "chart",
+        "save returns the hydrated widget_type"
+    );
+    assert_eq!(
+        cell.sources.len(),
+        1,
+        "save returns the hydrated sources (one series.read target)"
+    );
+    assert_ne!(
+        cell.view, "STALE",
+        "echoed spec ignored — the ref is authoritative"
+    );
+
+    // The persisted record stays STRIPPED (layout + ref + overrides only): prove the round-trip via a
+    // fresh `dashboard.get` re-hydrates from the panel, not from anything the save echoed back.
+    let d = dashboard_get(store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(d.cells[0].view, "timeseries");
+    assert_eq!(d.cells[0].panel_ref, "panel:cooler");
+
+    // And a second save (the edit-after-edit case — e.g. a duplicate) still returns hydrated cells.
+    let saved2 = lb_host::dashboard_save(
+        store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        saved.cells.clone(), // the client re-sends what it last received (the hydrated form)
+        vec![],
+        3,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        saved2.cells[0].view, "timeseries",
+        "a re-save still returns hydrated ref cells"
+    );
+    assert_eq!(saved2.cells[0].panel_ref, "panel:cooler");
+}
+

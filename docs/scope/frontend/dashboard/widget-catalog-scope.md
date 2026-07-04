@@ -45,8 +45,11 @@ TS registry; rejected — see Intent.)
   runs on `dashboard.save` and rejects a `genui` cell whose component name isn't in the embedded catalog —
   the exact "the host is the boundary; reject a malformed cell loudly, not degrade at view time" pattern we
   want. But it fires **only** for `cell.view == "genui"`. A cell with `view: "sparklne"` (typo), `view:
-  "heatmap"` (doesn't exist yet), or a valid `view` with an invented `options.foo` sails straight through
-  and persists — the renderer then shows a broken/empty tile, which is exactly the symptom reported.
+  "heatmap"` (in the TS `View` union but with **no renderer case** — see Intent), or a valid `view` with an
+  invented `options.foo` sails straight through and persists — the renderer then shows a broken/empty tile,
+  which is exactly the symptom reported. **This slice enforces the view-name half only**: an unknown `view`
+  is rejected at save; an invented option key on a *valid* view is mitigated by discovery (the catalog gives
+  the AI the real ids) but not yet rejected — option-schema enforcement is a named follow-up (see Non-goals).
 
 There is no widget-catalog MCP verb, and no host-side view/option validation outside genui.
 
@@ -66,16 +69,19 @@ There is no widget-catalog MCP verb, and no host-side view/option validation out
   answer to "what widgets exist", so any client (web, AI, the RN app) reads one authority. Editing a
   widget = edit this file (same discipline as `genui_catalog.json`).
 - **Per-widget version, declared now.** Each built-in view carries a `version` in the catalog so widgets
-  can evolve their schema independently long-term. The AI never *chooses* a version — it copies the
-  current one from the catalog. **No cell-stamping and no migration in this slice** (dev mode; there is no
-  v2 widget to migrate to yet) — the field is the forward-looking contract, the machinery is deferred.
+  can evolve their schema independently long-term. In this slice the field is **catalog-only and
+  informational**: no writer (AI or UI) copies it into a cell, no cell-stamping, no migration (dev mode;
+  there is no v2 widget to migrate to yet). Honest cost note: adding `version` later would have been
+  additive anyway — it ships now only because it is free and documents the intended evolution path; the
+  machinery is deferred until the first breaking widget change.
 - **Client-agnostic rendering surface.** Because the catalog is a plain MCP verb, the RN app at `app/` can
   render a dashboard page (views + config + which cells need data) from `dashboard.catalog` + `dashboard.get`
   exactly as the web UI does — backend-driven dashboards, no web-only palette. (Building the app UI itself
   is out of scope — this *enables* it.)
-- **Host-side save-validation for *all* cells.** Generalize the genui check: on `dashboard.save`, reject a
-  cell whose `view` is neither a known built-in (in the catalog), a well-formed `ext:<id>/<widget>` key, nor
-  `genui`. Loud `BadInput`, same shape genui uses, on every write path.
+- **Host-side save-validation for *all* cells — view name only.** Generalize the genui check: on
+  `dashboard.save`, reject a cell whose `view` is neither a known built-in (in the catalog), a well-formed
+  `ext:<id>/<widget>` key, nor `genui`. Loud `BadInput`, same shape genui uses, on every write path.
+  Option *keys* are not validated in this slice (see Non-goals).
 - **The AI authors correctly, not just legally.** With the config schema in hand the AI sets `unit`,
   `decimals`, `thresholds`, `legend.showLegend`, etc. by their real ids — not guessed keys — so a
   round-tripped cell renders as intended, not as a default-everything fallback.
@@ -93,6 +99,11 @@ There is no widget-catalog MCP verb, and no host-side view/option validation out
 - **No per-extension special-casing.** The catalog folds `ext.list.widgets[]` generically; no core code
   branches on an extension id (rule 10). An ext tile appears in the catalog as opaque `{ext, widget, label,
   icon, scope}` data.
+- **No option-schema enforcement on save.** The validator rejects unknown `view` names only. A *valid* view
+  with an invented `options.foo` still persists in this slice — the mitigation is discovery (the catalog
+  hands the AI the real option ids) plus the round-trip authoring test. Rejecting unknown option keys is a
+  **named follow-up** (it needs a per-view option schema walk, incl. `fieldConfig` overrides, and a decision
+  on unknown-key strictness for hand-edited dashboards) — not silently promised here.
 - **No skill instead of MCP.** A prose skill was considered and rejected (see Intent) — the catalog is
   structured, gated data, not documentation.
 
@@ -107,7 +118,10 @@ Three pieces, each a thin copy of the shipped genui precedent:
 1. **The catalog data file.** `rust/crates/host/src/dashboard/widget_catalog.json` — hand-authored,
    `{ v, views:[{id,label,kind,version,buildable,data,action,options:[{id,label,scope,path,control,
    choices?}]}] }`. The **host owns it** (same as `genui_catalog.json`): editing a widget edits this file.
-   No TS codegen — see "Why backend-owned" below.
+   No TS codegen — see "Why backend-owned" below. `buildable:false` means "valid to *save/render* but do
+   not *author new* cells of this kind" — aliases and escape hatches (`chart`, `plot`, `d3`, `template`,
+   `button`) that exist for compatibility or scripted use; an AI author picks only `buildable:true` views,
+   the validator accepts both.
 2. **`dashboard.catalog` verb.** A new host-native read verb under `host/src/dashboard/` (`catalog.rs`).
    It `include_str!`s `widget_catalog.json` for the built-ins, calls the generic `ext.list` projection for
    installed tiles (opaque `{ext, widget, label, icon, data, scope}`), and reads the genui component names
@@ -123,13 +137,28 @@ Three pieces, each a thin copy of the shipped genui precedent:
    `BadInput("cell {i}: unknown view '{view}' — call dashboard.catalog")`. This validator is **store-only**
    (no `Node`), so `dashboard.save`'s signature is unchanged.
 
+**Reconcile the TS `View` union (in scope).** The catalog and `WidgetView`'s render switch agree exactly
+(17 ids), but the TS `View` union (`ui/src/lib/dashboard/dashboard.types.ts`) also declares `histogram`,
+`state-timeline`, `status-history`, `heatmap`, and `text` — ids with **no renderer case and no catalog
+entry**. A typed client can author them "legally" today and the new validator would reject them. This slice
+**trims those dead ids from the union** (they render nothing anyway) so the type contract, the renderer,
+and the catalog are one list. Note the blast radius of validation: `dashboard.save` validates the whole
+`cells[]`, so **one** unknown-view cell makes the **entire dashboard unsavable** (even a title edit). That
+is acceptable in dev mode and it is the genui precedent's behavior — but it is a deliberate choice, and the
+error message must name the offending cell index and view so the fix is one edit away.
+
 **Why `ext:` keys are validated structurally, not resolved against installs.** Hard-rejecting an
 `ext:<id>/<widget>` whose extension isn't currently installed would couple `dashboard.save` to
 extension-install lifecycle: uninstalling/disabling an ext would make every dashboard that mentions its tile
 **unsavable**, and would force `dashboard.save` to take the `&Node` (ext discovery) it currently doesn't
 need. So the validator only checks the key is well-formed; an un-installed tile still renders the existing
 "unknown widget" placeholder (unchanged behavior), and the **catalog** verb is where the AI learns which ext
-tiles actually exist. Resolving-on-save can be a later additive slice if hallucinated ext keys prove common.
+tiles actually exist. Honest hole: a hallucinated-but-well-formed ext key persists **silently** — the
+placeholder render is the only signal, and nothing counts occurrences, so "if it proves common" is not
+measurable as stated. The named middle path (a follow-up, not this slice): `dashboard.save` returns a
+**non-fatal `warnings[]`** entry when an `ext:` key doesn't resolve in the caller's `ext.list` — the save
+succeeds (no install-lifecycle coupling), the AI can self-correct, a human sees it. Hard resolve-on-save
+stays rejected.
 
 **Why MCP, not a skill.** A skill is prose that (a) goes stale the moment a view or option is added, (b)
 isn't capability-gated or workspace-scoped, and (c) enforces nothing — the AI can still hallucinate and the
@@ -170,6 +199,13 @@ can drift — is accepted for now (dev mode); a lightweight consistency check is
   a principal without it gets an opaque `ToolError::Denied`, tested. The save-validator adds **no** new cap
   — it's a correctness gate on the already-gated `dashboard.save`. Note `dashboard.catalog` follows the
   `granted = requested ∩ admin_approved` path like every verb (no pre-approval; rule 10).
+  **Wiring (required, or the verb is dead-on-arrival):** the member credential map
+  (`rust/role/gateway/src/session/credentials.rs::member_caps()`) enumerates the dashboard caps explicitly
+  and its wildcards (`mcp:*.{get,list,write,create,update,delete,post}:call`) do **not** match `.catalog` —
+  `tools.catalog` works only because it is individually listed. This slice adds
+  `mcp:dashboard.catalog:call` to `member_caps()` (mirroring `tools.catalog`); the happy-path test must run
+  with a **plain member token** so it proves the grant, not an admin bypass. (Same trap as
+  `prefs.set_default`.)
 - **Placement:** either — pure node-local read + validation, no cloud authority, no `if cloud`. Symmetric.
 - **One datastore:** no new persistence. The catalog is a compiled-in **hand-authored** JSON
   (`include_str!`), not a table; ext tiles come from the existing `ext` records via `ext.list`. Nothing new
@@ -190,6 +226,48 @@ can drift — is accepted for now (dev mode); a lightweight consistency check is
   `skills/dashboard-widgets/SKILL.md`: how an agent discovers the palette (`dashboard.catalog`), picks a
   view for a data shape, sets options by their real ids, and what a save-rejection means — grounded in a
   live run against a real gateway. (The genui slice's skill is the template.)
+
+## How the app renders a page (the intended app-render contract)
+
+This slice **enables** a backend-driven app render surface without building it; this section pins the
+contract so the eventual `app/` task builds *to* it instead of re-deciding it. **Nothing here ships in
+Slice A** — it is the forward contract the catalog exists to serve.
+
+**Two documents, two questions — the app reads both.** "The app knows what to render for a page" is *two*
+backend answers composed, not one:
+
+1. **The catalog** (`dashboard.catalog`, this slice) answers *"what widget kinds exist and how is each
+   configured"* — the vocabulary. Static per build + the workspace's installed ext tiles.
+2. **The page document** (`dashboard.get`, **already shipped**) answers *"what does THIS page show"* — an
+   array of cells, each with a layout (`i,x,y,w,h`), a `view` (a catalog id), an `options`/`fieldConfig`
+   blob, and a data `source` binding.
+
+The app renders a page by walking the page document's cells; for each cell it looks up the `view` in the
+catalog to know **how** to draw it and which cells need data, then binds data through the same
+host-mediated bridge (`cell.tools ∩ grant`, re-checked at the host) the web renderer uses. **No app-side
+palette, no hardcoded view list, no per-extension branch** — the app holds the same zero tool/ext knowledge
+the web shell does (rule 7 + rule 10). A view added in the backend, or an ext tile installed in the
+workspace, appears in the app with no app release.
+
+**What this contract deliberately does NOT yet cover** (so the app task scopes honestly):
+
+- **The renderer itself.** The app needs a component that maps a catalog `view` id → a native/RN render.
+  Slice A gives it the *schema* to render against, not the renderer. This is the bulk of the app task.
+- **Ext-tile config.** The catalog lists an ext `[[widget]]` tile as opaque `{ext,widget,label,icon,scope}`
+  but carries **no config schema** for it (the extension owns its config). So a generic app can *place* an
+  ext widget on a page but cannot generically *configure* its knobs — same v1 limit as the web palette.
+  A future slice letting a `[[widget]]` declare a config schema lifts this for all surfaces at once.
+- **Option-key validation.** Slice A rejects unknown *view kinds* at save; it does not yet reject a valid
+  view carrying garbage *option keys*. The catalog tells the app the real option ids to read, but a page
+  document may still carry an invented key the app must tolerate (ignore-unknown, not crash).
+- **Non-dashboard app pages.** This contract is for a *dashboard-shaped* page (a cell grid). A channel
+  response in the app (a single `rich_result` envelope, no grid) rides the **same** `view`+catalog
+  vocabulary through one `WidgetView`-equivalent — but wiring the app's channel surface is umbrella
+  Slice C/D territory, not a dashboard page.
+
+The payoff is the same envelope everywhere: a `{view, source|data, options, action, tools}` cell authored
+once renders identically in a web grid, a channel response, and an app page — because all three resolve
+`view` against this one catalog and bind data through the one gated bridge.
 
 ## Example flow
 
@@ -213,7 +291,9 @@ can drift — is accepted for now (dev mode); a lightweight consistency check is
 Real gateway + real store, no fakes (rule 9). Mandatory categories:
 
 - **Capability deny (required):** a principal without `mcp:dashboard.catalog:call` is denied
-  (`ToolError::Denied`, opaque) — real gateway, real token.
+  (`ToolError::Denied`, opaque) — real gateway, real token. The paired **happy path runs as a plain
+  member** (dev-login `member_caps()`), not an admin — it proves the new cap is actually in the member
+  grant, not that an admin bypasses it.
 - **Workspace isolation (required):** two sessions, ws-A and ws-B, ws-A with a real installed `[[widget]]`
   extension (`proof-panel`). `dashboard.catalog` for ws-A lists ws-A's ext tile; for ws-B it does **not**.
   The built-in view set is identical for both (workspace-independent).
@@ -225,15 +305,21 @@ Real gateway + real store, no fakes (rule 9). Mandatory categories:
 - **Catalog completeness (unit, Rust):** `widget_catalog.json` parses; view ids are unique; every viz view
   has a non-empty `options` list; every id in the validator's valid-set comes from the same file (the verb
   and the validator agree).
+- **Catalog ↔ renderer consistency guard (unit, TS — required, this slice):** a `ui`-side test imports
+  `rust/crates/host/src/dashboard/widget_catalog.json` and asserts its view ids exactly match `WidgetView`'s
+  render-switch cases (and the trimmed `View` union). This does **not** make TS the source of truth — it
+  makes the renderer *accountable to* the backend truth. Without it, catalog↔renderer drift reproduces the
+  exact G4 symptom this slice exists to kill, now with the host vouching for the broken view.
 - **Round-trip authoring (integration):** a cell authored purely from catalog ids (view + options) saves,
   reloads, and renders through the real `WidgetView` without falling back to defaults.
 
 ## Risks & hard problems
 
 - **Catalog ↔ renderer drift.** The hand-authored JSON and the `WidgetView` render `switch` are two lists;
-  adding a renderable view without cataloging it (or vice-versa) silently mis-classifies a widget. Accepted
-  for now (dev mode) — mitigate with the comment cross-link on both files and, optionally, a lightweight
-  consistency check (Open question). This is the deliberate trade for backend-owned-not-generated.
+  adding a renderable view without cataloging it (or vice-versa) silently mis-classifies a widget — the
+  same bug class this slice fixes, relocated. **Not** accepted: the consistency-guard test (Testing plan)
+  ships in this slice, plus the comment cross-link on both files. This is the price of
+  backend-owned-not-generated, paid up front instead of on drift.
 - **Option-schema fidelity.** The catalog carries a curated subset of each viz view's knobs (`unit`,
   `decimals`, `thresholds`, `legend`, `orientation`, …), not the entire editor option registry. Enough for
   the AI to author correctly; widen per-view if a needed knob is missing. It is the AI's contract, not a
@@ -242,23 +328,31 @@ Real gateway + real store, no fakes (rule 9). Mandatory categories:
   own config). The catalog lists the tile but can't tell the AI its knobs. Acceptable for v1 (the AI places
   it, doesn't configure it — same stance as `widget-palette-scope.md`); a future slice could let a `[[widget]]`
   declare a config schema.
+- **`genuiComponents` is names-only.** The verb returns `genui_component_names()`, not the full per-component
+  prop schemas that `genui_catalog.json` carries. Enough for Slice A (an author knows genui exists and which
+  components are legal); the channel-tenant genui author (umbrella Slice D) will want the schemas — widen the
+  projection then, don't discover it late.
 
 ## Open questions
 
-- **A consistency guard for catalog ↔ `WidgetView` drift?** A tiny test (TS or Rust) asserting the catalog's
-  view ids match the renderer's switch cases would catch the one dangerous divergence without making TS the
-  source of truth. Recommend adding it if drift bites; skipped in the first cut (dev mode).
+- ~~A consistency guard for catalog ↔ `WidgetView` drift?~~ **Resolved: yes, in this slice** — see Testing
+  plan. Drift reproduces the exact bug this slice fixes; "add it if drift bites" was the wrong default.
+- **Option-key enforcement on save** (the other half of the reported symptom) — explicitly out of this
+  slice (see Non-goals); pick it up as its own follow-up once the catalog's option schemas have been
+  exercised by a real AI author.
 - **Verb name: `dashboard.catalog` vs `widget.catalog`?** Chose `dashboard.catalog` — it lives in the
-  `dashboard.` host-native family (existing prefix, no new dispatcher family) and the palette is a
-  dashboard-authoring concept.
+  `dashboard.` host-native family (existing prefix, no new dispatcher family). Honest caveat: channel and
+  app authors read this verb too (widgets are system-wide, per the umbrella), so the name is a dispatch
+  convenience, not a scoping claim. If the umbrella's Slice D wants a `widget.catalog` façade composing
+  this + `tools.catalog`, it layers on top — this verb doesn't move.
 - **Per-widget version consumption.** The `version` field ships now but nothing reads it yet (no
   cell-stamping, no migration — dev mode). Resolve *when* the first widget gets a breaking v2: stamp
   `cell.plugin_version` at save and fold stale cells at render (the `schema_version` pattern).
 - **App rendering.** This slice makes the catalog app-consumable but does not build the RN dashboard page.
-  Track the app-side render as its own `app/` task keyed off `dashboard.catalog` + `dashboard.get`.
-- **Where does the freshness gate run** — `packages/genui`'s vitest, or a new `packages/…`/`ui` test? The
-  registry lives in `ui/src/features/panel-builder`; the gate should sit with the codegen script. Decide the
-  script's home (likely a small `ui`-side `bin/` + `ui` test) at build.
+  The intended contract is pinned above ("How the app renders a page") — catalog (`view` vocabulary) +
+  `dashboard.get` (page document) + the gated data bridge, no app-side palette. Track the app-side renderer
+  as its own `app/` task keyed off that contract; its first open questions are the RN `view`→component map
+  and how the app tolerates an unknown option key (ignore, per the contract).
 
 ## Related
 

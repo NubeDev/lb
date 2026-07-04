@@ -75,5 +75,16 @@ pub async fn dashboard_save(
         deleted: false,
     };
     write_dashboard(store, ws, &dashboard).await?;
+
+    // Return a HYDRATED record, mirroring `dashboard.get`. We just stripped ref cells to layout+ref
+    // before write (the ref is authoritative; the spec lives on the panel record), so the in-memory
+    // `dashboard.cells` are the stripped form — empty `view`/`widget_type`/`sources`. A client that
+    // `setCurrent`s the save's return (every dashboard edit: drag/resize/add/remove/duplicate) would
+    // otherwise render every ref cell as "Unsupported widget" until the next reload. Re-hydrating the
+    // returned value (not the persisted record) closes that gap; the on-disk record stays stripped.
+    let mut dashboard = dashboard;
+    dashboard.cells =
+        crate::panel::hydrate_cells(store, principal, ws, std::mem::take(&mut dashboard.cells))
+            .await;
     Ok(dashboard)
 }
