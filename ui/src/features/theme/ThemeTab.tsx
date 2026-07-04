@@ -12,10 +12,14 @@ import { persistWorkspaceDefaultTheme, useTheme } from "@/lib/theme";
 import { CAP, hasCap, useSession } from "@/lib/session";
 
 import { BrandColors } from "./BrandColors";
+import { FontPicker } from "./FontPicker";
 import { ImportField } from "./ImportField";
+import { LookPicker } from "./LookPicker";
 import { ModeToggle } from "./ModeToggle";
+import { MotionPicker } from "./MotionPicker";
 import { PresetPicker } from "./PresetPicker";
 import { RadiusPicker } from "./RadiusPicker";
+import { SurfacePicker } from "./SurfacePicker";
 
 export function ThemeTab() {
   const { theme, reset } = useTheme();
@@ -36,7 +40,15 @@ export function ThemeTab() {
 
   return (
     <div className="space-y-5 p-4">
+      <LookPicker />
+      <Separator />
       <PresetPicker />
+      <Separator />
+      <FontPicker />
+      <Separator />
+      <SurfacePicker />
+      <Separator />
+      <MotionPicker />
       <Separator />
       <RadiusPicker />
       <Separator />

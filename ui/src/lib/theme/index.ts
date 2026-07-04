@@ -35,6 +35,32 @@ export {
 } from "./theme-tokens";
 export { deriveTones, completeTones } from "./derive-tones";
 export { completeCustomTheme } from "./normalize-custom-theme";
+export {
+  SURFACES,
+  MOTIONS,
+  SURFACE_OPTIONS,
+  MOTION_OPTIONS,
+  DEFAULT_SURFACE,
+  DEFAULT_MOTION,
+  isSurface,
+  isMotion,
+  type Surface,
+  type Motion,
+} from "./appearance-axes";
+export { THEME_LOOKS, DEFAULT_LOOK, lookById, type LookPack, type LookDefaults } from "./theme-looks.data";
+export {
+  SANS_FONTS,
+  MONO_FONTS,
+  ALL_FONTS,
+  DEFAULT_FONT_SANS,
+  DEFAULT_FONT_MONO,
+  fontById,
+  type FontFamily,
+} from "./theme-fonts.data";
+export { resolveAppearance, applyLook, type ResolvedAppearance } from "./look-resolve";
+export { resolveMotion, prefersReducedMotion } from "./resolve-motion";
+export { loadFont } from "./font-loader";
+export { contrastRatio, AA_NORMAL, AA_LARGE } from "./contrast";
 export { readComputedBasePalette } from "./read-palette";
 export { adaptPreset } from "./preset-adapter";
 export { parseImportedTheme } from "./theme-import";

@@ -45,6 +45,13 @@
   --color-success: hsl(var(--success));
   --color-warning: hsl(var(--warning));
 
+  /* Font tokens (theme-appearance scope): Tailwind's `font-sans`/`font-mono` utilities resolve these,
+     and `theme-dom` writes the member's chosen family stack to `--font-sans`/`--font-mono` on <html>.
+     The `@theme` values here are the SYSTEM-STACK defaults, so text has a stack before any font is
+     chosen; a picked family overrides the token inline + lazy-loads its woff2 (`font-loader.ts`). */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   /* Declare the FULL rounded scale in `@theme` so Tailwind GENERATES the `rounded-xs…rounded-3xl`
      utilities (it only emits a utility whose theme key exists). The actual token *values* are
      re-asserted in a trailing `:root` override at the bottom of this file — because `tw-animate-css`
@@ -160,7 +167,7 @@ body,
 
 body {
   @apply bg-bg text-fg;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -253,6 +260,83 @@ body {
   .state-alert {
     @apply border-b border-red-500/20 bg-red-500/10 px-4 py-2 text-sm text-red-600 dark:text-red-300;
   }
+}
+
+/* ── SURFACES (theme-appearance scope) ────────────────────────────────────────────────────────────
+   A `data-surface` attribute on <html> restyles every `--panel`-consuming surface (cards, sheets,
+   popovers, nav) through the vars they already read — a CASCADE, not a component sweep. `flat` is today
+   (no rule needed). `elevated` = opaque panels + a shadow ramp. `glass` = translucent panels + backdrop
+   blur + the shadow ramp + a subtle accent gradient. The tokens (`--surface-alpha`, `--blur`,
+   `--shadow-1/2/3`, `--gradient-accent`) are per-surface DATA so a look/mode can tune them.
+
+   The glass→elevated→flat FALLBACK LADDER is a runtime `@supports` degrade, never a platform code branch
+   in components: where `backdrop-filter` is unsupported/weak (WebKitGTK's compositor), the `@supports`
+   block simply doesn't apply and glass renders as opaque `elevated` with a solid high-contrast panel. */
+:root {
+  --surface-alpha: 1;
+  --blur: 0px;
+  --shadow-1: 0 1px 2px hsl(var(--fg) / 0.06);
+  --shadow-2: 0 4px 12px -4px hsl(var(--fg) / 0.12);
+  --shadow-3: 0 12px 32px -8px hsl(var(--fg) / 0.22);
+  --gradient-accent: none;
+}
+
+/* Elevated: opaque panels, the shadow ramp. */
+:root[data-surface="elevated"] {
+  --shadow-1: 0 1px 3px hsl(var(--fg) / 0.10);
+  --shadow-2: 0 6px 16px -6px hsl(var(--fg) / 0.18);
+  --shadow-3: 0 16px 40px -10px hsl(var(--fg) / 0.30);
+}
+:root[data-surface="elevated"] [data-panel],
+:root[data-surface="elevated"] .surface-panel {
+  box-shadow: var(--shadow-2);
+}
+
+/* Glass: translucent panels + backdrop blur + elevation + a faint accent gradient. Gated on @supports
+   so a compositor without real backdrop-filter degrades to the opaque elevated look automatically. */
+@supports (backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px)) {
+  :root[data-surface="glass"] {
+    --surface-alpha: 0.72;
+    --blur: 14px;
+    --shadow-1: 0 1px 3px hsl(var(--fg) / 0.12);
+    --shadow-2: 0 8px 24px -8px hsl(var(--fg) / 0.28);
+    --shadow-3: 0 20px 48px -12px hsl(var(--fg) / 0.42);
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent) / 0.10), hsl(var(--accent-2) / 0.06));
+  }
+  :root[data-surface="glass"] [data-panel],
+  :root[data-surface="glass"] .surface-panel {
+    background-color: hsl(var(--panel) / var(--surface-alpha));
+    backdrop-filter: blur(var(--blur));
+    -webkit-backdrop-filter: blur(var(--blur));
+    box-shadow: var(--shadow-2);
+    background-image: var(--gradient-accent);
+  }
+}
+/* Fallback: no backdrop-filter → glass behaves as elevated (opaque + shadow), never a broken translucency. */
+@supports not ((backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px))) {
+  :root[data-surface="glass"] {
+    --shadow-2: 0 6px 16px -6px hsl(var(--fg) / 0.18);
+  }
+  :root[data-surface="glass"] [data-panel],
+  :root[data-surface="glass"] .surface-panel {
+    box-shadow: var(--shadow-2);
+  }
+}
+
+/* ── MOTION (theme-appearance scope) ──────────────────────────────────────────────────────────────
+   A `data-motion="off"` attribute on <html> fences ALL CSS transitions/animations (and is set by
+   `theme-dom` when the member chose off OR the OS asks for reduced-motion and they didn't choose full).
+   `subtle`/`full` leave CSS transitions intact; the springy JS motion is gated by `useMotionPref` in
+   `lib/motion`. `prefers-reduced-motion` is ALSO honored directly as a belt-and-braces CSS fence, except
+   we can't read the member's `full` opt-in in pure CSS — so the attribute is the authority and this media
+   query only covers the pre-hydration first paint. */
+:root[data-motion="off"] *,
+:root[data-motion="off"] *::before,
+:root[data-motion="off"] *::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  scroll-behavior: auto !important;
 }
 
 /* React Flow canvas — token-bound so the flows canvas tracks light/dark + accent (the xyflow

@@ -1,6 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { applyThemePreference } from "./theme-dom";
+import { resolveAppearance } from "./look-resolve";
+import { loadFont } from "./font-loader";
 import { ThemeContext } from "./theme-context";
 import { loadThemePreference, saveThemePreference } from "./theme-storage";
 import { useThemePersist } from "./useThemePersist";
@@ -11,6 +13,8 @@ import {
   type ThemePreference,
   type ThemeRadius,
 } from "./theme-options";
+import { applyLook } from "./look-resolve";
+import type { Motion, Surface } from "./appearance-axes";
 import type { CustomTheme } from "./theme-tokens";
 
 interface Props {
@@ -29,6 +33,11 @@ export function ThemeProvider({ children }: Props) {
   useLayoutEffect(() => {
     applyThemePreference(document, theme);
     saveThemePreference(theme);
+    // Lazy-load the resolved font faces (system stacks are a no-op) so a picked family self-hosts. The
+    // token stack is already written, so text renders in the fallback until the woff2 arrives (no FOIT).
+    const appearance = resolveAppearance(theme);
+    loadFont(appearance.fontSans);
+    loadFont(appearance.fontMono);
   }, [theme]);
 
   // A local edit: mark dirty and update state+cache. Persistence + reconcile are handled by the hook.
@@ -53,6 +62,12 @@ export function ThemeProvider({ children }: Props) {
     [edit],
   );
   const setRadius = useCallback((radius: ThemeRadius) => edit((c) => ({ ...c, radius })), [edit]);
+  // Picking a look resets the axes it defines (drops per-axis overrides) so it lands like its thumbnail.
+  const setLook = useCallback((look: string) => edit((c) => applyLook(c, look)), [edit]);
+  const setFontSans = useCallback((fontSans: string | undefined) => edit((c) => ({ ...c, fontSans })), [edit]);
+  const setFontMono = useCallback((fontMono: string | undefined) => edit((c) => ({ ...c, fontMono })), [edit]);
+  const setSurface = useCallback((surface: Surface | undefined) => edit((c) => ({ ...c, surface })), [edit]);
+  const setMotion = useCallback((motion: Motion | undefined) => edit((c) => ({ ...c, motion })), [edit]);
   const setLayout = useCallback(
     (patch: Partial<ThemeLayout>) => edit((c) => ({ ...c, layout: { ...c.layout, ...patch } })),
     [edit],
@@ -69,8 +84,40 @@ export function ThemeProvider({ children }: Props) {
   const reset = useCallback(() => edit(DEFAULT_THEME), [edit]);
 
   const value = useMemo(
-    () => ({ theme, hydrated, setMode, setPreset, setRadius, setLayout, setCustom, setImported, setTheme, reset }),
-    [theme, hydrated, setMode, setPreset, setRadius, setLayout, setCustom, setImported, setTheme, reset],
+    () => ({
+      theme,
+      hydrated,
+      setMode,
+      setPreset,
+      setRadius,
+      setLook,
+      setFontSans,
+      setFontMono,
+      setSurface,
+      setMotion,
+      setLayout,
+      setCustom,
+      setImported,
+      setTheme,
+      reset,
+    }),
+    [
+      theme,
+      hydrated,
+      setMode,
+      setPreset,
+      setRadius,
+      setLook,
+      setFontSans,
+      setFontMono,
+      setSurface,
+      setMotion,
+      setLayout,
+      setCustom,
+      setImported,
+      setTheme,
+      reset,
+    ],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

@@ -36,6 +36,7 @@ const SheetContent = React.forwardRef<
       <SheetOverlay />
       <SheetPrimitive.Content
         ref={ref}
+        data-panel=""
         className={cn(
           "fixed z-50 flex flex-col gap-4 bg-bg shadow-lg transition ease-in-out animate-in",
           side === "right" && "inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",

@@ -97,4 +97,33 @@ describe("theme DOM application", () => {
     expect(doc.documentElement.style.getPropertyValue("--accent")).toBe("");
     expect(doc.documentElement.dataset.themeAccent).toBe("amber");
   });
+
+  it("writes data-surface, data-motion, and the font-stack tokens from the resolved appearance", () => {
+    const doc = document.implementation.createHTMLDocument("theme");
+
+    applyThemePreference(doc, pref({ look: "glass", surface: "elevated", motion: "full", fontSans: "inter", fontMono: "jetbrains-mono" }));
+
+    const root = doc.documentElement;
+    expect(root.dataset.surface).toBe("elevated"); // explicit override wins over the glass look
+    expect(root.dataset.motion).toBe("full"); // explicit full survives (also overrides reduced-motion)
+    expect(root.style.getPropertyValue("--font-sans")).toContain('"Inter"');
+    expect(root.style.getPropertyValue("--font-mono")).toContain('"JetBrains Mono"');
+  });
+
+  it("falls the surface/motion/fonts through to the look's defaults when unset", () => {
+    const doc = document.implementation.createHTMLDocument("theme");
+
+    applyThemePreference(doc, pref({ look: "glass" }));
+
+    const root = doc.documentElement;
+    expect(root.dataset.surface).toBe("glass"); // the glass look's default surface
+    expect(root.style.getPropertyValue("--font-sans")).toContain('"Inter"'); // glass defaults to inter
+  });
+
+  it("radius follows the resolved appearance (a look's stamped radius)", () => {
+    const doc = document.implementation.createHTMLDocument("theme");
+    // A preference where the member picked the modern look (applyLook stamped radius 1rem).
+    applyThemePreference(doc, pref({ look: "modern", radius: "1rem" }));
+    expect(doc.documentElement.style.getPropertyValue("--radius")).toBe("1rem");
+  });
 });

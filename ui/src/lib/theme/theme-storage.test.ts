@@ -24,6 +24,7 @@ describe("theme storage", () => {
       mode: "light",
       preset: "teal",
       radius: "0.75rem",
+      look: "default",
       layout: DEFAULT_LAYOUT,
     });
   });
@@ -37,6 +38,7 @@ describe("theme storage", () => {
       mode: DEFAULT_THEME.mode,
       preset: "custom-lib",
       radius: DEFAULT_THEME.radius,
+      look: "default",
       layout: DEFAULT_LAYOUT,
     });
   });
@@ -50,6 +52,7 @@ describe("theme storage", () => {
       mode: "light",
       preset: "amber",
       radius: "0.5rem",
+      look: "default",
       layout: DEFAULT_LAYOUT,
     });
   });
@@ -71,7 +74,7 @@ describe("theme storage", () => {
     };
 
     expect(() =>
-      saveThemePreference({ mode: "dark", preset: "blue", radius: "0.5rem", layout: DEFAULT_LAYOUT }, storage),
+      saveThemePreference({ mode: "dark", preset: "blue", radius: "0.5rem", look: "default", layout: DEFAULT_LAYOUT }, storage),
     ).not.toThrow();
   });
 });

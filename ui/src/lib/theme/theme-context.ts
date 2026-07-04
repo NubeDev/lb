@@ -1,6 +1,7 @@
 import { createContext } from "react";
 
 import type { ThemeLayout, ThemeMode, ThemePreference, ThemeRadius } from "./theme-options";
+import type { Motion, Surface } from "./appearance-axes";
 import type { CustomTheme } from "./theme-tokens";
 
 export interface ThemeContextValue {
@@ -10,6 +11,15 @@ export interface ThemeContextValue {
   setMode: (mode: ThemeMode) => void;
   setPreset: (preset: string) => void;
   setRadius: (radius: ThemeRadius) => void;
+  /** Pick a look pack — resets the axes the look defines (per-axis overrides cleared). */
+  setLook: (look: string) => void;
+  /** Override the sans/mono font family (undefined = inherit the look). */
+  setFontSans: (id: string | undefined) => void;
+  setFontMono: (id: string | undefined) => void;
+  /** Override the surface treatment (undefined = inherit the look). */
+  setSurface: (surface: Surface | undefined) => void;
+  /** Override the motion profile (undefined = inherit the look). */
+  setMotion: (motion: Motion | undefined) => void;
   /** Patch the sidebar layout (variant/collapsible/side). */
   setLayout: (patch: Partial<ThemeLayout>) => void;
   /** Apply a hand-tweaked/library custom theme (both modes) — clears `preset`/`imported` precedence. */

@@ -8,6 +8,9 @@
 import type { CustomTheme } from "./theme-tokens";
 import { isCustomTheme } from "./theme-tokens";
 import { completeCustomTheme } from "./normalize-custom-theme";
+import { isSurface, isMotion, type Surface, type Motion } from "./appearance-axes";
+import { fontById } from "./theme-fonts.data";
+import { lookById } from "./theme-looks.data";
 
 export const THEME_MODES = ["dark", "light"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
@@ -49,12 +52,25 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
 /** A member's full theme preference. `preset` is a built-in id OR a library preset id; `custom` holds
  *  per-token brand overrides (both modes); `imported` holds a pasted tweakcn theme parsed to base
  *  tokens. When `custom`/`imported` is present it takes precedence over `preset` in application.
- *  `layout` is the sidebar variant/collapsible/side (Layout tab). */
+ *  `layout` is the sidebar variant/collapsible/side (Layout tab).
+ *
+ *  APPEARANCE AXES (theme-appearance scope). `look` is a one-click look-pack id whose DEFAULTS fill any
+ *  axis the member hasn't explicitly set. `preset`/`radius` and the OPTIONAL `fontSans`/`fontMono`/
+ *  `surface`/`motion` are per-axis overrides: an explicit value wins over the look default (except a
+ *  look's *pinned* axes, which win over the member — see `look-resolve.ts`). Leaving an axis undefined
+ *  = "inherit from the look". Picking a look resets the axes it defines (the provider clears the
+ *  overrides), so a look lands looking like its thumbnail. `preset`/`radius` stay required (a value is
+ *  always present) but a fresh look pick overwrites them with the look's defaults. */
 export interface ThemePreference {
   mode: ThemeMode;
   preset: string;
   radius: ThemeRadius;
   layout: ThemeLayout;
+  look: string;
+  fontSans?: string;
+  fontMono?: string;
+  surface?: Surface;
+  motion?: Motion;
   custom?: CustomTheme;
   imported?: CustomTheme;
 }
@@ -64,6 +80,7 @@ export const DEFAULT_THEME: ThemePreference = {
   preset: "amber",
   radius: "0.5rem",
   layout: DEFAULT_LAYOUT,
+  look: "default",
 };
 
 export const THEME_STORAGE_KEY = "lb.theme";
@@ -119,7 +136,16 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
     preset: typeof c.preset === "string" && c.preset.length > 0 ? c.preset : DEFAULT_THEME.preset,
     radius: isThemeRadius(c.radius) ? c.radius : DEFAULT_THEME.radius,
     layout: normalizeLayout(c.layout),
+    // `look` is kept if it names a known pack; an unknown id falls to `default` (fail-open to data,
+    // closed to garbage). A missing look = the default (a v1 stored theme has no `look` field).
+    look: typeof c.look === "string" && lookById(c.look) ? c.look : DEFAULT_THEME.look,
   };
+  // Optional per-axis overrides — each kept only if valid, else dropped (falls back to the look default
+  // at resolve time). Malformed new fields fall back PER-AXIS, never the whole blob.
+  if (typeof c.fontSans === "string" && fontById(c.fontSans)) out.fontSans = c.fontSans;
+  if (typeof c.fontMono === "string" && fontById(c.fontMono)) out.fontMono = c.fontMono;
+  if (isSurface(c.surface)) out.surface = c.surface;
+  if (isMotion(c.motion)) out.motion = c.motion;
   // A stored custom/imported theme is validated on the REQUIRED seven, then upgraded by DERIVING any
   // missing widened tones (panel2/overlay/accent2) — so a v1 theme survives migration instead of being
   // dropped. A theme missing a required token is malformed and dropped whole (fail-closed).

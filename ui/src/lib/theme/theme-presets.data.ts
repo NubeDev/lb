@@ -163,4 +163,37 @@ export const THEME_PRESETS: readonly PresetEntry[] = [
       },
     },
   },
+  {
+    // Retro terminal — phosphor green on near-black. The `retro` LOOK pins this preset (its identity is
+    // the palette). Both modes are green-forward; "light" is a warm-paper amber terminal for parity.
+    value: "retro",
+    name: "Retro Terminal",
+    preset: {
+      label: "Retro Terminal",
+      styles: {
+        light: {
+          background: "#f4f1e8",
+          foreground: "#2a2410",
+          card: "#ece7d6",
+          popover: "#ece7d6",
+          primary: "#7a5c00",
+          muted: "#6b5f3a",
+          "muted-foreground": "#514828",
+          accent: "#7a5c00",
+          border: "#d8cfb4",
+        },
+        dark: {
+          background: "#0a0f0a",
+          foreground: "#3bd67a",
+          card: "#0e160e",
+          popover: "#0e160e",
+          primary: "#38f58a",
+          muted: "#5f9e72",
+          "muted-foreground": "#7fc496",
+          accent: "#38f58a",
+          border: "#1a2c1e",
+        },
+      },
+    },
+  },
 ];

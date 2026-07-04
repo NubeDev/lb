@@ -27,12 +27,14 @@ const TEAL: ThemePreference = {
   mode: "dark",
   preset: "teal",
   radius: "0.75rem",
+  look: "default",
   layout: { variant: "floating", collapsible: "offcanvas", side: "right" },
 };
 const AMBER_LIGHT: ThemePreference = {
   mode: "light",
   preset: "amber",
   radius: "0.5rem",
+  look: "default",
   layout: { variant: "sidebar", collapsible: "icon", side: "left" },
 };
 

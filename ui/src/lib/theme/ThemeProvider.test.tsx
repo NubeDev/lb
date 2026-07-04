@@ -66,6 +66,7 @@ describe("ThemeProvider", () => {
         mode: "light",
         preset: "blue",
         radius: "0.5rem",
+        look: "default",
         layout: DEFAULT_LAYOUT,
       }),
     );
