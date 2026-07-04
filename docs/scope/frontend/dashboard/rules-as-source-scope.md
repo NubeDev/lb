@@ -72,11 +72,13 @@ is the same DI seam the package already documents ("host injects a `SourceLoader
    read data source, to the read list only — not `BUILDER_SOURCE_GROUPS`'s control intent). The
    grouped `<select>` renders it with zero component change.
 
-5. **Params (host-side, out of package scope).** A rule with required `params` needs values supplied.
-   That is host-specific target shaping — exactly like the flow node→port sub-picker the README says a
-   host composes *around* this package. v1 of the package offers the rule with no `params`
-   (`args: { rule_id }`); a rule that needs params either defaults them or the host wraps the picker
-   with a small params form. Called out as an **open question**, not built into the package.
+5. **Params.** A rule with declared `params` needs values supplied. **Shipped:** the package carries the
+   rule's declared `params` (from `rules.list`) onto the entry (`SourceEntry.params`); the host (the
+   Data Studio Query tab) renders one input per param — a `RuleParamsSection` — that writes the values
+   into the `rules.run` target's `args.params`. Empty fields are omitted (the rule sees an absent param,
+   its own default). This is the host-composed target shaping the README describes (like the flow
+   node→port sub-picker), grounded on a package-carried param list. `param("<name>")` reads it in the
+   cage. A rule with no declared params renders no form — the bare `rules.run {rule_id}` is complete.
 
 **Return shape is a convention, not a code gate.** A chart wants a **frame-shaped** return (array of
 row maps, e.g. `f.records()`), not `{kind:"findings"}`. The picker surfaces every saved rule; a rule
@@ -122,9 +124,14 @@ Per [`../../testing/testing-scope.md`](../../testing/testing-scope.md):
 
 ## Open questions
 
-1. **Params.** Should the package grow an optional `params` schema on `RuleSummary` (from `rules.list`)
-   so a host can render a generated form, or does every host shape params itself? Lean: host-shaped in
-   v1 (matches flows), revisit if two hosts duplicate a form.
+1. ~~**Params.**~~ **Resolved (shipped, incl. typed params + authoring loop).** The package carries
+   `params` on the entry; the Data Studio Query tab renders one TYPED control per param (text/number/
+   date/enum) and fills `args.params` (intent §5). A **number** param rides as a JSON number so the cage
+   sees a rhai number (`param("n") + 1` adds). The declaration is authored in the rules workbench
+   Params tab (`ParamDeclEditor`), persisted on the `SavedRule` record via a new `ParamKind`/`required`/
+   `options` on the node's `RuleParam` (serde-default → legacy `{name,label}` records load unchanged).
+   Remaining refinement: **required-empty enforcement** — the form flags a required-but-empty param
+   (`aria-invalid`) but does not yet block the panel run.
 2. **Data-rule tagging.** Mark a rule as "returns records" at save time (a `rules.save` flag) so the
    picker can offer *only* chartable rules? Or surface all and let a bad shape fail honestly? Lean:
    surface all in v1; add an optional filter if noise is real.

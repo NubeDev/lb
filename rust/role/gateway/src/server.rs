@@ -24,18 +24,18 @@ use crate::routes::{
     list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
     list_members, list_navs, list_panels, list_roles, list_rules, list_series, list_tables,
     list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
-    mcp_catalog, native_call, panel_usage, patch_flow_run, post_message, publish_extension,
-    publish_message, purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema,
-    remove_datasource, remove_member, remove_team_member, rename_team, rename_workspace,
-    render_catalog_message, request_approval, reset_extension, resolve_caps, resolve_inbox,
-    resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey, revoke_grant,
-    revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream, save_dashboard,
-    save_flow, save_nav, save_panel, save_rule, scan_table, series_stream, serve_ext_ui,
-    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
-    set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel, start_job,
-    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, update_def, update_flow_node,
-    write_samples,
+    mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message,
+    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
+    read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
+    rename_workspace, render_catalog_message, request_approval, reset_extension, resolve_caps,
+    resolve_inbox, resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey,
+    revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream,
+    save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
+    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
+    set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, update_def,
+    update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -223,6 +223,9 @@ pub fn router(gw: Gateway) -> Router {
             get(get_dashboard).delete(delete_dashboard),
         )
         .route("/dashboards/{id}/share", post(share_dashboard))
+        // widget-platform scope (Slice B): mint a cell from an `x-lb-render` envelope and upsert it into
+        // the dashboard. Generic over the tool id (rule 10). Gated `dashboard.pin`; owner-only update.
+        .route("/dashboards/{id}/pin", post(pin_dashboards))
         // library panels (library-panels scope) — the browser's `panel.*` CRUD + share + the `usage`
         // read (which dashboards reference a panel). Each route re-checks the gates server-side; ws +
         // owner from the token. Standalone panel pages read `GET /panels/{id}` through the same gate.

@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import GridLayout, { type Layout } from "react-grid-layout";
-import { Copy, GripHorizontal, X } from "lucide-react";
+import { Copy, ExternalLink, GripHorizontal, X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
 import type { Cell } from "@/lib/dashboard";
@@ -26,6 +26,8 @@ interface Props {
   onRemove: (i: string) => void;
   /** Append a copy of a cell (the persistence seam). */
   onDuplicate: (i: string) => void;
+  /** Open Data Studio to edit a panel (navigates to `/t/$ws/data-studio`). Omitted ⇒ no button. */
+  onOpenInDataStudio?: () => void;
   /** Installed extensions (from `ext.list`) — needed to mount `ext:<id>/<widget>` cells. */
   installed?: ExtRow[];
   /** The current workspace (passed to widgets; the hard wall is enforced by the token server-side). */
@@ -46,6 +48,7 @@ export function Grid({
   onLayout,
   onRemove,
   onDuplicate,
+  onOpenInDataStudio,
   installed,
   workspace,
   scope,
@@ -134,6 +137,16 @@ export function Grid({
             )}
             {editable && (
               <div className="widget-no-drag absolute right-2 top-2 z-10 flex items-center gap-0.5 opacity-0 transition-[opacity] focus-within:opacity-100 group-hover/cell:opacity-100">
+                {onOpenInDataStudio && (
+                  <button
+                    aria-label={`open cell ${c.i} in data studio`}
+                    title="Open in Data Studio"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-[color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                    onClick={onOpenInDataStudio}
+                  >
+                    <ExternalLink size={13} />
+                  </button>
+                )}
                 <button
                   aria-label={`duplicate cell ${c.i}`}
                   title="Duplicate widget"

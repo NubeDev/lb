@@ -205,6 +205,13 @@ fn member_caps() -> Vec<String> {
         // NOT match `.catalog`, so without this line every member call is denied (same trap as
         // `tools.catalog`, individually listed above). The gateway re-checks it server-side.
         "mcp:dashboard.catalog:call",
+        // widget-platform scope (Slice B): pin a tool result-render to a dashboard. Member-level — any
+        // member may pin an `x-lb-render` envelope to their OWN dashboards (gate-3 owner-only-update
+        // still decides which existing dashboard they may pin into). The same `.catalog` wildcard trap:
+        // the wildcards below do NOT match `.pin`, so without this line every member's pin is denied. The
+        // verb mints a cell host-side and persists through the Slice A validation chain; the gateway
+        // re-checks this cap server-side.
+        "mcp:dashboard.pin:call",
         // library-panels scope (panels as their own reusable + standalone asset): the six `panel.*`
         // verbs the panel routes check. Member-level like dashboards — any member may build/share their
         // own panels (gate 3 / ownership still decides which *specific* panel they read/edit); the
@@ -465,13 +472,20 @@ mod tests {
     /// member token gets the cap ONLY if it is individually listed. Without it every member's palette
     /// read is denied — the verb is dead on arrival. This guards the load-bearing grant line (the same
     /// trap `tools.catalog` sits behind, asserted alongside it here).
+    /// widget-platform scope (Slice B): `dashboard.pin` is a member-level write with the SAME trap — the
+    /// `.pin` suffix is not matched by the `mcp:*.{get,list,write,create,update,delete,post}:call`
+    /// wildcards, so without this line every member's pin is denied. Asserted alongside the catalog cap.
     #[test]
     fn dev_login_carries_the_widget_catalog_read() {
         let caps = member_caps();
-        for needed in ["mcp:dashboard.catalog:call", "mcp:tools.catalog:call"] {
+        for needed in [
+            "mcp:dashboard.catalog:call",
+            "mcp:dashboard.pin:call",
+            "mcp:tools.catalog:call",
+        ] {
             assert!(
                 caps.iter().any(|c| c == needed),
-                "member set must grant {needed} — the `.catalog` wildcards don't cover it"
+                "member set must grant {needed} — the `.catalog`/`.pin` wildcards don't cover it"
             );
         }
     }

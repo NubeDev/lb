@@ -471,9 +471,9 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { id } = args as { id: string };
       return getJson<T>(`${base}/dashboards/${enc(id)}`);
     }
-    case "dashboard_save": {
+case "dashboard_save": {
       // `variables` is additive (widget-config-vars Slice 2) — forwarded so the bar + interpolation
-      // round-trip; a pre-variables caller omits it (the gateway defaults it to []).
+      // round-trip; a pre-variable caller omits it (the gateway defaults it to []).
       const { id, title, cells, variables } = args as {
         id: string;
         title: string;
@@ -481,6 +481,20 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
         variables?: unknown[];
       };
       return postJson<T>(`${base}/dashboards`, { id, title, cells, variables: variables ?? [] });
+    }
+    case "dashboard_pin": {
+      // widget-platform scope (Slice B): mint a cell from an `x-lb-render` envelope and upsert it into
+      // the dashboard. The host owns the envelope→cell mapping (generic over the tool id, rule 10);
+      // the client passes the envelope through — no cell construction here. Returns the updated dashboard.
+      const { id, title, envelope } = args as {
+        id: string;
+        title?: string;
+        envelope: Record<string, unknown>;
+      };
+      return postJson<T>(`${base}/dashboards/${enc(id)}/pin`, {
+        envelope,
+        title: title ?? "",
+      });
     }
     case "dashboard_delete": {
       const { id } = args as { id: string };

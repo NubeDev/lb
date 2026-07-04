@@ -76,11 +76,28 @@ because existing session docs point at them; new dashboard notes should live her
    (additive), or a **`template-group`** nav entry that fans out one link per tag-facet/option value
    at `nav.resolve` (tag a new site → a new page, zero edits). No new tables, verbs, or caps.
    Build order: nav builder → library panels → this.
+3k. [`data-studio-ux-scope.md`](data-studio-ux-scope.md) — **the Data Studio editing loop**
+   (scope, the ask): make query→see-data Grafana-Explore-grade — query status bar (rows/
+   duration/error/why-empty), data inspector, real Run semantics + auto-run toggle
+   ("Apply" renamed to "Save to tab"), a searchable source combobox, and **edit-without-
+   requery**: split `viz.query` fetch vs shape (additive inline-`frames` compute-only mode,
+   same cap) + a freeze-current-data toggle, so option/transform edits re-shape cached
+   frames instead of re-hitting the datasource.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
 ## What is shipped
 
+- The **Data Studio editing loop** ([`data-studio-ux-scope.md`](data-studio-ux-scope.md),
+  SHIPPED 2026-07-04): a query **status bar** (rows/frames/duration/error inline/why-empty),
+  real **Run/Refresh** semantics for every datasource + ⌘-Enter (Data Studio's save is now
+  "Save to tab", not "Apply"), a **searchable source combobox** (`@nube/source-picker`), and
+  **edit-without-requery** — `viz.query` split into fetch (sources → raw frames) vs shape (an
+  additive inline-`frames` compute-only mode, same `mcp:viz.query:call` cap) so a
+  field/override/transform edit reshapes cached frames instead of re-hitting the datasource,
+  plus a **freeze** ("use current data") toggle. See
+  [`public/frontend/dashboard.md`](../../../public/frontend/dashboard.md) → "Data Studio
+  editing loop".
 - The first-party dashboard surface exists in the shell: roster, create/select/delete, visibility, grid
   layout, drag/resize persistence, and built-in chart/stat/gauge widgets.
 - Built-in widgets bind to real series either by explicit series name or by tag query. They backfill via

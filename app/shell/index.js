@@ -4,6 +4,7 @@
  */
 
 import './src/polyfills';
+import './src/theme/unistyles'; // register themes before any StyleSheet.create runs
 import { AppRegistry } from 'react-native';
 import App from './src/App';
 import { name as appName } from './app.json';

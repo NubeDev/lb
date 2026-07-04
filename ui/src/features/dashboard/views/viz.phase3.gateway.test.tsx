@@ -127,6 +127,74 @@ describe("viz.query capability-deny (real gateway)", () => {
 });
 
 // ---------------------------------------------------------------------------------------------------
+// Edit-without-requery (data-studio-ux): the fetch/shape split — a frozen preview does NOT re-hit the
+// datasource, and a panel with a pipeline reports `meta.source: "shaped"` (the frames-in reshape). Real
+// gateway, no mocks (CLAUDE §9) — we prove it by OBSERVED behaviour, not a call spy.
+// ---------------------------------------------------------------------------------------------------
+const VIZ_CAPS = [
+  "mcp:viz.query:call",
+  "mcp:series.read:call",
+  "mcp:ingest.write:call",
+  "mcp:tags.add:call",
+];
+
+/** A v3 table cell over a series.read target (many rows → a real frame to shape). */
+function tableCell(i: string, series: string): Cell {
+  return {
+    i, x: 0, y: 0, w: 6, h: 4, v: 3, widget_type: "chart", view: "table",
+    binding: { series: "" },
+    sources: [{ refId: "A", tool: "series.read", args: { series }, datasource: { type: "series" } }],
+  };
+}
+
+describe("fetch/shape split + freeze (real gateway)", () => {
+  it("freeze keeps the fetched rows even when the source changes to an empty series", async () => {
+    const ws = nextWs();
+    await signInWithCaps("user:ada", ws, VIZ_CAPS);
+    await seedSamples("f.temp", 3, 20);
+
+    let cell = tableCell("t", "f.temp");
+    let frozen = false;
+    const { result, rerender } = renderHook(() => usePanelData(cell, undefined, 0, { frozen }), {
+      wrapper: ({ children }) => <WithDashboardCache ws={ws}>{children}</WithDashboardCache>,
+    });
+    await waitFor(() => expect(result.current.rows.length).toBe(3), { timeout: 4000 });
+
+    // FREEZE, then repoint the source to a series that has NO rows. If the fetch were still live the rows
+    // would drop to 0; frozen, the datasource is not re-hit, so the 3 fetched rows remain.
+    frozen = true;
+    cell = tableCell("t", "does-not-exist");
+    rerender();
+    // Give the (disabled) fetch time to NOT run.
+    await new Promise((r) => setTimeout(r, 500));
+    expect(result.current.rows.length).toBe(3);
+
+    // UNFREEZE — now the repointed empty source resolves and the rows go empty (a real re-fetch).
+    frozen = false;
+    rerender();
+    await waitFor(() => expect(result.current.rows.length).toBe(0), { timeout: 4000 });
+  });
+
+  it("a panel with a transform pipeline reports shaped provenance", async () => {
+    const ws = nextWs();
+    await signInWithCaps("user:ada", ws, VIZ_CAPS);
+    await seedSamples("s.temp", 4, 10);
+
+    // A cell with a transform pipeline → the shape pass runs (frames-in) over the fetched raw frames.
+    const cell: Cell = {
+      ...tableCell("t2", "s.temp"),
+      transformations: [{ id: "sortBy", options: { sort: [{ field: "payload", desc: true }] } }],
+    };
+    const { result } = renderHook(() => usePanelData(cell), {
+      wrapper: ({ children }) => <WithDashboardCache ws={ws}>{children}</WithDashboardCache>,
+    });
+    await waitFor(() => expect(result.current.rows.length).toBe(4), { timeout: 4000 });
+    // The pipeline ran server-side over the ALREADY-fetched frames — the reshape path, not a raw fetch.
+    await waitFor(() => expect(result.current.meta?.source).toBe("shaped"), { timeout: 4000 });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
 // Mandatory: workspace isolation — a ws-B panel save never crosses into ws-A.
 // ---------------------------------------------------------------------------------------------------
 describe("workspace isolation (real gateway)", () => {

@@ -39,6 +39,9 @@ interface Props {
   /** Update the whole dashboard search (range, refresh, var-* selection) — one router navigate.
    *  Variable selection + refresh ride here so they round-trip in the URL (Slices 2/4). */
   onSearchChange?: (search: DashboardSearch) => void;
+  /** Open Data Studio (`/t/$ws/data-studio`) — the panel-authoring surface since data-studio v2.
+   *  Wired by the route; passed down to each cell's hover affordance. Omitted ⇒ no button. */
+  onOpenInDataStudio?: () => void;
 }
 
 /** The dashboard surface, wrapped in its per-visit read cache. `DashboardCacheProvider` is keyed on `ws`
@@ -52,7 +55,7 @@ export function DashboardView(props: Props) {
   );
 }
 
-function DashboardViewInner({ ws, range, onSearchChange }: Props) {
+function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: Props) {
   const dash = useDashboard(ws);
   const picker = useSourcePicker(ws);
   const current = dash.current;
@@ -283,6 +286,7 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
+                onOpenInDataStudio={onOpenInDataStudio}
                 onDuplicate={(i) => {
                   const src = current.cells.find((c) => c.i === i);
                   if (!src) return;

@@ -10,6 +10,8 @@
 //!   - `dashboard.save` ([`dashboard_save`]) — idempotent UPSERT for create+update (owner-only update).
 //!   - `dashboard.delete` ([`dashboard_delete`]) — idempotent tombstone (owner-only).
 //!   - `dashboard.share` ([`dashboard_share`]) — set visibility / write the S4 `share` edge.
+//!   - `dashboard.pin` ([`dashboard_pin`]) — mint a persisted cell from an `x-lb-render` envelope
+//!     (widget-platform scope, Slice B). Generic over the tool id; reuses the Slice A validation chain.
 //!   - the MCP bridge ([`call_dashboard_tool`]) — the one MCP contract over all of the above.
 //!   - the demo seed ([`seed_iot_demo`]) — real `Sample`s + tags via the real ingest path.
 
@@ -22,6 +24,7 @@ mod genui;
 mod get;
 mod list;
 mod model;
+mod pin;
 mod save;
 mod seed;
 mod share;
@@ -37,6 +40,7 @@ pub use error::DashboardError;
 pub use get::dashboard_get;
 pub use list::dashboard_list;
 pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Target, Variable, Visibility};
+pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::dashboard_save;
 pub use seed::{seed_iot_demo, SeedReport};
 pub use share::dashboard_share;

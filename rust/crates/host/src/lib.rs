@@ -132,11 +132,12 @@ pub use channel::{
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
     builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells, dashboard_catalog,
-    dashboard_delete, dashboard_get, dashboard_list, dashboard_save, dashboard_share,
-    seed_iot_demo, Action, Cell, Dashboard, DashboardError, DashboardSummary,
-    ExtWidget as DashboardExtWidget, SeedReport, Source as CellSource, Target as CellTarget,
-    Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
-    MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES, MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
+    dashboard_delete, dashboard_get, dashboard_list, dashboard_pin, dashboard_save,
+    dashboard_share, mint_cell_from_envelope, pin_descriptor, seed_iot_demo, Action, Cell,
+    Dashboard, DashboardError, DashboardSummary, ExtWidget as DashboardExtWidget, SeedReport,
+    Source as CellSource, Target as CellTarget, Variable as DashboardVariable,
+    Visibility as DashboardVisibility, WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,

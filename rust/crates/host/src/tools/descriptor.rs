@@ -39,6 +39,11 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own
         // `mcp:dashboard.catalog:call` gate decides its visibility — no new cap, no `if` in the catalog.
         crate::dashboard::catalog_descriptor(),
+        // The pin-to-dashboard write (widget-platform scope, Slice B). Named `dashboard.pin` on purpose:
+        // the catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own
+        // `mcp:dashboard.pin:call` gate decides its visibility — no new cap, no `if` in the catalog. The
+        // verb mints a persisted cell from any `x-lb-render` envelope (generic over the tool id, rule 10).
+        crate::dashboard::pin_descriptor(),
     ];
     out.extend(crate::host_tools::secret_descriptors());
     out

@@ -93,6 +93,26 @@ describe("rulesEntries", () => {
     expect(rulesEntries([{ id: "r2", name: "" }])[0].label).toBe("r2");
   });
 
+  it("carries the rule's declared params onto the entry (for a host params form)", () => {
+    const [rule] = rulesEntries([
+      { id: "r1", name: "By site", params: [{ name: "site", label: "Site" }, { name: "hours" }] },
+    ]);
+    expect(rule.params).toEqual([{ name: "site", label: "Site" }, { name: "hours" }]);
+  });
+
+  it("defaults params to [] for a rule that declares none", () => {
+    expect(rulesEntries([{ id: "r1", name: "R" }])[0].params).toEqual([]);
+  });
+
+  it("carries a typed param (kind/required/options) through onto the entry", () => {
+    const [rule] = rulesEntries([
+      { id: "r1", name: "R", params: [{ name: "region", kind: "enum", required: true, options: ["a", "b"] }] },
+    ]);
+    expect(rule.params).toEqual([
+      { name: "region", kind: "enum", required: true, options: ["a", "b"] },
+    ]);
+  });
+
   it("is folded into buildSourceEntries under the rules group", () => {
     const entries = buildSourceEntries({ rules: [{ id: "r1", name: "R1" }] });
     expect(entries.find((e) => e.group === "rules")?.source).toEqual({

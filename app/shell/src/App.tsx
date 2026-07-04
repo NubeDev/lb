@@ -8,6 +8,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Button } from 'react-native';
 
+import { navTheme } from './theme/navigation';
 import { LoginScreen } from './features/session/LoginScreen';
 import { useSession } from './features/session/useSession';
 import { WorkspaceSwitcher } from './features/workspaces/WorkspaceSwitcher';
@@ -38,7 +39,7 @@ export default function App(): React.JSX.Element {
   if (!session) return <LoginScreen />;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navTheme}>
       <Stack.Navigator>
         <Stack.Screen
           name="Channels"

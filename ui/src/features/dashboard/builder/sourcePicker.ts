@@ -33,6 +33,9 @@ export {
   PickerGroup,
   READ_SOURCE_GROUPS,
   BUILDER_SOURCE_GROUPS,
+  // The searchable combobox variant — QueryTab uses this instead of the plain grouped <select> so the
+  // author types to filter across every source group (data-studio-ux: the first 10 seconds).
+  SourceCombobox,
 } from "@nube/source-picker";
 
 /** The dashboard's positional signature (unchanged for every call site) → the package's object form.
@@ -57,11 +60,16 @@ export function seedEntryId(cell: Cell | undefined, entries: SourceEntry[]): str
   const tool = cell.source?.tool || cell.action?.tool;
   if (!tool) return "";
   const series = (cell.source?.args as { series?: string } | undefined)?.series;
+  // A rule target keys on its `rule_id` — every rule shares `tool === "rules.run"`, so tool alone would
+  // collapse them all to the first rule entry (exactly as `series` disambiguates the shared `series.read`).
+  const ruleId = (cell.source?.args as { rule_id?: string } | undefined)?.rule_id;
   const match = entries.find(
     (e) =>
       (e.source?.tool === tool &&
         (series === undefined ||
-          (e.source?.args as { series?: string } | undefined)?.series === series)) ||
+          (e.source?.args as { series?: string } | undefined)?.series === series) &&
+        (ruleId === undefined ||
+          (e.source?.args as { rule_id?: string } | undefined)?.rule_id === ruleId)) ||
       e.action?.tool === tool,
   );
   return match?.id ?? "";

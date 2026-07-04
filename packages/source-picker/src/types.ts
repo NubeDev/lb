@@ -48,11 +48,29 @@ export interface FlowSummary {
   name: string;
 }
 
+/** The declared type of a rule param — steers the host's input control + value coercion (mirrors the
+ *  node's `ParamKind`). Absent → `"text"`. */
+export type ParamKind = "text" | "number" | "date" | "enum";
+
+/** A rule's declared parameter (mirrors the node's `RuleParam`) — a name, an optional human label, and
+ *  its type. A host renders one input per param around the picker and fills the rule's `args.params`.
+ *  `kind`/`required`/`options` are optional so a legacy `{name,label}` rule is unaffected. */
+export interface RuleParam {
+  name: string;
+  label?: string;
+  kind?: ParamKind;
+  required?: boolean;
+  /** Allowed values for an `enum` param (ignored otherwise). */
+  options?: string[];
+}
+
 /** A saved rule's summary (the subset of `rules.list` the picker needs) — a rule is a read source
- *  (`rules.run {rule_id}` → records), so it mirrors `FlowSummary`. */
+ *  (`rules.run {rule_id}` → records), so it mirrors `FlowSummary`. `params` (optional) are the rule's
+ *  declared inputs; the picker carries them onto the entry so a host can offer a params form. */
 export interface RuleSummary {
   id: string;
   name: string;
+  params?: RuleParam[];
 }
 
 /** A flow node (the subset the picker reads to enumerate ports). */

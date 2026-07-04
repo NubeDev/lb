@@ -18,10 +18,11 @@ import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
 import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
 import { seedEntryId } from "@/features/dashboard/builder/sourcePicker";
-import { SQL_SOURCE_ID, PickerGroup, READ_SOURCE_GROUPS, type SourceEntry } from "@/features/dashboard/builder/sourcePicker";
+import { SQL_SOURCE_ID, READ_SOURCE_GROUPS, SourceCombobox, type SourceEntry } from "@/features/dashboard/builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "@/features/dashboard/builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
 import { FlowsQuerySection } from "./FlowsQuerySection";
+import { RuleParamsSection } from "./RuleParamsSection";
 import { useSceneDocs } from "./useSceneDocs";
 
 interface Props {
@@ -191,26 +192,36 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
       {/* Flows — the flow→node→port picker (input port → control + inject action; output → read view). */}
       {isFlows && <FlowsQuerySection state={state} patch={patch} entries={entries} loading={loading} />}
 
-      {/* Native surreal + series share the friendly source picker (labels → `{tool,args}`). */}
+      {/* Native surreal + series share the friendly source picker (labels → `{tool,args}`), now a
+          SEARCHABLE combobox: type to filter across every source group instead of scrolling a long list
+          (data-studio-ux). The read groups minus `flows` — Flows has its own `FlowsQuerySection` above
+          (node→port shaping), and this read-only tab shows no `action` control group. A packaged
+          `[[widget]]` tile in the "Extension widgets" group makes a `view:"ext:<id>/<widget>"` cell. We key
+          on the raw entry id (`onSelectEntry`) because `rules.run` is shared across rule entries. */}
       {!isFederation && !isFlows && (
         <label className="grid gap-1 text-xs text-muted">
           Source
-          <Select
+          <SourceCombobox
             aria-label="panel source"
-            className="h-8 w-full"
+            entries={entries}
             value={entryId}
-            onChange={(e) => selectEntry(e.target.value)}
-          >
-            <option value="">{loading ? "loading sources…" : "— pick a source —"}</option>
-            {/* The read groups minus `flows` — Flows has its own `FlowsQuerySection` above (node→port
-                shaping), and this read-only tab shows no `action` control group. The packaged `[[widget]]`
-                tiles ride in as the "Extension widgets" group: selecting one makes a `view:"ext:<id>/<widget>"`
-                cell that owns its own render + data (finding 7). Labels come from the package's ONE list. */}
-            {READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows").map(({ group, label }) => (
-              <PickerGroup key={group} entries={entries} group={group} label={label} />
-            ))}
-          </Select>
+            loading={loading}
+            groups={READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows")}
+            onSelect={() => {}}
+            onSelectEntry={(e) => selectEntry(e?.id ?? "")}
+          />
         </label>
+      )}
+
+      {/* A RULE source (`rules.run {rule_id}`) — if the picked rule declared params, offer one input
+          each; the values ride in `target.args.params`. `entry.params` comes from the package (carried
+          from `rules.list`); a rule with no params renders nothing. */}
+      {primary?.tool === "rules.run" && entry?.group === "rules" && (
+        <RuleParamsSection
+          params={entry.params ?? []}
+          target={primary}
+          onChange={(next) => patch({ targets: [next] })}
+        />
       )}
 
       {/* A packaged tile whose config is a scene doc: let the author pick the `sceneId` from the

@@ -30,3 +30,80 @@
   border-color: var(--sp-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--sp-accent) 20%, transparent);
 }
+
+/* The searchable combobox variant (SourceCombobox) — a filter input over a grouped popover list. Same
+ * scoped `sp-*` discipline; the list floats over host content (position:relative root, absolute list). */
+.sp-root.sp-combo {
+  position: relative;
+  display: block;
+}
+
+.sp-root .sp-combo-input {
+  height: 2rem;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-bg);
+  color: var(--sp-fg);
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+}
+
+.sp-root .sp-combo-input:focus-visible {
+  outline: none;
+  border-color: var(--sp-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sp-accent) 20%, transparent);
+}
+
+.sp-root .sp-combo-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(2rem + 0.25rem);
+  left: 0;
+  right: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  border-radius: 0.375rem;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-bg);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 40%, transparent);
+}
+
+.sp-root .sp-combo-group {
+  padding: 0.375rem 0.5rem 0.125rem;
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
+}
+
+.sp-root .sp-combo-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--sp-fg);
+  padding: 0.3125rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.sp-root .sp-combo-option.is-active {
+  background: color-mix(in srgb, var(--sp-accent) 18%, transparent);
+}
+
+.sp-root .sp-combo-option.is-selected {
+  color: var(--sp-accent);
+  font-weight: 600;
+}
+
+.sp-root .sp-combo-empty {
+  padding: 0.5rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
+}

@@ -98,6 +98,43 @@ pub async fn delete_dashboard(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /dashboards/{id}/pin` body — mint a cell from an `x-lb-render` envelope and upsert it into
+/// the dashboard (widget-platform scope, Slice B). `envelope` is the opaque render envelope (a tool's
+/// `descriptor.result`, or a channel `rich_result` body minus `kind`/`v`). `title` is used only when
+/// creating a fresh dashboard; an existing dashboard keeps its title. Gated `dashboard.pin`.
+#[derive(Debug, Deserialize)]
+pub struct PinDashboard {
+    pub envelope: Value,
+    #[serde(default)]
+    pub title: String,
+}
+
+/// `POST /dashboards/{id}/pin` — mint a persisted cell from a render envelope and upsert it (idempotent
+/// on `pin-{slug(source.tool||view)}`; owner-only update on an existing dashboard). Generic over the
+/// tool id (rule 10). Returns the updated dashboard.
+pub async fn pin_dashboards(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<PinDashboard>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let d = lb_host::dashboard_pin(
+        &gw.node.store,
+        &p,
+        p.ws(),
+        &id,
+        &body.title,
+        &body.envelope,
+        gw.now(),
+    )
+    .await
+    .map_err(status)?;
+    Ok(Json(serde_json::to_value(d).unwrap_or(Value::Null)))
+}
+
 /// `POST /dashboards/{id}/share` body — set visibility (`private|team|workspace`) + optional team.
 #[derive(Debug, Deserialize)]
 pub struct ShareDashboard {

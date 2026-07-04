@@ -42,3 +42,17 @@ export function shareDashboard(
 ): Promise<Dashboard> {
   return invoke<Dashboard>("dashboard_share", { id, visibility, team });
 }
+
+/** Pin a tool result-render envelope to a dashboard (widget-platform scope, Slice B). The host mints a
+ *  v3 cell from the `x-lb-render` envelope (a tool's `descriptor.result`, or a channel `rich_result`
+ *  body minus `kind`/`v`), upserts it (idempotent on `pin-{slug(source.tool||view)}`; owner-only on an
+ *  existing dashboard), and persists via the Slice A validation chain. Generic over the tool id —
+ *  `envelope.source.tool` is opaque data, never branched on. `title` is used only when creating a fresh
+ *  dashboard; an existing dashboard keeps its title. Returns the updated dashboard (hydrated). */
+export function pinDashboard(
+  id: string,
+  envelope: Record<string, unknown>,
+  title?: string,
+): Promise<Dashboard> {
+  return invoke<Dashboard>("dashboard_pin", { id, envelope, title: title ?? "" });
+}

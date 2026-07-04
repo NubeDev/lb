@@ -266,6 +266,52 @@ async fn workspace_isolation() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn frames_in_shapes_without_resolving_a_source() {
+    // COMPUTE-ONLY (edit-without-requery, data-studio-ux scope): a panel carrying inline `frames` runs
+    // ONLY the transform pipeline over those frames — it resolves NO source. Two things must hold:
+    //   1. It reaches no gated read — a caller who holds viz.query but NOT store.query still gets shaped
+    //      rows (nothing is dispatched, so there is nothing to deny). This is why an option/transform
+    //      edit can re-shape cached frames without re-hitting the datasource.
+    //   2. Parity: the pipeline over inline frames equals the same pipeline over a resolved source.
+    let ws = "viz-frames-in";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let caller = principal("user:ada", ws, &[VIZ]); // NO store.query — proves no source is touched
+
+    // One inline frame (two columns), + the same filter+sort pipeline the store test uses.
+    let pipeline = json!([
+        { "id": "filterByValue", "options": {
+            "type": "include", "match": "any",
+            "filters": [{ "fieldName": "payload", "config": { "id": "greater", "options": { "value": 9 } } }]
+        }},
+        { "id": "sortBy", "options": { "sort": [{ "field": "payload", "desc": true }] } }
+    ]);
+    let panel = json!({
+        "frames": [{
+            "refId": "A",
+            "fields": [
+                { "name": "seq", "type": "number", "values": [1, 2, 3, 4] },
+                { "name": "payload", "type": "number", "values": [10.0, 50.0, 30.0, 5.0] }
+            ],
+            "length": 4
+        }],
+        "transformations": pipeline,
+    });
+
+    let out = viz_query(&node, &caller, ws, panel)
+        .await
+        .expect("frames-in viz.query runs under the verb grant alone");
+    let payloads: Vec<f64> = out["rows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|r| r["payload"].as_f64().unwrap())
+        .collect();
+    // Same filtered+sorted result as the store-backed pipeline test — the ONE transform impl.
+    assert_eq!(payloads, vec![50.0, 30.0, 10.0], "shaped inline frames");
+    assert_eq!(out["frames"][0]["refId"], json!("A"), "refId preserved");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn federation_bound_target_resolves_through_federation_query() {
     // A target bound to a federation datasource names `federation.query` (datasource-binding scope:
     // the DataSourceRef selects the tool; the resolver dispatches it under the caller's authority). We

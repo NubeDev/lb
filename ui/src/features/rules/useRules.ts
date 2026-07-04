@@ -12,6 +12,7 @@ import {
   listRules,
   runRule,
   saveRule,
+  type RuleParam,
   type RunResult,
   type SavedRule,
 } from "@/lib/rules";
@@ -25,6 +26,8 @@ export interface RulesState {
   name: string | null;
   /** The editor buffer (the Rhai body being authored — may diverge from the saved record). */
   buffer: string;
+  /** The declared params being authored (co-owned with the body; persisted by save/create/rename). */
+  params: RuleParam[];
   /** The buffer's saved body, for the dirty check (null when nothing is open). */
   savedBody: string | null;
   result: RunResult | null;
@@ -33,6 +36,8 @@ export interface RulesState {
   running: boolean;
   dirty: boolean;
   setBuffer: (body: string) => void;
+  /** Replace the declared params (the params editor's onChange). */
+  setParams: (params: RuleParam[]) => void;
   refresh: () => Promise<void>;
   open: (id: string) => Promise<void>;
   newRule: () => void;
@@ -85,7 +90,10 @@ export function useRules(_ws: string): RulesState {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [name, setName] = useState<string | null>(null);
   const [buffer, setBuffer] = useState("");
+  const [params, setParams] = useState<RuleParam[]>([]);
   const [savedBody, setSavedBody] = useState<string | null>(null);
+  // The persisted params snapshot, for the dirty check (a param edit alone should enable Save).
+  const [savedParams, setSavedParams] = useState<string | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -113,7 +121,9 @@ export function useRules(_ws: string): RulesState {
       setSelectedId(rule.id);
       setName(rule.name);
       setBuffer(rule.body);
+      setParams(rule.params ?? []);
       setSavedBody(rule.body);
+      setSavedParams(JSON.stringify(rule.params ?? []));
     } catch (e) {
       setError(msg(e));
     }
@@ -123,7 +133,9 @@ export function useRules(_ws: string): RulesState {
     setSelectedId(null);
     setName(null);
     setBuffer("");
+    setParams([]);
     setSavedBody(null);
+    setSavedParams(null);
     setResult(null);
     setError(null);
     setHasRun(false);
@@ -138,10 +150,11 @@ export function useRules(_ws: string): RulesState {
       try {
         // Save what's currently in the buffer under the new name — "save what I'm working on as a new
         // rule." Empty buffer is fine (creates a starter rule the user then edits + Saves normally).
-        await saveRule({ id, name: trimmed, body: buffer });
+        await saveRule({ id, name: trimmed, body: buffer, params });
         setSelectedId(id);
         setName(trimmed);
         setSavedBody(buffer);
+        setSavedParams(JSON.stringify(params));
         await refresh();
         return id;
       } catch (e) {
@@ -149,7 +162,7 @@ export function useRules(_ws: string): RulesState {
         return null;
       }
     },
-    [buffer, roster, refresh],
+    [buffer, params, roster, refresh],
   );
 
   const rename = useCallback(
@@ -159,9 +172,10 @@ export function useRules(_ws: string): RulesState {
       if (!id || !trimmed) return false;
       setError(null);
       try {
-        // Re-save the SAME id with the new name + the persisted body (rename never edits the body).
-        await saveRule({ id, name: trimmed, body: savedBody ?? buffer });
+        // Re-save the SAME id with the new name + the persisted body + params (rename edits neither).
+        await saveRule({ id, name: trimmed, body: savedBody ?? buffer, params });
         setName(trimmed);
+        setSavedParams(JSON.stringify(params));
         await refresh();
         return true;
       } catch (e) {
@@ -169,10 +183,11 @@ export function useRules(_ws: string): RulesState {
         return false;
       }
     },
-    [selectedId, savedBody, buffer, refresh],
+    [selectedId, savedBody, buffer, params, refresh],
   );
 
-  const dirty = savedBody !== null && buffer !== savedBody;
+  const dirty =
+    savedBody !== null && (buffer !== savedBody || JSON.stringify(params) !== savedParams);
 
   const loadExample = useCallback(
     (body: string) => {
@@ -182,10 +197,12 @@ export function useRules(_ws: string): RulesState {
         const ok = window.confirm("Replace the editor with this example? Unsaved edits will be lost.");
         if (!ok) return;
       }
-      // An example is an ad-hoc body — detach from any open saved rule.
+      // An example is an ad-hoc body — detach from any open saved rule (and its params).
       setSelectedId(null);
       setSavedBody(null);
+      setSavedParams(null);
       setBuffer(body);
+      setParams([]);
       setResult(null);
       setError(null);
       setHasRun(false);
@@ -212,15 +229,16 @@ export function useRules(_ws: string): RulesState {
     async (id: string, name: string) => {
       setError(null);
       try {
-        await saveRule({ id, name, body: buffer });
+        await saveRule({ id, name, body: buffer, params });
         setSelectedId(id);
         setSavedBody(buffer);
+        setSavedParams(JSON.stringify(params));
         await refresh();
       } catch (e) {
         setError(msg(e));
       }
     },
-    [buffer, refresh],
+    [buffer, params, refresh],
   );
 
   const saveCurrent = useCallback(
@@ -258,12 +276,14 @@ export function useRules(_ws: string): RulesState {
     selectedId,
     name,
     buffer,
+    params,
     savedBody,
     result,
     error,
     running,
     dirty,
     setBuffer,
+    setParams,
     refresh,
     open,
     newRule,

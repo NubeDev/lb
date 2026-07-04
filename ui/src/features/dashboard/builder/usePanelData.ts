@@ -30,7 +30,7 @@ const WATCH_VERBS = new Set(["series.watch", "bus.watch"]);
  *  rows (a table/timeseries plots them); an OBJECT becomes one row; a SCALAR a `{value}` row (stat/
  *  gauge/text). So the visual JSON-path selection drives ANY view, not just the JSON view. */
 function flowToState(value: unknown, loading: boolean, denied: boolean): SourceState {
-  if (denied) return { rows: [], latest: null, loading, denied: true };
+  if (denied) return { rows: [], latest: null, loading, denied: true, meta: { source: "flow" } };
   let rows: Array<Record<string, unknown>>;
   let latest: unknown;
   if (Array.isArray(value)) {
@@ -45,14 +45,26 @@ function flowToState(value: unknown, loading: boolean, denied: boolean): SourceS
     rows = [{ value }];
     latest = value;
   }
-  return { rows, latest, loading, denied: false };
+  return { rows, latest, loading, denied: false, meta: { source: "flow", frames: 1 } };
 }
 
 /** Resolve a panel's data. Phase 3: a non-watch panel resolves via a debounced `viz.query(panel)` call
  *  returning `{ frames, rows }` — the SAME `SourceState` shape, so callers are unchanged. A watch primary
  *  target stays on the live `useSource` path. The `panel` is the whole cell so the backend has everything
  *  (`sources[]`/`transformations[]`/`fieldConfig`) without a signature change. */
-export function usePanelData(panel: Cell, scope: VarScope = emptyScope(), refreshKey = 0): SourceState {
+/** Options for {@link usePanelData}. `frozen` freezes the datasource fetch (edit-without-requery — the
+ *  editor's "use current data" toggle); it only affects the `viz.query` path (a watch/flow source has no
+ *  fetch to freeze). */
+export interface UsePanelDataOptions {
+  frozen?: boolean;
+}
+
+export function usePanelData(
+  panel: Cell,
+  scope: VarScope = emptyScope(),
+  refreshKey = 0,
+  opts: UsePanelDataOptions = {},
+): SourceState {
   const target = cellPrimaryTarget(panel);
   const isWatch = !!target && WATCH_VERBS.has(target.tool);
   // A FLOW source (`flows.node_state`) resolves CLIENT-SIDE through the flow read + JSON-path extraction
@@ -66,7 +78,9 @@ export function usePanelData(panel: Cell, scope: VarScope = emptyScope(), refres
   const watchSource = isWatch && target ? { tool: target.tool, args: target.args } : undefined;
   const tools = cellTools(panel);
   const live = useSource(watchSource, tools, scope, refreshKey);
-  const queried = useVizQuery(isWatch || flowBind ? EMPTY_PANEL : panel, scope, refreshKey);
+  const queried = useVizQuery(isWatch || flowBind ? EMPTY_PANEL : panel, scope, refreshKey, {
+    frozen: opts.frozen,
+  });
   const flow = useFlowNodeValue(
     flowBind?.flowId,
     flowBind?.node,
@@ -77,7 +91,9 @@ export function usePanelData(panel: Cell, scope: VarScope = emptyScope(), refres
   );
 
   if (flowBind) return flowToState(flow.value, flow.loading, flow.denied);
-  return isWatch ? live : queried;
+  // A live watch source carries a `live` provenance so the status bar labels it a stream, not a fetch.
+  if (isWatch) return { ...live, meta: { ...live.meta, source: "live" } };
+  return queried;
 }
 
 /** A no-target placeholder panel so the inactive `useVizQuery` makes no real call when a watch primary

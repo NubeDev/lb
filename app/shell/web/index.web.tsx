@@ -7,6 +7,7 @@
 // real ReadableStream) and ships TextDecoder, so the sdk's SSE client works as-is.
 import React from 'react';
 import { AppRegistry } from 'react-native';
+import '../src/theme/unistyles'; // register themes before any StyleSheet.create runs
 import { setNodeUrl } from '../src/lib/node-url.store';
 import { setDevLogin } from '../src/lib/dev-defaults';
 import App from '../src/App';

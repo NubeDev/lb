@@ -102,13 +102,16 @@ Plus host-side `dashboard.save` validation rejecting a cell with an **unknown `v
 hallucinated-widget bug and gives the AI/app the built-in-view menu. Full scope:
 [`../frontend/dashboard/widget-catalog-scope.md`](../frontend/dashboard/widget-catalog-scope.md).
 
-### Slice B — Pin-to-dashboard: mint a cell from a tool result-render (closes G2)
+### Slice B — Pin-to-dashboard: mint a cell from a tool result-render (closes G2) — *shipped 2026-07-04*
 The keystone for "widgets are system-wide." A generic path that takes any `x-lb-render` envelope (a tool's
 `descriptor.result`, or a live channel `rich_result` body) and mints a persisted `dashboard:{id}` cell via
-`dashboard.save`. **The reminder widget becomes dashboard-addable** with zero reminder-specific code — the
-envelope is already a valid `{view:"table", source:{tool:"reminder.list"}, options, tools}` cell (Slice A's
-validator already accepts it). No branch on a tool id (rule 10) — the envelope is opaque data. Named in
-rich-responses as follow-up #2.
+the new `dashboard.pin` verb (a server-side mint — the umbrella's open question, resolved; see below).
+**The reminder widget becomes dashboard-addable** with zero reminder-specific code — the envelope is
+already a valid `{view:"table", source:{tool:"reminder.list"}, options, tools}` cell-shape, and Slice A's
+`check_view_cells` validator already accepts it. No branch on a tool id (rule 10) — the envelope is opaque
+data. Named in rich-responses as follow-up #2. Full scope:
+[`pin-to-dashboard-scope.md`](pin-to-dashboard-scope.md); session
+[`../../sessions/widgets/pin-to-dashboard-session.md`](../../sessions/widgets/pin-to-dashboard-session.md).
 
 ### Slice C — Result-render coverage: every tool declares its output widget (closes G1)
 Give the remaining host tools a `descriptor.result` envelope (start with `federation.query` → `table`,
@@ -209,8 +212,15 @@ dashboard cell.
   with the "read both catalogs; this one answers *what can render*, that one answers *what can be called
   and how its answer renders*" table, so the split is taught, not rediscovered.
 - **Where does "pin" live?** A `dashboard.pin(render)` verb, or the client builds the cell and calls
-  `dashboard.save`? Recommend the client/AI builds the cell from the envelope + `dashboard.save` (no new
-  verb) unless a server-side mint proves necessary. Resolve in Slice B.
+  `dashboard.save`? **RESOLVED in Slice B (`pin-to-dashboard-scope.md`): a server-side `dashboard.pin`
+  mint verb.** The proof of necessity is the same argument Slice A used to put save-validation server-side:
+  a pin produces persisted state, and a headless `POST /mcp/call` agent (no shell, no
+  `ResponseView.buildCell`) must be able to pin a tool's `result` envelope — with client-compose every
+  client re-implements the envelope→cell mapping and the host can't enforce fidelity. The verb mints the
+  cell host-side (generic over the tool id, rule 10) and reuses the Slice A validation chain; the channel
+  render path (`ResponseView.buildCell`) is untouched (it keeps doing ephemeral envelope→cell for render;
+  `dashboard.pin` is the persist-time twin). See
+  [`pin-to-dashboard-scope.md`](pin-to-dashboard-scope.md) for the full reasoning.
 - **Per-widget version consumption.** Declared in Slice A; stamping + migration deferred until a widget
   gets a breaking v2 (dev mode).
 

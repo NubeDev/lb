@@ -6,6 +6,7 @@
 
 import { createRequire } from 'node:module';
 import * as Repack from '@callstack/repack';
+import { RepackUnistylePlugin } from 'react-native-unistyles/repack-plugin';
 
 const require = createRequire(import.meta.url);
 
@@ -48,6 +49,18 @@ export default (env) => {
     },
     plugins: [
       new Repack.RepackPlugin({ platform }),
+      // Unistyles 3 is a C++/Nitro engine: its Babel plugin rewrites RN components (View, Text,
+      // Pressable, …) and StyleSheet.create call-sites so theme/breakpoint changes hit the Shadow
+      // Tree directly with no React re-render. The official Re.Pack plugin adds a loader that runs
+      // that Babel pass over OUR source only (BASE_REPACK_EXCLUDE_PATHS skips react/react-native/
+      // unistyles/nitro themselves), so the SWC transform from getJsTransformRules() still owns the
+      // rest of the pipeline.
+      // Unistyles v3's Babel plugin requires an explicit `root` naming OUR app-source folder
+      // (relative to the project root). Without it the plugin throws "requires `root` option to be
+      // set" the moment the loader's UNISTYLES_REGEX incidentally matches a node_modules file
+      // (e.g. react-devtools-core), red-screening the app on boot. `src` is where all our RN source
+      // lives; it must NOT resolve to the project root (that would pull in node_modules).
+      new RepackUnistylePlugin({ unistylesPluginOptions: { root: 'src' } }),
       new Repack.plugins.ModuleFederationPluginV2({
         name: 'shell',
         // `@module-federation/enhanced` injects a dev-only DTS runtime plugin

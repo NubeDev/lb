@@ -9,13 +9,35 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// A declared parameter of a saved rule — name + an optional human label. The bound value is supplied
-/// at run time in [`RuleRun::inputs`].
+/// The declared TYPE of a param — steers the authoring input + the value coercion. Absent (an older
+/// `{name,label}` record) reads as [`ParamKind::Text`] via serde default, so no migration is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ParamKind {
+    #[default]
+    Text,
+    Number,
+    Date,
+    Enum,
+}
+
+/// A declared parameter of a saved rule — name + an optional human label + its type. The bound value
+/// is supplied at run time in [`RuleRun::inputs`] (a JSON value whose type the host preserves into the
+/// cage: a `number` param arrives as a rhai number, not a string). `kind`/`required`/`options` all
+/// serde-default, so a legacy `{name,label}` record deserializes unchanged.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleParam {
     pub name: String,
     #[serde(default)]
     pub label: Option<String>,
+    #[serde(default)]
+    pub kind: ParamKind,
+    /// The author must supply a value before the rule runs (the UI blocks an empty required param).
+    #[serde(default)]
+    pub required: bool,
+    /// The allowed values for an `enum` param (ignored for other kinds).
+    #[serde(default)]
+    pub options: Vec<String>,
 }
 
 /// A rule definition: its Rhai body + declared params. `workspace` is host-set from the token (never
@@ -158,4 +180,39 @@ pub enum RuleError {
     Seam(String),
     #[error("rule task failed: {0}")]
     Join(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_param_deserializes_with_defaults() {
+        // A `{name,label}` record from before typed params must still load — kind defaults to Text,
+        // required to false, options to empty (no migration).
+        let p: RuleParam = serde_json::from_str(r#"{"name":"site","label":"Site"}"#).unwrap();
+        assert_eq!(p.name, "site");
+        assert_eq!(p.label.as_deref(), Some("Site"));
+        assert_eq!(p.kind, ParamKind::Text);
+        assert!(!p.required);
+        assert!(p.options.is_empty());
+    }
+
+    #[test]
+    fn typed_param_round_trips() {
+        let p = RuleParam {
+            name: "region".into(),
+            label: None,
+            kind: ParamKind::Enum,
+            required: true,
+            options: vec!["emea".into(), "amer".into()],
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        // `kind` serializes lowercase (matches the TS `ParamKind` union + the wire the UI sends).
+        assert!(json.contains(r#""kind":"enum""#));
+        let back: RuleParam = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.kind, ParamKind::Enum);
+        assert!(back.required);
+        assert_eq!(back.options, vec!["emea".to_string(), "amer".to_string()]);
+    }
 }

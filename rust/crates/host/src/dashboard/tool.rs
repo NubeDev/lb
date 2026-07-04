@@ -15,8 +15,8 @@ use serde_json::{json, Value};
 
 use super::model::{Cell, Visibility};
 use super::{
-    dashboard_delete, dashboard_get, dashboard_list, dashboard_save, dashboard_share,
-    DashboardError,
+    dashboard_delete, dashboard_get, dashboard_list, dashboard_pin, dashboard_save,
+    dashboard_share, DashboardError,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -58,6 +58,25 @@ pub async fn call_dashboard_tool(
                 str_arg(input, "title")?,
                 cells,
                 variables,
+                u64_arg(input, "now")?,
+            )
+            .await
+            .map_err(to_tool)?;
+            Ok(serde_json::to_value(d).unwrap_or(Value::Null))
+        }
+        "dashboard.pin" => {
+            // widget-platform scope, Slice B — mint a cell from an `x-lb-render` envelope and upsert it
+            // into a dashboard. `envelope` is the opaque render envelope (a descriptor.result or a channel
+            // rich_result body minus kind/v); `dashboard` is the target id (idempotent UPSERT,
+            // owner-only update). Gated by `mcp:dashboard.pin:call` (its own cap, distinct from .save).
+            let envelope = arg(input, "envelope")?.clone();
+            let d = dashboard_pin(
+                store,
+                principal,
+                ws,
+                str_arg(input, "dashboard")?,
+                input.get("title").and_then(Value::as_str).unwrap_or(""),
+                &envelope,
                 u64_arg(input, "now")?,
             )
             .await

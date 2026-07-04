@@ -7,6 +7,8 @@
 //
 // One responsibility: render a table panel from a cell.
 
+import { useMemo } from "react";
+
 import type { Cell } from "@/lib/dashboard";
 import { cellFieldConfig } from "@/lib/dashboard";
 import { resolveColumns } from "@/lib/widgets";
@@ -19,6 +21,8 @@ import { readTableOptions, cellHeightClass } from "./options";
 import { resolveFieldOptions } from "../../fieldconfig/resolve";
 import { formatValue } from "../../fieldconfig/format";
 import { asNumber } from "../num";
+import { RowControls, type RowControl } from "./RowControls";
+import { cellTools } from "../WidgetView";
 
 interface Props {
   cell: Cell;
@@ -27,8 +31,20 @@ interface Props {
   refreshKey?: number;
 }
 
+/** Read `options.rowControls` off the cell (the `x-lb-render` envelope field a pinned cell carries). A
+ *  pinned reminder widget declares three (enable switch + run-now + delete); a hand-authored table cell
+ *  has none. Absent/typed wrong → no actions column (the table renders read-only). */
+function rowControlsOf(cell: Cell): RowControl[] | null {
+  const rc = cell.options?.rowControls;
+  if (!Array.isArray(rc) || rc.length === 0) return null;
+  return rc as RowControl[];
+}
+
 export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }: Props) {
   const { rows, loading, denied } = usePanelData(cell, scope, refreshKey);
+  // The bridge leash for the row-control column = the cell's declared tools ∩ grant (host-enforced).
+  // Computed unconditionally (hooks cannot sit after an early return — "rendered more hooks" otherwise).
+  const tools = useMemo(() => cellTools(cell), [cell]);
 
   if (denied) return <WidgetMessage tone="denied">no access to this source</WidgetMessage>;
   if (loading) return <WidgetMessage tone="muted">loading…</WidgetMessage>;
@@ -48,6 +64,10 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
 
   // sortBy[0] orders the rows by a column's value (numeric when both sides are numeric, else string).
   const sorted = sortRows(rows, options.sortBy[0]);
+  // The row-control column (widget-platform scope, Slice B) — when the cell carries `options.rowControls`
+  // (a pinned tool-result cell does), render an actions column with the shared `<RowControls>`. Absent
+  // → the table is read-only (the shipped behavior).
+  const rowControls = rowControlsOf(cell);
 
   return (
     <div className="flex h-full flex-col" aria-label="table panel">
@@ -62,6 +82,9 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
                     {c.header}
                   </th>
                 ))}
+                {rowControls && (
+                  <th className={`border-b border-border px-2 font-medium ${pad}`}>actions</th>
+                )}
               </tr>
             </thead>
           )}
@@ -73,6 +96,11 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
                     {renderCell(row[c.key], colOpts[c.key])}
                   </td>
                 ))}
+                {rowControls && (
+                  <td className={`border-b border-border/50 px-2 ${pad}`}>
+                    <RowControls row={row as Record<string, unknown>} controls={rowControls} tools={tools} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

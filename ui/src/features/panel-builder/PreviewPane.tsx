@@ -3,16 +3,16 @@
 // real rows over the real bridge, fieldConfig formatting applied, the chosen view drawn. It degrades
 // honestly: a denied/empty target shows the view's denied/empty state, never a fabricated value (rule 9).
 //
-// A TABLE-VIEW toggle (editor-parity step 6) lets the author inspect the transformed frames as a table
-// regardless of the chosen viz: it renders the draft through the `table` view WITHOUT changing the saved
-// cell (a display-only override of `view`). One responsibility: render the draft preview.
+// A TABLE-VIEW override (editor-parity step 6, toggled from the PreviewToolbar) renders the draft through
+// the `table` view WITHOUT changing the saved cell (a display-only override of `view`). The preview
+// subtree is wrapped in `FreezeProvider` so a frozen editor reshapes cached frames instead of re-querying
+// the datasource (data-studio-ux, edit-without-requery). One responsibility: render the draft preview.
 
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
-import { Button } from "@/components/ui/button";
-import { Table2 } from "lucide-react";
 import { WidgetView } from "@/features/dashboard/views/WidgetView";
+import { FreezeProvider } from "@/features/dashboard/cache/useFreeze";
 
 interface Props {
   /** The draft cell built from the current editor state (what save would persist). */
@@ -23,33 +23,22 @@ interface Props {
   refreshKey?: number;
   /** When true, render the draft through the `table` view (inspect transformed frames), not its viz. */
   tableView?: boolean;
-  /** Toggle the table view (shows the toggle button when provided). */
-  onToggleTableView?: () => void;
+  /** Freeze the datasource fetch — the rendered preview reshapes cached frames instead of re-querying. */
+  frozen?: boolean;
 }
 
-export function PreviewPane({ cell, ws, scope = emptyScope(), refreshKey = 0, tableView = false, onToggleTableView }: Props) {
+export function PreviewPane({ cell, ws, scope = emptyScope(), refreshKey = 0, tableView = false, frozen = false }: Props) {
   // Display-only view override: the SAVED cell is untouched; only what the preview draws changes.
   const previewCell: Cell = { ...cell, i: "preview", ...(tableView ? { view: "table" } : {}) };
   return (
     <div className="flex h-full min-h-[12rem] flex-col rounded-lg border border-border bg-panel p-3" aria-label="panel preview">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-[11px] uppercase tracking-wide text-muted">Preview{tableView ? " · table" : ""}</span>
-        {onToggleTableView && (
-          <Button
-            type="button"
-            size="sm"
-            variant={tableView ? "default" : "ghost"}
-            aria-label="toggle table view"
-            aria-pressed={tableView}
-            className="h-6 px-1.5 text-[11px]"
-            onClick={onToggleTableView}
-          >
-            <Table2 size={12} /> Table view
-          </Button>
-        )}
       </div>
       <div className="min-h-0 flex-1">
-        <WidgetView cell={previewCell} workspace={ws} scope={scope} refreshKey={refreshKey} />
+        <FreezeProvider value={frozen}>
+          <WidgetView cell={previewCell} workspace={ws} scope={scope} refreshKey={refreshKey} />
+        </FreezeProvider>
       </div>
     </div>
   );

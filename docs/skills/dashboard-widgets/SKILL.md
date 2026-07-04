@@ -141,3 +141,59 @@ access). Saving needs `mcp:dashboard.save:call`. Binding a source needs that sou
 (`mcp:series.latest:call`, `mcp:flows.node_state:call`, `mcp:store.query:call`, …) — checked again at
 render under the viewer, so a cell can never widen what a viewer may read. Listing `extWidgets` uses
 `mcp:ext.list:call`; without it the built-in palette still returns in full, just with no ext tiles.
+
+## Pin a tool result to a dashboard (`dashboard.pin`)
+
+(widget-platform scope, Slice B) A tool that declares a `result` render envelope (source #2 —
+`reminder.list` is the shipped example) is already a widget; `dashboard.pin` mints a persisted
+`dashboard:{id}` cell from that envelope, host-side. The pin path is GENERIC over the tool id (rule 10):
+the host treats `envelope.source.tool` as opaque data, never branches on it. So `reminder.list` is
+dashboard-addable with ZERO reminder-specific code in the pin path — and so is any future tool that
+declares a `result` (Slice C widens the coverage).
+
+**The envelope.** The `x-lb-render` shape — the SAME object a tool's `ToolDescriptor.result` carries,
+or a channel `rich_result` body minus its `kind`/`v` wire tags:
+
+```json
+{
+  "view": "table",
+  "source": { "tool": "reminder.list", "args": {} },
+  "options": { "rowControls": [ … ] },
+  "fieldConfig": { "defaults": {}, "overrides": [ … ] },
+  "tools": ["reminder.list", "reminder.update", "reminder.fire", "reminder.delete"]
+}
+```
+
+**The call.** `dashboard.pin { dashboard, envelope, title?, now }` over `POST /mcp/call`, or
+`POST /dashboards/{id}/pin` from the browser. `title` is used only when creating a fresh dashboard
+(idempotent UPSERT on `dashboard` — fresh id creates owner=caller, existing id updates owner-only); an
+existing dashboard keeps its title.
+
+```
+POST /mcp/call   { "tool": "dashboard.pin",
+                   "args": { "dashboard": "ops", "title": "Ops", "now": 10,
+                             "envelope": { "view": "table", "source": { "tool": "reminder.list" }, … } } }
+```
+
+The host mints a v3 cell from the envelope — `i = "pin-{slug(source.tool||view)}"` (idempotent: re-pinning
+the SAME envelope REPLACES the cell in place, preserving its layout; pinning a DIFFERENT envelope
+appends) — runs it through the Slice A validation chain (`check_view_cells`/`check_genui_cells`/
+`check_cells_bounds`), and persists. It returns the updated dashboard (hydrated). The cell renders through
+the shipped `WidgetView` exactly as the envelope renders in a channel — a pinned reminder widget shows
+its rows AND its row controls (enable switch + run-now + delete) on the dashboard, interactive.
+
+**Idempotency by tool id (v1 limit).** `i = pin-{slug(source.tool)}` means ONE cell per tool per
+dashboard: re-pinning `reminder.list` refreshes the cell, not duplicates. Pinning two DIFFERENT
+envelopes from the same tool (e.g. `reminder.list` with different filters) currently collide on the same
+cell — a known limit, not a silent bug. A future envelope-hash `i` widens this if a second filter matters.
+
+**Capability.** `mcp:dashboard.pin:call` (member-level, its own cap — distinct from `dashboard.save`).
+A plain member who can pin but not free-edit cells still works. A non-owner with the pin cap is denied on
+an existing dashboard they don't own (owner-only-update). A hallucinated `view` in the envelope
+(`"heatmap"`) is rejected through the pin path — the Slice A view-validator still fires.
+
+**Headless agent.** Given `reminder.list`'s `result` from `tools.catalog`, an AI agent pins it the SAME
+way — `POST /mcp/call dashboard.pin { dashboard, envelope: <descriptor.result>, now }`. No shell in the
+loop; the host is the boundary. The resulting cell is byte-identical to a channel-origin pin (same mint
+function). That is the "widgets are system-wide" payoff: every tool that declares a `result` is
+dashboard-addable, by any client, through one generic MCP verb.

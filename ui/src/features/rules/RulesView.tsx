@@ -237,7 +237,13 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
               </div>
             </div>
           </div>
-          <AuthoringPanel ws={ws} onInsert={insert} onLoadExample={r.loadExample} />
+          <AuthoringPanel
+            ws={ws}
+            onInsert={insert}
+            onLoadExample={r.loadExample}
+            params={r.params}
+            onParamsChange={r.setParams}
+          />
         </div>
       </div>
     </AppPage>

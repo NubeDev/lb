@@ -41,6 +41,34 @@ export function vizQueryKey(ws: string, spec: VizQuerySpec) {
   return ["viz.query", ws, canon(spec)] as const;
 }
 
+/** The FETCH half of the split (data-studio-ux: edit-without-requery). Keyed on ONLY what a datasource
+ *  read depends on — `sources`/`source`/`scope`/`tick`. Crucially, `transformations` and `fieldConfig`
+ *  are ABSENT, so a transform/field-config edit does NOT re-key this → the raw frames stay cached and no
+ *  datasource is re-hit. A source/SQL/time-range edit (or Run, via `tick`) DOES re-key → a fresh fetch. */
+export interface VizFetchSpec {
+  sources: unknown;
+  source: unknown;
+  scope: unknown;
+  tick: number;
+}
+export function vizFetchKey(ws: string, spec: VizFetchSpec) {
+  return ["viz.fetch", ws, canon(spec)] as const;
+}
+
+/** The SHAPE half of the split. Keyed on the RAW frames (by a cheap hash) + the pipeline that reshapes
+ *  them (`transformations` + `fieldConfig`). An option edit re-keys ONLY this — a compute-only `viz.query`
+ *  over the already-fetched raw frames, no datasource touch. When the raw frames are unchanged, switching
+ *  a transform is a shape-only round-trip; when there is no pipeline at all the caller skips this entirely
+ *  and uses the raw frames as-is (no round-trip). */
+export interface VizShapeSpec {
+  framesHash: string;
+  transformations: unknown;
+  fieldConfig: unknown;
+}
+export function vizShapeKey(ws: string, spec: VizShapeSpec) {
+  return ["viz.shape", ws, canon(spec)] as const;
+}
+
 /** `flows.node_state` — one entry per (ws, flow, tick). N cells on one flow share it; each slices its own
  *  node/port/path CLIENT-SIDE from the shared whole-flow read (scope goal 4). */
 export function flowNodeStateKey(ws: string, flowId: string, tick: number) {

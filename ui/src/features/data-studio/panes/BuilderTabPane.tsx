@@ -56,7 +56,7 @@ export function BuilderTabPane({ config, ws, scope, onConfigChange, onSavedToLib
           cell={seed}
           scope={scope}
           layout="stacked"
-          saveLabel="Apply"
+          saveLabel="Save to tab"
           onSave={onSave}
           onDraftChange={(cell) => onConfigChange({ ...config, cell })}
         />

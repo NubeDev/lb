@@ -19,6 +19,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Cell } from "@/lib/dashboard";
+import { cellPrimaryTarget } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
 import { usePanelEditor } from "@/lib/panel-kit";
@@ -28,6 +29,8 @@ import { useVerticalSplit, SplitHandle } from "@/lib/split";
 
 import { defaultOptionsForView } from "./viewOptions";
 import { VizPicker } from "./VizPicker";
+import { QueryStatusBar } from "./QueryStatusBar";
+import { PreviewToolbar } from "./PreviewToolbar";
 import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { detectShape } from "@/features/dashboard/views/shape";
 import { fieldNamesOf } from "./fields/resultFields";
@@ -79,12 +82,17 @@ export function BuilderPane({
   // A table-view toggle on the preview: inspect the transformed frames as a table regardless of the
   // chosen viz, without changing the draft.
   const [tableView, setTableView] = useState(false);
+  // Freeze (edit-without-requery): while frozen the datasource is NOT re-hit — option/source edits
+  // reshape the frames already fetched. Unfreeze re-fetches once. Lets a user iterate against a slow query.
+  const [frozen, setFrozen] = useState(false);
 
   // The draft's data — ONE read through the one data hook (invariant A) feeds BOTH the shape probe
-  // (which views the picker offers) AND the result-field names every tab's field picker offers.
-  const data = usePanelData(ed.draft, scope, ed.refreshKey);
+  // (which views the picker offers) AND the result-field names every tab's field picker offers. `frozen`
+  // routes to the fetch/shape split so a frozen preview reshapes without re-querying.
+  const data = usePanelData(ed.draft, scope, ed.refreshKey, { frozen });
   const shape = data.loading ? "unknown" : detectShape(data.rows);
   const resultFields = useMemo(() => fieldNamesOf(data.rows), [data.rows]);
+  const hasTarget = !!cellPrimaryTarget(ed.draft)?.tool;
 
   const patch = ed.patch;
   // Report every serialized draft AFTER the state applies (an inline `ed.toCell()` next to `patch`
@@ -125,16 +133,26 @@ export function BuilderPane({
         </Button>
       </div>
       <LibraryPanelBar draft={ed.draft} onSave={onSave} />
+      <PreviewToolbar
+        hasTarget={hasTarget}
+        loading={data.loading}
+        frozen={frozen}
+        onRun={ed.run}
+        onToggleFreeze={() => setFrozen((f) => !f)}
+        tableView={tableView}
+        onToggleTableView={() => setTableView((v) => !v)}
+      />
       <div className={stacked ? "min-h-[8rem] flex-1" : "h-56 shrink-0"}>
         <PreviewPane
           cell={ed.draft}
           ws={ws}
           scope={scope}
           refreshKey={ed.refreshKey}
+          frozen={frozen}
           tableView={tableView}
-          onToggleTableView={() => setTableView((v) => !v)}
         />
       </div>
+      <QueryStatusBar state={data} hasTarget={hasTarget} frozen={frozen} />
       <VizPicker view={ed.viewC} onChange={ed.switchView} shape={shape} flowKind={ed.flowKind} />
     </div>
   );
@@ -169,8 +187,17 @@ export function BuilderPane({
     </div>
   );
 
+  // ⌘/Ctrl+Enter runs the query from anywhere in the builder (Grafana parity) — Run is no longer a
+  // federation-only affordance. Ignored while frozen (nothing to fetch) or with no source.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && hasTarget && !frozen) {
+      e.preventDefault();
+      ed.run();
+    }
+  };
+
   return (
-    <div aria-label="panel builder" className="flex h-full min-h-0 flex-col">
+    <div aria-label="panel builder" className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
       <ResultFieldsProvider fields={resultFields}>
         {stacked ? (
           // Stacked (Data Studio v3): preview on TOP, options BELOW — one query/preview view. A draggable

@@ -72,7 +72,8 @@ pub use bus::{bus_stream, publish_message};
 pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
 pub use channel_registry::{create_channel, list_channels};
 pub use dashboard::{
-    delete_dashboard, get_dashboard, list_dashboards, save_dashboard, share_dashboard,
+    delete_dashboard, get_dashboard, list_dashboards, pin_dashboards, save_dashboard,
+    share_dashboard,
 };
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};

@@ -28,6 +28,7 @@ import { emptyScope } from "@/lib/vars";
 import { WidgetView } from "@/features/dashboard/views/WidgetView";
 import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { ResponseTable, type RowControl } from "./ResponseTable";
+import { PinToDashboard } from "./PinToDashboard";
 
 /** The version of the render envelope this UI understands. A `v` above it degrades at render. */
 const UNDERSTOOD_V = 2;
@@ -117,13 +118,24 @@ function ResponseViewInner({ payload, workspace, installed = [], itemKey = "rich
   const cell = buildCell(payload, itemKey);
   const rowControls = payload.view === "table" ? rowControlsOf(payload.options) : null;
 
-  // A table with per-row controls is the interactive-list case — the shipped TablePanel has no control
-  // column, so render through the thin ResponseTable (reuses usePanelData + SwitchControl/ButtonControl).
-  if (rowControls) {
-    return <ResponseTable cell={cell} rowControls={rowControls} />;
-  }
+  // A table with per-row controls is the interactive-list case — render through the thin ResponseTable.
+  // (The dashboard `TablePanel` ALSO renders row controls now — Slice B — but the channel keeps its
+  // simpler chrome here; the shared `<RowControls>` is the one actions-column renderer.)
+  const widget = rowControls ? (
+    <ResponseTable cell={cell} rowControls={rowControls} />
+  ) : (
+    // Every other view (and a read-only table) mounts straight through the one shipped dispatcher. Thread
+    // `installed` so an `ext:<id>/<widget>` response view mounts the extension's real tile.
+    <WidgetView cell={cell} installed={installed} workspace={workspace} scope={emptyScope()} />
+  );
 
-  // Every other view (and a read-only table) mounts straight through the one shipped dispatcher. Thread
-  // `installed` so an `ext:<id>/<widget>` response view mounts the extension's real tile.
-  return <WidgetView cell={cell} installed={installed} workspace={workspace} scope={emptyScope()} />;
+  return (
+    <div>
+      {widget}
+      {/* "Pin to dashboard" (widget-platform scope, Slice B) — turn this rendered response into a
+          persisted dashboard cell. The HOST mints the cell from the envelope (generic over the tool id);
+          this affordance only picks the target dashboard + posts the envelope through. */}
+      <PinToDashboard payload={payload} />
+    </div>
+  );
 }

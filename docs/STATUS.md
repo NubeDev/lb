@@ -16,6 +16,71 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-04): Widgets Slice B — pin a tool result-render to a dashboard (`dashboard.pin`,
+branch `master`).** The keystone for "widgets are system-wide": a GENERIC host-side path that takes ANY
+`x-lb-render` envelope (a tool's `ToolDescriptor.result`, or a live channel `rich_result` body) and mints
+a persisted `dashboard:{id}` cell via a new `dashboard.pin` verb. **The reminder widget
+(`reminder.list`, which already declares a `result = table` render) is dashboard-addable with ZERO
+reminder-specific code in the pin path** — the envelope is opaque data, the tool id never branched on
+(rule 10). Closes G2 of the widget umbrella (`widget-platform-scope.md`). The umbrella's open question
+("client-compose vs a server-side mint verb") is RESOLVED: a **server-side mint**, because the host is
+the only boundary every writer crosses (Slice A's thesis applied to the persist path) — a headless
+`POST /mcp/call` / external AI can pin a `result` envelope without a shell, and the envelope↔cell
+mapping lives in ONE host function (not mirrored across web/RN/AI clients). The channel render path
+(`ResponseView.buildCell`) is UNTOUCHED — `dashboard.pin` is the persist-time twin, host-side.
+
+**Backend** `rust/crates/host/src/dashboard/pin.rs` (NEW): `dashboard_pin` + `mint_cell_from_envelope`
++ `slug` + `pin_descriptor`. The mint mirrors `ResponseView.buildCell` field-for-field so a pinned cell
+renders identically to the channel response (the cross-surface fidelity invariant): `view`/`source`/
+`action`/`options`/`fieldConfig` copied verbatim; the envelope's extra `tools[]` (row-control write
+verbs) become hidden `sources[]` so `cellTools(cell)` covers `render.tools` (the bridge leash). Cell
+`i = pin-{slug(source.tool||view)}` by pure string ops (rule 10) — idempotent: re-pinning the SAME
+envelope REPLACES the cell (preserves layout via `existing: Option<&Cell>`); a different envelope
+appends at `next_free_y`. Reuses the Slice A validation chain (`check_cells_bounds` →
+`check_genui_cells` → `check_view_cells` → `validate_and_strip_refs`) → `write_dashboard` → hydrate.
+Gated `mcp:dashboard.pin:call` (its own cap, distinct from `.save`; the `.pin` wildcard trap, same as
+`.catalog`); owner-only-update on an existing dashboard. The `dashboard.pin` MCP dispatch arm + a
+`POST /dashboards/{id}/pin` gateway route (uses `gw.now()` so the REST client passes no `now`); a
+`pin_descriptor()` in `host_descriptors()` so `tools.catalog` lists it (an AI discovers it can pin).
+
+**Frontend** (1) `ui/src/features/dashboard/views/table/RowControls.tsx` (NEW) — the shared
+actions-column renderer, extracted from `ResponseTable`, now used by BOTH the dashboard `TablePanel`
+(a pinned cell is fully interactive on the grid — enable switch + run-now + delete) and the channel
+`ResponseTable` (a live response). One row-control renderer, two surfaces — the cross-surface fidelity
+invariant. `TablePanel` renders the actions column when `options.rowControls` is present (`useMemo`
+hoisted above the early returns). (2) `ui/src/features/channel/PinToDashboard.tsx` (NEW) — the
+"Pin to dashboard" affordance mounted by `ResponseView` beside a rendered `rich_result`: picks a target
+dashboard (from `dashboard.list` + a "New dashboard" option) and calls `pinDashboard` over the real
+gateway. The client passes the ENVELOPE through; the host constructs the CELL (no cell construction in
+the client). (3) `pinDashboard` in `dashboard.api.ts` + `dashboard_pin` in `http.ts`.
+
+**Tests (real gateway + real store, rule 9):** Rust `widget_pin_test.rs` **10/10** — capability-deny
+(opaque) + plain-member happy path (proves the grant, not an admin bypass) + non-owner deny +
+workspace-isolation + the HEADLINE (pin `reminder.list`'s declared `result` → reload → cell intact) +
+generic-over-tool-id (an arbitrary `__test__.frobnicate` mints a valid cell) + idempotent-re-pin-replaces
++ different-envelope-appends + shell-vs-headless-path-parity (the SAME cell from `dashboard_pin` and
+`call_tool` → `dashboard.pin`) + Slice A view-validator fires through the pin (`view:"heatmap"` rejected)
++ pin coexists with hand-authored cells. UI `PinToDashboard.gateway.test.tsx` **4/4** (real spawned
+gateway) — the HEADLINE (pin a reminder.list rich_result via the UI affordance → reload via
+`dashboard.get` → render the cell through the real `WidgetView`/`TablePanel` → reminder rows AND row
+controls visible) + capability-deny (a session without `mcp:dashboard.pin:call` refused at the host) +
+workspace-isolation + fidelity/idempotency. `pnpm test` (unit) **547/547** green; reminders-palette
+gateway (uses `ResponseTable`/`RowControls`) **11/11** + DashboardView gateway (uses
+`TablePanel`/`WidgetView`) **11/11** — no regression from the shared `RowControls` extraction.
+`cargo build --workspace` + `cargo fmt` clean. **Pre-existing red surfaced (NOT this slice's):**
+`panel_test` 4 cases fail with `unknown view 'STALE'` — Slice A's `check_view_cells` rejects the
+panel-test fixtures' placeholder echoed spec before ref-stripping; `git log` confirms `panel_test.rs`
+was last touched at the Slice A commit. Logged at
+[`debugging/widgets/panel-test-stale-view-preexisting-slice-a-red.md`](debugging/widgets/panel-test-stale-view-preexisting-slice-a-red.md)
+(a Slice A follow-up: fixtures should use a real-but-different view like `gauge` vs `stat` so the
+validator passes AND the hydration-overwrite intent is preserved). Scope
+[`scope/widgets/pin-to-dashboard-scope.md`](scope/widgets/pin-to-dashboard-scope.md); session
+[`sessions/widgets/pin-to-dashboard-session.md`](sessions/widgets/pin-to-dashboard-session.md); public
+[`public/frontend/dashboard.md`](public/frontend/dashboard.md) (Slice B section); skill
+[`skills/dashboard-widgets/SKILL.md`](skills/dashboard-widgets/SKILL.md) (§ "Pin a tool result").
+**Next up:** Slice C (result-render coverage — give the remaining tools a `descriptor.result` envelope)
+and Slice D (channel-origin AI authoring — response → widget → preview → `dashboard.pin`).
+
 **Just shipped (2026-07-04): Dashboards viewer mode — editing is admin-only (branch `master`).**
 The Dashboards surface (`ui/src/features/dashboard/`) now has two role-decided postures: an **admin**
 (workspace-admin, `isAdmin(caps)`) gets the full authoring surface (roster + create/rename/delete,

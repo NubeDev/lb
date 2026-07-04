@@ -43,8 +43,20 @@ pub async fn viz_query(
     now: u64,
     depth: u32,
 ) -> Result<Value, VizError> {
-    let targets = panel_targets(panel)?;
     let pipeline = panel_pipeline(panel);
+
+    // COMPUTE-ONLY (frames-in): the caller supplies raw `frames` inline and asks only for the transform
+    // pipeline over them — no source resolution, no datasource touch. This is the editor "edit-without-
+    // requery" path: a fieldConfig/transform tweak re-shapes frames ALREADY fetched instead of re-hitting
+    // the datasource. It reaches NO gated read (it resolves nothing), so it stays purely inside the one
+    // transform impl. Same verb, same `mcp:viz.query:call` gate — an inline `frames` just skips step 2.
+    if let Some(frames) = panel_inline_frames(panel) {
+        let frames = transform(frames, &pipeline);
+        let rows: Vec<Value> = frames.first().map(Frame::to_rows).unwrap_or_default();
+        return Ok(json!({ "frames": frames, "rows": rows }));
+    }
+
+    let targets = panel_targets(panel)?;
 
     // Dispatch each non-hidden target under the caller's authority; a denied/failed target → an
     // honest EMPTY frame (no bypass, no fabricated rows). Frames keep target order so refIds line up.
@@ -134,6 +146,33 @@ fn panel_targets(panel: &Value) -> Result<Vec<ResolvedTarget>, VizError> {
         }
     }
     Ok(out)
+}
+
+/// The caller-supplied inline `frames` for the compute-only (frames-in) path, if present. When the
+/// panel carries a `frames` array we run the pipeline over THOSE and resolve no sources — the editor's
+/// "shape without re-fetch" mode. A malformed frame is dropped; an absent/empty/non-array `frames`
+/// returns `None` so the normal source-resolving path runs. Each frame is truncated to the per-frame
+/// budget (defense in depth: a caller can't post an unbounded frame to crunch the pipeline).
+fn panel_inline_frames(panel: &Value) -> Option<Frames> {
+    let Some(Value::Array(arr)) = panel.get("frames") else {
+        return None;
+    };
+    if arr.is_empty() {
+        return None;
+    }
+    let frames: Frames = arr
+        .iter()
+        .filter_map(|f| serde_json::from_value::<Frame>(f.clone()).ok())
+        .map(|mut f| {
+            f.truncate(MAX_ROWS_PER_FRAME);
+            f
+        })
+        .collect();
+    if frames.is_empty() {
+        None
+    } else {
+        Some(frames)
+    }
 }
 
 /// The panel's transformation pipeline (opaque config on the cell → typed `Transformation[]`). A

@@ -44,6 +44,11 @@ export type { SourcePickerResult } from "./loadSourcePicker";
 export { SourcePicker, PickerGroup, READ_SOURCE_GROUPS, BUILDER_SOURCE_GROUPS } from "./SourcePicker";
 export type { SourcePickerProps, SourceGroup } from "./SourcePicker";
 
+// UI — the SEARCHABLE combobox variant (type-to-filter grouped popover). Optional richer alternative to
+// the `<select>`; same model + tokens. A host that wants a plain select keeps `SourcePicker`.
+export { SourceCombobox } from "./SourceCombobox";
+export type { SourceComboboxProps } from "./SourceCombobox";
+
 // Types — the vocabulary + the injected seam.
 export type {
   Source,
@@ -56,6 +61,8 @@ export type {
   FlowNode,
   FlowSummary,
   RuleSummary,
+  RuleParam,
+  ParamKind,
   NodeDescriptor,
   DatasourceRow,
 } from "./types";

@@ -308,13 +308,19 @@ function ChannelsRoute() {
 function DashboardsRoute() {
   const ctx = useAppRoutingContext();
   const range = dashboardsRoute.useSearch();
-  const navigate = useNavigate({ from: "/t/$ws/dashboards" });
+  // `searchNav` is pinned to this route for type-safe search updates; `go` is a bare navigate for
+  // absolute cross-surface jumps (the data-studio surface is a sibling route).
+  const searchNav = useNavigate({ from: "/t/$ws/dashboards" });
+  const go = useNavigate();
   if (!ctx.allowed.includes("dashboards")) return <DefaultRedirect />;
   return (
     <DashboardView
       ws={ctx.workspace}
       range={range}
-      onSearchChange={(next) => void navigate({ search: next })}
+      onSearchChange={(next) => void searchNav({ search: next })}
+      onOpenInDataStudio={() =>
+        void go({ to: fullPathForSurface(ctx.workspace, "data-studio") })
+      }
     />
   );
 }

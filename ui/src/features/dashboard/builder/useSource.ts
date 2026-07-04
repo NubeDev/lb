@@ -15,12 +15,34 @@ import type { VarScope } from "@/lib/vars";
 import { interpolateArgs, emptyScope } from "@/lib/vars";
 import { makeWidgetBridge } from "./widgetBridge";
 
-/** A normalized source result. `rows` for tabular/charted views; `latest` for scalar views. */
+/** A normalized source result. `rows` for tabular/charted views; `latest` for scalar views.
+ *
+ *  `meta` is OPTIONAL query telemetry for the editor's status bar (data-studio-ux scope) — frame count,
+ *  fetch duration, the human error text, and whether the last result came from cached raw frames (a
+ *  shape-only edit) vs a fresh datasource fetch. Renderers ignore it; only the status bar reads it, so
+ *  adding it breaks no view. */
 export interface SourceState {
   rows: Array<Record<string, unknown>>;
   latest: unknown;
   loading: boolean;
   denied: boolean;
+  meta?: QueryMeta;
+}
+
+/** Editor status-bar telemetry for one panel-data resolution. All fields optional — a live/flow path
+ *  fills only what it knows. */
+export interface QueryMeta {
+  /** Number of canonical frames returned (viz.query path). */
+  frames?: number;
+  /** Wall-clock of the last fetch/shape round-trip, ms (client-measured). */
+  ms?: number;
+  /** The gateway/tool error text when `denied` — shown inline instead of a silent empty chart. */
+  error?: string;
+  /** How the current rows were produced: a fresh datasource fetch, a shape-only pass over cached raw
+   *  frames (no datasource hit), a live stream, or a flow read. Drives the status bar's provenance line. */
+  source?: "fetch" | "shaped" | "live" | "flow";
+  /** Epoch ms the underlying RAW frames were fetched (so "as of …" reflects the data, not a reshape). */
+  fetchedAt?: number;
 }
 
 const BACKFILL = 200;

@@ -1,39 +1,32 @@
 // A table with a per-row CONTROL column (channel rich responses scope) — the one interactive-list
-// piece. The shipped dashboard `TablePanel` renders a read-only grid; a rich_result whose `table` view
-// declares `options.rowControls` needs each row to drive a write verb (pause a reminder, run it now,
-// delete it). This is the MINIMAL reuse gap: we render the table body ourselves (rows via the SAME
-// shipped `usePanelData` hook — no new data path) and mount the SHIPPED SwitchControl/ButtonControl per
-// row, passing the ROW OBJECT as the control's VarScope.
+// piece for a CHANNEL rich_result. The shipped dashboard `TablePanel` NOW renders row controls too
+// (widget-platform scope, Slice B — a pinned reminder cell is interactive on the dashboard); this
+// channel adapter reuses the SAME shared `<RowControls>` component so a response and its pinned cell
+// render the actions column identically (the cross-surface fidelity invariant). We render the table
+// body ourselves (rows via the SAME shipped `usePanelData` hook — no new data path) with simpler chrome
+// than the dashboard panel (no header/sort/formatting — the channel item has its own chrome).
 //
-// Row-object binding (the locked decision): a control's `argsTemplate` uses `${id}`/`${enabled}` for
-// ROW FIELDS (resolved from `scope.values = row` by the shipped interpolate engine, which matches
-// `${name}`/`[[name]]`/`$name` — NOT `{{id}}`) and `{{value}}` for the INTERACTION value (the switch
-// bool). So a pause switch is `{ id: "${id}", enabled: "{{value}}" }` and a run-now button is
-// `{ id: "${id}" }`. We do NOT extend the vars engine — the shipped `interpolateArgs` already
-// substitutes named scope values; we just supply the row as the scope. One responsibility: render a
-// row-controlled table from a cell.
+// Row-object binding (the locked decision, shared with the dashboard panel): a control's `argsTemplate`
+// uses `${id}`/`${enabled}` for ROW FIELDS (resolved from `scope.values = row` by the shipped
+// interpolate engine, which matches `${name}`/`[[name]]`/`$name` — NOT `{{id}}`) and `{{value}}` for the
+// INTERACTION value (the switch bool). We do NOT extend the vars engine — the shipped `interpolateArgs`
+// already substitutes named scope values; we just supply the row as the scope. One responsibility:
+// render a row-controlled channel table from a cell.
 
 import { useMemo } from "react";
 
 import type { Cell } from "@/lib/dashboard";
 import { cellFieldConfig } from "@/lib/dashboard";
-import type { VarScope } from "@/lib/vars";
 import { resolveColumns, cellText } from "@/lib/widgets";
 import { cellTools } from "@/features/dashboard/views/WidgetView";
 import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { WidgetMessage } from "@/features/dashboard/widgets/chrome";
-import { SwitchControl } from "@/features/dashboard/views/SwitchControl";
-import { ButtonControl } from "@/features/dashboard/views/ButtonControl";
+import { RowControls, type RowControl } from "@/features/dashboard/views/table/RowControls";
 
-/** One per-row control declared in `options.rowControls`. `kind` picks the shipped control; `action` is
- *  the write `{ tool, argsTemplate }` (the template uses `${field}` for row fields, `{{value}}` for the
- *  interaction). `label`/`buttonLabel` are cosmetic. Mirrored by the palette when it emits the envelope. */
-export interface RowControl {
-  kind: "switch" | "button";
-  action: { tool: string; argsTemplate?: Record<string, unknown> };
-  label?: string;
-  buttonLabel?: string;
-}
+// Re-export the shared `RowControl` type so the channel's existing `import type { RowControl } from
+// "./ResponseTable"` callers (palette, ResponseView) keep working — the type now lives beside the shared
+// renderer (`features/dashboard/views/table/RowControls.tsx`).
+export type { RowControl };
 
 interface Props {
   cell: Cell;
@@ -73,45 +66,24 @@ export function ResponseTable({ cell, rowControls }: Props) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
-            // The row object IS the control's VarScope.values — `${id}`/`${enabled}` resolve from it.
-            const scope: VarScope = { values: row as VarScope["values"], builtins: {} };
-            return (
-              <tr key={i} className="odd:bg-bg/40">
-                {cols.map((c) => (
-                  <td key={c.key} className="truncate border-b border-border/50 px-2 py-1">
-                    {cellText(row[c.key])}
-                  </td>
-                ))}
-                {rowControls.length > 0 && (
-                  <td className="border-b border-border/50 px-2 py-1">
-                    <div className="flex items-center gap-2">
-                      {rowControls.map((rc, j) =>
-                        rc.kind === "switch" ? (
-                          <SwitchControl
-                            key={j}
-                            action={rc.action}
-                            tools={tools}
-                            label={rc.label ?? ""}
-                            scope={scope}
-                          />
-                        ) : (
-                          <ButtonControl
-                            key={j}
-                            action={rc.action}
-                            tools={tools}
-                            options={{ buttonLabel: rc.buttonLabel ?? rc.label ?? "Run" }}
-                            label={rc.label ?? ""}
-                            scope={scope}
-                          />
-                        ),
-                      )}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            );
-          })}
+          {rows.map((row, i) => (
+            <tr key={i} className="odd:bg-bg/40">
+              {cols.map((c) => (
+                <td key={c.key} className="truncate border-b border-border/50 px-2 py-1">
+                  {cellText(row[c.key])}
+                </td>
+              ))}
+              {rowControls.length > 0 && (
+                <td className="border-b border-border/50 px-2 py-1">
+                  <RowControls
+                    row={row as Record<string, unknown>}
+                    controls={rowControls}
+                    tools={tools}
+                  />
+                </td>
+              )}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>

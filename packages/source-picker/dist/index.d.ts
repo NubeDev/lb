@@ -90,6 +90,10 @@ export declare interface NodeDescriptor {
     outputs?: string[];
 }
 
+/** The declared type of a rule param — steers the host's input control + value coercion (mirrors the
+ *  node's `ParamKind`). Absent → `"text"`. */
+export declare type ParamKind = "text" | "number" | "date" | "enum";
+
 /** One `<optgroup>` for a source group, empty-tolerant (no section when it has no entries). Exported so a
  *  host that renders its own `<select>` (shadcn `Select`, a `FIELD`-classed native select) still uses the
  *  ONE grouping/labelling implementation — the `<optgroup>` carries no styling, so it drops into any select. */
@@ -103,6 +107,34 @@ export declare function PickerGroup({ entries, group, label, }: {
  *  controls are a separate authoring intent); a host that wants them passes its own list (see
  *  `BUILDER_SOURCE_GROUPS`). Exported so every consumer renders ONE canonical label set. */
 export declare const READ_SOURCE_GROUPS: SourceGroup[];
+
+/** A rule's declared parameter (mirrors the node's `RuleParam`) — a name, an optional human label, and
+ *  its type. A host renders one input per param around the picker and fills the rule's `args.params`.
+ *  `kind`/`required`/`options` are optional so a legacy `{name,label}` rule is unaffected. */
+export declare interface RuleParam {
+    name: string;
+    label?: string;
+    kind?: ParamKind;
+    required?: boolean;
+    /** Allowed values for an `enum` param (ignored otherwise). */
+    options?: string[];
+}
+
+/** Rules entries — one per saved rule. Each ⇒ a read `rules.run {rule_id}` source: the rule fetches
+ *  from the gated sources, computes over the rows in the cage (the data-stdlib: time/stats/`Frame`),
+ *  and RETURNS records the panel draws (rules-as-source-scope). A rule is the most general query — the
+ *  picker offers it as one opaque tool source, re-gated at the host per call (`mcp:rules.run:call`);
+ *  whether its output is chart-shaped is the rule author's concern, an honest failure if not. */
+export declare function rulesEntries(rules: RuleSummary[]): SourceEntry[];
+
+/** A saved rule's summary (the subset of `rules.list` the picker needs) — a rule is a read source
+ *  (`rules.run {rule_id}` → records), so it mirrors `FlowSummary`. `params` (optional) are the rule's
+ *  declared inputs; the picker carries them onto the entry so a host can offer a params form. */
+export declare interface RuleSummary {
+    id: string;
+    name: string;
+    params?: RuleParam[];
+}
 
 /** Fold a chosen entry into a `SourceSelection` (drop the labelling fields; keep what the host stores). */
 export declare function selectionOf(entry: SourceEntry): {
@@ -121,6 +153,33 @@ export declare interface Source {
     args?: Record<string, unknown>;
 }
 
+export declare function SourceCombobox({ entries, value, onSelect, onSelectEntry, loading, groups, "aria-label": ariaLabel, className, placeholder, autoFocus, }: SourceComboboxProps): JSX_2.Element;
+
+export declare interface SourceComboboxProps {
+    /** The assembled entries (from `useSourcePicker`). */
+    entries: SourceEntry[];
+    /** The currently-selected entry id (controlled) — "" for none. */
+    value?: string;
+    /** Called with the chosen entry's selection (or null when cleared). */
+    onSelect: (selection: SourceSelection | null) => void;
+    /** Also called with the RAW entry (or null) — for a host that keys on `entry.id` (e.g. edit-mode
+     *  seeding, or a tool shared across entries like `rules.run`) where the folded selection loses the id.
+     *  Optional; `onSelect` fires regardless. */
+    onSelectEntry?: (entry: SourceEntry | null) => void;
+    /** True while the entries load. */
+    loading?: boolean;
+    /** Which groups show + their order/labels (default: the read groups). */
+    groups?: SourceGroup[];
+    /** Accessible label (default "source"). */
+    "aria-label"?: string;
+    /** Extra className on the root. */
+    className?: string;
+    /** Placeholder for the search input. */
+    placeholder?: string;
+    /** Autofocus the search box on mount (Data Studio focuses it so type-to-search is the first action). */
+    autoFocus?: boolean;
+}
+
 /** A friendly source entry the picker offers. `group` places it; `source`/`action`/`viewKey` is what
  *  selecting it yields (folded into a `SourceSelection` by the caller). */
 export declare interface SourceEntry {
@@ -128,7 +187,7 @@ export declare interface SourceEntry {
     id: string;
     /** The grouping origin (the picker's sections). `widget` is a packaged `[[widget]]` tile (a finished
      *  widget the developer shipped — distinct from `extension`, which offers an extension's raw tools). */
-    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows";
+    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules";
     /** What the author sees — never a raw tool name. */
     label: string;
     /** For a `widget` entry: the icon name the tile declared (lucide id). */
@@ -145,6 +204,9 @@ export declare interface SourceEntry {
     action?: Action;
     /** True if the entry's tool writes (drives the Action group + write-capable views). */
     writes: boolean;
+    /** For a `rules` entry: the rule's declared params, so a host can render a params form around the
+     *  picker and fill the `rules.run` `args.params` (a rule with no params has none/empty). */
+    params?: RuleParam[];
 }
 
 /** One entry in a picker's group list: which source `group` to render and its section label. */
@@ -160,6 +222,7 @@ export declare interface SourceInputs {
     flows?: Flow[];
     descriptors?: NodeDescriptor[];
     datasources?: DatasourceRow[];
+    rules?: RuleSummary[];
 }
 
 /** The INJECTED read seam. The host implements each over its own transport (the shell delegates to
@@ -180,6 +243,9 @@ export declare interface SourceLoaders {
     listFlowNodes?: () => Promise<NodeDescriptor[]>;
     /** Registered federation datasources (from `datasource.list`). Drives the Datasource dropdown. */
     listDatasources?: () => Promise<DatasourceRow[]>;
+    /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
+     *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
+    listRules?: () => Promise<RuleSummary[]>;
 }
 
 export declare function SourcePicker({ entries, value, onSelect, loading, groups, "aria-label": ariaLabel, className, }: SourcePickerProps): JSX_2.Element;

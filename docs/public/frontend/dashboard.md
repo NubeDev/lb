@@ -26,6 +26,19 @@ store, widgets read real series, and live values arrive over the series stream.
 - **Extension widget declarations:** extensions may declare multiple `[[widget]]` tiles. Those tiles are
   persisted on the install, narrowed to the approved grant, and surfaced through `ext.list`.
 
+## Open in Data Studio (per-cell)
+
+Panel **authoring lives in Data Studio** (`/t/$ws/data-studio`) since data-studio v2 — the dashboard
+only places library panels and renders them. Each cell carries a hover-revealed **"Open in Data
+Studio"** button (an `ExternalLink` icon, top-right of the cell, alongside Duplicate / Remove) that
+navigates to the studio surface where panels are edited. It is **editor-only** (`isAdmin(caps)`, the
+same gate as the rest of the authoring surface); a read-only viewer sees no hover affordances. The
+destination route re-checks the `data-studio` CoreSurface cap independently. No new host verb, cap,
+or table — pure navigation over the existing route. v1 navigates to the studio root (the user opens
+the panel from the Library pane); deep-linking a specific panel into a builder tab
+(`?openPanel=<id>`) is the named follow-up. Session:
+[`../../sessions/frontend/dashboard-open-in-data-studio-session.md`](../../sessions/frontend/dashboard-open-in-data-studio-session.md).
+
 ## Widget behavior
 
 Built-in widgets share the same data hook:
@@ -777,6 +790,69 @@ catalog↔renderer guard. Scope:
 umbrella: [`../../scope/widgets/widget-platform-scope.md`](../../scope/widgets/widget-platform-scope.md);
 session: [`../../sessions/widgets/widget-catalog-session.md`](../../sessions/widgets/widget-catalog-session.md);
 skill: [`../../skills/dashboard-widgets/SKILL.md`](../../skills/dashboard-widgets/SKILL.md).
+
+## Pin to dashboard (widget-platform Slice B, shipped 2026-07-04)
+
+A GENERIC host-side path that takes ANY `x-lb-render` envelope (a tool's `ToolDescriptor.result`, or a
+live channel `rich_result` body) and mints a persisted `dashboard:{id}` cell — closes G2 of the widget
+umbrella. **The reminder widget (`reminder.list`, which already declares a `result = table` render)
+becomes dashboard-addable with ZERO reminder-specific code in the pin path**: the envelope is opaque
+data, the tool id never branched on (rule 10). The umbrella's open question (client-compose vs a
+server-side mint) is **resolved as a server-side mint verb** — the same argument Slice A used to put
+save-validation server-side: a pin produces persisted state, and a headless `POST /mcp/call` agent (no
+shell, no `ResponseView.buildCell`) must be able to pin a `result` envelope; the envelope↔cell mapping
+lives in ONE host function, not mirrored across web/RN/AI clients. The channel render path
+(`ResponseView.buildCell`) is untouched — `dashboard.pin` is the persist-time twin, host-side.
+
+- **`dashboard.pin` MCP verb** (`rust/crates/host/src/dashboard/pin.rs`) — `dashboard_pin` +
+  `mint_cell_from_envelope`. Input: `{ dashboard, envelope, title?, now }`. The mint mirrors
+  `ResponseView.buildCell` field-for-field so a pinned cell renders identically to the channel response
+  (the cross-surface fidelity invariant): `view`/`source`/`action`/`options`/`fieldConfig` copied verbatim;
+  the envelope's extra `tools[]` (row-control write verbs) become hidden `sources[]` so `cellTools(cell)`
+  covers `render.tools` (the bridge leash). Cell `i = "pin-{slug(source.tool||view)}"` by pure string ops
+  (rule 10 — no `match`/`if` on the tool id). **Idempotent**: re-pinning the SAME envelope (same
+  `source.tool`) REPLACES the cell in place (preserves its layout); pinning a DIFFERENT envelope appends
+  at the next free y. Reuses the Slice A validation chain (`check_cells_bounds` → `check_genui_cells` →
+  `check_view_cells` → `validate_and_strip_refs`) → `write_dashboard` → hydrate; returns the hydrated
+  record (mirrors `dashboard.save`). Gated `mcp:dashboard.pin:call` (**member-level, its OWN cap** —
+  distinct from `dashboard.save`; a member who can pin but not free-edit cells still works);
+  owner-only-update on an existing dashboard. The `dashboard.pin` MCP dispatch arm + a
+  `POST /dashboards/{id}/pin` gateway route (uses `gw.now()`, so the REST client passes no `now`); a
+  `pin_descriptor()` in `tools.catalog` so an AI discovers it can pin.
+- **Row controls, shared across surfaces** (`ui/src/features/dashboard/views/table/RowControls.tsx`) —
+  the actions column extracted from the channel `ResponseTable`, now used by BOTH the dashboard
+  `TablePanel` (a pinned reminder cell is fully interactive on the grid — enable switch + run-now +
+  delete) and the channel `ResponseTable` (a live response). One row-control renderer, two surfaces; a
+  pinned cell renders on the dashboard exactly as its envelope renders in a channel.
+- **"Pin to dashboard" channel affordance** (`ui/src/features/channel/PinToDashboard.tsx`) — mounted by
+  `ResponseView` beside a rendered `rich_result`: picks a target dashboard (from `dashboard.list` + a
+  "New dashboard" option) and calls `pinDashboard` over the real gateway. The client passes the ENVELOPE
+  through; the HOST constructs the CELL (no cell construction in the client — so a headless agent over
+  `POST /mcp/call` produces the SAME pinned cell as the web UI).
+- **Idempotency by tool id (v1 limit).** `i = pin-{slug(source.tool)}` means ONE cell per tool per
+  dashboard — re-pinning `reminder.list` refreshes the cell, not duplicates. Pinning two DIFFERENT
+  envelopes from the same tool (e.g. `reminder.list` with different filters) currently collide — a known
+  limit, not a silent bug; a future envelope-hash `i` widens this if a second filter matters.
+
+Tests (real gateway + store, no fakes): host `widget_pin_test` **10/10** — capability-deny + a
+plain-member happy path, non-owner deny, two-workspace isolation, the HEADLINE (pin `reminder.list`'s
+declared `result` → reload → cell intact), generic-over-tool-id, idempotent-re-pin-replaces,
+different-envelope-appends, shell-vs-headless-path-parity (the SAME cell from `dashboard_pin` and
+`call_tool` → `dashboard.pin`), the Slice A view-validator fires through the pin (`view:"heatmap"`
+rejected), pin coexists with hand-authored cells. UI `PinToDashboard.gateway.test.tsx` **4/4** (real
+spawned gateway) — the HEADLINE (pin a reminder.list rich_result via the UI affordance → reload via
+`dashboard.get` → render the cell through the real `WidgetView`/`TablePanel` → reminder rows AND row
+controls visible) + capability-deny + workspace-isolation + fidelity/idempotency. `pnpm test` (unit)
+**547/547**; reminders-palette + DashboardView gateway suites green (no regression from the shared
+`RowControls` extraction). `cargo build --workspace` + `cargo fmt` clean. **Pre-existing red surfaced
+(NOT this slice's):** `panel_test` 4 cases fail with `unknown view 'STALE'` — Slice A's `check_view_cells`
+rejects the panel-test fixtures' placeholder echoed spec before ref-stripping; logged at
+[`../../debugging/widgets/panel-test-stale-view-preexisting-slice-a-red.md`](../../debugging/widgets/panel-test-stale-view-preexisting-slice-a-red.md)
+(a Slice A follow-up). Scope:
+[`../../scope/widgets/pin-to-dashboard-scope.md`](../../scope/widgets/pin-to-dashboard-scope.md);
+umbrella: [`../../scope/widgets/widget-platform-scope.md`](../../scope/widgets/widget-platform-scope.md);
+session: [`../../sessions/widgets/pin-to-dashboard-session.md`](../../sessions/widgets/pin-to-dashboard-session.md);
+skill: [`../../skills/dashboard-widgets/SKILL.md`](../../skills/dashboard-widgets/SKILL.md) (§ "Pin a tool result").
 
 ## Related
 

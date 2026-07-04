@@ -3,10 +3,19 @@
 // params; a run returns a typed `RuleOutput` (rendered three ways by `kind`) plus findings, log, and a
 // budget readout.
 
-/** A declared parameter of a saved rule — a name + an optional human label. */
+/** The declared type of a param — steers the authoring input + the value coercion (mirrors the node's
+ *  `ParamKind`). Absent on a legacy `{name,label}` record → treated as `"text"`. */
+export type ParamKind = "text" | "number" | "date" | "enum";
+
+/** A declared parameter of a saved rule — name + optional human label + its type (mirrors the node's
+ *  `RuleParam`). `kind`/`required`/`options` are optional so a legacy record round-trips unchanged. */
 export interface RuleParam {
   name: string;
   label?: string;
+  kind?: ParamKind;
+  required?: boolean;
+  /** Allowed values for an `enum` param (ignored otherwise). */
+  options?: string[];
 }
 
 /** The persisted shape of a saved rule (`rule:{ws}:{id}`). `deleted` is the soft-delete tombstone. */

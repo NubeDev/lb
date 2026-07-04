@@ -10,6 +10,7 @@ import type {
   ExtRow,
   Flow,
   NodeDescriptor,
+  RuleParam,
   RuleSummary,
   Source,
 } from "./types";
@@ -38,6 +39,9 @@ export interface SourceEntry {
   action?: Action;
   /** True if the entry's tool writes (drives the Action group + write-capable views). */
   writes: boolean;
+  /** For a `rules` entry: the rule's declared params, so a host can render a params form around the
+   *  picker and fill the `rules.run` `args.params` (a rule with no params has none/empty). */
+  params?: RuleParam[];
 }
 
 /** Derive a widget id from a tile — the label slug, lowercased, non-alnum → `-`. The renderer parses
@@ -182,6 +186,7 @@ export function rulesEntries(rules: RuleSummary[]): SourceEntry[] {
     label: r.name || r.id,
     source: { tool: "rules.run", args: { rule_id: r.id } },
     writes: false,
+    params: r.params ?? [],
   }));
 }
 
