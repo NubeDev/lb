@@ -10,6 +10,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { Reveal } from "@/lib/motion";
 import { AppPageHeader } from "./page-header";
 
 interface AppPageProps {
@@ -57,7 +58,11 @@ export function AppPage({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1">{children}</div>
+      {/* Page body eases in on navigation — a keyed Reveal re-fires the fade/slide when the surface (label)
+          changes. Gated by the member's motion pref (off = static). Shell page-transition. */}
+      <Reveal key={label} className="flex min-h-0 flex-1">
+        {children}
+      </Reveal>
     </section>
   );
 }

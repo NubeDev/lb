@@ -10,7 +10,7 @@
 //
 // One responsibility: ThemePreference → ResolvedAppearance.
 
-import { DEFAULT_MOTION, DEFAULT_SURFACE, type Motion, type Surface } from "./appearance-axes";
+import { DEFAULT_GLASS, DEFAULT_MOTION, DEFAULT_SURFACE, type GlassLevel, type Motion, type Surface } from "./appearance-axes";
 import { DEFAULT_FONT_MONO, DEFAULT_FONT_SANS } from "./theme-fonts.data";
 import { DEFAULT_LOOK, lookById, type LookDefaults } from "./theme-looks.data";
 import type { ThemePreference, ThemeRadius } from "./theme-options";
@@ -24,6 +24,7 @@ export interface ResolvedAppearance {
   fontMono: string;
   surface: Surface;
   motion: Motion;
+  glass: GlassLevel;
 }
 
 /** Fold `pref` into a concrete appearance. `preset`/`radius` are required on the preference (always
@@ -50,6 +51,7 @@ export function resolveAppearance(pref: ThemePreference): ResolvedAppearance {
     fontMono: pick("fontMono", pref.fontMono, DEFAULT_FONT_MONO),
     surface: pick("surface", pref.surface, DEFAULT_SURFACE),
     motion: pick("motion", pref.motion, DEFAULT_MOTION),
+    glass: pick("glass", pref.glass, DEFAULT_GLASS),
   };
 }
 
@@ -62,6 +64,9 @@ export function applyLook(pref: ThemePreference, lookId: string): ThemePreferenc
   return {
     ...pref,
     look: look.id,
+    // `mode`/`preset`/`radius` are required on the preference — stamp the look's value where it defines
+    // one (mode is a look's identity: Professional is a paper look), else keep the member's current.
+    mode: d.mode ?? pref.mode,
     preset: d.preset ?? pref.preset,
     radius: d.radius ?? pref.radius,
     // Reset the per-axis overrides to inherit the freshly-picked look's defaults.
@@ -69,5 +74,6 @@ export function applyLook(pref: ThemePreference, lookId: string): ThemePreferenc
     fontMono: undefined,
     surface: undefined,
     motion: undefined,
+    glass: undefined,
   };
 }

@@ -35,14 +35,23 @@ function isDark(p: RequiredPalette): boolean {
 }
 
 /** Derive the three widened tones from the required seven. A raised surface steps ~3–4pts toward the
- *  foreground; the secondary accent rotates the accent hue by +40° (a complementary-ish sibling). */
+ *  foreground; the OVERLAY is a scrim tone (a near-black derived from the background's hue, dark in BOTH
+ *  modes so a modal backdrop always darkens content behind it); the secondary accent rotates the accent
+ *  hue by +40° (a complementary-ish sibling). */
 export function deriveTones(p: RequiredPalette): DerivedTones {
   const toward = isDark(p) ? +1 : -1; // toward foreground
   return {
     panel2: lighten(p.panel, 4 * toward),
-    overlay: lighten(p.bg, 3 * toward),
+    overlay: overlayScrim(p.bg),
     accent2: rotateHue(p.accent, 40),
   };
+}
+
+/** A scrim tone: the background's hue at a low, dark lightness so modal backdrops darken in either mode. */
+function overlayScrim(bg: string): string {
+  const hsl = parseTriplet(bg);
+  if (!hsl) return "0 0% 6%";
+  return formatTriplet({ ...hsl, s: Math.min(hsl.s, 20), l: 8 });
 }
 
 /** Fill any absent widened tone on a partial palette from the derivation, keeping present ones. Used by

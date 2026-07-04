@@ -57,11 +57,17 @@ curl -s -X POST $BASE/panels -H "$A" -H "$C" -d "{\"id\":\"e2e-chart\",\"title\"
 curl -s $BASE/panels/e2e-chart       -H "$A"    # read back — sources[] preserved
 curl -s $BASE/panels                 -H "$A"    # list
 curl -s $BASE/panels/e2e-chart/usage -H "$A"    # which dashboards reference it (→ [])
-curl -s -X DELETE $BASE/panels/e2e-chart -H "$A" -o /dev/null -w "%{http_code}\n"   # 204
+curl -s -X DELETE $BASE/panels/e2e-chart -H "$A" -o /dev/null -w "%{http_code}\n"   # 204 (throwaway)
+# LEAVE a chart in place, bound to the seeded series below, for the user to inspect:
+curl -s -X POST $BASE/panels -H "$A" -H "$C" -d "{\"id\":\"keep-chart\",\"title\":\"E2E — leave for inspection\",\"spec\":$SPEC}"
 ```
 
 **Observed** (2026-07-04, `acme`): create → `{owner:"user:ada", visibility:"private"}` with
 `sources[0].tool:"series_read"` preserved; usage → `[]`; delete → `204`.
+
+> Delete is proven on the throwaway `e2e-chart`; **`keep-chart` is left in place**, bound to
+> the `e2e.temp` series seeded in the functional step below — so the user can open it and see
+> a chart drawing real data (README "Leave it inspectable").
 
 ### Functional — the chart actually reads data
 
@@ -100,7 +106,10 @@ wall gates the series store too.
 
 ## Step 3–5. What you found / findings / done
 
-Green? Record the output in the session doc. A wrong result → file a
-`../../debugging/frontend/…` entry + regression test; not written up here.
+Green? Record the output in the session doc, **leave `keep-chart` + the `e2e.temp` series in
+place**, and hand the user the page: "open `keep-chart` at http://127.0.0.1:8080 — it's
+drawing the seeded sample so you can confirm; I only deleted the throwaway panel" (README
+"Leave it inspectable"). A wrong result → file a `../../debugging/frontend/…` entry +
+regression test; not written up here.
 
 Observed green run: [`../../sessions/testing/dashboard-chart-nav-system-session.md`](../../sessions/testing/dashboard-chart-nav-system-session.md).

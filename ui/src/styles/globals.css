@@ -101,7 +101,7 @@
   /* Widened tones (light): raised panel steps toward paper-white, overlay a touch darker than bg for a
      scrim, secondary accent a cooler sibling; success/warning are fixed semantic hues. */
   --panel-2: 40 26% 88%;
-  --overlay: 30 10% 20%;
+  --overlay: 30 18% 8%;
   --accent-2: 178 60% 32%;
   --success: 142 55% 34%;
   --warning: 36 92% 42%;
@@ -117,11 +117,16 @@
 
 .dark {
   color-scheme: dark;
-  --bg: 24 8% 8%;
-  --panel: 24 7% 11%;
-  --border: 24 6% 18%;
-  --fg: 36 16% 90%;
-  --muted: 30 5% 56%;
+  /* Dark ramp: a COOL near-black neutral family (hue ~228, chroma low). The previous warm charcoal
+     (hue 28–40) muddied every surface toward brown; a cool ground lets the amber accent read as a
+     deliberate signal color instead of more of the same hue. Steps: page 6% → cell panel 9% → raised
+     rail/chrome 13%, each with a visible hairline (`--border` 20%) so elevation reads as crisp planes,
+     not fog. `--bg` is the deepest; content cells sit on `--panel`; the rail/toolbar use `--panel-2`. */
+  --bg: 228 8% 6%;
+  --panel: 228 7% 9%;
+  --border: 228 6% 20%;
+  --fg: 224 14% 93%;
+  --muted: 224 6% 64%;
   --accent: 34 96% 58%;
   --theme-swatch-amber: 34 96% 58%;
   --theme-swatch-teal: 176 68% 50%;
@@ -136,16 +141,17 @@
   --primary-foreground: var(--bg);
   --secondary: var(--panel);
   --secondary-foreground: var(--fg);
-  --muted-bg: 24 6% 15%;
+  --muted-bg: 228 6% 13%;
   --muted-foreground: var(--muted);
   --accent-foreground: var(--bg);
   --destructive: 0 65% 58%;
   --input: var(--border);
   --ring: var(--accent);
-  /* Widened tones (dark): raised panel steps toward the foreground, overlay lighter than bg, secondary
-     accent a cooler sibling; success/warning tuned for the charcoal surface. */
-  --panel-2: 24 7% 15%;
-  --overlay: 36 12% 82%;
+  /* Widened tones (dark). `--panel-2` is the RAISED neutral layer (rail, toolbars) — a clear step above
+     `--panel` (9%→13%) in the same cool family, per the product register's "second neutral layer".
+     `--overlay` is a scrim (dark, both modes); `--accent-2` a cooler accent sibling. */
+  --panel-2: 228 8% 13%;
+  --overlay: 228 24% 3%;
   --accent-2: 176 62% 52%;
   --success: 142 52% 52%;
   --warning: 38 92% 58%;
@@ -242,7 +248,9 @@ body {
   }
 
   .page-header {
-    @apply flex min-h-[3.75rem] items-center gap-3 border-b border-border bg-panel/55 px-4 py-2.5;
+    /* A raised chrome band — the widened `--panel-2` tone sits it a step above the page `--bg`, so the
+       header reads as its own surface (part of the >2-tone sweep, theme-appearance scope). */
+    @apply flex min-h-[3.75rem] items-center gap-3 border-b border-border bg-panel-2/80 px-4 py-2.5;
   }
 
   .page-header-icon {
@@ -281,6 +289,27 @@ body {
   --gradient-accent: none;
 }
 
+/* Dark shadows are BLACK, not fg-tinted — `hsl(var(--fg)/…)` is near-white in dark mode, which renders
+   every "shadow" as a faint glow and flattens elevation. True black ambient shadows restore the plane
+   stack (page → panel → raised chrome) that dark elevation depends on. */
+.dark {
+  --shadow-1: 0 1px 2px hsl(228 24% 2% / 0.55);
+  --shadow-2: 0 4px 14px -4px hsl(228 24% 2% / 0.6);
+  --shadow-3: 0 14px 36px -8px hsl(228 24% 2% / 0.7);
+}
+/* `:root.dark` (0,3,0 with the attribute) so this beats the light-authored `:root[data-surface]` blocks
+   below regardless of source order. */
+:root.dark[data-surface="elevated"] {
+  --shadow-1: 0 1px 3px hsl(228 24% 2% / 0.6);
+  --shadow-2: 0 6px 18px -6px hsl(228 24% 2% / 0.7);
+  --shadow-3: 0 18px 44px -10px hsl(228 24% 2% / 0.8);
+}
+:root.dark[data-surface="glass"] {
+  --shadow-1: 0 1px 3px hsl(228 24% 2% / 0.6);
+  --shadow-2: 0 8px 26px -8px hsl(228 24% 2% / 0.75);
+  --shadow-3: 0 22px 52px -12px hsl(228 24% 2% / 0.85);
+}
+
 /* Elevated: opaque panels, the shadow ramp. */
 :root[data-surface="elevated"] {
   --shadow-1: 0 1px 3px hsl(var(--fg) / 0.10);
@@ -292,16 +321,42 @@ body {
   box-shadow: var(--shadow-2);
 }
 
-/* Glass: translucent panels + backdrop blur + elevation + a faint accent gradient. Gated on @supports
-   so a compositor without real backdrop-filter degrades to the opaque elevated look automatically. */
+/* Glass: translucent panels + backdrop blur + elevation + a faint SINGLE-HUE accent sheen. Gated on
+   @supports so a compositor without real backdrop-filter degrades to the opaque elevated look.
+
+   The gradient is ONE hue (the accent) fading to a neutral highlight — the old amber→teal
+   (accent→accent-2) blend read as a color CLASH because the two ends are different hues. A single-hue
+   wash + a top light sheen reads as glass, not as a muddy two-tone tint.
+
+   INTENSITY (`data-glass`, default subtle): `subtle` is nearly opaque with a light blur (crisp — the
+   product register rejects glass theatrics); `medium`/`heavy` step up alpha-translucency + blur +
+   gradient strength. Defaults live here on `[data-surface="glass"]`; the three `data-glass` blocks tune
+   the three glass tokens (`--surface-alpha`, `--blur`, `--gradient-accent`). Everything else (shadows,
+   the panel rule) is shared. */
 @supports (backdrop-filter: blur(2px)) or (-webkit-backdrop-filter: blur(2px)) {
   :root[data-surface="glass"] {
-    --surface-alpha: 0.72;
-    --blur: 14px;
+    /* subtle defaults (also the value when no data-glass is set) */
+    --surface-alpha: 0.86;
+    --blur: 8px;
+    --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.05), transparent 55%);
     --shadow-1: 0 1px 3px hsl(var(--fg) / 0.12);
     --shadow-2: 0 8px 24px -8px hsl(var(--fg) / 0.28);
     --shadow-3: 0 20px 48px -12px hsl(var(--fg) / 0.42);
-    --gradient-accent: linear-gradient(135deg, hsl(var(--accent) / 0.10), hsl(var(--accent-2) / 0.06));
+  }
+  :root[data-surface="glass"][data-glass="subtle"] {
+    --surface-alpha: 0.86;
+    --blur: 8px;
+    --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.05), transparent 55%);
+  }
+  :root[data-surface="glass"][data-glass="medium"] {
+    --surface-alpha: 0.76;
+    --blur: 14px;
+    --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.08), transparent 60%);
+  }
+  :root[data-surface="glass"][data-glass="heavy"] {
+    --surface-alpha: 0.62;
+    --blur: 22px;
+    --gradient-accent: linear-gradient(150deg, hsl(var(--accent) / 0.12), transparent 65%);
   }
   :root[data-surface="glass"] [data-panel],
   :root[data-surface="glass"] .surface-panel {
@@ -309,7 +364,9 @@ body {
     backdrop-filter: blur(var(--blur));
     -webkit-backdrop-filter: blur(var(--blur));
     box-shadow: var(--shadow-2);
-    background-image: var(--gradient-accent);
+    /* A top light sheen (neutral) layered UNDER the accent wash — the physical glass cue is a light edge,
+       not a colored fill. Both are subtle; the panel stays legible. */
+    background-image: linear-gradient(hsl(var(--fg) / 0.04), transparent 40%), var(--gradient-accent);
   }
 }
 /* Fallback: no backdrop-filter → glass behaves as elevated (opaque + shadow), never a broken translucency. */
@@ -337,6 +394,28 @@ body {
   animation-duration: 0s !important;
   animation-iteration-count: 1 !important;
   scroll-behavior: auto !important;
+}
+
+/* `subtle` trims the CSS-driven chrome transitions (the nav-rail width collapse, the Sheet/Dialog slide,
+   hover elevations) to a short, snappy variant; `full` leaves the designed durations. This is the CSS
+   half of the motion system — it scales the SAME transitions the `off` fence zeroes, so a single member
+   preference tunes CSS and JS (lib/motion) motion together. `--motion-scale` is available to any
+   token-driven transition that wants to opt in. */
+:root[data-motion="subtle"] {
+  --motion-scale: 0.6;
+}
+:root[data-motion="full"] {
+  --motion-scale: 1;
+}
+:root[data-motion="subtle"] [data-slot="sidebar-gap"],
+:root[data-motion="subtle"] [data-slot="sidebar-container"] {
+  transition-duration: 120ms;
+}
+:root[data-motion="full"] [data-slot="sidebar-gap"],
+:root[data-motion="full"] [data-slot="sidebar-container"] {
+  /* A gentler spring-like ease + slightly longer travel for the nav-rail collapse at `full`. */
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* React Flow canvas — token-bound so the flows canvas tracks light/dark + accent (the xyflow

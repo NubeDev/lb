@@ -14,7 +14,7 @@ import {
   type ThemeRadius,
 } from "./theme-options";
 import { applyLook } from "./look-resolve";
-import type { Motion, Surface } from "./appearance-axes";
+import type { GlassLevel, Motion, Surface } from "./appearance-axes";
 import type { CustomTheme } from "./theme-tokens";
 
 interface Props {
@@ -68,6 +68,7 @@ export function ThemeProvider({ children }: Props) {
   const setFontMono = useCallback((fontMono: string | undefined) => edit((c) => ({ ...c, fontMono })), [edit]);
   const setSurface = useCallback((surface: Surface | undefined) => edit((c) => ({ ...c, surface })), [edit]);
   const setMotion = useCallback((motion: Motion | undefined) => edit((c) => ({ ...c, motion })), [edit]);
+  const setGlass = useCallback((glass: GlassLevel | undefined) => edit((c) => ({ ...c, glass })), [edit]);
   const setLayout = useCallback(
     (patch: Partial<ThemeLayout>) => edit((c) => ({ ...c, layout: { ...c.layout, ...patch } })),
     [edit],
@@ -95,6 +96,7 @@ export function ThemeProvider({ children }: Props) {
       setFontMono,
       setSurface,
       setMotion,
+      setGlass,
       setLayout,
       setCustom,
       setImported,
@@ -112,6 +114,7 @@ export function ThemeProvider({ children }: Props) {
       setFontMono,
       setSurface,
       setMotion,
+      setGlass,
       setLayout,
       setCustom,
       setImported,

@@ -5,6 +5,13 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# Expo bare-modules autolinking (SDK 57). Pulls in expo/scripts/autolinking so `use_expo_modules!`
+# and the expo react-native-config command below are available. This links expo-* pods
+# (expo-secure-store, …) into the hand-owned Xcode project; it does NOT change JS bundling — the
+# app still bundles with Re.Pack, and moduleName/bundleURL stay "index"-based (see AppDelegate.swift).
+# See docs/scope/app/app-expo-scope.md.
+require File.join(File.dirname(`node --print "require.resolve('expo/package.json')"`), "scripts/autolinking")
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -15,7 +22,27 @@ if linkage != nil
 end
 
 target 'LazybonesShell' do
-  config = use_native_modules!
+  use_expo_modules!
+
+  # Feed native-module discovery through Expo's react-native-config so both plain RN modules AND
+  # expo-* modules are found. Set EXPO_USE_COMMUNITY_AUTOLINKING=1 to fall back to the RN CLI command.
+  if ENV['EXPO_USE_COMMUNITY_AUTOLINKING'] == '1'
+    config_command = ['node', '-e', "process.argv=['', '', 'config'];require('@react-native-community/cli').run()"]
+  else
+    config_command = [
+      'node',
+      '--no-warnings',
+      '--eval',
+      'require(\'expo/bin/autolinking\')',
+      'expo-modules-autolinking',
+      'react-native-config',
+      '--json',
+      '--platform',
+      'ios'
+    ]
+  end
+
+  config = use_native_modules!(config_command)
 
   use_react_native!(
     :path => config[:reactNativePath],

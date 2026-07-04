@@ -8,7 +8,7 @@
 import type { CustomTheme } from "./theme-tokens";
 import { isCustomTheme } from "./theme-tokens";
 import { completeCustomTheme } from "./normalize-custom-theme";
-import { isSurface, isMotion, type Surface, type Motion } from "./appearance-axes";
+import { isSurface, isMotion, isGlass, type Surface, type Motion, type GlassLevel } from "./appearance-axes";
 import { fontById } from "./theme-fonts.data";
 import { lookById } from "./theme-looks.data";
 
@@ -71,6 +71,8 @@ export interface ThemePreference {
   fontMono?: string;
   surface?: Surface;
   motion?: Motion;
+  /** Glass intensity override (only meaningful under `surface==="glass"`). Undefined = inherit the look. */
+  glass?: GlassLevel;
   custom?: CustomTheme;
   imported?: CustomTheme;
 }
@@ -146,6 +148,7 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
   if (typeof c.fontMono === "string" && fontById(c.fontMono)) out.fontMono = c.fontMono;
   if (isSurface(c.surface)) out.surface = c.surface;
   if (isMotion(c.motion)) out.motion = c.motion;
+  if (isGlass(c.glass)) out.glass = c.glass;
   // A stored custom/imported theme is validated on the REQUIRED seven, then upgraded by DERIVING any
   // missing widened tones (panel2/overlay/accent2) — so a v1 theme survives migration instead of being
   // dropped. A theme missing a required token is malformed and dropped whole (fail-closed).

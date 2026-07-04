@@ -21,6 +21,7 @@ describe("resolveAppearance", () => {
     expect(r.look).toBe("glass");
     expect(r.surface).toBe(glass.defaults.surface); // "glass"
     expect(r.motion).toBe(glass.defaults.motion); // "full"
+    expect(r.glass).toBe(glass.defaults.glass); // "medium"
     expect(r.fontSans).toBe(glass.defaults.fontSans);
     expect(r.fontMono).toBe(glass.defaults.fontMono);
     // radius stays the stored DEFAULT (applyLook is what stamps a look's radius) — proven in applyLook.
@@ -29,9 +30,10 @@ describe("resolveAppearance", () => {
 
   it("an explicit member override wins over the look default (unpinned axis)", () => {
     // glass defaults surface:glass, motion:full — the member forces flat + off.
-    const r = resolveAppearance(pref({ look: "glass", surface: "flat", motion: "off" }));
+    const r = resolveAppearance(pref({ look: "glass", surface: "flat", motion: "off", glass: "heavy" }));
     expect(r.surface).toBe("flat");
     expect(r.motion).toBe("off");
+    expect(r.glass).toBe("heavy"); // member override wins over the look's medium default
     // an axis they DIDN'T override still comes from the look
     expect(r.fontSans).toBe(lookById("glass")!.defaults.fontSans);
   });

@@ -86,8 +86,11 @@ never `acme`'s. The wall is checked before caps.
 
 ## Step 3–5. What you found / findings / done
 
-Green? Record the command output in the session doc (green is a claim that must be shown).
-A wrong result → file a `../../debugging/frontend/…` (or `.../system/…`) entry + a
+Green? Record the command output in the session doc (green is a claim that must be shown),
+and — since this console is **read-only** (nothing created to leave behind) — just leave
+the node running and hand the user the page: "open the System console at
+http://127.0.0.1:8080 to confirm the topology/status reads yourself" (README "Leave it
+inspectable"). A wrong result → file a `../../debugging/frontend/…` (or `.../system/…`) entry + a
 regression test; **do not** write the failure up here. Known pre-existing red:
 `SystemView.gateway` (`bus peers list` label) — memory: preexisting-failing-tests; don't
 chase it as your regression.

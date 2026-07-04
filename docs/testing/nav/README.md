@@ -55,11 +55,17 @@ curl -s -X POST $BASE/navs -H "$A" -H "$C" \
   -d '{"id":"e2e-nav","title":"E2E Nav","items":[{"kind":"surface","surface":"channels","label":"Chat"}]}'  # create
 curl -s $BASE/navs        -H "$A"    # list
 curl -s $BASE/navs/e2e-nav -H "$A"   # get
-curl -s -X DELETE $BASE/navs/e2e-nav -H "$A" -o /dev/null -w "%{http_code}\n"   # 204
+# prove DELETE on a THROWAWAY (not e2e-nav — the functional step + the user inspect it)
+curl -s -X POST   $BASE/navs -H "$A" -H "$C" -d '{"id":"tmp-nav","title":"tmp","items":[]}' -o /dev/null
+curl -s -X DELETE $BASE/navs/tmp-nav -H "$A" -o /dev/null -w "%{http_code}\n"   # 204
 ```
 
 **Observed** (2026-07-04, `acme`): create → `{owner:"user:ada", visibility:"private"}` with
 the item normalized to `{kind:"surface", surface:"channels", label:"Chat"}`.
+
+> `e2e-nav` is **kept** — the functional step wires it as the workspace default, and it's
+> what the user opens to confirm. Delete is proven on the throwaway `tmp-nav` (README
+> "Leave it inspectable").
 
 ### Functional — the resolve lens + default pointer + per-user pref
 
@@ -83,14 +89,63 @@ kind:"surface", surface:"channels", label:"Chat"}]}`. The resolve output is **ca
 curl -s -X POST $BASE/navs -H "$C" -d '{"id":"x","title":"x","items":[]}' -o /dev/null -w "%{http_code}\n"  # NO token → 401
 ```
 
-A per-verb capability deny (a token holding only `mcp:nav.resolve:call`) is exercised in
-`NavAdmin.gateway.test.tsx` via `signInWithCaps("user:ben", ws, [CAP.navResolve])`.
 **Access**: a `globex` token's `/navs` and `/nav/resolve` never surface `acme`'s nav — the
 default pointer and the pref are both workspace-keyed.
 
+### Read-only (viewer) — nav EDITING is capability-gated, resolving is not
+
+Editing the nav is **not** a member right. Authoring rides the admin-ish write caps —
+`mcp:nav.save:call` (create/update = `POST /navs`, and it *also* gates the workspace-default
+pointer `POST /nav/default` — see [`nav.rs`](../../../rust/role/gateway/src/routes/nav.rs)
+`set_default_nav`, "Gated `nav.save` (admin-ish)"), `mcp:nav.delete:call` (`DELETE /navs/{id}`),
+and `mcp:nav.share:call`. A **viewer** (read-only) holds only the reads — `mcp:nav.resolve:call`
+(member-level,
+the lens `NavRail` renders) and `nav.list`/`nav.get`. A viewer can **read** their menu but
+**cannot author, delete, share, or set the default**; the gateway returns **`403`** on each
+write. In the shell this is the same posture as the [dashboard viewer
+mode](../../public/frontend/dashboard.md#viewer-mode--editing-the-surface-is-admin-only-shipped-2026-07-04): the
+`NavAdmin` builder tab only renders for a token holding `nav.save` (`hasCap(caps, CAP.navSave)`
+→ otherwise "You need the nav authoring capability" placeholder), and the gateway re-checks
+regardless — the UI gate is convenience, the `403` is the wall.
+
+**Why you can't fully drive this on the live `make dev` node:** dev `/login` always mints the
+**full dev claim set** (every login on the dev node resolves to workspace-admin — there is no
+`caps` override on `/login`), so a live curl always carries `nav.save`. A genuine read-only
+token needs a **narrowed cap set**, which is minted by the test gateway's `/_seed/session`
+route (`test_gateway_seed.rs` → `signInWithCaps`), not the live node. So the read-only proof is
+a **gateway test**, and this runbook points at it rather than faking a narrow live token.
+
+The drivable read-only assertion — a viewer resolves but every write `403`s — lives in
+[`NavAdmin.gateway.test.tsx`](../../../ui/src/features/admin/nav/NavAdmin.gateway.test.tsx),
+which signs in a viewer with **only** the resolve cap:
+
+```ts
+// Ben logs in read-only — nav.resolve ONLY, NO nav.save/delete/share/default.
+await signInWithCaps("user:ben", ws, [CAP.navResolve]);
+const resolved = await resolveNav();            // ✓ 200 — the lens still renders his menu
+// and every authoring verb is refused server-side (the wall, not the UI):
+await expect(saveNav("x", "X", [])).rejects.toThrow();       // 403 — nav.save denied
+await expect(deleteNav("x")).rejects.toThrow();              // 403 — nav.delete denied
+await expect(setDefaultNav("x")).rejects.toThrow();          // 403 — needs nav.save (gates /nav/default)
+```
+
+The file already proves the **resolve half** (`signInWithCaps("user:ben", ws, [CAP.navResolve])`
+→ `resolve` returns the `workspace-default` menu, cap-stripped). Extend it with the three
+`rejects.toThrow()` write-deny lines above so the read-only posture is asserted in **both**
+directions — reads through, writes refused — mirroring the dashboard viewer-mode gateway test
+(VIEWER + VIEWER-DENY). That is the "nav is read-only / not editable" test.
+
+> If you must sanity-check on the live node without a narrow token, you can only prove the
+> **positive** side there: any dev token `GET /nav/resolve` returns a cap-stripped menu and
+> every page verb re-checks on click. The **negative** side (a viewer's `POST /navs` → `403`)
+> is the gateway test's job, because the live node can't mint the viewer token.
+
 ## Step 3–5. What you found / findings / done
 
-Green? Record the output in the session doc. A wrong result → file a
-`../../debugging/frontend/…` entry + regression test; not written up here.
+Green? Record the output in the session doc, **leave `e2e-nav` in place as the workspace
+default**, and hand the user the page: "open the app at http://127.0.0.1:8080 — the nav is
+set so you can confirm; I only removed the throwaway `tmp-nav`" (README "Leave it
+inspectable"). A wrong result → file a `../../debugging/frontend/…` entry + regression test;
+not written up here.
 
 Observed green run: [`../../sessions/testing/dashboard-chart-nav-system-session.md`](../../sessions/testing/dashboard-chart-nav-system-session.md).

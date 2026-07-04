@@ -15,7 +15,7 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: 'react-native/Libraries/Utilities/PolyfillFunctions', replacement: here('web/polyfills.web.ts') },
-      { find: 'react-native-keychain', replacement: here('web/keychain-module.web.ts') },
+      { find: 'expo-secure-store', replacement: here('web/keychain-module.web.ts') },
       { find: 'react-native-screens', replacement: here('web/screens-shim') },
       { find: 'react-native-safe-area-context', replacement: here('web/safe-area-shim') },
       { find: '@react-navigation/native-stack', replacement: here('web/nav-stack.web.ts') },

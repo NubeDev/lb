@@ -9,18 +9,23 @@
 //
 // One responsibility: the look catalog + its per-axis defaults.
 
-import type { Surface, Motion } from "./appearance-axes";
-import type { ThemeRadius } from "./theme-options";
+import type { Surface, Motion, GlassLevel } from "./appearance-axes";
+import type { ThemeMode, ThemeRadius } from "./theme-options";
 
 /** The axes a look can default. Every field optional — a look defines only what makes it that look;
- *  undefined axes fall through to the built-in default in the resolver. */
+ *  undefined axes fall through to the built-in default in the resolver. `mode` (light/dark) is part of a
+ *  look's identity — Professional is a *paper* look, retro/glass are dark-forward — so a look stamps it
+ *  on pick (`applyLook`); the member can still flip the mode toggle afterward. */
 export interface LookDefaults {
+  mode?: ThemeMode;
   preset?: string;
   fontSans?: string;
   fontMono?: string;
   radius?: ThemeRadius;
   surface?: Surface;
   motion?: Motion;
+  /** Glass intensity a look lands at (only read when its `surface` is `glass`). */
+  glass?: GlassLevel;
 }
 
 export interface LookPack {
@@ -38,39 +43,44 @@ export const THEME_LOOKS: readonly LookPack[] = [
     id: "default",
     label: "Operator Console",
     blurb: "The shipped amber console — dark-first, calm, sharp.",
-    defaults: { preset: "amber", fontSans: "system", fontMono: "system-mono", radius: "0.5rem", surface: "flat", motion: "subtle" },
+    defaults: { mode: "dark", preset: "amber", fontSans: "system", fontMono: "system-mono", radius: "0.5rem", surface: "flat", motion: "subtle" },
   },
   {
     id: "editor",
     label: "Code Editor",
-    blurb: "Mono-forward, dense, sharp corners, muted syntax-like palette.",
-    defaults: { preset: "slate", fontSans: "ibm-plex-sans", fontMono: "jetbrains-mono", radius: "0.3rem", surface: "flat", motion: "subtle" },
+    blurb: "Dark, dense, sharp-cornered — mono-forward with a muted syntax palette.",
+    // Editor is a code surface: near-black slate, sharp corners, IBM Plex Sans chrome + JetBrains Mono.
+    defaults: { mode: "dark", preset: "editor", fontSans: "ibm-plex-sans", fontMono: "jetbrains-mono", radius: "0.3rem", surface: "flat", motion: "subtle" },
   },
   {
     id: "professional",
     label: "Professional",
-    blurb: "Calm neutrals, generous whitespace, a subtle elevation and a serif voice.",
-    defaults: { preset: "slate", fontSans: "source-serif-4", fontMono: "ibm-plex-mono", radius: "0.5rem", surface: "elevated", motion: "subtle" },
+    blurb: "Light paper, a serif voice, generous space and real elevation.",
+    // A genuinely LIGHT look — paper background, serif headings, elevated cards. Mode is stamped light.
+    defaults: { mode: "light", preset: "slate", fontSans: "source-serif-4", fontMono: "ibm-plex-mono", radius: "0.5rem", surface: "elevated", motion: "subtle" },
   },
   {
     id: "retro",
     label: "Retro Terminal",
     blurb: "Phosphor green on near-black, square corners, JetBrains Mono.",
-    defaults: { preset: "retro", fontSans: "jetbrains-mono", fontMono: "jetbrains-mono", radius: "0rem", surface: "flat", motion: "subtle" },
+    defaults: { mode: "dark", preset: "retro", fontSans: "jetbrains-mono", fontMono: "jetbrains-mono", radius: "0rem", surface: "flat", motion: "subtle" },
     // Retro's identity IS its palette — pin the preset so it survives even an explicit member preset.
     pins: ["preset"],
   },
   {
     id: "modern",
     label: "Modern Dashboard",
-    blurb: "Airy, soft gradients, large radius, elevated cards.",
-    defaults: { preset: "ocean", fontSans: "geist", fontMono: "ibm-plex-mono", radius: "1rem", surface: "elevated", motion: "full" },
+    blurb: "Airy light dashboard — large radius, soft gradients, elevated cards.",
+    // Modern is an airy LIGHT dashboard: big radius, visible soft gradient, floating cards. Mode: light.
+    defaults: { mode: "light", preset: "ocean", fontSans: "geist", fontMono: "ibm-plex-mono", radius: "1rem", surface: "elevated", motion: "full" },
   },
   {
     id: "glass",
     label: "Liquid Glass",
     blurb: "Translucent panels, backdrop blur, layered elevation, gradient accents.",
-    defaults: { preset: "violet", fontSans: "inter", fontMono: "jetbrains-mono", radius: "0.75rem", surface: "glass", motion: "full" },
+    // Lands at `medium` glass — the balanced translucency that reads as the look's identity; a member
+    // can dial it to subtle/heavy via the glass-intensity control (only shown when the surface is glass).
+    defaults: { mode: "dark", preset: "violet", fontSans: "inter", fontMono: "jetbrains-mono", radius: "0.75rem", surface: "glass", motion: "full", glass: "medium" },
   },
 ] as const;
 

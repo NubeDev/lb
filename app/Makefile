@@ -1,6 +1,8 @@
 # lazybones app/ — developer tasks for the React Native shell + its browser preview.
 #
-# The app is bare React Native (RN 0.86 + Re.Pack, NOT Expo) with the shared @nube/app-sdk client.
+# The app is bare React Native (RN 0.86 + Re.Pack) with Expo's BARE modules adopted (SDK 57 —
+# expo-modules-core + expo-* like expo-secure-store; NOT the managed workflow — Re.Pack stays the one
+# bundler, never `expo start`/`expo prebuild`; see shell/README.md). Shared @nube/app-sdk client.
 # There are two ways to RUN it:
 #   web       the react-native-web PREVIEW — the SAME App.tsx + screens in a browser on this PC,
 #             no emulator (react-native-web via vite.config.web.mts). The fast UI-iteration loop.
@@ -14,6 +16,8 @@
 #   make dev       gateway + web preview together (Ctrl-C stops both)
 #   make kill      free the preview ports if a previous run was left running
 #   make test      the sdk's real-gateway suite (spawns its own node)
+#   make pods      (macOS) CocoaPods install — REQUIRED before `make ios` after a native/dep change
+#   make ios / android  real device builds (ios runs pods first)
 
 HERE     := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 REPO     := $(abspath $(HERE)..)
@@ -34,7 +38,22 @@ WEB_URL  := http://127.0.0.1:$(WEB_PORT)
 # The real gateway harness binary (same one app/sdk tests spawn). Built on demand by `gateway`.
 GW_BIN   := $(RUST)/target/debug/test_gateway
 
-.PHONY: setup gateway web dev android ios test typecheck kill
+# Android SDK location for the `android` target. The RN CLI shells out to `adb`/`emulator`, so they
+# must be on PATH — but a fresh machine often has the SDK installed (Android Studio's default
+# ~/Android/Sdk) without ever exporting ANDROID_HOME. Resolve it here so `make android` works without
+# the developer editing their shell profile. Honors an existing ANDROID_HOME/ANDROID_SDK_ROOT; else
+# falls back to the platform-default install dir. Override on the CLI: make android ANDROID_HOME=/path.
+ANDROID_HOME ?= $(or $(ANDROID_SDK_ROOT),$(HOME)/Android/Sdk)
+
+# On a PHYSICAL device `127.0.0.1` is the phone, not this PC, so the app can't reach a
+# gateway on the dev box by localhost. The RN CLI already `adb reverse`s Metro's 8081;
+# we additionally reverse the gateway port so the shell's default node URL
+# (http://127.0.0.1:$(ANDROID_NODE_PORT)) tunnels back to the gateway running here.
+# Override to match your node: make android ANDROID_NODE_PORT=8087.
+ANDROID_NODE_PORT ?= 8080
+ADB := $(ANDROID_HOME)/platform-tools/adb
+
+.PHONY: setup gateway web dev android ios pods test typecheck kill
 
 ## one-time: standalone installs (shell/ is deliberately OUTSIDE the pnpm workspace — see .npmrc).
 setup:
@@ -92,10 +111,34 @@ _dev:
 	  $(MAKE) -f $(HERE)Makefile web & \
 	  wait )
 
-## real device builds (need the native toolchain — see shell/README.md).
+## CocoaPods install (macOS only). REQUIRED after adopting/changing a native dep — the Expo bare
+## modules (expo-secure-store, …) autolink as pods through `use_expo_modules!` in ios/Podfile, so the
+## pod set must be regenerated before the next `make ios`. Runs through Bundler (the pinned Gemfile
+## CocoaPods) so the pod version matches. Skips cleanly on non-macOS (no ios/ pod project to install).
+pods:
+	@if [ "$$(uname)" != "Darwin" ]; then \
+		echo "make pods: iOS/CocoaPods is macOS-only — skipping (nothing to do on $$(uname))."; \
+	else \
+		cd $(SHELL_DIR) && bundle install && cd ios && bundle exec pod install; \
+	fi
+
+## real device builds (need the native toolchain — see shell/README.md). `ios` installs pods first so
+## the Expo bare modules are linked; `android` autolinks them through Gradle at build time (no extra step).
 android:
-	cd $(SHELL_DIR) && pnpm android
-ios:
+	@if [ ! -x "$(ANDROID_HOME)/platform-tools/adb" ]; then \
+		echo "make android: no adb at $(ANDROID_HOME)/platform-tools — set ANDROID_HOME to your SDK."; \
+		echo "  (install via Android Studio, or: make android ANDROID_HOME=/path/to/Android/Sdk)"; \
+		exit 1; \
+	fi
+	cd $(SHELL_DIR) && \
+		ANDROID_HOME="$(ANDROID_HOME)" \
+		PATH="$(ANDROID_HOME)/platform-tools:$(ANDROID_HOME)/emulator:$$PATH" \
+		pnpm android
+	@# Tunnel the gateway port back to this PC so the device's 127.0.0.1:<port> reaches it.
+	@$(ADB) reverse tcp:$(ANDROID_NODE_PORT) tcp:$(ANDROID_NODE_PORT) >/dev/null 2>&1 \
+		&& echo "adb reverse tcp:$(ANDROID_NODE_PORT) → gateway on this host" \
+		|| echo "note: 'adb reverse tcp:$(ANDROID_NODE_PORT)' failed (no device yet?) — rerun once the device is listed"
+ios: pods
 	cd $(SHELL_DIR) && pnpm ios
 
 ## the sdk's real-gateway test suite (spawns its own throwaway node; no `make gateway` needed).

@@ -44,7 +44,9 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
         workspace={ws}
       />
       <Tabs value={active} onValueChange={(v) => onTabChange(coerceSettingsTab(v))} className="min-h-0 flex-1">
-        <TabsList className="m-2 flex-wrap">
+        {/* The tab row sits in the SAME centered column as the tab content, sized to its pills — a
+            full-width boxed strip over a centered form read as two competing layouts. */}
+        <TabsList className="mx-auto mt-3 w-fit flex-wrap self-center">
           <TabsTrigger value="preferences" aria-label="Preferences">
             Preferences
           </TabsTrigger>

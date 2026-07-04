@@ -1,0 +1,16 @@
+# Build-script approvals (pnpm 11 blocks postinstall/build scripts by default): esbuild (Vite
+# web-preview bundler) and puppeteer (web-preview screenshotter) both need their installers to run.
+allowBuilds:
+  esbuild: true
+  puppeteer: true
+# app/shell installs STANDALONE (see .npmrc `ignore-workspace=true`), so it needs its OWN
+# pnpm-workspace.yaml rather than inheriting the repo root's. It is NOT a workspace-member list —
+# the shell has no members. Adding a `packages:` key here would fold the shell back into a workspace
+# and re-break the React 18/19 split the .npmrc protects.
+#
+# minimumReleaseAge: 0 disables pnpm 11's "package too fresh" supply-chain guard for THIS project.
+# The shell tracks the Expo SDK 57 / RN 0.86 line, which ships very recent releases; the default
+# guard otherwise stalls installs on brand-new expo-* versions for a few hours after publish. This
+# is a hand-owned app (not a published library) with deps pinned in the committed lockfile — the
+# guard buys nothing here. pnpm reads this setting from the workspace file (not .npmrc/package.json).
+minimumReleaseAge: 0

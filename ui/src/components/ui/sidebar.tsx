@@ -138,7 +138,7 @@ function Sidebar({
 
   if (collapsible === "none") {
     return (
-      <div className={cn("flex h-full w-[var(--sidebar-width)] flex-col bg-panel text-fg", className)} {...props}>
+      <div data-panel="" className={cn("flex h-full w-[var(--sidebar-width)] flex-col bg-panel-2 text-fg", className)} {...props}>
         {children}
       </div>
     );
@@ -150,7 +150,7 @@ function Sidebar({
         <SheetContent
           data-sidebar="sidebar"
           data-mobile="true"
-          className="w-[var(--sidebar-width)] bg-panel p-0 text-fg [&>button]:hidden"
+          className="w-[var(--sidebar-width)] bg-panel-2 p-0 text-fg [&>button]:hidden"
           style={{ "--sidebar-width": SIDEBAR_WIDTH_MOBILE } as React.CSSProperties}
           side={side}
         >
@@ -200,8 +200,12 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
+          data-panel=""
           className={cn(
-            "flex h-full w-full flex-col bg-panel text-fg",
+            // The nav rail is a RAISED surface — `bg-panel-2` (the widened raised-panel tone) sets it a
+            // step off the page `--bg`, and `data-panel` opts it into the surface treatment (elevated
+            // shadow / glass translucency) by cascade, so >2 tones read on the shell chrome.
+            "flex h-full w-full flex-col bg-panel-2 text-fg",
             floating && "rounded-lg border border-border shadow-sm",
           )}
         >
@@ -321,7 +325,7 @@ function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">)
     <div
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-muted transition-[margin,opacity] duration-200",
+        "flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-medium tracking-wide text-muted/80 transition-[margin,opacity] duration-200",
         state === "collapsed" && "-mt-8 opacity-0",
         className,
       )}
@@ -351,12 +355,14 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-muted outline-none ring-accent transition-[width,height,padding,color,background-color] hover:bg-bg hover:text-fg focus-visible:ring-2 active:bg-accent/10 active:text-fg disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-bg data-[active=true]:font-medium data-[active=true]:text-fg [&>span:last-child]:truncate [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
+  // Active-nav pill uses the PRIMARY accent tint — one signal color across the shell (the roster and
+  // chips already select with `accent`); a second hue on the rail read as a clashing theme, not a tone.
+  "peer/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm text-muted outline-none ring-accent transition-[width,height,padding,color,background-color] hover:bg-fg/[0.06] hover:text-fg focus-visible:ring-2 active:bg-accent/10 active:text-fg disabled:pointer-events-none disabled:opacity-50 data-[active=true]:bg-accent/10 data-[active=true]:font-medium data-[active=true]:text-accent [&>span:last-child]:truncate [&>svg]:h-4 [&>svg]:w-4 [&>svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "hover:bg-bg hover:text-fg",
-        outline: "bg-bg shadow-[0_0_0_1px_hsl(var(--border))] hover:bg-bg hover:text-fg",
+        default: "hover:bg-fg/[0.06] hover:text-fg",
+        outline: "bg-bg shadow-[0_0_0_1px_hsl(var(--border))] hover:bg-fg/[0.06] hover:text-fg",
       },
       size: {
         default: "h-8 text-sm",

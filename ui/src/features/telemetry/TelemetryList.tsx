@@ -55,11 +55,13 @@ export function TelemetryList({ rows, onPivotTrace }: Props) {
 }
 
 function LevelBadge({ level }: { level: string }) {
+  // Semantic status tones route through the widened theme tokens (destructive/warning), so telemetry
+  // states re-theme with the look instead of pinning fixed Tailwind palette colors.
   const tone =
     level === "error"
-      ? "bg-red-500/15 text-red-500"
+      ? "bg-destructive/15 text-destructive"
       : level === "warn"
-        ? "bg-amber-500/15 text-amber-500"
+        ? "bg-warning/15 text-warning"
         : "bg-muted text-muted-foreground";
   return (
     <Badge variant="outline" className={`w-12 shrink-0 justify-center ${tone}`}>
@@ -72,10 +74,10 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
   if (!outcome) return <span className="w-12 shrink-0" />;
   const tone =
     outcome === "deny"
-      ? "bg-red-500/15 text-red-500"
+      ? "bg-destructive/15 text-destructive"
       : outcome === "error"
-        ? "bg-amber-500/15 text-amber-500"
-        : "bg-emerald-500/15 text-emerald-500";
+        ? "bg-warning/15 text-warning"
+        : "bg-success/15 text-success";
   return (
     <Badge variant="outline" className={`w-14 shrink-0 justify-center ${tone}`}>
       {outcome}

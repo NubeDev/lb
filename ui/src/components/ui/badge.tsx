@@ -12,6 +12,11 @@ const badgeVariants = cva(
         secondary: "border-border bg-bg text-muted",
         outline: "border-border bg-bg text-muted",
         destructive: "border-destructive/25 bg-destructive/10 text-destructive",
+        // Semantic status tones (theme-appearance widened palette). `success`/`warning` are the
+        // fixed semantic hues; `accent2` is the secondary accent — all follow the theme by token.
+        success: "border-success/25 bg-success/10 text-success",
+        warning: "border-warning/30 bg-warning/10 text-warning",
+        accent2: "border-accent-2/25 bg-accent-2/10 text-accent-2",
       },
     },
     defaultVariants: {

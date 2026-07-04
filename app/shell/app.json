@@ -1,4 +1,10 @@
 {
   "name": "LazybonesShell",
-  "displayName": "LazybonesShell"
+  "displayName": "LazybonesShell",
+  "expo": {
+    "name": "LazybonesShell",
+    "slug": "LazybonesShell",
+    "ios": { "bundleIdentifier": "io.nube.lazybones" },
+    "android": { "package": "com.lazybonesshell" }
+  }
 }

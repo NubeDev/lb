@@ -20,12 +20,12 @@ const AMBER: { light: BasePalette; dark: BasePalette } = {
   light: {
     bg: "40 30% 96%", panel: "40 24% 92%", fg: "30 12% 14%", muted: "30 6% 44%",
     mutedForeground: "30 6% 44%", accent: "32 92% 34%", border: "40 12% 82%",
-    panel2: "40 26% 88%", overlay: "30 10% 20%", accent2: "178 60% 32%",
+    panel2: "40 26% 88%", overlay: "30 18% 8%", accent2: "178 60% 32%",
   },
   dark: {
-    bg: "24 8% 8%", panel: "24 7% 11%", fg: "36 16% 90%", muted: "30 5% 56%",
-    mutedForeground: "30 5% 56%", accent: "34 96% 58%", border: "24 6% 18%",
-    panel2: "24 7% 15%", overlay: "36 12% 82%", accent2: "176 62% 52%",
+    bg: "228 8% 6%", panel: "228 7% 9%", fg: "224 14% 93%", muted: "224 6% 64%",
+    mutedForeground: "224 6% 64%", accent: "34 96% 58%", border: "228 6% 20%",
+    panel2: "228 8% 13%", overlay: "228 24% 3%", accent2: "176 62% 52%",
   },
 };
 

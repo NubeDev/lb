@@ -1,7 +1,7 @@
 import { createContext } from "react";
 
 import type { ThemeLayout, ThemeMode, ThemePreference, ThemeRadius } from "./theme-options";
-import type { Motion, Surface } from "./appearance-axes";
+import type { GlassLevel, Motion, Surface } from "./appearance-axes";
 import type { CustomTheme } from "./theme-tokens";
 
 export interface ThemeContextValue {
@@ -20,6 +20,8 @@ export interface ThemeContextValue {
   setSurface: (surface: Surface | undefined) => void;
   /** Override the motion profile (undefined = inherit the look). */
   setMotion: (motion: Motion | undefined) => void;
+  /** Override the glass intensity (undefined = inherit the look; only bites under a glass surface). */
+  setGlass: (glass: GlassLevel | undefined) => void;
   /** Patch the sidebar layout (variant/collapsible/side). */
   setLayout: (patch: Partial<ThemeLayout>) => void;
   /** Apply a hand-tweaked/library custom theme (both modes) — clears `preset`/`imported` precedence. */

@@ -230,6 +230,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   through the dashboard's `WidgetView`/`views/*` renderers + host-mediated bridge, leashed to the viewer's
   grant. Generative UI (JSX `template`, future A2UI/JSON-render) is one more sandboxed `view`, not a base
   layer; forms/wizards are the palette arg-rail over a versioned `x-lb` widget enum.
+- `widgets/` — the **system-wide widget platform** umbrella (`widget-platform-scope.md`): a widget is one
+  `{view,source|data,options,action,tools}` envelope, one renderer (`WidgetView`) across dashboards,
+  channels, and the app. Maps the four widget sources (built-in views, **tool result-renders** — e.g. the
+  reminder widget, ext `[[widget]]` tiles, genui) and the slices that connect them: catalog + save-gate
+  (Slice A, `frontend/dashboard/widget-catalog-scope.md`), pin-a-tool-render-to-a-dashboard, result-render
+  coverage, channel→widget→dashboard authoring, and extension-capability introspection. The **channel is
+  the test-bench** for the whole system.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
   (`outbox-scope.md`, the S6 driver).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side

@@ -24,16 +24,21 @@ const LIGHT: RequiredPalette = {
 };
 
 describe("deriveTones", () => {
-  it("steps raised surfaces TOWARD the foreground per mode (lighter in dark, darker in light)", () => {
+  it("steps the raised panel TOWARD the foreground per mode (lighter in dark, darker in light)", () => {
     const dark = deriveTones(DARK);
     // dark: panel2 lighter than panel (11 -> 15)
     expect(parseTriplet(dark.panel2)!.l).toBeGreaterThan(parseTriplet(DARK.panel)!.l);
-    expect(parseTriplet(dark.overlay)!.l).toBeGreaterThan(parseTriplet(DARK.bg)!.l);
 
     const light = deriveTones(LIGHT);
     // light: panel2 darker than panel (92 -> 88)
     expect(parseTriplet(light.panel2)!.l).toBeLessThan(parseTriplet(LIGHT.panel)!.l);
-    expect(parseTriplet(light.overlay)!.l).toBeLessThan(parseTriplet(LIGHT.bg)!.l);
+  });
+
+  it("derives OVERLAY as a dark scrim in BOTH modes (a modal backdrop always darkens)", () => {
+    // Overlay is a scrim, not a raised tone: near-black regardless of mode, so a dialog/sheet backdrop
+    // darkens content behind it in light and dark alike.
+    expect(parseTriplet(deriveTones(DARK).overlay)!.l).toBeLessThanOrEqual(10);
+    expect(parseTriplet(deriveTones(LIGHT).overlay)!.l).toBeLessThanOrEqual(10);
   });
 
   it("rotates the secondary accent's hue off the accent", () => {

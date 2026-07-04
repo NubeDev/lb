@@ -5,7 +5,9 @@
 // "Add panel", no per-cell edit; it PLACES library panels and renders); create → place a library
 // panel → it renders + persists; seeded cells render with the full option surface; variables; rename;
 // delete; workspace isolation. Panel AUTHORING is covered by the Data Studio gateway tests.
-// (The per-verb capability deny + gate-3 membership deny are proven server-side in the Rust tests.)
+// Also (dashboard-viewer-mode scope): editing is ADMIN-only — a VIEWER (member, no admin cap) reads
+// the live grid but gets NO authoring surface, an ADMIN gets all of it, and a viewer's save/delete is
+// refused SERVER-side (the UI gate is defense-in-depth; the gateway is the wall).
 
 import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, within } from "@testing-library/react";
@@ -14,13 +16,14 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 
 import { DashboardView } from "./DashboardView";
-import { saveDashboard } from "@/lib/dashboard";
+import { saveDashboard, deleteDashboard, shareDashboard } from "@/lib/dashboard";
 import { savePanel } from "@/lib/panel";
 import { cellToSpec } from "@/lib/panel";
 import type { Cell } from "@/lib/dashboard";
-import { useRealGateway, signInReal, seedIotDemo } from "@/test/gateway-session";
+import { useRealGateway, signInReal, signInWithCaps, seedIotDemo } from "@/test/gateway-session";
 import { RoutingContextProvider } from "@/features/routing/RoutingContextProvider";
-import { getSession } from "@/lib/session";
+import { ThemeProvider } from "@/lib/theme";
+import { getSession, CAP } from "@/lib/session";
 import {
   defaultDashboardSearch,
   varsFromSearch,
@@ -38,31 +41,10 @@ beforeAll(() => useRealGateway());
 function renderDashboard(ws: string) {
   const s = getSession();
   return render(
-    <RoutingContextProvider
-      value={{
-        workspace: ws,
-        principal: s?.principal ?? "",
-        caps: s?.caps,
-        allowed: ["dashboards"],
-        extPages: [],
-        extPagesLoading: false,
-        onSignOut: () => {},
-        switchWorkspace: () => {},
-      }}
-    >
-      <DashboardView ws={ws} />
-    </RoutingContextProvider>,
-  );
-}
-
-/** A harness that holds the dashboard search in state (standing in for the router's navigate) so a test
- *  can assert the variable selection round-trips to the URL search. Exposes the live search via a ref. */
-function renderDashboardWithSearch(ws: string, searchRef: { current: DashboardSearch }) {
-  const s = getSession();
-  function Harness() {
-    const [search, setSearch] = useState<DashboardSearch>(searchRef.current);
-    searchRef.current = search;
-    return (
+    // Wrap in the REAL ThemeProvider (as the shell's App does) — the app chrome's motion primitives
+    // read theme via `useMotionPref`, so a bare render throws "useTheme must be used within
+    // ThemeProvider". Real provider, no fake theme layer (CLAUDE §9).
+    <ThemeProvider>
       <RoutingContextProvider
         value={{
           workspace: ws,
@@ -75,15 +57,43 @@ function renderDashboardWithSearch(ws: string, searchRef: { current: DashboardSe
           switchWorkspace: () => {},
         }}
       >
-        <DashboardView
-          ws={ws}
-          range={search}
-          onSearchChange={(next) => {
-            searchRef.current = next;
-            setSearch(next);
-          }}
-        />
+        <DashboardView ws={ws} />
       </RoutingContextProvider>
+    </ThemeProvider>,
+  );
+}
+
+/** A harness that holds the dashboard search in state (standing in for the router's navigate) so a test
+ *  can assert the variable selection round-trips to the URL search. Exposes the live search via a ref. */
+function renderDashboardWithSearch(ws: string, searchRef: { current: DashboardSearch }) {
+  const s = getSession();
+  function Harness() {
+    const [search, setSearch] = useState<DashboardSearch>(searchRef.current);
+    searchRef.current = search;
+    return (
+      <ThemeProvider>
+        <RoutingContextProvider
+          value={{
+            workspace: ws,
+            principal: s?.principal ?? "",
+            caps: s?.caps,
+            allowed: ["dashboards"],
+            extPages: [],
+            extPagesLoading: false,
+            onSignOut: () => {},
+            switchWorkspace: () => {},
+          }}
+        >
+          <DashboardView
+            ws={ws}
+            range={search}
+            onSearchChange={(next) => {
+              searchRef.current = next;
+              setSearch(next);
+            }}
+          />
+        </RoutingContextProvider>
+      </ThemeProvider>
     );
   }
   return render(<Harness />);
@@ -310,6 +320,94 @@ describe("DashboardView (real gateway)", () => {
 
     // Gone from the roster (real tombstone via `dashboard.delete`; `dashboard.list` no longer returns it).
     expect(await screen.findByText("No dashboards yet.")).toBeInTheDocument();
+  });
+
+  // ── viewer mode (dashboard-viewer-mode scope) ─────────────────────────────────────────────────
+  // Editing the dashboard surface is ADMIN-only. A viewer (a member WITHOUT any admin cap) reads the
+  // live grid but gets NO authoring surface. `canEdit` gates on `isAdmin(caps)`, NOT `dashboard.save`
+  // (which is member-level — every member holds it, so gating on it made everyone an editor).
+
+  // The member-level caps a viewer carries — the dashboard reads + save (save IS member-level, which is
+  // the whole point: gating on it made everyone an editor), the panel reads (ref-cell hydration), and
+  // the series reads (so the live widget renders real rows). NO admin cap → `isAdmin` false → no
+  // authoring surface. (`series.read`/`.latest` aren't in the `CAP` display map — raw strings here.)
+  const VIEWER_CAPS = [
+    CAP.dashboardList,
+    CAP.dashboardGet,
+    CAP.dashboardSave,
+    CAP.panelGet,
+    CAP.panelList,
+    "mcp:series.read:call",
+    "mcp:series.latest:call",
+    "mcp:series.find:call",
+  ];
+
+  it("VIEWER: a non-admin member gets NO authoring surface — no roster/create/drag/edit/delete/add", async () => {
+    const ws = nextWs();
+    // Admin (dev login) seeds a real dashboard with a rendered cell through the real write path.
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+    // Share it workspace-wide so any member (our viewer, a different principal) can READ it — the
+    // point is role (member vs admin), not ownership; gate 3 still governs which dashboards are visible.
+    await shareDashboard("ops", "workspace");
+
+    // Now become a VIEWER: a member with the dashboard caps but NO admin cap. `renderDashboard` reads
+    // this session's caps (the real source the shell gates on) — no mock. `series.*` reads ride the
+    // member set the seeded caps include so the widget renders real rows.
+    await signInWithCaps("user:ben", ws, VIEWER_CAPS);
+    const searchRef = { current: { ...defaultDashboardSearch(), d: "ops" } as DashboardSearch };
+    renderDashboardWithSearch(ws, searchRef);
+
+    // A viewer READS the dashboard — the seeded cell mounts (the dashboard loaded + rendered its grid).
+    // (Full series rendering is covered by the admin/render cases above; here the point is the cell is
+    // reachable read-only, then that the authoring chrome around it is gone.)
+    expect(await screen.findByLabelText("cell w1")).toBeInTheDocument();
+
+    // But every authoring affordance is GONE:
+    expect(screen.queryByLabelText("new dashboard title")).toBeNull(); // no create input
+    expect(screen.queryByLabelText("create dashboard")).toBeNull(); // no + button
+    expect(screen.queryByLabelText("dashboard rail")).toBeNull(); // no roster panel at all
+    expect(screen.queryByLabelText("move cell w1")).toBeNull(); // grid not draggable
+    expect(screen.queryByLabelText("remove cell w1")).toBeNull(); // no per-cell delete
+    expect(screen.queryByLabelText("add library panel")).toBeNull(); // no add-panel
+    expect(screen.queryByLabelText("delete dashboard")).toBeNull(); // no delete-dashboard
+    expect(screen.queryByLabelText("edit variables")).toBeNull(); // no variable editor
+  });
+
+  it("ADMIN: a workspace admin gets the full authoring surface — roster/create/drag/edit/delete/add", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws); // dev login == workspace admin (isAdmin true)
+    await seedIotDemo();
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
+    await screen.findByLabelText("cell w1");
+
+    // Every authoring affordance is PRESENT (the mirror of the viewer case):
+    expect(screen.getByLabelText("new dashboard title")).toBeInTheDocument(); // create input
+    expect(screen.getByLabelText("create dashboard")).toBeInTheDocument(); // + button
+    expect(screen.getByLabelText("dashboard rail")).toBeInTheDocument(); // roster panel
+    expect(await screen.findByLabelText("move cell w1")).toBeInTheDocument(); // draggable
+    expect(screen.getByLabelText("remove cell w1")).toBeInTheDocument(); // per-cell delete
+    expect(screen.getByLabelText("add library panel")).toBeInTheDocument(); // add-panel
+    expect(screen.getByLabelText("delete dashboard")).toBeInTheDocument(); // delete-dashboard
+    expect(screen.getByLabelText("edit variables")).toBeInTheDocument(); // variable editor
+  });
+
+  it("VIEWER DENY (server-side, mandatory): a viewer without admin still can't save/delete — but the wall is the SERVER", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+
+    // The UI gate is defense-in-depth; the REAL wall is server-side. Prove it directly: a token that
+    // lacks `dashboard.save`/`.delete` is refused by the gateway regardless of any UI. (dev-login holds
+    // save, so this uses a DELIBERATELY narrowed cap set — the reads only — to prove the server deny.)
+    await signInWithCaps("user:ben", ws, [CAP.dashboardList, CAP.dashboardGet]);
+    await expect(saveDashboard("ops", "Hijacked", [builtSeriesCell("w1")])).rejects.toThrow();
+    await expect(deleteDashboard("ops")).rejects.toThrow();
   });
 
   it("is workspace isolated — a fresh workspace shows no dashboards", async () => {

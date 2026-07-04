@@ -4,10 +4,13 @@
 // `WidgetView` over the host-mediated bridge — the generalization the widget-builder scope freezes.
 // The seam: a v2 marker (`v:2`, a `view`, or a `source`) routes to `WidgetView`; else the v1 path.
 
+import { EyeOff, PuzzleIcon } from "lucide-react";
+
 import { ChartWidget } from "./widgets/ChartWidget";
 import { StatWidget } from "./widgets/StatWidget";
 import { GaugeWidget } from "./widgets/GaugeWidget";
 import { WidgetView } from "./views/WidgetView";
+import { WidgetPlaceholder } from "./WidgetPlaceholder";
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
@@ -38,14 +41,12 @@ export function WidgetHost({
   // crash (library-panels scope, "Dangling refs").
   if (cell.panelMissing) {
     return (
-      <div
-        className="flex h-full flex-col items-center justify-center gap-1 text-center text-xs text-muted"
-        role="status"
-        data-testid="panel-missing"
-      >
-        <span className="font-medium">Panel not accessible</span>
-        <span className="opacity-70">This library panel was removed or isn’t shared with you.</span>
-      </div>
+      <WidgetPlaceholder
+        icon={EyeOff}
+        title="Panel not accessible"
+        detail="This library panel was removed or isn’t shared with you."
+        testId="panel-missing"
+      />
     );
   }
   if (isV2(cell)) {
@@ -70,9 +71,12 @@ export function WidgetHost({
       // Phase 2 (federated widgets) renders `ext:<id>` here through the bridge; Phase 1 shows an
       // honest "not available" placeholder rather than a blank cell.
       return (
-        <div className="flex h-full items-center justify-center text-xs text-muted" role="status">
-          unsupported widget: {cell.widget_type}
-        </div>
+        <WidgetPlaceholder
+          icon={PuzzleIcon}
+          tone="warn"
+          title="Unsupported widget"
+          detail={cell.widget_type ? `“${cell.widget_type}” isn’t available in this build.` : undefined}
+        />
       );
   }
 }

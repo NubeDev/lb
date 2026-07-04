@@ -7,6 +7,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { Reveal } from "@/lib/motion";
 
 interface TabsCtx {
   value: string;
@@ -46,7 +47,7 @@ function TabsList({ className, ...props }: React.ComponentProps<"div">) {
       role="tablist"
       data-slot="tabs-list"
       className={cn(
-        "flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card/40 p-1",
+        "flex flex-wrap items-center gap-1 rounded-lg border border-border bg-panel-2/70 p-1",
         className,
       )}
       {...props}
@@ -87,7 +88,7 @@ interface TabsContentProps extends React.ComponentProps<"div"> {
   value: string;
 }
 
-function TabsContent({ value, className, ...props }: TabsContentProps) {
+function TabsContent({ value, className, children, ...props }: TabsContentProps) {
   const { value: active, baseId } = useTabsCtx("TabsContent");
   if (active !== value) return null;
   return (
@@ -99,7 +100,11 @@ function TabsContent({ value, className, ...props }: TabsContentProps) {
       className={cn("focus-visible:outline-none", className)}
       tabIndex={0}
       {...props}
-    />
+    >
+      {/* A tab swap re-mounts this panel (inactive → null), so a keyed Reveal gives the incoming panel a
+          fade+slide entrance — gated by the member's motion pref (off = static). Shell tab-transition. */}
+      <Reveal key={value}>{children}</Reveal>
+    </div>
   );
 }
 

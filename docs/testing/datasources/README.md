@@ -103,8 +103,9 @@ against the real node + real seeded DB.
 
 ### 3.1 CRUD — the datasource lifecycle round-trips
 On the live Datasources page (or by driving the real `datasource.*` verbs):
-- **add** a source (a real DSN to `127.0.0.1:5433`), see it **appear** in the list,
-  **remove** it, see it gone.
+- **add** a source (a real DSN to `127.0.0.1:5433`), see it **appear** in the list.
+- prove **remove** on a **throwaway** second source you add just for the check — then
+  **leave the working `timescale` source in place** so the user (and the chart) can use it.
 - **Redaction (design rule):** the DSN/password **never** shows in the list — only a
   secret ref. Confirm the raw password is nowhere in the UI/response.
 
@@ -157,8 +158,14 @@ find the root cause, add a **regression test** (a `cargo test -p lb-host …` or
 
 ## Step 5 — what to leave behind (definition of done)
 
-- Proof the DB was **seeded** (the `COUNT(*)` output) and the **green test output** in the
+- Proof the DB was **seeded** (the `COUNT(*)` output) and the **observed result** in the
   session doc.
 - The CRUD + permissions + access checks (mandatory) and the functional chart-renders-data
   check.
+- **Left inspectable so the user can confirm:** the DB still up + seeded, the `timescale`
+  datasource still registered, the node still running (`make dev`), and the chart still
+  bound to seeded data. Your **final response hands the user the exact page** — e.g. "open
+  **Datasources → timescale** and the **Energy** chart at http://127.0.0.1:8080; I left
+  them in place so you can check the chart shows the year of readings." Do **not** remove
+  the source or the chart (README "Leave it inspectable").
 - On any failure: a completed `debugging/datasources/…` entry + regression test, cross-linked.

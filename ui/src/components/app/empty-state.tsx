@@ -14,12 +14,14 @@ interface AppEmptyStateProps {
 export function AppEmptyState({ icon: Icon, title, description }: AppEmptyStateProps) {
   return (
     <div className="flex flex-1 items-center justify-center p-6">
-      <div className="flex max-w-sm flex-col items-center rounded-lg border border-dashed border-border bg-card/70 px-6 py-7 text-center shadow-sm shadow-black/5">
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md border border-border bg-bg text-accent">
-          <Icon size={20} />
+      {/* A bare centered stack — no card box. On a large empty canvas a boxed card reads as a widget
+          that failed to load; a quiet stack reads as an intentional resting state (Linear-style). */}
+      <div className="flex max-w-sm flex-col items-center text-center">
+        <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-fg/[0.05] text-muted shadow-[inset_0_0_0_1px_hsl(var(--fg)/0.07)]">
+          <Icon size={18} strokeWidth={1.75} />
         </div>
         <p className="text-sm font-medium text-fg">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
+        <p className="mt-1.5 max-w-[36ch] text-xs leading-5 text-muted">{description}</p>
       </div>
     </div>
   );

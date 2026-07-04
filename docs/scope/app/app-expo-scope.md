@@ -1,6 +1,12 @@
 # App scope — adopt Expo modules without losing Module Federation
 
-Status: scope (the ask). Promotes to `public/app/` once shipped.
+Status: **building** — module system wired + proof-of-life (`expo-secure-store`) ported on
+Expo SDK 57 / RN 0.86; all runnable checks green (gateway suite 17/17, typecheck, web
+bundle). On-device build + native-module smoke + EAS remain deferred (no device toolchain
+in the build env). Log: [../../sessions/app/app-expo-session.md](../../sessions/app/app-expo-session.md).
+Promotes fully to `public/app/` once the device slice proves the binary.
+
+Open questions below are resolved inline where the session settled them.
 
 Bring the parts of Expo that are worth having — the prebuilt native module library
 (`expo-*`) and, optionally, Expo's cloud build/submit service (EAS Build) — into the
@@ -195,6 +201,17 @@ survives, plus one new native-module assertion.
 
 ## Open questions
 
+**Resolved by the build session** ([app-expo-session.md](../../sessions/app/app-expo-session.md)):
+- *Which Expo SDK pairs with RN 0.86.0?* → **SDK 57.** `expo@57`'s `bundledNativeModules.json`
+  pins `react-native@0.86.0` exactly (SDK 56 pins RN 0.85.3). Pinned `expo@~57.0.2`.
+- *Proof-of-life module?* → **`expo-secure-store`**, as recommended — it exercises the
+  token-storage invariant and replaced an existing dep rather than adding a throwaway.
+- *`install-expo-modules`?* → **not usable** for this pairing (its 0.16.0 release maps only
+  to SDK 56 / RN 0.85). The SDK-57 native wiring was hand-applied from `expo prebuild`'s
+  authoritative output (module-linking subset only; bundler left on Re.Pack).
+
+**Still open (device slice):**
+- **Keep or drop `react-native-keychain`** once `expo-secure-store` reaches parity?
 - **Proof-of-life module:** port the session-token store to `expo-secure-store`, or pick
   a zero-permission utility module (`expo-application`/`expo-constants`) as the smaller,
   lower-risk proof? Recommendation: `expo-secure-store`, because it exercises the one

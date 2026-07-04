@@ -282,6 +282,28 @@ needed series read grant sees a denied widget state rather than leaked or fake d
 Extension widget declarations add one more gate: the widget's declared `scope` is intersected with the
 admin-approved install grant, and bridge calls are host-checked again.
 
+### Viewer mode — editing the surface is admin-only (shipped 2026-07-04)
+
+The Dashboards surface has two postures, decided by the caller's **role**, not by `dashboard.save`:
+
+- **Admin** (a workspace-admin — `isAdmin(caps)` true) gets the full authoring surface: the left roster
+  (switcher + create/rename/delete), drag/resize layout, per-cell edit/delete, add-library-panel, the
+  variable editor, delete-dashboard.
+- **Viewer** (any member *without* an admin cap) reads the live grid but gets **no authoring surface**:
+  no roster at all (they land on their nav-selected / default dashboard via `?d=<id>`), no drag/resize,
+  no per-cell edit/delete, no add-panel, no delete/rename, no variable editor.
+
+`DashboardView` resolves **one** `canEdit = isAdmin(caps)` and threads it to `DashboardRoster` (rendered
+only when true) and `Grid.editable`. The earlier gate on `mcp:dashboard.save:call` was the bug it fixes:
+that verb is **member-level** (every member holds it), so it made everyone an editor. `isAdmin` keys off
+the workspace-admin role (`ADMIN_SECTION_CAPS`) — no new server cap was minted.
+
+This UI gate is **defense-in-depth**. The gateway still re-checks `dashboard.save`/`.delete` per verb: a
+viewer token narrowed below those caps is refused server-side regardless of the UI (proven by the
+`VIEWER DENY (server-side)` gateway test). Scope:
+[`../../scope/frontend/dashboard-viewer-mode-scope.md`](../../scope/frontend/dashboard-viewer-mode-scope.md);
+session: [`../../sessions/frontend/dashboard-viewer-mode-session.md`](../../sessions/frontend/dashboard-viewer-mode-session.md).
+
 ## The "Direct SurrealDB" source + the in-app editors (widget-builder follow-ups A/B/C)
 
 A SQL source and the authoring editors, additive over the v2 contract — a SQL source is just another

@@ -119,25 +119,37 @@ The Theme tab was widened past colors into the whole **look and feel** — the p
 still one opaque `ui_theme` blob (zero backend change; a v1 seven-token custom palette migrates by
 **deriving** the new tones, never a fail-closed drop).
 
-- **Look packs** (`lib/theme/theme-looks.data.ts`) — six one-click looks as DATA (Operator Console,
-  Code Editor, Professional, Retro Terminal, Modern Dashboard, Liquid Glass), each a bundle of per-axis
-  defaults. The resolver (`look-resolve.ts`) folds per-axis: **pinned look axis → explicit member
-  override → look default → built-in**. Picking a look resets the axes it defines (lands like its
-  thumbnail); only `retro` *pins* its preset (data `pins:["preset"]`, no code branch — rule 10).
+- **Look packs** (`lib/theme/theme-looks.data.ts`) — six one-click looks as DATA, each reading as
+  ITSELF: Operator Console (warm charcoal + amber, dark), Code Editor (cool slate-blue + cyan, dark,
+  sharp), Professional (**light** paper + serif + indigo, elevated), Retro Terminal (phosphor green on
+  near-black, mono, square), Modern Dashboard (**light** airy + large radius + cyan), Liquid Glass
+  (violet + translucent blur, dark). Each is a bundle of per-axis defaults INCLUDING **`mode`** — a look
+  stamps light/dark on pick, which is what makes Professional/Modern land as genuine *light* looks. The
+  resolver (`look-resolve.ts`) folds per-axis: **pinned look axis → explicit member override → look
+  default → built-in**. Picking a look resets the axes it defines (lands like its thumbnail); only
+  `retro` *pins* its preset (data `pins:["preset"]`, no code branch — rule 10).
 - **Fonts** — `--font-sans`/`--font-mono` tokens; a curated self-hosted list (Inter/Geist/IBM Plex
   Sans + Source Serif 4; JetBrains Mono/IBM Plex Mono). woff2 is **lazy-loaded on selection** via
   dynamic `import()` (`font-loader.ts`); the system stack is the zero-cost default and stays in the
   main bundle — a picked family is a separate chunk, never eager.
 - **Surfaces** — a `data-surface` attribute (flat/elevated/glass) + tokens (`--surface-alpha`/`--blur`/
-  `--shadow-1..3`/`--gradient-accent`) restyle every `[data-panel]` (card/sheet/dialog) by CASCADE. Glass
-  degrades **glass→elevated→flat** via `@supports (backdrop-filter …)` — a runtime capability degrade,
-  never an `if desktop` branch (WebKitGTK falls back to opaque elevated).
-- **Motion** — a `data-motion` attribute (off/subtle/full) fences CSS transitions; a `useMotionPref`
-  hook gates the springy `motion` (motion.dev) animations. `motion` is imported in EXACTLY ONE seam
-  (`lib/motion/motion.ts`) so the off switch is trustworthy. `prefers-reduced-motion` forces off unless
-  the member explicitly chose full.
-- **Wider tones** — `--panel-2`/`--overlay`/`--accent-2` (derivable from the base seven) + semantic
-  `--success`/`--warning` (fixed hues, like `--destructive`).
+  `--shadow-1..3`/`--gradient-accent`) restyle every `[data-panel]` (card/sheet/dialog, **the nav rail,
+  the shared `AppRail`, and dashboard grid cells**) by CASCADE. Glass degrades **glass→elevated→flat**
+  via `@supports (backdrop-filter …)` — a runtime capability degrade, never an `if desktop` branch. Glass
+  is an opt-in *look*, NOT the default: the default board is crisp/flat (the product register's
+  anti-references reject decorative glass).
+- **Motion** — a `data-motion` attribute (off/subtle/full) fences AND scales CSS transitions (e.g. the
+  nav-rail collapse: off 0s / subtle 120ms / full 320ms spring-ease); a `useMotionPref` hook gates the
+  springy `motion` (motion.dev) primitives — `Reveal` (page-body + settings-tab entrances), `Stagger`
+  (look-card grid), `Collapse` (Brand-colors accordion). `motion` is imported in EXACTLY ONE seam
+  (`lib/motion/motion.ts`) so the off switch is trustworthy; every primitive renders static when off.
+  `prefers-reduced-motion` forces off unless the member explicitly chose full.
+- **Wider tones, actually CONSUMED.** `--panel-2` (raised neutral layer — nav rail, page-header band,
+  tab bars, `AppRail`; on dark it's nudged *cooler* per the product register), `--overlay` (a real modal
+  scrim, dark in both modes), `--accent-2` (the active-nav pill + interaction accents), and semantic
+  `--success`/`--warning` (telemetry badges) — so the shell reads **>2 tones**, not a two-step surface.
+  The dark ramp is tuned for VISIBLE separation (bg 7% → panel 11% → panel-2 15% + a 22% hairline);
+  elevation reads via crisp borders + a 1px inset top-highlight (the Linear/Stripe trick), not shadows.
 - **The color picker** is a hand-authored in-DOM popover (H/S/L + hex, whole-row clickable) — no native
   `<input type="color">` (WebKitGTK ships none, so the old desktop click was a no-op).
 - **Radius** now derives the FULL `rounded` scale from `--radius` in `@theme` + a cascade-last
@@ -172,7 +184,10 @@ fold, **capability-deny** (member without `prefs.set`; non-admin without `prefs.
 **workspace-isolation** (ws-A theme never resolves in ws-B). Rust `cargo test -p lb-prefs`
 (`ui_theme_test`, `resolve_test`) proves the axis round-trip, whole-fold, and isolation on the real
 store. Verified with `pnpm test` (472), the gateway suite, `cargo test -p lb-prefs -p lb-host` (green),
-`cargo fmt`, `tsc`, and `eslint` (0 errors on new files).
+`cargo fmt`, `tsc`, and `eslint` (0 errors on new files). The theme-appearance widening added the look
+resolver, tone-derivation/migration, DOM-axis, motion-gate, `ctx.theme` v4 fan-out, and AA-per-look
+coverage — `pnpm test` now **532** green; the gateway theme suite **6/6** on a real node; `eslint` at the
+pre-existing 8-error baseline (none in touched files).
 
 ## Make collaboration real (shipped)
 

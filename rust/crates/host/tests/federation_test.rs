@@ -568,3 +568,74 @@ async fn series_count(node: &std::sync::Arc<Node>, p: &Principal, ws: &str, seri
         .expect("series.read");
     out["samples"].as_array().map(|a| a.len()).unwrap_or(0)
 }
+
+// ---------------------------------------------------------------------------------------------
+// Regression: a column-less aggregate (`count(*)`) over a datasource — datasources scope.
+// ---------------------------------------------------------------------------------------------
+
+/// `SELECT count(*) FROM t` (and `count(1)` / `sum(1)`) — an aggregate that references NO table
+/// column — currently fails through the Postgres `datafusion-table-providers` pushdown: the scan
+/// projects ZERO columns, which datafusion 53 rejects (`Internal error: Physical input schema should
+/// be the same … (physical) 1 vs (logical) 0`) and, past that, Arrow's `BatchCoalescer` rejects
+/// (`Batch has 0 columns but BatchCoalescer expects 1`). Retried, it crash-loops the sidecar until
+/// the supervisor restart budget is exhausted. A `count(<real column>)` (e.g. `count(value)`) is the
+/// working shape and the interim workaround. This is a common dashboard "total" tile, so it matters.
+///
+/// `#[ignore]` = a fails-until-fixed dead-drop (real-world testing session 2026-07-04). The fix is
+/// tracked in `docs/debugging/datasources/count-star-aggregate-schema-mismatch.md`; when it lands,
+/// drop the `#[ignore]` and this passes. Run explicitly with `--ignored`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "known bug: column-less aggregate (count(*)) fails through the postgres pushdown — see docs/debugging/datasources/count-star-aggregate-schema-mismatch.md"]
+async fn federation_count_star_columnless_aggregate() {
+    let Some(dir) = federation_dir() else {
+        eprintln!("SKIP: could not build federation --features postgres");
+        return;
+    };
+    let Some(pg) = Postgres::spawn() else {
+        eprintln!("SKIP: Docker/Postgres unavailable");
+        return;
+    };
+    let ws = "acme";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let admin = admin(ws);
+    install_federation(&node, &admin, ws, &dir, &pg.endpoint()).await;
+    call(
+        &node,
+        &admin,
+        ws,
+        "datasource.add",
+        json!({"name":"pg","kind":"postgres","endpoint":pg.endpoint(),"dsn":pg.dsn(),"ts":1}),
+    )
+    .await
+    .expect("datasource.add");
+
+    // The working shape (`count(<column>)`) — the interim workaround — MUST already return 5.
+    let ok = call(
+        &node,
+        &admin,
+        ws,
+        "federation.query",
+        json!({"source":"pg","sql":"SELECT count(seq) AS n FROM readings","ts":2}),
+    )
+    .await
+    .expect("count(<column>) is the working shape");
+    assert_eq!(ok["rows"][0][0].as_i64(), Some(5), "count(seq): {ok}");
+
+    // The bug: bare `count(*)` — no column referenced — must ALSO return 5, not an internal error.
+    let star = call(
+        &node,
+        &admin,
+        ws,
+        "federation.query",
+        json!({"source":"pg","sql":"SELECT count(*) AS n FROM readings","ts":3}),
+    )
+    .await
+    .expect("count(*) must not raise an internal schema/coalescer error");
+    assert_eq!(
+        star["rows"][0][0].as_i64(),
+        Some(5),
+        "count(*) returns the five seeded rows: {star}"
+    );
+
+    drop(pg);
+}

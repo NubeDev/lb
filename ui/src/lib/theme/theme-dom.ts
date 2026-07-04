@@ -57,6 +57,8 @@ export function applyThemePreference(doc: Document, pref: ThemePreference) {
   // Surface + motion attributes — CSS + lib/motion read these. Motion honors prefers-reduced-motion.
   root.dataset.surface = appearance.surface;
   root.dataset.motion = resolveMotion(appearance.motion, doc);
+  // Glass intensity — CSS reads `data-glass` to scale the glass tokens (only bites under data-surface=glass).
+  root.dataset.glass = appearance.glass;
 
   // One emitter, one fan-out: notify the single ext-host subscriber so it resolves the new tokens and
   // fans them to mounted extensions (rule 10 — no extension is named). DOM consumers re-theme by cascade.

@@ -1,9 +1,11 @@
 # App — the React Native mobile app (shipped truth)
 
 Shipped so far: the **shell slice** (session:
-[app-shell-session.md](../../sessions/app/app-shell-session.md)). The extension mount
-(`app-extensions`) and the full sdk extraction (`app-sdk`) are still scope — see
-`docs/scope/app/README.md`.
+[app-shell-session.md](../../sessions/app/app-shell-session.md)) and **Expo bare-modules
+adoption** (SDK 57; `expo-secure-store` as the device token store — session:
+[app-expo-session.md](../../sessions/app/app-expo-session.md); on-device build still
+deferred to a device slice). The extension mount (`app-extensions`) and the full sdk
+extraction (`app-sdk`) are still scope — see `docs/scope/app/README.md`.
 
 ## What exists
 
@@ -27,7 +29,7 @@ app extensions and the shell use (a pnpm-workspace member; the shell links it vi
 - **Typed errors:** `InvokeError.isDenied` (403 cap deny → render "not permitted") vs
   `.isUnauthenticated` (401 → that workspace's session drops, back to login).
 - **Session = token per workspace** (`SessionStore`), persisted through the
-  `SessionStorage` seam — platform keychain on device
+  `SessionStorage` seam — the OS secure store on device via **`expo-secure-store`**
   (`app/shell/src/features/session/keychain.storage.ts`), `memorySessionStorage()` in
   tests. The active workspace is always the signed token's; switch re-activates a stored
   token or re-mints by re-login (no server re-mint route yet).
@@ -44,6 +46,23 @@ app extensions and the shell use (a pnpm-workspace member; the shell links it vi
   `src/polyfills.ts` (streaming fetch) loaded first.
 - `extNavEntries(rows, caps)` — the cap-gated nav derivation over `ext.list` (a
   convenience gate; the host re-checks every call).
+
+## Expo bare modules (SDK 57 — module system in, managed workflow out)
+
+The shell adopts Expo's **bare** native-module system so it can use `expo-*` modules,
+**without** giving up Re.Pack + Module Federation (the managed workflow requires Metro and
+is rejected). Pinned to **Expo SDK 57**, the SDK that pairs with RN 0.86
+(`expo@57`'s `bundledNativeModules.json` pins `react-native@0.86.0`). Wired the bare way:
+`expo-modules-core` autolinks into the hand-owned `android/`+`ios/` projects
+(`settings.gradle` + `MainApplication.kt`; `Podfile` + `AppDelegate.swift`), and every
+JS-bundling touchpoint stays on Re.Pack (moduleName `LazybonesShell`, debug bundle root
+`index`). First module adopted: **`expo-secure-store`**, now the device backend for the
+session-token store (replacing `react-native-keychain` behind the unchanged `SessionStorage`
+seam). Never run `expo prebuild`/`expo start` against this tree — see the "bare posture"
+note at the top of `app/shell/README.md`. Scope:
+[app-expo-scope.md](../../scope/app/app-expo-scope.md); log:
+[app-expo-session.md](../../sessions/app/app-expo-session.md). On-device build + native
+smoke + EAS are the next (device) slice.
 
 ## Transport (decided, shipped)
 

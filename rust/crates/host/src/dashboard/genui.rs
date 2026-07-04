@@ -59,6 +59,15 @@ fn catalog() -> &'static Catalog {
     })
 }
 
+/// The genui component names this node can render — the same embedded-catalog set `check_genui_cell`
+/// validates against, exposed so `dashboard.catalog` can tell an AI author which genui components exist
+/// (widget-catalog scope). Sorted for a stable catalog response.
+pub fn genui_component_names() -> Vec<String> {
+    let mut names: Vec<String> = catalog().names.iter().cloned().collect();
+    names.sort();
+    names
+}
+
 /// Validate every `view:"genui"` cell in a save. Non-genui cells are ignored. Returns the first
 /// failure loudly (the same `BadInput` shape `bounds.rs` uses → `ToolError::BadInput` over MCP/HTTP).
 pub fn check_genui_cells(cells: &[Cell]) -> Result<(), DashboardError> {

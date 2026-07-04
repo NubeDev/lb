@@ -153,9 +153,118 @@ Tests: theme-events (3), resolve-theme-tokens (2), ctx.theme forwarding (+1), li
 round-trip + workspace-default fold + capability deny (no `prefs.set`; non-admin `set_default`) +
 workspace isolation + reset — `theme-prefs.gateway.test.ts` 6/6.
 
+## Slice 7 — the VISIBLE payoff: consume the multi-tone (shipped, live-verified)
+
+The plumbing shipped in slices 1–6 defined `--panel-2`/`--overlay`/`--accent-2`/`--success`/`--warning`
+but **nothing consumed them** — the shell still rendered 2-tone. This slice sweeps the real consumers so
+the eye sees >2 tones:
+
+- **Raised surfaces → `--panel-2`.** The nav rail (`sidebar.tsx`, all three render paths), page-header
+  band (`.page-header` in `globals.css`), tab bars (`TabsList`), and the shared left column
+  (`components/app/rail.tsx` — used by the dashboard roster and every rail surface) now sit a step above
+  the page `--bg`. The rail + cards are also tagged `data-panel` so the look's Surface treatment
+  (elevated shadow / glass blur) applies to them by cascade.
+- **Overlays/scrims → `--overlay`.** `--overlay`'s derived semantic was retargeted to a real **scrim**
+  (near-black in BOTH modes — a modal backdrop must darken content regardless of mode). The dialog/sheet
+  backdrops (`bg-black/50` → `bg-overlay/60`) consume it. `deriveTones` + the static blocks + the
+  contrast fixtures updated in lockstep; `derive-tones.test.ts` gained a scrim assertion.
+- **Secondary/ghost accents → `--accent-2`.** The active-nav pill (`sidebarMenuButtonVariants`) now reads
+  as its own tone (`bg-accent-2/15 text-accent-2`) instead of a third grey; dashboard-cell hover borders
+  use `accent-2`. New `Badge` variants `success`/`warning`/`accent2` give the semantic tokens real,
+  opt-in consumers.
+- **Semantic status → `--success`/`--warning`.** Telemetry level/outcome badges (`TelemetryList`) route
+  through `success`/`warning`/`destructive` tokens instead of hardcoded Tailwind palette colors, so they
+  re-theme with the look.
+
+**Live-verify:** every raised surface reads a step off the page bg; glass backdrop-filter now fires on
+the tagged surfaces (was reading `none` because the first `[data-panel]` probed wasn't in scope — the
+real cause was untagged surfaces, not a broken `@supports`).
+
+## Slice 8 — the looks read as THEMSELVES (shipped, live-verified)
+
+The looks were near-identical muddy charcoal. Re-authored the preset palettes (`theme-presets.data.ts`,
+in oklch for perceptual control) AND the look bundles so each look is distinct:
+
+- **`mode` is now a look axis.** A look stamps light/dark on pick (`LookDefaults.mode`, stamped in
+  `applyLook` like preset/radius; the member can still flip after). This is what makes **Professional**
+  genuinely *light paper* and **Modern** an *airy light dashboard* — previously they stayed dark because
+  mode was independent of the look. (Decision: add mode as a look axis — user-confirmed.)
+- **Distinct palettes:** default = warm charcoal + amber (dark); **editor** = new cool slate-blue
+  near-black + cyan syntax accent (dark, sharp); **professional** = white paper + indigo + serif (light,
+  elevated); **retro** = phosphor green on near-black + mono (dark, square); **modern** = airy
+  cyan-tinted white + large radius (light, elevated); **glass** = violet-plum + translucent blur (dark).
+  Added a new `editor` preset (its own cool-slate identity, distinct from `slate`).
+- **AA re-vetted:** `contrast.test.ts` iterates every look's preset × both modes — green (fg/bg 10–16,
+  accent/bg ≥4.3).
+
+## Slice 9 — motion actually animates (shipped, live-verified)
+
+`lib/motion` (the motion.dev seam) + `useMotionPref` + `data-motion` were wired but **nothing animated**,
+so Off/Subtle/Full were inert. Built the seam's primitives (motion.dev imported ONLY in `motion.ts` —
+guard test still green) and wired the real surfaces the scope named:
+
+- **`Reveal`** (fade+slide, gated) → page-body mounts (`components/app/page.tsx`, keyed on surface) and
+  settings **tab transitions** (`TabsContent`, keyed on value).
+- **`Stagger`/`StaggerItem`** → the **look-card grid** (staggered mount).
+- **`Collapse`** (height animation) → the **Brand-colors accordion** (`accordion.tsx`).
+- **CSS `data-motion` tuning** → the **nav-rail collapse** (subtle 120ms / full 320ms spring-ease / off
+  0s) — the same fence that zeroes transitions when off now *scales* subtle-vs-full.
+- Every primitive renders **statically when off** (or under `prefers-reduced-motion` — `resolveMotion`
+  folds subtle→off). `motion-gate.test.tsx` (4) proves the off switch.
+
+**Live-verify (real Chromium):** `data-motion` tracks the picker (off/subtle/full); the rail transition
+measured 0s / 0.12s / 0.32s+spring-ease respectively; the accordion Collapse and page/tab Reveals fire;
+no console errors.
+
+## Dashboard focus — multi-tone + glass on the board (shipped, live-verified)
+
+Follow-up after live review: the sweep landed clearly on the sidebar but the **dashboard** still read
+2-tone and **glass looked flat on the board**. Root cause: the dashboard panel cells (`Grid.tsx`) and the
+roster column weren't tagged `data-panel`, so the Surface treatment never reached them.
+
+- **Grid cells** (`Grid.tsx`): tagged `data-panel`, shadow bound to `var(--shadow-1/2)`, hover border
+  `accent-2` — so flat/elevated/glass now read on each widget panel.
+- **Roster/rail** (`components/app/rail.tsx`): `bg-panel` → `bg-panel-2` + `data-panel`, giving the board
+  a real **3-tone hierarchy** (recessed grid `--bg` → panel cells `--panel` → raised rail `--panel-2`).
+  Shared `AppRail` means every rail surface gains the third tone consistently.
+- **Dashboard toolbar** strip → `bg-panel-2/70`.
+
+**Live-verify (real board, Ops Overview):** cell computed style — glass = `rgba(...,0.72)` +
+`blur(14px)` + shadow; elevated = opaque + shadow ramp; flat = opaque, no shadow. The 3 tones are
+visible in the screenshot (rail/roster raised, grid recessed, cells floating).
+
+## Dashboard design polish — impeccable pass (shipped, live-verified)
+
+Live review flagged the dashboard as still flat/muddy despite the multi-tone tagging, and the glass look as
+fighting the product brief. Ran the **impeccable** skill (product register). Its `PRODUCT.md` anti-refs are
+explicit: *avoid fake glass panels, dashboard theatrics, terminal cosplay*; the fix is **crisp hierarchy +
+legible contrast**, not more effects.
+
+- **Dark ramp retuned for VISIBLE separation.** The 3–4% lightness steps were invisible. New dark ramp:
+  `--bg 7%` (true near-black) → `--panel 11%` (cells) → `--panel-2 15%` **nudged cooler** (hue 24→230, low
+  chroma) so the raised neutral layer reads as its own surface (product register: "a second neutral layer,
+  slightly cooler"). `--border` lifted 18%→22% so hairlines actually register on dark. AA re-vetted (the
+  amber fixture in `contrast.test.ts` updated in lockstep — green).
+- **Cells carry elevation by BORDER + inset highlight, not shadow.** `Grid.tsx` cells: `rounded-xl`, crisp
+  `border-border`, a 1px `inset 0 1px 0 hsl(--fg/0.04)` top-highlight (the Linear/Stripe "lifted" trick that
+  reads far better than a mushy drop-shadow on dark), hover brightens the border toward `accent-2`. Edit
+  handles (`move`/`remove`) now **reveal on hover/focus** (quiet resting state) instead of always-on clutter.
+- **Designed in-cell placeholder.** New `WidgetPlaceholder.tsx` replaces the bare "unsupported widget" /
+  "panel not accessible" muted-text lines with an honest state (icon tile + title + one-line detail; `warn`
+  tone for unsupported). Product register: "empty states that teach, not 'nothing here'".
+- **Empty state upgraded.** `AppEmptyState` dropped the dashed border for a solid bordered card with the same
+  inset-highlight elevation + an accent-tinted icon tile (used across Dashboards/Flows/etc).
+- **Rail is the raised neutral layer** (`components/app/rail.tsx`): `bg-panel-2` + `data-panel`, giving every
+  rail surface app-wide the third tone consistently.
+
+**Live-verify (real board, dark/flat default):** the unsupported-widget cell now reads as a designed panel;
+rail/roster/grid/cell form a legible depth hierarchy; the empty state reads premium. Screenshots in scratch.
+**Note on glass:** kept as an opt-in *look* (the scope requires it) but it is NOT the default — the default
+board is crisp/flat per the product anti-references.
+
 ## Green output
 
-- `pnpm test`: **527/527** unit (was 472 baseline + 55 new).
+- `pnpm test`: **532/532** unit (was 527; +4 `motion-gate`, +1 `derive-tones` split).
 - `pnpm test:gateway`: `theme-prefs.gateway.test.ts` **6/6** on a real spawned node. Pre-existing reds
   untouched and confirmed not ours: `sqlSource.gateway` (casing), `ProofPanel.gateway` (missing-WASM
   fixture), `SystemView.gateway` (concurrent CodeEditor edit), `InboxView.gateway` (duplicate
@@ -164,10 +273,17 @@ workspace isolation + reset — `theme-prefs.gateway.test.ts` 6/6.
   --noEmit` in the build script fails only on **3 pre-existing** gateway-test type errors
   (`FlowsCanvas.gateway.test.ts` ×2, `transformDebug.gateway.test.tsx` ×1) present on clean master —
   not this scope's, left untouched.
-- `pnpm lint`: **0 new errors** in any new file; the 8 raw-`<button>` errors are the pre-existing
-  baseline (identical count on clean master, all in unrelated features).
+- `pnpm lint`: **0 new errors** in any new/edited file; the 8 raw-`<button>` errors are the pre-existing
+  baseline (all in unrelated features; my Grid.tsx edit only touched existing raw-button *warnings*).
 
 ## Decisions recorded (scope open questions)
+
+- **`mode` is a look axis** (slice 8) — a look stamps light/dark on pick so Professional/Modern land as
+  *light* looks; member can flip after. Resolved in data (`LookDefaults.mode`), no branch. User-confirmed.
+- **`--overlay` is a scrim** (slice 7) — retargeted from a raised-bg tone to a near-black scrim in both
+  modes, so modal backdrops darken regardless of mode. Its only consumers are dialog/sheet backdrops.
+- **Multi-tone lands on shared primitives** (`sidebar`, `.page-header`, `TabsList`, `AppRail`, `Badge`,
+  dashboard `Grid`) so one edit re-tones many surfaces — not an app-wide per-file sweep.
 
 - **Font list:** Inter/Geist/IBM Plex Sans + Source Serif 4 (professional); JetBrains Mono/IBM Plex Mono;
   retro uses JetBrains Mono — no novelty/pixel face (retro is palette + shape). @fontsource OFL,

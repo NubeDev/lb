@@ -8,6 +8,7 @@ import * as React from "react";
 import { ChevronDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Collapse } from "@/lib/motion";
 
 interface AccordionContextValue {
   openValue: string | null;
@@ -82,11 +83,15 @@ function AccordionTrigger({ className, children, ...props }: React.ComponentProp
 function AccordionContent({ className, children, ...props }: React.ComponentProps<"div">) {
   const { openValue } = useAccordion();
   const value = React.useContext(ItemContext);
-  if (openValue !== value) return null;
+  const open = openValue === value;
+  // The disclosure eases its HEIGHT open/closed through the motion seam (off = instant show/hide). The
+  // region node stays for the a11y contract; `Collapse` owns presence + the height animation.
   return (
-    <div data-slot="accordion-content" role="region" className={className} {...props}>
-      {children}
-    </div>
+    <Collapse open={open}>
+      <div data-slot="accordion-content" role="region" className={className} {...props}>
+        {children}
+      </div>
+    </Collapse>
   );
 }
 

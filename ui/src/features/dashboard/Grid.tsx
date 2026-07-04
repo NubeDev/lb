@@ -84,7 +84,14 @@ export function Grid({
   };
 
   return (
-    <div ref={ref} className="h-full overflow-auto bg-bg p-2" aria-label="dashboard grid">
+    <div
+      ref={ref}
+      // A faint dot grid marks the canvas as a place things go (the standard authoring-surface
+      // affordance) and keeps a sparse board from reading as a dead void. Token-bound + very low
+      // alpha so it stays texture, not decoration.
+      className="h-full overflow-auto bg-bg bg-[radial-gradient(hsl(var(--fg)/0.055)_1px,transparent_1px)] [background-size:22px_22px] p-4"
+      aria-label="dashboard grid"
+    >
       <GridLayout
         className="layout"
         layout={layout}
@@ -101,30 +108,38 @@ export function Grid({
         {cells.map((c) => (
           <div
             key={c.i}
-            className="flex flex-col rounded-lg border border-border bg-panel p-2 shadow-sm shadow-black/5 transition-shadow hover:shadow-md hover:shadow-black/10"
+            data-panel=""
+            // A dashboard panel is a raised surface. `data-panel` opts it into the look's Surface
+            // treatment (elevated shadow / glass) by cascade. The default (flat) elevation is carried by
+            // a crisp border + a 1px inset top-highlight (the Linear/Stripe elevation trick — reads as
+            // "lifted" on dark far better than a mushy drop-shadow) rather than a heavy shadow. Hover
+            // brightens the border toward the secondary accent. (theme-appearance multi-tone + surfaces.)
+            className="surface-panel group/cell flex flex-col overflow-hidden rounded-lg border border-border bg-panel shadow-[inset_0_1px_0_hsl(var(--fg)/0.045),var(--shadow-1)] transition-[box-shadow,border-color] hover:border-fg/25 hover:shadow-[inset_0_1px_0_hsl(var(--fg)/0.06),var(--shadow-2)]"
             aria-label={`cell ${c.i}`}
           >
+            {/* Edit affordances reveal on hover/focus (cleaner default; the tell of a polished board is a
+                quiet resting state). Keyboard focus still surfaces them. */}
             {editable && (
               <button
                 type="button"
                 aria-label={`move cell ${c.i}`}
                 title="Move widget"
-                className="widget-drag-handle absolute left-1.5 top-1.5 z-10 inline-flex h-5 w-5 cursor-grab items-center justify-center rounded-md text-muted/70 transition-colors hover:bg-bg hover:text-fg active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
+                className="widget-drag-handle absolute left-2 top-2 z-10 inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing group-hover/cell:opacity-100"
               >
-                <GripHorizontal size={12} />
+                <GripHorizontal size={13} />
               </button>
             )}
             {editable && (
               <button
                 aria-label={`remove cell ${c.i}`}
                 title="Remove widget"
-                className="widget-no-drag absolute right-1.5 top-1.5 z-10 rounded-md p-1 text-muted transition-colors hover:bg-red-500/10 hover:text-red-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/25"
+                className="widget-no-drag absolute right-2 top-2 z-10 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-destructive/12 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30 group-hover/cell:opacity-100"
                 onClick={() => onRemove(c.i)}
               >
-                <X size={12} />
+                <X size={13} />
               </button>
             )}
-            <div className="min-h-0 flex-1">
+            <div className="min-h-0 flex-1 p-3">
               <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} scope={scope} refreshKey={refreshKey} />
             </div>
           </div>

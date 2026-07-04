@@ -1,8 +1,10 @@
 // The dashboard roster — the left list of dashboards the caller can reach + a create control
 // (dashboard scope). Selecting one loads it into the grid; creating one UPSERTs an empty dashboard.
-// Editors (`canEdit`, i.e. `mcp:dashboard.save:call`) also get per-item **rename** (inline title
-// edit → title-only `dashboard.save`) and **delete** (routed through the shared `ConfirmDestructive`
-// gate; the host re-checks owner + cap). The roster is exactly the set `dashboard.list` returns
+// The roster is an AUTHORING surface: it renders only for an ADMIN (`DashboardView` mounts it behind
+// `canEdit = isAdmin(caps)`, viewer-mode scope). `canEdit` also gates per-item **rename** (inline
+// title edit → title-only `dashboard.save`) and **delete** (routed through the shared
+// `ConfirmDestructive` gate; the host re-checks owner + cap). The roster is exactly the set
+// `dashboard.list` returns
 // (own + team-shared + workspace) — the gateway membership-filters it, so a non-member never sees a
 // dashboard's title here. On the shared `AppRail` chrome + shadcn primitives (ui-standards-scope).
 
@@ -25,7 +27,8 @@ interface Props {
   onRename?: (id: string, title: string) => void;
   /** Delete a dashboard (owner-only, host-checked). Only wired when the caller may edit. */
   onRemove?: (id: string) => void;
-  /** Whether to show the rename/delete controls (the session `dashboard.save` grant). */
+  /** Whether the caller may author (the workspace-admin role, `isAdmin`) — gates rename/delete. The
+   *  roster itself only mounts for an admin, so in practice this is always true when rendered. */
   canEdit?: boolean;
 }
 
@@ -152,15 +155,17 @@ export function DashboardRoster({
                 variant="ghost"
                 onClick={() => onSelect(d.id)}
                 className={cn(
-                  "h-auto min-w-0 flex-1 justify-start gap-2 border px-2.5 py-2 text-left text-sm font-normal",
+                  "h-auto min-w-0 flex-1 justify-start gap-2 px-2.5 py-1.5 text-left text-[13px] font-normal",
                   active
-                    ? "border-accent/25 bg-accent/15 text-accent shadow-sm shadow-black/5 hover:bg-accent/15"
-                    : "border-transparent text-fg hover:border-border hover:bg-bg",
+                    ? "bg-accent/10 text-accent hover:bg-accent/10"
+                    : "text-fg/90 hover:bg-fg/[0.06] hover:text-fg",
                 )}
               >
-                <LayoutDashboard size={14} className="shrink-0" />
+                <LayoutDashboard size={14} className={cn("shrink-0", active ? "" : "text-muted")} />
                 <span className="min-w-0 flex-1 truncate">{d.title}</span>
-                <span className="text-[10px] uppercase text-muted">{d.visibility}</span>
+                {d.visibility !== "workspace" && (
+                  <span className="shrink-0 text-[10px] font-medium text-muted/80">{d.visibility}</span>
+                )}
               </Button>
               {canEdit && (
                 <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">

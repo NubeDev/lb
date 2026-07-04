@@ -1,6 +1,30 @@
-pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
-plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+pluginManagement {
+  includeBuild("../node_modules/@react-native/gradle-plugin")
+
+  // Expo bare autolinking (SDK 57): pull the expo-gradle-plugin onto the settings classpath. Resolved
+  // through node so the standalone/hoisted node_modules layout (.npmrc `ignore-workspace=true`) is
+  // honored. This is the module-linking hook ONLY — it does NOT touch Re.Pack bundling below.
+  // See docs/scope/app/app-expo-scope.md.
+  def expoPluginsPath = new File(
+    providers.exec {
+      workingDir(rootDir)
+      commandLine("node", "--print", "require.resolve('expo-modules-autolinking/package.json', { paths: [require.resolve('expo/package.json')] })")
+    }.standardOutput.asText.get().trim(),
+    "../android/expo-gradle-plugin"
+  ).absolutePath
+  includeBuild(expoPluginsPath)
+}
+plugins {
+  id("com.facebook.react.settings")
+  id("expo-autolinking-settings")
+}
+// KEEP the React Native Community autolink command (Re.Pack-compatible) rather than Expo's
+// rnConfigCommand override — the shell bundles JS with Re.Pack, not Expo CLI. `useExpoModules()`
+// still links every expo-* native module into the build; only the RN-config source stays the RN one.
+extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
+  ex.autolinkLibrariesFromCommand()
+}
+expoAutolinking.useExpoModules()
 rootProject.name = 'LazybonesShell'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')

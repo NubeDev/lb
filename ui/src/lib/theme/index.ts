@@ -38,14 +38,19 @@ export { completeCustomTheme } from "./normalize-custom-theme";
 export {
   SURFACES,
   MOTIONS,
+  GLASS_LEVELS,
   SURFACE_OPTIONS,
   MOTION_OPTIONS,
+  GLASS_OPTIONS,
   DEFAULT_SURFACE,
   DEFAULT_MOTION,
+  DEFAULT_GLASS,
   isSurface,
   isMotion,
+  isGlass,
   type Surface,
   type Motion,
+  type GlassLevel,
 } from "./appearance-axes";
 export { THEME_LOOKS, DEFAULT_LOOK, lookById, type LookPack, type LookDefaults } from "./theme-looks.data";
 export {

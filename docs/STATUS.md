@@ -16,7 +16,25 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-04): Data Studio v3 — one stacked query/preview view (branch `master`).**
+**Just shipped (2026-07-04): Dashboards viewer mode — editing is admin-only (branch `master`).**
+The Dashboards surface (`ui/src/features/dashboard/`) now has two role-decided postures: an **admin**
+(workspace-admin, `isAdmin(caps)`) gets the full authoring surface (roster + create/rename/delete,
+drag/resize, per-cell edit/delete, add-panel, variable editor); a **viewer** (any member without an
+admin cap) reads the live grid with **no authoring surface at all** — the roster is gone, the grid is
+static, no edit/delete/add. **The fix:** `DashboardView` gated `canEdit` on `mcp:dashboard.save:call`,
+which is *member-level* (every member holds it → everyone was an editor); it now gates on `isAdmin`
+(the `ADMIN_SECTION_CAPS` workspace-admin signal) and threads that one boolean to `DashboardRoster`
+(rendered only when true) + `Grid.editable`. **No new server cap, no server change** — the gate is
+defense-in-depth; the gateway still re-checks `dashboard.save`/`.delete` per verb. **Tests (real
+gateway, rule 9):** `DashboardView.gateway.test.tsx` **11/11** — new VIEWER (no authoring surface),
+ADMIN (full surface), and the mandatory VIEWER-DENY (a viewer token rejected on save/delete
+server-side); `DashboardRoster.test.tsx` **5/5**. Scope
+`scope/frontend/dashboard-viewer-mode-scope.md`; session
+`sessions/frontend/dashboard-viewer-mode-session.md`; public `public/frontend/dashboard.md` (viewer-mode
+section). Pre-existing out-of-scope tsc reds untouched (accordion, flows, transformDebug — none in
+touched files).
+
+**Previously shipped (2026-07-04): Data Studio v3 — one stacked query/preview view (branch `master`).**
 v2's explore-tab + builder-tab split is collapsed into ONE **stacked builder tab**: picking a source (or
 opening a Library panel, or New panel) opens a single tab with the live **preview on top** and the
 **Query/option surface on the bottom** — the user sees the data and shapes the chart together; opening an
@@ -79,6 +97,23 @@ sessions `sessions/app/app-shell-session.md` + `sessions/app/app-preview-login-s
 `sessions/app/app-preview-stale-session-session.md`; public `public/app/app.md`. Remaining asks:
 `app-extensions-scope.md` (MF2 remotes, `[app]` manifest block, reference exts `proof-panel-app` +
 `channel-chat`), then `app-sdk-scope.md` (extract the full web verb map as the authored source).
+
+**App — Expo bare-modules adoption (2026-07-04): MODULE SYSTEM WIRED + proof-of-life ported; on-device
+build deferred.** Adopted Expo's **bare** native-module system (**SDK 57** — the SDK whose
+`bundledNativeModules.json` pins `react-native@0.86.0`, the shell's exact RN) **without** giving up
+Re.Pack + Module Federation (managed workflow / Metro rejected). `expo`+`expo-secure-store` installed
+standalone (repo React-18 workspace + lockfile untouched); native wiring in `android/settings.gradle`
++ `MainApplication.kt` and `ios/Podfile` + `AppDelegate.swift` links expo modules while every
+JS-bundling touchpoint stays on Re.Pack (moduleName `LazybonesShell`, bundle root `index`). Did **not**
+use `install-expo-modules` (its release maps only to SDK 56/RN 0.85); transcribed the module-linking
+subset from `expo prebuild`'s SDK-57 output run in an isolated scratch copy, never letting prebuild own
+the tree. Proof-of-life: the session-token store now uses **`expo-secure-store`** behind the unchanged
+`SessionStorage` seam (`react-native-keychain` kept dormant until device parity). Runnable checks green:
+`app/sdk$ pnpm test:gateway` **17/17** (incl. deny + ws-isolation — the gateway seam is undisturbed),
+shell `tsc` clean, web-preview `vite build` resolves the `expo-secure-store` alias. **Deferred (no
+device toolchain here):** native Gradle/Cocoapods build, on-device secure-store smoke, EAS Build — the
+device slice. Scope `app-expo-scope.md`; session `sessions/app/app-expo-session.md`; public
+`public/app/app.md` (Expo section).
 
 **Previously shipped (2026-07-04): Data Studio v2 — the multi-pane data workbench + the extracted headless
 `panel-kit` lib.** Data Studio (`/t/$ws/data-studio`) is rebuilt from v1's

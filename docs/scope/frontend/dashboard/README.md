@@ -113,6 +113,13 @@ because existing session docs point at them; new dashboard notes should live her
 - **Extension widgets bound to platform sources** — an `ext:` tile receiving resolved frames from
   cell `sources[]` (datasource / flow / series / SurrealDB) instead of only its own manifest tools —
   is **scoped, not built**: [`ext-widget-source-binding-scope.md`](ext-widget-source-binding-scope.md).
+- The **widget catalog for AI authors** — a `dashboard.catalog` MCP verb exposing the palette (built-in
+  views with a per-widget version + config schema, generically-folded ext tiles, genui components) **plus**
+  host-side save-validation that rejects a cell with an unknown `view` — so the AI stops "adding widgets
+  that don't exist" — is **scoped, not built**: [`widget-catalog-scope.md`](widget-catalog-scope.md). The
+  catalog is a **host-owned JSON data file** (`widget_catalog.json`, the `genui_catalog.json` pattern) —
+  backend-driven and client-agnostic (the web UI **and** the RN app render from it). Sibling of the
+  (shipped) human `widget-palette-scope.md`.
 - The **reusable source-picker package** (`@nube/source-picker`) — extract the shipped picker (db /
   datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
   **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard

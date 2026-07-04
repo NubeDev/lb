@@ -5,35 +5,39 @@
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { THEME_LOOKS, useTheme } from "@/lib/theme";
+import { Stagger, StaggerItem } from "@/lib/motion";
 
 export function LookPicker() {
   const { theme, setLook } = useTheme();
   return (
     <div className="space-y-2">
       <Label>Look</Label>
-      <div className="grid grid-cols-2 gap-2" role="group" aria-label="Look pack">
+      {/* The look cards mount in a staggered fade+rise — the scope's named staggered-list surface, gated
+          by the member's motion pref (off = all at once). */}
+      <Stagger className="grid grid-cols-2 gap-2" role="group" aria-label="Look pack">
         {THEME_LOOKS.map((look) => {
           const selected = theme.look === look.id;
           return (
-            <Button
-              key={look.id}
-              type="button"
-              variant={selected ? "default" : "outline"}
-              aria-pressed={selected}
-              aria-label={look.label}
-              onClick={() => setLook(look.id)}
-              className={`h-auto flex-col items-start whitespace-normal p-2.5 text-left ${
-                selected ? "" : "hover:bg-panel/50"
-              }`}
-            >
-              <span className="block text-xs font-medium">{look.label}</span>
-              <span className={`mt-0.5 block text-[11px] leading-tight ${selected ? "opacity-90" : "text-muted"}`}>
-                {look.blurb}
-              </span>
-            </Button>
+            <StaggerItem key={look.id}>
+              <Button
+                type="button"
+                variant={selected ? "default" : "outline"}
+                aria-pressed={selected}
+                aria-label={look.label}
+                onClick={() => setLook(look.id)}
+                className={`h-auto w-full flex-col items-start whitespace-normal p-2.5 text-left ${
+                  selected ? "" : "hover:bg-panel/50"
+                }`}
+              >
+                <span className="block text-xs font-medium">{look.label}</span>
+                <span className={`mt-0.5 block text-[11px] leading-tight ${selected ? "opacity-90" : "text-muted"}`}>
+                  {look.blurb}
+                </span>
+              </Button>
+            </StaggerItem>
           );
         })}
-      </div>
+      </Stagger>
       <p className="text-[11px] text-muted">Picking a look resets its colors, fonts, radius, surface, and motion.</p>
     </div>
   );

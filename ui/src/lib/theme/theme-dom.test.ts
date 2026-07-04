@@ -117,7 +117,19 @@ describe("theme DOM application", () => {
 
     const root = doc.documentElement;
     expect(root.dataset.surface).toBe("glass"); // the glass look's default surface
+    expect(root.dataset.glass).toBe("medium"); // the glass look lands at medium intensity
     expect(root.style.getPropertyValue("--font-sans")).toContain('"Inter"'); // glass defaults to inter
+  });
+
+  it("writes data-glass — a member override wins, else the built-in subtle default", () => {
+    const doc = document.implementation.createHTMLDocument("theme");
+    // A member override on a non-glass look still writes the attribute (CSS only reads it under glass).
+    applyThemePreference(doc, pref({ look: "default", glass: "heavy" }));
+    expect(doc.documentElement.dataset.glass).toBe("heavy");
+    // With no override and no look default, glass falls to the built-in `subtle`.
+    const doc2 = document.implementation.createHTMLDocument("theme");
+    applyThemePreference(doc2, pref({ look: "default" }));
+    expect(doc2.documentElement.dataset.glass).toBe("subtle");
   });
 
   it("radius follows the resolved appearance (a look's stamped radius)", () => {

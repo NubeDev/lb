@@ -20,6 +20,7 @@ import { MotionPicker } from "./MotionPicker";
 import { PresetPicker } from "./PresetPicker";
 import { RadiusPicker } from "./RadiusPicker";
 import { SurfacePicker } from "./SurfacePicker";
+import { GlassPicker } from "./GlassPicker";
 
 export function ThemeTab() {
   const { theme, reset } = useTheme();
@@ -47,6 +48,9 @@ export function ThemeTab() {
       <FontPicker />
       <Separator />
       <SurfacePicker />
+      {/* Only rendered when the resolved surface is glass — the control returns null otherwise, so the
+          Separator stays attached to Surface above with no empty gap on flat/elevated. */}
+      <GlassPicker />
       <Separator />
       <MotionPicker />
       <Separator />

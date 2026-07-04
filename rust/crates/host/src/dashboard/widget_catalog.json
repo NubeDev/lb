@@ -1,0 +1,237 @@
+{
+  "v": 1,
+  "views": [
+    {
+      "id": "timeseries",
+      "label": "Time series",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
+        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
+        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
+        { "id": "custom.lineWidth", "label": "Line width", "scope": "fieldConfig", "path": "custom.lineWidth", "control": "number" },
+        { "id": "custom.fillOpacity", "label": "Fill opacity", "scope": "fieldConfig", "path": "custom.fillOpacity", "control": "number" },
+        { "id": "custom.showPoints", "label": "Show points", "scope": "fieldConfig", "path": "custom.showPoints", "control": "select", "choices": ["auto", "never", "always"] },
+        { "id": "legend.showLegend", "label": "Legend", "scope": "options", "path": "legend.showLegend", "control": "toggle" }
+      ]
+    },
+    {
+      "id": "chart",
+      "label": "Chart (v2 alias of timeseries)",
+      "kind": "viz",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" }
+      ]
+    },
+    {
+      "id": "stat",
+      "label": "Stat",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
+        { "id": "colorMode", "label": "Color mode", "scope": "options", "path": "colorMode", "control": "select", "choices": ["value", "background", "none"] },
+        { "id": "graphMode", "label": "Graph mode", "scope": "options", "path": "graphMode", "control": "select", "choices": ["none", "area"] },
+        { "id": "textMode", "label": "Text mode", "scope": "options", "path": "textMode", "control": "select", "choices": ["auto", "value", "value_and_name", "name", "none"] },
+        { "id": "reduceOptions.calcs", "label": "Calculation", "scope": "options", "path": "reduceOptions.calcs", "control": "select", "choices": ["lastNotNull", "last", "mean", "min", "max", "sum", "count"] },
+        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] }
+      ]
+    },
+    {
+      "id": "gauge",
+      "label": "Gauge",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
+        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
+        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
+        { "id": "showThresholdLabels", "label": "Threshold labels", "scope": "options", "path": "showThresholdLabels", "control": "toggle" },
+        { "id": "showThresholdMarkers", "label": "Threshold markers", "scope": "options", "path": "showThresholdMarkers", "control": "toggle" },
+        { "id": "reduceOptions.calcs", "label": "Calculation", "scope": "options", "path": "reduceOptions.calcs", "control": "select", "choices": ["lastNotNull", "last", "mean", "min", "max"] }
+      ]
+    },
+    {
+      "id": "bargauge",
+      "label": "Bar gauge",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "min", "label": "Min", "scope": "fieldConfig", "path": "min", "control": "number" },
+        { "id": "max", "label": "Max", "scope": "fieldConfig", "path": "max", "control": "number" },
+        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
+        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] },
+        { "id": "displayMode", "label": "Display mode", "scope": "options", "path": "displayMode", "control": "select", "choices": ["gradient", "lcd", "basic"] }
+      ]
+    },
+    {
+      "id": "table",
+      "label": "Table",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "displayName", "label": "Display name", "scope": "fieldConfig", "path": "displayName", "control": "text" },
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "cellHeight", "label": "Cell height", "scope": "options", "path": "cellHeight", "control": "select", "choices": ["sm", "md", "lg"] },
+        { "id": "showHeader", "label": "Show header", "scope": "options", "path": "showHeader", "control": "toggle" }
+      ]
+    },
+    {
+      "id": "barchart",
+      "label": "Bar chart",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "thresholds", "label": "Thresholds", "scope": "fieldConfig", "path": "thresholds", "control": "thresholds" },
+        { "id": "orientation", "label": "Orientation", "scope": "options", "path": "orientation", "control": "select", "choices": ["auto", "horizontal", "vertical"] },
+        { "id": "stacking", "label": "Stacking", "scope": "options", "path": "stacking", "control": "select", "choices": ["none", "normal", "percent"] },
+        { "id": "showValue", "label": "Show value", "scope": "options", "path": "showValue", "control": "select", "choices": ["auto", "always", "never"] }
+      ]
+    },
+    {
+      "id": "piechart",
+      "label": "Pie chart",
+      "kind": "viz",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": [
+        { "id": "unit", "label": "Unit", "scope": "fieldConfig", "path": "unit", "control": "unit" },
+        { "id": "decimals", "label": "Decimals", "scope": "fieldConfig", "path": "decimals", "control": "number" },
+        { "id": "pieType", "label": "Pie type", "scope": "options", "path": "pieType", "control": "select", "choices": ["pie", "donut"] },
+        { "id": "legend.showLegend", "label": "Legend", "scope": "options", "path": "legend.showLegend", "control": "toggle" }
+      ]
+    },
+    {
+      "id": "plot",
+      "label": "Plot (scripted)",
+      "kind": "scripted",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "d3",
+      "label": "D3 (scripted)",
+      "kind": "scripted",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "template",
+      "label": "Template (scripted)",
+      "kind": "scripted",
+      "version": 1,
+      "buildable": false,
+      "data": true,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "switch",
+      "label": "Switch",
+      "kind": "control",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "slider",
+      "label": "Slider",
+      "kind": "control",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": true,
+      "options": [
+        { "id": "min", "label": "Min", "scope": "options", "path": "min", "control": "number" },
+        { "id": "max", "label": "Max", "scope": "options", "path": "max", "control": "number" },
+        { "id": "step", "label": "Step", "scope": "options", "path": "step", "control": "number" }
+      ]
+    },
+    {
+      "id": "button",
+      "label": "Button",
+      "kind": "control",
+      "version": 1,
+      "buildable": false,
+      "data": false,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "json",
+      "label": "JSON control",
+      "kind": "control",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": true,
+      "options": []
+    },
+    {
+      "id": "jsonview",
+      "label": "JSON view",
+      "kind": "read",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": []
+    },
+    {
+      "id": "genui",
+      "label": "AI widget",
+      "kind": "genui",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": true,
+      "options": []
+    }
+  ]
+}

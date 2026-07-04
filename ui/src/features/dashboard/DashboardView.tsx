@@ -29,7 +29,7 @@ import type { Cell, Variable, Visibility } from "@/lib/dashboard";
 import type { DashboardSearch } from "@/features/routing/search";
 import { varsFromSearch, withVar } from "@/features/routing/search";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
-import { CAP, hasCap } from "@/lib/session";
+import { isAdmin } from "@/lib/session";
 
 const VISIBILITIES: Visibility[] = ["private", "team", "workspace"];
 
@@ -76,10 +76,13 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
   };
   const [varEditorOpen, setVarEditorOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // The edit cap, sourced from the session grant the shell already holds (the same `caps` the nav gates
-  // editing surfaces on) — no new backend read. The host re-checks `dashboard.save` regardless.
+  // Editing the dashboard surface is ADMIN-only (viewer-mode scope). We gate on the workspace-admin
+  // role signal (`isAdmin`), NOT `dashboard.save` — that verb is member-level (dev-login/every member
+  // holds it, see admin-caps.ts + credentials.rs), so gating on it would make every member an editor.
+  // A viewer (any member without an admin cap) reads the live grid but gets NO authoring surface. This
+  // UI gate is defense-in-depth only: the host re-checks `dashboard.save`/`.delete` server-side (§5).
   const { caps } = useAppRoutingContext();
-  const canEdit = hasCap(caps, CAP.dashboardSave);
+  const canEdit = isAdmin(caps);
   // The current variable selection (from the URL) + a writer that updates one variable's URL param.
   const selectedVars = range ? varsFromSearch(range) : {};
   const setVar = (name: string, value: string | string[] | undefined) => {
@@ -112,7 +115,7 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
       actions={
         <>
           {current && (
-            <Badge variant="outline" className="rounded-full uppercase">
+            <Badge variant="outline" className="rounded-full">
               {current.visibility}
             </Badge>
           )}
@@ -185,28 +188,38 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
                   <VariableIcon size={13} />
                 </Button>
               )}
-              <Button
-                aria-label="delete dashboard"
-                variant="destructive"
-                size="sm"
-                onClick={() => setConfirmDelete(true)}
-              >
-                Delete
-              </Button>
+              {canEdit && (
+                // Quiet at rest — a solid red button in persistent chrome shouts on every visit; the
+                // destructive tone belongs to the confirm step (ConfirmDestructive), not the resting header.
+                <Button
+                  aria-label="delete dashboard"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Delete
+                </Button>
+              )}
             </>
           )}
         </>
       }
     >
-      <DashboardRoster
-        roster={dash.roster}
-        selectedId={current?.id ?? null}
-        onSelect={selectDashboard}
-        onCreate={dash.create}
-        onRename={(id, title) => void dash.rename(id, title)}
-        onRemove={removeDashboard}
-        canEdit={canEdit}
-      />
+      {/* The roster (left switcher + create/rename/delete controls) is an AUTHORING surface — hidden
+          entirely for a viewer (viewer-mode scope). A viewer lands directly on their nav-selected /
+          default dashboard (the `?d=` id) with no way to switch or create. */}
+      {canEdit && (
+        <DashboardRoster
+          roster={dash.roster}
+          selectedId={current?.id ?? null}
+          onSelect={selectDashboard}
+          onCreate={dash.create}
+          onRename={(id, title) => void dash.rename(id, title)}
+          onRemove={removeDashboard}
+          canEdit={canEdit}
+        />
+      )}
 
       {current && confirmDelete && (
         <ConfirmDestructive
@@ -247,7 +260,7 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
           {/* Panel AUTHORING lives in Data Studio now (data-studio scope v2) — the dashboard only
               PLACES library panels (ref cells) and renders. Build/edit panels at /t/$ws/data-studio. */}
           {canEdit && (
-            <div className="flex items-center gap-2 border-b border-border bg-panel px-3 py-2">
+            <div className="flex items-center gap-2 border-b border-border bg-panel-2/70 px-3 py-2">
               <AddLibraryPanel
                 existing={current.cells}
                 onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
@@ -262,7 +275,7 @@ function DashboardViewInner({ ws, range, onSearchChange }: Props) {
             ) : (
               <Grid
                 cells={current.cells}
-                editable
+                editable={canEdit}
                 range={range}
                 scope={scope}
                 refreshKey={refreshKey}
