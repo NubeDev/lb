@@ -46,6 +46,14 @@ pub async fn run_rule(
     if !body.params.is_null() {
         input["params"] = body.params;
     }
+    // Interactive runs carry no `ts`; the core derives its logical clock (`now`) from it and, when
+    // absent, collapses to 0 — which makes every messaging write (channel.post/inbox.record/
+    // outbox.enqueue) reuse the same deterministic id (upserting the same row) and stamp `ts: 0`.
+    // Fill the live wall-clock at the edge so each interactive run advances; a caller (scheduler,
+    // programmatic re-run) that supplies its own `ts` keeps its idempotent, deterministic write.
+    if input.get("ts").is_none() {
+        input["ts"] = json!(gw.now());
+    }
     call(&gw, &p, "rules.run", &input).await
 }
 

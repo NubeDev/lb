@@ -16,7 +16,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SettingsView } from "./SettingsView";
+import { SettingsHarness } from "./SettingsHarness";
 import { getAgentDef } from "@/lib/agent/agentDef.api";
 import { getAgentConfig } from "@/lib/agent/config.api";
 import { useRealGateway, signInWithCaps } from "@/test/gateway-session";
@@ -49,7 +49,7 @@ describe("Agent catalog — Test button + sealed model key over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // A built-in is runnable (runtime `default`) → it carries a Test button.
@@ -73,7 +73,7 @@ describe("Agent catalog — Test button + sealed model key over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // Create a custom definition WITH a sealed model key. The editor seals the value via `secret.set`
@@ -114,7 +114,7 @@ describe("Agent catalog — Test button + sealed model key over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // Pick a built-in as the active selection.
@@ -144,7 +144,7 @@ describe("Agent catalog — Test button + sealed model key over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // A built-in renders with NO edit affordance, so the editor (and its Model-key field) never opens.

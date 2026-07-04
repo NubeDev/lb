@@ -1,4 +1,4 @@
-// The light/dark mode toggle inside the Customizer (the compact quick-toggle stays in ThemeSwitcher).
+// The light/dark mode toggle inside the Theme tab (Settings → Theme).
 // On a custom/imported theme, flipping mode re-applies the correct light/dark variant automatically —
 // `theme-dom` reads the active mode's palette. One component per file (FILE-LAYOUT).
 

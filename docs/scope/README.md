@@ -91,6 +91,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   workspace's selected model from the agent-catalog `agent.config` pick. **Chaining rules into a DAG is now `flows/`** — the standalone
   `chains.*` surface is retired (`flows/chains-retirement-scope.md`); `rule-chains-scope.md` stays as
   lineage (the `rubix-cube` workflow-DAG port history), not a shipping surface.
+  `rules-messaging-scope.md` gives a rule body the explicit, caller-gated `inbox`/`outbox`/`channel` rhai
+  handles (raise/read/resolve/enqueue/post). `rules-approvals-scope.md` builds on it: a rule
+  `inbox.request_approval` raises a `needs:approval` item that stages a **held** outbox effect, and a
+  resolution reactor **releases the effect only on `Approved`** (discards on reject) — the "a rule
+  proposes, a human disposes" loop, reusing the coding-workflow's `Item`+`Resolution`+reactor mechanism.
 - `datasources/` — the native (Tier-2) **`federation` extension** (`datasources-scope.md`): embeds
   DataFusion + connectors to query external SQL sources (MySQL, PostgreSQL/TimescaleDB, …) under `net:*`
   + a mediated secret, surfaced as the read-first, workspace-pinned `federation.query` MCP verb (+

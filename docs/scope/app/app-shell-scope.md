@@ -163,16 +163,24 @@ Per `scope/testing/testing-scope.md` — real infra, rule 9, no fakes:
 
 ## Open questions
 
-- Node URL discovery UX: manual entry, QR from web shell, or both in v1? (Assume both;
-  QR is cheap.)
-- Does workspace switch re-login or re-mint from a hub session (depends on where
-  `global-identity-scope.md` lands first)? Build against re-mint; fall back to
-  re-login if global identity hasn't shipped.
-- Minimum RN / Re.Pack versions to pin (resolve at implementation start, record in the
-  session doc).
-- Navigation library: react-navigation (assumed — the ecosystem default) vs Expo
-  Router. Expo itself is **not** assumed (Re.Pack replaces Metro; verify compatibility
-  before adopting any Expo tooling).
+Resolved by the shell slice (`sessions/app/app-shell-session.md`, 2026-07-04):
+
+- ~~Version pins~~ → **RN 0.86.0, React 19.2.3, Re.Pack 5.2.5** (+ react-native-keychain,
+  react-navigation 7 — the assumed default held; Expo not adopted).
+- ~~Workspace switch: re-mint vs re-login~~ → **re-login IS the re-mint** (no server
+  re-mint route yet) with a stored-token fast path per workspace; only
+  `switchWorkspace` changes when a real re-mint route lands.
+- RN SSE client → **streaming fetch** (one sdk transport for tests + device via the
+  fetch-streams polyfill); resume = reconnect + `channel.history` catch-up (the gateway
+  emits no SSE ids).
+
+Still open:
+
+- Node URL discovery UX: manual entry shipped; add QR from the web shell (cheap).
+- `app/shell` sits OUTSIDE the pnpm workspace (root `@types/react@18` override vs RN's
+  React 19) — rejoin when the web shell moves to React 19.
+- RN component-test harness (jest + RN babel preset) — deferred to the app-extensions
+  slice; the client seam is covered by the 12 real-gateway tests meanwhile.
 
 ## Skill doc
 

@@ -127,6 +127,14 @@ const datasourceDetailRoute = createRoute({
   component: DatasourceDetailRoute,
 });
 
+// Settings tabs are deep-linkable: `/settings/<tab>` (preferences | agent | theme). The bare
+// `/settings` route redirects to the default tab, so an old link keeps working.
+const settingsTabRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/settings/$tab",
+  component: SettingsTabRoute,
+});
+
 const flowDetailRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/flows/$id",
@@ -222,6 +230,7 @@ const routeTree = rootRoute.addChildren([
     studioIndexRoute,
     extensionsRedirectRoute,
     coreRoute("/settings", "settings", () => <SettingsPage />),
+    settingsTabRoute,
     extRoute,
   ]),
 ]);
@@ -579,6 +588,27 @@ function StudioDefaultRedirect() {
 }
 
 function SettingsPage() {
+  // Bare `/settings` redirects to the default tab so every Settings surface has a canonical deep link.
   const ctx = useAppRoutingContext();
-  return <SettingsView ws={ctx.workspace} caps={ctx.caps} />;
+  return (
+    <Navigate to="/t/$ws/settings/$tab" params={{ ws: ctx.workspace, tab: "preferences" }} replace />
+  );
+}
+
+function SettingsTabRoute() {
+  const ctx = useAppRoutingContext();
+  const { tab } = settingsTabRoute.useParams();
+  const navigate = useNavigate();
+  return (
+    <CoreGate surface="settings">
+      <SettingsView
+        ws={ctx.workspace}
+        caps={ctx.caps}
+        tab={tab}
+        onTabChange={(next) =>
+          void navigate({ to: "/t/$ws/settings/$tab", params: { ws: ctx.workspace, tab: next }, replace: true })
+        }
+      />
+    </CoreGate>
+  );
 }

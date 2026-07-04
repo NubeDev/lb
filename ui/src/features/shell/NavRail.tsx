@@ -36,7 +36,6 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { Customizer, ThemeSwitcher } from "@/features/theme";
 import { useTheme } from "@/lib/theme";
 
 /** The fixed core surfaces the shell ships. */
@@ -349,8 +348,6 @@ export function NavRail({
       </SidebarContent>
 
       <SidebarFooter>
-        <ThemeSwitcher />
-        <Customizer />
         <SidebarMenu>
           {/* Settings sits in the footer, near Sign out, where users expect it — only when permitted
               and no server nav owns the rail (that nav places settings itself). */}

@@ -1,0 +1,53 @@
+// Login: node URL + user + workspace → `POST /login` (dev credential; a password/OIDC lands behind
+// the same seam later). Errors surface verbatim — an auth refusal renders as text, never a silent
+// empty state.
+
+import React, { useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { nodeUrl, setNodeUrl } from '../../lib/node-url.store';
+import { gatewayClient } from '../../lib/client';
+
+export function LoginScreen(): React.JSX.Element {
+  const [url, setUrl] = useState(nodeUrl() || 'http://192.168.1.10:8080');
+  const [user, setUser] = useState('');
+  const [workspace, setWorkspace] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(): Promise<void> {
+    setError('');
+    setBusy(true);
+    try {
+      setNodeUrl(url);
+      const client = gatewayClient();
+      if (!client) throw new Error('enter the node URL');
+      await client.login(user.trim(), workspace.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.screen}>
+      <Text style={styles.title}>Lazybones</Text>
+      <TextInput style={styles.input} value={url} onChangeText={setUrl} placeholder="Node URL" autoCapitalize="none" autoCorrect={false} />
+      <TextInput style={styles.input} value={user} onChangeText={setUser} placeholder="User" autoCapitalize="none" autoCorrect={false} />
+      <TextInput style={styles.input} value={workspace} onChangeText={setWorkspace} placeholder="Workspace" autoCapitalize="none" autoCorrect={false} />
+      {error !== '' && <Text style={styles.error}>{error}</Text>}
+      <TouchableOpacity style={styles.button} onPress={() => void submit()} disabled={busy}>
+        {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, justifyContent: 'center', padding: 24, gap: 12 },
+  title: { fontSize: 28, fontWeight: '700', textAlign: 'center', marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 12 },
+  error: { color: '#c00' },
+  button: { backgroundColor: '#111', borderRadius: 8, padding: 14, alignItems: 'center' },
+  buttonText: { color: '#fff', fontWeight: '600' },
+});

@@ -7,7 +7,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SettingsView } from "./SettingsView";
+import { SettingsHarness } from "./SettingsHarness";
 import { listAgentDefs } from "@/lib/agent/agentDef.api";
 import { useRealGateway, signInWithCaps } from "@/test/gateway-session";
 
@@ -50,7 +50,7 @@ describe("Agent catalog — seeded built-ins + custom CRUD over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:ada", ws, ADMIN_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // A built-in renders with NO edit/delete affordance (read-only tier).
@@ -100,7 +100,7 @@ describe("Agent catalog — seeded built-ins + custom CRUD over a real seeded ga
     const ws = nextWs();
     const session = await signInWithCaps("user:bob", ws, READ_CAPS);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Agent"));
 

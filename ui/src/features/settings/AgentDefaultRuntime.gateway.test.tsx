@@ -13,7 +13,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SettingsView } from "./SettingsView";
+import { SettingsHarness } from "./SettingsHarness";
 import { getAgentConfig } from "@/lib/agent/config.api";
 import { post, history } from "@/lib/channel/channel.api";
 import type { Item } from "@/lib/channel/channel.types";
@@ -52,7 +52,7 @@ describe("Agent default runtime — set in Settings, honored by an omitted-runti
     // 1) Set the workspace default via the real Settings → Agent UI: pick the seeded in-house
     //    built-in (runtime `default`) from the catalog. Picking writes a real `agent.config.set` with
     //    that definition's runtime + endpoint — the catalog is the library, `agent.config` the pick.
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
     // The seeded in-house built-in over `default` — filtered to node-runnable, so it lists here.
     const useBtn = await screen.findByLabelText("pick builtin.in-house-glm-4.6");

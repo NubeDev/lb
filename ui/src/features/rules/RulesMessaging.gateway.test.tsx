@@ -12,12 +12,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { runRule } from "@/lib/rules";
 import { history } from "@/lib/channel/channel.api";
 import { EXAMPLES } from "./examples/examples";
-import {
-  useRealGateway,
-  signInReal,
-  signInWithCaps,
-  seedIotDemo,
-} from "@/test/gateway-session";
+import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-session";
 
 let n = 0;
 const nextWs = () => `rules-msg-${n++}`;
@@ -80,24 +75,34 @@ describe("rules channel handle (real gateway)", () => {
   });
 
   // The examples catalog promises its bodies actually run (an example that lies is worse than none).
-  // Prove each messaging example runs green through the real `rules.run` — the same contract the
-  // Examples tab loads into the editor.
-  it("every messaging example in the catalog runs green", async () => {
+  // Prove EVERY messaging example runs green through the real `rules.run` — the same contract the
+  // Examples tab loads into the editor — on a FRESH workspace with NO seeding (they read/write only the
+  // inbox/outbox/channel planes, which resolve empty-but-valid on a brand-new workspace).
+  it("every messaging example in the catalog runs green with no seeding", async () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
-    await seedIotDemo(); // the escalate example reads cooler.temp
 
-    for (const id of ["channel-post", "channel-read", "escalate-and-notify"]) {
-      const ex = EXAMPLES.find((e) => e.id === id)!;
+    const MESSAGING_EXAMPLES = [
+      "inbox-record",
+      "inbox-list",
+      "inbox-record-then-list",
+      "inbox-resolve",
+      "outbox-enqueue",
+      "outbox-status",
+      "channel-post",
+      "channel-read",
+      "channel-list",
+      "escalate-and-notify",
+    ];
+    for (const id of MESSAGING_EXAMPLES) {
+      const ex = EXAMPLES.find((e) => e.id === id);
       expect(ex, `example ${id} exists`).toBeTruthy();
-      // Runs without throwing — a valid body against the real store/bus/caps path.
-      await runRule({ body: ex.body });
+      // Runs without throwing — a valid body against the real store/bus/caps path, zero seeding.
+      await runRule({ body: ex!.body });
     }
 
-    // The `channel-post` example always lands a message on `ops`; the escalate example only posts on a
-    // breach (data-dependent guard), so it may add zero. At least the unconditional post is present.
+    // The posting examples landed real messages on `ops` (channel-post + escalate).
     const items = await history(ws, "ops");
-    expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items.some((i) => i.body === "posted from a rule")).toBe(true);
   });
 });

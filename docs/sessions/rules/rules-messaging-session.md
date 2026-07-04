@@ -254,18 +254,34 @@ own clients against a real spawned node.
 
 ### UI examples (the Playground Examples tab)
 
-`ui/src/features/rules/examples/examples.ts` — three new ready-to-run examples in the existing catalog
-(auto-rendered by `ExampleList`, one click loads into the editor), teaching the messaging surface:
-- **Post to a channel** — `channel.post("ops", #{ body: … })` (needs `bus:chan/ops:Pub`).
-- **Read a channel's history** — `channel.history("ops", 5)` (a bounded, uncharged read).
-- **Escalate: inbox + outbox + channel** — the full surface in one rule (raise an attention item, stage a
-  must-deliver page, post to the live channel) behind a breach guard — mirrors the scope's Example flow.
+`ui/src/features/rules/examples/examples.ts` — a full set of ready-to-run messaging examples in the
+existing catalog (auto-rendered by `ExampleList`, one click loads into the editor). **All are zero-seed
+safe** — they read/write only the inbox/outbox/channel planes, which resolve empty-but-valid on a
+brand-new workspace (confirmed against the boot/create path: no data/series/channel is seeded on workspace
+creation; `source("series")`/`source("store")` always resolve but return empty, and the plane reads all
+return empty collections, never errors). Each simple example teaches ONE verb so a newcomer sees exactly
+what it does:
+- **Inbox** — `inbox-record` (raise), `inbox-list` (read), `inbox-record-then-list` (raise+read in one),
+  `inbox-resolve` (close with a verdict).
+- **Outbox** — `outbox-enqueue` (stage a must-deliver effect), `outbox-status` (read the queue).
+- **Channel** — `channel-post`, `channel-read` (history), `channel-list`.
+- **Escalate: inbox + outbox + channel** — the full surface in one rule (raise → stage a page → post),
+  now unconditional (dropped the `cooler.temp` breach guard that depended on seeded data and silently
+  posted nothing), so a first run shows real output.
+
+**Handle fix surfaced by the examples:** `inbox.resolve`'s `decision` is the `Decision` enum
+(`"approved"`/`"rejected"`/`"deferred"`), which deserializes from a **string** — but the rhai handle took
+a `Map` and JSON-encoded it, so the verb rejected it (`decision: invalid value: map, expected map with a
+single key`). Changed `crates/rules/src/verbs/inbox.rs` `resolve(item_id, decision: &str)` to take the
+verdict string directly and reject anything but the three valid verdicts with an author error. Crate test
+`inbox_resolve_takes_a_string_verdict` (15 in file now) covers both the valid dispatch and the reject.
 
 The catalog docstring promises its bodies actually run ("an example that lies is worse than none"), so
-`RulesMessaging.gateway.test.tsx` grew a 4th test — `every messaging example in the catalog runs green` —
-that runs each example body through the real `rules.run` and asserts the `channel-post` example lands a
-real message. `pnpm test:gateway RulesMessaging` → **4 passed**; the existing `AuthoringPanel` (7) example
-tests still green (the new rows render without wiring).
+`RulesMessaging.gateway.test.tsx`'s 4th test — `every messaging example in the catalog runs green with no
+seeding` — runs ALL ten messaging example bodies (inbox/outbox/channel + escalate) through the real
+`rules.run` on a fresh workspace with zero seeding and asserts the posting examples land real messages.
+`pnpm test:gateway RulesMessaging` → **4 passed**; the existing `AuthoringPanel` (7) example tests still
+green (the new rows render without wiring).
 
 ### Result JSON view — deep-parse + interactive tree
 

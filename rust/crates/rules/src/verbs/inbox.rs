@@ -51,9 +51,18 @@ impl InboxHandle {
     }
 
     /// inbox.resolve(item_id, decision) → () — close an item. Charged (a write). Idempotent on
-    /// `item_id` (re-resolving upserts, last decision wins).
-    pub fn resolve(&self, item_id: &str, decision: Map) -> Result<(), Box<EvalAltResult>> {
-        let decision = map_to_json(&decision);
+    /// `item_id` (re-resolving upserts, last decision wins). `decision` is one of `"approved"`,
+    /// `"rejected"`, `"deferred"` (the reviewer's verdict — the `inbox.resolve` verb's `Decision` enum);
+    /// anything else is rejected with an author error listing the valid verdicts.
+    pub fn resolve(&self, item_id: &str, decision: &str) -> Result<(), Box<EvalAltResult>> {
+        match decision {
+            "approved" | "rejected" | "deferred" => {}
+            other => {
+                return Err(rhai_err(format!(
+                    "inbox.resolve: decision must be \"approved\", \"rejected\", or \"deferred\" (got {other:?})"
+                )))
+            }
+        }
         let _seq = self.meter.charge().map_err(rhai_err)?;
         self.call(
             "inbox.resolve",
@@ -99,7 +108,7 @@ pub fn register(engine: &mut Engine) {
     engine.register_type_with_name::<InboxHandle>("Inbox");
     engine.register_fn("list", |h: &mut InboxHandle, channel: &str| h.list(channel));
     engine.register_fn("record", |h: &mut InboxHandle, item: Map| h.record(item));
-    engine.register_fn("resolve", |h: &mut InboxHandle, id: &str, d: Map| {
+    engine.register_fn("resolve", |h: &mut InboxHandle, id: &str, d: &str| {
         h.resolve(id, d)
     });
 }

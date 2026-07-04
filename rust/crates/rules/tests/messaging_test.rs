@@ -76,6 +76,25 @@ fn inbox_record_dispatches_the_verb_with_caller_json() {
 }
 
 #[test]
+fn inbox_resolve_takes_a_string_verdict() {
+    // The decision is a bare verdict string (the `Decision` enum) — a valid one dispatches with the
+    // verdict + item_id; an invalid one is rejected at the handle before any dispatch.
+    let m = Arc::new(RecordingMessaging::new());
+    let eng = engine(m.clone(), 32);
+    run(&eng, r#"inbox.resolve("check-me", "approved");"#, 5).unwrap();
+    let calls = m.calls();
+    let res = calls.iter().find(|(t, _)| t == "inbox.resolve").unwrap();
+    assert_eq!(res.1["item_id"], "check-me");
+    assert_eq!(res.1["decision"], "approved");
+
+    // A bogus verdict is an author error, no dispatch.
+    let m2 = Arc::new(RecordingMessaging::new());
+    let err = run(&engine(m2.clone(), 32), r#"inbox.resolve("x", "ack");"#, 1).unwrap_err();
+    assert!(matches!(err, RuleError::Eval(_)), "got {err:?}");
+    assert_eq!(m2.count("inbox.resolve"), 0);
+}
+
+#[test]
 fn outbox_enqueue_and_status_dispatch() {
     let m = Arc::new(RecordingMessaging::new());
     let eng = engine(m.clone(), 32);

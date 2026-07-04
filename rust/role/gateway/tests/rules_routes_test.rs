@@ -13,7 +13,7 @@ use axum::http::StatusCode;
 use common::*;
 use lb_auth::SigningKey;
 use lb_host::{Node, Role as NodeRole};
-use lb_role_gateway::router;
+use lb_role_gateway::{router, Gateway};
 use serde_json::{json, Value};
 use tower::ServiceExt; // for `oneshot`
 
@@ -237,6 +237,88 @@ async fn running_a_missing_saved_rule_is_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn interactive_channel_posts_append_with_distinct_ids_and_ascending_ts() {
+    // Regression: interactive `rules.run` carried no `ts`, so the core's logical `now` collapsed to 0 —
+    // every `channel.post` reused the deterministic id `rule-channel-0-1` (upserting the same row) and
+    // stamped `ts: 0` (sorting as the oldest). The gateway now fills the live clock when the caller omits
+    // `ts`, so two runs a tick apart append two distinct, ascending messages. A caller that DOES supply
+    // its own `ts` still upserts deterministically (the scheduled/re-run idempotency contract).
+    let node = Arc::new(Node::boot_as(NodeRole::Hub).await.expect("node boots"));
+    let key = SigningKey::generate();
+    let ws = "rules-chan";
+
+    // The rule's channel handle re-enters the ONE MCP contract (`channel.post`/`history`), so the caller
+    // needs both the MCP verb cap AND the channel `bus:chan/{cid}:{pub|sub}` gate the host fn re-checks.
+    let mut caps: Vec<&str> = CAPS.to_vec();
+    caps.extend_from_slice(&[
+        "mcp:channel.post:call",
+        "mcp:channel.history:call",
+        "bus:chan/room:pub",
+        "bus:chan/room:sub",
+    ]);
+    let tok = token(&key, "user:ada", ws, &caps);
+
+    // The route has no `ts` field — the interactive client can't (and doesn't) send one, which is
+    // exactly the bug's condition. So each run's `now` comes from its gateway's clock, injected by the
+    // fix. We build one gateway per run with an advancing fixed clock (same node, so the store is
+    // shared) — mimicking the live wall clock ticking between two Playground runs.
+    let run = |clock: u64, body: &'static str| {
+        let node = node.clone();
+        let key = key.clone();
+        let tok = tok.clone();
+        async move {
+            let gw = Gateway::new(node, key, clock);
+            let resp = router(gw)
+                .oneshot(bearer(json_post("/rules/run", json!({ "body": body })), &tok))
+                .await
+                .unwrap();
+            if resp.status() != StatusCode::OK {
+                let s = resp.status();
+                panic!("run failed {s}: {}", body_text(resp).await);
+            }
+            json_body::<Value>(resp).await
+        }
+    };
+
+    // Two separate interactive runs post one message each; a third read-only run reads the accumulated
+    // history back. The clocks (999/1000) stay inside the token's validity window (`NOW-1..NOW+10_000`).
+    let _ = run(999, r#"channel.post("room", #{ body: "first" })"#).await;
+    let _ = run(1000, r#"channel.post("room", #{ body: "second" })"#).await;
+    let out = run(1000, r#"channel.history("room", 0)"#).await;
+
+    // The last run's history read holds BOTH messages — distinct deterministic ids and ascending ts,
+    // not one silently-overwritten row at ts 0.
+    // A rule whose last expression is a channel array renders as a scalar output holding the JSON array.
+    let rows = out["output"]["value"]
+        .as_array()
+        .or_else(|| out["output"]["rows"].as_array())
+        .expect("history rows");
+    assert_eq!(rows.len(), 2, "two interactive posts append, not overwrite");
+
+    let ids: Vec<&str> = rows.iter().map(|r| r["id"].as_str().unwrap()).collect();
+    assert_ne!(ids[0], ids[1], "each run gets a distinct id");
+    assert!(
+        ids.iter().all(|id| !id.starts_with("rule-channel-0-")),
+        "no id collapsed to the `now=0` deterministic id, got {ids:?}"
+    );
+
+    let ts: Vec<u64> = rows.iter().map(|r| r["ts"].as_u64().unwrap()).collect();
+    assert!(ts.iter().all(|t| *t != 0), "no message stamped ts 0, got {ts:?}");
+    assert!(ts[0] < ts[1], "messages sort by ascending ts, got {ts:?}");
+
+    // The idempotency contract is intact: a run at the SAME clock re-derives the SAME id and upserts —
+    // it does NOT grow the history. (A scheduled/programmatic re-run relies on this.)
+    let _ = run(1000, r#"channel.post("room", #{ body: "second again" })"#).await;
+    let after = run(1000, r#"channel.history("room", 0)"#).await;
+    let after_rows = after["output"]["value"].as_array().expect("history rows");
+    assert_eq!(
+        after_rows.len(),
+        2,
+        "a same-clock re-run upserts (deterministic id) — no duplicate row"
+    );
 }
 
 // ── one capability-deny test PER verb: a token holding every rules cap EXCEPT the one under test is

@@ -57,31 +57,88 @@ export const EXAMPLES: RuleExample[] = [
       'ai.complete("how many sites are there", sites)',
     ].join("\n"),
   },
+
+  // --- Inbox: raise / read / close attention items ------------------------------------------------
+  // These need no seeded data — they write to (or read) your own workspace's inbox and work on a fresh
+  // node. Each teaches ONE verb so you can see exactly what it does before combining them.
+  {
+    id: "inbox-record",
+    title: "Inbox · raise an item",
+    summary: "Raise one attention item on the `ops` channel. Re-running upserts (same id → no dupe).",
+    body: 'inbox.record(#{ channel: "ops", id: "check-me", body: "please take a look" });',
+  },
+  {
+    id: "inbox-list",
+    title: "Inbox · read items",
+    summary: "Read every attention item on a channel — an uncharged read. Run the raise example first.",
+    body: 'inbox.list("ops")',
+  },
+  {
+    id: "inbox-record-then-list",
+    title: "Inbox · raise then read",
+    summary: "Raise an item and read the channel back in one rule — see it land in the Result below.",
+    body: [
+      'inbox.record(#{ channel: "ops", id: "check-me", body: "please take a look" });',
+      'inbox.list("ops")',
+    ].join("\n"),
+  },
+  {
+    id: "inbox-resolve",
+    title: "Inbox · close an item",
+    summary:
+      'Resolve an item by id with a verdict — "approved", "rejected", or "deferred" (idempotent, last wins).',
+    body: 'inbox.resolve("check-me", "approved");',
+  },
+
+  // --- Outbox: stage a must-deliver effect --------------------------------------------------------
+  {
+    id: "outbox-enqueue",
+    title: "Outbox · stage an effect",
+    summary: "Stage one must-deliver effect (e.g. a page). The relay drains it — a rule only stages.",
+    body: [
+      'outbox.enqueue(#{ id: "page-1", target: "notify", action: "page",',
+      '                  payload: #{ level: "info", msg: "hello from a rule" } });',
+    ].join("\n"),
+  },
+  {
+    id: "outbox-status",
+    title: "Outbox · check the queue",
+    summary: "Read the workspace's outbox status (pending / failed) — an uncharged read.",
+    body: "outbox.status()",
+  },
+
+  // --- Channels: post / read the live bus ---------------------------------------------------------
   {
     id: "channel-post",
-    title: "Post to a channel",
+    title: "Channel · post a message",
     summary: "Post a chat message to the `ops` channel with your own authority (needs bus:chan/ops:Pub).",
     body: 'channel.post("ops", #{ body: "posted from a rule" });',
   },
   {
     id: "channel-read",
-    title: "Read a channel's history",
+    title: "Channel · read history",
     summary: "Read the last 5 messages on `ops` — a bounded snapshot (an uncharged read).",
     body: 'channel.history("ops", 5)',
   },
   {
+    id: "channel-list",
+    title: "Channel · list channels",
+    summary: "List the channels in your workspace — the switcher's read. Works on a fresh workspace.",
+    body: "channel.list()",
+  },
+
+  // --- The full messaging surface in one rule -----------------------------------------------------
+  {
     id: "escalate-and-notify",
     title: "Escalate: inbox + outbox + channel",
     summary:
-      "The full messaging surface — raise an attention item, stage a must-deliver page, and post to the live channel.",
+      "The full messaging surface in one rule — raise an attention item, stage a must-deliver page, and post to the live channel.",
     body: [
-      'let hot = history("series", "cooler.temp", "24h").filter("value > 5.0");',
-      'if hot.size() > 0 {',
-      '  inbox.record(#{ channel: "ops", id: "cooler-breach", body: "cooler ran hot" });',
-      '  outbox.enqueue(#{ id: "cooler-page", target: "notify", action: "page",',
-      '                    payload: #{ level: "critical", series: "cooler.temp" } });',
-      '  channel.post("ops", #{ body: "⚠ cooler breach — paging on-call" });',
-      '}',
+      "// Raise an item, stage a page, and post to the channel — the whole toolkit together.",
+      'inbox.record(#{ channel: "ops", id: "breach", body: "cooler ran hot" });',
+      'outbox.enqueue(#{ id: "page-breach", target: "notify", action: "page",',
+      '                  payload: #{ level: "critical", msg: "cooler breach" } });',
+      'channel.post("ops", #{ body: "⚠ cooler breach — paging on-call" });',
     ].join("\n"),
   },
 ];

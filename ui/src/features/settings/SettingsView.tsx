@@ -1,41 +1,55 @@
-// The Settings surface (user-prefs + agent-config scopes) — the long-deferred "settings surface" the
-// prefs crate named, plus the workspace agent picker. A tabbed section: Preferences (per-user, always
-// available — every member edits their OWN presentation axes) and Agent (the workspace's default
-// runtime + model endpoint; editable by an admin, read-only for a member). Built on the shared
-// shadcn primitives (Tabs + AppPageHeader) like AdminView. Markup + tab state only; each tab owns its
-// own data + writes against the real gateway verbs.
+// The Settings surface (user-prefs + agent-config + theme) — the long-deferred "settings surface" the
+// prefs crate named, plus the workspace agent picker and the theme customizer. A tabbed section:
+// Preferences (per-user presentation axes), Theme (the full customizer — presets/radius/mode/import/
+// brand-colors + sidebar layout), and Agent (the workspace default runtime/endpoint). Tabs are
+// URL-routable (`/settings/<tab>`): the active tab and switching are driven by the router, so each tab
+// is deep-linkable and the browser back button works. Markup + tab wiring only; each tab owns its own
+// data + writes against the real gateway verbs.
 
-import { useState } from "react";
 import { Settings } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PreferencesTab } from "./PreferencesTab";
 import { AgentTab } from "./AgentTab";
+import { ThemeSettingsTab } from "./ThemeSettingsTab";
 
-type Tab = "preferences" | "agent";
+const TABS = ["preferences", "theme", "agent"] as const;
+export type SettingsTab = (typeof TABS)[number];
+
+/** Coerce an arbitrary URL segment to a valid tab (unknown → the default). */
+export function coerceSettingsTab(value: string | undefined): SettingsTab {
+  return TABS.includes(value as SettingsTab) ? (value as SettingsTab) : "preferences";
+}
 
 interface Props {
   ws: string;
   /** The session's caps — gate which controls are editable (display convenience; server is the wall). */
   caps: string[] | undefined;
+  /** The active tab, from the URL (`/settings/<tab>`). */
+  tab: string;
+  /** Navigate to another tab (updates the URL). */
+  onTabChange: (tab: SettingsTab) => void;
 }
 
-export function SettingsView({ ws, caps }: Props) {
-  const [tab, setTab] = useState<Tab>("preferences");
+export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
+  const active = coerceSettingsTab(tab);
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-bg text-fg">
       <AppPageHeader
         icon={Settings}
         title="Settings"
-        description="Your preferences and the workspace agent."
+        description="Your preferences, theme, and the workspace agent."
         workspace={ws}
       />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1">
+      <Tabs value={active} onValueChange={(v) => onTabChange(coerceSettingsTab(v))} className="min-h-0 flex-1">
         <TabsList className="m-2 flex-wrap">
           <TabsTrigger value="preferences" aria-label="Preferences">
             Preferences
+          </TabsTrigger>
+          <TabsTrigger value="theme" aria-label="Theme">
+            Theme
           </TabsTrigger>
           <TabsTrigger value="agent" aria-label="Agent">
             Agent
@@ -43,6 +57,9 @@ export function SettingsView({ ws, caps }: Props) {
         </TabsList>
         <TabsContent value="preferences" className="min-h-0 flex-1 overflow-y-auto">
           <PreferencesTab ws={ws} caps={caps} />
+        </TabsContent>
+        <TabsContent value="theme" className="min-h-0 flex-1 overflow-y-auto">
+          <ThemeSettingsTab />
         </TabsContent>
         <TabsContent value="agent" className="min-h-0 flex-1 overflow-y-auto">
           <AgentTab ws={ws} caps={caps} />

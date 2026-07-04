@@ -66,6 +66,22 @@ workspace-default → built-in), with the mandatory capability-deny + workspace-
 - The admin "Set as workspace default" gates on `hasCap(session.caps, CAP.prefsSetDefault)` and calls
   `persistWorkspaceDefaultTheme` → `prefs.set_default`.
 
+### TS — moved the Customizer into Settings + URL-routable tabs (follow-up, per user)
+- **Removed the nav-footer `ThemeSwitcher` + `Customizer` sheet from the sidebar** (deleted
+  `features/theme/{Customizer,ThemeSwitcher}.tsx` + `ThemeSwitcher.test.tsx`; dropped from `NavRail`).
+- **Added a "Theme" tab to Settings** (`features/settings/ThemeSettingsTab.tsx`) hosting the same
+  `ThemeTab` + `LayoutTab` (reused) as two sub-tabs. `features/theme/index.ts` now exports the tabs.
+- **Settings tabs are URL-routable**: new `/settings/$tab` route (`createAppRouter.tsx`
+  `settingsTabRoute`), bare `/settings` redirects to `/settings/preferences`. `SettingsView` is now
+  URL-controlled (`tab` + `onTabChange` props); the router drives the active tab and updates the URL on
+  switch — so `#/t/acme/settings/theme` and `#/t/acme/settings/agent` are deep-linkable, back-button
+  works, and `surfaceForPath("/settings/theme") → settings` keeps the nav-active + cap gate (same
+  precedent as `/system/mcp → system`).
+- Test harness `features/settings/SettingsHarness.tsx` (holds tab state) so the four Settings gateway
+  tests exercise the real tab UI without the router. New tests: `SettingsView.test.tsx` (tab coercion,
+  Theme tab renders the customizer, click → onTabChange), `routing/surface.test.ts` (the deep-link →
+  surface map incl. `/settings/theme`).
+
 ### TS — Layout tab (added after the scope's non-goal was found to be factually wrong)
 - The scope originally deferred the Layout tab claiming "the shell does not use a shadcn Sidebar". It
   **does** — `NavRail` renders inside the shipped `components/ui/sidebar.tsx` (435 lines) via
@@ -105,7 +121,7 @@ Real infra, seeded via the real write path — no mocks, no fake backend.
   never reads ws-A's blob).
 - `resolve_test` +1 (`ui_theme_folds_whole_first_link_wins`); `catalog_test` updated for the new field.
 
-**Frontend `pnpm test` — 466 passed (74 files):**
+**Frontend `pnpm test` — 472 passed (75 files):**
 - `preset-adapter.test` (4): shadcn preset → base tokens (light+dark, exact triplets); accepts
   oklch/hex/hsl; null on missing identity token; completes a sparse palette. **(the load-bearing
   regression guard — "existing UI re-themes")**

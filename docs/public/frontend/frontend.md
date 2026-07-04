@@ -75,12 +75,14 @@ Quiet control-surface tokens (CSS variables, themed by a `.dark` class): near-bl
 paper light, one warm amber accent, hairline borders, lucide icons. Tailwind utilities; shadcn-
 style primitives to be pulled in as the component set grows.
 
-## Theme preferences — the Customizer (supersedes the switcher)
+## Theme preferences — the Customizer (in Settings → Theme)
 
-The shell has a full **Customizer** (`features/theme/Customizer.tsx`, a slide-out sheet from the nav
-footer) over the theme layer (`ui/src/lib/theme/`), plus the compact `ThemeSwitcher` kept as the quick
-mode/preset toggle. The member's preference is `{ mode, preset, radius, layout, custom?, imported? }`
-(`ThemePreference`), and the Customizer has two tabs:
+The full theme customizer lives in **Settings → Theme** (`features/settings/ThemeSettingsTab.tsx`,
+deep-linkable at `/t/<ws>/settings/theme`) — the old nav-footer `ThemeSwitcher`/`Customizer` sheet was
+removed. Settings tabs are URL-routable (`/settings/<tab>` — preferences/theme/agent), so each is
+shareable and the back button works; bare `/settings` redirects to the default tab. The member's
+preference is `{ mode, preset, radius, layout, custom?, imported? }` (`ThemePreference`), and the Theme
+tab has two sub-tabs:
 
 - **Theme** — light/dark, a preset library (three built-in accents amber/teal/blue + a curated
   shadcn/tweakcn subset), a radius control, **paste-to-import** a tweakcn CSS block, and per-token
@@ -92,7 +94,7 @@ mode/preset toggle. The member's preference is `{ mode, preset, radius, layout, 
 **The load-bearing choice: presets write the project's BASE tokens, not shadcn tokens.**
 `styles/globals.css` DERIVES the shadcn tokens (`--primary`/`--background`/`--card`) FROM a small base
 palette (`--bg`/`--panel`/`--fg`/`--muted`/`--muted-foreground`/`--accent`/`--border`), and every host
-surface (charts via `features/charts/chartTheme.ts`, panels, nav, the switcher) reads the BASE tokens.
+surface (charts via `features/charts/chartTheme.ts`, panels, nav) reads the BASE tokens.
 So a preset is normalized **back onto base tokens** by the adapter (`lib/theme/preset-adapter.ts`:
 `--primary`→`--accent`, `--background`→`--bg`, `--card`/`--popover`→`--panel`,
 `--border`/`--input`/`--ring`→`--border`, …), written as inline HSL-triplet overrides on `<html>`, and
@@ -130,7 +132,7 @@ layout reaches the `<Sidebar>` as `data-variant`/`data-side`). Persistence over 
 fold, **capability-deny** (member without `prefs.set`; non-admin without `prefs.set_default`), and
 **workspace-isolation** (ws-A theme never resolves in ws-B). Rust `cargo test -p lb-prefs`
 (`ui_theme_test`, `resolve_test`) proves the axis round-trip, whole-fold, and isolation on the real
-store. Verified with `pnpm test` (466), the gateway suite, `cargo test -p lb-prefs -p lb-host` (green),
+store. Verified with `pnpm test` (472), the gateway suite, `cargo test -p lb-prefs -p lb-host` (green),
 `cargo fmt`, `tsc`, and `eslint` (0 errors on new files).
 
 ## Make collaboration real (shipped)

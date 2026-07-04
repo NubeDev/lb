@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lazybones (RN Web preview)</title>
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      /* Frame the app in a phone-sized viewport so the preview reads as a phone. */
+      body { background: #e5e7eb; display: flex; justify-content: center; align-items: center; }
+      #root { width: 390px; height: 844px; max-height: 100vh; background: #fff;
+              box-shadow: 0 10px 40px rgba(0,0,0,.2); overflow: hidden; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./index.web.tsx"></script>
+  </body>
+</html>

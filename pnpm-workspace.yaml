@@ -5,6 +5,11 @@
 packages:
   - 'ui'
   - 'packages/*'
+  # The React Native mobile app: the shell host + the shared @nube/app-sdk contract/client
+  # (docs/scope/app/). Extensions under app/extensions/* join when the app-extensions slice ships.
+  - 'app/sdk'
+  # app/shell is deliberately NOT a workspace member: it installs standalone (app/shell/.npmrc)
+  # because the root @types/react@18 override conflicts with RN 0.86's React 19 types.
 
 allowBuilds:
   esbuild: true

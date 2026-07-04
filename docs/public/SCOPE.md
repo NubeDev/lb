@@ -3,6 +3,21 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (post-S10 — mobile app, shell slice: the RN host + `@nube/app-sdk` client)
+
+The phone is the **fourth thin client** of the gateway (browser, Tauri, `lb` CLI, mobile) — REST +
+SSE only, zenoh-ts rejected (an unmediated second surface). `app/shell/` = RN 0.86.0 / React 19.2.3 /
+Re.Pack 5.2.5, the MF2 **host** (`react`/`react-native`/`@nube/app-sdk` eager singletons; remotes are
+the next slice). `app/sdk/` = the shared platform-free client: `invoke(cmd,args)` verb→route **1:1
+with the web `http.ts`** (no new verbs, no new caps), typed `InvokeError` (403 deny vs 401 auth-drop),
+**token-per-workspace** sessions over a `SessionStorage` seam (device keychain / test memory),
+streaming-fetch SSE whose resume = reconnect + `channel.history` catch-up (the gateway emits no SSE
+ids). Shipped surfaces: login → workspace switcher (switch = stored-token re-activate or re-login
+re-mint) → Channels end to end (list/create/history/post + live SSE + kill/resume) → cap-gated
+`ext.list` nav (list only). Proven against the REAL spawned `test_gateway` (12/12: deny-per-verb,
+ws-isolation, session, SSE, ext nav). See `app/app.md`; next: `app-extensions` (MF2 mount), then the
+full sdk verb-map extraction.
+
 ## Shipped (post-S8 — the active pick is the ONE implicit agent everywhere + a real provider adapter)
 
 A workspace picks one agent ("Use") and no surface asks again; the pick's `model_endpoint` is consumed

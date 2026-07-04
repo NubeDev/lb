@@ -16,7 +16,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { SettingsView } from "./SettingsView";
+import { SettingsHarness } from "./SettingsHarness";
 import { getPrefs } from "@/lib/prefs/get";
 import { getAgentConfig, setAgentConfig } from "@/lib/agent/config.api";
 import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-session";
@@ -32,7 +32,7 @@ describe("SettingsView — Preferences (real gateway)", () => {
     const ws = nextWs();
     const session = await signInReal("user:ada", ws);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
 
     // Set language = Español and date style = ISO, plus a temperature unit override.
     await user.selectOptions(await screen.findByLabelText("Language"), "es");
@@ -51,7 +51,7 @@ describe("SettingsView — Preferences (real gateway)", () => {
 
     // A fresh mount hydrates from the record — the selects show the persisted choices.
     cleanup();
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await waitFor(() => {
       expect((screen.getByLabelText("Language") as HTMLSelectElement).value).toBe("es");
       expect((screen.getByLabelText("Date style") as HTMLSelectElement).value).toBe("iso");
@@ -65,7 +65,7 @@ describe("SettingsView — Agent catalog (real gateway)", () => {
     const ws = nextWs();
     const session = await signInReal("user:ada", ws);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     await user.click(screen.getByLabelText("Agent"));
 
     // The seeded in-house built-in lists (node-runnable). Create a custom definition over the same
@@ -99,7 +99,7 @@ describe("SettingsView — Agent catalog (real gateway)", () => {
       "mcp:agent.runtimes:call",
     ]);
 
-    render(<SettingsView ws={ws} caps={session.caps} />);
+    render(<SettingsHarness ws={ws} caps={session.caps} />);
     const user = userEvent.setup();
     await user.click(screen.getByLabelText("Agent"));
 

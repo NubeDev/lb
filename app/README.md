@@ -1,9 +1,11 @@
 # `app/` — the React Native mobile app (workshop)
 
 The mobile twin of `ui/`: one RN host shell + federated extensions + the shared SDK.
-**Status: scoped, not built.** The authoritative ask is `docs/scope/app/README.md`
-(read order: shell → extensions → sdk). Nothing in here is runnable yet — these are
-the scaffolds the implementing sessions fill in, per `docs/HOW-TO-CODE.md`.
+**Status: shell slice SHIPPED** (login → workspace switcher → channels over REST + live
+SSE → cap-gated `ext.list` nav; 12/12 real-gateway tests in `sdk/`). Extensions + the
+full sdk extraction are still scope. The authoritative ask is `docs/scope/app/README.md`
+(read order: shell → extensions → sdk); shipped truth: `docs/public/app/app.md`;
+working log: `docs/sessions/app/app-shell-session.md`.
 
 ```
 shell/                     ← the RN host app (Re.Pack 5 + Module Federation 2)
