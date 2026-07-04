@@ -24,7 +24,17 @@ export {
   type ThemePreference,
   type ThemeRadius,
 } from "./theme-options";
-export { BASE_TOKENS, type BasePalette, type CustomTheme } from "./theme-tokens";
+export {
+  BASE_TOKENS,
+  REQUIRED_TOKENS,
+  DERIVED_TOKENS,
+  type BasePalette,
+  type RequiredPalette,
+  type DerivedTones,
+  type CustomTheme,
+} from "./theme-tokens";
+export { deriveTones, completeTones } from "./derive-tones";
+export { completeCustomTheme } from "./normalize-custom-theme";
 export { readComputedBasePalette } from "./read-palette";
 export { adaptPreset } from "./preset-adapter";
 export { parseImportedTheme } from "./theme-import";

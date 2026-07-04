@@ -24,7 +24,11 @@ export function applyThemePreference(doc: Document, pref: ThemePreference) {
     // Inline base tokens win over the static blocks; a built-in accent attribute would fight them.
     root.removeAttribute("data-theme-accent");
     for (const { key, cssVar } of BASE_TOKENS) {
-      root.style.setProperty(cssVar, palette[key]);
+      // A derived tone may be absent on a not-yet-normalized palette; skip it so the static block's
+      // value (or a previously-written one) stays rather than clobbering the token with "".
+      const value = palette[key];
+      if (value) root.style.setProperty(cssVar, value);
+      else root.style.removeProperty(cssVar);
     }
   } else {
     // Built-in accent path: clear any inline base tokens from a previous custom theme, set the attr.

@@ -11,8 +11,9 @@
 // One responsibility: shadcn-preset → base-token CustomTheme.
 
 import { colorToHslTriplet } from "./color-to-hsl";
+import { deriveTones } from "./derive-tones";
 import type { PresetStyles, ThemePreset } from "./theme-preset";
-import type { BasePalette, CustomTheme } from "./theme-tokens";
+import type { BasePalette, CustomTheme, RequiredPalette } from "./theme-tokens";
 
 /** Map one mode's shadcn-vocabulary styles onto a base palette. The mapping (scope Intent):
  *    --primary            → --accent
@@ -53,25 +54,15 @@ function adaptMode(styles: PresetStyles): Partial<BasePalette> {
   return out;
 }
 
-const REQUIRED: Array<keyof BasePalette> = [
-  "bg",
-  "panel",
-  "fg",
-  "muted",
-  "mutedForeground",
-  "accent",
-  "border",
-];
-
-/** Complete a partial palette by borrowing a sensible neighbor for any missing token, so a preset that
- *  omits e.g. `muted-foreground` still yields a full, applyable palette rather than being rejected. */
+/** Complete a partial palette by borrowing a sensible neighbor for any missing REQUIRED token, then
+ *  derive the widened tones (`panel2`/`overlay`/`accent2`) — so a preset yields a full base palette. */
 function complete(p: Partial<BasePalette>): BasePalette | null {
   const bg = p.bg ?? p.panel;
   const fg = p.fg;
   const accent = p.accent;
   // These three carry the theme's identity — without any of them the preset is unusable.
   if (!bg || !fg || !accent) return null;
-  return {
+  const required: RequiredPalette = {
     bg,
     panel: p.panel ?? bg,
     fg,
@@ -80,6 +71,7 @@ function complete(p: Partial<BasePalette>): BasePalette | null {
     accent,
     border: p.border ?? p.muted ?? bg,
   };
+  return { ...required, ...deriveTones(required) };
 }
 
 /** Adapt a full preset into a base-token `CustomTheme` (both modes), or null if either mode is missing
@@ -88,7 +80,5 @@ export function adaptPreset(preset: ThemePreset): CustomTheme | null {
   const light = complete(adaptMode(preset.styles.light));
   const dark = complete(adaptMode(preset.styles.dark));
   if (!light || !dark) return null;
-  // Sanity: every required token present (complete() guarantees this, asserted for the type).
-  void REQUIRED;
   return { light, dark };
 }

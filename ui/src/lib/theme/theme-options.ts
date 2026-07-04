@@ -7,6 +7,7 @@
 
 import type { CustomTheme } from "./theme-tokens";
 import { isCustomTheme } from "./theme-tokens";
+import { completeCustomTheme } from "./normalize-custom-theme";
 
 export const THEME_MODES = ["dark", "light"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
@@ -119,7 +120,10 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
     radius: isThemeRadius(c.radius) ? c.radius : DEFAULT_THEME.radius,
     layout: normalizeLayout(c.layout),
   };
-  if (isCustomTheme(c.custom)) out.custom = c.custom;
-  if (isCustomTheme(c.imported)) out.imported = c.imported;
+  // A stored custom/imported theme is validated on the REQUIRED seven, then upgraded by DERIVING any
+  // missing widened tones (panel2/overlay/accent2) — so a v1 theme survives migration instead of being
+  // dropped. A theme missing a required token is malformed and dropped whole (fail-closed).
+  if (isCustomTheme(c.custom)) out.custom = completeCustomTheme(c.custom);
+  if (isCustomTheme(c.imported)) out.imported = completeCustomTheme(c.imported);
   return out;
 }

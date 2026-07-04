@@ -17,6 +17,9 @@ const PALETTE: CustomTheme = {
     mutedForeground: "30 6% 40%",
     accent: "178 70% 28%",
     border: "40 12% 82%",
+    panel2: "40 26% 88%",
+    overlay: "30 10% 20%",
+    accent2: "218 60% 32%",
   },
   dark: {
     bg: "24 8% 8%",
@@ -26,6 +29,9 @@ const PALETTE: CustomTheme = {
     mutedForeground: "30 5% 60%",
     accent: "176 68% 50%",
     border: "24 6% 18%",
+    panel2: "24 7% 15%",
+    overlay: "36 12% 82%",
+    accent2: "216 62% 52%",
   },
 };
 

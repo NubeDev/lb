@@ -35,6 +35,16 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
+  /* Tone widening (theme-appearance scope): a raised-panel step, an overlay tone, a secondary accent,
+     and semantic success/warning alongside the existing destructive — so presets/looks express more
+     than a two-tone surface. `panel-2`/`overlay`/`accent-2` are DERIVED from the base seven in
+     `:root`/`.dark`; success/warning are fixed semantic hues (like destructive). */
+  --color-panel-2: hsl(var(--panel-2));
+  --color-overlay: hsl(var(--overlay));
+  --color-accent-2: hsl(var(--accent-2));
+  --color-success: hsl(var(--success));
+  --color-warning: hsl(var(--warning));
+
   /* Declare the FULL rounded scale in `@theme` so Tailwind GENERATES the `rounded-xs…rounded-3xl`
      utilities (it only emits a utility whose theme key exists). The actual token *values* are
      re-asserted in a trailing `:root` override at the bottom of this file — because `tw-animate-css`
@@ -81,6 +91,13 @@
   --destructive: 0 72% 46%;
   --input: var(--border);
   --ring: var(--accent);
+  /* Widened tones (light): raised panel steps toward paper-white, overlay a touch darker than bg for a
+     scrim, secondary accent a cooler sibling; success/warning are fixed semantic hues. */
+  --panel-2: 40 26% 88%;
+  --overlay: 30 10% 20%;
+  --accent-2: 178 60% 32%;
+  --success: 142 55% 34%;
+  --warning: 36 92% 42%;
 }
 
 :root[data-theme-accent="teal"] {
@@ -118,6 +135,13 @@
   --destructive: 0 65% 58%;
   --input: var(--border);
   --ring: var(--accent);
+  /* Widened tones (dark): raised panel steps toward the foreground, overlay lighter than bg, secondary
+     accent a cooler sibling; success/warning tuned for the charcoal surface. */
+  --panel-2: 24 7% 15%;
+  --overlay: 36 12% 82%;
+  --accent-2: 176 62% 52%;
+  --success: 142 52% 52%;
+  --warning: 38 92% 58%;
 }
 
 .dark[data-theme-accent="teal"] {
