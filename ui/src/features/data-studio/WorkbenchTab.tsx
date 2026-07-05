@@ -30,7 +30,7 @@ export function WorkbenchTab({ api }: IDockviewPanelHeaderProps) {
       <button
         type="button"
         aria-label={`close ${title}`}
-        className="ds-tab-close shrink-0 rounded p-0.5 text-muted hover:text-fg"
+        className="ds-tab-close shrink-0 rounded-sm p-0.5 text-muted hover:text-fg"
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

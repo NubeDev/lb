@@ -1,6 +1,7 @@
 # Frontend scope — Data Studio 10x: Dockview workbench, pages-as-panes, query-first builder
 
-Status: scope (the ask). Promotes to `public/frontend/data-studio.md` once shipped.
+Status: **SHIPPED** (2026-07-05) — promoted to [`public/frontend/data-studio.md`](../../public/frontend/data-studio.md);
+session log: [`sessions/frontend/data-studio-10x-session.md`](../../sessions/frontend/data-studio-10x-session.md).
 Follow-on to [`data-studio-scope.md`](data-studio-scope.md) (v2/v3 shipped) and the
 [data-studio-rail session](../../sessions/frontend/data-studio-rail-session.md) (2026-07-05).
 
@@ -165,9 +166,12 @@ pattern — rect-stubbing carries over since Dockview also measures DOM):
 
 ## Open questions
 
-1. **Pane granularity for phase 2:** whole pages only, or also sub-panes (a single flow's canvas,
-   one rule's panel)? Recommend whole pages first; sub-panes only if the whole-page pane proves
-   too coarse in use.
+1. **Pane granularity for phase 2:** ~~whole pages only, or also sub-panes (a single flow's canvas,
+   one rule's panel)?~~ **Resolved the recommended way and SHIPPED (2026-07-05)** — whole pages first
+   (the registry lists Flows/Rules/Data/Datasources/Ingest as dock panes, each mounting the REAL routed
+   view). Sub-panes only if the whole-page pane proves too coarse in use. ONE pane per view kind in
+   the first cut (the menu re-activates an open pane) — pages weren't written to be multi-mounted, so
+   shared subscriptions are the later fix.
 2. **Demo seed verb:** ~~reuse the test-gateway's `iot_demo` seed as a real admin-gated host verb,
    or docs-only?~~ **Resolved the lite way, and SHIPPED (2026-07-05)** — the demo datasource is a
    **SQLite file** seeded with the same building dataset (`make seed-demo-sqlite`, no Docker, no new
@@ -176,11 +180,16 @@ pattern — rect-stubbing carries over since Dockview also measures DOM):
    Remaining sliver: whether workspace-*series* demo (the `iot_demo` records) also needs a
    one-click seed, or the SQLite datasource alone carries the demo toggle. Recommend the latter
    first — one demo source is enough to prove the gallery.
-3. **Viz gallery coverage:** all ~10 widget types as thumbnails, or the 6 chart-likes with
-   Table/AI-widget/Template as labeled cards (no mini-render)? Recommend the split — a thumbnail
-   of a Template is noise.
-4. **Popout windows** (Dockview supports them): keep tab-popout parity with today, or drop popout
-   until someone asks? Recommend keep — it already exists and Dockview makes it cheaper.
+3. **Viz gallery coverage:** ~~all ~10 widget types as thumbnails, or the 6 chart-likes with
+   Table/AI-widget/Template as labeled cards (no mini-render)?~~ **Resolved the recommended way and
+   SHIPPED (2026-07-05)** — the split: 6 chart-likes (`timeseries`/`barchart`/`stat`/`gauge`/
+   `bargauge`/`piechart`) get a live mini-render through the one `WidgetView`/`viz.query` path;
+   Table / AI-widget / Template are labeled cards (a Template thumbnail is noise). Pinned by
+   `VizGallery.test.tsx` (9 cards; shape-gating mirrors `VizPicker`).
+4. **Popout windows** (Dockview supports them): ~~keep tab-popout parity with today, or drop popout
+   until someone asks?~~ **Resolved: keep — Dockview makes it cheaper, and the rename affordance
+   stays prompt-based for now** (double-click a tab → `window.prompt`). Shipped 2026-07-05. A future
+   polish slice could swap the prompt for an inline editable tab title (recorded, not a gap).
 
 ## Related
 

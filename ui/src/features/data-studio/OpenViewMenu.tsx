@@ -57,7 +57,7 @@ export function OpenViewMenu({ allowed, isOpen, onOpenView, onNewPanel }: Props)
             type="button"
             role="menuitem"
             aria-label="open new panel"
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-fg/6"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-fg/6"
             onClick={() => {
               setOpen(false);
               onNewPanel();
@@ -70,15 +70,15 @@ export function OpenViewMenu({ allowed, isOpen, onOpenView, onNewPanel }: Props)
             const opened = isOpen(p.kind);
             const Icon = p.icon;
             return (
-              <button
-                key={p.kind}
-                type="button"
-                role="menuitem"
-                aria-label={`open ${p.title.toLowerCase()} view`}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-fg/6",
-                  opened && "text-muted",
-                )}
+          <button
+            key={p.kind}
+            type="button"
+            role="menuitem"
+            aria-label={`open ${p.title.toLowerCase()} view`}
+            className={cn(
+              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-fg/6",
+              opened && "text-muted",
+            )}
                 onClick={() => {
                   setOpen(false);
                   onOpenView(p.kind);

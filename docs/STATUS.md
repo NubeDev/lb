@@ -16,6 +16,57 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-05): Data Studio 10x — Dockview workbench, pages-as-panes, query-first builder.**
+The four-phase UI refresh of the multi-pane data workbench, landed end to end: **(1) engine swap** —
+`flexlayout-react` is gone, `dockview-react` (MIT, React-first) is the one dock engine (tabs, nested
+splits, floating groups, maximize, popout, JSON serialize/restore; theme via `--dv-*` CSS vars aliased
+to the shell tokens under `.dockview-theme-lb`; tab titles ellipsize with full-title tooltips; double-
+click rename via prompt). The persisted layout record is **versioned by engine** (`{engine:"dockview",
+model}`); a legacy flexlayout blob falls back to the default workbench + a **one-time "layout was reset"
+notice** (no silent draft loss). **(2) pages-as-panes** — a "+ Open view" header menu lists the core
+surfaces (Flows, Rules, Data, Datasources, Ingest) and opens each as a dock pane mounting the **REAL
+routed view component** (`FlowsView`/`RulesView`/…): same code path, same gateway, same caps — never a
+re-implementation. An `embedded` mode on `AppPage` suppresses a view's own full-width header inside a
+pane (the dock tab is the title bar); standalone routes keep it. One pane per view kind (the menu
+re-activates an open pane); Data Studio itself is excluded (no recursive embedding); the kind set is
+opaque data (rule 10 — the dock never branches on a host subsystem id). **(3) query-first builder** —
+picking a source / opening a library panel / **New panel** opens ONE stacked builder tab whose stage 1
+is a compact toolbar (inline title, Run, freeze/table/inspect, ONE Save split-button) + the focused
+query editor; NO preview / viz pills / options until rows exist. Rows returned → stage 2 reveals the
+live preview + a **viz gallery** (one thumbnail card per widget type; the 6 chart-likes get a live
+mini-render through the ONE `viz.query`/`WidgetView` path, the 3 labeled cards Table/AI-widget/Template
+don't; shape-gating mirrors `VizPicker`) + a collapsed searchable Options drawer (stage 3). The "Saved
+as library panel …" banner is now a compact badge; Save-as-library lives behind the Save split-button's
+caret menu (gated by `mcp:panel.save:call`). The gallery proves the ONE-query invariant — preview + 9
+thumbnails share one `vizQueryKey` cache entry (the view is not part of the key); asserted in tests.
+**(4) Demo data, honestly seeded (rule 9)** — when a query returns 0 rows AND the seeded SQLite
+`demo-buildings` datasource exists, the empty preview offers "Preview with demo data" (real records
+through the real `federation.query` engine, same render path); demo state is badged and AUTO-YIELDS the
+moment the user's query has rows. The rail's Sources tab is now a `CatalogExplorer` host (the workspace
+system catalog, shipped same day) — datasources → tables → columns, series, channels, insights as ONE
+honest tree; click → builder tab with the studio's `onSelect` mapping. **No new verb / cap / table /
+host change** — pure UI composition over shipped `layout.*` / `panel.*` / `viz.query` / each pane's own
+verbs. **Tests (real store/bus/gateway/caps, rule 9):** UI gateway `DataStudio.gateway` **8/8**
+(incl. the MANDATORY capability-deny + workspace-isolation + the legacy-layout fallback),
+`DataStudioPanes.gateway` **5/5** (REAL view mounts, AppPage embedded mode, layout round-trip, deny
+via `allowed`), `DataStudioBuilderFlow.gateway` **5/5** (query-first staging, ONE-query gallery
+asserted via the `ipc.invoke` spy pattern, panel.save round-trip, demo integrity, viz.query deny);
+units **33/33** across 5 new files (record versioning, pane registry, gallery type-mapping, drawer
+disclosure, demo state machine — `useDemoPreview`'s only fake is the pure `useDatasourceList` seam per
+the system-catalog precedent); `panelEditor.gateway` + `flowsPanelEditor.gateway` split-layout parity
+**10/10** green. Frontend unit total **705/705** (was 672); `pnpm exec tsc --noEmit` clean (only the
+pre-existing reds remain: FlowsCanvas.gateway, transformDebug.gateway). **One bug surfaced + fixed:**
+the CODE-ONLY session's new files reintroduced bare `rounded` (banned by the radius-scale guard
+shipped 2026-07-04); six offenders mapped to token-derived stops (`rounded-md` for menu items,
+`rounded-sm` for tight chips) — debug entry
+[`debugging/frontend/data-studio-10x-bare-rounded-radius-guard.md`](debugging/frontend/data-studio-10x-bare-rounded-radius-guard.md).
+Scope [`scope/frontend/data-studio-10x-scope.md`](scope/frontend/data-studio-10x-scope.md) (open
+questions OQ1/OQ3/OQ4 all resolved as recommended); session
+[`sessions/frontend/data-studio-10x-session.md`](sessions/frontend/data-studio-10x-session.md); public
+[`public/frontend/data-studio.md`](public/frontend/data-studio.md).
+
+---
+
 **Just shipped (2026-07-05): `@nube/source-picker` grew into the workspace system catalog.** The
 package went from a *picker* (the shipped combobox) to a catalog with **two UI skins** — the
 existing combobox AND a new browsable explorer tree (`<CatalogExplorer>`), extracted from the rules

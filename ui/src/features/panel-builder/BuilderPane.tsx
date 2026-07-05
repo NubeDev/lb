@@ -159,7 +159,7 @@ export function BuilderPane({
             <div className="flex items-center gap-2 text-xs">
               <span
                 aria-label="demo data badge"
-                className="rounded border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-medium uppercase tracking-wide text-accent"
+                className="rounded-sm border border-accent/40 bg-accent/10 px-1.5 py-0.5 font-medium uppercase tracking-wide text-accent"
               >
                 demo
               </span>

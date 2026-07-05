@@ -52,7 +52,7 @@ export function BuilderTabPane({ config, ws, scope, onConfigChange, onSavedToLib
           title={`Saved as library panel ${config.savedAs} — reusable on any dashboard (Add library panel) and at /panel/${config.savedAs}.`}
           className="flex items-center gap-1.5 border-b border-border px-3 py-1 text-[0.65rem] text-muted"
         >
-          <span className="rounded border border-border bg-panel px-1.5 py-0.5 font-medium uppercase tracking-wide">
+          <span className="rounded-sm border border-border bg-panel px-1.5 py-0.5 font-medium uppercase tracking-wide">
             library
           </span>
           <span className="font-mono">{config.savedAs}</span>
