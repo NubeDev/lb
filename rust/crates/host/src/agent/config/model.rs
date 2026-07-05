@@ -50,4 +50,13 @@ pub struct AgentConfig {
     /// like every other field (an offline double-deliver UPSERTs idempotently).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_definition: Option<String>,
+    /// The **active persona id** the workspace picked (`agent.persona` catalog id) — the run's *focus*
+    /// (curated tools + pinned skills + identity), orthogonal to the `active_definition` *(runtime,
+    /// model)* pick (agent-personas scope #1). Additive + optional (an old config with no
+    /// `active_persona` resolves to no persona — the un-narrowed behavior). Resolved at run assembly by
+    /// [`resolve_persona`](crate::agent::resolve_persona); a per-invoke `persona` arg overrides it. LWW
+    /// like every other field (an offline double-deliver UPSERTs idempotently). No write-time
+    /// validation (a dangling id warns + runs un-narrowed at resolve, like `active_definition`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_persona: Option<String>,
 }

@@ -1,7 +1,14 @@
 # Agent-personas scope — the grounding corpus (persona-grounding)
 
-Status: scope (the ask). Sub-scope #2 of `agent-personas-scope.md`.
-Promotes to `public/agent-personas/`.
+Status: **SHIPPED** (corpus 24→34: dynamic skills scan + `docs/testing/**` runbooks + `core.mcp`/
+`core.acp`/`core.extension-authoring`; anti-rot build gate; grounding test green). Sub-scope #2 of
+`agent-personas-scope.md`. Session:
+[`sessions/agent-personas/persona-grounding-session.md`](../../sessions/agent-personas/persona-grounding-session.md).
+Promoted to [`public/agent-personas/agent-personas.md`](../../public/agent-personas/agent-personas.md).
+
+> **Audit correction:** there was **no code drift** (build.rs already scans all skills dynamically — the
+> "17 vs 24" was stale *docs*, now fixed). The delivered work: the `docs/testing/**` scan root, the
+> anti-rot build failure, the 3 new skills, and the grounding proof.
 
 Make the platform's own operating knowledge — how to call MCP verbs, how to drive ACP, how to
 test, how to build extensions — available to the agent **as granted, pinnable skills**, so a

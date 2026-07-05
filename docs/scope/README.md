@@ -265,6 +265,26 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
   emitting an ingest `Sample`, wrapped by a generic flow `webhook` source node; no provider nodes).
+- `insights/` — a durable, queryable **data-insight record** (`insights-scope.md`): the one
+  missing piece over the shipped detect/orchestrate/attention planes — `insight:{ws}:{id}` with
+  severity, origin provenance (rule/flow/agent + run), a `dedup_key` with occurrence counting
+  (flap suppression + re-open on recurrence), and an `open → acked → resolved` lifecycle.
+  Raised from rules via a caller-gated rhai handle (the rules-messaging pattern), from flows
+  via a built-in `insight` sink node, or by any principal via `insight.raise|list|get|ack|
+  resolve|watch`; entity refs ride the **tag graph** (faceted "spark list" discovery); the AI
+  story is the shipped agent dock + a data-only `builtin.insights-analyst` persona — no new
+  agent surface. Deliberately **not** an inbox item, an outbox effect, or a channel-per-rule
+  (all three rejected in-scope). Three sub-scopes carry the key features:
+  `insight-occurrences-scope.md` (the per-insight **transaction log** — one lite, size-capped
+  row per raise in a capped ring, lifetime `count` beyond the ring),
+  `insight-subscriptions-scope.md` (a member **subscribes a channel** to all / a rule / an
+  identity / a tag facet / a severity floor, delivered under the subscriber's stored
+  reminders-pattern principal), and `insight-notify-scope.md` (the **anti-spam digest
+  ladder** — noisy keys decay immediate → hourly → daily → weekly → monthly summaries and climb
+  back when quiet; first-occurrence / severity-escalation / re-open always break through; ack
+  suppresses; ws policy record + per-sub overrides + per-member kill switch). The fraud and
+  HVAC/energy (SkySpark-style, `docker/postgres/seed.py`) verticals build on it as
+  config/extensions with zero core branches.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of

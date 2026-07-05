@@ -89,6 +89,7 @@ async fn context_is_fenced_into_the_prompt_as_untrusted() {
         &node,
         &registry,
         None,
+        None,
         &caller,
         &caller.caps().to_vec(),
         ws,
@@ -137,6 +138,7 @@ async fn oversize_context_is_rejected_before_any_model_call() {
         &node,
         &registry,
         None,
+        None,
         &caller,
         &caller.caps().to_vec(),
         ws,
@@ -171,6 +173,7 @@ async fn absent_context_is_byte_identical_to_today() {
     invoke_via_runtime(
         &node,
         &registry,
+        None,
         None,
         &caller,
         &caller.caps().to_vec(),

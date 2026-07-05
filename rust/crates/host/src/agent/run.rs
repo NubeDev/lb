@@ -26,7 +26,7 @@ use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
 use super::activate::{activate_skill, SKILL_ACTIVATE};
-use super::catalog::render_catalog;
+use super::catalog::render_catalog_filtered;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
 use super::memory::memory_index_for_injection;
@@ -68,6 +68,8 @@ pub async fn run_session<M: ModelAccess>(
     job_id: &str,
     goal: &str,
     tools: &[AllowedTool],
+    persona_catalog: Option<&[String]>,
+    persona_preset: Option<&super::personas::PolicyPreset>,
     ts: u64,
 ) -> Result<String, AgentError> {
     // The derived (intersected) principal: the agent acts under `agent_caps ∩ caller.caps`, same ws,
@@ -104,8 +106,15 @@ pub async fn run_session<M: ModelAccess>(
     let mut turn_no = count_turns(&events);
 
     // The workspace permission policy consulted in front of `caps::check` (Part 2). Loaded once per
-    // run; default-allow when absent, so a workspace with no policy behaves exactly as before.
-    let policy = load_policy(&node.store, ws).await?;
+    // run; default-allow when absent, so a workspace with no policy behaves exactly as before. The
+    // active persona's `policy_preset` (persona-coding #4) is folded in as a FLOOR: it adds Ask/Deny on
+    // the node-mutating tools the extension-builder persona supervises, unless the admin has written an
+    // explicit ws rule for that exact tool (the "loosening is the explicit admin write" contract). A
+    // blanket ws `*`-Allow does NOT loosen the floor. `None` preset → the ws policy verbatim.
+    let policy = super::personas::apply_policy_preset(
+        load_policy(&node.store, ws).await?,
+        persona_preset,
+    );
 
     // MODEL-ACTIVATED SKILLS (Part 5): inject the granted-skills CATALOG (title+description only)
     // into context ONCE per run, so the model knows what it may `skill.activate`. Resolved decision:
@@ -115,7 +124,12 @@ pub async fn run_session<M: ModelAccess>(
     // when the granted set changes mid-run, rare) is deferred — the once-per-run render is the
     // load-bearing half of the decision. The read is grant- + ws-gated (`render_catalog`); an
     // ungranted skill never reaches the rendered text.
-    if let Some(catalog) = render_catalog(node, &agent, ws).await? {
+    // Filter the catalog to the persona's pinned skills when a persona is active (agent-personas #1) —
+    // the model's advertised skill set matches its focus. `None` → the full granted catalog (unchanged).
+    // The persona's identity + pinned-skill BODIES are already in the goal (baked upstream in
+    // dispatch.rs), so this is the catalog (name+description) half only. The grant is the wall either
+    // way — filtering only removes already-granted entries.
+    if let Some(catalog) = render_catalog_filtered(node, &agent, ws, persona_catalog).await? {
         state.messages.push(("system".into(), catalog));
     }
 

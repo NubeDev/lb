@@ -227,6 +227,7 @@ async fn workspace_default_carries_the_picks_human_label() {
         ws,
         &AgentConfig {
             active_definition: None,
+            active_persona: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },
@@ -258,6 +259,7 @@ async fn workspace_default_falls_back_to_the_id_when_no_definition_matches() {
         ws,
         &AgentConfig {
             active_definition: None,
+            active_persona: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },
@@ -310,6 +312,7 @@ async fn ws_b_default_never_carries_ws_a_active_label() {
         "ws-a",
         &AgentConfig {
             active_definition: None,
+            active_persona: None,
             default_runtime: Some("acme-external".into()),
             model_endpoint: None,
         },

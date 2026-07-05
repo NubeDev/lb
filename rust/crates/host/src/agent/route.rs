@@ -46,6 +46,12 @@ pub struct AgentInvokeRequest {
     /// omits the field decodes as `None` (default runtime) — the wire stays backward-compatible.
     #[serde(default)]
     pub runtime: Option<String>,
+    /// The **persona selector** (agent-personas scope #1) — a per-invoke override of the workspace's
+    /// `agent.config.active_persona`. `#[serde(default)]` so an older edge that omits it decodes as
+    /// `None` (the active-persona / un-narrowed behavior); the wire stays backward-compatible. Opaque
+    /// id (rule 10) resolved against the serving node under the caller.
+    #[serde(default)]
+    pub persona: Option<String>,
     /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
     /// object the run fences into its goal as untrusted context. `#[serde(default)]` so an older edge
     /// that omits it decodes as `None` (behavior byte-identical to today). Opaque `Value`: the host

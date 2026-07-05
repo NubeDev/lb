@@ -162,6 +162,10 @@ pub async fn agent_def_test(
             node,
             &registry,
             Some(&def.runtime),
+            // `agent.def.test` is a runtime/model diagnostic (a self-describe turn), NOT a persona
+            // preview — drive with no persona so the test isolates "does this (runtime, model, key)
+            // work". Previewing the active persona's context is a separate follow-up (scope open-Q 2).
+            None,
             caller,
             &caller.caps().to_vec(),
             ws,

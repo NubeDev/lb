@@ -36,6 +36,11 @@ pub struct ChannelAgentJob {
     /// The runtime selector (`None` → in-house default; a profile id → external). Same seam as inline.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<String>,
+    /// The **persona** selector (agent-personas scope #1) carried from the `kind:"agent"` payload so
+    /// the reactor applies the same focus an inline drive would. `#[serde(default)]` so an older
+    /// enqueue record (no persona) deserializes as `None` (the un-narrowed / active-persona behavior).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona: Option<String>,
     /// The durable *run* id (the `job` the UI minted). The run job is keyed on this; the posted
     /// answer item's id is `a:<run_job>`, which is ALSO the idempotency key (skip if it already exists).
     pub run_job: String,
@@ -87,6 +92,7 @@ mod tests {
             cid: "ops".into(),
             goal: "summarize the logs".into(),
             runtime: Some("open-interpreter-default".into()),
+            persona: None,
             run_job: "run-9".into(),
             context: Some(serde_json::json!({ "surface": "dashboards" })),
             poster_sub: "user:ada".into(),
@@ -104,6 +110,7 @@ mod tests {
             cid: "ops".into(),
             goal: "hi".into(),
             runtime: None,
+            persona: None,
             run_job: "run-2".into(),
             context: None,
             poster_sub: "user:ada".into(),

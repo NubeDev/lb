@@ -16,6 +16,31 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just scoped (2026-07-05, docs only): insights — a durable data-insight record.** The answer to
+"do we need an insight system, or is it just a term?": ~80% is already shipped (rules
+`emit`/`alert`, flows sinks, inbox/outbox, channels, tags, personas + the agent dock); the one
+missing piece is a durable `insight:{ws}:{id}` record with severity, origin provenance
+(rule/flow/agent + run), `dedup_key` occurrence counting (flap-suppression + re-open), and an
+`open → acked → resolved` lifecycle — raised via a rules rhai handle / a flow `insight` sink node /
+plain `insight.*` MCP verbs, faceted through the tag graph, surfaced on an Insights page whose AI
+layer is the shipped agent dock + a data-only `builtin.insights-analyst` persona. Channel-per-rule,
+insight-as-outbox-effect, and insight-as-inbox-item all considered and rejected in-scope. Fraud +
+SkySpark-style HVAC verticals (`docker/postgres/seed.py`) build on it with zero core branches.
+Three sub-scopes carry the key features: **occurrences** (a per-insight transaction log — one lite
+size-capped row per raise in a capped ring, lifetime `count` beyond it), **subscriptions** (a
+member subscribes a channel to all / a rule / an identity / a tag facet / a severity floor,
+delivered under a stored reminders-pattern principal), and **notify** (the anti-spam digest
+ladder — noisy keys decay immediate→hourly→daily→weekly→monthly and climb back when quiet;
+first-occurrence/severity-escalation/re-open always break through; ack suppresses; ws policy
+defaults + per-sub overrides + a per-member prefs kill switch).
+Scope [`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3
+sub-scopes); stub
+[`public/insights/insights.md`](public/insights/insights.md); session
+[`sessions/insights/insights-scope-session.md`](sessions/insights/insights-scope-session.md).
+Not yet built — next up when picked.
+
+---
+
 **Just shipped (2026-07-05): webhooks — a first-class inbound-HTTP surface, keyed and mediated.** A
 webhook is a **named, workspace-walled, credential-protected inbound endpoint** the platform owns
 end to end: an admin creates one through the new admin routes (`/admin/webhooks` CRUD), the
@@ -513,6 +538,50 @@ tests (fieldNamePicker/valueMapping/organize/overrides/queryTargets/transformDeb
 backend clamp for the new `queryOptions` (maxDataPoints/minInterval/relativeTime — authored + on the wire
 now, resolver honoring is the follow-up); BarChart per-viz options; then Phase 4 (import/export).
 
+**Just shipped (2026-07-05): agent-personas #1 (persona-model) — the run's *focus* as data (branch
+`master`).** A persona `{ identity, granted_tools, grounding_skills, extends, policy_preset?, runtimes? }`
+is a workspace-selected focus that **narrows** a run (advertised tools + pinned skills + identity),
+never widening the wall (`persona ∩ agent ∩ caller`, every dispatch re-checked). Two tiers, one shape —
+the `agent.def` catalog pattern, fourth reuse: built-ins seeded read-only into reserved `_lb_personas`
+from `personas.toml`; custom personas are workspace CRUD. (1) **Record + 5 CRUD verbs**
+(`agent.persona.{list,get,create,update,delete}`, one file each under `agent/personas/`) + `resolve`
+(extends-unioned effective persona) + `agent.policy.get` (the policy pane's read). (2) **Selection:**
+additive `agent.config.active_persona` + a per-invoke `persona` override threaded through **every** front
+door (channel payload → `ChannelAgentJob` → worker; routed `AgentInvokeRequest`/`invoke_remote`/`serve`;
+`POST /agent/invoke`). (3) **Application (`apply.rs`, the ONE seam both runtimes share):** narrow the
+`RunContext.tools` menu (glob = trailing-`*` prefix; = the external ACP bridge's advertised set),
+fold identity + pinned-skill bodies into the goal (**fail-closed** — an ungranted pin fails the run at
+start, before model spend), filter the advertised catalog to the pinned set (new
+`render_catalog_filtered` + `RunContext.persona_catalog`), enforce the #4 runtime restriction.
+**Design call (caught by a failing test):** run-assembly persona resolution is a **raw namespace-walled
+read**, NOT gated on the picker cap — a persona read can only narrow, so gating guards nothing while
+breaking the common member case (the persona analog of "menu is a hint, wall is the law"). Both-runtimes
+**swap + narrowing tests green** (in-house via a recording model; external via a scripted `AgentRuntime`
+capturing its `RunContext`), plus caps-deny/ws-isolation/precedence/extends-cycle — **19 host tests
+green**, existing agent suite + `node --features external-agent` no-regression. Docs:
+[`public/agent-personas/agent-personas.md`](public/agent-personas/agent-personas.md) ·
+[`sessions/agent-personas/persona-model-session.md`](sessions/agent-personas/persona-model-session.md) ·
+`skills/agent/SKILL.md` §7. **Settings UI SHIPPED** (persona pane + Allow/Ask/Deny policy pane over
+`agent.policy.get`/`set` + read-only effective-tools view; 6 gateway tests green). **#2 grounding corpus
+SHIPPED (2026-07-05):** the `lb-assets` build script now scans the **whole** `docs/skills/` tree
+dynamically **plus** the `docs/testing/**` e2e runbooks (seeding as `core.e2e-*`), with a **hard anti-rot
+build failure** if a skills dir lacks its `SKILL.md`; 3 new grounding skills authored + embedded
+(`core.mcp`, `core.acp`, `core.extension-authoring`) → **corpus 24→34**. The **grounding exit-gate proof**
+is green (a persona-grounded run is fed its pinned `core.e2e-backend` runbook body, menu stays focused,
+no repo/fs tool). Session:
+[`sessions/agent-personas/persona-grounding-session.md`](sessions/agent-personas/persona-grounding-session.md).
+**#3 built-in catalog SHIPPED (2026-07-05):** the seven built-in personas as `personas.toml` data
+(data-analyst, flow-author, widget-builder, rules-author [extends flow+data], workspace-admin,
+channels-operator, system-manager [extends all six]) — verb-lists cross-verified against the live
+inventory (155 verbs, zero missing) + skill corpus (34, zero broken pins); destructive verbs excluded
+from every persona; **8 catalog tests green** incl. the **confusion demo** (reachable palette 11→1 under
+data-analyst) + ws-isolation + caps-deny + `extends` composition. **Recorded finding (not coded around):**
+the menu a persona narrows is the palette-descriptor catalog (`host_descriptors()` ∩ caps) + extension
+tools, NOT the full ~175-verb surface — the persona lists are the forward-looking allow-list; on a bare
+node identity+grounding carry most of the confusion cure (see `persona-catalog-scope.md` finding).
+Session: [`sessions/agent-personas/persona-catalog-session.md`](sessions/agent-personas/persona-catalog-session.md).
+**Next:** #4 `builtin.extension-builder` (the safety-posture persona) — the last umbrella exit-gate bullet.
+
 **Just shipped (2026-07-03): active-agent wiring — the active pick is the ONE implicit agent
 everywhere (branch `master`).** A workspace picks one agent and no surface asks again; the pick's
 `model_endpoint` is now consumed **per workspace**, and the missing primitive under it — a real
@@ -666,12 +735,14 @@ model-proposable in-house tools; vector/semantic recall (v1 non-goal).
 **Just shipped (2026-07-03): core skills — the two-tier skill catalog (branch `ce-node-wiring-v2`).**
 The developer-authored **core skill tier** alongside the shipped S4 user tier, both behind the SAME
 grant gate and the SAME `load_skill`. **Embed + seed:** a `lb-assets` build script embeds the
-`docs/skills/*/SKILL.md` corpus (17 skills) into the node binary at build time — parsing/stripping
-frontmatter, flagging repo-relative links — and `node` boot seeds immutable
-`skill:core.<name>@<node-version>` records into a reserved system namespace (`_lb_skills`, the
-`_lb_identity` precedent; one constant + one resolver file, boot seeder is the only writer). Idempotent
-re-seed; a node upgrade seeds new versions, keeps old for rollback (proven live:
-`boot: seeded 17 core skills @0.1.0`). **Read-only to users:** `put_skill`/`deprecate_skill` reject any
+**whole** `docs/skills/*/SKILL.md` corpus (dynamically scanned — every dir with a SKILL.md, no
+allow-list; **plus** the `docs/testing/**` e2e runbooks as `core.e2e-*`, agent-personas #2) into the
+node binary at build time — parsing/stripping frontmatter, flagging repo-relative links — and `node`
+boot seeds immutable `skill:core.<name>@<node-version>` records into a reserved system namespace
+(`_lb_skills`, the `_lb_identity` precedent; one constant + one resolver file, boot seeder is the only
+writer). A skills subdir missing its `SKILL.md` now **fails the build** (the anti-rot gate,
+persona-grounding #2). Idempotent re-seed; a node upgrade seeds new versions, keeps old for rollback.
+**Read-only to users:** `put_skill`/`deprecate_skill` reject any
 `core.*` id regardless of caps (a non-opaque `Reserved`→`BadInput`, checked before the caps gate).
 **New verb** `assets.deprecate_skill` (soft delete via a `skill_meta:{id}` flag — hidden from
 list/latest, pinned load still resolves, a new version un-hides). **`list_skills`** gains `{tier,

@@ -62,6 +62,8 @@ impl AgentRuntime for InHouseRuntime {
                 ctx.job_id,
                 ctx.goal,
                 ctx.tools,
+                ctx.persona_catalog,
+                ctx.persona_preset,
                 ctx.ts,
             )
             .await

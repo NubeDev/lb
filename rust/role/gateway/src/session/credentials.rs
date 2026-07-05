@@ -376,6 +376,21 @@ fn member_caps() -> Vec<String> {
         "mcp:agent.def.create:call",
         "mcp:agent.def.update:call",
         "mcp:agent.def.delete:call",
+        // agent-personas scope #1: the persona catalog. `list`/`get` are member-level (the Settings
+        // picker + the run-assembly resolver read them); create/update/delete are admin (custom
+        // personas only — built-ins are read-only regardless of caps). The dev login doubles as admin,
+        // so it holds all five; the host re-checks each server-side. None of the `mcp:*.<verb>:call`
+        // wildcards below cover the two-segment `agent.persona.<verb>` names, so each is listed.
+        "mcp:agent.persona.list:call",
+        "mcp:agent.persona.get:call",
+        // agent-personas #1 Settings surface: `resolve` returns the extends-unioned effective persona
+        // for the read-only "effective tools" view (member-level read); `agent.policy.get` reads the
+        // Allow/Ask/Deny policy so the pane can round-trip it (member read; `set` stays admin, above).
+        "mcp:agent.persona.resolve:call",
+        "mcp:agent.policy.get:call",
+        "mcp:agent.persona.create:call",
+        "mcp:agent.persona.update:call",
+        "mcp:agent.persona.delete:call",
         // agent-catalog test-and-secrets scope: the context-proving diagnostic. Its OWN admin-tier cap
         // (distinct from the read-ish `agent.def.list`) because the test SPENDS model budget — "who may
         // spend model budget" is a distinct authority. The dev login doubles as admin; the host

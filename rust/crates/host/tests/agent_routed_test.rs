@@ -109,6 +109,7 @@ async fn an_edge_invokes_the_hub_agent_over_the_routed_namespace() {
             None,
             None,
             None,
+            None,
             &echo_tool(),
             1,
         ),
@@ -140,6 +141,7 @@ async fn a_routed_invoke_is_denied_without_the_cap_and_never_leaves_the_edge() {
         None,
         None,
         None,
+        None,
         &echo_tool(),
         1,
     )
@@ -166,6 +168,7 @@ async fn an_edge_principal_in_ws_b_cannot_route_into_ws_a() {
         ws_a, // targeting workspace A while scoped to B
         "s",
         "x",
+        None,
         None,
         None,
         None,

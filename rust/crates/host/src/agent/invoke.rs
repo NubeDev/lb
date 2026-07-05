@@ -59,9 +59,11 @@ pub async fn invoke<M: ModelAccess>(
         goal = format!("{goal}\n\n[doc {doc_id}]\n{content}");
     }
 
-    // The loop derives its own principal from `caller` ∩ `agent_caps` and drives the job.
+    // The loop derives its own principal from `caller` ∩ `agent_caps` and drives the job. This
+    // in-process entry does not apply a persona (persona resolution rides `invoke_via_runtime`, the
+    // runtime seam both front doors use); the catalog is unfiltered (`None`).
     run_session(
-        node, model, caller, agent_caps, ws, inv.job_id, &goal, inv.tools, inv.ts,
+        node, model, caller, agent_caps, ws, inv.job_id, &goal, inv.tools, None, None, inv.ts,
     )
     .await
 }
@@ -89,7 +91,7 @@ pub async fn resume<M: ModelAccess>(
         None => return Err(AgentError::NotFound),
     };
     run_session(
-        node, model, caller, agent_caps, ws, job_id, &goal, tools, ts,
+        node, model, caller, agent_caps, ws, job_id, &goal, tools, None, None, ts,
     )
     .await
 }

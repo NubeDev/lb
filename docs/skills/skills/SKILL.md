@@ -55,11 +55,19 @@ no-op; a node upgrade seeds the new versions and keeps the old for rollback). Th
 (grounded live, `cargo run -p node`):
 
 ```
-boot: seeded 17 core skills @0.1.0 (["core.auth-caps", "core.channels-inbox-outbox", …,
-      "core.lb-cli", "core.prefs", "core.query", "core.rules", "core.secrets", "core.store-read",
+boot: seeded N core skills @0.1.0 (["core.auth-caps", "core.channels-inbox-outbox", …,
+      "core.lb-cli", "core.mcp", "core.prefs", "core.query", "core.e2e-backend", "core.store-read",
       "core.tags"])
 boot: default core-skill grants for ws=acme: ["core.lb-cli", "core.query", "core.store-read"]
 ```
+
+> **The corpus is the whole `docs/skills/` tree + the `docs/testing/**` e2e runbooks — no allow-list.**
+> The build script scans **every** `docs/skills/<name>/SKILL.md` (a new dir auto-seeds as
+> `core.<name>`) and every frontmatter-bearing `docs/testing/**/*.md` runbook (seeds as `core.e2e-*`).
+> **Anti-rot gate (agent-personas #2):** a `docs/skills/` subdir missing its `SKILL.md` **fails the
+> build** — a half-authored skill can never silently ship as "absent" (which would fail-close a persona
+> that pins it at run time with no build-time signal). So the seeded count is exactly the on-disk
+> corpus; don't hardcode it.
 
 A **fresh workspace** gets a small **default grant set** — the read-only core skills `core.lb-cli`,
 `core.query`, `core.store-read` — so its agent is useful out of the box. An admin can revoke any of
