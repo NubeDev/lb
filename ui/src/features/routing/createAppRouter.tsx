@@ -13,7 +13,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 
-import { AdminView } from "@/features/admin";
+import { AdminView, WebhooksAdmin } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
@@ -217,6 +217,7 @@ const routeTree = rootRoute.addChildren([
     datasourceDetailRoute,
     coreRoute("/reminders", "reminders", () => <Reminders />),
     coreRoute("/ingest", "ingest", () => <Ingest />),
+    coreRoute("/webhooks", "webhooks", () => <Webhooks />),
     coreRoute("/data", "data", () => <Data />),
     coreRoute("/system", "system", () => <System />),
     coreRoute("/system/mcp", "system-mcp", () => <McpService />),
@@ -484,6 +485,10 @@ function DatasourceDetailRoute() {
 
 function Ingest() {
   return <IngestView ws={useAppRoutingContext().workspace} />;
+}
+
+function Webhooks() {
+  return <WebhooksAdmin ws={useAppRoutingContext().workspace} />;
 }
 
 function Data() {

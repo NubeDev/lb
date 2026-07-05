@@ -14,6 +14,7 @@ export const CORE_PATHS: Record<CoreSurface, string> = {
   datasources: "/datasources",
   reminders: "/reminders",
   ingest: "/ingest",
+  webhooks: "/webhooks",
   data: "/data",
   system: "/system",
   "system-mcp": "/system/mcp",

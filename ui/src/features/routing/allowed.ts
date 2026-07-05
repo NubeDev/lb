@@ -14,6 +14,10 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");
   if (hasCap(caps, CAP.reminderList)) allowed.push("reminders");
   if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
+  // webhooks (webhooks scope): the admin-verb gate. The page shows for a session holding
+  // `webhook.manage`; the gateway re-checks every verb server-side regardless. The public inbound
+  // `POST /hooks/{ws}/{id}` route takes NO session token — this gates the management surface only.
+  if (hasCap(caps, CAP.webhookManage)) allowed.push("webhooks");
   if (hasCap(caps, CAP.storeScan)) allowed.push("data");
   if (hasCap(caps, CAP.systemOverview)) allowed.push("system");
   // The MCP / ACP service pages are drilled from the System page; each shows behind its own cap.
