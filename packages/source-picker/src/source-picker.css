@@ -126,8 +126,38 @@
   gap: 0.25rem;
 }
 
+/* The section header is a Radix Collapsible trigger — click toggles open/close. The chevron rotates
+   90° on open (the shadcn sidebar-11 affordance). */
 .sp-root .sp-catalog-section-head {
-  padding: 0 0.25rem 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.25rem 0.25rem 0.375rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-root .sp-catalog-section-head:hover {
+  background: color-mix(in srgb, var(--sp-fg) 4%, transparent);
+  border-radius: 0.25rem;
+}
+
+.sp-root .sp-catalog-section-chevron {
+  width: 0.875rem;
+  height: 0.875rem;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+  transition: transform 150ms ease;
+}
+
+/* Radix sets `[data-state=open]` on the Collapsible root; the chevron rotates only when open. */
+.sp-root .sp-catalog-section[data-state="open"] .sp-catalog-section-chevron {
+  transform: rotate(90deg);
 }
 
 .sp-root .sp-catalog-section-title {
@@ -141,8 +171,39 @@
 
 .sp-root .sp-catalog-section-hint {
   margin: 0;
+  margin-left: auto;
+  padding-left: 0.5rem;
   font-size: 0.625rem;
   color: color-mix(in srgb, var(--sp-fg) 45%, transparent);
+  white-space: nowrap;
+}
+
+/* Radix Collapsible content: animate open/closed via the grid-rows 0fr → 1fr trick. */
+.sp-root .sp-catalog-section-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 150ms ease, opacity 150ms ease;
+}
+
+.sp-root .sp-catalog-section-content[data-state="open"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* The inner body needs `overflow:hidden` so the 0fr row animation clips. */
+.sp-root .sp-catalog-section-content > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Idle hint — shown when the section is collapsed + its loader hasn't fired yet. */
+.sp-root .sp-catalog-idle {
+  margin: 0;
+  padding: 0.5rem 0.5rem 0.5rem 1.125rem;
+  font-size: 0.625rem;
+  color: color-mix(in srgb, var(--sp-fg) 40%, transparent);
+  font-style: italic;
 }
 
 /* Loading skeleton — a single pulsing bar (matches the shipped rules explorer's honest "loading"). */
@@ -241,14 +302,18 @@
 }
 
 .sp-root .sp-catalog-icon {
-  display: inline-block;
+  display: inline-flex;
+  flex-shrink: 0;
   width: 0.875rem;
+  height: 0.875rem;
   color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
-  font-size: 0.625rem;
-  text-align: center;
 }
 
-/* The schema table→column tree (CatalogSchemaTree). */
+/* The schema table→column tree (CatalogSchemaTree). Uses shadcn's file-tree pattern (sidebar-11):
+   Radix Collapsible + a `ChevronRight` that rotates 90° on open + an indented sub-tree bordered by a
+   left guide line. The Collapsible content animates open/closed (height + opacity) for the same
+   affordance the host's sidebar file-tree gives. */
+
 .sp-root .sp-catalog-tree {
   display: grid;
   gap: 0.125rem;
@@ -259,6 +324,12 @@
 
 .sp-root .sp-catalog-tree-row {
   display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sp-root .sp-catalog-tree-row-inner {
+  display: flex;
   align-items: center;
   gap: 0.125rem;
 }
@@ -267,19 +338,30 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.5rem;
+  width: 1.25rem;
   height: 1.5rem;
   flex-shrink: 0;
   padding: 0;
   border: 0;
   background: transparent;
   color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
-  font-size: 0.625rem;
   cursor: pointer;
 }
 
 .sp-root .sp-catalog-toggle:hover {
   color: var(--sp-fg);
+}
+
+/* The chevron rotates 90° on open — the shadcn sidebar-11 affordance (group/collapsible +
+   `[data-state=open] > trigger > svg]:rotate-90`). */
+.sp-root .sp-catalog-chevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  transition: transform 150ms ease;
+}
+
+.sp-root .sp-catalog-tree-row[data-state="open"] .sp-catalog-chevron {
+  transform: rotate(90deg);
 }
 
 .sp-root .sp-catalog-tree-table {
@@ -303,11 +385,35 @@
   background: color-mix(in srgb, var(--sp-fg) 8%, transparent);
 }
 
+.sp-root .sp-catalog-tree-table-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Radix Collapsible content: animate open/closed. The grid-template-rows 0fr → 1fr trick is the
+   canonical CSS-only height transition (avoids measuring the content). */
+.sp-root .sp-catalog-tree-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 150ms ease, opacity 150ms ease;
+}
+
+.sp-root .sp-catalog-tree-content[data-state="open"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+/* The inner column list — needs `overflow:hidden` so the 0fr → 1fr row animation clips. */
 .sp-root .sp-catalog-tree-columns {
   margin: 0 0 0 1.5rem;
   padding: 0 0 0 0.375rem;
   list-style: none;
   border-left: 1px solid var(--sp-border);
+  overflow: hidden;
+  min-height: 0;
 }
 
 .sp-root .sp-catalog-tree-no-columns {

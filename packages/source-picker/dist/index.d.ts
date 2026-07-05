@@ -67,7 +67,7 @@ export declare type CatalogEntry = {
 };
 
 /** The system-catalog explorer panel. */
-export declare function CatalogExplorer({ sections, onSelect, sectionSpecs, className, }: CatalogExplorerProps): JSX_2.Element;
+export declare function CatalogExplorer({ sections, onSelect, onLoadSection, sectionSpecs, className, }: CatalogExplorerProps): JSX_2.Element;
 
 export declare interface CatalogExplorerProps {
     /** The per-section state from `useCatalog`. Sections absent here (the host wired no loader) are
@@ -76,6 +76,11 @@ export declare interface CatalogExplorerProps {
     /** Called with the picked `CatalogEntry` whenever a row is clicked. The host maps the entry onto
      *  its own snippet/bind (a Rhai `source("name")`, a SQL table name, a dashboard cell source). */
     onSelect: (entry: CatalogEntry) => void;
+    /** Fired the first time a user expands a section whose state is still `idle` — the host's cue to
+     *  run that section's loader. Wire to `useCatalog`'s `loadSection`. Optional (a host that pre-seeds
+     *  `ready` data never triggers it); omitting means every section renders open + ready (the eager
+     *  contract from before lazy loading — render tests use this). */
+    onLoadSection?: (kind: CatalogSectionKind) => void;
     /** Which sections to render + their labels/hints, in display order. Defaults to the canonical
      *  `CATALOG_SECTION_SPECS`. A host that wants a subset (e.g. just `datasources` + `series`) passes
      *  its own filtered list. */
@@ -84,8 +89,8 @@ export declare interface CatalogExplorerProps {
     className?: string;
 }
 
-/** A table → column tree with click-to-pick. Tolerates an empty schema (the parent shows the
- *  teaching-empty/deny; this renders nothing for `tables: []`). */
+/** A table → column tree with click-to-pick, using shadcn's file-tree pattern. Tolerates an empty
+ *  schema (the parent shows the teaching-empty/deny; this renders nothing for `tables: []`). */
 export declare function CatalogSchemaTree({ schema, onSelect }: CatalogSchemaTreeProps): JSX_2.Element;
 
 export declare interface CatalogSchemaTreeProps {
@@ -94,9 +99,9 @@ export declare interface CatalogSchemaTreeProps {
     onSelect: (entry: CatalogEntry) => void;
 }
 
-/** Render a section's header/hint + its honest state: loading skeleton, "Not permitted." deny, the
- *  teaching empty (when `ready` returns null/[]), or the ready body. */
-export declare function CatalogSection<T>({ spec, state, children }: CatalogSectionProps<T>): JSX_2.Element;
+/** A collapsible section: a clickable header (chevron + title + hint) + the body. The header toggles
+ *  open/close; the first open of an `idle` section fires `onOpen` so the host can lazy-load it. */
+export declare function CatalogSection<T>({ spec, state, onOpen, defaultOpen, children }: CatalogSectionProps<T>): JSX_2.Element;
 
 /** The schema of `CatalogSections.data` per section kind. The explorer kinds carry row arrays (or
  *  `Schema` for the local-tables section, which the tree renderer walks); the picker-only kinds
@@ -130,6 +135,14 @@ export declare type CatalogSectionKind = "datasources" | "schema" | "series" | "
 export declare interface CatalogSectionProps<T> {
     spec: CatalogSectionSpec;
     state: SectionState<T>;
+    /** Fired the first time the user expands a section whose state is still `idle` — the host's cue to
+     *  trigger this section's loader. The collapsible handles its own open/close thereafter; this is
+     *  the lazy-load trigger, not an open/close controller. Optional (a host that pre-seeds `ready`
+     *  state never triggers it). */
+    onOpen?: () => void;
+    /** Force the section open on first mount (default: open iff `state` is past `idle`). Tests + hosts
+     *  that pre-seed `ready` data pass `defaultOpen` so rows render without a click. */
+    defaultOpen?: boolean;
     /** The ready-body renderer — receives the section's data and returns the row tree. The explorer
      *  composes this per kind (datasource rows / the schema table tree / channel rows / …). */
     children: (data: T) => ReactNode;
@@ -348,8 +361,14 @@ export declare function schemaTableEntries(schema: Schema): CatalogEntry[];
 /** A section's load state — never a fake "ready with empty data" when the read was denied. This is
  *  the contract the EXPLORER skin surfaces visibly (loading skeleton / "Not permitted." / ready) and
  *  the COMBOBOX collapses into an empty group via projection. Moved in from the rules panel's
- *  `useDataExplorer` (system-catalog scope). */
+ *  `useDataExplorer` (system-catalog scope).
+ *
+ *  `idle` is the lazy-load contract: the section is collapsed and its loader has NOT fired yet. The
+ *  loader fires the first time a user expands the section (the explorer's `onOpen`), then transitions
+ *  to `loading` → `ready`/`denied`. Subsequent collapse/re-expand keeps the cached data (no refire). */
 export declare type SectionState<T> = {
+    status: "idle";
+} | {
     status: "loading";
 } | {
     status: "ready";
@@ -541,11 +560,21 @@ export declare const SQL_SOURCE_ID = "sql:query";
  *  includes it (the bridge's leash); the concrete `sql` is filled by the host's SQL editor. */
 export declare function sqlSourceEntry(): SourceEntry;
 
-/** Load + surface the catalog. `loaders` is the host's read seam; `ws` keys the re-load (the
- *  workspace switch). The effect keys on `ws` ONLY and reads `loaders` through a ref kept current
- *  every render — so a fresh loaders literal per render does NOT loop (same discipline as
- *  `useSourcePicker`). A host that swaps to a genuinely different transport should also change `ws`. */
-export declare function useCatalog(loaders: SourceLoaders, ws: string): CatalogSections;
+/** Lazy catalog. `loaders` is the host's read seam; `ws` keys the re-init (the workspace switch). The
+ *  initial idle record is computed once per `loaders` reference via `useState`'s lazy initializer —
+ *  every wired section starts `idle` on FIRST render (no useEffect timing gap). The `ws` effect resets
+ *  the record on workspace switch (the user re-opens each section to re-fetch under the new ws). */
+export declare function useCatalog(loaders: SourceLoaders, ws: string): UseCatalogResult;
+
+/** The lazy catalog — the per-section state record plus the `loadSection(kind)` action the explorer
+ *  fires on first expand. The host reads `sections` for rendering; passes `loadSection` to the
+ *  `<CatalogExplorer>` so its section headers can trigger their own loads. */
+declare interface UseCatalogResult {
+    sections: CatalogSections;
+    /** Fire one section's loader (deny-tolerant; absent loader ⇒ the section stays `undefined`).
+     *  Idempotent — calling it again on an already-loaded section is a no-op (the cached state persists). */
+    loadSection: (kind: CatalogSectionKind) => void;
+}
 
 /** Load + assemble the picker. `loaders` is the host's read seam; `ws` keys the re-load (the workspace
  *  switch). The effect keys on `ws` ONLY and reads `loaders` through a ref kept current every render —

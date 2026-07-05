@@ -25,6 +25,8 @@ async function addSource(
   user: ReturnType<typeof userEvent.setup>,
   fields: { name: string; kind: string; endpoint: string; dsn: string },
 ) {
+  // The form lives in a Dialog now — open it before typing.
+  await user.click(await screen.findByRole("button", { name: "new datasource" }));
   await user.type(await screen.findByLabelText("datasource name"), fields.name);
   // The kind is a SELECT over the sidecar-accepted kinds (sqlite-datasource-demo scope).
   await user.selectOptions(screen.getByLabelText("datasource kind"), fields.kind);
@@ -75,6 +77,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     const { container } = render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
     await screen.findByText("No datasources yet.");
 
+    await user.click(await screen.findByRole("button", { name: "new datasource" }));
     await user.type(await screen.findByLabelText("datasource name"), "demo-buildings");
     await user.selectOptions(screen.getByLabelText("datasource kind"), "sqlite");
     // Picking sqlite prefills the local convention endpoint (a file has no network endpoint).
@@ -95,6 +98,7 @@ describe("DatasourcesAdmin (real gateway)", () => {
     await signInReal("user:ada", ws);
     render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
 
+    await user.click(await screen.findByRole("button", { name: "new datasource" }));
     await user.type(await screen.findByLabelText("datasource name"), "timescale");
     await user.type(screen.getByLabelText("datasource endpoint"), "tsdb.acme:5432");
 

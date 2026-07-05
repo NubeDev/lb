@@ -11,14 +11,21 @@
 //   - series     → `history("series", "name", "24h")` (read 24h of history).
 //
 // `useDataExplorer` is retired — the package's `useCatalog` is the one loader orchestration now.
+//
+// The `<CatalogExplorer>` UI is LAZY-LOADED via `React.lazy` so the picker bundle code-splits into
+// its own chunk and is only paid for when a user actually opens the rules authoring panel.
 
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 
-import { CatalogExplorer, useCatalog, type CatalogEntry, type SourceLoaders } from "@nube/source-picker";
+import { useCatalog, type CatalogEntry, type SourceLoaders } from "@nube/source-picker";
 
 import { listDatasources } from "@/lib/datasources";
 import { readSchema } from "@/lib/schema";
 import { listRealSeries } from "@/lib/ingest/schema.api";
+
+const CatalogExplorer = lazy(() =>
+  import("@nube/source-picker").then((m) => ({ default: m.CatalogExplorer })),
+);
 
 interface DataExplorerProps {
   ws: string;
@@ -41,8 +48,26 @@ export function DataExplorer({ ws, onInsert }: DataExplorerProps) {
   // `loaders` is read via ref inside `useCatalog`, so a fresh literal per render does not loop the
   // effect (keyed on `ws` only). Keep it simple — no `useMemo` needed for correctness.
   const loaders = useMemo(shellLoaders, []);
-  const sections = useCatalog(loaders, ws);
-  return <CatalogExplorer sections={sections} onSelect={(e) => onInsert(snippetFor(e))} />;
+  const { sections, loadSection } = useCatalog(loaders, ws);
+  return (
+    <Suspense fallback={<CatalogExplorerFallback />}>
+      <CatalogExplorer
+        sections={sections}
+        onLoadSection={loadSection}
+        onSelect={(e) => onInsert(snippetFor(e))}
+      />
+    </Suspense>
+  );
+}
+
+/** A tiny inline skeleton shown while the lazy picker chunk loads (rule 9: honest UI). */
+function CatalogExplorerFallback() {
+  return (
+    <div aria-label="loading catalog" className="flex flex-col gap-1">
+      <div className="h-4 w-full animate-pulse rounded-md bg-fg/10" />
+      <div className="h-4 w-2/3 animate-pulse rounded-md bg-fg/10" />
+    </div>
+  );
 }
 
 /** Map a picked catalog entry onto the rule's Rhai snippet. The host owns this mapping; the package

@@ -39,7 +39,7 @@ export function AddDatasourceForm({ onAdd }: Props) {
   return (
     <form
       aria-label="add datasource"
-      className="space-y-2 border-b border-border px-3 py-3"
+      className="space-y-2"
       onSubmit={(e) => {
         e.preventDefault();
         if (name.trim() && endpoint.trim() && dsn.trim()) {

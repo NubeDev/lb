@@ -39,7 +39,8 @@ import { PreviewPane } from "./PreviewPane";
 import { OptionsSections } from "./OptionsSections";
 import { OptionsDrawer } from "./OptionsDrawer";
 import { QueryTargets } from "./tabs/QueryTargets";
-import { useDemoPreview, demoSwappedCell } from "./useDemoPreview";
+import { useDemoPreview, demoSwappedCell, demoTarget } from "./useDemoPreview";
+import { DEFAULT_INLINE_CODE } from "@/features/dashboard/builder/editors/TemplateSourceField";
 
 interface Props {
   ws: string;
@@ -73,6 +74,9 @@ export function BuilderPane({
   // reshape the frames already fetched. Unfreeze re-fetches once.
   const [frozen, setFrozen] = useState(false);
   const [inspecting, setInspecting] = useState(false);
+  // Stacked only: the preview folds behind a disclosure so the options surface can take the vertical
+  // room (the "minimise the preview" ask). Open by default; per-tab, in-session.
+  const [previewOpen, setPreviewOpen] = useState(true);
 
   // The draft's data — ONE read through the one data hook (invariant A) feeds the shape probe, the
   // result-field names, AND the query-first staging (rows exist → reveal the visual stages).
@@ -98,6 +102,31 @@ export function BuilderPane({
   }, [hasRows, demo.active]);
 
   const patch = ed.patch;
+
+  // Template starter seed — at the PANE level (always mounted), not inside the options drawer: a
+  // template cell with neither inline code nor a saved id renders "no template" forever unless the
+  // user happens to open the Panel-options section. Guard: `typeof code !== "string"` so a
+  // deliberately cleared editor ("") is never overwritten; a `templateId` (Saved mode) suppresses it.
+  const carryExtras = ed.state.carry.extraOptions as Record<string, unknown> | undefined;
+  useEffect(() => {
+    const ex = carryExtras ?? {};
+    if (
+      ed.viewC === "template" &&
+      typeof ex.code !== "string" &&
+      !(typeof ex.templateId === "string" && ex.templateId)
+    ) {
+      patch({ carry: { ...ed.state.carry, extraOptions: { ...ex, code: DEFAULT_INLINE_CODE } } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- guarded one-shot per view/extras change
+  }, [ed.viewC, carryExtras]);
+
+  // "Preview with demo data" PREFILLS the draft for real — the demo datasource + the last-N-per-meter
+  // SQL land in the query editor (visible, editable, runnable), not just in a display-only swap. The
+  // badge still shows until the (now real) query returns rows, then auto-yields.
+  const prefillDemo = () => {
+    patch({ targets: [demoTarget()] });
+    demo.enable();
+  };
   // Report every serialized draft AFTER the state applies (an inline `ed.toCell()` next to `patch`
   // would serialize the pre-patch state — one edit behind).
   useEffect(() => {
@@ -150,7 +179,7 @@ export function BuilderPane({
             <div className="flex items-center gap-2 rounded-md border border-border bg-panel px-3 py-2 text-xs text-muted">
               <Database size={13} className="shrink-0" />
               <span>Your query returned no rows.</span>
-              <Button aria-label="preview with demo data" size="sm" variant="outline" onClick={demo.enable}>
+              <Button aria-label="preview with demo data" size="sm" variant="outline" onClick={prefillDemo}>
                 Preview with demo data
               </Button>
             </div>
@@ -177,22 +206,34 @@ export function BuilderPane({
               <QueryTargets ws={ws} state={ed.state} patch={patch} onRun={ed.run} />
             </div>
           ) : (
-            // Stage 2/3 — rows exist: preview on top, gallery below, options folded in the drawer.
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-              <div className="min-h-[10rem] shrink-0">
-                <PreviewPane
-                  cell={shownCell}
-                  ws={ws}
-                  scope={scope}
-                  refreshKey={ed.refreshKey}
-                  frozen={frozen}
-                  tableView={tableView}
-                />
+            // Stage 2/3 — rows exist: preview (collapsible) + options on the LEFT, the viz-selection
+            // gallery as a vertical rail on the RIGHT. A BOUNDED (non-scrolling) column, deliberately:
+            // the chart's ResponsiveContainer needs a DEFINITE height — inside an `overflow-y-auto`
+            // column every child is content-sized, so a `height:100%` chart inflates unbounded and
+            // buries the gallery + options bar.
+            <div className="flex min-h-0 flex-1 gap-3">
+              <div className="flex min-h-0 flex-1 flex-col gap-2">
+                <div className={previewOpen ? "min-h-[10rem] flex-1" : "shrink-0"}>
+                  <PreviewPane
+                    cell={shownCell}
+                    ws={ws}
+                    scope={scope}
+                    refreshKey={ed.refreshKey}
+                    frozen={frozen}
+                    tableView={tableView}
+                    open={previewOpen}
+                    onOpenChange={setPreviewOpen}
+                  />
+                </div>
+                <QueryStatusBar state={data} hasTarget={hasTarget} frozen={frozen} />
+                {ed.flowKind && (
+                  <VizPicker view={ed.viewC} onChange={ed.switchView} shape={shape} flowKind={ed.flowKind} />
+                )}
+                <OptionsDrawer>
+                  <OptionsSections ws={ws} ed={ed} scope={scope} />
+                </OptionsDrawer>
               </div>
-              <QueryStatusBar state={data} hasTarget={hasTarget} frozen={frozen} />
-              {ed.flowKind ? (
-                <VizPicker view={ed.viewC} onChange={ed.switchView} shape={shape} flowKind={ed.flowKind} />
-              ) : (
+              {!ed.flowKind && (
                 <VizGallery
                   cell={shownCell}
                   ws={ws}
@@ -201,11 +242,9 @@ export function BuilderPane({
                   view={ed.viewC}
                   onChange={ed.switchView}
                   shape={shape}
+                  orientation="column"
                 />
               )}
-              <OptionsDrawer>
-                <OptionsSections ws={ws} ed={ed} scope={scope} />
-              </OptionsDrawer>
             </div>
           )}
         </ResultFieldsProvider>

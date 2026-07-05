@@ -90,15 +90,28 @@ export async function loadCatalog(
   };
   await Promise.all(
     SECTION_KINDS.map(async (kind) => {
-      const fn = loaders[SECTION_LOADERS[kind]] as (() => Promise<unknown>) | undefined;
-      if (!fn) return; // absent loader ⇒ absent section (the field stays undefined).
-      try {
-        const data = await fn();
-        commit(kind, { status: "ready", data });
-      } catch (e) {
-        commit(kind, { status: "denied", error: msg(e) });
-      }
+      const state = await runSectionLoader(loaders, kind);
+      if (state) commit(kind, state);
     }),
   );
   return out as CatalogSections;
+}
+
+/** Run ONE section's loader (deny-tolerant). Returns `undefined` for an absent loader (the host wired
+ *  no `listX` for this section — the field stays absent from the record). Eager `loadCatalog` is the
+ *  fan-out over every kind; this is the per-section shot the lazy explorer fires when a user expands
+ *  a section that's still `idle`. Shared with `loadCatalog` so the deny/empty behaviour is identical
+ *  between the eager and lazy paths. */
+export async function runSectionLoader(
+  loaders: SourceLoaders,
+  kind: CatalogSectionKind,
+): Promise<SectionState<unknown> | undefined> {
+  const fn = loaders[SECTION_LOADERS[kind]] as (() => Promise<unknown>) | undefined;
+  if (!fn) return undefined; // absent loader ⇒ absent section (the field stays undefined).
+  try {
+    const data = await fn();
+    return { status: "ready", data };
+  } catch (e) {
+    return { status: "denied", error: msg(e) };
+  }
 }

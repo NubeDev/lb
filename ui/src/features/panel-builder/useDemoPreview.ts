@@ -16,9 +16,32 @@ import { useDatasourceList } from "./tabs/useDatasourceList";
 /** The canonical demo datasource `make seed-demo-sqlite` registers (kind `sqlite`). */
 export const DEMO_DATASOURCE = "demo-buildings";
 
-/** A real query over the demo building dataset (`point_reading` — one month of 15-min meter data). */
-const DEMO_SQL =
-  "SELECT time, value FROM point_reading ORDER BY time DESC LIMIT 200";
+/** A real query over the demo building dataset (`point_reading` — one month of 15-min meter data):
+ *  the last 100 readings PER meter for two kWh meters, `rn` = recency rank within each meter. This is
+ *  also what "Preview with demo data" PREFILLS into the draft's query editor, so it must stay a query
+ *  a user would keep and edit (not a toy projection). */
+export const DEMO_SQL = `SELECT *
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY point_id
+               ORDER BY time DESC
+           ) AS rn
+    FROM point_reading
+    WHERE point_id IN ('meter-001-kwh', 'meter-002-kwh')
+) t
+WHERE rn <= 100`;
+
+/** The demo query as a ready-to-patch editor target — what the demo button writes into the DRAFT
+ *  (visible + editable in the query editor), not just the display swap. */
+export function demoTarget() {
+  return {
+    refId: "A",
+    tool: "federation.query",
+    args: { source: DEMO_DATASOURCE, sql: DEMO_SQL },
+    datasource: { type: "federation" as const },
+  };
+}
 
 /** Swap `draft`'s data binding to the demo source (display-only — the saved cell is untouched; the
  *  caller renders THIS cell while demo mode is on). View/options/fieldConfig stay the user's own. */

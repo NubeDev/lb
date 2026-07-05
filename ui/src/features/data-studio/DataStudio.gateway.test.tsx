@@ -72,13 +72,17 @@ async function mountStudio(ws: string, allowed = ["data-studio"]) {
   return view;
 }
 
-/** Click the seeded `cooler.temp` series row in the CatalogExplorer tree → opens a BUILDER tab. */
+/** Click the seeded `cooler.temp` series row in the CatalogExplorer tree → opens a BUILDER tab.
+ *  The explorer is LAZY per section — the Series section starts collapsed; expanding its header is
+ *  what fires `series.list` and surfaces the rows. */
 async function openCoolerExplore(user: ReturnType<typeof userEvent.setup>) {
-  // The rail's Sources tab is now a CatalogExplorer tree (system-catalog scope). Clicking the seeded
-  // series row yields a `series.read` source → the studio opens a stacked builder tab on it.
-  const seriesRow = await screen.findByLabelText("insert series cooler.temp");
+  // 1) Expand the Series section (the trigger click fires `loadSection("series")` on first open).
+  const seriesToggle = await screen.findByLabelText("toggle section Series", {}, { timeout: 5000 });
+  fireEvent.click(seriesToggle);
+  // 2) Now the series row appears (the lazy chunk + the API call both need to resolve).
+  const seriesRow = await screen.findByLabelText("insert series cooler.temp", {}, { timeout: 5000 });
   await user.click(seriesRow);
-  await screen.findByLabelText("panel builder");
+  await screen.findByLabelText("panel builder", {}, { timeout: 5000 });
 }
 
 /** Run the staged query (the stacked builder reveals preview/gallery/options only after rows exist). */
@@ -168,8 +172,10 @@ describe("Data Studio 10x — the Dockview workbench (real gateway)", () => {
     const l = await getLayout(DATA_STUDIO_SURFACE);
     expect(l.model).toBeNull();
     await mountStudio(ws);
-    // The CatalogExplorer renders (the rail's default Sources tab); no builder tab yet.
-    await screen.findByLabelText("insert series cooler.temp");
+    // The CatalogExplorer renders (the rail's default Sources tab); the Series section is wired + idle
+    // (lazy), so the section header is present but the row is NOT until Ben expands it.
+    expect(await screen.findByLabelText("toggle section Series")).toBeInTheDocument();
+    expect(screen.queryByLabelText("insert series cooler.temp")).toBeNull();
     expect(screen.queryByLabelText("panel builder")).toBeNull();
   }, 30000);
 
@@ -291,13 +297,13 @@ describe("Data Studio 10x — the Dockview workbench (real gateway)", () => {
 
     await mountStudio(ws);
     // The CatalogExplorer tree is mounted on the Sources rail tab.
-    await screen.findByLabelText("data explorer");
+    await screen.findByLabelText("data explorer", {}, { timeout: 5000 });
 
     // Minimize → the rail folds to the shared CollapsedRail strip (same kit as every other surface).
     await user.click(screen.getByLabelText("minimize studio rail"));
     expect(screen.queryByLabelText("data explorer")).toBeNull();
     await user.click(await screen.findByLabelText("expand studio rail"));
-    expect(await screen.findByLabelText("data explorer")).toBeInTheDocument();
+    expect(await screen.findByLabelText("data explorer", {}, { timeout: 5000 })).toBeInTheDocument();
   }, 30000);
 
   it("legacy-layout fallback — a stored flexlayout blob → default workbench + the one-time reset notice", async () => {
@@ -316,7 +322,7 @@ describe("Data Studio 10x — the Dockview workbench (real gateway)", () => {
     // The dock falls back to the default workbench (no crash) AND surfaces the one-time notice.
     expect(await screen.findByLabelText("layout reset notice")).toBeInTheDocument();
     // The catalog still renders — the studio is usable. The corrupted layout is NOT restored.
-    await screen.findByLabelText("data explorer");
+    await screen.findByLabelText("data explorer", {}, { timeout: 5000 });
     // Dismiss the notice.
     await userEvent.setup().click(screen.getByLabelText("dismiss layout reset notice"));
     await waitFor(() => expect(screen.queryByLabelText("layout reset notice")).toBeNull());

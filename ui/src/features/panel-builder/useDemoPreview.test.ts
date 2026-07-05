@@ -11,7 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-import { useDemoPreview, DEMO_DATASOURCE, demoSwappedCell } from "./useDemoPreview";
+import { useDemoPreview, DEMO_DATASOURCE, DEMO_SQL, demoSwappedCell } from "./useDemoPreview";
 import type { Cell } from "@/lib/dashboard";
 
 // Mock ONLY `useDatasourceList` (a pure data seam — the list of federation datasources). The hook's
@@ -116,10 +116,7 @@ describe("demoSwappedCell — the display-only source swap", () => {
     const swapped = demoSwappedCell(draft);
     // The PRIMARY source is now the demo dataset, behind the real `federation.query` tool.
     expect(swapped.sources?.[0]?.tool).toBe("federation.query");
-    expect(swapped.sources?.[0]?.args).toEqual({
-      source: "demo-buildings",
-      sql: "SELECT time, value FROM point_reading ORDER BY time DESC LIMIT 200",
-    });
+    expect(swapped.sources?.[0]?.args).toEqual({ source: "demo-buildings", sql: DEMO_SQL });
     expect((swapped.sources?.[0]?.args as { source: string }).source).toBe(DEMO_DATASOURCE);
     // The user's view, title, and fieldConfig survive — only the DATA binding swaps.
     expect(swapped.view).toBe("timeseries");

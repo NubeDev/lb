@@ -8,7 +8,7 @@
 //     schema-dropdown verb is DEFERRED this phase, so a federation source authors raw SQL honestly).
 // ADD == EDIT: the dropdown reflects the SAVED `target.datasource`. One responsibility: pick/edit the query.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -63,9 +63,16 @@ function dsValueOf(target: Target | undefined): string {
 }
 
 export function QueryTab({ ws, state, patch, onRun }: Props) {
-  const { entries, loading } = useSourcePicker(ws);
-  const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
+  // LAZY: don't fire every explorer verb (`series.list`/`datasource.list`/`flows.list`/...) on QueryTab
+  // mount — only when (a) the user has already picked a source (so its label needs to render) OR
+  // (b) the user focuses the source combobox. A restored EMPTY builder tab stays lazy; a restored tab
+  // with a picked source arms so the source's label shows.
   const primary = state.targets[0];
+  const [interacted, setInteracted] = useState(false);
+  const { entries, loading } = useSourcePicker(ws, {
+    enabled: !!primary?.tool || interacted,
+  });
+  const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
   // A flow INPUT control has no read target — it carries a `flows.inject` action; recognise the Flows
   // datasource from EITHER the target (output read) or the carried action (input control).
   const isFlowAction = state.carry.action?.tool === "flows.inject";
@@ -171,7 +178,11 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   };
 
   return (
-    <div className="grid gap-3 py-3" aria-label="query tab">
+    <div
+      className="grid gap-3 py-3"
+      aria-label="query tab"
+      onFocusCapture={() => setInteracted(true)}
+    >
       <label className="grid gap-1 text-xs text-muted">
         Datasource
         <Select

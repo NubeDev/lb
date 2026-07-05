@@ -14,8 +14,14 @@
 // edit-the-code loop re-renders against the frames already fetched, no `viz.query` re-fetch (the
 // fetch/shape split already gives this). One responsibility: TemplateValue ↔ EditorState.
 
+import { useEffect } from "react";
+
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
-import { TemplateSourceField, type TemplateValue } from "@/features/dashboard/builder/editors/TemplateSourceField";
+import {
+  DEFAULT_INLINE_CODE,
+  TemplateSourceField,
+  type TemplateValue,
+} from "@/features/dashboard/builder/editors/TemplateSourceField";
 
 interface Props {
   state: EditorState;
@@ -37,6 +43,18 @@ function readValue(state: EditorState): TemplateValue {
 
 export function TemplateOptionsEditor({ state, patch }: Props) {
   const value = readValue(state);
+
+  // A freshly-picked template cell has NEITHER code nor a templateId — without this seed the editor
+  // is empty and the preview says "no template" (the starter used to appear only after a redundant
+  // click on the already-active Inline tab). Seed the shipped example ONCE so the panel renders the
+  // moment the view is picked; guarded so a user-cleared editor ("" is a string) is never overwritten.
+  const unset = value.mode === "inline" && typeof (state.carry.extraOptions as Record<string, unknown> | undefined)?.code !== "string";
+  useEffect(() => {
+    if (unset) {
+      patch({ carry: { ...state.carry, extraOptions: { ...state.carry.extraOptions, code: DEFAULT_INLINE_CODE } } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fire only while the value is unset
+  }, [unset]);
   const onChange = (next: TemplateValue) => {
     // Write ONLY the active mode's key; drop the other so TemplateView's inline-wins resolution is
     // never ambiguous across a mode switch.

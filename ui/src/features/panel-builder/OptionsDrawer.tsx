@@ -13,9 +13,11 @@ interface Props {
 }
 
 export function OptionsDrawer({ children }: Props) {
-  const [open, setOpen] = useState(false);
+  // OPEN by default — editing the chart must never be hidden (the collapse is for reclaiming preview
+  // space, not the resting state). Collapsing is a per-tab, in-session choice.
+  const [open, setOpen] = useState(true);
   return (
-    <div className={cn("flex min-h-0 flex-col", open && "flex-1")}>
+    <div className={cn("flex min-h-0 shrink-0 flex-col", open && "min-h-[14rem] flex-1")}>
       <button
         type="button"
         aria-label="options drawer"

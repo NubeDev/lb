@@ -58,7 +58,10 @@ export function DashboardView(props: Props) {
 
 function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: Props) {
   const dash = useDashboard(ws);
-  const picker = useSourcePicker(ws);
+  // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
+  // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
+  // the source combobox. See useSourcePicker's `enabled` opt.)
+  const picker = useSourcePicker(ws, { enabled: true });
   const current = dash.current;
   // The selected dashboard id lives in the URL (`?d=<id>`) so a pasted/copied link re-opens the same
   // dashboard. Load the URL's dashboard whenever the id changes and doesn't match what's loaded; write

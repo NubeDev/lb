@@ -144,8 +144,13 @@ export interface InboxRow {
 /** A section's load state — never a fake "ready with empty data" when the read was denied. This is
  *  the contract the EXPLORER skin surfaces visibly (loading skeleton / "Not permitted." / ready) and
  *  the COMBOBOX collapses into an empty group via projection. Moved in from the rules panel's
- *  `useDataExplorer` (system-catalog scope). */
+ *  `useDataExplorer` (system-catalog scope).
+ *
+ *  `idle` is the lazy-load contract: the section is collapsed and its loader has NOT fired yet. The
+ *  loader fires the first time a user expands the section (the explorer's `onOpen`), then transitions
+ *  to `loading` → `ready`/`denied`. Subsequent collapse/re-expand keeps the cached data (no refire). */
 export type SectionState<T> =
+  | { status: "idle" }
   | { status: "loading" }
   | { status: "ready"; data: T }
   | { status: "denied"; error: string };

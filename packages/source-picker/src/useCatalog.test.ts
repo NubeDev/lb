@@ -7,8 +7,8 @@
 // Plus the projection invariant: the picker's deny→empty collapse is consistent with the catalog's
 // visible tri-state (one orchestration).
 
-import { describe, expect, it } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useCatalog } from "./useCatalog";
 import { loadCatalog } from "./loadCatalog";
 import { loadSourcePicker } from "./loadSourcePicker";
@@ -102,35 +102,68 @@ describe("loadCatalog", () => {
   });
 });
 
-describe("useCatalog", () => {
-  it("surfaces the per-section state from each wired loader", async () => {
-    const { result } = renderHook(() => useCatalog(full, "acme"));
-    await waitFor(() => expect(result.current.series?.status).toBe("ready"));
-    expect(result.current.channels).toEqual({ status: "ready", data: [{ id: "general" }] });
-    expect(result.current.insights?.status).toBe("ready");
+describe("useCatalog (lazy per-section loads)", () => {
+  it("starts every wired section as `idle` — no loader fires on mount (the lazy contract)", async () => {
+    const loaders: SourceLoaders = { listSeries: async () => [`a.b`] };
+    const { result } = renderHook(() => useCatalog(loaders, "acme"));
+    // The Series section exists (loader wired) but is `idle` — no API call went out yet.
+    expect(result.current.sections.series?.status).toBe("idle");
+    // Sections the host didn't wire stay absent (undefined), not idle.
+    expect(result.current.sections.channels).toBeUndefined();
   });
 
-  it("a denied loader surfaces {status:'denied'} (the picker collapses this to empty)", async () => {
-    const loaders: SourceLoaders = {
-      ...full,
-      listChannels: async () => {
-        throw new Error("denied");
-      },
-    };
+  it("loadSection(kind) fires the section's loader and resolves to ready", async () => {
+    const listChannels = vi.fn(async () => [{ id: "general" }]);
+    const loaders: SourceLoaders = { listChannels };
     const { result } = renderHook(() => useCatalog(loaders, "acme"));
-    await waitFor(() => expect(result.current.channels?.status).toBe("denied"));
+    expect(result.current.sections.channels?.status).toBe("idle");
+    expect(listChannels).not.toHaveBeenCalled(); // not fired on mount
+    // The user expands the Channels section.
+    act(() => result.current.loadSection("channels"));
+    expect(result.current.sections.channels?.status).toBe("loading");
+    expect(listChannels).toHaveBeenCalledTimes(1); // fired on expand
+    await waitFor(() => expect(result.current.sections.channels?.status).toBe("ready"));
+    expect(result.current.sections.channels).toEqual({ status: "ready", data: [{ id: "general" }] });
+  });
+
+  it("loadSection is idempotent — re-calling on a loaded section does not refire the loader", async () => {
+    const listSeries = vi.fn(async () => [`a.b`]);
+    const { result } = renderHook(() => useCatalog({ listSeries }, "acme"));
+    act(() => result.current.loadSection("series"));
+    await waitFor(() => expect(result.current.sections.series?.status).toBe("ready"));
+    expect(listSeries).toHaveBeenCalledTimes(1);
+    // Re-call (e.g. a collapse/re-expand) — the cached state persists, no second API call.
+    act(() => result.current.loadSection("series"));
+    expect(listSeries).toHaveBeenCalledTimes(1);
+  });
+
+  it("a denied loader surfaces {status:'denied'} on expand (the picker collapses this to empty)", async () => {
+    const listChannels = vi.fn(async () => {
+      throw new Error("denied");
+    });
+    const { result } = renderHook(() => useCatalog({ listChannels }, "acme"));
+    act(() => result.current.loadSection("channels"));
+    await waitFor(() => expect(result.current.sections.channels?.status).toBe("denied"));
     // The picker projection of the same state:
-    const picker = await loadSourcePicker(loaders);
+    const picker = await loadSourcePicker({ ...full, listChannels });
     expect(picker.entries.some((e) => e.group === "series")).toBe(true);
   });
 
-  it("re-keys when the workspace changes (ws re-load)", async () => {
-    const loaders: SourceLoaders = { listSeries: async () => [`ws:hook`] };
-    const { result, rerender } = renderHook(({ w }) => useCatalog(loaders, w), {
+  it("re-keys when the workspace changes — ws switch resets every section to `idle`", async () => {
+    const listSeries = vi.fn(async () => [`ws:hook`]);
+    const { result, rerender } = renderHook(({ w }) => useCatalog({ listSeries }, w), {
       initialProps: { w: "a" },
     });
-    await waitFor(() => expect(result.current.series?.status).toBe("ready"));
+    // Load under ws-A.
+    act(() => result.current.loadSection("series"));
+    await waitFor(() => expect(result.current.sections.series?.status).toBe("ready"));
+    expect(listSeries).toHaveBeenCalledTimes(1);
+    // Switch to ws-B — the prior data is dropped (every section back to `idle`).
     rerender({ w: "b" });
-    await waitFor(() => expect(result.current.series?.status).toBe("ready"));
+    await waitFor(() => expect(result.current.sections.series?.status).toBe("idle"));
+    // Re-expand under ws-B fires the loader again (different workspace, fresh data).
+    act(() => result.current.loadSection("series"));
+    await waitFor(() => expect(result.current.sections.series?.status).toBe("ready"));
+    expect(listSeries).toHaveBeenCalledTimes(2);
   });
 });

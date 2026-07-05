@@ -5,3 +5,5 @@ export { PlotChart } from "./PlotChart";
 export { PlotBuilder } from "./PlotBuilder";
 export { ChartState } from "./ChartStates";
 export { seriesColor, categoryColors } from "./chartTheme";
+export { downsamplePoints, downsampleRows } from "./downsample";
+export { ChartBudgetProvider, useChartBudget, DEFAULT_CHART_BUDGET } from "./chartBudget";

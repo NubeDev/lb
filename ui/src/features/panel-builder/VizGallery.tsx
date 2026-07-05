@@ -13,6 +13,7 @@ import { LayoutTemplate, Sparkles, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { WidgetView } from "@/features/dashboard/views/WidgetView";
+import { ChartBudgetProvider } from "@/features/charts";
 import { type ResultShape, viewFitsShape } from "@/features/dashboard/views/shape";
 import { cn } from "@/lib/utils";
 
@@ -42,9 +43,12 @@ interface Props {
   view: View;
   onChange: (view: View) => void;
   shape: ResultShape;
+  /** "row" (the default strip) or "column" — the stacked builder's right-hand selection rail. */
+  orientation?: "row" | "column";
 }
 
-export function VizGallery({ cell, ws, scope, refreshKey, view, onChange, shape }: Props) {
+export function VizGallery({ cell, ws, scope, refreshKey, view, onChange, shape, orientation = "row" }: Props) {
+  const column = orientation === "column";
   const card = (id: View, label: string, body: React.ReactNode) => {
     const fits = viewFitsShape(id, shape);
     const selected = view === id;
@@ -58,7 +62,8 @@ export function VizGallery({ cell, ws, scope, refreshKey, view, onChange, shape 
         disabled={!fits && !selected}
         title={!fits ? `the current data shape can't honestly fill a ${id}` : label}
         className={cn(
-          "flex h-28 w-40 shrink-0 flex-col overflow-hidden rounded-md border text-left transition-colors",
+          "flex h-28 shrink-0 flex-col overflow-hidden rounded-md border text-left transition-colors",
+          column ? "w-full" : "w-40",
           selected ? "border-accent shadow-[inset_0_0_0_1px_hsl(var(--accent))]" : "border-border hover:border-fg/30",
           !fits && !selected && "cursor-not-allowed border-dashed opacity-40",
         )}
@@ -73,19 +78,29 @@ export function VizGallery({ cell, ws, scope, refreshKey, view, onChange, shape 
   };
 
   return (
-    <div aria-label="visualization gallery" className="flex flex-wrap gap-2">
+    <div
+      aria-label="visualization gallery"
+      className={cn(
+        "flex gap-2",
+        column ? "min-h-0 w-44 shrink-0 flex-col overflow-y-auto pr-1" : "shrink-0 overflow-x-auto pb-1",
+      )}
+    >
       {THUMB_VIEWS.map((v) =>
         card(
           v.id,
           v.label,
           // A live mini-render of the SAME cell through the one render path — only `view` differs, so
           // every thumbnail reads the one cached viz.query result (the view is not in the query key).
-          <WidgetView
-            cell={{ ...cell, i: `gallery-${v.id}`, view: v.id, title: "" }}
-            workspace={ws}
-            scope={scope}
-            refreshKey={refreshKey}
-          />,
+          // A ~160px card is worth ~120 drawn points, not the full result — without the shrunk budget
+          // a big query renders 6 × N-row SVG charts and freezes the page.
+          <ChartBudgetProvider budget={120}>
+            <WidgetView
+              cell={{ ...cell, i: `gallery-${v.id}`, view: v.id, title: "" }}
+              workspace={ws}
+              scope={scope}
+              refreshKey={refreshKey}
+            />
+          </ChartBudgetProvider>,
         ),
       )}
       {LABEL_VIEWS.map((v) =>

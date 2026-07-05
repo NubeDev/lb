@@ -26,6 +26,7 @@ import {
 import type { SectionState } from "./types";
 import { CatalogSection, CatalogEmpty } from "./CatalogSection";
 import { CatalogSchemaTree } from "./CatalogSchemaTree";
+import { Database, Hash, Inbox, Lightbulb, LineChart } from "lucide-react";
 
 export interface CatalogExplorerProps {
   /** The per-section state from `useCatalog`. Sections absent here (the host wired no loader) are
@@ -34,6 +35,11 @@ export interface CatalogExplorerProps {
   /** Called with the picked `CatalogEntry` whenever a row is clicked. The host maps the entry onto
    *  its own snippet/bind (a Rhai `source("name")`, a SQL table name, a dashboard cell source). */
   onSelect: (entry: CatalogEntry) => void;
+  /** Fired the first time a user expands a section whose state is still `idle` — the host's cue to
+   *  run that section's loader. Wire to `useCatalog`'s `loadSection`. Optional (a host that pre-seeds
+   *  `ready` data never triggers it); omitting means every section renders open + ready (the eager
+   *  contract from before lazy loading — render tests use this). */
+  onLoadSection?: (kind: CatalogSectionKind) => void;
   /** Which sections to render + their labels/hints, in display order. Defaults to the canonical
    *  `CATALOG_SECTION_SPECS`. A host that wants a subset (e.g. just `datasources` + `series`) passes
    *  its own filtered list. */
@@ -46,6 +52,7 @@ export interface CatalogExplorerProps {
 export function CatalogExplorer({
   sections,
   onSelect,
+  onLoadSection,
   sectionSpecs = CATALOG_SECTION_SPECS,
   className,
 }: CatalogExplorerProps) {
@@ -57,7 +64,12 @@ export function CatalogExplorer({
         // The state union is per-kind-typed in `CatalogSections`; the renderer is dynamically typed
         // (it switches on `spec.kind` and casts inside `renderRows`), so we widen to `unknown` here.
         return (
-          <CatalogSection key={spec.kind} spec={spec} state={state as SectionState<unknown>}>
+          <CatalogSection
+            key={spec.kind}
+            spec={spec}
+            state={state as SectionState<unknown>}
+            onOpen={onLoadSection ? () => onLoadSection(spec.kind) : undefined}
+          >
             {(data) => renderRows(spec.kind, data, onSelect)}
           </CatalogSection>
         );
@@ -97,9 +109,7 @@ function renderRows(
                 }
               >
                 <span className="sp-catalog-row-label">
-                  <span aria-hidden="true" className="sp-catalog-icon">
-                    ◳
-                  </span>
+                  <Database aria-hidden="true" className="sp-catalog-icon" size={12} />
                   {d.name}
                 </span>
                 <span className="sp-catalog-row-sub">
@@ -129,11 +139,9 @@ function renderRows(
                 className="sp-catalog-row sp-catalog-row-series"
                 onClick={() => onSelect({ kind: "series", id: `series:${s}`, name: s })}
               >
-                <span aria-hidden="true" className="sp-catalog-icon">
-                  〜
-                </span>
-                {s}
-              </button>
+                  <LineChart aria-hidden="true" className="sp-catalog-icon" size={12} />
+                  {s}
+                </button>
             </li>
           ))}
         </ul>
@@ -154,9 +162,7 @@ function renderRows(
                   className="sp-catalog-row sp-catalog-row-channel"
                   onClick={() => onSelect(e)}
                 >
-                  <span aria-hidden="true" className="sp-catalog-icon">
-                    #
-                  </span>
+                  <Hash aria-hidden="true" className="sp-catalog-icon" size={12} />
                   {r.id}
                 </button>
               </li>
@@ -181,9 +187,7 @@ function renderRows(
                   onClick={() => onSelect(e)}
                 >
                   <span className="sp-catalog-row-label">
-                    <span aria-hidden="true" className="sp-catalog-icon">
-                      ◆
-                    </span>
+                    <Lightbulb aria-hidden="true" className="sp-catalog-icon" size={12} />
                     {r.title}
                   </span>
                   {(r.severity || r.status) && (
@@ -214,9 +218,7 @@ function renderRows(
                   onClick={() => onSelect(e)}
                 >
                   <span className="sp-catalog-row-label">
-                    <span aria-hidden="true" className="sp-catalog-icon">
-                      ✉
-                    </span>
+                    <Inbox aria-hidden="true" className="sp-catalog-icon" size={12} />
                     {r.id}
                   </span>
                   <span className="sp-catalog-row-sub">{r.channel}</span>

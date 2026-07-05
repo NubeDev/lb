@@ -16,10 +16,13 @@ import {
   PolarAngleAxis,
   RadialBar,
   RadialBarChart,
+  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
+
+import { downsamplePoints, useChartBudget } from "@/features/charts";
 
 function paddedDomain(points: number[]): [number, number] {
   const min = Math.min(...points);
@@ -29,41 +32,52 @@ function paddedDomain(points: number[]): [number, number] {
   return [min - pad, max + pad];
 }
 
-export function SeriesLineChart({ points, ariaLabel }: { points: number[]; ariaLabel: string }) {
+export function SeriesLineChart({ points: raw, ariaLabel }: { points: number[]; ariaLabel: string }) {
+  // Display-only downsample to the host's point budget (default ~panel width; the gallery shrinks it)
+  // — a big result otherwise freezes the page rendering SVG nodes no pixel can show. The DOMAIN stays
+  // the raw series' (min/max survive bucketing, but keep the honest bound explicit).
+  const points = downsamplePoints(raw, useChartBudget());
   const data = points.map((value, index) => ({ index, value }));
-  const domain = paddedDomain(points);
+  const domain = paddedDomain(raw);
 
+  // Sized by the CONTAINER and clipped to it. The previous fixed 320×132 chart with a CSS
+  // width/height:100% stretch escaped small hosts — the stat sparkline's 2rem slot drew a 132px-tall
+  // chart over the panel below it. `h-full` serves block parents with a definite height (StatPanel's
+  // `h-8`), `flex-1 min-h-0` serves the flex-column chart widgets; overflow-hidden is the backstop.
   return (
-    <div className="widget-no-drag pointer-events-none min-h-0 flex-1 text-accent" role="img" aria-label={ariaLabel}>
-      <AreaChart
-        width={320}
-        height={132}
-        data={data}
-        margin={{ top: 12, right: 12, bottom: 10, left: 12 }}
-        accessibilityLayer={false}
-        style={{ width: "100%", height: "100%" }}
-      >
-        <CartesianGrid
-          vertical={false}
-          stroke="hsl(var(--border))"
-          strokeDasharray="3 5"
-          strokeOpacity={0.42}
-        />
-        <XAxis dataKey="index" hide />
-        <YAxis dataKey="value" domain={domain} hide />
-        <Area
-          type="monotone"
-          dataKey="value"
-          stroke="currentColor"
-          strokeWidth={2.25}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          fill="hsl(var(--accent))"
-          fillOpacity={0.12}
-          dot={false}
-          isAnimationActive={false}
-        />
-      </AreaChart>
+    <div
+      className="widget-no-drag pointer-events-none h-full min-h-0 w-full flex-1 overflow-hidden text-accent"
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <ResponsiveContainer width="100%" height="100%" minHeight={0}>
+        <AreaChart
+          data={data}
+          margin={{ top: 4, right: 4, bottom: 2, left: 4 }}
+          accessibilityLayer={false}
+        >
+          <CartesianGrid
+            vertical={false}
+            stroke="hsl(var(--border))"
+            strokeDasharray="3 5"
+            strokeOpacity={0.42}
+          />
+          <XAxis dataKey="index" hide />
+          <YAxis dataKey="value" domain={domain} hide />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke="currentColor"
+            strokeWidth={2.25}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="hsl(var(--accent))"
+            fillOpacity={0.12}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   );
 }
@@ -74,7 +88,7 @@ export function SeriesLineChart({ points, ariaLabel }: { points: number[]; ariaL
  *  `valueFormatter` localizes the tooltip/axis number through the one user-prefs bridge (never `toFixed`
  *  here). */
 export function TimeseriesChart({
-  points,
+  points: raw,
   color,
   drawStyle,
   fillOpacity,
@@ -94,6 +108,9 @@ export function TimeseriesChart({
   valueFormatter: (v: number) => string;
   ariaLabel: string;
 }) {
+  // Display-only downsample (see SeriesLineChart) — the caller's domain/legend/latest math already ran
+  // on the raw series, so only what is DRAWN shrinks.
+  const points = downsamplePoints(raw, useChartBudget());
   const data = points.map((value, index) => ({ index, value }));
   const grid = (
     <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 5" strokeOpacity={0.42} />

@@ -21,7 +21,14 @@ export default defineConfig({
       fileName: (fmt) => `source-picker.${fmt === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'react-dom/client'],
+      external: [
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'react-dom/client',
+        '@radix-ui/react-collapsible',
+        'lucide-react',
+      ],
       output: { assetFileNames: 'source-picker.[ext]', globals: { react: 'React', 'react-dom': 'ReactDOM' } },
     },
   },

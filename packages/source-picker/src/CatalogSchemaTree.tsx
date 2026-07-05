@@ -4,10 +4,17 @@
 // owns only expand/collapse state; the parent decides what `onSelect` does (insert a snippet, set a
 // query, …).
 //
+// The COLLAPSIBLE primitive is shadcn's file-tree pattern (sidebar-11): Radix Collapsible + a
+// `ChevronRight` that rotates 90° on open + an indented sub-tree bordered by a left guide line. The
+// package takes `@radix-ui/react-collapsible` + `lucide-react` as peer deps (the same primitives the
+// host already uses through shadcn) — the package stays self-themed via `--sp-*` tokens, but the tree
+// UX matches the rest of the app.
+//
 // The click yields a `CatalogEntry` of kind `table` or `column`; the host maps it onto its snippet
-// (rule 10 — the package doesn't know what the pick MEANS). Self-themed via `--sp-*` tokens.
+// (rule 10 — the package doesn't know what the pick MEANS).
 
-import { useState } from "react";
+import { ChevronRight, Table2 } from "lucide-react";
+import * as CollapsiblePrimitive from "@radix-ui/react-collapsible";
 
 import type { Schema } from "./types";
 import type { CatalogEntry } from "./catalog";
@@ -18,8 +25,8 @@ export interface CatalogSchemaTreeProps {
   onSelect: (entry: CatalogEntry) => void;
 }
 
-/** A table → column tree with click-to-pick. Tolerates an empty schema (the parent shows the
- *  teaching-empty/deny; this renders nothing for `tables: []`). */
+/** A table → column tree with click-to-pick, using shadcn's file-tree pattern. Tolerates an empty
+ *  schema (the parent shows the teaching-empty/deny; this renders nothing for `tables: []`). */
 export function CatalogSchemaTree({ schema, onSelect }: CatalogSchemaTreeProps) {
   return (
     <ul aria-label="schema browser" className="sp-catalog-tree">
@@ -30,7 +37,8 @@ export function CatalogSchemaTree({ schema, onSelect }: CatalogSchemaTreeProps) 
   );
 }
 
-/** One table: a clickable header that yields a `table` entry + toggles its column list. */
+/** One table row: a Collapsible header whose trigger picks the table OR toggles its column list, plus
+ *  a nested column sub-tree. The chevron rotates 90° on open (the shadcn sidebar-11 affordance). */
 function SchemaTableRow({
   name,
   columns,
@@ -40,53 +48,49 @@ function SchemaTableRow({
   columns: string[];
   onSelect: (entry: CatalogEntry) => void;
 }) {
-  const [open, setOpen] = useState(false);
   return (
     <li>
-      <div className="sp-catalog-tree-row">
-        <button
-          type="button"
-          aria-label={`toggle table ${name}`}
-          aria-expanded={open}
-          className="sp-catalog-toggle"
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "▾" : "▸"}
-        </button>
-        <button
-          type="button"
-          aria-label={`insert table ${name}`}
-          className="sp-catalog-tree-table"
-          onClick={() => onSelect({ kind: "table", id: `table:${name}`, table: name })}
-        >
-          <span aria-hidden="true" className="sp-catalog-icon">
-            ▦
-          </span>
-          {name}
-        </button>
-      </div>
-      {open ? (
-        <ul className="sp-catalog-tree-columns">
-          {columns.length === 0 ? (
-            <li className="sp-catalog-tree-no-columns">no columns</li>
-          ) : (
-            columns.map((c) => (
-              <li key={c}>
-                <button
-                  type="button"
-                  aria-label={`insert column ${name}.${c}`}
-                  className="sp-catalog-tree-column"
-                  onClick={() =>
-                    onSelect({ kind: "column", id: `column:${name}.${c}`, table: name, column: c })
-                  }
-                >
-                  {c}
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      ) : null}
+      <CollapsiblePrimitive.Root className="group/collapsible sp-catalog-tree-row" defaultOpen={false}>
+        <div className="sp-catalog-tree-row-inner">
+          <CollapsiblePrimitive.Trigger
+            aria-label={`toggle table ${name}`}
+            className="sp-catalog-toggle"
+          >
+            <ChevronRight className="sp-catalog-chevron" />
+          </CollapsiblePrimitive.Trigger>
+          <button
+            type="button"
+            aria-label={`insert table ${name}`}
+            className="sp-catalog-tree-table"
+            onClick={() => onSelect({ kind: "table", id: `table:${name}`, table: name })}
+          >
+            <Table2 aria-hidden="true" className="sp-catalog-icon" size={12} />
+            <span className="sp-catalog-tree-table-name">{name}</span>
+          </button>
+        </div>
+        <CollapsiblePrimitive.Content className="sp-catalog-tree-content">
+          <ul className="sp-catalog-tree-columns">
+            {columns.length === 0 ? (
+              <li className="sp-catalog-tree-no-columns">no columns</li>
+            ) : (
+              columns.map((c) => (
+                <li key={c}>
+                  <button
+                    type="button"
+                    aria-label={`insert column ${name}.${c}`}
+                    className="sp-catalog-tree-column"
+                    onClick={() =>
+                      onSelect({ kind: "column", id: `column:${name}.${c}`, table: name, column: c })
+                    }
+                  >
+                    {c}
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </CollapsiblePrimitive.Content>
+      </CollapsiblePrimitive.Root>
     </li>
   );
 }

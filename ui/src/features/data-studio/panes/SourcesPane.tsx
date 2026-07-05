@@ -5,11 +5,17 @@
 // meet the package's injected `SourceLoaders`, plus the studio's host-owned pick mapping (click →
 // OPEN A BUILDER TAB on the entry; the package never knows what a pick MEANS — rule 10, exactly like
 // the rules panel's Rhai mapping). One responsibility: the loaders + the entry→builder-source map.
+//
+// The `<CatalogExplorer>` UI is LAZY-LOADED via `React.lazy` so the (relatively heavy) picker bundle —
+// the catalog orchestration + every section renderer + the schema tree — code-splits into its own
+// chunk and is only paid for when a user actually opens the Sources rail tab. The types + the
+// `useCatalog` hook are static imports (they're tiny + the hook drives the section state the lazy
+// explorer renders, so loading them upfront is correct — by the time the explorer mounts the data is
+// already warm). Wrapping in `<Suspense>` keeps the rest of the studio responsive while the chunk loads.
 
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 
 import {
-  CatalogExplorer,
   useCatalog,
   type CatalogEntry,
   type SourceLoaders,
@@ -21,6 +27,11 @@ import { readSchema } from "@/lib/schema";
 import { listRealSeries } from "@/lib/ingest/schema.api";
 import { listChannels } from "@/lib/channel/channel.api";
 import { listInsights } from "@/lib/insights/insights.api";
+
+// Lazy-load only the UI component — its chunk (and the schema tree it pulls in) lands on demand.
+const CatalogExplorer = lazy(() =>
+  import("@nube/source-picker").then((m) => ({ default: m.CatalogExplorer })),
+);
 
 interface Props {
   ws: string;
@@ -41,17 +52,31 @@ function shellLoaders(ws: string): SourceLoaders {
 
 export function SourcesPane({ ws, onOpen }: Props) {
   const loaders = useMemo(() => shellLoaders(ws), [ws]);
-  const sections = useCatalog(loaders, ws);
+  const { sections, loadSection } = useCatalog(loaders, ws);
   return (
     <div className="flex flex-col gap-2">
       <p className="px-1 text-xs text-muted">Pick a catalog entry to open it in a builder tab.</p>
-      <CatalogExplorer
-        sections={sections}
-        onSelect={(entry) => {
-          const mapped = selectionFor(entry);
-          if (mapped) onOpen(mapped.sel, mapped.label);
-        }}
-      />
+      <Suspense fallback={<CatalogExplorerFallback />}>
+        <CatalogExplorer
+          sections={sections}
+          onLoadSection={loadSection}
+          onSelect={(entry) => {
+            const mapped = selectionFor(entry);
+            if (mapped) onOpen(mapped.sel, mapped.label);
+          }}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
+/** A tiny inline skeleton shown while the lazy picker chunk loads — matches the package's own loading
+ *  bar so a slow network doesn't render an empty box (rule 9: honest UI, no fabricated rows). */
+function CatalogExplorerFallback() {
+  return (
+    <div aria-label="loading catalog" className="flex flex-col gap-1">
+      <div className="h-4 w-full animate-pulse rounded-md bg-fg/10" />
+      <div className="h-4 w-2/3 animate-pulse rounded-md bg-fg/10" />
     </div>
   );
 }

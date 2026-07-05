@@ -1,54 +1,91 @@
-// The catalog hook — wraps `loadCatalog` in React state, re-keyed on `ws`. Mirrors `useSourcePicker`
-// (the picker's loader hook): same ref-not-dep pattern so an UNMEMOIZED `loaders` object (a fresh
-// literal per render, the easy host mistake) does NOT loop. Returns the per-section `SectionState`
-// record; the explorer skin renders it; the picker projects it into a flat entries array.
+// The catalog hook — wraps the per-section loaders in React state, re-keyed on `ws`. LAZY per
+// section: on mount (and on ws change) every section the host WIRED starts as `idle` (collapsed, no
+// loader fired); the explorer fires `loadSection(kind)` the first time a user expands a section.
+// Re-expand keeps the cached data (no refire). This is the user's explicit contract: "do the API
+// call once I open/close the tree" — page load does NOT fan out every `*.list` verb.
 //
 // PER-SECTION HONEST TRI-STATE (system-catalog scope): each section resolves independently as its
 // loader resolves — a fast `listSeries` shows its rows while a slow `readSchema` is still loading
 // its skeleton, and a denied `datasource.list` shows "Not permitted." without waiting on the rest.
 // This is the contract the explorer surfaces visibly; the picker collapses it into empty groups.
+//
+// The hook keys on `ws` ONLY and reads `loaders` through a ref kept current every render — so an
+// UNMEMOIZED `loaders` object (a fresh literal per render, the easy host mistake) does NOT loop
+// (same discipline as `useSourcePicker`).
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { loadCatalog, type CatalogSections } from "./loadCatalog";
+import { runSectionLoader, type CatalogSections } from "./loadCatalog";
+import type { CatalogSectionKind } from "./catalog";
 import type { SourceLoaders } from "./types";
 
-/** Initial state: every section starts `loading`. The host's loaders decide which sections exist —
- *  an absent loader resolves to an absent (undefined) field on first load. */
-const EMPTY: CatalogSections = {};
+/** The set of sections the host actually wired (loader present). Computed once per mount to seed the
+ *  `idle` record — sections with no loader stay `undefined` (absent), as in the eager path. */
+function wiredKinds(loaders: SourceLoaders): CatalogSectionKind[] {
+  const out: CatalogSectionKind[] = [];
+  if (loaders.listDatasources) out.push("datasources");
+  if (loaders.readSchema) out.push("schema");
+  if (loaders.listSeries) out.push("series");
+  if (loaders.listChannels) out.push("channels");
+  if (loaders.listInsights) out.push("insights");
+  if (loaders.listInbox) out.push("inbox");
+  if (loaders.listExtensions) out.push("extensions");
+  if (loaders.listRules) out.push("rules");
+  if (loaders.listFlows) out.push("flowSummaries");
+  if (loaders.listFlowNodes) out.push("flowDescriptors");
+  return out;
+}
 
-/** Load + surface the catalog. `loaders` is the host's read seam; `ws` keys the re-load (the
- *  workspace switch). The effect keys on `ws` ONLY and reads `loaders` through a ref kept current
- *  every render — so a fresh loaders literal per render does NOT loop (same discipline as
- *  `useSourcePicker`). A host that swaps to a genuinely different transport should also change `ws`. */
-export function useCatalog(loaders: SourceLoaders, ws: string): CatalogSections {
-  const [sections, setSections] = useState<CatalogSections>(EMPTY);
+/** Build the initial idle record for `loaders` — every wired section starts as `{status:"idle"}`;
+ *  absent loaders yield absent (undefined) fields. */
+function idleRecord(loaders: SourceLoaders): CatalogSections {
+  const initial: CatalogSections = {};
+  for (const kind of wiredKinds(loaders)) {
+    (initial as Record<string, never>)[kind] = { status: "idle" } as never;
+  }
+  return initial;
+}
+
+/** The lazy catalog — the per-section state record plus the `loadSection(kind)` action the explorer
+ *  fires on first expand. The host reads `sections` for rendering; passes `loadSection` to the
+ *  `<CatalogExplorer>` so its section headers can trigger their own loads. */
+export interface UseCatalogResult {
+  sections: CatalogSections;
+  /** Fire one section's loader (deny-tolerant; absent loader ⇒ the section stays `undefined`).
+   *  Idempotent — calling it again on an already-loaded section is a no-op (the cached state persists). */
+  loadSection: (kind: CatalogSectionKind) => void;
+}
+
+/** Lazy catalog. `loaders` is the host's read seam; `ws` keys the re-init (the workspace switch). The
+ *  initial idle record is computed once per `loaders` reference via `useState`'s lazy initializer —
+ *  every wired section starts `idle` on FIRST render (no useEffect timing gap). The `ws` effect resets
+ *  the record on workspace switch (the user re-opens each section to re-fetch under the new ws). */
+export function useCatalog(loaders: SourceLoaders, ws: string): UseCatalogResult {
+  const [sections, setSections] = useState<CatalogSections>(() => idleRecord(loaders));
   const loadersRef = useRef(loaders);
   loadersRef.current = loaders;
 
+  // On ws switch, reset every wired section to `idle` — the prior data is dropped (different workspace
+  // = different data). Re-reading `loadersRef.current` (not the dep) so a ws switch to a host that
+  // also swapped loaders picks up the new section set.
   useEffect(() => {
-    const l = loadersRef.current;
-    let cancelled = false;
-    setSections(EMPTY);
-    // Each loader resolves independently; we surface each as it lands so a fast section's rows show
-    // while a slow section's skeleton is still loading (the per-section honest tri-state). The
-    // `publish` callback no-ops once `cancelled` is true, so a ws switch drops late-arriving
-    // sections from the previous ws.
-    void loadCatalog(l, (merge) => {
-      if (cancelled) return;
-      setSections((current) => merge(current));
-    }).catch(() => {
-      // An unexpected orchestration fault (not a per-section deny — that's caught inside). Swallow
-      // so a host's late-arriving reject after unmount doesn't crash render. The section record
-      // stays at whatever partial state landed.
-    });
-    return () => {
-      cancelled = true;
-    };
-    // Keyed on `ws` ONLY — `loaders` is read via a ref (see doc above), so it isn't a dep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSections(idleRecord(loadersRef.current));
   }, [ws]);
 
-  return sections;
-}
+  const loadSection = useCallback((kind: CatalogSectionKind) => {
+    setSections((current) => {
+      const existing = current[kind];
+      // Idempotent: no-op if already loaded (loading/ready/denied) — the cached state persists.
+      if (existing && existing.status !== "idle") return current;
+      // Mark loading and fire the loader. The publish merges the resolved state.
+      const next = { ...current, [kind]: { status: "loading" } } as CatalogSections;
+      void runSectionLoader(loadersRef.current, kind).then((state) => {
+        if (!state) return; // absent loader ⇒ absent section — leave as loading (shouldn't happen).
+        setSections((cur) => ({ ...cur, [kind]: state }) as CatalogSections);
+      });
+      return next;
+    });
+  }, []);
 
+  return { sections, loadSection };
+}

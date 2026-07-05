@@ -64,8 +64,12 @@ async function mountStudio(ws: string) {
 }
 
 async function openCoolerExplore(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByLabelText("insert series cooler.temp"));
-  await screen.findByLabelText("panel builder");
+  // The explorer is LAZY per section — expand the Series toggle first (fires `loadSection`), then
+  // click the seeded series row.
+  const seriesToggle = await screen.findByLabelText("toggle section Series", {}, { timeout: 5000 });
+  fireEvent.click(seriesToggle);
+  await user.click(await screen.findByLabelText("insert series cooler.temp", {}, { timeout: 5000 }));
+  await screen.findByLabelText("panel builder", {}, { timeout: 5000 });
 }
 
 /** Install an `ipc.invoke` counter that delegates to the REAL transport (observe, never fake — rule 9). */
