@@ -1,24 +1,23 @@
-// Data Studio (data-studio scope, "v2: multi-pane workbench" + the rail cleanup) — a dockable data
-// workbench: the shared `StudioRail` (Sources/Library, the RosterRail-kit chrome + minimize) on the
-// left, and a FlexLayout dock of N panel-builder tabs beside it; drag to split/tab/dock/float/close,
-// double-click to rename; the dock arrangement (incl. every tab's draft cell) persists PER USER in
-// SurrealDB (`layout.get`/`set`, member-owned — rule 4). The panes compose the shipped substrate —
-// `@nube/source-picker`, `WidgetHost`/`viz.query` (ONE render/query path), the panel-kit logic layer,
-// the `panel.*` library asset — this file owns only the workbench: the FlexLayout model, the tab
-// factory, the open-tab actions, and the rail open/collapsed state.
+// Data Studio (data-studio-10x scope, phase 1: the Dockview workbench) — a dockable data workbench:
+// the shared `StudioRail` (Sources/Library, the RosterRail-kit chrome + minimize) on the left, and a
+// Dockview dock of N panel-builder tabs beside it; drag to split/tab/dock/float, maximize, pop out,
+// close; double-click a tab to rename. The dock arrangement (incl. every tab's draft cell) persists
+// PER USER in SurrealDB (`layout.get`/`set`, member-owned — rule 4) as the versioned
+// `{engine:"dockview", model}` record. The panes compose the shipped substrate — `@nube/source-picker`,
+// `WidgetHost`/`viz.query` (ONE render/query path), the panel-kit logic layer, the `panel.*` library
+// asset — this file owns only the workbench: the dock mount, the open-tab actions, and the rail state.
 
-import { useState } from "react";
-import { FlaskConical, Plus, RotateCcw } from "lucide-react";
-import { Actions, DockLocation, Layout, type TabNode } from "flexlayout-react";
+import { useMemo, useState } from "react";
+import { FlaskConical, Plus, RotateCcw, X } from "lucide-react";
+import { DockviewReact, type IDockviewPanelProps } from "dockview-react";
 
-import "flexlayout-react/style/light.css";
+import "dockview-react/dist/styles/dockview.css";
 import "./datastudio-dock.css";
 
 import { AppPage } from "@/components/app/page";
 import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
 import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { useVarScope } from "@/features/dashboard/vars/useVarScope";
 import { defaultOptionsForView } from "@/features/panel-builder/viewOptions";
@@ -28,20 +27,36 @@ import type { DashboardSearch } from "@/features/routing/search";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
 import type { SourceSelection } from "@nube/source-picker";
 
-import {
-  builderTabJson,
-  mintTabId,
-  MAIN_TABSET_ID,
-  type BuilderConfig,
-} from "./workbenchModel";
+import { mintTabId, viewPaneId, type BuilderConfig, type ViewPaneConfig } from "./workbenchModel";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
+import { WorkbenchContext } from "./workbenchContext";
+import { WorkbenchTab } from "./WorkbenchTab";
+import { LB_DOCKVIEW_THEME } from "./dockviewTheme";
 import { StudioRail } from "./StudioRail";
-import { BuilderTabPane } from "./panes/BuilderTabPane";
+import { OpenViewMenu } from "./OpenViewMenu";
+import { viewPane } from "./workbenchPanes";
+import { BuilderDockPanel } from "./panes/BuilderDockPanel";
+import { ViewDockPanel } from "./panes/ViewDockPanel";
 
 interface Props {
   ws: string;
   range?: DashboardSearch;
   onSearchChange?: (search: DashboardSearch) => void;
+}
+
+/** The dock's panel components — module-level so the map is stable across renders. */
+const PANE_COMPONENTS: Record<string, React.FunctionComponent<IDockviewPanelProps>> = {
+  builder: BuilderDockPanel as React.FunctionComponent<IDockviewPanelProps>,
+  view: ViewDockPanel as React.FunctionComponent<IDockviewPanelProps>,
+};
+
+/** The empty-dock watermark — the default workbench before any tab opens. */
+function Watermark() {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted">
+      Pick a source from the rail or open a New panel to start.
+    </div>
+  );
 }
 
 /** The studio, wrapped in the shared per-visit read cache (keyed on `ws`) so the picker bundle +
@@ -55,8 +70,7 @@ export function DataStudioView(props: Props) {
 }
 
 function DataStudioInner({ ws, range, onSearchChange }: Props) {
-  const picker = useSourcePicker(ws);
-  const { caps } = useAppRoutingContext();
+  const { caps, allowed } = useAppRoutingContext();
   const bench = useWorkbenchLayout(ws, caps);
   // Bumped when any builder tab saves a library panel, so the rail's Library tab re-lists.
   const [libraryTick, setLibraryTick] = useState(0);
@@ -67,20 +81,12 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
   // variable defs, so it resolves the same shipped scope with an empty def set.
   const scope = useVarScope([], range, "data-studio", ws);
 
-  /** Add a tab to the model — into the main tabset (recreated if the user closed it). */
-  const addTab = (json: ReturnType<typeof builderTabJson>) => {
-    const model = bench.model;
-    if (!model) return;
-    const active = model.getActiveTabset();
-    const target =
-      active?.getId() ?? (model.getNodeById(MAIN_TABSET_ID) ? MAIN_TABSET_ID : model.getFirstTabSet().getId());
-    model.doAction(Actions.addNode(json, target, DockLocation.CENTER, -1, true));
-  };
-
   const openBuilder = (cell: Cell, name: string, savedAs?: string) => {
+    if (!bench.api) return;
     const id = mintTabId("builder");
     // A builder draft keeps its own stable cell key (the editor re-seeds on key change).
-    addTab(builderTabJson(id, name, { cell: { ...cell, i: id }, savedAs }));
+    const params: BuilderConfig = { cell: { ...cell, i: id }, savedAs };
+    bench.api.addPanel({ id, component: "builder", title: name, params });
   };
 
   // v3: picking a source opens a BUILDER tab directly (the stacked query/preview view) — no read-only
@@ -94,29 +100,30 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
   const newPanel = () =>
     openBuilder(defaultCell("timeseries", "new", undefined, defaultOptionsForView("timeseries")), "New panel");
 
-  /** The FlexLayout tab factory — one component per tab kind, config in/out through the model. */
-  const factory = (node: TabNode) => {
-    const model = bench.model;
-    const updateConfig = (config: unknown) => {
-      model?.doAction(Actions.updateNodeAttributes(node.getId(), { config }));
-    };
-    switch (node.getComponent()) {
-      case "builder": {
-        const config = node.getConfig() as BuilderConfig;
-        return (
-          <BuilderTabPane
-            config={config}
-            ws={ws}
-            scope={scope}
-            onConfigChange={updateConfig}
-            onSavedToLibrary={() => setLibraryTick((t) => t + 1)}
-          />
-        );
-      }
-      default:
-        return <div className="p-3 text-xs text-muted">Unknown pane.</div>;
+  // Pages-as-panes: ONE pane per view kind (deterministic id) — opening an open kind refocuses it.
+  const openView = (kind: string) => {
+    if (!bench.api) return;
+    const existing = bench.api.getPanel(viewPaneId(kind));
+    if (existing) {
+      existing.api.setActive();
+      return;
     }
+    const def = viewPane(kind);
+    if (!def) return;
+    const params: ViewPaneConfig = { kind, sel: null };
+    bench.api.addPanel({ id: viewPaneId(kind), component: "view", title: def.title, params });
   };
+
+  const benchCtx = useMemo(
+    () => ({
+      ws,
+      scope,
+      onSavedToLibrary: () => setLibraryTick((t) => t + 1),
+      touch: bench.touch,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ws, scope, bench.api],
+  );
 
   return (
     <AppPage
@@ -149,16 +156,21 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
           <Button aria-label="reset workbench layout" size="sm" variant="ghost" onClick={bench.reset}>
             <RotateCcw size={12} /> Reset layout
           </Button>
-          <Button aria-label="new panel" size="sm" onClick={newPanel}>
+          <Button aria-label="new panel" size="sm" variant="ghost" onClick={newPanel}>
             <Plus size={12} /> New panel
           </Button>
+          <OpenViewMenu
+            allowed={allowed}
+            isOpen={(kind) => !!bench.api?.getPanel(viewPaneId(kind))}
+            onOpenView={openView}
+            onNewPanel={newPanel}
+          />
         </div>
       }
     >
       {railOpen ? (
         <StudioRail
-          entries={picker.entries}
-          loading={picker.loading}
+          ws={ws}
           onOpenSource={openExplore}
           onOpenPanel={(panelId, title, cell) => openBuilder(cell, title, panelId)}
           libraryTick={libraryTick}
@@ -167,15 +179,41 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
       ) : (
         <CollapsedRail noun="studio" onExpand={() => setRailOpen(true)} />
       )}
-      <div className="data-studio-dock" data-testid="data-studio-dock">
-        {bench.model && (
-          <Layout
-            model={bench.model}
-            factory={factory}
-            onModelChange={bench.onModelChange}
-            popoutURL="/popout.html"
-          />
+      <div className="flex min-w-0 flex-1 flex-col">
+        {bench.resetNotice && (
+          <div
+            role="status"
+            aria-label="layout reset notice"
+            className="flex items-center gap-2 border-b border-border bg-panel px-3 py-1.5 text-xs text-muted"
+          >
+            <span>
+              Your saved workbench layout was from the previous engine and has been reset. Saved
+              library panels are untouched.
+            </span>
+            <Button
+              aria-label="dismiss layout reset notice"
+              variant="ghost"
+              size="icon"
+              className="ml-auto h-6 w-6"
+              onClick={bench.dismissResetNotice}
+            >
+              <X size={12} />
+            </Button>
+          </div>
         )}
+        <div className="data-studio-dock" data-testid="data-studio-dock">
+          {bench.ready && (
+            <WorkbenchContext.Provider value={benchCtx}>
+              <DockviewReact
+                components={PANE_COMPONENTS}
+                defaultTabComponent={WorkbenchTab}
+                watermarkComponent={Watermark}
+                theme={LB_DOCKVIEW_THEME}
+                onReady={bench.onReady}
+              />
+            </WorkbenchContext.Provider>
+          )}
+        </div>
       </div>
     </AppPage>
   );

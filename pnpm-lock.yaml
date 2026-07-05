@@ -408,12 +408,12 @@ importers:
       dayjs:
         specifier: ^1.11.21
         version: 1.11.21
+      dockview-react:
+        specifier: ^7.0.2
+        version: 7.0.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       dompurify:
         specifier: ^3.4.11
         version: 3.4.11
-      flexlayout-react:
-        specifier: ^0.9.2
-        version: 0.9.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       intl-messageformat:
         specifier: ^11.2.9
         version: 11.2.9
@@ -2811,6 +2811,18 @@ packages:
     resolution: {integrity: sha512-DPi0FmjiSU5EvQV0++GFDOJ9ASQUVFh5kD+OzOnYdi7n3Wpm9hWWGfB/O2blfHcMVTL5WkQXSnRiK9makhrcnw==}
     engines: {node: '>=0.3.1'}
 
+  dockview-core@7.0.2:
+    resolution: {integrity: sha512-i666ndkUdT4U+Bo2Yu3d6KwCJNqe21VJ0oschdgcXucZ5TquzBFX94zcUBEfg4IewTv2BuiPJ7r/2JTGLLv6ig==}
+
+  dockview-react@7.0.2:
+    resolution: {integrity: sha512-tnbRM1C/Ok1n/HXGMF0OWmc6Qlx5pbsSJucxX+3XcuNYkZgKiaNJX3BpdBlSxexjytTI/Xywh0ZNGF3/4Fa9LA==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+
+  dockview@7.0.2:
+    resolution: {integrity: sha512-QhgbJ7RTFsWvrs1lQZKPGCLTGjKU7kI5ZWX5lwU03arM9lIoQlbfv1b/uQ7V5zTkRw7JDndEqjKMgEFw2I8Kow==}
+
   doctrine@2.1.0:
     resolution: {integrity: sha512-35mSku4ZXK0vfCuHEDAwt55dg2jNajHZ1odvF+8SSr82EsZY4QmXfuWso8oEd8zRhVObSN18aM0CjSdoBX7zIw==}
     engines: {node: '>=0.10.0'}
@@ -3019,12 +3031,6 @@ packages:
 
   flatted@3.4.2:
     resolution: {integrity: sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA==}
-
-  flexlayout-react@0.9.2:
-    resolution: {integrity: sha512-oz04nO1VbEbVlQMDjEY9E+Q2p3wC6rnC/Y0ebc0bNGBHPY5RiXoFl4dOz6dlxedIt8dm28aEaC1KnJrqLlrUJw==}
-    peerDependencies:
-      react: ^18.0.0 || ^19.0.0
-      react-dom: ^18.0.0 || ^19.0.0
 
   for-each@0.3.5:
     resolution: {integrity: sha512-dKx12eRCVIzqCxFGplyFKJMPvLEWgmNtUrpTiJIR5u97zEhRG8ySrtboPHZXx7daLxQVrl643cTzbab2tkQjxg==}
@@ -7042,6 +7048,18 @@ snapshots:
 
   diff@8.0.4: {}
 
+  dockview-core@7.0.2: {}
+
+  dockview-react@7.0.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      dockview: 7.0.2
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
+  dockview@7.0.2:
+    dependencies:
+      dockview-core: 7.0.2
+
   doctrine@2.1.0:
     dependencies:
       esutils: 2.0.3
@@ -7394,11 +7412,6 @@ snapshots:
       keyv: 4.5.4
 
   flatted@3.4.2: {}
-
-  flexlayout-react@0.9.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
-    dependencies:
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
 
   for-each@0.3.5:
     dependencies:

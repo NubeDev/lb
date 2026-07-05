@@ -14,7 +14,7 @@ import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { specToCell } from "@/lib/panel";
-import type { SourceEntry, SourceSelection } from "@nube/source-picker";
+import type { SourceSelection } from "@nube/source-picker";
 
 import { SourcesPane } from "./panes/SourcesPane";
 import { LibraryPane } from "./panes/LibraryPane";
@@ -22,9 +22,8 @@ import { LibraryPane } from "./panes/LibraryPane";
 type RailTab = "sources" | "library";
 
 interface Props {
-  entries: SourceEntry[];
-  loading: boolean;
-  /** Open a stacked builder tab on a picked source. */
+  ws: string;
+  /** Open a stacked builder tab on a picked catalog entry. */
   onOpenSource: (sel: SourceSelection, label: string) => void;
   /** Open a stacked builder tab on a library panel's spec. */
   onOpenPanel: (panelId: string, title: string, cell: ReturnType<typeof specToCell>) => void;
@@ -34,7 +33,7 @@ interface Props {
   onCollapse: () => void;
 }
 
-export function StudioRail({ entries, loading, onOpenSource, onOpenPanel, libraryTick, onCollapse }: Props) {
+export function StudioRail({ ws, onOpenSource, onOpenPanel, libraryTick, onCollapse }: Props) {
   const [tab, setTab] = useState<RailTab>("sources");
 
   const tabButton = (value: RailTab, label: string) => (
@@ -76,7 +75,7 @@ export function StudioRail({ entries, loading, onOpenSource, onOpenPanel, librar
       }
     >
       {tab === "sources" ? (
-        <SourcesPane entries={entries} loading={loading} onOpen={onOpenSource} />
+        <SourcesPane ws={ws} onOpen={onOpenSource} />
       ) : (
         <LibraryPane refreshKey={libraryTick} onOpen={onOpenPanel} />
       )}

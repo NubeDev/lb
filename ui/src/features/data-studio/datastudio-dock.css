@@ -1,111 +1,87 @@
-/* The FlexLayout → shell-token theme bridge (data-studio scope v2; the packages/* CSS rules applied
-   to a vendored stylesheet). `flexlayout-react/style/light.css` is imported alongside this file — it
-   is already fully scoped under `.flexlayout__*` classes (no preflight, no bare-element bleed) and
-   themes exclusively via `--color-*` custom properties declared on `.flexlayout__layout`. This file
-   re-declares those properties under the studio's root class, aliased to the shell's shadcn tokens
-   (`--bg`/`--panel`/`--border`/`--fg`/`--muted`/`--accent`), so dark/light parity is automatic: the
-   shell flips its tokens, the dock follows. Higher specificity than the vendor selector, so it wins
-   regardless of import order. */
+/* The Dockview → shell-token theme bridge (data-studio-10x scope, phase 1; the packages/* CSS rules
+   applied to a vendored stylesheet). `dockview-react/dist/styles/dockview.css` is imported alongside
+   this file — it is fully scoped under `.dv-*` classes (no preflight, no bare-element bleed) and
+   themes via `--dv-*` custom properties declared on the theme class. This file declares those
+   properties under OUR theme class (`dockview-theme-lb`, named in `dockviewTheme.ts`), aliased to
+   the shell's shadcn tokens (`--bg`/`--panel`/`--border`/`--fg`/`--muted`/`--accent`), so dark/light
+   parity is automatic: the shell flips its tokens, the dock follows. The flexlayout-era bridge this
+   replaces is deleted with the engine. */
 
-.data-studio-dock .flexlayout__layout {
-  --color-text: hsl(var(--fg));
-  --color-background: hsl(var(--bg));
-  --color-base: hsl(var(--bg));
-  --color-1: hsl(var(--panel));
-  --color-2: hsl(var(--panel));
-  --color-3: hsl(var(--border));
-  --color-4: hsl(var(--border));
-  --color-5: hsl(var(--border));
-  --color-6: hsl(var(--border));
-  --color-drag1: hsl(var(--accent));
-  --color-drag2: hsl(var(--accent));
-  --color-drag1-background: hsl(var(--accent) / 0.1);
-  --color-drag2-background: hsl(var(--accent) / 0.08);
-  --font-size: 0.75rem;
-  --font-family: inherit;
-  --splitter-size: 5px;
-  --color-overflow: hsl(var(--muted));
-  --color-icon: hsl(var(--muted));
-  --color-tabset-background: hsl(var(--bg));
-  --color-tabset-background-selected: hsl(var(--panel));
-  --color-tabset-background-maximized: hsl(var(--panel));
-  --color-tabset-divider-line: hsl(var(--border));
-  --color-border-tab-content: hsl(var(--bg));
-  --color-border-background: hsl(var(--bg));
-  --color-border-divider-line: hsl(var(--border));
-  --color-tab-content: hsl(var(--bg));
-  --color-tab-selected: hsl(var(--fg));
-  --color-tab-selected-background: hsl(var(--panel));
-  --color-tab-unselected: hsl(var(--muted));
-  --color-tab-unselected-background: transparent;
-  --color-tab-textbox: hsl(var(--fg));
-  --color-tab-textbox-background: hsl(var(--panel));
-  --color-border-tab-selected: hsl(var(--fg));
-  --color-border-tab-selected-background: hsl(var(--panel));
-  --color-border-tab-unselected: hsl(var(--muted));
-  --color-border-tab-unselected-background: hsl(var(--panel));
-  --color-splitter: hsl(var(--border));
-  --color-splitter-hover: hsl(var(--accent));
-  --color-splitter-drag: hsl(var(--accent));
-  --color-splitter-handle: hsl(var(--border));
-  --color-drag-rect-border: hsl(var(--border));
-  --color-drag-rect-background: hsl(var(--panel));
-  --color-drag-rect: hsl(var(--fg));
-  --color-popup-border: hsl(var(--border));
-  --color-popup-unselected: hsl(var(--fg));
-  --color-popup-unselected-background: hsl(var(--panel));
-  --color-popup-selected: hsl(var(--fg));
-  --color-popup-selected-background: hsl(var(--panel));
-  --color-edge-marker: hsl(var(--muted));
-  --color-edge-icon: hsl(var(--fg));
+.dockview-theme-lb {
+  --dv-group-view-background-color: hsl(var(--bg));
+  --dv-tabs-and-actions-container-background-color: hsl(var(--bg));
+  --dv-tabs-and-actions-container-font-size: 0.75rem;
+  --dv-tabs-and-actions-container-height: 2.25rem;
+  --dv-tab-font-size: 0.75rem;
+  --dv-tab-border-radius: calc(var(--radius) - 2px);
+  --dv-tab-close-icon-size: 12px;
+  --dv-tab-margin: 4px 2px;
+  --dv-tab-divider-color: transparent;
+
+  /* Tab colors: selected raised on --panel with full-contrast text, unselected muted. */
+  --dv-activegroup-visiblepanel-tab-background-color: hsl(var(--panel));
+  --dv-activegroup-visiblepanel-tab-color: hsl(var(--fg));
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-color: hsl(var(--muted));
+  --dv-inactivegroup-visiblepanel-tab-background-color: hsl(var(--panel));
+  --dv-inactivegroup-visiblepanel-tab-color: hsl(var(--fg));
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-color: hsl(var(--muted));
+  --dv-tab-group-color: hsl(var(--accent));
+
+  /* Splitters / sashes + drag feedback on the accent token. */
+  --dv-separator-border: hsl(var(--border));
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: hsl(var(--accent));
+  --dv-drag-over-background-color: hsl(var(--accent) / 0.1);
+  --dv-drag-over-border-color: hsl(var(--accent));
+
+  /* Floating groups + popups on the panel token. */
+  --dv-floating-box-shadow: var(--shadow-2, 0 4px 16px hsl(var(--fg) / 0.15));
+  --dv-floating-group-border: 1px solid hsl(var(--border));
+  --dv-floating-titlebar-background-color: hsl(var(--panel));
+  --dv-floating-titlebar-border-bottom: 1px solid hsl(var(--border));
+  --dv-context-menu-background-color: hsl(var(--panel));
+  --dv-context-menu-color: hsl(var(--fg));
+  --dv-icon-hover-background-color: hsl(var(--fg) / 0.06);
+  --dv-scrollbar-background-color: hsl(var(--border));
+  --dv-tabs-container-scrollbar-color: hsl(var(--border));
+
+  color: hsl(var(--fg));
 }
 
-/* The dock fills the page body under the AppPage header; FlexLayout positions absolutely inside. */
+/* The dock fills the page body under the AppPage header. */
 .data-studio-dock {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
-
-/* Tab buttons — the vendor default is bare text on the bar (selected vs unselected is nearly
-   invisible) and a tab grows as wide as its title (a long source label like
-   "Energy kWh (pt-001) — timescale datasource — left for inspection" eats the whole strip).
-   Give tabs a real shape: a bordered pill, the selected one raised on `--panel` with full-contrast
-   text + an accent top edge, unselected muted until hover; titles cap at 11rem and ellipsize (the
-   full name stays in the tab's hover tooltip, which FlexLayout sets natively). */
-.data-studio-dock .flexlayout__tabset_tabbar_outer {
-  height: 2.25rem !important;
+.data-studio-dock .dv-dockview {
+  width: 100%;
+  height: 100%;
 }
-.data-studio-dock .flexlayout__tab_button {
+
+/* Tab shape parity with the shipped strip: a bordered pill; the selected one carries an accent top
+   edge; titles cap at 11rem and ellipsize (the FULL name stays in the tab's hover tooltip, set by
+   `WorkbenchTab`). */
+.data-studio-dock .dv-tab {
   max-width: 11rem;
-  margin: 4px 2px;
-  padding: 2px 8px;
   border: 1px solid transparent;
   border-radius: calc(var(--radius) - 2px);
+  padding: 0;
 }
-.data-studio-dock .flexlayout__tab_button_content {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.data-studio-dock .flexlayout__tab_button--unselected {
-  color: hsl(var(--muted));
-}
-.data-studio-dock .flexlayout__tab_button--unselected:hover {
-  color: hsl(var(--fg));
-  background-color: hsl(var(--fg) / 0.06);
-}
-.data-studio-dock .flexlayout__tab_button--selected {
-  color: hsl(var(--fg));
-  background-color: hsl(var(--panel));
+.data-studio-dock .dv-tab.dv-active-tab {
   border-color: hsl(var(--border));
   box-shadow: inset 0 1px 0 hsl(var(--accent) / 0.7);
 }
+.data-studio-dock .dv-tab.dv-inactive-tab:hover {
+  color: hsl(var(--fg));
+  background-color: hsl(var(--fg) / 0.06);
+}
 
-/* FlexLayout's tab content defaults to `overflow: auto`, which would scroll the WHOLE builder tab
-   as one block — defeating each pane's own scrollbar and letting the preview push the options rail
-   off the bottom (cut off, no inner scroll). Bound the tab content instead: the pane's flex chain
-   (`min-h-0 flex-1 overflow-y-auto`) then owns scrolling per-half. */
-.data-studio-dock .flexlayout__tab {
+/* A pane's content owns its own scrolling (each pane's flex chain: `min-h-0 flex-1 overflow-y-auto`)
+   — the dock never scrolls a whole pane as one block. */
+.data-studio-dock .dv-content-container {
   overflow: hidden;
 }
