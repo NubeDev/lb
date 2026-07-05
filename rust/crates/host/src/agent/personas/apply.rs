@@ -31,7 +31,7 @@ use crate::boot::Node;
 // path directly.
 use super::super::error::AgentError;
 use super::super::model_access::AllowedTool;
-use super::super::policy::{Effect, Policy, Rule};
+use super::super::policy::{Effect, Policy};
 use super::super::substrate::load_substrate_skill;
 
 /// Does `tool_id` match a persona `granted_tools` entry? A plain entry matches literally; a
@@ -114,47 +114,49 @@ pub async fn build_identity_fold(
     }
 }
 
-/// Fold a persona's `policy_preset` into the workspace `Policy` as a **FLOOR** (persona-coding #4). The
-/// preset lists node-mutating tools the persona wants gated (Ask) or refused (Deny); the workspace
-/// policy is the admin's own rule list. The floor rule:
+/// Apply a persona's `policy_preset` as a **FLOOR** over the workspace policy's evaluated effect for a
+/// single tool call (persona-coding #4). Given `ws_effect` (what `evaluate(ws_policy, tool)` returned)
+/// this returns the *effective* effect after the floor.
 ///
-///   For each preset tool, the preset rule applies **unless the workspace policy already has an
-///   EXPLICIT rule for that exact tool** — an explicit ws rule IS the "loosening is the explicit admin
-///   write" the scope requires. So: seed Ask on `ext.publish` holds by default; an admin who wants it
-///   Allow must write an explicit `{tool:"ext.publish", effect:allow}` (a deliberate, auditable act),
-///   not merely have a broad `*`-Allow (which would silently loosen the floor and defeat supervision).
+/// **Why a clamp and not a merged rule list:** the shared evaluator's precedence is Deny > Allow > Ask
+/// (an Ask is the *weakest* — "if any rule already Allows, there's nothing to ask"). That is correct
+/// for an admin policy, but it means a preset **Ask** appended as a rule can NEVER beat a blanket
+/// `*`-Allow — the supervision floor would silently evaporate. So the floor is applied as a clamp:
 ///
-/// Precedence within the merged list is the evaluator's own (Deny > Allow > Ask), unchanged. The preset
-/// rules are appended AFTER the ws rules; because we only append a preset rule when NO explicit ws rule
-/// names that tool, the preset can't fight an explicit admin decision, and a broad ws `*` rule does not
-/// count as "explicit for this tool" (so the floor survives a blanket Allow — the load-bearing point).
+///   - preset **Deny**  → force Deny (a Deny floor is absolute);
+///   - preset **Ask**   → raise Allow to Ask (never *lower* a ws Deny; an existing Ask/Deny stays);
+///   - **UNLESS** the workspace policy has an **EXPLICIT** (exact-tool, no-glob) rule for the tool —
+///     that explicit rule IS the auditable "loosening is the admin's explicit write" the scope
+///     requires, so the ws effect stands. A blanket `*` rule is NOT explicit and does not loosen.
 ///
-/// `None` preset → the ws policy unchanged.
-pub fn apply_policy_preset(ws_policy: Policy, preset: Option<&PolicyPreset>) -> Policy {
+/// `preset == None` → `ws_effect` unchanged (no floor).
+pub fn clamp_to_preset(
+    ws_effect: Effect,
+    tool: &str,
+    ws_policy: &Policy,
+    preset: Option<&PolicyPreset>,
+) -> Effect {
     let Some(preset) = preset else {
-        return ws_policy;
+        return ws_effect;
     };
-    let mut rules = ws_policy.rules;
-    // A tool is "explicitly named" by the ws policy iff a rule's `tool` equals it verbatim (a `*`-glob
-    // is NOT explicit — a blanket Allow must not silently loosen a preset floor).
-    let explicit = |tool: &str, rules: &[Rule]| rules.iter().any(|r| r.tool == tool && r.arg.is_none());
-    for tool in &preset.deny {
-        if !explicit(tool, &rules) {
-            rules.push(Rule {
-                tool: tool.clone(),
-                arg: None,
-                effect: Effect::Deny,
-            });
-        }
+    // An explicit ws decision about THIS tool (exact match, no glob, no arg-qualifier) means the admin
+    // has spoken — the floor yields to it (this is how loosening below the preset is done, auditably).
+    let explicit = ws_policy
+        .rules
+        .iter()
+        .any(|r| r.tool == tool && r.arg.is_none());
+    if explicit {
+        return ws_effect;
     }
-    for tool in &preset.ask {
-        if !explicit(tool, &rules) {
-            rules.push(Rule {
-                tool: tool.clone(),
-                arg: None,
-                effect: Effect::Ask,
-            });
-        }
+    if preset.deny.iter().any(|t| t == tool) {
+        return Effect::Deny;
     }
-    Policy { rules }
+    if preset.ask.iter().any(|t| t == tool) {
+        // Raise to Ask, but never weaken an existing Deny (Deny is stricter than Ask).
+        return match ws_effect {
+            Effect::Deny => Effect::Deny,
+            _ => Effect::Ask,
+        };
+    }
+    ws_effect
 }

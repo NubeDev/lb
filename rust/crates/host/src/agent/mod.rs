@@ -82,10 +82,10 @@ pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn
 pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
 pub use personas::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
-    agent_persona_update, apply_policy_preset, build_identity_fold, builtin_personas,
-    call_agent_persona_tool, check_runtime, glob_matches, narrow_tools, resolve_effective,
-    resolve_persona, seed_personas, EffectivePersona, Persona, PersonaPatch, PolicyPreset,
-    PERSONA_NS, PERSONA_TABLE,
+    agent_persona_update, build_identity_fold, builtin_personas, call_agent_persona_tool,
+    check_runtime, clamp_to_preset, glob_matches, narrow_tools, resolve_effective, resolve_persona,
+    seed_personas, EffectivePersona, Persona, PersonaPatch, PolicyPreset, PERSONA_NS,
+    PERSONA_TABLE,
 };
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,

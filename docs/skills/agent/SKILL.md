@@ -271,6 +271,16 @@ in a persona does nothing for a member caller. **Destructive/security verbs (`wo
 | `builtin.workspace-admin` | nav, users, teams, roles, grants, ws defaults | `core.nav`, `core.auth-caps`, `core.prefs` |
 | `builtin.channels-operator` | channels, inbox/outbox, messaging | `core.channels-inbox-outbox`, `core.prefs` |
 | `builtin.system-manager` | the general operator — **extends** all six above; hands off deep work | `core.lb-cli`, `core.mcp`, `core.auth-caps`, `core.agent` |
+| `builtin.extension-builder` | builds UI/WASM/native **extensions** against the devkit — "100% coding, but never on its own" | `core.extension-authoring`, `core.extensions`, `core.e2e-backend` |
+
+**`builtin.extension-builder` carries a safety posture** (persona-coding #4): its devkit/ext verbs are
+admin-tier (a member gets the honest deny); a **`policy_preset`** Ask-gates every node-mutating verb
+(`ext.publish`, `ext.uninstall`, `ext.disable`, `native.install`, `native.reset`) — a real run
+proposing one **durably suspends** for a human `agent.decide` (never publishes on its own), while the
+edit/build inner loop stays fluid; and a `runtimes: ["default"]` restriction keeps it in-house-only
+until the external-agent sandbox ships (an external pairing fails at run start with a named error). The
+Ask floor is a floor: tightening is free, loosening below it needs an explicit per-tool `agent.policy.set`
+rule (a blanket `*`-Allow does not loosen it).
 
 `rules-author` and `system-manager` use `extends` — they inherit their parents' tools + skills at read
 time, so when a parent grows (e.g. new `flows.*` verbs) they follow for free, no seed edit.

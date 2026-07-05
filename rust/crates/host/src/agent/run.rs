@@ -107,14 +107,10 @@ pub async fn run_session<M: ModelAccess>(
 
     // The workspace permission policy consulted in front of `caps::check` (Part 2). Loaded once per
     // run; default-allow when absent, so a workspace with no policy behaves exactly as before. The
-    // active persona's `policy_preset` (persona-coding #4) is folded in as a FLOOR: it adds Ask/Deny on
-    // the node-mutating tools the extension-builder persona supervises, unless the admin has written an
-    // explicit ws rule for that exact tool (the "loosening is the explicit admin write" contract). A
-    // blanket ws `*`-Allow does NOT loosen the floor. `None` preset → the ws policy verbatim.
-    let policy = super::personas::apply_policy_preset(
-        load_policy(&node.store, ws).await?,
-        persona_preset,
-    );
+    // active persona's `policy_preset` (persona-coding #4) is applied per-call below as a FLOOR clamp
+    // over the evaluated effect (see `clamp_to_preset` — a clamp, not a merged rule, because an Ask
+    // floor can't beat a blanket Allow under the evaluator's Deny>Allow>Ask precedence).
+    let policy = load_policy(&node.store, ws).await?;
 
     // MODEL-ACTIVATED SKILLS (Part 5): inject the granted-skills CATALOG (title+description only)
     // into context ONCE per run, so the model knows what it may `skill.activate`. Resolved decision:
@@ -326,7 +322,16 @@ pub async fn run_session<M: ModelAccess>(
         let mut ask: Vec<&ProposedCall> = Vec::new();
         for c in model_calls {
             let args = serde_json::from_str(&c.input).unwrap_or(serde_json::Value::Null);
-            match evaluate(&policy, &c.name, &args) {
+            // Evaluate the ws policy, then apply the persona's supervision FLOOR (persona-coding #4):
+            // a preset Ask/Deny on a node-mutating tool clamps the evaluated effect UP unless the ws
+            // policy explicitly ruled on that exact tool (the auditable loosen). `None` preset → no-op.
+            let effect = super::personas::clamp_to_preset(
+                evaluate(&policy, &c.name, &args),
+                &c.name,
+                &policy,
+                persona_preset,
+            );
+            match effect {
                 Effect::Allow => to_run.push(c.clone()),
                 Effect::Deny => denied.push(CallOutcome {
                     id: c.id.clone(),

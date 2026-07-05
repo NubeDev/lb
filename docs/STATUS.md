@@ -580,7 +580,19 @@ the menu a persona narrows is the palette-descriptor catalog (`host_descriptors(
 tools, NOT the full ~175-verb surface — the persona lists are the forward-looking allow-list; on a bare
 node identity+grounding carry most of the confusion cure (see `persona-catalog-scope.md` finding).
 Session: [`sessions/agent-personas/persona-catalog-session.md`](sessions/agent-personas/persona-catalog-session.md).
-**Next:** #4 `builtin.extension-builder` (the safety-posture persona) — the last umbrella exit-gate bullet.
+**#4 extension-builder SHIPPED (2026-07-05) — the topic is COMPLETE (all 4 sub-scopes, all 5 umbrella
+gate bullets met).** `builtin.extension-builder` ("100% coding, but never on its own"): the devkit
+surface (admin-tier) + `core.extension-authoring` pins + a **safety posture** — a `policy_preset`
+Ask-floor on node-mutating verbs (a real run proposing `ext.publish` **durably suspends** for a human
+`agent.decide`) and a `runtimes:["default"]` in-house-only restriction (external pairing → named error).
+The one code addition: `clamp_to_preset` (the floor is a CLAMP over the evaluated effect, NOT a merged
+rule — an appended Ask can't beat a blanket Allow under Deny>Allow>Ask; loosening needs an explicit
+per-tool rule) + `check_runtime`, threaded via `RunContext.persona_preset`. **10 coding tests green**
+(caps-deny, Ask-floor, floor-not-loosened-by-blanket-Allow, runtime restriction, ws-iso, adversarial
+devkit input, + a real-scaffold e2e + the "never on its own" suspend-e2e). Two bugs caught by tests
+(the clamp-vs-merge floor + a TOML sub-table binding drop of `runtimes`). Session:
+[`sessions/agent-personas/persona-coding-session.md`](sessions/agent-personas/persona-coding-session.md).
+Public: [`public/agent-personas/agent-personas.md`](public/agent-personas/agent-personas.md).
 
 **Just shipped (2026-07-03): active-agent wiring — the active pick is the ONE implicit agent
 everywhere (branch `master`).** A workspace picks one agent and no surface asks again; the pick's

@@ -29,9 +29,7 @@ mod tool;
 mod update;
 mod validate;
 
-pub use apply::{
-    apply_policy_preset, build_identity_fold, check_runtime, glob_matches, narrow_tools,
-};
+pub use apply::{build_identity_fold, check_runtime, clamp_to_preset, glob_matches, narrow_tools};
 pub use create::agent_persona_create;
 pub use delete::agent_persona_delete;
 pub use get::agent_persona_get;

@@ -9,14 +9,15 @@ The problem it solves (observed with live external-agent use): a run was handed 
 constant `"You are a workspace agent."` prompt, the caller's whole reachable tool catalog, no task
 grounding — and the agent was confused. A persona replaces the everything-menu with a focus.
 
-> **Status.** **#1 (persona-model) — SHIPPED** (record, CRUD, selection, run-assembly for both
-> runtimes, `agent.persona.resolve` / `agent.policy.get`, Settings UI — 6 gateway tests green).
-> **#2 (grounding corpus) — SHIPPED.** **#3 (built-in catalog) — SHIPPED** (7 personas + confusion
-> demo). #4 (extension-builder persona) builds on them.
+> **Status.** **ALL FOUR SUB-SCOPES SHIPPED.** #1 persona-model (record, CRUD, selection, run-assembly
+> for both runtimes, resolve/policy.get, Settings UI) · #2 grounding corpus (24→34 skills, anti-rot
+> gate) · #3 built-in catalog (7 personas + confusion demo) · #4 extension-builder persona (Ask floor +
+> runtime restriction + "never on its own" suspend-e2e).
 > Scope: [`scope/agent-personas/`](../../scope/agent-personas/agent-personas-scope.md).
 > Sessions: [persona-model](../../sessions/agent-personas/persona-model-session.md) ·
 > [persona-grounding](../../sessions/agent-personas/persona-grounding-session.md) ·
-> [persona-catalog](../../sessions/agent-personas/persona-catalog-session.md).
+> [persona-catalog](../../sessions/agent-personas/persona-catalog-session.md) ·
+> [persona-coding](../../sessions/agent-personas/persona-coding-session.md).
 
 ## The load-bearing rule
 
@@ -145,6 +146,29 @@ there; tool-narrowing bites hardest with many extension tools loaded. See
 **The confusion fix, demonstrated:** the same task, same caller — the reachable palette narrows from 11
 tools to 1 under `builtin.data-analyst` (off-task palette tools gone, the on-task `federation.query`
 stays), and the run is grounded in the data skills. Proven in `agent_persona_catalog_test.rs`.
+
+## The extension-builder persona (#4) — "100% coding, but never on its own"
+
+`builtin.extension-builder` builds UI/WASM/native **extensions** against the devkit, in a scoped
+workdir, supervised. It is NOT a repo coding agent — its surface has no git/fs/shell verb and no path
+outside the devkit workdir. It carries a **safety posture** (the two additive record fields #1 built for
+it, `policy_preset` + `runtimes`):
+
+- **Admin-tier surface** — all `devkit.*`/`ext.*`/`native.*` verbs are admin-tier, so a member caller
+  gets the honest deny (the persona narrows nothing into existence).
+- **The Ask floor (`policy_preset`)** — every node-mutating verb (`ext.publish`, `ext.uninstall`,
+  `ext.disable`, `native.install`, `native.reset`) requires a human decision: a real run proposing one
+  **durably suspends** (`JobStatus::Suspended` + a `SuspensionOpened` awaiting `agent.decide`) — it
+  never publishes on its own. The edit/build inner loop (`devkit.scaffold/build/inspect`) stays fluid.
+  The preset is a **floor**: tightening is free; loosening below it needs an explicit per-tool
+  `agent.policy.set` rule (a blanket `*`-Allow does NOT loosen it). Implemented as a **clamp** over the
+  evaluated effect (not a merged rule — an appended Ask can't beat a blanket Allow under the evaluator's
+  Deny>Allow>Ask precedence).
+- **The runtime restriction (`runtimes: ["default"]`)** — in-house-only until the external-agent
+  capability-wall sandbox ships; an external pairing fails at run start with a named error, before any
+  subprocess. (The in-house loop reaches code ONLY through the devkit verbs — no raw fs/shell verb
+  exists in the catalog — so the MCP wall alone genuinely bounds it; that asymmetry makes the
+  restriction honest rather than theater.)
 
 ## What it does NOT do
 

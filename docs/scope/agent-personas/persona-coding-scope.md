@@ -1,7 +1,16 @@
 # Agent-personas scope — the extension-builder persona (persona-coding)
 
-Status: scope (the ask). Sub-scope #4 of `agent-personas-scope.md`.
-Promotes to `public/agent-personas/`.
+Status: **SHIPPED** (`builtin.extension-builder` seeded with the Ask `policy_preset` + in-house
+`runtimes` restriction; `clamp_to_preset` floor + `check_runtime` applied at run assembly; 10 tests
+incl. the "never on its own" suspend-e2e green). Sub-scope #4 of `agent-personas-scope.md` — the last
+umbrella gate bullet. Session:
+[`sessions/agent-personas/persona-coding-session.md`](../../sessions/agent-personas/persona-coding-session.md).
+Promoted to [`public/agent-personas/agent-personas.md`](../../public/agent-personas/agent-personas.md).
+
+> **Two findings (recorded, not coded around):** (1) the `policy_preset` floor is a **clamp** applied
+> after `evaluate`, NOT a merged rule — an appended Ask can't beat a blanket Allow under the evaluator's
+> Deny>Allow>Ask precedence. (2) a TOML sub-table binding bug (`runtimes` authored after
+> `[persona.policy_preset]` bound to it) — fixed by ordering; both caught by tests.
 
 The coding persona — `builtin.extension-builder` — with the posture stated by the ask verbatim:
 **"100% coding, but never on its own."** The agent writes UI / WASM / native (Tier-2) process

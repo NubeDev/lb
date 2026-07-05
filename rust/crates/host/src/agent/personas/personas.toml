@@ -202,6 +202,13 @@ granted_tools = [
   "tools.catalog", "bus.watch", "telemetry.read", "system.tools",
 ]
 grounding_skills = ["core.extension-authoring", "core.extensions", "core.e2e-backend"]
+# Runtime restriction: in-house ONLY until the external-agent capability-wall sandbox ships (external
+# runtimes get scratch=workdir + egress=gateway; the in-house loop is bounded by the MCP wall alone,
+# which is honest here because no raw fs/shell verb exists in the catalog). Applying this persona with
+# any other runtime fails at run start with a named error (apply.rs::check_runtime).
+# NOTE (TOML): `runtimes` MUST precede the `[persona.policy_preset]` sub-table — once a sub-table header
+# opens, subsequent bare keys bind to IT, not the parent persona (a real bug caught by the #4 test).
+runtimes = ["default"]
 # SAFETY POSTURE (persona-coding #4):
 # The Ask floor — every node-mutating verb requires a human decision (durable suspension, agent.decide).
 # The edit-build-inspect inner loop stays Allow (fluid) — supervision that prompts on every build is
@@ -210,8 +217,3 @@ grounding_skills = ["core.extension-authoring", "core.extensions", "core.e2e-bac
 [persona.policy_preset]
 ask = ["ext.publish", "ext.uninstall", "ext.disable", "native.install", "native.reset"]
 deny = []
-# Runtime restriction: in-house ONLY until the external-agent capability-wall sandbox ships (external
-# runtimes get scratch=workdir + egress=gateway; the in-house loop is bounded by the MCP wall alone,
-# which is honest here because no raw fs/shell verb exists in the catalog). Applying this persona with
-# any other runtime fails at run start with a named error (apply.rs::check_runtime).
-runtimes = ["default"]
