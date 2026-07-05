@@ -58,6 +58,7 @@ fn one_node_flow(id: &str, node_type: &str, config: Value, payload: Value) -> Fl
         enabled: true,
         start_on_boot: false,
         placement: Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }

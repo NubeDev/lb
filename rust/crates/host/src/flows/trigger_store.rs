@@ -76,6 +76,38 @@ pub fn flipflop_triggers(flow: &Flow) -> Vec<FlipFlopTrigger> {
         .collect()
 }
 
+/// One `webhook` source node: its id + the webhook id its config names. The series it watches is the
+/// core webhook's own `webhook:{ws}:{webhook_id}` — not a fresh `flow:…` series — because the webhook
+/// service already owns the endpoint + credential + series (rules-workflow-convergence scope slice 5).
+pub struct WebhookTrigger {
+    pub node_id: String,
+    pub webhook_id: String,
+}
+
+/// Every `webhook` source node in `flow` that names a webhook id. A flow may have any number — each
+/// watches its own hook's series independently. A node with an empty `webhook_id` is skipped (it
+/// watches nothing), never an error that blocks the flow's other sources.
+pub fn webhook_triggers(flow: &Flow) -> Vec<WebhookTrigger> {
+    flow.nodes
+        .iter()
+        .filter(|n| n.node_type == "webhook")
+        .filter_map(|n| {
+            let webhook_id = n
+                .config
+                .get("webhook_id")
+                .and_then(|v| v.as_str())?
+                .to_string();
+            if webhook_id.trim().is_empty() {
+                return None;
+            }
+            Some(WebhookTrigger {
+                node_id: n.id.clone(),
+                webhook_id,
+            })
+        })
+        .collect()
+}
+
 /// Read a trigger node's durable cursor (`None` → never seen / no row yet).
 pub async fn read_cursor(
     store: &Store,

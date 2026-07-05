@@ -11,6 +11,7 @@
 //! own gate under `caller ∩ grant` (flow-run-scope deny matrix).
 
 pub mod buffer;
+pub mod concurrency;
 pub mod coordinator;
 pub mod error;
 pub mod execute_node;
@@ -20,8 +21,10 @@ pub mod node_state;
 pub mod nodes;
 pub mod orphan_sweep;
 pub mod patch_run;
+pub mod react_approval;
 pub mod react_cron;
 pub mod react_interval;
+pub mod react_source;
 pub mod reactor_loop;
 pub mod reconcile;
 pub mod record;
@@ -36,10 +39,12 @@ pub mod trigger_store;
 pub mod triggers;
 pub mod watch;
 
+pub use react_approval::{react_to_flow_approvals, FlowApprovalPass};
 pub use react_cron::{
     cron_is_valid, cron_run_id, react_to_flows_cron, ReactorPass as FlowReactorPass,
 };
 pub use react_interval::{flipflop_run_id, react_to_flows_interval};
+pub use react_source::{react_to_flow_sources, source_run_id, SourceReactorPass};
 pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
 pub use source::{arm_source, disarm_source, source_series};

@@ -2,7 +2,7 @@
 //! against recorded upstream envelopes + run params, dispatches it under the caller's authority,
 //! records the outcome, then releases dependents / prunes on failure. Dispatch is by node type; the
 //! non-trivial legs live in their own verb files (FILE-LAYOUT):
-//! - [`core`] — the spine nodes (`trigger`/`tool`/`rhai`/`count`/`json`/`counter`).
+//! - [`core`] — the spine nodes (`trigger`/`tool`/`rhai`/`rule`/`count`/`json`/`counter`).
 //! - [`sink`] / [`subflow`] — the terminal write + the pinned child-run park (Decision 11).
 //! - [`pure`] — the pure Tier-A data/JSON pack (`change`…`aggregate`, `template`, `csv`…`base64`,
 //!   `split`/`join`) — a thin wrapper over the `lb_flows::ops` functions.
@@ -15,6 +15,7 @@
 //! widening). The data/JSON pack nodes dispatch no external tool, so they add no new cap surface — the
 //! deny path stays the existing "no `flows.run` cap → the run never starts".
 
+mod approval;
 mod core;
 mod delay;
 mod pure;
@@ -90,10 +91,24 @@ pub async fn execute_one(
         carry.remove(lb_flows::ops::sequence::PARTS);
     }
 
-    let dispatched = dispatch(
+    // Per-node timeout (rules-workflow-convergence scope, slice 2): a `config.timeout_ms` wraps the
+    // whole dispatch in a wall-clock ceiling. A node that exceeds it settles `err:"timeout"` — its
+    // subtree is then gated exactly like any node failure (no downstream fires). This is the generic
+    // guard for ANY node type; the `rhai`/`rule` cage deadline (also `timeout_ms`) is the finer-grained
+    // rule budget passed through to the sandbox, and this outer wall is the hard ceiling over it.
+    let timeout_ms = config.get("timeout_ms").and_then(|v| v.as_u64());
+    let dispatch_fut = dispatch(
         node, principal, ws, run_id, flow, node_id, &node_type, &config, inputs, params, now,
-    )
-    .await;
+    );
+    let dispatched = match timeout_ms {
+        Some(ms) if ms > 0 => {
+            match tokio::time::timeout(std::time::Duration::from_millis(ms), dispatch_fut).await {
+                Ok(d) => d,
+                Err(_) => Dispatched::Settled(NodeOutcome::Err("timeout".into())),
+            }
+        }
+        _ => dispatch_fut.await,
+    };
 
     let outcome = match dispatched {
         Dispatched::Park => {
@@ -184,11 +199,13 @@ async fn dispatch(
 
     // The stateful + engine-extending nodes, and the spine.
     let settled = match node_type {
-        // `flipflop` is a source: it reads the flipped value the reactor placed in params under its
-        // node id and emits it as the envelope `payload` — the same entry-node leg as `trigger`.
-        "trigger" | "flipflop" => core::trigger(node_id, config, &inputs, params),
+        // `flipflop`/`webhook` are sources: each reads the value the reactor placed in params under its
+        // node id (the flipped bool / the hit payload) and emits it — the same entry-node leg as
+        // `trigger`. `webhook` fires once per hit via the series-event reactor (slice 5).
+        "trigger" | "flipflop" | "webhook" => core::trigger(node_id, config, &inputs, params),
         "tool" => core::tool(node, principal, ws, config, &inputs).await,
         "rhai" => core::rhai(node, principal, ws, config, &inputs, now).await,
+        "rule" => core::rule(node, principal, ws, config, &inputs, now).await,
         "count" => core::count(&inputs),
         "json" => core::json(config, &inputs),
         "counter" => core::counter(node, ws, flow, node_id, config, &inputs, now).await,
@@ -206,6 +223,14 @@ async fn dispatch(
         ),
         "delay" => {
             return delay::dispatch_delay(node, ws, flow, node_id, config, &inputs, now).await
+        }
+        // The approval gate parks the run (like `delay`) until a reviewer resolves its inbox item; the
+        // flow-approval reactor resumes it. Returns `Dispatched` directly (it may Park).
+        "approval" => {
+            return approval::dispatch_approval(
+                node, principal, ws, run_id, node_id, config, &inputs, now,
+            )
+            .await
         }
         other => NodeOutcome::Err(format!("unknown built-in node type: {other}")),
     };

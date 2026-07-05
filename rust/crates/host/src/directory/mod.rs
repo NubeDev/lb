@@ -1,7 +1,9 @@
-//! The **workflow directory** — the durable set of workspaces the background driver services, so a
-//! workspace can be onboarded (or retired) **without restarting the node** (workflow-driver scope, the
-//! "dynamic workspace set" open question). The driver re-reads this each tick; `register`/`deregister`
-//! mutate it at runtime; it survives a restart because it is a record, not in-memory config.
+//! The **reactor directory** — the durable set of workspaces the node's background reactors service, so
+//! a workspace can be onboarded (or retired) **without restarting the node** (relocated from the retired
+//! workflow driver, rules-workflow-convergence scope). The "dynamic workspace set" it solves is generic:
+//! the outbox relay reactor, the flow-approval reactor, and the flow/agent reactors all need a live
+//! workspace list. A reactor re-reads this each tick; `register`/`deregister` mutate it at runtime; it
+//! survives a restart because it is a record, not in-memory config.
 //!
 //! It lives in a **reserved namespace** ([`DIRECTORY_NS`]), not inside any tenant workspace: it is
 //! node-level operator config (which workspaces this node drives), not a workspace's own data — and a
@@ -9,8 +11,8 @@
 //! of workspaces). The reserved name is disallowed as a real workspace by operator convention, so it
 //! can never collide with a tenant's namespace. This is the one deliberate exception to "every key is
 //! workspace-scoped" — and it is exactly the kind of node-infrastructure state §7 carves out (like the
-//! relay loop's existence): the *entries* still name real workspaces, and everything the driver then
-//! does with an entry (relay, reactor) re-enters that workspace's namespace and its caps gate.
+//! relay loop's existence): the *entries* still name real workspaces, and everything a reactor then does
+//! with an entry (relay, approval-release) re-enters that workspace's namespace and its caps gate.
 //!
 //! Raw verbs — no MCP surface (the directory is infrastructure, like the relay, not a tool). A node's
 //! operator/boot wiring calls these; they are not reachable through a workspace token.

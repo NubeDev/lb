@@ -1,5 +1,5 @@
-//! The spine node legs: `trigger` / `tool` / `rhai` / `count` / `json` / `counter` (flow-run-scope).
-//! Each returns a [`NodeOutcome`]; the data/JSON pack legs live in the sibling verb files.
+//! The spine node legs: `trigger` / `tool` / `rhai` / `rule` / `count` / `json` / `counter`
+//! (flow-run-scope). Each returns a [`NodeOutcome`]; the data/JSON pack legs live in sibling files.
 
 use std::sync::Arc;
 
@@ -64,8 +64,9 @@ pub(super) async fn tool(
     }
 }
 
-/// The lb-rules rhai cage (via `rules.run`). If the script returns an object with a `payload` key,
-/// that object IS the emitted envelope (`return msg`); otherwise the return is the new `payload`.
+/// The lb-rules rhai cage (via `rules.eval` — the flow-facing rule entry). The node's `source` is the
+/// inline rule body; the resolved inputs ARE the message envelope. An optional `timeout_ms` config
+/// overrides the cage deadline for this node (slice 2). See [`eval_rule`] for the result projection.
 pub(super) async fn rhai(
     node: &Arc<Node>,
     principal: &Principal,
@@ -75,12 +76,58 @@ pub(super) async fn rhai(
     now: u64,
 ) -> NodeOutcome {
     let source = config.get("source").and_then(|v| v.as_str()).unwrap_or("");
-    let req = json!({ "body": source, "params": Value::Object(inputs.clone()), "ts": now });
+    let mut req = json!({
+        "body": source,
+        "envelope": Value::Object(inputs.clone()),
+        "ts": now,
+    });
+    apply_timeout(&mut req, config);
+    eval_rule(node, principal, ws, req).await
+}
+
+/// The saved-rule node: run a stored rule by name (`config.rule`) with the message envelope as params
+/// plus any fixed `config.params` (rules-workflow-convergence scope, slice 1). Same cage, same result
+/// projection as `rhai` — the only difference is the rule is selected by id, not inlined.
+pub(super) async fn rule(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    config: &Value,
+    inputs: &serde_json::Map<String, Value>,
+    now: u64,
+) -> NodeOutcome {
+    let rule_id = config.get("rule").and_then(|v| v.as_str()).unwrap_or("");
+    if rule_id.is_empty() {
+        return NodeOutcome::Err("rule node missing config.rule".into());
+    }
+    let mut req = json!({
+        "rule_id": rule_id,
+        "envelope": Value::Object(inputs.clone()),
+        "params": config.get("params").cloned().unwrap_or(Value::Null),
+        "ts": now,
+    });
+    apply_timeout(&mut req, config);
+    eval_rule(node, principal, ws, req).await
+}
+
+/// Copy a node's `timeout_ms` config onto the `rules.eval` request (shared by `rhai`/`rule`).
+fn apply_timeout(req: &mut Value, config: &Value) {
+    if let Some(t) = config.get("timeout_ms").and_then(|v| v.as_u64()) {
+        req["timeout_ms"] = json!(t);
+    }
+}
+
+/// Dispatch `rules.eval` with a prepared request and project its result onto the emitted envelope. If
+/// the rule returned an object with a `payload` key, that object IS the envelope (`return msg`);
+/// otherwise the return is the new `payload`. Any `findings` ride alongside so they render on the
+/// canvas. Dispatched under the caller's own authority (`caller ∩ grant`) — a caller lacking
+/// `mcp:rules.eval:call` is denied at this node (no widening).
+async fn eval_rule(node: &Arc<Node>, principal: &Principal, ws: &str, req: Value) -> NodeOutcome {
     match Box::pin(call_tool(
         node,
         principal,
         ws,
-        "rules.run",
+        "rules.eval",
         &req.to_string(),
     ))
     .await

@@ -19,6 +19,32 @@ registry + an editor, run on `lb-jobs`, state in SurrealDB, motion on Zenoh (Dec
 > `chains_retired_test.rs` + `chains_retired_routes_test.rs` (the guard against a stray re-add). See
 > [`chains-retirement-scope`](../../scope/flows/chains-retirement-scope.md) and its session doc.
 
+> **Rules + workflow converged — flows is the ONE automation spine (2026-07-05).** Two side-engines
+> folded in. **Rules are flow nodes:** the `rhai` node runs an inline rule and the `rule` node runs a
+> **saved** rule by id, both through the new `rules.eval` verb (the flow message envelope in →
+> `{output, findings, log}` out; same cage, same per-source caps as `rules.run`). **The GitHub
+> "workflow" module is deleted** — no `workflow.*` MCP surface, no `github-workflow`/`github-target`/
+> `github-webhook` role, no `PrSpec`/`create_pr`/`triage` — its *generic* machinery survives as
+> reusable, provider-free flow nodes/reactors: the **`approval` gate** (parks the run on the durable
+> suspend/resume machinery until a reviewer resolves a `needs:approval` item; a flow-approval reactor
+> resumes on `Approved`, cancels on `Rejected`), the **outbox sink + relay reactor** (a
+> `sink(target=outbox)` stages a must-deliver effect; `spawn_relay_reactors` drives `relay_outbox`
+> over a provider-free `Target` with retry/backoff/dead-letter), and the reactor **directory**. The
+> `Target` trait + `relay_outbox` now live in `outbox/`. **Engine guards:** a per-flow `concurrency`
+> policy (`skip`/`queue`/`restart`, default `queue`) enforced at every fire seam, and a per-node
+> `timeout_ms` that settles `err:"timeout"`. **Zero provider names in any core crate** (rule 10). See
+> [`rules-workflow-convergence-scope`](../../scope/flows/rules-workflow-convergence-scope.md) +
+> [its session](../../sessions/flows/rules-workflow-convergence-session.md); the retired
+> [`coding-workflow`](../../scope/coding-workflow/coding-workflow-scope.md) scope.
+
+> **The webhook SOURCE node — the one flow-facing INBOUND surface (2026-07-05).** A generic built-in
+> `webhook` source (config just `{webhook_id}`, a picker over `webhook.list`) fires a flow run per
+> inbound hit. It owns no endpoint/credential — it wraps the shipped webhook backend (the endpoint +
+> credential + series `webhook:{ws}:{id}` outlive any one flow). A durable series-event reactor
+> (`react_to_flow_sources`) reads the hook's series past a `last_seq` cursor and fires one run per new
+> sample (fire-once, restart-safe, workspace-walled). **No Slack node, no GitHub node** — provider
+> integrations are extensions reached through the generic seams.
+
 ## What's shipped (the backend spine — Waves 1–2)
 
 | Slice | What | Tests |

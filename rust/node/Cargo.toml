@@ -31,12 +31,6 @@ lb-role-gateway = { path = "../role/gateway" }
 # registry (unconfigured → the honest `UnconfiguredModel`, symmetric on every node). NOT feature-gated:
 # the in-house default agent is present on every node regardless of the external-agent feature.
 lb-role-ai-gateway.workspace = true
-# The github workflow roles, mounted by config (§3.1): the webhook front door (ingress), the GitHub
-# HTTP `Target` (egress), and the background driver (the relay + reactor loop). All env-gated in
-# `main.rs` — absent config = the solo demo, never an `if cloud` in a core crate.
-lb-role-github-webhook.workspace = true
-lb-role-github-target.workspace = true
-lb-role-github-workflow.workspace = true
 # The external-agent role (external-agent topic, runtime-seam #1). OPTIONAL + behind the
 # `external-agent` feature: a default `cargo build` does NOT compile it (nor its transitive
 # `lb-external-agent`), so the OFF build carries none of the external-agent code — the compile-time

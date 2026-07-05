@@ -49,7 +49,6 @@ pub(crate) mod stream;
 mod system;
 mod telemetry_stream;
 mod webhook;
-mod workflow;
 mod workspace;
 
 pub use admin_apikeys::{create_apikey, get_apikey, list_apikeys, revoke_apikey, rotate_apikey};
@@ -131,5 +130,4 @@ pub use stream::channel_stream;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
 pub use webhook::post_webhook;
-pub use workflow::{request_approval, resolve_approval as resolve_workflow_approval, start_job};
 pub use workspace::{create_workspace, list_workspaces};

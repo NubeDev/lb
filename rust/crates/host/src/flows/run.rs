@@ -34,6 +34,14 @@ pub async fn flows_run(
     entry: Option<&str>,
 ) -> Result<String, FlowsError> {
     let mut flow = flows_get_internal(&node.store, ws, flow_id).await?;
+    // Per-flow concurrency guard (slice 2): if a live run exists, apply the flow's policy — `skip`
+    // drops this firing (return the id, start nothing), `restart` cancels the live run(s) first,
+    // `queue` overlaps. Enforced here so every reactor path (cron/interval/inject) is guarded.
+    if super::concurrency::apply_concurrency(node, ws, flow_id, flow.concurrency, run_id).await?
+        == super::concurrency::FireDecision::Skip
+    {
+        return Ok(run_id.to_string());
+    }
     // Merge retained `flow_input` values into params (Decision 9 read-side): a control loop is
     // retained inputs + event-triggered one-shot runs that read them.
     let params = run_store::merged_params_with_inputs(&node.store, ws, flow_id, params)
@@ -61,6 +69,13 @@ pub async fn flows_run_async(
     entry: Option<&str>,
 ) -> Result<String, FlowsError> {
     let flow = flows_get_internal(&node.store, ws, flow_id).await?;
+    // Per-flow concurrency guard (slice 2): the manual `flows.run` fire seam. `skip` returns the id
+    // without seeding a run; `restart` cancels the live run(s); `queue` overlaps.
+    if super::concurrency::apply_concurrency(node, ws, flow_id, flow.concurrency, run_id).await?
+        == super::concurrency::FireDecision::Skip
+    {
+        return Ok(run_id.to_string());
+    }
     let params = run_store::merged_params_with_inputs(&node.store, ws, flow_id, params)
         .await
         .map_err(FlowsError::Internal)?;

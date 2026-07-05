@@ -30,6 +30,7 @@ const FULL: &[&str] = &[
     "mcp:flows.run:call",
     "mcp:flows.runs.get:call",
     "mcp:rules.run:call",
+    "mcp:rules.eval:call",
     "store:flow:write",
     "store:flow:read",
 ];
@@ -72,6 +73,7 @@ fn flow_with(id: &str, nodes: Vec<Node>) -> Flow {
         enabled: true,
         start_on_boot: false,
         placement: Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }

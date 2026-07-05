@@ -11,8 +11,12 @@
 //! perpetually-failing one is parked rather than retried forever.
 //!
 //! Workspace-scoped: the relay runs per workspace; `due`/`mark_*` select the namespace, so a
-//! ws-B relay never delivers a ws-A effect (the hard wall, §7). One hub relay at S6 (multi-relay
-//! atomic claim is deferred, outbox scope).
+//! ws-B relay never delivers a ws-A effect (the hard wall, §7). One hub relay (multi-relay atomic
+//! claim is deferred, outbox scope).
+//!
+//! Lives in `outbox/` (relocated from the retired `workflow/` service, rules-workflow-convergence
+//! scope): the outbox-sink flow node stages an effect; the generic relay reactor drives THIS loop on a
+//! tick to deliver it. The reminders + approval reactors and native extensions call it the same way.
 
 use lb_outbox::{due, mark_delivered, mark_failed, EffectStatus};
 use lb_store::{Store, StoreError};

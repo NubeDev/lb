@@ -31,6 +31,7 @@ const FULL: &[&str] = &[
     "mcp:flows.run:call",
     "mcp:flows.runs.get:call",
     "mcp:rules.run:call",
+    "mcp:rules.eval:call",
     "store:flow:write",
     "store:flow:read",
 ];
@@ -65,6 +66,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         enabled: true,
         start_on_boot: false,
         placement: Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }

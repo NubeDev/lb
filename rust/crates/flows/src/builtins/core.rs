@@ -1,4 +1,4 @@
-//! The eight **original** built-in descriptors (the flow spine): `trigger` / `tool` / `rhai` /
+//! The **original** built-in descriptors (the flow spine): `trigger` / `tool` / `rhai` / `rule` /
 //! `count` / `json` / `counter` / `subflow` / `sink`. They ship **with the host** but wear the
 //! identical [`NodeDescriptor`] shape as extension nodes — one registry, one renderer, no "is this
 //! native?" branch (node-descriptor-scope). The data/JSON node pack ([`super::data`] / [`super::parse`]
@@ -65,6 +65,27 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     }
                 }),
             ),
+        // The webhook SOURCE node (rules-workflow-convergence scope, slice 5): an entry node whose
+        // config is just `{webhook_id}` (a picker over `webhook.list`). It owns no endpoint/credential
+        // — the core webhook service owns the hook + its series `webhook:{ws}:{id}`. When the flow
+        // enables, the series-event reactor watches that series and fires one run per hit, the hit's
+        // payload as the envelope. The ONLY flow-facing inbound surface (no provider-named node).
+        NodeDescriptor::new("webhook", NodeKind::Trigger, "")
+            .with_title("Webhook")
+            .with_category("Flow")
+            .with_icon("webhook")
+            .with_ports(vec![], vec!["payload".into(), "topic".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "required": ["webhook_id"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "webhook_id": {"type": "string", "description": "the webhook this source fires on (webhook.list)"}
+                    }
+                }),
+            ),
         // Everything-is-a-node for ACTIONS: carries the granted MCP verb + args in config; dispatched
         // under the caller's own cap (caller ∩ grant) — one generic descriptor covers every verb.
         NodeDescriptor::new("tool", NodeKind::Transform, "")
@@ -80,12 +101,15 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "additionalProperties": false,
                     "properties": {
                         "verb": {"type": "string", "description": "the granted MCP verb to dispatch"},
-                        "args": {"type": "object", "default": {}}
+                        "args": {"type": "object", "default": {}},
+                        "timeout_ms": {"type": "integer", "minimum": 1, "description": "wall-clock ceiling for this node's dispatch, in ms (settles err:\"timeout\" if exceeded)"}
                     }
                 }),
             ),
-        // The function node — the lb-rules rhai cage. Bound to host `rules.eval`. Out carries the cage
-        // convention `payload`/`topic`/`findings`.
+        // The function node — the lb-rules rhai cage. Bound to host `rules.eval` (the flow-facing rule
+        // entry: message envelope in, findings out). Out carries the cage convention
+        // `payload`/`topic`/`findings`. `timeout_ms` overrides the cage wall-clock deadline for this
+        // node (rules-workflow-convergence scope, slice 2).
         NodeDescriptor::new("rhai", NodeKind::Transform, HOST_RULES_EVAL)
             .with_title("Rhai")
             .with_category("Flow")
@@ -100,7 +124,34 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "type": "object",
                     "required": ["source"],
                     "additionalProperties": false,
-                    "properties": {"source": {"type": "string"}}
+                    "properties": {
+                        "source": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1, "description": "override the rule cage's wall-clock deadline for this node, in ms"}
+                    }
+                }),
+            ),
+        // Run a SAVED rule by name (`rule` = the stored rule id) with the message envelope as params
+        // plus any fixed `params`. Bound to host `rules.eval` like `rhai` — the only difference is the
+        // rule is selected by id, not inlined (rules-workflow-convergence scope, slice 1).
+        NodeDescriptor::new("rule", NodeKind::Transform, HOST_RULES_EVAL)
+            .with_title("Rule (saved)")
+            .with_category("Flow")
+            .with_icon("scroll")
+            .with_ports(
+                vec!["payload".into()],
+                vec!["payload".into(), "topic".into(), "findings".into()],
+            )
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "required": ["rule"],
+                    "additionalProperties": false,
+                    "properties": {
+                        "rule": {"type": "string", "description": "the saved rule id (rules.list)"},
+                        "params": {"type": "object", "default": {}, "description": "fixed params merged over the message envelope"},
+                        "timeout_ms": {"type": "integer", "minimum": 1, "description": "override the rule cage's wall-clock deadline for this node, in ms"}
+                    }
                 }),
             ),
         // A pure transform: count the input `payload` (array length / object keys / scalar→1). No MCP
@@ -165,7 +216,29 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "type": "object",
                     "required": ["flow"],
                     "additionalProperties": false,
-                    "properties": {"flow": {"type": "string", "description": "flow-id@version (Decision 4)"}}
+                    "properties": {
+                        "flow": {"type": "string", "description": "flow-id@version (Decision 4)"},
+                        "timeout_ms": {"type": "integer", "minimum": 1, "description": "wall-clock ceiling for the child run, in ms (settles err:\"timeout\" if exceeded)"}
+                    }
+                }),
+            ),
+        // The approval GATE: park the run until a reviewer approves. Passes the envelope through on
+        // approval; fails on reject. Writes a `needs:approval` inbox item routed to `team`; the
+        // flow-approval reactor resumes the parked run on resolution (rules-workflow-convergence scope).
+        NodeDescriptor::new("approval", NodeKind::Transform, "")
+            .with_title("Approval gate")
+            .with_category("Flow")
+            .with_icon("shield-check")
+            .with_ports(vec!["payload".into()], vec!["payload".into()])
+            .with_config(
+                1,
+                json!({
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "team": {"type": "string", "description": "the team the approval item routes to"},
+                        "channel": {"type": "string", "description": "the inbox channel for the approval item (default \"approvals\")"}
+                    }
                 }),
             ),
         // A terminal node. No outputs; envelope in. `target` selects the host write seam
@@ -184,7 +257,8 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "additionalProperties": false,
                     "properties": {
                         "target": {"type": "string", "enum": ["inbox", "outbox", "channel", "series"]},
-                        "name": {"type": "string", "description": "the channel / series name"}
+                        "name": {"type": "string", "description": "the channel / series name"},
+                        "timeout_ms": {"type": "integer", "minimum": 1, "description": "wall-clock ceiling for this node's dispatch, in ms (settles err:\"timeout\" if exceeded)"}
                     }
                 }),
             ),

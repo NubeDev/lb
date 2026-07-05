@@ -5,7 +5,7 @@
 //!
 //! The set is split by category (FILE-LAYOUT — data-nodes Open Q5, resolved: a file per category so
 //! `builtins.rs` stays under the 400-line rule as it grows from 8 to 28 descriptors):
-//! - [`core`] — the nine spine built-ins (`trigger`/`flipflop`/`tool`/`rhai`/`count`/`json`/`counter`/`subflow`/`sink`).
+//! - [`core`] — the spine built-ins (`trigger`/`flipflop`/`tool`/`rhai`/`rule`/`count`/`json`/`counter`/`subflow`/`approval`/`sink`).
 //! - [`data`] — nine reshape/scale/reduce nodes (`change`/`select`/`merge`/`map`/`flatten`/`sort`/`range`/`aggregate`/`template`).
 //! - [`parse`] — four text↔structure nodes (`csv`/`xml`/`yaml`/`base64`), malformed input FAILS the node.
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
@@ -42,15 +42,18 @@ mod tests {
 
     /// The full expected type set (order = category order). Guards against an accidental drop/rename.
     const EXPECTED: &[&str] = &[
-        // core (9)
+        // core (12)
         "trigger",
         "flipflop",
+        "webhook",
         "tool",
         "rhai",
+        "rule",
         "count",
         "json",
         "counter",
         "subflow",
+        "approval",
         "sink",
         // data (9)
         "change",
@@ -83,7 +86,7 @@ mod tests {
         let d = builtin_descriptors();
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
         assert_eq!(types, EXPECTED);
-        assert_eq!(d.len(), 29, "9 spine + 20 data/JSON pack nodes");
+        assert_eq!(d.len(), 32, "12 spine + 20 data/JSON pack nodes");
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {
             crate::config_schema::compile_schema(&desc.config)
@@ -149,9 +152,10 @@ mod tests {
 
     #[test]
     fn data_pack_nodes_are_envelope_transforms() {
-        // Every one of the twenty new nodes is a payload→payload transform (the drop-in mould).
+        // Every one of the twenty data/JSON-pack nodes is a payload→payload transform (the drop-in
+        // mould). They follow the 12 spine nodes (trigger…sink), so the pack is `EXPECTED[12..]`.
         let d = builtin_descriptors();
-        for ty in &EXPECTED[9..] {
+        for ty in &EXPECTED[12..] {
             let desc = d.iter().find(|x| &x.r#type == ty).unwrap();
             assert_eq!(desc.kind, NodeKind::Transform, "{ty} should be a transform");
             assert_eq!(desc.inputs, vec!["payload".to_string()], "{ty} input");

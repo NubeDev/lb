@@ -299,7 +299,7 @@ async fn dispatch_at_depth(
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
-            call_workflow_tool(node, principal, ws, qualified_tool, &input).await?
+            call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
@@ -503,7 +503,7 @@ async fn build_call_context(
 /// opaque (`ToolError::Denied`), indistinguishable from a missing tool. Both `inbox.record`'s author
 /// and `inbox.resolve`'s actor are forced to the principal's `sub` — never caller-supplied (a guest
 /// cannot forge another source's authorship/sign-off).
-async fn call_workflow_tool(
+async fn call_inbox_outbox_tool(
     node: &Node,
     principal: &Principal,
     ws: &str,

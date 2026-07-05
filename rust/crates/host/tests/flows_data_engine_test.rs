@@ -67,6 +67,7 @@ fn flow(ws: &str, id: &str, nodes: Vec<Node>) -> Flow {
         enabled: true,
         start_on_boot: false,
         placement: Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }
