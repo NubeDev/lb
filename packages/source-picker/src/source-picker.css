@@ -107,3 +107,228 @@
   font-size: 0.75rem;
   color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
 }
+
+/* The catalog explorer skin (CatalogExplorer) — a sections panel with click-to-insert rows. Same
+   scoped `sp-*` discipline; the `.sp-catalog` root carries its own grid + the per-section styles.
+   No preflight — these rules only apply to elements inside `.sp-root.sp-catalog`. */
+
+.sp-root.sp-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  overflow: auto;
+}
+
+.sp-root .sp-catalog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sp-root .sp-catalog-section-head {
+  padding: 0 0.25rem 0.25rem;
+}
+
+.sp-root .sp-catalog-section-title {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
+}
+
+.sp-root .sp-catalog-section-hint {
+  margin: 0;
+  font-size: 0.625rem;
+  color: color-mix(in srgb, var(--sp-fg) 45%, transparent);
+}
+
+/* Loading skeleton — a single pulsing bar (matches the shipped rules explorer's honest "loading"). */
+.sp-root .sp-catalog-skeleton {
+  height: 1.5rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--sp-fg) 12%, transparent);
+  animation: sp-catalog-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sp-catalog-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* The honest deny — a small muted chip with "Not permitted." (matches the rules explorer's copy). */
+.sp-root .sp-catalog-denied {
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--sp-fg) 10%, transparent);
+  font-size: 0.6875rem;
+  color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
+}
+
+/* Teaching empty — for a ready section with zero rows. */
+.sp-root .sp-catalog-empty {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.6875rem;
+  color: color-mix(in srgb, var(--sp-fg) 55%, transparent);
+}
+
+/* Row lists (datasources / series / channels / insights / inbox) — a tight grid of full-width
+   buttons. The row itself is a button carrying a label + an optional sub-label (kind·endpoint, etc). */
+.sp-root .sp-catalog-list {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sp-root .sp-catalog-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--sp-fg);
+  font-size: 0.75rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-root .sp-catalog-row:hover {
+  background: color-mix(in srgb, var(--sp-fg) 8%, transparent);
+}
+
+.sp-root .sp-catalog-row-series,
+.sp-root .sp-catalog-row-channel {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+}
+
+.sp-root .sp-catalog-row-label {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+}
+
+.sp-root .sp-catalog-row-sub {
+  padding-left: 1.125rem;
+  font-size: 0.625rem;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+}
+
+.sp-root .sp-catalog-row-series .sp-catalog-row-sub,
+.sp-root .sp-catalog-row-channel .sp-catalog-row-sub {
+  padding-left: 0;
+  margin-left: auto;
+}
+
+.sp-root .sp-catalog-icon {
+  display: inline-block;
+  width: 0.875rem;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+  font-size: 0.625rem;
+  text-align: center;
+}
+
+/* The schema table→column tree (CatalogSchemaTree). */
+.sp-root .sp-catalog-tree {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sp-root .sp-catalog-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.sp-root .sp-catalog-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+  font-size: 0.625rem;
+  cursor: pointer;
+}
+
+.sp-root .sp-catalog-toggle:hover {
+  color: var(--sp-fg);
+}
+
+.sp-root .sp-catalog-tree-table {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--sp-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-root .sp-catalog-tree-table:hover {
+  background: color-mix(in srgb, var(--sp-fg) 8%, transparent);
+}
+
+.sp-root .sp-catalog-tree-columns {
+  margin: 0 0 0 1.5rem;
+  padding: 0 0 0 0.375rem;
+  list-style: none;
+  border-left: 1px solid var(--sp-border);
+}
+
+.sp-root .sp-catalog-tree-no-columns {
+  padding: 0.25rem 0.375rem;
+  font-size: 0.6875rem;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+}
+
+.sp-root .sp-catalog-tree-column {
+  width: 100%;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--sp-fg) 50%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sp-root .sp-catalog-tree-column:hover {
+  color: var(--sp-fg);
+}

@@ -141,7 +141,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   DataFusion pages only by predicate **pushdown** to the real source, and anything that must load at
   dashboard speed is **mirrored** into the series plane and keyset-paged there; a chart **downsamples**
   (time-bucket min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager
-  rejected. Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
+  rejected. **`sqlite-datasource-demo-scope.md`** makes the sidecar's shipped `sqlite` kind
+  first-class (kind select + path-DSN semantics in the Datasources UI) and emits the demo building
+  dataset into a SQLite file (`seed.py --sqlite`, lite profile + `make seed-demo-sqlite`) — the
+  Docker-free demo source the Data Studio 10x demo toggle points at.
+  Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
@@ -355,6 +359,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   legible, denies surfaced honestly. It is only ever as authorized as the token it presents. v1 auth = the dev-login token; it is the **named first consumer** of
   `auth-caps/api-keys-scope.md` when API keys ship. Adds **no new MCP verbs, capabilities, or tables**;
   retires the `curl + jq` publish flow and folds `lb-pack` into `lb devkit sign` over the `lb-devkit` lib.
+- `clients/` — **external starter client libraries** for the gateway surface
+  (`client-libraries-scope.md`): one thin library per language (TypeScript/Node, Python, Go, Rust)
+  under repo-root `clients/`, each exposing the same five-method shape — `Client` (base URL + bearer)
+  + `login()` + `writeSamples()` + `latestSample()` + `callMcp()`, plus a `signWebhook()` /
+  `postWebhook()` helper for the third-party caller path. Deliberately **not** a full SDK: the shape to
+  extend, with every other verb reachable through the universal `POST /mcp/call` bridge. No mocks, no
+  fake backends — the README recipes hit a real `make cloud` node seeded via the real write paths. Adds
+  **no new MCP verbs, capabilities, routes, or tables**; the four folders live outside both the core
+  `rust/Cargo.toml` workspace and the root `pnpm-workspace.yaml` so a change here cannot break the
+  core build.
 - `frontend/` — the React/Tauri UI shell; `agent-dock-scope.md` (the persistent
   `@nube/panel` right-dock AI panel — open on every page, survives navigation, durable
   channel-backed session history with new-session, always the active catalog agent,
@@ -415,7 +429,19 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   model/loader seam gains local-schema/channels/insights/inbox loaders and a second UI skin — the browsable
   click-to-insert explorer tree extracted from the rules panel's `DataExplorer` — so rules, Data Studio,
   dashboards, and extension UIs all browse "what exists in this workspace" through one package; enumerate +
-  pick only, shipped verbs only, honest per-section deny).
+  pick only, shipped verbs only, honest per-section deny), and
+  `data-studio-10x-scope.md` (the **Data Studio 10x** ask, follow-on to the shipped
+  `data-studio-scope.md` v2/v3: swap flexlayout-react for **Dockview** as the dock engine; open the
+  app's own pages — Flows/Rules/Data/Datasources/Ingest — **as panes** inside the studio (the real
+  routed view components, one persisted per-member arrangement, an `AppPage` embedded mode); rework
+  the builder into a **query-first → visual viz-gallery → options-drawer** flow; and an honest
+  **seeded-demo-data** preview toggle (real records via the `iot_demo` seed + `docker/postgres/seed.py`,
+  never client-fabricated frames — rule 9)), and
+  `webhooks-admin-scope.md` (the **Webhooks admin page adopts the `AppPage` shell** — a frontend-only
+  restyle/UX slice over the shipped `webhook.*` verbs: the page migrates off the legacy `AdminPanel`
+  onto the same canonical shell Dashboards/Rules use, the wizard upgrades to the surface discipline, and
+  the file splits one-component-per-file during the move. The first admin-tab migration; the other five
+  tabs follow under `admin-console-scope.md`).
   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/

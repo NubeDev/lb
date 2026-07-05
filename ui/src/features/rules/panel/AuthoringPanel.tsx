@@ -12,7 +12,6 @@ import { FunctionPalette } from "./FunctionPalette";
 import { ExampleList } from "./ExampleList";
 import { DataExplorer } from "./DataExplorer";
 import { ParamDeclEditor } from "./ParamDeclEditor";
-import { useDataExplorer } from "./useDataExplorer";
 import type { RuleParam } from "@/lib/rules";
 
 type TabId = "functions" | "examples" | "data" | "params";
@@ -56,8 +55,8 @@ export function AuthoringPanel({ ws, onInsert, onLoadExample, params, onParamsCh
   );
 }
 
-/** The Data tab body — its hook fires the explorer verbs on mount (i.e. when the tab is opened). */
+/** The Data tab body — `<DataExplorer>` mounts and its `useCatalog` fires the explorer verbs on
+ *  mount (i.e. when the tab is opened), through the package's one loader orchestration. */
 function DataExplorerTab({ ws, onInsert }: { ws: string; onInsert: (snippet: string) => void }) {
-  const state = useDataExplorer(ws);
-  return <DataExplorer state={state} onInsert={onInsert} />;
+  return <DataExplorer ws={ws} onInsert={onInsert} />;
 }

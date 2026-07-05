@@ -49,6 +49,9 @@ export function builderTabJson(id: string, name: string, config: BuilderConfig):
     type: "tab",
     id,
     name,
+    // The full title as the hover tooltip — the tab strip caps + ellipsizes long names (see
+    // datastudio-dock.css), and FlexLayout's `title` attr comes from `helpText`, not `name`.
+    helpText: name,
     component: "builder" satisfies PaneKind,
     config,
   };

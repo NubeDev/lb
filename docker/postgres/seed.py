@@ -20,8 +20,12 @@ Usage:
     ./seed.py --host localhost --port 5433 --user lb --password lb_secret --db lb
     ./seed.py --months 3            # generate only the last 3 months (faster smoke test)
     ./seed.py --interval 15         # 15-minute slots instead of 5 (≈1/3 the rows)
+    ./seed.py --sqlite data/demo/buildings.db
+                                    # SAME dataset into a SQLite file (no Docker);
+                                    # defaults to the lite profile (--months 1 --interval 15)
 
-Re-running is idempotent: every seeded table is TRUNCATEd first.
+Re-running is idempotent: every seeded table is TRUNCATEd first (SQLite:
+dropped + recreated).
 """
 from __future__ import annotations
 
@@ -51,10 +55,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--db",   default=os.environ.get("POSTGRES_DB",   "lb"))
     p.add_argument("--password", default=os.environ.get("POSTGRES_PASSWORD", "lb_secret"))
     p.add_argument("--container", default=os.environ.get("POSTGRES_CONTAINER", "lb-timescaledb"))
-    p.add_argument("--interval", type=int, default=5,
-                   help="minutes per reading (default 5)")
-    p.add_argument("--months", type=float, default=12.0,
-                   help="how many months back from now to generate (default 12)")
+    p.add_argument("--sqlite", default=None, metavar="PATH",
+                   help="write to a SQLite file at PATH instead of Postgres "
+                        "(the demo `.db`; lite defaults: --months 1 --interval 15)")
+    p.add_argument("--interval", type=int, default=None,
+                   help="minutes per reading (default 5; 15 with --sqlite)")
+    p.add_argument("--months", type=float, default=None,
+                   help="how many months back from now to generate "
+                        "(default 12; 1 with --sqlite)")
     p.add_argument("--start", default=None,
                    help="pin the window start, e.g. 2025-01-01T00:00:00Z "
                         "(default: now - --months, snapped to --interval)")
@@ -249,6 +257,12 @@ def _snap_to_interval(t: datetime, step_min: int) -> datetime:
 
 def main() -> int:
     args = parse_args()
+    # Sizing defaults per sink: the SQLite demo is the lite profile (≈200k rows,
+    # seconds to generate); the full-year firehose stays the postgres/Timescale path.
+    if args.interval is None:
+        args.interval = 15 if args.sqlite else 5
+    if args.months is None:
+        args.months = 1.0 if args.sqlite else 12.0
     stats = inv.stats()
     if args.end is not None:
         end = _parse_iso(args.end)
@@ -268,6 +282,9 @@ def main() -> int:
     print(f"==> Interval={args.interval}m -> ~{slots:,} slots/point, "
           f"~{est_rows:,} readings total")
     print(f"==> Estimated runtime: a few minutes (depends on disk / container)")
+
+    if args.sqlite:
+        return seed_sqlite(args, start, end)
 
     psql = Psql(args.host, args.port, args.user, args.db, args.password, args.container)
     print(f"==> Connecting via: {psql.describe()}")
@@ -302,6 +319,42 @@ def main() -> int:
     print("==> Done. Counts per site/meter/point:")
     summary = psql.run(SUMMARY_SQL).stdout
     print(summary, end="" if summary.endswith("\n") else "\n")
+    return 0
+
+
+def seed_sqlite(args: argparse.Namespace, start: datetime, end: datetime) -> int:
+    """The SQLite sink path: same dataset, one `.db` file, stdlib sqlite3."""
+    import sinks_sqlite
+
+    os.makedirs(os.path.dirname(os.path.abspath(args.sqlite)), exist_ok=True)
+    sink = sinks_sqlite.SqliteSink(args.sqlite)
+    print(f"==> Writing via: {sink.describe()}")
+
+    print("==> Inserting sites / meters / points ...")
+    sink.copy_in("site",  ("id", "name"),             site_rows())
+    sink.copy_in("meter", ("id", "site_id", "name"),  meter_rows())
+    sink.copy_in("point", ("id", "meter_id", "name"), point_rows())
+
+    print("==> Inserting Haystack tags ...")
+    sink.copy_in("site_tag",  ("site_id",  "tag", "kind", "val"), tag_rows_site())
+    sink.copy_in("meter_tag", ("meter_id", "tag", "kind", "val"), tag_rows_meter())
+    sink.copy_in("point_tag", ("point_id", "tag", "kind", "val"), tag_rows_point())
+
+    if args.no_readings:
+        print("==> --no-readings set; skipping point_reading")
+    else:
+        print("==> Streaming readings ...")
+        t0 = time.time()
+        sent = sink.copy_in("point_reading", ("time", "point_id", "value"),
+                            reading_rows(start, end, args.interval))
+        dur = time.time() - t0
+        rate = sent / dur if dur else 0
+        print(f"==> Wrote {sent:,} readings in {dur:.1f}s ({rate:,.0f} rows/s)")
+
+    print()
+    print("==> Done. Counts per site/meter/point:")
+    print(sink.summary())
+    sink.close()
     return 0
 
 

@@ -67,6 +67,41 @@
   min-height: 0;
 }
 
+/* Tab buttons — the vendor default is bare text on the bar (selected vs unselected is nearly
+   invisible) and a tab grows as wide as its title (a long source label like
+   "Energy kWh (pt-001) — timescale datasource — left for inspection" eats the whole strip).
+   Give tabs a real shape: a bordered pill, the selected one raised on `--panel` with full-contrast
+   text + an accent top edge, unselected muted until hover; titles cap at 11rem and ellipsize (the
+   full name stays in the tab's hover tooltip, which FlexLayout sets natively). */
+.data-studio-dock .flexlayout__tabset_tabbar_outer {
+  height: 2.25rem !important;
+}
+.data-studio-dock .flexlayout__tab_button {
+  max-width: 11rem;
+  margin: 4px 2px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+}
+.data-studio-dock .flexlayout__tab_button_content {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.data-studio-dock .flexlayout__tab_button--unselected {
+  color: hsl(var(--muted));
+}
+.data-studio-dock .flexlayout__tab_button--unselected:hover {
+  color: hsl(var(--fg));
+  background-color: hsl(var(--fg) / 0.06);
+}
+.data-studio-dock .flexlayout__tab_button--selected {
+  color: hsl(var(--fg));
+  background-color: hsl(var(--panel));
+  border-color: hsl(var(--border));
+  box-shadow: inset 0 1px 0 hsl(var(--accent) / 0.7);
+}
+
 /* FlexLayout's tab content defaults to `overflow: auto`, which would scroll the WHOLE builder tab
    as one block — defeating each pane's own scrollbar and letting the preview push the options rail
    off the bottom (cut off, no inner scroll). Bound the tab content instead: the pane's flex chain

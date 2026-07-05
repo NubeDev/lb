@@ -240,6 +240,58 @@ identically. This is the **only** host change: an additive optional `context` fi
 payload + `InvokeRequest` — **no new verb, cap, or table**; the host never knows the `dock-` prefix (the
 wall is caps, not the name). See `scope/frontend/agent-dock-scope.md`.
 
+## The workspace system catalog (`@nube/source-picker` — grown)
+
+One package now answers the question every authoring surface keeps asking — **"what exists in this
+workspace, and what can I reference here?"** — for every enumerable subsystem. It grew from a
+*picker* (the shipped combobox) into a **catalog with two UI skins**: the existing combobox
+(`<SourcePicker>`/`<SourceCombobox>`, "pick a source by typing") AND a new browsable explorer tree
+(`<CatalogExplorer>`, "browse the workspace's subsystems as a tree, click to insert"). The rules
+panel's `DataExplorer` is now a thin adapter over it; `useDataExplorer` is **deleted** (the
+package's `useCatalog` is the one loader orchestration); the shell `ui/src/components/schema/`
+folder is **deleted** (the package's `CatalogSchemaTree` is the one schema tree). See
+`scope/frontend/system-catalog-scope.md`.
+
+**One loader seam — `SourceLoaders` — injected by the host.** Each read is an optional independent
+loader the host wires; an absent loader ⇒ an absent section (the host composes which subsystems its
+surface shows). Four new loaders land this pass over already-shipped verbs: `readSchema`
+(`store.schema`), `listChannels` (`channel.list`), `listInsights` (`insight.list`), `listInbox`
+(`inbox.list`). The original six (`listSeries`/`listExtensions`/`listFlows`/`getFlow`/
+`listFlowNodes`/`listDatasources`/`listRules`) stay.
+
+**Two state contracts, one hook** — the architectural seam. The picker collapses a deny into an
+empty group (its existing contract); the explorer surfaces a deny VISIBLY ("Not permitted.", never
+a fabricated roster). Both project off ONE orchestration: `loadCatalog` runs every wired loader
+deny-tolerant per section, surfaces each as it lands (per-section independent tri-state — loading
+skeleton, "Not permitted." deny, teaching empty, ready rows), and `loadSourcePicker` folds the
+READY sections into picker inputs (denied/loading ⇒ empty). One loader path; two projections.
+
+**Sections are registry-driven data, ids are opaque (rule 10).** The package ships a vocabulary
+(`CatalogSectionKind` — `datasources`/`schema`/`series`/`channels`/`insights`/`inbox`) keyed by
+which loader fed them; the HOST decides which sections a surface shows by which loaders it wires.
+Extension-contributed sources arrive only through the generic `ext.list` loader, never a named case.
+The click yields a `CatalogEntry` (a tagged row); the HOST owns the snippet/bind mapping — never the
+package. The rules panel maps `datasource → source("name")`, `table/column → bare identifier`,
+`series → history("series","name","24h")`. A different host (the channel composer, the agent dock's
+context picker) maps the same entry onto its own meaning.
+
+**Self-themed via scoped `--sp-*` tokens** under `.sp-root.sp-catalog` (the `@nube/panel`
+discipline). No preflight, no global utilities, host-overridable. The package builds ESM+CJS+dts+
+scoped CSS; extensions build `--ignore-workspace` and resolve it (the thecrew pattern).
+
+**Holds to the non-goals.** No new node verbs; no query execution/editing in the package (its one
+responsibility is *enumerate + pick*); no outbox/webhook sections (no roster verbs exist — named
+follow-ups, surfaced as absent). Federation table introspection stays a named follow-up (needs a
+federation verb first).
+
+**Tests (real infra, rule 9):** the package's own unit suite (46 — `useCatalog` per-section state
++ `CatalogExplorer` every-state rendering) uses an injected fake LOADER OBJECT (a pure function
+seam, NOT a fake backend); the real store/gateway path stays proven by the host suites.
+`AuthoringPanel.gateway.test.tsx` **7/7 green** (the headline parity gate — the rules panel renders
+real `datasource.list` + `store.schema` + `series.list`, click-to-insert lands the snippet, a
+denied `datasource.list` renders an honest deny). UI unit 672/672; picker consumer suites
+(DataStudio / framesIn / rulesSource / fieldNamePicker) untouched and green.
+
 ## Not yet built
 
 The full operational shell (dashboard / extensions / settings, the rest of the P0 plan in

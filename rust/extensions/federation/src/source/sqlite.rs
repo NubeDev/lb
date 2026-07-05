@@ -24,6 +24,16 @@ impl SqliteSource {
     /// `file:/...` URL — the leading `file:` scheme is stripped).
     pub async fn connect(dsn: &str) -> Result<Self, SourceError> {
         let path = dsn.strip_prefix("file:").unwrap_or(dsn);
+        // SQLite would silently CREATE a missing file (an empty db that probes green). Refuse
+        // instead, and say where the path resolves — the classic trap is a remote gateway user
+        // registering a path on their own machine. The path itself is the DSN: never echoed.
+        if !std::path::Path::new(path).is_file() {
+            return Err(SourceError(
+                "sqlite database file not found — the DSN path resolves on the node running \
+                 the federation sidecar, not the client"
+                    .into(),
+            ));
+        }
         let pool = SqliteConnectionPoolFactory::new(path, Mode::File, Duration::from_secs(5))
             .build()
             .await

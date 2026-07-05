@@ -31,8 +31,8 @@ same system through the same package.
 | Piece | Where | State |
 |---|---|---|
 | Model + loaders + combobox | `packages/source-picker` | Shipped: series/live, flows (ports), rules, extensions/widgets, datasources. Deny-tolerant, ws-keyed, transport-agnostic. |
-| Explorer tree (sections + click-to-insert) | `ui/src/features/rules/panel/{DataExplorer,useDataExplorer}` | Shipped but host-coupled: 3 sections (datasources / local tables via `SchemaBrowser` / series), `SectionState` tri-state (loading/denied/ready — never a fabricated roster). |
-| Local schema reader | `ui/src/lib/schema` + `ui/src/components/schema` | Shared shell lib (`store.schema`), consumed by the rules explorer and the dashboard SQL builder. |
+| Explorer tree (sections + click-to-insert) | ~~`ui/src/features/rules/panel/{DataExplorer,useDataExplorer}`~~ → `packages/source-picker/src/{CatalogExplorer,CatalogSection,CatalogSchemaTree}` | **Promoted into the package (this scope).** The rules panel's `DataExplorer` is now a thin loaders-adapter + Rhai-snippet mapping; `useDataExplorer` is **deleted** (the package's `useCatalog` is the one loader orchestration). The shell `ui/src/components/schema/` folder is **deleted** (the `CatalogSchemaTree` is the one tree). Six section kinds — datasources / schema / series / channels / insights / inbox. |
+| Local schema reader | `ui/src/lib/schema` | Stays — the shell's loader adapter still calls `readSchema()`; the package takes the row shape via `SourceLoaders.readSchema`. Only the BROWSER component moved into the package. |
 
 The package is already 70% of the ask. What's missing: (a) **more loaders** — local schema,
 channels, insights, inbox; (b) the **explorer skin** — the tree panel is trapped in `features/rules`;
@@ -203,17 +203,25 @@ Per `scope/testing/testing-scope.md`:
 ## Open questions
 
 1. **Rename?** `@nube/source-picker` undersells a catalog with an explorer skin.
-   **Recommendation: keep the name this pass** — a rename churns imports in dashboard, Data
+   **RESOLVED (2026-07-05): keep the name this pass.** A rename churns imports in dashboard, Data
    Studio, and thecrew for zero behavior; if the package graduates further (e.g.
-   `@nube/system-catalog`), do it as its own mechanical follow-up.
+   `@nube/system-catalog`), do it as its own mechanical follow-up. The exported CATALOG_* vocab +
+   `<CatalogExplorer>` make the broader role clear without renaming.
 2. **Does `SchemaBrowser` move in wholesale** (deleting `ui/src/components/schema`) or does the
-   shell component become a re-export? Leaning: move it in — one tree, two consumers re-pointed.
+   shell component become a re-export? **RESOLVED (2026-07-05): move it in wholesale.** The only
+   consumer was the rules panel's `DataExplorer`; once that rewired onto `<CatalogExplorer>`, the
+   shell folder had exactly zero consumers, so `ui/src/components/schema/` is **deleted** and the
+   package's `CatalogSchemaTree` is the one tree. (`ui/src/lib/schema/schema.api.ts` STAYS — the
+   SQL builder still consumes the `readSchema` shape directly; only the BROWSER component moved.)
 3. **Insights section shape:** `insight.list` only, or also `insight.sub.list` as a child level
-   (insight → subscriptions)? Decide with the first real consumer; don't speculate levels nobody
-   picks from.
+   (insight → subscriptions)? **RESOLVED (2026-07-05): `insight.list` only this pass — flat rows.**
+   No first consumer surfaced during the build (the rules panel doesn't show insights; the agent
+   dock context-picker is the candidate follow-up). The `CatalogSectionKind` vocab grows a
+   `insightSubs` kind + a child-level renderer when a real consumer needs to pick a subscription;
+   until then it would be speculating levels nobody picks from (the original lean).
 4. **Live catalog:** should sections refresh on bus motion (a new series appears while the panel
-   is open)? Deferred — snapshot + ws re-key matches every shipped consumer today; a `watch`-fed
-   catalog is its own scope if a surface actually needs it.
+   is open)? **DEFERRED (unchanged)** — snapshot + ws re-key matches every shipped consumer today;
+   a `watch`-fed catalog is its own scope if a surface actually needs it.
 
 ## Related
 
@@ -222,6 +230,8 @@ Per `scope/testing/testing-scope.md`:
 - [`rules-editor-ux-scope.md`](rules-editor-ux-scope.md) — the shipped explorer being generalized
   (and the `lib/schema` extraction it already did).
 - [`data-studio-scope.md`](data-studio-scope.md) — the Sources pane consumer;
+  [`data-studio-10x-scope.md`](data-studio-10x-scope.md) — its goal 5 makes the studio rail's
+  Sources tab a `CatalogExplorer` host (browse → open builder tab);
   [`dashboard/rules-as-source-scope.md`](dashboard/rules-as-source-scope.md) — the rules group.
 - `packages/panel`, `packages/nav-rail` — the shared-package pattern (pure, props-driven, scoped
   tokens, React peer dep).

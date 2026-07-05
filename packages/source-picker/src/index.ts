@@ -39,6 +39,29 @@ export type { SourcePickerData } from "./useSourcePicker";
 export { loadSourcePicker } from "./loadSourcePicker";
 export type { SourcePickerResult } from "./loadSourcePicker";
 
+// Catalog — the workspace system catalog: sections AS DATA + a per-section loader orchestration
+// (system-catalog scope). The picker folds the same per-section state into flat entries; the
+// explorer skin renders it as a tree. One orchestration (`loadCatalog`/`useCatalog`), two
+// projections (`loadSourcePicker`/`useSourcePicker` collapse; `CatalogExplorer` surfaces).
+export {
+  CATALOG_SECTION_SPECS,
+  channelEntries,
+  datasourceEntries,
+  inboxEntries,
+  insightEntries,
+  schemaColumnEntries,
+  schemaTableEntries,
+  seriesCatalogEntries,
+} from "./catalog";
+export type {
+  CatalogEntry,
+  CatalogSectionKind,
+  CatalogSectionSpec,
+} from "./catalog";
+export { loadCatalog } from "./loadCatalog";
+export type { CatalogSectionData, CatalogSections } from "./loadCatalog";
+export { useCatalog } from "./useCatalog";
+
 // UI — the props-driven grouped <select>, plus the shared grouping primitive + canonical group lists a
 // host reuses when it renders its own <select> (shadcn Select / a token-classed native select).
 export { SourcePicker, PickerGroup, READ_SOURCE_GROUPS, BUILDER_SOURCE_GROUPS } from "./SourcePicker";
@@ -48,6 +71,17 @@ export type { SourcePickerProps, SourceGroup } from "./SourcePicker";
 // the `<select>`; same model + tokens. A host that wants a plain select keeps `SourcePicker`.
 export { SourceCombobox } from "./SourceCombobox";
 export type { SourceComboboxProps } from "./SourceCombobox";
+
+// UI — the CATALOG EXPLORER (the tree skin over `useCatalog`; system-catalog scope). The combobox is
+// "pick a source by typing"; the explorer is "browse the workspace's subsystems as a tree, click to
+// insert." Three pieces: the explorer panel, the per-section renderer, and the schema table→column
+// tree (moved in from the shell so the package owns ONE schema tree, two consumers).
+export { CatalogExplorer } from "./CatalogExplorer";
+export type { CatalogExplorerProps } from "./CatalogExplorer";
+export { CatalogSection, CatalogEmpty } from "./CatalogSection";
+export type { CatalogSectionProps } from "./CatalogSection";
+export { CatalogSchemaTree } from "./CatalogSchemaTree";
+export type { CatalogSchemaTreeProps } from "./CatalogSchemaTree";
 
 // Types — the vocabulary + the injected seam.
 export type {
@@ -65,4 +99,11 @@ export type {
   ParamKind,
   NodeDescriptor,
   DatasourceRow,
+  Schema,
+  SchemaTable,
+  SchemaColumn,
+  ChannelRow,
+  InsightRow,
+  InboxRow,
+  SectionState,
 } from "./types";

@@ -36,6 +36,14 @@ affordance; a second docking vocabulary for the same job is exactly the drift th
 (Losing "drag Sources into the center" is no real loss — those panes were pinned `enableClose:false`
 anyway.)
 
+## Follow-up in-session: dock tab legibility
+
+The FlexLayout tab strip was near-invisible (bare text, selected ≈ unselected) and a tab grew as
+wide as its title (a long source label ate the whole strip). `datastudio-dock.css` now shapes tabs
+as bordered pills — selected raised on `--panel` with an accent top edge, unselected muted until
+hover — and caps titles at 11rem with ellipsis. FlexLayout's hover tooltip reads `helpText` (not
+`name`), so `builderTabJson` now sets `helpText: name` — a truncated title shows in full on hover.
+
 ## Tests (real gateway, no mocks)
 
 `pnpm test:gateway src/features/data-studio/DataStudio.gateway.test.tsx` → **7/7 green**, including

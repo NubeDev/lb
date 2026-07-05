@@ -1,7 +1,10 @@
 # Datasources (public)
 
-Status: **SHIPPED** (2026-06-28). Scope: `../../scope/datasources/datasources-scope.md`. Sessions:
-`../../sessions/datasources/datasources-session.md` + `../../sessions/datasources/federation-session.md`.
+Status: **SHIPPED** (2026-06-28; SQLite first-class + Docker-free demo 2026-07-05). Scope:
+`../../scope/datasources/datasources-scope.md` +
+`../../scope/datasources/sqlite-datasource-demo-scope.md`. Sessions:
+`../../sessions/datasources/datasources-session.md` + `../../sessions/datasources/federation-session.md`
++ `../../sessions/datasources/sqlite-datasource-demo-session.md`.
 Source/attribution: the embedded-DataFusion + SQL-validator pattern is reused from `rubix-cube`
 (MIT/Apache-2.0) — crate-level comment in `extensions/federation`.
 
@@ -55,6 +58,27 @@ To a rule author `source("series")` (platform) and `source("timescale")` (extern
 - **Workspace wall** — `datasource:{ws}:{name}` is workspace-keyed; ws-B can neither name nor reach a
   ws-A source, and a mirror job's callback `ws` is host-set.
 
+## SQLite, first-class + the Docker-free demo dataset
+
+`kind:"sqlite"` is a first-class datasource kind (same `Source` trait, one impl file —
+`source/sqlite.rs`; built into the DEFAULT sidecar, no postgres feature/TLS toolchain needed).
+The **DSN is the database file path** (optionally `file:`-prefixed), resolved **on the node running
+the federation sidecar — never the client**: a missing path is refused with an error saying exactly
+that (SQLite would otherwise silently create an empty db that probes green). A sqlite source has no
+network endpoint; it registers at the `127.0.0.1:0` convention endpoint, which `make dev`'s default
+`FED_ENDPOINTS` pre-approves. The Add-datasource form's kind is a select
+(`postgres`/`timescale`/`sqlite` — listed as data, never branched on in core) with per-kind DSN
+placeholders; picking sqlite prefills the convention endpoint. Redaction has **no
+path-is-less-sensitive special case** — the path DSN is mediated like any other.
+
+**The demo, one command, zero Docker:** `make seed-demo-sqlite` generates the demo building dataset
+(`docker/postgres/seed.py --sqlite` → the SAME `inventory`/`generators`/`tags` brains, the
+`sinks_sqlite.py` sink; lite profile `--months 1 --interval 15`, ≈1M readings in seconds) into
+`.lazybones/data/demo/buildings.db` and registers it as `demo-buildings` via the normal
+`datasource.add`. Probe green, `federation.schema` discovery, Data Studio picker — all the shipped
+paths, real rows in a real engine (rule 9's anti-mock). The full-year firehose stays the
+postgres/Timescale seeder.
+
 ## Federate vs mirror (both blessed by `0003`)
 
 - **Federate** (`federation.query`) — read the external DB live, for fresh/ad-hoc/interactive needs.
@@ -71,4 +95,8 @@ isolation, SELECT-only enforcement, the `add → test → query` round-trip on s
 redaction, **CRUD-across-two-admins** without owner-wall denial (+ the stale-owner heal), and
 **mirror-resumes-mid-range** without double-writing. The real-Postgres e2e + the federation validator
 (7), host net/validate (7), the datasource-CRUD-ownership host suite (4), `lb-secrets` (14, incl. the
-`reclaim` owner-heal), and `ext-loader` grant (12) unit suites all pass.
+`reclaim` owner-heal), and `ext-loader` grant (12) unit suites all pass. The **sqlite e2e**
+(`host/tests/federation_sqlite_test.rs`, needs NO Docker) covers the same mandatory categories for
+`kind:"sqlite"`: probe/schema/query against a real seeded `.db`, the honest missing-path error (no
+empty-file creation), path-DSN redaction, capability-deny, and workspace-isolation; the UI add-form
+kind select + sqlite add are covered in `DatasourcesAdmin.gateway.test.tsx` (real gateway).

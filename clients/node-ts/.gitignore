@@ -1,0 +1,9 @@
+# build artifacts
+dist/
+*.tsbuildinfo
+
+# dependencies
+node_modules/
+
+# pnpm
+.pnpm-store/

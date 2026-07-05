@@ -50,7 +50,13 @@ pub async fn register_information_schema(
         )?;
     }
     // The default catalog is resolved via the context's options (never hardcode "datafusion").
-    let catalog_name = ctx.state().config().options().catalog.default_catalog.clone();
+    let catalog_name = ctx
+        .state()
+        .config()
+        .options()
+        .catalog
+        .default_catalog
+        .clone();
     ctx.catalog(&catalog_name)
         .ok_or_else(|| format!("no catalog {catalog_name}"))?
         .register_schema("information_schema", schema_provider)
@@ -104,7 +110,10 @@ async fn columns_batch(source: &dyn Source, names: &[String]) -> Result<RecordBa
     let mut data_type = Vec::new();
     let mut is_nullable = Vec::new();
     for name in names {
-        let Ok(provider) = source.table_provider(&TableReference::bare(name.clone())).await else {
+        let Ok(provider) = source
+            .table_provider(&TableReference::bare(name.clone()))
+            .await
+        else {
             continue; // best-effort: one unreadable table must not fail the whole catalog
         };
         for (i, field) in provider.schema().fields().iter().enumerate() {

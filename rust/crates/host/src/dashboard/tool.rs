@@ -203,6 +203,9 @@ mod tests {
         let ToolError::BadInput(msg) = err else {
             panic!("expected BadInput")
         };
-        assert!(msg.contains("JSON-encoded string"), "steering message: {msg}");
+        assert!(
+            msg.contains("JSON-encoded string"),
+            "steering message: {msg}"
+        );
     }
 }
