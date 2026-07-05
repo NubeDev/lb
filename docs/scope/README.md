@@ -410,7 +410,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   response table honor through one resolver; extract the input widgets + registry out of the palette/
   dashboard/reminders feature folders into a common `lib/widgets/` library; and version the federation mount
   context with an input `value`/`onValue` channel + `defineWidget` so extensions can author form widgets,
-  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore).
+  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore), and
+  `system-catalog-scope.md` (grow `@nube/source-picker` into the one **workspace system catalog**: the
+  model/loader seam gains local-schema/channels/insights/inbox loaders and a second UI skin — the browsable
+  click-to-insert explorer tree extracted from the rules panel's `DataExplorer` — so rules, Data Studio,
+  dashboards, and extension UIs all browse "what exists in this workspace" through one package; enumerate +
+  pick only, shipped verbs only, honest per-section deny).
   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/

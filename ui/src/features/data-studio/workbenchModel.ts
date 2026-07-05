@@ -11,10 +11,10 @@ import type { Cell } from "@/lib/dashboard";
 /** The surface key the workbench persists under (`ui_layout:[ws, user, "data-studio"]`). */
 export const DATA_STUDIO_SURFACE = "data-studio";
 
-/** The tab components the factory can mount. `sources`/`library` are the border dock panes; `builder`
- *  is the ONE center working tab (v3: the read-only `explore` kind is retired — a picked source opens a
- *  builder directly, the stacked preview-on-top / query-on-bottom view). N builders open/close/split. */
-export type PaneKind = "sources" | "library" | "builder";
+/** The tab components the factory can mount. `builder` is the ONE tab kind (v3: the read-only
+ *  `explore` kind is retired; the v2 `sources`/`library` border-dock panes moved into the shell-chrome
+ *  `StudioRail` so the studio's left rail matches every other surface). N builders open/close/split. */
+export type PaneKind = "builder";
 
 /** A builder tab's persisted config: the working draft + the library id it was last saved as. */
 export interface BuilderConfig {
@@ -25,7 +25,8 @@ export interface BuilderConfig {
 /** The center tabset every new tab lands in by default. */
 export const MAIN_TABSET_ID = "ds-main";
 
-/** The workbench's default model: Sources + Library docked in the left border, an empty center. */
+/** The workbench's default model: an empty center tabset. Sources + Library live in the studio's
+ *  left rail (`StudioRail`), NOT the dock — the dock holds only builder tabs. */
 export function defaultWorkbenchModel(): IJsonModel {
   return {
     global: {
@@ -35,34 +36,6 @@ export function defaultWorkbenchModel(): IJsonModel {
       tabSetEnableMaximize: true,
       tabEnablePopout: true,
     },
-    borders: [
-      {
-        type: "border",
-        location: "left",
-        size: 280,
-        selected: 0,
-        children: [
-          {
-            type: "tab",
-            id: "ds-sources",
-            name: "Sources",
-            component: "sources" satisfies PaneKind,
-            enableClose: false,
-            enablePopout: false,
-            enableRename: false,
-          },
-          {
-            type: "tab",
-            id: "ds-library",
-            name: "Library",
-            component: "library" satisfies PaneKind,
-            enableClose: false,
-            enablePopout: false,
-            enableRename: false,
-          },
-        ],
-      },
-    ],
     layout: {
       type: "row",
       children: [{ type: "tabset", id: MAIN_TABSET_ID, weight: 100, children: [] }],

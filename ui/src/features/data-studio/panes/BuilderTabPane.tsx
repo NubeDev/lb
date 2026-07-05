@@ -45,7 +45,7 @@ export function BuilderTabPane({ config, ws, scope, onConfigChange, onSavedToLib
   return (
     <div className="flex h-full min-h-0 flex-col">
       {config.savedAs && (
-        <div className="border-b border-border bg-panel px-3 py-1.5 text-xs" role="status">
+        <div aria-label="saved as" className="border-b border-border bg-panel px-3 py-1.5 text-xs" role="status">
           Saved as library panel <span className="font-medium">{config.savedAs}</span> — reusable on any
           dashboard (Add library panel) and at <span className="font-mono">/panel/{config.savedAs}</span>.
         </div>

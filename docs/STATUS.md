@@ -16,6 +16,20 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-05): sidebar icon colors — Settings → Theme → Icon colors.** One click
+auto-assigns every rail icon a distinct color from a **prefilled 100-color palette** (golden-angle
+hue spread, frozen data); each icon is then individually editable via an in-DOM swatch popover
+(10×10 grid + custom hex), and **Clear all** fully reverts. Rides the existing `ui_theme` prefs blob
+— one new optional `iconColors` axis, zero backend change (no new verb/cap/table). Application is a
+single inline `style={{ color }}` on the lucide `<Icon>` in `NavRail` (works in expanded and
+collapsed rail). In-DOM popover, not a native `<input type="color">` — sidesteps the WebKitGTK
+silent-no-op the appearance scope flagged. Scope
+[`scope/frontend/theme-icon-colors-scope.md`](scope/frontend/theme-icon-colors-scope.md); session
+[`sessions/frontend/theme-icon-colors-session.md`](sessions/frontend/theme-icon-colors-session.md).
+Frontend green: 109 files / 672 tests; `pnpm exec tsc --noEmit` adds no new errors.
+
+---
+
 **Just hardened (2026-07-05, later the same day): the widget-builder E2E loop now works live.**
 "add a widget for avg meter usage" (GLM-4.6, in-house runtime, `/dashboards`) now runs clean end to
 end: schema discovery → proven query → one `dashboard.save` appending to the OPEN dashboard, owned

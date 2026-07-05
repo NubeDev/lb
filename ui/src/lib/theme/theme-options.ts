@@ -11,6 +11,7 @@ import { completeCustomTheme } from "./normalize-custom-theme";
 import { isSurface, isMotion, isGlass, type Surface, type Motion, type GlassLevel } from "./appearance-axes";
 import { fontById } from "./theme-fonts.data";
 import { lookById } from "./theme-looks.data";
+import { isValidHex } from "./icon-colors.data";
 
 export const THEME_MODES = ["dark", "light"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
@@ -73,6 +74,11 @@ export interface ThemePreference {
   motion?: Motion;
   /** Glass intensity override (only meaningful under `surface==="glass"`). Undefined = inherit the look. */
   glass?: GlassLevel;
+  /** Per-sidebar-icon color overrides, keyed by surface id (`channels`, `dashboards`, …) → canonical
+   *  `#rrggbb`. Presence of the field (even empty) turns icon colorization ON; absence = icons render in
+   *  the default fg. Auto-assignment fills known surfaces from the 100-color palette; members hand-edit
+   *  per icon. Stored as opaque data, never a per-extension branch. */
+  iconColors?: Record<string, string>;
   custom?: CustomTheme;
   imported?: CustomTheme;
 }
@@ -149,6 +155,17 @@ export function normalizeThemePreference(value: unknown): ThemePreference {
   if (isSurface(c.surface)) out.surface = c.surface;
   if (isMotion(c.motion)) out.motion = c.motion;
   if (isGlass(c.glass)) out.glass = c.glass;
+  // Per-icon color overrides — kept only as a surface-key → canonical-hex map. Malformed values are
+  // dropped per-entry (fail-closed per key, never whole-blob), and the field is only present at all
+  // when at least one valid entry survives (so an all-garbage blob = colorization OFF, matching the
+  // "presence === ON" contract). Non-object input drops the field entirely.
+  if (c.iconColors && typeof c.iconColors === "object" && !Array.isArray(c.iconColors)) {
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(c.iconColors as Record<string, unknown>)) {
+      if (typeof k === "string" && k.length > 0 && isValidHex(v)) clean[k] = (v as string).toLowerCase();
+    }
+    if (Object.keys(clean).length > 0) out.iconColors = clean;
+  }
   // A stored custom/imported theme is validated on the REQUIRED seven, then upgraded by DERIVING any
   // missing widened tones (panel2/overlay/accent2) — so a v1 theme survives migration instead of being
   // dropped. A theme missing a required token is malformed and dropped whole (fail-closed).

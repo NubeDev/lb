@@ -7,8 +7,8 @@
 //
 // One responsibility: current member → effective motion + a duration/enabled helper.
 
-import { useTheme } from "@/lib/theme";
-import { resolveAppearance, resolveMotion, type Motion } from "@/lib/theme";
+import { useThemeOptional } from "@/lib/theme";
+import { DEFAULT_THEME, resolveAppearance, resolveMotion, type Motion } from "@/lib/theme";
 
 export interface MotionPref {
   /** The effective level after the reduced-motion fold. */
@@ -22,7 +22,9 @@ export interface MotionPref {
 }
 
 export function useMotionPref(): MotionPref {
-  const { theme } = useTheme();
+  // Optional context (not the throwing `useTheme`) so motion-wrapped surfaces also render outside a
+  // ThemeProvider (embedded/test mounts) — they fall back to the default preference, like CodeEditor.
+  const theme = useThemeOptional()?.theme ?? DEFAULT_THEME;
   const motion = resolveMotion(resolveAppearance(theme).motion);
   const enabled = motion !== "off";
   const scale = motion === "full" ? 1 : motion === "subtle" ? 0.6 : 0;

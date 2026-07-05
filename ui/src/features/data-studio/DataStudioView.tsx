@@ -1,10 +1,11 @@
-// Data Studio v2 (data-studio scope, "v2: multi-pane workbench") — a dockable multi-pane data
-// workbench on FlexLayout: N explore tabs + N panel-builder tabs open side by side; drag to
-// split/tab/dock/float/close, double-click to rename; the arrangement (incl. every tab's draft cell)
-// persists PER USER in SurrealDB (`layout.get`/`set`, member-owned — rule 4). The panes compose the
-// shipped substrate — `@nube/source-picker`, `WidgetHost`/`viz.query` (ONE render/query path), the
-// panel-kit logic layer, the `panel.*` library asset — this file owns only the workbench: the
-// FlexLayout model, the tab factory, and the open-tab actions.
+// Data Studio (data-studio scope, "v2: multi-pane workbench" + the rail cleanup) — a dockable data
+// workbench: the shared `StudioRail` (Sources/Library, the RosterRail-kit chrome + minimize) on the
+// left, and a FlexLayout dock of N panel-builder tabs beside it; drag to split/tab/dock/float/close,
+// double-click to rename; the dock arrangement (incl. every tab's draft cell) persists PER USER in
+// SurrealDB (`layout.get`/`set`, member-owned — rule 4). The panes compose the shipped substrate —
+// `@nube/source-picker`, `WidgetHost`/`viz.query` (ONE render/query path), the panel-kit logic layer,
+// the `panel.*` library asset — this file owns only the workbench: the FlexLayout model, the tab
+// factory, the open-tab actions, and the rail open/collapsed state.
 
 import { useState } from "react";
 import { FlaskConical, Plus, RotateCcw } from "lucide-react";
@@ -14,6 +15,7 @@ import "flexlayout-react/style/light.css";
 import "./datastudio-dock.css";
 
 import { AppPage } from "@/components/app/page";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
@@ -33,8 +35,7 @@ import {
   type BuilderConfig,
 } from "./workbenchModel";
 import { useWorkbenchLayout } from "./useWorkbenchLayout";
-import { SourcesPane } from "./panes/SourcesPane";
-import { LibraryPane } from "./panes/LibraryPane";
+import { StudioRail } from "./StudioRail";
 import { BuilderTabPane } from "./panes/BuilderTabPane";
 
 interface Props {
@@ -57,8 +58,10 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
   const picker = useSourcePicker(ws);
   const { caps } = useAppRoutingContext();
   const bench = useWorkbenchLayout(ws, caps);
-  // Bumped when any builder tab saves a library panel, so the Library pane re-lists.
+  // Bumped when any builder tab saves a library panel, so the rail's Library tab re-lists.
   const [libraryTick, setLibraryTick] = useState(0);
+  // The studio rail (Sources/Library) — same minimize/expand as every other surface's roster rail.
+  const [railOpen, setRailOpen] = useState(true);
 
   // The variable scope (built-ins + any `?var-` URL selections) — the studio has no dashboard
   // variable defs, so it resolves the same shipped scope with an empty def set.
@@ -98,15 +101,6 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
       model?.doAction(Actions.updateNodeAttributes(node.getId(), { config }));
     };
     switch (node.getComponent()) {
-      case "sources":
-        return <SourcesPane entries={picker.entries} loading={picker.loading} onOpen={openExplore} />;
-      case "library":
-        return (
-          <LibraryPane
-            refreshKey={libraryTick}
-            onOpen={(panelId, title, cell) => openBuilder(cell, title, panelId)}
-          />
-        );
       case "builder": {
         const config = node.getConfig() as BuilderConfig;
         return (
@@ -161,6 +155,18 @@ function DataStudioInner({ ws, range, onSearchChange }: Props) {
         </div>
       }
     >
+      {railOpen ? (
+        <StudioRail
+          entries={picker.entries}
+          loading={picker.loading}
+          onOpenSource={openExplore}
+          onOpenPanel={(panelId, title, cell) => openBuilder(cell, title, panelId)}
+          libraryTick={libraryTick}
+          onCollapse={() => setRailOpen(false)}
+        />
+      ) : (
+        <CollapsedRail noun="studio" onExpand={() => setRailOpen(true)} />
+      )}
       <div className="data-studio-dock" data-testid="data-studio-dock">
         {bench.model && (
           <Layout

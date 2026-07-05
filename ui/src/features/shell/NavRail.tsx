@@ -198,6 +198,16 @@ const SURFACES: SurfaceDef[] = [
   SETTINGS_SURFACE,
 ];
 
+/** The flat list of sidebar surfaces the icon-colorizer (Settings → Theme) iterates: every rail entry
+ *  (the body groups + the footer Settings entry) as `{ key, label }`. DATA, derived from the single
+ *  source of truth above — never a second hand-maintained list. Extension slots (`ext:<id>`) are
+ *  dynamic and intentionally not enumerated here; they fall back to default fg unless the member sets
+ *  one through future per-ext UI. */
+export const RAIL_SURFACES: readonly { key: CoreSurface; label: string }[] = SURFACES.map((s) => ({
+  key: s.key,
+  label: s.label,
+}));
+
 /** The surface → icon lookup a resolved `surface` item renders with (its own icon when known; a
  *  generic one otherwise). Built from `SURFACES` so the fallback and the resolved rail stay in
  *  lockstep — the scope's "fallback correctness" guard. */
@@ -218,9 +228,17 @@ export function NavRail({
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
   const { theme } = useTheme();
   const { variant, collapsible, side } = theme.layout;
+  // Per-icon color overrides (Settings → Theme → Icon colors). Applied as inline `color` so it wins
+  // over the button's text-* classes without fighting specificity, and inherits into the lucide
+  // `<svg>` (which uses `currentColor`). Surfaces not in the map render in the default fg.
+  const iconColorFor = (key: Surface): string | undefined => {
+    if (!theme.iconColors) return undefined;
+    return typeof key === "string" ? theme.iconColors[key] : undefined;
+  };
 
   const item = (key: Surface, label: string, Icon: typeof Hash, onClick?: () => void) => {
     const selected = active === key;
+    const iconColor = iconColorFor(key);
     return (
       <SidebarMenuItem key={`${key}:${label}`}>
         <SidebarMenuButton
@@ -230,7 +248,7 @@ export function NavRail({
           tooltip={label}
           onClick={onClick ?? (() => onSelect(key))}
         >
-          <Icon />
+          <Icon style={iconColor ? { color: iconColor } : undefined} />
           <span>{label}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>

@@ -23,11 +23,14 @@ export interface WorkbenchLayout {
   reset: () => void;
 }
 
-/** Try a saved model JSON; a corrupt/foreign shape falls back to the default (never a blank page). */
+/** Try a saved model JSON; a corrupt/foreign shape falls back to the default (never a blank page).
+ *  Saved layouts from the v2 shape carried Sources/Library as left-BORDER dock tabs — those panes now
+ *  live in the shell-chrome `StudioRail`, so any persisted `borders` are dropped on load (the center
+ *  tabsets, incl. every builder draft, restore untouched). */
 function modelFrom(saved: unknown): Model {
   if (saved && typeof saved === "object") {
     try {
-      return Model.fromJson(saved as IJsonModel);
+      return Model.fromJson({ ...(saved as IJsonModel), borders: [] });
     } catch {
       // fall through — a layout from an older shape renders the default rather than crashing.
     }

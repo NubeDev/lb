@@ -5,3 +5,4 @@
 
 export { ThemeTab } from "./ThemeTab";
 export { LayoutTab } from "./LayoutTab";
+export { IconColors } from "./IconColors";

@@ -107,8 +107,9 @@ describe("Data Studio v2 workbench (real gateway)", () => {
       expect(p.title).toBe("Cooler explore");
       expect(p.spec.sources?.[0]?.tool).toBe("series.read");
     });
-    // The tab shows the saved-as marker.
-    expect((await screen.findByRole("status")).textContent).toMatch(/cooler-explore/);
+    // The tab shows the saved-as marker. (Named lookup — the preview's own "query status" chip is
+    // also `role="status"`, so the bare-role query was ambiguous.)
+    expect((await screen.findByRole("status", { name: "saved as" })).textContent).toMatch(/cooler-explore/);
 
     // LAYOUT PERSISTENCE: the debounced `layout.set` lands the model (incl. the tabs) in the caller's
     // member-owned record.
@@ -225,8 +226,12 @@ describe("Data Studio v2 workbench (real gateway)", () => {
 
     // Pick the "SQL query (direct SurrealDB)" source in the same builder tab's bottom Query section →
     // the Builder⇄Code `SqlQueryEditor` appears (surfaced in the new stacked layout, not rebuilt).
-    const panelSource = await screen.findByLabelText("panel source");
-    await user.selectOptions(panelSource, "sql:query");
+    // `panel source` is the picker's COMBOBOX (`SourceCombobox`), not a native select — drive it the
+    // way the QueryTab tests do: focus opens the listbox, mouseDown picks the option.
+    fireEvent.focus(await screen.findByLabelText("panel source"));
+    // The rail's Sources select lists the same entry as a native <option> — pick the COMBOBOX one.
+    const sqlOptions = await screen.findAllByRole("option", { name: "SQL query (direct SurrealDB)" });
+    fireEvent.mouseDown(sqlOptions.find((o) => o.classList.contains("sp-combo-option"))!);
     expect(await screen.findByLabelText("sql query editor")).toBeInTheDocument();
   }, 30000);
 
@@ -244,18 +249,28 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     } as never);
 
     await mountStudio(ws);
-    // The Library pane is border-docked (Sources is the selected border tab by default); click the
-    // Library border tab button to mount its content, then open the seeded panel.
-    const libTab = (await screen.findAllByText("Library")).find((el) =>
-      el.closest(".flexlayout__border_button"),
-    );
-    await user.click(libTab!);
-    fireEvent(window, new Event("resize"));
-    // Open it from the Library dock pane → ONE stacked builder tab (preview on top, query on bottom).
+    // Sources is the rail's default tab; switch to the Library rail tab to mount the roster.
+    await user.click(await screen.findByRole("tab", { name: "library tab" }));
+    // Open it from the Library roster → ONE stacked builder tab (preview on top, query on bottom).
     await user.click(await screen.findByLabelText("open library panel Existing chart"));
     expect(await screen.findByLabelText("panel builder")).toBeInTheDocument();
     expect(await screen.findByLabelText("panel preview")).toBeInTheDocument();
     // The title round-tripped into the editor — the chart is the focus, its source available below.
     await waitFor(() => expect((screen.getByLabelText("panel title") as HTMLInputElement).value).toBe("Existing chart"));
+  }, 30000);
+
+  it("the studio rail minimizes to the shared collapsed strip and expands back", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+
+    await mountStudio(ws);
+    await screen.findByLabelText("explore source");
+
+    // Minimize → the rail folds to the shared CollapsedRail strip (same kit as every other surface).
+    await user.click(screen.getByLabelText("minimize studio rail"));
+    expect(screen.queryByLabelText("explore source")).toBeNull();
+    await user.click(await screen.findByLabelText("expand studio rail"));
+    expect(await screen.findByLabelText("explore source")).toBeInTheDocument();
   }, 30000);
 });

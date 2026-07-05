@@ -22,6 +22,13 @@ export interface ThemeContextValue {
   setMotion: (motion: Motion | undefined) => void;
   /** Override the glass intensity (undefined = inherit the look; only bites under a glass surface). */
   setGlass: (glass: GlassLevel | undefined) => void;
+  /** Set one sidebar icon's color (`#rrggbb`); passing undefined clears that one icon. Presence of the
+   *  `iconColors` field is what turns icon colorization ON, so the first set on a fresh theme both
+   *  enables the feature and assigns the one color. */
+  setIconColor: (surface: string, color: string | undefined) => void;
+  /** Replace the whole per-icon color map (the auto-assign action writes here). An empty/undefined
+   *  value turns icon colorization OFF (icons revert to default fg). */
+  setIconColors: (colors: Record<string, string> | undefined) => void;
   /** Patch the sidebar layout (variant/collapsible/side). */
   setLayout: (patch: Partial<ThemeLayout>) => void;
   /** Apply a hand-tweaked/library custom theme (both modes) — clears `preset`/`imported` precedence. */

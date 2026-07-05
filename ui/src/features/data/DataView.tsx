@@ -8,7 +8,9 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import { Braces, ChevronRight, Database, Network, Table2 } from "lucide-react";
 
 import { useData } from "./useData";
-import type { Row, TableCount } from "@/lib/data/data.types";
+import { TableRail } from "./TableRail";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
+import type { Row } from "@/lib/data/data.types";
 
 // Code-split the graph (and `@xyflow/react`) so it only loads when the user flips to the graph view.
 const DataGraph = lazy(() => import("./DataGraph"));
@@ -71,6 +73,8 @@ const TYPE_STYLES: Record<
 export function DataView({ ws }: Props) {
   const { tables, selected, rows, cursor, graph, error, select, more, loadGraph } = useData();
   const [mode, setMode] = useState<Mode>("grid");
+  // The table rail folds to the shared thin strip (same affordance as the dashboard/rules/flow rails).
+  const [railOpen, setRailOpen] = useState(true);
   const selectedTable = tables.find((t) => t.table === selected);
 
   const showGraph = () => {
@@ -131,14 +135,19 @@ export function DataView({ ws }: Props) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <TablePicker
-          tables={tables}
-          selected={selected}
-          onSelect={(table) => {
-            setMode("grid");
-            void select(table);
-          }}
-        />
+        {railOpen ? (
+          <TableRail
+            tables={tables}
+            selectedId={selected}
+            onSelect={(table) => {
+              setMode("grid");
+              void select(table);
+            }}
+            onCollapse={() => setRailOpen(false)}
+          />
+        ) : (
+          <CollapsedRail noun="table" onExpand={() => setRailOpen(true)} />
+        )}
 
         <div className="min-w-0 flex-1 overflow-hidden">
           {!selected ? (
@@ -194,64 +203,6 @@ function Metric({ label, value, mono = false }: { label: string; value: string; 
         {value}
       </span>
     </span>
-  );
-}
-
-function TablePicker({
-  tables,
-  selected,
-  onSelect,
-}: {
-  tables: TableCount[];
-  selected: string | null;
-  onSelect: (table: string) => void;
-}) {
-  const totalRows = tables.reduce((sum, t) => sum + t.count, 0);
-
-  return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-panel/35">
-      <div className="border-b border-border px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-medium text-fg">Tables</div>
-          <div className="text-[11px] tabular-nums text-muted">
-            {tables.length} / {totalRows} rows
-          </div>
-        </div>
-      </div>
-
-      <ul className="flex-1 overflow-auto p-2">
-        {tables.length === 0 && (
-          <li className="rounded-md border border-border bg-bg p-3 text-xs text-muted">
-            No tables found.
-          </li>
-        )}
-        {tables.map((t) => {
-          const active = selected === t.table;
-          return (
-            <li key={t.table} className="mb-1 last:mb-0">
-              <button
-                aria-label={`select table ${t.table}`}
-                className={`group flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-                  active
-                    ? "border-accent/35 bg-accent/15 text-accent"
-                    : "border-transparent text-fg hover:border-border hover:bg-bg"
-                }`}
-                onClick={() => onSelect(t.table)}
-              >
-                <span className="min-w-0 truncate font-mono text-xs">{t.table}</span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[11px] tabular-nums ${
-                    active ? "bg-bg/70 text-accent" : "bg-bg text-muted group-hover:text-fg"
-                  }`}
-                >
-                  {t.count}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </aside>
   );
 }
 

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FileCode2, Pencil, Play, Save } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useRules } from "./useRules";
@@ -48,6 +49,8 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   // One inline name field serves both flows: rename an open rule, or name-on-first-save an ad-hoc
   // buffer. `mode` says which — so ⌘S on an unsaved buffer opens it in "save" mode instead of failing.
   const [nameField, setNameField] = useState<null | "rename" | "save">(null);
+  // The rule rail folds to the shared thin strip (same affordance as the dashboard roster).
+  const [railOpen, setRailOpen] = useState(true);
   const [nameValue, setNameValue] = useState("");
   // Table (typed views) vs. JSON (verbatim) — the result-region view toggle, owned here so the
   // ResultBar toggle and the RunResult body stay in sync.
@@ -145,6 +148,7 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
         </>
       }
     >
+      {railOpen ? (
       <RuleRail
         roster={r.roster}
         selectedId={r.selectedId}
@@ -161,7 +165,11 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
           if (id && onSelectRule) onSelectRule(id);
           return id;
         }}
+        onCollapse={() => setRailOpen(false)}
       />
+      ) : (
+        <CollapsedRail noun="rule" onExpand={() => setRailOpen(true)} />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
         {nameField ? (

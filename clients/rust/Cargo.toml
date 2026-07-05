@@ -1,0 +1,21 @@
+[package]
+name = "lb-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Thin external client for a Lazybones gateway node (auth + ingest + mcp + webhook)."
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hmac = "0.12"
+sha2 = "0.10"
+thiserror = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow = "1"
+
+[examples]
+roundtrip = { path = "examples/roundtrip.rs" }

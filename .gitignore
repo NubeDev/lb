@@ -51,3 +51,4 @@ rust/extensions-ui/
 .impeccable/
 
 docker/postgres/__pycache__/
+clients/python/__pycache__/

@@ -1,0 +1,19 @@
+[project]
+name = "lb-client"
+version = "0.1.0"
+description = "Thin external client for a Lazybones gateway node (auth + ingest + mcp + webhook)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Lazybones" }]
+keywords = ["lazybones", "client", "gateway", "ingest", "mcp"]
+
+[project.urls]
+Documentation = "https://github.com/anomalyco/lb/blob/main/clients/python/README.md"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["lb_client*"]

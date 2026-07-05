@@ -8,6 +8,8 @@ import { useMemo, useState } from "react";
 import { Activity, Database, Plus } from "lucide-react";
 
 import { useIngest } from "./useIngest";
+import { SeriesRail } from "./SeriesRail";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { CreateSeriesWizard } from "./CreateSeriesWizard";
 import { SchemaFields } from "./SchemaForm";
 import { emptyPayload, type SeriesSchema } from "@/lib/ingest/schema.types";
@@ -29,8 +31,18 @@ export function IngestView({ ws }: Props) {
     useIngest();
   const [query, setQuery] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
+  // The name pre-seeded into the wizard — comes from the rail's inline "New series…" field (name-first
+  // create, same shape as Dashboards/Rules/Flows). Empty when the wizard is opened without a seed.
+  const [wizardInitialName, setWizardInitialName] = useState("");
+  // The series rail folds to the shared thin strip (same affordance as the dashboard/rules/flow rails).
+  const [railOpen, setRailOpen] = useState(true);
 
   const empty = series.length === 0 && query.trim() === "";
+
+  const openWizard = (name: string) => {
+    setWizardInitialName(name);
+    setWizardOpen(true);
+  };
 
   return (
     <section className="flex h-full flex-col bg-bg">
@@ -42,10 +54,24 @@ export function IngestView({ ws }: Props) {
           <h1 className="page-title">Ingest</h1>
           <p className="page-subtitle">Explore series, inspect samples, and write typed payloads.</p>
         </div>
-        <span className="scope-pill ml-auto" title={`Workspace ${ws}`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
-          <span className="truncate">{ws}</span>
-        </span>
+
+        {/* The series filter lives in the header — the shared rail's header slot is the create field +
+            minimize, so the search (an Ingest-specific list filter) stays with the page. Series creation
+            is the rail's inline "New series…" field (name-first → opens the schema wizard). */}
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            aria-label="search series"
+            placeholder="prefix, or kind:temperature"
+            className="w-56 rounded-md border border-border bg-bg px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void search(query)}
+          />
+          <span className="scope-pill" title={`Workspace ${ws}`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+            <span className="truncate">{ws}</span>
+          </span>
+        </div>
       </header>
 
       {error && (
@@ -55,46 +81,22 @@ export function IngestView({ ws }: Props) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* Series list / search */}
-        <aside className="flex w-64 flex-col border-r border-border">
-          <div className="flex items-center gap-2 border-b border-border p-2">
-            <input
-              aria-label="search series"
-              placeholder="prefix, or kind:temperature"
-              className="min-w-0 flex-1 rounded-md border border-border bg-panel px-2 py-1 text-sm placeholder:text-muted/60 focus-visible:border-accent focus-visible:outline-none"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && void search(query)}
-            />
-            <button
-              type="button"
-              aria-label="new series"
-              title="New series"
-              onClick={() => setWizardOpen(true)}
-              className="shrink-0 rounded-md bg-accent/15 p-1.5 text-accent transition-colors hover:bg-accent/25 focus-visible:outline-none"
-            >
-              <Plus size={15} />
-            </button>
-          </div>
-          <ul className="flex-1 overflow-auto">
-            {series.map((s) => (
-              <li key={s}>
-                <button
-                  aria-label={`select ${s}`}
-                  className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                    selected === s ? "bg-accent/15 text-accent" : "hover:bg-panel"
-                  }`}
-                  onClick={() => void select(s)}
-                >
-                  {s}
-                </button>
-              </li>
-            ))}
-            {series.length === 0 && query.trim() !== "" && (
-              <li className="px-3 py-2 text-xs text-muted">no series match “{query.trim()}”</li>
-            )}
-          </ul>
-        </aside>
+        {railOpen ? (
+          <SeriesRail
+            series={series}
+            selectedId={selected}
+            onSelect={(s) => void select(s)}
+            onCreate={openWizard}
+            onCollapse={() => setRailOpen(false)}
+            emptyText={
+              query.trim()
+                ? `no series match “${query.trim()}”`
+                : "No series."
+            }
+          />
+        ) : (
+          <CollapsedRail noun="series" onExpand={() => setRailOpen(true)} />
+        )}
 
         {/* Detail */}
         <div className="flex min-w-0 flex-1 flex-col overflow-auto">
@@ -107,7 +109,7 @@ export function IngestView({ ws }: Props) {
               onWrite={write}
             />
           ) : empty ? (
-            <EmptyState onCreate={() => setWizardOpen(true)} />
+            <EmptyState />
           ) : (
             <div className="p-4 text-sm text-muted">Select a series to explore, or create one.</div>
           )}
@@ -117,6 +119,7 @@ export function IngestView({ ws }: Props) {
       {wizardOpen && (
         <CreateSeriesWizard
           existing={series}
+          initialName={wizardInitialName}
           onCancel={() => setWizardOpen(false)}
           onCreate={async (s) => {
             await create(s);
@@ -128,8 +131,9 @@ export function IngestView({ ws }: Props) {
   );
 }
 
-/** The first-run empty state — a real call to action instead of a dead-end "no series yet". */
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+/** The first-run empty state — a message, not a dead-end (the rail's "New series…" field is the create
+ *  affordance, same shape as Dashboards/Rules/Flows where the empty state is a pointer, not a button). */
+function EmptyState() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
       <div className="rounded-full border border-border bg-panel p-3">
@@ -138,17 +142,10 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <div>
         <div className="text-sm font-medium">No series yet</div>
         <p className="mx-auto mt-1 max-w-xs text-xs text-muted">
-          A series is a named, typed sequence of samples. Create one — name it, define its schema, and
-          write the first sample.
+          A series is a named, typed sequence of samples. Name one in the “New series…” field, define
+          its schema, and write the first sample.
         </p>
       </div>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3.5 py-1.5 text-xs font-medium text-bg transition-opacity hover:opacity-90 focus-visible:outline-none"
-      >
-        <Plus size={14} /> Create series
-      </button>
     </div>
   );
 }
