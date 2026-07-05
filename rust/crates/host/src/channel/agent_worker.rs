@@ -73,6 +73,34 @@ pub(crate) const RUN_WALL_CEILING: Duration = Duration::from_secs(15 * 60);
 /// capability deny — a timeout is a genuine, reportable run fault, not an authorization signal.
 const TIMEOUT_MESSAGE: &str = "agent run exceeded its time limit and was stopped";
 
+/// The message posted as an `agent_error` when a run was STOPPED by a user (agent-dock run controls) —
+/// distinct from a fault or a deny; the dock renders it as the terminal "stopped" state.
+const STOPPED_MESSAGE: &str = "run stopped";
+
+/// How a driven run actually ended, read from the durable run-job status AFTER the drive returns — the
+/// loop returns `Ok` whether it finished, was paused, or was stopped, so the status is the authority.
+enum RunLifecycle {
+    /// The run finished normally (`Done`/`Failed`) — post the durable answer/error.
+    Finished,
+    /// The run was PAUSED (`Suspended`, resumable) — post nothing; a `resume_run` continues it.
+    Paused,
+    /// The run was STOPPED (`Cancelled`, terminal) — post the honest `agent_error`.
+    Stopped,
+}
+
+/// Classify how the run ended by re-reading its durable status (agent-dock run controls). A missing
+/// job or a read hiccup falls back to `Finished` (the pre-controls behavior — post the answer).
+async fn run_lifecycle_state(node: &Node, ws: &str, run_job: &str) -> RunLifecycle {
+    match lb_jobs::load(&node.store, ws, run_job).await {
+        Ok(Some(job)) => match job.status {
+            JobStatus::Suspended => RunLifecycle::Paused,
+            JobStatus::Cancelled => RunLifecycle::Stopped,
+            _ => RunLifecycle::Finished,
+        },
+        _ => RunLifecycle::Finished,
+    }
+}
+
 /// If `item` is a `kind:"agent"` request, **enqueue** a durable background run and return; the
 /// background reactor drives it later (run-lifecycle #5). Otherwise (chat, a `query*` /
 /// `agent_result` / `agent_error` payload, …) do nothing — the re-entrancy guard. Never errors: a
@@ -178,7 +206,7 @@ pub async fn drive_queued_run(
         crate::agent::resolve_effective_runtime_id(node, &node.runtimes(), ws, runtime.as_deref())
             .await;
 
-    match drive_run(
+    let outcome = drive_run(
         node,
         &poster,
         ws,
@@ -189,17 +217,35 @@ pub async fn drive_queued_run(
         *ts,
         ceiling,
     )
-    .await
-    {
-        Ok(answer) => {
-            let (answer, truncated) = cap_answer(answer);
-            let body = agent_result_body(goal, &runtime_label, run_job, &answer, truncated);
+    .await;
+
+    // RUN CONTROLS (agent-dock): the loop can return `Ok` because it finished OR because it was
+    // PAUSED / STOPPED at a turn boundary (both return the partial answer). Re-read the durable run
+    // status to tell them apart — only a genuinely-finished run posts the durable `agent_result`.
+    match run_lifecycle_state(node, ws, run_job).await {
+        // PAUSED: the run is `Suspended`, resumable. Post NOTHING (no answer of record yet) — a later
+        // `resume_run` re-enqueues and continues from the cursor. The enqueue job is still retired
+        // below so the reactor doesn't re-drive the paused run; resume re-creates it.
+        RunLifecycle::Paused => {}
+        // STOPPED: the run is `Cancelled`, terminal. Post a distinct, honest `agent_error` so the dock
+        // shows the stopped state (not a spinner, not a normal answer). The partial transcript stays
+        // for audit.
+        RunLifecycle::Stopped => {
+            let body = agent_error_body(goal, STOPPED_MESSAGE);
             let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
         }
-        Err(msg) => {
-            let body = agent_error_body(goal, &msg);
-            let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
-        }
+        // FINISHED: the normal path — post the durable answer (or the loop's own error).
+        RunLifecycle::Finished => match outcome {
+            Ok(answer) => {
+                let (answer, truncated) = cap_answer(answer);
+                let body = agent_result_body(goal, &runtime_label, run_job, &answer, truncated);
+                let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
+            }
+            Err(msg) => {
+                let body = agent_error_body(goal, &msg);
+                let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
+            }
+        },
     }
 
     // The run is done (a result or an error item landed) — retire the enqueue job so the reactor's

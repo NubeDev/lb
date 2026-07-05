@@ -8,6 +8,7 @@ mod admin_grants;
 mod admin_members;
 mod admin_teams;
 mod admin_users;
+mod admin_webhooks;
 mod admin_workspaces;
 mod agent_config;
 mod agent_defs;
@@ -40,12 +41,14 @@ mod panel;
 mod post;
 mod prefs;
 mod rules;
+mod run_control;
 mod run_stream;
 mod series_stream;
 mod store_query;
 pub(crate) mod stream;
 mod system;
 mod telemetry_stream;
+mod webhook;
 mod workflow;
 mod workspace;
 
@@ -57,6 +60,9 @@ pub use admin_grants::{
 pub use admin_members::remove_team_member;
 pub use admin_teams::{create_team, delete_team, list_teams, rename_team};
 pub use admin_users::{create_user, delete_user, disable_user, enable_user, list_users};
+pub use admin_webhooks::{
+    create_webhook, get_webhook, list_webhooks, revoke_webhook, rotate_webhook,
+};
 pub use admin_workspaces::{archive_workspace, purge_workspace, rename_workspace};
 pub use agent_config::{
     get_agent_config as get_agent_config_route, set_agent_config as set_agent_config_route,
@@ -117,11 +123,13 @@ pub use prefs::{
     set_default_prefs, set_prefs,
 };
 pub use rules::{delete_rule, get_rule, list_rules, run_rule, save_rule};
+pub use run_control::run_control;
 pub use run_stream::run_stream;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};
 pub use stream::channel_stream;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
+pub use webhook::post_webhook;
 pub use workflow::{request_approval, resolve_approval as resolve_workflow_approval, start_job};
 pub use workspace::{create_workspace, list_workspaces};

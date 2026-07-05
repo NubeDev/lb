@@ -1,6 +1,7 @@
 # Webhooks scope — a first-class inbound-HTTP surface, keyed and mediated
 
-Status: scope (the ask). Promotes to `public/ingest/` once the first slice proves it end to end.
+Status: scope (the ask), **shipped 2026-07-05** — see [`public/ingest/webhooks.md`](../../public/ingest/webhooks.md)
+for the durable truth. Promotes to `public/ingest/` once the first slice proves it end to end.
 Target stage: builds on the shipped **ingest buffer** + **API keys** + **flows** — no new stage.
 
 > Read with: `ingest-scope.md` (the `Sample`/`series` contract and the buffer this lands into —
@@ -264,18 +265,31 @@ mocks, no `*.fake.ts`** (CLAUDE §9). Mandatory categories from `testing-scope.m
 
 ## Open questions
 
-- **`signature` HMAC scheme set** — v1 ships `hmac-sha256` (header-based) only, admin picks the header
-  name. Add `hmac-sha1`/timestamped-signature variants later only if a real caller needs them (still
-  generic, never provider-named)?
-- **Sync vs async acceptance response** — return `202 Accepted` the moment the sample is buffered
-  (recommended — decouples the sender from commit, matches ingest's accept-vs-commit split), vs `200`
-  only after commit? Leaning `202`.
-- **Per-hook `ingest.write` cap narrowing** — always narrow the route principal to
-  `mcp:ingest.write:call?series=webhook:{ws}:{id}` (recommended, least-privilege) vs the broad
-  `ingest.write`? Leaning always-narrowed.
-- **`bearer` secret as its own `apikey` record vs an inline hash on the webhook record** — reusing a
-  real `apikey:{ws}:{keyid}` record (recommended — one credential path, free rotate/revoke) vs a
-  hash field on the webhook row (fewer records, but a parallel credential path). Leaning reuse.
+> **RESOLVED & SHIPPED (session 2026-07-05 — see [`sessions/ingest/webhooks-session.md`](../../sessions/ingest/webhooks-session.md)):**
+> - *`signature` HMAC scheme set:* v1 ships **`hmac-sha256` only** (admin picks the header name).
+>   `hmac-sha1`/timestamped variants later only if a real caller needs them (still generic, never
+>   provider-named).
+> - *Sync vs async acceptance response:* **`202 Accepted`** `{ id, series, seq }` — decouples the
+>   sender from the buffer's commit (matches ingest's accept-vs-commit split).
+> - *Per-hook `ingest.write` cap narrowing:* **always narrowed** to `mcp:ingest.write:call`
+>   (least-privilege; the route constructs the Sample, so the principal never chooses the series).
+> - *`bearer` secret as its own `apikey` record vs an inline hash:* **reuses a real
+>   `apikey:{ws}:{keyid}` record** — one credential path, free rotate/revoke, free peppered hash +
+>   cache. The webhook row carries `bearer_key_id` so revoke/rotate reach the linked apikey; the
+>   presented keyid must match it (linkage check — a sibling key cannot impersonate the hook).
+>
+> Still open below: the admin-UI wizard + the flow `webhook` source node are named follow-ups (each
+> has its own deferred-slice entry, not a silent gap); the per-hook `seq` counter is a v1 floor
+> (`now_ms`, monotonic-ish) with a documented same-ms-collision bound.
+
+- **`signature` HMAC scheme set** — ~~v1 ships `hmac-sha256` only?~~ **DECIDED:** yes; variants
+  later only if a real caller needs them (still generic).
+- **Sync vs async acceptance response** — ~~`202` or `200`?~~ **DECIDED:** `202 Accepted`.
+- **Per-hook `ingest.write` cap narrowing** — ~~always-narrowed or broad?~~ **DECIDED:** always
+  narrowed to `mcp:ingest.write:call`.
+- **`bearer` secret as its own `apikey` record vs an inline hash** — ~~reuse or duplicate?~~
+  **DECIDED:** reuse a real `apikey:{ws}:{keyid}` record (the `bearer_key_id` cross-reference +
+  linkage check).
 
 ## Related
 

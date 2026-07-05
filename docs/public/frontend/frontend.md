@@ -222,6 +222,14 @@ plumbing:
   Done (the durable `agent_result` is the message of record) → Error (with retry). Never a bare spinner.
   If the caller lacks `mcp:agent.watch:call` the dock **degrades honestly**: no live deltas, a notice, and
   the durable answer still renders.
+- **Run controls = stop / pause / resume.** While a run is in flight the dock shows **Pause** + **Stop**;
+  a paused run shows **Resume**. These ride ONE new cap `mcp:agent.control:call` (member-level, distinct
+  from `agent.watch`) over `POST /runs/{job}/{op}` — a thin, authorized front door onto the shipped
+  run-job lifecycle (`lb_jobs`), no new table: **stop** = `cancel` (terminal; the worker posts an honest
+  `run stopped`); **pause** = `suspend` (the loop honors it at its next turn boundary via a new
+  `is_paused` check, emits `RunFinish(Suspended)`, keeps the transcript/cursor; the worker posts
+  nothing); **resume** = `unsuspend` + re-arm the channel enqueue job so the reactor re-drives from the
+  cursor under the original asker's authority.
 
 **Page context.** Each message captures where the user is — `{ surface, path, search }`, tenant-stripped,
 derived from the router by a shell `PageContextProvider` (with an override `source` seam for later

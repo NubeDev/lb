@@ -32,7 +32,7 @@ export const DEFAULT_INLINE_CODE = `<div class="p-3 text-xs">
       <span class="ml-2 tabular-nums text-muted">{{avg_val}}</span>
     </li>{{/each}}
   </ul>
-  <button class="mt-2 rounded border border-border px-2 py-1" data-call="federation.query" data-args='{}'>Refresh</button>
+  <button class="mt-2 rounded-md border border-border px-2 py-1" data-call="federation.query" data-args='{}'>Refresh</button>
 </div>`;
 
 /** What the field edits: an inline snippet, or a reference to a saved template id. */

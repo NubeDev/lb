@@ -250,6 +250,33 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
       const { id } = args as { id: string };
       return postJson<T>(`${base}/admin/apikeys/${enc(id)}/rotate`, {});
     }
+    // webhooks (webhooks scope): the inbound-HTTP management surface, mirroring the apikey routes
+    // 1:1. `create`/`rotate` return the one-time raw credential ONCE (`lbk_…` bearer in `bearer`
+    // mode, shared secret in `signature` mode); `list`/`get` never carry a hash / shared-secret /
+    // `bearer_key_id` / `secret_ref`. The public `POST /hooks/{ws}/{id}` inbound route is NOT here
+    // — it's a third-party caller (no session token); this client is the admin surface only.
+    case "webhook_list":
+      return getJson<T>(`${base}/admin/webhooks`);
+    case "webhook_create": {
+      const { name, auth_mode, hmac_header } = args as {
+        name: string;
+        auth_mode: string;
+        hmac_header?: string;
+      };
+      return postJson<T>(`${base}/admin/webhooks`, { name, auth_mode, hmac_header });
+    }
+    case "webhook_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/admin/webhooks/${enc(id)}`);
+    }
+    case "webhook_revoke": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/admin/webhooks/${enc(id)}/revoke`, {});
+    }
+    case "webhook_rotate": {
+      const { id } = args as { id: string };
+      return postJson<T>(`${base}/admin/webhooks/${enc(id)}/rotate`, {});
+    }
 
     // ── extension lifecycle (lifecycle-management scope): the browser's `ext.*` surface, finally
     //    reachable over the gateway (was Tauri-desktop-only → `unknown command` in the browser). ──
@@ -299,6 +326,15 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
         doc?: string;
       };
       return postJson<T>(`${base}/agent/invoke`, { goal, job_id: jobId, skill, doc });
+    }
+
+    // ── agent-dock run controls: STOP / PAUSE / RESUME a live run. Maps to
+    //    `POST /runs/{job}/{op}` (op = cancel|pause|resume). The gateway re-checks
+    //    `mcp:agent.control:call` workspace-first (opaque 403); ws + the run wall come from the token.
+    //    Returns `204 No Content` → undefined. The dock's stop/pause/resume buttons call this. ──
+    case "agent_control": {
+      const { job, op } = args as { job: string; op: "cancel" | "pause" | "resume" };
+      return postJson<T>(`${base}/runs/${enc(job)}/${enc(op)}`, {});
     }
 
     // ── shared assets (files/skills scope): the browser's `assets.*` surface over the gateway (was

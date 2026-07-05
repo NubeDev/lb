@@ -6,7 +6,7 @@
 //   Stalled → "still working" hint (not an error)   Done → nothing (the durable answer is the record)
 //   Error → the message + a Retry affordance.
 
-import { AlertTriangle, Loader2, RotateCcw, WifiOff, Wrench } from "lucide-react";
+import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Square, WifiOff, Wrench } from "lucide-react";
 
 import type { RunFeed } from "@/features/channel/useRunFeed";
 import type { DockRunPhase } from "./dockRunState";
@@ -19,7 +19,15 @@ interface Props {
   degraded: boolean;
   /** The error message to show in the Error state (a durable agent_error, or a transport failure). */
   errorText?: string | null;
+  /** True when the user has paused the run (optimistic) — show Resume instead of Pause/Stop. */
+  paused?: boolean;
   onRetry: () => void;
+  /** Pause the live run (suspend). Absent → the controls are hidden (no `agent.control` wiring). */
+  onPause?: () => void;
+  /** Stop (cancel) the live run — terminal. */
+  onStop?: () => void;
+  /** Resume a paused run. */
+  onResume?: () => void;
 }
 
 /** The live activity line: the current tool call, else the reasoning line, else a generic "thinking". */
@@ -30,7 +38,39 @@ function activityLabel(feed: RunFeed): string {
   return "thinking…";
 }
 
-export function DockRunStatus({ phase, feed, elapsedSec, degraded, errorText, onRetry }: Props) {
+export function DockRunStatus({
+  phase,
+  feed,
+  elapsedSec,
+  degraded,
+  errorText,
+  paused,
+  onRetry,
+  onPause,
+  onStop,
+  onResume,
+}: Props) {
+  // PAUSED — the user suspended the run. A distinct, honest state (not a spinner, not an error): show
+  // it's paused + a Resume button. Takes precedence over the live phase (the stream may have ended).
+  if (paused && phase !== "done" && phase !== "error") {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted" aria-label="run paused">
+        <Pause size={12} className="shrink-0 text-amber-500" />
+        <span className="min-w-0 flex-1 truncate">Paused</span>
+        {onResume && (
+          <button
+            type="button"
+            onClick={onResume}
+            aria-label="resume run"
+            className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-accent hover:bg-accent/10"
+          >
+            <Play size={12} /> Resume
+          </button>
+        )}
+      </div>
+    );
+  }
+
   if (phase === "done") {
     // The durable agent_result is the message of record (rendered by the message list); nothing to add
     // beyond an optional degrade note.
@@ -80,6 +120,35 @@ export function DockRunStatus({ phase, feed, elapsedSec, degraded, errorText, on
         )}
         <span className="min-w-0 flex-1 truncate">{line}</span>
         {phase !== "sent" && <span className="shrink-0 tabular-nums">{elapsedSec}s</span>}
+        {/* Live controls — pause (suspend, resumable) + stop (cancel, terminal). Shown for ANY live
+            phase (incl. the pre-delta "sent" — the run job may already be driving server-side). Hidden
+            only when no control handlers are wired (no `agent.control` grant / not active). */}
+        {(onPause || onStop) && (
+          <span className="flex shrink-0 items-center gap-0.5">
+            {onPause && (
+              <button
+                type="button"
+                onClick={onPause}
+                aria-label="pause run"
+                title="Pause"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-sm hover:bg-panel-2 hover:text-fg"
+              >
+                <Pause size={12} />
+              </button>
+            )}
+            {onStop && (
+              <button
+                type="button"
+                onClick={onStop}
+                aria-label="stop run"
+                title="Stop"
+                className="inline-flex h-5 w-5 items-center justify-center rounded-sm hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Square size={11} />
+              </button>
+            )}
+          </span>
+        )}
       </div>
       {degraded && <DegradeNote />}
     </div>

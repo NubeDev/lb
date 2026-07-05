@@ -406,6 +406,12 @@ fn member_caps() -> Vec<String> {
         // /runs/{job}/stream`). Read-only on the run; checked inside `watch_run` (a `403` before any
         // stream body). Member-level — observing a run is not an admin act.
         "mcp:agent.watch:call",
+        // agent-dock run controls: `agent.control` gates STOP / PAUSE / RESUME on a run (`POST
+        // /runs/{job}/{cancel|pause|resume}`), checked inside `stop_run`/`pause_run`/`resume_run`
+        // (opaque `403` on deny). DISTINCT from `agent.watch` — watching a run never implies authority
+        // to control it. Member-level: a member driving a run may stop/pause/resume their own run
+        // (the workspace wall still isolates it; a ws-B caller can't reach a ws-A run).
+        "mcp:agent.control:call",
         // agent-run scope Part 5: model-activated skills. `skill.activate` is a LOOP-INTERNAL tool
         // (the loop intercepts the model's proposed call and loads the body under the S4 grant gate),
         // so the dev principal does not strictly need this to drive the loop. It is granted for the
@@ -430,6 +436,16 @@ fn member_caps() -> Vec<String> {
         // either built-in role (a key created by this admin never widens beyond it). The write role's
         // caps are action-named (not `*.*`) so a data key can never reach `apikey.manage`.
         "mcp:apikey.manage:call",
+        // webhooks scope: the management verb gate + the secret-write cap `signature` mode needs
+        // to store its shared secret in `lb-secrets`. The dev admin HOLDS `mcp:ingest.write:call`
+        // (the cap a webhook's inbound principal resolves to) so the no-widening guard lets it mint
+        // hooks under either mode. `secret:webhook/*:write` is re-checked by `lb_secrets::set_with`
+        // during create/rotate (the same gate `bearer` mode's linked apikey path traverses via
+        // `apikey_create`'s own grants). The public `POST /hooks/{ws}/{id}` route does NOT take a
+        // session token — these caps gate the ADMIN surface (`/admin/webhooks/*`) only.
+        "mcp:webhook.manage:call",
+        "mcp:ingest.write:call",
+        "secret:webhook/*:write",
         "store:*:read",
         "store:*:write",
         "mcp:*.get:call",

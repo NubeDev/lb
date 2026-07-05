@@ -29,6 +29,28 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (consumed by rules' `ai.complete` and the in-house loop), the channel composer no longer auto-sending
   an explicit `runtime:"default"` that outranks the pick, and the missing `POST /agent/invoke`
   transport so the dashboard AI widget's `agent_invoke` stops being an unknown command.
+  `agent-close-out-scope.md` **finishes the topic** — four honesty-at-a-seam slices closing the
+  `public/agent/agent.md` "Not yet" list: real token accounting on `Turn` (provider `usage`, not the
+  content-length estimate), per-workspace loop policy (`max_steps`/`max_run_tokens` on `agent.config`,
+  node-clamped), run progress as ws-scoped bus motion + completion via the outbox (cross-node
+  `agent.watch`), and the signed token on routed edge→hub invokes (hub verifies, never trusts).
+  Fallback chains / the served OpenAI face / the curated tool menu stay deferred to their owning topics.
+- `agent-personas/` — **user-selectable agent focus**: a persona = `{granted_tools,
+  grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
+  active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the
+  capability wall (effective = persona ∩ agent ∩ caller). Fixes the observed "agent confused by
+  the whole surface" symptom. Umbrella `agent-personas-scope.md` + four sub-scopes:
+  `persona-model-scope.md` (the record, two tiers, `agent.persona.*` CRUD, `extends`, run-assembly
+  application on both runtimes — absorbs acp-driver's unbuilt `granted_tools`/`persona_skill`),
+  `persona-grounding-scope.md` (seed the FULL `docs/skills` corpus + promote `docs/testing/`
+  runbooks to skills + author `core.mcp`/`core.acp`/`core.extension-authoring` — the agent learns
+  the platform from docs, not the codebase), `persona-catalog-scope.md` (eight built-ins as a
+  `personas.toml` seed with exact verb lists: data-analyst, flow-author, widget-builder,
+  rules-author via `extends`, workspace-admin, channels-operator, system-manager,
+  extension-builder; destructive verbs excluded from all), `persona-coding-scope.md` (the
+  extension-builder posture — "100% coding, never on its own": devkit surface only, Ask-gated
+  publish/install via the shipped Part-2 policy, in-house-runtime-only until the external-agent
+  capability wall ships).
 - `app/` — the **React Native mobile app** (iOS/Android): a thin RN shell that is the fourth
   client of the gateway (login → many workspaces → REST + SSE; **zenoh-ts rejected** — it would
   expose a second, unmediated server surface beside the gateway), plus **federated app extensions**

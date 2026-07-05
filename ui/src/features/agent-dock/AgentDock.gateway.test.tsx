@@ -98,6 +98,24 @@ describe("AgentDock (real gateway)", () => {
     });
   });
 
+  it("surfaces the pause + stop run controls while a run is in flight", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    renderDock(ws, "user:ada");
+    await screen.findByLabelText("ask the agent");
+
+    // Post an agent request — before the reactor drains, the run is pending/active, so the dock shows
+    // the live run status with its pause + stop controls (the durable pause/resume path itself is
+    // proven end to end against a real run job in the Rust route test — jsdom can't sustain a live run).
+    await user.type(screen.getByLabelText("ask the agent"), "long running question");
+    await user.click(screen.getByLabelText("send"));
+    await screen.findByText("long running question");
+
+    expect(await screen.findByLabelText("pause run")).toBeInTheDocument();
+    expect(screen.getByLabelText("stop run")).toBeInTheDocument();
+  });
+
   it("history restores after a remount (durable — never anywhere but SurrealDB)", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
@@ -145,6 +163,21 @@ describe("AgentDock (real gateway)", () => {
     await waitFor(async () => {
       const rows = await listDockChannels(ws, "user:ada");
       expect(rows.length).toBe(2);
+    });
+  });
+
+  it("an opened session is registered eagerly — reselectable WITHOUT ever posting", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Just mount the dock — do NOT type or send anything.
+    renderDock(ws, "user:ada");
+    await screen.findByLabelText("ask the agent");
+
+    // The freshly-opened, never-posted session is already registered (create-on-open, not
+    // create-on-first-post) → it shows up in the durable channel list, so a reload/remount can reopen it.
+    await waitFor(async () => {
+      const rows = await listDockChannels(ws, "user:ada");
+      expect(rows.length).toBe(1);
     });
   });
 

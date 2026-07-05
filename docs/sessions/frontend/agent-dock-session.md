@@ -162,3 +162,65 @@ states "Skill doc: N/A" — the drivable surfaces already belong to their topics
 - A live browser (non-jsdom) e2e could assert the Sent→Working→Answering deltas against real SSE frames;
   today that folding is unit-proven and the transport is Rust-proven.
 - STATUS.md updated: agent dock shipped.
+
+---
+
+## Follow-up (2026-07-05): run controls — stop / pause / resume
+
+The dock had no way to stop/pause/resume a run. Added it end to end as a thin, authorized front
+door onto the shipped run-job lifecycle (`lb_jobs`) — **one new cap, one new route, no new table.**
+
+### What changed
+- **Host** `rust/crates/host/src/run_events/control.rs` (NEW): `stop_run` (→ `lb_jobs::cancel`),
+  `pause_run` (→ `suspend`), `resume_run` (→ `unsuspend` + re-`create` the retired channel enqueue
+  job so the reactor re-drives from the cursor). Each gates `mcp:agent.control:call` workspace-first
+  (opaque `Denied`). Exported from the crate root.
+- **Loop** `agent/step.rs::is_paused` (mirrors `is_cancelled`) + a pause check in `agent/run.rs` at
+  the turn boundary: a paused run emits `RunFinish(Suspended)` and returns with the transcript/cursor
+  intact (restartable), checked AFTER cancel (terminal wins).
+- **Worker** `channel/agent_worker.rs`: after the drive, re-read the run-job status
+  (`run_lifecycle_state`) to classify Finished / Paused / Stopped — a paused run posts **nothing**
+  (not done yet); a stopped run posts the honest `run stopped` `agent_error`; finished posts the
+  answer as before.
+- **Cap** `mcp:agent.control:call` added to `member_caps()` + an `agent.control` catalog descriptor.
+- **Gateway** `routes/run_control.rs` (NEW): `POST /runs/{job}/{op}` (`cancel|stop|pause|resume`),
+  header-authed, `204` on success, opaque `403` on deny, `400` on unknown op / bad state.
+- **UI** `lib/channel/run.control.ts` (`stopRun`/`pauseRun`/`resumeRun` → `agent_control` verb →
+  `POST /runs/{job}/{op}`); Pause/Stop/Resume affordances in `DockRunStatus.tsx`; optimistic
+  `paused` state + handlers in `AgentDock.tsx`.
+
+### Decisions
+- **Pause = `Suspended`, reusing the existing lifecycle state** (not a new Job field). The loop's
+  pause-check reads `Suspended`; resume flips to `Running` FIRST (so the loop doesn't re-pause) then
+  re-arms the enqueue. Distinct from the Ask-policy suspension (which auto-resumes on a settled
+  `agent_decision`); a user-pause has no decision, so only an explicit `resume_run` revives it.
+- **Resume re-`create`s the enqueue job** (an upsert → fresh `Running`) rather than mutating it —
+  `lb_jobs::update` is `pub(crate)`, and re-create preserves the poster's identity/caps payload
+  verbatim (co-trust). The drive's own `answer_already_posted` guard keeps it idempotent.
+- **Stop posts `run stopped`** (a distinct, honest `agent_error`) so the dock shows a terminal
+  stopped state rather than a silent gap or a misleading answer.
+- **One `agent.control` cap for all three** (not three caps) — they are one control surface; the
+  workspace wall + the run's own job row are the isolation.
+
+### Tests (all green, real infra, rule 9)
+- Rust host `run_control_test.rs` **6/6** — pause→Suspended + resume→Running + enqueue re-armed;
+  stop→Cancelled (+ resume of a cancelled run is a bad-state error); the LOOP honors a pause
+  (a pre-suspended run drives to Suspended WITHOUT completing, then resume finishes it and posts
+  the answer); the worker posts `run stopped` for a cancelled run; MANDATORY cap-deny (opaque
+  `Denied`, status untouched); MANDATORY ws-isolation (a ws-B principal can't touch a ws-A run).
+- Rust gateway `run_control_route_test.rs` **5/5** — pause→204→Suspended + resume→204→Running;
+  stop→204→Cancelled; no-cap→opaque 403 (status untouched); unknown op→400; ws-B token can't
+  control a ws-A run (client error, ws-A run untouched).
+- UI `DockRunStatus.test.tsx` **5/5** — Pause+Stop render & fire while working; Resume renders &
+  fires when paused; controls show in the pre-delta Sent state (the run may already be driving);
+  controls hidden with no handlers; Retry in the error state. UI gateway `AgentDock.gateway.test.tsx`
+  gains "surfaces the pause + stop run controls while a run is in flight" (**9/9** total).
+- Regression: existing `channel_agent_worker_test` **4/4** + `agent_watch_test` **8/8** stay green
+  (the worker's new lifecycle classification didn't disturb the happy/deny/idempotency paths).
+  `cargo build --workspace` + `cargo fmt` clean.
+
+### Why jsdom limits the UI test
+jsdom has no EventSource, so a live run's phase never leaves "sent" in a UI test and a live drive
+can't be sustained — the durable pause→resume→complete path is therefore proven in Rust (host +
+gateway-route), and the UI test asserts the controls surface while a run is active. Same split as
+the streaming states.

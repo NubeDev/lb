@@ -9,9 +9,11 @@
 // "Sheet overlay" the scope explicitly rejected. So we build the frame from its non-modal primitives
 // (their whole reason to exist) in a shell flex slot. Recorded in the scope doc (open-questions close).
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, X } from "lucide-react";
 import { ResizeHandle, useResizable } from "@nube/panel";
+
+import { pauseRun, resumeRun, stopRun } from "@/lib/channel/run.control";
 
 import { MessageList } from "@/features/channel/MessageList";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,36 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
   // honestly when `mcp:agent.watch:call` is absent; the durable answer still lands via the channel.
   const active = pending.job != null && !pending.hasResult && !pending.hasError;
   const run = useDockRun(pending.job ?? "", active, pending.hasResult, pending.hasError, now);
+
+  // Run controls (agent-dock run controls): pause/stop/resume the live run over `mcp:agent.control`.
+  // `paused` is optimistic UI state keyed to the current run job — set on Pause, cleared on Resume, and
+  // reset whenever the run job changes or a terminal result/error lands (so a new run starts clean).
+  const [pausedJob, setPausedJob] = useState<string | null>(null);
+  const paused = pausedJob !== null && pausedJob === pending.job && active;
+  useEffect(() => {
+    if (!active) setPausedJob(null); // a durable result/error settled → clear the paused flag
+  }, [active]);
+  const [controlError, setControlError] = useState<string | null>(null);
+  const control = useCallback(
+    async (op: "pause" | "stop" | "resume") => {
+      if (!pending.job) return;
+      try {
+        setControlError(null);
+        if (op === "pause") {
+          await pauseRun(pending.job);
+          setPausedJob(pending.job);
+        } else if (op === "resume") {
+          await resumeRun(pending.job);
+          setPausedJob(null);
+        } else {
+          await stopRun(pending.job);
+        }
+      } catch (e) {
+        setControlError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [pending.job],
+  );
 
   // Resize: the `@nube/panel` non-modal primitive. Seed with the persisted width; report every change
   // up so it persists across reloads (the chrome hook owns storage).
@@ -141,8 +173,17 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
             elapsedSec={run.elapsedSec}
             degraded={run.degraded}
             errorText={pending.errorText}
+            paused={paused}
             onRetry={() => pending.goal && void session.ask(pending.goal)}
+            onPause={active && !paused ? () => void control("pause") : undefined}
+            onStop={active && !paused ? () => void control("stop") : undefined}
+            onResume={paused ? () => void control("resume") : undefined}
           />
+          {controlError && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {controlError}
+            </p>
+          )}
         </div>
       )}
 

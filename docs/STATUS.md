@@ -16,6 +16,56 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-05): webhooks — a first-class inbound-HTTP surface, keyed and mediated.** A
+webhook is a **named, workspace-walled, credential-protected inbound endpoint** the platform owns
+end to end: an admin creates one through the new admin routes (`/admin/webhooks` CRUD), the
+platform exposes a stable URL `POST /hooks/{ws}/{id}`, and every authenticated hit becomes exactly
+one ingest `Sample` on `webhook:{ws}:{id}`. Anything that subscribes to that series — a flow (a
+`trigger` with `mode=event` watching it today; a dedicated `webhook` source node is a named
+follow-up), a rule, a dashboard tile, a raw `series.read` — consumes it. The webhook service is a
+**producer**, not a second store; the endpoint + credential + URL outlive any one flow.
+
+**Two auth modes**, admin-selected per hook: `bearer` (reuses the apikey credential verbatim —
+`apikey_create` mints a `lbk_{ws}.{keyid}.{secret}` scoped to `key:webhook:{id}` with one narrowed
+cap `mcp:ingest.write:call`; the webhook row carries `bearer_key_id` so revoke/rotate reach the
+linked apikey; the presented keyid must match it — a sibling key cannot impersonate the hook) and
+`signature` (the caller signs the raw body with a shared secret using HMAC-SHA256, sends
+`sha256=<hex>` in an admin-picked header — `X-Signature` by default; the shared secret lives in
+`lb-secrets` at `webhook/{id}` under Workspace visibility, mediate-read by the host on verify; v1
+ships the universal `hmac-sha256` shape only — no Slack/GitHub/Stripe node anywhere in core, rule
+10). The route captures the **raw body before any JSON parse** (load-bearing — HMAC verify over the
+exact received bytes; a re-serialized body breaks every real signature, the most-common-webhook-
+integration bug, pinned by a body-tamper test). **The inbound route is the only
+unauthenticated-by-session surface** — a third-party caller presents the hook's own credential, not
+a JWT; every failure (unknown id / disabled / wrong-secret / cross-ws URL) collapses to the same
+opaque `404` so the public route is not a webhook-id oracle; a revoked hook is `410 Gone`. Replies
+`202 Accepted { id, series, seq }`.
+
+**Tests (real gateway + real store + real caps + real ingest buffer, rule 9):** Rust host `webhook::*`
+units **18/18** (HMAC verify over raw bytes incl. body-tamper + malformed + missing + whitespace;
+shared-secret entropy; `parse_bearer_key_id` shape; record/view derivation; payload preservation
+for JSON / non-JSON / empty / invalid-UTF8); gateway `webhook_routes_test.rs` **16/16** —
+capability-deny (per management verb + the no-widening refusal when the creator lacks
+`mcp:ingest.write:call`), workspace-isolation (cross-ws URL is opaque 404; ws-B list sees only ws-B;
+a forged ws-mismatched bearer is refused), **bearer end-to-end** (create → POST with bearer → 202 →
+`series.read` returns the sample — the round-trip headline), **signature end-to-end** (sign raw
+body → POST → 202 → `series.read`; wrong-sig opaque 404; missing-header opaque 404;
+**body-tamper-breaks-signature** — sign compact, post pretty-printed with same JSON value, must
+NOT verify), **rotate** (old secret dead, new works), **revoke** (route 410s, no further samples),
+and **no-secret-leak** (list/get dump JSON; asserts neither secret nor any
+`secret`/`hash`/`bearer_key_id`/`secret_ref` field appears). Apikey regression `apikey_routes_test`
+**8/8** still green. `cargo build --workspace` (incl. `--features lb-role-gateway/test-harness`) +
+`cargo fmt` clean. Scope [`scope/ingest/webhooks-scope.md`](scope/ingest/webhooks-scope.md) (open
+questions all resolved); session [`sessions/ingest/webhooks-session.md`](sessions/ingest/webhooks-session.md);
+public [`public/ingest/webhooks.md`](public/ingest/webhooks.md). **Named follow-ups (not silent
+gaps):** the admin-UI Webhooks wizard (backend ready, UI is the next slice); the flow `webhook`
+source node (needs generic source-series templating in `flows/source.rs` — today a `trigger` with
+`mode=event` + `series=webhook:{ws}:{id}` covers it); per-hook `seq` counter (`now_ms` is the v1
+floor; same-ms dedups); multi-node revoke cache-bust broadcast (lazy expiry + local bust are the
+security floor, both tested).
+
+---
+
 **Just shipped (2026-07-05): the agent dock — a persistent, page-context-aware AI side panel.** A
 shell-mounted, resizable, **non-modal** right dock on every authenticated page (StatusBar launcher +
 run pip, global `mod+j`, `Escape` closes + refocuses launcher, mobile auto-close). It **survives
@@ -49,6 +99,20 @@ fail on clean master. Scope [`scope/frontend/agent-dock-scope.md`](scope/fronten
 session [`sessions/frontend/agent-dock-session.md`](sessions/frontend/agent-dock-session.md); public
 [`public/frontend/frontend.md`](public/frontend/frontend.md) ("The agent dock"); debug
 [`debugging/frontend/dock-channel-id-dotted-cap-deny.md`](debugging/frontend/dock-channel-id-dotted-cap-deny.md).
+
+**Follow-up shipped same day — run controls (stop / pause / resume) in the dock.** ONE new cap
+`mcp:agent.control:call` (member-level, distinct from `agent.watch`) + ONE new route
+`POST /runs/{job}/{op}` (`cancel|pause|resume`) — a thin authorized front door onto the shipped
+run-job lifecycle (`lb_jobs`), **no new table**: stop=`cancel` (worker posts honest `run stopped`);
+pause=`suspend` (loop honors it at the turn boundary via a new `is_paused` check → `RunFinish(Suspended)`,
+transcript/cursor intact, worker posts nothing); resume=`unsuspend` + re-arm the channel enqueue job so
+the reactor re-drives from the cursor under the original asker's authority. Host
+`run_events/control.rs`, loop `agent/run.rs`+`step.rs`, worker lifecycle classification
+(`channel/agent_worker.rs`), gateway `routes/run_control.rs`, UI `lib/channel/run.control.ts` +
+Pause/Stop/Resume in `DockRunStatus`. **Tests:** host `run_control_test.rs` **6/6** (pause→resume→complete
+lifecycle, stop, worker classification, MANDATORY cap-deny + ws-isolation), gateway
+`run_control_route_test.rs` **5/5** (deny→opaque 403, unknown-op 400, ws-isolation), UI
+`DockRunStatus.test.tsx` **5/5** + dock gateway now **9/9**; `channel_agent_worker`/`agent_watch` stay green.
 
 ---
 

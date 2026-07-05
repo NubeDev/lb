@@ -521,7 +521,11 @@ The first stage that **writes to disk**, in three gated slices (`public/{store,i
   identity is `(series, producer, seq)` with `producer` = the authenticated principal, so a fleet writes
   one series without collision. Overflow drop-oldest/dead-letter. **No device/sensor/MQTT in core** — a
   producer is a principal. `ingest.write`/`series.read`/`series.latest`/`series.find` MCP verbs. See
-  `ingest/ingest.md`.
+  `ingest/ingest.md`. A **webhook** is a first-class producer — `POST /hooks/{ws}/{id}` is a generic
+  authenticated HTTP inlet (a `lbk_…` bearer OR an HMAC signature over the raw body) that emits a
+  `Sample` on `webhook:{ws}:{id}`. Two auth modes, admin-selected per hook; the route is the only
+  unauthenticated-by-session surface (a third-party caller presents the hook's own credential).
+  See `ingest/webhooks.md`.
 - **Typed tag graph (`lb-tags`)** — a tag is a shared typed node `tag:[key,value]`; applying it is a
   `(entity,tag,source)` provenance edge (same-source upserts, different sources coexist).
   `tags.add/remove/of/find` (exact/key-only/faceted intersection) + a required per-workspace **tag-node

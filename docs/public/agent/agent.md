@@ -218,6 +218,10 @@ The wall holds throughout: `active_definition` + the resolved model live on the 
 
 ## Not yet (follow-ups)
 
+> The close-out ask for this list lives at `../../scope/agent/agent-close-out-scope.md`: real token
+> accounting, per-workspace loop policy, run progress as bus motion + outbox completion, and
+> token-on-the-bus are its four slices; the rest below is deferred to its owning topic (named there).
+
 Streaming progress as Zenoh motion + the durable transcript via the outbox; token-on-the-bus for
 routed invocations (S5 is in-process co-trust); an optional curated/bounded agent tool subset if the
 reachable-catalog context tax bites; provider fallback chains + the served OpenAI face for external

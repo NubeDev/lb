@@ -54,9 +54,17 @@ hostname.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
+# HMAC-SHA256 verification for `signature`-mode webhooks (webhooks scope) — over the raw request
+# body, constant-time compared. Pairs with `sha2`; same pinned versions as the workspace `apikey`
+# and `github-webhook` crates (the vetted discipline).
+hmac.workspace = true
+sha2.workspace = true
 # The per-workspace model memoization cache on the `Node` (active-agent-wiring scope, Slice 2). State
 # on the node spine — not a role concern, so it lives here in core host.
 dashmap.workspace = true
+# The `signature`-mode shared-secret generator (webhooks scope) — reuses `lb_apikey::generate_secret`
+# for the entropy; `rand` is only for the (currently-unused) `random_bytes` helper kept for parity.
+rand.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

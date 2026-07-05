@@ -71,3 +71,8 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "ti
 tower = { version = "0.5", features = ["util"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 http-body-util = "0.1"
+# The webhooks integration test signs HMAC-SHA256 deliveries independently (so the verifier is
+# checked against an independent computation of the MAC). Test-only — the production gateway never
+# verifies HMAC itself (that lives in `lb-host::webhook::verify`); this is the test's own signer.
+hmac.workspace = true
+sha2.workspace = true

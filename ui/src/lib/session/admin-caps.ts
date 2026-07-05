@@ -105,6 +105,11 @@ export const CAP = {
   // api-keys (api-keys scope): the machine-credential management verb gate. The tab shows for a
   // session holding `apikey.manage`; the gateway re-checks every verb server-side regardless.
   apikeyManage: "mcp:apikey.manage:call",
+  // webhooks (webhooks scope): the inbound-HTTP management verb gate. The tab shows for a session
+  // holding `webhook.manage`; the gateway re-checks every verb server-side regardless. The public
+  // inbound `POST /hooks/{ws}/{id}` route takes NO session token — this cap gates the ADMIN surface
+  // (the Webhooks tab in the access console) only.
+  webhookManage: "mcp:webhook.manage:call",
   // telemetry console (telemetry-console scope): the nav gate. The Telemetry page shows for a session
   // that may read the capped telemetry ring; the gateway re-checks `mcp:telemetry.read:call` on every
   // query/tail server-side and hard-filters to the caller's workspace. The audit lane needs its own
@@ -140,6 +145,7 @@ export const ADMIN_SECTION_CAPS: string[] = [
   CAP.extList,
   CAP.devkitTemplates,
   CAP.apikeyManage,
+  CAP.webhookManage,
   CAP.membersManage,
 ];
 

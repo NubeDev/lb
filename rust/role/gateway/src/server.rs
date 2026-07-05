@@ -12,30 +12,31 @@ use tower_http::cors::CorsLayer;
 use crate::routes::{
     add_datasource, add_member, add_team_member, agent_invoke, archive_workspace, assign_grant,
     bus_stream, channel_stream, convert_unit, create_apikey, create_channel, create_def,
-    create_identity, create_team, create_user, create_workspace, define_role, delete_dashboard,
-    delete_def, delete_flow, delete_message, delete_nav, delete_panel, delete_role, delete_rule,
-    delete_team, delete_user, disable_extension, disable_user, edit_message, enable_extension,
-    enable_flow, enable_user, find_series, flow_node_state, flow_run_stream, format_datetime,
-    format_number, format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard,
-    get_def, get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_layout,
-    get_nav, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, grant_skill,
-    identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
-    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
-    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
-    list_members, list_navs, list_panels, list_roles, list_rules, list_series, list_tables,
-    list_team_members, list_teams, list_users, list_workspaces, load_skill, login, mcp_call,
-    mcp_catalog, native_call, panel_usage, patch_flow_run, pin_dashboards, post_message,
+    create_identity, create_team, create_user, create_webhook, create_workspace, define_role,
+    delete_dashboard, delete_def, delete_flow, delete_message, delete_nav, delete_panel,
+    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
+    edit_message, enable_extension, enable_flow, enable_user, find_series, flow_node_state,
+    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
+    get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow, get_flow_node,
+    get_flow_run, get_history, get_identity, get_layout, get_nav, get_nav_pref, get_outbox_status,
+    get_panel, get_prefs, get_rule, get_webhook, grant_skill, identity_workspaces_route,
+    inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels,
+    list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
+    list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_members, list_navs,
+    list_panels, list_roles, list_rules, list_series, list_tables, list_team_members, list_teams,
+    list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog,
+    native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook,
     publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
     read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
     rename_workspace, render_catalog_message, request_approval, reset_extension, resolve_caps,
     resolve_inbox, resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey,
-    revoke_grant, revoke_tokens_route, rotate_apikey, run_flow, run_query, run_rule, run_stream,
-    save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
-    set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
-    start_job, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, update_def,
-    update_flow_node, write_samples,
+    revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
+    run_flow, run_query, run_rule, run_stream, save_dashboard, save_flow, save_nav, save_panel,
+    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
+    set_default_nav, set_default_prefs, set_layout, set_nav_pref, set_prefs, share_dashboard,
+    share_doc, share_nav, share_panel, start_job, system_acp, system_overview, system_subsystem,
+    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
+    uninstall_extension, update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -52,6 +53,14 @@ use crate::state::Gateway;
 pub fn router(gw: Gateway) -> Router {
     Router::new()
         .route("/login", post(login))
+        // The public inbound webhook endpoint (webhooks scope) — `POST /hooks/{ws}/{id}`. The
+        // ONLY unauthenticated-by-session route in the gateway: a third-party service calls it
+        // from outside, presenting the webhook's own credential (a `lbk_…` bearer or an HMAC
+        // signature over the raw body), not a workspace session token. `webhook_resolve` +
+        // `webhook_accept` run the auth-and-normalize edge; every failure is the same opaque
+        // 404/410 so the route is not a webhook-id oracle. Registered FIRST so it sits at a stable
+        // public path unrelated to the session-authed `/admin/webhooks/*` surface.
+        .route("/hooks/{ws}/{id}", post(post_webhook))
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(
@@ -66,6 +75,9 @@ pub fn router(gw: Gateway) -> Router {
         // agent-run live feed (agent-run scope Part 3) — the SSE analog of the channel stream for a
         // run: snapshot-then-deltas of the `RunEvent` projection. Auth via `?token=`; ws from token.
         .route("/runs/{job}/stream", get(run_stream))
+        // agent-dock run controls — stop / pause / resume a live run (`{op}` = cancel|pause|resume).
+        // Header-authed; the host verbs re-check `mcp:agent.control:call` workspace-first (opaque 403).
+        .route("/runs/{job}/{op}", post(run_control))
         .route(
             "/teams/{team}/members",
             get(list_team_members).post(add_team_member),
@@ -156,6 +168,17 @@ pub fn router(gw: Gateway) -> Router {
         .route("/admin/apikeys/{id}", get(get_apikey))
         .route("/admin/apikeys/{id}/revoke", post(revoke_apikey))
         .route("/admin/apikeys/{id}/rotate", post(rotate_apikey))
+        // webhooks (webhooks scope) — the inbound-HTTP admin surface: list (no hash/secret),
+        // create (returns the one-time credential — `lbk_…` bearer or shared secret), get
+        // (credential-free), revoke (tombstone + linked apikey revoke + cache-bust), rotate (new
+        // credential, old dead). Each re-checks `mcp:webhook.manage:call` server-side; ws +
+        // principal from the token. The public inbound `POST /hooks/{ws}/{id}` lives BELOW — it
+        // is the only unauthenticated-by-session route (a third-party caller presents the hook's
+        // own credential, not a session token).
+        .route("/admin/webhooks", get(list_webhooks).post(create_webhook))
+        .route("/admin/webhooks/{id}", get(get_webhook))
+        .route("/admin/webhooks/{id}/revoke", post(revoke_webhook))
+        .route("/admin/webhooks/{id}/rotate", post(rotate_webhook))
         // extension lifecycle (lifecycle-management scope) — the browser's `ext.*` surface.
         .route("/extensions", get(list_extensions).post(publish_extension))
         .route("/extensions/{ext}", delete(uninstall_extension))

@@ -14,11 +14,13 @@
 //! - `watch` — `agent.watch`: a transcript snapshot + the live delta subscription.
 //! - `stream` — the typed subscription wrapper the SSE/ACP encoders consume.
 
+mod control;
 mod publish;
 mod stream;
 mod subject;
 mod watch;
 
+pub use control::{pause_run, resume_run, stop_run, AGENT_CONTROL_TOOL};
 pub use publish::publish_run_event;
 pub use stream::RunEventSub;
 pub use subject::run_subject;

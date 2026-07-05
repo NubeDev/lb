@@ -95,6 +95,11 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "agent",
         description: "subscribe to a run's RunEvent feed (the live turn projection)",
     },
+    HostTool {
+        tool: "agent.control",
+        group: "agent",
+        description: "stop / pause / resume a live agent run",
+    },
     // bus.* — direct Zenoh bus introspection/publish over the host bridge (bus scope).
     HostTool {
         tool: "bus.publish",

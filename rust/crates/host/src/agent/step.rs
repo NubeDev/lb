@@ -28,6 +28,19 @@ pub(super) async fn is_cancelled(node: &Node, ws: &str, job_id: &str) -> Result<
         .unwrap_or(false))
 }
 
+/// Re-read the durable job to see whether it was **paused** mid-run (agent-dock run controls). A
+/// `pause_run` (a UI pause button) flips the job to `Suspended` between turns; the loop honors it at
+/// the next turn boundary, emits a `Suspended` `RunEvent`, and returns — the transcript + cursor are
+/// intact, so a later `resume_run` continues faithfully. Distinct from `is_cancelled`: pause is
+/// **restartable** (`Suspended`), cancel is terminal (`Cancelled`). Cheap (one record read), same as
+/// the cancel check.
+pub(super) async fn is_paused(node: &Node, ws: &str, job_id: &str) -> Result<bool, AgentError> {
+    Ok(load(&node.store, ws, job_id)
+        .await?
+        .map(|j| j.status == JobStatus::Suspended)
+        .unwrap_or(false))
+}
+
 /// Append a transcript event durably AND emit its live [`RunEvent`](lb_run_events::RunEvent)
 /// projection onto the run's bus subject (Part 3). The order is deliberate: the durable append is the
 /// **record** (it must land, hence `?`), then the bus publish is **motion** (best-effort — a watcher

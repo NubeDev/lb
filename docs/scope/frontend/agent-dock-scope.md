@@ -65,9 +65,13 @@ first moment — agent answers can be slow and a dead spinner reads as broken.
 The dock is a **thin channel client in a persistent shell panel**. Three shipped pieces,
 one small host seam:
 
-1. **Storage + transport = a channel per session.** Opening the dock (first send) creates
-   a channel with id `dock-{user-slug}-{ulid}` (create-on-post — no new verb needed; the
-   create gate is the existing `bus:chan/{cid}:pub` check). The dock reuses `useChannel`'s
+1. **Storage + transport = a channel per session.** Opening the dock (or "new session")
+   mints a channel id `dock-{user-slug}-{ulid}` and **registers it eagerly** via the existing
+   idempotent `channel.create` (create-on-open, not create-on-first-post) — so an opened but
+   not-yet-posted session is durable and stays **reselectable in the picker after a reload**,
+   instead of vanishing until its first post. No new verb; the create gate is the existing
+   `bus:chan/{cid}:pub` check, and registration is best-effort (a denied create leaves the
+   session local-only and the first post surfaces the real capability error, unchanged). The dock reuses `useChannel`'s
    data path: `channel.history` on open, `openChannelStream` for live items, `postAgent`
    to send — which mints the run/job id client-side, posts a `kind:"agent"` item, and the
    durable **channel agent job** drives the run under the poster's caps and posts
@@ -172,6 +176,33 @@ Driven by `useRunFeed`-style folding of `RunEvent`s
    stream and becomes the message of record.
 6. **Error** — post rejection, stream 401/403, `agent_error` item, or `EventSource`
    error: a real message with a retry affordance — never an infinite spinner.
+
+## Run controls — stop / pause / resume (added 2026-07-05)
+
+While a run is in flight the dock shows **Pause** + **Stop**; a paused run shows **Resume**.
+These ride ONE new capability `mcp:agent.control:call` (granted to members, distinct from
+`agent.watch` — watching a run never implies controlling it) over one new route
+`POST /runs/{job}/{op}` (`op` = `cancel|pause|resume`), workspace-walled + opaque on deny.
+
+They are a **thin, authorized front door onto the shipped run-job lifecycle** (`lb_jobs`) — no
+new persistence surface:
+- **Stop** → `lb_jobs::cancel` (terminal, non-restartable). The loop notices at its next turn
+  boundary (`is_cancelled`) and ends; the worker posts an honest `run stopped` `agent_error`.
+- **Pause** → `lb_jobs::suspend` (Running → Suspended, **restartable**). The loop notices at its
+  turn boundary (a NEW `is_paused` check, mirroring `is_cancelled`), emits a
+  `RunFinish(Suspended)` `RunEvent`, and returns with the transcript + cursor intact. The
+  worker posts **nothing** (no answer of record yet). A Suspended run is NOT auto-driven (the
+  reactor drains *enqueue* jobs; pause retires none), so it stays paused until resume.
+- **Resume** → `lb_jobs::unsuspend` (Suspended → Running) **+ re-`create` the retired channel
+  enqueue job** so the reactor re-drives it; `run_session` rehydrates from the durable cursor
+  and continues the conversation (resume is faithful — agent-run scope Part 0). The re-armed
+  enqueue carries the original poster's identity + caps, so the re-drive runs under the ASKER's
+  authority, never the resumer's.
+
+UI: `paused` is optimistic state keyed to the current run job (set on Pause, cleared on Resume,
+reset when the job changes or a terminal result lands). jsdom can't sustain a live run, so the
+durable pause→resume→complete path is proven in Rust (host + gateway-route tests); the UI test
+asserts the controls surface while a run is active.
 
 ## Resolved decisions
 

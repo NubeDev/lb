@@ -4,12 +4,16 @@
 // the picker list; the messages of the current session live in `useDockSession`.
 //
 // "New session" mints a fresh ulid and makes it current; the old channel stays listable/reopenable (no
-// delete in v1). A freshly-minted id is NOT yet in `channel.list` (it is create-on-first-post) — we
-// keep it in the local list so the picker shows it immediately as the current, empty session.
+// delete in v1). A freshly-minted session is REGISTERED eagerly (`channel.create`, idempotent) the moment
+// it becomes current — so an opened-but-not-yet-posted session survives a reload and stays reselectable in
+// the picker, rather than vanishing until its first post (create-on-first-post left abandoned sessions
+// unlistable). Registration is best-effort: the local list already shows the current session immediately,
+// and the durable `refresh` reconciles it; a denied `create` (no pub cap) just leaves the session
+// local-only, exactly as before, and the first post surfaces the real capability error.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { listChannels } from "@/lib/channel/channel.api";
+import { createChannel, listChannels } from "@/lib/channel/channel.api";
 import { dockPrefixFor, isOwnDockChannel, mintDockId } from "./dockId";
 
 export interface DockSessionsState {
@@ -49,6 +53,24 @@ export function useDockSessions(ws: string, principal: string): DockSessionsStat
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Register the current session eagerly so an opened-but-unposted session is durable + reselectable
+  // (not create-on-first-post). Idempotent host-side (re-create upserts the same row), so re-running on
+  // every `current` change is safe. Best-effort: a denial (no pub cap) is swallowed here — the session
+  // stays local-only and the first post raises the real capability error, unchanged.
+  useEffect(() => {
+    let cancelled = false;
+    void createChannel(ws, current)
+      .then(() => {
+        if (!cancelled) setListed((prev) => (prev.includes(current) ? prev : [...prev, current]));
+      })
+      .catch(() => {
+        /* denied / offline — the local list already shows `current`; the first post reports the error */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ws, current]);
 
   // The picker list: the durable sessions plus the (possibly not-yet-created) current one, deduped,
   // newest-first. Dock ids are lexicographically time-ordered (the ulid), so a reverse sort is newest.

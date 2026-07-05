@@ -64,6 +64,7 @@ mod undo;
 mod undo_capture;
 mod users;
 mod viz;
+mod webhook;
 mod workflow;
 mod workspaces;
 
@@ -262,7 +263,10 @@ pub use rules::{
     rules_run, rules_save, workspace_datasources, workspace_queries, AgentRuleModel, HostAiSeam,
     HostDataSeam, RuleModel, RulesError, RunResult, SavedRule,
 };
-pub use run_events::{publish_run_event, run_subject, watch_run, RunEventSub, RunWatch};
+pub use run_events::{
+    pause_run, publish_run_event, resume_run, run_subject, stop_run, watch_run, RunEventSub,
+    RunWatch, AGENT_CONTROL_TOOL,
+};
 pub use serve::{serve_ext, ToolServer};
 pub use store_mutate::{
     authorize_store_mutate, call_store_mutate_tool, store_delete_run, store_write_run,
@@ -297,6 +301,21 @@ pub use users::{
     user_login_check, UserView, UsersError,
 };
 pub use viz::{call_viz_tool, viz_query, VizError};
+/// The **webhook** service — a first-class inbound-HTTP surface, keyed and mediated (webhooks
+/// scope). A webhook is `API-key ⊕ ingest-producer ⊕ flow-source`, glued by the gateway route
+/// `POST /hooks/{ws}/{id}`. `bearer` mode reuses the apikey credential verbatim; `signature` mode
+/// uses an `lb-secrets` shared secret + constant-time HMAC over the raw body. Every accepted hit
+/// becomes exactly one ingest `Sample` on `webhook:{ws}:{id}` — the webhook is a producer, not a
+/// second store.
+pub use webhook::{
+    verify_signature, webhook_accept, webhook_create, webhook_get, webhook_list, webhook_resolve,
+    webhook_revoke, webhook_rotate, AuthMode as WebhookAuthMode, CreateArgs as WebhookCreateArgs,
+    CreatedWebhook, SignatureError as WebhookSignatureError, WebhookError, WebhookRecord,
+    WebhookView, DEFAULT_HMAC_HEADER as WEBHOOK_DEFAULT_HMAC_HEADER,
+    HMAC_SCHEME as WEBHOOK_HMAC_SCHEME, INGEST_CAP as WEBHOOK_INGEST_CAP,
+    KIND_DISCRIM as WEBHOOK_KIND_DISCRIM, TABLE as WEBHOOK_TABLE,
+    TOMBSTONE_STATUS as WEBHOOK_TOMBSTONE_STATUS,
+};
 pub use workflow::{
     call_workflow_tool, emit_effect, enabled_workspaces, ingest_issue, ingest_via_bridge, pr_spec,
     react_to_approvals, reactor_job_id, record_pr_spec, relay_outbox, request_approval,

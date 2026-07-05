@@ -47,4 +47,11 @@ or `must-deliver` ("never lost until on disk").
 Producer-side staging bound + rate-limiting; retention/GC (raw→rollup aging); the one-authoritative-ingest
 sub-hub wiring; the checkpointed-ring throughput optimization.
 
+## Producers
+
+A **webhook** is a first-class producer — see [`webhooks.md`](webhooks.md). A hit on
+`POST /hooks/{ws}/{id}` is authenticated per the hook's own credential (a `lbk_…` bearer or an
+HMAC signature over the raw body), then written through this same `ingest.write` path as a `Sample`
+on the series `webhook:{ws}:{id}`. The webhook service is a producer, not a second store.
+
 See `scope/ingest/ingest-scope.md` for the ask and `sessions/ingest/ingest-session.md` for the build log.

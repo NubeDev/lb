@@ -33,7 +33,7 @@ use super::memory::memory_index_for_injection;
 use super::model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall};
 use super::policy::{evaluate, load_policy, Effect};
 use super::rehydrate::{rehydrate, summarize};
-use super::step::{count_turns, emit, is_cancelled, run_calls};
+use super::step::{count_turns, emit, is_cancelled, is_paused, run_calls};
 use crate::assets::load_skill;
 use crate::boot::Node;
 use crate::run_events::publish_run_event;
@@ -173,6 +173,26 @@ pub async fn run_session<M: ModelAccess>(
         // Cancellation is a durable stop (Part 0): re-read the status before each turn so a
         // `cancel` written by a UI stop button / ACP `session/cancel` between turns is honored.
         if is_cancelled(node, ws, job_id).await? {
+            return Ok(state.last_content);
+        }
+
+        // PAUSE is a durable, RESTARTABLE stop (agent-dock run controls): a `pause_run` flips the job
+        // to `Suspended` between turns. Honor it at the boundary — emit a terminal `RunFinish(Suspended)`
+        // so a watcher's stream ends cleanly (it resumes via a fresh watch after `resume_run`), and
+        // return. The transcript + cursor are intact, so `resume_run` re-drives from exactly here. NOT
+        // an error and NOT terminal like cancel — the job stays `Suspended` (resumable). Checked after
+        // cancel so a run cancelled AND paused resolves as cancelled (terminal wins).
+        if is_paused(node, ws, job_id).await? {
+            publish_run_event(
+                &node.bus,
+                ws,
+                job_id,
+                &RunEvent::RunFinish {
+                    outcome: RunOutcome::Suspended,
+                    answer: state.last_content.clone(),
+                },
+            )
+            .await;
             return Ok(state.last_content);
         }
 
