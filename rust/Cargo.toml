@@ -23,6 +23,7 @@ members = [
     "crates/host",
     "crates/inbox",
     "crates/ingest",
+    "crates/insights",
     "crates/jobs",
     "crates/mcp",
     "crates/outbox",
@@ -81,6 +82,7 @@ lb-frame = { path = "crates/frame" }
 lb-flows = { path = "crates/flows" }
 lb-inbox = { path = "crates/inbox" }
 lb-ingest = { path = "crates/ingest" }
+lb-insights = { path = "crates/insights" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
 lb-outbox = { path = "crates/outbox" }

@@ -18,6 +18,7 @@ lb-auth.workspace = true
 lb-registry.workspace = true
 lb-devkit.workspace = true
 lb-inbox.workspace = true
+lb-insights.workspace = true
 lb-prefs.workspace = true
 lb-assets.workspace = true
 lb-apikey.workspace = true

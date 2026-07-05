@@ -14,8 +14,15 @@ coding, or general management — and the run is assembled from that **persona**
 subset, a pinned grounding-skill set, and a persona identity prompt. All of it **data, never
 code** (rule 10), and all of it **narrowing, never widening** the capability wall.
 
-Broken into **four sub-scopes**, each independently reviewable and shippable, with one umbrella
-exit gate. This doc is the index, the thesis, and the cross-cutting rules.
+Broken into **four sub-scopes** (plus a follow-up correction, #5), each independently reviewable and
+shippable, with one umbrella exit gate. This doc is the index, the thesis, and the cross-cutting rules.
+
+> **Follow-up (post-ship correction).** #1 shipped "active persona" as a single mutable
+> `agent.config.active_persona` record — a **workspace-global toggle**. That is wrong: a persona is a
+> per-*session* focus, so two members (or one member's two tabs) can't hold different personas.
+> [persona-session](persona-session-scope.md) (#5) re-homes it: the *current* pick is the per-invoke
+> `persona` arg (client-held, already built), the *default* is a `Prefs.agent_persona` axis
+> (member → workspace-default fold). It reuses #1's record and run-assembly seam unchanged.
 
 > **Why now.** `agent-close-out-scope.md` deferred the "curated/bounded tool subset" as *"a
 > solution without a symptom."* The symptom has arrived (a confused external agent over the full
@@ -64,8 +71,8 @@ persona has its own safety posture). Sub-scopes keep each reviewable.
 ## Architecture map
 
 ```
-Settings → Agent → persona picker            per-invoke override: agent.invoke { persona }
-        │ writes agent.config.active_persona
+Settings → Agent → persona picker            current pick = agent.invoke { persona } (client/tab)  [persona-session #5]
+        │ default = Prefs.agent_persona (member → workspace-default fold)
         ▼
 persona:{id} record (built-in seed | workspace custom)      [persona-model]
    { granted_tools, grounding_skills, identity, extends? }
@@ -91,9 +98,11 @@ persona:{id} record (built-in seed | workspace custom)      [persona-model]
 | 2 | [persona-grounding](persona-grounding-scope.md) | The grounding corpus: promote the platform's own operating knowledge (`docs/testing/` runbooks; the MCP/ACP/extension-authoring skills) into seeded, grantable core skills a persona can pin — so the agent learns the platform from **docs, not from reading the whole codebase**. | #1 (pins), shipped core-skills seed |
 | 3 | [persona-catalog](persona-catalog-scope.md) | The built-in personas as **data** (a `personas.toml` seed): data-analyst, flow-author, widget-builder, rules-author (composes flow+data via `extends`), workspace-admin, channels-operator, system-manager — each with its exact verb allow-list and pinned skills. | #1 (record), #2 (skills to pin), the MCP verb inventory |
 | 4 | [persona-coding](persona-coding-scope.md) | The **extension-builder** persona: the agent codes UI/WASM/process **extensions** against the devkit, in a scoped workdir, driven — *"100% coding, but never on its own."* The persona with a safety posture of its own. | #1–#3, `scope/extensions/`, external-agent capability-wall for the sandbox story |
+| 5 | [persona-session](persona-session-scope.md) | **Correction of #1's selection.** "Active" is per-session, not per-workspace: the current pick becomes the per-invoke `persona` arg (client-held per tab), the default moves to a `Prefs.agent_persona` axis (member → ws-default fold, admin-owned global). No new verbs; reuses #1's record + seam. Fixes concurrent members / multi-tab stomping. | #1 (record, override seam, `resolve_persona`), `scope/prefs/` |
 
-Ship order: **#1 → #2 → #3 → #4**. #1 alone already fixes the observed confusion for a
-hand-authored persona; #3 makes it a product; #4 is the persona that needs the most care.
+Ship order: **#1 → #2 → #3 → #4**; **#5** is a post-ship correction, shippable any time after #1.
+#1 alone already fixes the observed confusion for a hand-authored persona; #3 makes it a product;
+#4 is the persona that needs the most care; #5 makes the pick correct under concurrent sessions.
 
 ## Cross-cutting platform checklist (addressed topic-wide; sub-scopes carry the detail)
 

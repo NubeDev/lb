@@ -51,6 +51,14 @@ pub struct Prefs {
     /// workspace can ship a default; it is not an i18n axis and no `format.*` reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_theme: Option<serde_json::Value>,
+    /// The member's (or workspace-default's) insight-notification global kill switch
+    /// (insights-notify-scope.md). `None` = inherit (the resolved chain defaults to `true` —
+    /// notifications ON). `Some(false)` ⇒ the digest reactor skips every delivery for this member's
+    /// subscriptions (accounting continues, so re-enabling picks up sane digests). This is a
+    /// whole-fold nullable axis (the shipped prefs pattern) — the host reads it once at delivery
+    /// time; zero host/gateway plumbing beyond that read. Not an i18n axis; no `format.*` reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight_notifications: Option<bool>,
 }
 
 /// Deserialize an `option<object>` column: a present map decodes normally, a stored `null` (the

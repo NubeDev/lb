@@ -30,6 +30,7 @@ mod host_tools;
 mod identity;
 mod inbox;
 mod ingest;
+mod insight;
 mod install;
 mod installed;
 mod layout;
@@ -198,6 +199,15 @@ pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
     series_latest_value, series_list, series_read_range, subscribe_series, DrainPass, IngestError,
     Qos, Sample, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
+};
+/// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella
+/// scope + occurrences/subscriptions/notify sub-scopes). The MCP bridge `call_insight_tool` is
+/// the one contract every host-native `insight.*` verb routes through; each verb re-checks its
+/// own `mcp:insight.<verb>:call` gate inside.
+pub use insight::{
+    call_insight_tool, insight_ack, insight_get, insight_list, insight_occurrences,
+    insight_policy_get, insight_policy_set, insight_raise, insight_resolve, insight_sub_create,
+    insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute, InsightSvcError,
 };
 pub use install::install_extension;
 pub use installed::installed;

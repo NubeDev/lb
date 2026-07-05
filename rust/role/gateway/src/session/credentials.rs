@@ -28,6 +28,26 @@ fn member_caps() -> Vec<String> {
         // verbs also back the flow `approval` gate + `sink` outbox node — rules-workflow-convergence.)
         "mcp:inbox.record:call",
         "mcp:outbox.enqueue:call",
+        // insights scope (umbrella + sub-scopes): the durable insight surface. Member-level for
+        // the read/act verbs (list/get/watch/ack/resolve/occurrences) + the producer raise; sub
+        // CRUD is member-owned (the owner is host-stamped from the caller); policy.get is member-
+        // read, policy.set is admin (the dev login doubles as admin). The gateway re-checks each
+        // cap server-side per verb (the deny-per-verb test). The matcher + ladder + digest
+        // reactor are pure / reactor-driven (no cap of their own — they run under the sub's stored
+        // principal + the system reactor authority).
+        "mcp:insight.raise:call",
+        "mcp:insight.get:call",
+        "mcp:insight.list:call",
+        "mcp:insight.ack:call",
+        "mcp:insight.resolve:call",
+        "mcp:insight.occurrences:call",
+        "mcp:insight.sub.create:call",
+        "mcp:insight.sub.list:call",
+        "mcp:insight.sub.get:call",
+        "mcp:insight.sub.delete:call",
+        "mcp:insight.sub.mute:call",
+        "mcp:insight.policy.get:call",
+        "mcp:insight.policy.set:call",
         "mcp:workspace.list:call",
         "mcp:workspace.create:call",
         // admin-crud: the dev principal is a workspace admin so the console can exercise every

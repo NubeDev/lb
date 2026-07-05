@@ -2,12 +2,22 @@
 //! creation applies a configurable default grant set … so a fresh workspace's agent is useful out of
 //! the box; an admin can revoke any of them like any other grant").
 //!
-//! Decided defaults (scope): the **read-only** core skills — `core.lb-cli`, `core.query`,
-//! `core.store-read`. Anything that drives writes stays opt-in per admin. The set is node config,
-//! overridable at the binary via `LB_DEFAULT_CORE_SKILLS` (comma-separated ids); an empty override
-//! grants nothing. This is NOT a grant bypass — each is written as an ordinary `grant:skill/{id}`
-//! relation the admin can see and revoke; a fresh workspace with no default set simply starts with
-//! an empty catalog until its admin grants.
+//! Decided defaults: the **grounding-skill set the built-in persona catalog pins**. A skill is a
+//! *doc the agent reads*, not a capability — granting one advertises knowledge, never a write; every
+//! tool a grounded agent then proposes still passes the unchanged wall (`persona ∩ agent ∩ caller`).
+//! So the default set is deliberately generous on *grounding* while staying strict on *tools*: an
+//! admin still grants each capability separately. Without this, every built-in persona except
+//! data-analyst fails **fail-closed** at run start (it pins `core.dashboard-mcp`, `core.panels`,
+//! `core.channels-inbox-outbox`, … — none of which were in the old 3-skill read-only default), which
+//! made the shipped catalog unusable out of the box.
+//!
+//! The set is node config, overridable at the binary via `LB_DEFAULT_CORE_SKILLS` (comma-separated
+//! ids; an empty override grants nothing — a workspace that wants the strict old posture sets it).
+//! This is NOT a grant bypass — each is written as an ordinary `grant:skill/{id}` relation the admin
+//! can see and revoke; a fresh workspace with an empty override starts with no grounding until its
+//! admin grants. Keep this list in sync with the `grounding_skills` in `personas/personas.toml` — a
+//! persona pinning a skill absent here fails fail-closed until an admin grants it (that is the
+//! contract, but the built-ins should work on a fresh workspace).
 //!
 //! Applied only at **workspace creation** (not a boot fan-out over existing workspaces): an existing
 //! workspace's skill set changes only when its admin grants. Best-effort — a grant-write failure
@@ -19,8 +29,44 @@ use lb_store::Store;
 
 use crate::assets::{GRANT, GRANT_SCOPE};
 
-/// The compiled-in default set (scope decision). The binary may override via `default_ids`.
-pub const DEFAULT_CORE_SKILLS: &[&str] = &["core.lb-cli", "core.query", "core.store-read"];
+/// The compiled-in default set: every grounding skill the built-in persona catalog
+/// (`personas/personas.toml`) pins, so a fresh workspace's built-in personas all start (a pinned
+/// skill is fail-closed at run assembly). Grounding = docs the agent reads; the capability wall still
+/// gates every tool, so this is generous-on-knowledge, strict-on-tools. Keep in sync with the
+/// personas' `grounding_skills`. The binary may override via `LB_DEFAULT_CORE_SKILLS` (empty ⇒ the
+/// strict "grant nothing" posture).
+pub const DEFAULT_CORE_SKILLS: &[&str] = &[
+    // data-analyst
+    "core.datasources",
+    "core.query",
+    "core.store-read",
+    "core.ingest-series",
+    // flow-author
+    "core.flows-mcp",
+    // widget-builder
+    "core.dashboard-mcp",
+    "core.genui-widget",
+    "core.panels",
+    "core.dashboard-widgets",
+    // rules-author
+    "core.rules",
+    // workspace-admin
+    "core.nav",
+    "core.auth-caps",
+    "core.prefs",
+    // channels-operator
+    "core.channels-inbox-outbox",
+    // system-manager
+    "core.lb-cli",
+    "core.mcp",
+    "core.agent",
+    // insights-analyst
+    "core.insights",
+    // extension-builder
+    "core.extension-authoring",
+    "core.extensions",
+    "core.e2e-backend",
+];
 
 /// Grant each id in `default_ids` to workspace `ws` as a `grant:skill/{id}` relation. Best-effort:
 /// a per-id write error is swallowed (the caller — `workspace_create` — treats the default grants as

@@ -39,7 +39,7 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
   active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the
   capability wall (effective = persona ∩ agent ∩ caller). Fixes the observed "agent confused by
-  the whole surface" symptom. Umbrella `agent-personas-scope.md` + four sub-scopes:
+  the whole surface" symptom. Umbrella `agent-personas-scope.md` + four sub-scopes (+ #5 correction):
   `persona-model-scope.md` (the record, two tiers, `agent.persona.*` CRUD, `extends`, run-assembly
   application on both runtimes — absorbs acp-driver's unbuilt `granted_tools`/`persona_skill`),
   `persona-grounding-scope.md` (seed the FULL `docs/skills` corpus + promote `docs/testing/`
@@ -50,7 +50,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   extension-builder; destructive verbs excluded from all), `persona-coding-scope.md` (the
   extension-builder posture — "100% coding, never on its own": devkit surface only, Ask-gated
   publish/install via the shipped Part-2 policy, in-house-runtime-only until the external-agent
-  capability wall ships).
+  capability wall ships), and `persona-session-scope.md` (#5, post-ship correction: "active" is
+  per-session not per-workspace — current pick = per-invoke `persona` arg (client/tab), default =
+  `Prefs.agent_persona` axis with a member → ws-default fold; fixes concurrent members / multi-tab
+  stomping with zero new verbs).
 - `app/` — the **React Native mobile app** (iOS/Android): a thin RN shell that is the fourth
   client of the gateway (login → many workspaces → REST + SSE; **zenoh-ts rejected** — it would
   expose a second, unmediated server surface beside the gateway), plus **federated app extensions**

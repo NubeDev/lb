@@ -4881,6 +4881,7 @@ dependencies = [
  "lb-flows",
  "lb-inbox",
  "lb-ingest",
+ "lb-insights",
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
@@ -4926,6 +4927,17 @@ dependencies = [
 
 [[package]]
 name = "lb-ingest"
+version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "lb-insights"
 version = "0.1.0"
 dependencies = [
  "lb-store",
@@ -5092,6 +5104,7 @@ dependencies = [
  "lb-flows",
  "lb-host",
  "lb-inbox",
+ "lb-insights",
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
