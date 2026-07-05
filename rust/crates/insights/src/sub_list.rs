@@ -8,19 +8,28 @@
 use lb_store::Store;
 
 use crate::error::InsightsError;
-use crate::subscription::Subscription;
+use crate::subscription::{Subscription, TABLE};
+use crate::table_scan::scan_all;
 
 /// List subs in workspace `ws`. If `all` is true, returns every ws sub (admin lens); else only
 /// `owner`'s subs. The host gates `all` on the admin cap.
 // SCOPE: docs/scope/insights/insight-subscriptions-scope.md §"Verb surface"
 pub async fn sub_list(
-    _store: &Store,
-    _ws: &str,
-    _owner: &str,
-    _all: bool,
+    store: &Store,
+    ws: &str,
+    owner: &str,
+    all: bool,
 ) -> Result<Vec<Subscription>, InsightsError> {
-    // 1. If `all` ⇒ scan the whole `insight_sub` table in ws (admin lens; the host checked cap).
-    // 2. Else ⇒ `list(store, ws, TABLE, "owner", owner)`.
-    // 3. Decode each row; return.
-    todo!("insights: sub list (own + admin lens) — SCOPE: subscriptions-scope.md §Verb surface")
+    let rows = if all {
+        // Admin lens — every sub in the workspace (the host verified the admin cap).
+        scan_all(store, ws, TABLE).await?
+    } else {
+        // Own lens — filter by owner via the cheap `data.owner` field path.
+        lb_store::list(store, ws, TABLE, "owner", owner).await?
+    };
+    let subs = rows
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect();
+    Ok(subs)
 }

@@ -156,6 +156,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "faceted, keyset-paged list of insights (status/severity/origin/tags/range)",
     },
     HostTool {
+        tool: "insight.watch",
+        group: "insight",
+        description: "SSE live feed of raise/ack/resolve events on ws/{ws}/insight/events",
+    },
+    HostTool {
         tool: "insight.ack",
         group: "insight",
         description: "ack an insight (open → acked; acked_by host-forced)",

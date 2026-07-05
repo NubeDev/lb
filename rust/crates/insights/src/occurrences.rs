@@ -8,10 +8,12 @@
 //!
 //! **STUB**: the keyset-paged ring scan body is deferred — see the punch-list.
 
+use serde_json::Value;
+
 use lb_store::Store;
 
 use crate::error::InsightsError;
-use crate::occurrence::Occurrence;
+use crate::occurrence::{Occurrence, TABLE};
 
 /// The keyset cursor for occurrence paging. Newest-first: the next page starts strictly BEFORE
 /// (older than) the cursor's `seq`.
@@ -33,14 +35,47 @@ pub struct OccurrencePage {
 // SCOPE: docs/scope/insights/insight-occurrences-scope.md §"Verb surface"
 // SCOPE: docs/scope/datasources/page-cursor-scope.md (the keyset contract)
 pub async fn occurrences(
-    _store: &Store,
-    _ws: &str,
-    _insight_id: &str,
-    _cursor: Option<OccCursor>,
-    _limit: usize,
+    store: &Store,
+    ws: &str,
+    insight_id: &str,
+    cursor: Option<OccCursor>,
+    limit: usize,
 ) -> Result<OccurrencePage, InsightsError> {
-    // 1. Scan the `insight_occ` table filtered by `insight_id` (the store `list` field path).
-    // 2. Order newest-first by `seq` (desc); keyset-paginate strictly-before `cursor.seq`.
-    // 3. Bound the page at `limit`; compute `next` from the oldest returned row.
-    todo!("insights: occurrence ring read (newest-first keyset) — SCOPE: occurrences-scope.md §Verb surface")
+    let limit = limit.clamp(1, 500);
+    // Occurrence rows are stored FLAT by `capped_insert` (no `data` envelope), so read them with a
+    // direct flat query (the telemetry precedent), NOT `store::list` (which assumes the wrapper).
+    // Filter to this insight; the ring is bounded by the policy cap, so ordering in Rust is cheap.
+    let sql = "SELECT * OMIT id, in, out FROM type::table($tb) WHERE insight_id = $iid";
+    let mut resp = store
+        .query_ws(
+            ws,
+            sql,
+            vec![
+                ("tb".into(), Value::String(TABLE.to_string())),
+                ("iid".into(), Value::String(insight_id.to_string())),
+            ],
+        )
+        .await?;
+    let rows: Vec<Value> = resp
+        .take(0)
+        .map_err(|e| lb_store::StoreError::Decode(e.to_string()))?;
+    let mut items: Vec<Occurrence> = rows
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect();
+    // Newest-first by the monotone per-insight sequence.
+    items.sort_by(|a, b| b.seq.cmp(&a.seq));
+    // Keyset: strictly before (older than) the cursor's seq.
+    if let Some(cur) = cursor {
+        items.retain(|o| o.seq < cur.seq);
+    }
+    // The `next` cursor is the oldest row of a FULL page (a short page is the end).
+    let has_more = items.len() > limit;
+    items.truncate(limit);
+    let next = if has_more {
+        items.last().map(|o| OccCursor { seq: o.seq })
+    } else {
+        None
+    };
+    Ok(OccurrencePage { items, next })
 }

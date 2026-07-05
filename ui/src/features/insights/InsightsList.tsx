@@ -12,14 +12,24 @@ interface Props {
   items: Insight[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** True when a next keyset page exists — renders the "Load more" affordance. */
+  hasMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 /** Render the insights list. Newest-first (the verb already orders). */
-export function InsightsList({ items, selectedId, onSelect }: Props): JSX.Element {
+export function InsightsList({
+  items,
+  selectedId,
+  onSelect,
+  hasMore,
+  onLoadMore,
+}: Props): JSX.Element {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">No insights match this filter.</p>;
   }
   return (
+    <>
     <ul className="divide-y divide-border rounded-md border border-border">
       {items.map((it) => (
         <li key={it.id}>
@@ -37,7 +47,7 @@ export function InsightsList({ items, selectedId, onSelect }: Props): JSX.Elemen
                 <StatusPill status={it.status} />
               </div>
               <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                <code className="rounded bg-muted px-1">{it.dedup_key}</code>
+                <code className="rounded-md bg-muted px-1">{it.dedup_key}</code>
                 <span>×{it.count}</span>
                 <span>·</span>
                 <span>{new Date(it.last_ts).toLocaleString()}</span>
@@ -47,6 +57,16 @@ export function InsightsList({ items, selectedId, onSelect }: Props): JSX.Elemen
         </li>
       ))}
     </ul>
+    {hasMore && (
+      <button
+        type="button"
+        onClick={onLoadMore}
+        className="mt-2 w-full rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent"
+      >
+        Load more
+      </button>
+    )}
+    </>
   );
 }
 

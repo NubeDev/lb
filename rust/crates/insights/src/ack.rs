@@ -8,24 +8,43 @@
 //!
 //! **STUB**: the state-transition + refuse-on-resolved body is deferred — see the punch-list.
 
-use lb_store::Store;
+use lb_store::{write, Store};
 
 use crate::error::InsightsError;
+use crate::insight::OCC_TABLE;
+use crate::insight_id::record_id;
+use crate::status::Status;
 
 /// Ack insight `id` in workspace `ws` as `acked_by` at logical ts `ts`. `acked_by` is the
 /// principal's `sub` (host-supplied, never caller-supplied).
 // SCOPE: docs/scope/insights/insights-scope.md §"MCP surface" (insight.ack)
 // SCOPE: docs/scope/insights/insight-notify-scope.md §"Ack means 'I know'" (the suppression rule)
 pub async fn ack(
-    _store: &Store,
-    _ws: &str,
-    _id: &str,
-    _acked_by: &str,
-    _ts: u64,
+    store: &Store,
+    ws: &str,
+    id: &str,
+    acked_by: &str,
+    ts: u64,
 ) -> Result<(), InsightsError> {
-    // 1. Read the insight; if absent ⇒ BadInput ("no such insight").
-    // 2. If `resolved` ⇒ BadInput ("resolved insights stay resolved — re-open via raise").
-    // 3. If already `acked` ⇒ no-op success (idempotent).
-    // 4. Else set status=acked, status_by=acked_by, status_ts=ts; write back.
-    todo!("insights: ack transition (refuse on resolved, idempotent on acked) — SCOPE: insights-scope.md §MCP surface")
+    let Some(mut insight) = crate::get::get(store, ws, id).await? else {
+        return Err(InsightsError::BadInput(format!("no such insight: {id}")));
+    };
+    match insight.status {
+        // A resolved insight stays resolved — re-open is the raise verb's job, not ack's.
+        Status::Resolved => {
+            return Err(InsightsError::BadInput(
+                "resolved insights stay resolved — re-open via raise".into(),
+            ));
+        }
+        // Idempotent: already acked ⇒ no-op success.
+        Status::Acked => return Ok(()),
+        Status::Open => {}
+    }
+    insight.status = Status::Acked;
+    insight.status_by = Some(acked_by.to_string());
+    insight.status_ts = Some(ts);
+    let value = serde_json::to_value(&insight)
+        .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
+    write(store, ws, OCC_TABLE, &record_id(id), &value).await?;
+    Ok(())
 }

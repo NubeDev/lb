@@ -14,10 +14,11 @@ use std::sync::{Arc, Mutex};
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    agent_config_set, agent_persona_get, call_agent_tool, grant_skill, invoke_via_runtime,
-    reachable_tools, seed_core_skills, seed_personas, AgentConfig, AllowedTool, ErasedModel, Node,
-    Persona, RunContext, RuntimeRegistry, Substrate,
+    agent_persona_get, call_agent_tool, grant_skill, invoke_via_runtime, reachable_tools,
+    seed_core_skills, seed_personas, AllowedTool, ErasedModel, Node, Persona, RunContext,
+    RuntimeRegistry, Substrate,
 };
+use lb_prefs::{set_workspace_prefs, Prefs};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 use lb_role_gateway::dev_claims;
 
@@ -432,13 +433,12 @@ async fn the_confusion_fix_the_same_task_narrows_from_the_whole_surface_to_the_f
     // BEFORE: no persona → the full reachable palette.
     let before = menu_under_persona_none(&node, ws, &admin).await;
 
-    // AFTER: pick the matching persona (the workspace sets it active).
-    agent_config_set(
-        &node,
-        &admin,
+    // AFTER: pick the matching persona (the workspace defaults to it via the prefs axis).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("builtin.data-analyst".into()),
+        &Prefs {
+            agent_persona: Some("builtin.data-analyst".into()),
             ..Default::default()
         },
     )
@@ -506,29 +506,29 @@ async fn menu_under_persona_none(node: &Arc<Node>, ws: &str, caller: &Principal)
 // ================================================================================================
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn a_ws_b_active_persona_never_affects_a_ws_a_run() {
-    // Built-in personas are readable everywhere, but the ACTIVE pick rides the ws-scoped agent.config.
-    // ws-B setting `system-manager` active must NOT narrow (or widen) a ws-A run — the pick is walled.
+async fn a_ws_b_default_persona_never_affects_a_ws_a_run() {
+    // Built-in personas are readable everywhere, but the DEFAULT pick rides the ws-scoped prefs
+    // record (persona-session #5). ws-B defaulting to a narrow persona must NOT narrow (or widen) a
+    // ws-A run — the pick is walled.
     let node = Arc::new(Node::boot().await.expect("node boots"));
     let admin_a = admin_principal("user:ada", "ws-a");
     let admin_b = admin_principal("user:bo", "ws-b");
     setup_catalog(&node, "ws-a", &admin_a).await;
     setup_catalog(&node, "ws-b", &admin_b).await;
 
-    // ws-B picks a NARROW persona (data-analyst); ws-A picks NONE.
-    agent_config_set(
-        &node,
-        &admin_b,
+    // ws-B defaults to a NARROW persona (data-analyst) via the ws-default prefs axis; ws-A sets NONE.
+    set_workspace_prefs(
+        &node.store,
         "ws-b",
-        &AgentConfig {
-            active_persona: Some("builtin.data-analyst".into()),
+        &Prefs {
+            agent_persona: Some("builtin.data-analyst".into()),
             ..Default::default()
         },
     )
     .await
     .unwrap();
 
-    // A ws-A run (no active persona) sees its FULL ws-A palette — ws-B's pick is invisible to it.
+    // A ws-A run (no default persona) sees its FULL ws-A palette — ws-B's pick is invisible to it.
     let a_menu = menu_under_persona_none(&node, "ws-a", &admin_a).await;
     // A ws-B run (active data-analyst) is narrowed.
     let (registry, cap) = recording_registry();
@@ -536,7 +536,7 @@ async fn a_ws_b_active_persona_never_affects_a_ws_a_run() {
         &node,
         &registry,
         None,
-        None, // no explicit persona → resolves ws-B's active data-analyst
+        None, // no explicit persona → resolves ws-B's ws-default data-analyst
         &admin_b,
         &admin_b.caps().to_vec(),
         "ws-b",

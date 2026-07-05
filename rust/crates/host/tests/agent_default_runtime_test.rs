@@ -90,6 +90,7 @@ async fn set_default(node: &Node, admin: &Principal, ws: &str, runtime: &str) {
         &AgentConfig {
             active_definition: None,
             active_persona: None,
+            enabled_personas: None,
             default_runtime: Some(runtime.into()),
             model_endpoint: None,
         },

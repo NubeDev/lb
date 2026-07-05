@@ -10,12 +10,13 @@
 //! scaffold-session punch-list.
 
 use lb_store::Store;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::error::InsightsError;
-use crate::insight::Insight;
+use crate::insight::{Insight, OCC_TABLE};
 use crate::severity::Severity;
 use crate::status::Status;
+use crate::table_scan::scan_all;
 
 /// The AND filter. Every provided field must match; all absent = "all insights in this ws".
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -70,12 +71,58 @@ pub struct ListPage {
 }
 
 /// List insights in workspace `ws` matching `query`, newest-first, keyset-paged.
+///
+/// `tag_allow` is the tag-facet gate: when `query.filter.tags` is non-empty, the host pre-resolves
+/// the matching entity ids through the tag graph (`tags.find`) and passes the id set here (the
+/// crate is tag-graph-agnostic — README §7, the wall is the host's). `None` ⇒ no tag facet (or the
+/// host resolved "everything"); `Some(set)` ⇒ keep only insights whose id is in the set.
 // SCOPE: docs/scope/insights/insights-scope.md §"MCP surface" (insight.list)
 // SCOPE: docs/scope/datasources/page-cursor-scope.md (the keyset contract)
-pub async fn list(_store: &Store, _ws: &str, _query: ListQuery) -> Result<ListPage, InsightsError> {
-    // 1. Scan the `insight` table in ws (filtered by status/severity via the store `list` field
-    //    path for the cheap axes, then post-filter the tag subset + range in Rust).
-    // 2. Order newest-first by (last_ts, id); keyset-paginate strictly after `query.cursor`.
-    // 3. Bound the page at `query.limit`; compute `next` from the last returned row.
-    todo!("insights: faceted list + keyset paging — SCOPE: insights-scope.md §MCP surface")
+pub async fn list(
+    store: &Store,
+    ws: &str,
+    query: ListQuery,
+    tag_allow: Option<&HashSet<String>>,
+) -> Result<ListPage, InsightsError> {
+    let f = &query.filter;
+    let rows = scan_all(store, ws, OCC_TABLE).await?;
+    let mut items: Vec<Insight> = rows
+        .into_iter()
+        .filter_map(|v| serde_json::from_value::<Insight>(v).ok())
+        .filter(|i| f.status.map(|s| i.status == s).unwrap_or(true))
+        .filter(|i| f.severity.map(|s| i.severity.at_least(s)).unwrap_or(true))
+        .filter(|i| {
+            f.origin_ref
+                .as_ref()
+                .map(|r| &i.origin.reference == r)
+                .unwrap_or(true)
+        })
+        .filter(|i| {
+            f.range
+                .map(|(from, to)| i.last_ts >= from && i.last_ts <= to)
+                .unwrap_or(true)
+        })
+        .filter(|i| tag_allow.map(|set| set.contains(&i.id)).unwrap_or(true))
+        .collect();
+
+    // Newest-first by (last_ts, id) — id is the ULID tiebreaker for same-ts rows.
+    items.sort_by(|a, b| b.last_ts.cmp(&a.last_ts).then_with(|| b.id.cmp(&a.id)));
+
+    // Keyset: strictly after the cursor in the (last_ts DESC, id DESC) order.
+    if let Some(cur) = &query.cursor {
+        items.retain(|i| (i.last_ts, i.id.as_str()) < (cur.ts, cur.id.as_str()));
+    }
+
+    let limit = query.limit.clamp(1, 500);
+    let has_more = items.len() > limit;
+    items.truncate(limit);
+    let next = if has_more {
+        items.last().map(|i| PageCursor {
+            ts: i.last_ts,
+            id: i.id.clone(),
+        })
+    } else {
+        None
+    };
+    Ok(ListPage { items, next })
 }

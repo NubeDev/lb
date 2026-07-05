@@ -29,7 +29,9 @@ use std::sync::Arc;
 
 use lb_auth::Principal;
 
+use super::config::get_agent_config;
 use super::defs::DefinitionEndpoint;
+use super::overlay_endpoint::overlay_config_endpoint;
 use super::resolve_definition::resolve_active_definition;
 use super::resolve_key::resolve_endpoint_key_host;
 use super::runtime::ErasedModel;
@@ -65,7 +67,17 @@ pub async fn resolve_workspace_model(
     // (1) The active definition's endpoint → a real adapter (memoized). A missing pick / missing adapter
     // falls through to the node fallback below — never an error, never a panic.
     if let Ok(def) = resolve_active_definition(node, caller, ws, None).await {
-        let ep = &def.model_endpoint;
+        // Overlay the workspace's live `agent.config.model_endpoint` selection layer onto the
+        // definition's preset endpoint. A built-in is read-only, so a workspace keys its *pick* by
+        // writing a sealed `api_key_secret` PATH onto `agent.config` (the catalog's "Set model key");
+        // without this overlay the resolver read the definition's endpoint only and never saw that key.
+        // A store read error is treated as "no config" (best-effort, never a panic).
+        let cfg = get_agent_config(&node.store, ws).await.ok().flatten();
+        let ep = overlay_config_endpoint(
+            &def.model_endpoint,
+            cfg.as_ref().and_then(|c| c.model_endpoint.as_ref()),
+        );
+        let ep = &ep;
         let key = cache_key(ws, ep);
         if let Some(model) = node.workspace_model_cached(&key) {
             return model;

@@ -7,7 +7,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::occurrence::MAX_DATA_BYTES;
 use crate::subscription::MAX_PER_WORKSPACE as DEFAULT_SUB_CAP;
 
 /// The store table the policy record lives in. One row per workspace namespace, id = ws id.
@@ -120,9 +119,4 @@ pub fn validate_ring_cap(cap: usize) -> Result<usize, String> {
         ));
     }
     Ok(cap)
-}
-
-/// The size cap re-exported for the occurrence appender (single source of truth for the constant).
-pub fn occurrence_data_cap() -> usize {
-    MAX_DATA_BYTES
 }

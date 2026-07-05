@@ -3,18 +3,14 @@
 //! same deliveries (the scope's determinism test). Real backend (rule 9) is not needed for THIS
 //! surface — it's a pure function over `(state, intent|tick, policy, now)`. The integration
 //! ladder headline (raise ×10 through the real raise path) lives in `host/tests/insights_test.rs`.
-//!
-//! **SKELETON**: every test is NAMED for a scope-named case + uses `ladder_step` directly.
-//! Bodies are `todo!()` so a green-but-lying stub is impossible. The implementing session fills
-//! them against `docs/scope/insights/insight-notify-scope.md §"The state machine"`.
 
 use lb_insights::{
-    ladder_step, policy_defaults, DeliveryReason, Intent, IntentKind, LadderInput, NotifyState,
-    Policy, Severity,
+    ladder_step, policy_defaults, Delivery, DeliveryReason, Intent, IntentKind, LadderInput,
+    NotifyState, Policy, Severity,
 };
 
 /// A minimal intent fixture (the dedup-key/sub identity is arbitrary for the pure fn).
-fn intent(kind: IntentKind, severity: Severity, ts: u64) -> Intent {
+fn intent(kind: IntentKind, severity: Severity, _ts: u64) -> Intent {
     Intent {
         sub_id: "sub-1".into(),
         insight_id: "ins-1".into(),
@@ -29,93 +25,254 @@ fn policy() -> Policy {
     policy_defaults()
 }
 
+/// Feed one Intent, delivery allowed (kill switch on, not muted, no throttle pin).
+fn step_intent(
+    state: Option<NotifyState>,
+    kind: IntentKind,
+    sev: Severity,
+    acked: bool,
+    now: u64,
+) -> (NotifyState, Vec<Delivery>) {
+    ladder_step(
+        state,
+        LadderInput::Intent {
+            intent: &intent(kind, sev, now),
+            acked,
+            now,
+        },
+        &policy(),
+        None,
+        false,
+        true,
+    )
+}
+
 // --- breakthroughs (checked FIRST, regardless of level) ----------------------------------
 
 #[test]
 fn first_key_breaks_through_immediately() {
-    // SCOPE: notify-scope.md §"The state machine" → Breakthrough. No prior state row + a Raise
-    // intent ⇒ deliver now (FirstKey), keep the level at L0.
-    let _state: Option<NotifyState> = None;
-    let _input = LadderInput::Intent {
-        intent: &intent(IntentKind::Raise, Severity::Warning, 1),
-        acked: false,
-        now: 1,
-    };
-    let _policy = policy();
-    let (_next, deliveries) = ladder_step(_state, _input, &_policy, None, false, true);
-    let _ = deliveries;
-    // assert deliveries.len() == 1 + reason == FirstKey + level stays L0.
-    todo!("insights: first-key breakthrough — SCOPE: notify-scope.md §The state machine")
+    // No prior state row + a Raise intent ⇒ deliver now (FirstKey), keep the level at L0.
+    let (next, deliveries) = step_intent(None, IntentKind::Raise, Severity::Warning, false, 1);
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].reason, DeliveryReason::FirstKey);
+    assert_eq!(next.level, 0);
 }
 
 #[test]
 fn severity_escalation_breaks_through_at_any_level() {
-    // SCOPE: notify-scope.md §"Breakthroughs beat the ladder". At L2 (daily) + last_severity =
-    // warning, a critical intent delivers immediately; level UNCHANGED (a breakthrough doesn't
-    // reset the ladder).
-    todo!("insights: severity-escalation breakthrough — SCOPE: notify-scope.md §The state machine")
+    // At L2 (daily) + last_severity = warning, a critical raise delivers immediately; level
+    // UNCHANGED (a breakthrough doesn't reset the ladder).
+    let mut state = NotifyState::default_for("sub-1", "key-1", 0);
+    state.level = 2;
+    state.last_severity = Some(Severity::Warning);
+    let (next, deliveries) = step_intent(
+        Some(state),
+        IntentKind::Raise,
+        Severity::Critical,
+        false,
+        100,
+    );
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].reason, DeliveryReason::Escalation);
+    assert_eq!(next.level, 2, "breakthrough keeps the level");
 }
 
 #[test]
 fn reopen_always_breaks_through() {
-    // SCOPE: notify-scope.md §"Breakthroughs beat the ladder". A Reopen intent delivers at any
-    // level, regardless of cooldown / window.
-    todo!("insights: reopen breakthrough — SCOPE: notify-scope.md §The state machine")
+    let mut state = NotifyState::default_for("sub-1", "key-1", 0);
+    state.level = 3;
+    state.last_severity = Some(Severity::Critical);
+    let (_next, deliveries) = step_intent(
+        Some(state),
+        IntentKind::Reopen,
+        Severity::Critical,
+        false,
+        100,
+    );
+    assert_eq!(deliveries.len(), 1);
+    assert_eq!(deliveries[0].reason, DeliveryReason::Reopen);
 }
 
 #[test]
 fn same_severity_raise_does_not_break_through() {
-    // SCOPE: notify-scope.md — a same-severity (non-reopen) raise at L1+ does NOT deliver
-    // immediately; it accumulates into `pending`.
-    todo!("insights: same-severity raise accumulates, no breakthrough — SCOPE: notify-scope.md §The state machine")
+    // At L1+, a same-severity (non-reopen) raise does NOT deliver immediately; it accumulates.
+    let mut state = NotifyState::default_for("sub-1", "key-1", 0);
+    state.level = 1;
+    state.last_severity = Some(Severity::Warning);
+    let (next, deliveries) = step_intent(
+        Some(state),
+        IntentKind::Raise,
+        Severity::Warning,
+        false,
+        100,
+    );
+    assert!(
+        deliveries.is_empty(),
+        "no breakthrough at L1 for same severity"
+    );
+    assert_eq!(next.pending.count, 1, "accumulated into pending");
 }
 
 // --- escalate / decay --------------------------------------------------------------------
 
 #[test]
 fn escalate_after_threshold_within_window() {
-    // SCOPE: notify-scope.md §"Escalate". ≥ escalation_threshold deliveries-worth of noise within
-    // the current window ⇒ level + 1 (clamped at 4).
-    todo!("insights: escalate at threshold — SCOPE: notify-scope.md §The state machine")
+    // ≥ escalation_threshold (default 3) raises within the window ⇒ level + 1. First raise is a
+    // first-key breakthrough at L0; the 2nd/3rd within cooldown accumulate then escalate.
+    let mut state = None;
+    let mut last = NotifyState::default_for("sub-1", "key-1", 0);
+    for i in 1..=3u64 {
+        let (next, _d) = step_intent(state.take(), IntentKind::Raise, Severity::Warning, false, i);
+        last = next;
+        state = Some(last.clone());
+    }
+    assert_eq!(last.level, 1, "3 hits in the window escalated L0 -> L1");
 }
 
 #[test]
 fn decay_after_one_fully_quiet_window() {
-    // SCOPE: notify-scope.md §"Decay". One fully-quiet window at the current level ⇒ level - 1
-    // (clamped at 0).
-    todo!("insights: decay after one quiet window — SCOPE: notify-scope.md §The state machine")
+    // A row at L2 with NO pending, ticked past one window ⇒ level - 1.
+    let mut state = NotifyState::default_for("sub-1", "key-1", 0);
+    state.level = 2;
+    let pol = policy();
+    let window = pol.windows[2];
+    let (next, deliveries) = ladder_step(
+        Some(state),
+        LadderInput::Tick { now: window + 1 },
+        &pol,
+        None,
+        false,
+        true,
+    );
+    assert!(deliveries.is_empty(), "quiet window emits no digest");
+    assert_eq!(next.level, 1, "one quiet window decayed L2 -> L1");
 }
 
 #[test]
 fn l0_cooldown_accumulates_extras_into_pending() {
-    // SCOPE: notify-scope.md §"L0 immediate". At L0, one immediate post per cooldown per key;
-    // extra raises within the cooldown accumulate into `pending` for the next post.
-    todo!("insights: L0 cooldown accumulation — SCOPE: notify-scope.md §The state machine")
+    // At L0, one immediate post per cooldown; extra raises within the cooldown accumulate. Use
+    // Reopen/first-key only once — after the first immediate, further same-severity raises inside
+    // the cooldown go to pending (and would escalate at the threshold, so keep under it).
+    let mut pol = policy();
+    pol.escalation_threshold = 100; // isolate the cooldown behaviour from escalation
+    let (s1, d1) = ladder_step(
+        None,
+        LadderInput::Intent {
+            intent: &intent(IntentKind::Raise, Severity::Info, 0),
+            acked: false,
+            now: 0,
+        },
+        &pol,
+        None,
+        false,
+        true,
+    );
+    assert_eq!(d1.len(), 1, "first raise posts immediately");
+    // Second raise 1 minute later (within the 15-min cooldown) ⇒ no post, accumulates.
+    let (s2, d2) = ladder_step(
+        Some(s1),
+        LadderInput::Intent {
+            intent: &intent(IntentKind::Raise, Severity::Info, 60_000),
+            acked: false,
+            now: 60_000,
+        },
+        &pol,
+        None,
+        false,
+        true,
+    );
+    assert!(d2.is_empty(), "within cooldown ⇒ no immediate post");
+    assert_eq!(s2.pending.count, 1, "the extra accumulated into pending");
 }
 
 // --- ack suppression ---------------------------------------------------------------------
 
 #[test]
 fn acked_insight_suppresses_delivery_but_accounting_continues() {
-    // SCOPE: notify-scope.md §"Ack means 'I know'". Intents for an acked insight update
-    // pending/window_hits but never deliver; escalation/re-open still break through.
-    todo!("insights: ack suppression — SCOPE: notify-scope.md §The state machine")
+    // A non-breakthrough raise on an acked insight at L0 ⇒ no delivery, but pending advances.
+    let mut state = NotifyState::default_for("sub-1", "key-1", 0);
+    state.last_severity = Some(Severity::Warning);
+    let (next, deliveries) =
+        step_intent(Some(state), IntentKind::Raise, Severity::Warning, true, 100);
+    assert!(deliveries.is_empty(), "acked suppresses delivery");
+    assert_eq!(next.pending.count, 1, "accounting continues under ack");
+
+    // But a critical escalation still breaks through the ack.
+    let mut escalating = NotifyState::default_for("sub-1", "key-1", 0);
+    escalating.last_severity = Some(Severity::Warning);
+    let (_n, d2) = step_intent(
+        Some(escalating),
+        IntentKind::Raise,
+        Severity::Critical,
+        true,
+        101,
+    );
+    assert_eq!(d2.len(), 1, "escalation un-suppresses even under ack");
 }
 
 // --- throttle override (pinned sub) ------------------------------------------------------
 
 #[test]
 fn throttle_override_skips_escalate_and_decay_but_keeps_breakthroughs() {
-    // SCOPE: notify-scope.md §"Per-sub — throttle_override". A pinned sub skips escalate/decay;
-    // breakthroughs + ack-suppression still apply.
-    todo!("insights: throttle override pins level — SCOPE: notify-scope.md §Settings surface")
+    use lb_insights::ThrottleOverride;
+    let pol = policy();
+    // Pinned at Daily (L2). Sustained noise must NOT escalate past L2.
+    let mut state = Some(NotifyState::default_for("sub-1", "key-1", 0));
+    state.as_mut().unwrap().level = 2;
+    state.as_mut().unwrap().last_severity = Some(Severity::Warning);
+    for i in 1..=5u64 {
+        let (next, _d) = ladder_step(
+            state.take(),
+            LadderInput::Intent {
+                intent: &intent(IntentKind::Raise, Severity::Warning, i),
+                acked: false,
+                now: i,
+            },
+            &pol,
+            Some(ThrottleOverride::Daily),
+            false,
+            true,
+        );
+        state = Some(next);
+    }
+    assert_eq!(state.unwrap().level, 2, "pinned level never escalates");
+
+    // Decay is skipped too: a quiet window at a pinned level stays put.
+    let mut quiet = NotifyState::default_for("sub-1", "key-1", 0);
+    quiet.level = 2;
+    let (after_tick, _d) = ladder_step(
+        Some(quiet),
+        LadderInput::Tick {
+            now: pol.windows[2] + 1,
+        },
+        &pol,
+        Some(ThrottleOverride::Daily),
+        false,
+        true,
+    );
+    assert_eq!(after_tick.level, 2, "pinned level never decays");
 }
 
 // --- determinism -------------------------------------------------------------------------
 
 #[test]
 fn same_input_sequence_and_clock_yield_the_same_deliveries() {
-    // SCOPE: notify-scope.md §"Determinism". The state machine is a pure function — running the
-    // same intent sequence + clock twice yields byte-identical deliveries.
-    todo!("insights: determinism — SCOPE: notify-scope.md §Determinism")
+    let run = || {
+        let mut state: Option<NotifyState> = None;
+        let mut all = Vec::new();
+        for (i, kind, sev) in [
+            (1u64, IntentKind::Raise, Severity::Warning),
+            (2, IntentKind::Raise, Severity::Warning),
+            (3, IntentKind::Raise, Severity::Critical),
+            (4, IntentKind::Reopen, Severity::Critical),
+        ] {
+            let (next, d) = step_intent(state.take(), kind, sev, false, i);
+            all.extend(d);
+            state = Some(next);
+        }
+        (state.unwrap(), all)
+    };
+    let a = run();
+    let b = run();
+    assert_eq!(a, b, "the pure state machine is deterministic");
 }

@@ -59,6 +59,16 @@ pub struct Prefs {
     /// time; zero host/gateway plumbing beyond that read. Not an i18n axis; no `format.*` reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub insight_notifications: Option<bool>,
+    /// The member's (or workspace-default's) **default agent persona id** (persona-session #5 — where
+    /// #1's `agent.config.active_persona` toggle re-homed). Consulted by the host's `resolve_persona`
+    /// when an invoke carries no explicit `persona`: member record → workspace-default record, first
+    /// `Some` wins. The id is OPAQUE data (rule 10); a dangling id warns + runs un-narrowed at the
+    /// consumer, never here. `None` = inherit; an **empty string clears the axis** (the MERGE-can't-
+    /// write-null workaround — the consumer's `filter(|s| !s.is_empty())` treats it as unset). A
+    /// whole-fold nullable axis (the `insight_notifications` pattern): not an i18n axis, not in
+    /// `ResolvedPrefs`, no `format.*` reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_persona: Option<String>,
 }
 
 /// Deserialize an `option<object>` column: a present map decodes normally, a stored `null` (the

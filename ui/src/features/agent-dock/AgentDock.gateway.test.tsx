@@ -25,9 +25,13 @@ import { useRealGateway, signInReal, signInWithCaps, drainAgentRuns } from "@/te
 let n = 0;
 const nextWs = () => `dock-${n++}`;
 
-/** A fixed page-context source so the dock is router-free in tests (the provider's decision-3 seam). */
+/** A fixed page-context source so the dock is router-free in tests (the provider's decision-3 seam).
+ *  The surface is "telemetry" deliberately — NO built-in persona claims it (persona-session #5), so
+ *  the dock's persona focus resolves to "no suggestion" and sends NO `persona` arg. That keeps this
+ *  suite focused on the dock's run lifecycle (the message-of-record + controls + history paths),
+ *  not on persona pinning — proven separately in DockPersonaChip.gateway.test.tsx. */
 const ctx: PageContextSource = {
-  capture: () => ({ surface: "dashboards", path: "/dashboards", search: { d: "sales" } }),
+  capture: () => ({ surface: "telemetry", path: "/telemetry", search: {} }),
 };
 
 function fixedClock() {
@@ -61,7 +65,7 @@ describe("AgentDock (real gateway)", () => {
 
     // The context caption previews what the next message will carry.
     expect(await screen.findByText(/asking about:/i)).toBeInTheDocument();
-    expect(screen.getByText(/dashboards/)).toBeInTheDocument();
+    expect(screen.getByText(/telemetry/)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("ask the agent"), "why did throughput dip?");
     await user.click(screen.getByLabelText("send"));

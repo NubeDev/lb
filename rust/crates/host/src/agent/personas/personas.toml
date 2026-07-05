@@ -42,6 +42,8 @@ granted_tools = [
   "store.tables", "store.scan", "store.graph",
 ]
 grounding_skills = ["core.datasources", "core.query", "core.store-read", "core.ingest-series"]
+# Live dock `context.surface` values (ui surfaceForPath vocabulary) — persona-session #5.
+surfaces = ["data", "datasources"]
 
 # ── 2. flow-author ──────────────────────────────────────────────────────────────────────────────
 [[persona]]
@@ -60,6 +62,7 @@ granted_tools = [
   "viz.query",
 ]
 grounding_skills = ["core.flows-mcp", "core.ingest-series", "core.query"]
+surfaces = ["flows"]
 
 # ── 3. widget-builder ───────────────────────────────────────────────────────────────────────────
 [[persona]]
@@ -85,6 +88,7 @@ granted_tools = [
   "viz.query",
 ]
 grounding_skills = ["core.dashboard-mcp", "core.genui-widget", "core.panels", "core.dashboard-widgets"]
+surfaces = ["dashboards", "data-studio"]
 
 # ── 4. rules-author (the extends showcase) ───────────────────────────────────────────────────────
 [[persona]]
@@ -100,6 +104,9 @@ granted_tools = [
   "reminder.*",
 ]
 grounding_skills = ["core.rules"]
+# "flows" too: rules and workflow converge on the flows engine — flow-author (seed order) is the
+# first suggestion there; rules-author rides the switcher's "also matches" list.
+surfaces = ["flows", "rules"]
 
 # ── 5. workspace-admin ──────────────────────────────────────────────────────────────────────────
 [[persona]]
@@ -126,6 +133,7 @@ granted_tools = [
 # Deliberately EXCLUDED: workspace.delete, workspace.purge, authz.revoke-tokens (destructive/security —
 # human-driven even for an admin caller; a custom persona opts in explicitly if a workspace wants it).
 grounding_skills = ["core.nav", "core.auth-caps", "core.prefs"]
+surfaces = ["admin", "settings"]
 
 # ── 6. channels-operator ────────────────────────────────────────────────────────────────────────
 [[persona]]
@@ -146,6 +154,7 @@ granted_tools = [
   "reminder.*",
 ]
 grounding_skills = ["core.channels-inbox-outbox", "core.prefs"]
+surfaces = ["channels", "inbox", "outbox", "reminders"]
 
 # ── 7. system-manager (extends-composed, not hand-flattened) ─────────────────────────────────────
 [[persona]]
@@ -175,6 +184,8 @@ granted_tools = [
 ]
 # Excluded: secret.get (broad secret readback), undo.any, workspace.delete/purge, authz.revoke-tokens.
 grounding_skills = ["core.lb-cli", "core.mcp", "core.auth-caps", "core.agent"]
+# Deliberately EMPTY: system-manager is the fallback map (a ws-default candidate), not a page focus.
+surfaces = []
 
 # ── 7b. insights-analyst (insights umbrella scope — the data-only Insights page persona) ───────
 # "Why is AHU-2 hunting?" — the persona that answers over the durable insight record. Extends
@@ -201,6 +212,9 @@ granted_tools = [
 # NOTE: `insight.raise` is deliberately EXCLUDED — this persona INVESTIGATES findings; it does not
 # mint them (raising is a producer action owned by rules/flows/manual). A custom persona opts in.
 grounding_skills = ["core.insights"]
+# No dedicated insights page surface exists in the live dock vocabulary yet — add its surface here
+# (one line, re-seed) when the Insights page ships. Empty = never context-suggested, defaults still apply.
+surfaces = []
 
 # ── 8. extension-builder (persona-coding #4 — the safety-posture persona) ────────────────────────
 # "100% coding, but never on its own." The agent builds UI / WASM / native EXTENSIONS against the
@@ -233,6 +247,8 @@ granted_tools = [
   "tools.catalog", "bus.watch", "telemetry.read", "system.tools",
 ]
 grounding_skills = ["core.extension-authoring", "core.extensions", "core.e2e-backend"]
+# (like `runtimes`, MUST precede the `[persona.policy_preset]` sub-table header)
+surfaces = ["extensions", "studio"]
 # Runtime restriction: in-house ONLY until the external-agent capability-wall sandbox ships (external
 # runtimes get scratch=workdir + egress=gateway; the in-house loop is bounded by the MCP wall alone,
 # which is honest here because no raw fs/shell verb exists in the catalog). Applying this persona with

@@ -6,16 +6,20 @@
 //! **STUB**: body deferred — see the punch-list.
 
 use crate::error::InsightsError;
-use lb_store::Store;
+use crate::subscription::TABLE;
+use lb_store::{write, Store};
 
 /// Set the `muted` flag on sub `(ws, id)`. The host has verified the caller owns it.
 // SCOPE: docs/scope/insights/insight-subscriptions-scope.md §"Verb surface" + §"The record"
-pub async fn sub_mute(
-    _store: &Store,
-    _ws: &str,
-    _id: &str,
-    _muted: bool,
-) -> Result<(), InsightsError> {
-    // Read the row, flip `muted`, write back. If absent ⇒ BadInput.
-    todo!("insights: sub mute toggle — SCOPE: subscriptions-scope.md §Verb surface")
+pub async fn sub_mute(store: &Store, ws: &str, id: &str, muted: bool) -> Result<(), InsightsError> {
+    let Some(mut sub) = crate::sub_get::sub_get(store, ws, id).await? else {
+        return Err(InsightsError::BadInput(format!(
+            "no such subscription: {id}"
+        )));
+    };
+    sub.muted = muted;
+    let value = serde_json::to_value(&sub)
+        .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
+    write(store, ws, TABLE, id, &value).await?;
+    Ok(())
 }

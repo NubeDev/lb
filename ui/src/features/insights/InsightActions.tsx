@@ -12,10 +12,13 @@ import type { Insight } from "@/lib/insights/insights.types";
 
 interface Props {
   insight: Insight;
+  /** Called after an ack/resolve lands so the parent can refresh its view. */
+  onActed?: () => void;
 }
 
-/** The ack/resolve row for the detail drawer. */
-export function InsightActions({ insight }: Props): JSX.Element {
+/** The ack/resolve row for the detail drawer. Ack is hidden once acked/resolved; resolve once
+ *  resolved — the status-driven visibility so a stale action can't be re-fired. */
+export function InsightActions({ insight, onActed }: Props): JSX.Element {
   const [busy, setBusy] = useState<"ack" | "resolve" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +27,7 @@ export function InsightActions({ insight }: Props): JSX.Element {
     setError(null);
     try {
       await ackInsight(insight.id);
+      onActed?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -36,6 +40,7 @@ export function InsightActions({ insight }: Props): JSX.Element {
     setError(null);
     try {
       await resolveInsight(insight.id);
+      onActed?.();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -45,22 +50,29 @@ export function InsightActions({ insight }: Props): JSX.Element {
 
   return (
     <section className="flex items-center gap-2 border-t border-border pt-3">
-      <button
-        type="button"
-        onClick={onAck}
-        disabled={busy !== null || insight.status === "resolved"}
-        className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
-      >
-        {busy === "ack" ? "Acking…" : "Ack"}
-      </button>
-      <button
-        type="button"
-        onClick={onResolve}
-        disabled={busy !== null || insight.status === "resolved"}
-        className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
-      >
-        {busy === "resolve" ? "Resolving…" : "Resolve"}
-      </button>
+      {insight.status === "open" && (
+        <button
+          type="button"
+          onClick={onAck}
+          disabled={busy !== null}
+          className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
+        >
+          {busy === "ack" ? "Acking…" : "Ack"}
+        </button>
+      )}
+      {insight.status !== "resolved" && (
+        <button
+          type="button"
+          onClick={onResolve}
+          disabled={busy !== null}
+          className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
+        >
+          {busy === "resolve" ? "Resolving…" : "Resolve"}
+        </button>
+      )}
+      {insight.status === "resolved" && (
+        <span className="text-xs text-muted-foreground">Resolved</span>
+      )}
       {error && <span className="text-xs text-destructive">{error}</span>}
     </section>
   );

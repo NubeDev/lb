@@ -5,14 +5,12 @@
 //! caller's `sub` + caps snapshot — never caller-supplied.
 
 use lb_auth::Principal;
+use lb_caps::Action;
 use lb_insights::SubCreateInput;
 use lb_mcp::authorize_tool;
 use lb_store::Store;
 
 use super::error::InsightSvcError;
-
-/// The `bus:chan/{cid}:pub` capability grammar prefix — the create-time AND fire-time gate.
-const CHAN_PUB_PREFIX: &str = "bus:chan/";
 
 /// Create a subscription owned by `principal`. The host checks the channel `pub` grant HERE
 /// (create-time no-widening) in addition to the verb cap.
@@ -24,12 +22,11 @@ pub async fn insight_sub_create(
     created_ts: u64,
 ) -> Result<String, InsightSvcError> {
     authorize_tool(principal, ws, "insight.sub.create").map_err(|_| InsightSvcError::Denied)?;
-    // No-widening up front: the caller must hold `bus:chan/{channel}:pub` at create. The fire-
-    // time re-check happens in the digest reactor (the reminders pattern).
-    let needed = format!("{CHAN_PUB_PREFIX}{}:pub", input.sink.channel);
-    if !principal.caps().iter().any(|c| c == &needed) {
-        return Err(InsightSvcError::Denied);
-    }
+    // No-widening up front: the caller must hold `bus:chan/{channel}:pub` at create. Uses the same
+    // wildcard-aware channel gate `channel::post` runs (so `bus:chan/*:pub` grants any channel),
+    // NOT a raw string compare. The fire-time re-check happens in the reactor (reminders pattern).
+    crate::channel::authorize_channel(principal, ws, &input.sink.channel, Action::Pub)
+        .map_err(|_| InsightSvcError::Denied)?;
     // The principal snapshot stored for fire-time re-check. The caps list is what the host
     // re-runs against `bus:chan/{channel}:pub` at delivery.
     let principal_snapshot = serde_json::to_value(principal.caps()).unwrap_or_default();

@@ -7,10 +7,11 @@
 //!
 //! **STUB**: the cap-count + store-write body is deferred — see the punch-list.
 
-use lb_store::Store;
+use lb_store::{new_ulid, write, Store};
 
 use crate::error::InsightsError;
-use crate::subscription::{SubFilter, SubSink};
+use crate::subscription::{SubFilter, SubSink, Subscription, TABLE};
+use crate::table_scan::scan_all;
 
 /// The create input (the host fills `owner` + `principal` from the caller's token, never the
 /// request body — a caller can't subscribe on another member's behalf).
@@ -26,18 +27,36 @@ pub struct CreateInput {
 /// caps snapshot, re-checked at fire). Returns the new sub's id.
 // SCOPE: docs/scope/insights/insight-subscriptions-scope.md §"Verb surface" + §"The raise-time matcher"
 pub async fn sub_create(
-    _store: &Store,
-    _ws: &str,
-    _owner: &str,
-    _principal: &serde_json::Value,
-    _input: CreateInput,
-    _sub_cap: usize,
-    _created_ts: u64,
+    store: &Store,
+    ws: &str,
+    owner: &str,
+    principal: &serde_json::Value,
+    input: CreateInput,
+    sub_cap: usize,
+    created_ts: u64,
 ) -> Result<String, InsightsError> {
-    // 1. The host layer has ALREADY checked the caller holds `bus:chan/{channel}:pub` (the
-    //    no-widening-up-front gate) + `mcp:insight.sub.create:call`. This verb trusts that.
-    // 2. Count existing subs in ws; if ≥ sub_cap ⇒ BadInput ("ws sub cap reached").
-    // 3. Mint ULID; write the Subscription row (owner+principal from the caller, NOT the body).
-    // 4. Return the id.
-    todo!("insights: sub create (cap + write) — SCOPE: subscriptions-scope.md §Verb surface")
+    // The host layer already checked the caller holds `bus:chan/{channel}:pub` (no-widening up
+    // front) + `mcp:insight.sub.create:call`. This verb enforces the workspace sub cap.
+    let existing = scan_all(store, ws, TABLE).await?;
+    if existing.len() >= sub_cap {
+        return Err(InsightsError::BadInput(format!(
+            "workspace subscription cap reached ({sub_cap})"
+        )));
+    }
+    let id = new_ulid();
+    let sub = Subscription {
+        id: id.clone(),
+        owner: owner.to_string(),
+        principal: principal.clone(),
+        sink: input.sink,
+        filter: input.filter,
+        muted: false,
+        throttle_override: input.throttle_override,
+        created_ts,
+        dormant_reason: None,
+    };
+    let value = serde_json::to_value(&sub)
+        .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
+    write(store, ws, TABLE, &id, &value).await?;
+    Ok(id)
 }

@@ -119,42 +119,202 @@ pub enum LadderInput<'a> {
 /// breakthrough checks live here.
 // SCOPE: docs/scope/insights/insight-notify-scope.md §"The state machine" + §"Example flow"
 pub fn ladder_step(
-    _state: Option<NotifyState>,
-    _input: LadderInput<'_>,
-    _policy: &Policy,
-    _throttle_override: Option<crate::policy::ThrottleOverride>,
-    _muted: bool,
-    _member_kill_switch_on: bool,
+    state: Option<NotifyState>,
+    input: LadderInput<'_>,
+    policy: &Policy,
+    throttle_override: Option<crate::policy::ThrottleOverride>,
+    muted: bool,
+    member_kill_switch_on: bool,
 ) -> (NotifyState, Vec<Delivery>) {
-    // 1. If `member_kill_switch_on == false` ⇒ deliveries skipped entirely (accounting continues
-    //    so re-enabling picks up sane digests). Return (state', []).
-    // 2. If `muted` ⇒ same — accounting continues, delivery skipped.
-    // 3. Build the state (or seed `NotifyState::default_for(sub_id, dedup_key, now)` if None).
-    // 4. Handle `Tick`: for each fully-elapsed window at the current level (clamped to the largest
-    //    advance that's sane) — if pending.count > 0 ⇒ one Digest delivery, zero pending, then
-    //    decay level by 1 (one quiet window ⇒ level - 1). If pending.count == 0 ⇒ just decay.
-    // 5. Handle `Intent`:
-    //    a. Breakthrough check FIRST (regardless of throttle_override): kind=Reopen OR
-    //       kind=Escalate OR last_severity < intent.severity OR no prior state ⇒ deliver now,
-    //       keep the level (a breakthrough does NOT reset the ladder).
-    //    b. Ack suppression: if acked (and not a breakthrough) ⇒ update pending/window_hits but
-    //       return [] deliveries.
-    //    c. Escalate: window_hits += 1; if window_hits >= escalation_threshold (and no
-    //       throttle_override pin) ⇒ level = min(level + 1, 4), reset window_hits = 0, advance
-    //       window_start = now.
-    //    d. At L0 within the cooldown: post now (L0Immediate) + zero the pending that accumulated
-    //       within this cooldown.
-    //    e. At L1..L4: accumulate into pending (no immediate delivery — the reactor's Tick will
-    //       digest it).
-    // 6. Update last_severity = intent.severity; return (state', deliveries).
-    //
-    // This is the algorithm. Keep it pure. The implementing session owns the body; the signature
-    // and types are stable so the host + tests wire against them today.
-    let _ = (
-        IntentKind::Raise,
-        Level::L0,
-        DeliveryReason::FirstKey,
-        WindowAccumulator::default(),
-    );
-    todo!("insights: ladder state machine — SCOPE: notify-scope.md §The state machine + §Example flow")
+    // Whether this member/sub is allowed to *deliver* right now. Accounting always continues so a
+    // re-enable (kill switch back on, unmute) picks up sane digests — only the emitted deliveries
+    // are gated (notify-scope §"Member kill switch off" + §"Muted sub").
+    let deliver_allowed = member_kill_switch_on && !muted;
+
+    match input {
+        LadderInput::Tick { now } => tick(state, policy, throttle_override, deliver_allowed, now),
+        LadderInput::Intent { intent, acked, now } => intent_step(
+            state,
+            intent,
+            acked,
+            policy,
+            throttle_override,
+            deliver_allowed,
+            now,
+        ),
+    }
+}
+
+/// The window size (logical-ts units) for the current level, honouring a pinned override.
+fn window_for(level: u8, policy: &Policy) -> u64 {
+    policy.windows[(level as usize).min(4)]
+}
+
+/// Advance one input of kind [`LadderInput::Tick`] — the digest reactor says the clock moved. For
+/// each fully-elapsed window at the current level: if pending accumulated, emit one `Digest`
+/// delivery and zero the pending; either way decay one level (a fully-quiet window at this level ⇒
+/// `level - 1`). A pinned sub (`throttle_override`) skips decay but still digests its pending.
+fn tick(
+    state: Option<NotifyState>,
+    policy: &Policy,
+    throttle_override: Option<crate::policy::ThrottleOverride>,
+    deliver_allowed: bool,
+    now: u64,
+) -> (NotifyState, Vec<Delivery>) {
+    // No state row ⇒ nothing has ever fired on this key; a tick is a no-op. Seed a sane empty row
+    // so the caller can persist uniformly.
+    let Some(mut st) = state else {
+        return (NotifyState::default_for("", "", now), Vec::new());
+    };
+
+    let mut deliveries = Vec::new();
+    let pinned = throttle_override.is_some();
+
+    // Elapse whole windows one at a time so multi-window gaps decay correctly (a key quiet for
+    // three daily windows decays three levels). Bounded by the elapsed span / window size.
+    loop {
+        let window = window_for(st.level, policy).max(1);
+        if now.saturating_sub(st.window_start) < window {
+            break;
+        }
+        if st.pending.count > 0 {
+            if deliver_allowed {
+                deliveries.push(Delivery {
+                    sub_id: st.sub_id.clone(),
+                    insight_id: String::new(),
+                    dedup_key: st.dedup_key.clone(),
+                    reason: DeliveryReason::Digest,
+                    severity: st.pending.max_severity.unwrap_or(Severity::Info),
+                    ts: now,
+                });
+                st.last_sent_ts = Some(now);
+            }
+            st.pending = WindowAccumulator::default();
+            // A window that HAD pending is not "fully quiet" — advance the window but don't decay.
+            st.window_start = st.window_start.saturating_add(window);
+            st.window_hits = 0;
+        } else {
+            // Fully quiet window ⇒ decay one level (unless pinned).
+            if !pinned && st.level > 0 {
+                st.level -= 1;
+            }
+            st.window_start = st.window_start.saturating_add(window);
+            st.window_hits = 0;
+        }
+    }
+    (st, deliveries)
+}
+
+/// Advance one input of kind [`LadderInput::Intent`] — a matched raise arrived. Breakthrough is
+/// checked FIRST (a genuinely-new fact always delivers, keeping the level); otherwise ack
+/// suppression, then escalate accounting, then the L0-immediate / L1+-accumulate delivery choice.
+fn intent_step(
+    state: Option<NotifyState>,
+    intent: &Intent,
+    acked: bool,
+    policy: &Policy,
+    throttle_override: Option<crate::policy::ThrottleOverride>,
+    deliver_allowed: bool,
+    now: u64,
+) -> (NotifyState, Vec<Delivery>) {
+    let first_key = state.is_none();
+    let mut st =
+        state.unwrap_or_else(|| NotifyState::default_for(&intent.sub_id, &intent.dedup_key, now));
+    let pinned = throttle_override.is_some();
+
+    // Every intent counts toward the window + the pending accumulator (accounting is never gated).
+    st.window_hits += 1;
+    record_pending(&mut st, intent.severity, now);
+
+    // --- Breakthrough (checked first, regardless of level / override) --------------------------
+    let escalation = st
+        .last_severity
+        .map(|prev| intent.severity.rank() > prev.rank())
+        .unwrap_or(false);
+    let breakthrough_reason = if first_key {
+        Some(DeliveryReason::FirstKey)
+    } else if intent.kind == IntentKind::Reopen {
+        Some(DeliveryReason::Reopen)
+    } else if intent.kind == IntentKind::Escalate || escalation {
+        Some(DeliveryReason::Escalation)
+    } else {
+        None
+    };
+
+    st.last_severity = Some(intent.severity);
+
+    if let Some(reason) = breakthrough_reason {
+        // A breakthrough delivers now and KEEPS the level (the noise history stands). It consumes
+        // the pending it just recorded (it IS the delivery), so the next digest doesn't double it.
+        let mut deliveries = Vec::new();
+        if deliver_allowed {
+            deliveries.push(delivery(&st, intent, reason, now));
+            st.last_sent_ts = Some(now);
+        }
+        st.pending = WindowAccumulator::default();
+        return (st, deliveries);
+    }
+
+    // --- Ack suppression -----------------------------------------------------------------------
+    // An acked insight (and not a breakthrough) accumulates but never delivers.
+    if acked {
+        return (st, Vec::new());
+    }
+
+    // --- Escalate ------------------------------------------------------------------------------
+    // Sustained noise within the window climbs the ladder (unless pinned). At/after the threshold,
+    // reset the window so escalation is per-window, not cumulative-forever.
+    if !pinned && st.window_hits >= policy.escalation_threshold && st.level < 4 {
+        st.level += 1;
+        st.window_hits = 0;
+        st.window_start = now;
+    }
+
+    // --- Deliver choice ------------------------------------------------------------------------
+    let mut deliveries = Vec::new();
+    if st.level == 0 {
+        // L0: one immediate post per cooldown per key; extra raises within the cooldown accumulate
+        // into pending for the next post.
+        let cooled = match st.last_sent_ts {
+            None => true, // never delivered on this key ⇒ post the first one now
+            Some(prev) => now.saturating_sub(prev) >= policy.cooldown,
+        };
+        if cooled {
+            if deliver_allowed {
+                deliveries.push(delivery(&st, intent, DeliveryReason::L0Immediate, now));
+                st.last_sent_ts = Some(now);
+            }
+            // The immediate post consumes the pending accumulated this cooldown.
+            st.pending = WindowAccumulator::default();
+        }
+        // else: still within cooldown ⇒ leave it in pending for the next eligible post.
+    }
+    // L1..L4: no immediate delivery — the reactor's Tick digests the pending.
+
+    (st, deliveries)
+}
+
+/// Fold a firing into the pending accumulator (count, first/last ts, worst severity).
+fn record_pending(st: &mut NotifyState, severity: Severity, now: u64) {
+    if st.pending.count == 0 {
+        st.pending.first_ts = now;
+    }
+    st.pending.count += 1;
+    st.pending.last_ts = now;
+    st.pending.max_severity = Some(match st.pending.max_severity {
+        Some(prev) => prev.max(severity),
+        None => severity,
+    });
+}
+
+/// Build a per-key delivery from the current state + the triggering intent.
+fn delivery(st: &NotifyState, intent: &Intent, reason: DeliveryReason, now: u64) -> Delivery {
+    Delivery {
+        sub_id: st.sub_id.clone(),
+        insight_id: intent.insight_id.clone(),
+        dedup_key: st.dedup_key.clone(),
+        reason,
+        severity: intent.severity,
+        ts: now,
+    }
 }

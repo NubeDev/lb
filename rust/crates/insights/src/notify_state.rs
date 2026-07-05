@@ -26,12 +26,32 @@ pub struct NotifyState {
     pub window_hits: u64,
     /// What the next digest will say (zeroed after each digest send).
     pub pending: PendingAccumulator,
-    /// Logical ts of the last delivered post/digest for this key.
-    #[serde(default)]
-    pub last_sent_ts: u64,
+    /// Logical ts of the last delivered post/digest for this key. `None` ⇒ nothing has ever been
+    /// delivered on this key (distinct from a real delivery at logical ts 0 — the L0 cooldown
+    /// check must not treat "never sent" the same as "sent at 0").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_sent_ts: Option<u64>,
     /// The previous firing's severity — the escalation breakthrough check.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_severity: Option<Severity>,
+}
+
+impl NotifyState {
+    /// Seed a fresh state row for `(sub_id, dedup_key)` at logical time `now`. Level starts at
+    /// L0 (immediate) with an empty pending accumulator and the window anchored at `now`. The
+    /// pure `ladder_step` is the only mutator after this seed.
+    pub fn default_for(sub_id: &str, dedup_key: &str, now: u64) -> Self {
+        Self {
+            sub_id: sub_id.to_string(),
+            dedup_key: dedup_key.to_string(),
+            level: 0,
+            window_start: now,
+            window_hits: 0,
+            pending: PendingAccumulator::default(),
+            last_sent_ts: None,
+            last_severity: None,
+        }
+    }
 }
 
 /// The pending accumulator — what the next digest message will summarize. Zeroed after each send.

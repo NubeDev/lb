@@ -13,8 +13,7 @@
 
 mod common;
 
-use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::StatusCode;
 use common::{bearer, gateway, get_req, json_body, json_post, token};
 use lb_role_gateway::router;
 use serde_json::{json, Value};
@@ -66,9 +65,8 @@ async fn list_denied_without_the_cap() {
         .oneshot(bearer(get_req("/insights"), &tok))
         .await
         .unwrap();
+    // Deny is an opaque 403 — a caller without the cap can't tell empty from forbidden.
     assert_eq!(r.status(), StatusCode::FORBIDDEN);
-    // SCOPE: insights-scope.md §"How it fits the core" → Capabilities.
-    todo!("insights: assert list deny is opaque 403 — SCOPE: insights-scope.md §Capabilities")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -81,13 +79,13 @@ async fn ack_denied_without_the_cap() {
         "acme",
         &["mcp:insight.raise:call", "mcp:insight.get:call"], // no ACK
     );
-    let _r = app
+    let r = app
         .clone()
         .oneshot(bearer(json_post("/insights/ins-1/ack", json!({})), &tok))
         .await
         .unwrap();
-    // SCOPE: insights-scope.md §"How it fits the core" → Capabilities.
-    todo!("insights: assert ack deny is opaque 403 — SCOPE: insights-scope.md §Capabilities")
+    // Ack without the cap is denied opaque (403) — before any record is read.
+    assert_eq!(r.status(), StatusCode::FORBIDDEN);
 }
 
 // --- mandatory: workspace isolation ------------------------------------------------------
@@ -106,14 +104,26 @@ async fn cross_workspace_insight_is_opaque_to_the_other_ws() {
                 "origin": { "kind": "manual", "ref": "test" }, "ts": 1 }),
     )
     .await;
-    let _b_list = app
+    let b_list = app
         .clone()
         .oneshot(bearer(get_req("/insights"), &b))
         .await
         .unwrap();
-    // SCOPE: insights-scope.md §"How it fits the core" → Tenancy/isolation. ws-B's list never
-    // surfaces ws-A's insight; the watch subject leaks nothing cross-ws.
-    todo!("insights: ws-B /insights returns empty (no leak) — SCOPE: insights-scope.md §Tenancy")
+    assert_eq!(b_list.status(), StatusCode::OK);
+    let body: Value = json_body(b_list).await;
+    assert_eq!(
+        body["items"].as_array().unwrap().len(),
+        0,
+        "ws-B's list never surfaces ws-A's insight"
+    );
+    // And ws-A does see its own (sanity that the raise landed).
+    let a_list = app
+        .clone()
+        .oneshot(bearer(get_req("/insights"), &a))
+        .await
+        .unwrap();
+    let a_body: Value = json_body(a_list).await;
+    assert_eq!(a_body["items"].as_array().unwrap().len(), 1);
 }
 
 // --- the headline round-trip (raise → list → get → ack → resolve) ------------------------
@@ -135,13 +145,70 @@ async fn raise_list_get_ack_resolve_round_trip() {
     )
     .await;
 
-    // list over the REST route
-    let _listed = app
+    // list over the REST route — the insight is there, open.
+    let listed = app
         .clone()
         .oneshot(bearer(get_req("/insights"), &tok))
         .await
         .unwrap();
+    let list_body: Value = json_body(listed).await;
+    let items = list_body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    let id = items[0]["id"].as_str().unwrap().to_string();
+    assert_eq!(items[0]["status"], "open");
 
-    // SCOPE: insights-scope.md §"MCP surface" — the full surface round-trips.
-    todo!("insights: raise → list returns it → get by id → ack → resolve; assert the lifecycle transitions")
+    // get by id over the REST route.
+    let got = app
+        .clone()
+        .oneshot(bearer(get_req(&format!("/insights/{id}")), &tok))
+        .await
+        .unwrap();
+    let got_body: Value = json_body(got).await;
+    assert_eq!(got_body["dedup_key"], "k1");
+
+    // ack over the REST route (the client passes no `now` — the gateway stamps it).
+    let acked = app
+        .clone()
+        .oneshot(bearer(
+            json_post(&format!("/insights/{id}/ack"), json!({})),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(acked.status(), StatusCode::NO_CONTENT);
+
+    // resolve with a note.
+    let resolved = app
+        .clone()
+        .oneshot(bearer(
+            json_post(
+                &format!("/insights/{id}/resolve"),
+                json!({ "note": "handled" }),
+            ),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resolved.status(), StatusCode::NO_CONTENT);
+
+    // the lifecycle landed: get now shows resolved.
+    let final_get = app
+        .clone()
+        .oneshot(bearer(get_req(&format!("/insights/{id}")), &tok))
+        .await
+        .unwrap();
+    let final_body: Value = json_body(final_get).await;
+    assert_eq!(final_body["status"], "resolved");
+
+    // occurrences round-trip too (one row from the raise's occurrence).
+    let occ = app
+        .clone()
+        .oneshot(bearer(
+            get_req(&format!("/insights/{id}/occurrences")),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    let occ_body: Value = json_body(occ).await;
+    assert_eq!(occ_body["items"].as_array().unwrap().len(), 1);
 }

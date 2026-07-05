@@ -35,6 +35,7 @@ fn sample_patch() -> AgentConfig {
     AgentConfig {
         active_definition: None,
         active_persona: None,
+        enabled_personas: None,
         default_runtime: Some("default".into()),
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some("zaicoding".into()),
@@ -158,6 +159,7 @@ async fn setting_an_unknown_runtime_is_rejected() {
     let patch = AgentConfig {
         active_definition: None,
         active_persona: None,
+        enabled_personas: None,
         default_runtime: Some("no-such-runtime".into()),
         model_endpoint: None,
     };

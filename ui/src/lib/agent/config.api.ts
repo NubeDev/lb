@@ -27,10 +27,12 @@ export interface AgentConfig {
    *  "which agent is active" is a stored fact, not re-derived from `default_runtime` + endpoint.
    *  Written by the pick alongside the copied fields; additive + optional (back-compat). */
   active_definition?: string;
-  /** The active persona id the workspace picked (agent-personas scope #1) — the parallel pointer to
-   *  `active_definition`: definition picks who runs (runtime/model), persona picks what for (focus).
-   *  Written by the persona pick; additive + optional (back-compat, serde-default). */
-  active_persona?: string;
+  /** The workspace's ENABLED persona roster (persona-session #5 — replaces the single `active_persona`
+   *  toggle). `undefined` (default) ⇒ ALL personas enabled (built-ins + customs, on-by-default out of
+   *  the box); an array ⇒ only those ids. Curation of the advertisement layer: a disabled persona is
+   *  hidden from `agent.persona.list`'s picker view and from the dock's context match, and an explicit
+   *  invoke of one fails with a named disabled error. Same record, same MERGE patch, same admin gate. */
+  enabled_personas?: string[];
 }
 
 /** Read the workspace's agent config (`null` when unset). Member-level. */

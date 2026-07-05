@@ -26,9 +26,9 @@ use std::sync::Arc;
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     agent_config_set, agent_def_create, get_agent_config, invoke_via_runtime, reachable_tools,
-    resolve_active_definition, resolve_workspace_model, AgentConfig, AgentDefinition,
-    DefinitionEndpoint, ErasedModel, ModelBuilder, ModelEndpointPatch, Node, Substrate,
-    UNCONFIGURED_ANSWER,
+    resolve_active_definition, resolve_workspace_model, seed_agent_definitions, AgentConfig,
+    AgentDefinition, DefinitionEndpoint, ErasedModel, ModelBuilder, ModelEndpointPatch, Node,
+    Substrate, UNCONFIGURED_ANSWER,
 };
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 use std::sync::Mutex;
@@ -82,6 +82,7 @@ fn pick_patch(def: &AgentDefinition) -> AgentConfig {
     AgentConfig {
         active_definition: Some(def.id.clone()),
         active_persona: None,
+        enabled_personas: None,
         default_runtime: Some(def.runtime.clone()),
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some(def.model_endpoint.provider.clone()),
@@ -378,6 +379,88 @@ async fn the_key_resolves_sealed_workspace_secret_over_env() {
         "the sealed WORKSPACE secret wins over the env (secret → env precedence)"
     );
     std::env::remove_var("ACTIVE_MODEL_ENV_KEY");
+}
+
+// ── config overlay: a workspace keys its pick of a READ-ONLY built-in (secret path on agent.config) ─
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
+    // The regression this guards (Option B): a workspace picks a seeded BUILT-IN in-house definition
+    // (`agents.toml`, read-only — its endpoint record carries NO `api_key_secret`) and keys it via the
+    // catalog's "Set model key". That seals a WORKSPACE secret and writes ONLY the resulting PATH onto
+    // `agent.config.model_endpoint.api_key_secret` — never onto the built-in record. Before the config→
+    // definition overlay, `resolve_workspace_model` read the DEFINITION endpoint only, saw no secret,
+    // fell back to the (unset) node env, and built an UNAUTHENTICATED model — the "model key: set ✓"
+    // UI resolved to no key at run time. The overlay must carry the config's sealed path onto the
+    // resolved endpoint so the builder receives the sealed value.
+    let ws = "ws-builtin-key";
+    let seen = Arc::new(Mutex::new(None));
+    let node = Arc::new(Node::boot().await.unwrap());
+    node.install_model_builder(Arc::new(KeyRecordingBuilder(seen.clone())));
+    // Seed the built-in catalog (the `node` binary does this at boot; `Node::boot` does not) so the
+    // reserved `builtin.in-house-glm-4.6` definition resolves.
+    seed_agent_definitions(&node.store).await.unwrap();
+    let ada = admin("user:ada", ws);
+
+    // Seal the workspace's model key at the path the UI computes for the active pick.
+    let sealer = {
+        let key = SigningKey::generate();
+        let claims = Claims {
+            sub: "user:ada".into(),
+            ws: ws.into(),
+            role: Role::Member,
+            caps: vec!["secret:agent/*:write".into()],
+            iat: 0,
+            exp: u64::MAX,
+        };
+        verify(&key, &mint(&key, &claims), 1).unwrap()
+    };
+    // A dot-free path — the cap grammar segments on `.`, so the test fixture avoids it (the UI's own
+    // `setActiveKey` sanitizes the path the same way). What matters here is the OVERLAY, not the path.
+    let secret_path = "agent/config-default-glm46-key";
+    lb_secrets::set_with(
+        &node.store,
+        &sealer,
+        ws,
+        secret_path,
+        "BUILTIN-SEALED-VALUE",
+        lb_secrets::Visibility::Workspace,
+    )
+    .await
+    .unwrap();
+
+    // The pick: point `active_definition` at the SEEDED built-in and carry ONLY the sealed PATH on the
+    // config endpoint (no provider/model override needed — those inherit from the read-only built-in).
+    // This is exactly what the catalog's `pick()` + `setActiveKey()` write for a built-in.
+    let pick = AgentConfig {
+        active_definition: Some("builtin.in-house-glm-4.6".into()),
+        active_persona: None,
+        enabled_personas: None,
+        default_runtime: Some("default".into()),
+        model_endpoint: Some(ModelEndpointPatch {
+            api_key_secret: Some(secret_path.into()),
+            ..Default::default()
+        }),
+    };
+    agent_config_set(&node, &ada, ws, &pick).await.unwrap();
+
+    // The active definition IS the built-in, and its endpoint record carries no secret of its own —
+    // proving the key can only come from the config overlay, not the definition.
+    let active = resolve_active_definition(&node, &ada, ws, None)
+        .await
+        .expect("the built-in pick is active");
+    assert_eq!(active.id, "builtin.in-house-glm-4.6");
+    assert!(
+        active.model_endpoint.api_key_secret.is_none(),
+        "the read-only built-in record carries no sealed key — it lives on agent.config"
+    );
+
+    let _ = resolve_workspace_model(&node, &ada, ws).await;
+    assert_eq!(
+        seen.lock().unwrap().as_deref(),
+        Some("BUILTIN-SEALED-VALUE"),
+        "the config's sealed key overlaid onto the built-in pick reached the adapter"
+    );
 }
 
 // ── offline/sync: agent.config double-delivery keeps active_definition idempotent (LWW) ────────────

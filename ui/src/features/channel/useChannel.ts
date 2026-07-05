@@ -44,8 +44,10 @@ export interface ChannelState {
   postQuery: (source: string, sql: string) => Promise<void>;
   /** Post a `kind:"agent"` channel Item — the host agent worker drives the run and posts the answer
    *  back. `runtime` selects the agent (absent → in-house default; a profile id → an external agent).
-   *  `context` (agent-dock scope) carries where the user is, fenced into the run's goal server-side. */
-  postAgent: (goal: string, runtime?: string, context?: PageContext) => Promise<void>;
+   *  `context` (agent-dock scope) carries where the user is, fenced into the run's goal server-side.
+   *  `persona` (persona-session #5) is the dock's resolved per-tab focus; absent ⇒ the server folds
+   *  member→ws-default prefs and may land on none. */
+  postAgent: (goal: string, runtime?: string, context?: PageContext, persona?: string) => Promise<void>;
   /** Dispatch any other catalog tool via the host-mediated bridge (no channel Item). */
   callTool: (tool: string, args: Record<string, unknown>) => Promise<void>;
   /** Post a pre-encoded `kind:"rich_result"` render-envelope body as a channel Item (the palette posts a
@@ -115,9 +117,9 @@ export function useChannel(
   // composer buys nothing. `postBody` folds its own errors into `error`. In the Tauri shell / tests
   // (no SSE), the request appears when the post resolves and the answer when the run drains.
   const postAgent = useCallback(
-    async (goal: string, runtime?: string, context?: PageContext) => {
+    async (goal: string, runtime?: string, context?: PageContext, persona?: string) => {
       if (!goal.trim()) return;
-      void postBody(encodeAgent(goal.trim(), newRunId(), runtime, context));
+      void postBody(encodeAgent(goal.trim(), newRunId(), runtime, context, persona));
     },
     [postBody],
   );

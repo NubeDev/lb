@@ -6,11 +6,12 @@
 //! **STUB**: body deferred — see the punch-list.
 
 use crate::error::InsightsError;
-use lb_store::Store;
+use crate::subscription::TABLE;
+use lb_store::{delete, Store};
 
 /// Delete the sub at `(ws, id)`. Idempotent. The host has verified the caller owns it (or admin).
 // SCOPE: docs/scope/insights/insight-subscriptions-scope.md §"Verb surface"
-pub async fn sub_delete(_store: &Store, _ws: &str, _id: &str) -> Result<(), InsightsError> {
-    // `delete(store, ws, TABLE, id)` — idempotent (a missing row is success).
-    todo!("insights: sub delete (idempotent) — SCOPE: subscriptions-scope.md §Verb surface")
+pub async fn sub_delete(store: &Store, ws: &str, id: &str) -> Result<(), InsightsError> {
+    delete(store, ws, TABLE, id).await?;
+    Ok(())
 }

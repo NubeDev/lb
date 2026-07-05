@@ -38,6 +38,7 @@ fn member_caps() -> Vec<String> {
         "mcp:insight.raise:call",
         "mcp:insight.get:call",
         "mcp:insight.list:call",
+        "mcp:insight.watch:call",
         "mcp:insight.ack:call",
         "mcp:insight.resolve:call",
         "mcp:insight.occurrences:call",

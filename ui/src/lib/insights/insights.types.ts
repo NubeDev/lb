@@ -31,12 +31,25 @@ export interface Insight {
   producer: string;
 }
 
-/** One firing in the per-insight occurrence ring. Mirrors `lb_insights::Occurrence`. */
+/** One firing in the per-insight occurrence ring. Mirrors `lb_insights::Occurrence`. The
+ *  monotone sequence serializes as `oseq` (the store's capped-ring primitive injects its own `seq`
+ *  ULID, so the occurrence's own counter is renamed to avoid the collision). */
 export interface Occurrence {
-  seq: number;
+  oseq: number;
   ts: number;
   severity: Severity;
   data?: Record<string, unknown> | unknown[];
+}
+
+/** A live insight event on the `insight.watch` SSE feed. Mirrors `lb_insights::RaiseEvent`. */
+export interface InsightEvent {
+  kind: "raise" | "ack" | "resolve";
+  id: string;
+  dedup_key: string;
+  status: Status;
+  severity: Severity;
+  count: number;
+  ts: number;
 }
 
 /** Keyset cursor — opaque to the caller; the verb parses it. */

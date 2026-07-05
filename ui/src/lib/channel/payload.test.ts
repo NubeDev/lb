@@ -105,6 +105,22 @@ describe("encodeAgent", () => {
     if (p?.kind !== "agent") throw new Error("expected agent");
     expect(p.runtime).toBe("open-interpreter-default");
   });
+
+  it("includes the persona when one is given (persona-session #5)", () => {
+    // The 5th positional arg is the persona id (the dock's resolved per-tab focus). All four leading
+    // args (goal, job, runtime, context) are positional; passing `undefined` for the middles keeps it
+    // byte-identical to a no-runtime/no-context post.
+    const p = parsePayload(encodeAgent("hi", "run-11", undefined, undefined, "builtin.flow-author"));
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.persona).toBe("builtin.flow-author");
+  });
+
+  it("omits the persona field when none is given (byte-identical to a no-persona post)", () => {
+    const p = parsePayload(encodeAgent("hi", "run-12"));
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.persona).toBeUndefined();
+    expect(JSON.parse(encodeAgent("hi", "run-12"))).not.toHaveProperty("persona");
+  });
 });
 
 describe("encodeQuery", () => {

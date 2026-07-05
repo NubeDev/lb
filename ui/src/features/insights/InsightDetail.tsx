@@ -15,13 +15,18 @@ import { InsightActions } from "./InsightActions";
 
 interface Props {
   id: string;
+  /** Called after an ack/resolve lands so the parent list can refresh (and re-open this drawer
+   *  with the new status). Optional — the drawer also re-fetches its own record. */
+  onActed?: () => void;
 }
 
 /** The detail drawer for insight `id`. Fetches the full record + the first page of occurrences. */
-export function InsightDetail({ id }: Props): JSX.Element {
+export function InsightDetail({ id, onActed }: Props): JSX.Element {
   const [insight, setInsight] = useState<Insight | null>(null);
   const [occurrences, setOccurrences] = useState<OccurrencePage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Bumped after an ack/resolve so the drawer re-fetches the record with its new status.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +48,12 @@ export function InsightDetail({ id }: Props): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, version]);
+
+  function handleActed() {
+    setVersion((v) => v + 1);
+    onActed?.();
+  }
 
   if (error) {
     return <p className="text-sm text-destructive">{error}</p>;
@@ -57,7 +67,7 @@ export function InsightDetail({ id }: Props): JSX.Element {
       <header>
         <h3 className="text-base font-semibold">{insight.title}</h3>
         <p className="mt-1 text-xs text-muted-foreground">
-          <code className="rounded bg-muted px-1">{insight.dedup_key}</code> · {insight.severity} ·
+          <code className="rounded-md bg-muted px-1">{insight.dedup_key}</code> · {insight.severity} ·
           ×{insight.count}
         </p>
       </header>
@@ -65,7 +75,7 @@ export function InsightDetail({ id }: Props): JSX.Element {
       <section>
         <h4 className="mb-1 text-xs font-semibold uppercase text-muted-foreground">Origin</h4>
         <p className="text-sm">
-          <code className="rounded bg-muted px-1">{insight.origin.kind}:{insight.origin.ref}</code>
+          <code className="rounded-md bg-muted px-1">{insight.origin.kind}:{insight.origin.ref}</code>
           {insight.origin.run && (
             <span className="ml-2 text-xs text-muted-foreground">run {insight.origin.run}</span>
           )}
@@ -88,7 +98,7 @@ export function InsightDetail({ id }: Props): JSX.Element {
         </h4>
         <ul className="space-y-1">
           {occurrences?.items.map((o) => (
-            <li key={o.seq} className="rounded-md border border-border px-2 py-1 text-xs">
+            <li key={o.oseq} className="rounded-md border border-border px-2 py-1 text-xs">
               <div className="flex items-center justify-between">
                 <span>{o.severity}</span>
                 <span className="text-muted-foreground">
@@ -105,7 +115,7 @@ export function InsightDetail({ id }: Props): JSX.Element {
         </ul>
       </section>
 
-      <InsightActions insight={insight} />
+      <InsightActions insight={insight} onActed={handleActed} />
     </article>
   );
 }

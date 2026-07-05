@@ -3,6 +3,27 @@
 The trimmed source of truth for what exists now. The full architecture spec is the root
 `README.md`; the staged plan is `../STAGES.md`; live status is `../STATUS.md`.
 
+## Shipped (2026-07-05 — insights: the durable data-finding record + adaptive notify)
+
+The one missing record type — a persisted, queryable data finding (severity, origin provenance,
+dedup-keyed occurrence counting, `open → acked → resolved` lifecycle) raised by any principal.
+Three sub-features compose onto it: the **per-insight occurrence ring** (last N firings, 2 KB-capped,
+`oseq` to dodge `capped_insert`'s `seq`), **channel subscriptions** (all / one rule / one identity /
+a tag facet / a severity floor; AND-composed; fire-time re-checked stored principal; deny ⇒ dormant
++ owner inbox note), and the **adaptive digest ladder** (`L0 immediate → … → L4 monthly`; breakthroughs
+always deliver; ack suppresses; one message per `(sub, window)`; per-sub `throttle_override` +
+`muted`; per-member kill switch in `prefs`). New crate `lb-insights` (`lb-inbox` altitude); host
+`insight.*` MCP verbs (every verb over `POST /mcp/call`); `/insights…` REST + `/insights/events`
+SSE; `ui/src/features/insights/` over a real spawned gateway; `builtin.insights-analyst` persona
+(extends `data-analyst`, investigate-only, no `raise`) grounded by `core.insights` (the seeded
+SKILL.md). Domain-free (rule 10): core never learns "fraud"/"HVAC" — those are datasources + rules
++ flows + tags on top. Proven against the REAL node/gateway (ladder 10/10, host integration 14/14
+incl. per-verb cap-deny + ws-isolation + dedup/ring/ladder/digest-idempotency/kill-switch, gateway
+routes 4/4, UI gateway 4/4). Follow-ups: the rhai handle + flow sink producer doors; the
+InsightDetail origin deep-link + typed body renderer; retention/purge. See `insights/insights.md`,
+`../scope/insights/insights-scope.md` (+ 3 sub-scopes), `../sessions/insights/insights-session.md`,
+`../skills/insights/SKILL.md`.
+
 ## Shipped (2026-07-05 — the agent dock: a persistent, page-context-aware AI side panel)
 
 A shell-mounted, resizable, **non-modal** AI dock on the right of every authenticated page (launcher +

@@ -184,8 +184,12 @@ pub async fn agent_def_test(
             Err(e) => (format!("external runtime test failed: {e}"), false),
         }
     } else {
-        // In-house `default`: one turn over the node's default model, ignoring proposed calls.
-        let model = registry.default_model();
+        // In-house `default`: one turn over the WORKSPACE's resolved model — the same
+        // `resolve_workspace_model` a real run rides, so the test proves the workspace's picked endpoint
+        // + its sealed key (overlaid from `agent.config`), not the node-level `default_model` fallback.
+        // (A bare `registry.default_model()` here ignored the pick + key entirely, so a keyed built-in
+        // still tested as the `UnconfiguredModel` placeholder.) Ignores proposed calls (one turn).
+        let model = crate::agent::resolve_workspace_model(node, caller, ws).await;
         let configured = model.is_configured();
         let turn = model
             .turn_boxed(ws, &messages, &[], &[], &format!("{ws}:agent-def-test"))

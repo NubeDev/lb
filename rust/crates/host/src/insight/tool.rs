@@ -13,9 +13,10 @@
 //! gate will deny correctly today; a call that reaches a stubbed body returns the `todo!()` panic
 //! (surfaced as a ToolError). The implementing session replaces the bodies; the wiring is stable.
 
+use std::sync::Arc;
+
 use lb_auth::Principal;
 use lb_mcp::ToolError;
-use lb_store::Store;
 use serde_json::{json, Value};
 
 use super::error::InsightSvcError;
@@ -24,21 +25,25 @@ use super::{
     insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
     insight_sub_get, insight_sub_list, insight_sub_mute,
 };
+use crate::boot::Node;
 
 /// Dispatch an `insight.<verb>` MCP call. The outer `is_host_native` gate already ran
-/// `mcp:insight.<verb>:call`; each verb here re-runs it inside (defense in depth).
+/// `mcp:insight.<verb>:call`; each verb here re-runs it inside (defense in depth). Takes `&Node`
+/// (not just the store): `insight.raise` needs the bus (live event), the tag graph, and channel
+/// delivery for matched subscriptions; the read/act verbs use only `node.store`.
 pub async fn call_insight_tool(
-    store: &Store,
+    node: &Arc<Node>,
     principal: &Principal,
     ws: &str,
     qualified_tool: &str,
     input: &Value,
 ) -> Result<Value, ToolError> {
+    let store = &node.store;
     match qualified_tool {
         "insight.raise" => {
             let raise_input: lb_insights::RaiseInput = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(format!("raise input: {e}")))?;
-            let outcome = insight_raise(store, principal, ws, raise_input)
+            let outcome = insight_raise(node, principal, ws, raise_input)
                 .await
                 .map_err(svc_to_tool)?;
             Ok(serde_json::to_value(outcome).unwrap_or(Value::Null))

@@ -14,12 +14,17 @@
 //! implementing session — see the scaffold-session punch-list. The signature + types are stable;
 //! the body is a `todo!()` so a green-but-lying stub is impossible.
 
-use lb_store::Store;
+use lb_store::{new_ulid, write, Store};
 
 use crate::error::InsightsError;
-use crate::insight::Insight;
+use crate::insight::{Insight, OCC_TABLE};
+use crate::insight_id::{dedup_lookup, record_id};
+use crate::intent::IntentKind;
+use crate::occ_append::{append_occurrence, validate_occurrence_size};
+use crate::occurrence::Occurrence;
 use crate::origin::Origin;
 use crate::severity::Severity;
+use crate::status::Status;
 
 /// The optional per-firing occurrence delta (occurrences scope). Whether or not this is present,
 /// every raise appends one occurrence row — `data`/`severity` here just shape it.
@@ -50,7 +55,10 @@ pub struct RaiseInput {
     pub occurrence: Option<RaiseOccurrence>,
     /// Caller-injected logical timestamp (no wall-clock — testing §3).
     pub ts: u64,
-    /// Host-stamped from the raising principal (`user:…`/`key:…`/`ext:…`) — un-spoofable.
+    /// Host-stamped from the raising principal (`user:…`/`key:…`/`ext:…`) — un-spoofable. Serde
+    /// defaults to empty so the MCP door can deserialize a caller's body that (correctly) omits it;
+    /// the host layer overwrites it from the principal before the write (a caller value is ignored).
+    #[serde(default)]
     pub producer: String,
 }
 
@@ -69,6 +77,14 @@ pub struct RaiseOutcome {
     pub created: bool,
     /// True if this raise re-opened a previously-`resolved` insight.
     pub reopened: bool,
+    /// The dedup key (echoed so the host can build the matcher's `InsightView` without a re-read).
+    pub dedup_key: String,
+    /// This firing's severity (the matcher's floor check + the digest's `max_severity` rollup).
+    pub severity: crate::severity::Severity,
+    /// The intent kind the raise-time matcher should carry — `Reopen` on a re-open, `Escalate`
+    /// when this firing's severity is strictly higher than the prior, else `Raise`. Drives the
+    /// ladder's breakthrough rules (notify scope). Host-facing only; the UI ignores it.
+    pub kind: IntentKind,
 }
 
 /// Raise an insight in workspace `ws`. Idempotent on `(ws, dedup_key)`. See [`RaiseInput`] for
@@ -76,29 +92,105 @@ pub struct RaiseOutcome {
 // SCOPE: docs/scope/insights/insights-scope.md §"Dedup / flap suppression" + §"MCP surface"
 // SCOPE: docs/scope/insights/insight-occurrences-scope.md §"Verb surface"
 pub async fn raise(
-    _store: &Store,
-    _ws: &str,
-    _input: RaiseInput,
+    store: &Store,
+    ws: &str,
+    input: RaiseInput,
+    ring_cap: usize,
 ) -> Result<RaiseOutcome, InsightsError> {
-    // 1. Look up the existing insight by dedup_key (`dedup_lookup`).
-    // 2. Existing open/acked → bump count/last_ts + (severity takes newest) + append occurrence.
-    //    Status UNTOUCHED (an acked fault re-firing doesn't re-page).
-    // 3. Existing resolved → re-open (status=open, count continues), append occurrence, fire
-    //    the matcher with IntentKind::Reopen.
-    // 4. No match → mint ULID, create the row (count=1, first_ts=ts), append occurrence, fire
-    //    the matcher with IntentKind::Raise (first-key breakthrough).
-    // 5. Apply `tags` through the host's tag path (NOT here — this crate is tag-graph-agnostic;
-    //    the host calls `tags_add` after the write).
-    // 6. Return the outcome (the host then publishes the `insight.watch` bus event).
-    todo!("insights: dedup/re-open decision + occurrence append — SCOPE: insights-scope.md §Dedup")
+    // Validate the occurrence size UP FRONT — an oversize payload rejects the whole raise and
+    // leaves no parent row (occurrences scope: never a partial write, never silent truncation).
+    let occ = input.occurrence.clone().unwrap_or(RaiseOccurrence {
+        data: serde_json::Value::Null,
+        severity: None,
+    });
+    let occ_severity = occ.severity.unwrap_or(input.severity);
+    let firing = Occurrence {
+        seq: 0, // set below once we know the parent's post-bump count
+        ts: input.ts,
+        severity: occ_severity,
+        data: occ.data.clone(),
+    };
+    validate_occurrence_size(&firing)?;
+
+    let existing = dedup_lookup(store, ws, &input.dedup_key).await?;
+    let (insight, created, kind) = match existing {
+        Some(mut prior) => {
+            let prev_severity = prior.severity;
+            // Bump the lifetime accounting on every raise.
+            prior.count += 1;
+            prior.last_ts = input.ts;
+            prior.severity = input.severity;
+            let reopened = prior.status == Status::Resolved;
+            if reopened {
+                // A resolved insight firing again re-opens (count continues). Status → open; the
+                // prior resolver/ts are cleared (a fresh open lifecycle).
+                prior.status = Status::Open;
+                prior.status_by = None;
+                prior.status_ts = None;
+            }
+            // Escalation = strictly higher severity than the prior firing (drives a breakthrough).
+            let kind = if reopened {
+                IntentKind::Reopen
+            } else if input.severity.rank() > prev_severity.rank() {
+                IntentKind::Escalate
+            } else {
+                IntentKind::Raise
+            };
+            (prior, false, kind)
+        }
+        None => {
+            // First time this dedup_key is seen — mint a fresh insight.
+            let id = new_ulid();
+            let insight = Insight {
+                id,
+                dedup_key: input.dedup_key.clone(),
+                severity: input.severity,
+                title: input.title.clone(),
+                body: input.body.clone(),
+                origin: input.origin.clone(),
+                status: Status::Open,
+                status_by: None,
+                status_ts: None,
+                count: 1,
+                first_ts: input.ts,
+                last_ts: input.ts,
+                producer: input.producer.clone(),
+            };
+            (insight, true, IntentKind::Raise)
+        }
+    };
+
+    // Persist the parent (upsert by id).
+    let value = serde_json::to_value(&insight)
+        .map_err(|e| InsightsError::Store(lb_store::StoreError::Decode(e.to_string())))?;
+    write(store, ws, OCC_TABLE, &record_id(&insight.id), &value).await?;
+
+    // Append one occurrence row (seq = the parent's post-bump lifetime count — monotone per
+    // insight). `ring_cap == 0` stores nothing but the parent count still moved (above).
+    let firing = Occurrence {
+        seq: insight.count,
+        ..firing
+    };
+    append_occurrence(store, ws, &insight.id, &firing, ring_cap).await?;
+
+    Ok(RaiseOutcome {
+        id: insight.id,
+        status: insight.status,
+        count: insight.count,
+        created,
+        reopened: kind == IntentKind::Reopen,
+        dedup_key: insight.dedup_key,
+        severity: insight.severity,
+        kind,
+    })
 }
 
 /// Read the parent insight by id (re-exported for the host service so it can read the post-raise
 /// state without reaching into the record module).
 pub async fn read_insight(
-    _store: &Store,
-    _ws: &str,
-    _id: &str,
+    store: &Store,
+    ws: &str,
+    id: &str,
 ) -> Result<Option<Insight>, InsightsError> {
-    todo!("insights: read insight by id — SCOPE: insights-scope.md §MCP surface (get)")
+    Ok(crate::get::get(store, ws, id).await?)
 }

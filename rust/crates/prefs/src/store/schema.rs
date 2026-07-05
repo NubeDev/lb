@@ -13,7 +13,7 @@ use lb_store::{Store, StoreError};
 /// The axis columns to project on a read — explicitly NOT `id` (a composite RecordId whose array
 /// id-part does not round-trip cleanly through `serde_json::Value`), only the `Prefs` fields.
 pub const PREFS_COLUMNS: &str = "language, timezone, date_style, time_style, first_day_of_week, \
-     number_format, unit_system, unit_overrides, ui_theme";
+     number_format, unit_system, unit_overrides, ui_theme, insight_notifications, agent_persona";
 
 /// The per-(workspace,user) preference table.
 pub const USER_PREFS_TABLE: &str = "user_prefs";
@@ -37,6 +37,8 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS unit_system ON {USER_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS unit_overrides ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS ui_theme ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
+         DEFINE FIELD IF NOT EXISTS insight_notifications ON {USER_PREFS_TABLE} TYPE option<bool>;
+         DEFINE FIELD IF NOT EXISTS agent_persona ON {USER_PREFS_TABLE} TYPE option<string>;
 
          DEFINE TABLE IF NOT EXISTS {WORKSPACE_PREFS_TABLE} SCHEMAFULL;
          DEFINE FIELD IF NOT EXISTS ws ON {WORKSPACE_PREFS_TABLE} TYPE string;
@@ -48,7 +50,9 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS number_format ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS unit_system ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS unit_overrides ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
-         DEFINE FIELD IF NOT EXISTS ui_theme ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;"
+         DEFINE FIELD IF NOT EXISTS ui_theme ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
+         DEFINE FIELD IF NOT EXISTS insight_notifications ON {WORKSPACE_PREFS_TABLE} TYPE option<bool>;
+         DEFINE FIELD IF NOT EXISTS agent_persona ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;"
     );
     store.query_ws(ws, &sql, vec![]).await?;
     Ok(())

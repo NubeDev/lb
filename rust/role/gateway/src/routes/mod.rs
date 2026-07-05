@@ -100,7 +100,9 @@ pub use identity::{
 };
 pub use inbox::{list_inbox, resolve_inbox};
 pub use ingest::{find_series, latest_sample, list_series, read_samples, write_samples};
-pub use insight::{ack_insight, get_insight, list_insights, list_occurrences, resolve_insight};
+pub use insight::{
+    ack_insight, get_insight, insight_events, list_insights, list_occurrences, resolve_insight,
+};
 pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;

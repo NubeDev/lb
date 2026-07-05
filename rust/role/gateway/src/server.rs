@@ -20,11 +20,11 @@ use crate::routes::{
     get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow,
     get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_nav,
     get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, get_webhook, grant_skill,
-    identity_workspaces_route, inject_flow, latest_sample, lifecycle_flow, link_doc, list_apikeys,
-    list_channels, list_dashboards, list_datasources, list_defs, list_docs, list_extensions,
-    list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities, list_inbox,
-    list_insights, list_members, list_navs, list_occurrences, list_panels, list_roles, list_rules,
-    list_series, list_tables, list_team_members, list_teams, list_users, list_webhooks,
+    identity_workspaces_route, inject_flow, insight_events, latest_sample, lifecycle_flow,
+    link_doc, list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
+    list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
+    list_inbox, list_insights, list_members, list_navs, list_occurrences, list_panels, list_roles,
+    list_rules, list_series, list_tables, list_team_members, list_teams, list_users, list_webhooks,
     list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage,
     patch_flow_run, pin_dashboards, post_message, post_webhook, publish_extension, publish_message,
     purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_datasource,
@@ -93,6 +93,8 @@ pub fn router(gw: Gateway) -> Router {
         // `POST /mcp/call` (the bridge) — only the page's primary REST surface has dedicated
         // routes, the rest ride the universal MCP contract.
         .route("/insights", get(list_insights))
+        // The live SSE feed — registered before `/insights/{id}` so `events` never binds as an id.
+        .route("/insights/events", get(insight_events))
         .route("/insights/{id}", get(get_insight))
         .route("/insights/{id}/ack", post(ack_insight))
         .route("/insights/{id}/resolve", post(resolve_insight))

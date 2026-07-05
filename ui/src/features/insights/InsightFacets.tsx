@@ -79,16 +79,70 @@ export function InsightFacets({ filter, onChange }: Props): JSX.Element {
         />
       </fieldset>
 
-      {/* TODO: tag-facet picker driven by `tags.find` (the dashboard variable Query source
-          precedent). Today a placeholder note; the filter shape already carries `tags`. */}
       <fieldset>
         <legend className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
           Tag facets
         </legend>
-        <p className="text-xs text-muted-foreground">
-          Tag-facet picker TODO — the filter already carries <code>tags</code>.
-        </p>
+        {/* A working `key=value` tag facet editor (the filter carries `tags`; the host resolves the
+            subset via the tag graph). A `tags.find`-driven autocomplete of real facet values is the
+            named follow-up — the dashboard variable Query-source precedent. */}
+        <TagFacetEditor
+          tags={filter.tags ?? {}}
+          onChange={(tags) =>
+            onChange({ ...filter, tags: Object.keys(tags).length ? tags : undefined })
+          }
+        />
       </fieldset>
+    </div>
+  );
+}
+
+/** A minimal `key=value` tag facet editor: add rows the list AND-filters on, remove to widen. */
+function TagFacetEditor({
+  tags,
+  onChange,
+}: {
+  tags: Record<string, string>;
+  onChange: (tags: Record<string, string>) => void;
+}): JSX.Element {
+  function add(entry: string) {
+    const [k, ...rest] = entry.split("=");
+    const key = k.trim();
+    const value = rest.join("=").trim();
+    if (!key || !value) return;
+    onChange({ ...tags, [key]: value });
+  }
+  function remove(key: string) {
+    const next = { ...tags };
+    delete next[key];
+    onChange(next);
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {Object.entries(tags).map(([k, v]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => remove(k)}
+            title="Remove facet"
+            className="rounded-full border border-primary bg-primary px-2 py-0.5 text-xs text-primary-foreground"
+          >
+            {k}={v} ✕
+          </button>
+        ))}
+      </div>
+      <input
+        type="text"
+        placeholder="key=value ↵"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            add((e.target as HTMLInputElement).value);
+            (e.target as HTMLInputElement).value = "";
+          }
+        }}
+        className="w-full rounded-md border border-border px-2 py-1 text-xs"
+      />
     </div>
   );
 }

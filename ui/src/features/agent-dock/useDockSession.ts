@@ -16,8 +16,10 @@ export interface DockSession {
   error: string | null;
   /** Ask the active agent. Captures the CURRENT page context at send time (per-message) and posts a
    *  `kind:"agent"` item to the dock channel — the durable worker resolves the workspace's active
-   *  runtime and posts `agent_result` back. Returns the run id so the caller can watch its stream. */
-  ask: (goal: string) => Promise<void>;
+   *  runtime and posts `agent_result` back. `persona` (persona-session #5) is the dock chip's resolved
+   *  per-tab focus; pass `undefined` to let the server's prefs fold decide. Returns the run id so the
+   *  caller can watch its stream. */
+  ask: (goal: string, persona?: string) => Promise<void>;
 }
 
 /** Drive the current dock session `(ws, cid)` as `author`. `now` is injectable for deterministic
@@ -32,12 +34,14 @@ export function useDockSession(
   const page = usePageContext();
 
   const ask = useCallback(
-    async (goal: string) => {
+    async (goal: string, persona?: string) => {
       const trimmed = goal.trim();
       if (!trimmed) return;
       // Capture the page context NOW (per-message): ask → navigate → ask carries the new page on the
       // second message. The dock passes NO runtime — the worker rides the workspace's active agent.
-      await channel.postAgent(trimmed, undefined, page.capture());
+      // `persona` is the chip's resolved id (pin or context match) — the chip and the payload must
+      // never disagree (one gateway test pins this). Undefined ⇒ the server folds prefs to a default.
+      await channel.postAgent(trimmed, undefined, page.capture(), persona);
     },
     [channel, page],
   );

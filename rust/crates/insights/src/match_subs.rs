@@ -30,14 +30,42 @@ pub struct InsightView<'a> {
 /// Compute the intents a raise produces: one per matching sub. Pure — no I/O, no clock. The host
 /// loads the workspace's subs (capped at the ws sub_cap) and calls this once per raise.
 // SCOPE: docs/scope/insights/insight-subscriptions-scope.md §"The raise-time matcher"
-pub fn match_subs<'a>(_view: &InsightView<'a>, _subs: &'a [Subscription]) -> Vec<Intent> {
-    // For each sub (skip dormant subs — they do not match):
-    //   - origin_ref: sub.filter.origin_ref exact-equals view.origin_ref (or absent ⇒ any).
-    //   - dedup_key:  sub.filter.dedup_key  exact-equals view.dedup_key  (or absent ⇒ any).
-    //   - severity_min: view.severity.at_least(sub.filter.severity_min).
-    //   - tags: every (k,v) in sub.filter.tags is in view.tags (subset check).
-    //   - All provided axes must match (AND); all absent = "all insights" (empty filter matches).
-    // A muted sub STILL produces an intent — the notify state accumulates so an unmute doesn't
-    // lose the digest; the notify engine drops the delivery, not the accounting.
-    todo!("insights: AND-filter + tag-subset matcher — SCOPE: subscriptions-scope.md §The raise-time matcher")
+pub fn match_subs<'a>(view: &InsightView<'a>, subs: &'a [Subscription]) -> Vec<Intent> {
+    subs.iter()
+        .filter(|sub| sub.dormant_reason.is_none() && filter_matches(&sub.filter, view))
+        .map(|sub| Intent {
+            sub_id: sub.id.clone(),
+            insight_id: view.insight_id.to_string(),
+            dedup_key: view.dedup_key.to_string(),
+            severity: view.severity,
+            kind: view.kind,
+        })
+        .collect()
+}
+
+/// AND every provided filter axis; all absent = "all insights". A muted sub STILL matches — the
+/// notify state accumulates so an unmute doesn't lose the digest (the notify engine drops the
+/// delivery, not the accounting). A dormant sub is excluded by the caller above.
+fn filter_matches(filter: &crate::subscription::SubFilter, view: &InsightView<'_>) -> bool {
+    if let Some(origin_ref) = &filter.origin_ref {
+        if origin_ref != view.origin_ref {
+            return false;
+        }
+    }
+    if let Some(dedup_key) = &filter.dedup_key {
+        if dedup_key != view.dedup_key {
+            return false;
+        }
+    }
+    if let Some(floor) = filter.severity_min {
+        if !view.severity.at_least(floor) {
+            return false;
+        }
+    }
+    // Tag facet: the insight must carry EVERY (k, v) in the filter (subset check). Extra tags on
+    // the insight don't disqualify it.
+    filter
+        .tags
+        .iter()
+        .all(|(k, v)| view.tags.get(k).is_some_and(|got| got == v))
 }

@@ -3,14 +3,20 @@
 //! one concept over: a persona is orthogonal to a definition (persona = *focus*, definition =
 //! *(runtime, model)*), so this is its own resolver, not a field on that one.
 //!
-//! **Precedence (decided):**
-//!   1. an **explicit** invoke `persona` id → that persona (`agent_persona_get`, which re-runs its OWN
-//!      member gate + built-in/custom namespace split — the wall is inherited, never widened). An
-//!      explicit-but-unknown id is a **named error** (an explicit ask must not silently degrade).
-//!   2. else the workspace's **`agent.config.active_persona`** id, if set → `agent_persona_get(id)`. A
-//!      dangling active id (persona since deleted) → **`warn!` + no persona** (registry-default
-//!      behavior, never an errored run — the `resolve_effective_runtime` posture).
-//!   3. else **no persona** (the run is un-narrowed, exactly as today).
+//! **Precedence (persona-session #5 — the server half of the five-layer resolution; the pin and the
+//! context match live in the client, which sends its result as the explicit invoke id):**
+//!   1. an **explicit** invoke `persona` id → that persona. An explicit-but-unknown id is a **named
+//!      error** (an explicit ask must not silently degrade); an explicit id **disabled by the roster**
+//!      (`agent.config.enabled_personas`) is a **named disabled error** (curation must not be silently
+//!      bypassable — the wall beneath is unchanged either way).
+//!   2. else the caller's **member default** — `Prefs.agent_persona` on `user_prefs:[ws,member]`;
+//!   3. else the **workspace default** — `Prefs.agent_persona` on `workspace_prefs:[ws]` (admin-set;
+//!      where headless callers land). A dangling or roster-disabled default → **`warn!` + no persona**
+//!      (never an errored run — the `resolve_effective_runtime` posture).
+//!   4. else **no persona** (the run is un-narrowed, exactly as today).
+//!
+//! #1's `agent.config.active_persona` is retired: decode-only, migrated at boot into the
+//! workspace-default axis (`migrate_active_persona.rs`), never read here.
 //!
 //! The resolved persona's `extends` closure is unioned in [`resolve_effective`] so a caller gets the
 //! full tool/skill surface without walking parents itself.
@@ -65,55 +71,90 @@ pub struct EffectivePersona {
     pub runtimes: Option<Vec<String>>,
 }
 
-/// Resolve the active persona for `ws` under `caller`: the explicit `persona` id, else the workspace's
-/// `active_persona` pick, else none. Returns `Ok(None)` when no persona applies (the run is
-/// un-narrowed). An explicit-but-unknown id is a named `BadInput`; a dangling *active* id warns and
-/// resolves to `None`.
+/// Is `id` enabled under the workspace roster? `None` roster = all enabled; an **empty** roster is
+/// treated as unset too (the MERGE-can't-write-null clearing workaround — an empty list rides
+/// `agent.config.set` to mean "back to all enabled", mirroring the prefs empty-string guard).
+pub(super) fn is_enabled(roster: Option<&Vec<String>>, id: &str) -> bool {
+    match roster {
+        Some(list) if !list.is_empty() => list.iter().any(|e| e == id),
+        _ => true,
+    }
+}
+
+/// Resolve the persona for a run in `ws` under `caller`: the explicit `persona` id (roster-checked),
+/// else the caller's member-default prefs axis, else the workspace-default axis, else none. Returns
+/// `Ok(None)` when no persona applies (the run is un-narrowed). An explicit-but-unknown id is a named
+/// `NotFound`; an explicit-but-disabled id is a named `BadInput`; a dangling/disabled *default* warns
+/// and resolves to `None`.
 pub async fn resolve_persona(
     node: &Node,
-    // The caller identity is not consulted for the persona READ (a run-assembly persona read is
-    // narrowing-only and namespace-walled, not cap-gated — see `read_persona_for_assembly`). Kept in
-    // the signature so the seam matches its `resolve_active_definition` sibling and a future
-    // caller-aware policy has a place to land without a signature churn.
-    _caller: &Principal,
+    // Consulted ONLY for its `sub` (the member-default prefs record is the caller's own). The persona
+    // READ itself stays namespace-walled + un-gated (narrowing-only — see `read_persona_for_assembly`).
+    caller: &Principal,
     ws: &str,
     persona: Option<&str>,
 ) -> Result<Option<Persona>, ToolError> {
-    // (1) Explicit invoke override → that persona. An unknown explicit id is a named `NotFound` (an
-    // explicit ask must not silently degrade to un-narrowed). Namespace-walled raw read (see
-    // `read_persona_for_assembly` — narrowing-only, so not the picker cap gate).
+    // The roster (best-effort: a store read error is treated as "unset", never a panic).
+    let cfg = get_agent_config(&node.store, ws)
+        .await
+        .map_err(|_| ToolError::Denied)?;
+    let roster = cfg.as_ref().and_then(|c| c.enabled_personas.as_ref());
+
+    // (1) Explicit invoke override → that persona. An unknown explicit id is a named `NotFound`; a
+    // roster-disabled one is a named `BadInput` (curation working as intended — the message says so,
+    // for the flow/script that hard-coded an id an admin later disabled). Namespace-walled raw read.
     if let Some(id) = persona.filter(|s| !s.is_empty()) {
+        if !is_enabled(roster, id) {
+            return Err(ToolError::BadInput(format!(
+                "persona {id:?} is disabled in this workspace (agent.config.enabled_personas); \
+                 an admin can re-enable it or the invoke can name an enabled persona"
+            )));
+        }
         return read_persona_for_assembly(node, ws, id)
             .await?
             .map(Some)
             .ok_or(ToolError::NotFound);
     }
 
-    // Read the workspace pick (best-effort: a store read error is treated as "unset", never a panic).
-    let cfg = get_agent_config(&node.store, ws)
+    // (2)+(3) The defaults fold: member axis → workspace-default axis, first `Some` wins (empty string
+    // = cleared = unset). Best-effort reads — a prefs read error never fails the run.
+    let member_default = lb_prefs::get_user_prefs(&node.store, ws, caller.sub())
         .await
-        .map_err(|_| ToolError::Denied)?;
+        .ok()
+        .flatten()
+        .and_then(|p| p.agent_persona)
+        .filter(|s| !s.is_empty());
+    let default_id = match member_default {
+        Some(id) => Some(id),
+        None => lb_prefs::get_workspace_prefs(&node.store, ws)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|p| p.agent_persona)
+            .filter(|s| !s.is_empty()),
+    };
 
-    // (2) The `active_persona` pick, if set and it still resolves. A dangling id (persona since
-    // deleted) → warn + no persona, NOT an error (the resolve-at-read posture; the run just isn't
-    // narrowed).
-    if let Some(active) = cfg
-        .as_ref()
-        .and_then(|c| c.active_persona.as_deref())
-        .filter(|s| !s.is_empty())
-    {
-        match read_persona_for_assembly(node, ws, active).await {
+    if let Some(id) = default_id {
+        // A disabled or dangling default → warn + no persona, NOT an error (the resolve-at-read
+        // posture; the run just isn't narrowed).
+        if !is_enabled(roster, &id) {
+            tracing::warn!(
+                "run assembly: default persona {id:?} is roster-disabled in ws {ws:?}; running un-narrowed"
+            );
+            return Ok(None);
+        }
+        match read_persona_for_assembly(node, ws, &id).await {
             Ok(Some(p)) => return Ok(Some(p)),
             Ok(None) | Err(_) => {
                 tracing::warn!(
-                    "run assembly: active_persona {active:?} did not resolve in ws {ws:?}; running un-narrowed"
+                    "run assembly: default persona {id:?} did not resolve in ws {ws:?}; running un-narrowed"
                 );
                 return Ok(None);
             }
         }
     }
 
-    // (3) No persona.
+    // (4) No persona.
     Ok(None)
 }
 

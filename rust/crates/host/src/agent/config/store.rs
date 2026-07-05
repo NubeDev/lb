@@ -14,8 +14,10 @@ pub const AGENT_CONFIG_TABLE: &str = "workspace_agent_config";
 
 /// The columns to project on a read — explicitly NOT `id` (a composite RecordId whose array id-part
 /// does not round-trip cleanly through `serde_json::Value`), only the config fields.
+/// NB: `active_persona` is deliberately NOT projected — legacy decode-only (persona-session #5); the
+/// boot migration reads it directly, nothing else may.
 const AGENT_CONFIG_COLUMNS: &str =
-    "default_runtime, model_endpoint, active_definition, active_persona";
+    "default_runtime, model_endpoint, active_definition, enabled_personas";
 
 /// Define the `workspace_agent_config` table in `ws`. Idempotent (`DEFINE ... IF NOT EXISTS`).
 /// SCHEMAFULL with `default_runtime` nullable and `model_endpoint` a flexible object (the nested
@@ -27,7 +29,8 @@ pub async fn define_agent_config_schema(store: &Store, ws: &str) -> Result<(), S
          DEFINE FIELD IF NOT EXISTS default_runtime ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS model_endpoint ON {AGENT_CONFIG_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS active_definition ON {AGENT_CONFIG_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS active_persona ON {AGENT_CONFIG_TABLE} TYPE option<string>;"
+         DEFINE FIELD IF NOT EXISTS active_persona ON {AGENT_CONFIG_TABLE} TYPE option<string>;
+         DEFINE FIELD IF NOT EXISTS enabled_personas ON {AGENT_CONFIG_TABLE} TYPE option<array<string>>;"
     );
     store.query_ws(ws, &sql, vec![]).await?;
     Ok(())

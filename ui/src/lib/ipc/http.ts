@@ -319,13 +319,20 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     //    `ws`/`author`/`caps` the client passes are DROPPED — the gateway derives the principal +
     //    workspace from the token (the hard wall, §7). Returns the durable `{ jobId, answer }`. ──
     case "agent_invoke": {
-      const { goal, jobId, skill, doc } = args as {
+      const { goal, jobId, skill, doc, persona } = args as {
         goal: string;
         jobId?: string;
         skill?: string;
         doc?: string;
+        persona?: string;
       };
-      return postJson<T>(`${base}/agent/invoke`, { goal, job_id: jobId, skill, doc });
+      return postJson<T>(`${base}/agent/invoke`, {
+        goal,
+        job_id: jobId,
+        skill,
+        doc,
+        persona,
+      });
     }
 
     // ── agent-dock run controls: STOP / PAUSE / RESUME a live run. Maps to

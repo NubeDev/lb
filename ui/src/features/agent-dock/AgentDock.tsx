@@ -21,8 +21,10 @@ import { usePageContext } from "./PageContextProvider";
 import { useDockSessions } from "./useDockSessions";
 import { useDockSession } from "./useDockSession";
 import { useDockRun } from "./useDockRun";
+import { usePersonaFocus } from "./usePersonaFocus";
 import { latestPendingRun } from "./pendingRun";
 import { DockSessionPicker } from "./DockSessionPicker";
+import { DockPersonaChip } from "./DockPersonaChip";
 import { DockContextCaption } from "./DockContextCaption";
 import { DockRunStatus } from "./DockRunStatus";
 import { DockComposer } from "./DockComposer";
@@ -46,6 +48,13 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
   const sessions = useDockSessions(ws, principal);
   const session = useDockSession(ws, sessions.current, principal, now);
   const page = usePageContext();
+
+  // Resolve the persona focus the chip displays AND the dock sends as the per-invoke `persona` arg
+  // (persona-session #5). The live surface (router-derived) feeds the context match; the pin rides
+  // in this tab's sessionStorage. The chip and the run must never disagree: `focus.current?.id` is
+  // exactly what `ask` will pass as `persona` (undefined when null ⇒ server folds prefs).
+  const surface = page.capture().surface;
+  const personaFocus = usePersonaFocus(ws, surface);
 
   const pending = latestPendingRun(session.items);
   // Watch the newest run while it has no durable result/error yet (active). The run stream degrades
@@ -134,6 +143,7 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
               onNew={sessions.newSession}
             />
           </div>
+          <DockPersonaChip focus={personaFocus} />
           <Button
             type="button"
             variant="ghost"
@@ -193,7 +203,10 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
         </p>
       )}
 
-      <DockComposer onAsk={(goal) => void session.ask(goal)} busy={busy} />
+      <DockComposer
+        onAsk={(goal) => void session.ask(goal, personaFocus.current?.id)}
+        busy={busy}
+      />
     </aside>
   );
 }

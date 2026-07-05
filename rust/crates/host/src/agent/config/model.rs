@@ -50,13 +50,21 @@ pub struct AgentConfig {
     /// like every other field (an offline double-deliver UPSERTs idempotently).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_definition: Option<String>,
-    /// The **active persona id** the workspace picked (`agent.persona` catalog id) — the run's *focus*
-    /// (curated tools + pinned skills + identity), orthogonal to the `active_definition` *(runtime,
-    /// model)* pick (agent-personas scope #1). Additive + optional (an old config with no
-    /// `active_persona` resolves to no persona — the un-narrowed behavior). Resolved at run assembly by
-    /// [`resolve_persona`](crate::agent::resolve_persona); a per-invoke `persona` arg overrides it. LWW
-    /// like every other field (an offline double-deliver UPSERTs idempotently). No write-time
-    /// validation (a dangling id warns + runs un-narrowed at resolve, like `active_definition`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// **LEGACY, decode-only** (persona-session #5 retired it). #1's single workspace-global persona
+    /// toggle — wrong scope (last-writer-wins across members/tabs). At boot,
+    /// [`migrate_active_persona`](crate::agent::migrate_active_persona) copies a set value once into
+    /// the workspace-default `Prefs.agent_persona` axis and clears this field. Kept deserializable so
+    /// old records/replays don't break; **never serialized** (a patch can't write it) and **never
+    /// read** by resolution (it is also dropped from `AGENT_CONFIG_COLUMNS`).
+    #[serde(default, skip_serializing)]
     pub active_persona: Option<String>,
+    /// The workspace's persona **roster** (persona-session #5): the enabled persona ids. `None`
+    /// (default) = **all** personas enabled (built-ins + workspace customs, on-by-default);
+    /// `Some(list)` = only those ids. Curation of the *advertisement* layer: a disabled persona is
+    /// flagged `enabled: false` in `agent.persona.list`, excluded from client context matching, and an
+    /// explicit invoke naming it fails with a named error — the capability wall beneath is unchanged
+    /// either way. Ids are opaque data (rule 10); a roster naming a deleted persona is inert. LWW
+    /// whole-list per patch (no per-entry merge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_personas: Option<Vec<String>>,
 }

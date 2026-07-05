@@ -85,6 +85,11 @@ export interface AgentPayload {
   /** Optional page context (agent-dock scope) — fenced into the run's goal as untrusted context.
    *  Absent → byte-identical to a plain channel agent post. */
   context?: PageContext;
+  /** The persona id to run under (persona-session #5) — the dock's resolved per-tab focus: the sticky
+   *  pin if set, else the page-context match over the enabled roster, else absent (let the server's
+   *  member→workspace-default fold decide). Absent here ⇒ byte-identical to a payload with no persona
+   *  (the run lands on the workspace default). Opaque id (rule 10). */
+  persona?: string;
 }
 
 /** `kind: "agent_result"` — the agent worker's durable final answer. */
@@ -206,18 +211,24 @@ export function newRunId(): string {
 
 /** Encode an `agent` request body (channels-agent scope). `runtime` omitted → the in-house default;
  *  pass a profile id (e.g. `open-interpreter-default`) to drive an external agent. The UI mints `job`
- *  (via {@link newRunId}) so it can watch the run stream the instant the request lands. */
+ *  (via {@link newRunId}) so it can watch the run stream the instant the request lands. `persona`
+ *  (persona-session #5) is the dock's resolved per-tab focus — pass it when the dock has a pin or a
+ *  context match; omit it to let the server's prefs fold decide. */
 export function encodeAgent(
   goal: string,
   job: string,
   runtime?: string,
   context?: PageContext,
+  persona?: string,
 ): string {
   const payload: AgentPayload = { kind: "agent", goal, job };
   if (runtime) payload.runtime = runtime;
   // Page context rides on the payload only when captured (agent-dock); absent → byte-identical to a
   // plain channel agent post (the host fences it in; the UI is a thin client).
   if (context) payload.context = context;
+  // Persona rides on the payload only when the dock resolved one (pin or context match); absent ⇒ the
+  // server folds member→ws-default prefs and may land on none (no narrowing). Byte-identical when omitted.
+  if (persona) payload.persona = persona;
   return JSON.stringify(payload);
 }
 

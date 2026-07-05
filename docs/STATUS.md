@@ -16,28 +16,29 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just scoped (2026-07-05, docs only): insights — a durable data-insight record.** The answer to
-"do we need an insight system, or is it just a term?": ~80% is already shipped (rules
-`emit`/`alert`, flows sinks, inbox/outbox, channels, tags, personas + the agent dock); the one
-missing piece is a durable `insight:{ws}:{id}` record with severity, origin provenance
-(rule/flow/agent + run), `dedup_key` occurrence counting (flap-suppression + re-open), and an
-`open → acked → resolved` lifecycle — raised via a rules rhai handle / a flow `insight` sink node /
-plain `insight.*` MCP verbs, faceted through the tag graph, surfaced on an Insights page whose AI
-layer is the shipped agent dock + a data-only `builtin.insights-analyst` persona. Channel-per-rule,
-insight-as-outbox-effect, and insight-as-inbox-item all considered and rejected in-scope. Fraud +
-SkySpark-style HVAC verticals (`docker/postgres/seed.py`) build on it with zero core branches.
-Three sub-scopes carry the key features: **occurrences** (a per-insight transaction log — one lite
-size-capped row per raise in a capped ring, lifetime `count` beyond it), **subscriptions** (a
-member subscribes a channel to all / a rule / an identity / a tag facet / a severity floor,
-delivered under a stored reminders-pattern principal), and **notify** (the anti-spam digest
-ladder — noisy keys decay immediate→hourly→daily→weekly→monthly and climb back when quiet;
-first-occurrence/severity-escalation/re-open always break through; ack suppresses; ws policy
-defaults + per-sub overrides + a per-member prefs kill switch).
-Scope [`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3
-sub-scopes); stub
-[`public/insights/insights.md`](public/insights/insights.md); session
-[`sessions/insights/insights-scope-session.md`](sessions/insights/insights-scope-session.md).
-Not yet built — next up when picked.
+**Just shipped (2026-07-05): insights — the durable data-finding record + adaptive notify.** The
+one missing record type is in: a persisted, queryable data finding (`insight:{ws}:{id}` — severity,
+origin provenance, dedup-keyed occurrence counting, `open → acked → resolved` lifecycle) raised by
+any principal via `insight.*` MCP verbs, discovered through the tag graph, and surfaced on an
+Insights page with the agent dock + `builtin.insights-analyst` persona. Three sub-features compose
+onto it: **occurrences** (a per-insight transaction ring — last N firings, 2 KB-capped, `oseq`),
+**subscriptions** (a member subscribes a channel to all / a rule / an identity / a tag facet / a
+severity floor; fire-time re-checked stored principal; deny ⇒ dormant + owner note), and **notify**
+(the anti-spam digest ladder — `L0 immediate → … → L4 monthly`; breakthroughs always deliver; ack
+suppresses; one digest per `(sub, window)`; per-sub `throttle_override`/`muted`; per-member prefs
+kill switch; durable reactor over the injected clock). New crate `lb-insights`; host `insight.*`
+verbs (every verb over `POST /mcp/call`); `/insights…` REST + `/insights/events` SSE;
+`ui/src/features/insights/`; `builtin.insights-analyst` grounded by `core.insights` (the seeded
+SKILL.md). Domain-free (rule 10): core never learns "fraud"/"HVAC". **Tests (real store/bus/
+gateway, rule 9):** ladder unit **10/10**, host integration **14/14** (per-verb cap-deny +
+ws-isolation + dedup/ring/2 KB-reject/matcher/ladder/digest-idempotency/kill-switch), gateway routes
+**4/4**, UI gateway **4/4**; `core_skills_test` 11/11 (`core.insights` seeds + resolves); `pnpm test`
+631/631. Follow-ups (recorded, not gaps): the rhai handle + flow `insight` sink producer doors;
+InsightDetail origin deep-link + typed body renderer; retention/purge. Scope
+[`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3 sub-scopes);
+shipped [`public/insights/insights.md`](public/insights/insights.md); skill
+[`skills/insights/SKILL.md`](skills/insights/SKILL.md); session
+[`sessions/insights/insights-session.md`](sessions/insights/insights-session.md).
 
 ---
 
@@ -625,6 +626,27 @@ devkit input, + a real-scaffold e2e + the "never on its own" suspend-e2e). Two b
 (the clamp-vs-merge floor + a TOML sub-table binding drop of `runtimes`). Session:
 [`sessions/agent-personas/persona-coding-session.md`](sessions/agent-personas/persona-coding-session.md).
 Public: [`public/agent-personas/agent-personas.md`](public/agent-personas/agent-personas.md).
+
+**#5 persona-session SHIPPED (2026-07-05) — the post-ship correction of #1's selection model.** Live
+use showed #1's single `agent.config.active_persona` workspace-wide toggle was wrong twice over:
+two members (or one member's two tabs) can't hold different focuses, and hand-picking a focus
+workspace-wide is backwards when the dock already knows where the user is. This slice replaces the
+toggle with three ideas, **zero new verbs**: (a) the workspace **enables a roster**
+(`agent.config.enabled_personas: Option<Vec<String>>`; None = all enabled — the curation layer);
+(b) exactly **one** persona per run, **suggested client-side** from the page surface via new
+`Persona.surfaces: Vec<String>` (matched over the enabled roster by the dock — rule 10, no core
+branch), with a sticky per-tab **pin** in `sessionStorage`; (c) defaults re-homed to a new nullable
+`Prefs.agent_persona` axis (member → ws-default fold). Run assembly (`apply.rs`/`resolve_effective`)
+untouched; one-shot boot migration copies any legacy `active_persona` into the ws-default axis
+(decode-only thereafter). Backend: **9 host tests green** (precedence table, roster semantics,
+disabled-named-error, ws-isolation, independence, migration, surfaces-as-data, capability-deny);
+UI: **8 PersonaSettings + 6 DockPersonaChip gateway tests green** (chip == sent payload for context
+match + pin; pin survives remount; pin in tab A never changes tab B; disabled absent from picker;
+explicit-disabled invoke error; second member's own server fold). Decisions: empty roster = cleared
+= all enabled (disabling-all unsupported); `""` clears a prefs axis; multi-match = id-sorted first;
+list computes `enabled` server-side. Session:
+[`sessions/agent-personas/persona-session-session.md`](sessions/agent-personas/persona-session-session.md).
+
 
 **Just shipped (2026-07-03): active-agent wiring — the active pick is the ONE implicit agent
 everywhere (branch `master`).** A workspace picks one agent and no surface asks again; the pick's

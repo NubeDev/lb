@@ -4,17 +4,20 @@
 //! gated by `mcp:insight.<verb>:call`. The `ts`-taking verbs use `gw.now()` so the REST client
 //! passes no `now` (the rules-messaging / dashboard-pin precedent).
 //!
-//! **STUB-state**: the routes wire end to end (the plumbing is real); the underlying host verbs
-//! carry `todo!()` bodies, so a call that reaches a stub returns a 500 (surfaced panic). The
-//! implementing session replaces the bodies; the route shape is stable.
+//! The live feed rides `GET /insights/events?token=<jwt>` (SSE over `ws/{ws}/insight/events`),
+//! query-param authed like the channel stream (`EventSource` can't set headers).
+
+use std::convert::Infallible;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
+use futures::stream::Stream;
 use lb_insights::{ListQuery, OccCursor};
 use serde::Deserialize;
 
-use crate::session::authenticate;
+use crate::session::{authenticate, verify_token};
 use crate::state::Gateway;
 
 /// `GET /insights` — the faceted, keyset-paged list. Filter axes arrive as query params (the
@@ -128,4 +131,37 @@ pub async fn list_occurrences(
     .await
     .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     Ok(Json(serde_json::to_value(page).unwrap_or_default()))
+}
+
+/// The SSE auth query param (the session token — `EventSource` can't send a bearer header).
+#[derive(Debug, Deserialize)]
+pub struct EventsAuth {
+    #[serde(default)]
+    pub token: String,
+}
+
+/// `GET /insights/events?token=<jwt>` — the live raise/ack/resolve feed for the workspace, SSE over
+/// the bus subject `ws/{ws}/insight/events`. `401` on a missing/bad token; `403` (opaque) without
+/// `mcp:insight.watch:call` or across workspaces (the subject is ws-scoped — no cross-ws leak).
+pub async fn insight_events(
+    State(gw): State<Gateway>,
+    Query(auth): Query<EventsAuth>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let principal = verify_token(&gw, &auth.token)
+        .await
+        .map_err(|e| e.into_response())?;
+    let ws = principal.ws().to_string();
+    let sub = lb_host::subscribe_insight_events(&gw.node.bus, &principal, &ws)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    let stream = futures::stream::unfold(sub, |sub| async move {
+        let event = sub.recv().await.map(|ev| {
+            Event::default()
+                .event("message")
+                .json_data(&ev)
+                .unwrap_or_else(|_| Event::default().comment("encode error"))
+        });
+        event.map(|e| (Ok(e), sub))
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }

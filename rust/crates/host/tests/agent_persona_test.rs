@@ -5,7 +5,8 @@
 //!   - **CRUD + caps-deny (§2.1):** every `agent.persona.*` verb; a non-admin write denied and
 //!     nothing persists; a `builtin.*` write rejected `BadInput` before the caps gate.
 //!   - **Workspace-isolation (§2.2):** ws-B cannot `get`/apply ws-A's custom persona; ws-B's
-//!     `active_persona` never affects a ws-A run; built-ins readable from both, writable from neither.
+//!     ws-default persona (the prefs axis) never affects a ws-A run; built-ins readable from both,
+//!     writable from neither.
 //!   - **The swap test (both runtimes):** a record-only custom persona changes a run's menu +
 //!     identity + pinned catalog with ZERO code change — proven for the in-house runtime (a recording
 //!     model captures the exact tools + goal) AND a scripted external runtime (captures its
@@ -16,20 +17,21 @@
 //!     still governs a model-proposed call to it (menu is a hint, wall is the law).
 //!   - **Fail-closed grounding:** a persona pinning an ungranted skill fails the run at start with the
 //!     named error, before any model spend.
-//!   - **Resolution precedence:** explicit invoke `persona` > `active_persona` > none; an explicit
-//!     unknown id is a named error, a dangling active id warns + runs un-narrowed.
+//!   - **Resolution precedence:** explicit invoke `persona` > member default > ws default > none
+//!     (persona-session #5 — the prefs axis replaced #1's `active_persona` toggle); an explicit
+//!     unknown id is a named error, a dangling default warns + runs un-narrowed.
 //!   - **Units:** glob matching, `extends` union + cycle rejection, idempotent re-seed.
 
 use std::sync::{Arc, Mutex};
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    agent_config_set, agent_persona_create, agent_persona_delete, agent_persona_get,
-    agent_persona_list, agent_persona_update, call_agent_tool, glob_matches, grant_skill,
-    invoke_via_runtime, seed_core_skills, seed_personas, AgentConfig, AgentError, AgentRuntime,
-    AllowedTool, ErasedModel, Node, Persona, PersonaPatch, RunContext, RuntimeRegistry, Substrate,
-    DEFAULT_RUNTIME,
+    agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
+    agent_persona_update, call_agent_tool, glob_matches, grant_skill, invoke_via_runtime,
+    seed_core_skills, seed_personas, AgentError, AgentRuntime, AllowedTool, ErasedModel, Node,
+    Persona, PersonaPatch, RunContext, RuntimeRegistry, Substrate, DEFAULT_RUNTIME,
 };
+use lb_prefs::{set_workspace_prefs, Prefs};
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
 
 // ---- harness -----------------------------------------------------------------------------------
@@ -70,6 +72,7 @@ fn analyst_persona(id: &str) -> Persona {
         granted_tools: vec!["agent.memory.list".into()],
         grounding_skills: vec![],
         extends: vec![],
+        surfaces: vec![],
         policy_preset: None,
         runtimes: None,
         builtin: false,
@@ -367,7 +370,8 @@ async fn ws_b_cannot_get_ws_a_custom_persona() {
 // The swap test + narrowing — IN-HOUSE runtime
 // ================================================================================================
 
-/// Drive the in-house loop under an ACTIVE persona and capture the assembled menu + goal.
+/// Drive the in-house loop with NO explicit persona (the defaults fold decides) and capture the
+/// assembled menu + goal.
 async fn drive_in_house_with_active_persona(
     node: &Arc<Node>,
     ws: &str,
@@ -434,12 +438,13 @@ async fn swap_test_in_house_menu_and_identity_reflect_a_record_only_persona() {
     agent_persona_create(&node, &caller, ws, &analyst_persona("analyst"))
         .await
         .expect("create persona");
-    agent_config_set(
-        &node,
-        &caller,
+    // ws-DEFAULT persona via the prefs axis (persona-session #5 — where the retired
+    // `active_persona` toggle re-homed).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("analyst".into()),
+        &Prefs {
+            agent_persona: Some("analyst".into()),
             ..Default::default()
         },
     )
@@ -476,12 +481,13 @@ async fn narrowing_a_persona_tool_the_caller_lacks_is_never_added() {
     agent_persona_create(&node, &caller, ws, &p)
         .await
         .expect("create");
-    agent_config_set(
-        &node,
-        &caller,
+    // ws-DEFAULT persona via the prefs axis (persona-session #5 — where the retired
+    // `active_persona` toggle re-homed).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("greedy".into()),
+        &Prefs {
+            agent_persona: Some("greedy".into()),
             ..Default::default()
         },
     )
@@ -650,12 +656,13 @@ async fn a_dangling_active_persona_warns_and_runs_un_narrowed() {
     agent_persona_create(&node, &caller, ws, &analyst_persona("temp"))
         .await
         .unwrap();
-    agent_config_set(
-        &node,
-        &caller,
+    // ws-DEFAULT persona via the prefs axis (persona-session #5 — where the retired
+    // `active_persona` toggle re-homed).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("temp".into()),
+        &Prefs {
+            agent_persona: Some("temp".into()),
             ..Default::default()
         },
     )
@@ -702,12 +709,13 @@ async fn explicit_persona_overrides_the_active_one() {
     agent_persona_create(&node, &caller, ws, &getter)
         .await
         .unwrap();
-    agent_config_set(
-        &node,
-        &caller,
+    // ws-DEFAULT persona via the prefs axis (persona-session #5 — where the retired
+    // `active_persona` toggle re-homed).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("active-one".into()),
+        &Prefs {
+            agent_persona: Some("active-one".into()),
             ..Default::default()
         },
     )
@@ -776,12 +784,13 @@ async fn extends_unions_parent_tools_and_skips_a_self_cycle() {
     agent_persona_create(&node, &caller, ws, &child)
         .await
         .unwrap();
-    agent_config_set(
-        &node,
-        &caller,
+    // ws-DEFAULT persona via the prefs axis (persona-session #5 — where the retired
+    // `active_persona` toggle re-homed).
+    set_workspace_prefs(
+        &node.store,
         ws,
-        &AgentConfig {
-            active_persona: Some("child".into()),
+        &Prefs {
+            agent_persona: Some("child".into()),
             ..Default::default()
         },
     )

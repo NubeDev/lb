@@ -155,12 +155,19 @@ for `bus:chan/{channel}:pub`. On deny (member removed, channel grant revoked) th
 
 ## Open questions
 
+> **v1 dispositions (shipped 2026-07-05):** subscriptions shipped channel-only, exact-match filters,
+   member-owned; all three questions are confirmed v1-closed or open follow-ups, not gaps.
+
 1. Should `filter.origin_ref` accept a trailing-`*` glob (all rules of a family), matching the
-   persona `granted_tools` grammar? (Recommend: exact-only v1.)
-2. Team-owned subscriptions via the share-edge model — wait for demand?
-3. Should a sub be able to target the **owner's inbox** (`sink.kind:"inbox"`) as a
-   channel-free personal feed? Cheap to add (same Item plane) — recommend yes if it falls out
-   free, else follow-up.
+   persona `granted_tools` grammar? *(Recommend: exact-only v1.)* **Resolved v1: exact-only** —
+   `origin_ref` is an exact string match; globbing is a follow-up if a "subscribe to a rule family"
+   need surfaces.
+2. Team-owned subscriptions via the share-edge model — wait for demand? **Open follow-up** — v1 is
+   member-owned (a team wanting coverage subscribes via any member with the channel grant).
+3. Should a sub be able to target the **owner's inbox** (`sink.kind:"inbox"`) as a channel-free
+   personal feed? Cheap to add (same Item plane) — recommend yes if it falls out free, else
+   follow-up. **Open follow-up** — v1 is channel-only (`sink.kind:"channel"`); the inbox kind is
+   additive when wanted (same Item plane, no schema change).
 
 ## Related
 

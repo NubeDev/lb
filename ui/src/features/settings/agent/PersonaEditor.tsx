@@ -45,6 +45,7 @@ export function PersonaEditor({ editing, personas, onSubmit, onCancel }: Props) 
     editing?.grounding_skills ?? [],
   );
   const [extendsIds, setExtendsIds] = useState<string[]>(editing?.extends ?? []);
+  const [surfaces, setSurfaces] = useState<string[]>(editing?.surfaces ?? []);
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +72,7 @@ export function PersonaEditor({ editing, personas, onSubmit, onCancel }: Props) 
         granted_tools: grantedTools,
         grounding_skills: groundingSkills,
         extends: extendsIds,
+        surfaces,
         // policy_preset / runtimes are set by the built-in seed or a future pane — the editor carries
         // through the editing record's values so an edit never drops them.
         policy_preset: editing?.policy_preset,
@@ -172,6 +174,18 @@ export function PersonaEditor({ editing, personas, onSubmit, onCancel }: Props) 
               ))}
             </div>
           )}
+        </Field>
+        <Field
+          label="Surfaces"
+          help="Page surfaces this persona is suggested on (the dock's context match). Opaque strings — e.g. 'flows', 'dashboards'. An empty list = never context-suggested."
+        >
+          <StringListField
+            label="Surfaces"
+            ariaLabel="surfaces"
+            placeholder="e.g. flows or dashboards"
+            values={surfaces}
+            onChange={setSurfaces}
+          />
         </Field>
       </FieldGroup>
 

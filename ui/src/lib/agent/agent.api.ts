@@ -11,12 +11,14 @@ import type { AgentResult } from "./agent.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** Invoke the central agent in `ws` with a goal (optionally over a granted skill / shared doc).
- *  Mirrors `lb_host::invoke` reached as the `agent.invoke` MCP tool. */
+ *  Mirrors `lb_host::invoke` reached as the `agent.invoke` MCP tool. `opts.persona` (persona-session
+ *  #5) is the explicit per-invoke focus override — the dock sends the same id via the channel-agent
+ *  body; absent ⇒ the server folds member→ws-default prefs (may land on none). */
 export function invokeAgent(
   ws: string,
   jobId: string,
   goal: string,
-  opts?: { skill?: string; doc?: string; author?: string; caps?: string[] },
+  opts?: { skill?: string; doc?: string; persona?: string; author?: string; caps?: string[] },
 ): Promise<AgentResult> {
   return invoke<AgentResult>("agent_invoke", {
     ws,
@@ -24,6 +26,7 @@ export function invokeAgent(
     goal,
     skill: opts?.skill,
     doc: opts?.doc,
+    persona: opts?.persona,
     author: opts?.author,
     caps: opts?.caps,
   });

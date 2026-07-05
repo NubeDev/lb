@@ -21,9 +21,18 @@ pub const MAX_DATA_BYTES: usize = 2 * 1024;
 
 /// One firing of an insight. Lite by construction: the per-firing delta only — never a repeat of
 /// the parent's title/origin/tags.
+///
+/// **Serialized field names matter.** The row is written through `lb_store::capped_insert`, which
+/// injects two of its OWN fields into every stored body — `cap_key` (the FIFO bucket) and `seq`
+/// (a ULID string, the eviction order). To avoid a collision with our monotone `u64` sequence, the
+/// occurrence's sequence serializes as **`oseq`** (extra `cap_key`/`seq`/`insight_id` fields on the
+/// stored row are ignored on decode). The ring orders newest-first by `oseq` (the parent's lifetime
+/// count at append time — strictly increasing, so it agrees with the ULID eviction order).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Occurrence {
-    /// Monotone per-insight sequence (host-assigned). The ring orders newest-first by this.
+    /// Monotone per-insight sequence (host-assigned = the parent `count` at append). Serialized as
+    /// `oseq` so `capped_insert`'s injected `seq` (a ULID) never clobbers it.
+    #[serde(rename = "oseq")]
     pub seq: u64,
     /// Logical timestamp of the raise (no wall-clock — testing §3).
     pub ts: u64,

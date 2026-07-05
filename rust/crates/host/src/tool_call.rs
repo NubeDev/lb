@@ -302,11 +302,12 @@ async fn dispatch_at_depth(
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
             call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("insight.") {
-            // insights scope: the durable insight + occurrences + subscriptions + policy surface
-            // (store-only, like dashboard/panel). The outer gate ran `mcp:insight.<verb>:call`;
-            // the verb re-runs it inside (defense in depth). The matcher + ladder state machine
-            // + digest reactor are pure / reactor-driven (no MCP dispatch arm of their own).
-            crate::call_insight_tool(&node.store, principal, ws, qualified_tool, &input).await?
+            // insights scope: the durable insight + occurrences + subscriptions + policy surface.
+            // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in
+            // depth). `insight.raise` needs the full `&Node` (bus event + tag graph + channel
+            // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
+            // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
+            crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
