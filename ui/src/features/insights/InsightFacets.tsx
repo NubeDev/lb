@@ -1,11 +1,20 @@
-// The insights facets sidebar — the AND-filter the list reads (insights umbrella scope). Axes:
+// The insights facets rail — the AND-filter the list reads (insights umbrella scope). Axes:
 // status (open/acked/resolved), severity floor (info/warning/critical), origin_ref (free text),
 // and tag facets (a `{ k: v }` picker — TODO: drive from `tags.find` so the picker lists real
 // facets, not free text). One component per file (FILE-LAYOUT §4 frontend).
 //
 // STUB: the facets render + emit `onChange`; the tag-facet picker's `tags.find`-driven dropdown
 // is TODO (today a free-text `key=value` input). The `range` (time-window) facet is deferred.
+//
+// Voice match with the rest of the page: shadcn `Button` (toggle pills) + `Input` + `Badge`
+// (selected tag chips) — no bespoke pills/inputs. A selected pill takes the accent tone
+// (`variant="default"`); an unselected one is `variant="outline"`.
 
+import { X } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { ListQuery, Severity, Status } from "@/lib/insights/insights.types";
 
 interface Props {
@@ -13,7 +22,7 @@ interface Props {
   onChange: (next: ListQuery) => void;
 }
 
-/** The facets sidebar. Emits a new filter on every change; the page's hook re-fetches. */
+/** The facets rail. Emits a new filter on every change; the page's hook re-fetches. */
 export function InsightFacets({ filter, onChange }: Props): JSX.Element {
   function setStatus(status?: Status) {
     onChange({ ...filter, status });
@@ -23,64 +32,72 @@ export function InsightFacets({ filter, onChange }: Props): JSX.Element {
   }
 
   return (
-    <div className="space-y-4 text-sm">
+    <div className="space-y-5 text-sm">
       <fieldset>
-        <legend className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+        <legend className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Status
         </legend>
-        <div className="flex flex-wrap gap-1">
-          {(["open", "acked", "resolved"] as Status[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatus(filter.status === s ? undefined : s)}
-              className={`rounded-full border px-2 py-0.5 text-xs ${
-                filter.status === s ? "border-primary bg-primary text-primary-foreground" : "border-border"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          {(["open", "acked", "resolved"] as Status[]).map((s) => {
+            const active = filter.status === s;
+            return (
+              <Button
+                key={s}
+                type="button"
+                size="sm"
+                variant={active ? "default" : "outline"}
+                aria-pressed={active}
+                onClick={() => setStatus(active ? undefined : s)}
+                className="h-7 px-2.5 text-xs capitalize"
+              >
+                {s}
+              </Button>
+            );
+          })}
         </div>
       </fieldset>
 
       <fieldset>
-        <legend className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+        <legend className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Severity ≥
         </legend>
-        <div className="flex flex-wrap gap-1">
-          {(["info", "warning", "critical"] as Severity[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setSeverity(filter.severity === s ? undefined : s)}
-              className={`rounded-full border px-2 py-0.5 text-xs ${
-                filter.severity === s ? "border-primary bg-primary text-primary-foreground" : "border-border"
-              }`}
-            >
-              {s}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5">
+          {(["info", "warning", "critical"] as Severity[]).map((s) => {
+            const active = filter.severity === s;
+            return (
+              <Button
+                key={s}
+                type="button"
+                size="sm"
+                variant={active ? "default" : "outline"}
+                aria-pressed={active}
+                onClick={() => setSeverity(active ? undefined : s)}
+                className="h-7 px-2.5 text-xs capitalize"
+              >
+                {s}
+              </Button>
+            );
+          })}
         </div>
       </fieldset>
 
       <fieldset>
-        <legend className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+        <legend className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Producer ref
         </legend>
-        <input
+        <Input
           type="text"
           value={filter.origin_ref ?? ""}
           onChange={(e) =>
             onChange({ ...filter, origin_ref: e.target.value || undefined })
           }
           placeholder="rule:… / flow:…"
-          className="w-full rounded-md border border-border px-2 py-1 text-xs"
+          className="h-8 text-xs"
         />
       </fieldset>
 
       <fieldset>
-        <legend className="mb-1 text-xs font-semibold uppercase text-muted-foreground">
+        <legend className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
           Tag facets
         </legend>
         {/* A working `key=value` tag facet editor (the filter carries `tags`; the host resolves the
@@ -97,7 +114,9 @@ export function InsightFacets({ filter, onChange }: Props): JSX.Element {
   );
 }
 
-/** A minimal `key=value` tag facet editor: add rows the list AND-filters on, remove to widen. */
+/** A minimal `key=value` tag facet editor: add rows the list AND-filters on, remove to widen.
+ *  Selected rows render as dismissible shadcn `Badge`s (the same chip shape the rest of the
+ *  product uses for selected facets). */
 function TagFacetEditor({
   tags,
   onChange,
@@ -118,30 +137,35 @@ function TagFacetEditor({
     onChange(next);
   }
   return (
-    <div className="space-y-1">
-      <div className="flex flex-wrap gap-1">
-        {Object.entries(tags).map(([k, v]) => (
-          <button
-            key={k}
-            type="button"
-            onClick={() => remove(k)}
-            title="Remove facet"
-            className="rounded-full border border-primary bg-primary px-2 py-0.5 text-xs text-primary-foreground"
-          >
-            {k}={v} ✕
-          </button>
-        ))}
-      </div>
-      <input
+    <div className="space-y-2">
+      {Object.keys(tags).length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(tags).map(([k, v]) => (
+            <Badge key={k} variant="default" className="gap-1 font-mono text-[10px]">
+              {k}={v}
+              <button
+                type="button"
+                onClick={() => remove(k)}
+                aria-label={`remove facet ${k}`}
+                className="inline-flex items-center rounded-sm opacity-70 hover:opacity-100"
+              >
+                <X size={10} />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
+      <Input
         type="text"
         placeholder="key=value ↵"
         onKeyDown={(e) => {
           if (e.key === "Enter") {
-            add((e.target as HTMLInputElement).value);
-            (e.target as HTMLInputElement).value = "";
+            const el = e.currentTarget;
+            add(el.value);
+            el.value = "";
           }
         }}
-        className="w-full rounded-md border border-border px-2 py-1 text-xs"
+        className="h-8 text-xs"
       />
     </div>
   );

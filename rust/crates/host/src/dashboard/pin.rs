@@ -76,7 +76,7 @@ pub async fn dashboard_pin(
     let (mut dashboard, is_create) =
         match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
             Some(existing) => {
-                if existing.owner != principal.sub() {
+                if existing.owner != principal.owner_sub() {
                     return Err(DashboardError::Denied);
                 }
                 (existing, false)
@@ -85,7 +85,7 @@ pub async fn dashboard_pin(
                 Dashboard {
                     id: id.to_string(),
                     title: title.to_string(),
-                    owner: principal.sub().to_string(),
+                    owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
                     cells: Vec::new(),
                     variables: Vec::new(),

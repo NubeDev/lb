@@ -79,7 +79,7 @@ export interface ThemePreference {
 
 export const DEFAULT_THEME: ThemePreference = {
   mode: "dark",
-  preset: "amber",
+  preset: "teal",
   radius: "0.5rem",
   layout: DEFAULT_LAYOUT,
   look: "default",

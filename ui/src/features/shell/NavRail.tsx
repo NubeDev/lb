@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Database,
   Hash,
+  Lightbulb,
   Network,
   Inbox,
   LayoutDashboard,
@@ -56,6 +57,7 @@ export type CoreSurface =
   | "telemetry"
   | "inbox"
   | "outbox"
+  | "insights"
   | "admin"
   | "extensions"
   | "studio"
@@ -124,6 +126,10 @@ const SURFACE_GROUPS: { label: string; items: SurfaceDef[] }[] = [
       { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
       { key: "inbox", icon: Inbox, label: "Inbox" },
       { key: "outbox", icon: Send, label: "Outbox" },
+      // insights (insights umbrella scope): the durable data-finding record. Workspace-level
+      // attention surface — open/acked/resolved findings with severity + dedup, faceted through the
+      // tag graph. Cap-gated on `insight.list` (allowed.ts); the gateway re-checks every verb.
+      { key: "insights", icon: Lightbulb, label: "Insights" },
     ],
   },
   {

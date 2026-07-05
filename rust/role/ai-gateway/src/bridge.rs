@@ -33,12 +33,15 @@ impl<P: Provider> ModelAccess for AiGateway<P> {
             .map(|t| ToolSchema {
                 name: t.name.clone(),
                 description: t.description.clone(),
+                parameters: t.input_schema.clone(),
             })
             .collect();
         req.prior_results = prior
             .iter()
             .map(|o| ToolResult {
                 id: o.id.clone(),
+                name: o.name.clone(),
+                input: o.input.clone(),
                 ok: o.ok.clone(),
                 error: o.error.clone(),
             })

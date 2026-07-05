@@ -35,6 +35,12 @@ pub struct Principal {
     /// The delegation upper bound: when `Some`, the check layer ALSO requires a match here. `None`
     /// for an ordinary (non-delegated) principal. Set only by [`derive`](Principal::derive).
     constraint: Option<Vec<String>>,
+    /// The ROOT caller a derived principal acts for (`user:ada` behind `agent:session`). `None` for
+    /// an ordinary principal. Set only by [`derive`](Principal::derive), preserved across nested
+    /// derives (same rule as `constraint`). Read via [`owner_sub`](Principal::owner_sub) so a record
+    /// the agent creates on the caller's behalf belongs to the CALLER — audit still shows the
+    /// `agent:*` sub acted, but ownership/visibility walls resolve to the human who asked.
+    delegator: Option<String>,
 }
 
 impl Principal {
@@ -47,6 +53,7 @@ impl Principal {
             role,
             caps,
             constraint: None,
+            delegator: None,
         }
     }
 
@@ -65,6 +72,7 @@ impl Principal {
             role: Role::Member,
             caps,
             constraint: None,
+            delegator: None,
         }
     }
 
@@ -84,6 +92,7 @@ impl Principal {
             role: Role::Member,
             caps,
             constraint: None,
+            delegator: None,
         }
     }
 
@@ -108,6 +117,9 @@ impl Principal {
             // depth. For a first (non-delegated) derive, `self.constraint` is `None`, so the bound is
             // `self.caps` — the caller's own caps, as before.
             constraint: Some(self.constraint.clone().unwrap_or_else(|| self.caps.clone())),
+            // Same root-preservation rule as `constraint`: a nested derive still acts for the
+            // ORIGINAL caller, never for the intermediate agent.
+            delegator: Some(self.delegator.clone().unwrap_or_else(|| self.sub.clone())),
         }
     }
 
@@ -128,6 +140,13 @@ impl Principal {
     /// The held capability strings (auth-caps grammar). Read by `caps::check`.
     pub fn caps(&self) -> &[String] {
         &self.caps
+    }
+
+    /// The identity records created by this principal BELONG to: the root caller for a derived
+    /// (on-behalf-of) actor, the principal itself otherwise. Ownership stamps and owner/visibility
+    /// walls read this — the audit trail keeps the acting `sub()` separately.
+    pub fn owner_sub(&self) -> &str {
+        self.delegator.as_deref().unwrap_or(&self.sub)
     }
 
     /// The delegation upper bound, if this is a derived (on-behalf-of) principal. When `Some`, the

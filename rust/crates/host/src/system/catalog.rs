@@ -423,6 +423,431 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "secret",
         description: "list secret metadata (path/owner/visibility) — never the values",
     },
+    // datasource.* / federation.* — the external-datasource surface (datasources scope).
+    HostTool {
+        tool: "datasource.list",
+        group: "datasource",
+        description: "list the workspace's registered external datasources",
+    },
+    HostTool {
+        tool: "datasource.test",
+        group: "datasource",
+        description: "test connectivity of a registered (or candidate) datasource",
+    },
+    HostTool {
+        tool: "datasource.add",
+        group: "datasource",
+        description: "register an external datasource (DSN sealed into lb-secrets)",
+    },
+    HostTool {
+        tool: "datasource.remove",
+        group: "datasource",
+        description: "remove a registered datasource",
+    },
+    HostTool {
+        tool: "federation.query",
+        group: "federation",
+        description: "run SQL against one registered external datasource",
+    },
+    HostTool {
+        tool: "federation.schema",
+        group: "federation",
+        description: "the tables + columns of one registered datasource",
+    },
+    HostTool {
+        tool: "federation.mirror",
+        group: "federation",
+        description: "mirror an external query's rows into the embedded store",
+    },
+    // viz.query — the ONE viz bridge (widget-platform scope).
+    HostTool {
+        tool: "viz.query",
+        group: "viz",
+        description: "run a saved/inline query shaped for charts + tables (the one viz bridge)",
+    },
+    // query.* — saved queries (query-workbench scope).
+    HostTool {
+        tool: "query.run",
+        group: "query",
+        description: "run a saved query by id (with optional parameter overrides)",
+    },
+    HostTool {
+        tool: "query.save",
+        group: "query",
+        description: "save a named query definition",
+    },
+    HostTool {
+        tool: "query.compile",
+        group: "query",
+        description: "compile a query definition to its target SQL without running it",
+    },
+    HostTool {
+        tool: "query.get",
+        group: "query",
+        description: "read one saved query definition",
+    },
+    HostTool {
+        tool: "query.list",
+        group: "query",
+        description: "list the workspace's saved queries",
+    },
+    HostTool {
+        tool: "query.delete",
+        group: "query",
+        description: "delete a saved query",
+    },
+    // flows.* — the typed-node DAG engine (flows scope).
+    HostTool {
+        tool: "flows.save",
+        group: "flows",
+        description: "create or update a flow definition (nodes + wires)",
+    },
+    HostTool {
+        tool: "flows.get",
+        group: "flows",
+        description: "read one flow definition",
+    },
+    HostTool {
+        tool: "flows.list",
+        group: "flows",
+        description: "list the workspace's flows",
+    },
+    HostTool {
+        tool: "flows.delete",
+        group: "flows",
+        description: "delete a flow",
+    },
+    HostTool {
+        tool: "flows.enable",
+        group: "flows",
+        description: "enable/disable a flow's triggers",
+    },
+    HostTool {
+        tool: "flows.run",
+        group: "flows",
+        description: "run a flow now (a manual run)",
+    },
+    HostTool {
+        tool: "flows.inject",
+        group: "flows",
+        description: "inject a message into a flow node's port",
+    },
+    HostTool {
+        tool: "flows.cancel",
+        group: "flows",
+        description: "cancel a running flow run",
+    },
+    HostTool {
+        tool: "flows.suspend",
+        group: "flows",
+        description: "suspend a running flow run",
+    },
+    HostTool {
+        tool: "flows.resume",
+        group: "flows",
+        description: "resume a suspended flow run",
+    },
+    HostTool {
+        tool: "flows.watch",
+        group: "flows",
+        description: "watch a flow's live run events",
+    },
+    HostTool {
+        tool: "flows.nodes",
+        group: "flows",
+        description: "the node-type catalog the flow canvas builds from",
+    },
+    HostTool {
+        tool: "flows.node.get",
+        group: "flows",
+        description: "read one node of a flow definition",
+    },
+    HostTool {
+        tool: "flows.node.update",
+        group: "flows",
+        description: "update one node of a flow definition",
+    },
+    HostTool {
+        tool: "flows.node_state",
+        group: "flows",
+        description: "the per-node live runtime value (the canvas steady-state view)",
+    },
+    HostTool {
+        tool: "flows.patch_run",
+        group: "flows",
+        description: "patch a suspended run's pending state before resuming",
+    },
+    HostTool {
+        tool: "flows.runs.get",
+        group: "flows",
+        description: "read one flow run's record",
+    },
+    HostTool {
+        tool: "flows.runs.list",
+        group: "flows",
+        description: "list a flow's runs",
+    },
+    // rules.* — rule authoring + evaluation (rules-workbench scope).
+    HostTool {
+        tool: "rules.save",
+        group: "rules",
+        description: "create or update a rule",
+    },
+    HostTool {
+        tool: "rules.get",
+        group: "rules",
+        description: "read one rule",
+    },
+    HostTool {
+        tool: "rules.list",
+        group: "rules",
+        description: "list the workspace's rules",
+    },
+    HostTool {
+        tool: "rules.delete",
+        group: "rules",
+        description: "delete a rule",
+    },
+    HostTool {
+        tool: "rules.run",
+        group: "rules",
+        description: "run a rule now against real data",
+    },
+    HostTool {
+        tool: "rules.eval",
+        group: "rules",
+        description: "evaluate a rule expression without saving it",
+    },
+    HostTool {
+        tool: "rules.help",
+        group: "rules",
+        description: "the rule grammar + function reference",
+    },
+    // channel.* — the host's messaging plane (rules-messaging scope).
+    HostTool {
+        tool: "channel.post",
+        group: "channel",
+        description: "post a message to a channel (bus cap re-checked per channel)",
+    },
+    HostTool {
+        tool: "channel.list",
+        group: "channel",
+        description: "list the workspace's channels",
+    },
+    HostTool {
+        tool: "channel.history",
+        group: "channel",
+        description: "read a channel's persisted message history",
+    },
+    HostTool {
+        tool: "channel.edit",
+        group: "channel",
+        description: "edit one of your own channel messages",
+    },
+    HostTool {
+        tool: "channel.delete",
+        group: "channel",
+        description: "delete one of your own channel messages",
+    },
+    HostTool {
+        tool: "channel.chart_pref.get",
+        group: "channel",
+        description: "read your per-viewer chart preference for a query result",
+    },
+    HostTool {
+        tool: "channel.chart_pref.set",
+        group: "channel",
+        description: "set your per-viewer chart preference for a query result",
+    },
+    // prefs.* — member/workspace preference axes (prefs scope).
+    HostTool {
+        tool: "prefs.get",
+        group: "prefs",
+        description: "read your raw member preference record",
+    },
+    HostTool {
+        tool: "prefs.set",
+        group: "prefs",
+        description: "set one of your member preference axes",
+    },
+    HostTool {
+        tool: "prefs.resolve",
+        group: "prefs",
+        description: "your effective preferences (member over workspace defaults)",
+    },
+    HostTool {
+        tool: "prefs.set_default",
+        group: "prefs",
+        description: "set a workspace-default preference axis (admin)",
+    },
+    HostTool {
+        tool: "prefs.catalog",
+        group: "prefs",
+        description: "the preference axes + allowed values",
+    },
+    // message.* — recipient-localized rendering (i18n-catalogs scope).
+    HostTool {
+        tool: "message.render",
+        group: "message",
+        description: "render a message template with values (caller's locale)",
+    },
+    HostTool {
+        tool: "message.render_recipient",
+        group: "message",
+        description: "render a message template localized to another recipient",
+    },
+    HostTool {
+        tool: "message.set_catalog",
+        group: "message",
+        description: "write a message-template catalog (admin)",
+    },
+    // reminder.* — scheduled reminders (reminders-tenant scope).
+    HostTool {
+        tool: "reminder.create",
+        group: "reminder",
+        description: "create a scheduled reminder",
+    },
+    HostTool {
+        tool: "reminder.update",
+        group: "reminder",
+        description: "update a reminder",
+    },
+    HostTool {
+        tool: "reminder.delete",
+        group: "reminder",
+        description: "delete a reminder",
+    },
+    HostTool {
+        tool: "reminder.list",
+        group: "reminder",
+        description: "list the workspace's reminders",
+    },
+    HostTool {
+        tool: "reminder.fire",
+        group: "reminder",
+        description: "fire a reminder now (the gated run-now control)",
+    },
+    // assets.* — docs, skills, and binary assets (assets scope).
+    HostTool {
+        tool: "assets.list_docs",
+        group: "assets",
+        description: "list the workspace's shared docs",
+    },
+    HostTool {
+        tool: "assets.get_doc",
+        group: "assets",
+        description: "read one shared doc",
+    },
+    HostTool {
+        tool: "assets.link_doc",
+        group: "assets",
+        description: "link a doc to another record",
+    },
+    HostTool {
+        tool: "assets.delete_doc",
+        group: "assets",
+        description: "delete a shared doc",
+    },
+    HostTool {
+        tool: "assets.list_assets",
+        group: "assets",
+        description: "list the workspace's binary assets",
+    },
+    HostTool {
+        tool: "assets.get_asset",
+        group: "assets",
+        description: "read one binary asset's metadata",
+    },
+    HostTool {
+        tool: "assets.delete_asset",
+        group: "assets",
+        description: "delete a binary asset",
+    },
+    HostTool {
+        tool: "assets.backlinks",
+        group: "assets",
+        description: "the records linking to a doc/asset",
+    },
+    HostTool {
+        tool: "assets.list_granted_skills",
+        group: "assets",
+        description: "list the skills granted to you",
+    },
+    HostTool {
+        tool: "assets.load_skill",
+        group: "assets",
+        description: "load a granted skill's body (grant-gated)",
+    },
+    // telemetry.* — the redacted dispatch/telemetry log (observability scope).
+    HostTool {
+        tool: "telemetry.query",
+        group: "telemetry",
+        description: "query the redacted telemetry log",
+    },
+    HostTool {
+        tool: "telemetry.tail",
+        group: "telemetry",
+        description: "tail recent telemetry events",
+    },
+    HostTool {
+        tool: "telemetry.trace",
+        group: "telemetry",
+        description: "the events of one trace id",
+    },
+    HostTool {
+        tool: "telemetry.purge",
+        group: "telemetry",
+        description: "purge telemetry rows (admin)",
+    },
+    // layout.* — the member-owned per-surface layout record (data-studio v2 scope).
+    HostTool {
+        tool: "layout.get",
+        group: "layout",
+        description: "read your saved layout for a surface",
+    },
+    HostTool {
+        tool: "layout.set",
+        group: "layout",
+        description: "save your layout for a surface",
+    },
+    // history/undo — the compensation log (undo scope).
+    HostTool {
+        tool: "history.list",
+        group: "history",
+        description: "list the workspace's mutation history",
+    },
+    HostTool {
+        tool: "history.compensations",
+        group: "history",
+        description: "the compensations available for a history entry",
+    },
+    HostTool {
+        tool: "undo",
+        group: "history",
+        description: "undo your latest undoable mutation",
+    },
+    HostTool {
+        tool: "redo",
+        group: "history",
+        description: "redo your latest undone mutation",
+    },
+    // store.* write half (the read half is above).
+    HostTool {
+        tool: "store.write",
+        group: "store",
+        description: "write one record into the embedded store",
+    },
+    HostTool {
+        tool: "store.delete",
+        group: "store",
+        description: "delete one record from the embedded store",
+    },
+    // tools.* — the palette/agent menu source itself.
+    HostTool {
+        tool: "tools.catalog",
+        group: "tools",
+        description: "the MCP tools you are authorized to call in this workspace",
+    },
 ];
 
 /// The static host-native catalog as `ToolInfo` rows (`source = "host"`), sorted by qualified name so
@@ -446,31 +871,28 @@ mod tests {
     use super::*;
 
     /// Every host-native verb-family prefix the dispatcher (`tool_call.rs::is_host_native`) routes has
-    /// at least one catalog entry — so a whole family cannot silently vanish from the console. Mirrors
-    /// the `||` arms of `is_host_native` (the bridge-dispatched families) plus `system.` (routed
-    /// directly by the gateway/UI). `host.` is included; the non-prefixed `series.*`/`ingest.*` ingest
-    /// fallthrough is covered by its own group.
+    /// at least one catalog entry — so a whole family cannot silently vanish from the console OR the
+    /// agent's `tools.catalog`-derived menu (which now serves this inventory). Derived from the
+    /// dispatcher's OWN shared const, not a hand-copied list — a hand-maintained mirror is exactly how
+    /// `datasource.`/`viz.`/`flows.`/… went missing (see
+    /// debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md). `system.` (routed
+    /// directly by the gateway/UI, not the bridge) is asserted on top.
     #[test]
     fn host_catalog_covers_dispatch_prefixes() {
         let cat = host_catalog();
-        for prefix in [
-            "series.",
-            "ingest.",
-            "outbox.",
-            "inbox.",
-            "dashboard.",
-            "template.",
-            "devkit.",
-            "agent.",
-            "host.",
-            "bus.",
-            "store.",
-            "system.",
-            "secret.",
-        ] {
+        for prefix in crate::tool_call::HOST_NATIVE_PREFIXES
+            .iter()
+            .chain(["system."].iter())
+        {
             assert!(
                 cat.iter().any(|t| t.tool.starts_with(prefix)),
                 "host catalog has no entry for dispatched prefix `{prefix}`"
+            );
+        }
+        for exact in crate::tool_call::HOST_NATIVE_EXACT {
+            assert!(
+                cat.iter().any(|t| &t.tool == exact),
+                "host catalog has no entry for dispatched verb `{exact}`"
             );
         }
     }

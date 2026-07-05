@@ -227,3 +227,22 @@ streaming workflow a static descriptor cannot replace. `query.save` (a write ver
 can't call — so a principal WITHOUT `mcp:federation.query:call` doesn't see the command, doesn't see
 the render, doesn't get the envelope (no existence leak, no envelope leak). The menu IS the
 permission model, extended to the `result` envelope.
+
+## Prove the query BEFORE you save the widget (required workflow)
+
+A widget whose query errors — or returns zero rows — is a broken tile the user has to debug. Never
+`dashboard.save` a data cell until you have proven its exact source:
+
+1. Build the query iteratively with `federation.query` (or `store.query`/`query.run`) until it
+   returns the rows you expect. Discover shape first (`information_schema.tables` /
+   `information_schema.columns` or `federation.schema {source, table}`) — never guess table or
+   column names.
+2. Then run the EXACT source you are about to bind through the one viz bridge:
+   `viz.query { sources: [{ tool, args }] }` — the same `{tool, args}` you will put in the cell's
+   `sources[]`. Confirm the reply's `frames`/`rows` are **non-empty** and the fields look right
+   (time column, value column, series split).
+3. Only then `dashboard.save`. If `viz.query` returns empty frames, the widget WILL render empty —
+   fix the query (range too narrow? wrong column? wrong source?) before saving, or tell the user
+   honestly why there is no data.
+
+This costs one extra call and saves the user a dead tile.

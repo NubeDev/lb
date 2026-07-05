@@ -3,5 +3,6 @@
 //! adapter; the mock lives at the crate root (it is a test fixture, not a real backend).
 
 mod openai_compat;
+mod strip_think;
 
 pub use openai_compat::OpenAiCompat;

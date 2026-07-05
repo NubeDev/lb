@@ -60,6 +60,8 @@ pub async fn activate_skill(
             return Activation {
                 outcome: CallOutcome {
                     id: call_id.to_string(),
+                    name: "skill.activate".to_string(),
+                    input: args.to_string(),
                     ok: None,
                     error: Some("skill.activate: missing string arg 'id'".to_string()),
                 },
@@ -73,6 +75,8 @@ pub async fn activate_skill(
         Ok(skill) => Activation {
             outcome: CallOutcome {
                 id: call_id.to_string(),
+                name: "skill.activate".to_string(),
+                input: args.to_string(),
                 ok: Some(format!("activated skill {id}")),
                 error: None,
             },
@@ -81,6 +85,8 @@ pub async fn activate_skill(
         Err(e) => Activation {
             outcome: CallOutcome {
                 id: call_id.to_string(),
+                name: "skill.activate".to_string(),
+                input: args.to_string(),
                 ok: None,
                 error: Some(match e {
                     AssetError::Denied => format!("skill.activate denied: {id} is not granted"),

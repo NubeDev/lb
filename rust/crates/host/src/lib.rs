@@ -89,11 +89,11 @@ pub use agent::{
     EffectivePersona, ErasedModel, InHouseRuntime, Invocation, LoopState, Memory, MemoryKind,
     MemoryScope, ModelAccess, ModelBuilder, ModelEndpointPatch, Persona, PersonaListItem,
     PersonaPatch, Policy, PolicyPreset, ProposedCall, Rule, RunContext, RuntimeRegistry,
-    SettleOutcome, Substrate, TestContext, TestResult, Turn, UnconfiguredModel,
-    AGENT_CONFIG_TABLE, AGENT_DEFS_NS,
-    AGENT_DEFS_TABLE, BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME,
-    DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION, MAX_STEPS,
-    MEMORY_HEADER, PERSONA_NS, PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE, UNCONFIGURED_ANSWER,
+    SettleOutcome, Substrate, TestContext, TestResult, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
+    AGENT_DEFS_NS, AGENT_DEFS_TABLE, BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
+    DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION,
+    MAX_STEPS, MEMORY_HEADER, PERSONA_NS, PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE,
+    UNCONFIGURED_ANSWER,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,

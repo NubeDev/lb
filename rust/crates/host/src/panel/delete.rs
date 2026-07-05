@@ -32,7 +32,7 @@ pub async fn panel_delete(
         None => Ok(()),
         Some(p) if p.deleted => Ok(()),
         Some(mut p) => {
-            if p.owner != principal.sub() {
+            if p.owner != principal.owner_sub() {
                 return Err(PanelError::Denied);
             }
             // Delete-safety: refuse while referenced unless forced. Uses the cap-free `scan_usage`

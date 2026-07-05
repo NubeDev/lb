@@ -25,7 +25,7 @@ pub async fn dashboard_delete(
         None => Ok(()),
         Some(d) if d.deleted => Ok(()),
         Some(mut d) => {
-            if d.owner != principal.sub() {
+            if d.owner != principal.owner_sub() {
                 return Err(DashboardError::Denied);
             }
             d.deleted = true;

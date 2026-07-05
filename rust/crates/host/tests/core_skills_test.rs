@@ -392,6 +392,7 @@ async fn run_and_capture_context(
             tools: &[AllowedTool {
                 name: "skill.activate".into(),
                 description: "activate a granted skill".into(),
+                input_schema: None,
             }],
             ts: 1,
         },

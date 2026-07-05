@@ -6,9 +6,9 @@
 //   Stalled → "still working" hint (not an error)   Done → nothing (the durable answer is the record)
 //   Error → the message + a Retry affordance.
 
-import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Square, WifiOff, Wrench } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Pause, Play, RotateCcw, Square, WifiOff, Wrench, X } from "lucide-react";
 
-import type { RunFeed } from "@/features/channel/useRunFeed";
+import type { RunFeed, RunToolCall } from "@/features/channel/useRunFeed";
 import type { DockRunPhase } from "./dockRunState";
 
 interface Props {
@@ -72,9 +72,16 @@ export function DockRunStatus({
   }
 
   if (phase === "done") {
-    // The durable agent_result is the message of record (rendered by the message list); nothing to add
-    // beyond an optional degrade note.
-    return degraded ? <DegradeNote /> : null;
+    // The durable agent_result is the message of record (rendered by the message list). What it does
+    // NOT carry is the run's tool calls — keep the live-captured list visible so the user can see
+    // WHAT the agent actually did (the #1 "did it really do it?" question), plus the degrade note.
+    if (!degraded && feed.tools.length === 0) return null;
+    return (
+      <div className="flex flex-col gap-1">
+        <ToolList tools={feed.tools} />
+        {degraded && <DegradeNote />}
+      </div>
+    );
   }
 
   if (phase === "error") {
@@ -150,8 +157,33 @@ export function DockRunStatus({
           </span>
         )}
       </div>
+      <ToolList tools={feed.tools} />
       {degraded && <DegradeNote />}
     </div>
+  );
+}
+
+/** The run's tool calls so far, one honest row each: done (✓), failed (✗), or still running. The
+ *  durable channel item never carries these, so this live-captured list is the only place the user
+ *  sees what the agent actually did. Renders nothing before the first call. */
+function ToolList({ tools }: { tools: RunToolCall[] }) {
+  if (tools.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-0.5" aria-label="tool calls">
+      {tools.map((t) => (
+        <li key={t.id} className="flex items-center gap-1.5 text-xs text-muted">
+          {t.err != null ? (
+            <X size={11} className="shrink-0 text-destructive" />
+          ) : t.ok !== undefined ? (
+            <Check size={11} className="shrink-0 text-emerald-500" />
+          ) : (
+            <Loader2 size={11} className="shrink-0 animate-spin" />
+          )}
+          <code className="truncate font-mono text-[11px]">{t.name}</code>
+          {t.err != null && <span className="min-w-0 truncate text-destructive">{t.err}</span>}
+        </li>
+      ))}
+    </ul>
   );
 }
 

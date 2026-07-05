@@ -20,7 +20,7 @@ use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use lb_role_ai_gateway::{AiGateway, AiRequest, FinishReason, Message, OpenAiCompat};
+use lb_role_ai_gateway::{AiGateway, AiRequest, FinishReason, Message, OpenAiCompat, ToolSchema};
 use serde_json::{json, Value};
 
 /// What the scripted server saw and what it should answer. Shared so a test asserts on the request
@@ -207,4 +207,156 @@ async fn the_server_receives_the_right_auth_model_and_messages() {
         "tools omitted when empty, got: {}",
         seen.body
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tools_real_input_schema_reaches_the_provider_parameters() {
+    // The regression the "works very bad" transcript surfaced: a tool was advertised with an EMPTY
+    // parameter schema, so the model couldn't form a valid call and asked the user in prose. The
+    // adapter must forward the tool's REAL input schema as the OpenAI function `parameters`.
+    let (base, seen) = serve(
+        200,
+        json!({
+            "choices": [{ "message": { "content": "ok" }, "finish_reason": "stop" }],
+            "usage": { "total_tokens": 1 }
+        }),
+    )
+    .await;
+
+    let schema = json!({
+        "type": "object",
+        "properties": { "datasource": { "type": "string" } },
+        "required": ["datasource"]
+    });
+    let mut req = request();
+    req.tools = vec![ToolSchema {
+        name: "datasource.list".into(),
+        description: "list datasources".into(),
+        parameters: Some(schema.clone()),
+    }];
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let _ = gw.complete(&req).await;
+
+    let seen = seen.lock().unwrap();
+    let seen = seen.as_ref().expect("server received a request");
+    let fn_params = &seen.body["tools"][0]["function"]["parameters"];
+    assert_eq!(
+        fn_params, &schema,
+        "the tool's real input schema must reach `function.parameters`, not an empty object"
+    );
+    assert_eq!(seen.body["tools"][0]["function"]["name"], "datasource.list");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_tool_with_no_schema_degrades_to_an_empty_object() {
+    let (base, seen) = serve(
+        200,
+        json!({
+            "choices": [{ "message": { "content": "ok" }, "finish_reason": "stop" }],
+            "usage": { "total_tokens": 1 }
+        }),
+    )
+    .await;
+
+    let mut req = request();
+    req.tools = vec![ToolSchema {
+        name: "ping".into(),
+        description: "no args".into(),
+        parameters: None,
+    }];
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let _ = gw.complete(&req).await;
+
+    let seen = seen.lock().unwrap();
+    let seen = seen.as_ref().expect("server received a request");
+    assert_eq!(
+        seen.body["tools"][0]["function"]["parameters"],
+        json!({ "type": "object" }),
+        "a schemaless tool degrades to the OpenAI-required empty object"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_think_block_is_stripped_from_the_answer() {
+    // GLM inlines `<think>…</think>` in content; it must not reach the answer.
+    let (base, _seen) = serve(
+        200,
+        json!({
+            "choices": [{
+                "message": { "content": "<think>let me plan the query</think>Here is your chart." },
+                "finish_reason": "stop"
+            }],
+            "usage": { "total_tokens": 7 }
+        }),
+    )
+    .await;
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let resp = gw.complete(&request()).await;
+
+    assert_eq!(
+        resp.content, "Here is your chart.",
+        "the <think> reasoning block must be stripped from the model's answer"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prior_results_are_folded_in_the_conformant_tool_call_shape() {
+    // The wire shape the model was trained on: an assistant message echoing the originally-proposed
+    // `tool_calls`, then a `role:"tool"` result keyed to each id. An orphan tool message (no echo)
+    // is half-ignored — live GLM retried the identical rejected call three turns in a row. History
+    // `role:"tool"` summaries must arrive as plain user text (`[tool results]…`), never orphans.
+    let (base, seen) = serve(
+        200,
+        json!({
+            "choices": [{ "message": { "content": "ok" }, "finish_reason": "stop" }],
+            "usage": { "total_tokens": 1 }
+        }),
+    )
+    .await;
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let mut req = AiRequest::new("ws-oai", "k-prior");
+    req.messages = vec![
+        Message::new("user", "add a widget"),
+        Message::new("assistant", "checking the datasource"),
+        Message::new("tool", "call_0=ok:{\"datasources\":[]}"),
+    ];
+    req.prior_results = vec![lb_role_ai_gateway::ToolResult {
+        id: "call_1".into(),
+        name: "federation.query".into(),
+        input: "{\"source\":\"timescale\",\"sql\":\"SELECT 1\"}".into(),
+        ok: None,
+        error: Some("bad input: rejected sql".into()),
+    }];
+    let _ = gw.complete(&req).await;
+
+    let seen = seen.lock().unwrap();
+    let messages = seen.as_ref().expect("request captured").body["messages"]
+        .as_array()
+        .expect("messages array")
+        .clone();
+
+    // The history tool summary was re-rolled as user text.
+    assert_eq!(messages[2]["role"], "user");
+    assert_eq!(
+        messages[2]["content"],
+        "[tool results]\ncall_0=ok:{\"datasources\":[]}"
+    );
+
+    // The prior result rides behind an assistant echo of the original call, keyed by id.
+    let echo = &messages[3];
+    assert_eq!(echo["role"], "assistant");
+    assert_eq!(echo["tool_calls"][0]["id"], "call_1");
+    assert_eq!(echo["tool_calls"][0]["function"]["name"], "federation.query");
+    assert_eq!(
+        echo["tool_calls"][0]["function"]["arguments"],
+        "{\"source\":\"timescale\",\"sql\":\"SELECT 1\"}"
+    );
+    let result = &messages[4];
+    assert_eq!(result["role"], "tool");
+    assert_eq!(result["tool_call_id"], "call_1");
+    assert_eq!(result["content"], "bad input: rejected sql");
 }

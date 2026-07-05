@@ -28,9 +28,9 @@ pub struct QueryResult {
 /// Run `sql` against the `kind` source at `dsn`. Validates SELECT-only first, registers only the
 /// tables the query references, and caps the result. The DSN lives only inside the pool.
 pub async fn run_query(kind: &str, dsn: &str, sql: &str) -> Result<QueryResult, String> {
-    let tables = validate_select(sql).map_err(|e| e.to_string())?;
+    let validated = validate_select(sql).map_err(|e| e.to_string())?;
     let source = connect(kind, dsn).await.map_err(|e| e.to_string())?;
-    register_and_run(source.as_ref(), &tables, sql).await
+    register_and_run(source.as_ref(), &validated, sql).await
 }
 
 /// A real connectivity probe for the `kind` source at `dsn` — `Ok(())` is green.
@@ -39,14 +39,22 @@ pub async fn probe(kind: &str, dsn: &str) -> Result<(), String> {
     source.probe().await.map_err(|e| e.to_string())
 }
 
-/// Register each referenced table into a fresh `SessionContext`, run the SQL, and shape the result.
+/// Register each referenced table into a fresh `SessionContext` (plus any synthesized
+/// `information_schema` views the query reads), run the SQL, and shape the result.
 async fn register_and_run(
     source: &dyn Source,
-    tables: &[String],
+    validated: &crate::validate::ValidatedSelect,
     sql: &str,
 ) -> Result<QueryResult, String> {
     let ctx = SessionContext::new();
-    for table in tables {
+    crate::info_schema::register_information_schema(
+        &ctx,
+        source,
+        validated.wants_info_tables,
+        validated.wants_info_columns,
+    )
+    .await?;
+    for table in &validated.tables {
         let reference = TableReference::bare(table.clone());
         let provider = source
             .table_provider(&reference)
@@ -60,7 +68,20 @@ async fn register_and_run(
     // Cap before collect: the engine stops materializing past the cap (no unbounded read in a
     // handler — an unbounded export is a mirror job, §6.1).
     let df = df.limit(0, Some(ROW_CAP)).map_err(|e| e.to_string())?;
-    let batches = df.collect().await.map_err(|e| format!("execute: {e}"))?;
+    let batches = df.collect().await.map_err(|e| {
+        let msg = e.to_string();
+        // A bare `COUNT(*)`/`COUNT(1)` plans a ZERO-column scan the pushdown provider mis-schemas
+        // (upstream datafusion-table-providers bug — "Physical input schema should be the same…").
+        // Steer to the form that works instead of echoing an internal error the caller (live: the
+        // agent model) can do nothing with.
+        if msg.contains("Physical input schema should be the same") {
+            "COUNT(*) over a whole table is not supported by the federation engine — count a \
+             concrete column instead, e.g. COUNT(id)"
+                .to_string()
+        } else {
+            format!("execute: {msg}")
+        }
+    })?;
     shape(batches)
 }
 

@@ -95,3 +95,42 @@ describe("DockRunStatus controls", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 });
+
+describe("DockRunStatus tool list", () => {
+  const TOOLS: RunFeed = {
+    live: true,
+    text: "",
+    reasoning: "",
+    finished: false,
+    tools: [
+      { id: "c1", name: "datasource.list", ok: "{}", err: null },
+      { id: "c2", name: "viz.query", err: "denied", ok: null },
+      { id: "c3", name: "dashboard.pin" },
+    ],
+  };
+
+  it("renders each tool call as a row while working (done, failed, running)", () => {
+    render(
+      <DockRunStatus phase="working" feed={TOOLS} elapsedSec={4} degraded={false} onRetry={() => {}} />,
+    );
+    const list = screen.getByLabelText("tool calls");
+    expect(list).toHaveTextContent("datasource.list");
+    expect(list).toHaveTextContent("viz.query");
+    expect(list).toHaveTextContent("denied");
+    expect(list).toHaveTextContent("dashboard.pin");
+  });
+
+  it("keeps the tool list visible after the run is done (the durable answer has no tool record)", () => {
+    render(
+      <DockRunStatus phase="done" feed={TOOLS} elapsedSec={9} degraded={false} onRetry={() => {}} />,
+    );
+    expect(screen.getByLabelText("tool calls")).toHaveTextContent("datasource.list");
+  });
+
+  it("renders nothing on done when no tools were called and not degraded", () => {
+    const { container } = render(
+      <DockRunStatus phase="done" feed={FEED} elapsedSec={9} degraded={false} onRetry={() => {}} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+});

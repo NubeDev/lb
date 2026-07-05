@@ -14,6 +14,11 @@ export const STALL_AFTER_MS = 15_000;
 /** How often the hook re-evaluates elapsed/stall while active (ms). Cheap — a single 1 s tick. */
 const TICK_MS = 1_000;
 
+/** Module-level default clock so the hook's `useEffect` dep stays stable across renders (an inline
+ *  `() => Date.now()` default would mint a fresh identity each render and re-trigger the effect →
+ *  infinite setState loop). Tests inject their own `now`. */
+const SYSTEM_NOW = () => Date.now();
+
 export interface StallState {
   /** Whole seconds since the run started — the elapsed timer the card shows. */
   elapsedSec: number;
@@ -43,7 +48,7 @@ export function useStallTimer(
   startedAt: number | null,
   lastEventAt: number | null,
   active: boolean,
-  now: () => number = () => Date.now(),
+  now: () => number = SYSTEM_NOW,
 ): StallState {
   const [state, setState] = useState<StallState>(() =>
     computeStall(startedAt, lastEventAt, active, now()),

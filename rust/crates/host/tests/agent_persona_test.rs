@@ -194,10 +194,12 @@ fn two_tool_menu() -> Vec<AllowedTool> {
         AllowedTool {
             name: "agent.memory.list".into(),
             description: "list memory".into(),
+            input_schema: None,
         },
         AllowedTool {
             name: "agent.memory.get".into(),
             description: "get memory".into(),
+            input_schema: None,
         },
     ]
 }
@@ -499,6 +501,7 @@ async fn narrowing_a_persona_tool_the_caller_lacks_is_never_added() {
     let only_list = vec![AllowedTool {
         name: "agent.memory.list".into(),
         description: "list".into(),
+        input_schema: None,
     }];
     let captured =
         drive_in_house_with_active_persona(&node, ws, &caller, "greedy", &only_list).await;

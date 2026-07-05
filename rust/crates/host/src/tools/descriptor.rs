@@ -21,6 +21,10 @@ use serde_json::{json, Value};
 pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
     let mut out: Vec<ToolDescriptor> = vec![
         crate::federation::query_descriptor(),
+        // The discovery twin (datasources-ux scope): a real `{source, table?}` schema so a model
+        // (or the palette) can form the call — without it the agent probes `information_schema`
+        // SQL through federation.query and hits the steering rejection instead of the answer.
+        crate::federation::schema_descriptor(),
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
@@ -44,6 +48,12 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // `mcp:dashboard.pin:call` gate decides its visibility — no new cap, no `if` in the catalog. The
         // verb mints a persisted cell from any `x-lb-render` envelope (generic over the tool id, rule 10).
         crate::dashboard::pin_descriptor(),
+        // The dashboard upsert (dashboard scope). A real schema so a model can form the call — the
+        // name-only row left the live agent sending `cells` as a JSON-encoded string every turn
+        // (see save.rs::save_descriptor).
+        crate::dashboard::save_descriptor(),
+        // The visibility write (dashboard scope) — schema'd so a model can form the call.
+        crate::dashboard::share_descriptor(),
     ];
     out.extend(crate::host_tools::secret_descriptors());
     out

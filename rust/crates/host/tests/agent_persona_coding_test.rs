@@ -478,6 +478,7 @@ async fn a_publish_proposed_under_the_persona_suspends_for_a_human_it_never_publ
         &[AllowedTool {
             name: "ext.publish".into(),
             description: "publish".into(),
+            input_schema: None,
         }],
         1,
     )

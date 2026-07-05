@@ -28,6 +28,7 @@ import { DockPersonaChip } from "./DockPersonaChip";
 import { DockContextCaption } from "./DockContextCaption";
 import { DockRunStatus } from "./DockRunStatus";
 import { DockComposer } from "./DockComposer";
+import { DockCopyButton } from "./DockCopyButton";
 import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH } from "./useDockChrome";
 
 interface Props {
@@ -131,7 +132,9 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
     >
       <ResizeHandle resizable={resizable} aria-label="resize agent dock" />
 
-      <header className="flex items-center gap-2 border-b border-border bg-panel-2/60 px-3 py-2">
+      {/* Same band metrics as `.page-header` (min-h 3.75rem, panel-2 tone) so the dock header's
+          bottom hairline lines up with the routed page's header across the split. */}
+      <header className="flex min-h-[3.75rem] items-center gap-2 border-b border-border bg-panel-2/80 px-3 py-2.5">
         <Bot size={15} className="shrink-0 text-accent" />
         <span className="text-sm font-semibold text-fg">Agent</span>
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -144,6 +147,16 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
             />
           </div>
           <DockPersonaChip focus={personaFocus} />
+          <DockCopyButton
+            ctx={{
+              ws,
+              principal,
+              personaId: personaFocus.current?.id,
+              surface,
+              latestRunTools: run.feed.tools,
+            }}
+            items={session.items}
+          />
           <Button
             type="button"
             variant="ghost"
@@ -175,7 +188,7 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
         )}
       </div>
 
-      {(active || run.phase === "error" || run.degraded) && (
+      {(active || run.phase === "error" || run.degraded || run.feed.tools.length > 0) && (
         <div className="border-t border-border bg-panel-2/40 px-3 py-2">
           <DockRunStatus
             phase={run.phase}

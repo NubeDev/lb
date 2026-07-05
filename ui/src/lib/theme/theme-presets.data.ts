@@ -14,38 +14,42 @@ import type { PresetEntry } from "./theme-preset";
 
 export const THEME_PRESETS: readonly PresetEntry[] = [
   {
-    // The flagship LIGHT look (pinned by the `professional` look). Light = genuine PAPER: a warm near-
-    // white leaf, near-black ink, a calm indigo-blue accent, soft cool-grey borders and a real text
-    // hierarchy. Dark stays a clean cool slate. The raised card sits a touch off the page so panels read.
+    // The flagship LIGHT look (used by the `professional` look). Light = genuine PAPER: a clean cool
+    // near-white, deep navy ink, a restrained deep-teal accent, soft cool-grey borders and a real text
+    // hierarchy. Dark is a deep navy night mode of the same voice. The raised card sits a touch off the
+    // page so panels read.
     value: "slate",
     name: "Slate",
     preset: {
       label: "Slate",
       styles: {
         light: {
-          // Professional = WARM PAPER: a faint warm-ivory ground (hue ~85, low chroma) — the warmth is
-          // what separates it at a glance from Modern's cool blue canvas — with near-black ink and a
-          // restrained deep-teal accent. Reads as ink on a serious document.
-          background: "oklch(0.99 0.008 85)",
-          foreground: "oklch(0.24 0.01 60)",
+          // Professional = CLEAN PAPER with deep-navy INK: a barely-cool near-white ground, white cards
+          // that read through elevation (the look's surface is `elevated`), a deep navy text voice and
+          // a restrained deep-teal accent. Reads as ink on a serious document; the navy ink (not a warm
+          // tint) is what separates it at a glance from Modern's visibly blue-washed canvas.
+          background: "oklch(0.985 0.004 230)",
+          foreground: "oklch(0.29 0.045 258)",
           card: "oklch(1 0 0)",
           popover: "oklch(1 0 0)",
-          primary: "oklch(0.46 0.09 200)",
-          muted: "oklch(0.5 0.015 70)",
-          "muted-foreground": "oklch(0.43 0.015 70)",
-          accent: "oklch(0.46 0.09 200)",
-          border: "oklch(0.89 0.01 80)",
+          primary: "oklch(0.47 0.09 192)",
+          muted: "oklch(0.5 0.02 245)",
+          "muted-foreground": "oklch(0.43 0.02 245)",
+          accent: "oklch(0.47 0.09 192)",
+          border: "oklch(0.89 0.012 235)",
         },
         dark: {
-          background: "oklch(0.19 0.012 240)",
-          foreground: "oklch(0.92 0.01 235)",
-          card: "oklch(0.235 0.015 240)",
-          popover: "oklch(0.235 0.015 240)",
-          primary: "oklch(0.72 0.11 200)",
-          muted: "oklch(0.64 0.02 238)",
-          "muted-foreground": "oklch(0.72 0.02 238)",
-          accent: "oklch(0.72 0.11 200)",
-          border: "oklch(0.32 0.015 240)",
+          // Dark = the same document at night: a deep navy ground (clearly blue, not charcoal), navy
+          // panels a step up, and the teal accent brightened to carry on the dark ground.
+          background: "oklch(0.20 0.03 252)",
+          foreground: "oklch(0.93 0.012 235)",
+          card: "oklch(0.245 0.035 252)",
+          popover: "oklch(0.245 0.035 252)",
+          primary: "oklch(0.75 0.11 190)",
+          muted: "oklch(0.64 0.025 245)",
+          "muted-foreground": "oklch(0.73 0.025 245)",
+          accent: "oklch(0.75 0.11 190)",
+          border: "oklch(0.33 0.03 250)",
         },
       },
     },

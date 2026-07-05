@@ -34,6 +34,20 @@ pub fn validate_select_host(sql: &str) -> Result<(), FederationError> {
     if leader != "SELECT" && leader != "WITH" {
         return Err(FederationError::BadSql("only SELECT/WITH allowed".into()));
     }
+    // `information_schema.tables` / `information_schema.columns` are ALLOWED read-only — the
+    // sidecar synthesizes them from the source's real catalog, because every OpenAI-schooled model
+    // probes them first and fighting that instinct just burned agent turns (see
+    // debugging/agent/federation-information-schema-probe-cryptic-plan-error.md — superseded by the
+    // read-only catalog). `pg_catalog` stays unreachable; steer to the supported catalog instead.
+    if upper.contains("PG_CATALOG.") {
+        return Err(FederationError::BadSql(
+            "pg_catalog is not queryable through federation.query; query \
+             information_schema.tables / information_schema.columns instead (read-only), or call \
+             the `federation.schema` tool — {source} lists the source's tables, {source, table} \
+             lists a table's columns"
+                .into(),
+        ));
+    }
     Ok(())
 }
 
@@ -64,5 +78,32 @@ mod tests {
     #[test]
     fn rejects_multi_statement() {
         assert!(validate_select_host("SELECT 1; DROP TABLE t").is_err());
+    }
+
+    /// `information_schema.tables`/`columns` probes pass the host gate — the sidecar answers them
+    /// read-only from the source's real catalog (every OpenAI-schooled model probes them first).
+    #[test]
+    fn allows_information_schema_probes() {
+        for s in [
+            "SELECT table_name FROM information_schema.tables",
+            "select * from INFORMATION_SCHEMA.columns where table_name = 't'",
+        ] {
+            assert!(validate_select_host(s).is_ok(), "should allow: {s}");
+        }
+    }
+
+    /// `pg_catalog` stays unreachable — rejected with a message steering to the supported
+    /// `information_schema` tables and the `federation.schema` verb.
+    #[test]
+    fn rejects_pg_catalog_with_steering_message() {
+        match validate_select_host("SELECT relname FROM pg_catalog.pg_class") {
+            Err(FederationError::BadSql(m)) => {
+                assert!(
+                    m.contains("information_schema.tables") && m.contains("federation.schema"),
+                    "no steer in: {m}"
+                )
+            }
+            other => panic!("should reject pg_catalog: {other:?}"),
+        }
     }
 }

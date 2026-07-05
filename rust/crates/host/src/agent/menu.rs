@@ -38,6 +38,9 @@ pub async fn reachable_tools(
                 name: d.name,
                 // The model-facing hint: prefer the descriptor's title, fall back to the group.
                 description: if d.title.is_empty() { d.group } else { d.title },
+                // Carry the input schema so the model knows the tool's arguments (without it, every
+                // tool looks argument-less and the model asks the user in prose rather than calling).
+                input_schema: d.input_schema,
             })
             .collect(),
         Err(_) => Vec::new(),

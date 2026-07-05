@@ -94,6 +94,8 @@ pub async fn resume_suspensions(
         let outcome = match settled {
             SuspensionDecision::Deny => CallOutcome {
                 id: call.id.clone(),
+                name: call.name.clone(),
+                input: call.input.clone(),
                 ok: None,
                 error: Some(DENIED_BY_POLICY.to_string()),
             },
@@ -106,6 +108,8 @@ pub async fn resume_suspensions(
                     .next()
                     .unwrap_or(CallOutcome {
                         id: call.id.clone(),
+                        name: call.name.clone(),
+                        input: call.input.clone(),
                         ok: None,
                         error: Some("replay produced no outcome".into()),
                     })
@@ -114,6 +118,8 @@ pub async fn resume_suspensions(
             // safe Deny rather than silently running the tool.
             _ => CallOutcome {
                 id: call.id.clone(),
+                name: call.name.clone(),
+                input: call.input.clone(),
                 ok: None,
                 error: Some(DENIED_BY_POLICY.to_string()),
             },

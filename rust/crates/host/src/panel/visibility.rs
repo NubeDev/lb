@@ -26,7 +26,7 @@ pub async fn may_read_panel(
     ws: &str,
     panel: &Panel,
 ) -> Result<(), PanelError> {
-    if principal.sub() == panel.owner {
+    if principal.owner_sub() == panel.owner {
         return Ok(());
     }
     match panel.visibility {
@@ -38,7 +38,7 @@ pub async fn may_read_panel(
                 if list_related(store, ws, MEMBER, team)
                     .await?
                     .iter()
-                    .any(|m| m == principal.sub())
+                    .any(|m| m == principal.owner_sub())
                 {
                     return Ok(());
                 }

@@ -15,6 +15,7 @@
 //! Attribution: the embedded-DataFusion + SQL-validator pattern is adapted from `rubix-cube`
 //! (its `spice_engine` wrapper over the `datafusion` crate + its SQL validator), MIT/Apache-2.0.
 
+mod info_schema;
 mod query;
 mod source;
 mod validate;
@@ -48,7 +49,18 @@ async fn main() {
                 let _ = write_frame(&mut output, &bytes).await;
                 break;
             }
-            Method::Call => handle_call(&req).await,
+            // Fenced in its own task so a PANIC deep in an engine/connector (live: a failed remote
+            // execute took the whole child down, the supervisor burned its 5 restarts, and
+            // federation went dark for the session) unwinds THAT task only — the caller gets an
+            // error reply and the child keeps serving. An error `Reply` was always non-fatal; this
+            // makes a panic equally non-fatal.
+            Method::Call => {
+                let id = req.id;
+                match tokio::spawn(async move { handle_call(&req).await }).await {
+                    Ok(reply) => reply,
+                    Err(e) => Reply::err(id, format!("tool call panicked: {e}")),
+                }
+            }
         };
 
         let bytes = serde_json::to_vec(&reply).unwrap();

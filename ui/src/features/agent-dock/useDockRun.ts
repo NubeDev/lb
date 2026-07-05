@@ -16,6 +16,10 @@ import { useStallTimer } from "./useStallTimer";
 
 const EMPTY: RunFeed = { live: false, text: "", reasoning: "", tools: [], finished: false };
 
+/** Module-level default clock — a stable identity so it does NOT re-trigger `useStallTimer`'s effect
+ *  on every render (an inline `() => Date.now()` default would). Tests inject their own `now`. */
+const SYSTEM_NOW = () => Date.now();
+
 export interface DockRun {
   phase: DockRunPhase;
   feed: RunFeed;
@@ -34,7 +38,7 @@ export function useDockRun(
   active: boolean,
   hasResult: boolean,
   hasError: boolean,
-  now: () => number = () => Date.now(),
+  now: () => number = SYSTEM_NOW,
 ): DockRun {
   const [feed, setFeed] = useState<RunFeed>(EMPTY);
   const [streamError, setStreamError] = useState(false);

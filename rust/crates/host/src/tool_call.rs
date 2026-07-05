@@ -39,48 +39,66 @@ use crate::{
 /// PRODUCE motion `inbox.record`, `outbox.enqueue`; resolve `inbox.resolve`) the proof-panel demo
 /// exercises. Each still passes the per-verb MCP gate first (the bridge scope filter is only defense in
 /// depth).
-fn is_host_native(qualified_tool: &str) -> bool {
-    qualified_tool.starts_with("series.")
-        || qualified_tool.starts_with("ingest.")
-        || qualified_tool.starts_with("outbox.")
-        || qualified_tool.starts_with("inbox.")
-        || qualified_tool.starts_with("insight.")
-        || qualified_tool.starts_with("dashboard.")
-        || qualified_tool.starts_with("nav.")
-        // data-studio scope v2: the member-owned per-surface layout record (`layout.get`/`set`).
-        || qualified_tool.starts_with("layout.")
-        || qualified_tool.starts_with("panel.")
-        // The per-viewer chart-preference verbs (a query-result's plot override) + the channel
-        // read/write MCP surface (post/history/edit/delete/list — rules-messaging-scope): a channel
-        // is a host-native plane over the embedded store + bus, not a runtime-registry extension.
-        // (A future channel *extension* tool would carry its own `<ext>.` id and still route to the
-        // registry — `channel.` here is the host's own channel service, one owner.)
-        || qualified_tool.starts_with("channel.")
-        || qualified_tool.starts_with("viz.")
-        || qualified_tool.starts_with("template.")
-        || qualified_tool.starts_with("devkit.")
-        || qualified_tool.starts_with("agent.")
-        || qualified_tool.starts_with("rules.")
-        || qualified_tool.starts_with("federation.")
-        || qualified_tool.starts_with("flows.")
-        || qualified_tool.starts_with("datasource.")
-        || qualified_tool.starts_with("secret.")
-        || qualified_tool.starts_with("host.")
-        || qualified_tool.starts_with("prefs.")
-        || qualified_tool.starts_with("message.")
-        || qualified_tool.starts_with("bus.")
-        || qualified_tool.starts_with("reminder.")
-        || qualified_tool.starts_with("query.")
-        || qualified_tool.starts_with("assets.")
-        || qualified_tool.starts_with("telemetry.")
-        || qualified_tool == "undo"
-        || qualified_tool == "redo"
-        || qualified_tool.starts_with("history.")
-        || qualified_tool.starts_with("tools.")
-        || qualified_tool == "store.query"
-        || qualified_tool == "store.schema"
-        || qualified_tool == "store.write"
-        || qualified_tool == "store.delete"
+// The prefix/exact lists are shared consts so the static host inventory (`system/catalog.rs`)
+// can assert it covers every dispatched family — the hand-maintained mirror drifting is exactly
+// how whole verb families went missing from `tools.catalog` (and thus from the agent's menu); see
+// debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md.
+//
+// Notes on individual families:
+//   - `layout.` — data-studio scope v2: the member-owned per-surface layout record (`get`/`set`).
+//   - `channel.` — the per-viewer chart-preference verbs (a query-result's plot override) + the
+//     channel read/write MCP surface (post/history/edit/delete/list — rules-messaging-scope): a
+//     channel is a host-native plane over the embedded store + bus, not a runtime-registry
+//     extension. (A future channel *extension* tool would carry its own `<ext>.` id and still
+//     route to the registry — `channel.` here is the host's own channel service, one owner.)
+pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
+    "series.",
+    "ingest.",
+    "outbox.",
+    "inbox.",
+    "insight.",
+    "dashboard.",
+    "nav.",
+    "layout.",
+    "panel.",
+    "channel.",
+    "viz.",
+    "template.",
+    "devkit.",
+    "agent.",
+    "rules.",
+    "federation.",
+    "flows.",
+    "datasource.",
+    "secret.",
+    "host.",
+    "prefs.",
+    "message.",
+    "bus.",
+    "reminder.",
+    "query.",
+    "assets.",
+    "telemetry.",
+    "history.",
+    "tools.",
+];
+
+/// The prefix-less host-native verbs (`undo`/`redo`) + the four `store.*` verbs dispatched by exact
+/// name (the rest of `store.` is not a bridge family).
+pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
+    "undo",
+    "redo",
+    "store.query",
+    "store.schema",
+    "store.write",
+    "store.delete",
+];
+
+pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
+    HOST_NATIVE_PREFIXES
+        .iter()
+        .any(|p| qualified_tool.starts_with(p))
+        || HOST_NATIVE_EXACT.contains(&qualified_tool)
 }
 
 /// Call `qualified_tool` as `principal` in `ws` with a JSON input string, returning the tool's JSON

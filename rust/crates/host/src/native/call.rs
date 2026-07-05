@@ -41,8 +41,11 @@ where
     };
     match first {
         Ok(out) => Ok(out),
-        // The child died mid-call: run the recovery, then retry once.
-        Err(SupervisorError::Transport(_)) | Err(SupervisorError::Child(_)) => {
+        // The child died mid-call (no reply came back): run the recovery, then retry once.
+        // `Child(_)` is NOT a fault — it is the child's ordinary error REPLY over a healthy line
+        // (a failed SQL query, a bad arg). Restarting on it burned the whole restart budget on
+        // five failed queries and took federation dark mid-run (live); the child was never down.
+        Err(SupervisorError::Transport(_)) => {
             on_fault().await?;
             let mut sidecar = handle.lock().await;
             sidecar.call(tool, input).await

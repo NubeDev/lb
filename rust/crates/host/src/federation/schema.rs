@@ -68,3 +68,24 @@ pub async fn federation_schema<L: Launcher>(
 
     serde_json::from_str(&out).map_err(|e| FederationError::Sidecar(e.to_string()))
 }
+
+/// The palette/agent descriptor for `federation.schema` — a real arg schema (`{source, table?}`),
+/// so a model advertised the tool can FORM a valid call (a name-only row leaves it guessing arg
+/// names; the live agent probed `information_schema` SQL instead). `x-lb-entity: datasource` drives
+/// the same `@`-picker as `federation.query`'s `source`.
+pub fn schema_descriptor() -> lb_mcp::ToolDescriptor {
+    lb_mcp::ToolDescriptor {
+        name: "federation.schema".to_string(),
+        title: "List a registered datasource's tables, or one table's columns".to_string(),
+        group: "federation".to_string(),
+        input_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "source": { "type": "string", "x-lb": { "entity": "datasource" } },
+                "table": { "type": "string" }
+            },
+            "required": ["source"]
+        })),
+        result: None,
+    }
+}

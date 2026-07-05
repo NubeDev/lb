@@ -8,6 +8,7 @@
 //! save **preserves** the existing visibility (it never silently re-privatizes a shared dashboard).
 
 use lb_auth::Principal;
+use lb_mcp::ToolDescriptor;
 use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
@@ -15,9 +16,36 @@ use super::error::DashboardError;
 use super::model::{Cell, Dashboard, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
 
+/// The `dashboard.save` descriptor — a real arg schema so a model advertised the verb can FORM the
+/// call. Without it (name-only row) the live agent guessed the encoding and sent `cells` as a
+/// JSON-encoded STRING five turns in a row (see
+/// `docs/debugging/agent/dashboard-save-cells-sent-as-json-string.md`). `cells` is typed
+/// `array` loudly; the item shape is described, not fully enumerated — the handler's validators
+/// (bounds/views/genui/refs) stay authoritative.
+pub fn save_descriptor() -> ToolDescriptor {
+    ToolDescriptor {
+        name: "dashboard.save".to_string(),
+        title: "Create or update a dashboard (idempotent upsert)".to_string(),
+        group: "dashboard".to_string(),
+        input_schema: Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "Fresh id creates; existing id updates (owner-only)" } },
+                "title": { "type": "string", "x-lb": { "label": "Title" } },
+                "cells": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Cells", "description": "A JSON ARRAY of cell objects (never a JSON-encoded string). Each cell: { i, x, y, w, h, view, title?, sources?, options?, fieldConfig? } — view names come from dashboard.catalog; read an existing dashboard with dashboard.get for a template" } },
+                "variables": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Variables", "description": "Optional dashboard variables (omit if none)" } },
+                "now": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "Logical time of the save — unix epoch seconds" } }
+            },
+            "required": ["id", "title", "cells", "now"]
+        })),
+        result: None,
+    }
+}
+
 /// Upsert dashboard `id` in `ws` with `title` + `cells`, as `principal`, at logical time `now`.
-/// Creates on a fresh id (owner = principal, visibility = private); updates an existing one
-/// (owner-only). Returns the persisted record.
+/// Creates on a fresh id (owner = the principal's `owner_sub` — the human behind a derived agent
+/// actor, so an agent-built dashboard belongs to whoever asked; visibility = private); updates an
+/// existing one (owner-only). Returns the persisted record.
 pub async fn dashboard_save(
     store: &Store,
     principal: &Principal,
@@ -59,12 +87,12 @@ pub async fn dashboard_save(
     // is treated as absent — a save with that id resurrects it under the new owner (create).
     let (owner, visibility) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
         Some(existing) => {
-            if existing.owner != principal.sub() {
+            if existing.owner != principal.owner_sub() {
                 return Err(DashboardError::Denied);
             }
             (existing.owner, existing.visibility)
         }
-        None => (principal.sub().to_string(), Visibility::Private),
+        None => (principal.owner_sub().to_string(), Visibility::Private),
     };
 
     let dashboard = Dashboard {

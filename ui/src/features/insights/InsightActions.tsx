@@ -1,12 +1,19 @@
 // The insight action buttons — ack / resolve (insights umbrella scope). Each is gated on the
-// caller's caps (the host re-checks server-side; the UI gate is convenience). Disable + spin on
-// in-flight (the inbox `resolving` pattern).
+// caller's caps (the host re-checks server-side; the UI gate is convenience). Mirrors the Inbox
+// `DetailPane` footer: shadcn `Button`s with a spinning `RefreshCw` while in flight, the primary
+// action (Resolve) in the accent tone, the secondary (Ack) outlined.
 //
-// STUB: the buttons render + call the api; per-row error surfacing + the cap-driven visibility
-// (hide ack on an already-acked insight; hide resolve on a resolved one) are TODO.
+// NOTE: the button label MUST stay the bare word "Ack" (not "Acking…") — the gateway test finds
+// it by accessible name `/^Ack$/`. The busy state is conveyed by the spinner icon next to the
+// stable label, the same device Inbox uses — so the assertion still resolves against the same
+// element across the click.
 
 import { useState } from "react";
+import { Check, CheckCheck, RefreshCw } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ackInsight, resolveInsight } from "@/lib/insights/insights.api";
 import type { Insight } from "@/lib/insights/insights.types";
 
@@ -16,7 +23,7 @@ interface Props {
   onActed?: () => void;
 }
 
-/** The ack/resolve row for the detail drawer. Ack is hidden once acked/resolved; resolve once
+/** The ack/resolve row for the detail pane. Ack is hidden once acked/resolved; resolve once
  *  resolved — the status-driven visibility so a stale action can't be re-fired. */
 export function InsightActions({ insight, onActed }: Props): JSX.Element {
   const [busy, setBusy] = useState<"ack" | "resolve" | null>(null);
@@ -48,32 +55,56 @@ export function InsightActions({ insight, onActed }: Props): JSX.Element {
     }
   }
 
+  const disabled = busy !== null;
+
   return (
-    <section className="flex items-center gap-2 border-t border-border pt-3">
-      {insight.status === "open" && (
-        <button
-          type="button"
-          onClick={onAck}
-          disabled={busy !== null}
-          className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
-        >
-          {busy === "ack" ? "Acking…" : "Ack"}
-        </button>
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+        {insight.status === "open" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onAck}
+            disabled={disabled}
+          >
+            {busy === "ack" ? (
+              <RefreshCw size={14} className={cn("animate-spin")} />
+            ) : (
+              <Check size={14} />
+            )}
+            Ack
+          </Button>
+        )}
+        {insight.status !== "resolved" && (
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={onResolve}
+            disabled={disabled}
+          >
+            {busy === "resolve" ? (
+              <RefreshCw size={14} className={cn("animate-spin")} />
+            ) : (
+              <CheckCheck size={14} />
+            )}
+            Resolve
+          </Button>
+        )}
+        {insight.status === "resolved" && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-success">
+            <CheckCheck size={14} />
+            Resolved
+          </span>
+        )}
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
-      {insight.status !== "resolved" && (
-        <button
-          type="button"
-          onClick={onResolve}
-          disabled={busy !== null}
-          className="rounded-md border border-border px-3 py-1 text-sm disabled:opacity-50"
-        >
-          {busy === "resolve" ? "Resolving…" : "Resolve"}
-        </button>
-      )}
-      {insight.status === "resolved" && (
-        <span className="text-xs text-muted-foreground">Resolved</span>
-      )}
-      {error && <span className="text-xs text-destructive">{error}</span>}
-    </section>
+    </div>
   );
 }

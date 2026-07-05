@@ -56,6 +56,34 @@ pub async fn tools_catalog(
         }
     }
 
+    // The REST of the host-native inventory (`system/catalog.rs` HOST_TOOLS — the authoritative
+    // verb list `system.tools` serves), so the catalog honors its own contract: "every tool this
+    // principal may run", not just the verbs that have grown a guided palette descriptor. Without
+    // this, `reachable_tools` (the agent run's menu) could never advertise `datasource.list`,
+    // `store.query`, `series.*`, `viz.query`, … regardless of caps or persona — see
+    // debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md. Rows are name-only
+    // (title = the one-line summary, no arg schema — a verb gains a schema by adding a descriptor
+    // above); a verb already covered by a rich descriptor is skipped, and each row is filtered to
+    // the verbs the MCP bridge can actually dispatch (`is_host_native`) then gated by the SAME
+    // per-verb authorize call — advertise only what a call would allow.
+    for info in crate::system::host_catalog() {
+        if tools.iter().any(|t| t.name == info.tool) {
+            continue;
+        }
+        if !crate::tool_call::is_host_native(&info.tool) {
+            continue;
+        }
+        if authorize_tool(principal, ws, &info.tool).is_ok() {
+            tools.push(ToolDescriptor {
+                name: info.tool,
+                title: info.description,
+                group: info.group,
+                input_schema: None,
+                result: None,
+            });
+        }
+    }
+
     // Extension-contributed tools (bare names from the registry, qualified `<ext>.<tool>`).
     for (ext_id, descriptors) in node.registry.descriptor_entries() {
         for mut d in descriptors {

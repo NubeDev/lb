@@ -78,6 +78,7 @@ fn mem_set_tool() -> Vec<AllowedTool> {
     vec![AllowedTool {
         name: "agent.memory.set".into(),
         description: "remember a fact".into(),
+        input_schema: None,
     }]
 }
 
@@ -270,6 +271,7 @@ async fn a_ws_b_run_cannot_reach_ws_a_memory_through_the_loop() {
             tools: &[AllowedTool {
                 name: "agent.memory.get".into(),
                 description: "read".into(),
+                input_schema: None,
             }],
             ts: 1,
         },

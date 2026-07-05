@@ -88,6 +88,6 @@ pub use watch::{event_subject, EventKind, RaiseEvent};
 // through the crate root, exactly like `lb_inbox::record_id` / `lb_inbox::TABLE`).
 pub use digest::{compute_due_digests, scan_notify_rows, DigestPass, PendingDigest, NOTIFY_TABLE};
 pub use insight::{Insight, OCC_TABLE as INSIGHT_TABLE};
+pub use insight_id::{dedup_lookup, record_id};
 pub use policy::TABLE as POLICY_TABLE;
 pub use subscription::TABLE as SUB_TABLE;
-pub use insight_id::{dedup_lookup, record_id};

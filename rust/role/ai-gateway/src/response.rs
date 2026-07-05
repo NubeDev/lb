@@ -20,6 +20,15 @@ pub struct ToolCall {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolResult {
     pub id: String,
+    /// The originally-proposed call's tool name + arguments JSON. An OpenAI-compat backend expects
+    /// a `role:"tool"` result to answer an assistant message carrying the matching `tool_calls`
+    /// entry; the adapter reconstructs that echo from these (an orphan result is half-ignored —
+    /// live GLM retried the identical rejected call three turns running). Empty on a legacy caller
+    /// — the adapter then degrades to the old orphan shape rather than fabricating a call.
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub input: String,
     #[serde(default)]
     pub ok: Option<String>,
     #[serde(default)]
@@ -30,6 +39,8 @@ impl ToolResult {
     pub fn ok(id: impl Into<String>, output: impl Into<String>) -> Self {
         Self {
             id: id.into(),
+            name: String::new(),
+            input: String::new(),
             ok: Some(output.into()),
             error: None,
         }
@@ -37,6 +48,8 @@ impl ToolResult {
     pub fn err(id: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             id: id.into(),
+            name: String::new(),
+            input: String::new(),
             ok: None,
             error: Some(message.into()),
         }

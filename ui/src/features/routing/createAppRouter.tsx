@@ -27,6 +27,7 @@ import { FlowsView } from "@/features/flows";
 import { TelemetryView } from "@/features/telemetry";
 import { InboxView } from "@/features/inbox";
 import { IngestView } from "@/features/ingest";
+import { InsightsPage } from "@/features/insights";
 import { RulesView } from "@/features/rules";
 import { RemindersView } from "@/features/reminders";
 import { OutboxView } from "@/features/outbox";
@@ -225,6 +226,7 @@ const routeTree = rootRoute.addChildren([
     coreRoute("/telemetry", "telemetry", () => <Telemetry />),
     coreRoute("/inbox", "inbox", () => <Inbox />),
     coreRoute("/outbox", "outbox", () => <Outbox />),
+    coreRoute("/insights", "insights", () => <Insights />),
     coreRoute("/admin", "admin", () => <Admin />),
     studioExtensionsRoute,
     studioBuildRoute,
@@ -537,6 +539,10 @@ function Inbox() {
 
 function Outbox() {
   return <OutboxView ws={useAppRoutingContext().workspace} />;
+}
+
+function Insights() {
+  return <InsightsPage ws={useAppRoutingContext().workspace} />;
 }
 
 function Admin() {

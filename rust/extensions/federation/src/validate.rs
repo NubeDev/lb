@@ -25,10 +25,20 @@ impl std::fmt::Display for ValidationError {
     }
 }
 
-/// Validate that `sql` is exactly one SELECT-only statement and return the distinct table names it
-/// references (so the engine registers only those). Rejects multiple statements, any
+/// What a validated SELECT references: the user tables to register, plus which synthesized
+/// `information_schema` views it reads (answered read-only from the source's real catalog — every
+/// OpenAI-schooled model probes them before anything else, so they must WORK, not steer).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ValidatedSelect {
+    pub tables: Vec<String>,
+    pub wants_info_tables: bool,
+    pub wants_info_columns: bool,
+}
+
+/// Validate that `sql` is exactly one SELECT-only statement and return what it references (so the
+/// engine registers exactly those shapes). Rejects multiple statements, any
 /// INSERT/UPDATE/DELETE/DDL/DML, and anything that is not a read query.
-pub fn validate_select(sql: &str) -> Result<Vec<String>, ValidationError> {
+pub fn validate_select(sql: &str) -> Result<ValidatedSelect, ValidationError> {
     let dialect = GenericDialect {};
     let statements = Parser::parse_sql(&dialect, sql)
         .map_err(|e| ValidationError(format!("parse error: {e}")))?;
@@ -58,7 +68,20 @@ pub fn validate_select(sql: &str) -> Result<Vec<String>, ValidationError> {
 
     let mut collector = TableCollector::default();
     let _ = query.visit(&mut collector);
-    Ok(collector.tables)
+    // An UNSUPPORTED catalog reference (pg_catalog, or an information_schema view we don't
+    // synthesize) is rejected with a steering answer naming what IS queryable.
+    if let Some(q) = collector.unsupported_catalog_ref {
+        return Err(ValidationError(format!(
+            "`{q}` is not queryable through federation.query; query information_schema.tables / \
+             information_schema.columns instead (read-only), or call the `federation.schema` tool \
+             — {{source}} lists tables, {{source, table}} lists a table's columns"
+        )));
+    }
+    Ok(ValidatedSelect {
+        tables: collector.tables,
+        wants_info_tables: collector.wants_info_tables,
+        wants_info_columns: collector.wants_info_columns,
+    })
 }
 
 /// Recursively assert a query body is a read (SELECT, VALUES, or a set operation over reads). Any
@@ -97,6 +120,12 @@ fn statement_kind(s: &Statement) -> &'static str {
 #[derive(Default)]
 struct TableCollector {
     tables: Vec<String>,
+    /// The synthesized `information_schema` views the query reads (answered from the real catalog).
+    wants_info_tables: bool,
+    wants_info_columns: bool,
+    /// The first UNSUPPORTED catalog reference seen (`pg_catalog.*`, or an `information_schema`
+    /// view we don't synthesize) — rejected after the walk with a steering message.
+    unsupported_catalog_ref: Option<String>,
 }
 
 impl Visitor for TableCollector {
@@ -104,13 +133,41 @@ impl Visitor for TableCollector {
 
     fn pre_visit_table_factor(&mut self, table_factor: &TableFactor) -> ControlFlow<()> {
         if let TableFactor::Table { name, .. } = table_factor {
+            let qualifier_is = |what: &str| {
+                name.0
+                    .iter()
+                    .rev()
+                    .skip(1)
+                    .any(|p| p.as_ident().is_some_and(|i| i.value.eq_ignore_ascii_case(what)))
+            };
+            let last = name
+                .0
+                .last()
+                .and_then(|p| p.as_ident())
+                .map(|i| i.value.clone())
+                .unwrap_or_default();
+            if qualifier_is("information_schema") {
+                // The two views we synthesize read-only from the source's real catalog.
+                match last.to_ascii_lowercase().as_str() {
+                    "tables" => self.wants_info_tables = true,
+                    "columns" => self.wants_info_columns = true,
+                    _ if self.unsupported_catalog_ref.is_none() => {
+                        self.unsupported_catalog_ref = Some(name.to_string())
+                    }
+                    _ => {}
+                }
+                return ControlFlow::Continue(());
+            }
+            if qualifier_is("pg_catalog") {
+                if self.unsupported_catalog_ref.is_none() {
+                    self.unsupported_catalog_ref = Some(name.to_string());
+                }
+                return ControlFlow::Continue(());
+            }
             // The last identifier is the table name (drop a schema/catalog qualifier — the external
             // pool is already pinned to one database via the DSN).
-            if let Some(ident) = name.0.last().and_then(|p| p.as_ident()) {
-                let t = ident.value.clone();
-                if !self.tables.contains(&t) {
-                    self.tables.push(t);
-                }
+            if !last.is_empty() && !self.tables.contains(&last) {
+                self.tables.push(last);
             }
         }
         ControlFlow::Continue(())
@@ -127,14 +184,15 @@ mod tests {
 
     #[test]
     fn select_allowed_and_collects_tables() {
-        let tables = validate_select("SELECT a, b FROM readings WHERE a > 1").unwrap();
-        assert_eq!(tables, vec!["readings".to_string()]);
+        let v = validate_select("SELECT a, b FROM readings WHERE a > 1").unwrap();
+        assert_eq!(v.tables, vec!["readings".to_string()]);
+        assert!(!v.wants_info_tables && !v.wants_info_columns);
     }
 
     #[test]
     fn join_collects_both_tables() {
-        let tables = validate_select("SELECT * FROM a JOIN b ON a.id = b.id").unwrap();
-        assert!(tables.contains(&"a".to_string()) && tables.contains(&"b".to_string()));
+        let v = validate_select("SELECT * FROM a JOIN b ON a.id = b.id").unwrap();
+        assert!(v.tables.contains(&"a".to_string()) && v.tables.contains(&"b".to_string()));
     }
 
     #[test]
@@ -156,6 +214,38 @@ mod tests {
     fn ddl_rejected() {
         assert!(validate_select("DROP TABLE t").is_err());
         assert!(validate_select("CREATE TABLE t (a int)").is_err());
+    }
+
+    /// `information_schema.tables`/`columns` are SUPPORTED (synthesized read-only from the real
+    /// catalog) — flagged for registration, never pushed as user tables.
+    #[test]
+    fn information_schema_views_flagged_not_collected() {
+        let v = validate_select("SELECT table_name FROM information_schema.tables").unwrap();
+        assert!(v.wants_info_tables && !v.wants_info_columns);
+        assert!(v.tables.is_empty(), "catalog views must not register as user tables");
+
+        let v = validate_select(
+            "select column_name from INFORMATION_SCHEMA.columns where table_name = 'meter'",
+        )
+        .unwrap();
+        assert!(v.wants_info_columns && !v.wants_info_tables);
+        assert!(v.tables.is_empty());
+    }
+
+    /// An UNSUPPORTED catalog reference (pg_catalog, an unknown information_schema view) is
+    /// rejected with a message steering to the supported views + `federation.schema`.
+    #[test]
+    fn unsupported_catalog_probe_rejected_with_steer() {
+        for s in [
+            "SELECT relname FROM pg_catalog.pg_class",
+            "SELECT * FROM information_schema.routines",
+        ] {
+            let err = validate_select(s).unwrap_err().to_string();
+            assert!(
+                err.contains("information_schema.tables") && err.contains("federation.schema"),
+                "no steer in: {err}"
+            );
+        }
     }
 
     #[test]

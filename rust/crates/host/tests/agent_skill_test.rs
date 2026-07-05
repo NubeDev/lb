@@ -87,6 +87,7 @@ async fn the_model_activates_a_granted_skill() {
             tools: &[AllowedTool {
                 name: "skill.activate".into(),
                 description: "activate a granted skill".into(),
+                input_schema: None,
             }],
             ts: 1,
         },

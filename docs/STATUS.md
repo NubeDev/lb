@@ -16,6 +16,37 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just hardened (2026-07-05, later the same day): the widget-builder E2E loop now works live.**
+"add a widget for avg meter usage" (GLM-4.6, in-house runtime, `/dashboards`) now runs clean end to
+end: schema discovery → proven query → one `dashboard.save` appending to the OPEN dashboard, owned
+by the asking user. Five root causes fixed along the way: orphan `role:"tool"` messages made the
+model ignore tool errors (conformant assistant-echo wire shape); `information_schema` probes are now
+ANSWERED read-only instead of steered away; an error REPLY from the federation sidecar was treated
+as a crash and burned the restart budget (five failed queries took federation dark); agent-created
+dashboards were owned by the derived `agent:session` sub and invisible to the user
+(`Principal::owner_sub` delegation root); `dashboard.save`/`share` arg ergonomics (descriptors,
+stringified-JSON/null tolerance, `widget_type` default). Persona now targets the open dashboard
+(page-context `search.d`) and must PROVE a query returns data before saving. `MAX_STEPS` 8 → 16.
+Session [`sessions/agent/widget-builder-e2e-hardening-session.md`](sessions/agent/widget-builder-e2e-hardening-session.md);
+five new debugging entries under `debugging/agent/` + `debugging/federation/`.
+
+---
+
+**Just fixed (2026-07-05): the agent menu was starved — `tools.catalog` now serves the full
+host-native inventory.** A persona run (widget-builder on `/dashboards`) saw only 3 tools because
+the catalog only enumerated the ~11 guided-palette descriptors, so `reachable_tools` could never
+advertise `datasource.*`/`store.query`/`series.*`/`viz.query`/`flows.*`/… regardless of caps or
+persona; the `HOST_TOOLS` inventory had also drifted (whole dispatched families missing, stale
+hand-copied coverage list). Fixed at the catalog layer (name-only rows ∩ `is_host_native` ∩ the
+same per-verb `authorize_tool`), inventory completed, dispatch families now shared consts both the
+dispatcher and the coverage test derive from. Persona resolve/narrow was proven innocent. Regression
+`persona_menu_full_catalog_test`; debugging entry
+[`debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md`](debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md);
+session [`sessions/agent/persona-menu-full-catalog-session.md`](sessions/agent/persona-menu-full-catalog-session.md).
+Follow-up (recorded): inventory rows carry no arg schema until a verb grows a palette descriptor.
+
+---
+
 **Just shipped (2026-07-05): insights — the durable data-finding record + adaptive notify.** The
 one missing record type is in: a persisted, queryable data finding (`insight:{ws}:{id}` — severity,
 origin provenance, dedup-keyed occurrence counting, `open → acked → resolved` lifecycle) raised by

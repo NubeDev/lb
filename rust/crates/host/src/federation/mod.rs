@@ -38,6 +38,6 @@ pub use mirror::federation_mirror;
 pub use query::{federation_query, query_descriptor};
 pub use record::{datasource_tag, resolve as resolve_datasource, Datasource, TABLE};
 pub use remove::datasource_remove;
-pub use schema::federation_schema;
+pub use schema::{federation_schema, schema_descriptor};
 pub use test::datasource_test;
 pub use tool::call_federation_tool;

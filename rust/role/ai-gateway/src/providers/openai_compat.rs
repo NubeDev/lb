@@ -60,21 +60,45 @@ impl OpenAiCompat {
     /// as `role:"tool"` messages so a multi-turn loop feeds outcomes back), and — only when
     /// non-empty — the `tools` array in OpenAI's function shape.
     fn body(&self, req: &AiRequest) -> Value {
+        // History `role:"tool"` messages (the host loop's per-turn outcome summaries) are re-rolled
+        // as plain user text: on this wire a `tool` message is only valid answering an assistant
+        // `tool_calls` message, and an orphan one is half-ignored — live GLM lost the thread and
+        // guessed datasource names. The summaries are keyed text; user role carries them faithfully.
         let mut messages: Vec<Value> = req
             .messages
             .iter()
-            .map(|m| json!({ "role": m.role, "content": m.content }))
+            .map(|m| {
+                if m.role == "tool" {
+                    json!({ "role": "user", "content": format!("[tool results]\n{}", m.content) })
+                } else {
+                    json!({ "role": m.role, "content": m.content })
+                }
+            })
             .collect();
 
-        // Fold prior tool outcomes back in as `role:"tool"` messages keyed by the call id, so the
-        // model sees what its proposed calls returned on the next turn (the loop's "back" edge).
+        // Fold prior tool outcomes back in the CONFORMANT shape: one assistant message echoing the
+        // originally-proposed `tool_calls`, then a `role:"tool"` result keyed to each id — the shape
+        // the model was trained on (measured live: with the echo GLM kept the call context; without
+        // it, identical blind retries). A result without a `name` (a legacy caller) has no call to
+        // echo — it degrades to the old orphan message rather than fabricating one.
+        let echoes: Vec<Value> = req
+            .prior_results
+            .iter()
+            .filter(|r| !r.name.is_empty())
+            .map(|r| {
+                json!({
+                    "id": r.id,
+                    "type": "function",
+                    "function": { "name": r.name, "arguments": r.input },
+                })
+            })
+            .collect();
+        if !echoes.is_empty() {
+            messages.push(json!({ "role": "assistant", "content": "", "tool_calls": echoes }));
+        }
         for r in &req.prior_results {
             let content = r.ok.clone().or_else(|| r.error.clone()).unwrap_or_default();
-            messages.push(json!({
-                "role": "tool",
-                "tool_call_id": r.id,
-                "content": content,
-            }));
+            messages.push(json!({ "role": "tool", "tool_call_id": r.id, "content": content }));
         }
 
         let mut body = json!({ "model": self.model, "messages": messages });
@@ -84,12 +108,20 @@ impl OpenAiCompat {
                 .tools
                 .iter()
                 .map(|t| {
+                    // Advertise the tool's REAL input schema so the model can form a valid call. A
+                    // tool with no declared schema degrades to an empty object (argument-less), the
+                    // OpenAI-required shape. Without a real schema the model cannot know the arguments
+                    // and falls back to asking the user in prose.
+                    let parameters = t
+                        .parameters
+                        .clone()
+                        .unwrap_or_else(|| json!({ "type": "object" }));
                     json!({
                         "type": "function",
                         "function": {
                             "name": t.name,
                             "description": t.description,
-                            "parameters": { "type": "object" },
+                            "parameters": parameters,
                         },
                     })
                 })
@@ -146,11 +178,11 @@ fn parse_completion(value: &Value) -> Option<AiResponse> {
     let choice = value.get("choices")?.as_array()?.first()?;
     let message = choice.get("message")?;
 
-    let content = message
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
+    // Strip any `<think>…</think>` reasoning block some models (GLM) inline in `content` — it is not
+    // the answer and reads as broken if it reaches a channel message or an authoring turn.
+    let content = super::strip_think::strip_think(
+        message.get("content").and_then(Value::as_str).unwrap_or(""),
+    );
 
     let tokens = value
         .get("usage")

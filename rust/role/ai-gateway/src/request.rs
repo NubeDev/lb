@@ -30,16 +30,23 @@ impl Message {
 /// A tool the model is allowed to propose, by qualified MCP name (`<ext>.<tool>`). The gateway
 /// passes the schema through to the provider; the *agent* decides whether a proposed call is
 /// actually permitted (caps::check) — the gateway never executes a tool (ai-gateway scope).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSchema {
     pub name: String,
     pub description: String,
+    /// The tool's input JSON Schema (`{type:"object", properties, required}`); `None` when the tool
+    /// declares none. Passed through to the provider's function `parameters` so the model can form a
+    /// valid call — without it every tool looks argument-less.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<serde_json::Value>,
 }
 
 /// A model-access request. Stateless from the gateway's view except for the idempotency cache:
 /// two requests with the same `idempotency_key` return the same response, so a resumed agent job
 /// does not re-spend budget or diverge (ai-gateway scope, agent scope offline/sync).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+// No `Eq`: `ToolSchema.parameters` is a `serde_json::Value` (which is `PartialEq` but not `Eq`).
+// Equality is only used in tests as `assert_eq!`, which needs `PartialEq`, not `Eq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AiRequest {
     /// The workspace this call is scoped to — carried for audit + policy (the hard wall, §7).
     pub ws: String,
