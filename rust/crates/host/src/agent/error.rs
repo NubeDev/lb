@@ -18,4 +18,19 @@ pub enum AgentError {
     /// A store operation failed underneath.
     #[error("store error: {0}")]
     Store(#[from] lb_store::StoreError),
+    /// A persona pinned a grounding skill the run's principal cannot load (ungranted / unreadable).
+    /// Fail-closed: the run is refused at start, before any model spend (persona-model scope,
+    /// "an ungranted pinned skill fails the run at start with the named error"). Named (not opaque
+    /// `Denied`) because the CALLER chose this persona and must see *why* it won't run.
+    #[error("persona {persona:?} pins skill {skill:?} which is not granted in this workspace")]
+    PersonaSkill { persona: String, skill: String },
+    /// A persona restricts the runtimes it may run under (persona-coding #4) and the resolved runtime
+    /// is not among them — e.g. the extension-builder paired with an external runtime before the
+    /// sandbox ships. Refused at start with the named error.
+    #[error("persona {persona:?} may not run on runtime {runtime:?} (allowed: {allowed:?})")]
+    PersonaRuntime {
+        persona: String,
+        runtime: String,
+        allowed: Vec<String>,
+    },
 }

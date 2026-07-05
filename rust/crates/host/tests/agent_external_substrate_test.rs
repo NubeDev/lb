@@ -110,6 +110,7 @@ async fn an_explicit_skill_body_reaches_an_external_runtime_goal() {
         &node,
         &registry,
         Some("open-interpreter-default"),
+        None,
         &caller,
         &caller.caps().to_vec(),
         ws,

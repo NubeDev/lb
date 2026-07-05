@@ -15,6 +15,7 @@ import {
   Puzzle,
   ScrollText,
   Telescope,
+  Webhook as WebhookIcon,
   Workflow,
   FlaskConical,
   Send,
@@ -47,6 +48,7 @@ export type CoreSurface =
   | "datasources"
   | "reminders"
   | "ingest"
+  | "webhooks"
   | "data"
   | "system"
   | "system-mcp"
@@ -137,6 +139,11 @@ const SURFACE_GROUPS: { label: string; items: SurfaceDef[] }[] = [
     items: [
       { key: "datasources", icon: Plug, label: "Datasources" },
       { key: "ingest", icon: Activity, label: "Ingest" },
+      // webhooks (webhooks scope): a first-class inbound-HTTP surface beside the other data inlets.
+      // The page is cap-gated on `webhook.manage` (allowed.ts); the gateway re-checks every verb
+      // server-side. Sits in the Data group (the wizard reads like a data-surface); the component
+      // itself lives in `features/admin/` because it mirrors the ApiKeysAdmin pattern.
+      { key: "webhooks", icon: WebhookIcon, label: "Webhooks" },
       { key: "data", icon: Database, label: "Data" },
     ],
   },

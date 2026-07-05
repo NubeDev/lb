@@ -98,6 +98,7 @@ async fn run_one(
         node,
         registry,
         req.runtime.as_deref(),
+        req.persona.as_deref(),
         &caller,
         agent_caps,
         &ws,

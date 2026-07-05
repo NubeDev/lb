@@ -1,7 +1,10 @@
 # Agent-personas scope — the built-in persona catalog (persona-catalog)
 
-Status: scope (the ask). Sub-scope #3 of `agent-personas-scope.md`.
-Promotes to `public/agent-personas/`.
+Status: **SHIPPED** (the 7 built-ins as `personas.toml` data, verb-lists cross-verified against the live
+inventory; 8 catalog tests incl. the confusion demo green). Sub-scope #3 of `agent-personas-scope.md`.
+Session: [`sessions/agent-personas/persona-catalog-session.md`](../../sessions/agent-personas/persona-catalog-session.md).
+Promoted to [`public/agent-personas/agent-personas.md`](../../public/agent-personas/agent-personas.md).
+See the **Implementation finding** below (the palette-catalog reach) — recorded, not coded around.
 
 Ship the **built-in personas as data**: a `personas.toml` seed (the `agents.toml` move) defining
 the seven workspace-selectable focuses. This doc is deliberately concrete — each persona's exact
@@ -175,6 +178,34 @@ current as parents evolve — rejected: a flattened list, which would rot on eve
   `system-manager` follows a parent's change without a seed edit to itself.
 - **The confusion before/after (the umbrella gate):** one task run full-surface vs under its
   matching persona; session doc records menu size + outcome.
+
+## Implementation finding (recorded 2026-07-05, #3 session)
+
+**The reachable menu a persona narrows is the *palette-descriptor catalog + loaded extension tools*,
+NOT the full ~175-verb surface.** `reachable_tools` reads `tools.catalog`, which is
+`host_descriptors()` ∩ caps — and `host_descriptors()` (`rust/crates/host/src/tools/descriptor.rs`)
+is a **curated palette list** (~11 host verbs: `federation.query`, `query.*`, `agent.invoke`,
+`reminder.*`, `dashboard.catalog`/`pin`, secrets) plus whatever extensions register. The vast
+majority of host verbs (`rules.*`, `flows.*`, `dashboard.save`, `nav.*`, `roles.*`, `channel.*`,
+`system.*`, …) are **callable** (they dispatch in `tool_call.rs`) but are **not** palette-advertised,
+so a model never sees them in its menu today — with OR without a persona.
+
+**What this means for personas (all still true, but scoped honestly):**
+- A persona's `granted_tools` list is the **complete, forward-looking allow-list** — it names every
+  tool that *would* be in-focus. As those verbs gain descriptors (or arrive as extension tools), the
+  persona narrows them correctly with zero change. The list is not wrong; it is ahead of the palette.
+- The **narrowing mechanism** (`menu = reachable ∩ persona.granted_tools`) is proven regardless of
+  catalog size — a persona can only ever *shrink* the reachable set. The value is real the moment the
+  reachable set is larger than the focus (extensions loaded, or the palette grows).
+- The **confusion cure** has TWO levers, and this finding clarifies which does the work *today*: on a
+  bare node the tool-menu is already small, so the dominant cure is the **identity + pinned grounding**
+  (the agent knows who it is and reads the runbook, not the repo) — proven in #2's grounding test.
+  Tool-narrowing bites hardest on a node with many extension tools loaded (the observed real symptom).
+- **Follow-up (not a #3 blocker):** widening `host_descriptors()` so more host verbs are
+  palette-visible is its own scope (a descriptor per verb-family) — recorded here so a future reader
+  knows the persona lists are ready for it. Until then, the per-persona menu tests assert narrowing
+  over the **genuinely-reachable** palette tools (a persona's in-list palette tool present, an
+  out-of-list one absent), which is the honest, non-drifting assertion.
 
 ## Risks & hard problems
 

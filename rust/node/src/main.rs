@@ -129,6 +129,17 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => eprintln!("boot: agent-definition seed failed: {e}"),
     }
 
+    // PERSONA CATALOG seed (agent-personas scope #1): boot-seed the built-in personas (curated tool +
+    // pinned-skill + identity bundles) into the reserved `_lb_personas` namespace from the embedded
+    // `personas.toml` manifest (overridable via `LB_PERSONA_CATALOG_TOML`). Idempotent (LWW UPSERT);
+    // the ONLY writer of that namespace, mirroring `seed_agent_definitions`. Symmetric — every node
+    // seeds the same catalog; whether a persona's listed tool is reachable is decided at run assembly
+    // by the wall, never here.
+    match lb_host::seed_personas(&node.store).await {
+        Ok(ids) => println!("boot: seeded {} personas ({:?})", ids.len(), ids),
+        Err(e) => eprintln!("boot: persona seed failed: {e}"),
+    }
+
     // DEFAULT CORE-SKILL GRANTS for the boot workspace (core-skills scope): `workspace_create` applies
     // the default set on a genuinely-new workspace, but the dev boot workspace is seeded directly (not
     // through that verb), so grant the resolved set here too. The set is node config —

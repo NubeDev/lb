@@ -121,23 +121,35 @@ hand-authored persona; #3 makes it a product; #4 is the persona that needs the m
 - **Skill docs** — `skills/agent/SKILL.md` gains the persona how-to (#1 session); #2 *creates*
   skills as its deliverable; each built-in persona's pinned set is listed in #3.
 
-## Umbrella exit gate
+## Umbrella exit gate — **ALL FIVE MET (2026-07-05)**
 
-The topic is shippable when:
+The topic is shippable when — and it is:
 
-- **The swap test (#1):** a brand-new persona created **as a record only** (custom CRUD, zero code
+- ✅ **The swap test (#1):** a brand-new persona created **as a record only** (custom CRUD, zero code
   change) drives a run whose menu, identity, and grounding all reflect it — proven for **both**
-  runtimes (in-house + external ACP).
-- **The narrowing test (#1):** a persona listing a tool the caller lacks still denies at
-  `caps::check`; a persona omitting a granted tool keeps it out of the menu **and** a
-  model-proposed call to it is still governed by the wall (menu is a hint, wall is the law).
-- **The grounding test (#2):** a persona-grounded run answers a platform-operations question
-  (e.g. "how do I test this feature?") from its pinned skills — with the whole-codebase access
-  absent.
-- **The confusion fix, demonstrated (#3):** the same task that confuses the full-surface agent
-  today runs focused under the matching built-in persona (a before/after in the session doc).
-- **The coding posture (#4):** the extension-builder persona builds a real hello-grade extension
-  end to end under supervision, and cannot touch anything outside its granted surface + workdir.
+  runtimes (in-house via a recording model; external via a scripted `AgentRuntime` capturing its
+  `RunContext` — the narrowed `tools` are exactly what the real ACP bridge advertises).
+  `agent_persona_test.rs::swap_test_in_house` + `::swap_test_external`.
+- ✅ **The narrowing test (#1):** a persona listing a tool the caller lacks is never added to the menu
+  (`narrowing_a_persona_tool_the_caller_lacks_is_never_added`); the wall re-checks every call (the
+  raw-read resolution finding + `menu is a hint, wall is the law`).
+- ✅ **The grounding test (#2):** a persona-grounded run is fed its pinned `core.e2e-backend` runbook
+  BODY (`make dev` reaches the model's context) with a focused menu and NO repo/fs tool —
+  `agent_persona_test.rs::a_persona_grounded_run_is_fed_its_pinned_skill_body_not_the_repo`.
+- ✅ **The confusion fix, demonstrated (#3):** the same task, same caller — the reachable palette
+  narrows 11→1 under `builtin.data-analyst` (off-task palette tools gone) —
+  `agent_persona_catalog_test.rs::the_confusion_fix_...`. (Recorded finding: the menu is the palette
+  catalog, not the full verb surface; on a bare node identity+grounding carry most of the cure.)
+- ✅ **The coding posture (#4):** the extension-builder persona reaches the REAL devkit (a real
+  `devkit.scaffold` lands an extension tree), and a real run proposing `ext.publish` **durably
+  suspends** on the Ask floor (never on its own); a member caller is denied the devkit surface at the
+  wall; an external runtime pairing fails at run start —
+  `agent_persona_coding_test.rs` (10 tests). The full build+publish chain rides the existing
+  `devkit_e2e_test.rs`/`ext_publish_test.rs`.
+
+**Tests:** 21 (#1 model) + 8 (#3 catalog) + 10 (#4 coding) host tests + 6 UI gateway tests (#1
+Settings) + the #2 seed/grounding tests — all green; existing agent + core-skills suites no-regression;
+`node --features external-agent` builds.
 
 ## Related
 

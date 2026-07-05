@@ -134,6 +134,19 @@ export const CAP = {
   // agent-catalog test-and-secrets scope: the context-proving diagnostic. Its OWN admin-tier cap
   // (distinct from the read-ish `list`) because the test spends a model turn.
   agentDefTest: "mcp:agent.def.test:call",
+  // agent-personas scope (#1): the persona catalog — WHAT the agent runs for. `list`/`get`/`resolve`
+  // are member-level (the picker + effective-tools reads); create/update/delete are admin (custom
+  // personas only — built-ins are read-only). Personas edit ADVERTISEMENT, never the wall.
+  agentPersonaList: "mcp:agent.persona.list:call",
+  agentPersonaGet: "mcp:agent.persona.get:call",
+  agentPersonaResolve: "mcp:agent.persona.resolve:call",
+  agentPersonaCreate: "mcp:agent.persona.create:call",
+  agentPersonaUpdate: "mcp:agent.persona.update:call",
+  agentPersonaDelete: "mcp:agent.persona.delete:call",
+  // agent-policy (agent-run Part 2 machinery, first Settings surface): the per-tool Allow/Ask/Deny
+  // SUPERVISION editor. `get` is member read; `set` is admin. Editing supervision, never the wall.
+  agentPolicyGet: "mcp:agent.policy.get:call",
+  agentPolicySet: "mcp:agent.policy.set:call",
 } as const;
 
 /** Any one of these present → the admin section is shown (then per-control caps gate within it). */

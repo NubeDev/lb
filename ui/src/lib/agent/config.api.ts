@@ -27,6 +27,10 @@ export interface AgentConfig {
    *  "which agent is active" is a stored fact, not re-derived from `default_runtime` + endpoint.
    *  Written by the pick alongside the copied fields; additive + optional (back-compat). */
   active_definition?: string;
+  /** The active persona id the workspace picked (agent-personas scope #1) — the parallel pointer to
+   *  `active_definition`: definition picks who runs (runtime/model), persona picks what for (focus).
+   *  Written by the persona pick; additive + optional (back-compat, serde-default). */
+  active_persona?: string;
 }
 
 /** Read the workspace's agent config (`null` when unset). Member-level. */

@@ -207,3 +207,144 @@ var keeps working off the env.
 
 Both never show the value back and store only the path (names-only).
 
+
+## 7. Personas — pick *what the agent is for* (agent-personas)
+
+A run today is handed everything: the constant system prompt, your whole reachable tool catalog, no
+grounding. A **persona** fixes that — it is a workspace-selected *focus*: `{ identity, granted_tools,
+grounding_skills, extends }`, applied at run assembly to **narrow** the run. It never widens the wall.
+
+> **The one rule:** a persona **narrows, never widens.** The effective menu is
+> `persona ∩ agent ∩ caller`, and every dispatch still re-runs `caps::check`. A persona listing a tool
+> you lack changes nothing (still denied); a granted tool the persona omits is just un-advertised (a
+> model that proposes it anyway still hits the wall). Persona = advertisement + grounding + supervision,
+> **not** authorization. Picking a persona never grants a capability.
+
+### The record (two tiers, one shape — the `agent.def` pattern)
+
+- **Built-in** — `builtin.<slug>`, seeded read-only into the reserved `_lb_personas` namespace
+  (readable in every workspace, writable in none; a `builtin.*` write is `BadInput` before the caps gate).
+- **Custom** — a workspace-scoped record with admin CRUD.
+
+```
+Persona {
+  id, label, description?,
+  identity: string,          // prepended to the in-house SYSTEM_PROMPT / folded at the head of the goal
+  granted_tools: string[],   // tool ids or trailing-* globs ("flows.*") — OPAQUE data, a narrowing hint
+  grounding_skills: string[],// skill ids pinned at session start (grant-gated, FAIL-CLOSED)
+  extends: string[],         // parent persona ids; tool/skill lists union in at read (child identity wins)
+  policy_preset?, runtimes?, // #4 (extension-builder): a supervision floor + a runtime restriction
+}
+```
+
+### Pick one (member reads, admin writes)
+
+```
+# The picker read (member): list built-ins ∪ your workspace's custom personas
+POST /mcp/call { "tool": "agent.persona.list", "args": {} }        # → { personas: [...] }
+POST /mcp/call { "tool": "agent.persona.get",  "args": { "id": "builtin.data-analyst" } }
+
+# Set the workspace's active persona (rides agent.config, the active_definition move exactly)
+POST /mcp/call { "tool": "agent.config.set", "args": { "patch": { "active_persona": "builtin.data-analyst" } } }
+```
+
+Precedence at run assembly: an **explicit** per-invoke `persona` arg > the workspace `active_persona` >
+none. A per-message override rides every front door — the channel `kind:"agent"` payload, the routed
+`agent.invoke`, and `POST /agent/invoke { …, "persona": "builtin.flow-author" }` (so a surface like Data
+Studio can invoke with its own focus, no new mechanism). An explicit **unknown** id is a named error (an
+explicit ask must not silently degrade); a **dangling active** id (persona since deleted) warns and runs
+un-narrowed — never an errored run.
+
+### The seven built-in personas (pick by name)
+
+Seeded read-only into `_lb_personas`. Each curates one platform area's verbs + pins ≤ 4 grounding
+skills (the rest ride the filtered catalog). **Every tool still passes the wall** — an admin-tier verb
+in a persona does nothing for a member caller. **Destructive/security verbs (`workspace.delete/purge`,
+`authz.revoke-tokens`, `secret.get`) are excluded from every persona by design** — a human runs those.
+
+| Persona | For | Pinned grounding |
+|---|---|---|
+| `builtin.data-analyst` | datasources, SurrealDB, series, queries, charts | `core.datasources`, `core.query`, `core.store-read`, `core.ingest-series` |
+| `builtin.flow-author` | the typed-node flows DAG engine | `core.flows-mcp`, `core.ingest-series`, `core.query` |
+| `builtin.widget-builder` | Data Studio, charts, GenUI, render templates | `core.dashboard-mcp`, `core.genui-widget`, `core.panels`, `core.dashboard-widgets` |
+| `builtin.rules-author` | rules — **extends** flow-author + data-analyst | `core.rules` (+ inherited) |
+| `builtin.workspace-admin` | nav, users, teams, roles, grants, ws defaults | `core.nav`, `core.auth-caps`, `core.prefs` |
+| `builtin.channels-operator` | channels, inbox/outbox, messaging | `core.channels-inbox-outbox`, `core.prefs` |
+| `builtin.system-manager` | the general operator — **extends** all six above; hands off deep work | `core.lb-cli`, `core.mcp`, `core.auth-caps`, `core.agent` |
+| `builtin.extension-builder` | builds UI/WASM/native **extensions** against the devkit — "100% coding, but never on its own" | `core.extension-authoring`, `core.extensions`, `core.e2e-backend` |
+
+**`builtin.extension-builder` carries a safety posture** (persona-coding #4): its devkit/ext verbs are
+admin-tier (a member gets the honest deny); a **`policy_preset`** Ask-gates every node-mutating verb
+(`ext.publish`, `ext.uninstall`, `ext.disable`, `native.install`, `native.reset`) — a real run
+proposing one **durably suspends** for a human `agent.decide` (never publishes on its own), while the
+edit/build inner loop stays fluid; and a `runtimes: ["default"]` restriction keeps it in-house-only
+until the external-agent sandbox ships (an external pairing fails at run start with a named error). The
+Ask floor is a floor: tightening is free, loosening below it needs an explicit per-tool `agent.policy.set`
+rule (a blanket `*`-Allow does not loosen it).
+
+`rules-author` and `system-manager` use `extends` — they inherit their parents' tools + skills at read
+time, so when a parent grows (e.g. new `flows.*` verbs) they follow for free, no seed edit.
+
+> **What "narrow the menu" reaches today:** the run's menu is the palette-descriptor catalog
+> (`tools.catalog`) + loaded extension tools — a curated subset, not the full ~175-verb surface. A
+> persona's `granted_tools` is the complete forward-looking allow-list (it narrows correctly as verbs
+> gain descriptors / arrive as extension tools). On a bare node the tool-narrowing is small, so the
+> **identity + pinned grounding** carry most of the confusion cure there; tool-narrowing bites hardest
+> with many extension tools loaded.
+
+### Author a custom persona (admin)
+
+```
+POST /mcp/call { "tool": "agent.persona.create", "args": {
+  "id": "my-analyst", "label": "My analyst",
+  "identity": "You are a data analyst for this workspace. Verify against the store; never invent columns.",
+  "granted_tools": ["federation.query", "viz.query", "series.*", "store.query", "store.schema"],
+  "grounding_skills": ["core.query", "core.store-read"],
+  "extends": []
+} }                                                                # → { ok: true }
+POST /mcp/call { "tool": "agent.persona.update", "args": { "id": "my-analyst", "patch": { "label": "Renamed" } } }
+POST /mcp/call { "tool": "agent.persona.delete", "args": { "id": "my-analyst" } }
+```
+
+Write-time walls (all `BadInput`): a `builtin.*` id (reserved, before caps); a bare `*` in
+`granted_tools` (an everything-persona is *no* persona — leave it unset for no narrowing); a `*`
+mid-string (globs are trailing-prefix only); a self- or cyclic `extends` chain, or one deeper than 3.
+
+### What the run actually gets (both runtimes, one seam)
+
+Applied in `invoke_via_runtime` (the ONE seam the in-house loop and the external ACP runtime share):
+
+1. **menu** = `reachable_tools ∩ persona.granted_tools` (glob = trailing-`*` prefix). This narrowed
+   `AllowedTool` list is the in-house model's menu **and** what the external MCP bridge advertises.
+2. **identity** — the persona identity + each pinned `grounding_skills` **body** are folded into the
+   goal (which seeds the in-house rehydrate and is the external agent's only channel). **FAIL-CLOSED:**
+   an ungranted pinned skill fails the run at start with a named error, before any model spend.
+3. **catalog** — the advertised skills catalog is filtered to the pinned set (the model sees the
+   persona's focus). The grant is still the wall; filtering only removes already-granted entries.
+
+### Inspect the effective focus (the Settings "effective tools" view)
+
+```
+POST /mcp/call { "tool": "agent.persona.resolve", "args": { "id": "builtin.data-analyst" } }
+# → { effective: { id, identity, granted_tools, grounding_skills, policy_preset?, runtimes? } }
+#   (the extends-closure UNION; the UI intersects granted_tools with the caller's tools.catalog to show
+#    persona ∩ agent ∩ caller, with a reason per exclusion — "not in persona" / "not granted".)
+```
+
+### Supervision (the Allow/Ask/Deny policy — its first Settings surface)
+
+The shipped per-tool policy sits **in front of** the wall (defense in depth; default-allow when unset):
+
+```
+POST /mcp/call { "tool": "agent.policy.get", "args": {} }                 # → { rules: [...] } (member)
+POST /mcp/call { "tool": "agent.policy.set", "args": { "rules": [
+  { "tool": "ext.publish", "effect": "ask" } ] } }                        # admin; Deny>Allow>Ask
+```
+
+A persona's optional `policy_preset` (the #4 extension-builder ships one) is the **floor**: tightening is
+free, loosening below it is the explicit admin write.
+
+> Grounded in a live run: `crates/host/tests/agent_persona_test.rs` seeds a record-only persona, drives a
+> real in-house loop, and asserts the recorded menu is narrowed + the identity reached the model — and a
+> scripted external runtime advertises the same narrowed set (`swap_test_*`). The pinned-but-ungranted
+> skill test proves the fail-closed named error before any model call.

@@ -58,6 +58,7 @@ async fn absent_runtime_resolves_to_the_in_house_default() {
         &node,
         &registry,
         None,
+        None,
         &caller,
         &[],
         ws,
@@ -84,6 +85,7 @@ async fn explicitly_named_default_resolves_the_same() {
         &node,
         &registry,
         Some(DEFAULT_RUNTIME),
+        None,
         &caller,
         &[],
         ws,
@@ -112,6 +114,7 @@ async fn an_explicitly_named_unknown_runtime_is_an_error_not_a_silent_downgrade(
         &node,
         &registry,
         Some("open-interpreter-default"), // named, but this OFF-registry has only `default`
+        None,
         &caller,
         &[],
         ws,
@@ -143,6 +146,7 @@ async fn invoke_is_denied_without_the_cap_identically_through_the_seam() {
     let err = invoke_via_runtime(
         &node,
         &registry,
+        None,
         None,
         &caller,
         &[],

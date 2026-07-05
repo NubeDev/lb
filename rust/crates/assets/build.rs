@@ -22,14 +22,27 @@ fn main() {
     // repo root is three levels up from CARGO_MANIFEST_DIR.
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let skills_dir = manifest_dir.join("../../../docs/skills");
+    // The platform's own e2e RUNBOOKS also seed as core skills (agent-personas #2 persona-grounding):
+    // a persona-grounded run learns "how do I verify this?" from the runbook, not from crawling the
+    // codebase. They live under docs/testing/ (top-level + per-area READMEs) and already carry
+    // skill-shaped `e2e-*` frontmatter — pulled directly from where they live (no copy that can drift).
+    let testing_dir = manifest_dir.join("../../../docs/testing");
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
     let dest = out_dir.join("core_skills_corpus.rs");
 
-    // Rebuild if the skills directory listing changes (a skill added/removed).
+    // Rebuild if either corpus directory listing changes (a skill/runbook added/removed).
     println!("cargo:rerun-if-changed={}", skills_dir.display());
+    println!("cargo:rerun-if-changed={}", testing_dir.display());
 
     let mut entries: Vec<(String, String, String)> = Vec::new();
+
+    // (1) The developer-authored skills corpus: EVERY `docs/skills/<name>/SKILL.md`. No allow-list —
+    // a new dir auto-embeds. ANTI-ROT ASSERTION (persona-grounding scope): a skills subdir that is
+    // missing its `SKILL.md` FAILS the build. Before, a missing SKILL.md was silently skipped, so a
+    // half-authored skill could ship as "absent" and a persona pinning it would fail-closed at run
+    // time with no build-time signal. Now the corpus cannot silently rot: either the dir has a valid
+    // SKILL.md or the build stops.
     if let Ok(read) = fs::read_dir(&skills_dir) {
         let mut dirs: Vec<PathBuf> = read
             .filter_map(|e| e.ok().map(|e| e.path()))
@@ -39,7 +52,12 @@ fn main() {
         for dir in dirs {
             let skill_md = dir.join("SKILL.md");
             if !skill_md.exists() {
-                continue;
+                panic!(
+                    "core-skills corpus: {} has no SKILL.md — every docs/skills/<name>/ dir must \
+                     carry one (anti-rot gate, persona-grounding scope). Add the SKILL.md or remove \
+                     the directory.",
+                    dir.display()
+                );
             }
             // Rebuild if any embedded SKILL.md changes.
             println!("cargo:rerun-if-changed={}", skill_md.display());
@@ -54,6 +72,36 @@ fn main() {
                     skill_md.display()
                 ),
             }
+        }
+    }
+
+    // (2) The e2e runbooks under docs/testing/**: any `.md` with skill-shaped frontmatter (the
+    // top-level `e2e-backend.md`/`e2e-frontend.md` + the per-area `<area>/README.md`). A `.md` WITHOUT
+    // frontmatter (the `docs/testing/README.md` index) is skipped — it is a human index, not a skill.
+    // The frontmatter `name:` (already `e2e-*`) becomes `core.<name>`, exactly like a skills dir.
+    let mut testing_files = collect_markdown(&testing_dir);
+    testing_files.sort();
+    for md in testing_files {
+        println!("cargo:rerun-if-changed={}", md.display());
+        let raw = fs::read_to_string(&md).unwrap_or_else(|e| panic!("read {}: {e}", md.display()));
+        if let Some((name, description, body)) = parse_skill(&raw) {
+            entries.push((name, description, flag_repo_links(&body)));
+        }
+        // No frontmatter → not a skill (e.g. the README index); silently skip (unlike the skills dir,
+        // a bare `.md` under testing/ is legitimately allowed to be non-skill prose).
+    }
+
+    // Guard against an accidental id collision between the two roots (a skills dir named `e2e-foo`
+    // would clash with a runbook of the same frontmatter name). Deterministic, build-time.
+    let mut names: Vec<&str> = entries.iter().map(|(n, _, _)| n.as_str()).collect();
+    names.sort_unstable();
+    for pair in names.windows(2) {
+        if pair[0] == pair[1] {
+            panic!(
+                "core-skills corpus: duplicate skill name {:?} across docs/skills + docs/testing — \
+                 names must be unique (they become core.<name>)",
+                pair[0]
+            );
         }
     }
 
@@ -72,6 +120,28 @@ fn main() {
     src.push_str("];\n");
 
     fs::write(&dest, src).unwrap_or_else(|e| panic!("write {}: {e}", dest.display()));
+}
+
+/// Recursively collect every `.md` file under `root` (one level of subdirectory is enough for the
+/// runbook layout — `docs/testing/*.md` + `docs/testing/<area>/*.md` — but the walk is fully
+/// recursive so a deeper runbook still seeds). Returns an empty vec if `root` is absent.
+fn collect_markdown(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+                out.push(path);
+            }
+        }
+    }
+    out
 }
 
 /// Split a `SKILL.md` into `(name, description, body)`: parse the leading `--- … ---` YAML
@@ -185,7 +255,3 @@ fn push_str_lit(src: &mut String, s: &str) {
         src.push('"');
     }
 }
-
-// Keep `Path` import used even if the body evolves.
-#[allow(dead_code)]
-fn _unused(_: &Path) {}

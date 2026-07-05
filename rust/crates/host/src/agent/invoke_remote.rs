@@ -29,6 +29,7 @@ pub async fn invoke_remote(
     skill: Option<&str>,
     doc: Option<&str>,
     runtime: Option<&str>,
+    persona: Option<&str>,
     tools: &[AllowedTool],
     ts: u64,
 ) -> Result<String, AgentError> {
@@ -45,6 +46,7 @@ pub async fn invoke_remote(
         skill: skill.map(|s| s.to_string()),
         doc: doc.map(|s| s.to_string()),
         runtime: runtime.map(|s| s.to_string()),
+        persona: persona.map(|s| s.to_string()),
         // The edge→hub routed path carries no page context today (the context-bearing callers are the
         // channel worker + `POST /agent/invoke`, both on the serving node). `None` keeps the wire field
         // present and byte-compatible; a future routed context-bearing caller sets it here.

@@ -81,6 +81,7 @@ fn definition(id: &str, provider: &str, model: &str) -> AgentDefinition {
 fn pick_patch(def: &AgentDefinition) -> AgentConfig {
     AgentConfig {
         active_definition: Some(def.id.clone()),
+        active_persona: None,
         default_runtime: Some(def.runtime.clone()),
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some(def.model_endpoint.provider.clone()),
@@ -272,6 +273,7 @@ async fn the_in_house_loop_drives_the_picked_workspace_model() {
         &node,
         &node.runtimes(),
         None, // absent → the in-house default, which now rides the per-ws override
+        None, // no per-invoke persona
         &ada,
         &ada.caps().to_vec(),
         ws,

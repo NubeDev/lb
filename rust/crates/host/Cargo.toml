@@ -78,3 +78,9 @@ ed25519-dalek.workspace = true
 # the agent tests. It is a DEV dependency only: the host depends on the `ModelAccess` trait it owns,
 # never on a role crate at build time (roles depend on host, not the reverse — symmetric layering).
 lb-role-ai-gateway.workspace = true
+# The gateway role crate supplies `dev_claims` — the REAL dev-login cap set (member + admin) — so the
+# persona-catalog test's "admin caller" holds exactly what a live admin holds (incl. the destructive
+# verbs the built-in personas must exclude even from an admin). DEV-only; a dev-dependency cycle
+# (gateway → host normally, host → gateway for tests) is permitted by Cargo and keeps the test's cap
+# source honest instead of a hand-copied list that drifts. The host never build-depends on it.
+lb-role-gateway.workspace = true

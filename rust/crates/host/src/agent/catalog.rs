@@ -35,13 +35,33 @@ pub async fn render_catalog(
     actor: &Principal,
     ws: &str,
 ) -> Result<Option<String>, AgentError> {
+    render_catalog_filtered(node, actor, ws, None).await
+}
+
+/// As [`render_catalog`], but when `pinned` is `Some`, the rendered catalog is **filtered to the
+/// pinned skill ids** (persona-model scope: a persona pins a focus, so the advertised catalog matches
+/// it — the model sees the persona's skills, not the whole granted set). `None` = no filter (the full
+/// granted catalog, the un-narrowed behavior). The grant stays the wall: filtering only ever *removes*
+/// entries from an already-grant-gated list, never adds one (a pinned id the workspace didn't grant is
+/// absent from `list_granted_skills` and so simply doesn't appear).
+pub async fn render_catalog_filtered(
+    node: &Node,
+    actor: &Principal,
+    ws: &str,
+    pinned: Option<&[String]>,
+) -> Result<Option<String>, AgentError> {
     // A `Denied`/`NotFound` here means the agent lacks the skill-read capability (or there is
     // nothing to read) — that is simply an EMPTY catalog for this run, NOT a run failure. Injecting
     // the catalog is best-effort context, never a gate: a run that cannot see any skill just gets no
     // catalog (and any `skill.activate` it then proposes is denied at activation time anyway). Only a
     // genuine store error propagates.
     match list_granted_skills(&node.store, actor, ws).await {
-        Ok(entries) => Ok(format_catalog(&entries)),
+        Ok(mut entries) => {
+            if let Some(pins) = pinned {
+                entries.retain(|e| pins.iter().any(|p| p == &e.id));
+            }
+            Ok(format_catalog(&entries))
+        }
         Err(AssetError::Denied)
         | Err(AssetError::NotFound)
         | Err(AssetError::TooLarge)

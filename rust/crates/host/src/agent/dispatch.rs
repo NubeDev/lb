@@ -18,11 +18,14 @@ use std::sync::Arc;
 use lb_auth::Principal;
 
 use super::authorize::authorize_invoke;
-use super::catalog::render_catalog;
+use super::catalog::render_catalog_filtered;
 use super::error::AgentError;
 use super::in_house::DEFAULT_RUNTIME;
 use super::memory::memory_index_for_injection;
 use super::model_access::AllowedTool;
+use super::personas::{
+    build_identity_fold, check_runtime, narrow_tools, resolve_effective, resolve_persona,
+};
 use super::registry::RuntimeRegistry;
 use super::resolve_default::resolve_effective_runtime;
 use super::runtime::RunContext;
@@ -55,6 +58,7 @@ pub async fn invoke_via_runtime(
     node: &Arc<Node>,
     registry: &RuntimeRegistry,
     runtime: Option<&str>,
+    persona: Option<&str>,
     caller: &Principal,
     agent_caps: &[String],
     ws: &str,
@@ -78,6 +82,42 @@ pub async fn invoke_via_runtime(
 
     // Selection is a registry lookup, not a `match` over kinds. An unknown named runtime errors here.
     let runtime = registry.resolve(effective.as_deref())?;
+
+    // PERSONA RESOLUTION (agent-personas scope #1) — the run's *focus*, orthogonal to the runtime.
+    // Precedence: explicit invoke `persona` → workspace `agent.config.active_persona` → none. Resolved
+    // AFTER the gate, under the caller (`agent_persona_get` re-runs its OWN member gate; an explicit
+    // unknown id is a named error, a dangling active id warns + runs un-narrowed). The `extends`
+    // closure is unioned into an `EffectivePersona`. `None` → the run is un-narrowed (byte-identical to
+    // pre-persona behavior below, since `effective_persona` stays `None`).
+    let effective_persona = match resolve_persona(node, caller, ws, persona)
+        .await
+        .map_err(tool_to_agent)?
+    {
+        Some(p) => Some(
+            resolve_effective(node, caller, ws, &p)
+                .await
+                .map_err(tool_to_agent)?,
+        ),
+        None => None,
+    };
+
+    // RUNTIME RESTRICTION (persona-coding #4): a persona may pin the runtimes it runs under (the
+    // extension-builder is in-house-only until the external sandbox ships). Enforced at run start,
+    // before any model spend, with a named error — data on the record, never an `if` in core.
+    if let Some(ep) = &effective_persona {
+        check_runtime(ep, runtime.id())?;
+    }
+
+    // MENU NARROWING: the persona's `granted_tools` filter the reachable menu → `persona ∩ reachable`.
+    // The wall is UNTOUCHED — this only trims the *advertised* set (the in-house model's proposable
+    // tools AND the external bridge's advertised set are both this narrowed list). A persona naming a
+    // tool the caller lacks changes nothing (it was never reachable); a granted tool the persona omits
+    // is un-advertised but a model that proposes it anyway still hits `caps::check`. `None` persona →
+    // the full reachable menu, unchanged.
+    let narrowed_tools: Option<Vec<AllowedTool>> = effective_persona
+        .as_ref()
+        .map(|ep| narrow_tools(tools, &ep.granted_tools));
+    let tools: &[AllowedTool] = narrowed_tools.as_deref().unwrap_or(tools);
 
     // Resolve the per-run model override for the DEFAULT (in-house) runtime only (active-agent-wiring
     // #2): the workspace's active pick's `model_endpoint` → a live model, memoized per (ws, endpoint).
@@ -111,6 +151,19 @@ pub async fn invoke_via_runtime(
     // (membership/ownership/grant) fire under the caller (see substrate.rs), so this is not a widening:
     // an ungranted/unreadable skill/doc still fails the read here, identically for either runtime.
     let mut goal = goal.to_string();
+
+    // PERSONA IDENTITY + PINNED-SKILL FOLD (agent-personas scope #1): the persona's identity leads,
+    // then each pinned `grounding_skills` body, baked into the goal for BOTH runtimes (the goal seeds
+    // the in-house rehydrate AND is the external agent's only channel — one source, both doors). This
+    // is FAIL-CLOSED: an ungranted pinned skill errors the run here with the named `PersonaSkill`
+    // error, before any model spend (the acp-driver decision, kept). Placed before the caller's
+    // explicit substrate so the identity frames everything that follows.
+    if let Some(ep) = &effective_persona {
+        if let Some(fold) = build_identity_fold(node, caller, agent_caps, ws, ep).await? {
+            goal = format!("{fold}\n\n{goal}");
+        }
+    }
+
     if let Some(skill_id) = substrate.skill {
         let body = load_substrate_skill(&node.store, caller, agent_caps, ws, skill_id).await?;
         goal = format!("{goal}\n\n[skill {skill_id}]\n{body}");
@@ -140,7 +193,13 @@ pub async fn invoke_via_runtime(
         // agent DISCOVERS in this catalog stay on demand via the granted `load_skill` tool in the
         // profile's `granted_tools`; an EXPLICITLY-requested skill's body is already baked above.
         let agent = caller.derive("agent:session", agent_caps.to_vec());
-        if let Some(catalog) = render_catalog(node, &agent, ws).await? {
+        // Filter the advertised catalog to the persona's pinned skills when a persona is active (the
+        // model sees the persona's focus, not the whole granted set). `None` persona → the full granted
+        // catalog, unchanged. The grant stays the wall — filtering only removes already-granted entries.
+        let pinned = effective_persona
+            .as_ref()
+            .map(|ep| ep.grounding_skills.as_slice());
+        if let Some(catalog) = render_catalog_filtered(node, &agent, ws, pinned).await? {
             goal = format!("{goal}\n\n{catalog}");
         }
         // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the skill catalog,
@@ -156,6 +215,18 @@ pub async fn invoke_via_runtime(
         // (dispatch.rs module docs) — the same loader, pinned by the profile, not a second path.
     }
 
+    // The in-house loop filters its advertised catalog to the persona's pinned skills (the external
+    // runtime already folded its filtered catalog into the goal above and ignores this). Borrows from
+    // `effective_persona`, which outlives `ctx`.
+    let persona_catalog = effective_persona
+        .as_ref()
+        .map(|ep| ep.grounding_skills.as_slice());
+    // The persona's supervision floor (persona-coding #4) — the in-house loop folds it into the ws
+    // policy as an Ask/Deny floor over node-mutating tools. Borrows from `effective_persona`.
+    let persona_preset = effective_persona
+        .as_ref()
+        .and_then(|ep| ep.policy_preset.as_ref());
+
     let ctx = RunContext {
         ws,
         job_id,
@@ -164,7 +235,22 @@ pub async fn invoke_via_runtime(
         agent_caps,
         tools,
         model_override,
+        persona_catalog,
+        persona_preset,
         ts,
     };
     runtime.run(node, ctx).await
+}
+
+/// Map a persona-resolution [`ToolError`](lb_mcp::ToolError) onto the run's [`AgentError`]. A persona
+/// deny stays opaque (`Denied`); a named `BadInput`/`NotFound` (an explicit-but-unknown persona id, a
+/// cross-ws access) carries its message through so the caller learns *why* the chosen persona did not
+/// apply — an explicit ask must not silently degrade.
+fn tool_to_agent(e: lb_mcp::ToolError) -> AgentError {
+    match e {
+        lb_mcp::ToolError::Denied => AgentError::Denied,
+        lb_mcp::ToolError::NotFound => AgentError::NotFound,
+        lb_mcp::ToolError::BadInput(m) => AgentError::BadInput(m),
+        lb_mcp::ToolError::Extension(m) => AgentError::BadInput(m),
+    }
 }

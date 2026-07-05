@@ -60,6 +60,54 @@ async fn seeding_is_idempotent_and_versioned() {
         .is_some());
 }
 
+/// The anti-rot invariant, mirrored as a runtime test (persona-grounding scope: "a SKILL.md on disk
+/// not in the embedded corpus fails the build"). `build.rs` now PANICS the build if a `docs/skills/`
+/// subdir lacks its `SKILL.md`; this test is the same gate expressed against the on-disk tree, so an
+/// authoring mistake (an empty skill dir) fails LOUDLY here too — not silently as an absent skill a
+/// persona then can't pin. If this test can't find the docs tree (e.g. a packaged crate), it no-ops.
+#[test]
+fn every_skills_dir_carries_a_skill_md() {
+    let skills_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../docs/skills");
+    let Ok(read) = std::fs::read_dir(&skills_dir) else {
+        return; // docs tree not present in this build context — the build.rs gate still holds.
+    };
+    for entry in read.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            assert!(
+                path.join("SKILL.md").exists(),
+                "docs/skills/{:?} has no SKILL.md — the anti-rot gate (build.rs) rejects it; add the \
+                 SKILL.md or remove the dir",
+                path.file_name().unwrap_or_default()
+            );
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_testing_runbooks_seed_as_core_skills() {
+    // agent-personas #2 persona-grounding: the `docs/testing/**` e2e runbooks (which already carry
+    // `e2e-*` skill frontmatter) now seed as `core.e2e-*` alongside the `docs/skills/*` corpus — so a
+    // persona-grounded run learns "how do I verify this?" from the runbook, not by crawling the repo.
+    // The embed pulls them from where they live (no copy that can drift). This asserts the second scan
+    // root (docs/testing) in `build.rs` is wired and its ids land in the reserved namespace.
+    let store = Store::memory().await.unwrap();
+    let ids = seed_core_skills(&store, "0.1.0", 1).await.unwrap();
+    for expected in ["core.e2e-backend", "core.e2e-frontend"] {
+        assert!(
+            ids.iter().any(|id| id == expected),
+            "the runbook {expected} must seed as a core skill (docs/testing scan root)"
+        );
+    }
+    // The README index under docs/testing/ has NO frontmatter and must NOT seed (it is a human index,
+    // not a runbook skill) — no `core.README`/`core.testing` sneaks in.
+    assert!(
+        !ids.iter()
+            .any(|id| id == "core.README" || id == "core.testing"),
+        "the frontmatter-less docs/testing/README.md is skipped, not seeded"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn core_records_live_outside_any_workspace_namespace() {
     // A seeded core skill lives in the reserved namespace, NOT in a workspace namespace — a workspace

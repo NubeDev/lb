@@ -36,6 +36,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("test_gateway: agent-definition seed failed: {e}");
     }
 
+    // Boot-seed the built-in personas into the reserved `_lb_personas` namespace, mirroring the
+    // production `node` binary (agent-personas scope #1). The UI persona picker test reads these back
+    // over the real read routes — seeding through the real boot path, not faking (testing §0).
+    if let Err(e) = lb_host::seed_personas(&gw.node.store).await {
+        eprintln!("test_gateway: persona seed failed: {e}");
+    }
+
     // APPROVAL-RELEASE REACTOR TICK (rules-approvals scope): the production `node` binary spawns this
     // beside the flow/agent reactors; the UI's `RulesApprovals.gateway.test.tsx` drives the full loop
     // (request_approval → held effect → approve → RELEASED) end to end, so the tick must run here too.

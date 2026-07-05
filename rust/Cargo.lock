@@ -4889,6 +4889,7 @@ dependencies = [
  "lb-registry",
  "lb-reminders",
  "lb-role-ai-gateway",
+ "lb-role-gateway",
  "lb-rules",
  "lb-run-events",
  "lb-runtime",

@@ -26,7 +26,7 @@ use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
 use super::activate::{activate_skill, SKILL_ACTIVATE};
-use super::catalog::render_catalog;
+use super::catalog::render_catalog_filtered;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
 use super::memory::memory_index_for_injection;
@@ -68,6 +68,8 @@ pub async fn run_session<M: ModelAccess>(
     job_id: &str,
     goal: &str,
     tools: &[AllowedTool],
+    persona_catalog: Option<&[String]>,
+    persona_preset: Option<&super::personas::PolicyPreset>,
     ts: u64,
 ) -> Result<String, AgentError> {
     // The derived (intersected) principal: the agent acts under `agent_caps ∩ caller.caps`, same ws,
@@ -104,7 +106,10 @@ pub async fn run_session<M: ModelAccess>(
     let mut turn_no = count_turns(&events);
 
     // The workspace permission policy consulted in front of `caps::check` (Part 2). Loaded once per
-    // run; default-allow when absent, so a workspace with no policy behaves exactly as before.
+    // run; default-allow when absent, so a workspace with no policy behaves exactly as before. The
+    // active persona's `policy_preset` (persona-coding #4) is applied per-call below as a FLOOR clamp
+    // over the evaluated effect (see `clamp_to_preset` — a clamp, not a merged rule, because an Ask
+    // floor can't beat a blanket Allow under the evaluator's Deny>Allow>Ask precedence).
     let policy = load_policy(&node.store, ws).await?;
 
     // MODEL-ACTIVATED SKILLS (Part 5): inject the granted-skills CATALOG (title+description only)
@@ -115,7 +120,12 @@ pub async fn run_session<M: ModelAccess>(
     // when the granted set changes mid-run, rare) is deferred — the once-per-run render is the
     // load-bearing half of the decision. The read is grant- + ws-gated (`render_catalog`); an
     // ungranted skill never reaches the rendered text.
-    if let Some(catalog) = render_catalog(node, &agent, ws).await? {
+    // Filter the catalog to the persona's pinned skills when a persona is active (agent-personas #1) —
+    // the model's advertised skill set matches its focus. `None` → the full granted catalog (unchanged).
+    // The persona's identity + pinned-skill BODIES are already in the goal (baked upstream in
+    // dispatch.rs), so this is the catalog (name+description) half only. The grant is the wall either
+    // way — filtering only removes already-granted entries.
+    if let Some(catalog) = render_catalog_filtered(node, &agent, ws, persona_catalog).await? {
         state.messages.push(("system".into(), catalog));
     }
 
@@ -312,7 +322,16 @@ pub async fn run_session<M: ModelAccess>(
         let mut ask: Vec<&ProposedCall> = Vec::new();
         for c in model_calls {
             let args = serde_json::from_str(&c.input).unwrap_or(serde_json::Value::Null);
-            match evaluate(&policy, &c.name, &args) {
+            // Evaluate the ws policy, then apply the persona's supervision FLOOR (persona-coding #4):
+            // a preset Ask/Deny on a node-mutating tool clamps the evaluated effect UP unless the ws
+            // policy explicitly ruled on that exact tool (the auditable loosen). `None` preset → no-op.
+            let effect = super::personas::clamp_to_preset(
+                evaluate(&policy, &c.name, &args),
+                &c.name,
+                &policy,
+                persona_preset,
+            );
+            match effect {
                 Effect::Allow => to_run.push(c.clone()),
                 Effect::Deny => denied.push(CallOutcome {
                     id: c.id.clone(),

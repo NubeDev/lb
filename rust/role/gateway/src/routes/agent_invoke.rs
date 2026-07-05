@@ -38,6 +38,12 @@ pub struct InvokeRequest {
     pub skill: Option<String>,
     #[serde(default)]
     pub doc: Option<String>,
+    /// Optional **persona** selector (agent-personas scope #1) — a per-invoke override of the
+    /// workspace's `agent.config.active_persona`. `#[serde(default)]` so an omitting caller resolves
+    /// the workspace-active persona (or none). Lets a surface (Data Studio → `builtin.widget-builder`)
+    /// pick a focus per run without changing the workspace default. Opaque id (rule 10).
+    #[serde(default)]
+    pub persona: Option<String>,
     /// Optional **page context** (agent-dock scope) — the client-reported `{ surface, path, search }`
     /// object the run fences into its goal as untrusted context (parity with the channel `kind:"agent"`
     /// payload). `#[serde(default)]` so an omitting caller is byte-identical to today; oversize (>4 KB
@@ -89,6 +95,7 @@ pub async fn agent_invoke(
         &gw.node,
         &gw.node.runtimes(),
         None,
+        req.persona.as_deref(),
         &principal,
         &principal.caps().to_vec(),
         ws,

@@ -32,6 +32,7 @@ mod memory;
 mod menu;
 mod model_access;
 mod page_context;
+mod personas;
 mod policy;
 mod registry;
 mod rehydrate;
@@ -50,7 +51,7 @@ mod tool;
 mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
-pub use catalog::{format_catalog, render_catalog};
+pub use catalog::{format_catalog, render_catalog, render_catalog_filtered};
 pub use config::{
     agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
     ModelEndpointPatch, AGENT_CONFIG_TABLE,
@@ -79,6 +80,13 @@ pub use memory::{
 pub use menu::reachable_tools;
 pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
 pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
+pub use personas::{
+    agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
+    agent_persona_update, build_identity_fold, builtin_personas, call_agent_persona_tool,
+    check_runtime, clamp_to_preset, glob_matches, narrow_tools, resolve_effective, resolve_persona,
+    seed_personas, EffectivePersona, Persona, PersonaPatch, PolicyPreset, PERSONA_NS,
+    PERSONA_TABLE,
+};
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,
     POLICY_TABLE,

@@ -89,6 +89,7 @@ async fn set_default(node: &Node, admin: &Principal, ws: &str, runtime: &str) {
         ws,
         &AgentConfig {
             active_definition: None,
+            active_persona: None,
             default_runtime: Some(runtime.into()),
             model_endpoint: None,
         },
@@ -110,6 +111,7 @@ async fn run(
         node,
         &registry,
         runtime,
+        None,
         caller,
         &[],
         ws,

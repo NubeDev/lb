@@ -1,7 +1,9 @@
 # Agent-personas scope — the persona record & run assembly (persona-model)
 
-Status: scope (the ask). Sub-scope #1 of `agent-personas-scope.md` — the foundation.
-Promotes to `public/agent-personas/`.
+Status: **SHIPPED** (backend + read verbs green; Settings UI in flight). Sub-scope #1 of
+`agent-personas-scope.md` — the foundation. Session:
+[`sessions/agent-personas/persona-model-session.md`](../../sessions/agent-personas/persona-model-session.md).
+Promoted to [`public/agent-personas/agent-personas.md`](../../public/agent-personas/agent-personas.md).
 
 Define the **persona record**, its CRUD + selection verbs, and the one place it is **applied**:
 run assembly on the shared dispatch seam, for both runtimes. After this slice, a hand-authored
@@ -200,16 +202,28 @@ Mandatory categories (`scope/testing/testing-scope.md`), real store/bus/caps/gat
 
 ## Open questions
 
-1. **Materialize `extends` at write vs resolve at read?** Proposal: resolve at read (parents
-   evolve → children follow, matching the rules-author ask "auto-load flows + data"), cycle-check
-   + depth ≤ 3 at write.
-2. **Does an active persona apply to `agent.def.test`?** Proposal: yes — the test button should
-   prove the context the run will actually get (its `context:` line gains `persona`).
-3. **Per-channel/per-surface default personas** (dock ≠ Data Studio)? Proposal: defer; one
-   workspace default + per-invoke override first; the surface can pass the override itself
-   (Data Studio invoking with `persona:"builtin.widget-builder"` needs no new mechanism).
-4. **Empty `granted_tools`** = tool-less conversational persona — allowed? Proposal: yes,
-   explicitly (useful for a pure-Q&A grounded persona); `[]` ≠ unset (unset = no narrowing).
+1. **Materialize `extends` at write vs resolve at read?** **RESOLVED — resolve at read**
+   (`resolve_effective`), cycle-checked + depth-capped (≤3) at write (`validate_extends`). Parents
+   evolve → children follow. Shipped + tested (`extends_unions_parent_tools_and_skips_a_self_cycle`,
+   `a_two_node_extends_cycle_is_rejected_at_write`).
+2. **Does an active persona apply to `agent.def.test`?** **RESOLVED — no, for now** (deviates from the
+   original "yes" proposal). `agent.def.test` is a runtime/model diagnostic (a self-describe turn); it
+   drives with `persona: None` so the test isolates "does this (runtime, model, key) work". Previewing
+   the persona's context is a separate Settings "test-with-persona" follow-up — noted at the
+   `defs/test.rs` call site. Rationale: the honest v1 keeps the diagnostic single-variable; a persona
+   preview conflates "is the model reachable" with "is the persona grounded".
+3. **Per-channel/per-surface default personas** (dock ≠ Data Studio)? **RESOLVED — deferred as scoped.**
+   One workspace default + per-invoke override shipped; a surface passes its own override
+   (`POST /agent/invoke { persona }`, the channel payload, the routed request all carry it), so Data
+   Studio → `builtin.widget-builder` needs no new mechanism.
+4. **Empty `granted_tools`** = tool-less conversational persona — allowed? **RESOLVED — yes, explicitly.**
+   `[]` → the empty menu (a pure-Q&A grounded persona); *unset* (never reaches `narrow_tools`) = no
+   narrowing. Enforced in `apply.rs::narrow_tools`.
+5. **NEW (resolved in implementation): does run-assembly persona resolution require the caller to hold
+   `mcp:agent.persona.get`?** **No.** A persona read at run assembly can only narrow (remove tools, pin
+   skills), never widen — so it is a raw, namespace-walled store read (`read_persona_for_assembly`), NOT
+   the picker cap. The workspace wall still isolates it; the CRUD *verbs* keep their cap gate for the
+   Settings UI. (Caught by a failing test; the persona analog of "menu is a hint, wall is the law".)
 
 ## Related
 

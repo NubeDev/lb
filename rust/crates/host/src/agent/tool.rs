@@ -42,6 +42,11 @@ pub async fn call_agent_tool(
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "agent.policy.set" => call_agent_policy_tool(node, principal, ws, input).await,
+        // agent-personas #1 Settings surface: read the ws permission policy so the Allow/Ask/Deny pane
+        // can render current rules (the policy `set` verb replaces the whole list, so the pane needs a
+        // read to round-trip). Member-level (`mcp:agent.policy.get:call`) — reading the policy that
+        // governs your runs is not an admin act; editing it (`agent.policy.set`) stays admin.
+        "agent.policy.get" => call_agent_policy_get(node, principal, ws).await,
         "agent.decide" => call_agent_decision_tool(node, principal, ws, input).await,
         // agent.runtimes (run-lifecycle #5 read surface): list the node's configured runtimes for the
         // composer runtime picker. Read-only, list-only; its own read cap gates it inside.
@@ -64,6 +69,15 @@ pub async fn call_agent_tool(
                 None => Err(ToolError::NotFound),
             }
         }
+        // agent-personas scope #1: the persona catalog verbs (`agent.persona.list|get|create|update|
+        // delete`). Each runs its own MCP gate + reserved-tier + field validation inside; the
+        // dispatcher returns `None` for a verb outside its surface (fall-through before `NotFound`).
+        _ if qualified_tool.starts_with("agent.persona.") => {
+            match super::call_agent_persona_tool(node, principal, ws, qualified_tool, input).await {
+                Some(r) => r,
+                None => Err(ToolError::NotFound),
+            }
+        }
         // agent-memory scope: the durable memory verbs (`agent.memory.list|get|set|delete`). Each
         // runs its own MCP + member-wall + ws-write gate inside; the dispatcher returns `None` for a
         // verb outside its surface, so it composes as a fall-through before `NotFound`.
@@ -79,6 +93,21 @@ pub async fn call_agent_tool(
         // parts share the `agent.` prefix without one swallowing the other's verbs.
         _ => Err(ToolError::NotFound),
     }
+}
+
+/// `agent.policy.get` (member) — the ws permission policy (`{ rules: [...] }`; an empty list when
+/// none is set = default-allow). Read-only: the Allow/Ask/Deny Settings pane reads it to render the
+/// current rules before an admin edits + `set`s them back. Gated by `mcp:agent.policy.get:call`.
+async fn call_agent_policy_get(
+    node: &Node,
+    principal: &Principal,
+    ws: &str,
+) -> Result<Value, ToolError> {
+    authorize_tool(principal, ws, "agent.policy.get").map_err(|_| ToolError::Denied)?;
+    let policy = crate::agent::load_policy(&node.store, ws)
+        .await
+        .map_err(|_| ToolError::Denied)?;
+    serde_json::to_value(&policy).map_err(|e| ToolError::BadInput(e.to_string()))
 }
 
 /// `agent.policy.set {rules: [...]}` — replace the workspace permission policy. Admin-gated. The whole

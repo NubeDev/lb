@@ -92,6 +92,12 @@ pub struct AgentPayload {
     /// (`"open-interpreter-default"`, …) → an external agent (resolved through the seam, grant-gated).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub runtime: Option<String>,
+    /// The **persona** selector (agent-personas scope #1) — a per-invoke override of the workspace's
+    /// `agent.config.active_persona`. Absent → the active persona (or none). A curated *focus* (tools +
+    /// pinned skills + identity), orthogonal to `runtime` (which picks the engine). Opaque id (rule
+    /// 10). `#[serde(default)]` so an older post without it deserializes unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona: Option<String>,
     /// The durable run/job id the UI mints up front so it can watch the run stream (`agent.watch`)
     /// the instant the request item lands. The worker drives the run under this id.
     pub job: String,

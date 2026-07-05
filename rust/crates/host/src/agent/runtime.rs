@@ -58,6 +58,19 @@ pub struct RunContext<'a> {
     /// (the node-level `LB_AGENT_MODEL_*` fallback). `None` keeps the registered model (the fallback
     /// tier). External runtimes ignore it (they reach their model over their own transport, #4).
     pub model_override: Option<Arc<dyn ErasedModel>>,
+    /// The active persona's **pinned skill ids** (agent-personas scope #1), when a persona is applied.
+    /// `Some` → the in-house loop filters its advertised skill catalog to exactly this set (the model
+    /// sees the persona's focus, not the whole granted set); `None` → the full granted catalog (the
+    /// un-narrowed behavior). The persona's identity + pinned-skill BODIES are already baked into
+    /// `goal` upstream (dispatch.rs), so this carries only the catalog-filter hint; the wall is the
+    /// grant either way. The external runtime folds its own filtered catalog in dispatch.rs and ignores
+    /// this field.
+    pub persona_catalog: Option<&'a [String]>,
+    /// The active persona's **policy preset** (persona-coding #4), when it carries one. The in-house
+    /// loop folds it into the workspace policy as a FLOOR (Ask/Deny on node-mutating tools the admin
+    /// can tighten but not silently loosen — `apply_policy_preset`). `None` → the ws policy unchanged.
+    /// The external runtime enforces supervision through its own transport and ignores this today.
+    pub persona_preset: Option<&'a super::personas::PolicyPreset>,
     /// Wall-clock stamp (test seam: a fixed clock in tests, live at boot).
     pub ts: u64,
 }

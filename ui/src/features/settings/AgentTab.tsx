@@ -17,6 +17,7 @@ import type { AgentDefinition } from "@/lib/agent/agentDef.api";
 import { AgentCatalog } from "./agent/AgentCatalog";
 import { AgentDefinitionEditor } from "./agent/AgentDefinitionEditor";
 import { useAgentCatalog } from "./agent/useAgentCatalog";
+import { PersonaSection } from "./agent/PersonaSection";
 
 interface Props {
   ws: string;
@@ -121,6 +122,11 @@ export function AgentTab({ caps }: Props) {
           You can view the workspace agent catalog. Changing it requires an administrator.
         </p>
       )}
+
+      {/* The "what for" half: the persona picker/editor + the Effective-tools view + the Permissions
+          (Allow/Ask/Deny) pane. Same cap-gating pattern; edits advertisement + supervision, never the
+          wall (agent-personas scope #1). */}
+      <PersonaSection caps={caps} />
     </div>
   );
 }

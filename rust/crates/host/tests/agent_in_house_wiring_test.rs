@@ -357,6 +357,7 @@ async fn run_default(node: &Arc<Node>, caller: &Principal, ws: &str, job: &str) 
         node,
         &registry,
         None, // absent runtime → the in-house default
+        None, // no per-invoke persona
         caller,
         &caller.caps().to_vec(),
         ws,
@@ -473,6 +474,7 @@ async fn an_external_run_reaches_a_host_native_verb_through_the_same_wall() {
         &node,
         &node.runtimes(),
         Some("ext-writer"),
+        None,
         &caller,
         &[MEM_SET.into(), MEM_GET.into(), WS_WRITE.into()],
         ws,
@@ -517,6 +519,7 @@ async fn an_external_run_host_native_call_is_denied_when_the_intersection_forbid
         &node,
         &node.runtimes(),
         Some("ext-writer"),
+        None,
         &caller,
         &[MEM_SET.into(), MEM_GET.into()], // agent has it; caller does not → intersection lacks it
         ws,
