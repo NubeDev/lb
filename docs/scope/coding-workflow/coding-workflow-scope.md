@@ -1,6 +1,14 @@
 # Coding-workflow scope — the worked example, end to end
 
-Status: scope (the ask). Promotes to `public/coding-workflow/` once the S6 slice ships.
+> **RETIRED (2026-07-05, `../flows/rules-workflow-convergence-scope.md`).** The GitHub/coding-specific
+> orchestration this scope described was **hard-deleted** — never used in production, no data to
+> preserve — when rules + workflow converged onto flows. Its *generic* machinery survives as flow
+> nodes/reactors: the **approval gate** (park-on-decision), the **outbox sink + relay reactor**
+> (durable outbound delivery), and the reactor **directory**. There is no `workflow.*` MCP surface,
+> no `github-workflow`/`github-target`/`github-webhook` role, and no provider name in any core crate.
+> Kept for history; do not build against it.
+
+Status: RETIRED (was: scope / the ask).
 
 > Read with: `../../vision/0002-coding-agent-workplace.md` (the design probe this implements),
 > `../agent/agent-scope.md` (the S5 central agent it drives), `../jobs/jobs-scope.md` (the durable

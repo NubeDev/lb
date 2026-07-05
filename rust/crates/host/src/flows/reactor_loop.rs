@@ -35,6 +35,11 @@ fn reactor_caps() -> Vec<String> {
         "mcp:flows.run:call".into(),
         "mcp:flows.enable:call".into(),
         "mcp:flows.inject:call".into(),
+        // Resume/cancel a run parked on an approval gate (the flow-approval reactor, slice 4).
+        "mcp:flows.resume:call".into(),
+        "mcp:flows.cancel:call".into(),
+        // Read a webhook source's series to fire a run per new hit (the source reactor, slice 5).
+        "mcp:series.read:call".into(),
         "store:flow:read".into(),
         "store:flow:write".into(),
         "store:*:read".into(),
@@ -96,5 +101,26 @@ async fn tick_once(node: &Arc<Node>, principal: &Principal, ws: &str, role: Role
         }
         Ok(_) => {}
         Err(e) => tracing::warn!(ws = %ws, error = %e, "flow flip-flop reactor pass failed"),
+    }
+    // Fire a run per new webhook hit on each `webhook` source node's series (slice 5).
+    match super::react_source::react_to_flow_sources(node, principal, ws, now).await {
+        Ok(pass) if pass.fired > 0 => {
+            tracing::info!(ws = %ws, fired = pass.fired, "flow webhook source reactor fired");
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow webhook source reactor pass failed"),
+    }
+    // Resume/cancel runs parked on an approval gate whose inbox item has resolved (slice 4).
+    match super::react_approval::react_to_flow_approvals(node, principal, ws, now).await {
+        Ok(pass) if pass.resumed > 0 || pass.cancelled > 0 => {
+            tracing::info!(
+                ws = %ws,
+                resumed = pass.resumed,
+                cancelled = pass.cancelled,
+                "flow approval reactor resumed/cancelled parked runs"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(ws = %ws, error = %e, "flow approval reactor pass failed"),
     }
 }

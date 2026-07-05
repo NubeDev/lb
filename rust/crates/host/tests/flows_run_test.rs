@@ -45,6 +45,7 @@ const FULL: &[&str] = &[
     "mcp:flows.runs.list:call",
     "mcp:flows.nodes:call",
     "mcp:rules.run:call",
+    "mcp:rules.eval:call",
     "store:flow:write",
     "store:flow:read",
     "store:rule:write",
@@ -122,6 +123,7 @@ fn flow(id: &str, nodes: Vec<Node>) -> Flow {
         enabled: true,
         start_on_boot: false,
         placement: lb_flows::Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }
@@ -294,11 +296,11 @@ async fn save_rejects_a_flow_over_the_node_cap() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn no_widening_tool_node_denied_without_the_tool_cap() {
     let node = Arc::new(HostNode::boot().await.unwrap());
-    // caller holds flows.run but NOT `mcp:rules.run` — a tool node that dispatches `rules.run` is
+    // caller holds flows.run but NOT `mcp:rules.eval` — a rhai node that dispatches `rules.eval` is
     // DENIED at that node (no widening); the node records `err`, the run fails (Halt).
     let caps: Vec<&str> = FULL
         .iter()
-        .filter(|c| **c != "mcp:rules.run:call")
+        .filter(|c| **c != "mcp:rules.eval:call")
         .cloned()
         .collect();
     let p = principal("ws", &caps);

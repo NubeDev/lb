@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_rules::{Finding, Rule, RuleEngine, RuleError, RuleOutput, RuleParam, RuleRun};
+use lb_rules::{Finding, Rule, RuleEngine, RuleError, RuleLimits, RuleOutput, RuleParam, RuleRun};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -35,6 +35,8 @@ pub struct RunResult {
 /// Run an ad-hoc (`body`) or saved (`rule_id`) rule. The host authorizes `mcp:rules.run:call` at the
 /// bridge; the per-source `caps::check` runs inside every collect (the `caller ∩ grant` chokepoint).
 /// `now` is the logical clock for inbox/outbox routing (no wall-clock in core); `model` is the AI seam.
+/// `limits` overrides the sandbox governors for THIS run (the flow `rules.eval` node's `timeout_ms`
+/// knob rides this); `None` uses the node-config defaults (`rule_limits()`).
 #[allow(clippy::too_many_arguments)]
 pub async fn rules_run(
     node: &Arc<Node>,
@@ -45,6 +47,7 @@ pub async fn rules_run(
     params: rhai::Map,
     model: Arc<dyn RuleModel>,
     now: u64,
+    limits: Option<RuleLimits>,
 ) -> Result<RunResult, RulesError> {
     // Resolve the rule body: ad-hoc or by saved id.
     let (name, body, declared) = match (body, rule_id) {
@@ -85,7 +88,7 @@ pub async fn rules_run(
         data,
         ai,
         messaging,
-        rule_limits(),
+        limits.unwrap_or_else(rule_limits),
         ai_limits(),
         max_writes(),
     );

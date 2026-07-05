@@ -152,6 +152,7 @@ async fn persist_cursor(
         cron: None,
         period_secs: Some(period_secs),
         flop,
+        last_seq: None,
     };
     write_cursor(&node.store, ws, flow_id, node_id, &state)
         .await

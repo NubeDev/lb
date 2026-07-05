@@ -54,9 +54,6 @@ members = [
     "role/gateway",
     "role/ai-gateway",
     "role/registry-host",
-    "role/github-webhook",
-    "role/github-target",
-    "role/github-workflow",
     "role/bootstrap-ui",
     "role/cli",
     "tools/pack",
@@ -117,9 +114,6 @@ lb-role-external-agent = { path = "role/external-agent" }
 # = true }` without breaking the symmetric-layering rule (the host never build-depends on a role).
 lb-role-gateway = { path = "role/gateway" }
 lb-role-ai-gateway = { path = "role/ai-gateway" }
-lb-role-github-webhook = { path = "role/github-webhook" }
-lb-role-github-target = { path = "role/github-target" }
-lb-role-github-workflow = { path = "role/github-workflow" }
 
 # the stack (docs/key-stack.md)
 # Two embedded KV backends are compiled in: `kv-mem` (tests / dev — `Store::memory()`) and
@@ -188,8 +182,8 @@ rand = "0.8"
 # Artifact content digest for the signed extension registry (registry scope). SHA-256 over
 # manifest ‖ wasm; the Ed25519 signature (above) is over that digest.
 sha2 = "0.10"
-# HMAC-SHA256 for the GitHub webhook signature (`X-Hub-Signature-256`). Pairs with `sha2` (above);
-# lives in the `github-webhook` role crate (the inbound HTTP edge), never in core `lb-host`.
+# HMAC-SHA256 for the generic webhook signature verification (`webhook/verify.rs`). Pairs with `sha2`
+# (above); the constant-time HMAC over the raw request body, mediated by the host on verify.
 hmac = "0.12"
 
 # HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework

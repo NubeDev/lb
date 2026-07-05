@@ -98,6 +98,12 @@ pub struct FlowTriggerState {
     /// together in one durable record.
     #[serde(default)]
     pub flop: Option<bool>,
+    /// The highest series `seq` a `webhook` source node has already fired a run for (the event cursor,
+    /// rules-workflow-convergence scope slice 5). The series-event reactor reads samples with
+    /// `seq > last_seq`, fires one run each, and advances this — so a hit fires exactly once and a
+    /// restart resumes from the durable cursor (no missed/duplicate firing). `None` before first arm.
+    #[serde(default)]
+    pub last_seq: Option<u64>,
 }
 
 /// The id of a per-node trigger-cursor (and node-memory) record within a flow.

@@ -21,10 +21,11 @@ fn member_caps() -> Vec<String> {
         "mcp:inbox.list:call",
         "mcp:inbox.resolve:call",
         "mcp:outbox.status:call",
-        // proof-workflow-sim scope: the two durable-workflow WRITE verbs a guest drives over the host
-        // callback to PRODUCE motion — create an inbox item, stage an outbox effect. Member-level, like
-        // the other workflow verbs (the author/actor is host-forced to the principal's sub; the gateway
-        // re-checks each server-side). `proof.simulate` calls these inside `caller ∩ install-grant`.
+        // proof-workflow-sim scope: the two durable-primitive WRITE verbs a guest drives over the host
+        // callback to PRODUCE motion — create an inbox item, stage an outbox effect. Member-level (the
+        // author/actor is host-forced to the principal's sub; the gateway re-checks each server-side).
+        // `proof.simulate` calls these inside `caller ∩ install-grant`. (These generic inbox/outbox
+        // verbs also back the flow `approval` gate + `sink` outbox node — rules-workflow-convergence.)
         "mcp:inbox.record:call",
         "mcp:outbox.enqueue:call",
         "mcp:workspace.list:call",
@@ -263,6 +264,10 @@ fn member_caps() -> Vec<String> {
         // refused per verb (the deny-per-verb test). The DAG surface is `flows.*` (chains retired —
         // chains-retirement scope).
         "mcp:rules.run:call",
+        // `rules.eval` — the flow-node rule entry (message envelope in, findings out; rules-workflow-
+        // convergence scope). A member authoring a `rhai`/`rule` flow node dispatches it under their own
+        // token, so the member grant carries it beside `rules.run`; a token without it is refused per verb.
+        "mcp:rules.eval:call",
         "mcp:rules.save:call",
         "mcp:rules.get:call",
         "mcp:rules.list:call",
@@ -336,14 +341,6 @@ fn member_caps() -> Vec<String> {
         // whose store surface is `store:flow:*` (granted with the flows caps above).
         "store:rule:read",
         "store:rule:write",
-        // coding-workflow scope: the `workflow.*` verbs the approval-gate routes check
-        // (`POST /approvals/{id}/request|resolve|start`). The dev member can open an approval,
-        // resolve it, and start the gated coding job from the browser; the gateway re-checks each
-        // cap server-side (the S6 approval gate itself is enforced regardless of caps). A token
-        // WITHOUT these is still refused server-side (workflow_verb_without_the_cap_is_denied).
-        "mcp:workflow.request_approval:call",
-        "mcp:workflow.resolve_approval:call",
-        "mcp:workflow.start_job:call",
         // agent-run scope Part 2: the per-tool-call human gate. `agent.decide` first-settles a
         // suspended tool call (member-level — the same authority that resolves the surfaced inbox
         // item). `agent.policy.set` edits the ws Allow/Deny/Ask policy — an ADMIN act (who-may-run-

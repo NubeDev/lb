@@ -11,15 +11,26 @@
 //! Authorization is `mcp:outbox.status:call` (workspace-first §7) — workspace-scoped read for any
 //! grantee (the open question's lean: "workspace-scoped read, capability-gated like any verb"). One
 //! verb (FILE-LAYOUT §3).
+//!
+//! The **delivery** primitives — the [`Target`] trait and the [`relay_outbox`] at-least-once loop over
+//! it — live here too (relocated from the retired `workflow/` service, rules-workflow-convergence
+//! scope). They are provider-free (rule 10) and drive the outbox-sink flow node's outbound delivery
+//! plus the reminders/approval reactors.
 
 mod enqueue;
 mod enqueue_held;
 mod error;
+mod relay;
 mod relay_ops;
+mod relay_reactor;
 mod status;
+mod target;
 
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;
+pub use relay::{relay_outbox, RelayPass};
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
+pub use relay_reactor::spawn_relay_reactors;
 pub use status::{outbox_status, OutboxStatus};
+pub use target::Target;

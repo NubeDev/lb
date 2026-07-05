@@ -37,6 +37,7 @@ const FULL: &[&str] = &[
     "mcp:flows.runs.get:call",
     "mcp:flows.runs.list:call",
     "mcp:rules.run:call",
+    "mcp:rules.eval:call",
     "store:flow:write",
     "store:flow:read",
 ];
@@ -61,6 +62,7 @@ fn rhai_flow(id: &str) -> Flow {
         enabled: true,
         start_on_boot: false,
         placement: Placement::Either,
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }

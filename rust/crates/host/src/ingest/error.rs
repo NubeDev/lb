@@ -1,6 +1,6 @@
 //! The ingest service error. A `Denied` carries no detail (which gate failed, or whether the
 //! series exists) — an un-granted producer leaks nothing about what series exist (ingest scope,
-//! §3.5). Mirrors `AssetError`/`WorkflowError`.
+//! §3.5). Mirrors `AssetError`/`RulesError`.
 
 use lb_store::StoreError;
 use thiserror::Error;

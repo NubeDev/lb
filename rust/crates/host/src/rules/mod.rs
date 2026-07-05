@@ -1,7 +1,9 @@
 //! The `rules.*` host service — the lb-rules engine wired to the platform chokepoints (rules-engine-
-//! scope). Five MCP verbs over the embedded store + the re-seam to `store.query`/`series.*`/
+//! scope). MCP verbs over the embedded store + the re-seam to `store.query`/`series.*`/
 //! `federation.query`/the AI-gateway/inbox-outbox:
 //!   - `rules.run {body|rule_id, params}` → `{output, findings, log, ms, ai}` ([`run::rules_run`]);
+//!   - `rules.eval {body|rule_id, payload, topic, params, timeout_ms}` → the same result, shaped for a
+//!     flow node: the message envelope in, findings out (rules-workflow-convergence scope, [`eval`]);
 //!   - `rules.save` / `rules.delete` — CRUD over `rule:{ws}:{id}` records;
 //!   - `rules.get {id}` / `rules.list {filter?}` — workspace-scoped reads.
 //!
@@ -13,6 +15,7 @@
 mod config;
 mod delete;
 mod error;
+mod eval;
 mod get;
 mod model;
 mod record;
@@ -23,6 +26,7 @@ mod seam;
 pub use config::{ai_limits, rule_limits};
 pub use delete::rules_delete;
 pub use error::RulesError;
+pub use eval::rules_eval;
 pub use get::{rules_get, rules_list};
 pub use model::AgentRuleModel;
 pub use record::SavedRule;
@@ -143,7 +147,41 @@ pub async fn call_rules_tool(
             // `DisabledModel` error (now a *resolved* outcome, not a hardcoded default).
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
             let model = resolve_rule_model(node, principal, ws, idem).await;
-            let result = rules_run(node, principal, ws, body, rule_id, params, model, now).await?;
+            let result =
+                rules_run(node, principal, ws, body, rule_id, params, model, now, None).await?;
+            Ok(serde_json::to_value(result).unwrap_or(Value::Null))
+        }
+        "rules.eval" => {
+            // The flow-node entry: the message envelope in (`payload`/`topic`/carried fields), findings
+            // out. `body` xor `rule_id`; the envelope fields + explicit `params` become rule params.
+            let body = input.get("body").and_then(|v| v.as_str()).map(String::from);
+            let rule_id = input
+                .get("rule_id")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+            let envelope = input
+                .get("envelope")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+            let explicit_params = input.get("params").cloned().unwrap_or(Value::Null);
+            let timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
+            let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
+            let model = resolve_rule_model(node, principal, ws, idem).await;
+            let result = crate::rules::rules_eval(
+                node,
+                principal,
+                ws,
+                body,
+                rule_id,
+                &envelope,
+                &explicit_params,
+                timeout_ms,
+                model,
+                now,
+            )
+            .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))
         }
         "rules.save" => {

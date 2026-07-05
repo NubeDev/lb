@@ -9,7 +9,10 @@ import {
   GitBranch,
   Hash,
   Radio,
+  ScrollText,
+  ShieldCheck,
   ToggleLeft,
+  Webhook,
   Wrench,
   Zap,
   type LucideIcon,
@@ -26,6 +29,10 @@ const ICONS: Record<string, LucideIcon> = {
   "git-branch": GitBranch,
   "arrow-down-to-line": ArrowDownToLine,
   "toggle-left": ToggleLeft,
+  // rules-workflow-convergence nodes: the webhook source, the saved-rule node, the approval gate.
+  webhook: Webhook,
+  scroll: ScrollText,
+  "shield-check": ShieldCheck,
 };
 
 /** The kind fallback when a descriptor declares no icon. */

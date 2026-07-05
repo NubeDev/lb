@@ -5113,54 +5113,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lb-role-github-target"
-version = "0.1.0"
-dependencies = [
- "axum",
- "lb-auth",
- "lb-host",
- "lb-inbox",
- "lb-jobs",
- "lb-outbox",
- "lb-store",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "lb-role-github-webhook"
-version = "0.1.0"
-dependencies = [
- "axum",
- "ed25519-dalek",
- "hmac 0.12.1",
- "lb-auth",
- "lb-host",
- "lb-inbox",
- "lb-registry",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "tower",
-]
-
-[[package]]
-name = "lb-role-github-workflow"
-version = "0.1.0"
-dependencies = [
- "lb-auth",
- "lb-host",
- "lb-inbox",
- "lb-jobs",
- "lb-outbox",
- "lb-store",
- "tokio",
-]
-
-[[package]]
 name = "lb-role-registry-host"
 version = "0.1.0"
 dependencies = [
@@ -5869,9 +5821,6 @@ dependencies = [
  "lb-role-ai-gateway",
  "lb-role-external-agent",
  "lb-role-gateway",
- "lb-role-github-target",
- "lb-role-github-webhook",
- "lb-role-github-workflow",
  "lb-store",
  "lb-supervisor",
  "lb-telemetry",

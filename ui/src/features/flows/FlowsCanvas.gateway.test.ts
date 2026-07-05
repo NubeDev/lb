@@ -64,6 +64,14 @@ describe("flows canvas (real gateway)", () => {
     for (const builtin of ["trigger", "tool", "rhai", "subflow", "sink"]) {
       expect(types).toContain(builtin);
     }
+    // rules-workflow-convergence: the webhook source, the saved-rule node, and the approval gate all
+    // appear in the picker from the real registry (data-driven — no hardcoded palette list).
+    for (const converged of ["webhook", "rule", "approval"]) {
+      expect(types).toContain(converged);
+    }
+    // The webhook source's config is just `{webhook_id}` (the picker over `webhook.list`).
+    const webhook = nodes.find((d) => d.type === "webhook");
+    expect(webhook?.config.properties?.webhook_id).toBeTruthy();
     expect(types).toContain("mqtt.publish");
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");

@@ -41,7 +41,39 @@ Not yet built — next up when picked.
 
 ---
 
-**Just shipped (2026-07-05): webhooks — a first-class inbound-HTTP surface, keyed and mediated.** A
+**Just shipped (2026-07-05): rules + workflow converged onto flows + the webhook source node.** Flows
+is now the **one** automation spine — the rules engine and the GitHub "workflow" module folded in, and
+every GitHub/coding-specific piece **hard-deleted** (never used in prod, no data to preserve). **(1)
+Rules are flow nodes:** new `rules.eval` verb (flow message envelope in → `{output, findings, log}`
+out, same cage + per-source caps as `rules.run`); the `rhai` node runs an inline rule, the new `rule`
+node runs a **saved** rule by id. **(2) Engine guards:** a per-flow `concurrency` policy
+(`skip`/`queue`/`restart`, default `queue`) enforced at every fire seam (cron + manual), and a per-node
+`timeout_ms` that settles `err:"timeout"`. **(3) Workflow's generic machinery survives as
+provider-free flow nodes/reactors:** the `approval` gate (parks the run until a reviewer resolves a
+`needs:approval` item; the flow-approval reactor resumes on `Approved` / cancels on `Rejected`), the
+outbox sink + relay reactor (`sink(target=outbox)` stages a must-deliver effect; `spawn_relay_reactors`
+drives `relay_outbox` over a provider-free `Target` with retry/backoff/dead-letter — the generic
+replacement for the deleted github-workflow driver), and the reactor directory. `Target` + `relay_outbox`
+relocated to `outbox/`. **(4) Deleted:** `crates/host/src/workflow/*` (github/coding parts), the roles
+`github-workflow`/`github-target`/`github-webhook`, `node/src/github.rs`, the gateway `workflow.rs`
+route + `mcp:workflow.*` grants, the `workflow_*`/`github_bridge_*` tests. **(5) The webhook SOURCE
+node:** a generic built-in `webhook` source (config `{webhook_id}`) fires a run per hit via a durable
+series-event reactor over `webhook:{ws}:{id}` — the ONLY flow-facing inbound surface, **no Slack/GitHub
+node, no provider name in any core crate** (rule 10). **Tests (real store/caps/jobs/ingest/reactors,
+rule 9):** `rules_workflow_convergence_test.rs` **14/14** — incl. the mandatory capability-deny
+(`rules_eval_denied_without_the_cap`) + workspace-isolation (ws-B reactor never touches a ws-A run/hit)
+categories; frontend `FlowsCanvas.gateway.test.ts` asserts the picker lists `webhook`/`rule`/`approval`
+from the real registry (`pnpm test` 631/631; `test:gateway` 13/13). `cargo build --workspace` +
+`cargo fmt` clean; the rhai→`rules.eval` rewire + 3 new spine nodes + the `queue` concurrency default
+rippled into existing flows tests (all fixed: flows_run/flipflop/multi_trigger/triggers/nodes/plc green).
+**Pre-existing reds — NOT this session (verified on base master `4c733cd`):** `panel_test` (dashboard
+"STALE" view), `agent_routed_test`, `proof_panel_test` (needs its wasm ext built). Scope
+[`scope/flows/rules-workflow-convergence-scope.md`](scope/flows/rules-workflow-convergence-scope.md)
+(open questions resolved); session
+[`sessions/flows/rules-workflow-convergence-session.md`](sessions/flows/rules-workflow-convergence-session.md);
+public [`public/flows/flows.md`](public/flows/flows.md). `scope/coding-workflow/*` **retired**.
+
+**Also shipped (2026-07-05): webhooks — a first-class inbound-HTTP surface, keyed and mediated.** A
 webhook is a **named, workspace-walled, credential-protected inbound endpoint** the platform owns
 end to end: an admin creates one through the new admin routes (`/admin/webhooks` CRUD), the
 platform exposes a stable URL `POST /hooks/{ws}/{id}`, and every authenticated hit becomes exactly

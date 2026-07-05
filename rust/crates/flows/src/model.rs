@@ -40,6 +40,25 @@ pub enum FailurePolicy {
     Continue,
 }
 
+/// What happens when a flow is fired while a live (non-terminal) run of it already exists
+/// (rules-workflow-convergence scope, slice 2). Enforced at fire time in BOTH the cron reactor and
+/// `flows.run`:
+///   - `Queue` — let the new run start (runs may overlap). **The default** — it preserves the
+///     established behavior (two manual runs of a flow both run; a cron tick never suppresses a
+///     still-running prior tick), so a flow written before this field behaves exactly as before.
+///   - `Skip` — drop the new firing (the running one wins; the cheapest for a slow flow whose overlap
+///     is never wanted — "one live run at a time").
+///   - `Restart` — cancel the live run(s) and start the new one (the latest firing wins; a control loop
+///     that should always reflect the newest input).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Concurrency {
+    #[default]
+    Queue,
+    Skip,
+    Restart,
+}
+
 /// Where a flow may run — the **eligible set**, not replication (Decision 10). Matched **as data**
 /// against the node's role by the reconciler (never an `if cloud` branch). Reuses the extension
 /// placement vocabulary so flows + extensions share one enum.
@@ -125,6 +144,10 @@ pub struct Flow {
     /// The eligible set (Decision 10). Matched as data against role by the reconciler.
     #[serde(default)]
     pub placement: Placement,
+    /// The overlap policy when a firing lands while a live run exists (slice 2). Additive serde
+    /// default (`skip`): a flow written before this field deserialises as skip-overlapping-runs.
+    #[serde(default)]
+    pub concurrency: Concurrency,
     /// A 5-field cron spec (the `cron` trigger kind). `None` = not cron-triggered.
     #[serde(default)]
     pub cron: Option<String>,
@@ -156,6 +179,7 @@ impl Flow {
             enabled: true,
             start_on_boot: false,
             placement: Placement::Either,
+            concurrency: Concurrency::default(),
             cron: None,
             next_attempt_ts: 0,
         }
@@ -381,6 +405,7 @@ mod tests {
             enabled: true,
             start_on_boot: false,
             placement: Placement::Either,
+            concurrency: Concurrency::default(),
             cron: None,
             next_attempt_ts: 0,
         }

@@ -1,6 +1,13 @@
 # Workflow-driver scope — the background loop that runs the coding workflow
 
-Status: scope (the ask). Promotes to `public/coding-workflow/` with the slice.
+> **RETIRED (2026-07-05, `../flows/rules-workflow-convergence-scope.md`).** The github-workflow driver
+> loop was **hard-deleted** with the coding workflow. Its two generic passes survive as reactors on the
+> flow tick: outbox delivery is now `outbox/relay_reactor.rs` (`spawn_relay_reactors` over a
+> provider-free `Target`), and the approval release is the generic `approval_reactor` + the new
+> `flows/react_approval.rs`. The runtime **directory** (dynamic workspace set) moved to `directory/`.
+> Kept for history; do not build against it.
+
+Status: RETIRED (was: scope / the ask).
 
 > Read with: `coding-workflow-scope.md` (the orchestration verbs), `../inbox-outbox/outbox-scope.md`
 > (the relay + reactor it drives), `../node-roles/node-roles-scope.md` (placement = config, §3.1),

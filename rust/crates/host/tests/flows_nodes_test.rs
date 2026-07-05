@@ -64,16 +64,21 @@ async fn seed_ext(
     record_install(&node.store, ws, &install).await.unwrap();
 }
 
-/// The 28 built-in node types in registry order (8 spine + the 20 data/JSON pack — data-nodes scope).
+/// The 32 built-in node types in registry order (12 spine + the 20 data/JSON pack). The spine gained
+/// `webhook` (the inbound source), `rule` (run a saved rule), and `approval` (the gate) in the
+/// rules-workflow-convergence scope.
 const BUILTINS: &[&str] = &[
     "trigger",
     "flipflop",
+    "webhook",
     "tool",
     "rhai",
+    "rule",
     "count",
     "json",
     "counter",
     "subflow",
+    "approval",
     "sink",
     "change",
     "select",

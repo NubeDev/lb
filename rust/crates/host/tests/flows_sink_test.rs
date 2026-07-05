@@ -53,6 +53,7 @@ fn flow_with(id: &str, sink: Node) -> Flow {
         enabled: true,
         start_on_boot: false,
         placement: Default::default(),
+        concurrency: Default::default(),
         cron: None,
         next_attempt_ts: 0,
     }

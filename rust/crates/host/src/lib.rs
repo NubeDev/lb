@@ -22,6 +22,7 @@ mod channel_registry;
 mod dashboard;
 mod dbview;
 mod devkit;
+mod directory;
 mod ext;
 mod federation;
 mod flows;
@@ -65,7 +66,6 @@ mod undo_capture;
 mod users;
 mod viz;
 mod webhook;
-mod workflow;
 mod workspaces;
 
 pub use agent::{
@@ -166,8 +166,9 @@ pub use federation::{
 pub use flows::error::FlowsError;
 pub use flows::{
     arm_source, cron_is_valid, cron_run_id, disarm_source, flipflop_run_id, placement_matches,
-    react_to_flows_cron, react_to_flows_interval, reconcile_flows, source_series,
-    spawn_flow_reactors, watch_flow_run, FlowReactorPass, FlowReconcilePass, FlowWatch,
+    react_to_flow_approvals, react_to_flow_sources, react_to_flows_cron, react_to_flows_interval,
+    reconcile_flows, source_run_id, source_series, spawn_flow_reactors, watch_flow_run,
+    FlowApprovalPass, FlowReactorPass, FlowReconcilePass, FlowWatch, SourceReactorPass,
 };
 pub use flows::{call_flows_tool, call_flows_tool_boxed};
 pub use lb_assets::{seed_core_skills, CORE_SKILLS_NS};
@@ -232,7 +233,8 @@ pub use panel::{
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, OutboxError, OutboxStatus,
+    outbox_status, relay_outbox, spawn_relay_reactors, OutboxError, OutboxStatus, RelayPass,
+    Target,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,
@@ -321,18 +323,16 @@ pub use webhook::{
     KIND_DISCRIM as WEBHOOK_KIND_DISCRIM, TABLE as WEBHOOK_TABLE,
     TOMBSTONE_STATUS as WEBHOOK_TOMBSTONE_STATUS,
 };
-pub use workflow::{
-    call_workflow_tool, emit_effect, enabled_workspaces, ingest_issue, ingest_via_bridge, pr_spec,
-    react_to_approvals, reactor_job_id, record_pr_spec, relay_outbox, request_approval,
-    resolve_approval, start_coding_job, triage, CodingJob, EntryStatus, PrSpec, ReactorPass,
-    RelayPass, Target, Triaged, WorkflowError, WorkspaceEntry, APPROVAL_CHANNEL, DIRECTORY_NS,
-    TRIAGE_CHANNEL,
-};
 pub use workspaces::{
     call_workspaces_tool, grant_default_core_skills, resolve_default_core_skills, workspace_create,
     workspace_delete, workspace_list, workspace_purge, workspace_rename, WorkspaceRecord,
     WorkspaceStatus, WorkspacesError, DEFAULT_CORE_SKILLS,
 };
-// The workflow **directory** register/deregister verbs — prefixed at the crate boundary so the public
-// API names the concept (a bare `register` would be ambiguous next to `register_remote_extension`).
-pub use workflow::{deregister as deregister_workspace, register as register_workspace};
+// The **reactor directory** — the durable workspace set the node's background reactors service
+// (relocated from the retired workflow driver; rules-workflow-convergence scope). The register/
+// deregister verbs are prefixed at the crate boundary so the public API names the concept (a bare
+// `register` would be ambiguous next to `register_remote_extension`).
+pub use directory::{
+    deregister as deregister_workspace, enabled_workspaces, register as register_workspace,
+    EntryStatus, WorkspaceEntry, DIRECTORY_NS,
+};

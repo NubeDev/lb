@@ -28,15 +28,15 @@ use crate::routes::{
     native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook,
     publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
     read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
-    rename_workspace, render_catalog_message, request_approval, reset_extension, resolve_caps,
-    resolve_inbox, resolve_nav, resolve_prefs, resolve_workflow_approval, revoke_apikey,
-    revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
-    run_flow, run_query, run_rule, run_stream, save_dashboard, save_flow, save_nav, save_panel,
-    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
-    set_default_nav, set_default_prefs, set_layout, set_nav_pref, set_prefs, share_dashboard,
-    share_doc, share_nav, share_panel, start_job, system_acp, system_overview, system_subsystem,
-    system_tools, system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
-    uninstall_extension, update_def, update_flow_node, write_samples,
+    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
+    resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook,
+    rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
+    save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
+    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
+    set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_active_def, test_datasource, test_def, uninstall_extension, update_def, update_flow_node,
+    write_samples,
 };
 use crate::state::Gateway;
 
@@ -203,11 +203,6 @@ pub fn router(gw: Gateway) -> Router {
         .route("/skills", post(put_skill))
         .route("/skills/{id}", get(load_skill))
         .route("/skills/{id}/grant", post(grant_skill))
-        // coding workflow (coding-workflow scope) — the browser's `workflow.*` surface. The headline
-        // S6 approval gate runs server-side; reading the outbox is `GET /outbox` above.
-        .route("/approvals/{id}/request", post(request_approval))
-        .route("/approvals/{id}/resolve", post(resolve_workflow_approval))
-        .route("/approvals/{id}/start", post(start_job))
         // DB browser (data-console scope) — the browser's admin, READ-ONLY `store.*` lens: table
         // picker + counts, paged raw rows, relation graph for react-flow. Each re-checks the
         // **admin** cap server-side (gate-3-relaxed → admin-only). No write routes by design.

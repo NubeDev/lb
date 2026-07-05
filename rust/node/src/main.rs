@@ -14,7 +14,6 @@ mod agent;
 mod control_engine;
 mod external_agent;
 mod federation;
-mod github;
 
 /// Seed the dev `user` as a `workspace-admin` member of `ws`: create the global identity (idempotent),
 /// write the membership row (idempotent), and grant the built-in `member` + `workspace-admin` roles
@@ -185,9 +184,6 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(2),
     );
 
-    // ROLE SELECTION (config, §3.1): mount the github-workflow ingress + background driver if the
-    // environment configures them. A no-op otherwise — the binary stays the solo demo below.
-    github::mount(node.clone()).await;
     // NOTE: native sidecar roles (federation, control-engine) are mounted AFTER the gateway installs
     // its signing key onto the node (below), NOT here. `install_native` mints each sidecar's
     // `LB_EXT_TOKEN` with `node.key()`, and the gateway VERIFIES those callback tokens with its own

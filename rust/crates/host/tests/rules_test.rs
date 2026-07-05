@@ -157,6 +157,7 @@ async fn rule_reading_an_ungranted_source_is_denied_mid_run() {
         rhai::Map::new(),
         model,
         1,
+        None,
     )
     .await;
     assert!(res.is_err(), "collect without store.query must be denied");
@@ -191,6 +192,7 @@ async fn run_rollup_alert_rule_raises_inbox_item() {
         rhai::Map::new(),
         model,
         7,
+        None,
     )
     .await
     .unwrap();
@@ -227,6 +229,7 @@ async fn run_body(
         rhai::Map::new(),
         model,
         7,
+        None,
     )
     .await
 }
@@ -410,6 +413,7 @@ async fn ai_budget_caps_a_loop() {
         rhai::Map::new(),
         model,
         1,
+        None,
     )
     .await;
     assert!(res.is_err(), "AI budget must abort the loop");
@@ -478,6 +482,7 @@ async fn channel_posting_rule_and_its_message_survive_a_restart() {
                 proposed_sql: "SELECT 1 AS v".into(),
             }),
             7,
+            None,
         )
         .await
         .unwrap();
