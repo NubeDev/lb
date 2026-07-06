@@ -36,7 +36,10 @@ fn strip_leading_comments(mut s: &str) -> &str {
 /// Reject `sql` unless it is a single read query. Conservative by design — the sidecar's parser is
 /// authoritative; this stops the obvious writes/DDL and multi-statement injection at the host edge.
 pub fn validate_select_host(sql: &str) -> Result<(), FederationError> {
-    let trimmed = strip_leading_comments(sql).trim().trim_end_matches(';').trim();
+    let trimmed = strip_leading_comments(sql)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
     if trimmed.is_empty() {
         return Err(FederationError::BadSql("empty".into()));
     }
@@ -103,7 +106,10 @@ mod tests {
     fn skips_leading_comments_but_still_gates_the_real_leader() {
         assert!(validate_select_host("-- top sites\nSELECT * FROM t").is_ok());
         assert!(validate_select_host("/* header */ SELECT * FROM t").is_ok());
-        assert!(validate_select_host("-- a\n-- b\n/* c */\nWITH x AS (SELECT 1) SELECT * FROM x").is_ok());
+        assert!(
+            validate_select_host("-- a\n-- b\n/* c */\nWITH x AS (SELECT 1) SELECT * FROM x")
+                .is_ok()
+        );
         assert!(validate_select_host(
             "-- joined\nSELECT * FROM \"site\" INNER JOIN \"site_tag\" ON \"site\".\"id\" = \"site_tag\".\"site_id\""
         )

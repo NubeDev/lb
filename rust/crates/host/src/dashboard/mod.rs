@@ -20,7 +20,7 @@ mod bounds;
 mod catalog;
 mod delete;
 mod error;
-mod genui;
+pub(crate) mod genui;
 mod get;
 mod list;
 mod model;

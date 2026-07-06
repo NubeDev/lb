@@ -42,6 +42,19 @@ describe("genuiTargets", () => {
     const cell: Cell = { ...baseCell, source: { tool: "", args: undefined } };
     expect(genuiTargets(cell)).toEqual([]);
   });
+
+  it("hidden-only sources[] (a rich_result cell's leash extras) do NOT shadow the real v2 source", () => {
+    // ResponseView.buildCell folds extra declared tools as hidden targets beside the envelope's single
+    // `source` — the dock genui preview must still resolve refId A from that source (channel-widgets).
+    const cell: Cell = {
+      ...baseCell,
+      source: { tool: "federation.query", args: { source: "db", sql: "SELECT 1" } },
+      sources: [{ refId: "T0", tool: "reminder.update", args: undefined, hide: true }],
+    };
+    expect(genuiTargets(cell)).toEqual([
+      { refId: "A", tool: "federation.query", args: { source: "db", sql: "SELECT 1" } },
+    ]);
+  });
 });
 
 describe("refDataOf", () => {

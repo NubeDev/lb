@@ -41,6 +41,7 @@ pub const DEFAULT_CORE_SKILLS: &[&str] = &[
     "core.query",
     "core.store-read",
     "core.ingest-series",
+    "core.channel-widgets",
     // flow-author
     "core.flows-mcp",
     // widget-builder

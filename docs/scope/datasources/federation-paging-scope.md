@@ -9,7 +9,8 @@ DataFusion), `store.query` (native SurrealDB tables), and `query.run` (saved PRQ
 `{limit, cursor}` contract** the series plane uses, and to page **fast**. The catch is that a federated
 source only pages cheaply when the keyset predicate is **pushed down** to the underlying database; a
 source that can't push down would fall back to a full scan and O(offset) discard — the exact cost this
-whole feature exists to kill. So this slice's job is to **detect pushdown, page live when it's real, and
+whole feature exists to kill (statement-level pushdown itself is delivered by
+[`federation-pushdown-scope.md`](federation-pushdown-scope.md)). So this slice's job is to **detect pushdown, page live when it's real, and
 refuse to live-page when it isn't** — routing a non-pushdown source to the existing **mirror** path
 ([`series-paging-scope.md`](series-paging-scope.md) then keyset-pages it in the series plane at index
 speed). This is the [`datasources-scope.md`](datasources-scope.md) **federate-vs-mirror** doctrine applied

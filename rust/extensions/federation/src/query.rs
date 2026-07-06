@@ -9,6 +9,17 @@
 //! table's Arrow schema for columns. It does NOT issue `information_schema` SQL (the engine registers
 //! only the tables a query references, so a virtual catalog is unreachable); it goes through the real
 //! remote engine the provider pushes down to.
+//!
+//! **Pushdown** (federation-pushdown scope): the `SessionContext` is built from
+//! `datafusion_federation::default_session_state()` — the federation optimizer rule + query planner
+//! installed in the SessionState. Each registered table is the per-engine *federated* provider (a
+//! `FederatedTableProviderAdaptor` over the real `SqlTable`). With both in place, DataFusion detects
+//! that every table in a single-source plan shares one compute context, **unparses the plan back to
+//! that engine's SQL dialect, and executes it remotely** — only the (typically small) result batches
+//! cross the provider boundary. The `df.limit(0, Some(ROW_CAP))` then unparses to a remote LIMIT,
+//! which is strictly better than the previous client-side cap. A plan the unparser can't push down
+//! (mixed `information_schema` views + user tables, exotic constructs) falls back to per-table scans
+//! — today's behavior, still correct.
 
 use arrow::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
@@ -18,8 +29,16 @@ use serde_json::Value;
 use crate::source::{connect, ColumnMeta, Source, SourceError, TableMeta};
 use crate::validate::{validate_select, ROW_CAP};
 
+/// A fresh `SessionContext` with the federation optimizer rule + query planner installed
+/// (federation-pushdown scope). One per call — federation decisions are made per-plan from the
+/// registered providers' compute contexts; no cross-call state is shared.
+fn federated_context() -> SessionContext {
+    SessionContext::new_with_state(datafusion_federation::default_session_state())
+}
+
 /// The result of a federated query: the column names and the rows (each an array of JSON cells,
 /// column-aligned). Bounded to [`ROW_CAP`] rows.
+#[derive(Debug)]
 pub struct QueryResult {
     pub columns: Vec<String>,
     pub rows: Vec<Value>,
@@ -46,7 +65,7 @@ async fn register_and_run(
     validated: &crate::validate::ValidatedSelect,
     sql: &str,
 ) -> Result<QueryResult, String> {
-    let ctx = SessionContext::new();
+    let ctx = federated_context();
     crate::info_schema::register_information_schema(
         &ctx,
         source,
@@ -65,23 +84,11 @@ async fn register_and_run(
     }
 
     let df = ctx.sql(sql).await.map_err(|e| format!("plan: {e}"))?;
-    // Cap before collect: the engine stops materializing past the cap (no unbounded read in a
-    // handler — an unbounded export is a mirror job, §6.1).
+    // Cap before collect: under pushdown this unparses to a remote LIMIT executed in the source
+    // engine (strictly better than the prior client-side cap); under fallback it still caps the
+    // collected batches. An unbounded export is a mirror job, never a live query (§6.1).
     let df = df.limit(0, Some(ROW_CAP)).map_err(|e| e.to_string())?;
-    let batches = df.collect().await.map_err(|e| {
-        let msg = e.to_string();
-        // A bare `COUNT(*)`/`COUNT(1)` plans a ZERO-column scan the pushdown provider mis-schemas
-        // (upstream datafusion-table-providers bug — "Physical input schema should be the same…").
-        // Steer to the form that works instead of echoing an internal error the caller (live: the
-        // agent model) can do nothing with.
-        if msg.contains("Physical input schema should be the same") {
-            "COUNT(*) over a whole table is not supported by the federation engine — count a \
-             concrete column instead, e.g. COUNT(id)"
-                .to_string()
-        } else {
-            format!("execute: {msg}")
-        }
-    })?;
+    let batches = df.collect().await.map_err(|e| format!("execute: {e}"))?;
     shape(batches)
 }
 
@@ -140,7 +147,7 @@ pub(crate) async fn catalog_rows(
     sql: &str,
     bindings: &[(&str, &str)],
 ) -> Result<Vec<Value>, String> {
-    let ctx = SessionContext::new();
+    let ctx = federated_context();
     for (alias, remote) in bindings {
         // `parse_str` for the remote: catalog names are dotted (`pg_catalog.pg_tables`) and must
         // split into schema + table so the provider introspects the real catalog (a `bare` dotted
@@ -249,3 +256,202 @@ pub async fn run_list_tables(
         .map_err(SourceError)?;
     Ok(table_meta_from_rows(rows))
 }
+
+#[cfg(test)]
+mod tests {
+    //! Pushdown-correctness tests (federation-pushdown scope) against a REAL seeded SQLite file
+    //! (no Docker, no mocks — the source layer is the one sanctioned fake-boundary, testing §0).
+    //! These pin the three things that could have broken under pushdown:
+    //!   1. A demo-shaped JOIN + GROUP BY + ORDER BY returns the exact same `{columns, rows}` it did
+    //!      under per-table scans (correctness heart).
+    //!   2. Bare `COUNT(*)` works under pushdown — the previous "Physical input schema should be the
+    //!      same" steer is gone; if a future provider upgrade brings the bug back, this fires.
+    //!   3. The federation optimizer recognizes a single-source multi-table plan as ONE federated
+    //!      scan node in the EXPLAIN output (structural — not a flaky timing assertion).
+    //! Plus the ROW_CAP remote-LIMIT clamp and the SELECT-only regression set.
+
+    use super::*;
+    use crate::source::{connect, Source};
+    use crate::validate::validate_select;
+    use datafusion::sql::TableReference;
+
+    /// Seed a real `.db` with the demo's shape: `site` (parents) joined to `point_reading`
+    /// (children), plus enough rows to make per-table-scan cost obvious. Returns the file path (the
+    /// SQLite DSN). Each call gets a UNIQUE file (atomic counter + pid) so parallel `cargo test`
+    /// workers don't collide on the seeded schema (`table site already exists`).
+    fn seed_demo_db(row_count: usize) -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "lb-fed-pushdown-{seq}-{}-{}.db",
+            row_count,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let conn = rusqlite::Connection::open(&path).expect("open sqlite fixture");
+        conn.execute_batch(
+            "CREATE TABLE site (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+             CREATE TABLE point_reading (
+               time TEXT, point_id TEXT, value REAL, site_id TEXT REFERENCES site(id)
+             );",
+        )
+        .expect("create schema");
+        // Two sites, then `row_count` readings split between them (group-able to two rows).
+        conn.execute(
+            "INSERT INTO site VALUES ('site-001','Northside Factory'),('site-002','City Tower')",
+            [],
+        )
+        .expect("seed sites");
+        // Generate `row_count` readings as a single INSERT with bound params (fast even at 20k).
+        let half = row_count / 2;
+        for site in ["site-001", "site-002"] {
+            for i in 0..half {
+                // Alternate values so AVG differs per site (catches a wrong grouping immediately).
+                let v = if i % 2 == 0 { 1.5 } else { 2.5 };
+                conn.execute(
+                    "INSERT INTO point_reading VALUES ('2026-01-01', ?1, ?2, ?3)",
+                    rusqlite::params![format!("{site}-p{i}"), v, site],
+                )
+                .expect("seed reading");
+            }
+        }
+        path.to_string_lossy().into_owned()
+    }
+
+    async fn demo_source(row_count: usize) -> (String, Box<dyn Source>) {
+        let dsn = seed_demo_db(row_count);
+        let source = connect("sqlite", &dsn).await.expect("connect sqlite");
+        (dsn, source)
+    }
+
+    /// Register the source's referenced tables (the same path `run_query` takes) into a federation-
+    /// enabled context, then run `sql` and return the shaped result. Used by the structural tests.
+    async fn run_via_federated(source: &dyn Source, sql: &str) -> QueryResult {
+        let validated = validate_select(sql).expect("validate");
+        register_and_run(source, &validated, sql).await.expect("run")
+    }
+
+    /// 1. Correctness heart — the demo-shaped JOIN + GROUP BY + ORDER BY returns the exact expected
+    ///    `{columns, rows}` (the same shape the non-pushdown path returned; pinned here so a future
+    ///    unparser drift is caught immediately).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn join_groupby_orderby_matches_expectation() {
+        let (_dsn, source) = demo_source(40).await;
+        let out = run_via_federated(
+            source.as_ref(),
+            "SELECT s.name AS site, AVG(r.value) AS avg_val \
+             FROM point_reading r JOIN site s ON r.site_id = s.id \
+             GROUP BY s.name \
+             ORDER BY s.name",
+        )
+        .await;
+        assert_eq!(out.columns, vec!["site".to_string(), "avg_val".to_string()]);
+        // Two aggregated rows, alphabetically ordered, both AVGs are the mean of {1.5, 2.5} = 2.0.
+        assert_eq!(out.rows.len(), 2, "two sites → two groups: {out:?}");
+        assert_eq!(out.rows[0][0].as_str().unwrap(), "City Tower");
+        assert_eq!(out.rows[1][0].as_str().unwrap(), "Northside Factory");
+        for row in &out.rows {
+            let v = row[1].as_f64().unwrap();
+            assert!((v - 2.0).abs() < 1e-9, "AVG should be 2.0, got {v}");
+        }
+    }
+
+    /// 2. `COUNT(*)` wrinkle — bare `COUNT(*)` was rejected under per-table scans (upstream provider
+    ///    bug). Under pushdown it unparses to remote SQL and returns the row count cleanly. If a
+    ///    future upgrade breaks this again, this test fires (and we re-introduce the steer).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn bare_count_star_works_under_pushdown() {
+        let (_dsn, source) = demo_source(40).await;
+        let out = run_via_federated(source.as_ref(), "SELECT COUNT(*) AS n FROM point_reading").await;
+        assert_eq!(out.columns, vec!["n".to_string()]);
+        assert_eq!(out.rows.len(), 1);
+        let n = out.rows[0][0].as_i64().or_else(|| out.rows[0][0].as_f64().map(|x| x as i64)).unwrap();
+        assert_eq!(n, 40, "COUNT(*) returns the row count under pushdown: {out:?}");
+    }
+
+    /// 3. Structural — a multi-table single-source query plans as ONE federated scan (not a flaky
+    ///    timing assertion). The optimized plan's pretty-printed form contains a `FederatedScan`
+    ///    node when the federation optimizer succeeded; if it fell back to per-table scans the plan
+    ///    would show `TableScan`/`Projection` over individual base tables.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn plan_is_one_federated_scan() {
+        let (_dsn, source) = demo_source(40).await;
+        // Manually walk the same register path `register_and_run` uses, then ask for the EXPLAIN.
+        let ctx = federated_context();
+        let sql = "SELECT s.name, AVG(r.value) FROM point_reading r JOIN site s ON r.site_id = s.id GROUP BY s.name";
+        let validated = validate_select(sql).expect("validate");
+        for t in &validated.tables {
+            let reference = TableReference::bare(t.clone());
+            let provider = source.table_provider(&reference).await.unwrap();
+            ctx.register_table(reference, provider).unwrap();
+        }
+        // `EXPLAIN` returns rows shaped `(plan_type: Utf8, plan: Utf8)` — the plan column carries
+        // the formatted logical+physical plan. Concatenate every cell of every row so we don't miss
+        // the federated node whichever row it lands in.
+        let batches = ctx.sql(&format!("EXPLAIN {sql}")).await.unwrap().collect().await.unwrap();
+        let mut full = String::new();
+        for batch in &batches {
+            use arrow::array::AsArray;
+            if let Some(col) = batch.column_by_name("plan") {
+                if let Some(arr) = col.as_string_opt::<i32>() {
+                    for v in arr.iter().flatten() {
+                        full.push_str(v);
+                        full.push('\n');
+                    }
+                }
+            }
+        }
+        assert!(
+            full.contains("VirtualExecutionPlan") && full.contains("compute_context"),
+            "expected a federated physical node (VirtualExecutionPlan + compute_context) in the \
+             EXPLAIN; pushdown didn't fire. Got:\n{full}"
+        );
+        // The unparser emitted ONE remote SQL statement covering both tables + the JOIN + GROUP BY
+        // (rather than two per-table SQL round-trips). `base_sql=` is the federation adaptor's
+        // marker for the unparsed statement.
+        assert!(
+            full.contains("base_sql="),
+            "expected an unparsed `base_sql=` statement; got:\n{full}"
+        );
+        // And the unparsed SQL must reference BOTH base tables (the whole point of statement-level
+        // pushdown vs per-table scans — the JOIN happens in the source engine, not the sidecar).
+        let base_sql_line = full
+            .lines()
+            .find(|l| l.contains("base_sql="))
+            .expect("base_sql line");
+        assert!(
+            base_sql_line.contains("point_reading") && base_sql_line.contains("site"),
+            "unparsed SQL should reference both tables: {base_sql_line}"
+        );
+    }
+
+    /// 4. ROW_CAP — when the source holds more than ROW_CAP rows, the remote LIMIT the unparser
+    ///    emits clamps the result to exactly ROW_CAP. Seeds ROW_CAP + 50 rows.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn row_cap_clamps_via_remote_limit() {
+        let (_dsn, source) = demo_source(ROW_CAP + 50).await;
+        let out = run_via_federated(source.as_ref(), "SELECT point_id FROM point_reading").await;
+        assert_eq!(
+            out.rows.len(),
+            ROW_CAP,
+            "remote LIMIT clamps to exactly ROW_CAP"
+        );
+    }
+
+    /// 5. SELECT-only regression — writes, DDL, and multi-statement inputs still refuse identically
+    ///    (no contract change from pushdown — both gates still validate before planning).
+    #[test]
+    fn select_only_gates_unchanged() {
+        for bad in [
+            "INSERT INTO point_reading VALUES ('x','p',1.0,'site-001')",
+            "UPDATE point_reading SET value = 0",
+            "DELETE FROM point_reading",
+            "DROP TABLE point_reading",
+            "SELECT 1; SELECT 2",
+        ] {
+            assert!(validate_select(bad).is_err(), "should reject: {bad}");
+        }
+    }
+}
+

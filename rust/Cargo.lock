@@ -2496,6 +2496,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "datafusion-federation"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f88162c5f8650eab86bbe23cac990bdca261c95cf52c05b9a0848ad5b8b2b7f8"
+dependencies = [
+ "arrow-json",
+ "async-stream",
+ "async-trait",
+ "datafusion",
+ "futures",
+]
+
+[[package]]
 name = "datafusion-functions"
 version = "53.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,6 +2850,7 @@ dependencies = [
  "chrono",
  "dashmap 6.2.1",
  "datafusion",
+ "datafusion-federation",
  "fallible-iterator 0.3.0",
  "fundu",
  "futures",
@@ -3326,6 +3340,7 @@ dependencies = [
  "arrow-json",
  "async-trait",
  "datafusion",
+ "datafusion-federation",
  "datafusion-table-providers",
  "lb-supervisor",
  "openssl",

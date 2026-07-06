@@ -231,3 +231,10 @@ lto = "thin"
 [profile.dev]
 split-debuginfo = "unpacked"
 debug = "line-tables-only"
+
+# The bundled SQLite C library must be optimized even in dev builds: `libsqlite3-sys`
+# compiles `sqlite3.c` at the profile's opt-level, and an -O0 SQLite executes scan-heavy
+# queries ~8x slower — which made `federation.query` look slow when the pushdown was in
+# fact working (the sidecar ran a debug-built engine). One C file, negligible build cost.
+[profile.dev.package.libsqlite3-sys]
+opt-level = 3

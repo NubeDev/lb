@@ -65,8 +65,13 @@ export function buildCell(payload: RichResultPayload, itemKey: string): Cell {
   // tools; a row-control write verb (e.g. `reminder.update`) is neither the read source nor the single
   // control action, so we carry the remaining declared tools as hidden extra targets — they widen the
   // leash to render.tools without adding a real read (the host re-checks grant regardless).
+  // Real multi-ref targets declared by the envelope carry through verbatim, FIRST — a `genui` view
+  // binds `/data/{refId}` against them (channel-widgets slice). The extra declared tools then ride as
+  // hidden trailing targets (leash widening only); a tool already covered by the source, action, or a
+  // declared target needs no hidden duplicate. Mirrors `dashboard/pin.rs` exactly.
+  const declared = payload.sources ?? [];
   const extraTools = (payload.tools ?? []).filter(
-    (t) => t !== source?.tool && t !== action?.tool,
+    (t) => t !== source?.tool && t !== action?.tool && !declared.some((s) => s.tool === t),
   );
   return {
     i: itemKey,
@@ -80,12 +85,15 @@ export function buildCell(payload: RichResultPayload, itemKey: string): Cell {
     binding: { series: "" },
     source,
     action,
-    sources: extraTools.map((tool, idx) => ({
-      refId: `T${idx}`,
-      tool,
-      datasource: { type: "surreal" as const },
-      hide: true,
-    })),
+    sources: [
+      ...declared,
+      ...extraTools.map((tool, idx) => ({
+        refId: `T${idx}`,
+        tool,
+        datasource: { type: "surreal" as const },
+        hide: true,
+      })),
+    ],
     options: payload.options,
     // The descriptor-declared per-field presentation (widget-kit scope) — copied onto the cell so the
     // shared table column-model resolves headers/hide/order through it (the ONE resolver the form uses).

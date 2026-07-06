@@ -221,17 +221,36 @@ pub fn mint_cell_from_envelope(
                 .collect()
         })
         .unwrap_or_default();
-    let sources: Vec<Target> = extra_tools
-        .iter()
-        .enumerate()
-        .map(|(idx, tool)| Target {
-            ref_id: format!("T{idx}"),
-            datasource: serde_json::json!({ "type": "surreal" }),
-            tool: tool.clone(),
-            args: Value::Null,
-            hide: true,
+    // Real multi-ref targets declared by the envelope (`sources[]`, the v3 shape a `genui` view binds
+    // its `/data/{refId}` pointers against — channel-widgets slice) carry through VERBATIM, first; the
+    // extra `tools[]` then ride as hidden trailing targets (leash widening only, as before). A
+    // malformed entry is dropped, not a pin failure (the cell validators still gate the result).
+    let mut sources: Vec<Target> = envelope
+        .get("sources")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|t| serde_json::from_value::<Target>(t.clone()).ok())
+                .collect()
         })
+        .unwrap_or_default();
+    // A tool already covered by a declared target needs no hidden duplicate — the leash reads it there.
+    let extra_tools: Vec<String> = extra_tools
+        .into_iter()
+        .filter(|t| !sources.iter().any(|s| &s.tool == t))
         .collect();
+    sources.extend(
+        extra_tools
+            .into_iter()
+            .enumerate()
+            .map(|(idx, tool)| Target {
+                ref_id: format!("T{idx}"),
+                datasource: serde_json::json!({ "type": "surreal" }),
+                tool,
+                args: Value::Null,
+                hide: true,
+            }),
+    );
 
     let options = envelope.get("options").cloned().unwrap_or(Value::Null);
     let field_config = envelope.get("fieldConfig").cloned().unwrap_or(Value::Null);

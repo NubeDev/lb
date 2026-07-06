@@ -130,6 +130,10 @@ export interface RichResultPayload {
   view: string;
   /** A `{tool, args}` object the viewer re-runs to (re)load data. Absent → the response is inline-only. */
   source?: { tool: string; args?: Record<string, unknown> };
+  /** Multi-ref data targets (the dashboard v3 `sources[]` `Target` shape) — a `genui` view binds its
+   *  `/data/{refId}` pointers against several reads at once (channel-widgets slice). Absent → the
+   *  single `source` (promoted to refId `A`) or inline `data`. */
+  sources?: import("@/lib/dashboard").Target[];
   /** Inline data the viewer renders directly. Absent → the viewer runs `source`. */
   data?: unknown;
   /** View options (incl. row controls). Absent → the viewer's defaults. */

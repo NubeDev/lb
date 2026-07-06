@@ -153,6 +153,12 @@ pub struct RichResultPayload {
     /// A `{tool, args}` object the viewer re-runs to (re)load data. Absent → the response is inline-only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<Value>,
+    /// Multi-ref data targets (`[{refId, tool, args}, …]`, the dashboard v3 `sources[]` shape) — a
+    /// `genui` view binds `/data/{refId}` pointers against several reads at once (channel-widgets
+    /// slice). Absent → the single `source` (promoted to refId `A`) or inline `data`. Opaque `Value`
+    /// (the UI owns the `Target` shape), same posture as `source`/`options`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Value>,
     /// Inline data the viewer renders directly. Absent → the viewer runs `source`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
@@ -282,6 +288,9 @@ pub fn rich_result_body(
         v: 2,
         view: view.into(),
         source,
+        // Host-authored single-source bodies carry no multi-ref targets; a genui envelope (which does)
+        // is authored by the agent/UI as raw JSON, not through this builder.
+        sources: None,
         data,
         options,
         action,

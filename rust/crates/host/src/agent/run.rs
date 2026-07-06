@@ -186,6 +186,13 @@ pub async fn run_session<M: ModelAccess>(
     // the MAX_STEPS ceiling mid-work — the answer must say so honestly, not read as a normal finish.
     let mut model_finished = false;
 
+    // ONE-SHOT nudge for a bare stop: some models (GLM after think-stripping) end a tool-heavy run
+    // with a `done` turn whose content is EMPTY — the fallback then answers with the last non-empty
+    // text, usually the turn-1 preamble ("I'll help you…"), so the user never gets the real answer
+    // (docs/debugging/agent/run-finished-empty-after-tool-work-answers-with-preamble.md). Rather
+    // than settle, ask once for the final answer; a second empty stop finishes via the fallback.
+    let mut nudged = false;
+
     while turn_no < MAX_STEPS {
         // Cancellation is a durable stop (Part 0): re-read the status before each turn so a
         // `cancel` written by a UI stop button / ACP `session/cancel` between turns is honored.
@@ -249,6 +256,20 @@ pub async fn run_session<M: ModelAccess>(
         }
 
         if turn.done || turn.calls.is_empty() {
+            // A bare stop (empty content, no calls) after tool work is a swallowed answer, not a
+            // finish — nudge exactly once. The nudge is a live-context message only (like the skill
+            // catalog, never persisted): a resume replays the same turn key and re-nudges cleanly.
+            if turn.content.is_empty() && !nudged && !state.prior.is_empty() {
+                nudged = true;
+                state.messages.push((
+                    "user".into(),
+                    "[you stopped without an answer — write your final answer to the \
+                     original request now, using the tool results above]"
+                        .into(),
+                ));
+                turn_no += 1;
+                continue;
+            }
             model_finished = true;
             break;
         }

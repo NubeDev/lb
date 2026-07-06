@@ -26,6 +26,11 @@ pub async fn post_message(
         .map_err(|e| e.into_response())?;
     let stored = lb_host::post(gw.node.as_ref(), &principal, principal.ws(), &cid, item)
         .await
-        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+        .map_err(|e| match e {
+            // A structurally malformed body (e.g. a bad genui rich_result) is the caller's input
+            // problem, not an authorization outcome — surface it as a 400 with the fix named.
+            lb_host::ChannelError::BadInput(_) => (StatusCode::BAD_REQUEST, e.to_string()),
+            _ => (StatusCode::FORBIDDEN, e.to_string()),
+        })?;
     Ok(Json(stored))
 }

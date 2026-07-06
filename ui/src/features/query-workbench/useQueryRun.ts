@@ -39,6 +39,10 @@ export interface QueryRunState {
   error: string | null;
   /** The SQL that produced `result` (so the run bar can echo what was asked). */
   lastSql: string | null;
+  /** Wall-clock ms the last successful run took (client-measured around the gated `await`). Null
+   *  before the first run, while loading, and after a deny — only a real completed SELECT sets it,
+   *  so the run bar's "{n} rows · {cols} · {ms}" line is honest (never fabricated). */
+  elapsedMs: number | null;
   /** Run `sql` through the right engine. Surfaces an error object on deny (no throw). */
   run: (sql: string) => Promise<void>;
   /** Drop the current result + error (e.g. on source switch). */
@@ -53,6 +57,7 @@ export function useQueryRun(source: string): QueryRunState {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSql, setLastSql] = useState<string | null>(null);
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
   const run = useCallback(
     async (sql: string) => {
@@ -60,6 +65,8 @@ export function useQueryRun(source: string): QueryRunState {
       if (!trimmed) return;
       setLoading(true);
       setError(null);
+      setElapsedMs(null); // a new run clears the previous timing — never stale
+      const startedAt = performance.now();
       try {
         // Both engines return `{columns, rows}` (the surreal `QueryResult` is structurally identical
         // to `FederationQueryResult` — a `{columns, rows}` frame; the cast is shape-only, not a lie).
@@ -69,6 +76,7 @@ export function useQueryRun(source: string): QueryRunState {
             : await runFederationQuery(source, trimmed);
         setResult(r);
         setLastSql(trimmed);
+        setElapsedMs(performance.now() - startedAt); // client wall-clock — the user's "how long did this take"
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
         setResult(null);
@@ -83,7 +91,8 @@ export function useQueryRun(source: string): QueryRunState {
     setResult(null);
     setError(null);
     setLastSql(null);
+    setElapsedMs(null);
   }, []);
 
-  return { result, loading, error, lastSql, run, reset };
+  return { result, loading, error, lastSql, elapsedMs, run, reset };
 }

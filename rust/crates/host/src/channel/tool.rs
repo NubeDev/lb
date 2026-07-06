@@ -113,6 +113,9 @@ fn chan_err(e: ChannelError) -> ToolError {
     match e {
         ChannelError::Denied => ToolError::Denied,
         ChannelError::NotFound => ToolError::NotFound,
+        // Loud + self-describing: on an agent post this message IS the feedback the model
+        // self-corrects from (a malformed genui rich_result names the field-level fix).
+        ChannelError::BadInput(msg) => ToolError::BadInput(msg),
         other => ToolError::Extension(other.to_string()),
     }
 }

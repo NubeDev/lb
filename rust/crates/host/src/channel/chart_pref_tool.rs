@@ -62,6 +62,7 @@ fn to_tool(e: ChannelError) -> ToolError {
     match e {
         ChannelError::Denied => ToolError::Denied,
         ChannelError::NotFound => ToolError::NotFound,
+        ChannelError::BadInput(msg) => ToolError::BadInput(msg),
         ChannelError::Store(s) => ToolError::Extension(s.to_string()),
         ChannelError::Bus(b) => ToolError::Extension(b.to_string()),
     }

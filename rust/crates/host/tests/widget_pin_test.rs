@@ -558,3 +558,50 @@ async fn pin_appends_alongside_hand_authored_cells() {
     assert!(ids.contains(&"g1"));
     assert!(ids.contains(&"pin-reminder-list"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_carries_a_genui_envelopes_declared_sources_through() {
+    // CHANNEL-WIDGETS slice: a `genui` rich_result previewed in the dock binds `/data/{refId}` against
+    // real `sources[]` targets — pinning it must carry those targets onto the cell VERBATIM (before the
+    // hidden extra-tools fold), or the pinned widget renders with no data.
+    let ws = "wp-genui-sources";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", ws, &[PIN, GET]);
+
+    let env = json!({
+        "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "v": 1,
+            "surface": { "surfaceId": "s1", "root": "root" },
+            "components": {
+                "root": { "id": "root", "component": "table",
+                          "props": { "rows": { "$bind": "/data/A/rows" } } }
+            }
+        } } },
+        "sources": [
+            { "refId": "A", "tool": "store.query", "args": { "sql": "SELECT * FROM site" } },
+            { "refId": "B", "tool": "series.latest", "args": { "series": "office/temp" } }
+        ],
+        "tools": ["store.query", "series.latest"]
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("genui envelope pins");
+    let cell = &d["cells"][0];
+    assert_eq!(cell["view"], "genui");
+    assert_eq!(cell["options"]["genui"]["ir"]["v"], 1);
+    // The declared targets carried through first, verbatim (refIds intact, not hidden)…
+    assert_eq!(cell["sources"][0]["refId"], "A");
+    assert_eq!(cell["sources"][0]["tool"], "store.query");
+    assert_eq!(cell["sources"][0]["hide"], serde_json::json!(false));
+    assert_eq!(cell["sources"][1]["refId"], "B");
+    // …and NO duplicate hidden leash entries — a tool already covered by a declared target is not
+    // re-folded (the leash reads it from the target itself).
+    assert_eq!(cell["sources"].as_array().unwrap().len(), 2);
+}

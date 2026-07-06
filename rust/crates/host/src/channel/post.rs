@@ -37,6 +37,13 @@ pub async fn post(
     mut item: Item,
 ) -> Result<Item, ChannelError> {
     authorize(principal, ws, cid, Action::Pub)?;
+
+    // STRUCTURAL gate (channel-widgets scope): a `view:"genui"` rich_result is validated against the
+    // same catalog checks as `dashboard.save` BEFORE it lands — a posted preview never touches the
+    // save path, so this is its only chance to be rejected loudly instead of rendering broken in the
+    // dock. After authorize (a denied caller learns nothing), before persist (a bad IR never lands).
+    super::genui_check::check_rich_result_genui(&item.body)?;
+
     item.channel = cid.to_string();
     let delivered = deliver(&node.store, &node.bus, ws, cid, item).await?;
 

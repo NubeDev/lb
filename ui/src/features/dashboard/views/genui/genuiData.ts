@@ -44,7 +44,11 @@ function firstScalar(row: Record<string, unknown>): unknown {
  *  known "binding broken" trap — the same `cell.source?.tool ? … : …` guard `WidgetView` uses; NOT
  *  re-implemented divergently). */
 export function genuiTargets(cell: Cell): Target[] {
-  if (cell.sources && cell.sources.length) return cell.sources.filter((t) => !t.hide);
+  // Visible targets only — and when EVERY sources[] entry is hidden (a channel rich_result cell's
+  // leash-widening extra tools, see ResponseView.buildCell), fall through to the v2 single source
+  // rather than resolving nothing (channel-widgets slice: the dock preview path).
+  const visible = (cell.sources ?? []).filter((t) => !t.hide);
+  if (visible.length) return visible;
   if (cell.source?.tool) return [{ refId: "A", tool: cell.source.tool, args: cell.source.args }];
   return [];
 }

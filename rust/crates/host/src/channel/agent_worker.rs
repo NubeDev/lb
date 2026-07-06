@@ -239,6 +239,11 @@ pub async fn drive_queued_run(
         }
     };
 
+    // Tell the run WHICH channel this exchange lives in (channel-widgets slice) — a bare fact, not an
+    // instruction: tools that take a `cid` (`channel.post` posting a `rich_result` widget) need the id,
+    // and the model cannot otherwise know it. The wall still gates whether posting is permitted.
+    let goal_for_run = format!("{goal_for_run}\n\n[conversation channel: {cid}]");
+
     let outcome = drive_run(
         node,
         &poster,

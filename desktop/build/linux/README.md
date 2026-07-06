@@ -1,14 +1,14 @@
 # build/linux/
 
-Per-build-type packaging configs for the Linux desktop executable. One subdir per
-**build type** (deb, rpm, AppImage, …); each holds the control files, maintainer
-scripts, icons, desktop entries, and a build script that type needs.
+Per-build-type home for the Linux desktop binary. One subdir per **build type**
+(executable, deb, rpm, AppImage, …); each holds whatever that type needs — config files
+and maintainer scripts for installer types, the built ELF for the bare-executable type —
+plus a README explaining what lands there.
 
-The **plain executable** has no dir here — it is the bare
-`tauri build --no-bundle -- --features desktop` run from
-[`../../../ui/`](../../../ui/) (documented in
-[`../../docs/linux/README.md`](../../docs/linux/README.md)). This dir is only for the
-**installer/bundle types** the bare-binary slice skips.
+The bare-executable build is wired now: `make linux-executable` builds the ELF in the
+container and copies it to [`executable/lazybones-shell`](executable/). The installer
+types (deb/rpm/AppImage) are future work — their dirs hold control files + a build script
+when their slices land.
 
 ## Arch handling
 
@@ -24,6 +24,7 @@ installer ever becomes worth it, that decision lands in the scope first, not her
 
 | Dir | Status | Produces |
 | --- | --- | --- |
+| [`executable/`](executable/) | **active** | the bare ELF `lazybones-shell` (+ CI tarball) |
 | [`deb/`](deb/) | future | `.deb` package (Debian/Ubuntu) |
 | `rpm/` | not yet created | `.rpm` package (Fedora/RHEL/SUSE) |
 | `appimage/` | not yet created | `.AppImage` (self-contained, no runtime deps) |
@@ -45,5 +46,5 @@ AppImage remains the self-contained option if a no-runtime-deps format is later 
 4. Add a row to the table in [`../../docs/linux/README.md`](../../docs/linux/README.md)
    and a smoke test alongside the build.
 
-Status: scaffolded only — no build configs yet. The bare-executable slice (the scope's
-current ask) does not need anything here.
+Status: executable type active (binary lands in [`executable/`](executable/)); the
+installer types are scaffolded for when their slices land.

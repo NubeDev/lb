@@ -2,23 +2,30 @@
 //! (datasources scope testing fallback). When Docker is unavailable to spawn Postgres, the tests use
 //! this: a real external database engine with real rows on disk, still behind the one trait — never
 //! an in-process re-implementation (testing-scope §0). The "DSN" is the file path.
+//!
+//! **Federated provider** (federation-pushdown scope): unlike `PostgresTableFactory`, the upstream
+//! `SqliteTableFactory::table_provider` does NOT auto-wrap with `FederatedTableProviderAdaptor` under
+//! the `sqlite-federation` feature. We therefore hold the pool ourselves and build the federated
+//! provider directly: a `SQLiteTable::new_with_schema` wrapped via
+//! `create_federated_table_provider()`. The factory's small `connect → get_schema → build` flow is
+//! inlined here for that one purpose; everything else (`probe`, FKs) keeps its prior shape.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use datafusion::catalog::TableProvider;
 use datafusion::sql::TableReference;
-use datafusion_table_providers::sql::db_connection_pool::sqlitepool::SqliteConnectionPoolFactory;
-use datafusion_table_providers::sql::db_connection_pool::Mode;
-use datafusion_table_providers::sqlite::SqliteTableFactory;
+use datafusion_table_providers::sql::db_connection_pool::sqlitepool::{SqliteConnectionPool, SqliteConnectionPoolFactory};
+use datafusion_table_providers::sql::db_connection_pool::{dbconnection::get_schema, DbConnectionPool, Mode};
+use datafusion_table_providers::sqlite::sql_table::SQLiteTable;
+use datafusion_table_providers::sqlite::DynSqliteConnectionPool;
 
 use super::{Source, SourceError};
 
-/// A connected SQLite source: a file-backed pool + a table-provider factory over it. The file path
-/// is retained ONLY for direct catalog reads (`PRAGMA foreign_key_list`) — it is the DSN, so it is
-/// never echoed into an error or a result.
+/// A connected SQLite source: a file-backed pool + the file path (the path is retained ONLY for
+/// direct catalog reads — `PRAGMA foreign_key_list` — the same path that is the DSN, never echoed).
 pub struct SqliteSource {
-    factory: SqliteTableFactory,
+    pool: Arc<SqliteConnectionPool>,
     path: String,
 }
 
@@ -42,7 +49,7 @@ impl SqliteSource {
             .await
             .map_err(|e| SourceError(format!("sqlite pool: {e}")))?;
         Ok(Self {
-            factory: SqliteTableFactory::new(Arc::new(pool)),
+            pool: Arc::new(pool),
             path: path.to_string(),
         })
     }
@@ -52,21 +59,37 @@ impl SqliteSource {
 impl Source for SqliteSource {
     async fn probe(&self) -> Result<(), SourceError> {
         // A real probe: resolve sqlite_master as a provider, forcing a live connection to the file.
-        self.factory
-            .table_provider(TableReference::bare("sqlite_master"))
-            .await
-            .map(|_| ())
-            .map_err(|e| SourceError(format!("probe: {e}")))
+        // The federated path is irrelevant to a probe — it only needs to know the file opens.
+        let _ = self.table_provider(&TableReference::bare("sqlite_master")).await?;
+        Ok(())
     }
 
     async fn table_provider(
         &self,
         table: &TableReference,
     ) -> Result<Arc<dyn TableProvider>, SourceError> {
-        self.factory
-            .table_provider(table.clone())
+        // Mirror `SqliteTableFactory::table_provider` (the upstream helper does not auto-wrap under
+        // `sqlite-federation`), then wrap with `create_federated_table_provider` so the federation
+        // optimizer recognizes this table as belonging to one compute context and pushes the whole
+        // plan down to SQLite (federation-pushdown scope).
+        let pool = Arc::clone(&self.pool);
+        let conn = pool
+            .connect()
             .await
-            .map_err(|e| SourceError(format!("table {table}: {e}")))
+            .map_err(|e| SourceError(format!("connect: {e}")))?;
+        let schema = get_schema(conn, table)
+            .await
+            .map_err(|e| SourceError(format!("schema {table}: {e}")))?;
+        let dyn_pool: Arc<DynSqliteConnectionPool> = pool;
+        let sqlite_table = Arc::new(SQLiteTable::new_with_schema(
+            &dyn_pool,
+            Arc::clone(&schema),
+            table.clone(),
+        ));
+        let federated = sqlite_table
+            .create_federated_table_provider()
+            .map_err(|e| SourceError(format!("federate {table}: {e}")))?;
+        Ok(Arc::new(federated))
     }
 
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {

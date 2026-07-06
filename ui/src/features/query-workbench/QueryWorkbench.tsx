@@ -30,6 +30,7 @@ import { compileQuery } from "@/lib/queries";
 import { Loader2, Maximize2, Minimize2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { formatMs } from "@/lib/format/formatMs";
 import { useFederationSchema } from "@/features/panel-builder/tabs/useFederationSchema";
 import { useLocalSchema } from "@/features/panel-builder/tabs/useLocalSchema";
 import { SqlQueryEditor } from "@/features/dashboard/builder/sql/SqlQueryEditor";
@@ -233,7 +234,9 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
         {run.lastSql && !run.loading && (
           <span className="ml-auto truncate text-[11px] text-muted" title={run.lastSql}>
             {run.result
-              ? `${run.result.rows.length} row${run.result.rows.length === 1 ? "" : "s"} · ${run.result.columns.length} col${run.result.columns.length === 1 ? "" : "s"}`
+              ? `${run.result.rows.length} row${run.result.rows.length === 1 ? "" : "s"} · ${run.result.columns.length} col${run.result.columns.length === 1 ? "" : "s"}${
+                  formatMs(run.elapsedMs) ? ` · ${formatMs(run.elapsedMs)}` : ""
+                }`
               : "ran"}
           </span>
         )}

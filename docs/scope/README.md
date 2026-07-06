@@ -155,6 +155,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   AI-prompt-ready snapshot of a source (tables + columns + real foreign keys + `LIMIT 10` rows per
   table) under the existing `federation.query` cap, so an agent writes correct SQL in one round trip
   instead of N+1 `federation.schema` calls with no relationship metadata.
+  **`federation-pushdown-scope.md`** makes single-source `federation.query` push the whole validated
+  SELECT down to the source engine (the pinned providers' `*-federation` features +
+  datafusion-federation) instead of streaming base-table rows into DataFusion and joining in the
+  sidecar — the demo JOIN/GROUP BY drops from 3–4 s to engine speed; same verb, caps, and envelope.
   Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),

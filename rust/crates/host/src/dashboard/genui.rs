@@ -84,8 +84,6 @@ fn bad(cell_i: &str, msg: impl std::fmt::Display) -> DashboardError {
 }
 
 fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
-    let cat = catalog();
-
     // The genui payload lives under `options.genui = { v, ir, meta? }`. An UN-AUTHORED draft — a genui
     // cell the author just added but hasn't generated an IR for yet — has no `genui` block (or one with
     // no `ir`). That is a legitimate savable draft (like a blank timeseries you configure later), NOT a
@@ -94,11 +92,25 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
     let Some(genui) = cell.options.get("genui") else {
         return Ok(());
     };
+    if matches!(genui.get("ir"), None | Some(Value::Null)) {
+        return Ok(()); // draft: block present but no IR authored yet.
+    }
+    check_genui_block(genui).map_err(|msg| bad(&cell.i, msg))
+}
+
+/// Structurally validate a `{ v, ir, meta? }` genui block whose `ir` is present. Shared by the
+/// dashboard save path ([`check_genui_cells`], which skips IR-less drafts first) and the channel
+/// `rich_result` post path (`channel::genui_check`, where a missing IR is itself an error — a posted
+/// preview with nothing to render is a broken post, not a draft). Error messages name the defect AND
+/// the fix, because on the channel path they feed straight back into the agent loop as the tool error
+/// the model self-corrects from.
+pub fn check_genui_block(genui: &Value) -> Result<(), String> {
+    let cat = catalog();
+
     let ir = match genui.get("ir") {
-        None => return Ok(()), // draft: block present but no IR authored yet.
-        Some(Value::Null) => return Ok(()),
+        None | Some(Value::Null) => return Err("options.genui has no `ir` object".to_string()),
         Some(ir) if !ir.is_object() => {
-            return Err(bad(&cell.i, "options.genui.ir must be an object"));
+            return Err("options.genui.ir must be an object".to_string());
         }
         Some(ir) => ir,
     };
@@ -108,9 +120,8 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
         .map(|v| v.len())
         .unwrap_or(usize::MAX);
     if size > GENUI_MAX_BYTES {
-        return Err(bad(
-            &cell.i,
-            format!("spec is too large ({size} bytes > {GENUI_MAX_BYTES}); simplify the widget"),
+        return Err(format!(
+            "spec is too large ({size} bytes > {GENUI_MAX_BYTES}); simplify the widget"
         ));
     }
 
@@ -118,34 +129,41 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
     let v = ir
         .get("v")
         .and_then(Value::as_u64)
-        .ok_or_else(|| bad(&cell.i, "IR has no numeric `v`"))?;
+        .ok_or_else(|| "IR has no numeric `v` (the IR requires `\"v\": 1`)".to_string())?;
     if v == 0 || v > cat.version {
-        return Err(bad(
-            &cell.i,
-            format!(
-                "IR schema v{v} is unknown to this node (catalog v{})",
-                cat.version
-            ),
+        return Err(format!(
+            "IR schema v{v} is unknown to this node (catalog v{})",
+            cat.version
         ));
     }
 
-    // Every component name resolves in the catalog.
+    // Every component resolves in the catalog, names itself via `component` (NOT `type` — the most
+    // common LLM dialect slip), and repeats its map key as `id` (the TS validator's `id-mismatch`).
     let components = ir
         .get("components")
         .and_then(Value::as_object)
-        .ok_or_else(|| bad(&cell.i, "IR has no `components` map"))?;
+        .ok_or_else(|| "IR has no `components` map".to_string())?;
     if components.is_empty() {
-        return Err(bad(&cell.i, "IR has no components"));
+        return Err("IR has no components".to_string());
     }
     for (id, comp) in components {
-        let name = comp
-            .get("component")
-            .and_then(Value::as_str)
-            .ok_or_else(|| bad(&cell.i, format!("component {id} has no `component` name")))?;
+        let name = match comp.get("component").and_then(Value::as_str) {
+            Some(name) => name,
+            None if comp.get("type").is_some() => {
+                return Err(format!(
+                    "component {id} uses `type`; the IR field is `component` (e.g. {{\"id\":\"{id}\",\"component\":\"stack\",...}})"
+                ));
+            }
+            None => return Err(format!("component {id} has no `component` name")),
+        };
         if !cat.names.contains(name) {
-            return Err(bad(
-                &cell.i,
-                format!("component \"{name}\" (id {id}) is not in the catalog"),
+            return Err(format!(
+                "component \"{name}\" (id {id}) is not in the catalog"
+            ));
+        }
+        if comp.get("id").and_then(Value::as_str) != Some(id.as_str()) {
+            return Err(format!(
+                "component {id} must repeat its map key as `id: \"{id}\"`"
             ));
         }
     }
@@ -157,10 +175,10 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
         .and_then(Value::as_str)
         .unwrap_or("");
     if root.is_empty() || !components.contains_key(root) {
-        return Err(bad(
-            &cell.i,
-            "surface root is empty or not a defined component",
-        ));
+        return Err(
+            "IR needs `surface: {\"surfaceId\": \"...\", \"root\": \"<a defined component id>\"}`"
+                .to_string(),
+        );
     }
     Ok(())
 }

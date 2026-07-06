@@ -52,6 +52,8 @@ async fn an_empty_final_turn_does_not_wipe_the_answer() {
     let caller = principal("user:ada", ws, &[INVOKE]);
     let gw = AiGateway::new(MockProvider::new(vec![
         AiResponse::calls("I created the widget for you.", vec![a_call("c1")], 5),
+        // Two empty stops: the loop nudges once after the first, then must settle on the fallback.
+        AiResponse::stop("", 0),
         AiResponse::stop("", 0),
     ]));
 
@@ -105,4 +107,41 @@ async fn a_ceiling_exit_answers_with_the_honest_note() {
         answer.contains("turn ceiling"),
         "ceiling exit must be honest, got: {answer:?}"
     );
+}
+
+/// A tool-heavy run whose model ends with a BARE stop (empty content, no calls) must be nudged
+/// once for its final answer instead of settling on the turn-1 preamble — the live "5 timeseries
+/// queries" run answered with only "I'll help you…" because the loop took the empty `done` at face
+/// value. See debugging/agent/run-finished-empty-after-tool-work-answers-with-preamble.md.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_bare_stop_after_tool_work_is_nudged_for_the_real_answer() {
+    let ws = "agent-bare-stop";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let caller = principal("user:ada", ws, &[INVOKE]);
+    let gw = AiGateway::new(MockProvider::new(vec![
+        AiResponse::calls(
+            "I'll help you with that. Let me explore first.",
+            vec![a_call("c1")],
+            5,
+        ),
+        AiResponse::stop("", 0),
+        AiResponse::stop("Here are your 5 queries: …", 3),
+    ]));
+
+    let answer = run_session(
+        &node,
+        &gw,
+        &caller,
+        &[],
+        ws,
+        "job-bare-stop",
+        "give me 5 queries",
+        &no_tools(),
+        None,
+        None,
+        1,
+    )
+    .await
+    .unwrap();
+    assert_eq!(answer, "Here are your 5 queries: …");
 }
