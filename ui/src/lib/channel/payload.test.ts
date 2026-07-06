@@ -121,6 +121,23 @@ describe("encodeAgent", () => {
     expect(p.persona).toBeUndefined();
     expect(JSON.parse(encodeAgent("hi", "run-12"))).not.toHaveProperty("persona");
   });
+
+  // agent-context-basket: refs ride the payload as ids only; empty/absent is dropped from the wire
+  // (byte-identical to a pre-basket post), mirroring the Rust skip-when-empty.
+  it("includes context_items when refs are given", () => {
+    const p = parsePayload(
+      encodeAgent("hi", "run-13", undefined, undefined, undefined, ["i1", "i2"]),
+    );
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.context_items).toEqual(["i1", "i2"]);
+  });
+
+  it("omits context_items when absent or empty", () => {
+    expect(JSON.parse(encodeAgent("hi", "run-14"))).not.toHaveProperty("context_items");
+    expect(
+      JSON.parse(encodeAgent("hi", "run-15", undefined, undefined, undefined, [])),
+    ).not.toHaveProperty("context_items");
+  });
 });
 
 describe("encodeQuery", () => {

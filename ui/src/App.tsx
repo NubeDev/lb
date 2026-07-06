@@ -12,6 +12,7 @@ import { useExtensionPages } from "./features/ext-host";
 import { allowedSurfaces } from "./features/routing/allowed";
 import { createAppRouter } from "./features/routing/createAppRouter";
 import { RoutingContextProvider } from "./features/routing/RoutingContextProvider";
+import { BrandingProvider } from "./lib/branding";
 import { ThemeProvider } from "./lib/theme";
 
 export function App() {
@@ -46,7 +47,12 @@ export function App() {
 
     content = (
       <RoutingContextProvider value={routingContext}>
-        <RouterProvider router={router} context={routingContext} />
+        {/* BrandingProvider resolves the workspace brand once and on workspace change; chrome inside
+            the routed tree (NavRail header, document.title, favicon) reads it via useBranding(). The
+            login view is OUTSIDE this provider — pre-auth branding is a separate, deferred slice. */}
+        <BrandingProvider workspace={workspace}>
+          <RouterProvider router={router} context={routingContext} />
+        </BrandingProvider>
       </RoutingContextProvider>
     );
   }

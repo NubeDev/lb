@@ -8,7 +8,7 @@
 // between the typed query and React-Flow's node/edge shape — no React here.
 
 import type { Schema } from "@/lib/schema";
-import type { SqlBuilderQuery, SqlJoin, SqlJoinType } from "@/lib/panel-kit/sql/query";
+import { isPendingJoin, type SqlBuilderQuery, type SqlJoin, type SqlJoinType } from "@/lib/panel-kit/sql/query";
 
 /** One column shown on a table node. */
 export interface CanvasColumn {
@@ -22,6 +22,10 @@ export interface CanvasColumn {
 export interface CanvasNodeData extends Record<string, unknown> {
   table: string;
   columns: CanvasColumn[];
+  /** True for a joined table whose join has no ON keys yet (and isn't `cross`) — it's on the
+   *  canvas but NOT in the emitted SQL until the user drags a column-to-column connection. The
+   *  node renders a "not joined" marker. Always false for the FROM table. */
+  pending: boolean;
 }
 
 /** A React-Flow table node. `id` is the table name (so a connect event can resolve back to a join). */
@@ -89,26 +93,33 @@ export function toFlow(query: SqlBuilderQuery, schema: Schema, layout?: unknown)
 
   const parsed = readLayout(layout);
   // FROM table first, then each joined table — index drives the auto-grid fallback.
+  const pendingByTable = new Map((query.joins ?? []).map((j) => [j.table, isPendingJoin(j)]));
   const tables = [query.table, ...(query.joins ?? []).map((j) => j.table)];
   const nodes: CanvasNode[] = tables.map((table, index) => ({
     id: table,
     type: "table",
     position: positionFor(parsed, table, index),
-    data: { table, columns: columnsOf(schema, table) },
+    data: {
+      table,
+      columns: columnsOf(schema, table),
+      pending: table !== query.table && (pendingByTable.get(table) ?? false),
+    },
   }));
 
+  // One edge per WIRED join key — a pending join has no ON keys, hence no edge (its node carries
+  // the "not joined" marker instead; an edge with empty handle ids would never render anyway).
   const edges: CanvasEdge[] = [];
   for (const j of query.joins ?? []) {
     const firstOn = j.on?.[0];
-    const edge: CanvasEdge = {
+    if (!firstOn) continue;
+    edges.push({
       id: edgeId(j),
-      source: firstOn?.leftTable ?? query.table,
+      source: firstOn.leftTable ?? query.table,
       target: j.table,
-      sourceHandle: firstOn?.leftColumn ?? "",
-      targetHandle: firstOn?.rightColumn ?? "",
+      sourceHandle: firstOn.leftColumn,
+      targetHandle: firstOn.rightColumn,
       data: { joinType: j.type },
-    };
-    edges.push(edge);
+    });
   }
   return { nodes, edges };
 }
@@ -132,6 +143,35 @@ export function joinFromConnect(
     table: target.table,
     type,
     on: [{ leftTable, leftColumn: source.column, rightColumn: target.column }],
+  };
+}
+
+/** Disconnect a join edge (edge deleted on the canvas): the join's ON keys are cleared so the
+ *  table returns to the PENDING state — still on the canvas, marked "not joined", out of the
+ *  emitted SQL until re-wired. */
+export function disconnectJoin(query: SqlBuilderQuery, table: string): SqlBuilderQuery {
+  return {
+    ...query,
+    joins: (query.joins ?? []).map((j) => (j.table === table ? { ...j, on: [] } : j)),
+  };
+}
+
+/** Remove a joined table from the query: drops its join AND every column tick, filter, sort, and
+ *  group-by entry referencing it (they would emit invalid SQL against a table no longer joined).
+ *  The FROM table is never removed this way — the caller guards. */
+export function removeTable(query: SqlBuilderQuery, table: string): SqlBuilderQuery {
+  const orderBys = Array.isArray(query.orderBy)
+    ? query.orderBy.filter((o) => o.table !== table)
+    : query.orderBy?.table === table
+      ? []
+      : query.orderBy;
+  return {
+    ...query,
+    joins: (query.joins ?? []).filter((j) => j.table !== table),
+    columns: query.columns.filter((c) => c.table !== table),
+    filters: query.filters.filter((f) => f.table !== table),
+    groupBy: (query.groupBy ?? []).filter((g) => typeof g === "string" || g.table !== table),
+    orderBy: orderBys,
   };
 }
 

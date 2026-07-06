@@ -11,6 +11,7 @@ mod agent_worker;
 mod authorize;
 mod chart;
 mod chart_pref;
+mod context_items;
 mod chart_pref_tool;
 mod delete;
 mod edit;

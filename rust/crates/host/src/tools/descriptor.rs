@@ -25,6 +25,9 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // (or the palette) can form the call — without it the agent probes `information_schema`
         // SQL through federation.query and hits the steering rejection instead of the answer.
         crate::federation::schema_descriptor(),
+        // The AI-context snapshot (datasource-samples scope): one call returning tables + columns
+        // + foreign keys + LIMIT-n rows, so a model can write correct SQL without probing.
+        crate::federation::sample_descriptor(),
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),

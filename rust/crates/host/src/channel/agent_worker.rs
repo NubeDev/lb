@@ -119,6 +119,7 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
         persona,
         job,
         context,
+        context_items,
     })) = parse_payload(&item.body)
     else {
         return;
@@ -133,6 +134,9 @@ pub async fn run_if_agent(node: &Node, poster: &Principal, ws: &str, cid: &str, 
         // The client-reported page context rides on the durable enqueue record so the reactor fences it
         // into the run's goal exactly as an inline drive would (agent-dock scope). Absent → unchanged.
         context,
+        // The gathered-context refs (agent-context-basket scope) — resolved + fenced at drive time,
+        // against the durable store, so the run sees exactly what durably lives in this channel.
+        context_items,
         // The poster's identity + caps — the reactor reconstructs the poster principal from these
         // (`Principal::routed`) so the run acts with the ASKER's authority, bounded by the asker's
         // grants (`agent ∩ poster`). Co-trust reconstruction, in-process + ws-scoped, exactly as the
@@ -187,6 +191,7 @@ pub async fn drive_queued_run(
         persona,
         run_job,
         context,
+        context_items,
         poster_sub,
         poster_caps,
         ts,
@@ -209,11 +214,36 @@ pub async fn drive_queued_run(
         crate::agent::resolve_effective_runtime_id(node, &node.runtimes(), ws, runtime.as_deref())
             .await;
 
+    // Resolve the gathered-context refs (agent-context-basket scope) into the goal the RUN sees —
+    // fenced, capped, workspace+channel-scoped, and a `rich_result` ref DEREFERENCED through its
+    // source tool under the poster (so an attached snapshot card fences its DATA, not its render
+    // envelope). The ORIGINAL goal stays what the durable `agent_result`/`agent_error` echoes (the
+    // fence is prompt material, not channel history). An over-cap ref list is a fail-closed, honest
+    // `agent_error` (like an oversize page context).
+    let goal_for_run = match super::context_items::fence_items_into_goal(
+        node,
+        &poster,
+        ws,
+        cid,
+        goal,
+        context_items,
+    )
+    .await
+    {
+        Ok(g) => g,
+        Err(e) => {
+            let body = agent_error_body(goal, &format!("agent run failed: {e}"));
+            let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
+            finish_enqueue(node, ws, enqueue_id).await;
+            return;
+        }
+    };
+
     let outcome = drive_run(
         node,
         &poster,
         ws,
-        goal,
+        &goal_for_run,
         runtime.as_deref(),
         persona.as_deref(),
         context.as_ref(),

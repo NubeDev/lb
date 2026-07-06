@@ -2,20 +2,28 @@
 // `visual-query-builder/VisualEditor.tsx, rendered with our own primitives (no `@grafana/ui`).
 //
 // visual-canvas-builder slice: this is now a thin HOST that switches between two builder bodies by a
-// small "Canvas / Rows" toggle:
+// small "Canvas / Rules" toggle:
 //   - Canvas mode (default when `dialect === "standard"` AND `schema.tables.length > 0`): renders
 //     `<QueryCanvas>` + `<QuerySettingsPanel>` (React-Flow drag-and-connect joins, per-column popover,
 //     WHERE/HAVING side panel). Reads/writes `SqlBuilderQuery` only — the model is the source of truth.
-//   - Rows mode (the historical row-list, default for surreal or an empty schema): delegates to
-//     `<VisualRows>` — kept byte-identical for the surreal regression gateway test
+//   - Rules mode (the historical row-list, default for surreal or an empty schema): delegates to
+//     `<VisualRows>` whose Filter section is now `<FilterQueryBuilder>` (react-querybuilder, the
+//     react-querybuilder slice) — kept byte-identical for the surreal regression gateway test
 //     (`aria-label="sql preview"`).
 //
 // The dialect + schema props decide the default; the toggle lets the user override. Editing the typed
 // `SqlBuilderQuery` regenerates the SQL string (via `emitSql` for the editor's `dialect`) the parent
 // keeps in sync. Builder mode can ONLY generate a SELECT. The editor takes a `dialect: SqlDialect`
 // and never branches on a datasource name (rule 10).
+//
+// Height: the root is `flex min-h-0 flex-1 flex-col` — it fills its parent when the parent provides a
+// definite height (the QueryWorkbench editor split). Canvas mode carries `min-h-[420px] flex-1` so the
+// React-Flow surface grows with the available space (maximise the editor → the canvas grows). Rules
+// mode wraps `VisualRows` in `overflow-y-auto` so the form scrolls within the bounded height. When the
+// parent has no definite height (the panel-builder QueryTab), `flex-1` is a no-op and both modes take
+// their natural content height — no regression.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Schema } from "@/lib/schema";
@@ -38,17 +46,28 @@ interface Props {
   onLayoutChange?: (layout: unknown) => void;
 }
 
-/** The visual query builder host — Canvas or Rows body, switched by a small toggle. */
+/** The visual query builder host — Canvas or Rules body, switched by a small toggle. */
 export function VisualEditor({ schema, query, onChange, dialect, layout, onLayoutChange }: Props) {
-  // Default: Canvas when federation + schema has tables; Rows otherwise (surreal stays Rows by default).
+  // Default: Canvas when federation + schema has tables; Rules otherwise (surreal stays Rules by default).
   const canvasAvailable = dialect === "standard" && schema.tables.length > 0;
-  const [uiMode, setUiMode] = useState<"canvas" | "rows">(canvasAvailable ? "canvas" : "rows");
+  const [uiMode, setUiMode] = useState<"canvas" | "rules">(canvasAvailable ? "canvas" : "rules");
+  // The schema loads ASYNC: at mount `tables` is usually empty, so the initial default lands on
+  // Rules even for a canvas-capable source. Upgrade to Canvas when availability arrives — but only
+  // until the user picks a mode themselves (their choice always wins).
+  const userPicked = useRef(false);
+  useEffect(() => {
+    if (canvasAvailable && !userPicked.current) setUiMode("canvas");
+  }, [canvasAvailable]);
+  const pickMode = (m: "canvas" | "rules") => {
+    userPicked.current = true;
+    setUiMode(m);
+  };
 
   return (
-    <div className="grid gap-2" aria-label="sql visual builder">
-      <ModeToggle mode={uiMode} onChange={setUiMode} canvasAvailable={canvasAvailable} />
+    <div className="flex min-h-0 flex-1 flex-col gap-2" aria-label="sql visual builder">
+      <ModeToggle mode={uiMode} onChange={pickMode} canvasAvailable={canvasAvailable} />
       {uiMode === "canvas" && canvasAvailable ? (
-        <div className="flex h-[420px] min-h-0 overflow-hidden rounded-md border border-border">
+        <div className="flex min-h-[420px] flex-1 overflow-hidden rounded-md border border-border">
           <QueryCanvas
             schema={schema}
             query={query}
@@ -59,26 +78,28 @@ export function VisualEditor({ schema, query, onChange, dialect, layout, onLayou
           <QuerySettingsPanel schema={schema} query={query} onChange={onChange} dialect={dialect} />
         </div>
       ) : (
-        <VisualRows schema={schema} query={query} onChange={onChange} dialect={dialect} />
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <VisualRows schema={schema} query={query} onChange={onChange} dialect={dialect} />
+        </div>
       )}
     </div>
   );
 }
 
-/** The Canvas↔Rows toggle — hidden when the canvas isn't available (surreal / empty schema). */
+/** The Canvas↔Rules toggle — hidden when the canvas isn't available (surreal / empty schema). */
 function ModeToggle({
   mode,
   onChange,
   canvasAvailable,
 }: {
-  mode: "canvas" | "rows";
-  onChange: (m: "canvas" | "rows") => void;
+  mode: "canvas" | "rules";
+  onChange: (m: "canvas" | "rules") => void;
   canvasAvailable: boolean;
 }) {
   if (!canvasAvailable) return null;
   return (
     <div className="flex items-center gap-1">
-      {(["canvas", "rows"] as const).map((m) => (
+      {(["canvas", "rules"] as const).map((m) => (
         <Button
           key={m}
           type="button"
@@ -88,7 +109,7 @@ function ModeToggle({
           onClick={() => onChange(m)}
           className="h-6 px-2 text-[11px]"
         >
-          {m}
+          {m === "canvas" ? "Canvas" : "Rules"}
         </Button>
       ))}
     </div>

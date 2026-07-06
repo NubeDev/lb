@@ -50,6 +50,12 @@ pub struct ChannelAgentJob {
     /// deserializes as `None`, and absent → the drive is byte-identical to today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<Value>,
+    /// The **context item refs** (agent-context-basket scope) carried from the `kind:"agent"`
+    /// payload — ids in the request's own channel the reactor resolves + fences into the goal at
+    /// drive time (`context_items::fence_items_into_goal`). `#[serde(default)]` so an older enqueue
+    /// record deserializes as empty (byte-identical drive).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_items: Vec<String>,
     /// The poster's global identity — carried so the reactor reconstructs the poster principal
     /// (`Principal::routed`) and drives the run under the ASKER's authority (audit shows the asker).
     pub poster_sub: String,
@@ -95,6 +101,7 @@ mod tests {
             persona: None,
             run_job: "run-9".into(),
             context: Some(serde_json::json!({ "surface": "dashboards" })),
+            context_items: vec!["i1".into()],
             poster_sub: "user:ada".into(),
             poster_caps: vec!["mcp:agent.invoke:call".into()],
             ts: 42,
@@ -113,6 +120,7 @@ mod tests {
             persona: None,
             run_job: "run-2".into(),
             context: None,
+            context_items: Vec::new(),
             poster_sub: "user:ada".into(),
             poster_caps: vec![],
             ts: 1,
@@ -124,7 +132,7 @@ mod tests {
         );
         assert!(
             !payload.contains("context"),
-            "absent context dropped from wire (byte-identical to today)"
+            "absent context AND empty context_items dropped from wire (byte-identical to today)"
         );
         let back: ChannelAgentJob = serde_json::from_str(&payload).unwrap();
         assert_eq!(back.runtime, None);

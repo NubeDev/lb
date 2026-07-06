@@ -16,9 +16,23 @@ interface Props {
   installed?: ExtRow[];
   onEdit: (id: string, body: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  /** Optional gather-as-context seam (agent-context-basket scope) — threaded to each row; the dock
+   *  passes it, the channel view doesn't (absent → no affordance, unchanged). */
+  contextAction?: { has: (id: string) => boolean; toggle: (id: string) => void };
+  /** Optional query rerun/edit seam (query re-edit scope) — threaded to each row's QueryCard. */
+  queryActions?: import("./query/QueryCard").QueryActions;
 }
 
-export function MessageList({ items, author, ws, installed, onEdit, onDelete }: Props) {
+export function MessageList({
+  items,
+  author,
+  ws,
+  installed,
+  onEdit,
+  onDelete,
+  contextAction,
+  queryActions,
+}: Props) {
   // The run ids that already have a durable answer/error (the agent worker posts those under id
   // `a:<job>`). A pending `agent` request whose job is in here is superseded — AgentCard hides its
   // "running…" placeholder so a completed run never shows a stuck spinner.
@@ -47,6 +61,8 @@ export function MessageList({ items, author, ws, installed, onEdit, onDelete }: 
           onEdit={onEdit}
           onDelete={onDelete}
           settledJobs={settledJobs}
+          contextAction={contextAction}
+          queryActions={queryActions}
         />
       ))}
     </ul>

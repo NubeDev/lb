@@ -17,6 +17,7 @@
 
 mod info_schema;
 mod query;
+mod sample;
 mod source;
 mod validate;
 
@@ -85,6 +86,7 @@ async fn handle_call(req: &Request) -> Reply {
     match params.tool.as_str() {
         "federation.query" => federation_query(req.id, &input).await,
         "federation.schema" => federation_schema(req.id, &input).await,
+        "federation.sample" => federation_sample(req.id, &input).await,
         "datasource.test" => datasource_test(req.id, &input).await,
         other => Reply::err(req.id, format!("unknown tool: {other}")),
     }
@@ -135,6 +137,30 @@ async fn federation_schema(id: u64, input: &Value) -> Reply {
         }),
     };
     match result {
+        Ok(value) => Reply::ok(id, value.to_string()),
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.sample` — one AI-ready snapshot (datasource-samples scope): every table's columns +
+/// foreign keys + up to `limit` real rows, bounded and redacted in `sample::run_sample`. The DSN is
+/// mediated by the host, same as query.
+async fn federation_sample(id: u64, input: &Value) -> Reply {
+    let (kind, dsn) = match (str_of(input, "kind"), str_of(input, "dsn")) {
+        (Some(k), Some(d)) => (k, d),
+        _ => return Reply::err(id, "missing kind/dsn"),
+    };
+    let tables: Option<Vec<String>> = input.get("tables").and_then(|v| v.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|t| t.as_str().map(str::to_string))
+            .collect()
+    });
+    let limit = input
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(sample::DEFAULT_ROWS);
+    match sample::run_sample(kind, dsn, tables, limit).await {
         Ok(value) => Reply::ok(id, value.to_string()),
         Err(e) => Reply::err(id, e),
     }

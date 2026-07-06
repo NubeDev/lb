@@ -90,7 +90,7 @@ export function SqlQueryEditor({ value, onChange, dialect, schema }: Props) {
   }, [value.mode, dialect, formatRawSql]);
 
   return (
-    <div className="mt-2 grid gap-2" aria-label="sql query editor">
+    <div className="mt-2 flex min-h-0 flex-1 flex-col gap-2" aria-label="sql query editor">
       <SqlQueryHeader
         mode={value.mode}
         format={value.format}
@@ -100,26 +100,28 @@ export function SqlQueryEditor({ value, onChange, dialect, schema }: Props) {
         onFormat={formatRawSql}
       />
 
-      {value.mode === "builder" ? (
-        <VisualEditor
-          schema={schema}
-          dialect={dialect}
-          query={value.builder ?? emptyQuery()}
-          onChange={(builder) =>
-            // Builder is the source of truth — regenerate the raw SQL on every change.
-            onChange({ ...value, builder, rawSql: emitSql(dialect, builder) })
-          }
-          layout={value.builderLayout}
-          onLayoutChange={(builderLayout) => onChange({ ...value, builderLayout })}
-        />
-      ) : (
-        <RawEditor
-          rawSql={value.rawSql}
-          onChange={(rawSql) => onChange({ ...value, rawSql })}
-          schema={schema}
-          dialect={dialect}
-        />
-      )}
+      <div className="flex min-h-0 flex-1 flex-col">
+        {value.mode === "builder" ? (
+          <VisualEditor
+            schema={schema}
+            dialect={dialect}
+            query={value.builder ?? emptyQuery()}
+            onChange={(builder) =>
+              // Builder is the source of truth — regenerate the raw SQL on every change.
+              onChange({ ...value, builder, rawSql: emitSql(dialect, builder) })
+            }
+            layout={value.builderLayout}
+            onLayoutChange={(builderLayout) => onChange({ ...value, builderLayout })}
+          />
+        ) : (
+          <RawEditor
+            rawSql={value.rawSql}
+            onChange={(rawSql) => onChange({ ...value, rawSql })}
+            schema={schema}
+            dialect={dialect}
+          />
+        )}
+      </div>
     </div>
   );
 }

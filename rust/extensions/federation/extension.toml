@@ -43,5 +43,9 @@ description = "A real connectivity probe against a registered datasource (green/
 name        = "federation.schema"
 description = "Discover a source's tables, or one table's columns (the no-SQL browse path)."
 
+[[tools]]
+name        = "federation.sample"
+description = "One AI-ready snapshot of a source: tables, columns, foreign keys, and LIMIT-n sample rows."
+
 [visibility]
 class = "private"

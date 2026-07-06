@@ -9,7 +9,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  addEdge,
   applyEdgeChanges,
   applyNodeChanges,
   Background,
@@ -33,8 +32,10 @@ import type {
   SqlJoin,
 } from "@/lib/panel-kit/sql/query";
 import {
+  disconnectJoin,
   joinFromConnect,
   layoutFromNodes,
+  removeTable,
   toFlow,
   type CanvasNode,
 } from "./canvasModel";
@@ -64,30 +65,59 @@ function QueryCanvasInner({ schema, query, onChange, layout, onLayoutChange }: P
   const [nodes, setNodes] = useState<Node[]>(() => view.nodes as Node[]);
   const [edges, setEdges] = useState<Edge[]>(() => view.edges as Edge[]);
 
-  // Re-seed when the table set (or schema) changes — positions are restored from the layout blob.
-  // Re-seeding on every query change would fight an in-flight drag; the structure key isolates that.
+  // Re-seed NODES when the table set (or schema) changes — positions are restored from the layout
+  // blob. Re-seeding on every query change would fight an in-flight drag; the structure key
+  // isolates that. (Column arrival and pending-state changes flow through `paintedNodes` fresh
+  // every render — no reseed needed.)
   const structureKey = useMemo(
     () =>
       JSON.stringify({
         table: query.table,
-        joins: (query.joins ?? []).map((j) => `${j.table}:${j.type}`),
+        joins: (query.joins ?? []).map((j) => j.table),
         schemaTables: schema.tables.map((t) => t.name),
       }),
     [query.table, query.joins, schema],
   );
   useEffect(() => {
     setNodes(view.nodes as Node[]);
-    setEdges(view.edges as Edge[]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structureKey]);
 
+  // Re-seed EDGES whenever the model's join wiring changes (connect / disconnect / type cycle) —
+  // edges carry no drag state, so the model-derived set (with the canonical `e:<table>` ids the
+  // cycle handler parses) can always win.
+  const edgeKey = useMemo(() => JSON.stringify(view.edges), [view.edges]);
+  useEffect(() => {
+    setEdges(view.edges as Edge[]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [edgeKey]);
+
+  /** Node changes: a `remove` (keyboard delete) maps to the typed remove-table edit; everything
+   *  else (drag, select, dimensions) applies to local view state only. */
   const onNodesChange = useCallback(
-    (changes: NodeChange[]) => setNodes((ns) => applyNodeChanges(changes, ns)),
-    [],
+    (changes: NodeChange[]) => {
+      let next = query;
+      for (const c of changes) {
+        if (c.type === "remove" && c.id !== query.table) next = removeTable(next, c.id);
+      }
+      if (next !== query) onChange(next);
+      const rest = changes.filter((c) => c.type !== "remove" || c.id !== query.table);
+      setNodes((ns) => applyNodeChanges(rest, ns));
+    },
+    [query, onChange],
   );
+  /** Edge changes: a `remove` (keyboard delete on a selected edge) clears the join's ON keys —
+   *  the table stays on the canvas as a pending ("not joined") node, out of the emitted SQL. */
   const onEdgesChange = useCallback(
-    (changes: EdgeChange[]) => setEdges((es) => applyEdgeChanges(changes, es)),
-    [],
+    (changes: EdgeChange[]) => {
+      let next = query;
+      for (const c of changes) {
+        if (c.type === "remove" && c.id.startsWith("e:")) next = disconnectJoin(next, c.id.slice(2));
+      }
+      if (next !== query) onChange(next);
+      setEdges((es) => applyEdgeChanges(changes, es));
+    },
+    [query, onChange],
   );
 
   /** Drop a new join onto the query — the dragged connection maps to a typed `SqlJoin`. */
@@ -110,8 +140,9 @@ function QueryCanvasInner({ schema, query, onChange, layout, onLayoutChange }: P
       } else {
         nextJoins = [...(query.joins ?? []), newJoin];
       }
+      // The edge itself re-derives from the model (the edgeKey reseed) with its canonical
+      // `e:<table>` id — no local addEdge, or the cycle handler couldn't resolve the join.
       onChange({ ...query, joins: nextJoins });
-      setEdges((es) => addEdge({ ...c, type: "join", data: { joinType: newJoin.type } }, es));
     },
     [query, onChange],
   );
@@ -136,16 +167,11 @@ function QueryCanvasInner({ schema, query, onChange, layout, onLayoutChange }: P
     [query, onChange],
   );
 
-  /** Remove a table node — drops the matching join (and clears any columns/filters referencing it). */
+  /** Remove a table node — drops its join and every column/filter/sort/group-by referencing it. */
   const onDeleteNode = useCallback(
     (table: string) => {
       if (table === query.table) return; // the FROM table can't be removed from the canvas
-      onChange({
-        ...query,
-        joins: (query.joins ?? []).filter((j) => j.table !== table),
-        columns: query.columns.filter((c) => c.table !== table),
-        filters: query.filters.filter((f) => f.table !== table),
-      });
+      onChange(removeTable(query, table));
     },
     [query, onChange],
   );
@@ -224,6 +250,19 @@ function QueryCanvasInner({ schema, query, onChange, layout, onLayoutChange }: P
         </Button>
       </div>
       <div className="relative min-h-0 flex-1">
+        {/* Discoverability hints — the join gesture is invisible until you know it exists. */}
+        {nodes.length === 0 && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-xs text-muted">
+            Pick a table above to start the query.
+          </div>
+        )}
+        {nodes.length >= 2 && edges.length === 0 && (
+          <div className="pointer-events-none absolute inset-x-0 top-2 z-10 flex justify-center">
+            <span className="rounded-md border border-border bg-panel/90 px-2.5 py-1 text-[11px] text-muted shadow">
+              Drag from a column dot on one table to a column on another to create a join.
+            </span>
+          </div>
+        )}
         <ReactFlow
           nodes={paintedNodes}
           edges={paintedEdges}

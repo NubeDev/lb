@@ -16,12 +16,48 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-06): saved queries on the Datasources page.** `DatasourceDetail`'s SQL editor
+**Just shipped (2026-07-06): agent context basket — dock Tools mode + `context_items`.** The dock
+gained an **Ask | Tools** toggle that mounts the SHARED channel `CommandPalette` against the dock
+session (same catalog / JSON-Schema arg rail — zero duplication), and a **context basket**: a
+paperclip on every dock row gathers durable items (query results, rich responses, notes); the next
+ask carries their ids as the new additive `AgentPayload.context_items` (refs, not bodies), and the
+agent worker resolves + fences the bodies into the run's goal at drive time
+(`crates/host/src/channel/context_items.rs` — ws/channel-scoped store reads, 8-ref reject cap,
+8 KB/item truncation, untrusted-data fence; the sibling of the page-context fence). Rust lib 136
+green (incl. the mandatory ws-isolation + cross-channel fence tests); dock gateway suite 10 green
+incl. the end-to-end gather→ask→ref case. Scope
+[`agent-context-basket-scope.md`](scope/agent/agent-context-basket-scope.md), session
+[`agent-context-basket-session.md`](sessions/agent/agent-context-basket-session.md). **Next up:**
+the same gather seam on the channels surface; asset/PDF refs once ingest exposes item handles.
+
+**Also shipped (2026-07-06): `federation.sample` — one AI-ready snapshot of a datasource.** New MCP
+verb `federation.sample {source, tables?, limit?}` returns, in ONE bounded call, every table's
+columns, its **real foreign keys** (new best-effort `Source::foreign_keys` — SQLite
+`pragma_foreign_key_list`, Postgres `information_schema`; default `[]`), and up to `limit` (10,
+cap 50) sample rows — long cells truncated, `password`/`secret`/`token`-like columns redacted — the
+context a model needs to write correct SQL without N+1 `federation.schema` probes (which carry no
+FK metadata at all; the ERD infers joins by naming). Rides `federation.schema`'s exact pipeline +
+the same `mcp:federation.query:call` cap (gate alias in `tool_call.rs`); descriptor in the
+palette/agent catalog. e2e in `federation_sqlite_test.rs` (real-FK + 12-row + redaction fixture,
+cap-deny + ws-isolation). Scope
+[`datasource-samples-scope.md`](scope/datasources/datasource-samples-scope.md), session
+[`datasource-samples-session.md`](sessions/datasources/datasource-samples-session.md), skill
+[`datasources`](skills/datasources/SKILL.md). **Next up:** a "Copy AI context" button on
+`DatasourceDetail`; the ERD real-FK upgrade.
+
+**Also shipped (2026-07-06): saved queries on the Datasources page.** `DatasourceDetail`'s SQL editor
 header (beside Run) gained Save / Saved-queries dialogs riding the existing `query.*` verbs — no new
 verb/cap/table. `useDatasourceQueries.ts` filters the `query.list` roster client-side to
 `target === "datasource:<name>"` and saves `lang:"raw"` records; loading resolves the full record via
 `query.get`. Shipped truth: `public/datasources/datasources.md` §"Saved queries". The `querydef.*`
 chain sketched in the query-builder scopes is dead — those scopes now build on `query.*`.
+
+**Follow-up shipped (2026-07-06): the Open dialog gained copy + expand-to-view.** Each saved-query
+row in `SavedQueriesDialog` now has (a) a clipboard copy button and (b) a chevron that expands the
+row to render the SQL inline in the SAME read-only `SqlEditor` the workbench's Code mode uses (real
+syntax highlighting, not a flat `<pre>`). Both lazy-load via the shipped `query.get` (one fetch per
+row, cached for the dialog session). Session
+[`saved-queries-copy-expand-session.md`](sessions/datasources/saved-queries-copy-expand-session.md).
 
 **Also shipped (2026-07-06): the Query Builder is common across dialects — federation sources get the visual builder.**
 A LOCAL TABLE source (SurrealDB, `store.query`) gets the interactive Builder⇄Code editor; an external

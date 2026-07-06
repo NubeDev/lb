@@ -26,4 +26,9 @@ export interface ResolvedPrefs {
    *  (`lib/theme` parses it into a `ThemePreference`). Prefs stores/folds it whole; this layer never
    *  inspects its shape. `undefined` when neither the member nor the workspace set one. */
   ui_theme?: unknown;
+  /** The workspace **branding** blob (workspace-branding scope) — opaque to prefs; `lib/branding`
+   *  parses it into a `Branding`. Admin-owned (only `prefs.set_default` ever writes it); every
+   *  member of the workspace resolves the same brand. `undefined` when no workspace default is set
+   *  — the shell falls back to its compiled Lazybones default. */
+  ui_branding?: unknown;
 }

@@ -8,8 +8,10 @@ import { describe, expect, it } from "vitest";
 import type { SqlBuilderQuery, SqlJoin } from "@/lib/panel-kit/sql/query";
 import type { Schema } from "@/lib/schema";
 import {
+  disconnectJoin,
   joinFromConnect,
   layoutFromNodes,
+  removeTable,
   toFlow,
   type CanvasModel,
 } from "./canvasModel";
@@ -59,7 +61,7 @@ describe("canvasModel.toFlow", () => {
     expect(e.data.joinType).toBe("inner");
   });
 
-  it("emits a CROSS edge with empty handles when the join has no `on`", () => {
+  it("a CROSS join with no `on` has a node but no edge (nothing to anchor handles to) and is NOT pending", () => {
     const q: SqlBuilderQuery = {
       table: "site",
       joins: [{ table: "kind", type: "cross" }],
@@ -67,10 +69,25 @@ describe("canvasModel.toFlow", () => {
       filters: [],
     };
     const view = toFlow(q, schema);
-    expect(view.edges).toHaveLength(1);
-    expect(view.edges[0].sourceHandle).toBe("");
-    expect(view.edges[0].targetHandle).toBe("");
-    expect(view.edges[0].data.joinType).toBe("cross");
+    expect(view.nodes.map((n) => n.id)).toEqual(["site", "kind"]);
+    // An edge with empty handle ids never renders in React Flow — a keyless join gets no edge.
+    expect(view.edges).toHaveLength(0);
+    expect(view.nodes[1].data.pending).toBe(false); // cross legitimately has no ON — it IS in the SQL
+  });
+
+  it("a canvas-added table (non-cross join, empty `on`) is a PENDING node with no edge", () => {
+    const q: SqlBuilderQuery = {
+      table: "site",
+      joins: [{ table: "point_reading", type: "inner", on: [] }],
+      columns: [],
+      filters: [],
+    };
+    const view = toFlow(q, schema);
+    expect(view.nodes.map((n) => n.id)).toEqual(["site", "point_reading"]);
+    expect(view.nodes[0].data.pending).toBe(false); // the FROM table is never pending
+    expect(view.nodes[1].data.pending).toBe(true);
+    expect(view.nodes[1].data.columns.map((c) => c.name)).toEqual(["site_id", "value"]);
+    expect(view.edges).toHaveLength(0);
   });
 
   it("returns no nodes when the query has no FROM table", () => {
@@ -182,6 +199,54 @@ describe("canvasModel round-trip", () => {
     expect((q1 as unknown as { position?: unknown }).position).toBeUndefined();
     expect(JSON.stringify(q1)).not.toContain('"position"');
     expect(JSON.stringify(q1)).not.toContain('"x"');
+  });
+});
+
+describe("canvasModel typed edits (disconnect / remove-table)", () => {
+  const joined: SqlBuilderQuery = {
+    table: "site",
+    joins: [{ table: "point_reading", type: "left", on: [{ leftColumn: "id", rightColumn: "site_id" }] }],
+    columns: [
+      { name: "name", table: "site" },
+      { name: "value", table: "point_reading", aggregation: "avg" },
+    ],
+    filters: [
+      { column: "name", table: "site", operator: "=", value: "hq" },
+      { column: "value", table: "point_reading", operator: ">", value: 1 },
+    ],
+    groupBy: ["name", { table: "point_reading", column: "value" }],
+    orderBy: [
+      { column: "name", table: "site", direction: "asc" },
+      { column: "value", table: "point_reading", direction: "desc" },
+    ],
+  };
+
+  it("disconnectJoin clears the join's ON keys (table becomes pending, stays on canvas)", () => {
+    const q = disconnectJoin(joined, "point_reading");
+    expect(q.joins).toEqual([{ table: "point_reading", type: "left", on: [] }]);
+    const view = toFlow(q, schema);
+    expect(view.nodes.map((n) => n.id)).toEqual(["site", "point_reading"]);
+    expect(view.nodes[1].data.pending).toBe(true);
+    expect(view.edges).toHaveLength(0);
+    // Columns/filters are kept — re-wiring the join restores them into the SQL.
+    expect(q.columns).toHaveLength(2);
+  });
+
+  it("removeTable drops the join AND every column/filter/sort/group-by referencing it", () => {
+    const q = removeTable(joined, "point_reading");
+    expect(q.joins).toEqual([]);
+    expect(q.columns).toEqual([{ name: "name", table: "site" }]);
+    expect(q.filters).toEqual([{ column: "name", table: "site", operator: "=", value: "hq" }]);
+    expect(q.groupBy).toEqual(["name"]);
+    expect(q.orderBy).toEqual([{ column: "name", table: "site", direction: "asc" }]);
+  });
+
+  it("removeTable handles the legacy single-object orderBy shape", () => {
+    const q = removeTable(
+      { ...joined, orderBy: { column: "value", table: "point_reading", direction: "desc" } },
+      "point_reading",
+    );
+    expect(q.orderBy).toEqual([]);
   });
 });
 

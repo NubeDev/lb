@@ -47,8 +47,12 @@ pub async fn tools_catalog(
 
     // Host-native verbs (qualified names, declared in code). Each is gated by the same authorize
     // call its dispatch runs — a host verb the caller lacks `mcp:<verb>:call` for is dropped.
+    // Gated through `gate_tool_for` (the dispatcher's cap-alias mapping): a verb that rides an
+    // existing grant (`federation.schema`/`federation.sample` → `federation.query`, …) must be
+    // VISIBLE to a caller holding that grant — the cardinal rule cuts both ways (never offer a
+    // tool that then denies, never hide one that would pass).
     for mut d in host_descriptors() {
-        if authorize_tool(principal, ws, &d.name).is_ok() {
+        if authorize_tool(principal, ws, crate::tool_call::gate_tool_for(&d.name)).is_ok() {
             if d.title.is_empty() {
                 d.title = d.name.clone();
             }
@@ -73,7 +77,7 @@ pub async fn tools_catalog(
         if !crate::tool_call::is_host_native(&info.tool) {
             continue;
         }
-        if authorize_tool(principal, ws, &info.tool).is_ok() {
+        if authorize_tool(principal, ws, crate::tool_call::gate_tool_for(&info.tool)).is_ok() {
             tools.push(ToolDescriptor {
                 name: info.tool,
                 title: info.description,

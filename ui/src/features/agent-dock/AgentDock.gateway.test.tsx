@@ -207,6 +207,48 @@ describe("AgentDock (real gateway)", () => {
     });
   });
 
+  // agent-context-basket: gather an item via its paperclip toggle, then ask — the posted `agent`
+  // payload carries the ref (`context_items`) and the basket clears (consumed). Refs, not bodies: the
+  // durable request stores only the id; the worker resolves + fences server-side (proven in Rust).
+  it("basket refs ride the next ask's payload and the basket clears after send", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    renderDock(ws, "user:ada");
+    await screen.findByLabelText("ask the agent");
+
+    // TOOLS MODE mounts the shared channel CommandPalette against the dock session — seed a durable
+    // note through its chat path (no run, so the composer never goes busy in SSE-less jsdom).
+    await user.click(screen.getByLabelText("Tools mode"));
+    await user.type(screen.getByLabelText("message"), "sales dipped 12% in June");
+    await user.click(screen.getByLabelText("send"));
+    await screen.findByText("sales dipped 12% in June");
+
+    // Gather it: the row's paperclip toggle adds it to the basket (the chip row appears).
+    await user.click((await screen.findAllByLabelText("Add to context"))[0]);
+    expect(await screen.findByLabelText("context basket")).toBeInTheDocument();
+
+    // Back to ASK mode — the next ask carries the ref.
+    await user.click(screen.getByLabelText("Ask mode"));
+    await user.type(screen.getByLabelText("ask the agent"), "why the dip?");
+    await user.click(screen.getByLabelText("send"));
+    await screen.findByText("why the dip?");
+
+    const [dockCid] = await listDockChannels(ws, "user:ada");
+    await waitFor(async () => {
+      const items = await history(ws, dockCid);
+      const ask = items.find((it) => it.body.includes("why the dip?"));
+      expect(ask, "the second agent request landed").toBeTruthy();
+      const payload = JSON.parse(ask!.body);
+      expect(payload.kind).toBe("agent");
+      const seeded = items.find((it) => it.body.includes("sales dipped"));
+      expect(payload.context_items).toEqual([seeded!.id]);
+    });
+
+    // Consumed: the chip row is gone after the send.
+    expect(screen.queryByLabelText("context basket")).toBeNull();
+  });
+
   it("MANDATORY capability-deny: no bus:chan/*:pub → the post 403s and the dock shows an error", async () => {
     const user = userEvent.setup();
     const ws = nextWs();

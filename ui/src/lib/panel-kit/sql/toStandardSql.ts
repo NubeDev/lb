@@ -20,6 +20,7 @@
 //   - LIMIT is the ANSI `LIMIT n` (OFFSET deferred — the builder has no offset row).
 
 import {
+  isPendingJoin,
   normalizeOrderBy,
   type SqlAggregation,
   type SqlBuilderQuery,
@@ -84,14 +85,14 @@ function renderColumn(c: SqlColumn, joined: boolean, fromTable: string): string 
   return `${expr} AS ${alias}`;
 }
 
-/** Render one ANSI JOIN clause. `cross` (or a join with no `on`) emits `CROSS JOIN "t"`; otherwise
+/** Render one ANSI JOIN clause. `cross` emits `CROSS JOIN "t"` (no ON clause); otherwise
  *  `<TYPE> JOIN "table" ON <keys joined by AND>`. `leftTable` defaults to the FROM table. */
 function renderJoin(j: SqlJoin, fromTable: string): string {
   const type = j.type.toUpperCase();
-  if (j.type === "cross" || !j.on || j.on.length === 0) {
+  if (j.type === "cross") {
     return `CROSS JOIN ${ident(j.table)}`;
   }
-  const ons = j.on
+  const ons = (j.on ?? [])
     .map((k) => {
       const lt = k.leftTable ?? fromTable;
       return `${qualify(lt, k.leftColumn)} = ${qualify(j.table, k.rightColumn)}`;
@@ -159,31 +160,38 @@ function renderOrderBy(o: SqlOrderBy, joined: boolean, fromTable: string): strin
 export function toStandardSql(query: SqlBuilderQuery): string {
   if (!query.table.trim()) return "";
 
-  const joined = !!query.joins && query.joins.length > 0;
   const fromTable = query.table;
+  // Pending joins (a canvas table not yet wired) never emit — nor does anything referencing their
+  // tables: a column/filter/sort on an unjoined table would be invalid SQL.
+  const emittableJoins = (query.joins ?? []).filter((j) => !isPendingJoin(j));
+  const pendingTables = new Set(
+    (query.joins ?? []).filter(isPendingJoin).map((j) => j.table),
+  );
+  const joined = emittableJoins.length > 0;
+  const notPending = (table?: string) => !table || !pendingTables.has(table);
 
+  const selectable = query.columns.filter((c) => notPending(c.table));
   const cols =
-    query.columns.length > 0
-      ? stableSortByOrder(query.columns).map((c) => renderColumn(c, joined, fromTable))
+    selectable.length > 0
+      ? stableSortByOrder(selectable).map((c) => renderColumn(c, joined, fromTable))
       : ["*"];
   let sql = `SELECT ${cols.join(", ")} FROM ${ident(fromTable)}`;
 
-  if (joined) {
-    for (const j of query.joins!) sql += ` ${renderJoin(j, fromTable)}`;
-  }
+  for (const j of emittableJoins) sql += ` ${renderJoin(j, fromTable)}`;
 
-  const whereClause = renderFilterClause(query.filters, joined, fromTable, false);
+  const filters = query.filters.filter((f) => notPending(f.table));
+  const whereClause = renderFilterClause(filters, joined, fromTable, false);
   if (whereClause) sql += ` WHERE ${whereClause}`;
 
-  const groupBys = query.groupBy ?? [];
+  const groupBys = (query.groupBy ?? []).filter((g) => typeof g === "string" || notPending(g.table));
   if (groupBys.length > 0) {
     sql += ` GROUP BY ${groupBys.map((g) => renderGroupByEntry(g, joined, fromTable)).join(", ")}`;
   }
 
-  const havingClause = renderFilterClause(query.filters, joined, fromTable, true);
+  const havingClause = renderFilterClause(filters, joined, fromTable, true);
   if (havingClause) sql += ` HAVING ${havingClause}`;
 
-  const orderBys = normalizeOrderBy(query.orderBy);
+  const orderBys = normalizeOrderBy(query.orderBy)?.filter((o) => notPending(o.table));
   if (orderBys && orderBys.length > 0) {
     sql += ` ORDER BY ${orderBys.map((o) => renderOrderBy(o, joined, fromTable)).join(", ")}`;
   }

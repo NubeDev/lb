@@ -48,6 +48,12 @@ arrow-json = "58"
 # deps live ONLY in this extension). Optional → off by default (sqlite path links no TLS).
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 
+# Direct catalog reads the DataFusion provider path cannot express (`PRAGMA foreign_key_list` for
+# `federation.sample`'s relationships). Same version/features as the host's dev-dep so the one
+# `libsqlite3-sys` (links = sqlite3) in the workspace graph stays unified with the bundled engine
+# `datafusion-table-providers/sqlite-bundled` already links.
+rusqlite = { version = "0.37", features = ["bundled"] }
+
 # Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async engine (rt-multi-thread).
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std"] }
 

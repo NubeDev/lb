@@ -35,6 +35,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   node-clamped), run progress as ws-scoped bus motion + completion via the outbox (cross-node
   `agent.watch`), and the signed token on routed edge→hub invokes (hub verifies, never trusts).
   Fallback chains / the served OpenAI face / the curated tool menu stay deferred to their owning topics.
+  `agent-context-basket-scope.md` (**shipped**) gives the dock an **Ask | Tools** toggle mounting the
+  SHARED channel `CommandPalette` (no second palette), and a **context basket**: gather durable
+  channel items (a query result, a rich response, a note) via a per-row paperclip and the next ask
+  carries their ids (`AgentPayload.context_items` — refs, not bodies); the worker resolves + fences
+  them into the run's goal ws/channel-scoped with hard caps (`channel/context_items.rs`, the sibling
+  of the page-context fence).
 - `agent-personas/` — **user-selectable agent focus**: a persona = `{granted_tools,
   grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
   active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the
@@ -145,6 +151,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   first-class (kind select + path-DSN semantics in the Datasources UI) and emits the demo building
   dataset into a SQLite file (`seed.py --sqlite`, lite profile + `make seed-demo-sqlite`) — the
   Docker-free demo source the Data Studio 10x demo toggle points at.
+  **`datasource-samples-scope.md`** adds `federation.sample {source, tables?, limit?}` — one bounded,
+  AI-prompt-ready snapshot of a source (tables + columns + real foreign keys + `LIMIT 10` rows per
+  table) under the existing `federation.query` cap, so an agent writes correct SQL in one round trip
+  instead of N+1 `federation.schema` calls with no relationship metadata.
   Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
@@ -196,6 +206,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
   regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
   a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence).
+- `desktop/` — the Tauri v2 desktop shell as a **shipped executable**. `desktop-packaging-scope.md`
+  builds the existing `lazybones-shell` (`ui/src-tauri` — node in-process + window, the `workstation`
+  persona) into **plain binaries** (no AppImage/installer) for Linux x86-64 (`tauri build --no-bundle`
+  + `--features desktop`; dynamically links webkit2gtk-4.1) and Windows x86-64 (WebView2 is
+  OS-provided, exe is standalone), via a GitHub Actions matrix + a real-binary boot smoke. Zero
+  product code — toolchain, build wiring, proof. The Tauri command-layer verb gap stays a separate ask.
+  `desktop-build-container-scope.md` makes that slice's "real dev box or CI" line **reproducible**: one
+  Docker image (`desktop/docker/`) with the webkit2gtk-4.1 toolchain + Rust + pnpm that produces the
+  bare ELF from a clean checkout — host-pollution-free, same image dev and CI use, build-only (the
+  shipped binary is a windowed app, not a container workload). Linux-x86-64 only; darwin/windows stay
+  on their native runners (rejected in the parent scope).
 - `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
   earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
   over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed

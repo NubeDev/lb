@@ -140,6 +140,48 @@ describe("toStandardSql", () => {
     expect(toStandardSql(base("cross"))).toBe('SELECT * FROM "a" CROSS JOIN "b"');
   });
 
+  it("a PENDING join (non-cross, empty on) never emits — nor do columns/filters/sorts/group-bys on its table", () => {
+    // The canvas "Add table" drops `{type:"inner", on:[]}` — until wired column-to-column the
+    // table has no join path and MUST stay out of the SQL (it must not degrade to CROSS JOIN).
+    const q: SqlBuilderQuery = {
+      table: "site",
+      joins: [{ table: "site_tag", type: "inner", on: [] }],
+      columns: [{ name: "name", table: "site" }, { name: "tag", table: "site_tag" }],
+      filters: [
+        { column: "name", table: "site", operator: "=", value: "hq" },
+        { column: "tag", table: "site_tag", operator: "=", value: "x" },
+      ],
+      groupBy: [{ table: "site_tag", column: "tag" }],
+      orderBy: [{ column: "tag", table: "site_tag", direction: "asc" }],
+    };
+    expect(toStandardSql(q)).toBe(`SELECT "name" FROM "site" WHERE "name" = 'hq'`);
+  });
+
+  it("a pending join alongside a wired one drops only the pending table", () => {
+    const q: SqlBuilderQuery = {
+      table: "site",
+      joins: [
+        { table: "point_reading", type: "inner", on: [{ leftColumn: "id", rightColumn: "site_id" }] },
+        { table: "site_tag", type: "inner", on: [] },
+      ],
+      columns: [{ name: "value", table: "point_reading" }, { name: "tag", table: "site_tag" }],
+      filters: [],
+    };
+    expect(toStandardSql(q)).toBe(
+      'SELECT "point_reading"."value" FROM "site" INNER JOIN "point_reading" ON "site"."id" = "point_reading"."site_id"',
+    );
+  });
+
+  it("all columns pending ⇒ SELECT * (never an empty SELECT list)", () => {
+    const q: SqlBuilderQuery = {
+      table: "site",
+      joins: [{ table: "site_tag", type: "inner", on: [] }],
+      columns: [{ name: "tag", table: "site_tag" }],
+      filters: [],
+    };
+    expect(toStandardSql(q)).toBe('SELECT * FROM "site"');
+  });
+
   it("renders a composite (multi-key) ON joined by AND", () => {
     const q: SqlBuilderQuery = {
       table: "a",

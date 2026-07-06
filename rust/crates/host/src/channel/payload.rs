@@ -108,6 +108,13 @@ pub struct AgentPayload {
     /// is rejected by the fence and surfaces as an `agent_error`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<Value>,
+    /// Optional **context item refs** (agent-context-basket scope) — ids of items in THIS channel the
+    /// user gathered as context (a `query_result`, a `rich_result`, a note). Refs only: the worker
+    /// resolves the bodies server-side (`context_items::fence_items_into_goal`) and fences them into
+    /// the run's goal as untrusted data. `#[serde(default)]` + skipped-when-empty, so a request
+    /// without them is byte-identical to today. Over 8 refs is rejected (an `agent_error`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context_items: Vec<String>,
 }
 
 /// `kind: "agent_result"` — the agent worker's durable final answer.
@@ -399,6 +406,29 @@ mod tests {
         match parse_payload(body).expect("parsed") {
             ItemPayload::Agent(a) => {
                 assert_eq!(a.runtime.as_deref(), Some("open-interpreter-default"));
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    // agent-context-basket: refs ride the payload; an empty list is dropped from the wire (the
+    // pre-basket body shape is byte-identical) and an older body without the field parses as empty.
+    #[test]
+    fn agent_context_items_round_trip_and_absent_stays_empty() {
+        let body = r#"{"kind":"agent","goal":"g","job":"run-7","context_items":["i1","i2"]}"#;
+        match parse_payload(body).expect("parsed") {
+            ItemPayload::Agent(a) => assert_eq!(a.context_items, vec!["i1", "i2"]),
+            _ => panic!("wrong variant"),
+        }
+        let old = r#"{"kind":"agent","goal":"g","job":"run-8"}"#;
+        match parse_payload(old).expect("parsed") {
+            ItemPayload::Agent(a) => {
+                assert!(a.context_items.is_empty());
+                let wire = encode_payload(&ItemPayload::Agent(a));
+                assert!(
+                    !wire.contains("context_items"),
+                    "empty refs dropped: {wire}"
+                );
             }
             _ => panic!("wrong variant"),
         }

@@ -17,6 +17,7 @@ import {
   SidebarRail,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { useBranding } from "@/lib/branding";
 import { useTheme } from "@/lib/theme";
 
 import { SURFACE_DEF, SURFACES } from "./surfaceDefs";
@@ -129,9 +130,22 @@ const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
   },
 ];
 
-/** The brand mark — a two-hue (accent → secondary accent) tile, the same signature gradient the page
- *  headers carry. `--accent-foreground` keeps the glyph legible on the accent in every preset/mode. */
-function BrandMark() {
+/** The brand mark — the workspace's identity in the rail header. Renders the **logo** image when
+ *  the admin set one, else the **icon** image, else the text `siteAbbr` tile (the historical "lb").
+ *  Same gradient tile as the compiled default so the fallback chain looks coherent at every step.
+ *  `--accent-foreground` keeps the glyph legible on the accent in every preset/mode. */
+function BrandMark({ siteAbbr, logoDataUri, iconDataUri }: { siteAbbr: string; logoDataUri?: string; iconDataUri?: string }) {
+  // Prefer the logo image (a full mark); fall back to the icon image; fall back to the text tile.
+  if (logoDataUri || iconDataUri) {
+    return (
+      <img
+        src={logoDataUri ?? iconDataUri}
+        alt=""
+        aria-hidden="true"
+        className="h-8 w-8 shrink-0 rounded-lg object-contain"
+      />
+    );
+  }
   return (
     <div
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold shadow-sm"
@@ -140,7 +154,7 @@ function BrandMark() {
         color: "hsl(var(--accent-foreground))",
       }}
     >
-      lb
+      {siteAbbr}
     </div>
   );
 }
@@ -168,6 +182,10 @@ export function NavRail({
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
   const { theme } = useTheme();
   const { variant, collapsible, side } = theme.layout;
+  // The workspace brand (workspace-branding scope). `brand` is always set (the provider seeds the
+  // compiled Lazybones default before the first prefs resolve lands). The admin sets it in Settings
+  // → Branding; every member of the workspace resolves the same brand.
+  const { brand } = useBranding();
   // Per-icon color overrides (Settings → Theme → Icon colors). Applied as inline `color` so it wins
   // over the button's text-* classes without fighting specificity, and inherits into the lucide
   // `<svg>` (which uses `currentColor`). Surfaces not in the map render in the default fg.
@@ -270,15 +288,15 @@ export function NavRail({
     <Sidebar collapsible={collapsible} variant={variant} side={side}>
       <SidebarHeader>
         <div className="hidden h-8 w-full items-center justify-center group-data-[collapsible=icon]:flex">
-          <BrandMark />
+          <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
         </div>
         <SidebarMenu className="group-data-[collapsible=icon]:hidden">
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip="Lazybones" aria-label="Lazybones">
-              <BrandMark />
+            <SidebarMenuButton size="lg" tooltip={brand.siteName} aria-label={brand.siteName}>
+              <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold tracking-tight">Lazybones</span>
-                <span className="truncate text-xs text-muted">workspace ops</span>
+                <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
+                {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>

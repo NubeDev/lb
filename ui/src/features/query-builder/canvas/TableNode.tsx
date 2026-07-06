@@ -62,10 +62,23 @@ export const TableNode = memo(function TableNode({ data }: NodeProps<TableFlowNo
   const d = data;
 
   return (
-    <div className="min-w-[200px] overflow-hidden rounded-md border border-border bg-panel shadow-lg">
+    <div
+      className={cn(
+        "min-w-[200px] overflow-hidden rounded-md border bg-panel shadow-lg",
+        d.pending ? "border-dashed border-warning/60" : "border-border",
+      )}
+    >
       <div className="relative flex items-center gap-1.5 border-b border-border bg-bg px-3 py-2 text-xs font-semibold text-fg">
-        <span className="h-2 w-2 rounded-full bg-accent" />
+        <span className={cn("h-2 w-2 rounded-full", d.pending ? "bg-warning" : "bg-accent")} />
         {d.table}
+        {d.pending && (
+          <span
+            className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[9px] font-medium text-warning"
+            title="Drag a column dot to a column on another table to join it into the query"
+          >
+            not joined
+          </span>
+        )}
         {d.onDelete && (
           <Button
             type="button"
@@ -81,6 +94,11 @@ export const TableNode = memo(function TableNode({ data }: NodeProps<TableFlowNo
         )}
       </div>
       <div className="flex max-h-[300px] flex-col gap-0.5 overflow-y-auto p-1.5">
+        {d.columns.length === 0 && (
+          <div className="px-2 py-1.5 text-[11px] italic text-muted" aria-label={`columns loading ${d.table}`}>
+            loading columns…
+          </div>
+        )}
         {d.columns.map((col) => {
           const st = d.columnStates[col.name] ?? { selected: false };
           const isExpanded = expandedColumn === col.name;
@@ -129,17 +147,19 @@ export const TableNode = memo(function TableNode({ data }: NodeProps<TableFlowNo
                 </Button>
                 {d.isJoinable && (
                   <>
+                    {/* Always faintly visible (the join gesture must be discoverable), full on
+                        row hover. Opacity only — the 10px hit target is always live. */}
                     <Handle
                       type="source"
                       position={Position.Right}
                       id={col.name}
-                      className="!right-[-5px] !h-2.5 !w-2.5 !border !border-border !bg-accent !opacity-0 transition-opacity group-hover:!opacity-80"
+                      className="!right-[-5px] !h-2.5 !w-2.5 !border !border-border !bg-accent !opacity-40 transition-opacity group-hover:!opacity-100"
                     />
                     <Handle
                       type="target"
                       position={Position.Left}
                       id={col.name}
-                      className="!left-[-5px] !h-2.5 !w-2.5 !border !border-border !bg-accent !opacity-0 transition-opacity group-hover:!opacity-80"
+                      className="!left-[-5px] !h-2.5 !w-2.5 !border !border-border !bg-accent !opacity-40 transition-opacity group-hover:!opacity-100"
                     />
                   </>
                 )}

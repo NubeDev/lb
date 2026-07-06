@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::{
     datasource_add, datasource_list, datasource_remove, datasource_test, federation_mirror,
-    federation_query, federation_schema,
+    federation_query, federation_sample, federation_schema,
 };
 use crate::boot::Node;
 
@@ -43,6 +43,29 @@ pub async fn call_federation_tool(
             // `table` is optional: absent → list tables, present → describe that table.
             let table = input.get("table").and_then(|v| v.as_str());
             let out = federation_schema(node, &launcher, principal, ws, source, table, ts).await?;
+            Ok(out)
+        }
+        "federation.sample" => {
+            let source = str_arg(input, "source")?;
+            // `tables` filters the snapshot to the named tables; `limit` is rows/table (clamped).
+            let tables: Option<Vec<String>> =
+                input.get("tables").and_then(|v| v.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(str::to_string))
+                        .collect()
+                });
+            let limit = input.get("limit").and_then(|v| v.as_u64());
+            let out = federation_sample(
+                node,
+                &launcher,
+                principal,
+                ws,
+                source,
+                tables.as_deref(),
+                limit,
+                ts,
+            )
+            .await?;
             Ok(out)
         }
         "federation.mirror" => {

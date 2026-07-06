@@ -65,6 +65,37 @@ async fn catalog_contains_federation_query_with_schema_for_an_authorized_princip
     assert!(required.iter().any(|v| v == "sql"));
 }
 
+// The cap-alias verbs (datasource-samples scope): `federation.schema`/`federation.sample` gate on
+// `mcp:federation.query:call` in the dispatcher (`gate_tool_for`), so the catalog must SHOW them to
+// a caller holding that one grant — the cardinal rule cuts both ways (never hide a tool a call
+// would pass). Before the shared alias the catalog demanded per-verb caps no role carries and hid
+// both from every caller, palette and agent menu alike.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn catalog_shows_alias_gated_federation_verbs_under_the_query_cap() {
+    let node = Node::boot().await.expect("node boots");
+    let ws = "acme";
+    let a = principal(ws, &["mcp:tools.catalog:call", "mcp:federation.query:call"]);
+
+    let cat = tools_catalog(&node, &a, ws)
+        .await
+        .expect("authorized catalog");
+    assert!(
+        has_tool(&cat, "federation.schema"),
+        "schema rides the query cap"
+    );
+    assert!(
+        has_tool(&cat, "federation.sample"),
+        "sample rides the query cap"
+    );
+
+    // And without the query cap both stay absent (the alias widens visibility only to callers the
+    // dispatch would actually allow).
+    let b = principal(ws, &["mcp:tools.catalog:call"]);
+    let cat_b = tools_catalog(&node, &b, ws).await.expect("catalog for B");
+    assert!(!has_tool(&cat_b, "federation.schema"));
+    assert!(!has_tool(&cat_b, "federation.sample"));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn catalog_omits_a_tool_the_principal_cannot_call_no_existence_leak() {
     let node = Node::boot().await.expect("node boots");

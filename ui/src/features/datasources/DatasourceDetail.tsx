@@ -12,13 +12,15 @@
 // validated host + sidecar). Trusted shell code only — never an extension. One responsibility, one
 // file (FILE-LAYOUT). shadcn-first per ui-standards-scope.
 
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
   Database,
   Eye,
   Loader2,
+  Network,
+  Table2,
 } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
@@ -32,6 +34,10 @@ import { useDatasourceQuery } from "./useDatasourceQuery";
 import { useDatasources } from "./useDatasources";
 import type { DatasourceSummary, ProbeResult } from "@/lib/datasources";
 
+// Code-split the schema ERD (and its `@xyflow/react` weight) so it only loads when Discovery → Diagram
+// is toggled on (mirror of data/DataGraph's lazy chunk).
+const SchemaErd = lazy(() => import("./erd/SchemaErd"));
+
 interface Props {
   ws: string;
   source: DatasourceSummary;
@@ -40,16 +46,21 @@ interface Props {
   onBack: () => void;
 }
 
-/** Discovery = the no-SQL browse (TableDiscovery + bounded preview); Query = the full workbench
- *  (Builder⇄Code editor + Run + results + saved queries). Default Discovery (the legacy no-SQL
- *  affordance). */
+/** Discovery = the no-SQL browse (TableDiscovery + bounded preview OR the schema ERD diagram);
+ *  Query = the full workbench (Builder⇄Code editor + Run + results + saved queries). Default Discovery
+ *  (the legacy no-SQL affordance). */
 type Mode = "discovery" | "query";
+
+/** The Discovery tab's two views: List (the table rail + bounded preview) vs Diagram (the schema ERD).
+ *  Default List (the legacy no-SQL affordance); Diagram is a lazy chunk. */
+type DiscoveryView = "list" | "diagram";
 
 const PREVIEW_LIMIT = 100;
 
 export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
   const q = useDatasourceQuery(source.name);
   const [mode, setMode] = useState<Mode>("discovery");
+  const [discoveryView, setDiscoveryView] = useState<DiscoveryView>("list");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
 
   // Discover the table list on first mount (and when the source changes).
@@ -94,6 +105,9 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
 
       <div className="flex items-center gap-2 border-b border-border bg-bg px-3 py-2">
         <ModeToggle mode={mode} onChange={setMode} />
+        {mode === "discovery" && (
+          <DiscoveryViewToggle view={discoveryView} onChange={setDiscoveryView} />
+        )}
         <Badge variant="secondary" className="font-mono text-[11px]">
           secret:{source.secretRef}
         </Badge>
@@ -121,23 +135,45 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {mode === "discovery" && (
-          <>
-            <TableDiscovery
-              tables={q.tables}
-              selectedTable={selectedTable}
-              columns={q.columns}
-              loading={q.loading}
-              onSelect={selectTable}
-              onPreview={preview}
-              onRefresh={() => void q.discoverTables()}
-            />
+          discoveryView === "diagram" ? (
             <div className="min-h-0 min-w-0 flex-1">
-              <QueryResults
-                result={q.result}
-                emptyHint="Pick a table and preview its rows, or switch to Query mode to author SQL."
-              />
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center bg-bg text-sm text-muted">
+                    <Loader2 size={14} className="mr-2 animate-spin" /> Loading diagram…
+                  </div>
+                }
+              >
+                {/* The schema ERD — tables as nodes, dashed edges for naming-convention-inferred
+                    relationships. Shares `selectedTable` with the rail: clicking a node selects it in
+                    the same Discovery state (so flipping back to List keeps the selection). */}
+                <SchemaErd
+                  source={source.name}
+                  tables={q.tables}
+                  selectedTable={selectedTable}
+                  onSelect={selectTable}
+                />
+              </Suspense>
             </div>
-          </>
+          ) : (
+            <>
+              <TableDiscovery
+                tables={q.tables}
+                selectedTable={selectedTable}
+                columns={q.columns}
+                loading={q.loading}
+                onSelect={selectTable}
+                onPreview={preview}
+                onRefresh={() => void q.discoverTables()}
+              />
+              <div className="min-h-0 min-w-0 flex-1">
+                <QueryResults
+                  result={q.result}
+                  emptyHint="Pick a table and preview its rows, or switch to Query mode to author SQL."
+                />
+              </div>
+            </>
+          )
         )}
 
         {mode === "query" && (
@@ -184,6 +220,45 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
         onClick={() => onChange("query")}
       >
         <Database size={13} /> Query
+      </Button>
+    </div>
+  );
+}
+
+/** The Discovery tab's List ⇄ Diagram toggle. Only shown while in Discovery mode (Query mode has its
+ *  own surface). Diagram lazy-loads the React Flow ERD; List is the legacy rail + bounded preview. */
+function DiscoveryViewToggle({
+  view,
+  onChange,
+}: {
+  view: DiscoveryView;
+  onChange: (v: DiscoveryView) => void;
+}) {
+  return (
+    <div
+      className="inline-flex items-center rounded-md border border-border bg-bg p-0.5"
+      role="tablist"
+      aria-label="discovery view"
+    >
+      <Button
+        role="tab"
+        aria-selected={view === "list"}
+        variant={view === "list" ? "default" : "ghost"}
+        size="sm"
+        className="h-7 gap-1.5 px-2.5 text-xs"
+        onClick={() => onChange("list")}
+      >
+        <Table2 size={13} /> List
+      </Button>
+      <Button
+        role="tab"
+        aria-selected={view === "diagram"}
+        variant={view === "diagram" ? "default" : "ghost"}
+        size="sm"
+        className="h-7 gap-1.5 px-2.5 text-xs"
+        onClick={() => onChange("diagram")}
+      >
+        <Network size={13} /> Diagram
       </Button>
     </div>
   );

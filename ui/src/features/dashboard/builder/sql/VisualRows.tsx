@@ -1,30 +1,31 @@
-// The historical row-list visual query builder body (widget-builder Slice C) — ported from Grafana's
+// The row-list visual query builder body (widget-builder Slice C) — ported from Grafana's
 // `visual-query-builder/VisualEditor.tsx`, rendered with our own primitives. The rows a non-SQL user
-// fills: Table → Column/Aggregation → Filter (where) → Group by → Order by → Limit, with a live SQL
-// preview. Extracted from `VisualEditor.tsx` (visual-canvas-builder slice) so that file stays a thin
-// host under the 400-line ceiling (FILE-LAYOUT §1). Kept byte-identical for the surreal regression
-// gateway test (`aria-label="sql preview"` / `"sql visual builder"` / `"sql table"`).
+// fills: Table → Column/Aggregation → Filter → Group by → Order by → Limit, with a live SQL preview.
+// Extracted from `VisualEditor.tsx` (visual-canvas-builder slice) so that file stays a thin host
+// under the 400-line ceiling (FILE-LAYOUT). Kept byte-identical for the surreal regression gateway
+// test (`aria-label="sql preview"` / `"sql visual builder"` / `"sql table"`).
+//
+// react-querybuilder slice: the Filter section is now `<FilterQueryBuilder>` (a pair of
+// `react-querybuilder` `<QueryBuilder>` instances — WHERE + HAVING — in `independentCombinators`
+// mode, projected 1:1 onto the flat `SqlFilter[]`). The rest of the chrome (Table / Columns /
+// Group by / Order by / Limit / preview) is unchanged — react-querybuilder owns ONLY the boolean
+// filter expression, never SELECT/JOIN/GROUP BY/ORDER BY/LIMIT.
 
 import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Schema } from "@/lib/schema";
-import type {
-  SqlAggregation,
-  SqlBuilderQuery,
-  SqlFilter,
-  SqlOperator,
-  SqlOrderBy,
-} from "@/lib/panel-kit/sql/query";
+import type { SqlAggregation, SqlBuilderQuery, SqlOrderBy } from "@/lib/panel-kit/sql/query";
 import { normalizeOrderBy } from "@/lib/panel-kit/sql/query";
 import { emitSql, type SqlDialect } from "@/lib/panel-kit/sql/dialect";
+import { FilterQueryBuilder } from "@/features/query-builder/rules";
+import { JoinRows } from "./JoinRows";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
 const AGGREGATIONS: (SqlAggregation | "")[] = ["", "count", "count_distinct", "sum", "avg", "min", "max"];
-const OPERATORS: SqlOperator[] = ["=", "!=", ">", ">=", "<", "<=", "LIKE", "IS NULL", "IS NOT NULL"];
 
 interface Props {
   schema: Schema;
@@ -33,22 +34,48 @@ interface Props {
   dialect: SqlDialect;
 }
 
-/** The historical row-list builder body — table/columns/filters/groupBy/orderBy/limit + preview. */
+/** A selectable column option: bare `column` when the query has no joins (back-compat), qualified
+ *  `table.column` once joins exist (the same convention `filterQueryBuilder.ts` uses). */
+interface FieldOption {
+  /** The option value — `column` or `table.column`. */
+  value: string;
+  /** The owning table, or undefined for the FROM table / no-joins case. */
+  table?: string;
+  column: string;
+}
+
+/** Every pickable column across the FROM table + each joined table. */
+function fieldOptions(schema: Schema, query: SqlBuilderQuery): FieldOption[] {
+  const joined = !!query.joins && query.joins.length > 0;
+  const tables = [query.table, ...(query.joins ?? []).map((j) => j.table)];
+  const out: FieldOption[] = [];
+  for (const t of tables) {
+    for (const c of schema.tables.find((x) => x.name === t)?.columns ?? []) {
+      out.push(
+        joined
+          ? { value: `${t}.${c.name}`, table: t === query.table ? undefined : t, column: c.name }
+          : { value: c.name, column: c.name },
+      );
+    }
+  }
+  return out;
+}
+
+/** The historical row-list builder body — table/joins/columns/filters/groupBy/orderBy/limit + preview. */
 export function VisualRows({ schema, query, onChange, dialect }: Props) {
   const tableNames = schema.tables.map((t) => t.name);
-  const columns = schema.tables.find((t) => t.name === query.table)?.columns.map((c) => c.name) ?? [];
+  const fields = fieldOptions(schema, query);
+  const hasJoins = !!query.joins && query.joins.length > 0;
+  const fieldValue = (o: { column: string; table?: string }) =>
+    hasJoins ? `${o.table ?? query.table}.${o.column}` : o.column;
+  const fieldByValue = (v: string) => fields.find((f) => f.value === v);
 
   const setTable = (table: string) =>
     // A new table invalidates column-bound clauses — reset them honestly rather than carry stale ones.
-    onChange({ ...query, table, columns: [], filters: [], groupBy: [], orderBy: undefined });
+    onChange({ ...query, table, joins: undefined, columns: [], filters: [], groupBy: [], orderBy: undefined });
 
   const addColumn = () =>
-    onChange({ ...query, columns: [...query.columns, { name: columns[0] ?? "*" }] });
-  const addFilter = () =>
-    onChange({
-      ...query,
-      filters: [...query.filters, { column: columns[0] ?? "", operator: "=", value: "" }],
-    });
+    onChange({ ...query, columns: [...query.columns, { name: fields[0]?.column ?? "*", table: fields[0]?.table }] });
 
   // The rows path treats orderBy as a single clause (its UI is single-column). Write the array shape
   // (the WRITE contract); read both shapes via `normalizeOrderBy`.
@@ -74,6 +101,13 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
         </select>
       </Row>
 
+      {/* Joins — standard dialect only (SurrealQL has no ANSI JOIN; same gate as the canvas). */}
+      {dialect === "standard" && query.table && (
+        <Row label="Joins">
+          <JoinRows schema={schema} query={query} onChange={onChange} />
+        </Row>
+      )}
+
       {/* Columns / aggregations */}
       <Row label="Columns">
         <div className="grid gap-1">
@@ -83,17 +117,21 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
               <select
                 aria-label={`sql column ${i}`}
                 className={FIELD}
-                value={col.name}
+                value={col.name === "*" ? "*" : fieldValue({ column: col.name, table: col.table })}
                 onChange={(e) => {
                   const next = [...query.columns];
-                  next[i] = { ...col, name: e.target.value };
+                  const f = fieldByValue(e.target.value);
+                  next[i] =
+                    e.target.value === "*" || !f
+                      ? { ...col, name: e.target.value, table: undefined }
+                      : { ...col, name: f.column, table: f.table };
                   onChange({ ...query, columns: next });
                 }}
               >
                 <option value="*">*</option>
-                {columns.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                {fields.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.value}
                   </option>
                 ))}
               </select>
@@ -127,27 +165,9 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
         </div>
       </Row>
 
-      {/* Filters (WHERE) */}
-      <Row label="Filter">
-        <div className="grid gap-1">
-          {query.filters.map((f, i) => (
-            <FilterRow
-              key={i}
-              filter={f}
-              columns={columns}
-              onChange={(nf) => {
-                const next = [...query.filters];
-                next[i] = nf;
-                onChange({ ...query, filters: next });
-              }}
-              onRemove={() =>
-                onChange({ ...query, filters: query.filters.filter((_, j) => j !== i) })
-              }
-            />
-          ))}
-          <AddButton label="add filter" onClick={addFilter} />
-        </div>
-      </Row>
+      {/* Filters (WHERE + HAVING) — react-querybuilder-backed. Projects 1:1 onto the flat
+          `SqlFilter[]`; edits flatten back through `fromRuleGroup` and `emitSql` renders the SQL. */}
+      <FilterQueryBuilder schema={schema} query={query} onChange={onChange} />
 
       {/* Group by — the multi-select carries only string entries (a `<select>` limitation). */}
       <Row label="Group by">
@@ -156,17 +176,23 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
           aria-label="sql group by"
           multiple
           className={`${FIELD} h-16`}
-          value={(query.groupBy ?? []).filter((g): g is string => typeof g === "string")}
+          value={(query.groupBy ?? []).map((g) =>
+            typeof g === "string" ? (hasJoins ? `${query.table}.${g}` : g) : fieldValue(g),
+          )}
           onChange={(e) =>
             onChange({
               ...query,
-              groupBy: Array.from(e.target.selectedOptions).map((o) => o.value),
+              groupBy: Array.from(e.target.selectedOptions).map((o) => {
+                const f = fieldByValue(o.value);
+                // Bare string = a FROM-table column (back-compat); object = a joined table's.
+                return f?.table ? { table: f.table, column: f.column } : f?.column ?? o.value;
+              }),
             })
           }
         >
-          {columns.map((c) => (
-            <option key={c} value={c}>
-              {c}
+          {fields.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.value}
             </option>
           ))}
         </select>
@@ -179,19 +205,20 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
           <select
             aria-label="sql order column"
             className={FIELD}
-            value={ob0?.column ?? ""}
+            value={ob0?.column ? fieldValue(ob0) : ""}
             onChange={(e) => {
               const direction = ob0?.direction ?? "asc";
-              const next: SqlOrderBy[] | undefined = e.target.value
-                ? [{ column: e.target.value, direction }]
+              const f = fieldByValue(e.target.value);
+              const next: SqlOrderBy[] | undefined = f
+                ? [{ column: f.column, ...(f.table ? { table: f.table } : {}), direction }]
                 : undefined;
               onChange({ ...query, orderBy: next });
             }}
           >
             <option value="">(none)</option>
-            {columns.map((c) => (
-              <option key={c} value={c}>
-                {c}
+            {fields.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.value}
               </option>
             ))}
           </select>
@@ -204,7 +231,7 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
             onChange={(e) => {
               if (!ob0?.column) return;
               const direction = e.target.value as "asc" | "desc";
-              onChange({ ...query, orderBy: [{ column: ob0.column, direction }] });
+              onChange({ ...query, orderBy: [{ ...ob0, direction }] });
             }}
           >
             <option value="asc">asc</option>
@@ -233,62 +260,6 @@ export function VisualRows({ schema, query, onChange, dialect }: Props) {
           {emitSql(dialect, query) || "— pick a table —"}
         </pre>
       </div>
-    </div>
-  );
-}
-
-/** One filter row — column, operator, value. Hides the value input for IS NULL / IS NOT NULL. */
-function FilterRow({
-  filter,
-  columns,
-  onChange,
-  onRemove,
-}: {
-  filter: SqlFilter;
-  columns: string[];
-  onChange: (f: SqlFilter) => void;
-  onRemove: () => void;
-}) {
-  const valueless = filter.operator === "IS NULL" || filter.operator === "IS NOT NULL";
-  return (
-    <div className="flex items-center gap-1">
-      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive */}
-      <select
-        aria-label="sql filter column"
-        className={FIELD}
-        value={filter.column}
-        onChange={(e) => onChange({ ...filter, column: e.target.value })}
-      >
-        {columns.map((c) => (
-          <option key={c} value={c}>
-            {c}
-          </option>
-        ))}
-      </select>
-      {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive */}
-      <select
-        aria-label="sql filter operator"
-        className={`${FIELD} w-20`}
-        value={filter.operator}
-        onChange={(e) => onChange({ ...filter, operator: e.target.value as SqlOperator })}
-      >
-        {OPERATORS.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
-      {!valueless && (
-        <Input
-          aria-label="sql filter value"
-          className={`${FIELD} w-28`}
-          value={String(filter.value ?? "")}
-          onChange={(e) => onChange({ ...filter, value: e.target.value })}
-        />
-      )}
-      <IconButton label="remove filter" onClick={onRemove}>
-        <X size={12} />
-      </IconButton>
     </div>
   );
 }

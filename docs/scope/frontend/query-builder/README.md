@@ -9,6 +9,7 @@ The 10x of the shipped visual SQL builder, taking the good parts of **Tabularis*
 | [`visual-canvas-builder-scope.md`](visual-canvas-builder-scope.md) | Slice 1 — extend `SqlBuilderQuery` with joins/HAVING/aliases/multi-sort/OR; a `@xyflow/react` canvas as a *view* over the typed model; extend both dialect emitters. No backend. |
 | [`sql-editor-10x-scope.md`](sql-editor-10x-scope.md) | Slice 2 — schema-aware completion via `@codemirror/lang-sql`, a ported dialect-aware statement splitter, and a `sql-formatter` Format button. Stay on CodeMirror. No backend. |
 | [`query-workbench-view-scope.md`](query-workbench-view-scope.md) | Slice 3 — a `/t/$ws/query` standalone view (like Flows/Rules) that also opens as a Data Studio pane; runs real queries; carries the mandatory capability-deny + workspace-isolation gateway tests. No backend. |
+| [`query-draft-streaming-scope.md`](query-draft-streaming-scope.md) | An AI agent streams a query live into the open workbench: full `SqlSourceState` frames over the SHIPPED `bus.publish` → `/bus/stream` SSE; all three editor bodies follow (they are projections of the one model). No new backend/verb/cap. |
 | [`tabularis-harvest.md`](tabularis-harvest.md) | **Advisory.** Everything else in Tabularis worth taking (notebook, visual EXPLAIN, rich grid, …) with a take-now / scope-later / skip verdict + reason each. Not a scope. |
 
 **Shipped precedent this builds on:** `../query-builder-common-scope.md` (the one-builder/N-emitter seam,

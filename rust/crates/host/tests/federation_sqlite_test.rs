@@ -75,14 +75,19 @@ fn seed_db() -> String {
     let path = std::env::temp_dir().join(format!("lb-fed-sqlite-{}.db", std::process::id()));
     let _ = std::fs::remove_file(&path);
     let conn = rusqlite::Connection::open(&path).expect("open sqlite fixture");
+    // `point_reading.site_id` is a REAL foreign key (the `federation.sample` relationships read),
+    // seeded past the default sample limit (12 > 10 rows); `login` carries a denylisted column
+    // (the sample redaction assertion).
     conn.execute_batch(
         "CREATE TABLE site (id TEXT PRIMARY KEY, name TEXT NOT NULL);
-         CREATE TABLE point_reading (time TEXT, point_id TEXT, value REAL);
+         CREATE TABLE point_reading (time TEXT, point_id TEXT, value REAL,
+                                     site_id TEXT REFERENCES site(id));
+         CREATE TABLE login (username TEXT, password TEXT);
          INSERT INTO site VALUES ('site-001','Northside Factory'),('site-002','City Tower');
-         INSERT INTO point_reading VALUES
-           ('2026-01-01T00:00:00+00:00','p1',1.5),
-           ('2026-01-01T00:15:00+00:00','p1',2.5),
-           ('2026-01-01T00:30:00+00:00','p1',3.5);",
+         INSERT INTO login VALUES ('ada','hunter2');
+         INSERT INTO point_reading
+           SELECT '2026-01-01T00:00:00+00:00', 'p1', column1, 'site-001'
+           FROM (VALUES (1.5),(2.5),(3.5),(4.5),(5.5),(6.5),(7.5),(8.5),(9.5),(10.5),(11.5),(12.5));",
     )
     .expect("seed fixture rows");
     path.to_string_lossy().into_owned()
@@ -211,12 +216,98 @@ async fn federation_end_to_end_sqlite() {
     .expect("federation.query");
     assert_eq!(
         q["rows"].as_array().unwrap().len(),
-        3,
-        "three seeded rows: {q}"
+        12,
+        "twelve seeded rows: {q}"
     );
     assert!(
         !q.to_string().contains(&db),
         "query result leaked the path DSN"
+    );
+
+    // --- SAMPLE: one AI-ready snapshot — tables + columns + the REAL foreign key + LIMIT-10 rows,
+    // sensitive columns redacted, and the DSN nowhere in it (datasource-samples scope) ---
+    let sample = call(
+        &node,
+        &admin,
+        ws,
+        "federation.sample",
+        json!({"source":"demo","ts":4}),
+    )
+    .await
+    .expect("federation.sample");
+    let sampled: Vec<&str> = sample["tables"]
+        .as_array()
+        .expect("sample tables array")
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(
+        sampled.contains(&"site") && sampled.contains(&"point_reading"),
+        "snapshot covers the seeded tables: {sample}"
+    );
+    let reading = sample["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "point_reading")
+        .expect("point_reading in snapshot");
+    assert_eq!(
+        reading["rows"]["values"].as_array().unwrap().len(),
+        10,
+        "default limit samples 10 of the 12 rows: {reading}"
+    );
+    assert!(
+        reading["columns"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["name"] == "site_id"),
+        "columns include the FK column: {reading}"
+    );
+    let rels = sample["relationships"].as_array().expect("relationships");
+    assert!(
+        rels.iter().any(|r| r["from"] == "point_reading.site_id"
+            && r["to"] == "site.id"
+            && r["kind"] == "foreign_key"),
+        "the REAL foreign key is reported: {sample}"
+    );
+    let login = sample["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["name"] == "login")
+        .expect("login in snapshot");
+    let login_txt = login.to_string();
+    assert!(
+        login_txt.contains("«redacted»") && !login_txt.contains("hunter2"),
+        "the password column is redacted: {login}"
+    );
+    assert!(
+        !sample.to_string().contains(&db),
+        "sample snapshot leaked the path DSN"
+    );
+
+    // --- SAMPLE filter + limit clamp: only the named table, `limit` honored ---
+    let one = call(
+        &node,
+        &admin,
+        ws,
+        "federation.sample",
+        json!({"source":"demo","tables":["site"],"limit":1,"ts":4}),
+    )
+    .await
+    .expect("federation.sample filtered");
+    let only: Vec<&str> = one["tables"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(only, vec!["site"], "tables filter respected: {one}");
+    assert_eq!(
+        one["tables"][0]["rows"]["values"].as_array().unwrap().len(),
+        1,
+        "limit=1 samples one row: {one}"
     );
 
     // --- MISSING PATH (goal 4): an honest node-local-path error, never a silent empty db ---
@@ -255,6 +346,20 @@ async fn federation_end_to_end_sqlite() {
         matches!(denied, lb_mcp::ToolError::Denied),
         "opaque deny: {denied:?}"
     );
+    // Sample rides the same read cap — deny is equally opaque without it.
+    let denied_sample = call(
+        &node,
+        &no_cap,
+        ws,
+        "federation.sample",
+        json!({"source":"demo","ts":6}),
+    )
+    .await
+    .expect_err("sample without mcp:federation.query:call is denied");
+    assert!(
+        matches!(denied_sample, lb_mcp::ToolError::Denied),
+        "opaque sample deny: {denied_sample:?}"
+    );
 
     // --- WORKSPACE ISOLATION: the ws-A sqlite source resolves to nothing from ws-B ---
     let ws_b = "other";
@@ -273,6 +378,19 @@ async fn federation_end_to_end_sqlite() {
     assert!(
         matches!(iso, lb_mcp::ToolError::BadInput(_)),
         "not found in ws-B: {iso:?}"
+    );
+    let iso_sample = call(
+        &node,
+        &b_caller,
+        ws_b,
+        "federation.sample",
+        json!({"source":"demo","ts":7}),
+    )
+    .await
+    .expect_err("ws-B cannot snapshot ws-A's sqlite source");
+    assert!(
+        matches!(iso_sample, lb_mcp::ToolError::BadInput(_)),
+        "sample not found in ws-B: {iso_sample:?}"
     );
 
     let _ = std::fs::remove_file(&db);

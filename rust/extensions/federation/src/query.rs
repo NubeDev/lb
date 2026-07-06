@@ -87,7 +87,7 @@ async fn register_and_run(
 
 /// Convert collected Arrow batches into `{columns, rows}`. Columns come from the first batch's
 /// schema; rows are JSON objects flattened to column-aligned arrays.
-fn shape(batches: Vec<RecordBatch>) -> Result<QueryResult, String> {
+pub(crate) fn shape(batches: Vec<RecordBatch>) -> Result<QueryResult, String> {
     let columns: Vec<String> = match batches.first() {
         Some(b) => b
             .schema()
@@ -135,7 +135,7 @@ fn shape(batches: Vec<RecordBatch>) -> Result<QueryResult, String> {
 /// name). Each `(alias, remote)` binding builds a provider for the remote catalog table (the same
 /// factory `probe` uses) and registers it under the bare `alias`, so the SQL references the alias —
 /// this decouples DataFusion's name resolution from the remote catalog's dotted names.
-async fn catalog_rows(
+pub(crate) async fn catalog_rows(
     source: &dyn Source,
     sql: &str,
     bindings: &[(&str, &str)],

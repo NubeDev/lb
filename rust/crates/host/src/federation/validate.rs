@@ -13,10 +13,30 @@ const FORBIDDEN_LEADERS: &[&str] = &[
     "REVOKE", "CALL", "EXEC", "EXECUTE", "REPLACE", "UPSERT",
 ];
 
+/// Strip leading SQL comments (`-- line` and `/* block */`) and whitespace — a legitimate SELECT
+/// prefixed by a comment (agents and humans both write `-- what this query does` headers) must not
+/// be rejected by the leader-keyword gate. The sidecar's real parser accepts them; this gate must
+/// not be stricter than the authoritative one on VALID input.
+fn strip_leading_comments(mut s: &str) -> &str {
+    loop {
+        s = s.trim_start();
+        if let Some(rest) = s.strip_prefix("--") {
+            s = rest.split_once('\n').map(|(_, tail)| tail).unwrap_or("");
+        } else if let Some(rest) = s.strip_prefix("/*") {
+            match rest.split_once("*/") {
+                Some((_, tail)) => s = tail,
+                None => return "", // unterminated block comment — nothing runnable follows
+            }
+        } else {
+            return s;
+        }
+    }
+}
+
 /// Reject `sql` unless it is a single read query. Conservative by design — the sidecar's parser is
 /// authoritative; this stops the obvious writes/DDL and multi-statement injection at the host edge.
 pub fn validate_select_host(sql: &str) -> Result<(), FederationError> {
-    let trimmed = sql.trim().trim_end_matches(';').trim();
+    let trimmed = strip_leading_comments(sql).trim().trim_end_matches(';').trim();
     if trimmed.is_empty() {
         return Err(FederationError::BadSql("empty".into()));
     }
@@ -73,6 +93,24 @@ mod tests {
         ] {
             assert!(validate_select_host(s).is_err(), "should reject: {s}");
         }
+    }
+
+    /// A leading `--`/`/* */` comment is legitimate SQL (agents write `-- header` lines); the
+    /// keyword gate must look at the first real token, not the comment. A comment must NOT hide
+    /// a write, and a JOIN SELECT passes (regression: reported as "JOIN isn't allowed" when the
+    /// statement carried a leading comment).
+    #[test]
+    fn skips_leading_comments_but_still_gates_the_real_leader() {
+        assert!(validate_select_host("-- top sites\nSELECT * FROM t").is_ok());
+        assert!(validate_select_host("/* header */ SELECT * FROM t").is_ok());
+        assert!(validate_select_host("-- a\n-- b\n/* c */\nWITH x AS (SELECT 1) SELECT * FROM x").is_ok());
+        assert!(validate_select_host(
+            "-- joined\nSELECT * FROM \"site\" INNER JOIN \"site_tag\" ON \"site\".\"id\" = \"site_tag\".\"site_id\""
+        )
+        .is_ok());
+        assert!(validate_select_host("-- sneaky\nDROP TABLE t").is_err());
+        assert!(validate_select_host("/* only a comment */").is_err());
+        assert!(validate_select_host("/* unterminated").is_err());
     }
 
     #[test]

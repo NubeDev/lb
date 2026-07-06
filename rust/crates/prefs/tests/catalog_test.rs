@@ -24,6 +24,7 @@ fn prefs(lang: &str, tz: &str, date: DateStyle, number: NumberFormat) -> Resolve
         unit_system: UnitSystem::Metric,
         unit_overrides: BTreeMap::new(),
         ui_theme: None,
+        ui_branding: None,
     }
 }
 

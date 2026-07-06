@@ -90,6 +90,11 @@ export interface AgentPayload {
    *  member→workspace-default fold decide). Absent here ⇒ byte-identical to a payload with no persona
    *  (the run lands on the workspace default). Opaque id (rule 10). */
   persona?: string;
+  /** Optional context-item refs (agent-context-basket scope) — ids of items in THIS channel the user
+   *  gathered as context (a query result, a rich response, a note). Refs only: the worker resolves
+   *  the bodies server-side and fences them into the run's goal as untrusted data. Absent/empty →
+   *  byte-identical to a plain agent post. Over 8 refs is rejected server-side (an `agent_error`). */
+  context_items?: string[];
 }
 
 /** `kind: "agent_result"` — the agent worker's durable final answer. */
@@ -220,6 +225,7 @@ export function encodeAgent(
   runtime?: string,
   context?: PageContext,
   persona?: string,
+  contextItems?: string[],
 ): string {
   const payload: AgentPayload = { kind: "agent", goal, job };
   if (runtime) payload.runtime = runtime;
@@ -229,6 +235,9 @@ export function encodeAgent(
   // Persona rides on the payload only when the dock resolved one (pin or context match); absent ⇒ the
   // server folds member→ws-default prefs and may land on none (no narrowing). Byte-identical when omitted.
   if (persona) payload.persona = persona;
+  // Gathered-context refs (agent-context-basket scope) — ids only; the worker resolves + fences the
+  // bodies server-side. Empty is dropped from the wire (mirrors the Rust skip-when-empty).
+  if (contextItems && contextItems.length > 0) payload.context_items = contextItems;
   return JSON.stringify(payload);
 }
 

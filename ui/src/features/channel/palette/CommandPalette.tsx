@@ -15,7 +15,7 @@
 // and arg widgets (`argWidgets/` + `argWidgets/registry`) live in their own files (FILE-LAYOUT). The
 // post/dispatch is the parent's on*/onPostRich seams.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SendHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,17 @@ interface Props {
   onPostRich: (body: string) => void | Promise<void>;
   /** Send a plain chat message (no command). */
   onSendChat: (body: string) => void | Promise<void>;
+  /** Optional PREFILL (query re-edit scope): open `tool` with `args` pre-seeded — a chip arg becomes a
+   *  chip, an inline arg (sql/…) seeds its live widget value — so "edit this query" skips the whole
+   *  source-reselection walk. Consumed once via `onPrefillConsumed` (the parent clears it). */
+  prefill?: PalettePrefill | null;
+  onPrefillConsumed?: () => void;
+}
+
+/** A one-shot "open this tool with these args" request (see `prefill`). */
+export interface PalettePrefill {
+  tool: string;
+  args: Record<string, string>;
 }
 
 /** One filled argument (a chip). `entity`/text/number/date chips delete whole; inline widgets stay live. */
@@ -59,6 +70,8 @@ export function CommandPalette({
   onCallTool,
   onPostRich,
   onSendChat,
+  prefill,
+  onPrefillConsumed,
 }: Props) {
   const { tools, error: catalogError } = useCatalog();
   const [text, setText] = useState("");
@@ -103,25 +116,22 @@ export function CommandPalette({
   // rail walk `required ∪ shown-and-required` and surface the action fields Bug B left unreachable.
   const required = (a: string) => isActiveRequired(tool?.input_schema, a, values);
   const shown = (a: string) => isShown(tool?.input_schema, a, values);
-  // The rail auto-targets ACTIVE-required unfilled args (a required chip arg first, then a required
-  // inline widget). An optional arg NEVER grabs the single active slot — so the required `goal` stays the
-  // field you type into, and an all-optional-filters command is runnable the instant it is picked.
+  // The rail auto-targets ACTIVE-required unfilled CHIP args only. An optional arg NEVER grabs the
+  // single active slot — so the required `goal` stays the field you type into, and an all-optional-
+  // filters command is runnable the instant it is picked. INLINE widgets never take the active slot
+  // (they render persistently below) — routing a required inline arg through the slot was the
+  // "sql editor closes on the first keystroke" bug: one typed char made it count as FILLED, the slot
+  // moved on, and the editor UNMOUNTED mid-typing with no way back.
   const activeArg = tool
-    ? args.find((a) => required(a) && !isInline(a) && !filledNames.has(a)) ??
-      args.find((a) => required(a) && isInline(a) && !filledNames.has(a))
+    ? args.find((a) => required(a) && !isInline(a) && !filledNames.has(a))
     : undefined;
-  // OPTIONAL INLINE widgets render PERSISTENTLY, alongside the active arg — not through the single active
-  // slot (which only holds one arg at a time). This is what the "no runtime picker" bug got wrong: the
-  // agent command's `runtime` is an optional inline widget, so making it the active arg meant it only
-  // appeared AFTER the required `goal` was committed (a hidden ⏎ step) and then replaced the goal field.
-  // Rendered persistently, the runtime dropdown is visible the moment `/agent` is picked, beside the goal.
-  // A per-kind optional inline field still only shows once its `showIf` matches (`shown` gates it); an
-  // arg that is the ACTIVE arg is skipped here so it is not rendered twice.
-  const optionalInlineArgs = tool
-    ? args.filter((a) => isInline(a) && !required(a) && shown(a) && a !== activeArg)
-    : [];
+  // ALL INLINE widgets (required and optional) render PERSISTENTLY, alongside the active chip arg —
+  // not through the single active slot (which only holds one arg at a time). This is what the "no
+  // runtime picker" bug got wrong for optional inline (the runtime dropdown only appeared after the
+  // goal was committed), and what the sql-unmount bug got wrong for required inline (typing = filled
+  // = unmounted). A per-kind inline field still only shows once its `showIf` matches (`shown`).
+  const inlineArgs = tool ? args.filter((a) => isInline(a) && shown(a)) : [];
   const activeHint = activeArg ? hintFor(tool?.input_schema, activeArg) : undefined;
-  const activeWidget = activeArg ? widgetOf(activeArg) : undefined;
   // The resolved PRESENTATION for the active arg (widget-kit scope) — the SAME `resolveFieldPresentation`
   // the table headers funnel through, reading the form's `x-lb` label/description (humanize fallback). So
   // a field's rail label and its table header never drift (`max_runs` → "Max Runs" in both).
@@ -131,13 +141,11 @@ export function CommandPalette({
   // registry (ActiveArgWidget). An inline widget stays live until submit; a chip widget commits to a chip.
   const showEntityPicker = !!activeArg && !!entity;
   const showArgWidget = !!activeArg && !entity;
-  const isInlineActive = !!activeWidget?.inline;
 
   // The chosen `source` chip (drives SQL schema autocomplete) — the first `entity:datasource` chip.
   const source = chips.find((c) => c.name === "source")?.value ?? null;
-  // The active arg's live value: an inline widget reads its per-arg inline value; a chip widget reads
-  // the in-progress `argText`.
-  const activeValue = activeArg ? (isInlineActive ? inlineVals[activeArg] ?? "" : argText) : "";
+  // The active arg's live value — always a chip arg now (inline widgets read `inlineVals` directly).
+  const activeValue = activeArg ? argText : "";
 
   const mentions = useMentions(tool && entity ? entity : null);
   const filtered = useMemo(
@@ -167,10 +175,32 @@ export function CommandPalette({
     setSel(0);
   }
 
-  /** Set the active arg's live value — into the inline map (inline widget) or `argText` (chip widget). */
+  // PREFILL (query re-edit): open the requested tool with its args pre-seeded — a chip arg becomes a
+  // chip, an inline arg (sql/…) seeds its live widget — so "edit this query" reopens the palette past
+  // the whole selection walk. One-shot: consumed as soon as the catalog can resolve the tool name.
+  useEffect(() => {
+    if (!prefill) return;
+    const d = tools.find((t) => t.name === prefill.tool);
+    if (!d) return; // catalog still loading (or the tool isn't granted) — retry when `tools` lands
+    setTool(d);
+    setText("");
+    setArgText("");
+    setSel(0);
+    const seededChips: ArgChip[] = [];
+    const seededInline: Record<string, string> = {};
+    for (const [name, value] of Object.entries(prefill.args)) {
+      if (resolveWidget(hintFor(d.input_schema, name)).inline) seededInline[name] = value;
+      else seededChips.push({ name, value });
+    }
+    setChips(seededChips);
+    setInlineVals(seededInline);
+    onPrefillConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, tools]);
+
+  /** Set the active chip arg's in-progress text (inline widgets write `inlineVals` directly). */
   function setActiveValue(v: string) {
-    if (activeArg && isInlineActive) setInlineVals((m) => ({ ...m, [activeArg]: v }));
-    else setArgText(v);
+    setArgText(v);
   }
 
   // Commit the in-progress text into a chip for the active chip arg (e.g. the agent's `goal`).
@@ -201,7 +231,7 @@ export function CommandPalette({
     const argsObj: Record<string, string> = {};
     for (const chip of chips) if (shown(chip.name)) argsObj[chip.name] = chip.value;
     for (const a of args) if (isInline(a) && inlineVals[a] !== undefined && shown(a)) argsObj[a] = inlineVals[a];
-    if (activeArg && !isInlineActive && argText.trim() && !(activeArg in argsObj)) {
+    if (activeArg && argText.trim() && !(activeArg in argsObj)) {
       argsObj[activeArg] = argText.trim();
     }
     return argsObj;
@@ -289,16 +319,20 @@ export function CommandPalette({
     }
   }
 
-  // "Ready to run": every chip arg is filled and the active arg (if any) is an always-ready inline widget.
-  const allArgsFilled = tool !== null && (!activeArg || isInlineActive);
-  // Disabled only when a REQUIRED chip widget is still empty (the sql widget needs text; a runtime/
-  // select/cron/boolean is always runnable).
+  // A required, shown INLINE widget that is still empty (e.g. the sql editor before any typing) —
+  // the command is not runnable yet, but the widget STAYS MOUNTED (it never cycles through the slot).
+  const emptyRequiredInline = inlineArgs.some(
+    (a) => required(a) && !(inlineVals[a] !== undefined && inlineVals[a] !== ""),
+  );
+  // "Ready to run": every required chip arg is filled AND every required inline widget has a value.
+  const allArgsFilled = tool !== null && !activeArg && !emptyRequiredInline;
+  // Disabled while a REQUIRED chip arg has neither a chip nor in-progress text, or a required inline
+  // widget (sql/cron/…) is still empty.
   const submitDisabled =
     tool === null
       ? !text.trim()
-      : activeWidget?.kind === "sql"
-        ? !activeValue.trim()
-        : !!activeArg && !isInlineActive && chips.every((c) => c.name !== activeArg) && !argText.trim();
+      : (!!activeArg && chips.every((c) => c.name !== activeArg) && !argText.trim()) ||
+        emptyRequiredInline;
 
   return (
     <div className="border-t border-border bg-panel/70">
@@ -384,12 +418,12 @@ export function CommandPalette({
         </div>
       )}
 
-      {/* Every other active arg — resolved through the x-lb widget registry. A chip widget's ⏎ commits
-          the chip (or submits when it is the last arg); an inline widget stays live until submit. */}
+      {/* Every other active CHIP arg — resolved through the x-lb widget registry. Its ⏎ commits the
+          chip (or submits when nothing inline follows). Inline widgets render persistently below. */}
       {tool && showArgWidget && activeArg && (
         <div
           onKeyDownCapture={(e) => {
-            if (e.key === "Backspace" && argText === "" && !isInlineActive && chips.length > 0) {
+            if (e.key === "Backspace" && argText === "" && chips.length > 0) {
               e.preventDefault();
               removeLastChip();
             }
@@ -422,23 +456,36 @@ export function CommandPalette({
         </div>
       )}
 
-      {/* OPTIONAL INLINE widgets — rendered PERSISTENTLY beside the active arg (not through the single
-          active slot). This is how the agent command's `runtime` picker shows the moment `/agent` is
-          picked, alongside the `goal` field, instead of only after `goal` is committed. Each writes into
-          the same per-arg inline map (`inlineVals`) the args object folds in at submit. */}
+      {/* ALL INLINE widgets — rendered PERSISTENTLY beside the active chip arg (never through the
+          single active slot). This is how the agent command's `runtime` picker shows the moment
+          `/agent` is picked, and how the REQUIRED sql editor stays mounted while you type (the
+          slot-cycling unmount was the "sql editor closes on the first keystroke" bug). Each shows
+          its resolved presentation label and writes into the same per-arg inline map (`inlineVals`)
+          the args object folds in at submit. */}
       {tool &&
-        optionalInlineArgs.map((a) => (
-          <ActiveArgWidget
-            key={a}
-            name={a}
-            hint={hintFor(tool.input_schema, a)}
-            value={inlineVals[a] ?? ""}
-            onChange={(v) => setInlineVals((m) => ({ ...m, [a]: v }))}
-            onSubmit={() => void submit()}
-            onCancel={reset}
-            sqlSource={source}
-          />
-        ))}
+        inlineArgs.map((a) => {
+          const hint = hintFor(tool.input_schema, a);
+          const presentation = resolveFieldPresentation(a, hint);
+          return (
+            <div key={a}>
+              <div className="px-3 pt-2" aria-label={`field ${a}`}>
+                <span className="text-xs font-medium text-fg">{presentation.label}</span>
+                {presentation.description && (
+                  <span className="ml-2 text-xs text-muted">{presentation.description}</span>
+                )}
+              </div>
+              <ActiveArgWidget
+                name={a}
+                hint={hint}
+                value={inlineVals[a] ?? ""}
+                onChange={(v) => setInlineVals((m) => ({ ...m, [a]: v }))}
+                onSubmit={() => void submit()}
+                onCancel={reset}
+                sqlSource={source}
+              />
+            </div>
+          );
+        })}
 
       {/* The free-text input — command/chat entry, plus the submit affordance when args are done. */}
       <form

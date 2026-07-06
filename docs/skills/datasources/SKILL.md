@@ -3,10 +3,12 @@ name: datasources
 description: >-
   Manage Lazybones external SQL datasources over the node gateway via the `federation` extension —
   register/remove/list/test a Postgres or SQLite source, run a SELECT-only `federation.query`, browse
-  a source's tables/columns with `federation.schema`, and mirror an external range into the platform
+  a source's tables/columns with `federation.schema`, snapshot tables + foreign keys + sample rows
+  for an AI prompt with `federation.sample`, and mirror an external range into the platform
   series plane with `federation.mirror`. Use when a task says "connect an external database",
   "add/register a datasource", "query Postgres/Timescale over the API", "test a datasource",
-  "federate", "mirror an external table", or "call federation/datasource verbs over REST/MCP". SurrealDB
+  "federate", "mirror an external table", "give the AI a sample of a datasource", or "call
+  federation/datasource verbs over REST/MCP". SurrealDB
   stays the platform authority; external DBs are federated sources reached only through this gated,
   `net:*`-bounded, secret-mediated extension.
 ---
@@ -66,6 +68,7 @@ Send it as `Authorization: Bearer $TOKEN` on every call. Capabilities:
 | Test connectivity | `POST /datasources/{name}/test` | `{"tool":"datasource.test","args":{"source":"…","ts":…}}` | `source,ts*` |
 | Query (SELECT-only) | *(MCP only)* | `{"tool":"federation.query","args":{…}}` | `source,sql,ts*` |
 | Browse schema | *(MCP only)* | `{"tool":"federation.schema","args":{…}}` | `source,table?,ts*` |
+| AI-context snapshot | *(MCP only)* | `{"tool":"federation.sample","args":{…}}` | `source,tables?,limit?,ts*` |
 | Mirror → series plane | *(MCP only)* | `{"tool":"federation.mirror","args":{…}}` | `source,query,target_series,job_id,range?,ts*` |
 
 `* ts` — a caller-supplied millisecond logical timestamp (determinism, README §3: no wall-clock
@@ -118,6 +121,25 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
   -H 'content-type: application/json' -d '{"tool":"federation.schema","args":{"source":"warehouse","ts":1719800000000}}'
 curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"tool":"federation.schema","args":{"source":"warehouse","table":"sales","ts":1719800000000}}'
+```
+
+`federation.sample` is the **AI-context snapshot** (datasource-samples scope): one call returning,
+for every table (or just `tables:[…]`), its columns, its **real foreign keys** (SQLite
+`PRAGMA foreign_key_list`, Postgres `information_schema` — best-effort, `[]` where the kind can't
+answer), and up to `limit` (default 10, cap 50) sample rows — bounded to 25 tables
+(`truncated:true` when cut), long cells truncated, and columns named like
+`password`/`secret`/`token`/`api_key` redacted as `«redacted»`. Feed the result to a model before
+asking it to write SQL. It rides the **same `mcp:federation.query:call` cap** as query/schema.
+
+```bash
+# one AI-ready snapshot: tables + columns + foreign keys + LIMIT-10 rows
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{
+  "tool":"federation.sample","args":{"source":"warehouse","ts":1719800000000}}'
+# → {"source":"warehouse","tables":[{"name":"sales","columns":[…],"foreign_keys":[…],
+#     "rows":{"columns":[…],"values":[[…],…]},"row_limit":10}],
+#    "relationships":[{"from":"sales.customer_id","to":"customers.id","kind":"foreign_key"}],
+#    "truncated":false}
 ```
 
 Dashboards read a federated source the same way — a cell with `tool:"federation.query"` and

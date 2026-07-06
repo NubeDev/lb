@@ -101,6 +101,42 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
         || HOST_NATIVE_EXACT.contains(&qualified_tool)
 }
 
+/// The capability a call to `qualified_tool` actually gates on. Usually the tool's own name; the
+/// exceptions are verbs that deliberately ride an EXISTING grant (same privilege, no new cap).
+/// ONE mapping, two callers: the dispatcher's outer gate ([`call_tool_at_depth`]) and the
+/// `tools.catalog` visibility gate — the catalog's cardinal rule ("advertise a tool only if the
+/// call would allow it, never hide one that would pass") only holds if both consult the same alias.
+///
+/// - `federation.schema` / `federation.sample` — the no-SQL discovery verb and the AI-context
+///   snapshot are the SAME read privilege as a live query (datasources-ux / datasource-samples
+///   scopes): both gate under `mcp:federation.query:call`, the cap their service layer re-checks.
+///   Without the alias the gate demanded a per-verb grant no role carries (the Datasources browse
+///   panel was denied opaquely; the palette hid the verbs from callers who could run them).
+/// - `outbox.enqueue_held` — rules-approvals scope: staging a gated effect is the SAME authority as
+///   staging any effect (the *release* on approval is the gated step), so it rides
+///   `mcp:outbox.enqueue:call`; no `enqueue_held` cap exists. The host fn re-checks inside.
+/// - `telemetry.*` — telemetry-console scope: the read verbs (query/trace/tail) collapse onto the
+///   ONE `mcp:telemetry.read:call` grant; purge keeps `mcp:telemetry.purge:call`. Re-checked inside.
+/// - `nav.pref.*` — nav scope: the member-owned active pick gates on the SAME `mcp:nav.resolve:call`
+///   read grant its verb re-checks; curating which nav you use is part of resolving your own menu.
+/// - `nav.set_default` — nav scope: the workspace-default pointer is an authoring action — it gates
+///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside.
+pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
+    if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
+        "federation.query"
+    } else if qualified_tool == "outbox.enqueue_held" {
+        "outbox.enqueue"
+    } else if qualified_tool.starts_with("telemetry.") {
+        crate::read_or_admin_cap(qualified_tool)
+    } else if qualified_tool.starts_with("nav.pref.") {
+        "nav.resolve"
+    } else if qualified_tool == "nav.set_default" {
+        "nav.save"
+    } else {
+        qualified_tool
+    }
+}
+
 /// Call `qualified_tool` as `principal` in `ws` with a JSON input string, returning the tool's JSON
 /// output. Authorization runs first; the workspace is the caller's (the gateway derives it from the
 /// token, never the page). Host-native `series.*`/`ingest.*` verbs dispatch over the store; everything
@@ -282,39 +318,11 @@ async fn dispatch_at_depth(
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
         // caller is opaque and indistinguishable from a missing tool — then delegate to the host verb.
         //
-        // `federation.schema` (the no-SQL discovery verb) is the SAME read privilege as a live query
-        // and introduces no new capability (datasources-ux scope): gate it under the query cap, the
-        // same cap its service layer re-checks. Without this alias the outer gate demanded a
-        // `mcp:federation.schema:call` grant no role carries, so the Datasources browse panel was
-        // denied (opaque) even for a caller holding `mcp:federation.query:call`.
-        let gate_tool = if qualified_tool == "federation.schema" {
-            "federation.query"
-        } else if qualified_tool == "outbox.enqueue_held" {
-            // rules-approvals scope: staging a gated effect is the SAME authority as staging any effect
-            // — the *release* on approval is the gated step (the reactor's system authority), not the
-            // stage. So `outbox.enqueue_held` gates on the `mcp:outbox.enqueue:call` grant a rule
-            // already needs to `outbox.enqueue`; no new `outbox.enqueue_held` cap exists. The host fn
-            // re-checks the same `outbox.enqueue` gate inside.
-            "outbox.enqueue"
-        } else if qualified_tool.starts_with("telemetry.") {
-            // telemetry-console scope: the three read verbs (query/trace/tail) gate on the ONE
-            // `mcp:telemetry.read:call` grant; purge on `mcp:telemetry.purge:call`. Collapsed here
-            // (and re-checked inside the service) so one read grant covers the whole read surface.
-            crate::read_or_admin_cap(qualified_tool)
-        } else if qualified_tool.starts_with("nav.pref.") {
-            // nav scope: the member-owned active pick (`nav.pref.get`/`set`) gates on the SAME
-            // `mcp:nav.resolve:call` read grant its verb re-checks — curating which nav you use is
-            // part of resolving your own menu, so no separate `mcp:nav.pref.*:call` cap exists.
-            "nav.resolve"
-        } else if qualified_tool == "nav.set_default" {
-            // nav scope: the workspace-default pointer is an authoring action — it gates on the same
-            // `mcp:nav.save:call` grant that creates the navs it points at (no separate cap for one
-            // pointer). Re-checked inside the verb.
-            "nav.save"
-        } else {
-            qualified_tool
-        };
-        authorize_tool(principal, ws, gate_tool)?;
+        // The per-verb cap aliases (verbs that ride an EXISTING grant — federation.schema/sample,
+        // outbox.enqueue_held, telemetry.*, nav.pref.*/set_default) live in ONE mapping,
+        // `gate_tool_for`, shared with the `tools.catalog` visibility gate so the palette can never
+        // hide a verb this gate would pass (each aliased verb documents its rationale there).
+        authorize_tool(principal, ws, gate_tool_for(qualified_tool))?;
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {

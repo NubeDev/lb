@@ -101,6 +101,14 @@ export interface SqlJoin {
   on?: SqlJoinKey[];
 }
 
+/** True if `j` is a PENDING join — a canvas table dropped but not yet wired column-to-column
+ *  (`on` empty on a non-cross type). A pending join is view-only: the emitters skip it (and
+ *  anything referencing its table) so the SQL never shows a table without a join path; the canvas
+ *  marks its node "not joined". Only an explicit `cross` legitimately carries no ON clause. */
+export function isPendingJoin(j: SqlJoin): boolean {
+  return j.type !== "cross" && (!j.on || j.on.length === 0);
+}
+
 /** A GROUP BY entry. A bare `string` means a column of the FROM table (back-compat); the object form
  *  `{table, column}` qualifies it (needed once joins are present — ambiguous names across joined
  *  tables are inevitable). */

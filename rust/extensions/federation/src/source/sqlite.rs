@@ -14,9 +14,12 @@ use datafusion_table_providers::sqlite::SqliteTableFactory;
 
 use super::{Source, SourceError};
 
-/// A connected SQLite source: a file-backed pool + a table-provider factory over it.
+/// A connected SQLite source: a file-backed pool + a table-provider factory over it. The file path
+/// is retained ONLY for direct catalog reads (`PRAGMA foreign_key_list`) — it is the DSN, so it is
+/// never echoed into an error or a result.
 pub struct SqliteSource {
     factory: SqliteTableFactory,
+    path: String,
 }
 
 impl SqliteSource {
@@ -40,6 +43,7 @@ impl SqliteSource {
             .map_err(|e| SourceError(format!("sqlite pool: {e}")))?;
         Ok(Self {
             factory: SqliteTableFactory::new(Arc::new(pool)),
+            path: path.to_string(),
         })
     }
 }
@@ -68,5 +72,40 @@ impl Source for SqliteSource {
     async fn list_tables(&self) -> Result<Vec<super::TableMeta>, SourceError> {
         // Read the source's own catalog via the shared discovery runner (SQLite `sqlite_master`).
         crate::query::run_list_tables(self, "sqlite").await
+    }
+
+    async fn foreign_keys(&self, table: &str) -> Result<Vec<super::ForeignKeyMeta>, SourceError> {
+        // `PRAGMA foreign_key_list` is not expressible through the DataFusion provider path (the
+        // engine only registers tables), so read it directly — a blocking rusqlite open on the same
+        // file, off the async runtime. Best-effort: any failure is an EMPTY list, never an error
+        // (a missing FK catalog must not fail a snapshot), and the path is never in a message.
+        let path = self.path.clone();
+        let table = table.to_string();
+        let out = tokio::task::spawn_blocking(move || -> Result<Vec<super::ForeignKeyMeta>, ()> {
+            let conn = rusqlite::Connection::open_with_flags(
+                &path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .map_err(|_| ())?;
+            let mut stmt = conn
+                .prepare("SELECT \"from\", \"table\", \"to\" FROM pragma_foreign_key_list(?1)")
+                .map_err(|_| ())?;
+            let rows = stmt
+                .query_map([&table], |row| {
+                    Ok(super::ForeignKeyMeta {
+                        column: row.get(0)?,
+                        ref_table: row.get(1)?,
+                        // `to` is NULL when the FK targets the parent's implicit PRIMARY KEY;
+                        // report the conventional `id` rather than nothing (best-effort catalog).
+                        ref_column: row
+                            .get::<_, Option<String>>(2)?
+                            .unwrap_or_else(|| "id".to_string()),
+                    })
+                })
+                .map_err(|_| ())?;
+            Ok(rows.filter_map(Result::ok).collect())
+        })
+        .await;
+        Ok(out.ok().and_then(Result::ok).unwrap_or_default())
     }
 }

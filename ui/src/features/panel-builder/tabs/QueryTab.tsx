@@ -127,7 +127,12 @@ export function QueryTab({ ws, state, patch }: Props) {
   const localSchema = useLocalSchema(isSql);
   const federationSchema = useFederationSchema(
     isFederation ? fedSource || null : null,
-    isFederation ? state.sql?.builder?.table ?? "" : "",
+    isFederation
+      ? [
+          state.sql?.builder?.table ?? "",
+          ...(state.sql?.builder?.joins ?? []).map((j) => j.table),
+        ].filter(Boolean)
+      : "",
     isFederation,
   );
   const builderSchema = isFederation ? federationSchema : localSchema;

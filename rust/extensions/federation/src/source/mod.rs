@@ -40,6 +40,15 @@ pub struct ColumnMeta {
     pub nullable: bool,
 }
 
+/// A discovered foreign key on a table (the `federation.sample` relationships result): `column`
+/// on the owning table references `ref_table.ref_column`.
+#[derive(Debug, Clone)]
+pub struct ForeignKeyMeta {
+    pub column: String,
+    pub ref_table: String,
+    pub ref_column: String,
+}
+
 /// A connected external SQL source. The pool lives inside the impl; the orchestrator asks only for a
 /// `TableProvider` per referenced table name (the validator collected them), then runs the query
 /// through a DataFusion `SessionContext`. Discovery (`list_tables`/`describe_table`) reuses the same
@@ -59,6 +68,13 @@ pub trait Source: Send + Sync {
     /// List the user tables in the source (per-impl: each knows its own catalog query). Used by the
     /// `federation.schema` discovery verb so a non-SQL UI can browse without writing a query.
     async fn list_tables(&self) -> Result<Vec<TableMeta>, SourceError>;
+
+    /// List `table`'s foreign keys, **best-effort** (the `federation.sample` relationships read).
+    /// A kind that cannot answer returns `Ok(vec![])` — never an error: a missing FK catalog must
+    /// not fail a snapshot (the AI can still infer joins from column names, like the ERD does).
+    async fn foreign_keys(&self, _table: &str) -> Result<Vec<ForeignKeyMeta>, SourceError> {
+        Ok(Vec::new())
+    }
 }
 
 /// A source-layer error. The DSN is NEVER included in the message (secret mediation — datasources
