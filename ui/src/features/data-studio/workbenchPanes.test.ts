@@ -9,11 +9,12 @@ import { describe, expect, it } from "vitest";
 import { VIEW_PANES, viewPane } from "./workbenchPanes";
 
 describe("workbenchPanes — the pages-as-panes registry", () => {
-  it("lists the 5 core surfaces the workbench can mount as panes", () => {
+  it("lists the 6 core surfaces the workbench can mount as panes", () => {
     const kinds = VIEW_PANES.map((p) => p.kind);
-    // Flows, Rules, Data, Datasources, Ingest — the studio's debugging loop surfaces. Each opens the
-    // REAL routed view component (the test asserts the kinds; the gateway suite proves the real mount).
-    expect(kinds).toEqual(["flows", "rules", "data", "datasources", "ingest"]);
+    // Flows, Rules, Data, Datasources, Query (the surreal-local workbench — query-workbench-view
+    // slice 3), Ingest — the studio's debugging loop surfaces. Each opens the REAL routed view
+    // component (the test asserts the kinds; the gateway suite proves the real mount).
+    expect(kinds).toEqual(["flows", "rules", "data", "datasources", "query", "ingest"]);
   });
 
   it("excludes the host surface (Data Studio) — no recursive embedding", () => {
@@ -35,6 +36,10 @@ describe("workbenchPanes — the pages-as-panes registry", () => {
   it("viewPane looks up an entry by kind (the dock adapter's path)", () => {
     expect(viewPane("flows")?.title).toBe("Flows");
     expect(viewPane("rules")?.title).toBe("Rules");
+    // The Query pane (query-workbench-view slice 3) — its own kind ("query"), gated by the `data`
+    // surface lens but with a distinct dock identity + the "Query" title.
+    expect(viewPane("query")?.title).toBe("Query");
+    expect(viewPane("query")?.surface).toBe("data");
     // An unknown kind returns undefined — the dock adapter renders "Unknown view pane." (no crash).
     expect(viewPane("nonexistent")).toBeUndefined();
   });

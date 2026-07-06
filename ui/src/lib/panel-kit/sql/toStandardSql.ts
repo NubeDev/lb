@@ -1,43 +1,34 @@
 // The `SqlBuilderQuery` → standard-SQL string renderer (query-builder-common scope) — the
 // federation analog of `toSurrealQL.ts`. One file, one responsibility (FILE-LAYOUT): emit
-// `SELECT … FROM … WHERE … GROUP BY … ORDER BY … LIMIT …` from the typed builder query for an
-// external SQL engine (sqlite / postgres / timescale). It only ever emits a SELECT — Builder mode
-// has no syntax for a write, and whatever string this produces is still SELECT-validated +
-// workspace-walled by `federation.query` at the host (the boundary).
+// `SELECT … FROM … [<joins>] WHERE … GROUP BY … HAVING … ORDER BY … LIMIT …` from the typed builder
+// query for an external SQL engine (sqlite / postgres / timescale). It only ever emits a SELECT —
+// Builder mode has no syntax for a write, and whatever string this produces is still SELECT-validated
+// + workspace-walled by `federation.query` at the host (the boundary).
 //
-// Dialect deltas from SurrealQL:
-//   - Identifiers are DOUBLE-QUOTED (the `ident()` rule from `useDatasourceQuery.ts`: a mixed-case
-//     or reserved-word column can never break out of the identifier position; embedded `"` is
-//     doubled). SurrealQL uses bare lowercase identifiers; postgres folds unquoted to lowercase,
-//     sqlite is permissive — double-quoting is the safe superset.
-//   - Aggregates are ANSI (`COUNT(*)`, `SUM("col")`, `AVG("col")`, …) — NOT Surreal's `math::sum`
-//     or bare `count()`.
-//   - String literals use single quotes with `'` doubled (the same rule as SurrealQL).
-//   - LIMIT is the ANSI `LIMIT n` (sqlite + postgres + timescale all speak it; OFFSET is a
-//     deferred follow-up — the builder has no offset row).
+// visual-canvas-builder slice additions: ANSI JOINs (with composite ON keys + CROSS), per-column
+// alias/table/order, WHERE-vs-HAVING split by `isAggregate`, AND/OR chaining by `logical`,
+// `LIKE` + `IS NULL`/`IS NOT NULL`, qualified `{table, column}` group-by, and multi-column ORDER BY.
+// Identifier qualification: when `query.joins` is non-empty every identifier renders as
+// `"table"."column"`; with no joins it stays the bare `"column"` (back-compat — the pre-slice
+// goldens are byte-identical).
 //
-// The v1 subset (SELECT/FROM/WHERE/GROUP BY/ORDER BY/LIMIT) is dialect-free across sqlite/postgres/
-// timescale. A per-kind split (scope OQ #1) lands only when a real delta forces it — e.g. a
-// time-bucket emit for the chart `time-series` format hint (postgres `date_trunc` / sqlite
-// `strftime` / timescale `time_bucket`).
+// Dialect deltas from SurrealQL (unchanged):
+//   - Identifiers are DOUBLE-QUOTED (the `ident()` rule: a mixed-case or reserved-word column can
+//     never break out of the identifier position; embedded `"` is doubled).
+//   - Aggregates are ANSI (`COUNT(*)`, `SUM("col")`, `AVG("col")`, `COUNT(DISTINCT "col")`, …).
+//   - String literals use single quotes with `'` doubled.
+//   - LIMIT is the ANSI `LIMIT n` (OFFSET deferred — the builder has no offset row).
 
-import type { SqlAggregation, SqlBuilderQuery, SqlColumn, SqlFilter } from "./query";
-
-/** The ANSI aggregate spelling (`COUNT(*)`, `SUM(col)`, `AVG(col)`, …). `count` over `*` is the
- *  SQL standard `COUNT(*)`; anything else is `<UPPER>(col)`. */
-function renderAggregation(agg: SqlAggregation, col: string): string {
-  if (agg === "count") return col === "*" ? "COUNT(*)" : `COUNT(${ident(col)})`;
-  return `${agg.toUpperCase()}(${ident(col)})`;
-}
-
-/** Render one SELECT column (with its optional aggregation, aliased to a stable name for the result). */
-function renderColumn(c: SqlColumn): string {
-  if (!c.aggregation) return ident(c.name);
-  const expr = renderAggregation(c.aggregation, c.name);
-  // Alias so the result column has a predictable key the table/chart views can map (e.g. `avg_payload`).
-  const alias = c.name === "*" ? c.aggregation : `${c.aggregation}_${c.name}`;
-  return `${expr} AS ${ident(alias)}`;
-}
+import {
+  normalizeOrderBy,
+  type SqlAggregation,
+  type SqlBuilderQuery,
+  type SqlColumn,
+  type SqlFilter,
+  type SqlGroupByEntry,
+  type SqlJoin,
+  type SqlOrderBy,
+} from "./query";
 
 /** Double-quote a SQL identifier with embedded `"` doubled — a column/table name can never break
  *  out of the identifier position. Mirrors the shipped `ident()` helper in `useDatasourceQuery.ts`. */
@@ -45,16 +36,122 @@ function ident(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
+/** Qualify a (table, column) pair as `"table"."column"`. */
+function qualify(table: string, column: string): string {
+  return `${ident(table)}.${ident(column)}`;
+}
+
 /** Render a JS value as a SQL literal (quote strings with `'` doubled; pass numbers/bools through).
- *  Same rule as SurrealQL — single-quoted strings are ANSI. */
-function renderValue(value: string | number | boolean): string {
+ *  Same rule as SurrealQL — single-quoted strings are ANSI. Undefined ⇒ empty string literal. */
+function renderValue(value: string | number | boolean | undefined): string {
+  if (value === undefined) return "''";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-/** Render one WHERE filter (`"column" <op> value`). */
-function renderFilter(f: SqlFilter): string {
-  return `${ident(f.column)} ${f.operator} ${renderValue(f.value)}`;
+/** The ANSI aggregate expression for `agg` over an already-rendered column expression (`col`).
+ *  `count_distinct` is `COUNT(DISTINCT col)`. The `count` over `*` special-case (`COUNT(*)`) is
+ *  handled by the caller before reaching here. */
+function aggregateExpr(agg: SqlAggregation, col: string): string {
+  if (agg === "count_distinct") return `COUNT(DISTINCT ${col})`;
+  if (agg === "count") return `COUNT(${col})`;
+  return `${agg.toUpperCase()}(${col})`;
+}
+
+/** Stable-sort columns by `order` (missing = last), preserving input order within equal keys. */
+function stableSortByOrder<T extends { order?: number }>(arr: T[]): T[] {
+  return arr
+    .map((item, idx) => ({ item, idx, key: item.order ?? Number.POSITIVE_INFINITY }))
+    .sort((a, b) => a.key - b.key || a.idx - b.idx)
+    .map((x) => x.item);
+}
+
+/** Render one SELECT column. `joined` ⇒ qualify identifiers with the owning table; the owning table
+ *  is `c.table ?? fromTable`. Aggregated columns are aliased (`AS "alias"`) — alias falls back to
+ *  `${aggregation}_${name}` (the historical default; `count` over `*` falls back to `count`).
+ *  `count` over `*` always emits `COUNT(*)` (never `COUNT("*")`) — `*` is the SQL wildcard, not an
+ *  identifier. */
+function renderColumn(c: SqlColumn, joined: boolean, fromTable: string): string {
+  if (c.aggregation === "count" && c.name === "*") {
+    const alias = ident(c.alias ?? "count");
+    return `COUNT(*) AS ${alias}`;
+  }
+  const table = c.table ?? fromTable;
+  const colExpr = joined ? qualify(table, c.name) : ident(c.name);
+  if (!c.aggregation) return c.alias ? `${colExpr} AS ${ident(c.alias)}` : colExpr;
+  const expr = aggregateExpr(c.aggregation, colExpr);
+  const alias = ident(c.alias ?? `${c.aggregation}_${c.name}`);
+  return `${expr} AS ${alias}`;
+}
+
+/** Render one ANSI JOIN clause. `cross` (or a join with no `on`) emits `CROSS JOIN "t"`; otherwise
+ *  `<TYPE> JOIN "table" ON <keys joined by AND>`. `leftTable` defaults to the FROM table. */
+function renderJoin(j: SqlJoin, fromTable: string): string {
+  const type = j.type.toUpperCase();
+  if (j.type === "cross" || !j.on || j.on.length === 0) {
+    return `CROSS JOIN ${ident(j.table)}`;
+  }
+  const ons = j.on
+    .map((k) => {
+      const lt = k.leftTable ?? fromTable;
+      return `${qualify(lt, k.leftColumn)} = ${qualify(j.table, k.rightColumn)}`;
+    })
+    .join(" AND ");
+  return `${type} JOIN ${ident(j.table)} ON ${ons}`;
+}
+
+/** True if `op` is one of the value-less operators (`IS NULL` / `IS NOT NULL`). */
+function isValueless(op: SqlFilter["operator"]): boolean {
+  return op === "IS NULL" || op === "IS NOT NULL";
+}
+
+/** Render one filter's left-hand expression. For a HAVING filter with an `aggregation`, emit the
+ *  aggregate expression (`AVG("t"."c")`) — NEVER the SELECT alias (ANSI/Postgres forbid it). For a
+ *  plain filter (or a defensive HAVING filter with no aggregation), emit the bare qualified column. */
+function renderFilterLhs(f: SqlFilter, joined: boolean, fromTable: string): string {
+  const table = f.table ?? fromTable;
+  const colExpr = joined ? qualify(table, f.column) : ident(f.column);
+  if (f.isAggregate && f.aggregation) return aggregateExpr(f.aggregation, colExpr);
+  return colExpr;
+}
+
+/** Render one filter as `<lhs> <op> [<value>]` (no value for IS NULL / IS NOT NULL). */
+function renderFilter(f: SqlFilter, joined: boolean, fromTable: string): string {
+  const lhs = renderFilterLhs(f, joined, fromTable);
+  if (isValueless(f.operator)) return `${lhs} ${f.operator}`;
+  return `${lhs} ${f.operator} ${renderValue(f.value)}`;
+}
+
+/** Render a WHERE or HAVING clause (selected by `aggregate`) — each filter chained to the previous
+ *  by its `logical` (default `AND`). First filter carries no leading logical. Returns `""` if empty. */
+function renderFilterClause(
+  filters: SqlFilter[],
+  joined: boolean,
+  fromTable: string,
+  aggregate: boolean,
+): string {
+  const selected = filters.filter((f) => (!!f.isAggregate) === aggregate);
+  if (selected.length === 0) return "";
+  return selected
+    .map((f, i) => {
+      const rendered = renderFilter(f, joined, fromTable);
+      return i === 0 ? rendered : `${f.logical ?? "AND"} ${rendered}`;
+    })
+    .join(" ");
+}
+
+/** Render one GROUP BY entry. A bare string qualifies with the FROM table when joins are present
+ *  (back-compat — the legacy single-table groupBy stays unqualified when there are no joins). */
+function renderGroupByEntry(g: SqlGroupByEntry, joined: boolean, fromTable: string): string {
+  if (typeof g === "string") return joined ? qualify(fromTable, g) : ident(g);
+  return qualify(g.table, g.column);
+}
+
+/** Render one ORDER BY clause (`"col" ASC/DESC`, qualified under joins). */
+function renderOrderBy(o: SqlOrderBy, joined: boolean, fromTable: string): string {
+  const table = o.table ?? fromTable;
+  const colExpr = joined ? qualify(table, o.column) : ident(o.column);
+  return `${colExpr} ${o.direction.toUpperCase()}`;
 }
 
 /** Render a `SqlBuilderQuery` to a standard-SQL SELECT string. Returns `""` if no table is chosen
@@ -62,19 +159,35 @@ function renderFilter(f: SqlFilter): string {
 export function toStandardSql(query: SqlBuilderQuery): string {
   if (!query.table.trim()) return "";
 
-  const cols =
-    query.columns.length > 0 ? query.columns.map(renderColumn).join(", ") : "*";
-  let sql = `SELECT ${cols} FROM ${ident(query.table)}`;
+  const joined = !!query.joins && query.joins.length > 0;
+  const fromTable = query.table;
 
-  if (query.filters.length > 0) {
-    sql += ` WHERE ${query.filters.map(renderFilter).join(" AND ")}`;
+  const cols =
+    query.columns.length > 0
+      ? stableSortByOrder(query.columns).map((c) => renderColumn(c, joined, fromTable))
+      : ["*"];
+  let sql = `SELECT ${cols.join(", ")} FROM ${ident(fromTable)}`;
+
+  if (joined) {
+    for (const j of query.joins!) sql += ` ${renderJoin(j, fromTable)}`;
   }
-  if (query.groupBy.length > 0) {
-    sql += ` GROUP BY ${query.groupBy.map(ident).join(", ")}`;
+
+  const whereClause = renderFilterClause(query.filters, joined, fromTable, false);
+  if (whereClause) sql += ` WHERE ${whereClause}`;
+
+  const groupBys = query.groupBy ?? [];
+  if (groupBys.length > 0) {
+    sql += ` GROUP BY ${groupBys.map((g) => renderGroupByEntry(g, joined, fromTable)).join(", ")}`;
   }
-  if (query.orderBy?.column) {
-    sql += ` ORDER BY ${ident(query.orderBy.column)} ${query.orderBy.direction.toUpperCase()}`;
+
+  const havingClause = renderFilterClause(query.filters, joined, fromTable, true);
+  if (havingClause) sql += ` HAVING ${havingClause}`;
+
+  const orderBys = normalizeOrderBy(query.orderBy);
+  if (orderBys && orderBys.length > 0) {
+    sql += ` ORDER BY ${orderBys.map((o) => renderOrderBy(o, joined, fromTable)).join(", ")}`;
   }
+
   if (typeof query.limit === "number" && query.limit > 0) {
     sql += ` LIMIT ${Math.floor(query.limit)}`;
   }

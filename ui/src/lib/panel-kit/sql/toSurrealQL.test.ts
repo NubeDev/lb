@@ -65,6 +65,79 @@ describe("toSurrealQL", () => {
       "SELECT series, math::sum(payload) AS sum_payload FROM series GROUP BY series ORDER BY series DESC LIMIT 50",
     );
   });
+
+  // ── visual-canvas-builder slice additions (HAVING, AND/OR, LIKE, IS NULL, multi-sort, count_distinct) ──
+
+  it("emits a HAVING clause with the aggregate expression (not the alias)", () => {
+    const q: SqlBuilderQuery = {
+      table: "series",
+      columns: [{ name: "payload", aggregation: "avg", alias: "avg_p" }],
+      filters: [
+        { column: "series", operator: "=", value: "cpu" },
+        { column: "payload", operator: ">", value: 10, isAggregate: true, aggregation: "avg" },
+      ],
+      groupBy: ["series"],
+    };
+    expect(toSurrealQL(q)).toBe(
+      "SELECT math::avg(payload) AS avg_p FROM series WHERE series = 'cpu' GROUP BY series HAVING math::avg(payload) > 10",
+    );
+  });
+
+  it("chains filters with AND/OR by each filter's `logical`", () => {
+    const q: SqlBuilderQuery = {
+      table: "t",
+      columns: [],
+      filters: [
+        { column: "a", operator: "=", value: 1 },
+        { column: "b", operator: ">", value: 2, logical: "OR" },
+      ],
+    };
+    expect(toSurrealQL(q)).toBe("SELECT * FROM t WHERE a = 1 OR b > 2");
+  });
+
+  it("renders LIKE / IS NULL / IS NOT NULL", () => {
+    const q: SqlBuilderQuery = {
+      table: "t",
+      columns: [],
+      filters: [
+        { column: "name", operator: "LIKE", value: "cpu%" },
+        { column: "ts", operator: "IS NULL", logical: "AND" },
+      ],
+    };
+    expect(toSurrealQL(q)).toBe("SELECT * FROM t WHERE name LIKE 'cpu%' AND ts IS NULL");
+  });
+
+  it("renders multi-column ORDER BY (bare identifiers, comma-separated)", () => {
+    const q: SqlBuilderQuery = {
+      table: "t",
+      columns: [],
+      filters: [],
+      orderBy: [
+        { column: "a", direction: "asc" },
+        { column: "b", direction: "desc" },
+      ],
+    };
+    expect(toSurrealQL(q)).toBe("SELECT * FROM t ORDER BY a ASC, b DESC");
+  });
+
+  it("renders count_distinct as count(DISTINCT col)", () => {
+    const q: SqlBuilderQuery = {
+      table: "t",
+      columns: [{ name: "c", aggregation: "count_distinct" }],
+      filters: [],
+    };
+    expect(toSurrealQL(q)).toBe("SELECT count(DISTINCT c) AS count_distinct_c FROM t");
+  });
+
+  it("defensively drops joins (SurrealQL has no ANSI JOIN ON — never emit invalid SurrealQL)", () => {
+    const q: SqlBuilderQuery = {
+      table: "t",
+      joins: [{ table: "u", type: "inner", on: [{ leftColumn: "id", rightColumn: "t_id" }] }],
+      columns: [],
+      filters: [],
+    };
+    expect(toSurrealQL(q)).toBe("SELECT * FROM t");
+  });
 });
 
 describe("Builder → Code → Builder round-trip", () => {

@@ -1,11 +1,12 @@
 // The datasource detail page (datasources-ux scope) — the per-source explorer a non-SQL user lands
-// on after clicking a datasource row. Three concerns, one screen:
-//   1. Table discovery (left rail): click a table → see its columns, click "Preview rows" → run a
-//      bounded `SELECT *` — no typing. The generated SQL is echoed read-only.
-//   2. A Builder ⇄ SQL toggle. Builder is the no-SQL default (the discovery surface); SQL drops in a
-//      free-form `<Textarea>` editor prefilled with the last generated query, for users who do know
-//      SQL or want to tweak. Both run the SAME gated `federation.query` verb.
-//   3. The results grid (right).
+// on after clicking a datasource row. Two concerns, one screen:
+//   1. Table discovery (the "Discovery" mode, left rail): click a table → see its columns, click
+//      "Preview rows" → run a bounded `SELECT *` — no typing. The generated SQL is echoed read-only.
+//   2. The Query mode (query-workbench-view scope, slice 3): the full `QueryWorkbench` — the
+//      Builder⇄Code editor (canvas builder from slice 1 + schema-aware completion from slice 2),
+//      Run, results grid, and the shipped Save/Open saved-query dialogs. The ad-hoc SQL `<Textarea>`
+//      that used to live here is replaced by the workbench; the editor+run+results+saved-queries
+//      state is now the workbench's, not the page's.
 //
 // All queries run through the real `federation.query` verb (workspace-pinned host-side, SELECT-only
 // validated host + sidecar). Trusted shell code only — never an extension. One responsibility, one
@@ -18,21 +19,16 @@ import {
   Database,
   Eye,
   Loader2,
-  Play,
-  Terminal,
 } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { QueryWorkbench } from "@/features/query-workbench";
 import { DatasourceProbe } from "./DatasourceProbe";
 import { QueryResults } from "./QueryResults";
-import { SaveQueryDialog } from "./SaveQueryDialog";
-import { SavedQueriesDialog } from "./SavedQueriesDialog";
 import { TableDiscovery } from "./TableDiscovery";
 import { useDatasourceQuery } from "./useDatasourceQuery";
-import { useDatasourceQueries } from "./useDatasourceQueries";
 import { useDatasources } from "./useDatasources";
 import type { DatasourceSummary, ProbeResult } from "@/lib/datasources";
 
@@ -44,28 +40,23 @@ interface Props {
   onBack: () => void;
 }
 
-type Mode = "builder" | "sql";
+/** Discovery = the no-SQL browse (TableDiscovery + bounded preview); Query = the full workbench
+ *  (Builder⇄Code editor + Run + results + saved queries). Default Discovery (the legacy no-SQL
+ *  affordance). */
+type Mode = "discovery" | "query";
 
 const PREVIEW_LIMIT = 100;
 
 export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
   const q = useDatasourceQuery(source.name);
-  const saved = useDatasourceQueries(source.name);
-  const [mode, setMode] = useState<Mode>("builder");
+  const [mode, setMode] = useState<Mode>("discovery");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [sql, setSql] = useState("");
 
   // Discover the table list on first mount (and when the source changes).
   useEffect(() => {
     void q.discoverTables();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source.name, source.kind]);
-
-  // When the builder runs a query, mirror the generated SQL into the editor so switching to SQL
-  // mode shows exactly what was asked.
-  useEffect(() => {
-    if (q.lastSql) setSql(q.lastSql);
-  }, [q.lastSql]);
 
   const selectTable = (table: string) => {
     setSelectedTable(table);
@@ -76,11 +67,6 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
     setSelectedTable(table);
     void q.describeTable(table);
     void q.previewTable(table, PREVIEW_LIMIT);
-  };
-
-  const runEditor = () => {
-    const trimmed = sql.trim();
-    if (trimmed) void q.runSql(trimmed);
   };
 
   return (
@@ -134,91 +120,39 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-        {mode === "builder" && (
-          <TableDiscovery
-            tables={q.tables}
-            selectedTable={selectedTable}
-            columns={q.columns}
-            loading={q.loading}
-            onSelect={selectTable}
-            onPreview={preview}
-            onRefresh={() => void q.discoverTables()}
-          />
-        )}
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {mode === "sql" && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center justify-between gap-2 border-b border-border bg-panel/40 px-3 py-1.5">
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-                  <Terminal size={13} className="text-accent" /> SQL editor · SELECT only
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <SavedQueriesDialog
-                    queries={saved.queries}
-                    loading={saved.loading}
-                    error={saved.error}
-                    onLoad={(row) => {
-                      // Resolve the saved query to its full record (the roster row omits text) and
-                      // load the text into the editor — the author hits Run. A load failure (deny,
-                      // NotFound) is surfaced as the page's run-error path so the author sees the
-                      // verbatim reason.
-                      void saved
-                        .load(row.id)
-                        .then((full) => setSql(full.text))
-                        .catch((e) => {
-                          const msg = e instanceof Error ? e.message : String(e);
-                          window.alert(`Could not load query: ${msg}`);
-                        });
-                    }}
-                    onDelete={(id) => saved.remove(id)}
-                  />
-                  <SaveQueryDialog
-                    source={source.name}
-                    sql={sql}
-                    disabled={!sql.trim()}
-                    onSave={(args) => saved.save(args)}
-                  />
-                  <Button
-                    aria-label="run sql"
-                    size="sm"
-                    variant="solid"
-                    className="gap-1.5"
-                    onClick={runEditor}
-                    disabled={q.loading || !sql.trim()}
-                  >
-                    <Play size={13} /> Run
-                  </Button>
-                </div>
-              </div>
-              <Textarea
-                aria-label="sql editor"
-                spellCheck={false}
-                className="min-h-32 flex-1 resize-none rounded-none border-0 shadow-none focus-visible:ring-0"
-                placeholder={`SELECT * FROM "your_table" LIMIT 100;`}
-                value={sql}
-                onChange={(e) => setSql(e.target.value)}
-                onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                    e.preventDefault();
-                    runEditor();
-                  }
-                }}
+        {mode === "discovery" && (
+          <>
+            <TableDiscovery
+              tables={q.tables}
+              selectedTable={selectedTable}
+              columns={q.columns}
+              loading={q.loading}
+              onSelect={selectTable}
+              onPreview={preview}
+              onRefresh={() => void q.discoverTables()}
+            />
+            <div className="min-h-0 min-w-0 flex-1">
+              <QueryResults
+                result={q.result}
+                emptyHint="Pick a table and preview its rows, or switch to Query mode to author SQL."
               />
             </div>
-          )}
+          </>
+        )}
 
-          <div className={mode === "sql" ? "min-h-0 flex-1 border-t border-border" : "min-h-0 flex-1"}>
-            <QueryResults
-              result={q.result}
-              emptyHint={
-                mode === "builder"
-                  ? "Pick a table and preview its rows, or switch to the SQL editor."
-                  : "Write a SELECT and hit Run (⌘/Ctrl+Enter)."
-              }
+        {mode === "query" && (
+          <div className="min-h-0 min-w-0 flex-1">
+            {/* The full workbench — Builder⇄Code editor (slice 1 canvas + slice 2 completion) +
+                Run + results + the shipped Save/Open saved-query dialogs (federation target). The
+                page's selected source is baked in; `sel` deep-linking is a follow-up. */}
+            <QueryWorkbench
+              ws={ws}
+              source={source.name}
+              sel={null}
+              onSel={() => {}}
             />
           </div>
-        </div>
+        )}
       </div>
     </section>
   );
@@ -233,23 +167,23 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
     >
       <Button
         role="tab"
-        aria-selected={mode === "builder"}
-        variant={mode === "builder" ? "default" : "ghost"}
+        aria-selected={mode === "discovery"}
+        variant={mode === "discovery" ? "default" : "ghost"}
         size="sm"
         className="h-7 gap-1.5 px-2.5 text-xs"
-        onClick={() => onChange("builder")}
+        onClick={() => onChange("discovery")}
       >
-        <Eye size={13} /> Builder
+        <Eye size={13} /> Discovery
       </Button>
       <Button
         role="tab"
-        aria-selected={mode === "sql"}
-        variant={mode === "sql" ? "default" : "ghost"}
+        aria-selected={mode === "query"}
+        variant={mode === "query" ? "default" : "ghost"}
         size="sm"
         className="h-7 gap-1.5 px-2.5 text-xs"
-        onClick={() => onChange("sql")}
+        onClick={() => onChange("query")}
       >
-        <Terminal size={13} /> SQL
+        <Database size={13} /> Query
       </Button>
     </div>
   );

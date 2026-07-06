@@ -17,7 +17,13 @@
 //
 // Builder mode can only ever generate a SELECT; Code mode is still parse-allowlisted to SELECT by
 // `store.query` / SELECT-validated by `federation.query` at the host.
+//
+// Slice 2: passes schema+dialect to RawEditor (schema-aware completion) and wires the Format SQL
+// action (button + Cmd/Ctrl+Shift+F keybinding) — gated to Code mode + standard dialect.
 
+import { useCallback, useEffect } from "react";
+
+import { formatSql } from "@/lib/sql/format/sqlFormat";
 import type { Schema } from "@/lib/schema";
 import { emptyQuery, emptySqlSource, type SqlSourceState } from "@/lib/panel-kit/sql/query";
 import { emitSql, type SqlDialect } from "@/lib/panel-kit/sql/dialect";
@@ -59,13 +65,39 @@ export function SqlQueryEditor({ value, onChange, dialect, schema }: Props) {
     }
   };
 
+  // Format the raw SQL in place via sql-formatter. The action is GATED to Code mode + standard
+  // dialect — Builder regenerates SQL on every edit (formatting would be clobbered), and
+  // sql-formatter has no SurrealQL grammar (its `sql` fallback corrupts Surreal syntax).
+  const formatRawSql = useCallback(() => {
+    if (value.mode !== "code" || dialect !== "standard") return;
+    const formatted = formatSql(value.rawSql, dialect);
+    if (formatted !== value.rawSql) onChange({ ...value, rawSql: formatted });
+  }, [value, dialect, onChange]);
+
+  // Cmd/Ctrl+Shift+F — the muscle-memory Format keybinding. Window-level so it works whether or not
+  // the CodeMirror textarea has focus. Active only in Code mode + standard dialect (same gate as the
+  // button).
+  useEffect(() => {
+    if (value.mode !== "code" || dialect !== "standard") return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "F" || e.key === "f")) {
+        e.preventDefault();
+        formatRawSql();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [value.mode, dialect, formatRawSql]);
+
   return (
     <div className="mt-2 grid gap-2" aria-label="sql query editor">
       <SqlQueryHeader
         mode={value.mode}
         format={value.format}
+        dialect={dialect}
         onModeChange={switchMode}
         onFormatChange={(format) => onChange({ ...value, format })}
+        onFormat={formatRawSql}
       />
 
       {value.mode === "builder" ? (
@@ -77,9 +109,16 @@ export function SqlQueryEditor({ value, onChange, dialect, schema }: Props) {
             // Builder is the source of truth — regenerate the raw SQL on every change.
             onChange({ ...value, builder, rawSql: emitSql(dialect, builder) })
           }
+          layout={value.builderLayout}
+          onLayoutChange={(builderLayout) => onChange({ ...value, builderLayout })}
         />
       ) : (
-        <RawEditor rawSql={value.rawSql} onChange={(rawSql) => onChange({ ...value, rawSql })} />
+        <RawEditor
+          rawSql={value.rawSql}
+          onChange={(rawSql) => onChange({ ...value, rawSql })}
+          schema={schema}
+          dialect={dialect}
+        />
       )}
     </div>
   );

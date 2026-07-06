@@ -35,4 +35,35 @@ describe("emitSql dispatch", () => {
     expect(emitSql("surreal", emptyQuery(""))).toBe("");
     expect(emitSql("standard", emptyQuery(""))).toBe("");
   });
+
+  // visual-canvas-builder slice: joins are standard-only; surreal drops them defensively.
+
+  it("a query WITH joins: standard emits the JOIN clause, surreal drops it (no JOIN in output)", () => {
+    const qWithJoins: SqlBuilderQuery = {
+      table: "site",
+      joins: [{ table: "point_reading", type: "inner", on: [{ leftColumn: "id", rightColumn: "site_id" }] }],
+      columns: [{ name: "name" }, { name: "value" }],
+      filters: [],
+    };
+    const std = emitSql("standard", qWithJoins);
+    const sur = emitSql("surreal", qWithJoins);
+    expect(std).toContain('INNER JOIN "point_reading"');
+    expect(sur).not.toMatch(/JOIN/i);
+    // The surreal emit still renders the single-table SELECT (the FROM is preserved).
+    expect(sur).toBe("SELECT name, value FROM site");
+  });
+
+  it("a query with HAVING: both dialects emit a HAVING clause (surreal: math::agg, standard: AVG())", () => {
+    const qWithHaving: SqlBuilderQuery = {
+      table: "t",
+      columns: [{ name: "value", aggregation: "avg", alias: "avg_v" }],
+      filters: [
+        { column: "kind", operator: "=", value: "cpu" },
+        { column: "value", operator: ">", value: 10, isAggregate: true, aggregation: "avg" },
+      ],
+      groupBy: ["kind"],
+    };
+    expect(emitSql("standard", qWithHaving)).toContain('HAVING AVG("value") > 10');
+    expect(emitSql("surreal", qWithHaving)).toContain("HAVING math::avg(value) > 10");
+  });
 });

@@ -1,12 +1,18 @@
-// The Data page — the admin, READ-ONLY DB browser (data-console scope). A table picker (with row
-// counts) on the left; the selected table's rows in a paged, typed grid (click a row to expand its
-// full JSON); and a Grid/Graph toggle that lazy-loads the react-flow relation view. No SQL box, no
-// writes — by design (the raw grid never edits; edits go through the domain verbs). Layout + wiring
-// only; data lives in `useData`. This surface is admin-gated; a member never sees the nav entry.
+// The Data page — the admin, READ-ONLY DB browser (data-console scope) + the surreal-local Query
+// surface (query-workbench-view scope, slice 3). A table picker (with row counts) on the left; the
+// selected table's rows in a paged, typed grid (click a row to expand its full JSON); a Grid/Graph
+// toggle that lazy-loads the react-flow relation view; AND a Query mode that mounts the same
+// `QueryWorkbench` the Datasources page mounts, pinned to `surreal-local` (the platform's native
+// store: `store.schema`/`store.query`, surreal dialect). The Query area rides `mcp:store.query:call`
+// (member-level) — independent of the admin-only `store.scan` that gates the raw browser. Whether
+// the page shows Query to non-admins is a nav/gate choice; the cap is checked per-run regardless.
+// No SQL box before this slice — by design (the raw grid never edits; edits go through domain verbs).
 
 import { Suspense, lazy, useMemo, useState } from "react";
 import { Braces, ChevronRight, Database, Network, Table2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { QueryWorkbench } from "@/features/query-workbench";
 import { useData } from "./useData";
 import { TableRail } from "./TableRail";
 import { CollapsedRail } from "@/components/app/rail-collapsed";
@@ -19,7 +25,7 @@ interface Props {
   ws: string;
 }
 
-type Mode = "grid" | "graph";
+type Mode = "grid" | "graph" | "query";
 type ValueKind = "string" | "number" | "boolean" | "null" | "object" | "array";
 
 const TYPE_STYLES: Record<
@@ -118,6 +124,20 @@ export function DataView({ ws }: Props) {
               <ModeTab mode="graph" active={mode === "graph"} onClick={showGraph} />
             </div>
           )}
+          {/* Query is always available (independent of a selected table — it's ad-hoc SQL over the
+              native store). Rides mcp:store.query:call, member-level; a deny is surfaced verbatim. */}
+          <Button
+            type="button"
+            role="tab"
+            aria-selected={mode === "query"}
+            aria-label="query mode"
+            variant={mode === "query" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setMode("query")}
+          >
+            <Database size={14} /> Query
+          </Button>
           <span className="scope-pill" title={`Workspace ${ws}`}>
             <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
             <span className="truncate">{ws}</span>
@@ -150,7 +170,18 @@ export function DataView({ ws }: Props) {
         )}
 
         <div className="min-w-0 flex-1 overflow-hidden">
-          {!selected ? (
+          {mode === "query" ? (
+            // The surreal-local workbench (slice 3) — the SQL box the Data page never had. Same
+            // component the Datasources page and the Data Studio pane mount; pinned to the platform
+            // store here (store.schema/store.query, surreal dialect). sel is local-only for now (no
+            // deep-link on the Data route; saved queries target a datasource, not the platform store).
+            <QueryWorkbench
+              ws={ws}
+              source="surreal-local"
+              sel={null}
+              onSel={() => {}}
+            />
+          ) : !selected ? (
             <EmptySelection tables={tables.length} />
           ) : mode === "graph" ? (
             <Suspense fallback={<PanelMessage title="Loading graph" body="Reading relation edges." />}>

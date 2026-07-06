@@ -12,11 +12,13 @@
 // rail all show the SAME icon for a given surface. Update it once there; every consumer inherits.
 
 import type { LucideIcon } from "lucide-react";
+import { Database } from "lucide-react";
 
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { FlowsView } from "@/features/flows";
 import { IngestView } from "@/features/ingest";
+import { QueryWorkbench } from "@/features/query-workbench";
 import { RulesView } from "@/features/rules";
 import { SURFACE_DEF } from "@/features/shell/surfaceDefs";
 import type { CoreSurface } from "@/features/shell";
@@ -58,6 +60,17 @@ function DatasourcesPane({ ws, sel, onSel }: ViewPaneProps) {
   );
 }
 
+/** The Query workbench as a Data Studio pane (query-workbench-view scope, slice 3). The same
+ *  `QueryWorkbench` the Datasources page + the Data page mount, pinned to the platform's native
+ *  store (`store.schema`/`store.query`, surreal dialect). A federation query in Data Studio goes
+ *  through the existing `datasources` pane (which drills into `DatasourceDetail` → `QueryWorkbench`
+ *  over the federation source). `kind: "query"` is a distinct pane key (no new `CoreSurface` — the
+ *  slice's retargeted registration item 4: "one VIEW_PANES line keyed to an existing surface");
+ *  gating rides the `data` surface lens (member-level `mcp:store.query:call` is re-checked per run). */
+function QueryPane({ ws, sel, onSel }: ViewPaneProps) {
+  return <QueryWorkbench ws={ws} source="surreal-local" sel={sel} onSel={onSel} />;
+}
+
 /** Build a registry entry: the icon + title default from the shared `SURFACE_DEF` so a dock tab, the
  *  "+ Open view" menu, and the sidebar rail never drift apart for a given surface. */
 function def(
@@ -68,11 +81,26 @@ function def(
   return { kind: surface, title: s.label, icon: s.icon, surface, Component };
 }
 
+/** Build a registry entry whose `kind` is DISTINCT from its gating `surface` (used when a pane needs
+ *  its own persisted layout key + dock identity but no new `CoreSurface`). The title/icon default
+ *  from the gating surface's def, overridable. */
+function defAs(
+  kind: string,
+  surface: CoreSurface,
+  Component: (props: ViewPaneProps) => JSX.Element,
+  title?: string,
+  icon?: LucideIcon,
+): ViewPaneDef {
+  const s = SURFACE_DEF[surface];
+  return { kind, title: title ?? s.label, icon: icon ?? s.icon, surface, Component };
+}
+
 export const VIEW_PANES: ViewPaneDef[] = [
   def("flows", ({ ws, sel, onSel }) => <FlowsView ws={ws} flowId={sel} onSelectFlow={onSel} />),
   def("rules", ({ ws, sel, onSel }) => <RulesView ws={ws} ruleId={sel} onSelectRule={onSel} />),
   def("data", ({ ws }) => <DataView ws={ws} />),
   def("datasources", DatasourcesPane),
+  defAs("query", "data", QueryPane, "Query", Database),
   def("ingest", ({ ws }) => <IngestView ws={ws} />),
 ];
 
