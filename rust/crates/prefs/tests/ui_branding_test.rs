@@ -37,7 +37,9 @@ async fn branding_blob_round_trips_unchanged() {
 
     // set_default writes the workspace-default record; resolve returns it for a member who set
     // nothing. (Branding is admin-owned — only the ws-default link ever carries it.)
-    let r = resolve_chain(&store, "acme", "user:ada", None).await.unwrap();
+    let r = resolve_chain(&store, "acme", "user:ada", None)
+        .await
+        .unwrap();
     assert_eq!(
         r.ui_branding,
         Some(acme_brand()),
@@ -70,7 +72,9 @@ async fn branding_patch_leaves_i18n_axes_untouched() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None).await.unwrap();
+    let r = resolve_chain(&store, "acme", "user:ada", None)
+        .await
+        .unwrap();
     assert_eq!(r.language, "es", "language untouched across patches");
     assert_eq!(r.ui_branding, Some(acme_brand()));
 }
@@ -102,7 +106,9 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
     .await
     .unwrap();
 
-    let r = resolve_chain(&store, "acme", "user:ada", None).await.unwrap();
+    let r = resolve_chain(&store, "acme", "user:ada", None)
+        .await
+        .unwrap();
     assert_eq!(r.ui_branding, Some(acme_brand()));
     assert_eq!(r.ui_theme, Some(json!({ "mode": "dark" })));
 }
@@ -111,7 +117,9 @@ async fn branding_does_not_merge_with_member_ui_theme_patch() {
 async fn no_branding_anywhere_resolves_none() {
     // No workspace default set → None (the shell falls back to its compiled Lazybones default).
     let store = Store::memory().await.unwrap();
-    let r = resolve_chain(&store, "acme", "user:ada", None).await.unwrap();
+    let r = resolve_chain(&store, "acme", "user:ada", None)
+        .await
+        .unwrap();
     assert_eq!(r.ui_branding, None);
 }
 
@@ -144,10 +152,22 @@ async fn branding_is_workspace_isolated() {
     .await
     .unwrap();
 
-    let rb = resolve_chain(&store, "ws-b", "user:ada", None).await.unwrap();
-    assert_eq!(rb.ui_branding, Some(brand_b), "ws-B resolves ws-B's brand only");
-    let ra = resolve_chain(&store, "ws-a", "user:ada", None).await.unwrap();
-    assert_eq!(ra.ui_branding, Some(brand_a), "ws-A resolves ws-A's brand only");
+    let rb = resolve_chain(&store, "ws-b", "user:ada", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        rb.ui_branding,
+        Some(brand_b),
+        "ws-B resolves ws-B's brand only"
+    );
+    let ra = resolve_chain(&store, "ws-a", "user:ada", None)
+        .await
+        .unwrap();
+    assert_eq!(
+        ra.ui_branding,
+        Some(brand_a),
+        "ws-A resolves ws-A's brand only"
+    );
 
     // Raw read in ws-B never surfaces ws-A's blob.
     let mut resp = store
@@ -184,6 +204,9 @@ async fn user_prefs_ui_branding_is_round_tripped_but_member_never_writes_it() {
     )
     .await
     .unwrap();
-    let got = get_user_prefs(&store, "acme", "user:ada").await.unwrap().unwrap();
+    let got = get_user_prefs(&store, "acme", "user:ada")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(got.ui_branding, Some(acme_brand()));
 }

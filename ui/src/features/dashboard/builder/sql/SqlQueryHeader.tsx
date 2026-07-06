@@ -12,7 +12,7 @@ import { Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { SqlDialect } from "@/lib/panel-kit/sql/dialect";
-import type { SqlEditorMode, SqlFormat } from "@/lib/panel-kit/sql/query";
+import type { SqlEditorMode, SqlFormat, SqlLang } from "@/lib/panel-kit/sql/query";
 
 interface Props {
   mode: SqlEditorMode;
@@ -25,6 +25,10 @@ interface Props {
   onFormatChange: (format: SqlFormat) => void;
   /** Called when the user clicks the Format SQL button / hits Cmd/Ctrl+Shift+F. */
   onFormat: () => void;
+  /** The Code editor's authoring language (PRQL support). The toggle renders only when the host
+   *  supplies `onLangChange` (a standard-dialect Code surface — PRQL has no SurrealQL backend). */
+  lang?: SqlLang;
+  onLangChange?: (lang: SqlLang) => void;
 }
 
 /** The Builder/Code toggle + the format toggle + (Code mode, standard dialect only) the Format SQL button. */
@@ -35,10 +39,14 @@ export function SqlQueryHeader({
   onModeChange,
   onFormatChange,
   onFormat,
+  lang = "sql",
+  onLangChange,
 }: Props) {
   // Format SQL is gated: standard dialect only, Code mode only (Builder regenerates SQL on every
-  // edit, so a hand-format would be clobbered).
-  const showFormatButton = mode === "code" && dialect === "standard";
+  // edit, so a hand-format would be clobbered), SQL only (sql-formatter has no PRQL grammar).
+  const showFormatButton = mode === "code" && dialect === "standard" && lang !== "prql";
+  // The language toggle: Code mode, standard dialect, and a host that wires it (`onLangChange`).
+  const showLangSelect = mode === "code" && dialect === "standard" && !!onLangChange;
   return (
     <div className="flex items-center justify-between gap-2" aria-label="sql query header">
       <div className="flex items-center gap-1" role="tablist" aria-label="sql editor mode">
@@ -46,6 +54,22 @@ export function SqlQueryHeader({
         <Toggle active={mode === "code"} label="Code" onClick={() => onModeChange("code")} />
       </div>
       <div className="flex items-center gap-2">
+        {showLangSelect && (
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-muted">Lang</span>
+            {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive */}
+            <select
+              aria-label="query language"
+              title="SQL runs verbatim; PRQL compiles to this source's SQL dialect at Run"
+              className="h-7 rounded-md border border-border bg-bg px-2 text-[11px] text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+              value={lang}
+              onChange={(e) => onLangChange?.(e.target.value as SqlLang)}
+            >
+              <option value="sql">SQL</option>
+              <option value="prql">PRQL</option>
+            </select>
+          </div>
+        )}
         {showFormatButton && (
           <Button
             type="button"

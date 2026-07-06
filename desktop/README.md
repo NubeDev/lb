@@ -22,7 +22,8 @@ desktop/
     linux/           # build + run docs for Linux (read this first)
     darwin/          # macOS (future)
     windows/         # Windows (future)
-  Makefile           # one-liner entrypoints per OS/build-type (when wired)
+  docker/            # the Linux build container — toolchain + Dockerfile + entrypoint
+  Makefile           # one-liner entrypoints: `make linux-executable`, `make artifact`, …
 ```
 
 - **`build/<os>/<build-type>/`** — one dir per build type under each OS. The plain
@@ -41,7 +42,9 @@ dynamically links `webkit2gtk-4.1` (the runtime contract); the target machine mu
 have it — the honest trade of "no bundle", accepted in the scope.
 
 Read [`docs/linux/README.md`](docs/linux/README.md) for the toolchain, the one-liner,
-where the binary lands, and the smoke command.
+where the binary lands, and the smoke command. **The recommended build path is the
+container** (`make linux-executable`, see [`docker/README.md`](docker/README.md)) — no
+host webkit2gtk-4.1 install required, same binary, host stays clean.
 
 ## What's later
 
@@ -59,6 +62,8 @@ where the binary lands, and the smoke command.
 
 - **The shell crate:** [`../ui/src-tauri/`](../ui/src-tauri) — `Cargo.toml` (the
   `desktop` optional-feature seam), `tauri.conf.json`, `src/` (command layer + window).
+- **The build container:** [`docker/`](docker) — `Dockerfile` + `build.sh` + README; the
+  recommended build path. Scope: [`../docs/scope/desktop/desktop-build-container-scope.md`](../docs/scope/desktop/desktop-build-container-scope.md).
 - **The ask (scope):** [`../docs/scope/desktop/desktop-packaging-scope.md`](../docs/scope/desktop/desktop-packaging-scope.md).
 - **What shipped (public):** [`../docs/public/desktop/desktop.md`](../docs/public/desktop/desktop.md).
 - **Status:** [`../docs/STATUS.md`](../docs/STATUS.md) — "native desktop window

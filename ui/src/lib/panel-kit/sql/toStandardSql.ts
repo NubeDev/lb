@@ -148,8 +148,23 @@ function renderGroupByEntry(g: SqlGroupByEntry, joined: boolean, fromTable: stri
   return qualify(g.table, g.column);
 }
 
-/** Render one ORDER BY clause (`"col" ASC/DESC`, qualified under joins). */
-function renderOrderBy(o: SqlOrderBy, joined: boolean, fromTable: string): string {
+/** The set of result-column names SELECT exposes (`AS "alias"` — explicit, plus the aggregate
+ *  default `${aggregation}_${name}` / `count`). An unqualified ORDER BY entry naming one of these
+ *  is an ANSI output-name reference and must render bare (never `"table"."alias"` — the table has
+ *  no such column; e.g. `ORDER BY avg_energy` over `AVG(…) AS "avg_energy"`). */
+function selectAliases(columns: SqlColumn[]): Set<string> {
+  const out = new Set<string>();
+  for (const c of columns) {
+    if (c.alias) out.add(c.alias);
+    else if (c.aggregation) out.add(c.name === "*" ? "count" : `${c.aggregation}_${c.name}`);
+  }
+  return out;
+}
+
+/** Render one ORDER BY clause (`"col" ASC/DESC`, qualified under joins). An unqualified entry that
+ *  names a SELECT alias renders as the bare alias (an output-name sort, not a table column). */
+function renderOrderBy(o: SqlOrderBy, joined: boolean, fromTable: string, aliases: Set<string>): string {
+  if (!o.table && aliases.has(o.column)) return `${ident(o.column)} ${o.direction.toUpperCase()}`;
   const table = o.table ?? fromTable;
   const colExpr = joined ? qualify(table, o.column) : ident(o.column);
   return `${colExpr} ${o.direction.toUpperCase()}`;
@@ -193,7 +208,8 @@ export function toStandardSql(query: SqlBuilderQuery): string {
 
   const orderBys = normalizeOrderBy(query.orderBy)?.filter((o) => notPending(o.table));
   if (orderBys && orderBys.length > 0) {
-    sql += ` ORDER BY ${orderBys.map((o) => renderOrderBy(o, joined, fromTable)).join(", ")}`;
+    const aliases = selectAliases(selectable);
+    sql += ` ORDER BY ${orderBys.map((o) => renderOrderBy(o, joined, fromTable, aliases)).join(", ")}`;
   }
 
   if (typeof query.limit === "number" && query.limit > 0) {

@@ -52,6 +52,21 @@ pnpm tauri build --no-bundle -- --features desktop
 **Output:** [`../../../ui/src-tauri/target/release/lazybones-shell`](../../../ui/src-tauri/target/release/lazybones-shell)
 — a dynamically-linked ELF for `x86_64-unknown-linux-gnu`.
 
+### Build in Docker (no host toolchain needed)
+
+Prefer not to install webkit2gtk-4.1 + Rust + Node on your machine? Build via the
+container — one `make` target, same binary, host stays clean:
+
+```bash
+make -C desktop linux-executable   # binary lands at the same path as above
+```
+
+The container (Ubuntu 22.04 + the full toolchain, see
+[`../docker/README.md`](../docker/README.md)) bind-mounts the repo, runs the build as
+your host UID (so output files are owner-correct), and caches cargo/pnpm in named
+volumes. For CI / reproducible tar extraction: `make -C desktop artifact`. This is the
+recommended path for anyone who isn't already running the webkit2gtk-4.1 dev set.
+
 ## Runtime contract
 
 - The binary **dynamically links `webkit2gtk-4.1`** and friends — the target machine

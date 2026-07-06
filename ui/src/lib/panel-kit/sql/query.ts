@@ -157,6 +157,11 @@ export function emptyQuery(table = ""): SqlBuilderQuery {
   return { table, columns: [], filters: [], groupBy: [] };
 }
 
+/** The authoring language of the Code editor. `sql` runs verbatim; `prql` compiles to the target's
+ *  SQL dialect through the host's `query.compile` verb before running (PRQL support — the same
+ *  `lb-prql` path saved `lang:"prql"` queries use). Builder mode always emits SQL regardless. */
+export type SqlLang = "sql" | "prql";
+
 /** The full SQL source state a cell stores: the editor mode, the raw SQL string (what runs), the
  *  builder query (when authored in Builder mode), the format, and an opaque canvas-layout blob. */
 export interface SqlSourceState {
@@ -166,6 +171,9 @@ export interface SqlSourceState {
   /** The builder query, present iff the source was last edited in Builder mode (so reopening returns). */
   builder?: SqlBuilderQuery;
   format: SqlFormat;
+  /** The Code editor's authoring language. OPTIONAL (absent = `sql`) so every pre-existing persisted
+   *  state round-trips byte-identically. `prql` is compiled server-side at Run. */
+  lang?: SqlLang;
   /** Opaque React-Flow node positions (`{ [table]: {x,y} }`) — never read by `emitSql`; the canvas
    *  projection (`canvasModel.toFlow`) consumes it to restore a saved diagram. */
   builderLayout?: unknown;

@@ -9,7 +9,8 @@
 // they can see WHAT the workspace brand is but cannot change it (the gateway re-checks the cap
 // server-side regardless). Branding is workspace identity, not personal taste.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -227,8 +228,9 @@ export function BrandingTab({ caps }: Props) {
 }
 
 /** A single brand image slot — preview the current image (or a placeholder), upload a new one, or
- *  clear it. The file input is uncontrolled (reset to "" after each pick so the same file can be
- *  re-picked); the data-URI lives in the parent's state. */
+ *  clear it. The shadcn `<Input type="file">` is hidden and triggered via a ref through the Upload
+ *  button (the project's ui-standards discipline: never a raw `<input>`; mirrors
+ *  `UploadArtifact.tsx`). The input is reset after each pick so the same file can be re-picked. */
 function BrandImageField({
   label,
   help,
@@ -244,6 +246,7 @@ function BrandImageField({
   onUpload: (file: File | null) => void;
   onClear: () => void;
 }) {
+  const inputRef = useRef<HTMLInputElement>(null);
   return (
     <Field label={label} help={help}>
       <div className="flex items-center gap-3">
@@ -257,19 +260,30 @@ function BrandImageField({
             <span className="text-[10px] uppercase tracking-wide text-muted">none</span>
           )}
         </div>
-        <input
+        <Input
+          ref={inputRef}
           type="file"
           accept={BRAND_IMAGE_ACCEPT}
           disabled={disabled}
-          className="block text-xs file:mr-3 file:rounded-sm file:border-0 file:bg-accent file:px-3 file:py-1 file:text-bg hover:file:bg-accent/90 disabled:opacity-50"
+          className="hidden"
           aria-label={`${label} upload`}
           onChange={(e) => {
             const f = e.target.files?.[0] ?? null;
             onUpload(f);
-            // Reset so re-picking the same file fires onChange again.
             e.target.value = "";
           }}
         />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          aria-label={`upload ${label.toLowerCase()}`}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Upload size={14} />
+          <span>Upload</span>
+        </Button>
         {dataUri && !disabled && (
           <Button variant="ghost" size="sm" onClick={onClear} aria-label={`clear ${label.toLowerCase()}`}>
             Clear

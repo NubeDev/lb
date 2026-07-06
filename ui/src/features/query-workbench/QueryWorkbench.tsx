@@ -25,6 +25,8 @@
 // is dead; the umbrella §"Saved queries" closed that open item).
 
 import { useEffect, useRef, useState } from "react";
+
+import { compileQuery } from "@/lib/queries";
 import { Loader2, Maximize2, Minimize2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -96,7 +98,8 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
   // surreal SQL box is ad-hoc; a `platform:` target is a separate follow-up).
   const saved = useDatasourceQueries(isSurreal ? "" : source);
 
-  // Resolve a saved-query selection (`sel`) into the editor — loads the saved text as Code mode.
+  // Resolve a saved-query selection (`sel`) into the editor — loads the saved text as Code mode,
+  // restoring the saved language (a `lang:"prql"` record reopens with the PRQL toggle set).
   useEffect(() => {
     if (!sel) return;
     let cancelled = false;
@@ -104,7 +107,12 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
       .load(sel)
       .then((q) => {
         if (cancelled) return;
-        setState({ mode: "code", rawSql: q.text, format: "table" });
+        setState({
+          mode: "code",
+          rawSql: q.text,
+          format: "table",
+          lang: q.lang === "prql" ? "prql" : "sql",
+        });
       })
       .catch(() => {
         /* a load failure (deny/NotFound) leaves the editor as-is — honest, no fabricated text */
@@ -127,11 +135,25 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
     setHistory(loadHistory(ws, source));
   }, [ws, source]);
 
+  // PRQL is active only in Code mode on a federation source (Builder always emits SQL; PRQL has no
+  // SurrealQL backend). The PRQL text compiles server-side (`query.compile`, the same `lb-prql`
+  // path saved `lang:"prql"` queries run through) and the COMPILED SQL is what runs — so the status
+  // bar's `lastSql` shows the real statement the engine saw.
+  const prqlActive = !isSurreal && state.mode === "code" && state.lang === "prql";
+  const [compileError, setCompileError] = useState<string | null>(null);
+
   const onRun = () => {
-    const sql = editorSql;
-    if (!sql.trim()) return;
-    setHistory(recordRun(ws, source, sql, Date.now()));
-    void run.run(sql);
+    const text = editorSql;
+    if (!text.trim()) return;
+    setHistory(recordRun(ws, source, text, Date.now()));
+    setCompileError(null);
+    if (!prqlActive) {
+      void run.run(text);
+      return;
+    }
+    void compileQuery({ lang: "prql", text, target: `datasource:${source}` })
+      .then((res) => run.run(res.sql))
+      .catch((e) => setCompileError(e instanceof Error ? e.message : String(e)));
   };
 
   const onRestoreHistory = (sql: string) =>
@@ -157,6 +179,7 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
           schema={schema}
           value={state}
           onChange={setState}
+          allowPrql={!isSurreal}
         />
       </div>
 
@@ -197,7 +220,13 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
               source={source}
               sql={editorSql}
               disabled={!editorSql.trim()}
-              onSave={(args) => saved.save(args).then((id) => { onSel(id); return id; })}
+              onSave={(args) =>
+                saved
+                  // A PRQL draft saves as a real `lang:"prql"` record (the host compiles at run);
+                  // everything else stays `raw` (the shipped default).
+                  .save({ ...args, lang: prqlActive ? "prql" : "raw" })
+                  .then((id) => { onSel(id); return id; })
+              }
             />
           </>
         )}
@@ -208,13 +237,23 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
               : "ran"}
           </span>
         )}
-        {run.error && (
+        {run.error && !compileError && (
           <span
             role="alert"
             className="ml-auto truncate text-[11px] text-destructive"
             title={run.error}
           >
             {run.error}
+          </span>
+        )}
+        {/* A PRQL compile failure is author feedback from `query.compile` — shown in the same slot. */}
+        {compileError && (
+          <span
+            role="alert"
+            className="ml-auto truncate text-[11px] text-destructive"
+            title={compileError}
+          >
+            {compileError}
           </span>
         )}
         {/* Maximise / restore the editor and results sections (the split hook owns the ratio). */}

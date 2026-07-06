@@ -183,7 +183,7 @@ function QueryCanvasInner({ schema, query, onChange, layout, onLayoutChange }: P
       const structural = view.nodes.find((x) => x.id === n.id);
       if (!structural) return n;
       const table = structural.data.table;
-      const columnStates = buildColumnStates(structural.data.columns.map((c) => c.name), query.columns, table);
+      const columnStates = buildColumnStates(structural.data.columns.map((c) => c.name), query.columns, table, query.table);
       const data: TableNodeData = {
         ...structural.data,
         columnStates,
@@ -299,16 +299,19 @@ export function QueryCanvas(props: Props) {
   );
 }
 
-/** Build the per-column state lookup for a table node (selected/aggregation/alias/order). */
+/** Build the per-column state lookup for a table node (selected/aggregation/alias/order). An
+ *  unqualified column belongs to the FROM table (`SqlColumn.table` "Defaults to the FROM table") —
+ *  e.g. a Code→Builder-parsed `SELECT "name" FROM "site" …` must tick `name` on the `site` node. */
 function buildColumnStates(
   catalog: string[],
   queryColumns: SqlBuilderQuery["columns"],
   table: string,
+  fromTable: string,
 ): TableNodeData["columnStates"] {
   const out: TableNodeData["columnStates"] = {};
   for (const name of catalog) out[name] = { selected: false };
   for (const c of queryColumns) {
-    if ((c.table ?? "") !== table) continue;
+    if ((c.table ?? fromTable) !== table) continue;
     if (c.name === "*") continue;
     if (!(c.name in out)) out[c.name] = { selected: false };
     out[c.name] = {
@@ -329,7 +332,7 @@ function onColumnCheck(
   checked: boolean,
   onChange: (q: SqlBuilderQuery) => void,
 ) {
-  const others = query.columns.filter((c) => !(c.name === column && (c.table ?? "") === table));
+  const others = query.columns.filter((c) => !(c.name === column && (c.table ?? query.table) === table));
   if (!checked) {
     onChange({ ...query, columns: others });
     return;
@@ -346,7 +349,7 @@ function onColumnAggregation(
   onChange: (q: SqlBuilderQuery) => void,
 ) {
   const next = query.columns.map((c) =>
-    c.name === column && (c.table ?? "") === table ? { ...c, aggregation } : c,
+    c.name === column && (c.table ?? query.table) === table ? { ...c, aggregation } : c,
   );
   onChange({ ...query, columns: next });
 }
@@ -360,7 +363,7 @@ function onColumnAlias(
   onChange: (q: SqlBuilderQuery) => void,
 ) {
   const next = query.columns.map((c) =>
-    c.name === column && (c.table ?? "") === table ? { ...c, alias } : c,
+    c.name === column && (c.table ?? query.table) === table ? { ...c, alias } : c,
   );
   onChange({ ...query, columns: next });
 }
@@ -374,7 +377,7 @@ function onColumnOrder(
   onChange: (q: SqlBuilderQuery) => void,
 ) {
   const next = query.columns.map((c) =>
-    c.name === column && (c.table ?? "") === table ? { ...c, order } : c,
+    c.name === column && (c.table ?? query.table) === table ? { ...c, order } : c,
   );
   onChange({ ...query, columns: next });
 }

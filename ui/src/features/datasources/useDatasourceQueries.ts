@@ -3,8 +3,8 @@
 // place that list/save/remove the resulting `query:{ws}:{id}` records meets the `@/lib/queries`
 // client. The list is filtered CLIENT-SIDE to `target === "datasource:<name>"` (the host's
 // `query.list` returns the whole workspace's roster; the filter is a pure projection, no second
-// call). `lang` is fixed to `"raw"` on save — this surface authors raw SQL against the external
-// engine, not PRQL (the platform-target workbench is where PRQL is authored). One hook per file
+// call). `lang` defaults to `"raw"` on save; the workbench's PRQL Code mode passes `lang:"prql"`
+// so the record compiles to the source's dialect at run (query scope). One hook per file
 // (FILE-LAYOUT). No fake/demo data — every call rides the real `invoke` seam to the host bridge.
 
 import { useCallback, useEffect, useState } from "react";
@@ -32,9 +32,16 @@ export interface DatasourceQueries {
   refresh: () => Promise<void>;
   /** Resolve one saved query to its full record (text included) for loading into the editor. */
   load: (id: string) => Promise<SavedQuery>;
-  /** Save the current SQL as a `query:{ws}:{id}` record (lang:raw, target:datasource:<source>).
-   *  Returns the saved id. Idempotent UPSERT on `id` — saving the same id overwrites in place. */
-  save: (args: { id: string; name?: string; description?: string; sql: string }) => Promise<string>;
+  /** Save the current text as a `query:{ws}:{id}` record (target:datasource:<source>; `lang`
+   *  defaults to `raw`, the PRQL Code mode passes `"prql"`). Returns the saved id. Idempotent
+   *  UPSERT on `id` — saving the same id overwrites in place. */
+  save: (args: {
+    id: string;
+    name?: string;
+    description?: string;
+    sql: string;
+    lang?: "raw" | "prql";
+  }) => Promise<string>;
   /** Soft-delete a saved query (idempotent tombstone). */
   remove: (id: string) => Promise<void>;
 }
@@ -68,12 +75,18 @@ export function useDatasourceQueries(source: string): DatasourceQueries {
   const load = useCallback(async (id: string): Promise<SavedQuery> => getQuery(id), []);
 
   const save = useCallback(
-    async (args: { id: string; name?: string; description?: string; sql: string }): Promise<string> => {
+    async (args: {
+      id: string;
+      name?: string;
+      description?: string;
+      sql: string;
+      lang?: "raw" | "prql";
+    }): Promise<string> => {
       const res = await saveQuery({
         id: args.id,
         name: args.name,
         description: args.description,
-        lang: "raw",
+        lang: args.lang ?? "raw",
         text: args.sql,
         target,
         params: [],
