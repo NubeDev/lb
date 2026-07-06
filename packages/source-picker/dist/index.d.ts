@@ -64,6 +64,11 @@ export declare type CatalogEntry = {
     kind: "inbox";
     id: string;
     channel: string;
+} | {
+    kind: "query";
+    id: string;
+    name: string;
+    target?: string;
 };
 
 /** The system-catalog explorer panel. */
@@ -114,6 +119,7 @@ export declare interface CatalogSectionData {
     channels: ChannelRow[];
     insights: InsightRow[];
     inbox: InboxRow[];
+    queries: QuerySummary[];
     extensions: ExtRow[];
     rules: RuleSummary[];
     flowSummaries: FlowSummary[];
@@ -130,7 +136,7 @@ export declare interface CatalogSectionData {
  *  EXPLORER skin renders today — a host composes which sections its surface shows. `extensions`,
  *  `rules`, `flowSummaries`, `flowDescriptors` are picker-only projections today (no explorer
  *  section) but share the orchestration. */
-export declare type CatalogSectionKind = "datasources" | "schema" | "series" | "channels" | "insights" | "inbox" | "extensions" | "rules" | "flowSummaries" | "flowDescriptors";
+export declare type CatalogSectionKind = "datasources" | "schema" | "series" | "channels" | "insights" | "inbox" | "queries" | "extensions" | "rules" | "flowSummaries" | "flowDescriptors";
 
 export declare interface CatalogSectionProps<T> {
     spec: CatalogSectionSpec;
@@ -298,6 +304,29 @@ export declare function PickerGroup({ entries, group, label, }: {
     label: string;
 }): JSX_2.Element | null;
 
+/** Saved-query rows → catalog entries. The id is the query's slug (stable round-trip key); `target`
+ *  rides along so the explorer's renderer can sub-label a platform query vs a federated one. */
+export declare function queryCatalogEntries(rows: QuerySummary[]): CatalogEntry[];
+
+/** Saved-query entries — one per `query.list` row. Each ⇒ a read `query.run {id}` source: the host
+ *  compiles the saved PRQL/raw text for the target's dialect and dispatches to `store.query`
+ *  (platform) or `federation.query` (datasource), returning the SAME `{columns, rows}` shape every
+ *  other tabular source yields. `query.run` COMPOSES the target's cap, it never widens it (rule 5):
+ *  the caller needs `mcp:query.run:call` AND the underlying target cap, re-checked per call. Whether
+ *  the saved text is currently valid is the author's concern — an honest failure if not. */
+export declare function queryEntries(queries: QuerySummary[]): SourceEntry[];
+
+/** A saved query's summary (the subset of `query.list`'s `queries[]` the picker renders) — a saved
+ *  query is a read source (`query.run {id}` → `{columns, rows}`), so it mirrors `RuleSummary`.
+ *  `target` (optional) is the host's `"platform"` | `"datasource:<name>"` string; the catalog row
+ *  renders it as a sub-label so an author can tell a platform query from a federated one at a glance.
+ *  Absent ⇒ just the name (a host that only returns `{id,name}` still renders). */
+export declare interface QuerySummary {
+    id: string;
+    name: string;
+    target?: string;
+}
+
 /** The read/source groups, in display order, with their section labels. `action` is omitted (write
  *  controls are a separate authoring intent); a host that wants them passes its own list (see
  *  `BUILDER_SOURCE_GROUPS`). Exported so every consumer renders ONE canonical label set. */
@@ -432,7 +461,7 @@ export declare interface SourceEntry {
     id: string;
     /** The grouping origin (the picker's sections). `widget` is a packaged `[[widget]]` tile (a finished
      *  widget the developer shipped — distinct from `extension`, which offers an extension's raw tools). */
-    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules";
+    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules" | "queries";
     /** What the author sees — never a raw tool name. */
     label: string;
     /** For a `widget` entry: the icon name the tile declared (lucide id). */
@@ -468,6 +497,7 @@ export declare interface SourceInputs {
     descriptors?: NodeDescriptor[];
     datasources?: DatasourceRow[];
     rules?: RuleSummary[];
+    queries?: QuerySummary[];
 }
 
 /** The INJECTED read seam. The host implements each over its own transport (the shell delegates to
@@ -491,6 +521,10 @@ export declare interface SourceLoaders {
     /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
      *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
     listRules?: () => Promise<RuleSummary[]>;
+    /** Saved PRQL/raw queries the caller may run (from `query.list`). Drives the Queries group — each ⇒
+     *  a `query.run {id}` read source (re-gated per call, no-widening: the caller still needs the
+     *  target's underlying cap). Optional + deny-tolerant like every loader. */
+    listQueries?: () => Promise<QuerySummary[]>;
     /** The workspace's local-store schema (from `store.schema`). Drives the explorer's Local-tables
      *  section (table → column tree). Absent ⇒ the section is absent (a host that only wants the
      *  picker groups skips it). */

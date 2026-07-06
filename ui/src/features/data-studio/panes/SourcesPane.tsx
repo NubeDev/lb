@@ -23,6 +23,7 @@ import {
 } from "@nube/source-picker";
 
 import { listDatasources } from "@/lib/datasources";
+import { listQueries } from "@/lib/queries";
 import { readSchema } from "@/lib/schema";
 import { listRealSeries } from "@/lib/ingest/schema.api";
 import { listChannels } from "@/lib/channel/channel.api";
@@ -47,6 +48,9 @@ function shellLoaders(ws: string): SourceLoaders {
     listSeries: () => listRealSeries(),
     listChannels: () => listChannels(ws),
     listInsights: () => listInsights({}).then((page): { id: string; title: string }[] => page.items),
+    // Saved queries → the Saved-queries explorer section (each row ⇒ a `query.run {id}` builder
+    // source). Reached through `mcp_call` (`query.list`); a deny → the section is "Not permitted."
+    listQueries: () => listQueries(),
   };
 }
 
@@ -107,6 +111,11 @@ function selectionFor(entry: CatalogEntry): { sel: SourceSelection; label: strin
       return pick("inbox.list", { channel: entry.name }, entry.name);
     case "insight":
       return pick("insight.get", { id: entry.id.replace(/^insight:/, "") }, entry.title);
+    case "query":
+      // A saved query opens as a `query.run {id}` builder tab — the host compiles for the target's
+      // dialect and re-checks the underlying cap (no-widening). The slug is the catalog id minus
+      // its `query:` prefix; the tab label is the saved query's display name.
+      return pick("query.run", { id: entry.id.replace(/^query:/, "") }, entry.name);
     default:
       // A catalog kind with no builder meaning yet (e.g. inbox items) — no tab, no crash.
       return null;

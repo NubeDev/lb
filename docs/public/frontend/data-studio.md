@@ -63,6 +63,39 @@ honest seeded-demo-data preview.
   accepted loss; the library holds anything saved). It is never localStorage (rule 4), and it is keyed
   to the token `sub` — a member can only ever read/write their own layout.
 
+## Query builder — common across dialects
+
+The Builder⇄Code SQL editor is **one component for every datasource kind** — the dialect is behind
+a seam, never a fork. A LOCAL TABLE source (SurrealDB, `store.query`) and an external DATASOURCE
+(`federation.query` — postgres / timescale / sqlite, e.g. `demo-buildings`) get the **same** visual
+builder (Table → Column/Aggregation → Filter → Group by → Order by → Limit + a live SQL preview)
+and the **same** Code escape hatch. Lifting the deferral recorded in the v3 datasource-binding scope
+("the federation schema-dropdown verb is deferred this phase") became possible once
+`federation.schema {source, table?}` shipped; this slice is the lift.
+
+- **One structured-query state, N dialect emitters.** The shared `SqlBuilderQuery`
+  (`panel-kit/sql/query.ts`) is unchanged; the new seam is `emitSql(dialect, query)`
+  (`panel-kit/sql/dialect.ts`). `toSurrealQL.ts` stays the SurrealQL impl (`math::sum(col)`, bare
+  identifiers, `count()`); `toStandardSql.ts` is the standard-SQL impl (`SUM("col")`, double-quoted
+  identifiers, `COUNT(*)`). The `dialect` is selected from the target's datasource `kind`
+  (`surreal` vs `federation`) — config data, never a hardcoded datasource name (rule 10).
+- **Federation dropdowns from `federation.schema`.** The visual builder's Table/Column dropdowns for
+  a federation target are populated by the SHIPPED `federation.schema {source, table?}` verb —
+  reusing the existing `discoverTables`/`describeTable` client, the same load pattern the editor
+  uses for local `store.schema`. Tables load once per source; columns lazy-fill per picked table.
+  No second schema-fetch path.
+- **The Code editor is the escape hatch both ways.** Builder → Code is free (regenerate the string);
+  Code → Builder confirms (hand-edited SQL may not round-trip — the same gate surreal had all along).
+  A saved federation cell now carries `options.sql` (the builder state) so reopening returns to the
+  builder — the round-trip surreal already had. **Migration:** a federation cell authored BEFORE this
+  slice (no `options.sql`) reopens to Code mode with the saved SQL preserved verbatim — no fabricated
+  builder query from hand-edited SQL.
+- **Nothing else moves.** The wire shape (`federation.query {source, sql}` args) is unchanged. The
+  render path (`viz.query`) is unchanged. No new MCP verb / cap / table / outbox target / host
+  change — the slice is pure UI + one TS emitter module. Surreal-path behaviour is preserved
+  byte-for-byte (pinned by the surreal-regression gateway test: dialect `math::avg` preview, not
+  `AVG("…")`).
+
 ## The shared substrate
 
 Data Studio's builder views are built on a **headless logic lib**, `ui/src/lib/panel-kit/`, extracted so

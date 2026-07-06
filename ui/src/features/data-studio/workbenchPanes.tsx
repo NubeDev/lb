@@ -6,8 +6,11 @@
 // host surface never lists itself (no recursive embedding). Extension pages are a later cut via the
 // generic `ext.list` discovery (rule 10) — no extension id appears here. First cut: ONE pane per
 // view kind (pages weren't written to be multi-mounted; the menu re-activates an open pane).
+//
+// The icon + title per kind are NOT redefined here — they come from the shared `SURFACE_DEF` map
+// (`ui/src/features/shell/surfaceDefs.ts`) so the dock tab, the "+ Open view" menu, and the sidebar
+// rail all show the SAME icon for a given surface. Update it once there; every consumer inherits.
 
-import { Cable, Database, GitBranch, Import, SlidersHorizontal } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { DataView } from "@/features/data";
@@ -15,8 +18,9 @@ import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
 import { FlowsView } from "@/features/flows";
 import { IngestView } from "@/features/ingest";
 import { RulesView } from "@/features/rules";
-import { Button } from "@/components/ui/button";
+import { SURFACE_DEF } from "@/features/shell/surfaceDefs";
 import type { CoreSurface } from "@/features/shell";
+import { Button } from "@/components/ui/button";
 
 export interface ViewPaneProps {
   ws: string;
@@ -26,7 +30,8 @@ export interface ViewPaneProps {
 }
 
 export interface ViewPaneDef {
-  /** The pane kind — persisted in the layout record's params; treated as opaque data by the dock. */
+  /** The pane kind — persisted in the layout record's params; treated as opaque data by the dock.
+   *  Always identical to the surface key, so the shared `SURFACE_DEF` lookup works. */
   kind: string;
   title: string;
   icon: LucideIcon;
@@ -53,42 +58,22 @@ function DatasourcesPane({ ws, sel, onSel }: ViewPaneProps) {
   );
 }
 
+/** Build a registry entry: the icon + title default from the shared `SURFACE_DEF` so a dock tab, the
+ *  "+ Open view" menu, and the sidebar rail never drift apart for a given surface. */
+function def(
+  surface: CoreSurface,
+  Component: (props: ViewPaneProps) => JSX.Element,
+): ViewPaneDef {
+  const s = SURFACE_DEF[surface];
+  return { kind: surface, title: s.label, icon: s.icon, surface, Component };
+}
+
 export const VIEW_PANES: ViewPaneDef[] = [
-  {
-    kind: "flows",
-    title: "Flows",
-    icon: GitBranch,
-    surface: "flows",
-    Component: ({ ws, sel, onSel }) => <FlowsView ws={ws} flowId={sel} onSelectFlow={onSel} />,
-  },
-  {
-    kind: "rules",
-    title: "Rules",
-    icon: SlidersHorizontal,
-    surface: "rules",
-    Component: ({ ws, sel, onSel }) => <RulesView ws={ws} ruleId={sel} onSelectRule={onSel} />,
-  },
-  {
-    kind: "data",
-    title: "Data",
-    icon: Database,
-    surface: "data",
-    Component: ({ ws }) => <DataView ws={ws} />,
-  },
-  {
-    kind: "datasources",
-    title: "Datasources",
-    icon: Cable,
-    surface: "datasources",
-    Component: DatasourcesPane,
-  },
-  {
-    kind: "ingest",
-    title: "Ingest",
-    icon: Import,
-    surface: "ingest",
-    Component: ({ ws }) => <IngestView ws={ws} />,
-  },
+  def("flows", ({ ws, sel, onSel }) => <FlowsView ws={ws} flowId={sel} onSelectFlow={onSel} />),
+  def("rules", ({ ws, sel, onSel }) => <RulesView ws={ws} ruleId={sel} onSelectRule={onSel} />),
+  def("data", ({ ws }) => <DataView ws={ws} />),
+  def("datasources", DatasourcesPane),
+  def("ingest", ({ ws }) => <IngestView ws={ws} />),
 ];
 
 export function viewPane(kind: string): ViewPaneDef | undefined {

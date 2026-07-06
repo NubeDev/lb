@@ -34,6 +34,7 @@ import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { detectShape } from "@/features/dashboard/views/shape";
 import { fieldNamesOf } from "./fields/resultFields";
 import { ResultFieldsProvider } from "./fields/FieldsContext";
+import { ResultRowsProvider } from "./fields/RowsContext";
 import { LibraryPanelBar } from "./LibraryPanelBar";
 import { PreviewPane } from "./PreviewPane";
 import { OptionsSections } from "./OptionsSections";
@@ -160,6 +161,7 @@ export function BuilderPane({
       <div aria-label="panel builder" className="flex h-full min-h-0 flex-col gap-3 p-3" onKeyDown={onKeyDown}>
         <DataInspector open={inspecting} onOpenChange={setInspecting} state={data} />
         <ResultFieldsProvider fields={resultFields}>
+        <ResultRowsProvider rows={shownData.rows}>
           <BuilderToolbar
             title={ed.state.title}
             onTitle={(title) => patch({ title })}
@@ -247,6 +249,7 @@ export function BuilderPane({
               )}
             </div>
           )}
+        </ResultRowsProvider>
         </ResultFieldsProvider>
       </div>
     );
@@ -302,10 +305,12 @@ export function BuilderPane({
     <div aria-label="panel builder" className="flex h-full min-h-0 flex-col" onKeyDown={onKeyDown}>
       <DataInspector open={inspecting} onOpenChange={setInspecting} state={data} />
       <ResultFieldsProvider fields={resultFields}>
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-3 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
-          {previewHalf}
-          <OptionsSections ws={ws} ed={ed} scope={scope} />
-        </div>
+        <ResultRowsProvider rows={data.rows}>
+          <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-3 overflow-y-auto p-3 lg:grid-cols-[1.2fr_1fr] lg:grid-rows-1">
+            {previewHalf}
+            <OptionsSections ws={ws} ed={ed} scope={scope} />
+          </div>
+        </ResultRowsProvider>
       </ResultFieldsProvider>
     </div>
   );

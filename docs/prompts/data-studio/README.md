@@ -89,6 +89,10 @@ crash).
   `docs/scope/frontend/data-studio-scope.md` (v2/v3) ·
   `docs/scope/frontend/system-catalog-scope.md` (the catalog tree, ask) ·
   `docs/scope/datasources/sqlite-datasource-demo-scope.md` (SHIPPED).
+- **Query builder 10x (Tabularis-grade + a standalone Query view that mounts here as a pane):**
+  `docs/scope/frontend/query-builder/` — start with `query-builder-10x-scope.md` (umbrella); slice 3
+  (`query-workbench-view-scope.md`) is the new `+ Open view → Query` pane — it follows the `workbenchPanes.tsx`
+  pages-as-panes registry + `OpenViewMenu.tsx` documented in the tables above (one `VIEW_PANES` line).
 - **Public:** `docs/public/frontend/data-studio.md`.
 - **Sessions (the messy middle):** `docs/sessions/frontend/data-studio-10x-session.md`,
   `data-studio-rail-session.md`, `data-studio-v2-workbench-session.md`,

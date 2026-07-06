@@ -1,7 +1,7 @@
-import { useState as w, useRef as D, useEffect as L, useCallback as U, useMemo as B } from "react";
-import { jsx as i, jsxs as p } from "react/jsx-runtime";
-import { ChevronRight as T, Table2 as G, Inbox as M, Lightbulb as j, Hash as Q, LineChart as W, Database as Z } from "lucide-react";
-import * as N from "@radix-ui/react-collapsible";
+import { useState as w, useRef as D, useEffect as I, useCallback as U, useMemo as B } from "react";
+import { jsx as i, jsxs as d } from "react/jsx-runtime";
+import { ChevronRight as L, Table2 as G, Inbox as M, Lightbulb as Q, Hash as j, LineChart as W, Database as Z } from "lucide-react";
+import * as $ from "@radix-ui/react-collapsible";
 function H(e) {
   return e.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 }
@@ -40,7 +40,7 @@ function ee(e) {
     const r = /* @__PURE__ */ new Set();
     (n = (a = o.ui) == null ? void 0 : a.scope) == null || n.forEach((l) => r.add(l)), (s = o.widgets) == null || s.forEach((l) => {
       var u;
-      return (u = l.scope) == null ? void 0 : u.forEach((d) => r.add(d));
+      return (u = l.scope) == null ? void 0 : u.forEach((p) => r.add(p));
     });
     for (const l of r) {
       const u = J(l);
@@ -116,17 +116,26 @@ function ne(e) {
     params: t.params ?? []
   }));
 }
-const ae = "sql:query";
-function ie() {
+function ae(e) {
+  return e.map((t) => ({
+    id: `query:${t.id}`,
+    group: "queries",
+    label: t.name || t.id,
+    source: { tool: "query.run", args: { id: t.id } },
+    writes: !1
+  }));
+}
+const ie = "sql:query";
+function oe() {
   return {
-    id: ae,
+    id: ie,
     group: "sql",
     label: "SQL query (direct SurrealDB)",
     source: { tool: "store.query", args: { sql: "" } },
     writes: !1
   };
 }
-function oe(e) {
+function le(e) {
   return [
     ...X(e.series ?? []),
     ...Y(e.series ?? []),
@@ -134,83 +143,86 @@ function oe(e) {
     ...te(e.extensions ?? []),
     ...se(e.flows ?? [], e.descriptors ?? []),
     ...ne(e.rules ?? []),
-    ie()
+    ...ae(e.queries ?? []),
+    oe()
   ];
 }
-function _(e) {
+function T(e) {
   return { id: e.id, source: e.source, action: e.action, viewKey: e.viewKey };
 }
-const q = {
+const _ = {
   datasources: "listDatasources",
   schema: "readSchema",
   series: "listSeries",
   channels: "listChannels",
   insights: "listInsights",
   inbox: "listInbox",
+  queries: "listQueries",
   extensions: "listExtensions",
   rules: "listRules",
   flowSummaries: "listFlows",
   flowDescriptors: "listFlowNodes"
-}, le = Object.keys(q);
-function re(e) {
+}, re = Object.keys(_);
+function ce(e) {
   return e instanceof Error ? e.message : String(e);
 }
-async function ce(e, t) {
+async function ue(e, t) {
   const a = {}, n = (s, o) => {
     a[s] = o, t == null || t((r) => ({ ...r, [s]: o }));
   };
   return await Promise.all(
-    le.map(async (s) => {
+    re.map(async (s) => {
       const o = await P(e, s);
       o && n(s, o);
     })
   ), a;
 }
 async function P(e, t) {
-  const a = e[q[t]];
+  const a = e[_[t]];
   if (a)
     try {
       return { status: "ready", data: await a() };
     } catch (n) {
-      return { status: "denied", error: re(n) };
+      return { status: "denied", error: ce(n) };
     }
 }
-async function ue(e) {
-  const t = await ce(e), a = g(t.flowSummaries, []), n = g(t.flowDescriptors, []), s = e.getFlow, o = s ? (await Promise.all(a.map((d) => s(d.id).catch(() => null)))).filter((d) => d != null) : [], r = g(t.series, []), l = g(t.extensions, []);
-  g(t.datasources, []);
-  const u = g(t.rules, []);
+async function de(e) {
+  const t = await ue(e), a = f(t.flowSummaries, []), n = f(t.flowDescriptors, []), s = e.getFlow, o = s ? (await Promise.all(a.map((m) => s(m.id).catch(() => null)))).filter((m) => m != null) : [], r = f(t.series, []), l = f(t.extensions, []);
+  f(t.datasources, []);
+  const u = f(t.rules, []), p = f(t.queries, []);
   return {
-    entries: oe({
+    entries: le({
       series: r,
       extensions: l,
       flows: o,
       descriptors: n,
-      rules: u
+      rules: u,
+      queries: p
     }),
     installed: l
   };
 }
-function g(e, t) {
+function f(e, t) {
   return (e == null ? void 0 : e.status) === "ready" ? e.data : t;
 }
-function Ee(e, t) {
+function Se(e, t) {
   const [a, n] = w({
     entries: [],
     installed: [],
     loading: !0
   }), s = D(e);
-  return s.current = e, L(() => {
+  return s.current = e, I(() => {
     const o = s.current;
     let r = !1;
     return n((l) => ({ ...l, loading: !0 })), (async () => {
-      const { entries: l, installed: u } = await ue(o);
+      const { entries: l, installed: u } = await de(o);
       r || n({ entries: l, installed: u, loading: !1 });
     })(), () => {
       r = !0;
     };
   }, [t]), a;
 }
-const de = [
+const pe = [
   {
     kind: "datasources",
     label: "Datasources",
@@ -240,9 +252,14 @@ const de = [
     kind: "inbox",
     label: "Inbox",
     hint: "Items in this channel's inbox — click to reference one."
+  },
+  {
+    kind: "queries",
+    label: "Saved queries",
+    hint: "Saved PRQL/raw queries — click to run or reference one."
   }
 ];
-function Se(e) {
+function De(e) {
   return e.map((t) => ({
     kind: "datasource",
     id: `datasource:${t.name}`,
@@ -251,7 +268,7 @@ function Se(e) {
     endpoint: t.endpoint
   }));
 }
-function De(e) {
+function qe(e) {
   return e.tables.map((t) => ({
     kind: "table",
     id: `table:${t.name}`,
@@ -273,7 +290,7 @@ function Re(e) {
 function Oe(e) {
   return e.map((t) => ({ kind: "series", id: `series:${t}`, name: t }));
 }
-function pe(e) {
+function me(e) {
   return e.map((t) => ({ kind: "channel", id: `channel:${t.id}`, name: t.id }));
 }
 function he(e) {
@@ -285,32 +302,40 @@ function he(e) {
     status: t.status
   }));
 }
-function me(e) {
+function fe(e) {
   return e.map((t) => ({ kind: "inbox", id: `inbox:${t.id}`, channel: t.channel }));
 }
-function fe(e) {
-  const t = [];
-  return e.listDatasources && t.push("datasources"), e.readSchema && t.push("schema"), e.listSeries && t.push("series"), e.listChannels && t.push("channels"), e.listInsights && t.push("insights"), e.listInbox && t.push("inbox"), e.listExtensions && t.push("extensions"), e.listRules && t.push("rules"), e.listFlows && t.push("flowSummaries"), e.listFlowNodes && t.push("flowDescriptors"), t;
+function Ie(e) {
+  return e.map((t) => ({
+    kind: "query",
+    id: `query:${t.id}`,
+    name: t.name || t.id,
+    target: t.target
+  }));
 }
-function I(e) {
+function ge(e) {
+  const t = [];
+  return e.listDatasources && t.push("datasources"), e.readSchema && t.push("schema"), e.listSeries && t.push("series"), e.listChannels && t.push("channels"), e.listInsights && t.push("insights"), e.listInbox && t.push("inbox"), e.listQueries && t.push("queries"), e.listExtensions && t.push("extensions"), e.listRules && t.push("rules"), e.listFlows && t.push("flowSummaries"), e.listFlowNodes && t.push("flowDescriptors"), t;
+}
+function O(e) {
   const t = {};
-  for (const a of fe(e))
+  for (const a of ge(e))
     t[a] = { status: "idle" };
   return t;
 }
-function Ie(e, t) {
-  const [a, n] = w(() => I(e)), s = D(e);
-  s.current = e, L(() => {
-    n(I(s.current));
+function Le(e, t) {
+  const [a, n] = w(() => O(e)), s = D(e);
+  s.current = e, I(() => {
+    n(O(s.current));
   }, [t]);
   const o = U((r) => {
     n((l) => {
       const u = l[r];
       if (u && u.status !== "idle") return l;
-      const d = { ...l, [r]: { status: "loading" } };
+      const p = { ...l, [r]: { status: "loading" } };
       return P(s.current, r).then((m) => {
-        m && n((k) => ({ ...k, [r]: m }));
-      }), d;
+        m && n((x) => ({ ...x, [r]: m }));
+      }), p;
     });
   }, []);
   return { sections: a, loadSection: o };
@@ -322,8 +347,9 @@ const A = [
   { group: "extension", label: "Installed extension" },
   { group: "widget", label: "Extension widgets" },
   { group: "flows", label: "Flows" },
-  { group: "rules", label: "Rules" }
-], Le = [
+  { group: "rules", label: "Rules" },
+  { group: "queries", label: "Saved queries" }
+], Te = [
   { group: "series", label: "Series" },
   { group: "live", label: "Live (Zenoh)" },
   { group: "sql", label: "Direct SurrealDB" },
@@ -331,7 +357,7 @@ const A = [
   { group: "action", label: "Action (control)" },
   { group: "widget", label: "Extension widgets" }
 ];
-function Te({
+function _e({
   entries: e,
   value: t = "",
   onSelect: a,
@@ -341,10 +367,10 @@ function Te({
   className: r
 }) {
   const l = (u) => {
-    const d = e.find((m) => m.id === u) ?? null;
-    a(d ? _(d) : null);
+    const p = e.find((m) => m.id === u) ?? null;
+    a(p ? T(p) : null);
   };
-  return /* @__PURE__ */ i("label", { className: `sp-root${r ? ` ${r}` : ""}`, children: /* @__PURE__ */ p(
+  return /* @__PURE__ */ i("label", { className: `sp-root${r ? ` ${r}` : ""}`, children: /* @__PURE__ */ d(
     "select",
     {
       className: "sp-select",
@@ -353,12 +379,12 @@ function Te({
       onChange: (u) => l(u.target.value),
       children: [
         /* @__PURE__ */ i("option", { value: "", children: n ? "loading sources…" : "— pick a source —" }),
-        s.map(({ group: u, label: d }) => /* @__PURE__ */ i(ge, { entries: e, group: u, label: d }, u))
+        s.map(({ group: u, label: p }) => /* @__PURE__ */ i(be, { entries: e, group: u, label: p }, u))
       ]
     }
   ) });
 }
-function ge({
+function be({
   entries: e,
   group: t,
   label: a
@@ -366,7 +392,7 @@ function ge({
   const n = e.filter((s) => s.group === t);
   return n.length === 0 ? null : /* @__PURE__ */ i("optgroup", { label: a, children: n.map((s) => /* @__PURE__ */ i("option", { value: s.id, children: s.label }, s.id)) });
 }
-function _e({
+function Pe({
   entries: e,
   value: t = "",
   onSelect: a,
@@ -376,53 +402,53 @@ function _e({
   "aria-label": r = "source",
   className: l,
   placeholder: u = "Search sources…",
-  autoFocus: d = !1
+  autoFocus: p = !1
 }) {
-  const [m, k] = w(""), [v, f] = w(!1), [y, C] = w(0), F = D(null), $ = e.find((c) => c.id === t) ?? null, x = B(() => {
+  const [m, x] = w(""), [y, g] = w(!1), [v, C] = w(0), F = D(null), N = e.find((c) => c.id === t) ?? null, k = B(() => {
     const c = m.trim().toLowerCase(), h = [];
-    for (const { group: S, label: O } of o)
+    for (const { group: S, label: R } of o)
       e.filter(
-        (E) => E.group === S && (c === "" || E.label.toLowerCase().includes(c) || O.toLowerCase().includes(c))
-      ).forEach((E, z) => h.push({ entry: E, groupLabel: O, firstOfGroup: z === 0 }));
+        (E) => E.group === S && (c === "" || E.label.toLowerCase().includes(c) || R.toLowerCase().includes(c))
+      ).forEach((E, z) => h.push({ entry: E, groupLabel: R, firstOfGroup: z === 0 }));
     return h;
-  }, [e, o, m]), R = (c) => {
-    a(c ? _(c) : null), n == null || n(c), f(!1), k("");
+  }, [e, o, m]), q = (c) => {
+    a(c ? T(c) : null), n == null || n(c), g(!1), x("");
   }, K = (c) => {
-    c.key === "ArrowDown" ? (c.preventDefault(), f(!0), C((h) => Math.min(h + 1, x.length - 1))) : c.key === "ArrowUp" ? (c.preventDefault(), C((h) => Math.max(h - 1, 0))) : c.key === "Enter" ? (c.preventDefault(), v && x[y] && R(x[y].entry)) : c.key === "Escape" && f(!1);
+    c.key === "ArrowDown" ? (c.preventDefault(), g(!0), C((h) => Math.min(h + 1, k.length - 1))) : c.key === "ArrowUp" ? (c.preventDefault(), C((h) => Math.max(h - 1, 0))) : c.key === "Enter" ? (c.preventDefault(), y && k[v] && q(k[v].entry)) : c.key === "Escape" && g(!1);
   };
-  return /* @__PURE__ */ p("div", { className: `sp-root sp-combo${l ? ` ${l}` : ""}`, children: [
+  return /* @__PURE__ */ d("div", { className: `sp-root sp-combo${l ? ` ${l}` : ""}`, children: [
     /* @__PURE__ */ i(
       "input",
       {
         className: "sp-combo-input",
         role: "combobox",
-        "aria-expanded": v,
+        "aria-expanded": y,
         "aria-label": r,
         "aria-autocomplete": "list",
-        autoFocus: d,
-        value: v ? m : ($ == null ? void 0 : $.label) ?? "",
-        placeholder: s ? "loading sources…" : $ ? $.label : u,
-        onFocus: () => f(!0),
-        onBlur: () => setTimeout(() => f(!1), 120),
+        autoFocus: p,
+        value: y ? m : (N == null ? void 0 : N.label) ?? "",
+        placeholder: s ? "loading sources…" : N ? N.label : u,
+        onFocus: () => g(!0),
+        onBlur: () => setTimeout(() => g(!1), 120),
         onChange: (c) => {
-          k(c.target.value), f(!0), C(0);
+          x(c.target.value), g(!0), C(0);
         },
         onKeyDown: K
       }
     ),
-    v && /* @__PURE__ */ p("ul", { className: "sp-combo-list", role: "listbox", "aria-label": r, ref: F, children: [
-      x.length === 0 && /* @__PURE__ */ i("li", { className: "sp-combo-empty", children: "No matching sources" }),
-      x.map((c, h) => /* @__PURE__ */ p("li", { role: "presentation", children: [
+    y && /* @__PURE__ */ d("ul", { className: "sp-combo-list", role: "listbox", "aria-label": r, ref: F, children: [
+      k.length === 0 && /* @__PURE__ */ i("li", { className: "sp-combo-empty", children: "No matching sources" }),
+      k.map((c, h) => /* @__PURE__ */ d("li", { role: "presentation", children: [
         c.firstOfGroup && /* @__PURE__ */ i("div", { className: "sp-combo-group", children: c.groupLabel }),
         /* @__PURE__ */ i(
           "button",
           {
             type: "button",
             role: "option",
-            "aria-selected": h === y,
-            className: `sp-combo-option${h === y ? " is-active" : ""}${c.entry.id === t ? " is-selected" : ""}`,
+            "aria-selected": h === v,
+            className: `sp-combo-option${h === v ? " is-active" : ""}${c.entry.id === t ? " is-selected" : ""}`,
             onMouseDown: (S) => {
-              S.preventDefault(), R(c.entry);
+              S.preventDefault(), q(c.entry);
             },
             onMouseEnter: () => C(h),
             children: c.entry.label
@@ -432,60 +458,60 @@ function _e({
     ] })
   ] });
 }
-function be({ spec: e, state: t, onOpen: a, defaultOpen: n, children: s }) {
-  const [o, r] = w(n ?? t.status !== "idle"), l = t.status === "idle", u = (d) => {
-    r(d), d && l && a && a();
+function we({ spec: e, state: t, onOpen: a, defaultOpen: n, children: s }) {
+  const [o, r] = w(n ?? t.status !== "idle"), l = t.status === "idle", u = (p) => {
+    r(p), p && l && a && a();
   };
-  return /* @__PURE__ */ p(
-    N.Root,
+  return /* @__PURE__ */ d(
+    $.Root,
     {
       className: "sp-catalog-section",
       "aria-label": `section ${e.label}`,
       open: o,
       onOpenChange: u,
       children: [
-        /* @__PURE__ */ p(
-          N.Trigger,
+        /* @__PURE__ */ d(
+          $.Trigger,
           {
             className: "sp-catalog-section-head",
             "aria-label": `toggle section ${e.label}`,
             children: [
-              /* @__PURE__ */ i(T, { className: "sp-catalog-section-chevron" }),
+              /* @__PURE__ */ i(L, { className: "sp-catalog-section-chevron" }),
               /* @__PURE__ */ i("h3", { className: "sp-catalog-section-title", children: e.label }),
               /* @__PURE__ */ i("p", { className: "sp-catalog-section-hint", children: e.hint })
             ]
           }
         ),
-        /* @__PURE__ */ i(N.Content, { className: "sp-catalog-section-content", children: we(t, s) })
+        /* @__PURE__ */ i($.Content, { className: "sp-catalog-section-content", children: $e(t, s) })
       ]
     }
   );
 }
-function we(e, t) {
+function $e(e, t) {
   return e.status === "idle" ? /* @__PURE__ */ i("p", { className: "sp-catalog-idle", children: "Expand to load." }) : e.status === "loading" ? /* @__PURE__ */ i("div", { "aria-label": "loading", className: "sp-catalog-skeleton" }) : e.status === "denied" ? /* @__PURE__ */ i("p", { "aria-label": "denied", className: "sp-catalog-denied", children: "Not permitted." }) : t(e.data);
 }
 function b({ children: e }) {
   return /* @__PURE__ */ i("p", { className: "sp-catalog-empty", children: e });
 }
 function Ne({ schema: e, onSelect: t }) {
-  return /* @__PURE__ */ i("ul", { "aria-label": "schema browser", className: "sp-catalog-tree", children: e.tables.map((a) => /* @__PURE__ */ i($e, { name: a.name, columns: a.columns.map((n) => n.name), onSelect: t }, a.name)) });
+  return /* @__PURE__ */ i("ul", { "aria-label": "schema browser", className: "sp-catalog-tree", children: e.tables.map((a) => /* @__PURE__ */ i(ke, { name: a.name, columns: a.columns.map((n) => n.name), onSelect: t }, a.name)) });
 }
-function $e({
+function ke({
   name: e,
   columns: t,
   onSelect: a
 }) {
-  return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(N.Root, { className: "group/collapsible sp-catalog-tree-row", defaultOpen: !1, children: [
-    /* @__PURE__ */ p("div", { className: "sp-catalog-tree-row-inner", children: [
+  return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d($.Root, { className: "group/collapsible sp-catalog-tree-row", defaultOpen: !1, children: [
+    /* @__PURE__ */ d("div", { className: "sp-catalog-tree-row-inner", children: [
       /* @__PURE__ */ i(
-        N.Trigger,
+        $.Trigger,
         {
           "aria-label": `toggle table ${e}`,
           className: "sp-catalog-toggle",
-          children: /* @__PURE__ */ i(T, { className: "sp-catalog-chevron" })
+          children: /* @__PURE__ */ i(L, { className: "sp-catalog-chevron" })
         }
       ),
-      /* @__PURE__ */ p(
+      /* @__PURE__ */ d(
         "button",
         {
           type: "button",
@@ -499,7 +525,7 @@ function $e({
         }
       )
     ] }),
-    /* @__PURE__ */ i(N.Content, { className: "sp-catalog-tree-content", children: /* @__PURE__ */ i("ul", { className: "sp-catalog-tree-columns", children: t.length === 0 ? /* @__PURE__ */ i("li", { className: "sp-catalog-tree-no-columns", children: "no columns" }) : t.map((n) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ i(
+    /* @__PURE__ */ i($.Content, { className: "sp-catalog-tree-content", children: /* @__PURE__ */ i("ul", { className: "sp-catalog-tree-columns", children: t.length === 0 ? /* @__PURE__ */ i("li", { className: "sp-catalog-tree-no-columns", children: "no columns" }) : t.map((n) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ i(
       "button",
       {
         type: "button",
@@ -511,17 +537,17 @@ function $e({
     ) }, n)) }) })
   ] }) });
 }
-function qe({
+function Ae({
   sections: e,
   onSelect: t,
   onLoadSection: a,
-  sectionSpecs: n = de,
+  sectionSpecs: n = pe,
   className: s
 }) {
   return /* @__PURE__ */ i("div", { "aria-label": "data explorer", className: `sp-root sp-catalog${s ? ` ${s}` : ""}`, children: n.map((o) => {
     const r = e[o.kind];
     return r ? /* @__PURE__ */ i(
-      be,
+      we,
       {
         spec: o,
         state: r,
@@ -536,7 +562,7 @@ function xe(e, t, a) {
   switch (e) {
     case "datasources": {
       const n = t ?? [];
-      return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No external datasources registered." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(
+      return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No external datasources registered." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d(
         "button",
         {
           type: "button",
@@ -550,7 +576,7 @@ function xe(e, t, a) {
             endpoint: s.endpoint
           }),
           children: [
-            /* @__PURE__ */ p("span", { className: "sp-catalog-row-label", children: [
+            /* @__PURE__ */ d("span", { className: "sp-catalog-row-label", children: [
               /* @__PURE__ */ i(Z, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
               s.name
             ] }),
@@ -565,7 +591,7 @@ function xe(e, t, a) {
     }
     case "series": {
       const n = t ?? [];
-      return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No series in this workspace." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(
+      return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No series in this workspace." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d(
         "button",
         {
           type: "button",
@@ -582,8 +608,8 @@ function xe(e, t, a) {
     case "channels": {
       const n = t ?? [];
       return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No channels registered." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => {
-        const o = pe([s])[0];
-        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(
+        const o = me([s])[0];
+        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d(
           "button",
           {
             type: "button",
@@ -591,7 +617,7 @@ function xe(e, t, a) {
             className: "sp-catalog-row sp-catalog-row-channel",
             onClick: () => a(o),
             children: [
-              /* @__PURE__ */ i(Q, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
+              /* @__PURE__ */ i(j, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
               s.id
             ]
           }
@@ -602,7 +628,7 @@ function xe(e, t, a) {
       const n = t ?? [];
       return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No insights in this workspace." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => {
         const o = he([s])[0];
-        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(
+        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d(
           "button",
           {
             type: "button",
@@ -610,8 +636,8 @@ function xe(e, t, a) {
             className: "sp-catalog-row sp-catalog-row-insight",
             onClick: () => a(o),
             children: [
-              /* @__PURE__ */ p("span", { className: "sp-catalog-row-label", children: [
-                /* @__PURE__ */ i(j, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
+              /* @__PURE__ */ d("span", { className: "sp-catalog-row-label", children: [
+                /* @__PURE__ */ i(Q, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
                 s.title
               ] }),
               (s.severity || s.status) && /* @__PURE__ */ i("span", { className: "sp-catalog-row-sub", children: [s.severity, s.status].filter(Boolean).join(" · ") })
@@ -623,8 +649,8 @@ function xe(e, t, a) {
     case "inbox": {
       const n = t ?? [];
       return n.length === 0 ? /* @__PURE__ */ i(b, { children: "No items in this inbox." }) : /* @__PURE__ */ i("ul", { className: "sp-catalog-list", children: n.map((s) => {
-        const o = me([s])[0];
-        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ p(
+        const o = fe([s])[0];
+        return /* @__PURE__ */ i("li", { children: /* @__PURE__ */ d(
           "button",
           {
             type: "button",
@@ -632,7 +658,7 @@ function xe(e, t, a) {
             className: "sp-catalog-row sp-catalog-row-inbox",
             onClick: () => a(o),
             children: [
-              /* @__PURE__ */ p("span", { className: "sp-catalog-row-label", children: [
+              /* @__PURE__ */ d("span", { className: "sp-catalog-row-label", children: [
                 /* @__PURE__ */ i(M, { "aria-hidden": "true", className: "sp-catalog-icon", size: 12 }),
                 s.id
               ] }),
@@ -647,36 +673,38 @@ function xe(e, t, a) {
   }
 }
 export {
-  Le as BUILDER_SOURCE_GROUPS,
-  de as CATALOG_SECTION_SPECS,
+  Te as BUILDER_SOURCE_GROUPS,
+  pe as CATALOG_SECTION_SPECS,
   b as CatalogEmpty,
-  qe as CatalogExplorer,
+  Ae as CatalogExplorer,
   Ne as CatalogSchemaTree,
-  be as CatalogSection,
-  ge as PickerGroup,
+  we as CatalogSection,
+  be as PickerGroup,
   A as READ_SOURCE_GROUPS,
-  ae as SQL_SOURCE_ID,
-  _e as SourceCombobox,
-  Te as SourcePicker,
-  oe as buildSourceEntries,
-  pe as channelEntries,
-  Se as datasourceEntries,
+  ie as SQL_SOURCE_ID,
+  Pe as SourceCombobox,
+  _e as SourcePicker,
+  le as buildSourceEntries,
+  me as channelEntries,
+  De as datasourceEntries,
   te as extWidgetEntries,
   ee as extensionEntries,
   se as flowsEntries,
-  me as inboxEntries,
+  fe as inboxEntries,
   he as insightEntries,
   Y as liveEntries,
-  ce as loadCatalog,
-  ue as loadSourcePicker,
+  ue as loadCatalog,
+  de as loadSourcePicker,
+  Ie as queryCatalogEntries,
+  ae as queryEntries,
   ne as rulesEntries,
   Re as schemaColumnEntries,
-  De as schemaTableEntries,
-  _ as selectionOf,
+  qe as schemaTableEntries,
+  T as selectionOf,
   Oe as seriesCatalogEntries,
   X as seriesEntries,
-  ie as sqlSourceEntry,
-  Ie as useCatalog,
-  Ee as useSourcePicker,
+  oe as sqlSourceEntry,
+  Le as useCatalog,
+  Se as useSourcePicker,
   H as widgetIdOf
 };

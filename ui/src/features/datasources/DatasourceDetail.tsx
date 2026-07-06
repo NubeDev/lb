@@ -28,8 +28,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DatasourceProbe } from "./DatasourceProbe";
 import { QueryResults } from "./QueryResults";
+import { SaveQueryDialog } from "./SaveQueryDialog";
+import { SavedQueriesDialog } from "./SavedQueriesDialog";
 import { TableDiscovery } from "./TableDiscovery";
 import { useDatasourceQuery } from "./useDatasourceQuery";
+import { useDatasourceQueries } from "./useDatasourceQueries";
 import { useDatasources } from "./useDatasources";
 import type { DatasourceSummary, ProbeResult } from "@/lib/datasources";
 
@@ -47,6 +50,7 @@ const PREVIEW_LIMIT = 100;
 
 export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
   const q = useDatasourceQuery(source.name);
+  const saved = useDatasourceQueries(source.name);
   const [mode, setMode] = useState<Mode>("builder");
   const [selectedTable, setSelectedTable] = useState<string | null>(null);
   const [sql, setSql] = useState("");
@@ -149,16 +153,43 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
                 <span className="inline-flex items-center gap-1.5 text-xs text-muted">
                   <Terminal size={13} className="text-accent" /> SQL editor · SELECT only
                 </span>
-                <Button
-                  aria-label="run sql"
-                  size="sm"
-                  variant="solid"
-                  className="gap-1.5"
-                  onClick={runEditor}
-                  disabled={q.loading || !sql.trim()}
-                >
-                  <Play size={13} /> Run
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <SavedQueriesDialog
+                    queries={saved.queries}
+                    loading={saved.loading}
+                    error={saved.error}
+                    onLoad={(row) => {
+                      // Resolve the saved query to its full record (the roster row omits text) and
+                      // load the text into the editor — the author hits Run. A load failure (deny,
+                      // NotFound) is surfaced as the page's run-error path so the author sees the
+                      // verbatim reason.
+                      void saved
+                        .load(row.id)
+                        .then((full) => setSql(full.text))
+                        .catch((e) => {
+                          const msg = e instanceof Error ? e.message : String(e);
+                          window.alert(`Could not load query: ${msg}`);
+                        });
+                    }}
+                    onDelete={(id) => saved.remove(id)}
+                  />
+                  <SaveQueryDialog
+                    source={source.name}
+                    sql={sql}
+                    disabled={!sql.trim()}
+                    onSave={(args) => saved.save(args)}
+                  />
+                  <Button
+                    aria-label="run sql"
+                    size="sm"
+                    variant="solid"
+                    className="gap-1.5"
+                    onClick={runEditor}
+                    disabled={q.loading || !sql.trim()}
+                  >
+                    <Play size={13} /> Run
+                  </Button>
+                </div>
               </div>
               <Textarea
                 aria-label="sql editor"

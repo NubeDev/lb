@@ -26,6 +26,7 @@ export const READ_SOURCE_GROUPS: SourceGroup[] = [
   { group: "widget", label: "Extension widgets" },
   { group: "flows", label: "Flows" },
   { group: "rules", label: "Rules" },
+  { group: "queries", label: "Saved queries" },
 ];
 
 /** The builder's group list — the read groups plus the `action` (write control) group, ordered as the

@@ -16,6 +16,67 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-06): saved queries on the Datasources page.** `DatasourceDetail`'s SQL editor
+header (beside Run) gained Save / Saved-queries dialogs riding the existing `query.*` verbs — no new
+verb/cap/table. `useDatasourceQueries.ts` filters the `query.list` roster client-side to
+`target === "datasource:<name>"` and saves `lang:"raw"` records; loading resolves the full record via
+`query.get`. Shipped truth: `public/datasources/datasources.md` §"Saved queries". The `querydef.*`
+chain sketched in the query-builder scopes is dead — those scopes now build on `query.*`.
+
+**Also shipped (2026-07-06): the Query Builder is common across dialects — federation sources get the visual builder.**
+A LOCAL TABLE source (SurrealDB, `store.query`) gets the interactive Builder⇄Code editor; an external
+DATASOURCE (`federation.query` — postgres/timescale/sqlite, e.g. `demo-buildings`) USED to get only a
+raw-SQL textarea. The lift was a deferral recorded in
+[`scope/frontend/dashboard/viz/datasource-binding-scope.md`](scope/frontend/dashboard/viz/datasource-binding-scope.md)
+("Deferred: `federation.datasource.schema` … a federation target uses the raw-SQL editor until it
+lands") — liftable once `federation.schema {source, table?}` shipped. The builder UI is now **one
+component for every datasource kind**: the dialect is behind a seam, never a fork. **(1) The emitter
+seam** — `panel-kit/sql/dialect.ts` `emitSql(dialect, query)` dispatches between `toSurrealQL.ts`
+(UNCHANGED — `math::sum(col)`, bare identifiers, `count()`) and a NEW `toStandardSql.ts` (ANSI SELECT
+— `SUM("col")`, double-quoted identifiers, `COUNT(*)`, single-quoted string literals). The `dialect`
+is keyed on the target's datasource `kind` (config data, never a hardcoded datasource name — rule 10).
+**(2) The shared state stays put** — `panel-kit/sql/query.ts` (`SqlBuilderQuery`) is unchanged.
+**(3) The editor becomes transport-agnostic** — `SqlQueryEditor` accepts `dialect: SqlDialect` +
+`schema: Schema` props and stops importing `readSchema` itself; the host (`QueryTab.tsx`) decides the
+source + the dialect. **(4) Federation dropdowns from `federation.schema`** — two new hooks
+(`useLocalSchema`, `useFederationSchema`) wrap the shipped `readSchema()` / `discoverTables`+
+`describeTable` and project to ONE `Schema` shape (the editor consumes one shape regardless of
+dialect; `federation.schema` is workspace-pinned, gated under `mcp:federation.query:call`, lazy
+per-table column fill). **(5) Migration** — a federation cell now carries `options.sql` (the builder
+state) so reopening returns to the builder (the round-trip surreal had all along); a pre-slice
+federation cell (no `options.sql`) reopens to Code mode with the saved SQL preserved — no fabricated
+builder query. **Nothing else moves:** the wire shape (`federation.query {source, sql}`) is
+unchanged; the render path (`viz.query`) is unchanged; NO new MCP verb / cap / table / outbox target /
+host change. Surreal-path behaviour is preserved byte-for-byte (pinned by a surreal-regression
+gateway test: `math::avg` preview, not `AVG("…")`). **Tests (real gateway, rule 9):** UI unit
+**737/737** (was 705; +15 dialect/standard-SQL goldens, +2 cellEditorState federation round-trip
+cases — builder-carried + pre-slice migration); new gateway
+`queryBuilderCommon.gateway.test.tsx` **4/4** — HEADLINE (a federation target opens `SqlQueryEditor`,
+NOT the legacy textarea; `federation.schema` fires) + surreal-regression (dialect=surreal confirmed)
++ the MANDATORY capability-deny (no `mcp:federation.query:call` → schema discovery denied → empty
+dropdown, editor still renders) + MANDATORY workspace-isolation (ws-B's `datasource.list` does not
+include ws-A's source). The federation sidecar is NOT spawned in the UI test env (a true external a
+UI test cannot cheaply run) — `federation.schema` resolves to an honest typed error and the editor
+DEGRADES to empty (the system-catalog deny contract); the real-row round-trip stays
+`rust/crates/host/tests/federation_sqlite_test.rs`'s job (unchanged, stays green). `pnpm exec tsc
+--noEmit` clean (only the pre-existing `transformDebug.gateway` red remains); `pnpm exec eslint` clean
+on touched files. **Pre-existing reds (NOT this slice's — verified by `git stash` + rerun on clean
+master):** `sqlSource.gateway`, `SystemView.gateway`, `WorkflowView.gateway`, `ProofPanel.gateway`,
+`CommandPalette.reminders.gateway`, `App.gateway`, `PanelPage.gateway`, `AuthoringPanel.gateway`,
+`McpServiceView.gateway`, `InboxView.gateway` — all fail identically on the stashed baseline; all
+QueryTab/SqlQueryEditor-touching gateway tests (`panelEditor.gateway`, `DataStudioBuilderFlow.gateway`,
+`DataStudio.gateway`, `flowsPanelEditor.gateway`) are GREEN. Scope
+[`scope/frontend/query-builder-common-scope.md`](scope/frontend/query-builder-common-scope.md) (OQs
+all resolved as recommended); session
+[`sessions/frontend/query-builder-common-session.md`](sessions/frontend/query-builder-common-session.md);
+public [`public/frontend/data-studio.md`](public/frontend/data-studio.md) ("Query builder — common
+across dialects"). **Named follow-ups (not silent gaps):** the rail Sources-tree drill into
+federation tables/columns (compose a `readFederationSchema` loader onto `@nube/source-picker`'s
+`SourceLoaders`); a per-dialect time-bucket emit for the chart `time-series` format hint (the natural
+trigger for splitting `toStandardSql.ts` per dialect); a CodeMirror standard-SQL grammar (cosmetic).
+
+---
+
 **Just shipped (2026-07-05): Data Studio 10x — Dockview workbench, pages-as-panes, query-first builder.**
 The four-phase UI refresh of the multi-pane data workbench, landed end to end: **(1) engine swap** —
 `flexlayout-react` is gone, `dockview-react` (MIT, React-first) is the one dock engine (tabs, nested

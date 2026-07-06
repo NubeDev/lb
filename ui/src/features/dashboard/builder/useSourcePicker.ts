@@ -20,6 +20,7 @@ import {
 import { listSeries } from "@/lib/ingest/ingest.api";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
 import { listFlows, getFlow, listFlowNodes } from "@/lib/flows/flows.api";
+import { listQueries } from "@/lib/queries";
 import { listRules } from "@/lib/rules/rules.api";
 import { sourcePickerKey } from "../cache/queryKeys";
 import { fetchDatasourceList } from "../cache/datasourceListQuery";
@@ -48,6 +49,12 @@ function shellLoaders(client: QueryClient, ws: string): SourceLoaders {
     // structural superset of the package's `RuleSummary` ({id,name}); a workspace without the
     // `mcp:rules.list:call` grant sees `rules_list` reject → an empty group (deny-tolerant).
     listRules: () => listRules(),
+    // Saved queries → the Queries group (each ⇒ a `query.run {id}` read source, no-widening: the
+    // caller still needs the target's underlying cap). `QuerySummary` is a structural superset of
+    // the package's shape ({id,name,target?}); a workspace without `mcp:query.list:call` sees
+    // `query.list` reject → an empty group (deny-tolerant). Reached through `mcp_call` (the host
+    // exposes `query.*` over the MCP bridge, not dedicated REST routes — rule 7).
+    listQueries: () => listQueries(),
   };
 }
 

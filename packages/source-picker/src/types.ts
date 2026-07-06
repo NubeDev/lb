@@ -73,6 +73,17 @@ export interface RuleSummary {
   params?: RuleParam[];
 }
 
+/** A saved query's summary (the subset of `query.list`'s `queries[]` the picker renders) — a saved
+ *  query is a read source (`query.run {id}` → `{columns, rows}`), so it mirrors `RuleSummary`.
+ *  `target` (optional) is the host's `"platform"` | `"datasource:<name>"` string; the catalog row
+ *  renders it as a sub-label so an author can tell a platform query from a federated one at a glance.
+ *  Absent ⇒ just the name (a host that only returns `{id,name}` still renders). */
+export interface QuerySummary {
+  id: string;
+  name: string;
+  target?: string;
+}
+
 /** A flow node (the subset the picker reads to enumerate ports). */
 export interface FlowNode {
   id: string;
@@ -176,6 +187,10 @@ export interface SourceLoaders {
   /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
    *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
   listRules?: () => Promise<RuleSummary[]>;
+  /** Saved PRQL/raw queries the caller may run (from `query.list`). Drives the Queries group — each ⇒
+   *  a `query.run {id}` read source (re-gated per call, no-widening: the caller still needs the
+   *  target's underlying cap). Optional + deny-tolerant like every loader. */
+  listQueries?: () => Promise<QuerySummary[]>;
   /** The workspace's local-store schema (from `store.schema`). Drives the explorer's Local-tables
    *  section (table → column tree). Absent ⇒ the section is absent (a host that only wants the
    *  picker groups skips it). */

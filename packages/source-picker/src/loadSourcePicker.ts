@@ -13,6 +13,7 @@ import type {
   Flow,
   FlowSummary,
   NodeDescriptor,
+  QuerySummary,
   RuleSummary,
   SourceLoaders,
 } from "./types";
@@ -43,6 +44,7 @@ export async function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePi
   const installed = readyData(cat.extensions, [] as ExtRow[]);
   const datasources = readyData(cat.datasources, [] as DatasourceRow[]);
   const rules = readyData(cat.rules, [] as RuleSummary[]);
+  const queries = readyData(cat.queries, [] as QuerySummary[]);
 
   return {
     entries: buildSourceEntries({
@@ -52,6 +54,7 @@ export async function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePi
       descriptors,
       datasources,
       rules,
+      queries,
     }),
     installed,
   };

@@ -4,10 +4,10 @@
 // `types.ts`.
 //
 // A catalog SECTION is a kind (`"datasources" | "schema" | "series" | "channels" | "insights" |
-// "inbox"`) plus its label/hint (registry-driven data — never a named case in the renderer). A
-// catalog ENTRY is what a click yields — a tagged row the HOST maps onto whatever it persists
-// (a Rhai snippet, a SQL table name, a dashboard cell source). The package never branches on host
-// meaning (rule 10): it returns entries; the host maps them.
+// "inbox" | "queries"`) plus its label/hint (registry-driven data — never a named case in the
+// renderer). A catalog ENTRY is what a click yields — a tagged row the HOST maps onto whatever it
+// persists (a Rhai snippet, a SQL table name, a dashboard cell source). The package never branches on
+// host meaning (rule 10): it returns entries; the host maps them.
 //
 // PURE: no I/O, no transport, no React. The orchestration lives in `loadCatalog`; the tree skin in
 // `CatalogExplorer`.
@@ -17,6 +17,7 @@ import type {
   DatasourceRow,
   InboxRow,
   InsightRow,
+  QuerySummary,
   Schema,
 } from "./types";
 
@@ -37,6 +38,7 @@ export type CatalogSectionKind =
   | "channels"
   | "insights"
   | "inbox"
+  | "queries"
   | "extensions"
   | "rules"
   | "flowSummaries"
@@ -84,6 +86,11 @@ export const CATALOG_SECTION_SPECS: CatalogSectionSpec[] = [
     label: "Inbox",
     hint: "Items in this channel's inbox — click to reference one.",
   },
+  {
+    kind: "queries",
+    label: "Saved queries",
+    hint: "Saved PRQL/raw queries — click to run or reference one.",
+  },
 ];
 
 /** What a click in the explorer yields — a tagged row the HOST maps onto its snippet/bind. Each kind
@@ -96,7 +103,8 @@ export type CatalogEntry =
   | { kind: "series"; id: string; name: string }
   | { kind: "channel"; id: string; name: string }
   | { kind: "insight"; id: string; title: string; severity?: string; status?: string }
-  | { kind: "inbox"; id: string; channel: string };
+  | { kind: "inbox"; id: string; channel: string }
+  | { kind: "query"; id: string; name: string; target?: string };
 
 /** Datasource rows → catalog entries. The id is the name (stable round-trip key). */
 export function datasourceEntries(rows: DatasourceRow[]): CatalogEntry[] {
@@ -161,4 +169,15 @@ export function insightEntries(rows: InsightRow[]): CatalogEntry[] {
 /** Inbox rows → catalog entries. */
 export function inboxEntries(rows: InboxRow[]): CatalogEntry[] {
   return rows.map((i) => ({ kind: "inbox" as const, id: `inbox:${i.id}`, channel: i.channel }));
+}
+
+/** Saved-query rows → catalog entries. The id is the query's slug (stable round-trip key); `target`
+ *  rides along so the explorer's renderer can sub-label a platform query vs a federated one. */
+export function queryCatalogEntries(rows: QuerySummary[]): CatalogEntry[] {
+  return rows.map((q) => ({
+    kind: "query" as const,
+    id: `query:${q.id}`,
+    name: q.name || q.id,
+    target: q.target,
+  }));
 }

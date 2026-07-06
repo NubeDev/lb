@@ -1,25 +1,28 @@
 // The Grafana-style Builder⇄Code SQL editor (widget-builder Slice C) — ported from Grafana's
 // `QueryEditor.tsx`. It switches between the visual `VisualEditor` (Builder) and the raw `RawEditor`
 // (Code) by `editorMode`, keeping the two in sync:
-//   - Builder edits the typed `SqlBuilderQuery`; every change regenerates the raw SurrealQL via
-//     `toSurrealQL` (Builder is the source of truth in Builder mode).
+//   - Builder edits the typed `SqlBuilderQuery`; every change regenerates the raw SQL via `emitSql`
+//     for the editor's `dialect` (Builder is the source of truth in Builder mode).
 //   - Code edits the raw string directly (the source of truth in Code mode).
 //   - Builder→Code: free (regenerate the string).
-//   - Code→Builder: CONFIRM first — hand-edited SQL may not round-trip, so switching back can clobber
-//     it (Grafana's behaviour). On confirm we keep the existing builder query (the last visual state).
+//   - Code→Builder: CONFIRM first — hand-edited SQL may not round-trip, so switching back can
+//     clobber it (Grafana's behaviour). On confirm we keep the existing builder query (the last
+//     visual state).
 //
-// The Table/Column dropdowns come from `store.schema` (Slice A), read once at authoring time in the
-// trusted shell. The cell stores BOTH the raw string (what `store.query` runs) AND the builder query
-// (when in Builder mode), so reopening returns to the builder. Builder mode can only ever generate a
-// SELECT; Code mode is still parse-allowlisted to SELECT by `store.query`.
+// Dialect-agnostic (query-builder-common scope): the editor takes a `dialect: SqlDialect` (surreal
+// for native `store.query`, standard for a federation source) and a `schema: Schema` (the
+// table/column dropdown source). The HOST decides both — the editor does not import `readSchema`
+// or any federation client; it stays transport-agnostic. The same component serves both datasource
+// kinds (no fork, rule 10 — `dialect` is config data, never a hardcoded datasource name).
+//
+// Builder mode can only ever generate a SELECT; Code mode is still parse-allowlisted to SELECT by
+// `store.query` / SELECT-validated by `federation.query` at the host.
 
-import { useEffect, useState } from "react";
-
-import { readSchema, type Schema } from "@/lib/schema";
+import type { Schema } from "@/lib/schema";
 import { emptyQuery, emptySqlSource, type SqlSourceState } from "@/lib/panel-kit/sql/query";
+import { emitSql, type SqlDialect } from "@/lib/panel-kit/sql/dialect";
 import { RawEditor } from "./RawEditor";
 import { SqlQueryHeader } from "./SqlQueryHeader";
-import { toSurrealQL } from "@/lib/panel-kit/sql/toSurrealQL";
 import { VisualEditor } from "./VisualEditor";
 
 interface Props {
@@ -27,28 +30,16 @@ interface Props {
   value: SqlSourceState;
   /** Called with the next state on any edit. */
   onChange: (state: SqlSourceState) => void;
+  /** The dialect to emit. `surreal` for native `store.query`; `standard` for federation. */
+  dialect: SqlDialect;
+  /** The table/column dropdown source. The HOST loads this (readSchema for local,
+   *  discoverTables/describeTable for federation) — the editor stays transport-agnostic. An empty
+   *  `tables: []` degrades honestly: the Code half still works (the author types raw SQL). */
+  schema: Schema;
 }
 
 /** The Builder⇄Code SQL editor. */
-export function SqlQueryEditor({ value, onChange }: Props) {
-  const [schema, setSchema] = useState<Schema>({ tables: [] });
-
-  // Load the workspace schema once (the visual builder's dropdowns). Tolerates a deny/empty — the
-  // Code half still works without it (the author types raw SurrealQL).
-  useEffect(() => {
-    let cancelled = false;
-    readSchema()
-      .then((s) => {
-        if (!cancelled) setSchema(s);
-      })
-      .catch(() => {
-        if (!cancelled) setSchema({ tables: [] });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
+export function SqlQueryEditor({ value, onChange, dialect, schema }: Props) {
   const switchMode = (mode: typeof value.mode) => {
     if (mode === value.mode) return;
     if (mode === "builder") {
@@ -61,7 +52,7 @@ export function SqlQueryEditor({ value, onChange }: Props) {
         );
       if (!ok) return;
       const builder = value.builder ?? emptyQuery();
-      onChange({ ...value, mode: "builder", builder, rawSql: toSurrealQL(builder) });
+      onChange({ ...value, mode: "builder", builder, rawSql: emitSql(dialect, builder) });
     } else {
       // Builder→Code: free — the raw string is already in sync (Builder regenerates it on every edit).
       onChange({ ...value, mode: "code" });
@@ -80,10 +71,11 @@ export function SqlQueryEditor({ value, onChange }: Props) {
       {value.mode === "builder" ? (
         <VisualEditor
           schema={schema}
+          dialect={dialect}
           query={value.builder ?? emptyQuery()}
           onChange={(builder) =>
-            // Builder is the source of truth — regenerate the raw SurrealQL on every change.
-            onChange({ ...value, builder, rawSql: toSurrealQL(builder) })
+            // Builder is the source of truth — regenerate the raw SQL on every change.
+            onChange({ ...value, builder, rawSql: emitSql(dialect, builder) })
           }
         />
       ) : (

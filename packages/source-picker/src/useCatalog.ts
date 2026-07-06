@@ -29,6 +29,7 @@ function wiredKinds(loaders: SourceLoaders): CatalogSectionKind[] {
   if (loaders.listChannels) out.push("channels");
   if (loaders.listInsights) out.push("insights");
   if (loaders.listInbox) out.push("inbox");
+  if (loaders.listQueries) out.push("queries");
   if (loaders.listExtensions) out.push("extensions");
   if (loaders.listRules) out.push("rules");
   if (loaders.listFlows) out.push("flowSummaries");

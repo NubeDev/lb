@@ -390,6 +390,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   desktop webview and the browser; e.g. a dashboard scoped to a date range), `data-console-scope.md` (the workspace
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
   with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL), and
+  `query-builder/` (the **query-builder 10x** subtopic — a Tabularis-grade drag-and-connect visual JOIN
+  builder + a schema-aware CodeMirror editor + a standalone `/t/$ws/query` workbench view that also opens as
+  a Data Studio pane; UI-only, extends the shipped `SqlBuilderQuery`/`emitSql` seam, no backend; plus
+  `tabularis-harvest.md` — what else to take from Tabularis), and
   `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
   and its successor `theme-customizer-scope.md` (the ported shadcn-store Customizer: a preset library +
   radius + import + custom colors that write the project's **base** design tokens so every existing
@@ -437,12 +441,21 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   the builder into a **query-first → visual viz-gallery → options-drawer** flow; and an honest
   **seeded-demo-data** preview toggle (real records via the `iot_demo` seed + `docker/postgres/seed.py`,
   never client-fabricated frames — rule 9)), and
-  `webhooks-admin-scope.md` (the **Webhooks admin page adopts the `AppPage` shell** — a frontend-only
-  restyle/UX slice over the shipped `webhook.*` verbs: the page migrates off the legacy `AdminPanel`
-  onto the same canonical shell Dashboards/Rules use, the wizard upgrades to the surface discipline, and
-  the file splits one-component-per-file during the move. The first admin-tab migration; the other five
-  tabs follow under `admin-console-scope.md`).
-  `frontend/dashboard/viz/` holds the
+   `webhooks-admin-scope.md` (the **Webhooks admin page adopts the `AppPage` shell** — a frontend-only
+   restyle/UX slice over the shipped `webhook.*` verbs: the page migrates off the legacy `AdminPanel`
+   onto the same canonical shell Dashboards/Rules use, the wizard upgrades to the surface discipline, and
+   the file splits one-component-per-file during the move. The first admin-tab migration; the other five
+   tabs follow under `admin-console-scope.md`), and
+   `query-builder-common-scope.md` (make the **Query Builder common**: a LOCAL TABLE source
+   (SurrealDB, `store.query`) gets the interactive Builder⇄Code editor today; an external DATASOURCE
+   (`federation.query` — postgres/timescale/sqlite) gets only a raw-SQL textarea. Lift the deferral
+   recorded in `dashboard/viz/datasource-binding-scope.md` — its prerequisite (`federation.schema
+   {source, table?}`) has shipped. One shared `SqlBuilderQuery` state, N dialect emitters behind a
+   `SqlDialect` seam (`toSurrealQL.ts` stays one impl; add a standard-SQL emitter for federation);
+   the same `SqlQueryEditor` for both, fed by `federation.schema` for federation dropdowns. The wire
+   shape (`federation.query {source, sql}`) is unchanged — pure UI + a TS emitter module, no new
+   verb/cap/table).
+   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/
   numbers through `prefs/` user-prefs, query any datasource (not just native SurrealDB), and import/export

@@ -1,9 +1,14 @@
 // The visual query builder (widget-builder Slice C) — ported from Grafana's
 // `visual-query-builder/VisualEditor.tsx`, rendered with our own primitives (no `@grafana/ui`). The
 // rows a non-SQL user fills: Table → Column/Aggregation → Filter (where) → Group by → Order by →
-// Limit, with a live SurrealQL preview. The Table/Column dropdowns are populated by `store.schema`
-// (Slice A). Editing the typed `SqlBuilderQuery` regenerates the SurrealQL string (via `toSurrealQL`)
+// Limit, with a live SQL preview. The Table/Column dropdowns are populated by the `schema` prop
+// (the HOST supplies: `store.schema` for local, `federation.schema` for federation). Editing the
+// typed `SqlBuilderQuery` regenerates the SQL string (via `emitSql` for the editor's `dialect`)
 // the parent keeps in sync. Builder mode can ONLY generate a SELECT.
+//
+// Dialect-agnostic (query-builder-common scope): the live preview renders whatever the dialect's
+// emitter produces (SurrealQL `math::sum` for native, ANSI `SUM("col")` for federation). The
+// editor takes a `dialect: SqlDialect` and never branches on a datasource name (rule 10).
 
 import { Plus, X } from "lucide-react";
 
@@ -16,7 +21,7 @@ import type {
   SqlFilter,
   SqlOperator,
 } from "@/lib/panel-kit/sql/query";
-import { toSurrealQL } from "@/lib/panel-kit/sql/toSurrealQL";
+import { emitSql, type SqlDialect } from "@/lib/panel-kit/sql/dialect";
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
@@ -28,10 +33,12 @@ interface Props {
   schema: Schema;
   query: SqlBuilderQuery;
   onChange: (query: SqlBuilderQuery) => void;
+  /** The dialect for the live preview. `surreal` for native; `standard` for federation. */
+  dialect: SqlDialect;
 }
 
 /** The visual query builder rows + live preview. */
-export function VisualEditor({ schema, query, onChange }: Props) {
+export function VisualEditor({ schema, query, onChange, dialect }: Props) {
   const tableNames = schema.tables.map((t) => t.name);
   const columns =
     schema.tables.find((t) => t.name === query.table)?.columns.map((c) => c.name) ?? [];
@@ -210,11 +217,11 @@ export function VisualEditor({ schema, query, onChange }: Props) {
         />
       </Row>
 
-      {/* Live SurrealQL preview — what Builder→Code would generate. */}
+      {/* Live SQL preview — what Builder→Code would generate for this dialect. */}
       <div className="mt-1 rounded-md border border-border bg-bg px-2 py-1">
         <span className="text-[10px] text-muted">Preview</span>
         <pre className="overflow-x-auto font-mono text-[11px] text-fg" aria-label="sql preview">
-          {toSurrealQL(query) || "— pick a table —"}
+          {emitSql(dialect, query) || "— pick a table —"}
         </pre>
       </div>
     </div>

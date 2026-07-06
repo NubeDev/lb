@@ -20,6 +20,7 @@ import { lazy, Suspense, useMemo } from "react";
 import { useCatalog, type CatalogEntry, type SourceLoaders } from "@nube/source-picker";
 
 import { listDatasources } from "@/lib/datasources";
+import { listQueries } from "@/lib/queries";
 import { readSchema } from "@/lib/schema";
 import { listRealSeries } from "@/lib/ingest/schema.api";
 
@@ -40,6 +41,10 @@ function shellLoaders(): SourceLoaders {
     listDatasources: () => listDatasources(),
     readSchema: () => readSchema(),
     listSeries: () => listRealSeries(),
+    // Saved queries → the Saved-queries explorer section. A rule composes a saved query via
+    // `source("query:<name>")` → `query.run {id}` (re-gated, no-widening) — the snippet mapping
+    // turns a click into that source line. Reached through `mcp_call` (`query.list`).
+    listQueries: () => listQueries(),
   };
 }
 
@@ -82,6 +87,11 @@ function snippetFor(entry: CatalogEntry): string {
       return entry.column;
     case "series":
       return `history("series", ${JSON.stringify(entry.name)}, "24h")`;
+    case "query":
+      // A rule composes a saved query by name: `source("query:<id>")` resolves to `query.run {id}`
+      // inside the cage (the rule still runs under `caller ∩ grant`; `query.run` re-checks the
+      // target cap — no widening). The slug is the catalog id minus its `query:` prefix.
+      return `source(${JSON.stringify(`query:${entry.id.replace(/^query:/, "")}`)})`;
     case "channel":
     case "insight":
     case "inbox":

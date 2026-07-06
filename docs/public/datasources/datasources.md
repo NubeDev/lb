@@ -79,6 +79,26 @@ path-is-less-sensitive special case** — the path DSN is mediated like any othe
 paths, real rows in a real engine (rule 9's anti-mock). The full-year firehose stays the
 postgres/Timescale seeder.
 
+## Saved queries on the Datasources page (shipped 2026-07-06)
+
+The Datasources detail page can save and reload ad-hoc SQL, riding the platform's existing `query.*`
+verbs — **no new verb, cap, or table** (`querydef.*` was considered and dropped as a duplicate store):
+
+- `ui/src/features/datasources/useDatasourceQueries.ts` — per-source hook. `query.list` returns the
+  workspace roster; the hook filters **client-side** to `target === "datasource:<name>"` (a pure
+  projection, no second call) and exposes load/save/remove. Saves are `lang:"raw"` (this surface
+  authors raw SQL against the external engine; PRQL belongs to the platform-target workbench) with the
+  datasource target baked in.
+- `SaveQueryDialog.tsx` — id/name/description form; author supplies the slug, the current editor SQL +
+  target are captured; submit closes, errors surface verbatim.
+- `SavedQueriesDialog.tsx` — lists the filtered roster; click loads the SQL into the editor (the roster
+  row omits `text`, so the full record is resolved via `query.get`); per-row delete.
+- `DatasourceDetail.tsx` wires both dialogs into the SQL editor header, beside Run.
+
+A saved query is a workspace-scoped `query:{ws}:{id}` record; its `datasource:<name>` target resolves
+only inside the caller's workspace (same un-spoofable rule as `federation.query`'s `{source}`). The
+query-builder workbench (scope in `docs/scope/frontend/query-builder/`) builds on this same wiring.
+
 ## Federate vs mirror (both blessed by `0003`)
 
 - **Federate** (`federation.query`) — read the external DB live, for fresh/ad-hoc/interactive needs.

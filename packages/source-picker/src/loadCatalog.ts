@@ -19,6 +19,7 @@ export interface CatalogSectionData {
   channels: import("./types").ChannelRow[];
   insights: import("./types").InsightRow[];
   inbox: import("./types").InboxRow[];
+  queries: import("./types").QuerySummary[];
   extensions: import("./types").ExtRow[];
   rules: import("./types").RuleSummary[];
   flowSummaries: import("./types").FlowSummary[];
@@ -43,6 +44,7 @@ interface SectionLoaderMap {
   channels: "listChannels";
   insights: "listInsights";
   inbox: "listInbox";
+  queries: "listQueries";
   extensions: "listExtensions";
   rules: "listRules";
   flowSummaries: "listFlows";
@@ -58,6 +60,7 @@ const SECTION_LOADERS: SectionLoaderMap = {
   channels: "listChannels",
   insights: "listInsights",
   inbox: "listInbox",
+  queries: "listQueries",
   extensions: "listExtensions",
   rules: "listRules",
   flowSummaries: "listFlows",

@@ -10,12 +10,12 @@
 .dockview-theme-lb {
   --dv-group-view-background-color: hsl(var(--bg));
   --dv-tabs-and-actions-container-background-color: hsl(var(--bg));
-  --dv-tabs-and-actions-container-font-size: 0.75rem;
-  --dv-tabs-and-actions-container-height: 2.25rem;
-  --dv-tab-font-size: 0.75rem;
+  --dv-tabs-and-actions-container-font-size: 0.8125rem;
+  --dv-tabs-and-actions-container-height: 2.75rem;
+  --dv-tab-font-size: 0.8125rem;
   --dv-tab-border-radius: calc(var(--radius) - 2px);
-  --dv-tab-close-icon-size: 12px;
-  --dv-tab-margin: 4px 2px;
+  --dv-tab-close-icon-size: 13px;
+  --dv-tab-margin: 5px 3px;
   --dv-tab-divider-color: transparent;
 
   /* Tab colors: selected raised on --panel with full-contrast text, unselected muted. */
@@ -63,10 +63,10 @@
 }
 
 /* Tab shape parity with the shipped strip: a bordered pill; the selected one carries an accent top
-   edge; titles cap at 11rem and ellipsize (the FULL name stays in the tab's hover tooltip, set by
-   `WorkbenchTab`). */
+   edge; titles cap at 12rem and ellipsize (the FULL name stays in the tab's hover tooltip, set by
+   `WorkbenchTab`). The tab carries a leading surface icon + title + close (see `WorkbenchTab`). */
 .data-studio-dock .dv-tab {
-  max-width: 11rem;
+  max-width: 12rem;
   border: 1px solid transparent;
   border-radius: calc(var(--radius) - 2px);
   padding: 0;

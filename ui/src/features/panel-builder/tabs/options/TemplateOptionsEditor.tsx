@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
+import { CopyTemplatePrompt } from "../../CopyTemplatePrompt";
 import {
   DEFAULT_INLINE_CODE,
   TemplateSourceField,
@@ -65,5 +66,21 @@ export function TemplateOptionsEditor({ state, patch }: Props) {
     else extraOptions.templateId = next.templateId;
     patch({ carry: { ...state.carry, extraOptions } });
   };
-  return <TemplateSourceField value={value} onChange={onChange} />;
+  // The draft's active data binding, for the AI prompt's provenance section: a federation target
+  // carries its SQL in args; a SQL-builder draft stows raw SQL in state.sql; structured reads
+  // (series/flows) just name the tool.
+  const target = state.targets?.[0];
+  const args = (target?.args ?? {}) as Record<string, unknown>;
+  const query = {
+    tool: target?.tool,
+    source: typeof args.source === "string" ? args.source : undefined,
+    sql: typeof args.sql === "string" ? args.sql : state.sql?.rawSql,
+  };
+
+  return (
+    <div className="grid gap-2">
+      <CopyTemplatePrompt query={query} />
+      <TemplateSourceField value={value} onChange={onChange} />
+    </div>
+  );
 }

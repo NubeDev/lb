@@ -1,28 +1,7 @@
 // The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. It uses the same global
 // Lazybones tokens as the rest of the shell, with cap-gated entries supplied by App.tsx.
 
-import {
-  Activity,
-  Boxes,
-  CalendarClock,
-  Database,
-  Hash,
-  Lightbulb,
-  Network,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  Plug,
-  Puzzle,
-  ScrollText,
-  Telescope,
-  Webhook as WebhookIcon,
-  Workflow,
-  FlaskConical,
-  Send,
-  Settings,
-  Shield,
-} from "lucide-react";
+import { Hash, LayoutDashboard, LogOut, Puzzle } from "lucide-react";
 
 import {
   Sidebar,
@@ -39,6 +18,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { useTheme } from "@/lib/theme";
+
+import { SURFACE_DEF, SURFACES } from "./surfaceDefs";
 
 /** The fixed core surfaces the shell ships. */
 export type CoreSurface =
@@ -108,72 +89,45 @@ interface Props {
   onSelectDashboard?: (dashboard: string, vars?: Record<string, string>) => void;
 }
 
-interface SurfaceDef {
-  key: CoreSurface;
-  icon: typeof Hash;
-  label: string;
-}
-
 /** The built-in fallback rail, bucketed into labelled categories so it reads as sections rather than
  *  one long flat list (sidebar-16 shape). This ONLY shapes the fallback: when a server-authored nav
  *  applies (`resolvedItems`), that owns grouping instead (nav scope). `settings` lives in the footer,
- *  not a group. A group whose members are all cap-stripped renders nothing (no empty label). */
-const SURFACE_GROUPS: { label: string; items: SurfaceDef[] }[] = [
+ *  not a group. A group whose members are all cap-stripped renders nothing (no empty label). The icon
+ *  + label per key come from the shared `SURFACE_DEF` map (`surfaceDefs.ts`) — never re-defined here. */
+const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
   {
     label: "Workspace",
-    items: [
-      { key: "channels", icon: Hash, label: "Channels" },
-      { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
-      { key: "inbox", icon: Inbox, label: "Inbox" },
-      { key: "outbox", icon: Send, label: "Outbox" },
+    items: ["channels", "dashboards", "inbox", "outbox",
       // insights (insights umbrella scope): the durable data-finding record. Workspace-level
       // attention surface — open/acked/resolved findings with severity + dedup, faceted through the
       // tag graph. Cap-gated on `insight.list` (allowed.ts); the gateway re-checks every verb.
-      { key: "insights", icon: Lightbulb, label: "Insights" },
-    ],
+      "insights"],
   },
   {
     label: "Automation",
-    items: [
-      { key: "rules", icon: ScrollText, label: "Rules" },
-      { key: "flows", icon: Workflow, label: "Flows" },
-      { key: "reminders", icon: CalendarClock, label: "Reminders" },
-    ],
+    items: ["rules", "flows", "reminders"],
   },
   {
     label: "Data",
-    items: [
-      { key: "datasources", icon: Plug, label: "Datasources" },
-      { key: "ingest", icon: Activity, label: "Ingest" },
+    items: ["datasources", "ingest",
       // webhooks (webhooks scope): a first-class inbound-HTTP surface beside the other data inlets.
       // The page is cap-gated on `webhook.manage` (allowed.ts); the gateway re-checks every verb
       // server-side. Sits in the Data group (the wizard reads like a data-surface); the component
       // itself lives in `features/admin/` because it mirrors the ApiKeysAdmin pattern.
-      { key: "webhooks", icon: WebhookIcon, label: "Webhooks" },
-      { key: "data", icon: Database, label: "Data" },
-    ],
+      "webhooks", "data"],
   },
   {
     label: "Build",
     items: [
       // Extensions + Studio are one merged, tabbed page — a single rail entry. `extensions` is the
       // rail key (its tab lands first); the merged page shows whichever tabs the session's caps allow.
-      { key: "extensions", icon: Boxes, label: "Studio" },
-      { key: "data-studio", icon: FlaskConical, label: "Data Studio" },
-    ],
+      "extensions", "data-studio"],
   },
   {
     label: "System",
-    items: [
-      { key: "system", icon: Network, label: "System" },
-      { key: "telemetry", icon: Telescope, label: "Telemetry" },
-      { key: "admin", icon: Shield, label: "Admin" },
-    ],
+    items: ["system", "telemetry", "admin"],
   },
 ];
-
-/** The `settings` surface — rendered in the footer, not a category group. */
-const SETTINGS_SURFACE: SurfaceDef = { key: "settings", icon: Settings, label: "Settings" };
 
 /** The brand mark — a two-hue (accent → secondary accent) tile, the same signature gradient the page
  *  headers carry. `--accent-foreground` keeps the glyph legible on the accent in every preset/mode. */
@@ -191,29 +145,15 @@ function BrandMark() {
   );
 }
 
-/** Every surface, flattened — used to build the icon lookup so the resolved rail and the fallback
- *  stay in lockstep. */
-const SURFACES: SurfaceDef[] = [
-  ...SURFACE_GROUPS.flatMap((g) => g.items),
-  SETTINGS_SURFACE,
-];
-
 /** The flat list of sidebar surfaces the icon-colorizer (Settings → Theme) iterates: every rail entry
  *  (the body groups + the footer Settings entry) as `{ key, label }`. DATA, derived from the single
- *  source of truth above — never a second hand-maintained list. Extension slots (`ext:<id>`) are
- *  dynamic and intentionally not enumerated here; they fall back to default fg unless the member sets
- *  one through future per-ext UI. */
+ *  source of truth in `surfaceDefs.ts` — never a second hand-maintained list. Extension slots
+ *  (`ext:<id>`) are dynamic and intentionally not enumerated here; they fall back to default fg
+ *  unless the member sets one through future per-ext UI. */
 export const RAIL_SURFACES: readonly { key: CoreSurface; label: string }[] = SURFACES.map((s) => ({
   key: s.key,
   label: s.label,
 }));
-
-/** The surface → icon lookup a resolved `surface` item renders with (its own icon when known; a
- *  generic one otherwise). Built from `SURFACES` so the fallback and the resolved rail stay in
- *  lockstep — the scope's "fallback correctness" guard. */
-const SURFACE_ICON: Record<string, typeof Hash> = Object.fromEntries(
-  SURFACES.map((s) => [s.key, s.icon]),
-);
 
 export function NavRail({
   active,
@@ -263,7 +203,7 @@ export function NavRail({
   const resolvedItem = (it: ResolvedNavItem, keyHint: string) => {
     if (it.kind === "surface" && it.surface) {
       const key = it.surface as Surface;
-      return item(key, it.label, SURFACE_ICON[it.surface] ?? Hash);
+      return item(key, it.label, SURFACE_DEF[it.surface as CoreSurface]?.icon ?? Hash);
     }
     if (it.kind === "ext" && it.ext) {
       const key = `ext:${it.ext}` as Surface;
@@ -360,8 +300,8 @@ export function NavRail({
               // The merged "Studio" entry (keyed `extensions`) shows when EITHER of its tabs' caps is
               // allowed — `studio` (Build) counts too. Clicking it lands on the bare `/studio` redirect,
               // which forwards to the first tab the session can reach (a build-only user gets Build).
-              const canSee = (s: SurfaceDef) =>
-                allowed.includes(s.key) || (s.key === "extensions" && allowed.includes("studio"));
+              const canSee = (s: CoreSurface) =>
+                allowed.includes(s) || (s === "extensions" && allowed.includes("studio"));
               const visible = grp.items.filter(canSee);
               if (visible.length === 0) return null;
               return (
@@ -369,7 +309,10 @@ export function NavRail({
                   <SidebarGroupLabel>{grp.label}</SidebarGroupLabel>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {visible.map(({ key, icon, label }) => item(key, label, icon))}
+                      {visible.map((key) => {
+                        const def = SURFACE_DEF[key];
+                        return item(key, def.label, def.icon);
+                      })}
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>

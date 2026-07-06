@@ -83,6 +83,84 @@ describe("cell ↔ editorState round-trip", () => {
     expect(back).toEqual(v3);
   });
 
+  it("a v3 federation cell carrying options.sql round-trips (the query-builder-common contract)", () => {
+    // After the query-builder-common scope, a federation target stores the SAME `options.sql`
+    // (a SqlSourceState) a surreal target stores — so reopening returns to the builder. The wire
+    // shape (`federation.query {source, sql}`) is unchanged; `options.sql` is the additive carry.
+    const fed: Cell = {
+      i: "f1",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      title: "Avg reading",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: 'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100' },
+          datasource: { type: "federation", uid: "datasource:acme:demo-buildings" },
+        },
+      ],
+      options: {
+        sql: {
+          mode: "builder",
+          rawSql: 'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100',
+          builder: {
+            table: "point_reading",
+            columns: [{ name: "value", aggregation: "avg" }],
+            filters: [],
+            groupBy: [],
+            limit: 100,
+          },
+          format: "table",
+        },
+      },
+    };
+    const back = roundTrip(fed);
+    expect(back).toEqual(fed);
+    // The builder state survives in options.sql (reopening returns to the builder, like surreal).
+    expect((back.options?.sql as { builder: { table: string } }).builder.table).toBe("point_reading");
+    // The wire shape is unchanged — args.sql is still the raw string federation.query runs.
+    expect((back.sources?.[0].args as { sql: string }).sql).toBe(
+      'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100',
+    );
+  });
+
+  it("a pre-slice federation cell (args.sql but no options.sql) round-trips without fabrication", () => {
+    // A federation cell authored BEFORE the query-builder-common slice has `target.args.sql` but no
+    // `options.sql` — the legacy raw-SQL-only shape. Reopen must preserve it byte-for-byte; we do
+    // NOT fabricate a builder query from hand-edited SQL (scope Risks). The editor falls to Code mode.
+    const legacy: Cell = {
+      i: "f2",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: "SELECT 1" },
+          datasource: { type: "federation" },
+        },
+      ],
+      options: { code: "legacy" }, // unrelated option key, must round-trip verbatim
+    };
+    const back = roundTrip(legacy);
+    expect(back).toEqual(legacy);
+    // No spurious `options.sql` was injected (byte-clean).
+    expect(back.options?.sql).toBeUndefined();
+  });
+
   it("full Phase-2 cells (stat/gauge/bargauge/table/barchart/piechart) round-trip with typed options", () => {
     // Each carries a fully-populated typed `options` for its view — proving the Phase-2 option keys are
     // owned by the editor (typed groups), not dropped into `extraOptions`, and round-trip identically.

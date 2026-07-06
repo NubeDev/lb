@@ -10,6 +10,7 @@ import type {
   ExtRow,
   Flow,
   NodeDescriptor,
+  QuerySummary,
   RuleParam,
   RuleSummary,
   Source,
@@ -22,7 +23,7 @@ export interface SourceEntry {
   id: string;
   /** The grouping origin (the picker's sections). `widget` is a packaged `[[widget]]` tile (a finished
    *  widget the developer shipped — distinct from `extension`, which offers an extension's raw tools). */
-  group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules";
+  group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules" | "queries";
   /** What the author sees — never a raw tool name. */
   label: string;
   /** For a `widget` entry: the icon name the tile declared (lucide id). */
@@ -190,6 +191,22 @@ export function rulesEntries(rules: RuleSummary[]): SourceEntry[] {
   }));
 }
 
+/** Saved-query entries — one per `query.list` row. Each ⇒ a read `query.run {id}` source: the host
+ *  compiles the saved PRQL/raw text for the target's dialect and dispatches to `store.query`
+ *  (platform) or `federation.query` (datasource), returning the SAME `{columns, rows}` shape every
+ *  other tabular source yields. `query.run` COMPOSES the target's cap, it never widens it (rule 5):
+ *  the caller needs `mcp:query.run:call` AND the underlying target cap, re-checked per call. Whether
+ *  the saved text is currently valid is the author's concern — an honest failure if not. */
+export function queryEntries(queries: QuerySummary[]): SourceEntry[] {
+  return queries.map((q) => ({
+    id: `query:${q.id}`,
+    group: "queries" as const,
+    label: q.name || q.id,
+    source: { tool: "query.run", args: { id: q.id } },
+    writes: false,
+  }));
+}
+
 /** The id of the "SQL query" entry — the visual SQL builder + raw-SQL source over `store.query`. */
 export const SQL_SOURCE_ID = "sql:query";
 
@@ -213,6 +230,7 @@ export interface SourceInputs {
   descriptors?: NodeDescriptor[];
   datasources?: DatasourceRow[];
   rules?: RuleSummary[];
+  queries?: QuerySummary[];
 }
 
 /** Assemble the whole picker from loader results. Series/live from `series`; extension + widget from
@@ -227,6 +245,7 @@ export function buildSourceEntries(inputs: SourceInputs): SourceEntry[] {
     ...extWidgetEntries(inputs.extensions ?? []),
     ...flowsEntries(inputs.flows ?? [], inputs.descriptors ?? []),
     ...rulesEntries(inputs.rules ?? []),
+    ...queryEntries(inputs.queries ?? []),
     sqlSourceEntry(),
   ];
 }

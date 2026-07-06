@@ -26,6 +26,7 @@ export {
   extWidgetEntries,
   flowsEntries,
   rulesEntries,
+  queryEntries,
   sqlSourceEntry,
   SQL_SOURCE_ID,
 } from "./sourcePicker";
@@ -49,6 +50,7 @@ export {
   datasourceEntries,
   inboxEntries,
   insightEntries,
+  queryCatalogEntries,
   schemaColumnEntries,
   schemaTableEntries,
   seriesCatalogEntries,
@@ -97,6 +99,7 @@ export type {
   RuleSummary,
   RuleParam,
   ParamKind,
+  QuerySummary,
   NodeDescriptor,
   DatasourceRow,
   Schema,
