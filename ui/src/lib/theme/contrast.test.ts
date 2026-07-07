@@ -13,28 +13,52 @@ import { THEME_LOOKS } from "./theme-looks.data";
 import { THEME_PRESETS } from "./theme-presets.data";
 import type { BasePalette } from "./theme-tokens";
 
-/** The built-in amber accent's static palette from globals.css (:root / .dark), which the `default`
- *  look uses (it isn't a library preset, so the adapter can't produce it). Kept in lockstep with
- *  globals.css by this test's presence — a change there that breaks AA fails here. */
-const AMBER: { light: BasePalette; dark: BasePalette } = {
-  light: {
-    bg: "40 30% 96%", panel: "40 24% 92%", fg: "30 12% 14%", muted: "30 6% 44%",
-    mutedForeground: "30 6% 44%", accent: "32 92% 34%", border: "40 12% 82%",
-    panel2: "40 26% 88%", overlay: "30 18% 8%", accent2: "178 60% 32%",
-  },
-  dark: {
-    bg: "228 8% 6%", panel: "228 7% 9%", fg: "224 14% 93%", muted: "224 6% 64%",
-    mutedForeground: "224 6% 64%", accent: "34 96% 58%", border: "228 6% 20%",
-    panel2: "228 8% 13%", overlay: "228 24% 3%", accent2: "176 62% 52%",
-  },
+/** The built-in accents' static palettes from globals.css (:root / .dark / [data-theme-accent]) —
+ *  the `default` look uses the teal built-in (not a library preset, so the adapter can't produce it).
+ *  Kept in lockstep with globals.css by this test's presence — a change there that breaks AA fails
+ *  here. All three built-ins share the base neutrals; only the accent swaps. */
+const BUILTIN_ACCENTS: Record<string, { light: string; dark: string }> = {
+  amber: { light: "32 92% 34%", dark: "34 96% 58%" },
+  teal: { light: "178 72% 27%", dark: "174 62% 50%" },
+  blue: { light: "216 72% 40%", dark: "216 82% 66%" },
 };
+
+function builtinPalette(presetId: string): { light: BasePalette; dark: BasePalette } {
+  const accent = BUILTIN_ACCENTS[presetId];
+  return {
+    light: {
+      bg: "210 20% 98.5%", panel: "0 0% 100%", fg: "222 30% 16%", muted: "220 10% 40%",
+      mutedForeground: "220 10% 40%", accent: accent.light, border: "215 16% 86%",
+      panel2: "210 20% 95%", overlay: "220 25% 8%", accent2: "218 55% 34%",
+    },
+    dark: {
+      bg: "218 22% 7%", panel: "218 18% 10%", fg: "215 20% 92%", muted: "215 10% 66%",
+      mutedForeground: "215 10% 66%", accent: accent.dark, border: "217 14% 21%",
+      panel2: "217 17% 13%", overlay: "220 30% 3%", accent2: "214 78% 68%",
+    },
+  };
+}
 
 /** Resolve a look's preset to a per-mode base palette. */
 function paletteFor(presetId: string): { light: BasePalette; dark: BasePalette } | null {
-  if (presetId === "amber") return AMBER;
+  if (BUILTIN_ACCENTS[presetId]) return builtinPalette(presetId);
   const entry = THEME_PRESETS.find((p) => p.value === presetId);
   return entry ? adaptPreset(entry.preset) : null;
 }
+
+describe("built-in accents pass AA contrast in both modes", () => {
+  for (const presetId of Object.keys(BUILTIN_ACCENTS)) {
+    it(presetId, () => {
+      const pal = builtinPalette(presetId);
+      for (const mode of ["light", "dark"] as const) {
+        const p = pal[mode];
+        expect(contrastRatio(p.fg, p.bg), `${presetId}/${mode} fg-on-bg`).toBeGreaterThanOrEqual(AA_NORMAL);
+        expect(contrastRatio(p.fg, p.panel), `${presetId}/${mode} fg-on-panel`).toBeGreaterThanOrEqual(AA_NORMAL);
+        expect(contrastRatio(p.accent, p.bg), `${presetId}/${mode} accent-on-bg`).toBeGreaterThanOrEqual(AA_LARGE);
+      }
+    });
+  }
+});
 
 describe("shipped looks pass AA contrast in both modes", () => {
   for (const look of THEME_LOOKS) {

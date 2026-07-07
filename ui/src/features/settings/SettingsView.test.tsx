@@ -27,6 +27,8 @@ describe("SettingsView tabs", () => {
     expect(coerceSettingsTab("theme")).toBe("theme");
     expect(coerceSettingsTab("agent")).toBe("agent");
     expect(coerceSettingsTab("preferences")).toBe("preferences");
+    // workspace-branding scope: the new Branding tab is a valid deep-link target.
+    expect(coerceSettingsTab("branding")).toBe("branding");
     expect(coerceSettingsTab("bogus")).toBe("preferences");
     expect(coerceSettingsTab(undefined)).toBe("preferences");
   });
@@ -39,11 +41,28 @@ describe("SettingsView tabs", () => {
     expect(screen.getByRole("tab", { name: /Layout/i })).toBeInTheDocument();
   });
 
+  it("shows the Branding tab and its read-only deny notice for a non-admin session", async () => {
+    // caps=[] — no `mcp:prefs.set_default:call`, so the editor surfaces its read-only notice.
+    renderSettings("branding");
+    expect(await screen.findByText(/requires an administrator/i)).toBeInTheDocument();
+    // The brand-name input is present but disabled (a non-admin can see but not edit).
+    const name = await screen.findByLabelText("Site name");
+    expect(name).toBeDisabled();
+  });
+
   it("clicking a tab requests navigation (URL-driven, not internal state)", async () => {
     const user = userEvent.setup();
     const onTabChange = vi.fn();
     renderSettings("preferences", onTabChange);
     await user.click(screen.getByLabelText("Theme"));
     expect(onTabChange).toHaveBeenCalledWith("theme");
+  });
+
+  it("clicking the Branding tab requests navigation", async () => {
+    const user = userEvent.setup();
+    const onTabChange = vi.fn();
+    renderSettings("preferences", onTabChange);
+    await user.click(screen.getByLabelText("Branding"));
+    expect(onTabChange).toHaveBeenCalledWith("branding");
   });
 });

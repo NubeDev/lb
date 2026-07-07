@@ -18,6 +18,7 @@ lb-runtime.workspace = true
 lb-ext-loader.workspace = true
 lb-inbox.workspace = true
 lb-ingest.workspace = true
+lb-insights.workspace = true
 lb-jobs.workspace = true
 lb-prefs.workspace = true
 lb-run-events.workspace = true
@@ -84,3 +85,6 @@ lb-role-ai-gateway.workspace = true
 # (gateway → host normally, host → gateway for tests) is permitted by Cargo and keeps the test's cap
 # source honest instead of a hand-copied list that drifts. The host never build-depends on it.
 lb-role-gateway.workspace = true
+# The sqlite federation e2e test seeds a REAL on-disk `.db` fixture (testing §0's one sanctioned
+# external, no Docker needed) — same bundled rusqlite the gateway's query test uses.
+rusqlite = { version = "0.37", features = ["bundled"] }

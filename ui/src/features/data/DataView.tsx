@@ -1,14 +1,22 @@
-// The Data page — the admin, READ-ONLY DB browser (data-console scope). A table picker (with row
-// counts) on the left; the selected table's rows in a paged, typed grid (click a row to expand its
-// full JSON); and a Grid/Graph toggle that lazy-loads the react-flow relation view. No SQL box, no
-// writes — by design (the raw grid never edits; edits go through the domain verbs). Layout + wiring
-// only; data lives in `useData`. This surface is admin-gated; a member never sees the nav entry.
+// The Data page — the admin, READ-ONLY DB browser (data-console scope) + the surreal-local Query
+// surface (query-workbench-view scope, slice 3). A table picker (with row counts) on the left; the
+// selected table's rows in a paged, typed grid (click a row to expand its full JSON); a Grid/Graph
+// toggle that lazy-loads the react-flow relation view; AND a Query mode that mounts the same
+// `QueryWorkbench` the Datasources page mounts, pinned to `surreal-local` (the platform's native
+// store: `store.schema`/`store.query`, surreal dialect). The Query area rides `mcp:store.query:call`
+// (member-level) — independent of the admin-only `store.scan` that gates the raw browser. Whether
+// the page shows Query to non-admins is a nav/gate choice; the cap is checked per-run regardless.
+// No SQL box before this slice — by design (the raw grid never edits; edits go through domain verbs).
 
 import { Suspense, lazy, useMemo, useState } from "react";
 import { Braces, ChevronRight, Database, Network, Table2 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { QueryWorkbench } from "@/features/query-workbench";
 import { useData } from "./useData";
-import type { Row, TableCount } from "@/lib/data/data.types";
+import { TableRail } from "./TableRail";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
+import type { Row } from "@/lib/data/data.types";
 
 // Code-split the graph (and `@xyflow/react`) so it only loads when the user flips to the graph view.
 const DataGraph = lazy(() => import("./DataGraph"));
@@ -17,7 +25,7 @@ interface Props {
   ws: string;
 }
 
-type Mode = "grid" | "graph";
+type Mode = "grid" | "graph" | "query";
 type ValueKind = "string" | "number" | "boolean" | "null" | "object" | "array";
 
 const TYPE_STYLES: Record<
@@ -71,6 +79,8 @@ const TYPE_STYLES: Record<
 export function DataView({ ws }: Props) {
   const { tables, selected, rows, cursor, graph, error, select, more, loadGraph } = useData();
   const [mode, setMode] = useState<Mode>("grid");
+  // The table rail folds to the shared thin strip (same affordance as the dashboard/rules/flow rails).
+  const [railOpen, setRailOpen] = useState(true);
   const selectedTable = tables.find((t) => t.table === selected);
 
   const showGraph = () => {
@@ -114,6 +124,20 @@ export function DataView({ ws }: Props) {
               <ModeTab mode="graph" active={mode === "graph"} onClick={showGraph} />
             </div>
           )}
+          {/* Query is always available (independent of a selected table — it's ad-hoc SQL over the
+              native store). Rides mcp:store.query:call, member-level; a deny is surfaced verbatim. */}
+          <Button
+            type="button"
+            role="tab"
+            aria-selected={mode === "query"}
+            aria-label="query mode"
+            variant={mode === "query" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 gap-1.5 px-2.5 text-xs"
+            onClick={() => setMode("query")}
+          >
+            <Database size={14} /> Query
+          </Button>
           <span className="scope-pill" title={`Workspace ${ws}`}>
             <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
             <span className="truncate">{ws}</span>
@@ -131,17 +155,33 @@ export function DataView({ ws }: Props) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <TablePicker
-          tables={tables}
-          selected={selected}
-          onSelect={(table) => {
-            setMode("grid");
-            void select(table);
-          }}
-        />
+        {railOpen ? (
+          <TableRail
+            tables={tables}
+            selectedId={selected}
+            onSelect={(table) => {
+              setMode("grid");
+              void select(table);
+            }}
+            onCollapse={() => setRailOpen(false)}
+          />
+        ) : (
+          <CollapsedRail noun="table" onExpand={() => setRailOpen(true)} />
+        )}
 
         <div className="min-w-0 flex-1 overflow-hidden">
-          {!selected ? (
+          {mode === "query" ? (
+            // The surreal-local workbench (slice 3) — the SQL box the Data page never had. Same
+            // component the Datasources page and the Data Studio pane mount; pinned to the platform
+            // store here (store.schema/store.query, surreal dialect). sel is local-only for now (no
+            // deep-link on the Data route; saved queries target a datasource, not the platform store).
+            <QueryWorkbench
+              ws={ws}
+              source="surreal-local"
+              sel={null}
+              onSel={() => {}}
+            />
+          ) : !selected ? (
             <EmptySelection tables={tables.length} />
           ) : mode === "graph" ? (
             <Suspense fallback={<PanelMessage title="Loading graph" body="Reading relation edges." />}>
@@ -194,64 +234,6 @@ function Metric({ label, value, mono = false }: { label: string; value: string; 
         {value}
       </span>
     </span>
-  );
-}
-
-function TablePicker({
-  tables,
-  selected,
-  onSelect,
-}: {
-  tables: TableCount[];
-  selected: string | null;
-  onSelect: (table: string) => void;
-}) {
-  const totalRows = tables.reduce((sum, t) => sum + t.count, 0);
-
-  return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-panel/35">
-      <div className="border-b border-border px-3 py-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-medium text-fg">Tables</div>
-          <div className="text-[11px] tabular-nums text-muted">
-            {tables.length} / {totalRows} rows
-          </div>
-        </div>
-      </div>
-
-      <ul className="flex-1 overflow-auto p-2">
-        {tables.length === 0 && (
-          <li className="rounded-md border border-border bg-bg p-3 text-xs text-muted">
-            No tables found.
-          </li>
-        )}
-        {tables.map((t) => {
-          const active = selected === t.table;
-          return (
-            <li key={t.table} className="mb-1 last:mb-0">
-              <button
-                aria-label={`select table ${t.table}`}
-                className={`group flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
-                  active
-                    ? "border-accent/35 bg-accent/15 text-accent"
-                    : "border-transparent text-fg hover:border-border hover:bg-bg"
-                }`}
-                onClick={() => onSelect(t.table)}
-              >
-                <span className="min-w-0 truncate font-mono text-xs">{t.table}</span>
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[11px] tabular-nums ${
-                    active ? "bg-bg/70 text-accent" : "bg-bg text-muted group-hover:text-fg"
-                  }`}
-                >
-                  {t.count}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </aside>
   );
 }
 

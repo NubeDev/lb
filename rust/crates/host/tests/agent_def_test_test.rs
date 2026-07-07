@@ -22,8 +22,9 @@ use std::sync::Arc;
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    agent_def_create, agent_def_test, grant_skill, put_skill, resolve_endpoint_key,
-    AgentDefinition, DefinitionEndpoint, ErasedModel, Node, RuntimeRegistry, UnconfiguredModel,
+    agent_config_set, agent_def_create, agent_def_test, grant_skill, put_skill,
+    resolve_endpoint_key, AgentConfig, AgentDefinition, DefinitionEndpoint, ErasedModel,
+    ModelBuilder, ModelEndpointPatch, Node, RuntimeRegistry, UnconfiguredModel,
 };
 use lb_mcp::ToolError;
 use lb_role_ai_gateway::{AiGateway, AiResponse, MockProvider};
@@ -535,5 +536,81 @@ async fn provider_configured_is_false_on_the_unconfigured_placeholder() {
         result.answer,
         lb_host::UNCONFIGURED_ANSWER,
         "the honest unconfigured answer, not a fabricated one"
+    );
+}
+
+// ── the in-house Test rides the WORKSPACE model, not the node default ───────────────────────────
+
+/// A `ModelBuilder` twin of the node's `NodeModelBuilder`, scripting the provider HTTP: it builds a
+/// real `AiGateway<MockProvider>` whose stop-turn names the endpoint's model, so a test can assert the
+/// picked endpoint (not the node default) was the one built.
+struct ScriptedBuilder;
+
+impl ModelBuilder for ScriptedBuilder {
+    fn build(
+        &self,
+        endpoint: &DefinitionEndpoint,
+        _key: Option<&str>,
+    ) -> Option<Arc<dyn ErasedModel>> {
+        Some(mock_gateway(&format!("answer from {}", endpoint.model)))
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn the_in_house_test_rides_the_workspace_picked_model_not_the_node_default() {
+    // The regression the live test surfaced: the "Test" button for an in-house `default` pick resolved
+    // `registry.default_model()` (the node-level `UnconfiguredModel`) and IGNORED the workspace's picked
+    // + keyed endpoint entirely — so a workspace that keyed its pick still tested as the placeholder.
+    // The node default is left UNconfigured here; only the WORKSPACE picks a keyed definition. The
+    // in-house test must now resolve THAT model (`resolve_workspace_model`) and report it configured.
+    let ws = "adt-ws-model";
+    let node = Arc::new(Node::boot().await.unwrap());
+    node.install_runtimes(RuntimeRegistry::with_default(Arc::new(UnconfiguredModel)));
+    node.install_model_builder(Arc::new(ScriptedBuilder));
+    let admin = principal(
+        "user:ada",
+        ws,
+        &[
+            TEST,
+            CATALOG,
+            DEF_CREATE,
+            DEF_GET,
+            DEF_LIST,
+            "mcp:agent.config.set:call",
+        ],
+    );
+
+    // A workspace pick of a keyed in-house definition (runtime `default`).
+    let def = def_with_secret("acme", "agent/acme-key");
+    agent_def_create(&node, &admin, ws, &def).await.unwrap();
+    agent_config_set(
+        &node,
+        &admin,
+        ws,
+        &AgentConfig {
+            active_definition: Some("acme".into()),
+            default_runtime: Some("default".into()),
+            model_endpoint: Some(ModelEndpointPatch {
+                provider: Some("zaicoding".into()),
+                model: Some("glm-4.6".into()),
+                api_key_secret: Some("agent/acme-key".into()),
+                ..Default::default()
+            }),
+            active_persona: None,
+            enabled_personas: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Test the ACTIVE pick (no id — the exact `/agent/defs/test` route the button hits).
+    let result = agent_def_test(&node, &admin, ws, None).await.unwrap();
+    assert!(
+        result.provider_configured,
+        "the in-house test resolved the WORKSPACE model (a real AiGateway), not the node placeholder"
+    );
+    assert_eq!(
+        result.answer, "answer from glm-4.6",
+        "the picked endpoint's model answered — proving resolve_workspace_model, not registry.default_model()"
     );
 }

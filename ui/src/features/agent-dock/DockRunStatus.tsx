@@ -6,10 +6,18 @@
 //   Stalled → "still working" hint (not an error)   Done → nothing (the durable answer is the record)
 //   Error → the message + a Retry affordance.
 
-import { AlertTriangle, Loader2, Pause, Play, RotateCcw, Square, WifiOff, Wrench } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, Check, Loader2, Pause, Play, RotateCcw, Square, WifiOff, Wrench, X } from "lucide-react";
 
-import type { RunFeed } from "@/features/channel/useRunFeed";
+import { Button } from "@/components/ui/button";
+import type { RunFeed, RunToolCall } from "@/features/channel/useRunFeed";
 import type { DockRunPhase } from "./dockRunState";
+
+/** How many tool rows to show before FIFO-collapsing the rest. Oldest calls are hidden first so the
+ *  newest (incl. the in-flight one) always stay visible during a long run. Mirrors the same shape as
+ *  `SURFACE_PREVIEW_COUNT` in ExtensionsView — keep the dock compact without losing the audit (the
+ *  full list is one "Show all" click away). */
+const MAX_VISIBLE_TOOLS = 5;
 
 interface Props {
   phase: DockRunPhase;
@@ -72,9 +80,16 @@ export function DockRunStatus({
   }
 
   if (phase === "done") {
-    // The durable agent_result is the message of record (rendered by the message list); nothing to add
-    // beyond an optional degrade note.
-    return degraded ? <DegradeNote /> : null;
+    // The durable agent_result is the message of record (rendered by the message list). What it does
+    // NOT carry is the run's tool calls — keep the live-captured list visible so the user can see
+    // WHAT the agent actually did (the #1 "did it really do it?" question), plus the degrade note.
+    if (!degraded && feed.tools.length === 0) return null;
+    return (
+      <div className="flex flex-col gap-1">
+        <ToolList tools={feed.tools} />
+        {degraded && <DegradeNote />}
+      </div>
+    );
   }
 
   if (phase === "error") {
@@ -150,7 +165,74 @@ export function DockRunStatus({
           </span>
         )}
       </div>
+      <ToolList tools={feed.tools} />
       {degraded && <DegradeNote />}
+    </div>
+  );
+}
+
+/** The run's tool calls so far, one honest row each: done (✓), failed (✗), or still running. The
+ *  durable channel item never carries these, so this live-captured list is the only place the user
+ *  sees what the agent actually did. Renders nothing before the first call.
+ *
+ *  When the list outgrows {@link MAX_VISIBLE_TOOLS}, the OLDEST calls are hidden first (FIFO) and a
+ *  "Show all" toggle reveals them — keeps the dock height stable during a long run without losing the
+ *  audit. The cap is presentation-only: `useDockRun`'s `feed.tools` keeps every call. */
+function ToolList({ tools }: { tools: RunToolCall[] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (tools.length === 0) return null;
+  const overflow = tools.length > MAX_VISIBLE_TOOLS;
+  const hiddenCount = overflow ? tools.length - MAX_VISIBLE_TOOLS : 0;
+  const visible = overflow && !expanded ? tools.slice(hiddenCount) : tools;
+  return (
+    <div className="flex flex-col gap-0.5">
+      {overflow && (
+        <div className="flex items-center gap-1.5 text-xs text-muted">
+          {!expanded ? (
+            <>
+              <span className="min-w-0 truncate">{hiddenCount} earlier calls hidden</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={false}
+                aria-label="show all tool calls"
+                onClick={() => setExpanded(true)}
+                className="ml-auto h-6 px-2 text-xs text-muted hover:text-fg"
+              >
+                Show all
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-expanded={true}
+              aria-label="show fewer tool calls"
+              onClick={() => setExpanded(false)}
+              className="ml-auto h-6 px-2 text-xs text-muted hover:text-fg"
+            >
+              Show fewer
+            </Button>
+          )}
+        </div>
+      )}
+      <ul className="flex flex-col gap-0.5" aria-label="tool calls">
+        {visible.map((t) => (
+          <li key={t.id} className="flex items-center gap-1.5 text-xs text-muted">
+            {t.err != null ? (
+              <X size={11} className="shrink-0 text-destructive" />
+            ) : t.ok !== undefined ? (
+              <Check size={11} className="shrink-0 text-emerald-500" />
+            ) : (
+              <Loader2 size={11} className="shrink-0 animate-spin" />
+            )}
+            <code className="truncate font-mono text-[11px]">{t.name}</code>
+            {t.err != null && <span className="min-w-0 truncate text-destructive">{t.err}</span>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

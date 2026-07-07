@@ -105,6 +105,39 @@ describe("encodeAgent", () => {
     if (p?.kind !== "agent") throw new Error("expected agent");
     expect(p.runtime).toBe("open-interpreter-default");
   });
+
+  it("includes the persona when one is given (persona-session #5)", () => {
+    // The 5th positional arg is the persona id (the dock's resolved per-tab focus). All four leading
+    // args (goal, job, runtime, context) are positional; passing `undefined` for the middles keeps it
+    // byte-identical to a no-runtime/no-context post.
+    const p = parsePayload(encodeAgent("hi", "run-11", undefined, undefined, "builtin.flow-author"));
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.persona).toBe("builtin.flow-author");
+  });
+
+  it("omits the persona field when none is given (byte-identical to a no-persona post)", () => {
+    const p = parsePayload(encodeAgent("hi", "run-12"));
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.persona).toBeUndefined();
+    expect(JSON.parse(encodeAgent("hi", "run-12"))).not.toHaveProperty("persona");
+  });
+
+  // agent-context-basket: refs ride the payload as ids only; empty/absent is dropped from the wire
+  // (byte-identical to a pre-basket post), mirroring the Rust skip-when-empty.
+  it("includes context_items when refs are given", () => {
+    const p = parsePayload(
+      encodeAgent("hi", "run-13", undefined, undefined, undefined, ["i1", "i2"]),
+    );
+    if (p?.kind !== "agent") throw new Error("expected agent");
+    expect(p.context_items).toEqual(["i1", "i2"]);
+  });
+
+  it("omits context_items when absent or empty", () => {
+    expect(JSON.parse(encodeAgent("hi", "run-14"))).not.toHaveProperty("context_items");
+    expect(
+      JSON.parse(encodeAgent("hi", "run-15", undefined, undefined, undefined, [])),
+    ).not.toHaveProperty("context_items");
+  });
 });
 
 describe("encodeQuery", () => {

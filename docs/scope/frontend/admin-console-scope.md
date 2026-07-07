@@ -249,6 +249,16 @@ Plus this slice's cases:
   isolation test this extends; the `MembersView` this absorbs and completes.
 - `scope/frontend/frontend-scope.md` + `scope/frontend/ui-design-scope.md` — the shell + visual direction
   the console reuses (no overhaul).
+- `scope/frontend/ui-standards-scope.md` + `scope/frontend/webhooks-admin-scope.md` — the **shell
+  standard** every admin tab is held to (`AppPage`, not `AdminPanel`), and the **first admin-tab
+  migration** slice. The six admin tabs (`People`/`Teams`/`Roles`/`Workspaces`/`API Keys`/`Webhooks`)
+  all wrap in the legacy `AdminPanel` today; `WebhooksAdmin` is migrating first, the rest are a named
+  follow-up here. **No admin tab may stay on `AdminPanel` past its next edit** — a re-touched tab
+  migrates onto `AppPage` in the same change. `AdminPanel.tsx` is deleted on its last caller.
+- `scope/ingest/webhooks-scope.md` — the **shipped** webhooks backend the Webhooks tab drives; the
+  tab lives beside API Keys under the Data group in the NavRail (a data-surface posture, not an
+  access-control one), reached through the same `mcp:webhook.manage:call` gate this console
+  enforces for the other admin verbs.
 - `scope/tenancy/tenancy-scope.md` — the workspace wall the console holds per session.
 - README **§6.6** (identity/auth/caps), **§6.13** (frontend / extension UIs), **§7** (tenancy).
 </content>

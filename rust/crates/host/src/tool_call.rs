@@ -39,47 +39,102 @@ use crate::{
 /// PRODUCE motion `inbox.record`, `outbox.enqueue`; resolve `inbox.resolve`) the proof-panel demo
 /// exercises. Each still passes the per-verb MCP gate first (the bridge scope filter is only defense in
 /// depth).
-fn is_host_native(qualified_tool: &str) -> bool {
-    qualified_tool.starts_with("series.")
-        || qualified_tool.starts_with("ingest.")
-        || qualified_tool.starts_with("outbox.")
-        || qualified_tool.starts_with("inbox.")
-        || qualified_tool.starts_with("dashboard.")
-        || qualified_tool.starts_with("nav.")
-        // data-studio scope v2: the member-owned per-surface layout record (`layout.get`/`set`).
-        || qualified_tool.starts_with("layout.")
-        || qualified_tool.starts_with("panel.")
-        // The per-viewer chart-preference verbs (a query-result's plot override) + the channel
-        // read/write MCP surface (post/history/edit/delete/list — rules-messaging-scope): a channel
-        // is a host-native plane over the embedded store + bus, not a runtime-registry extension.
-        // (A future channel *extension* tool would carry its own `<ext>.` id and still route to the
-        // registry — `channel.` here is the host's own channel service, one owner.)
-        || qualified_tool.starts_with("channel.")
-        || qualified_tool.starts_with("viz.")
-        || qualified_tool.starts_with("template.")
-        || qualified_tool.starts_with("devkit.")
-        || qualified_tool.starts_with("agent.")
-        || qualified_tool.starts_with("rules.")
-        || qualified_tool.starts_with("federation.")
-        || qualified_tool.starts_with("flows.")
-        || qualified_tool.starts_with("datasource.")
-        || qualified_tool.starts_with("secret.")
-        || qualified_tool.starts_with("host.")
-        || qualified_tool.starts_with("prefs.")
-        || qualified_tool.starts_with("message.")
-        || qualified_tool.starts_with("bus.")
-        || qualified_tool.starts_with("reminder.")
-        || qualified_tool.starts_with("query.")
-        || qualified_tool.starts_with("assets.")
-        || qualified_tool.starts_with("telemetry.")
-        || qualified_tool == "undo"
-        || qualified_tool == "redo"
-        || qualified_tool.starts_with("history.")
-        || qualified_tool.starts_with("tools.")
-        || qualified_tool == "store.query"
-        || qualified_tool == "store.schema"
-        || qualified_tool == "store.write"
-        || qualified_tool == "store.delete"
+// The prefix/exact lists are shared consts so the static host inventory (`system/catalog.rs`)
+// can assert it covers every dispatched family — the hand-maintained mirror drifting is exactly
+// how whole verb families went missing from `tools.catalog` (and thus from the agent's menu); see
+// debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md.
+//
+// Notes on individual families:
+//   - `layout.` — data-studio scope v2: the member-owned per-surface layout record (`get`/`set`).
+//   - `channel.` — the per-viewer chart-preference verbs (a query-result's plot override) + the
+//     channel read/write MCP surface (post/history/edit/delete/list — rules-messaging-scope): a
+//     channel is a host-native plane over the embedded store + bus, not a runtime-registry
+//     extension. (A future channel *extension* tool would carry its own `<ext>.` id and still
+//     route to the registry — `channel.` here is the host's own channel service, one owner.)
+pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
+    "series.",
+    "ingest.",
+    "outbox.",
+    "inbox.",
+    "insight.",
+    "dashboard.",
+    "nav.",
+    "layout.",
+    "panel.",
+    "channel.",
+    "viz.",
+    "template.",
+    "devkit.",
+    "agent.",
+    "rules.",
+    "federation.",
+    "flows.",
+    "datasource.",
+    "secret.",
+    "host.",
+    "prefs.",
+    "message.",
+    "bus.",
+    "reminder.",
+    "query.",
+    "assets.",
+    "telemetry.",
+    "history.",
+    "tools.",
+];
+
+/// The prefix-less host-native verbs (`undo`/`redo`) + the four `store.*` verbs dispatched by exact
+/// name (the rest of `store.` is not a bridge family).
+pub(crate) const HOST_NATIVE_EXACT: &[&str] = &[
+    "undo",
+    "redo",
+    "store.query",
+    "store.schema",
+    "store.write",
+    "store.delete",
+];
+
+pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
+    HOST_NATIVE_PREFIXES
+        .iter()
+        .any(|p| qualified_tool.starts_with(p))
+        || HOST_NATIVE_EXACT.contains(&qualified_tool)
+}
+
+/// The capability a call to `qualified_tool` actually gates on. Usually the tool's own name; the
+/// exceptions are verbs that deliberately ride an EXISTING grant (same privilege, no new cap).
+/// ONE mapping, two callers: the dispatcher's outer gate ([`call_tool_at_depth`]) and the
+/// `tools.catalog` visibility gate — the catalog's cardinal rule ("advertise a tool only if the
+/// call would allow it, never hide one that would pass") only holds if both consult the same alias.
+///
+/// - `federation.schema` / `federation.sample` — the no-SQL discovery verb and the AI-context
+///   snapshot are the SAME read privilege as a live query (datasources-ux / datasource-samples
+///   scopes): both gate under `mcp:federation.query:call`, the cap their service layer re-checks.
+///   Without the alias the gate demanded a per-verb grant no role carries (the Datasources browse
+///   panel was denied opaquely; the palette hid the verbs from callers who could run them).
+/// - `outbox.enqueue_held` — rules-approvals scope: staging a gated effect is the SAME authority as
+///   staging any effect (the *release* on approval is the gated step), so it rides
+///   `mcp:outbox.enqueue:call`; no `enqueue_held` cap exists. The host fn re-checks inside.
+/// - `telemetry.*` — telemetry-console scope: the read verbs (query/trace/tail) collapse onto the
+///   ONE `mcp:telemetry.read:call` grant; purge keeps `mcp:telemetry.purge:call`. Re-checked inside.
+/// - `nav.pref.*` — nav scope: the member-owned active pick gates on the SAME `mcp:nav.resolve:call`
+///   read grant its verb re-checks; curating which nav you use is part of resolving your own menu.
+/// - `nav.set_default` — nav scope: the workspace-default pointer is an authoring action — it gates
+///   on the `mcp:nav.save:call` grant that creates the navs it points at. Re-checked inside.
+pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
+    if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
+        "federation.query"
+    } else if qualified_tool == "outbox.enqueue_held" {
+        "outbox.enqueue"
+    } else if qualified_tool.starts_with("telemetry.") {
+        crate::read_or_admin_cap(qualified_tool)
+    } else if qualified_tool.starts_with("nav.pref.") {
+        "nav.resolve"
+    } else if qualified_tool == "nav.set_default" {
+        "nav.save"
+    } else {
+        qualified_tool
+    }
 }
 
 /// Call `qualified_tool` as `principal` in `ws` with a JSON input string, returning the tool's JSON
@@ -263,43 +318,22 @@ async fn dispatch_at_depth(
         // Same MCP gate as any tool (workspace-first, then `mcp:<tool>:call`) so a denied bridged
         // caller is opaque and indistinguishable from a missing tool — then delegate to the host verb.
         //
-        // `federation.schema` (the no-SQL discovery verb) is the SAME read privilege as a live query
-        // and introduces no new capability (datasources-ux scope): gate it under the query cap, the
-        // same cap its service layer re-checks. Without this alias the outer gate demanded a
-        // `mcp:federation.schema:call` grant no role carries, so the Datasources browse panel was
-        // denied (opaque) even for a caller holding `mcp:federation.query:call`.
-        let gate_tool = if qualified_tool == "federation.schema" {
-            "federation.query"
-        } else if qualified_tool == "outbox.enqueue_held" {
-            // rules-approvals scope: staging a gated effect is the SAME authority as staging any effect
-            // — the *release* on approval is the gated step (the reactor's system authority), not the
-            // stage. So `outbox.enqueue_held` gates on the `mcp:outbox.enqueue:call` grant a rule
-            // already needs to `outbox.enqueue`; no new `outbox.enqueue_held` cap exists. The host fn
-            // re-checks the same `outbox.enqueue` gate inside.
-            "outbox.enqueue"
-        } else if qualified_tool.starts_with("telemetry.") {
-            // telemetry-console scope: the three read verbs (query/trace/tail) gate on the ONE
-            // `mcp:telemetry.read:call` grant; purge on `mcp:telemetry.purge:call`. Collapsed here
-            // (and re-checked inside the service) so one read grant covers the whole read surface.
-            crate::read_or_admin_cap(qualified_tool)
-        } else if qualified_tool.starts_with("nav.pref.") {
-            // nav scope: the member-owned active pick (`nav.pref.get`/`set`) gates on the SAME
-            // `mcp:nav.resolve:call` read grant its verb re-checks — curating which nav you use is
-            // part of resolving your own menu, so no separate `mcp:nav.pref.*:call` cap exists.
-            "nav.resolve"
-        } else if qualified_tool == "nav.set_default" {
-            // nav scope: the workspace-default pointer is an authoring action — it gates on the same
-            // `mcp:nav.save:call` grant that creates the navs it points at (no separate cap for one
-            // pointer). Re-checked inside the verb.
-            "nav.save"
-        } else {
-            qualified_tool
-        };
-        authorize_tool(principal, ws, gate_tool)?;
+        // The per-verb cap aliases (verbs that ride an EXISTING grant — federation.schema/sample,
+        // outbox.enqueue_held, telemetry.*, nav.pref.*/set_default) live in ONE mapping,
+        // `gate_tool_for`, shared with the `tools.catalog` visibility gate so the palette can never
+        // hide a verb this gate would pass (each aliased verb documents its rationale there).
+        authorize_tool(principal, ws, gate_tool_for(qualified_tool))?;
         let input: Value = serde_json::from_str(input_json)
             .map_err(|e| ToolError::BadInput(format!("input json: {e}")))?;
         let out = if qualified_tool.starts_with("outbox.") || qualified_tool.starts_with("inbox.") {
             call_inbox_outbox_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("insight.") {
+            // insights scope: the durable insight + occurrences + subscriptions + policy surface.
+            // The outer gate ran `mcp:insight.<verb>:call`; the verb re-runs it inside (defense in
+            // depth). `insight.raise` needs the full `&Node` (bus event + tag graph + channel
+            // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
+            // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
+            crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only

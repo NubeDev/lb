@@ -2,18 +2,19 @@
 // dropdown ABOVE the source picker (viz datasource-binding scope): the two built-ins (native SurrealDB +
 // Series) and each registered FEDERATION source (`datasource.list`, ws-walled). The chosen datasource
 // sets `target.datasource` ({type, uid?}) and steers the rest of the tab:
-//   - surreal → the SQL Builder⇄Code editor over `store.query` (unchanged Phase-1 path);
+//   - surreal → the SQL Builder⇄Code editor over `store.query` (the SurrealQL dialect);
 //   - series  → the friendly source picker over `series.*`;
-//   - federation → `federation.query` with `{ source, sql }` — the RAW SQL editor (the federation
-//     schema-dropdown verb is DEFERRED this phase, so a federation source authors raw SQL honestly).
+//   - federation → `federation.query` with `{ source, sql }` — the SAME Builder⇄Code editor over
+//     the STANDARD-SQL dialect (query-builder-common scope). The dropdowns come from the shipped
+//     `federation.schema {source, table?}` verb; the emitter is dialect-swapped behind `SqlQueryEditor`.
+//     The wire shape (`federation.query {source, sql}`) is unchanged; the render path (`viz.query`)
+//     is unchanged; the datasource NAME stays opaque (rule 10 — the dialect is keyed on `kind`, never
+//     on "demo-buildings" or any other id).
 // ADD == EDIT: the dropdown reflects the SAVED `target.datasource`. One responsibility: pick/edit the query.
 
-import { useMemo } from "react";
-import { Play } from "lucide-react";
+import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import type { Target } from "@/lib/dashboard";
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
 import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
@@ -21,6 +22,8 @@ import { seedEntryId } from "@/features/dashboard/builder/sourcePicker";
 import { SQL_SOURCE_ID, READ_SOURCE_GROUPS, SourceCombobox, type SourceEntry } from "@/features/dashboard/builder/sourcePicker";
 import { SqlQueryEditor, emptySqlSource } from "@/features/dashboard/builder/sql/SqlQueryEditor";
 import { useDatasourceList, refForOption, type DatasourceOption } from "./useDatasourceList";
+import { useFederationSchema } from "./useFederationSchema";
+import { useLocalSchema } from "./useLocalSchema";
 import { FlowsQuerySection } from "./FlowsQuerySection";
 import { RuleParamsSection } from "./RuleParamsSection";
 import { useSceneDocs } from "./useSceneDocs";
@@ -62,10 +65,17 @@ function dsValueOf(target: Target | undefined): string {
   return kind;
 }
 
-export function QueryTab({ ws, state, patch, onRun }: Props) {
-  const { entries, loading } = useSourcePicker(ws);
-  const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
+export function QueryTab({ ws, state, patch }: Props) {
+  // LAZY: don't fire every explorer verb (`series.list`/`datasource.list`/`flows.list`/...) on QueryTab
+  // mount — only when (a) the user has already picked a source (so its label needs to render) OR
+  // (b) the user focuses the source combobox. A restored EMPTY builder tab stays lazy; a restored tab
+  // with a picked source arms so the source's label shows.
   const primary = state.targets[0];
+  const [interacted, setInteracted] = useState(false);
+  const { entries, loading } = useSourcePicker(ws, {
+    enabled: !!primary?.tool || interacted,
+  });
+  const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
   // A flow INPUT control has no read target — it carries a `flows.inject` action; recognise the Flows
   // datasource from EITHER the target (output read) or the carried action (input control).
   const isFlowAction = state.carry.action?.tool === "flows.inject";
@@ -108,6 +118,25 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   const fedSource = (primary?.args?.source as string | undefined) ?? "";
   const fedSql = (primary?.args?.sql as string | undefined) ?? "";
 
+  // The schema feed for whichever builder target is active (query-builder-common scope). The
+  // editor is transport-agnostic — it consumes ONE `Schema` shape; the host decides the source.
+  //   surreal  → readSchema() (the workspace's local tables, one shot).
+  //   federation → federation.schema {source, table?} (lazy per-table column fill).
+  // Both hooks early-return when their branch is inactive; an empty/denied schema collapses to
+  // `tables: []` (the system-catalog deny contract — the Code half still works).
+  const localSchema = useLocalSchema(isSql);
+  const federationSchema = useFederationSchema(
+    isFederation ? fedSource || null : null,
+    isFederation
+      ? [
+          state.sql?.builder?.table ?? "",
+          ...(state.sql?.builder?.joins ?? []).map((j) => j.table),
+        ].filter(Boolean)
+      : "",
+    isFederation,
+  );
+  const builderSchema = isFederation ? federationSchema : localSchema;
+
   // --- selecting a DATASOURCE rewrites the primary target's shape (built-in vs federation). ---
   // Every branch also clears any `ext:` widget view: a datasource query and a packaged tile are mutually
   // exclusive cell shapes (the tile has no target), so switching datasource leaves the widget behind.
@@ -116,10 +145,13 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
       const name = value.slice("federation:".length);
       const opt = dsOptions.find((o) => o.type === "federation" && o.name === name);
       const ds = opt ? refForOption(opt, ws) : { type: "federation" };
+      // Seed `state.sql` so the federation Builder⇄Code editor reopens to Builder mode (the same
+      // round-trip surreal has). The wire shape (`federation.query {source, sql}`) is unchanged;
+      // `options.sql` is what carries the builder query across saves.
       patch({
         view: isBareWidgetView ? "" : state.view,
-        sql: undefined,
-        targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: name, sql: fedSql }, datasource: ds }],
+        sql: emptySqlSource(),
+        targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: name, sql: "" }, datasource: ds }],
       });
       return;
     }
@@ -171,7 +203,11 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
   };
 
   return (
-    <div className="grid gap-3 py-3" aria-label="query tab">
+    <div
+      className="grid gap-3 py-3"
+      aria-label="query tab"
+      onFocusCapture={() => setInteracted(true)}
+    >
       <label className="grid gap-1 text-xs text-muted">
         Datasource
         <Select
@@ -232,53 +268,46 @@ export function QueryTab({ ws, state, patch, onRun }: Props) {
         <SceneOptionsField ws={ws} state={state} patch={patch} />
       )}
 
-      {/* Native SQL — the Builder⇄Code editor, rehydrated from `state.sql` so EDIT reopens the builder. */}
-      {isSql && (
+      {/* The SQL Builder⇄Code editor — ONE component, dialect behind a seam (query-builder-common
+          scope). Surreal: dialect="surreal", schema = local store. Federation: dialect="standard",
+          schema = the source's tables/columns via `federation.schema`. The wire shape is whatever
+          each tool runs (`store.query {sql}` / `federation.query {source, sql}`); the editor just
+          produces the SQL string. */}
+      {(isSql || isFederation) && (
         <SqlQueryEditor
-          value={state.sql ?? emptySqlSource()}
-          onChange={(sql) =>
+          dialect={isFederation ? "standard" : "surreal"}
+          schema={builderSchema}
+          value={
+            isFederation && !state.sql && fedSql
+              ? // Migration: a federation cell authored BEFORE this slice has `target.args.sql`
+                // but no `options.sql`. Reopen falls to Code mode with the saved SQL preserved —
+                // we do NOT fabricate a builder query from hand-edited SQL (scope Risks).
+                { mode: "code" as const, rawSql: fedSql, format: "table" as const }
+              : state.sql ?? emptySqlSource()
+          }
+          onChange={(sql) => {
+            if (isFederation) {
+              patch({
+                sql,
+                targets: [
+                  {
+                    refId: primary?.refId || "A",
+                    tool: "federation.query",
+                    args: { source: fedSource, sql: sql.rawSql },
+                    datasource: primary?.datasource ?? { type: "federation" },
+                  },
+                ],
+              });
+              return;
+            }
             patch({
               sql,
-              targets: [{ ...(primary ?? targetFromEntry(entry, undefined)), tool: "store.query", args: { sql: sql.rawSql } }],
-            })
-          }
+              targets: [
+                { ...(primary ?? targetFromEntry(entry, undefined)), tool: "store.query", args: { sql: sql.rawSql } },
+              ],
+            });
+          }}
         />
-      )}
-
-      {/* Federation — RAW SQL against the chosen source (`federation.query {source, sql}`). The schema
-          dropdown verb is deferred this phase, so the author writes SQL directly (honest). */}
-      {isFederation && (
-        <div className="grid gap-2">
-          <label className="grid gap-1 text-xs text-muted">
-            SQL ({fedSource || "no source"})
-            <Textarea
-              aria-label="federation sql"
-              className="h-24 w-full resize-y py-1.5 font-mono text-xs"
-              value={fedSql}
-              placeholder="SELECT …"
-              // Cmd/Ctrl+Enter runs the query — the editor convention alongside the Run button.
-              onKeyDown={(e) => {
-                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") onRun?.();
-              }}
-              onChange={(e) =>
-                patch({
-                  targets: [{ refId: primary?.refId || "A", tool: "federation.query", args: { source: fedSource, sql: e.target.value }, datasource: primary?.datasource ?? { type: "federation" } }],
-                })
-              }
-            />
-          </label>
-          <div className="flex justify-end">
-            <Button
-              aria-label="run query"
-              size="sm"
-              variant="solid"
-              disabled={!fedSource || !fedSql.trim()}
-              onClick={() => onRun?.()}
-            >
-              <Play size={12} /> Run
-            </Button>
-          </div>
-        </div>
       )}
     </div>
   );

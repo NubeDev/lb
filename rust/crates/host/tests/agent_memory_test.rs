@@ -450,6 +450,7 @@ async fn run_ctx(node: &Arc<Node>, caller: &Principal, ws: &str, job: &str) -> S
             tools: &[AllowedTool {
                 name: "noop".into(),
                 description: "".into(),
+                input_schema: None,
             }],
             ts: 1,
         },

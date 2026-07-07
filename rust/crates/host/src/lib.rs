@@ -30,6 +30,7 @@ mod host_tools;
 mod identity;
 mod inbox;
 mod ingest;
+mod insight;
 mod install;
 mod installed;
 mod layout;
@@ -77,21 +78,22 @@ pub use agent::{
     cancel_run, check_runtime, clamp_to_preset, decision_id, evaluate_policy, fence_into_goal,
     format_catalog, get_agent_config, glob_matches, invoke, invoke_descriptor, invoke_remote,
     invoke_via_runtime, list_runtimes, load_decision, load_policy, memory_delete, memory_get,
-    memory_index_for_injection, memory_list, memory_set, narrow_tools, reachable_tools, rehydrate,
-    render_catalog, render_catalog_filtered, render_index, resolve_active_definition,
-    resolve_effective, resolve_effective_runtime, resolve_effective_runtime_id,
-    resolve_endpoint_key, resolve_endpoint_key_host, resolve_persona, resolve_workspace_model,
-    resume, run_session, save_policy, seed_agent_definitions, seed_personas, serve_agent,
-    settle_decision, Activation, AgentConfig, AgentDecision, AgentDefinition, AgentError,
-    AgentInvokeReply, AgentInvokeRequest, AgentRuntime, AgentServer, AllowedTool, ArgMatch,
-    CallOutcome, DecisionState, DefinitionEndpoint, DefinitionPatch, Effect, EffectivePersona,
-    ErasedModel, InHouseRuntime, Invocation, LoopState, Memory, MemoryKind, MemoryScope,
-    ModelAccess, ModelBuilder, ModelEndpointPatch, Persona, PersonaPatch, Policy, PolicyPreset,
-    ProposedCall, Rule, RunContext, RuntimeRegistry, SettleOutcome, Substrate, TestContext,
-    TestResult, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE, AGENT_DEFS_NS, AGENT_DEFS_TABLE,
-    BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_RUNTIME, DENIED_BY_POLICY,
-    INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION, MAX_STEPS, MEMORY_HEADER, PERSONA_NS,
-    PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE, UNCONFIGURED_ANSWER,
+    memory_index_for_injection, memory_list, memory_set, migrate_active_persona, narrow_tools,
+    reachable_tools, rehydrate, render_catalog, render_catalog_filtered, render_index,
+    resolve_active_definition, resolve_effective, resolve_effective_runtime,
+    resolve_effective_runtime_id, resolve_endpoint_key, resolve_endpoint_key_host, resolve_persona,
+    resolve_workspace_model, resume, run_session, save_policy, seed_agent_definitions,
+    seed_personas, serve_agent, settle_decision, Activation, AgentConfig, AgentDecision,
+    AgentDefinition, AgentError, AgentInvokeReply, AgentInvokeRequest, AgentRuntime, AgentServer,
+    AllowedTool, ArgMatch, CallOutcome, DecisionState, DefinitionEndpoint, DefinitionPatch, Effect,
+    EffectivePersona, ErasedModel, InHouseRuntime, Invocation, LoopState, Memory, MemoryKind,
+    MemoryScope, ModelAccess, ModelBuilder, ModelEndpointPatch, Persona, PersonaListItem,
+    PersonaPatch, Policy, PolicyPreset, ProposedCall, Rule, RunContext, RuntimeRegistry,
+    SettleOutcome, Substrate, TestContext, TestResult, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
+    AGENT_DEFS_NS, AGENT_DEFS_TABLE, BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
+    DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION,
+    MAX_STEPS, MEMORY_HEADER, PERSONA_NS, PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE,
+    UNCONFIGURED_ANSWER,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
@@ -198,6 +200,17 @@ pub use ingest::{
     authorize_ingest, call_ingest_tool, drain_workspace, ingest_write, publish_sample, series_find,
     series_latest_value, series_list, series_read_range, subscribe_series, DrainPass, IngestError,
     Qos, Sample, SeriesSub, COMMIT_BATCH, DEFAULT_STAGING_BOUND, MAX_SERIES_LIST,
+};
+/// The **insights** service — the capability-gated surface over `lb_insights` (insights umbrella
+/// scope + occurrences/subscriptions/notify sub-scopes). The MCP bridge `call_insight_tool` is
+/// the one contract every host-native `insight.*` verb routes through; each verb re-checks its
+/// own `mcp:insight.<verb>:call` gate inside.
+pub use insight::{
+    call_insight_tool, insight_ack, insight_get, insight_list, insight_occurrences,
+    insight_policy_get, insight_policy_set, insight_raise, insight_resolve, insight_sub_create,
+    insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute,
+    react_to_insight_digests, spawn_insight_digest_reactors, subscribe_insight_events,
+    InsightSvcError, InsightWatch,
 };
 pub use install::install_extension;
 pub use installed::installed;

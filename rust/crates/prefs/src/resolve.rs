@@ -34,6 +34,9 @@ pub fn builtin() -> ResolvedPrefs {
         // No built-in theme at the prefs layer — the frontend owns the compiled default
         // (`DEFAULT_THEME`). `None` here means "the shell falls back to its own default".
         ui_theme: None,
+        // No built-in branding at the prefs layer — the frontend owns the compiled Lazybones
+        // default brand. `None` here means "the shell falls back to its own default".
+        ui_branding: None,
     }
 }
 
@@ -62,6 +65,11 @@ pub fn resolve(links: &[Prefs]) -> ResolvedPrefs {
     // is `None` (the shell's compiled default).
     let ui_theme = first(links, |p| p.ui_theme.clone()).or(base.ui_theme);
 
+    // ui_branding folds the SAME way (workspace-branding scope): the first link that set a brand
+    // wins entirely. In practice only the workspace-default link ever sets it (admin-owned), but the
+    // identical fold carries it for free — and a future member-local preview would slot in cleanly.
+    let ui_branding = first(links, |p| p.ui_branding.clone()).or(base.ui_branding);
+
     // unit_overrides merges per-dimension, highest-priority link wins each key. Iterate
     // lowest→highest so a higher link overwrites; start empty (built-in has none).
     let mut unit_overrides = BTreeMap::new();
@@ -81,6 +89,7 @@ pub fn resolve(links: &[Prefs]) -> ResolvedPrefs {
         unit_system,
         unit_overrides,
         ui_theme,
+        ui_branding,
     }
 }
 

@@ -9,6 +9,7 @@ import type { Cell } from "@/lib/dashboard";
 import { cellToEditorState, editorStateToCell } from "./cellEditorState";
 import { defaultCell } from "./defaultCell";
 import { emptySqlSource } from "./sql/query";
+import { emitSql } from "./sql/dialect";
 
 /** The identity the editor relies on: serialize(deserialize(c)) preserves the cell. */
 function roundTrip(c: Cell): Cell {
@@ -81,6 +82,84 @@ describe("cell ↔ editorState round-trip", () => {
     };
     const back = roundTrip(v3);
     expect(back).toEqual(v3);
+  });
+
+  it("a v3 federation cell carrying options.sql round-trips (the query-builder-common contract)", () => {
+    // After the query-builder-common scope, a federation target stores the SAME `options.sql`
+    // (a SqlSourceState) a surreal target stores — so reopening returns to the builder. The wire
+    // shape (`federation.query {source, sql}`) is unchanged; `options.sql` is the additive carry.
+    const fed: Cell = {
+      i: "f1",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      title: "Avg reading",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: 'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100' },
+          datasource: { type: "federation", uid: "datasource:acme:demo-buildings" },
+        },
+      ],
+      options: {
+        sql: {
+          mode: "builder",
+          rawSql: 'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100',
+          builder: {
+            table: "point_reading",
+            columns: [{ name: "value", aggregation: "avg" }],
+            filters: [],
+            groupBy: [],
+            limit: 100,
+          },
+          format: "table",
+        },
+      },
+    };
+    const back = roundTrip(fed);
+    expect(back).toEqual(fed);
+    // The builder state survives in options.sql (reopening returns to the builder, like surreal).
+    expect((back.options?.sql as { builder: { table: string } }).builder.table).toBe("point_reading");
+    // The wire shape is unchanged — args.sql is still the raw string federation.query runs.
+    expect((back.sources?.[0].args as { sql: string }).sql).toBe(
+      'SELECT AVG("value") AS "avg_value" FROM "point_reading" LIMIT 100',
+    );
+  });
+
+  it("a pre-slice federation cell (args.sql but no options.sql) round-trips without fabrication", () => {
+    // A federation cell authored BEFORE the query-builder-common slice has `target.args.sql` but no
+    // `options.sql` — the legacy raw-SQL-only shape. Reopen must preserve it byte-for-byte; we do
+    // NOT fabricate a builder query from hand-edited SQL (scope Risks). The editor falls to Code mode.
+    const legacy: Cell = {
+      i: "f2",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: "SELECT 1" },
+          datasource: { type: "federation" },
+        },
+      ],
+      options: { code: "legacy" }, // unrelated option key, must round-trip verbatim
+    };
+    const back = roundTrip(legacy);
+    expect(back).toEqual(legacy);
+    // No spurious `options.sql` was injected (byte-clean).
+    expect(back.options?.sql).toBeUndefined();
   });
 
   it("full Phase-2 cells (stat/gauge/bargauge/table/barchart/piechart) round-trip with typed options", () => {
@@ -219,5 +298,139 @@ describe("cell ↔ editorState round-trip", () => {
     expect(out.i).toBe("keep-me");
     expect([out.x, out.y, out.w, out.h]).toEqual([3, 7, 5, 2]);
     expect(out.title).toBe("changed");
+  });
+
+  // ── visual-canvas-builder slice: extended query (joins + HAVING + aliases + multi-orderBy) round-trips ──
+
+  it("an extended builder query (joins + HAVING + aliases + multi-orderBy + builderLayout) round-trips byte-identical", () => {
+    // The full slice-1 model surface — every new field carried in options.sql. Persist + reopen must
+    // return the SAME shape (joins intact, HAVING filter preserved with its aggregation, multi-orderBy
+    // array intact, the opaque builderLayout blob preserved verbatim). The model is the source of truth.
+    const ext: Cell = {
+      i: "x1",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      title: "Join + HAVING",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: "" },
+          datasource: { type: "federation", uid: "datasource:acme:demo-buildings" },
+        },
+      ],
+      options: {
+        sql: {
+          mode: "builder",
+          rawSql: "",
+          builder: {
+            table: "site",
+            joins: [
+              {
+                table: "point_reading",
+                type: "inner",
+                on: [{ leftColumn: "id", rightColumn: "site_id" }],
+              },
+            ],
+            columns: [
+              { name: "name", table: "site", order: 1 },
+              { name: "value", table: "point_reading", aggregation: "avg", alias: "avg_v", order: 2 },
+            ],
+            filters: [
+              { column: "kind", operator: "=", value: "cpu" },
+              { column: "value", operator: ">", value: 10, isAggregate: true, aggregation: "avg" },
+            ],
+            groupBy: [{ table: "site", column: "name" }],
+            orderBy: [
+              { column: "name", direction: "asc" },
+              { column: "avg_v", direction: "desc" },
+            ],
+            limit: 100,
+          },
+          format: "table",
+          builderLayout: { site: { x: 0, y: 40 }, point_reading: { x: 280, y: 40 } },
+        },
+      },
+    };
+    // The rawSql mirrors what the emitter would produce (the host keeps them in sync); fill it in to
+    // assert the round-tripped SQL is byte-identical too.
+    const expectedSql = emitSql("standard", (ext.options!.sql as { builder: unknown }).builder as never);
+    (ext.options!.sql as { rawSql: string }).rawSql = expectedSql;
+
+    const back = roundTrip(ext);
+    expect(back).toEqual(ext);
+    // The opaque layout blob survives verbatim (positions are view state, not query semantics).
+    expect((back.options?.sql as { builderLayout: unknown }).builderLayout).toEqual({
+      site: { x: 0, y: 40 },
+      point_reading: { x: 280, y: 40 },
+    });
+    // The joins + HAVING survive (the model-as-truth invariant — the canvas would re-derive from these).
+    const b = (back.options?.sql as { builder: { joins: unknown[]; filters: unknown[] } }).builder;
+    expect(b.joins).toHaveLength(1);
+    expect(b.filters.some((f) => (f as { isAggregate?: boolean }).isAggregate)).toBe(true);
+    // The emitted SQL is stable across the round-trip.
+    expect(emitSql("standard", b as never)).toBe(expectedSql);
+  });
+
+  it("a legacy single-object orderBy round-trips to the array shape (write-array contract); SQL is byte-identical", () => {
+    // A pre-slice-2 cell persisted with the OLD single-object orderBy. Reopen normalizes it to a
+    // 1-element array (the WRITE contract); the emitter's `normalizeOrderBy` reads both shapes, so the
+    // SQL string is byte-identical before and after. This is a SEMANTIC round-trip (the persisted shape
+    // upgrades on first save), not byte-identity of the input.
+    const legacy: Cell = {
+      i: "x2",
+      x: 0,
+      y: 0,
+      w: 8,
+      h: 4,
+      v: 3,
+      widget_type: "chart",
+      view: "table",
+      title: "Legacy order",
+      binding: { series: "" },
+      sources: [
+        {
+          refId: "A",
+          tool: "federation.query",
+          args: { source: "demo-buildings", sql: 'SELECT "value" FROM "point_reading" ORDER BY "value" ASC' },
+          datasource: { type: "federation" },
+        },
+      ],
+      options: {
+        sql: {
+          mode: "builder",
+          rawSql: 'SELECT "value" FROM "point_reading" ORDER BY "value" ASC',
+          builder: {
+            table: "point_reading",
+            columns: [{ name: "value" }],
+            filters: [],
+            groupBy: [],
+            orderBy: { column: "value", direction: "asc" }, // legacy single-object shape
+            limit: 100,
+          },
+          format: "table",
+        },
+      },
+    };
+
+    const legacySql = emitSql(
+      "standard",
+      (legacy.options!.sql as { builder: unknown }).builder as never,
+    );
+    expect(legacySql).toBe('SELECT "value" FROM "point_reading" ORDER BY "value" ASC LIMIT 100');
+
+    const back = roundTrip(legacy);
+    const b = (back.options?.sql as { builder: { orderBy: unknown } }).builder;
+    // The write-array contract: orderBy is now an array.
+    expect(Array.isArray(b.orderBy)).toBe(true);
+    expect(b.orderBy).toEqual([{ column: "value", direction: "asc" }]);
+    // The emitted SQL is byte-identical (the normalization is semantics-preserving).
+    expect(emitSql("standard", b as never)).toBe(legacySql);
   });
 });

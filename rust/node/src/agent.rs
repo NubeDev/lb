@@ -70,20 +70,17 @@ impl InHouseModelConfig {
 
 /// Build the in-house [`ModelAccess`](lb_host::ModelAccess) from config, erased for the registry. This
 /// is the real wiring seam: match the configured `provider` to a concrete `AiGateway<Provider>` and
-/// return it as an `Arc<dyn ErasedModel>`. `None` means "no real adapter for this provider (yet)" — the
+/// return it as an `Arc<dyn ErasedModel>`. `None` means "no real adapter for this provider" — the
 /// caller keeps [`UnconfiguredModel`], the honest empty state.
 ///
-/// **No real provider adapter exists today** (only the test `MockProvider`; ai-gateway defers the real
-/// OpenAI-compatible / local adapters). So every configured provider currently returns `None` here with
-/// a clear log — the seam is present and the swap point is explicit, but nothing is faked. When a real
-/// adapter lands, add its `match` arm: `"openai" => Some(Arc::new(AiGateway::new(OpenAiProvider::new(
-/// key, &cfg.model, cfg.base_url.as_deref()))))` — no change anywhere else. The `key` there is resolved
-/// out-of-band through the ONE sanctioned helper
-/// [`lb_host::resolve_endpoint_key`](lb_host::resolve_endpoint_key) — precedence **sealed secret
-/// (`lb-secrets`) → node env → unset** — the SAME resolver `agent.def.test` uses, so "test passes"
-/// and "run works" can never diverge (agent-catalog test-and-secrets scope). It is async + needs a
-/// `(store, principal, ws)`, so it is called at model-build time on the node, not from this pure
-/// `cfg`-only shim; the shim exists only to prove the provider `match` seam.
+/// **The OpenAI-compatible adapter is live** ([`adapter_for`]): a configured `zaicoding` / `openai` /
+/// `openai-compat` provider builds a real `AiGateway<OpenAiCompat>` — only an UNKNOWN provider returns
+/// `None` here (with a clear log). A new wire shape (a provider that does NOT speak OpenAI
+/// chat-completions) adds one `match` arm in [`adapter_for`], the ONE adapter-selection point — no
+/// change anywhere else. The node-level tier resolves its key from the configured env NAME only; the
+/// per-workspace path ([`NodeModelBuilder`]) adds sealed secrets host-mediated
+/// (`resolve_endpoint_key_host`) so "test passes" and "run works" can never diverge (agent-catalog
+/// test-and-secrets scope). Kept `cfg`-only (env key) so the boot path reads linearly.
 fn build_in_house_model(cfg: &InHouseModelConfig) -> Option<Arc<dyn ErasedModel>> {
     // The node-level fallback model (the `LB_AGENT_MODEL_*` tier) is built from the SAME adapter
     // selection the per-workspace [`NodeModelBuilder`] uses (below), so "the node's default model" and

@@ -33,7 +33,7 @@ pub async fn may_read_dashboard(
     dashboard: &Dashboard,
 ) -> Result<(), DashboardError> {
     // Owner — the simplest path (and the only path for `private`).
-    if principal.sub() == dashboard.owner {
+    if principal.owner_sub() == dashboard.owner {
         return Ok(());
     }
 
@@ -49,7 +49,7 @@ pub async fn may_read_dashboard(
                 if list_related(store, ws, MEMBER, team)
                     .await?
                     .iter()
-                    .any(|m| m == principal.sub())
+                    .any(|m| m == principal.owner_sub())
                 {
                     return Ok(());
                 }

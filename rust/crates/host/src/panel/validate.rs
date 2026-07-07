@@ -22,6 +22,11 @@ use crate::dashboard::Cell;
 /// Validate + normalize a dashboard's cells before write. Returns `Err(message)` naming the first ref
 /// that does not resolve in-workspace; else the cells to store (ref cells stripped to layout+ref+
 /// overrides). The caller (`dashboard.save`) wraps the error in `DashboardError::BadInput`.
+///
+/// **Owner shortcut:** a saver who OWNS the panel a cell references reads it through the raw store
+/// (mirrors `hydrate_one`). This matters for `dashboard.pin`, whose caller has `mcp:dashboard.pin:call`
+/// but not necessarily `mcp:panel.get:call`, AND for a dashboard owner re-saving a dashboard whose
+/// prior pin-created refs are theirs — both must round-trip without forcing a separate panel.read cap.
 pub async fn validate_and_strip_refs(
     store: &Store,
     principal: &Principal,
@@ -35,13 +40,21 @@ pub async fn validate_and_strip_refs(
             continue;
         }
         let id = cell.panel_ref.trim_start_matches("panel:");
-        // The ref must resolve for the saver right now (in-workspace, readable) — loud on failure.
-        panel_get(store, principal, ws, id).await.map_err(|_| {
-            format!(
-                "panel_ref does not resolve in workspace: {}",
-                cell.panel_ref
-            )
-        })?;
+        // Owner shortcut: a raw read first; if it hits AND the saver owns the panel, treat as resolved.
+        let owner_owned = match super::store::read_panel(store, ws, id).await {
+            Ok(Some(p)) if !p.deleted && p.owner == principal.owner_sub() => true,
+            _ => false,
+        };
+        if !owner_owned {
+            // Non-owner (or missing): the ref must resolve for the saver right now (in-workspace,
+            // readable, shared) — loud on failure.
+            panel_get(store, principal, ws, id).await.map_err(|_| {
+                format!(
+                    "panel_ref does not resolve in workspace: {}",
+                    cell.panel_ref
+                )
+            })?;
+        }
         out.push(stripped_ref(cell));
     }
     Ok(out)

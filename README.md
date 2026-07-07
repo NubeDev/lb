@@ -84,7 +84,7 @@ The same binary covers all three; configuration selects the role(s). See §8 for
 |---|---|---|---|
 | **`hub`** | hub | **serves the full app to browsers** (SSE/HTTP) + first-run bootstrap | Zenoh router, many workspaces, shared-data authority, AI gateway, registry. Multi-user: clients log in and the hub serves them dashboards/extensions scoped to their workspace + capabilities. |
 | **`appliance`** | edge | none | Full vertical stack (embedded SurrealDB + Zenoh peer) on a headless device (Raspberry-Pi class). Offline-capable; connects up to a `hub`. |
-| **`workstation`** | edge | Tauri (§6.12), talks to **local** host | The same stack as `appliance` plus the local desktop UI. Single user, local data, offline-capable. |
+| **`workstation`** | edge | Tauri (§6.13), talks to **local** host | The same stack as `appliance` plus the local desktop UI. Single user, local data, offline-capable. |
 | **`browser`** | *client, not a node* | the app in a browser, served by a `hub` | No local store; logs in to a `hub` over SSE/HTTP and sees only what its token's workspace + capabilities grant. The standard multi-user surface (e.g. an IoT dashboard). |
 | **`mobile`** | *client, not a node* | Flutter (§6.12), served by a `hub` | Same thin-client pattern as `browser`, on a phone/tablet. Depends on a hub being online. |
 

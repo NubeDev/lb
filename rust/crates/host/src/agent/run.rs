@@ -41,7 +41,10 @@ use lb_run_events::{RunEvent, RunOutcome};
 
 /// The loop ceiling, counted in **model turns**. A fixed default at S5 (a per-workspace policy is a
 /// scope follow-up). The transcript may hold more than `MAX_STEPS` events (several per turn).
-pub const MAX_STEPS: u32 = 8;
+/// 16, not 8: a builder persona's honest path (discover datasource → federation.schema → probe
+/// queries → viz.query → dashboard.save) measured 10–14 turns live; at 8 every such run died at the
+/// ceiling mid-work (`docs/debugging/agent/run-ceiling-too-low-for-builder-personas.md`).
+pub const MAX_STEPS: u32 = 16;
 
 /// The system prompt seeding every run's conversation. One place owns it so rehydration and the
 /// live loop seed the identical first message (the fold must reproduce the live message list).
@@ -179,6 +182,17 @@ pub async fn run_session<M: ModelAccess>(
         }
     }
 
+    // Did the model finish on its own (`done` / no calls)? False after the loop means the run hit
+    // the MAX_STEPS ceiling mid-work — the answer must say so honestly, not read as a normal finish.
+    let mut model_finished = false;
+
+    // ONE-SHOT nudge for a bare stop: some models (GLM after think-stripping) end a tool-heavy run
+    // with a `done` turn whose content is EMPTY — the fallback then answers with the last non-empty
+    // text, usually the turn-1 preamble ("I'll help you…"), so the user never gets the real answer
+    // (docs/debugging/agent/run-finished-empty-after-tool-work-answers-with-preamble.md). Rather
+    // than settle, ask once for the final answer; a second empty stop finishes via the fallback.
+    let mut nudged = false;
+
     while turn_no < MAX_STEPS {
         // Cancellation is a durable stop (Part 0): re-read the status before each turn so a
         // `cancel` written by a UI stop button / ACP `session/cancel` between turns is honored.
@@ -212,7 +226,13 @@ pub async fn run_session<M: ModelAccess>(
         let turn = model
             .turn(ws, &state.messages, tools, &state.prior, &key)
             .await;
-        state.last_content = turn.content.clone();
+        // Keep the LAST NON-EMPTY content as the running answer. A tool-call turn (and some models'
+        // final `done` turn — GLM after think-stripping) carries empty content; overwriting here
+        // wiped a real earlier answer and the run settled with an EMPTY durable result (see
+        // debugging/agent/run-answer-empty-last-turn-content-overwrites.md).
+        if !turn.content.is_empty() {
+            state.last_content = turn.content.clone();
+        }
 
         // Record the assistant turn durably first (the transcript is the record), then mirror it
         // into the live message list — and emit the live `RunEvent` (StepStart + TextDelta) for any
@@ -236,6 +256,21 @@ pub async fn run_session<M: ModelAccess>(
         }
 
         if turn.done || turn.calls.is_empty() {
+            // A bare stop (empty content, no calls) after tool work is a swallowed answer, not a
+            // finish — nudge exactly once. The nudge is a live-context message only (like the skill
+            // catalog, never persisted): a resume replays the same turn key and re-nudges cleanly.
+            if turn.content.is_empty() && !nudged && !state.prior.is_empty() {
+                nudged = true;
+                state.messages.push((
+                    "user".into(),
+                    "[you stopped without an answer — write your final answer to the \
+                     original request now, using the tool results above]"
+                        .into(),
+                ));
+                turn_no += 1;
+                continue;
+            }
+            model_finished = true;
             break;
         }
 
@@ -335,6 +370,8 @@ pub async fn run_session<M: ModelAccess>(
                 Effect::Allow => to_run.push(c.clone()),
                 Effect::Deny => denied.push(CallOutcome {
                     id: c.id.clone(),
+                    name: c.name.clone(),
+                    input: c.input.clone(),
                     ok: None,
                     error: Some(DENIED_BY_POLICY.to_string()),
                 }),
@@ -410,6 +447,21 @@ pub async fn run_session<M: ModelAccess>(
         state.messages.push(("tool".into(), summary));
         state.prior = outcomes;
         turn_no += 1;
+    }
+
+    // CEILING EXIT: the model was still proposing calls when MAX_STEPS ran out. Say so — a silent
+    // `Done` with whatever text a mid-work turn happened to carry (often nothing) reads as a broken
+    // or empty answer in the dock. The note is part of the answer (both runtimes' one channel).
+    if !model_finished {
+        let note = format!(
+            "[the run stopped at its {MAX_STEPS}-turn ceiling before the agent finished; \
+             tool effects already applied are saved — ask again to continue the task]"
+        );
+        state.last_content = if state.last_content.is_empty() {
+            note
+        } else {
+            format!("{}\n\n{note}", state.last_content)
+        };
     }
 
     complete(&node.store, ws, job_id, JobStatus::Done).await?;

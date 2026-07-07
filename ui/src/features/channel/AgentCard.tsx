@@ -1,7 +1,10 @@
 // The agent kind-tagged item renderer (channels-agent scope) — turns an `agent` / `agent_result` /
 // `agent_error` payload into a CARD, never raw JSON. Sibling of QueryCard:
-//   - `agent`        — the request, shown as a "running" chip (the answer streams/arrives as a
-//                      separate `agent_result` item; until then this is the live placeholder).
+//   - `agent`        — the user's ask. While the run is live this is the full RunningCard (goal +
+//                      spinner + tool calls + streamed text); once the durable `agent_result` /
+//                      `agent_error` lands, the live-run chrome is superseded but the GOAL stays on
+//                      this card as the user's chat turn (this was the "my message vanished" bug —
+//                      returning null hid the only trace of what the user asked).
 //   - `agent_result` — the durable answer, attributed to the runtime that served it.
 //   - `agent_error`  — an opaque/honest failure (e.g. "agent not permitted").
 // RENDER only (FILE-LAYOUT: no data/effects here).
@@ -14,13 +17,16 @@ import type {
   AgentResultPayload,
 } from "@/lib/channel/payload.types";
 import { useRunFeed, type RunToolCall } from "./useRunFeed";
+import { MarkdownView } from "./MarkdownView";
 
 type AgentKindPayload = AgentPayload | AgentResultPayload | AgentErrorPayload;
 
 interface Props {
   payload: AgentKindPayload;
   /** True when a durable `agent_result`/`agent_error` for this run already exists in the channel —
-   *  then the pending `agent` request card is superseded and hidden (no duplicate/orphan spinner). */
+   *  then the pending `agent` request's live-run chrome (spinner/tools/streamed text) is superseded.
+   *  The user's GOAL still renders as their chat turn (we do NOT return null — that wiped the user's
+   *  own message once the answer arrived). */
   settled?: boolean;
 }
 
@@ -50,7 +56,7 @@ function RunningCard({ payload }: { payload: AgentPayload }) {
         <p className="line-clamp-2 text-xs italic text-muted">{feed.reasoning}</p>
       )}
       {feed.text && (
-        <p className="whitespace-pre-wrap break-words text-sm text-fg/90">{feed.text}</p>
+        <MarkdownView>{feed.text}</MarkdownView>
       )}
     </div>
   );
@@ -75,6 +81,18 @@ function ToolRow({ tool }: { tool: RunToolCall }) {
   );
 }
 
+/** The user's ask, shown as a chat turn once the durable answer/error has landed. The live-run chrome
+ *  (spinner, tool calls, streamed text) belongs to RunningCard and is dropped here — the durable
+ *  `agent_result`/`agent_error` card carries the answer/error. The goal stays so the user's message
+ *  doesn't vanish when the agent replies. */
+function UserGoalCard({ goal }: { goal: string }) {
+  return (
+    <p aria-label="agent request" className="break-words text-sm leading-6 text-fg">
+      {goal}
+    </p>
+  );
+}
+
 /** A small runtime chip — which agent answered (the in-house `default` or an external profile id). */
 function RuntimeChip({ runtime }: { runtime: string }) {
   const label = runtime === "default" ? "in-house agent" : runtime;
@@ -87,31 +105,31 @@ function RuntimeChip({ runtime }: { runtime: string }) {
 
 export function AgentCard({ payload, settled }: Props) {
   if (payload.kind === "agent") {
-    // The request. Once its result/error has landed we hide this placeholder (settled).
-    if (settled) return null;
+    // Settled → the live-run chrome is obsolete, but the GOAL is the user's chat turn and must stay.
+    // (Returning null here was the "my message vanished after the agent replied" bug.)
+    if (settled) return <UserGoalCard goal={payload.goal} />;
     return <RunningCard payload={payload} />;
   }
 
   if (payload.kind === "agent_error") {
+    // Goal intentionally NOT echoed here: the `agent` card above still shows it as the user's turn,
+    // so repeating it would double up. Only the failure surfaces here.
     return (
       <div role="alert" className="flex items-start gap-2 text-sm text-destructive">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        <div className="min-w-0">
-          <p className="text-xs text-muted">{payload.goal}</p>
-          <p className="mt-1">{payload.error}</p>
-        </div>
+        <p className="min-w-0 break-words">{payload.error}</p>
       </div>
     );
   }
 
-  // agent_result — the durable answer.
+  // agent_result — the durable answer. Goal intentionally NOT echoed: the `agent` card above still
+  // shows it as the user's chat turn.
   return (
     <div aria-label="agent result" className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <RuntimeChip runtime={payload.runtime} />
-        <span className="truncate text-xs text-muted">{payload.goal}</span>
       </div>
-      <p className="whitespace-pre-wrap break-words leading-6 text-fg">{payload.answer}</p>
+      <MarkdownView>{payload.answer}</MarkdownView>
       {payload.truncated && (
         <p className="text-xs text-muted">(answer truncated — see the full run)</p>
       )}

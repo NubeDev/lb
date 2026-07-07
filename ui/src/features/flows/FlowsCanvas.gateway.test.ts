@@ -71,11 +71,11 @@ describe("flows canvas (real gateway)", () => {
     }
     // The webhook source's config is just `{webhook_id}` (the picker over `webhook.list`).
     const webhook = nodes.find((d) => d.type === "webhook");
-    expect(webhook?.config.properties?.webhook_id).toBeTruthy();
+    expect((webhook?.config.properties as Record<string, unknown> | undefined)?.webhook_id).toBeTruthy();
     expect(types).toContain("mqtt.publish");
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");
-    expect(mqtt?.config.properties?.topic).toBeTruthy();
+    expect((mqtt?.config.properties as Record<string, unknown> | undefined)?.topic).toBeTruthy();
   });
 
   it("save round-trips a flow; get returns the typed graph; list shows it", async () => {
@@ -119,7 +119,7 @@ describe("flows canvas (real gateway)", () => {
       name: "badcfg",
       version: 1,
       failurePolicy: "halt",
-      nodes: [{ id: "n", type: "trigger", needs: [], config: { mode: "not-a-mode" } as unknown }],
+      nodes: [{ id: "n", type: "trigger", needs: [], config: { mode: "not-a-mode" } as Record<string, unknown> }],
     };
     // The host validates the trigger's `mode` enum; an invalid value is a 400 inline error.
     await expect(saveFlow(bad)).rejects.toThrow();

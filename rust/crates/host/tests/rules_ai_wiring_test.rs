@@ -78,6 +78,7 @@ async fn select_model(node: &Arc<Node>, ws: &str) {
     let patch = AgentConfig {
         active_definition: None,
         active_persona: None,
+        enabled_personas: None,
         default_runtime: None,
         model_endpoint: Some(ModelEndpointPatch {
             provider: Some("zaicoding".into()),

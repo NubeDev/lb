@@ -76,7 +76,7 @@ pub async fn dashboard_pin(
     let (mut dashboard, is_create) =
         match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
             Some(existing) => {
-                if existing.owner != principal.sub() {
+                if existing.owner != principal.owner_sub() {
                     return Err(DashboardError::Denied);
                 }
                 (existing, false)
@@ -85,7 +85,7 @@ pub async fn dashboard_pin(
                 Dashboard {
                     id: id.to_string(),
                     title: title.to_string(),
-                    owner: principal.sub().to_string(),
+                    owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
                     cells: Vec::new(),
                     variables: Vec::new(),
@@ -104,6 +104,54 @@ pub async fn dashboard_pin(
     if existing.is_none() {
         minted.y = next_free_y(&dashboard.cells);
     }
+
+    // LIBRARY-PANELS (the "pin saves a reusable widget" half): the minted spec is also PERSISTED as a
+    // `panel:{slug}` record — a workspace-namespaced reusable widget the user can later browse
+    // (`panel.list`), drop onto other dashboards, or open in the data studio. The dashboard cell then
+    // REFERENCES the panel (`panel_ref`), so an edit to the panel propagates to every dashboard that
+    // references it (the "one source of truth" the library-panels scope is about). The panel-write goes
+    // through the same bounds check + owner-only-update contract `panel.save` enforces; the cap gate is
+    // `mcp:dashboard.pin:call` (already passed above) — pin is a PRIVILEGED internal path into the panel
+    // table, exactly as it is into the dashboard table (it writes via `write_dashboard`, not
+    // `dashboard_save`). Bypassing `panel_save` here is the decided seam: a pin caller does NOT need
+    // `mcp:panel.save:call` separately.
+    let panel_id = minted
+        .i
+        .strip_prefix(PIN_PREFIX)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(&minted.i)
+        .to_string();
+    let spec = panel_spec_from_cell(&minted);
+    crate::panel::check_spec_bounds(&spec, &panel_id)
+        .map_err(|e| DashboardError::BadInput(e.to_string()))?;
+    let (owner, visibility) = match crate::panel::read_panel(store, ws, &panel_id)
+        .await?
+        .filter(|p| !p.deleted)
+    {
+        // Owner-only update on the panel too — a non-owner pinning to a dashboard they own must not
+        // overwrite someone else's reusable widget. A tombstoned record resurrects under the new owner.
+        Some(existing) if existing.owner != principal.owner_sub() => {
+            return Err(DashboardError::Denied);
+        }
+        Some(existing) => (existing.owner, existing.visibility),
+        None => (principal.owner_sub().to_string(), crate::panel::Visibility::Private),
+    };
+    let panel = crate::panel::Panel {
+        id: panel_id.clone(),
+        title: panel_title_from_envelope(envelope, &minted),
+        owner,
+        visibility,
+        spec,
+        schema_version: crate::panel::SCHEMA_VERSION,
+        updated_ts: now,
+        deleted: false,
+    };
+    crate::panel::write_panel(store, ws, &panel).await?;
+    // NOTE: `minted.panel_ref` is set AFTER the validation chain runs, not here — the chain's
+    // `validate_and_strip_refs` re-resolves every `panel_ref` through `panel_get`'s three gates, which
+    // would deny a pin caller who has `mcp:dashboard.pin:call` but not `mcp:panel.get:call`. The pin
+    // path is a PRIVILEGED internal writer (it just wrote the panel itself via `write_panel`), so it
+    // strips its own cell below instead of re-resolving.
 
     // Replace the cell with the same `i` if present; else append.
     if let Some(slot) = dashboard.cells.iter_mut().find(|c| c.i == minted.i) {
@@ -133,6 +181,35 @@ pub async fn dashboard_pin(
     )
     .await
     .map_err(DashboardError::BadInput)?;
+    // PRIVILEGED STRIP: the freshly minted cell still carries its full spec (validate_and_strip_refs
+    // left it inline because `panel_ref` is unset). The pin path WROTE the panel itself one call ago,
+    // so it is its own authority — strip the cell to layout + `panel_ref` + title-override here, exactly
+    // as `panel::validate::stripped_ref` would, bypassing the three-gate `panel_get` re-resolution.
+    let persisted = persisted
+        .into_iter()
+        .map(|c| {
+            if c.i == minted.i {
+                let mut stripped = c;
+                stripped.panel_ref = format!("panel:{panel_id}");
+                stripped.v = 0;
+                stripped.widget_type.clear();
+                stripped.view.clear();
+                stripped.binding = Value::Null;
+                stripped.source = Default::default();
+                stripped.action = Default::default();
+                stripped.options = Value::Null;
+                stripped.description.clear();
+                stripped.sources.clear();
+                stripped.transformations.clear();
+                stripped.field_config = Value::Null;
+                stripped.plugin_version.clear();
+                stripped.panel_missing = false;
+                stripped
+            } else {
+                c
+            }
+        })
+        .collect();
     dashboard.cells = persisted;
 
     write_dashboard(store, ws, &dashboard).await?;
@@ -221,20 +298,47 @@ pub fn mint_cell_from_envelope(
                 .collect()
         })
         .unwrap_or_default();
-    let sources: Vec<Target> = extra_tools
-        .iter()
-        .enumerate()
-        .map(|(idx, tool)| Target {
-            ref_id: format!("T{idx}"),
-            datasource: serde_json::json!({ "type": "surreal" }),
-            tool: tool.clone(),
-            args: Value::Null,
-            hide: true,
+    // Real multi-ref targets declared by the envelope (`sources[]`, the v3 shape a `genui` view binds
+    // its `/data/{refId}` pointers against — channel-widgets slice) carry through VERBATIM, first; the
+    // extra `tools[]` then ride as hidden trailing targets (leash widening only, as before). A
+    // malformed entry is dropped, not a pin failure (the cell validators still gate the result).
+    let mut sources: Vec<Target> = envelope
+        .get("sources")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|t| serde_json::from_value::<Target>(t.clone()).ok())
+                .collect()
         })
+        .unwrap_or_default();
+    // A tool already covered by a declared target needs no hidden duplicate — the leash reads it there.
+    let extra_tools: Vec<String> = extra_tools
+        .into_iter()
+        .filter(|t| !sources.iter().any(|s| &s.tool == t))
         .collect();
+    sources.extend(
+        extra_tools
+            .into_iter()
+            .enumerate()
+            .map(|(idx, tool)| Target {
+                ref_id: format!("T{idx}"),
+                datasource: serde_json::json!({ "type": "surreal" }),
+                tool,
+                args: Value::Null,
+                hide: true,
+            }),
+    );
 
     let options = envelope.get("options").cloned().unwrap_or(Value::Null);
     let field_config = envelope.get("fieldConfig").cloned().unwrap_or(Value::Null);
+
+    // The envelope's `title` names the minted cell (and, via `panel_title_from_envelope`, the reusable
+    // panel). The pin UI lets the user type this; an agent may set it in the fenced envelope too.
+    let title = envelope
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
 
     // Layout: preserve an existing cell's geometry on re-pin (idempotent), else default.
     let (x, y, w, h) = match existing {
@@ -250,7 +354,7 @@ pub fn mint_cell_from_envelope(
         h,
         v: 3,
         widget_type: view.to_string(),
-        title: String::new(),
+        title,
         view: view.to_string(),
         binding: Value::Null,
         source,
@@ -275,6 +379,50 @@ fn next_free_y(cells: &[Cell]) -> u32 {
         .map(|c| c.y.saturating_add(c.h))
         .max()
         .unwrap_or(0)
+}
+
+/// Build the reusable-panel spec from a freshly minted cell — the non-layout half of the v3 cell, by
+/// field. Mirrors `PanelSpec`'s `Default`-on-missing semantics so a v1/v2 envelope produces a valid v3
+/// panel. Pure (no mutation of `cell`); the caller still has the full cell for validation + strip.
+fn panel_spec_from_cell(cell: &Cell) -> crate::panel::PanelSpec {
+    crate::panel::PanelSpec {
+        v: cell.v,
+        widget_type: cell.widget_type.clone(),
+        title: cell.title.clone(),
+        view: cell.view.clone(),
+        binding: cell.binding.clone(),
+        source: cell.source.clone(),
+        action: cell.action.clone(),
+        options: cell.options.clone(),
+        description: cell.description.clone(),
+        sources: cell.sources.clone(),
+        transformations: cell.transformations.clone(),
+        field_config: cell.field_config.clone(),
+        plugin_version: cell.plugin_version.clone(),
+    }
+}
+
+/// The panel's human-readable title — the rendered widget's title if the envelope carried one, else a
+/// short label derived from the bound tool (e.g. "reminder.list widget"). The asset name lives on
+/// `Panel::title`; the slug (the id) is forever.
+fn panel_title_from_envelope(envelope: &Value, cell: &Cell) -> String {
+    if !cell.title.is_empty() {
+        return cell.title.clone();
+    }
+    if let Some(t) = envelope.get("title").and_then(Value::as_str) {
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+    let tool = envelope
+        .get("source")
+        .and_then(|s| s.get("tool"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if !tool.is_empty() {
+        return format!("{tool} widget");
+    }
+    format!("{} widget", cell.view)
 }
 
 /// Slugify an opaque id string into a stable cell-key segment — lowercase, non-alphanumeric → `-`,
@@ -309,7 +457,7 @@ pub fn pin_descriptor() -> ToolDescriptor {
             "properties": {
                 "dashboard": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "The target dashboard id (idempotent UPSERT: fresh id creates, existing id updates owner-only)" } },
                 "title": { "type": "string", "x-lb": { "label": "Dashboard title", "description": "Used only when creating a fresh dashboard" } },
-                "envelope": { "type": "object", "x-lb": { "label": "Render envelope", "description": "The x-lb-render envelope (a tool's descriptor.result or a channel rich_result body minus kind/v): { view, source?, action?, options?, tools?, fieldConfig? }" } }
+                "envelope": { "type": "object", "x-lb": { "label": "Render envelope", "description": "The x-lb-render envelope (a tool's descriptor.result or a channel rich_result body minus kind/v): { view, title?, source?, action?, options?, tools?, fieldConfig? } — title names the pinned widget/panel" } }
             },
             "required": ["dashboard", "envelope"]
         })),

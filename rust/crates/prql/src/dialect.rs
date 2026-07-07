@@ -21,6 +21,8 @@ pub enum Dialect {
     MySql,
     /// A registered DuckDB datasource (`federation.query`).
     DuckDb,
+    /// A registered SQLite datasource (`federation.query` — the shipped no-Docker kind).
+    Sqlite,
 }
 
 impl Dialect {
@@ -31,6 +33,7 @@ impl Dialect {
             Dialect::Postgres => PrqlDialect::Postgres,
             Dialect::MySql => PrqlDialect::MySql,
             Dialect::DuckDb => PrqlDialect::DuckDb,
+            Dialect::Sqlite => PrqlDialect::SQLite,
         };
         Options::default()
             .with_target(Target::Sql(Some(d)))
@@ -56,6 +59,7 @@ pub fn dialect_for_kind(kind: &str) -> Result<Dialect, PrqlError> {
         "postgres" | "timescale" => Ok(Dialect::Postgres),
         "mysql" => Ok(Dialect::MySql),
         "duckdb" => Ok(Dialect::DuckDb),
+        "sqlite" => Ok(Dialect::Sqlite),
         other => Err(PrqlError::BadDialect(format!(
             "datasource kind `{other}` maps to no prql dialect"
         ))),

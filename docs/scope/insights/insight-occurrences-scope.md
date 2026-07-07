@@ -119,12 +119,18 @@ insight_occ:{ws}:{insight_id}:{seq}
 
 ## Open questions
 
+> **v1 dispositions (shipped 2026-07-05):** the ring shipped workspace-policy-shaped; both
+   questions are confirmed v1-closed or open follow-ups, not gaps.
+
 1. Should the ring cap be settable **per insight** at first raise (a producer knows fraud needs
-   500, HVAC needs 20), or is the workspace default + hard bounds enough for v1? (Recommend:
-   workspace-only v1.)
+   500, HVAC needs 20), or is the workspace default + hard bounds enough for v1? *(Recommend:
+   workspace-only v1.)* **Resolved v1: workspace-only** — the cap lives on the workspace
+   `insight_policy` record (`ring_cap`, default 100, `[0,1000]`); per-insight sizing is a follow-up
+   if a producer proves it needs it.
 2. Should an occurrence be able to carry a `series` pointer as a first-class field (typed link
-   to raw data) rather than inside `data`? (Recommend: inside `data` until a consumer needs to
-   traverse it.)
+   to raw data) rather than inside `data`? *(Recommend: inside `data` until a consumer needs to
+   traverse it.)* **Resolved v1: inside `data`** — no first-class pointer yet; a producer that wants
+   raw history writes a series explicitly and links it in `data`.
 
 ## Related
 

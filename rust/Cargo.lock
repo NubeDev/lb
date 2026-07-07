@@ -2496,6 +2496,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "datafusion-federation"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f88162c5f8650eab86bbe23cac990bdca261c95cf52c05b9a0848ad5b8b2b7f8"
+dependencies = [
+ "arrow-json",
+ "async-stream",
+ "async-trait",
+ "datafusion",
+ "futures",
+]
+
+[[package]]
 name = "datafusion-functions"
 version = "53.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2837,6 +2850,7 @@ dependencies = [
  "chrono",
  "dashmap 6.2.1",
  "datafusion",
+ "datafusion-federation",
  "fallible-iterator 0.3.0",
  "fundu",
  "futures",
@@ -3326,9 +3340,11 @@ dependencies = [
  "arrow-json",
  "async-trait",
  "datafusion",
+ "datafusion-federation",
  "datafusion-table-providers",
  "lb-supervisor",
  "openssl",
+ "rusqlite",
  "secrecy 0.10.3",
  "serde",
  "serde_json",
@@ -4881,6 +4897,7 @@ dependencies = [
  "lb-flows",
  "lb-inbox",
  "lb-ingest",
+ "lb-insights",
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
@@ -4902,6 +4919,7 @@ dependencies = [
  "lb-viz",
  "rand 0.8.6",
  "rhai",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4926,6 +4944,17 @@ dependencies = [
 
 [[package]]
 name = "lb-ingest"
+version = "0.1.0"
+dependencies = [
+ "lb-store",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+]
+
+[[package]]
+name = "lb-insights"
 version = "0.1.0"
 dependencies = [
  "lb-store",
@@ -5092,6 +5121,7 @@ dependencies = [
  "lb-flows",
  "lb-host",
  "lb-inbox",
+ "lb-insights",
  "lb-jobs",
  "lb-mcp",
  "lb-outbox",
@@ -5811,7 +5841,7 @@ checksum = "43794a0ace135be66a25d3ae77d41b91615fb68ae937f904090203e81f755b65"
 
 [[package]]
 name = "node"
-version = "0.1.0"
+version = "0.1.9"
 dependencies = [
  "anyhow",
  "lb-auth",

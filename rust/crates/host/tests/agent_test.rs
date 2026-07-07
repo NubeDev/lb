@@ -58,6 +58,7 @@ fn echo_tool() -> Vec<AllowedTool> {
     vec![AllowedTool {
         name: "hello.echo".into(),
         description: "echo a message".into(),
+        input_schema: None,
     }]
 }
 

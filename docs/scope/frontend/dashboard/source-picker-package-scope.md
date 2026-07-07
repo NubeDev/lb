@@ -212,5 +212,8 @@ Per `scope/testing/testing-scope.md`:
   new consumer (a scene shape binds through the picker).
 - [`rules-as-source-scope.md`](rules-as-source-scope.md) — adds the `rules` group: a saved rule is a
   `rules.run` read source (Data Studio: query-with-a-rule → chart).
+- [`../system-catalog-scope.md`](../system-catalog-scope.md) — the successor: grows this package into
+  the workspace **system catalog** (more loaders + a browsable explorer skin extracted from the rules
+  panel's `DataExplorer`).
 - `packages/panel`, `packages/nav-rail` — the shared-package pattern this follows (pure, props-driven,
   scoped tokens, React peer dep, ESM+CJS+dts+CSS build).

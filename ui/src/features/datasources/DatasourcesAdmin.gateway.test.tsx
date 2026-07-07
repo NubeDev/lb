@@ -25,11 +25,14 @@ async function addSource(
   user: ReturnType<typeof userEvent.setup>,
   fields: { name: string; kind: string; endpoint: string; dsn: string },
 ) {
+  // The form lives in a Dialog now — open it before typing.
+  await user.click(await screen.findByRole("button", { name: "new datasource" }));
   await user.type(await screen.findByLabelText("datasource name"), fields.name);
-  const kind = screen.getByLabelText("datasource kind");
-  await user.clear(kind);
-  await user.type(kind, fields.kind);
-  await user.type(screen.getByLabelText("datasource endpoint"), fields.endpoint);
+  // The kind is a SELECT over the sidecar-accepted kinds (sqlite-datasource-demo scope).
+  await user.selectOptions(screen.getByLabelText("datasource kind"), fields.kind);
+  const endpoint = screen.getByLabelText("datasource endpoint");
+  await user.clear(endpoint); // sqlite prefills its local convention endpoint
+  await user.type(endpoint, fields.endpoint);
   await user.type(screen.getByLabelText("datasource dsn"), fields.dsn);
   await user.click(screen.getByLabelText("submit datasource"));
 }
@@ -67,12 +70,35 @@ describe("DatasourcesAdmin (real gateway)", () => {
     expect(container.textContent).not.toContain("UISECRETpw");
   });
 
+  it("adds a sqlite datasource (kind select + path DSN + prefilled local endpoint)", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    const { container } = render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
+    await screen.findByText("No datasources yet.");
+
+    await user.click(await screen.findByRole("button", { name: "new datasource" }));
+    await user.type(await screen.findByLabelText("datasource name"), "demo-buildings");
+    await user.selectOptions(screen.getByLabelText("datasource kind"), "sqlite");
+    // Picking sqlite prefills the local convention endpoint (a file has no network endpoint).
+    expect(screen.getByLabelText("datasource endpoint")).toHaveValue("127.0.0.1:0");
+    const path = "/var/lib/lb/demo/buildings.db";
+    await user.type(screen.getByLabelText("datasource dsn"), path);
+    await user.click(screen.getByLabelText("submit datasource"));
+
+    const row = within(await screen.findByLabelText("datasource demo-buildings"));
+    expect(row.getByText("sqlite")).toBeInTheDocument();
+    // REDACTION holds for a path DSN too — no special case for "less sensitive" secrets.
+    expect(container.textContent).not.toContain(path);
+  });
+
   it("shows the implied grants derived from the form", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
     render(<DatasourcesAdmin ws={ws} onOpen={() => {}} />);
 
+    await user.click(await screen.findByRole("button", { name: "new datasource" }));
     await user.type(await screen.findByLabelText("datasource name"), "timescale");
     await user.type(screen.getByLabelText("datasource endpoint"), "tsdb.acme:5432");
 

@@ -4,20 +4,16 @@
 // `canEdit = isAdmin(caps)`, viewer-mode scope). `canEdit` also gates per-item **rename** (inline
 // title edit → title-only `dashboard.save`) and **delete** (routed through the shared
 // `ConfirmDestructive` gate; the host re-checks owner + cap). The roster is exactly the set
-// `dashboard.list` returns
-// (own + team-shared + workspace) — the gateway membership-filters it, so a non-member never sees a
-// dashboard's title here. A single minimize affordance in the header (`onCollapse`) folds the rail to
-// a thin strip (the symmetric expand lives in `DashboardView`). On the shared `AppRail` chrome +
-// shadcn primitives (ui-standards-scope).
+// `dashboard.list` returns (own + team-shared + workspace) — the gateway membership-filters it, so a
+// non-member never sees a dashboard's title here. Chrome/behavior live in the shared `RosterRail`
+// (components/app/roster.tsx); this file only maps dashboards onto it: the slug for new ids, the
+// visibility badge, and the delete confirm (the rail hands back the item, the feature owns the gate).
 
 import { useState } from "react";
-import { LayoutDashboard, PanelLeftClose, Pencil, Plus, Trash2, Check, X } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 
-import { AppRail } from "@/components/app/rail";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { RosterRail } from "@/components/app/roster";
 import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
-import { cn } from "@/lib/utils";
 import type { DashboardSummary } from "@/lib/dashboard";
 
 interface Props {
@@ -55,164 +51,27 @@ export function DashboardRoster({
   canEdit = false,
   onCollapse,
 }: Props) {
-  const [title, setTitle] = useState("");
-  // The dashboard currently being renamed inline, and the draft title.
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
-  // The dashboard pending a delete confirm.
+  // The dashboard pending a delete confirm — the rail hands the item back; the feature owns the gate.
   const [pendingDelete, setPendingDelete] = useState<DashboardSummary | null>(null);
 
-  const create = () => {
-    const t = title.trim();
-    if (!t) return;
-    const id = slug(t) || `dash-${roster.length + 1}`;
-    onCreate(id, t);
-    setTitle("");
-  };
-
-  const startEdit = (d: DashboardSummary) => {
-    setEditingId(d.id);
-    setDraft(d.title);
-  };
-
-  const commitEdit = () => {
-    if (editingId && draft.trim()) onRename?.(editingId, draft);
-    setEditingId(null);
-    setDraft("");
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setDraft("");
-  };
-
   return (
-    <AppRail
-      label="dashboard rail"
-      header={
-        <>
-          <Input
-            aria-label="new dashboard title"
-            placeholder="New dashboard…"
-            className="h-8 min-w-0 flex-1 text-xs"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-          />
-          <Button
-            aria-label="create dashboard"
-            variant="outline"
-            size="sm"
-            className="h-8 px-2"
-            onClick={create}
-          >
-            <Plus size={14} />
-          </Button>
-          {onCollapse && (
-            <Button
-              aria-label="minimize dashboard rail"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
-              title="Minimize"
-              onClick={onCollapse}
-            >
-              <PanelLeftClose size={14} />
-            </Button>
-          )}
-        </>
-      }
-    >
-      <ul className="space-y-1">
-        {roster.length === 0 && (
-          <li className="rounded-md border border-dashed border-border bg-bg/60 px-3 py-3 text-xs text-muted">
-            No dashboards yet.
-          </li>
-        )}
-        {roster.map((d) => {
-          const active = selectedId === d.id;
-          if (editingId === d.id) {
-            return (
-              <li key={d.id} className="flex items-center gap-1">
-                <Input
-                  aria-label={`rename dashboard ${d.id}`}
-                  className="h-8 min-w-0 flex-1 text-sm"
-                  autoFocus
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") cancelEdit();
-                  }}
-                />
-                <Button
-                  aria-label={`confirm rename ${d.id}`}
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={commitEdit}
-                >
-                  <Check size={14} />
-                </Button>
-                <Button
-                  aria-label={`cancel rename ${d.id}`}
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0"
-                  onClick={cancelEdit}
-                >
-                  <X size={14} />
-                </Button>
-              </li>
-            );
-          }
-          return (
-            <li key={d.id} className="group flex items-center gap-1">
-              <Button
-                aria-label={`select dashboard ${d.id}`}
-                variant="ghost"
-                onClick={() => onSelect(d.id)}
-                className={cn(
-                  "h-auto min-w-0 flex-1 justify-start gap-2 px-2.5 py-1.5 text-left text-[13px] font-normal",
-                  active
-                    ? "bg-accent/10 text-accent hover:bg-accent/10"
-                    : "text-fg/90 hover:bg-fg/[0.06] hover:text-fg",
-                )}
-              >
-                <LayoutDashboard size={14} className={cn("shrink-0", active ? "" : "text-muted")} />
-                <span className="min-w-0 flex-1 truncate">{d.title}</span>
-                {d.visibility !== "workspace" && (
-                  <span className="shrink-0 text-[10px] font-medium text-muted/80">{d.visibility}</span>
-                )}
-              </Button>
-              {canEdit && (
-                <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                  <Button
-                    aria-label={`rename dashboard ${d.id}`}
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    title="Rename"
-                    onClick={() => startEdit(d)}
-                  >
-                    <Pencil size={13} />
-                  </Button>
-                  <Button
-                    aria-label={`delete dashboard ${d.id}`}
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-muted hover:text-danger"
-                    title="Delete"
-                    onClick={() => setPendingDelete(d)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+    <>
+      <RosterRail
+        noun="dashboard"
+        icon={LayoutDashboard}
+        items={roster.map((d) => ({
+          ...d,
+          badge: d.visibility !== "workspace" ? d.visibility : undefined,
+        }))}
+        selectedId={selectedId}
+        onSelect={onSelect}
+        emptyText="No dashboards yet."
+        createPlaceholder="New dashboard…"
+        onCreate={(title) => onCreate(slug(title) || `dash-${roster.length + 1}`, title)}
+        onCollapse={onCollapse}
+        onRename={canEdit ? onRename : undefined}
+        onRemove={canEdit ? (item) => setPendingDelete(item) : undefined}
+      />
 
       {pendingDelete && (
         <ConfirmDestructive
@@ -228,6 +87,6 @@ export function DashboardRoster({
           onCancel={() => setPendingDelete(null)}
         />
       )}
-    </AppRail>
+    </>
   );
 }

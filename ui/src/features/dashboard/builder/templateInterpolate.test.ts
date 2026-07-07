@@ -4,6 +4,8 @@
 import { describe, it, expect } from "vitest";
 
 import { interpolateTemplate, type TemplateData } from "./templateInterpolate";
+import { DEFAULT_INLINE_CODE } from "./editors/TemplateSourceField";
+import { sanitizeTemplateHtml } from "./sanitizeTemplateHtml";
 
 const data = (rows: Array<Record<string, unknown>>, extra: Partial<TemplateData> = {}): TemplateData => ({
   rows,
@@ -58,5 +60,26 @@ describe("interpolateTemplate", () => {
   it("leaves author markup untouched (only data is escaped)", () => {
     const tpl = `<div class="p-2"><button data-call="x.y" data-args='{"n":1}'>Go</button></div>`;
     expect(interpolateTemplate(tpl, data([]))).toBe(tpl);
+  });
+
+  it("the shipped default template renders point_reading rows (the last-N-per-meter query shape)", () => {
+    // Guards the starter example against drifting from the engine: rows are what the demo query
+    // returns — SELECT *, ROW_NUMBER() … AS rn FROM point_reading WHERE point_id IN (…) → rn <= 100.
+    const rows = [
+      { time: 1751500000, point_id: "meter-001-kwh", value: 4.51, rn: 1 },
+      { time: 1751400000, point_id: "meter-002-kwh", value: 13.83, rn: 1 },
+    ];
+    const out = interpolateTemplate(DEFAULT_INLINE_CODE, { rows, latest: rows[rows.length - 1] });
+    expect(out).toContain("2 readings"); // {{rows.length}}
+    expect(out).toContain("13.83"); // {{latest.value}} in the hero
+    expect(out).toContain("meter-001-kwh"); // {{point_id}} per feed row
+    expect(out).toContain("4.51"); // {{value}} per feed row
+    expect(out).toContain("#1"); // {{rn}} chip
+    expect(out).not.toContain("{{"); // every binding resolved
+    // The styled look must SURVIVE the real sanitizer (DOMPurify keeps plain style declarations) —
+    // otherwise the shipped example renders as unstyled text.
+    const safe = sanitizeTemplateHtml(out);
+    expect(safe).toContain("linear-gradient");
+    expect(safe).toContain("--accent");
   });
 });

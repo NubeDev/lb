@@ -5,7 +5,9 @@ Status: **v2 SHIPPED** (multi-pane workbench + extracted panel-kit lib). Promote
 **v2 supersedes the v1 layout below** — see "v2: multi-pane workbench + extracted panel-kit lib". Builds **entirely on
 shipped surfaces** (the `source-picker` package, the `viz.query` render path, the ONE `PanelEditor`
 incl. its GenUI "AI widget" tab, `agent.invoke`, and the `panel.*` library asset) — a new **composition**
-surface, not a new data/render substrate.
+surface, not a new data/render substrate. The next ask is scoped separately:
+[`data-studio-10x-scope.md`](data-studio-10x-scope.md) (Dockview engine, pages-as-panes,
+query-first builder + seeded demo data).
 
 Today a user can only build a chart *inside a dashboard grid*: open a dashboard → Add panel → the editor.
 There is no place to **explore data across every source type** (series, Direct SurrealDB, flows, installed

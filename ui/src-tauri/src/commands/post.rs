@@ -16,8 +16,7 @@ pub async fn channel_post(
     item: Item,
 ) -> Result<Item, String> {
     post(
-        &handle.node.store,
-        &handle.node.bus,
+        &handle.node,
         &handle.principal,
         &handle.ws,
         channel,

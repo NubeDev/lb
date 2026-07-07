@@ -1,9 +1,10 @@
-// The Settings surface (user-prefs + agent-config + theme) — the long-deferred "settings surface" the
-// prefs crate named, plus the workspace agent picker and the theme customizer. A tabbed section:
-// Preferences (per-user presentation axes), Theme (the full customizer — presets/radius/mode/import/
-// brand-colors + sidebar layout), and Agent (the workspace default runtime/endpoint). Tabs are
-// URL-routable (`/settings/<tab>`): the active tab and switching are driven by the router, so each tab
-// is deep-linkable and the browser back button works. Markup + tab wiring only; each tab owns its own
+// The Settings surface (user-prefs + agent-config + theme + branding) — the long-deferred "settings
+// surface" the prefs crate named, plus the workspace agent picker, the theme customizer, and the
+// admin-owned workspace brand. A tabbed section: Preferences (per-user presentation axes), Branding
+// (admin workspace identity), Theme (the full customizer — presets/radius/mode/import/brand-colors +
+// sidebar layout), and Agent (the workspace default runtime/endpoint). Tabs are URL-routable
+// (`/settings/<tab>`): the active tab and switching are driven by the router, so each tab is
+// deep-linkable and the browser back button works. Markup + tab wiring only; each tab owns its own
 // data + writes against the real gateway verbs.
 
 import { Settings } from "lucide-react";
@@ -12,9 +13,10 @@ import { AppPageHeader } from "@/components/app/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PreferencesTab } from "./PreferencesTab";
 import { AgentTab } from "./AgentTab";
+import { BrandingTab } from "./BrandingTab";
 import { ThemeSettingsTab } from "./ThemeSettingsTab";
 
-const TABS = ["preferences", "theme", "agent"] as const;
+const TABS = ["preferences", "branding", "theme", "agent"] as const;
 export type SettingsTab = (typeof TABS)[number];
 
 /** Coerce an arbitrary URL segment to a valid tab (unknown → the default). */
@@ -40,7 +42,7 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
       <AppPageHeader
         icon={Settings}
         title="Settings"
-        description="Your preferences, theme, and the workspace agent."
+        description="Your preferences, the workspace brand, your theme, and the workspace agent."
         workspace={ws}
       />
       <Tabs value={active} onValueChange={(v) => onTabChange(coerceSettingsTab(v))} className="min-h-0 flex-1">
@@ -49,6 +51,9 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
         <TabsList className="mx-auto mt-3 w-fit flex-wrap self-center">
           <TabsTrigger value="preferences" aria-label="Preferences">
             Preferences
+          </TabsTrigger>
+          <TabsTrigger value="branding" aria-label="Branding">
+            Branding
           </TabsTrigger>
           <TabsTrigger value="theme" aria-label="Theme">
             Theme
@@ -59,6 +64,9 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
         </TabsList>
         <TabsContent value="preferences" className="min-h-0 flex-1 overflow-y-auto">
           <PreferencesTab ws={ws} caps={caps} />
+        </TabsContent>
+        <TabsContent value="branding" className="min-h-0 flex-1 overflow-y-auto">
+          <BrandingTab ws={ws} caps={caps} />
         </TabsContent>
         <TabsContent value="theme" className="min-h-0 flex-1 overflow-y-auto">
           <ThemeSettingsTab />

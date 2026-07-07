@@ -42,8 +42,8 @@ export const THEME_LOOKS: readonly LookPack[] = [
   {
     id: "default",
     label: "Operator Console",
-    blurb: "The shipped amber console — dark-first, calm, sharp.",
-    defaults: { mode: "dark", preset: "amber", fontSans: "system", fontMono: "system-mono", radius: "0.5rem", surface: "flat", motion: "subtle" },
+    blurb: "The shipped teal console — dark-first, calm, sharp.",
+    defaults: { mode: "dark", preset: "teal", fontSans: "system", fontMono: "system-mono", radius: "0.5rem", surface: "flat", motion: "subtle" },
   },
   {
     id: "editor",

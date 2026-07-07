@@ -63,6 +63,13 @@ export {
   type FontFamily,
 } from "./theme-fonts.data";
 export { resolveAppearance, applyLook, type ResolvedAppearance } from "./look-resolve";
+export {
+  ICON_COLOR_PALETTE,
+  ICON_COLOR_PALETTE_SIZE,
+  autoAssignIconColors,
+  isValidHex,
+  normalizeHex,
+} from "./icon-colors.data";
 export { resolveMotion, prefersReducedMotion } from "./resolve-motion";
 export { loadFont } from "./font-loader";
 export { contrastRatio, AA_NORMAL, AA_LARGE } from "./contrast";

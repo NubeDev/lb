@@ -8,6 +8,8 @@ import type { ReactNode } from "react";
 
 import { useTheme, lookById } from "@/lib/theme";
 
+import { StatusBarModeToggle } from "./StatusBarModeToggle";
+
 interface Props {
   workspace: string;
   principal: string;
@@ -53,6 +55,9 @@ export function StatusBar({ workspace, principal, capCount, trailing }: Props) {
           style={{ background: "linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-2)))" }}
         />
         {look}
+      </span>
+      <span className="shrink-0">
+        <StatusBarModeToggle />
       </span>
       {trailing && <span className="shrink-0">{trailing}</span>}
     </footer>

@@ -16,16 +16,23 @@ import { ResizeHandle, useResizable } from "@nube/panel";
 import { pauseRun, resumeRun, stopRun } from "@/lib/channel/run.control";
 
 import { MessageList } from "@/features/channel/MessageList";
+import { CommandPalette, type PalettePrefill } from "@/features/channel/palette/CommandPalette";
 import { Button } from "@/components/ui/button";
 import { usePageContext } from "./PageContextProvider";
 import { useDockSessions } from "./useDockSessions";
 import { useDockSession } from "./useDockSession";
 import { useDockRun } from "./useDockRun";
+import { usePersonaFocus } from "./usePersonaFocus";
 import { latestPendingRun } from "./pendingRun";
 import { DockSessionPicker } from "./DockSessionPicker";
+import { DockPersonaChip } from "./DockPersonaChip";
 import { DockContextCaption } from "./DockContextCaption";
 import { DockRunStatus } from "./DockRunStatus";
 import { DockComposer } from "./DockComposer";
+import { DockContextBasket } from "./DockContextBasket";
+import { DockModeToggle, type DockMode } from "./DockModeToggle";
+import { useContextBasket } from "./useContextBasket";
+import { DockCopyButton } from "./DockCopyButton";
 import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH } from "./useDockChrome";
 
 interface Props {
@@ -46,6 +53,36 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
   const sessions = useDockSessions(ws, principal);
   const session = useDockSession(ws, sessions.current, principal, now);
   const page = usePageContext();
+
+  // Resolve the persona focus the chip displays AND the dock sends as the per-invoke `persona` arg
+  // (persona-session #5). The live surface (router-derived) feeds the context match; the pin rides
+  // in this tab's sessionStorage. The chip and the run must never disagree: `focus.current?.id` is
+  // exactly what `ask` will pass as `persona` (undefined when null ⇒ server folds prefs).
+  const surface = page.capture().surface;
+  const personaFocus = usePersonaFocus(ws, surface);
+
+  // ASK vs TOOLS (agent-context-basket scope): "ask" is the free-text composer; "tools" mounts the
+  // SHARED channel CommandPalette against the dock session, so tool results land as durable dock
+  // items. The basket gathers item refs; the next ask carries them (`context_items`) and clears it.
+  const [mode, setMode] = useState<DockMode>("ask");
+  const basket = useContextBasket(sessions.current);
+  // Query re-edit: "Run again" re-posts the recorded query; "Edit" flips to Tools mode with the
+  // palette prefilled (source chip + sql seeded) — no datasource re-selection walk.
+  const [prefill, setPrefill] = useState<PalettePrefill | null>(null);
+  const queryActions = {
+    rerun: (source: string, sql: string) => void session.postQuery(source, sql),
+    edit: (source: string, sql: string) => {
+      setPrefill({ tool: "federation.query", args: { source, sql } });
+      setMode("tools");
+    },
+  };
+  const sendAsk = useCallback(
+    (goal: string, runtime?: string) => {
+      void session.ask(goal, personaFocus.current?.id, basket.ids, runtime);
+      basket.clear(); // consumed — the next ask starts with an empty basket
+    },
+    [session, personaFocus, basket],
+  );
 
   const pending = latestPendingRun(session.items);
   // Watch the newest run while it has no durable result/error yet (active). The run stream degrades
@@ -122,7 +159,9 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
     >
       <ResizeHandle resizable={resizable} aria-label="resize agent dock" />
 
-      <header className="flex items-center gap-2 border-b border-border bg-panel-2/60 px-3 py-2">
+      {/* Same band metrics as `.page-header` (min-h 3.75rem, panel-2 tone) so the dock header's
+          bottom hairline lines up with the routed page's header across the split. */}
+      <header className="flex min-h-[3.75rem] items-center gap-2 border-b border-border bg-panel-2/80 px-3 py-2.5">
         <Bot size={15} className="shrink-0 text-accent" />
         <span className="text-sm font-semibold text-fg">Agent</span>
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -134,6 +173,17 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
               onNew={sessions.newSession}
             />
           </div>
+          <DockPersonaChip focus={personaFocus} />
+          <DockCopyButton
+            ctx={{
+              ws,
+              principal,
+              personaId: personaFocus.current?.id,
+              surface,
+              latestRunTools: run.feed.tools,
+            }}
+            items={session.items}
+          />
           <Button
             type="button"
             variant="ghost"
@@ -161,11 +211,13 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
             ws={ws}
             onEdit={() => {}}
             onDelete={() => {}}
+            contextAction={{ has: basket.has, toggle: basket.toggle }}
+            queryActions={queryActions}
           />
         )}
       </div>
 
-      {(active || run.phase === "error" || run.degraded) && (
+      {(active || run.phase === "error" || run.degraded || run.feed.tools.length > 0) && (
         <div className="border-t border-border bg-panel-2/40 px-3 py-2">
           <DockRunStatus
             phase={run.phase}
@@ -193,7 +245,26 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
         </p>
       )}
 
-      <DockComposer onAsk={(goal) => void session.ask(goal)} busy={busy} />
+      <DockContextBasket basket={basket} items={session.items} />
+      <DockModeToggle mode={mode} onMode={setMode} />
+      {mode === "ask" ? (
+        <DockComposer onAsk={(goal) => sendAsk(goal)} busy={busy} />
+      ) : (
+        // The SHARED channel palette (channels-command-palette scope) against the dock session: the
+        // same catalog, JSON-Schema arg rail, and routes as the channel view — zero duplication. Its
+        // agent route folds in the dock's persona + basket (sendAsk); a tool result lands as a
+        // durable dock item the basket can then reference.
+        <CommandPalette
+          channel={sessions.current}
+          onPostQuery={session.postQuery}
+          onSendAgent={(goal, runtime) => sendAsk(goal, runtime)}
+          onCallTool={session.callTool}
+          onPostRich={session.postRich}
+          onSendChat={session.send}
+          prefill={prefill}
+          onPrefillConsumed={() => setPrefill(null)}
+        />
+      )}
     </aside>
   );
 }

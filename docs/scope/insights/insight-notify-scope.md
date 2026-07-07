@@ -196,14 +196,21 @@ real store/channels for the integration layer, seeded raises, no fakes).
 
 ## Open questions
 
-1. Should the L0 cooldown differ by severity (critical 5 min, info 60 min)? (Recommend: one
-   cooldown v1; severity already gets breakthroughs.)
+> **v1 dispositions (shipped 2026-07-05):** the ladder shipped with the defaults below locked in;
+> everything here is a documented follow-up, not a v1 gap.
+
+1. Should the L0 cooldown differ by severity (critical 5 min, info 60 min)? *(Recommend: one
+   cooldown v1; severity already gets breakthroughs.)* **Resolved v1: one cooldown** — severity is
+   already carried by breakthroughs; tiering the cooldown is a tuning follow-up, not a v1 gap.
 2. Quiet hours / timezone-aware digest send times (post the daily digest at the member's 8am
-   via `lb-prefs` tz)? Nice, real, deferred — windows are logical-clock-relative in v1.
-3. Should `escalation threshold` count raises or deliveries? (Scoped as deliveries-worth of
-   noise; the implementing session should validate feel against the 5-min example.)
-4. An `ai.*`-narrated digest ("what changed today, in one paragraph") — follow-up once
-   mechanical digests ship.
+   via `lb-prefs` tz)? Nice, real, deferred — windows are logical-clock-relative in v1. **Open
+   follow-up** (no demand yet).
+3. Should `escalation threshold` count raises or deliveries? *(Scoped as deliveries-worth of
+   noise; the implementing session should validate feel against the 5-min example.)* **Resolved v1:
+   deliveries-worth of noise** (`escalation_threshold = 3` on the policy record); validated against
+   the 5-min-nag ladder integration test.
+4. An `ai.*`-narrated digest ("what changed today, in one paragraph") — follow-up once mechanical
+   digests ship. **Open follow-up** — mechanical digests now ship, so this is unblocked when wanted.
 
 ## Related
 

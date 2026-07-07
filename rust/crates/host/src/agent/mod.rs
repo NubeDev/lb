@@ -31,6 +31,7 @@ mod invoke_remote;
 mod memory;
 mod menu;
 mod model_access;
+mod overlay_endpoint;
 mod page_context;
 mod personas;
 mod policy;
@@ -83,9 +84,9 @@ pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
 pub use personas::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
     agent_persona_update, build_identity_fold, builtin_personas, call_agent_persona_tool,
-    check_runtime, clamp_to_preset, glob_matches, narrow_tools, resolve_effective, resolve_persona,
-    seed_personas, EffectivePersona, Persona, PersonaPatch, PolicyPreset, PERSONA_NS,
-    PERSONA_TABLE,
+    check_runtime, clamp_to_preset, glob_matches, migrate_active_persona, narrow_tools,
+    resolve_effective, resolve_persona, seed_personas, EffectivePersona, Persona, PersonaListItem,
+    PersonaPatch, PolicyPreset, PERSONA_NS, PERSONA_TABLE,
 };
 pub use policy::{
     evaluate as evaluate_policy, load_policy, save_policy, ArgMatch, Effect, Policy, Rule,

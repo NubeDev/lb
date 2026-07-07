@@ -101,7 +101,9 @@ SEED_USER ?= user:ada
 # dev TimescaleDB from docker/postgres/docker-compose.yml (port 5433). Override or clear to disable:
 #   make dev FED_ENDPOINTS=         (no federation sidecar)
 # Requires the postgres-featured sidecar binary — built by the `federation` target below.
-FED_ENDPOINTS  ?= 127.0.0.1:5433
+# `127.0.0.1:0` is the convention endpoint for kind=sqlite sources (a file has no network endpoint);
+# pre-approving it lets `make seed-demo-sqlite` register + query the Docker-free demo dataset.
+FED_ENDPOINTS  ?= 127.0.0.1:5433,127.0.0.1:0
 FED_SEED_NAME  ?= timescale
 FED_SEED_KIND  ?= postgres
 FED_SEED_EP    ?= 127.0.0.1:5433
@@ -345,6 +347,15 @@ publish-ext: pack
 # — NOT `dev` — because a live scene save/load needs the member `assets.*` grant (session findings).
 seed-thecrew:
 	bash $(BE_DIR)/extensions/thecrew/seed-demo.sh $(GW_URL) $(SEED_USER) $(WS)
+
+# The Docker-free Data Studio demo (sqlite-datasource-demo scope): generate the demo building
+# dataset into ONE SQLite file under the node's data dir (lite profile — 1 month @ 15-min, seconds
+# to run) and register it as datasource `demo-buildings` (kind sqlite) in $(WS) via the normal
+# admin verb. Needs a RUNNING `make dev` node (the default FED_ENDPOINTS pre-approves the sqlite
+# `127.0.0.1:0` convention endpoint). Idempotent: the file is regenerated, the add is an upsert.
+.PHONY: seed-demo-sqlite
+seed-demo-sqlite:
+	bash docker/postgres/seed-demo-sqlite.sh $(LB_DIR)/data/demo/buildings.db $(GW_URL) $(SEED_USER) $(WS)
 
 # Serve the BUILT shell so extension pages actually load. The `dev`/`ui` targets run the Vite DEV
 # server, where @originjs/vite-plugin-federation's host runtime is absent -- every federated remote

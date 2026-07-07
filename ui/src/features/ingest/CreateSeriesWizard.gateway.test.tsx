@@ -22,7 +22,8 @@ describe("CreateSeriesWizard (real gateway)", () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
     render(<IngestView ws={ws} />);
-    // The first-run empty state offers a real action.
+    // The empty state is a message, not a dead-end — the rail's "New series…" create field is the
+    // affordance (same shape as Dashboards/Rules/Flows).
     expect(await screen.findByText(/no series yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create series/i })).toBeInTheDocument();
   });
@@ -33,12 +34,14 @@ describe("CreateSeriesWizard (real gateway)", () => {
     await signInReal("user:ada", ws);
     render(<IngestView ws={ws} />);
 
-    // Open the wizard from the empty-state CTA.
-    await user.click(await screen.findByRole("button", { name: /create series/i }));
+    // Name-first create: type the name in the rail's inline field, then create (the wizard opens
+    // pre-seeded with that name — the rail's "New series…" field is the create affordance, same shape
+    // as Dashboards/Rules/Flows).
+    await user.type(await screen.findByLabelText("new series title"), "node.cpu_temp");
+    await user.click(screen.getByRole("button", { name: /create series/i }));
 
-    // Step 1: name it.
+    // Step 1 confirms the pre-seeded name → straight to schema.
     const dialog = await screen.findByRole("dialog", { name: /create series/i });
-    await user.type(within(dialog).getByLabelText("series name"), "node.cpu_temp");
     await user.click(within(dialog).getByRole("button", { name: /next: schema/i }));
 
     // Step 2: the builder seeds one field — name it `celsius` (number, the default type).
@@ -82,10 +85,10 @@ describe("CreateSeriesWizard (real gateway)", () => {
     await signInReal("user:ada", ws);
     render(<IngestView ws={ws} />);
 
-    // Create a minimal one-field series quickly.
-    await user.click(await screen.findByRole("button", { name: /create series/i }));
+    // Create a minimal one-field series quickly (name-first via the rail's inline field).
+    await user.type(await screen.findByLabelText("new series title"), "temp");
+    await user.click(screen.getByRole("button", { name: /create series/i }));
     const dialog = await screen.findByRole("dialog", { name: /create series/i });
-    await user.type(within(dialog).getByLabelText("series name"), "temp");
     await user.click(within(dialog).getByRole("button", { name: /next: schema/i }));
     await user.type(within(dialog).getAllByLabelText(/^field name/i)[0], "celsius");
     await user.click(within(dialog).getByRole("button", { name: /create series/i }));

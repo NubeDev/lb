@@ -39,7 +39,7 @@ pub async fn panel_share(
         .ok_or(PanelError::NotFound)?;
 
     // Only the owner shares their panel (mirrors `dashboard.share`).
-    if panel.owner != principal.sub() {
+    if panel.owner != principal.owner_sub() {
         return Err(PanelError::Denied);
     }
 

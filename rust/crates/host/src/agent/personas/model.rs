@@ -63,6 +63,13 @@ pub struct Persona {
     /// Cycle-checked and depth-capped at write time (see `validate.rs`).
     #[serde(default)]
     pub extends: Vec<String>,
+    /// Page surfaces this persona is *for* (persona-session #5) — OPAQUE strings compared for equality
+    /// against the `context.surface` the dock sends per invoke. The **client** matches these over the
+    /// enabled roster to suggest a focus; the host never branches on either id (rule 10 — a new page +
+    /// persona pair up by editing records only). Empty = never context-suggested (a fallback/default
+    /// persona like `builtin.system-manager`).
+    #[serde(default)]
+    pub surfaces: Vec<String>,
     /// OPTIONAL supervision floor (persona-coding sub-scope #4): a per-tool Allow/Ask/Deny preset
     /// applied via the shipped `agent.policy.set` machinery on activation. A floor, not a suggestion —
     /// tightening is free; loosening below it is an explicit admin write. `None` = no preset.

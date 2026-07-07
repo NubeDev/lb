@@ -95,3 +95,115 @@ describe("DockRunStatus controls", () => {
     expect(onRetry).toHaveBeenCalledOnce();
   });
 });
+
+describe("DockRunStatus tool list", () => {
+  const TOOLS: RunFeed = {
+    live: true,
+    text: "",
+    reasoning: "",
+    finished: false,
+    tools: [
+      { id: "c1", name: "datasource.list", ok: "{}", err: null },
+      { id: "c2", name: "viz.query", err: "denied", ok: null },
+      { id: "c3", name: "dashboard.pin" },
+    ],
+  };
+
+  it("renders each tool call as a row while working (done, failed, running)", () => {
+    render(
+      <DockRunStatus phase="working" feed={TOOLS} elapsedSec={4} degraded={false} onRetry={() => {}} />,
+    );
+    const list = screen.getByLabelText("tool calls");
+    expect(list).toHaveTextContent("datasource.list");
+    expect(list).toHaveTextContent("viz.query");
+    expect(list).toHaveTextContent("denied");
+    expect(list).toHaveTextContent("dashboard.pin");
+  });
+
+  it("keeps the tool list visible after the run is done (the durable answer has no tool record)", () => {
+    render(
+      <DockRunStatus phase="done" feed={TOOLS} elapsedSec={9} degraded={false} onRetry={() => {}} />,
+    );
+    expect(screen.getByLabelText("tool calls")).toHaveTextContent("datasource.list");
+  });
+
+  it("renders nothing on done when no tools were called and not degraded", () => {
+    const { container } = render(
+      <DockRunStatus phase="done" feed={FEED} elapsedSec={9} degraded={false} onRetry={() => {}} />,
+    );
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("DockRunStatus tool list FIFO cap", () => {
+  // 7 tools — 2 over the MAX_VISIBLE_TOOLS (5) cap. The OLDEST two should be hidden first; the newest
+  // 5 (incl. any in-flight tail) stay anchored at the bottom of the list where the eye lands.
+  const MANY_TOOLS: RunFeed = {
+    live: true,
+    text: "",
+    reasoning: "",
+    finished: false,
+    tools: [
+      { id: "c1", name: "alpha.get" },
+      { id: "c2", name: "beta.list", ok: "{}", err: null },
+      { id: "c3", name: "gamma.run" },
+      { id: "c4", name: "delta.save", ok: "{}", err: null },
+      { id: "c5", name: "epsilon.query", ok: "{}", err: null },
+      { id: "c6", name: "zeta.schema", ok: "{}", err: null },
+      { id: "c7", name: "eta.run" },
+    ],
+  };
+
+  it("FIFO-collapses: hides the OLDEST calls and shows the newest within the cap", () => {
+    render(
+      <DockRunStatus phase="working" feed={MANY_TOOLS} elapsedSec={4} degraded={false} onRetry={() => {}} />,
+    );
+    const list = screen.getByLabelText("tool calls");
+    // Newest 5 visible (the tail of the run, where activity is happening).
+    expect(list).toHaveTextContent("gamma.run");
+    expect(list).toHaveTextContent("delta.save");
+    expect(list).toHaveTextContent("epsilon.query");
+    expect(list).toHaveTextContent("zeta.schema");
+    expect(list).toHaveTextContent("eta.run");
+    // Oldest two FIFO-evicted from the default view.
+    expect(list).not.toHaveTextContent("alpha.get");
+    expect(list).not.toHaveTextContent("beta.list");
+    // The honest "hidden" affordance.
+    expect(screen.getByText("2 earlier calls hidden")).toBeInTheDocument();
+    expect(screen.getByLabelText("show all tool calls")).toBeInTheDocument();
+  });
+
+  it("Show all reveals every call in original order", async () => {
+    const user = userEvent.setup();
+    render(
+      <DockRunStatus phase="working" feed={MANY_TOOLS} elapsedSec={4} degraded={false} onRetry={() => {}} />,
+    );
+    await user.click(screen.getByLabelText("show all tool calls"));
+    const list = screen.getByLabelText("tool calls");
+    // First-seen order preserved — the oldest re-appears at the top.
+    expect(list).toHaveTextContent("alpha.get");
+    expect(list).toHaveTextContent("beta.list");
+    expect(list).toHaveTextContent("eta.run");
+    expect(screen.queryByText("2 earlier calls hidden")).toBeNull();
+    expect(screen.getByLabelText("show fewer tool calls")).toBeInTheDocument();
+  });
+
+  it("Show fewer re-collapses after an expand", async () => {
+    const user = userEvent.setup();
+    render(
+      <DockRunStatus phase="working" feed={MANY_TOOLS} elapsedSec={4} degraded={false} onRetry={() => {}} />,
+    );
+    await user.click(screen.getByLabelText("show all tool calls"));
+    await user.click(screen.getByLabelText("show fewer tool calls"));
+    const list = screen.getByLabelText("tool calls");
+    expect(list).not.toHaveTextContent("alpha.get");
+    expect(screen.getByText("2 earlier calls hidden")).toBeInTheDocument();
+  });
+
+  it("does not collapse when the count is at or under the cap", () => {
+    const at: RunFeed = { ...MANY_TOOLS, tools: MANY_TOOLS.tools.slice(0, 5) };
+    render(<DockRunStatus phase="working" feed={at} elapsedSec={4} degraded={false} onRetry={() => {}} />);
+    expect(screen.queryByText(/earlier calls hidden/)).toBeNull();
+    expect(screen.queryByLabelText("show all tool calls")).toBeNull();
+  });
+});

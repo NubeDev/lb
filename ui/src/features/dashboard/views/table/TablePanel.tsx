@@ -63,7 +63,10 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
   const pad = cellHeightClass(options.cellHeight);
 
   // sortBy[0] orders the rows by a column's value (numeric when both sides are numeric, else string).
+  // The DOM is capped: sorting sees every row, but only the first MAX_DRAWN_ROWS render (an unvirtualized
+  // 50k-row <table> freezes the page); the truncation is announced, never silent.
   const sorted = sortRows(rows, options.sortBy[0]);
+  const drawn = sorted.slice(0, MAX_DRAWN_ROWS);
   // The row-control column (widget-platform scope, Slice B) — when the cell carries `options.rowControls`
   // (a pinned tool-result cell does), render an actions column with the shared `<RowControls>`. Absent
   // → the table is read-only (the shipped behavior).
@@ -89,7 +92,7 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
             </thead>
           )}
           <tbody>
-            {sorted.map((row, i) => (
+            {drawn.map((row, i) => (
               <tr key={i} className="odd:bg-bg/40">
                 {cols.map((c) => (
                   <td key={c.key} className={`truncate border-b border-border/50 px-2 ${pad}`}>
@@ -105,10 +108,18 @@ export function TablePanel({ cell, label, scope = emptyScope(), refreshKey = 0 }
             ))}
           </tbody>
         </table>
+        {sorted.length > drawn.length && (
+          <div className="border-t border-border px-2 py-1.5 text-[11px] text-muted" aria-label="table truncation notice">
+            showing first {drawn.length.toLocaleString()} of {sorted.length.toLocaleString()} rows
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+/** DOM budget for the unvirtualized table — past this the page, not the data, is the bottleneck. */
+const MAX_DRAWN_ROWS = 500;
 
 /** One cell — a numeric value formatted (+ threshold-colored) through the bridge; everything else as
  *  honest text. Never a fabricated number; a non-numeric value renders verbatim. */

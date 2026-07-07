@@ -43,6 +43,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("test_gateway: persona seed failed: {e}");
     }
 
+    // Legacy `active_persona` → ws-default prefs migration (persona-session #5), mirroring the
+    // production boot: one-shot, idempotent, right after the persona seed.
+    if let Err(e) = lb_host::migrate_active_persona(&gw.node.store).await {
+        eprintln!("test_gateway: active_persona migration failed: {e}");
+    }
+
     // APPROVAL-RELEASE REACTOR TICK (rules-approvals scope): the production `node` binary spawns this
     // beside the flow/agent reactors; the UI's `RulesApprovals.gateway.test.tsx` drives the full loop
     // (request_approval → held effect → approve → RELEASED) end to end, so the tick must run here too.

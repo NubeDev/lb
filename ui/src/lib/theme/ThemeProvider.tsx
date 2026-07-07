@@ -69,6 +69,28 @@ export function ThemeProvider({ children }: Props) {
   const setSurface = useCallback((surface: Surface | undefined) => edit((c) => ({ ...c, surface })), [edit]);
   const setMotion = useCallback((motion: Motion | undefined) => edit((c) => ({ ...c, motion })), [edit]);
   const setGlass = useCallback((glass: GlassLevel | undefined) => edit((c) => ({ ...c, glass })), [edit]);
+  // Set one icon's color, or clear it. Clears to undefined when the last entry is removed so the field
+  // fully disappears (turning colorization OFF) — matches "presence === ON".
+  const setIconColor = useCallback(
+    (surface: string, color: string | undefined) =>
+      edit((c) => {
+        const next = { ...(c.iconColors ?? {}) };
+        if (color === undefined) delete next[surface];
+        else next[surface] = color;
+        const iconColors = Object.keys(next).length > 0 ? next : undefined;
+        return { ...c, iconColors };
+      }),
+    [edit],
+  );
+  // Replace the whole icon-color map (auto-assign writes here). undefined/empty = colorization OFF.
+  const setIconColors = useCallback(
+    (colors: Record<string, string> | undefined) =>
+      edit((c) => ({
+        ...c,
+        iconColors: colors && Object.keys(colors).length > 0 ? colors : undefined,
+      })),
+    [edit],
+  );
   const setLayout = useCallback(
     (patch: Partial<ThemeLayout>) => edit((c) => ({ ...c, layout: { ...c.layout, ...patch } })),
     [edit],
@@ -97,6 +119,8 @@ export function ThemeProvider({ children }: Props) {
       setSurface,
       setMotion,
       setGlass,
+      setIconColor,
+      setIconColors,
       setLayout,
       setCustom,
       setImported,
@@ -115,6 +139,8 @@ export function ThemeProvider({ children }: Props) {
       setSurface,
       setMotion,
       setGlass,
+      setIconColor,
+      setIconColors,
       setLayout,
       setCustom,
       setImported,

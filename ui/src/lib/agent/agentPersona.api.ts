@@ -20,7 +20,9 @@ export interface PolicyPreset {
 }
 
 /** A workspace-facing persona bundle. Mirrors the Rust `Persona` struct. `builtin` is set by the host
- *  (a seeded read-only `builtin.<slug>`); custom personas are workspace-scoped with admin CRUD. */
+ *  (a seeded read-only `builtin.<slug>`); custom personas are workspace-scoped with admin CRUD.
+ *  `surfaces` (persona-session #5) is the page-surface vocabulary the dock's context match reads —
+ *  opaque strings compared for equality against `context.surface` over the enabled roster (rule 10). */
 export interface Persona {
   id: string;
   label: string;
@@ -33,11 +35,20 @@ export interface Persona {
   grounding_skills: string[];
   /** Persona ids whose tool/skill lists union in (identity: child wins). */
   extends: string[];
+  /** Page-surface strings this persona is "for" (persona-session #5) — opaque data the dock's client-side
+   *  context match reads (`surface ∈ persona.surfaces` over the enabled roster). Built-ins declare theirs
+   *  in `personas.toml`; an empty list = never context-suggested (system-manager is the fallback map). */
+  surfaces: string[];
   policy_preset?: PolicyPreset;
   runtimes?: string[];
   /** True for a seeded read-only built-in; false for a workspace custom entry. */
   builtin: boolean;
 }
+
+/** A list row: the persona plus its `enabled` flag computed against the workspace roster
+ *  (persona-session #5). `agent.persona.list` computes this server-side so the dock/picker fetch is
+ *  one read — `enabled: false` ⇒ hidden from the dock's context match + switcher. */
+export type PersonaListItem = Persona & { enabled: boolean };
 
 /** A partial edit to a custom persona — every field optional (absent = unchanged). A PRESENT list
  *  REPLACES the stored one (not a merge of entries). `id`/`builtin` are never patchable. */
@@ -54,9 +65,12 @@ export interface EffectivePersona {
   runtimes?: string[];
 }
 
-/** List the persona catalog (seeded built-ins ∪ workspace custom). Member-level. */
-export function listPersonas(): Promise<Persona[]> {
-  return invoke<{ personas: Persona[] }>("mcp_call", {
+/** List the persona catalog (seeded built-ins ∪ workspace custom), each row carrying its `enabled`
+ *  flag computed against the workspace roster (persona-session #5). Member-level; the dock + Settings
+ *  picker both read this single fetch. A denied `agent.persona.list` rejects — callers that want to
+ *  tolerate a missing roster (the dock) wrap with `.catch(() => [])`. */
+export function listPersonas(): Promise<PersonaListItem[]> {
+  return invoke<{ personas: PersonaListItem[] }>("mcp_call", {
     tool: "agent.persona.list",
     args: {},
   }).then((r) => r.personas);

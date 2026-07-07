@@ -44,12 +44,14 @@ pub async fn agent_invoke(
         &handle.node,
         &handle.node.runtimes(),
         None, // no runtime → the run seam resolves the workspace's active pick
+        None, // no persona → un-narrowed run (the desktop session ships personas later)
         &handle.principal,
         &handle.principal.caps().to_vec(),
         ws,
         &job_id,
         goal,
         Substrate { skill, doc },
+        None, // no context basket (the desktop session ships the basket later)
         &tools,
         ts,
     )

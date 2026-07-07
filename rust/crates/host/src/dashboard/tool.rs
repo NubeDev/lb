@@ -42,12 +42,10 @@ pub async fn call_dashboard_tool(
             Ok(json!({ "dashboards": rows }))
         }
         "dashboard.save" => {
-            let cells: Vec<Cell> = serde_json::from_value(arg(input, "cells")?.clone())
-                .map_err(|e| ToolError::BadInput(format!("cells: {e}")))?;
+            let cells: Vec<Cell> = typed_arg(arg(input, "cells")?, "cells")?;
             // `variables` is additive — a pre-variables caller omits it (defaults to empty).
             let variables = match input.get("variables") {
-                Some(v) if !v.is_null() => serde_json::from_value(v.clone())
-                    .map_err(|e| ToolError::BadInput(format!("variables: {e}")))?,
+                Some(v) if !v.is_null() => typed_arg(v, "variables")?,
                 _ => Vec::new(),
             };
             let d = dashboard_save(
@@ -131,16 +129,41 @@ fn arg<'a>(input: &'a Value, key: &str) -> Result<&'a Value, ToolError> {
         .ok_or_else(|| ToolError::BadInput(format!("missing arg: {key}")))
 }
 
+/// Decode a structured arg, tolerating the JSON-encoded-STRING form (`"[{…}]"` instead of `[{…}]`)
+/// AI callers routinely emit — the live agent sent stringified `cells` five turns in a row and the
+/// plain type error never steered it. Decoding the string costs nothing in authority: the verb's
+/// own validators (bounds/views/genui/refs) still run on the decoded value. A string that is not
+/// valid JSON of the target type errors with a message that names the right encoding.
+fn typed_arg<T: serde::de::DeserializeOwned>(v: &Value, key: &str) -> Result<T, ToolError> {
+    let v = match v {
+        Value::String(s) => serde_json::from_str::<Value>(s).map_err(|_| {
+            ToolError::BadInput(format!(
+                "{key}: arrived as a string that is not valid JSON — pass a JSON array, not a JSON-encoded string"
+            ))
+        })?,
+        other => other.clone(),
+    };
+    serde_json::from_value(v).map_err(|e| ToolError::BadInput(format!("{key}: {e}")))
+}
+
 fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
     arg(input, key)?
         .as_str()
         .ok_or_else(|| ToolError::BadInput(format!("arg not a string: {key}")))
 }
 
+/// A u64 arg, tolerating the numeric-STRING form (`"1783235133"`) AI callers routinely emit —
+/// live, `dashboard.share` failed its whole run on `now` arriving as a string. The steering
+/// message names the expected encoding.
 fn u64_arg(input: &Value, key: &str) -> Result<u64, ToolError> {
-    arg(input, key)?
-        .as_u64()
-        .ok_or_else(|| ToolError::BadInput(format!("arg not a u64: {key}")))
+    let v = arg(input, key)?;
+    v.as_u64()
+        .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+        .ok_or_else(|| {
+            ToolError::BadInput(format!(
+                "arg not a u64: {key} — pass unix epoch seconds as a JSON number"
+            ))
+        })
 }
 
 /// Parse the `visibility` arg (`"private" | "team" | "workspace"`).
@@ -150,5 +173,39 @@ fn visibility_arg(input: &Value) -> Result<Visibility, ToolError> {
         "team" => Ok(Visibility::Team),
         "workspace" => Ok(Visibility::Workspace),
         other => Err(ToolError::BadInput(format!("bad visibility: {other}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// `cells` as a real array decodes as before.
+    #[test]
+    fn typed_arg_decodes_a_real_array() {
+        let cells: Vec<Cell> = typed_arg(&json!([]), "cells").expect("empty array decodes");
+        assert!(cells.is_empty());
+    }
+
+    /// `cells` as a JSON-ENCODED STRING (the live agent's shape, five turns in a row) decodes to
+    /// the same value — the verb's own validators still run on the decoded cells.
+    #[test]
+    fn typed_arg_tolerates_a_json_encoded_string() {
+        let cells: Vec<Cell> = typed_arg(&json!("[]"), "cells").expect("stringified array decodes");
+        assert!(cells.is_empty());
+    }
+
+    /// A string that is not valid JSON errors with a message that names the right encoding.
+    #[test]
+    fn typed_arg_steers_on_a_non_json_string() {
+        let err = typed_arg::<Vec<Cell>>(&json!("not json"), "cells").unwrap_err();
+        let ToolError::BadInput(msg) = err else {
+            panic!("expected BadInput")
+        };
+        assert!(
+            msg.contains("JSON-encoded string"),
+            "steering message: {msg}"
+        );
     }
 }

@@ -42,6 +42,19 @@ describe("genuiTargets", () => {
     const cell: Cell = { ...baseCell, source: { tool: "", args: undefined } };
     expect(genuiTargets(cell)).toEqual([]);
   });
+
+  it("hidden-only sources[] (a rich_result cell's leash extras) do NOT shadow the real v2 source", () => {
+    // ResponseView.buildCell folds extra declared tools as hidden targets beside the envelope's single
+    // `source` — the dock genui preview must still resolve refId A from that source (channel-widgets).
+    const cell: Cell = {
+      ...baseCell,
+      source: { tool: "federation.query", args: { source: "db", sql: "SELECT 1" } },
+      sources: [{ refId: "T0", tool: "reminder.update", args: undefined, hide: true }],
+    };
+    expect(genuiTargets(cell)).toEqual([
+      { refId: "A", tool: "federation.query", args: { source: "db", sql: "SELECT 1" } },
+    ]);
+  });
 });
 
 describe("refDataOf", () => {
@@ -52,6 +65,22 @@ describe("refDataOf", () => {
   it("derives a scalar `value` from a single row when latest is null", () => {
     const state: SourceState = { rows: [{ count: 7 }], latest: null, loading: false, denied: false };
     expect(refDataOf(state).value).toBe(7);
+  });
+  // Regression (live 2026-07-07): a single-row aggregate result with NO `value`/`payload` field —
+  // e.g. `SELECT AVG(r.value) AS avg_kw ... LIMIT 1` returning `{ avg_kw: 123.45 }` — was rendered as
+  // "[object Object] kWh" because `useSource.toLatest` falls back to the WHOLE ROW object, and
+  // `refDataOf` preferred that object for `/data/A/value`. A non-scalar `latest` must be dropped so we
+  // fall through to `firstScalar(rows[0])` which extracts the row's first column.
+  it("drops a whole-row `latest` and derives the value from the single row's first column", () => {
+    const state: SourceState = {
+      rows: [{ avg_kw: 123.45 }],
+      latest: { avg_kw: 123.45 }, // toLatest's whole-row fallback (the bug)
+      loading: false,
+      denied: false,
+    };
+    const out = refDataOf(state);
+    expect(out.value).toBe(123.45);
+    expect(out.latest).toEqual({ avg_kw: 123.45 }); // unchanged — templates still see the row object
   });
   it("carries the denied flag", () => {
     const state: SourceState = { rows: [], latest: null, loading: false, denied: true };

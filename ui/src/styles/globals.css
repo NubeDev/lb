@@ -81,19 +81,20 @@
   --radius-3xl: calc(var(--radius) + 14px);
 }
 
-/* Quiet control-surface tokens (frontend scope). Dark = near-black; light = warm paper;
-   accent palettes swap through `data-theme-accent` on <html>. */
+/* Quiet control-surface tokens (frontend scope). Dark = deep navy near-black; light = clean cool
+   paper with deep navy ink; the house teal is the default accent. Accent palettes swap through
+   `data-theme-accent` on <html> (amber/blue remain as explicit choices). */
 :root {
   color-scheme: light;
   --radius: 0.5rem;
-  --bg: 40 30% 96%;
-  --panel: 40 24% 92%;
-  --border: 40 12% 82%;
-  --fg: 30 12% 14%;
-  --muted: 30 6% 44%;
-  --accent: 32 92% 34%;
+  --bg: 210 20% 98.5%;
+  --panel: 0 0% 100%;
+  --border: 215 16% 86%;
+  --fg: 222 30% 16%;
+  --muted: 220 10% 40%;
+  --accent: 178 72% 27%;
   --theme-swatch-amber: 32 92% 34%;
-  --theme-swatch-teal: 178 70% 28%;
+  --theme-swatch-teal: 178 72% 27%;
   --theme-swatch-blue: 216 72% 40%;
   --background: var(--bg);
   --foreground: var(--fg);
@@ -105,17 +106,18 @@
   --primary-foreground: var(--bg);
   --secondary: var(--panel);
   --secondary-foreground: var(--fg);
-  --muted-bg: 40 18% 90%;
+  --muted-bg: 212 18% 94%;
   --muted-foreground: var(--muted);
   --accent-foreground: var(--bg);
   --destructive: 0 72% 46%;
   --input: var(--border);
   --ring: var(--accent);
-  /* Widened tones (light): raised panel steps toward paper-white, overlay a touch darker than bg for a
-     scrim, secondary accent a cooler sibling; success/warning are fixed semantic hues. */
-  --panel-2: 40 26% 88%;
-  --overlay: 30 18% 8%;
-  --accent-2: 178 60% 32%;
+  /* Widened tones (light): the page is a faint cool paper, cards are true white, and the raised chrome
+     (`--panel-2`) steps a touch below the page; overlay is a navy scrim; the secondary accent is the
+     deep navy sibling of the teal. success/warning are fixed semantic hues. */
+  --panel-2: 210 20% 95%;
+  --overlay: 220 25% 8%;
+  --accent-2: 218 55% 34%;
   --success: 142 55% 34%;
   --warning: 36 92% 42%;
   /* Categorical ramp (light): deeper cuts of the same eight hues so they hold ≥3:1 against paper. */
@@ -127,10 +129,22 @@
   --chart-6: 142 55% 36%;
   --chart-7: 43 92% 36%;
   --chart-8: 217 78% 48%;
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+
+:root[data-theme-accent="amber"] {
+  --accent: 32 92% 34%;
 }
 
 :root[data-theme-accent="teal"] {
-  --accent: 178 70% 28%;
+  --accent: 178 72% 27%;
 }
 
 :root[data-theme-accent="blue"] {
@@ -139,19 +153,19 @@
 
 .dark {
   color-scheme: dark;
-  /* Dark ramp: a COOL near-black neutral family (hue ~228, chroma low). The previous warm charcoal
-     (hue 28–40) muddied every surface toward brown; a cool ground lets the amber accent read as a
-     deliberate signal color instead of more of the same hue. Steps: page 6% → cell panel 9% → raised
-     rail/chrome 13%, each with a visible hairline (`--border` 20%) so elevation reads as crisp planes,
-     not fog. `--bg` is the deepest; content cells sit on `--panel`; the rail/toolbar use `--panel-2`. */
-  --bg: 228 8% 6%;
-  --panel: 228 7% 9%;
-  --border: 228 6% 20%;
-  --fg: 224 14% 93%;
-  --muted: 224 6% 64%;
-  --accent: 34 96% 58%;
+  /* Dark ramp: a deep NAVY near-black family (hue ~218, low sat — the house dark, not a gray charcoal).
+     The faint blue cast keeps the ground clearly "ours" while staying calm; the teal accent separates
+     cleanly from it as the signal color. Steps: page 7% → cell panel 10% → raised rail/chrome 13%,
+     each with a visible hairline (`--border` 21%) so elevation reads as crisp planes, not fog.
+     `--bg` is the deepest; content cells sit on `--panel`; the rail/toolbar use `--panel-2`. */
+  --bg: 218 22% 7%;
+  --panel: 218 18% 10%;
+  --border: 217 14% 21%;
+  --fg: 215 20% 92%;
+  --muted: 215 10% 66%;
+  --accent: 174 62% 50%;
   --theme-swatch-amber: 34 96% 58%;
-  --theme-swatch-teal: 176 68% 50%;
+  --theme-swatch-teal: 174 62% 50%;
   --theme-swatch-blue: 216 82% 66%;
   --background: var(--bg);
   --foreground: var(--fg);
@@ -163,18 +177,18 @@
   --primary-foreground: var(--bg);
   --secondary: var(--panel);
   --secondary-foreground: var(--fg);
-  --muted-bg: 228 6% 13%;
+  --muted-bg: 217 16% 13%;
   --muted-foreground: var(--muted);
   --accent-foreground: var(--bg);
   --destructive: 0 65% 58%;
   --input: var(--border);
   --ring: var(--accent);
   /* Widened tones (dark). `--panel-2` is the RAISED neutral layer (rail, toolbars) — a clear step above
-     `--panel` (9%→13%) in the same cool family, per the product register's "second neutral layer".
-     `--overlay` is a scrim (dark, both modes); `--accent-2` a cooler accent sibling. */
-  --panel-2: 228 8% 13%;
-  --overlay: 228 24% 3%;
-  --accent-2: 176 62% 52%;
+     `--panel` (10%→13%) in the same navy family, per the product register's "second neutral layer".
+     `--overlay` is a scrim (dark, both modes); `--accent-2` a lighter sky-blue accent sibling. */
+  --panel-2: 217 17% 13%;
+  --overlay: 220 30% 3%;
+  --accent-2: 214 78% 68%;
   --success: 142 52% 52%;
   --warning: 38 92% 58%;
   /* Categorical ramp (dark): brighter, higher-chroma cuts so they carry on near-black. */
@@ -186,10 +200,22 @@
   --chart-6: 142 58% 56%;
   --chart-7: 46 92% 58%;
   --chart-8: 217 88% 68%;
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+}
+
+.dark[data-theme-accent="amber"] {
+  --accent: 34 96% 58%;
 }
 
 .dark[data-theme-accent="teal"] {
-  --accent: 176 68% 50%;
+  --accent: 174 62% 50%;
 }
 
 .dark[data-theme-accent="blue"] {
@@ -324,21 +350,21 @@ body {
    every "shadow" as a faint glow and flattens elevation. True black ambient shadows restore the plane
    stack (page → panel → raised chrome) that dark elevation depends on. */
 .dark {
-  --shadow-1: 0 1px 2px hsl(228 24% 2% / 0.55);
-  --shadow-2: 0 4px 14px -4px hsl(228 24% 2% / 0.6);
-  --shadow-3: 0 14px 36px -8px hsl(228 24% 2% / 0.7);
+  --shadow-1: 0 1px 2px hsl(220 26% 2% / 0.55);
+  --shadow-2: 0 4px 14px -4px hsl(220 26% 2% / 0.6);
+  --shadow-3: 0 14px 36px -8px hsl(220 26% 2% / 0.7);
 }
 /* `:root.dark` (0,3,0 with the attribute) so this beats the light-authored `:root[data-surface]` blocks
    below regardless of source order. */
 :root.dark[data-surface="elevated"] {
-  --shadow-1: 0 1px 3px hsl(228 24% 2% / 0.6);
-  --shadow-2: 0 6px 18px -6px hsl(228 24% 2% / 0.7);
-  --shadow-3: 0 18px 44px -10px hsl(228 24% 2% / 0.8);
+  --shadow-1: 0 1px 3px hsl(220 26% 2% / 0.6);
+  --shadow-2: 0 6px 18px -6px hsl(220 26% 2% / 0.7);
+  --shadow-3: 0 18px 44px -10px hsl(220 26% 2% / 0.8);
 }
 :root.dark[data-surface="glass"] {
-  --shadow-1: 0 1px 3px hsl(228 24% 2% / 0.6);
-  --shadow-2: 0 8px 26px -8px hsl(228 24% 2% / 0.75);
-  --shadow-3: 0 22px 52px -12px hsl(228 24% 2% / 0.85);
+  --shadow-1: 0 1px 3px hsl(220 26% 2% / 0.6);
+  --shadow-2: 0 8px 26px -8px hsl(220 26% 2% / 0.75);
+  --shadow-3: 0 22px 52px -12px hsl(220 26% 2% / 0.85);
 }
 
 /* Elevated: opaque panels, the shadow ramp. */
@@ -446,6 +472,31 @@ body {
   :root[data-surface="glass"] [data-panel],
   :root[data-surface="glass"] .surface-panel {
     box-shadow: var(--shadow-2);
+  }
+}
+
+/* ── FLOATING / INSET SIDEBAR ALIGNMENT ───────────────────────────────────────────────────────────
+   The `floating`/`inset` sidebar variants inset the rail as a card (`p-2` on the fixed container),
+   but the content column (`SidebarInset`) is full-bleed — so the page header's top edge and the
+   status bar's bottom edge overshoot the rail card and nothing lines up. Match the rail's 8px inset
+   on the content column so both chrome bands align with the card's edges; the side that faces the
+   rail keeps margin 0 (the rail container's own padding already provides the 8px gutter). Desktop
+   only (`md:`) — on mobile the rail is a Sheet and the content should stay full-bleed. */
+@media (min-width: 768px) {
+  [data-slot="sidebar"][data-variant="floating"] ~ [data-slot="sidebar-inset"],
+  [data-slot="sidebar"][data-variant="inset"] ~ [data-slot="sidebar-inset"] {
+    margin: 0.5rem;
+    border-radius: var(--radius);
+    border: 1px solid hsl(var(--border));
+    box-shadow: var(--shadow-1);
+  }
+  [data-slot="sidebar"][data-variant="floating"][data-side="left"] ~ [data-slot="sidebar-inset"],
+  [data-slot="sidebar"][data-variant="inset"][data-side="left"] ~ [data-slot="sidebar-inset"] {
+    margin-left: 0;
+  }
+  [data-slot="sidebar"][data-variant="floating"][data-side="right"] ~ [data-slot="sidebar-inset"],
+  [data-slot="sidebar"][data-variant="inset"][data-side="right"] ~ [data-slot="sidebar-inset"] {
+    margin-right: 0;
   }
 }
 
@@ -571,4 +622,15 @@ body {
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 14px);
+}
+
+@theme inline {
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }

@@ -13,6 +13,7 @@
 //!   - `add`/`remove`/`list`/`test` — the admin CRUD + connectivity probe.
 //!   - `query`     — `federation.query` (the read-first verb).
 //!   - `schema`    — `federation.schema` (native table/column discovery for the no-SQL UI).
+//!   - `sample`    — `federation.sample` (one AI-ready snapshot: tables + FKs + sample rows).
 //!   - `mirror`    — `federation.mirror` (the durable, resumable `lb-jobs` copy-in).
 //!   - `tool`      — the `federation.*` / `datasource.*` MCP bridge dispatch.
 
@@ -25,6 +26,7 @@ mod net;
 mod query;
 mod record;
 mod remove;
+mod sample;
 mod schema;
 mod secret;
 mod test;
@@ -38,6 +40,7 @@ pub use mirror::federation_mirror;
 pub use query::{federation_query, query_descriptor};
 pub use record::{datasource_tag, resolve as resolve_datasource, Datasource, TABLE};
 pub use remove::datasource_remove;
-pub use schema::federation_schema;
+pub use sample::{federation_sample, sample_descriptor};
+pub use schema::{federation_schema, schema_descriptor};
 pub use test::datasource_test;
 pub use tool::call_federation_tool;

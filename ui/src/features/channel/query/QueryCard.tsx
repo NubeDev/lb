@@ -6,7 +6,7 @@
 // plotted from scratch. RENDER + local mode/spec state only (FILE-LAYOUT).
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, BarChart3, Database, SlidersHorizontal, Table2 } from "lucide-react";
+import { AlertTriangle, BarChart3, Database, Pencil, RotateCw, SlidersHorizontal, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { ItemPayload } from "@/lib/channel/payload.types";
@@ -17,11 +17,20 @@ import { ResultTable } from "./ResultTable";
 import { chartSpecToPlotSpec } from "./toPlotSpec";
 import { QueryBuilderPanel } from "./QueryBuilderPanel";
 
+/** Re-run / re-edit callbacks for the card's recorded `{source, sql}` (query re-edit scope) — the
+ *  parent posts a fresh `kind:"query"` (rerun) or prefills the palette (edit), so the user never
+ *  re-walks the datasource selection. Absent (previews, older mounts) → no affordances. */
+export interface QueryActions {
+  rerun: (source: string, sql: string) => void;
+  edit: (source: string, sql: string) => void;
+}
+
 interface Props {
   payload: ItemPayload;
   /** The channel + item id key the per-viewer plot preference is stored under. Absent in previews. */
   channel?: string;
   itemId?: string;
+  queryActions?: QueryActions;
 }
 
 /** A small SQL chip — the source + the (truncated) SQL, the durable record of "what was asked". */
@@ -38,14 +47,59 @@ function QueryChip({ source, sql }: { source: string; sql: string }) {
 
 type Mode = "chart" | "table" | "customize";
 
-export function QueryCard({ payload, channel, itemId }: Props) {
+/** The rerun/edit affordances for a recorded query — shown on result AND error cards (re-editing a
+ *  failed query is exactly the fix loop). */
+function QueryActionButtons({
+  source,
+  sql,
+  actions,
+}: {
+  source: string;
+  sql: string;
+  actions?: QueryActions;
+}) {
+  if (!actions) return null;
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label="run query again"
+        title="Run again"
+        onClick={() => actions.rerun(source, sql)}
+        className="h-7 gap-1 px-2 text-xs"
+      >
+        <RotateCw size={13} /> Run again
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label="edit query"
+        title="Edit the SQL in the palette (source pre-selected)"
+        onClick={() => actions.edit(source, sql)}
+        className="h-7 gap-1 px-2 text-xs"
+      >
+        <Pencil size={13} /> Edit
+      </Button>
+    </>
+  );
+}
+
+export function QueryCard({ payload, channel, itemId, queryActions }: Props) {
   if (payload.kind === "query") return <QueryChip source={payload.source} sql={payload.sql} />;
   if (payload.kind === "query_error") {
     return (
       <div role="alert" className="flex items-start gap-2 text-sm text-destructive">
         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-        <div className="min-w-0">
-          <QueryChip source={payload.source} sql={payload.sql} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <QueryChip source={payload.source} sql={payload.sql} />
+            <div className="flex shrink-0 items-center gap-1">
+              <QueryActionButtons source={payload.source} sql={payload.sql} actions={queryActions} />
+            </div>
+          </div>
           <p className="mt-1">{payload.error}</p>
         </div>
       </div>
@@ -54,17 +108,21 @@ export function QueryCard({ payload, channel, itemId }: Props) {
   // Agent kinds are rendered by AgentCard (MessageItem routes them there); guard so this card only
   // ever narrows to a query_result (the union is shared with the channels-agent payloads).
   if (payload.kind !== "query_result") return null;
-  return <QueryResultCard payload={payload} channel={channel} itemId={itemId} />;
+  return (
+    <QueryResultCard payload={payload} channel={channel} itemId={itemId} queryActions={queryActions} />
+  );
 }
 
 function QueryResultCard({
   payload,
   channel,
   itemId,
+  queryActions,
 }: {
   payload: Extract<ItemPayload, { kind: "query_result" }>;
   channel?: string;
   itemId?: string;
+  queryActions?: QueryActions;
 }) {
   const fields = useMemo(() => inferFields(payload.rows), [payload.rows]);
   // The starting spec: the host's auto-pick when it plotted one, else a suggestion from the fields so
@@ -118,6 +176,7 @@ function QueryResultCard({
       <div className="flex items-center justify-between gap-2">
         <QueryChip source={payload.source} sql={payload.sql} />
         <div className="flex shrink-0 items-center gap-1">
+          <QueryActionButtons source={payload.source} sql={payload.sql} actions={queryActions} />
           {canPlot && (
             <>
               <SegButton active={mode === "chart"} onClick={() => setMode("chart")} label="Chart" icon={BarChart3} />

@@ -57,6 +57,29 @@ describe("buildCell — envelope → v2 Cell", () => {
     expect(new Set(cellTools(cell))).toEqual(new Set(payload.tools));
   });
 
+  it("carries a genui envelope's declared sources[] through verbatim, without duplicate leash entries", () => {
+    // channel-widgets slice: a `view:"genui"` rich_result binds `/data/{refId}` against real multi-ref
+    // targets — buildCell must place them FIRST and un-hidden, and must not re-fold their tools as
+    // hidden extras (mirrors dashboard/pin.rs).
+    const payload: RichResultPayload = {
+      kind: "rich_result",
+      v: 2,
+      view: "genui",
+      options: { genui: { v: 1, ir: { v: 1, surface: { surfaceId: "s1", root: "root" }, components: {} } } },
+      sources: [
+        { refId: "A", tool: "federation.query", args: { source: "db", sql: "SELECT 1" }, datasource: { type: "federation" } },
+        { refId: "B", tool: "series.latest", args: { series: "office/temp" }, datasource: { type: "series" } },
+      ],
+      tools: ["federation.query", "series.latest"],
+    };
+    const cell = buildCell(payload, "item-g");
+    expect(cell.view).toBe("genui");
+    expect(cell.options?.genui).toBeTruthy();
+    expect(cell.sources?.map((s) => s.refId)).toEqual(["A", "B"]);
+    expect(cell.sources?.some((s) => s.hide)).toBe(false);
+    expect(new Set(cellTools(cell))).toEqual(new Set(payload.tools));
+  });
+
   it("carries an ext-widget scene embed's options through to the cell (graphics-canvas phase 3)", () => {
     // A channel rich-response `{view:"ext:thecrew/scene", options:{sceneId}}` — the shipped ext-widget
     // path. buildCell must forward `options` so `WidgetView`→`ExtWidget` (finding 8) reach the tile's

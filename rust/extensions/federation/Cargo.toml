@@ -36,7 +36,19 @@ async-trait = "0.1"
 # (or the `openssl/vendored` build deps) to compile, so it is opt-in and built where TLS is
 # available. The HEADLINE source is Postgres; sqlite is the documented fallback (testing §0).
 datafusion = "53"
-datafusion-table-providers = { version = "0.11", default-features = false, features = ["sqlite-bundled"] }
+# `datafusion-table-providers` 0.11 ships per-engine federation features (`sqlite-federation`,
+# `postgres-federation`) that wrap each `TableProvider` in a `datafusion-federation` adaptor.
+# With the federation optimizer rule installed in the per-query `SessionState` (see `query.rs`),
+# DataFusion detects that every table in a plan belongs to one source, unparses the plan back to
+# that engine's SQL dialect, and executes it remotely — only the small result batches cross back
+# (federation-pushdown scope). `sqlite-federation` is on by default (sqlite is the default engine,
+# never feature-gated); `postgres-federation` rides the existing `postgres` feature.
+datafusion-table-providers = { version = "0.11", default-features = false, features = ["sqlite-bundled", "sqlite-federation"] }
+# The federation session-state wiring (analyzer rule + query planner). Pinned EXACTLY to =0.5.3
+# (the version `datafusion-table-providers` 0.11 was built against) — newer 0.5.x releases rebind
+# to datafusion 54 and drag a second `datafusion-catalog` into the graph, breaking the build (risk:
+# version lock — exact pin, not a caret, on purpose).
+datafusion-federation = "=0.5.3"
 # The pool's params type (`HashMap<String, SecretString>`) — same major as table-providers, so the
 # DSN never lands in a plain `String` field the engine logs (secret mediation, datasources scope).
 secrecy = "0.10"
@@ -48,6 +60,12 @@ arrow-json = "58"
 # deps live ONLY in this extension). Optional → off by default (sqlite path links no TLS).
 openssl = { version = "0.10", features = ["vendored"], optional = true }
 
+# Direct catalog reads the DataFusion provider path cannot express (`PRAGMA foreign_key_list` for
+# `federation.sample`'s relationships). Same version/features as the host's dev-dep so the one
+# `libsqlite3-sys` (links = sqlite3) in the workspace graph stays unified with the bundled engine
+# `datafusion-table-providers/sqlite-bundled` already links.
+rusqlite = { version = "0.37", features = ["bundled"] }
+
 # Own tokio: the child reads/writes its OWN stdio (io-std) + runs the async engine (rt-multi-thread).
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "io-std"] }
 
@@ -55,4 +73,6 @@ tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util
 default = []
 # Enable the Postgres/Timescale source. Requires a TLS toolchain (system OpenSSL or the
 # `openssl/vendored` build deps: a C compiler + ranlib). Build with `--features postgres`.
-postgres = ["datafusion-table-providers/postgres", "dep:openssl"]
+# `postgres-federation` rides along — the `PostgresTableFactory::table_provider` wraps in a
+# `FederatedTableProviderAdaptor` automatically when the feature is on (no source-code change).
+postgres = ["datafusion-table-providers/postgres", "datafusion-table-providers/postgres-federation", "dep:openssl"]

@@ -15,14 +15,17 @@ import { type Field, type SeriesSchema, newField } from "@/lib/ingest/schema.typ
 interface Props {
   /** Series names that already exist — to block a duplicate name. */
   existing: string[];
+  /** A name pre-seeded by the caller (e.g. the rail's inline "New series…" field). Step 1 still shows
+   *  so the author can confirm the name + add a description; the dup check runs against `existing`. */
+  initialName?: string;
   onCancel: () => void;
   /** Persist the schema + create the series (the caller writes it + selects it). */
   onCreate: (schema: SeriesSchema) => Promise<void>;
 }
 
-export function CreateSeriesWizard({ existing, onCancel, onCreate }: Props) {
+export function CreateSeriesWizard({ existing, initialName, onCancel, onCreate }: Props) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [series, setSeries] = useState("");
+  const [series, setSeries] = useState(initialName ?? "");
   const [description, setDescription] = useState("");
   const [fields, setFields] = useState<Field[]>([newField("number")]);
   const [busy, setBusy] = useState(false);

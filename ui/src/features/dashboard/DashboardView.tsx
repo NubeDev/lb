@@ -4,10 +4,11 @@
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
 import { useEffect, useState } from "react";
-import { LayoutGrid, PanelLeftOpen, Share2, Variable as VariableIcon } from "lucide-react";
+import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +58,10 @@ export function DashboardView(props: Props) {
 
 function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: Props) {
   const dash = useDashboard(ws);
-  const picker = useSourcePicker(ws);
+  // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
+  // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
+  // the source combobox. See useSourcePicker's `enabled` opt.)
+  const picker = useSourcePicker(ws, { enabled: true });
   const current = dash.current;
   // The selected dashboard id lives in the URL (`?d=<id>`) so a pasted/copied link re-opens the same
   // dashboard. Load the URL's dashboard whenever the id changes and doesn't match what's loaded; write
@@ -229,22 +233,7 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: P
             onCollapse={() => setRosterOpen(false)}
           />
         ) : (
-          <aside
-            aria-label="dashboard rail collapsed"
-            data-panel=""
-            className="flex w-10 shrink-0 flex-col items-center border-r border-border bg-panel-2 py-2"
-          >
-            <Button
-              aria-label="expand dashboard rail"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              title="Expand"
-              onClick={() => setRosterOpen(true)}
-            >
-              <PanelLeftOpen size={14} />
-            </Button>
-          </aside>
+          <CollapsedRail noun="dashboard" onExpand={() => setRosterOpen(true)} />
         ))}
 
       {current && confirmDelete && (

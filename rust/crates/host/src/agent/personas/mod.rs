@@ -21,6 +21,7 @@ mod create;
 mod delete;
 mod get;
 mod list;
+mod migrate_active_persona;
 mod model;
 mod resolve;
 mod seed;
@@ -33,7 +34,8 @@ pub use apply::{build_identity_fold, check_runtime, clamp_to_preset, glob_matche
 pub use create::agent_persona_create;
 pub use delete::agent_persona_delete;
 pub use get::agent_persona_get;
-pub use list::agent_persona_list;
+pub use list::{agent_persona_list, PersonaListItem};
+pub use migrate_active_persona::migrate_active_persona;
 pub use model::{Persona, PolicyPreset};
 pub use resolve::{resolve_effective, resolve_persona, EffectivePersona};
 pub use seed::{builtin_personas, seed_personas};

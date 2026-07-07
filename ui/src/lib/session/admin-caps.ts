@@ -102,6 +102,9 @@ export const CAP = {
   // reminders (reminders scope): the nav gate. The page shows for a session that may list reminders;
   // the gateway re-checks `mcp:reminder.<verb>:call` per verb server-side regardless.
   reminderList: "mcp:reminder.list:call",
+  // insights (insights umbrella scope): the nav gate. The page shows for a session that may list
+  // insights; the gateway re-checks `mcp:insight.<verb>:call` per verb server-side regardless.
+  insightList: "mcp:insight.list:call",
   // api-keys (api-keys scope): the machine-credential management verb gate. The tab shows for a
   // session holding `apikey.manage`; the gateway re-checks every verb server-side regardless.
   apikeyManage: "mcp:apikey.manage:call",

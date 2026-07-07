@@ -14,6 +14,11 @@ use std::future::Future;
 pub struct AllowedTool {
     pub name: String,
     pub description: String,
+    /// The tool's input JSON Schema (`{type:"object", properties, required}`), carried from the
+    /// catalog descriptor so the model knows WHICH arguments a call takes. `None` when the tool
+    /// declares none (the provider advertises an empty object). Without this the model is told every
+    /// tool takes no arguments and cannot form a valid call — it asks the user in prose instead.
+    pub input_schema: Option<serde_json::Value>,
 }
 
 /// A tool call the model proposed — the agent must run it (capability-checked) before the next turn.
@@ -29,6 +34,13 @@ pub struct ProposedCall {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallOutcome {
     pub id: String,
+    /// The proposed call's tool name, carried so a provider can echo the assistant `tool_calls`
+    /// message OpenAI-compat backends require before a `role:"tool"` result. Without the echo the
+    /// result is an orphan the model half-ignores — live GLM retried the identical rejected call
+    /// three turns in a row (see `docs/debugging/agent/tool-errors-ignored-orphan-tool-messages.md`).
+    pub name: String,
+    /// The proposed call's arguments JSON, for the same echo. Empty when unknown (a legacy fold).
+    pub input: String,
     pub ok: Option<String>,
     pub error: Option<String>,
 }

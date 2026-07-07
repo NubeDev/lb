@@ -211,8 +211,9 @@ Both never show the value back and store only the path (names-only).
 ## 7. Personas — pick *what the agent is for* (agent-personas)
 
 A run today is handed everything: the constant system prompt, your whole reachable tool catalog, no
-grounding. A **persona** fixes that — it is a workspace-selected *focus*: `{ identity, granted_tools,
-grounding_skills, extends }`, applied at run assembly to **narrow** the run. It never widens the wall.
+grounding. A **persona** fixes that — it is a workspace-curated *focus*: `{ identity, granted_tools,
+grounding_skills, extends, surfaces }`, applied at run assembly to **narrow** the run. It never
+widens the wall.
 
 > **The one rule:** a persona **narrows, never widens.** The effective menu is
 > `persona ∩ agent ∩ caller`, and every dispatch still re-runs `caps::check`. A persona listing a tool
@@ -233,45 +234,75 @@ Persona {
   granted_tools: string[],   // tool ids or trailing-* globs ("flows.*") — OPAQUE data, a narrowing hint
   grounding_skills: string[],// skill ids pinned at session start (grant-gated, FAIL-CLOSED)
   extends: string[],         // parent persona ids; tool/skill lists union in at read (child identity wins)
+  surfaces: string[],        // page-surface strings this persona is suggested on (the dock's context match)
   policy_preset?, runtimes?, // #4 (extension-builder): a supervision floor + a runtime restriction
 }
 ```
 
-### Pick one (member reads, admin writes)
+### How a persona is selected (#5 — the post-ship correction)
+
+A persona is selected **per run** by a five-layer resolution — the top two client-side, the rest
+server-side. **Zero new verbs**: it reuses the per-invoke `persona` arg #1 threaded through every
+front door, plus the shipped `prefs.set` / `prefs.set_default` for defaults.
 
 ```
-# The picker read (member): list built-ins ∪ your workspace's custom personas
-POST /mcp/call { "tool": "agent.persona.list", "args": {} }        # → { personas: [...] }
-POST /mcp/call { "tool": "agent.persona.get",  "args": { "id": "builtin.data-analyst" } }
-
-# Set the workspace's active persona (rides agent.config, the active_definition move exactly)
-POST /mcp/call { "tool": "agent.config.set", "args": { "patch": { "active_persona": "builtin.data-analyst" } } }
+CLIENT (the dock, per tab)
+  1. pin            — the user picked one in this tab (sessionStorage); sticky until cleared
+  2. context match  — current page surface ∈ persona.surfaces, over the ENABLED roster
+        │ the dock sends the resolved id as the per-invoke `persona` arg (or none → server fold)
+        ▼
+SERVER (resolve_persona at run assembly)
+  3. member default    — Prefs.agent_persona on user_prefs:[ws,member]   (member-writable)
+  4. workspace default — Prefs.agent_persona on workspace_prefs:[ws]     (admin-writable)
+  5. none              — un-narrowed
 ```
 
-Precedence at run assembly: an **explicit** per-invoke `persona` arg > the workspace `active_persona` >
-none. A per-message override rides every front door — the channel `kind:"agent"` payload, the routed
-`agent.invoke`, and `POST /agent/invoke { …, "persona": "builtin.flow-author" }` (so a surface like Data
-Studio can invoke with its own focus, no new mechanism). An explicit **unknown** id is a named error (an
-explicit ask must not silently degrade); a **dangling active** id (persona since deleted) warns and runs
-un-narrowed — never an errored run.
+The workspace enables a **roster** (admin-curated): `agent.config.set { enabled_personas: ["builtin.flow-author", ...] }`.
+`None` (default) = all enabled; `Some(list)` = only those ids. A disabled persona is hidden from the
+picker + context match, and an **explicit invoke of a disabled id fails named** (curation is not
+silently bypassable). The chip in the dock always shows exactly what the next invoke will send + why
+("pinned" / "from this page" / "workspace default").
 
-### The seven built-in personas (pick by name)
+```bash
+# Read the roster (member) + the per-row enabled flag (computed server-side)
+POST /mcp/call { "tool": "agent.persona.list", "args": {} }   # → { personas: [{ ..., enabled }] }
+POST /mcp/call { "tool": "agent.config.get",  "args": {} }     # → { config: { enabled_personas?: [...] } }
+
+# Curate the roster (admin) — disable by materializing all-but-this; enable-all = write [] (= None)
+POST /mcp/call { "tool": "agent.config.set", "args": { "patch": { "enabled_personas": ["builtin.flow-author"] } } }
+
+# Set the member default / workspace default (the new home of "which persona by default")
+PUT /prefs          { "agent_persona": "builtin.flow-author" }   # member (prefs.set)
+PUT /prefs/default  { "agent_persona": "builtin.system-manager" } # admin (prefs.set_default); "" clears
+
+# Per-invoke override — every front door (the channel `kind:"agent"` payload, the routed request,
+# POST /agent/invoke, the UI's agent_invoke). The id is OPAQUE data (rule 10).
+POST /agent/invoke { "goal": "...", "persona": "builtin.widget-builder" }
+```
+
+Precedence at run assembly: an **explicit** `persona` arg (roster-checked: disabled → named error;
+unknown → named error) > member default > ws default > none. A dangling/roster-disabled *default*
+warns + runs un-narrowed — never an errored run. `agent.persona.resolve { id? }` returns the same
+fold server-side (no id → the caller's member→ws-default fold).
+
+### The eight built-in personas (pick by name)
 
 Seeded read-only into `_lb_personas`. Each curates one platform area's verbs + pins ≤ 4 grounding
 skills (the rest ride the filtered catalog). **Every tool still passes the wall** — an admin-tier verb
 in a persona does nothing for a member caller. **Destructive/security verbs (`workspace.delete/purge`,
 `authz.revoke-tokens`, `secret.get`) are excluded from every persona by design** — a human runs those.
 
-| Persona | For | Pinned grounding |
+| Persona | For (page surface → suggested) | Pinned grounding |
 |---|---|---|
-| `builtin.data-analyst` | datasources, SurrealDB, series, queries, charts | `core.datasources`, `core.query`, `core.store-read`, `core.ingest-series` |
-| `builtin.flow-author` | the typed-node flows DAG engine | `core.flows-mcp`, `core.ingest-series`, `core.query` |
-| `builtin.widget-builder` | Data Studio, charts, GenUI, render templates | `core.dashboard-mcp`, `core.genui-widget`, `core.panels`, `core.dashboard-widgets` |
-| `builtin.rules-author` | rules — **extends** flow-author + data-analyst | `core.rules` (+ inherited) |
-| `builtin.workspace-admin` | nav, users, teams, roles, grants, ws defaults | `core.nav`, `core.auth-caps`, `core.prefs` |
-| `builtin.channels-operator` | channels, inbox/outbox, messaging | `core.channels-inbox-outbox`, `core.prefs` |
-| `builtin.system-manager` | the general operator — **extends** all six above; hands off deep work | `core.lb-cli`, `core.mcp`, `core.auth-caps`, `core.agent` |
-| `builtin.extension-builder` | builds UI/WASM/native **extensions** against the devkit — "100% coding, but never on its own" | `core.extension-authoring`, `core.extensions`, `core.e2e-backend` |
+| `builtin.data-analyst` | datasources, SurrealDB, series, queries, charts (`data`, `datasources`) | `core.datasources`, `core.query`, `core.store-read`, `core.ingest-series` |
+| `builtin.flow-author` | the typed-node flows DAG engine (`flows`) | `core.flows-mcp`, `core.ingest-series`, `core.query` |
+| `builtin.widget-builder` | Data Studio, charts, GenUI, render templates (`dashboards`, `data-studio`) | `core.dashboard-mcp`, `core.genui-widget`, `core.panels`, `core.dashboard-widgets` |
+| `builtin.rules-author` | rules — **extends** flow-author + data-analyst (`flows`, `rules`) | `core.rules` (+ inherited) |
+| `builtin.workspace-admin` | nav, users, teams, roles, grants, ws defaults (`admin`, `settings`) | `core.nav`, `core.auth-caps`, `core.prefs` |
+| `builtin.channels-operator` | channels, inbox/outbox, messaging (`channels`, `inbox`, `outbox`, `reminders`) | `core.channels-inbox-outbox`, `core.prefs` |
+| `builtin.system-manager` | the general operator — **extends** all six above; hands off deep work (`[]` — the fallback map, not a page) | `core.lb-cli`, `core.mcp`, `core.auth-caps`, `core.agent` |
+| `builtin.insights-analyst` | the Insights page persona — `[]` until the Insights surface ships (`insights`) | (insights-only — pinned at the page) |
+| `builtin.extension-builder` | builds UI/WASM/native **extensions** against the devkit — "100% coding, but never on its own" (`extensions`, `studio`) | `core.extension-authoring`, `core.extensions`, `core.e2e-backend` |
 
 **`builtin.extension-builder` carries a safety posture** (persona-coding #4): its devkit/ext verbs are
 admin-tier (a member gets the honest deny); a **`policy_preset`** Ask-gates every node-mutating verb
@@ -300,7 +331,8 @@ POST /mcp/call { "tool": "agent.persona.create", "args": {
   "identity": "You are a data analyst for this workspace. Verify against the store; never invent columns.",
   "granted_tools": ["federation.query", "viz.query", "series.*", "store.query", "store.schema"],
   "grounding_skills": ["core.query", "core.store-read"],
-  "extends": []
+  "extends": [],
+  "surfaces": ["data", "datasources"]
 } }                                                                # → { ok: true }
 POST /mcp/call { "tool": "agent.persona.update", "args": { "id": "my-analyst", "patch": { "label": "Renamed" } } }
 POST /mcp/call { "tool": "agent.persona.delete", "args": { "id": "my-analyst" } }
@@ -326,7 +358,7 @@ Applied in `invoke_via_runtime` (the ONE seam the in-house loop and the external
 
 ```
 POST /mcp/call { "tool": "agent.persona.resolve", "args": { "id": "builtin.data-analyst" } }
-# → { effective: { id, identity, granted_tools, grounding_skills, policy_preset?, runtimes? } }
+# → { effective: { id, identity, granted_tools, grounding_skills, surfaces, policy_preset?, runtimes? } }
 #   (the extends-closure UNION; the UI intersects granted_tools with the caller's tools.catalog to show
 #    persona ∩ agent ∩ caller, with a reason per exclusion — "not in persona" / "not granted".)
 ```
@@ -347,4 +379,6 @@ free, loosening below it is the explicit admin write.
 > Grounded in a live run: `crates/host/tests/agent_persona_test.rs` seeds a record-only persona, drives a
 > real in-house loop, and asserts the recorded menu is narrowed + the identity reached the model — and a
 > scripted external runtime advertises the same narrowed set (`swap_test_*`). The pinned-but-ungranted
-> skill test proves the fail-closed named error before any model call.
+> skill test proves the fail-closed named error before any model call. The #5 selection model is proven in
+> `agent_persona_session_test.rs` (precedence + roster + migration + ws-isolation) and the UI gateway tests
+> `DockPersonaChip.gateway.test.tsx` + `PersonaSettings.gateway.test.tsx` (real spawned gateway — no fakes).

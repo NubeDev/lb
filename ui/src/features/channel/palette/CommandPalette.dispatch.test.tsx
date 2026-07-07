@@ -99,11 +99,26 @@ const OPT_INLINE_CMD: ToolDescriptor = {
   },
 };
 
+// A REQUIRED INLINE widget (`q`, a `sql` editor) — the `/query` shape without the entity arg.
+// Regression guard (query re-edit scope): a required inline arg used to cycle through the single
+// active slot, so ONE typed character marked it "filled" and UNMOUNTED the editor mid-typing (the
+// "sql editor closes on the first keystroke" bug). It must render persistently and stay mounted.
+const SQL_CMD: ToolDescriptor = {
+  name: "things.query",
+  title: "things.query",
+  group: "things",
+  input_schema: {
+    type: "object",
+    properties: { q: { type: "string", "x-lb": { widget: "sql" as const } } },
+    required: ["q"],
+  },
+};
+
 // Stub the two data hooks so the palette renders from a fixed catalog with no network (a thin stub, not a
 // node re-implementation — rule 9). `useMentions` is unused by these fixtures (no entity args).
 vi.mock("./useCatalog", () => ({
   useCatalog: () => ({
-    tools: [LIST_CMD, CREATE_CMD, LIST_NOARG_CMD, FORM_CMD, OPT_INLINE_CMD],
+    tools: [LIST_CMD, CREATE_CMD, LIST_NOARG_CMD, FORM_CMD, OPT_INLINE_CMD, SQL_CMD],
     loading: false,
     error: null,
     revalidate: async () => {},
@@ -276,5 +291,69 @@ describe("CommandPalette — the generic descriptor.result submit rule", () => {
     await user.selectOptions(pick, "two");
     await user.click(screen.getByLabelText("send"));
     expect(onCallTool).toHaveBeenCalledWith("things.pick", { goal: "ship it", pick: "two" });
+  });
+
+  // Regression (query re-edit scope): a REQUIRED inline widget (the sql editor) must render
+  // persistently and STAY MOUNTED while the user types. Before the fix, the first keystroke counted
+  // the arg "filled", the single active slot moved on, and the editor UNMOUNTED mid-typing — the
+  // "sql editor closes and can't be reopened" bug.
+  it("keeps a REQUIRED inline sql editor mounted while typing, blocks empty submit, then sends", async () => {
+    const onCallTool = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={onCallTool}
+        onPostRich={noop}
+        onSendChat={noop}
+      />,
+    );
+    await user.type(screen.getByLabelText("message"), "/things.query");
+    await screen.findByRole("listbox", { name: "commands" });
+    await user.keyboard("{Enter}");
+
+    // Empty required sql → send is disabled (not runnable yet), but the editor is mounted.
+    const sql = await screen.findByLabelText("sql");
+    expect(screen.getByLabelText("send")).toBeDisabled();
+
+    // Type a whole statement — the editor survives every keystroke (THE regression).
+    await user.type(sql, "SELECT 1 FROM t");
+    expect(screen.getByLabelText("sql")).toBeInTheDocument();
+    expect((screen.getByLabelText("sql") as HTMLTextAreaElement).value).toBe("SELECT 1 FROM t");
+
+    await user.click(screen.getByLabelText("send"));
+    expect(onCallTool).toHaveBeenCalledWith("things.query", { q: "SELECT 1 FROM t" });
+  });
+
+  // PREFILL (query re-edit scope): "edit this query" reopens the palette with the tool accepted and
+  // its args seeded — an inline arg (sql) seeds its live widget — so the user never re-walks the
+  // selection stage. One-shot: the parent's consume callback fires.
+  it("prefill opens the tool with args seeded into the inline widget and is consumed once", async () => {
+    const onCallTool = vi.fn();
+    const onPrefillConsumed = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <CommandPalette
+        channel="general"
+        onPostQuery={noop}
+        onSendAgent={noop}
+        onCallTool={onCallTool}
+        onPostRich={noop}
+        onSendChat={noop}
+        prefill={{ tool: "things.query", args: { q: "SELECT 2" } }}
+        onPrefillConsumed={onPrefillConsumed}
+      />,
+    );
+    // The tool opens pre-accepted with the sql editor seeded — no command menu walk.
+    const sql = (await screen.findByLabelText("sql")) as HTMLTextAreaElement;
+    expect(sql.value).toBe("SELECT 2");
+    expect(onPrefillConsumed).toHaveBeenCalled();
+
+    // The seeded value is editable and sends verbatim.
+    await user.type(sql, " -- edited");
+    await user.click(screen.getByLabelText("send"));
+    expect(onCallTool).toHaveBeenCalledWith("things.query", { q: "SELECT 2 -- edited" });
   });
 });

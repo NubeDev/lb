@@ -27,6 +27,8 @@ pub struct PersonaPatch {
     pub granted_tools: Option<Vec<String>>,
     pub grounding_skills: Option<Vec<String>>,
     pub extends: Option<Vec<String>>,
+    /// Page surfaces (persona-session #5) — opaque strings the dock context-matches (rule 10).
+    pub surfaces: Option<Vec<String>>,
     pub policy_preset: Option<PolicyPreset>,
     pub runtimes: Option<Vec<String>>,
 }
@@ -67,6 +69,9 @@ pub async fn agent_persona_update(
     }
     if let Some(extends) = patch.extends {
         persona.extends = extends;
+    }
+    if let Some(surfaces) = patch.surfaces {
+        persona.surfaces = surfaces;
     }
     if let Some(policy_preset) = patch.policy_preset {
         persona.policy_preset = Some(policy_preset);

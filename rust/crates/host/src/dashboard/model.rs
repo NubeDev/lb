@@ -10,6 +10,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Deserialize a defaulted field tolerating an explicit JSON `null` (AI callers emit `"title": null`
+/// where a human omits the key — live, two `dashboard.save` turns died on `invalid type: null,
+/// expected a string`). `#[serde(default, deserialize_with = "null_default")]` alone only covers the ABSENT key; this covers both.
+fn null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + serde::Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// The table dashboards live in. Record id is `dashboard:{id}` (the id is a stable slug, unique per
 /// workspace).
 pub const TABLE: &str = "dashboard";
@@ -47,7 +58,7 @@ pub struct Source {
     /// `series.watch`, `<ext>.<verb>`.
     pub tool: String,
     /// The arguments passed to `tool` (opaque to the host; re-checked per call).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub args: Value,
 }
 
@@ -61,7 +72,7 @@ pub struct Action {
     pub tool: String,
     /// The argument template; a `{{value}}` token (any string leaf) is substituted with the control
     /// state on interaction. Opaque to the host.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub args_template: Value,
 }
 
@@ -74,19 +85,19 @@ pub struct Action {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Target {
     /// `"A"` | `"B"` | … — referenced by transformations + field overrides.
-    #[serde(default, rename = "refId")]
+    #[serde(default, deserialize_with = "null_default", rename = "refId")]
     pub ref_id: String,
     /// Which datasource (native | series | federation | ext). Opaque to the host.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub datasource: Value,
     /// The resolved MCP tool (`store.query` | `series.read` | `federation.query` | ext tool).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub tool: String,
     /// The query args (opaque; re-checked per call, exactly like [`Source::args`]).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub args: Value,
     /// Skip this target's data (Grafana parity).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub hide: bool,
 }
 
@@ -112,66 +123,70 @@ pub struct Cell {
     pub w: u32,
     pub h: u32,
     /// Contract version. Absent/`0`/`1` = a v1 series cell; `2` = a v2 tool-bound cell.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub v: u32,
     /// Phase 1 built-ins: `chart` | `stat` | `gauge`. Phase 2 adds `ext:<id>` (federated widgets).
+    /// Serde-defaulted like every other v-specific field: a v2+/v3 cell is `view`-addressed and has
+    /// no `widget_type` — requiring it made the live agent's first honest `dashboard.save` fail with
+    /// `missing field widget_type` on cells the catalog itself taught it to build.
+    #[serde(default, deserialize_with = "null_default")]
     pub widget_type: String,
-    /// A human title for the cell (widget-config-vars scope, Slice 1). Additive `#[serde(default)]` so a
+    /// A human title for the cell (widget-config-vars scope, Slice 1). Additive `#[serde(default, deserialize_with = "null_default")]` so a
     /// pre-title cell round-trips unchanged; `dashboard.save`/`get` carry it with no new verb. The header
     /// renders it, falling back to a derived label when empty.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub title: String,
     /// v2 render vocabulary: `chart`/`stat`/`gauge`/`table` (read), `plot`/`d3`/`template` (scripted,
     /// iframe), `switch`/`slider`/`button` (controls), `ext:<id>/<widget>` (extension tiles). Empty on
     /// a v1 cell — `widget_type` is authoritative there.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub view: String,
     /// The data binding — `{ "series": "cooler.temp" }` or `{ "find": { "tags": [...] } }`. v1; a v2
     /// cell uses `source` instead (this stays for v1 compatibility).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub binding: Value,
     /// v2 source: the `{ tool, args }` the cell reads/streams. Empty on a v1 cell.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub source: Source,
     /// v2 action: a control's write `{ tool, args_template }`. Empty on a non-control cell.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub action: Action,
     /// Widget-type-specific options (range, unit label, thresholds, inline template code). Opaque to
     /// the host.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub options: Value,
     /// v3 panel description (Grafana parity). Empty on a v1/v2 cell.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub description: String,
     /// v3 targets — supersedes the single `source`. `sources[0]` === `source` for v2 compat (the UI
     /// adapter maps a v2 single-`source` cell to a one-element `sources`). Empty on a v1/v2 cell.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub sources: Vec<Target>,
     /// v3 client-side transformation pipeline (transformations scope). Opaque to the host (the UI
     /// owns the typed `{ id, options, disabled, filter }` shape). Bounded by `save` (record growth).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub transformations: Vec<Value>,
     /// v3 `fieldConfig { defaults, overrides[] }` — per-field option defaults + per-field overrides
     /// (field-config scope: unit/decimals/min-max/thresholds/mappings/color). Opaque to the host;
     /// the UI owns the typed shape AND the user-prefs render bridge. Bounded by `save`.
-    #[serde(default, rename = "fieldConfig")]
+    #[serde(default, deserialize_with = "null_default", rename = "fieldConfig")]
     pub field_config: Value,
     /// v3 plugin version, for import/export round-trip fidelity. Empty on a v1/v2 cell.
-    #[serde(default, rename = "pluginVersion")]
+    #[serde(default, deserialize_with = "null_default", rename = "pluginVersion")]
     pub plugin_version: String,
     /// **Library-panel reference** (library-panels scope). When non-empty (`panel:{id}`) this cell is
     /// a *ref cell*: it carries only layout + the ref + bounded per-placement overrides (the `title`
     /// override above and [`Cell::panel_vars`]), and NO spec. `dashboard.get` hydrates the spec from
     /// the `panel` record at read time (host-side), keeping this marker so the editor can offer
     /// link/unlink. The ref is authoritative — a stale hydrated spec echoed back on `save` is ignored.
-    /// Empty (the default) = an inline cell, unchanged. Additive `#[serde(default)]` so inline and ref
+    /// Empty (the default) = an inline cell, unchanged. Additive `#[serde(default, deserialize_with = "null_default")]` so inline and ref
     /// cells coexist by design.
-    #[serde(default, rename = "panelRef")]
+    #[serde(default, deserialize_with = "null_default", rename = "panelRef")]
     pub panel_ref: String,
     /// Per-placement variable bindings for a ref cell (library-panels scope, the bounded override set:
     /// title + variable bindings). Opaque `Value` (a `{ name: value }` map); applied over the panel's
     /// own variable defaults at hydration. Empty on an inline cell or a ref with no overrides.
-    #[serde(default, rename = "panelVars")]
+    #[serde(default, deserialize_with = "null_default", rename = "panelVars")]
     pub panel_vars: Value,
     /// Set by `dashboard.get` hydration when a ref cell's `panel_ref` cannot be resolved (deleted,
     /// unshared, or unreadable by the viewer) — the cell renders an honest "panel not accessible"
@@ -198,28 +213,28 @@ pub struct Variable {
     /// The reference name — `$name` / `${name}` / `[[name]]`.
     pub name: String,
     /// A human label for the bar dropdown (defaults to `name` in the UI).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub label: String,
     /// The resolver kind: `query` | `custom` | `text` | `const` | `interval` | `source`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub r#type: String,
     /// `query`/`source`: the resolver `{ tool, args }` (opaque; re-checked per call).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub query: Value,
     /// `custom`: a static option list.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub custom: Vec<String>,
     /// `text`: a free-textbox default.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub text: String,
     /// `const`: a hidden fixed value.
     #[serde(default, rename = "const")]
     pub const_: String,
     /// `interval`: a duration list (feeds `$__interval`).
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub interval: Vec<String>,
     /// Selection affordances.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub multi: bool,
     #[serde(default, rename = "includeAll")]
     pub include_all: bool,
@@ -227,8 +242,8 @@ pub struct Variable {
     /// unbound (no `?var-` URL value, no default) makes the dashboard render the honest "select a
     /// `<label>`" gate (`RequiredVarGate`) instead of firing cells with a `$name`-literal query. This
     /// is what turns an ordinary dashboard into a *template* — no new record type, just a flag.
-    /// Additive `#[serde(default)]` — a pre-reusable-pages dashboard round-trips unchanged.
-    #[serde(default)]
+    /// Additive `#[serde(default, deserialize_with = "null_default")]` — a pre-reusable-pages dashboard round-trips unchanged.
+    #[serde(default, deserialize_with = "null_default")]
     pub required: bool,
 }
 
@@ -240,13 +255,13 @@ pub struct Dashboard {
     pub title: String,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub visibility: Visibility,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub cells: Vec<Cell>,
-    /// Variable definitions (widget-config-vars scope, Slice 2). Additive `#[serde(default)]` — a
+    /// Variable definitions (widget-config-vars scope, Slice 2). Additive `#[serde(default, deserialize_with = "null_default")]` — a
     /// pre-variables dashboard round-trips unchanged. The selection lives in the URL, not here.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub variables: Vec<Variable>,
     /// OUR panel-model document version (viz panel-model scope) — pinned at save, read by the
     /// import/export + migration path. Distinct from `Cell.v` (the cell *contract* version): this
@@ -256,7 +271,7 @@ pub struct Dashboard {
     pub schema_version: u32,
     pub updated_ts: u64,
     /// Tombstone (soft-delete, §6.8 idempotent). A deleted dashboard is hidden from `list`/`get`.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "null_default")]
     pub deleted: bool,
 }
 
@@ -278,5 +293,33 @@ impl From<&Dashboard> for DashboardSummary {
             visibility: d.visibility,
             updated_ts: d.updated_ts,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A model-authored cell with explicit `null`s (the live agent's shape — two `dashboard.save`
+    /// turns died on `invalid type: null, expected a string`) deserializes to the same defaults an
+    /// absent key gets.
+    #[test]
+    fn cell_tolerates_explicit_nulls() {
+        let cell: Cell = serde_json::from_value(serde_json::json!({
+            "i": "c1", "x": 0, "y": 0, "w": 6, "h": 4, "v": 3,
+            "view": "timeseries",
+            "widget_type": null,
+            "title": null,
+            "options": null,
+            "sources": null,
+            "fieldConfig": null,
+            "panelRef": null
+        }))
+        .expect("nulls deserialize as defaults");
+        assert_eq!(cell.view, "timeseries");
+        assert_eq!(cell.widget_type, "");
+        assert_eq!(cell.title, "");
+        assert!(cell.sources.is_empty());
+        assert_eq!(cell.panel_ref, "");
     }
 }

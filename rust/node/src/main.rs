@@ -139,6 +139,15 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => eprintln!("boot: persona seed failed: {e}"),
     }
 
+    // LEGACY active_persona MIGRATION (persona-session #5): one-shot copy of #1's retired
+    // workspace-global toggle into the ws-default prefs axis (`Prefs.agent_persona`), then clear it.
+    // Idempotent (a second boot finds nothing to copy); never overwrites an admin-set axis.
+    match lb_host::migrate_active_persona(&node.store).await {
+        Ok(ws) if !ws.is_empty() => println!("boot: migrated legacy active_persona in {ws:?}"),
+        Ok(_) => {}
+        Err(e) => eprintln!("boot: active_persona migration failed: {e}"),
+    }
+
     // DEFAULT CORE-SKILL GRANTS for the boot workspace (core-skills scope): `workspace_create` applies
     // the default set on a genuinely-new workspace, but the dev boot workspace is seeded directly (not
     // through that verb), so grant the resolved set here too. The set is node config —
@@ -182,6 +191,18 @@ async fn main() -> anyhow::Result<()> {
         node.clone(),
         vec![ws.clone()],
         std::time::Duration::from_secs(2),
+    );
+
+    // INSIGHT DIGEST REACTOR TICK (insight-notify scope): tame the anti-spam ladder — scan the
+    // `insight_notify` ladder state, digest keys whose window elapsed into ONE message per (sub,
+    // window), decay quiet keys, and post under each sub's stored principal (fire-time re-checked).
+    // One detached owner per node (the flows/approval precedent); each tick is a cheap ws-scoped
+    // scan and the digest item id is idempotent, so a re-drive never double-posts. A 30 s cadence
+    // is fine — digest windows are hours/days; the tick only needs to be finer than the smallest.
+    lb_host::spawn_insight_digest_reactors(
+        node.clone(),
+        vec![ws.clone()],
+        std::time::Duration::from_secs(30),
     );
 
     // NOTE: native sidecar roles (federation, control-engine) are mounted AFTER the gateway installs

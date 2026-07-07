@@ -26,7 +26,7 @@ import type {
   View,
 } from "@/lib/dashboard";
 import { cellSources } from "@/lib/dashboard";
-import type { SqlSourceState } from "./sql/query";
+import type { SqlOrderBy, SqlSourceState } from "./sql/query";
 
 /** The full editor working state — every authorable group of the panel model, reconstructed from a
  *  cell and serialized back without loss. */
@@ -132,7 +132,10 @@ export function cellToEditorState(cell: Cell): EditorState {
 
   // The SQL Builder state is stowed in `cell.options.sql` by the SQL source (both raw + builder query).
   // Rehydrate it so the Builder tab reopens to the builder, not Code-only (panel-editor scope, Risks).
-  const sql = (options.sql as SqlSourceState | undefined) ?? undefined;
+  // Normalize a legacy single-object `orderBy` to the array shape (the visual-canvas-builder WRITE
+  // contract); a pre-slice cell carrying `{column,direction}` reopens as `[{column,direction}]`. The
+  // emitter's `normalizeOrderBy` reads both, so the emitted SQL is byte-identical either way.
+  const sql = normalizeSqlOrderBy((options.sql as SqlSourceState | undefined) ?? undefined);
 
   // The per-view typed options (legend/tooltip) — everything the editor's tabs own.
   const ownedOptions: Record<string, unknown> = {};
@@ -225,4 +228,17 @@ export function editorStateToCell(state: EditorState, base: Cell): Cell {
   if (state.carry.pluginVersion) cell.pluginVersion = state.carry.pluginVersion;
 
   return cell;
+}
+
+/** Normalize a legacy single-object `SqlSourceState.builder.orderBy` to the array shape (the
+ *  visual-canvas-builder WRITE contract). A pre-slice cell carrying `{column,direction}` reopens as
+ *  `[{column,direction}]`; an array or absent orderBy passes through unchanged. The emitter reads
+ *  both shapes via `normalizeOrderBy`, so the emitted SQL is byte-identical either way. */
+function normalizeSqlOrderBy(sql: SqlSourceState | undefined): SqlSourceState | undefined {
+  if (!sql?.builder) return sql;
+  const ob = sql.builder.orderBy as unknown;
+  if (!ob || Array.isArray(ob) || typeof ob !== "object") return sql;
+  // Legacy single-object shape — wrap to the array (the WRITE contract). The emitter reads both
+  // shapes via `normalizeOrderBy`, so the emitted SQL is byte-identical either way.
+  return { ...sql, builder: { ...sql.builder, orderBy: [ob as SqlOrderBy] } };
 }

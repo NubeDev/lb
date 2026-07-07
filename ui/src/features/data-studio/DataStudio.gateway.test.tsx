@@ -1,14 +1,15 @@
-// Data Studio v2/v3 — the multi-pane workbench, driven against a REAL in-process gateway (data-studio
-// scope v3, "v3 testing plan"; CLAUDE §9 / testing §0 — no fake backend). Each test signs into a
-// UNIQUE workspace and drives the real view + FlexLayout + api clients + HTTP transport. v3 collapses
-// explore + build into ONE stacked builder tab: picking a source opens a builder DIRECTLY (preview on
-// TOP, Query/SQL on the BOTTOM) — no read-only explore hop. Covers the headline (pick a seeded source →
-// a BUILDER TAB renders real rows through `viz.query` → Save-as-library `panel.save` round-trips), the
-// SQL-editor-when-needed (surfaces for a Direct-SurrealDB source, absent for a series source), opening
-// an existing panel from the Library into the stacked builder, the per-user LAYOUT PERSISTENCE (the real
-// `layout.get`/`set` verbs: a reload restores the tabs + drafts; another member sees THEIR OWN default —
-// member-owned), the mandatory capability-deny (no `panel.save` → no save affordance + the verb denied
-// server-side), and workspace isolation (nothing crosses to ws-B).
+// Data Studio 10x — the Dockview multi-pane workbench, driven against a REAL in-process gateway
+// (data-studio-10x scope, all 4 phases; CLAUDE §9 / testing §0 — no fake backend). Each test signs
+// into a UNIQUE workspace and drives the real view + Dockview + api clients + HTTP transport. Covers
+// the headline (pick a seeded source via the CatalogExplorer tree → a BUILDER TAB renders real rows
+// through `viz.query` → Save-as-library `panel.save` round-trips through the new Save split-button),
+// the SQL-editor-when-needed (surfaced in the stacked Query section only after a source that needs it
+// is picked — the picker in the rail's Sources tab is the CatalogExplorer now), opening an existing
+// panel from the Library into the stacked builder, the per-user LAYOUT PERSISTENCE (the real
+// `layout.get`/`set` verbs — a reload restores the tabs + drafts; another member sees THEIR OWN
+// default), the legacy-layout fallback (a stored flexlayout blob → default workbench + reset notice),
+// the mandatory capability-deny (no `panel.save` → no "save as library panel" split-menu item + the
+// verb denied server-side) and workspace isolation (nothing crosses to ws-B).
 
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -20,17 +21,16 @@ import { useRealGateway, signInReal, signInWithCaps, seedIotDemo } from "@/test/
 import { RoutingContextProvider } from "@/features/routing/RoutingContextProvider";
 import { getSession } from "@/lib/session";
 import { getPanel, listPanels, savePanel } from "@/lib/panel";
-import { getLayout } from "@/lib/layout";
+import { getLayout, setLayout } from "@/lib/layout";
 
 let n = 0;
 const nextWs = () => `studio-${n++}`;
 
 beforeAll(() => useRealGateway());
 
-// jsdom computes no layout, and FlexLayout refuses to draw tab content into a 0×0 rect (its
-// `updateRect` guards `width !== 0`). Give every element a real-sized rect and nudge the layout via a
-// window `resize` (FlexLayout's resize listener calls `updateRect` synchronously). Restored after the
-// file — the gateway pool shares a worker across files.
+// jsdom computes no layout. Dockview also measures DOM (its split panes call `getBoundingClientRect`),
+// so give every element a real-sized rect — same stub the FlexLayout tests used (rect-stubbing carries
+// over per the scope's testing plan). Restored after the file — the gateway pool shares a worker.
 const realGetRect = HTMLElement.prototype.getBoundingClientRect;
 beforeAll(() => {
   HTMLElement.prototype.getBoundingClientRect = function () {
@@ -42,7 +42,7 @@ afterAll(() => {
 });
 
 /** Render the studio inside the shell's routing context, fed the REAL signed session's caps. */
-function renderStudio(ws: string) {
+function renderStudio(ws: string, allowed: string[] = ["data-studio"]) {
   const s = getSession();
   return render(
     <RoutingContextProvider
@@ -50,7 +50,7 @@ function renderStudio(ws: string) {
         workspace: ws,
         principal: s?.principal ?? "",
         caps: s?.caps,
-        allowed: ["data-studio"],
+        allowed: allowed as never,
         extPages: [],
         extPagesLoading: false,
         onSignOut: () => {},
@@ -63,24 +63,35 @@ function renderStudio(ws: string) {
 }
 
 /** Render + wait for the dock to mount (the saved layout loads async), then fire a resize so
- *  FlexLayout measures its (stubbed) rect and draws the tab contents. */
-async function mountStudio(ws: string) {
-  const view = renderStudio(ws);
+ *  Dockview measures its (stubbed) rect and draws the panel contents. */
+async function mountStudio(ws: string, allowed = ["data-studio"]) {
+  const view = renderStudio(ws, allowed);
+  // The Sources/Library rail tab buttons render once the studio shell mounts.
   await screen.findAllByText("Sources");
   fireEvent(window, new Event("resize"));
   return view;
 }
 
-/** Pick the seeded `cooler.temp` series in the Sources pane → opens a BUILDER tab directly (v3). */
+/** Click the seeded `cooler.temp` series row in the CatalogExplorer tree → opens a BUILDER tab.
+ *  The explorer is LAZY per section — the Series section starts collapsed; expanding its header is
+ *  what fires `series.list` and surfaces the rows. */
 async function openCoolerExplore(user: ReturnType<typeof userEvent.setup>) {
-  const source = await screen.findByLabelText("explore source");
-  await screen.findByRole("option", { name: "cooler.temp" });
-  await user.selectOptions(source, "series:cooler.temp");
-  // v3: no explore hop — the stacked builder mounts directly.
-  await screen.findByLabelText("panel builder");
+  // 1) Expand the Series section (the trigger click fires `loadSection("series")` on first open).
+  const seriesToggle = await screen.findByLabelText("toggle section Series", {}, { timeout: 5000 });
+  fireEvent.click(seriesToggle);
+  // 2) Now the series row appears (the lazy chunk + the API call both need to resolve).
+  const seriesRow = await screen.findByLabelText("insert series cooler.temp", {}, { timeout: 5000 });
+  await user.click(seriesRow);
+  await screen.findByLabelText("panel builder", {}, { timeout: 5000 });
 }
 
-describe("Data Studio v2 workbench (real gateway)", () => {
+/** Run the staged query (the stacked builder reveals preview/gallery/options only after rows exist). */
+async function runStagedQuery(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByLabelText("run query"));
+  await screen.findByLabelText("panel preview");
+}
+
+describe("Data Studio 10x — the Dockview workbench (real gateway)", () => {
   it("pick source → stacked builder → save as library panel round-trips; the layout + draft persist per user", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
@@ -88,18 +99,25 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     await seedIotDemo();
 
     const first = await mountStudio(ws);
-    // v3: picking a source lands DIRECTLY in the stacked builder (preview top, query bottom) — no hop.
     await openCoolerExplore(user);
 
-    // The live preview renders through the ONE render path (`PreviewPane` → `WidgetView` → `viz.query`).
-    expect(await screen.findByLabelText("panel preview")).toBeInTheDocument();
+    // Stacked query-first: PRE-RUN, only the toolbar + the query editor mount (no preview/gallery/options).
+    expect(screen.queryByLabelText("panel preview")).toBeNull();
+    expect(screen.queryByLabelText("visualization gallery")).toBeNull();
 
-    // Name it and save it to the library (the shipped `panel.save` flow; the slug prompt is stubbed).
-    const title = await screen.findByLabelText("panel title");
+    // Run the seeded query → rows land → the visual stages reveal (preview on top, gallery below, options
+    // folded into the collapsed drawer). All through the ONE render path (`PreviewPane` → `WidgetView` →
+    // `viz.query`).
+    await runStagedQuery(user);
+
+    // Name it and save it to the library. The stacked builder's Save split-button's caret reveals the
+    // "save as library panel" menu item (the inline LibraryPanelBar is split-layout only).
+    const title = screen.getByLabelText("panel title");
     await user.clear(title);
     await user.type(title, "Cooler explore");
     window.prompt = () => "cooler-explore";
-    await user.click(screen.getByLabelText("save as library panel"));
+    await user.click(screen.getByLabelText("more save options"));
+    await user.click(await screen.findByLabelText("save as library panel"));
 
     // Round-trip: the REAL record exists with the built spec (source + view), per rule 9.
     await waitFor(async () => {
@@ -107,11 +125,11 @@ describe("Data Studio v2 workbench (real gateway)", () => {
       expect(p.title).toBe("Cooler explore");
       expect(p.spec.sources?.[0]?.tool).toBe("series.read");
     });
-    // The tab shows the saved-as marker.
-    expect((await screen.findByRole("status")).textContent).toMatch(/cooler-explore/);
+    // The tab shows the compact saved-as badge (still role="status", named lookup).
+    expect((await screen.findByRole("status", { name: "saved as" })).textContent).toMatch(/cooler-explore/);
 
     // LAYOUT PERSISTENCE: the debounced `layout.set` lands the model (incl. the tabs) in the caller's
-    // member-owned record.
+    // member-owned record (versioned `{engine:"dockview", model}`).
     await waitFor(
       async () => {
         const l = await getLayout(DATA_STUDIO_SURFACE);
@@ -121,8 +139,7 @@ describe("Data Studio v2 workbench (real gateway)", () => {
       { timeout: 8000 },
     );
 
-    // Reload: a fresh mount restores the debugging setup — the explore tab (by its tab button; an
-    // inactive tab's content mounts on demand) AND the active builder tab's full surface.
+    // Reload: a fresh mount restores the debugging setup — the dock tab's title + the builder surface.
     first.unmount();
     await mountStudio(ws);
     expect((await screen.findAllByText("cooler.temp")).length).toBeGreaterThan(0);
@@ -143,8 +160,8 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     );
     ada.unmount();
 
-    // Ben, SAME workspace: his own (absent) layout — the default workbench, no builder tab. (Minted
-    // via the seed-session route — dev login only auto-provisions a FRESH workspace.)
+    // Ben, SAME workspace: his own (absent) layout — the default workbench, no builder tab. (Minted via
+    // the seed-session route — dev login only auto-provisions a FRESH workspace.)
     await signInWithCaps("user:ben", ws, [
       "mcp:series.list:call",
       "mcp:series.read:call",
@@ -155,7 +172,10 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     const l = await getLayout(DATA_STUDIO_SURFACE);
     expect(l.model).toBeNull();
     await mountStudio(ws);
-    await screen.findByLabelText("explore source");
+    // The CatalogExplorer renders (the rail's default Sources tab); the Series section is wired + idle
+    // (lazy), so the section header is present but the row is NOT until Ben expands it.
+    expect(await screen.findByLabelText("toggle section Series")).toBeInTheDocument();
+    expect(screen.queryByLabelText("insert series cooler.temp")).toBeNull();
     expect(screen.queryByLabelText("panel builder")).toBeNull();
   }, 30000);
 
@@ -168,7 +188,8 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     const a = await mountStudio(wsA);
     await openCoolerExplore(user);
     window.prompt = () => "walled-panel";
-    await user.click(screen.getByLabelText("save as library panel"));
+    await user.click(screen.getByLabelText("more save options"));
+    await user.click(await screen.findByLabelText("save as library panel"));
     await waitFor(async () => expect((await listPanels()).length).toBe(1));
     await waitFor(
       async () => expect(JSON.stringify((await getLayout(DATA_STUDIO_SURFACE)).model)).toContain("builder"),
@@ -183,7 +204,7 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     expect(await listPanels()).toEqual([]);
   }, 30000);
 
-  it("capability-deny — no `panel.save`: no save affordance, and the verb is refused server-side", async () => {
+  it("capability-deny — no `panel.save`: no split-menu save-as-library, and the verb is refused server-side", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     // Enough to explore (list/read series through viz.query) + persist a layout — but NOT panel.save.
@@ -204,13 +225,17 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     await mountStudio(ws);
     await openCoolerExplore(user);
 
-    // The affordance is gone (the palette-gate precedent)…
+    // Without the cap, the split-button caret ("more save options") is absent — no save-as-library
+    // affordance (the primary Save-to-tab stays; it persists to the in-memory draft only).
+    expect(screen.queryByLabelText("more save options")).toBeNull();
     expect(screen.queryByLabelText("save as library panel")).toBeNull();
     // …and the host is the real boundary regardless.
-    await expect(savePanel("sneak", "Sneak", { widget_type: "chart", binding: { series: "" } })).rejects.toThrow();
+    await expect(
+      savePanel("sneak", "Sneak", { widget_type: "chart", binding: { series: "" } }),
+    ).rejects.toThrow();
   }, 30000);
 
-  it("SQL editor surfaces for a Direct-SurrealDB source and is absent for a series source (v3 stacked)", async () => {
+  it("SQL editor surfaces for a Direct-SurrealDB source and is absent for a series source (stacked)", async () => {
     const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
@@ -220,14 +245,21 @@ describe("Data Studio v2 workbench (real gateway)", () => {
 
     // A series source → the friendly picker, NO SQL editor (the conditional stays hidden).
     await openCoolerExplore(user);
-    await screen.findByLabelText("panel preview");
+    // Pre-Run, the stage-1 QueryTargets owns the `panel datasource` SELECT + the SQL editor surface.
     expect(screen.queryByLabelText("sql query editor")).toBeNull();
 
-    // Pick the "SQL query (direct SurrealDB)" source in the same builder tab's bottom Query section →
-    // the Builder⇄Code `SqlQueryEditor` appears (surfaced in the new stacked layout, not rebuilt).
-    const panelSource = await screen.findByLabelText("panel source");
-    await user.selectOptions(panelSource, "sql:query");
-    expect(await screen.findByLabelText("sql query editor")).toBeInTheDocument();
+    // Pick "SurrealDB (native)" in the builder tab's Query section, then the "SQL query (direct
+    // SurrealDB)" source entry → the Builder⇄Code `SqlQueryEditor` appears (surfaced in the stacked
+    // layout, not rebuilt). `panel source` is the SourceCombobox — focus opens it, mouseDown picks.
+    const ds = screen.getByLabelText("panel datasource") as HTMLSelectElement;
+    await user.selectOptions(ds, "surreal");
+    // The select patches the editor state; let the QueryTab re-render with the surreal target before
+    // driving the source combobox (a focus before the new paint lands can no-op).
+    await new Promise((r) => setTimeout(r, 300));
+    fireEvent.focus(await screen.findByLabelText("panel source"));
+    const sqlOpt = await screen.findByRole("option", { name: "SQL query (direct SurrealDB)" });
+    fireEvent.mouseDown(sqlOpt);
+    expect(await screen.findByLabelText("sql query editor", {}, { timeout: 5000 })).toBeInTheDocument();
   }, 30000);
 
   it("opening an existing library panel lands in the stacked builder (preview + query, one tab)", async () => {
@@ -244,18 +276,55 @@ describe("Data Studio v2 workbench (real gateway)", () => {
     } as never);
 
     await mountStudio(ws);
-    // The Library pane is border-docked (Sources is the selected border tab by default); click the
-    // Library border tab button to mount its content, then open the seeded panel.
-    const libTab = (await screen.findAllByText("Library")).find((el) =>
-      el.closest(".flexlayout__border_button"),
-    );
-    await user.click(libTab!);
-    fireEvent(window, new Event("resize"));
-    // Open it from the Library dock pane → ONE stacked builder tab (preview on top, query on bottom).
+    // Sources is the rail's default tab; switch to the Library rail tab to mount the roster.
+    await user.click(await screen.findByRole("tab", { name: "library tab" }));
+    // Open it from the Library roster → ONE stacked builder tab (preview on top, query on bottom).
     await user.click(await screen.findByLabelText("open library panel Existing chart"));
     expect(await screen.findByLabelText("panel builder")).toBeInTheDocument();
+    // Stacked builder requires a Run to reveal preview; run it, then assert preview renders.
+    await runStagedQuery(user);
     expect(await screen.findByLabelText("panel preview")).toBeInTheDocument();
     // The title round-tripped into the editor — the chart is the focus, its source available below.
-    await waitFor(() => expect((screen.getByLabelText("panel title") as HTMLInputElement).value).toBe("Existing chart"));
+    await waitFor(() =>
+      expect((screen.getByLabelText("panel title") as HTMLInputElement).value).toBe("Existing chart"),
+    );
+  }, 30000);
+
+  it("the studio rail minimizes to the shared collapsed strip and expands back", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+
+    await mountStudio(ws);
+    // The CatalogExplorer tree is mounted on the Sources rail tab.
+    await screen.findByLabelText("data explorer", {}, { timeout: 5000 });
+
+    // Minimize → the rail folds to the shared CollapsedRail strip (same kit as every other surface).
+    await user.click(screen.getByLabelText("minimize studio rail"));
+    expect(screen.queryByLabelText("data explorer")).toBeNull();
+    await user.click(await screen.findByLabelText("expand studio rail"));
+    expect(await screen.findByLabelText("data explorer", {}, { timeout: 5000 })).toBeInTheDocument();
+  }, 30000);
+
+  it("legacy-layout fallback — a stored flexlayout blob → default workbench + the one-time reset notice", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    // Pre-seed a LEGACY flexlayout blob (no `engine:"dockview"` tag) as the member's saved layout —
+    // exactly what a real returning user from the v2/v3 era has in their record.
+    await setLayout(DATA_STUDIO_SURFACE, {
+      // A recognizable flexlayout-era shape: `layout` top-level key, no `engine`.
+      layout: { id: "root", type: "row", children: [{ type: "tabset", children: [{ type: "tab" }] }] },
+    } as never);
+
+    await mountStudio(ws);
+    // The dock falls back to the default workbench (no crash) AND surfaces the one-time notice.
+    expect(await screen.findByLabelText("layout reset notice")).toBeInTheDocument();
+    // The catalog still renders — the studio is usable. The corrupted layout is NOT restored.
+    await screen.findByLabelText("data explorer", {}, { timeout: 5000 });
+    // Dismiss the notice.
+    await userEvent.setup().click(screen.getByLabelText("dismiss layout reset notice"));
+    await waitFor(() => expect(screen.queryByLabelText("layout reset notice")).toBeNull());
   }, 30000);
 });

@@ -15,6 +15,27 @@ use super::store::{read_dashboard, write_dashboard};
 /// The S4 share edge kind (identical to doc sharing) — `dashboard -[share]-> team`.
 const SHARE: &str = "share";
 
+/// The `dashboard.share` descriptor — a real arg schema so a model advertised the verb can form
+/// the call (live, the agent's share failed on a mis-typed `now` it had to guess).
+pub fn share_descriptor() -> lb_mcp::ToolDescriptor {
+    lb_mcp::ToolDescriptor {
+        name: "dashboard.share".to_string(),
+        title: "Set a dashboard's visibility (private / team / workspace)".to_string(),
+        group: "dashboard".to_string(),
+        input_schema: Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string", "x-lb": { "label": "Dashboard id" } },
+                "visibility": { "type": "string", "enum": ["private", "team", "workspace"], "x-lb": { "label": "Visibility" } },
+                "team": { "type": "string", "x-lb": { "label": "Team", "description": "Required only for visibility=team" } },
+                "now": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "Logical time of the share — unix epoch seconds" } }
+            },
+            "required": ["id", "visibility", "now"]
+        })),
+        result: None,
+    }
+}
+
 /// Set `id`'s visibility in `ws` as `principal` (owner-only), at logical time `now`. When `team` is
 /// given (the `team` tier), writes the `share` edge so members of that team can read it. Returns the
 /// updated record.
@@ -35,7 +56,7 @@ pub async fn dashboard_share(
         .ok_or(DashboardError::NotFound)?;
 
     // Only the owner shares their dashboard (mirrors `share_doc`).
-    if dashboard.owner != principal.sub() {
+    if dashboard.owner != principal.owner_sub() {
         return Err(DashboardError::Denied);
     }
 

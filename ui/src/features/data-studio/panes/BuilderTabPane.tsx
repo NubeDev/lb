@@ -45,9 +45,17 @@ export function BuilderTabPane({ config, ws, scope, onConfigChange, onSavedToLib
   return (
     <div className="flex h-full min-h-0 flex-col">
       {config.savedAs && (
-        <div className="border-b border-border bg-panel px-3 py-1.5 text-xs" role="status">
-          Saved as library panel <span className="font-medium">{config.savedAs}</span> — reusable on any
-          dashboard (Add library panel) and at <span className="font-mono">/panel/{config.savedAs}</span>.
+        // The saved-as marker as a compact badge (10x phase 3: the banner slims down), full detail on hover.
+        <div
+          aria-label="saved as"
+          role="status"
+          title={`Saved as library panel ${config.savedAs} — reusable on any dashboard (Add library panel) and at /panel/${config.savedAs}.`}
+          className="flex items-center gap-1.5 border-b border-border px-3 py-1 text-[0.65rem] text-muted"
+        >
+          <span className="rounded-sm border border-border bg-panel px-1.5 py-0.5 font-medium uppercase tracking-wide">
+            library
+          </span>
+          <span className="font-mono">{config.savedAs}</span>
         </div>
       )}
       <div className="min-h-0 flex-1">

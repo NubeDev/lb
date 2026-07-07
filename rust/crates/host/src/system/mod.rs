@@ -37,6 +37,7 @@ mod topology;
 
 pub use acp_verb::system_acp;
 pub use authorize::authorize_system;
+pub(crate) use catalog::host_catalog;
 pub use error::SystemError;
 pub use model::{
     AcpInfo, Health, Metric, ServiceStatus, SubsystemDetail, SystemOverview, SystemTools,

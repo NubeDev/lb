@@ -28,6 +28,27 @@ fn member_caps() -> Vec<String> {
         // verbs also back the flow `approval` gate + `sink` outbox node — rules-workflow-convergence.)
         "mcp:inbox.record:call",
         "mcp:outbox.enqueue:call",
+        // insights scope (umbrella + sub-scopes): the durable insight surface. Member-level for
+        // the read/act verbs (list/get/watch/ack/resolve/occurrences) + the producer raise; sub
+        // CRUD is member-owned (the owner is host-stamped from the caller); policy.get is member-
+        // read, policy.set is admin (the dev login doubles as admin). The gateway re-checks each
+        // cap server-side per verb (the deny-per-verb test). The matcher + ladder + digest
+        // reactor are pure / reactor-driven (no cap of their own — they run under the sub's stored
+        // principal + the system reactor authority).
+        "mcp:insight.raise:call",
+        "mcp:insight.get:call",
+        "mcp:insight.list:call",
+        "mcp:insight.watch:call",
+        "mcp:insight.ack:call",
+        "mcp:insight.resolve:call",
+        "mcp:insight.occurrences:call",
+        "mcp:insight.sub.create:call",
+        "mcp:insight.sub.list:call",
+        "mcp:insight.sub.get:call",
+        "mcp:insight.sub.delete:call",
+        "mcp:insight.sub.mute:call",
+        "mcp:insight.policy.get:call",
+        "mcp:insight.policy.set:call",
         "mcp:workspace.list:call",
         "mcp:workspace.create:call",
         // admin-crud: the dev principal is a workspace admin so the console can exercise every
@@ -272,6 +293,23 @@ fn member_caps() -> Vec<String> {
         "mcp:rules.get:call",
         "mcp:rules.list:call",
         "mcp:rules.delete:call",
+        // query scope (the saved-PRQL/raw-query surface sibling to rules): the `query.*` verbs the
+        // datasources detail page + the source-picker Queries group + the rules `source("query:…")` seam
+        // reach over the `POST /mcp/call` bridge. Member-level — any member may author/run their own
+        // saved queries (workspace wall + the no-widening target cap inside `query.run` still decide what
+        // a run may actually read). `query.run` COMPOSES the target's cap, never widens it: the caller
+        // also needs `mcp:store.query:call` (platform, granted above) or `mcp:federation.query:call`
+        // (datasource, granted above) — held here, so the no-widening deny bites only for a token
+        // missing the target cap, not for the dev member. The wildcards below cover `.get`/`.list`/
+        // `.delete` but NOT `.save`/`.run`/`.compile` (no such wildcard), so all six are listed explicitly
+        // (mirrors the rules block above). The gateway re-checks each cap server-side; a token without
+        // a given verb is refused per verb (the deny-per-verb test).
+        "mcp:query.save:call",
+        "mcp:query.run:call",
+        "mcp:query.compile:call",
+        "mcp:query.get:call",
+        "mcp:query.list:call",
+        "mcp:query.delete:call",
         // flows (flows-canvas + dashboard-binding scopes, Wave 3) — the shipped `flows.*` typed-node
         // engine verbs the flows gateway routes check. Member-level — any member may author/run their
         // own flows (workspace wall + the no-widening run gate still decide what a run may do). The

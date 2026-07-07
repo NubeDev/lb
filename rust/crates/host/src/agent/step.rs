@@ -92,11 +92,15 @@ pub(crate) async fn run_calls(
         let outcome = match call_tool(node, agent, ws, &c.name, &c.input).await {
             Ok(out) => CallOutcome {
                 id: c.id.clone(),
+                name: c.name.clone(),
+                input: c.input.clone(),
                 ok: Some(out),
                 error: None,
             },
             Err(e) => CallOutcome {
                 id: c.id.clone(),
+                name: c.name.clone(),
+                input: c.input.clone(),
                 ok: None,
                 error: Some(e.to_string()),
             },

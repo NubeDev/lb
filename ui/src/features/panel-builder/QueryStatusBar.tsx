@@ -9,6 +9,7 @@
 
 import { AlertTriangle, CheckCircle2, CircleDashed, Database, Loader2, Snowflake } from "lucide-react";
 
+import { formatMs } from "@/lib/format/formatMs";
 import type { SourceState } from "@/features/dashboard/builder/useSource";
 
 interface Props {
@@ -24,14 +25,6 @@ interface Props {
   frozen?: boolean;
 }
 
-/** Format a duration in ms compactly. */
-function ms(n: number | undefined): string | null {
-  if (n === undefined) return null;
-  if (n < 1) return "<1 ms";
-  if (n < 1000) return `${Math.round(n)} ms`;
-  return `${(n / 1000).toFixed(2)} s`;
-}
-
 /** "as of HH:MM:SS" from an epoch-ms fetch time (local). */
 function asOf(at: number | undefined): string | null {
   if (!at) return null;
@@ -44,7 +37,7 @@ function asOf(at: number | undefined): string | null {
 
 export function QueryStatusBar({ state, hasTarget, rangeLabel, frozen }: Props) {
   const { rows, loading, denied, meta } = state;
-  const duration = ms(meta?.ms);
+  const duration = formatMs(meta?.ms);
   const at = asOf(meta?.fetchedAt);
 
   let icon = <CircleDashed size={12} className="text-muted" aria-hidden />;

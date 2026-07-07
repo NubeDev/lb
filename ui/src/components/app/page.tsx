@@ -12,6 +12,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Reveal } from "@/lib/motion";
 import { AppPageHeader } from "./page-header";
+import { useEmbeddedPage } from "./page-embedded";
 
 interface AppPageProps {
   /** aria-label for the section, e.g. "dashboard view". Also names the error region. */
@@ -24,6 +25,9 @@ interface AppPageProps {
   actions?: ReactNode;
   /** Page-level error — rendered as the canonical destructive-token `role="alert"` strip. */
   error?: string | null;
+  /** Mounted inside a dock pane: suppress the full-width header (the dock tab is the title bar).
+   *  Defaults from the `EmbeddedPageContext` a pane host provides, so routed views need no prop. */
+  embedded?: boolean;
   /** The body row: a roster `AppRail` + the main region (or an `AppEmptyState`). */
   children: ReactNode;
 }
@@ -36,17 +40,22 @@ export function AppPage({
   workspace,
   actions,
   error,
+  embedded,
   children,
 }: AppPageProps) {
+  const ctxEmbedded = useEmbeddedPage();
+  const inPane = embedded ?? ctxEmbedded;
   return (
     <section aria-label={label} className="flex h-full min-w-0 flex-col bg-bg text-fg">
-      <AppPageHeader
-        icon={icon}
-        title={title}
-        description={description}
-        workspace={workspace}
-        actions={actions}
-      />
+      {!inPane && (
+        <AppPageHeader
+          icon={icon}
+          title={title}
+          description={description}
+          workspace={workspace}
+          actions={actions}
+        />
+      )}
 
       {error ? (
         <div

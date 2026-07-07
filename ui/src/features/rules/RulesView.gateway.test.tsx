@@ -174,8 +174,7 @@ describe("RulesView (real gateway)", () => {
     // Author a fresh rule, then create it via the name-first rail form. The id is derived from the
     // name (a slug) — the user only types the name; "Cooler check" → id "cooler-check".
     await typeBody(user, "1 + 1");
-    await user.click(screen.getByLabelText("new rule"));
-    await user.type(screen.getByLabelText("new rule name"), "Cooler check");
+    await user.type(screen.getByLabelText("new rule title"), "Cooler check");
     await user.click(screen.getByLabelText("create rule"));
 
     // Persisted: re-fetch the saved rule through the real `rules.get` path — the round-trip is faithful.
@@ -218,8 +217,7 @@ describe("RulesView (real gateway)", () => {
 
     // Name-first create → `onSelectRule` fires with the derived id so the surface can push the URL.
     await typeBody(user, "1 + 1");
-    await user.click(screen.getByLabelText("new rule"));
-    await user.type(screen.getByLabelText("new rule name"), "Aidan two");
+    await user.type(screen.getByLabelText("new rule title"), "Aidan two");
     await user.click(screen.getByLabelText("create rule"));
 
     // The create resolves asynchronously; wait for the surface callback to receive the derived id.
@@ -236,8 +234,7 @@ describe("RulesView (real gateway)", () => {
 
     // Create a rule, then rename it through the header rename form.
     await typeBody(user, "1 + 1");
-    await user.click(screen.getByLabelText("new rule"));
-    await user.type(screen.getByLabelText("new rule name"), "First name");
+    await user.type(screen.getByLabelText("new rule title"), "First name");
     await user.click(screen.getByLabelText("create rule"));
 
     await user.click(await screen.findByLabelText("rename rule"));

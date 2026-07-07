@@ -21,6 +21,13 @@ use serde_json::{json, Value};
 pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
     let mut out: Vec<ToolDescriptor> = vec![
         crate::federation::query_descriptor(),
+        // The discovery twin (datasources-ux scope): a real `{source, table?}` schema so a model
+        // (or the palette) can form the call — without it the agent probes `information_schema`
+        // SQL through federation.query and hits the steering rejection instead of the answer.
+        crate::federation::schema_descriptor(),
+        // The AI-context snapshot (datasource-samples scope): one call returning tables + columns
+        // + foreign keys + LIMIT-n rows, so a model can write correct SQL without probing.
+        crate::federation::sample_descriptor(),
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
@@ -44,6 +51,15 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // `mcp:dashboard.pin:call` gate decides its visibility — no new cap, no `if` in the catalog. The
         // verb mints a persisted cell from any `x-lb-render` envelope (generic over the tool id, rule 10).
         crate::dashboard::pin_descriptor(),
+        // The dashboard upsert (dashboard scope). A real schema so a model can form the call — the
+        // name-only row left the live agent sending `cells` as a JSON-encoded string every turn
+        // (see save.rs::save_descriptor).
+        crate::dashboard::save_descriptor(),
+        // The visibility write (dashboard scope) — schema'd so a model can form the call.
+        crate::dashboard::share_descriptor(),
+        // The channel write (channel-widgets scope) — schema'd so a model can form the call; the
+        // name-only row left the live agent guessing arg names ("missing arg: cid" × a whole run).
+        crate::channel::post_descriptor(),
     ];
     out.extend(crate::host_tools::secret_descriptors());
     out
@@ -66,7 +82,9 @@ pub(crate) fn validate_args(schema: Option<&Value>, input: &Value) -> Result<(),
     if matches!(obj.get("type").and_then(Value::as_str), Some("object")) && !input.is_object() {
         return Err(ToolError::BadInput("expected an object".to_string()));
     }
-    // `required` — each listed property must be present and non-null.
+    // `required` — each listed property must be present and non-null. The miss names the arg's own
+    // declared `x-lb.description` when there is one: this error feeds back into an agent loop, and a
+    // bare arg name taught the live model nothing (13 × "missing arg: cid" in one run, 2026-07-06).
     if let Some(required) = obj.get("required").and_then(Value::as_array) {
         let input_obj = input
             .as_object()
@@ -74,7 +92,17 @@ pub(crate) fn validate_args(schema: Option<&Value>, input: &Value) -> Result<(),
         for key in required.iter().filter_map(Value::as_str) {
             match input_obj.get(key) {
                 None | Some(Value::Null) => {
-                    return Err(ToolError::BadInput(format!("missing required arg: {key}")));
+                    let hint = obj
+                        .get("properties")
+                        .and_then(|p| p.get(key))
+                        .and_then(|p| p.get("x-lb"))
+                        .and_then(|x| x.get("description"))
+                        .and_then(Value::as_str)
+                        .map(|d| format!(" — {d}"))
+                        .unwrap_or_default();
+                    return Err(ToolError::BadInput(format!(
+                        "missing required arg: {key}{hint}"
+                    )));
                 }
                 _ => {}
             }
@@ -158,6 +186,19 @@ mod tests {
         let s = federation_query_schema();
         let err = validate_args(Some(&s), &json!({ "source": 5, "sql": "SELECT 1" })).unwrap_err();
         assert!(matches!(err, ToolError::BadInput(m) if m.contains("source")));
+    }
+
+    // The channel.post schema exists (the name-only row burned a live run on guessed arg names) and
+    // a missing required arg's error carries the arg's own x-lb description — the agent-loop feedback.
+    #[test]
+    fn channel_post_missing_cid_error_names_where_the_cid_comes_from() {
+        let d = crate::channel::post_descriptor();
+        let schema = d.input_schema.expect("channel.post declares a schema");
+        let err = validate_args(Some(&schema), &json!({ "id": "m1", "body": "hi" })).unwrap_err();
+        assert!(
+            matches!(err, ToolError::BadInput(ref m) if m.contains("conversation channel")),
+            "the miss must say where the cid comes from"
+        );
     }
 
     #[test]

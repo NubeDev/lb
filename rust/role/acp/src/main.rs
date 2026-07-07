@@ -78,6 +78,7 @@ fn parse_tools(raw: &str) -> Vec<AllowedTool> {
         .map(|name| AllowedTool {
             name: name.to_string(),
             description: name.to_string(),
+            input_schema: None,
         })
         .collect()
 }

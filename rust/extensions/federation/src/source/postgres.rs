@@ -74,4 +74,39 @@ impl Source for PostgresSource {
         // Read the source's own catalog via the shared discovery runner (Postgres `pg_catalog`).
         crate::query::run_list_tables(self, "postgres").await
     }
+
+    async fn foreign_keys(&self, table: &str) -> Result<Vec<super::ForeignKeyMeta>, SourceError> {
+        // FK metadata via the standard `information_schema` views, joined in the engine through the
+        // same catalog runner discovery uses. Best-effort: any failure (a view the pushdown provider
+        // can't introspect, an odd remote) is an EMPTY list, never an error — a missing FK catalog
+        // must not fail a `federation.sample` snapshot.
+        let t = table.replace('\'', "''");
+        let sql = format!(
+            "SELECT kcu.column_name AS col, ccu.table_name AS ref_table, \
+                    ccu.column_name AS ref_col \
+             FROM __tc__ tc \
+             JOIN __kcu__ kcu ON tc.constraint_name = kcu.constraint_name \
+             JOIN __ccu__ ccu ON tc.constraint_name = ccu.constraint_name \
+             WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = '{t}' \
+             ORDER BY kcu.column_name"
+        );
+        let bindings = [
+            ("__tc__", "information_schema.table_constraints"),
+            ("__kcu__", "information_schema.key_column_usage"),
+            ("__ccu__", "information_schema.constraint_column_usage"),
+        ];
+        let rows = crate::query::catalog_rows(self, &sql, &bindings)
+            .await
+            .unwrap_or_default();
+        Ok(rows
+            .into_iter()
+            .filter_map(|obj| {
+                Some(super::ForeignKeyMeta {
+                    column: obj.get("col")?.as_str()?.to_string(),
+                    ref_table: obj.get("ref_table")?.as_str()?.to_string(),
+                    ref_column: obj.get("ref_col")?.as_str()?.to_string(),
+                })
+            })
+            .collect())
+    }
 }

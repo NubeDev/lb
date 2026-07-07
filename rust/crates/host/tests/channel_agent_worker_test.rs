@@ -489,6 +489,7 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
         &AgentConfig {
             active_definition: None,
             active_persona: None,
+            enabled_personas: None,
             default_runtime: Some(STUB.into()),
             model_endpoint: None,
         },
@@ -524,5 +525,557 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
     assert_eq!(
         parsed["runtime"], STUB,
         "agent_result.runtime must label the resolved runtime, not `default`"
+    );
+}
+
+/// CHANNEL-WIDGETS: an agent run that proposes `channel.post` with a `rich_result` body lands a REAL
+/// rendered-widget item in the conversation's channel history (the dock renders it through the shipped
+/// ResponseView path), alongside the normal `agent_result`. Also pins the goal contract: the run's
+/// goal carries the `[conversation channel: <cid>]` line the skill keys on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_run_can_post_a_rich_result_widget_into_its_own_channel() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-1";
+
+    let envelope = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "table",
+        "source": { "tool": "store.query", "args": { "sql": "SELECT * FROM site" } },
+        "tools": ["store.query"],
+    })
+    .to_string();
+    let model = Arc::new(AiGateway::new(MockProvider::new(vec![
+        lb_role_ai_gateway::AiResponse::calls(
+            "posting a live table",
+            vec![lb_role_ai_gateway::ToolCall {
+                id: "c1".into(),
+                name: "channel.post".into(),
+                input: serde_json::json!({ "cid": cid, "id": "w1", "ts": 2, "body": envelope })
+                    .to_string(),
+            }],
+            1,
+        ),
+        AiResponse::stop("here is your table, rendered live", 1),
+    ])));
+    node.install_runtimes(RuntimeRegistry::with_default(model as Arc<dyn ErasedModel>));
+
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+            "mcp:channel.post:call",
+        ],
+    );
+
+    let body = agent_request_body("show me the sites as a table", None, "run-widget");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The durable answer posted as usual.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["answer"], "here is your table, rendered live");
+
+    // The rich_result widget item is IN the channel history, bound to the real query.
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let widget = items
+        .iter()
+        .find(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)
+        })
+        .expect("the run posted a rich_result item into its own channel");
+    let w: serde_json::Value = serde_json::from_str(&widget.body).unwrap();
+    assert_eq!(w["view"], "table");
+    assert_eq!(w["source"]["tool"], "store.query");
+
+    // The goal the run saw carries the channel id (the fact the skill's choreography keys on).
+    let job = lb_jobs::load(&node.store, ws, "run-widget")
+        .await
+        .expect("load run job")
+        .expect("run job exists");
+    assert!(
+        job.payload
+            .contains(&format!("[conversation channel: {cid}]")),
+        "the run goal must name its channel; got: {}",
+        job.payload
+    );
+
+    // WORKSPACE ISOLATION (mandatory): a ws-B principal cannot read the widget item.
+    let outsider = principal("globex", &[&format!("bus:chan/{cid}:sub")]);
+    assert!(
+        history(&node.store, &outsider, "globex", cid)
+            .await
+            .map(|items| items.is_empty())
+            .unwrap_or(true),
+        "the rich_result must be invisible outside its workspace"
+    );
+}
+
+/// CHANNEL-WIDGETS capability deny (mandatory): a poster WITHOUT `mcp:channel.post:call` has the
+/// agent's `channel.post` proposal denied at the wall — no rich_result lands — while the run itself
+/// still completes with its text answer (a tool deny is fed back, never a crash).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn without_channel_post_cap_the_widget_post_is_denied_but_the_run_answers() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-2";
+
+    let model = Arc::new(AiGateway::new(MockProvider::new(vec![
+        lb_role_ai_gateway::AiResponse::calls(
+            "",
+            vec![lb_role_ai_gateway::ToolCall {
+                id: "c1".into(),
+                name: "channel.post".into(),
+                input: serde_json::json!({ "cid": cid, "body": "{\"kind\":\"rich_result\",\"v\":2,\"view\":\"table\"}" })
+                    .to_string(),
+            }],
+            1,
+        ),
+        AiResponse::stop("could not render a widget (posting denied); here is the data in text", 1),
+    ])));
+    node.install_runtimes(RuntimeRegistry::with_default(model as Arc<dyn ErasedModel>));
+
+    // No `mcp:channel.post:call` — the agent inherits `poster ∩ agent`, so the post must be denied.
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("show me the sites as a table", None, "run-widget-deny");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    assert!(
+        !items
+            .iter()
+            .any(|i| serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)),
+        "a poster without channel.post must not get a rich_result item from the agent"
+    );
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("the run still completes with a text answer");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["kind"], "agent_result");
+}
+
+/// CHANNEL-WIDGETS genui gate: an agent that posts a genui `rich_result` in the WRONG IR dialect
+/// (`type` instead of `component`, no per-component `id`, no `surface`) is rejected loudly at
+/// `channel.post` — the `BadInput` feeds back into the loop and the corrected repost lands. Exactly
+/// the dashboard.save behavior, now on the preview path: a broken IR never reaches the dock, and the
+/// only genui item in history is the valid one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_malformed_genui_rich_result_is_rejected_and_the_corrected_repost_lands() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-3";
+
+    // The live defect observed in the dock run (2026-07-06): the not-our-IR dialect.
+    let wrong_dialect = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "components": { "root": { "type": "stack" } }
+        } } },
+    })
+    .to_string();
+    // The corrected IR: `component` + repeated `id` + `v:1` + `surface{surfaceId,root}`.
+    let corrected = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "v": 1,
+            "surface": { "surfaceId": "s1", "root": "root" },
+            "components": {
+                "root": { "id": "root", "component": "stack", "children": ["t1"] },
+                "t1": { "id": "t1", "component": "text", "props": { "text": "sites" } }
+            }
+        } } },
+    })
+    .to_string();
+
+    let model = Arc::new(AiGateway::new(MockProvider::new(vec![
+        lb_role_ai_gateway::AiResponse::calls(
+            "posting a genui widget",
+            vec![lb_role_ai_gateway::ToolCall {
+                id: "c1".into(),
+                name: "channel.post".into(),
+                input:
+                    serde_json::json!({ "cid": cid, "id": "w-bad", "ts": 2, "body": wrong_dialect })
+                        .to_string(),
+            }],
+            1,
+        ),
+        // The loop fed the BadInput back; the "model" self-corrects and reposts.
+        lb_role_ai_gateway::AiResponse::calls(
+            "fixing the IR",
+            vec![lb_role_ai_gateway::ToolCall {
+                id: "c2".into(),
+                name: "channel.post".into(),
+                input:
+                    serde_json::json!({ "cid": cid, "id": "w-good", "ts": 3, "body": corrected })
+                        .to_string(),
+            }],
+            1,
+        ),
+        AiResponse::stop("here is your widget", 1),
+    ])));
+    node.install_runtimes(RuntimeRegistry::with_default(model as Arc<dyn ErasedModel>));
+
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+            "mcp:channel.post:call",
+        ],
+    );
+
+    let body = agent_request_body("build me a genui widget", None, "run-genui-gate");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The run survived the rejected post and answered.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["answer"], "here is your widget");
+
+    // ONLY the corrected genui widget landed; the wrong-dialect one never reached the channel.
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let genui_items: Vec<_> = items
+        .iter()
+        .filter(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result" && v["view"] == "genui")
+                .unwrap_or(false)
+        })
+        .collect();
+    assert_eq!(
+        genui_items.len(),
+        1,
+        "exactly one (valid) genui rich_result must land"
+    );
+    assert_eq!(genui_items[0].id, "w-good");
+    assert!(!items.iter().any(|i| i.id == "w-bad"));
+}
+
+/// CHANNEL-WIDGETS (no-`channel.post` dock path): an agent that emits its widget as a fenced
+/// ```lb-widget block INSIDE its final answer text gets the envelope split off by the worker — the
+/// durable `agent_result` carries the STRIPPED prose answer, and a separate `rich_result` widget
+/// item lands in the same dock channel under the worker's authorship, correlated to the run
+/// (`w:<job>`). The model never calls `channel.post`; the worker owns the cid. This is the path the
+/// agent dock uses — the model is not asked to discover a channel id or fight arg schemas.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-user-ada-widget-block";
+
+    let envelope = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "v": 1,
+            "surface": { "surfaceId": "s1", "root": "root" },
+            "components": {
+                "root": { "id": "root", "component": "stack", "children": ["t1"] },
+                "t1":   { "id": "t1", "component": "text", "props": { "value": "hi" } }
+            }
+        } } },
+        "sources": [{ "refId": "A", "tool": "store.query", "args": { "sql": "SELECT 1" } }],
+        "tools": ["store.query"],
+    })
+    .to_string();
+
+    // The model emits the widget INSIDE its prose answer — no `channel.post` tool call.
+    let answer = format!(
+        "Here's the widget I built:\n\n```lb-widget\n{envelope}\n```\nLet me know if you want changes."
+    );
+    node.install_runtimes(RuntimeRegistry::with_default(answer_model(&answer)));
+
+    // NOTE: no `mcp:channel.post:call` grant — the new path requires NO channel-post capability.
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("build me a widget", None, "run-widget-block");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The agent_result is STRIPPED — the fenced block is gone from the persisted answer.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["kind"], "agent_result");
+    let answer_text = parsed["answer"].as_str().expect("answer string");
+    assert!(
+        !answer_text.contains("```lb-widget") && !answer_text.contains("\"view\":\"genui\""),
+        "the fenced block must be stripped from the persisted answer: {answer_text}"
+    );
+    assert!(
+        answer_text.contains("Here's the widget I built:") && answer_text.contains("Let me know"),
+        "the surrounding prose stays: {answer_text}"
+    );
+
+    // A separate `rich_result` widget item landed in the same channel, under the worker's authorship,
+    // correlated to the run (`w:<job>`).
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let widget = items
+        .iter()
+        .find(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)
+        })
+        .expect("the worker posted a rich_result widget item into the dock channel");
+    assert_eq!(widget.author, "system:agent-worker");
+    assert_eq!(widget.id, "w:run-widget-block");
+    let w: serde_json::Value = serde_json::from_str(&widget.body).unwrap();
+    assert_eq!(w["view"], "genui");
+    assert_eq!(w["options"]["genui"]["ir"]["surface"]["root"], "root");
+
+    // The widget item sorts AFTER the agent_result (worker posts widget at ts+1).
+    let result_idx = items
+        .iter()
+        .position(|i| i.id == "a:run-widget-block")
+        .expect("result present");
+    let widget_idx = items
+        .iter()
+        .position(|i| i.id == "w:run-widget-block")
+        .expect("widget present");
+    assert!(widget_idx > result_idx, "widget lands after the answer");
+
+    // WORKSPACE ISOLATION (mandatory): a ws-B principal cannot read the widget item.
+    let outsider = principal("globex", &[&format!("bus:chan/{cid}:sub")]);
+    assert!(
+        history(&node.store, &outsider, "globex", cid)
+            .await
+            .map(|items| items.is_empty())
+            .unwrap_or(true),
+        "the widget item must be invisible outside its workspace"
+    );
+}
+
+/// CHANNEL-WIDGETS (no-`channel.post` dock path): a present-but-INVALID fenced block (the wrong IR
+/// dialect) is left in the answer text — no widget item lands, the user sees what the agent tried.
+/// The worker is best-effort, not a second gate: a bad block is not a run fault.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn an_invalid_widget_block_in_the_answer_is_left_untouched_no_widget_lands() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-user-ada-widget-bad";
+
+    // The wrong IR dialect (the live 2026-07-06 defect): `type` instead of `component`.
+    let bad = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "components": { "root": { "type": "stack" } }
+        } } },
+    })
+    .to_string();
+    let answer = format!("```lb-widget\n{bad}\n```");
+    node.install_runtimes(RuntimeRegistry::with_default(answer_model(&answer)));
+
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("build me a widget", None, "run-widget-bad");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    // No widget item landed.
+    assert!(
+        !items
+            .iter()
+            .any(|i| serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)),
+        "an invalid block must not yield a widget item"
+    );
+    // The block is LEFT in the persisted answer so the user sees the agent's attempt.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    let answer_text = parsed["answer"].as_str().expect("answer string");
+    assert!(
+        answer_text.contains("```lb-widget"),
+        "an invalid block is left in the answer (visible to the user): {answer_text}"
+    );
+}
+
+/// RENDER-WIDGETS (built-in view dock path): the no-`channel.post` extractor is GENERIC over the
+/// `rich_result` view. A `view:"stat"` fenced block (the shipped single-number renderer — NOT genui)
+/// is split off by the worker exactly like the genui case: the durable `agent_result` carries the
+/// STRIPPED prose, and a separate `rich_result` widget item with `view:"stat"` lands in the same
+/// dock channel under the worker's authorship, correlated to the run (`w:<job>`). This locks the
+/// non-genui render path: a `stat`/`chart`/`gauge`/`table`/etc. preview works identically to `genui`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-user-ada-stat-block";
+
+    // A built-in `view:"stat"` envelope — the shipped StatPanel renderer, not genui. Bound to a real
+    // store.query the worker re-runs at view time; `fieldConfig.defaults.unit` styles the value (the
+    // render-widgets skill's "average session time" example).
+    let envelope = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "stat",
+        "source": { "tool": "store.query",
+                    "args": { "sql": "SELECT duration_s AS value FROM session LIMIT 1" } },
+        "options": { "reduceOptions": { "calcs": ["mean"], "fields": ["value"] },
+                     "textMode": "auto", "colorMode": "value" },
+        "fieldConfig": { "defaults": { "unit": "s" } },
+        "tools": ["store.query"],
+    })
+    .to_string();
+
+    // The model emits the widget INSIDE its prose answer — no `channel.post` tool call.
+    let answer = format!(
+        "Here's the average session time:\n\n```lb-widget\n{envelope}\n```\nWant me to pin it?"
+    );
+    node.install_runtimes(RuntimeRegistry::with_default(answer_model(&answer)));
+
+    // NOTE: no `mcp:channel.post:call` grant — the dock path requires NO channel-post capability.
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("make me a stat widget for avg session time", None, "run-stat-block");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The agent_result is STRIPPED — the fenced block (and the envelope JSON) is gone from the answer.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["kind"], "agent_result");
+    let answer_text = parsed["answer"].as_str().expect("answer string");
+    assert!(
+        !answer_text.contains("```lb-widget") && !answer_text.contains("\"view\":\"stat\""),
+        "the fenced block must be stripped from the persisted answer: {answer_text}"
+    );
+    assert!(
+        answer_text.contains("Here's the average session time:") && answer_text.contains("Want me to pin it?"),
+        "the surrounding prose stays: {answer_text}"
+    );
+
+    // A separate `rich_result` widget item with view:"stat" landed in the same channel under the
+    // worker's authorship, correlated to the run (`w:<job>`).
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let widget = items
+        .iter()
+        .find(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)
+        })
+        .expect("the worker posted a rich_result widget item into the dock channel");
+    assert_eq!(widget.author, "system:agent-worker");
+    assert_eq!(widget.id, "w:run-stat-block");
+    let w: serde_json::Value = serde_json::from_str(&widget.body).unwrap();
+    assert_eq!(w["view"], "stat", "the non-genui view survives the split");
+    assert_eq!(w["source"]["tool"], "store.query");
+    assert_eq!(w["options"]["reduceOptions"]["calcs"][0], "mean");
+    assert_eq!(w["fieldConfig"]["defaults"]["unit"], "s");
+
+    // The widget item sorts AFTER the agent_result (worker posts widget at ts+1).
+    let result_idx = items
+        .iter()
+        .position(|i| i.id == "a:run-stat-block")
+        .expect("result present");
+    let widget_idx = items
+        .iter()
+        .position(|i| i.id == "w:run-stat-block")
+        .expect("widget present");
+    assert!(widget_idx > result_idx, "widget lands after the answer");
+
+    // WORKSPACE ISOLATION (mandatory): a ws-B principal cannot read the widget item.
+    let outsider = principal("globex", &[&format!("bus:chan/{cid}:sub")]);
+    assert!(
+        history(&node.store, &outsider, "globex", cid)
+            .await
+            .map(|items| items.is_empty())
+            .unwrap_or(true),
+        "the stat widget item must be invisible outside its workspace"
     );
 }

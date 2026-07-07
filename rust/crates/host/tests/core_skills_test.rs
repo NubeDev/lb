@@ -305,12 +305,37 @@ async fn creating_a_workspace_applies_the_default_core_skill_grants() {
 }
 
 #[test]
-fn the_default_set_is_the_read_only_core_skills_with_an_env_override() {
-    // Compiled-in defaults are the decided read-only set.
-    assert_eq!(
-        DEFAULT_CORE_SKILLS,
-        &["core.lb-cli", "core.query", "core.store-read"]
+fn the_default_set_is_the_persona_grounding_set_with_an_env_override() {
+    // The compiled-in defaults are the persona-grounding set — every grounding skill the built-in
+    // persona catalog (`personas/personas.toml`) pins, so a fresh workspace's built-in personas all
+    // start (a pinned skill is fail-closed at run assembly). This set GROWS as personas are added,
+    // so we assert invariants + canonical members rather than a brittle whole-array equality (the
+    // old `== &["core.lb-cli","core.query","core.store-read"]` rotted the moment the catalog grew).
+    assert!(
+        !DEFAULT_CORE_SKILLS.is_empty(),
+        "the default grant set is non-empty (persona grounding)"
     );
+    assert!(
+        DEFAULT_CORE_SKILLS.iter().all(|id| id.starts_with("core.")),
+        "every default id is a well-formed core id"
+    );
+    // Canonical members every built-in persona pins — spot-check the ones this test historically
+    // guarded (read-only defaults) PLUS the per-persona grounding skills added since.
+    for canonical in [
+        "core.lb-cli",
+        "core.query",
+        "core.store-read",
+        "core.panels",
+        "core.rules",
+        "core.insights",
+    ] {
+        assert!(
+            DEFAULT_CORE_SKILLS.contains(&canonical),
+            "canonical default {canonical} missing (the persona-grounding set rotted)"
+        );
+    }
+    // A write-driving skill is NOT in the default set (read-only defaults, scope decision).
+    assert!(!DEFAULT_CORE_SKILLS.contains(&"core.secrets"));
     // The env-style override parses a comma list; empty ⇒ none (a workspace with no default grants).
     assert_eq!(
         resolve_default_core_skills(Some("core.query, core.tags")),
@@ -367,6 +392,7 @@ async fn run_and_capture_context(
             tools: &[AllowedTool {
                 name: "skill.activate".into(),
                 description: "activate a granted skill".into(),
+                input_schema: None,
             }],
             ts: 1,
         },

@@ -50,7 +50,7 @@ describe("theme storage", () => {
     // The old shape has no `preset`/`radius`/`layout`; normalize fills them with defaults (accent dropped).
     expect(loadThemePreference(storage)).toEqual({
       mode: "light",
-      preset: "amber",
+      preset: "teal",
       radius: "0.5rem",
       look: "default",
       layout: DEFAULT_LAYOUT,

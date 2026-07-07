@@ -80,7 +80,7 @@ Do NOT re-ask the user to "click /agent and read the dropdown".
 
 - User starts the node exactly as:
   ```
-  ZAI_API_KEY=e171bd6cf46844eeb651afa886af5d61.m3VLPilTkFJpYMms make dev EXTAGENT=1
+  ZAI_API_KEY=<redacted: z.ai token — never stored in docs> make dev EXTAGENT=1
   ```
 - In a channel, a plain message goes to the **in-house `default`** agent and returns:
   `no in-house model is configured on this node; select an external runtime (e.g.

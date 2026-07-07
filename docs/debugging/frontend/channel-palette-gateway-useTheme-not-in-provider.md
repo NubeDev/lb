@@ -79,3 +79,12 @@ sentinel).
 - Pattern precedent: `debugging/frontend/ext-widget-standalone-mount-throws-no-dashboard-cache-provider.md`
   (a strict "must be inside provider X" guard is right for a narrow consumer but a bug for a broader
   one — add an optional variant, don't loosen the strict guard).
+
+## Resolution (2026-07-05)
+
+Fixed via option (2): `useMotionPref` now reads `useThemeOptional()?.theme ?? DEFAULT_THEME` instead
+of the throwing `useTheme()`, so `<Reveal>` (and every motion-wrapped surface) degrades to the
+default motion preference outside a `ThemeProvider`. Both palette gateway suites (8 tests) and the
+11 `RulesView.gateway.test.tsx` tests are green again. Regression test:
+`ui/src/lib/motion/useMotionPref.test.tsx`. Full write-up:
+[reveal-crashes-outside-theme-provider.md](reveal-crashes-outside-theme-provider.md).

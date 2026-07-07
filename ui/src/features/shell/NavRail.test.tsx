@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NavRail, type CoreSurface, type ResolvedNavItem } from "./NavRail";
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { BrandingProvider } from "@/lib/branding";
 import { ThemeProvider } from "@/lib/theme/ThemeProvider";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
@@ -21,15 +22,17 @@ function renderRail(props: {
 }) {
   return render(
     <ThemeProvider>
-      <SidebarProvider>
-        <NavRail
-          active="channels"
-          onSelect={vi.fn()}
-          onSignOut={vi.fn()}
-          allowed={props.allowed}
-          resolvedItems={props.resolvedItems}
-        />
-      </SidebarProvider>
+      <BrandingProvider workspace="acme">
+        <SidebarProvider>
+          <NavRail
+            active="channels"
+            onSelect={vi.fn()}
+            onSignOut={vi.fn()}
+            allowed={props.allowed}
+            resolvedItems={props.resolvedItems}
+          />
+        </SidebarProvider>
+      </BrandingProvider>
     </ThemeProvider>,
   );
 }

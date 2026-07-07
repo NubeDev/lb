@@ -3,6 +3,7 @@
 // matching Flows/Dashboard. Data lives in useChannel/usePresence; this file is layout + wiring only
 // (FILE-LAYOUT).
 
+import { useState } from "react";
 import { Hash } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
@@ -12,7 +13,7 @@ import { useChannel } from "./useChannel";
 import { usePresence } from "./usePresence";
 import { ChannelList } from "./ChannelList";
 import { MessageList } from "./MessageList";
-import { CommandPalette } from "./palette/CommandPalette";
+import { CommandPalette, type PalettePrefill } from "./palette/CommandPalette";
 
 interface Props {
   ws: string;
@@ -35,6 +36,15 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
   // Installed extensions — threaded to the message list so an `ext:<id>` rich_result response view mounts
   // the extension's real tile (the response-side ext widget path).
   const { rows: installed } = useExtensions();
+
+  // Query re-edit: a result/error card's "Run again" posts a fresh kind:"query"; "Edit" prefills the
+  // palette with the recorded source + sql so the user never re-walks the datasource selection.
+  const [prefill, setPrefill] = useState<PalettePrefill | null>(null);
+  const queryActions = {
+    rerun: (source: string, sql: string) => void postQuery(source, sql),
+    edit: (source: string, sql: string) =>
+      setPrefill({ tool: "federation.query", args: { source, sql } }),
+  };
 
   return (
     <AppPage
@@ -76,7 +86,15 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
             <div className="h-12 w-3/4 animate-pulse rounded-md border border-border bg-panel" />
           </div>
         ) : (
-          <MessageList items={items} author={author} ws={ws} installed={installed} onEdit={edit} onDelete={remove} />
+          <MessageList
+            items={items}
+            author={author}
+            ws={ws}
+            installed={installed}
+            onEdit={edit}
+            onDelete={remove}
+            queryActions={queryActions}
+          />
         )}
 
         <CommandPalette
@@ -86,6 +104,8 @@ export function ChannelView({ ws, channel, author, now, onSelectChannel, onSwitc
           onCallTool={callTool}
           onPostRich={postRich}
           onSendChat={send}
+          prefill={prefill}
+          onPrefillConsumed={() => setPrefill(null)}
         />
       </div>
     </AppPage>

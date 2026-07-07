@@ -5,7 +5,7 @@
 // deletable — so the Edit button is hidden for them.
 
 import { useEffect, useRef, useState } from "react";
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, Paperclip, Pencil, Trash2, X } from "lucide-react";
 
 import type { Item } from "@/lib/channel/channel.types";
 import type { ExtRow } from "@/lib/ext/ext.api";
@@ -31,6 +31,12 @@ interface Props {
   /** Run ids that already have a durable answer/error (from MessageList) — a settled `agent` request
    *  hides its "running…" placeholder. */
   settledJobs?: Set<string>;
+  /** Optional gather-as-context seam (agent-context-basket scope) — when present, every row gets a
+   *  toggle that adds/removes it from the caller's context basket (the dock passes this; the channel
+   *  view doesn't, so it renders nothing there). */
+  contextAction?: { has: (id: string) => boolean; toggle: (id: string) => void };
+  /** Optional query rerun/edit seam (query re-edit scope) — threaded to QueryCard. */
+  queryActions?: import("./query/QueryCard").QueryActions;
 }
 
 /** The agent payload kinds route to AgentCard; everything else kind-tagged goes to QueryCard. */
@@ -45,7 +51,17 @@ function isRichResult(p: ReturnType<typeof parsePayload>): p is RichResultPayloa
   return !!p && p.kind === "rich_result";
 }
 
-export function MessageItem({ item, author, ws, installed, onEdit, onDelete, settledJobs }: Props) {
+export function MessageItem({
+  item,
+  author,
+  ws,
+  installed,
+  onEdit,
+  onDelete,
+  settledJobs,
+  contextAction,
+  queryActions,
+}: Props) {
   const payload = parsePayload(item.body);
   const isOwn = item.author === author;
   // Edit applies to plain chat text only — a kind-tagged payload is structured, not free text.
@@ -98,6 +114,25 @@ export function MessageItem({ item, author, ws, installed, onEdit, onDelete, set
     <li className="group rounded-md border border-border bg-panel px-3 py-2 text-sm shadow-sm shadow-black/5">
       <div className="mb-1 flex items-center gap-2">
         <div className="truncate text-xs font-medium text-accent">{item.author}</div>
+        {contextAction && !editing && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`ml-auto h-7 w-7 ${
+              contextAction.has(item.id)
+                ? "text-accent"
+                : "opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+            }`}
+            aria-label={
+              contextAction.has(item.id) ? "Remove from context" : "Add to context"
+            }
+            aria-pressed={contextAction.has(item.id)}
+            title={contextAction.has(item.id) ? "Remove from context" : "Add to context"}
+            onClick={() => contextAction.toggle(item.id)}
+          >
+            <Paperclip size={14} />
+          </Button>
+        )}
         {isOwn && !editing && (
           <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             {canEdit && (
@@ -171,7 +206,12 @@ export function MessageItem({ item, author, ws, installed, onEdit, onDelete, set
       ) : isRichResult(payload) ? (
         <ResponseView payload={payload} workspace={ws} installed={installed} itemKey={item.id} />
       ) : payload ? (
-        <QueryCard payload={payload} channel={item.channel} itemId={item.id} />
+        <QueryCard
+          payload={payload}
+          channel={item.channel}
+          itemId={item.id}
+          queryActions={queryActions}
+        />
       ) : (
         <div className="break-words leading-6 text-fg">{item.body}</div>
       )}

@@ -13,6 +13,7 @@ import { CAP, hasCap, useSession } from "@/lib/session";
 
 import { BrandColors } from "./BrandColors";
 import { FontPicker } from "./FontPicker";
+import { IconColors } from "./IconColors";
 import { ImportField } from "./ImportField";
 import { LookPicker } from "./LookPicker";
 import { ModeToggle } from "./ModeToggle";
@@ -59,6 +60,8 @@ export function ThemeTab() {
       <ModeToggle />
       <Separator />
       <ImportField />
+      <Separator />
+      <IconColors />
       <Separator />
       <BrandColors />
       <Separator />

@@ -139,6 +139,22 @@ Incremental, highest-traffic first; the gate is "no new debt," not "convert ever
 3. **Delete on last caller.** When a `globals.css` control class has no callers, remove it.
    The file shrinks as the primitives take over — that deletion is the proof the fork closed.
 
+### The admin tabs — `AdminPanel` → `AppPage` (the open fork)
+
+The five-plus admin tabs (`WebhooksAdmin`, `PeopleAdmin`, `TeamsAdmin`, `RolesAdmin`,
+`WorkspacesAdmin`, `ApiKeysAdmin`) all wrap in the **legacy** [`AdminPanel`](../../../ui/src/features/admin/AdminPanel.tsx)
+(icon · title · action · plain workspace text — a flat `border-b` header), so they read
+visually **distinct** from the canonical `AppPage` surfaces a user opens around them
+(Dashboards, Rules). `AdminPanel` predates this standard; it is **not** an alternative shell,
+it is the migration backlog. **The webhooks tab is the first to migrate** — see
+[`webhooks-admin-scope.md`](webhooks-admin-scope.md) for the slice that adopts `AppPage`
+(accent header, boxed icon, workspace chip, settings link, page-transition `Reveal`) and
+extracts the page into one-component-per-file during the move. The other tabs follow as a
+named follow-up under [`admin-console-scope.md`](admin-console-scope.md) (see its Related);
+`AdminPanel.tsx` itself is deleted when its last caller leaves. **No admin tab may stay on
+`AdminPanel` past its next edit** — the freeze applies (a re-touched admin tab migrates onto
+`AppPage` in the same change, not after).
+
 The mechanical loop: migrate a view → **remove its path from `LEGACY_VIEWS`** in
 `ui/eslint.config.js` (it now errors on regression) → re-run `pnpm lint`. When `LEGACY_VIEWS`
 is empty, flip the `lint` script to `eslint src --max-warnings 0` so the standard is fully
@@ -194,6 +210,8 @@ standard:
   pull in the generator when the component set grows" is what this scope answers.
 - `scope/frontend/admin-console-scope.md`, `dashboard-scope.md`, `data-console-scope.md` — the
   surfaces with the most legacy controls / hardest responsive work.
+- `scope/frontend/webhooks-admin-scope.md` — the **first admin tab** migrating off `AdminPanel`
+  onto `AppPage`; the reference slice for the rest of the `admin/*` migration named here.
 - Canonical code: `ui/src/features/members/MembersView.tsx`,
   `ui/src/features/shell/NavRail.tsx`, `ui/src/components/ui/sidebar.tsx`,
   `ui/src/components/app/page-header.tsx`.

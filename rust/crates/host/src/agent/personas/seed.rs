@@ -46,6 +46,8 @@ struct ManifestEntry {
     #[serde(default)]
     extends: Vec<String>,
     #[serde(default)]
+    surfaces: Vec<String>,
+    #[serde(default)]
     policy_preset: Option<PolicyPreset>,
     #[serde(default)]
     runtimes: Option<Vec<String>>,
@@ -93,6 +95,7 @@ pub fn builtin_personas() -> Result<Vec<Persona>, StoreError> {
             granted_tools: e.granted_tools,
             grounding_skills: e.grounding_skills,
             extends: e.extends,
+            surfaces: e.surfaces,
             policy_preset: e.policy_preset,
             runtimes: e.runtimes,
             builtin: true,

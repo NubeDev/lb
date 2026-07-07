@@ -45,6 +45,9 @@ pub fn rehydrate(system: &str, goal: &str, events: &[&TranscriptEvent]) -> LoopS
     // The tool outcomes accumulated within the current turn — flushed to `messages` + `prior` when
     // the turn's results are all in (the live loop pushed one combined "tool" message per turn).
     let mut pending: Vec<CallOutcome> = Vec::new();
+    // id → (name, args) of every proposed call, so each result folds back with its call context.
+    let mut proposed: std::collections::HashMap<String, (String, String)> =
+        std::collections::HashMap::new();
     let flush = |pending: &mut Vec<CallOutcome>, state: &mut LoopState| {
         if pending.is_empty() {
             return;
@@ -65,13 +68,22 @@ pub fn rehydrate(system: &str, goal: &str, events: &[&TranscriptEvent]) -> LoopS
             }
             // Proposed calls are not replayed into `messages` (the model already saw them as its own
             // output); only their *results* re-enter the conversation. The args live on the record
-            // for an `Allow→replay` resume (Part 2), read directly off the transcript there.
-            TranscriptEvent::ToolCallProposed { .. } => {}
-            TranscriptEvent::ToolResult { id, ok, err } => pending.push(CallOutcome {
-                id: id.clone(),
-                ok: ok.clone(),
-                error: err.clone(),
-            }),
+            // for an `Allow→replay` resume (Part 2), read directly off the transcript there — and
+            // are remembered here so the paired `ToolResult` outcome carries name+input (the
+            // provider echoes them as the assistant `tool_calls` message the wire shape requires).
+            TranscriptEvent::ToolCallProposed { id, name, args } => {
+                proposed.insert(id.clone(), (name.clone(), args.clone()));
+            }
+            TranscriptEvent::ToolResult { id, ok, err } => {
+                let (name, input) = proposed.get(id).cloned().unwrap_or_default();
+                pending.push(CallOutcome {
+                    id: id.clone(),
+                    name,
+                    input,
+                    ok: ok.clone(),
+                    error: err.clone(),
+                })
+            }
             TranscriptEvent::SkillActivated { id } => {
                 if !state.active_skills.iter().any(|s| s == id) {
                     state.active_skills.push(id.clone());

@@ -12,9 +12,11 @@ mod authorize;
 mod chart;
 mod chart_pref;
 mod chart_pref_tool;
+mod context_items;
 mod delete;
 mod edit;
 mod error;
+mod genui_check;
 mod history;
 mod key;
 mod payload;
@@ -23,6 +25,7 @@ mod presence;
 mod query_worker;
 mod subscribe;
 mod tool;
+mod widget_extract;
 
 // The durable enqueue record + the background-drive entry — consumed by the `agent_reactor`
 // (crate-internal). `run-lifecycle #5` moved the run off the POST connection: `run_if_agent`
@@ -49,7 +52,7 @@ pub(crate) use payload::{
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};
 pub use subscribe::{subscribe_channel, ChannelSub};
-pub use tool::call_channel_tool;
+pub use tool::{call_channel_tool, post_descriptor};
 
 // Re-export the bus-key helpers crate-internally so the sync layer publishes/subscribes on the
 // EXACT same keys `post`/`subscribe_channel` use — they cannot drift (one owner, `key.rs`).

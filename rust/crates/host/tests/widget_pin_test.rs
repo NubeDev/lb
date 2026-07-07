@@ -558,3 +558,180 @@ async fn pin_appends_alongside_hand_authored_cells() {
     assert!(ids.contains(&"g1"));
     assert!(ids.contains(&"pin-reminder-list"));
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_carries_a_genui_envelopes_declared_sources_through() {
+    // CHANNEL-WIDGETS slice: a `genui` rich_result previewed in the dock binds `/data/{refId}` against
+    // real `sources[]` targets — pinning it must carry those targets onto the cell VERBATIM (before the
+    // hidden extra-tools fold), or the pinned widget renders with no data.
+    let ws = "wp-genui-sources";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ada = principal("user:ada", ws, &[PIN, GET]);
+
+    let env = json!({
+        "view": "genui",
+        "options": { "genui": { "v": 1, "ir": {
+            "v": 1,
+            "surface": { "surfaceId": "s1", "root": "root" },
+            "components": {
+                "root": { "id": "root", "component": "table",
+                          "props": { "rows": { "$bind": "/data/A/rows" } } }
+            }
+        } } },
+        "sources": [
+            { "refId": "A", "tool": "store.query", "args": { "sql": "SELECT * FROM site" } },
+            { "refId": "B", "tool": "series.latest", "args": { "series": "office/temp" } }
+        ],
+        "tools": ["store.query", "series.latest"]
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "d", "title": "D", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("genui envelope pins");
+    let cell = &d["cells"][0];
+    assert_eq!(cell["view"], "genui");
+    assert_eq!(cell["options"]["genui"]["ir"]["v"], 1);
+    // The declared targets carried through first, verbatim (refIds intact, not hidden)…
+    assert_eq!(cell["sources"][0]["refId"], "A");
+    assert_eq!(cell["sources"][0]["tool"], "store.query");
+    assert_eq!(cell["sources"][0]["hide"], serde_json::json!(false));
+    assert_eq!(cell["sources"][1]["refId"], "B");
+    // …and NO duplicate hidden leash entries — a tool already covered by a declared target is not
+    // re-folded (the leash reads it from the target itself).
+    assert_eq!(cell["sources"].as_array().unwrap().len(), 2);
+}
+
+/// LIBRARY-PANELS: pinning an envelope NOW also saves it as a reusable `panel:{slug}` record (the
+/// "widget table") AND attaches the dashboard cell by REFERENCE — so the user can later drop the same
+/// widget onto other dashboards or open it in the data studio. The pin caller does NOT need
+/// `mcp:panel.save:call` — pin is a privileged internal writer for the panel it just authored. The
+/// persisted cell stores layout + `panel_ref` only (the spec is on the panel); the hydrated return
+/// value carries the full spec so a `setCurrent` renders without a reload.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
+    let ws = "wp-panel-ref";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // PIN-only caller for the WRITE half (proves pin is its own authority for the panel it writes).
+    // `panel.get` is added ONLY so the test can INSPECT the panel record afterwards — personas grant
+    // `panel.*` so a real dock user has it; the pin itself never asks for it.
+    const PANEL_GET: &str = "mcp:panel.get:call";
+    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+
+    let env = json!({
+        "view": "table",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("pin");
+    // The hydrated return value still carries the full spec (hydrate re-inflates from the panel).
+    let cell = &d["cells"][0];
+    assert_eq!(cell["i"], "pin-reminder-list");
+    assert_eq!(cell["view"], "table");
+    assert_eq!(cell["panelRef"], "panel:reminder-list");
+    assert_eq!(cell["source"]["tool"], "reminder.list");
+
+    // The persisted cell (raw store, post-strip) is layout + ref only — no spec on the cell row.
+    let raw = dashboard_get(&node.store, &ada, ws, "ops").await.expect("get");
+    // `dashboard_get` hydrates too — to see the STORED shape we read the raw row via the panel read.
+    // The hydrated view shows the panel_ref + spec; the cell's `panelRef` is what makes it a ref.
+    let stored_cell = raw.cells.iter().find(|c| c.i == "pin-reminder-list").unwrap();
+    assert_eq!(
+        stored_cell.panel_ref, "panel:reminder-list",
+        "the persisted cell references the panel"
+    );
+
+    // The panel record EXISTS in the panel table — the reusable widget library.
+    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get on the just-pinned panel");
+    assert_eq!(panel.spec.view, "table");
+    assert_eq!(panel.spec.source.tool, "reminder.list");
+    assert_eq!(panel.owner, "user:ada");
+    assert_eq!(
+        panel.visibility,
+        lb_host::PanelVisibility::Private,
+        "a freshly-pinned panel is private to its author"
+    );
+    assert!(!panel.deleted);
+
+    // The panel is reusable: a SECOND dashboard pins the same envelope → the same panel record is
+    // updated (owner-only-update; idempotent on the slug), and the second dashboard's cell references
+    // the SAME panel. One widget, two dashboards, one source of truth.
+    call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "metrics", "title": "Metrics", "envelope": env, "now": 20 }),
+    )
+    .await
+    .expect("second dashboard pin");
+    let panel2 = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get on the re-pinned panel");
+    assert_eq!(panel2.id, panel.id, "same panel slug reused");
+    assert_eq!(panel2.updated_ts, 20, "the panel record was touched on the second pin");
+}
+
+/// An envelope `title` (typed by the user in the pin dialog, or set by the agent in the fenced
+/// block) names BOTH the minted dashboard cell and the reusable panel record. Regression for the
+/// "pinned widgets are all called '<tool> widget'" gap.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_envelope_title_names_the_cell_and_the_panel() {
+    let ws = "wp-title";
+    let node = Arc::new(Node::boot().await.unwrap());
+    const PANEL_GET: &str = "mcp:panel.get:call";
+    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+
+    let env = json!({
+        "view": "table",
+        "title": "Site Energy Ranking",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("pin");
+    assert_eq!(d["cells"][0]["title"], "Site Energy Ranking", "cell carries the widget name");
+
+    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get");
+    assert_eq!(panel.title, "Site Energy Ranking", "panel is named too");
+
+    // No title in the envelope → the derived fallback still applies (no regression).
+    let env2 = json!({
+        "view": "table",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d2 = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops2", "title": "Ops2", "envelope": env2, "now": 20 }),
+    )
+    .await
+    .expect("pin without title");
+    assert_eq!(d2["cells"][0]["title"], "", "untitled envelope leaves the cell title empty");
+}

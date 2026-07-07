@@ -1,32 +1,123 @@
-// The Sources dock pane (data-studio scope v2) — the shipped `@nube/source-picker` over every source
-// type (series / Direct SurrealDB / flows / installed extensions / federation datasources). Picking a
-// source OPENS A NEW EXPLORE TAB in the workbench (the multi-pane correction over v1's single
-// preview). One responsibility: the picker + the "pick → open tab" seam.
+// The Sources rail tab (data-studio-10x scope, goal 5) — a `CatalogExplorer` HOST: the workspace
+// system catalog (system-catalog scope) as ONE browsable tree — datasources, local tables → columns,
+// series, channels, insights — with the package's honest per-section deny/loading/empty states.
+// Replaces the bare `SourcePicker` select. This file is the ONE place the shell's `@/lib/*` clients
+// meet the package's injected `SourceLoaders`, plus the studio's host-owned pick mapping (click →
+// OPEN A BUILDER TAB on the entry; the package never knows what a pick MEANS — rule 10, exactly like
+// the rules panel's Rhai mapping). One responsibility: the loaders + the entry→builder-source map.
+//
+// The `<CatalogExplorer>` UI is LAZY-LOADED via `React.lazy` so the (relatively heavy) picker bundle —
+// the catalog orchestration + every section renderer + the schema tree — code-splits into its own
+// chunk and is only paid for when a user actually opens the Sources rail tab. The types + the
+// `useCatalog` hook are static imports (they're tiny + the hook drives the section state the lazy
+// explorer renders, so loading them upfront is correct — by the time the explorer mounts the data is
+// already warm). Wrapping in `<Suspense>` keeps the rest of the studio responsive while the chunk loads.
 
-import { SourcePicker, READ_SOURCE_GROUPS, type SourceEntry, type SourceSelection } from "@nube/source-picker";
+import { lazy, Suspense, useMemo } from "react";
+
+import {
+  useCatalog,
+  type CatalogEntry,
+  type SourceLoaders,
+  type SourceSelection,
+} from "@nube/source-picker";
+
+import { listDatasources } from "@/lib/datasources";
+import { listQueries } from "@/lib/queries";
+import { readSchema } from "@/lib/schema";
+import { listRealSeries } from "@/lib/ingest/schema.api";
+import { listChannels } from "@/lib/channel/channel.api";
+import { listInsights } from "@/lib/insights/insights.api";
+
+// Lazy-load only the UI component — its chunk (and the schema tree it pulls in) lands on demand.
+const CatalogExplorer = lazy(() =>
+  import("@nube/source-picker").then((m) => ({ default: m.CatalogExplorer })),
+);
 
 interface Props {
-  entries: SourceEntry[];
-  loading: boolean;
-  /** Open an explore tab on the selection (`label` is the picked entry's friendly label — the tab name). */
+  ws: string;
+  /** Open a builder tab on the picked entry (`label` becomes the tab name). */
   onOpen: (sel: SourceSelection, label: string) => void;
 }
 
-export function SourcesPane({ entries, loading, onOpen }: Props) {
+/** The shell adapter — read via ref inside `useCatalog`, keyed on `ws` (the package's discipline). */
+function shellLoaders(ws: string): SourceLoaders {
+  return {
+    listDatasources: () => listDatasources(),
+    readSchema: () => readSchema(),
+    listSeries: () => listRealSeries(),
+    listChannels: () => listChannels(ws),
+    listInsights: () => listInsights({}).then((page): { id: string; title: string }[] => page.items),
+    // Saved queries → the Saved-queries explorer section (each row ⇒ a `query.run {id}` builder
+    // source). Reached through `mcp_call` (`query.list`); a deny → the section is "Not permitted."
+    listQueries: () => listQueries(),
+  };
+}
+
+export function SourcesPane({ ws, onOpen }: Props) {
+  const loaders = useMemo(() => shellLoaders(ws), [ws]);
+  const { sections, loadSection } = useCatalog(loaders, ws);
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-2">
-      <p className="text-xs text-muted">Pick a source to open it in an explore tab.</p>
-      <SourcePicker
-        aria-label="explore source"
-        entries={entries}
-        loading={loading}
-        groups={READ_SOURCE_GROUPS}
-        onSelect={(sel) => {
-          if (!sel) return;
-          const label = entries.find((e) => e.id === sel.id)?.label ?? "Explore";
-          onOpen(sel, label);
-        }}
-      />
+    <div className="flex flex-col gap-2">
+      <p className="px-1 text-xs text-muted">Pick a catalog entry to open it in a builder tab.</p>
+      <Suspense fallback={<CatalogExplorerFallback />}>
+        <CatalogExplorer
+          sections={sections}
+          onLoadSection={loadSection}
+          onSelect={(entry) => {
+            const mapped = selectionFor(entry);
+            if (mapped) onOpen(mapped.sel, mapped.label);
+          }}
+        />
+      </Suspense>
     </div>
   );
+}
+
+/** A tiny inline skeleton shown while the lazy picker chunk loads — matches the package's own loading
+ *  bar so a slow network doesn't render an empty box (rule 9: honest UI, no fabricated rows). */
+function CatalogExplorerFallback() {
+  return (
+    <div aria-label="loading catalog" className="flex flex-col gap-1">
+      <div className="h-4 w-full animate-pulse rounded-md bg-fg/10" />
+      <div className="h-4 w-2/3 animate-pulse rounded-md bg-fg/10" />
+    </div>
+  );
+}
+
+/** Map a picked catalog entry onto a builder READ SOURCE (`{tool,args}` — the same shape every
+ *  `viz.query` target takes; the gateway re-checks each tool's own cap per call). The host owns
+ *  this mapping — the package returns a tagged entry and never branches on host meaning. */
+function selectionFor(entry: CatalogEntry): { sel: SourceSelection; label: string } | null {
+  const pick = (tool: string, args: Record<string, unknown>, label: string) => ({
+    sel: { id: entry.id, source: { tool, args } },
+    label,
+  });
+  switch (entry.kind) {
+    case "datasource":
+      // The SQL is the builder's to write — the query editor opens prefilled on the source.
+      return pick("federation.query", { source: entry.name, sql: "" }, entry.name);
+    case "table":
+      return pick("store.query", { sql: `SELECT * FROM ${entry.table} LIMIT 100` }, entry.table);
+    case "column":
+      return pick(
+        "store.query",
+        { sql: `SELECT ${entry.column} FROM ${entry.table} LIMIT 100` },
+        `${entry.table}.${entry.column}`,
+      );
+    case "series":
+      return pick("series.read", { series: entry.name }, entry.name);
+    case "channel":
+      return pick("inbox.list", { channel: entry.name }, entry.name);
+    case "insight":
+      return pick("insight.get", { id: entry.id.replace(/^insight:/, "") }, entry.title);
+    case "query":
+      // A saved query opens as a `query.run {id}` builder tab — the host compiles for the target's
+      // dialect and re-checks the underlying cap (no-widening). The slug is the catalog id minus
+      // its `query:` prefix; the tab label is the saved query's display name.
+      return pick("query.run", { id: entry.id.replace(/^query:/, "") }, entry.name);
+    default:
+      // A catalog kind with no builder meaning yet (e.g. inbox items) — no tab, no crash.
+      return null;
+  }
 }

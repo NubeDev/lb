@@ -31,7 +31,7 @@ describe("IngestView (real gateway)", () => {
     render(<IngestView ws={ws} />);
 
     // The series appears in the list; selecting it shows the latest value + the recent table.
-    const seriesBtn = await screen.findByLabelText("select node.cpu_temp");
+    const seriesBtn = await screen.findByLabelText("select series node.cpu_temp");
     await user.click(seriesBtn);
 
     // The latest value (seq 2) renders once the async read resolves.
@@ -48,7 +48,7 @@ describe("IngestView (real gateway)", () => {
     await writeSample({ series: "node.cpu_temp", producer: "", ts: 1, seq: 1, payload: 10 });
 
     render(<IngestView ws={ws} />);
-    await user.click(await screen.findByLabelText("select node.cpu_temp"));
+    await user.click(await screen.findByLabelText("select series node.cpu_temp"));
 
     // Fill the manual-write form with a new sample (seq 2) and submit.
     const form = screen.getByLabelText("write sample");
@@ -79,12 +79,12 @@ describe("IngestView (real gateway)", () => {
 
     render(<IngestView ws={ws} />);
     // The prefix list shows it first.
-    await screen.findByLabelText("select node.cpu_temp");
+    await screen.findByLabelText("select series node.cpu_temp");
 
     // A faceted search `kind:temperature` finds it via the tag graph.
     await user.type(screen.getByLabelText("search series"), "kind:temperature");
     await user.keyboard("{Enter}");
-    expect(await screen.findByLabelText("select node.cpu_temp")).toBeInTheDocument();
+    expect(await screen.findByLabelText("select series node.cpu_temp")).toBeInTheDocument();
   });
 
   it("is workspace-isolated — a fresh workspace shows no other workspace's series", async () => {

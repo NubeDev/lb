@@ -86,6 +86,10 @@ async fn run_one(
         .map(|(name, description)| AllowedTool {
             name: name.clone(),
             description: description.clone(),
+            // The routed request wire shape carries (name, description) tuples only — no schema yet.
+            // A routed edge→hub run advertises tools without arg schemas (a follow-up widens the wire
+            // `AgentInvokeRequest.tools` to carry it); the local in-house path (menu.rs) does carry it.
+            input_schema: None,
         })
         .collect();
 

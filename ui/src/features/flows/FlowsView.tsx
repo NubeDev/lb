@@ -12,6 +12,7 @@ import { Workflow } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
+import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Badge } from "@/components/ui/badge";
 import type { Flow } from "@/lib/flows";
 import { FlowCanvas } from "./FlowCanvas";
@@ -26,12 +27,13 @@ export interface FlowsViewProps {
   onSelectFlow?: (id: string | null) => void;
 }
 
-/** A fresh blank flow seeded with one trigger node (the entry point every flow needs). */
-function blankFlow(): Flow {
-  const id = `flow-${Date.now()}`;
+/** A fresh blank flow seeded with one trigger node (the entry point every flow needs). The id comes
+ *  from the rail adapter (the timestamp scheme, `flowId()`); the name is the title the author typed
+ *  into the inline create field (name-first create, same shape as Dashboards/Rules). */
+function blankFlow(id: string, name: string): Flow {
   return {
     id,
-    name: id,
+    name,
     version: 1,
     nodes: [{ id: "start", type: "trigger", needs: [], config: {} }],
     failurePolicy: "halt",
@@ -41,6 +43,8 @@ function blankFlow(): Flow {
 export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
   const { roster, open, palette, error, load, save, remove, setOpen } = useFlows(ws);
   const [draftId, setDraftId] = useState(0); // bump to force a fresh canvas on "new"
+  // The flow rail folds to the shared thin strip (same affordance as the dashboard/rules rosters).
+  const [railOpen, setRailOpen] = useState(true);
 
   // Deep-link: open the flow named in the URL. Runs when the id changes (paste/back/forward) but not
   // for a blank draft (no id in the URL) or when that flow is already open — the load re-fetches.
@@ -59,11 +63,14 @@ export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
     [onSelectFlow, load],
   );
 
-  const onNew = useCallback(() => {
-    onSelectFlow?.(null);
-    setOpen(blankFlow());
-    setDraftId((n) => n + 1);
-  }, [onSelectFlow, setOpen]);
+  const onCreate = useCallback(
+    (id: string, name: string) => {
+      onSelectFlow?.(null);
+      setOpen(blankFlow(id, name));
+      setDraftId((n) => n + 1);
+    },
+    [onSelectFlow, setOpen],
+  );
 
   const onRemove = useCallback(
     async (id: string) => {
@@ -89,13 +96,18 @@ export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
         ) : null
       }
     >
-      <FlowRail
-        roster={roster}
-        openId={open?.id ?? null}
-        onOpen={onOpen}
-        onDelete={onRemove}
-        onNew={onNew}
-      />
+      {railOpen ? (
+        <FlowRail
+          roster={roster}
+          openId={open?.id ?? null}
+          onOpen={onOpen}
+          onDelete={onRemove}
+          onCreate={onCreate}
+          onCollapse={() => setRailOpen(false)}
+        />
+      ) : (
+        <CollapsedRail noun="flow" onExpand={() => setRailOpen(true)} />
+      )}
       {open ? (
         <FlowCanvas
           key={`${open.id}-${draftId}`}

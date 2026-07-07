@@ -13,6 +13,9 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   if (hasCap(caps, CAP.flowsList)) allowed.push("flows");
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");
   if (hasCap(caps, CAP.reminderList)) allowed.push("reminders");
+  // insights (insights umbrella scope): member-level nav gate. The page shows for any session that
+  // may list insights; the gateway re-checks `mcp:insight.<verb>:call` per verb server-side.
+  if (hasCap(caps, CAP.insightList)) allowed.push("insights");
   if (hasCap(caps, CAP.seriesList)) allowed.push("ingest");
   // webhooks (webhooks scope): the admin-verb gate. The page shows for a session holding
   // `webhook.manage`; the gateway re-checks every verb server-side regardless. The public inbound

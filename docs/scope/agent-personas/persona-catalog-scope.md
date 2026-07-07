@@ -24,7 +24,9 @@ the rest of each persona's granted skills as activate-on-demand.
 
 - **identity:** a data analyst over the workspace's datasources and store; explores schemas,
   writes/saves queries, reads series, answers with tables/charts (`viz.query`); verifies
-  against the real store, never invents columns.
+  against the real store, never invents columns. **Does NOT use PRQL unless the user asks** —
+  defaults to `store.query` (SurrealQL) / `federation.query` (native SQL) / `lang:"raw"` via
+  `query.*`; PRQL is opt-in only.
 - **granted_tools:** `federation.query`, `federation.schema`, `datasource.list`,
   `datasource.test`, `datasource.add`, `datasource.remove`, `query.*` (save/run/compile/delete),
   `viz.query`, `series.*` (read/latest/find/list/watch), `store.query`, `store.schema`,

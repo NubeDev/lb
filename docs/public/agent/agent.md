@@ -105,13 +105,16 @@ A **library of named agent definitions** — each a `(runtime, model_endpoint)` 
 workspace admin manages and picks from. Two tiers, one record shape (the core-skills pattern, reused
 wholesale):
 
-- **Built-ins** — six presets boot-seeded from an embedded `agents.toml` manifest into the reserved
+- **Built-ins** — nine presets boot-seeded from an embedded `agents.toml` manifest into the reserved
   `_lb_agents` namespace, **read-only to users** (a `builtin.*` id rejects create/update/delete with
-  `BadInput`, checked before the caps gate). Ships in-house (runtime `default`) and Open Interpreter
-  (runtime `open-interpreter-default`) × Z.AI **GLM-4.6 / 5.1 / 5.2** over the `zaicoding` coding
-  endpoint (`ZAI_API_KEY`). Names only — no secret values in the manifest or a record. A node without
-  the `external-agent` feature still seeds the open-interpreter entries but **filters them from the
-  list** (registry drift, symmetric — no `if cloud`). Idempotent re-seed on boot/upgrade.
+  `BadInput`, checked before the caps gate). Ships three in-house tiers over the `zaicoding` coding
+  endpoint (`ZAI_API_KEY`): **in-house coding** (runtime `default`) × Z.AI **GLM-4.6 / 5.1 / 5.2**,
+  **in-house general-purpose** (runtime `default`) × Z.AI **GLM-4.5-Air / 4.5 / 5-Turbo** — faster and
+  cheaper, for non-code platform work (widgets, dashboards, data analysis, SQL) — and **Open
+  Interpreter** (runtime `open-interpreter-default`) × GLM-4.6 / 5.1 / 5.2. Names only — no secret values
+  in the manifest or a record. A node without the `external-agent` feature still seeds the
+  open-interpreter entries but **filters them from the list** (registry drift, symmetric — no
+  `if cloud`). Idempotent re-seed on boot/upgrade.
 - **Custom** — workspace-scoped `agent_definition` records with full admin CRUD (custom-only writes;
   the workspace hard wall). LWW UPSERT on the slug (offline-replay-safe).
 

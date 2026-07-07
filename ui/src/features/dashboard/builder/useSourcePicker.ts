@@ -20,6 +20,7 @@ import {
 import { listSeries } from "@/lib/ingest/ingest.api";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
 import { listFlows, getFlow, listFlowNodes } from "@/lib/flows/flows.api";
+import { listQueries } from "@/lib/queries";
 import { listRules } from "@/lib/rules/rules.api";
 import { sourcePickerKey } from "../cache/queryKeys";
 import { fetchDatasourceList } from "../cache/datasourceListQuery";
@@ -48,23 +49,44 @@ function shellLoaders(client: QueryClient, ws: string): SourceLoaders {
     // structural superset of the package's `RuleSummary` ({id,name}); a workspace without the
     // `mcp:rules.list:call` grant sees `rules_list` reject → an empty group (deny-tolerant).
     listRules: () => listRules(),
+    // Saved queries → the Queries group (each ⇒ a `query.run {id}` read source, no-widening: the
+    // caller still needs the target's underlying cap). `QuerySummary` is a structural superset of
+    // the package's shape ({id,name,target?}); a workspace without `mcp:query.list:call` sees
+    // `query.list` reject → an empty group (deny-tolerant). Reached through `mcp_call` (the host
+    // exposes `query.*` over the MCP bridge, not dedicated REST routes — rule 7).
+    listQueries: () => listQueries(),
   };
 }
 
 /** Load + assemble the source picker for the shell, through the read cache. `ws` keys the shared entry —
- *  the page-level and editor instances read the SAME cached bundle (one fetch per workspace). */
-export function useSourcePicker(ws: string): SourcePickerData {
+ *  the page-level and editor instances read the SAME cached bundle (one fetch per workspace).
+ *
+ *  LAZY by default (`{ enabled: false }`): the query does NOT fire on mount. A caller that wants the
+ *  entries immediately passes `{ enabled: true }` (the legacy eager behaviour — `DashboardView`, which
+ *  needs `installed` for tile rendering); a caller that only needs them on user interaction (e.g. the
+ *  QueryTab's source combobox — opens on focus) keeps the default and flips `enabled` to true when the
+ *  user actually picks. This is the "don't fire on page load, only on demand" contract — a restored
+ *  builder tab no longer fans out every `*.list` verb on Data Studio mount. */
+export function useSourcePicker(
+  ws: string,
+  opts: { enabled?: boolean } = {},
+): SourcePickerData {
   const client = useQueryClient();
+  const enabled = opts.enabled ?? false;
   const query = useQuery({
     queryKey: sourcePickerKey(ws),
     queryFn: () => loadSourcePicker(shellLoaders(client, ws)),
     staleTime: LIST_STALE_MS,
+    enabled,
   });
   // `installed` is the real shell `ExtRow` at runtime (from `listExtensions`); the package types it as its
   // structural subset. Re-assert the shell type for consumers that need the fuller row.
   return {
     entries: query.data?.entries ?? [],
     installed: (query.data?.installed ?? []) as ExtRow[],
-    loading: query.isLoading,
+    // When the query isn't enabled, surface `loading: false` (not the react-query `isLoading: true`
+    // for an unmounted query) so the UI doesn't show a perpetual spinner for a deliberately-deferred
+    // load. Once enabled, the real `isLoading` takes over.
+    loading: enabled ? query.isLoading : false,
   };
 }

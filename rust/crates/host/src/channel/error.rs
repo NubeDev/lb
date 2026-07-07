@@ -15,6 +15,11 @@ pub enum ChannelError {
     /// non-author caller still learns nothing — their miss resolves to `Denied` first.
     #[error("not found")]
     NotFound,
+    /// The posted item is structurally malformed (e.g. a `view:"genui"` `rich_result` whose IR fails
+    /// the catalog check). Loud on purpose: on an agent post the message feeds back into the loop as
+    /// the tool error, so the model can self-correct — the opposite posture from `Denied`.
+    #[error("bad input: {0}")]
+    BadInput(String),
     /// The durable store rejected the operation.
     #[error("store error: {0}")]
     Store(#[from] StoreError),

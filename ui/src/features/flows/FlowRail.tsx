@@ -1,12 +1,15 @@
-// The flow rail (flows-canvas scope, Wave 3) — the left list of saved flows: open one, delete one,
-// or start a new blank flow. Presentation only; the roster + actions come from the parent's `useFlows`
-// hook. Styled to match the dashboard roster (the canonical aside) using shadcn primitives + tokens.
+// The flow rail (flows-canvas scope, Wave 3) — the left list of saved flows: open one, delete one, or
+// start a new named flow. Chrome/behavior live in the shared `RosterRail` (components/app/roster.tsx —
+// the maintained inner-sidebar look); this file only maps flows onto it: the timestamp id scheme
+// (derived here, not from the title), the version badge (`v{n}`), and a delete confirm (the rail hands
+// the item back, the feature owns the destructive gate — flows previously deleted with no confirm,
+// which was a gap). No rename — flows have no rename verb. One component per file (FILE-LAYOUT).
 
-import { Plus, Trash2, Workflow } from "lucide-react";
+import { useState } from "react";
+import { Workflow } from "lucide-react";
 
-import { AppRail } from "@/components/app/rail";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { RosterRail, type RosterItem } from "@/components/app/roster";
+import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import type { FlowSummary } from "@/lib/flows";
 
 export interface FlowRailProps {
@@ -14,83 +17,51 @@ export interface FlowRailProps {
   openId: string | null;
   onOpen: (id: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
-  onNew: () => void;
+  /** Name-first create: the rail's inline field supplies the name; the adapter derives the id (the
+   *  flow's timestamp scheme) and hands both to the host, which seeds a blank flow with that name. */
+  onCreate: (id: string, name: string) => void;
+  /** Minimize the rail — the host (FlowsView) renders the symmetric `CollapsedRail` when closed. */
+  onCollapse?: () => void;
 }
 
-export function FlowRail({ roster, openId, onOpen, onDelete, onNew }: FlowRailProps) {
+/** The flow id scheme: a timestamp-derived handle (unchanged from the prior blank-flow seed). */
+function flowId(): string {
+  return `flow-${Date.now()}`;
+}
+
+export function FlowRail({ roster, openId, onOpen, onDelete, onCreate, onCollapse }: FlowRailProps) {
+  // The flow pending a delete confirm — the rail hands the item back; the feature owns the gate.
+  const [pendingDelete, setPendingDelete] = useState<RosterItem | null>(null);
+
   return (
-    <AppRail
-      label="flow rail"
-      header={
-        <>
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted">Flows</span>
-          <Button
-            aria-label="new flow"
-            onClick={onNew}
-            variant="outline"
-            size="sm"
-            className="ml-auto h-7 gap-1 px-2 text-xs"
-          >
-            <Plus size={14} />
-            New
-          </Button>
-        </>
-      }
-    >
-      <ul aria-label="flow roster" className="space-y-1">
-        {roster.length === 0 ? (
-          <li className="rounded-md border border-dashed border-border bg-bg/60 px-3 py-3 text-xs text-muted">
-            No flows yet.
-          </li>
-        ) : (
-          roster.map((f) => {
-            const selected = f.id === openId;
-            return (
-              <li key={f.id}>
-                <div
-                  className={cn(
-                    "flex items-center gap-1 rounded-md border px-1.5 py-1 transition-colors",
-                    selected
-                      ? "border-accent/30 bg-accent/10"
-                      : "border-transparent hover:border-border hover:bg-bg",
-                  )}
-                >
-                  <Button
-                    aria-label={`open flow ${f.id}`}
-                    onClick={() => onOpen(f.id)}
-                    variant="ghost"
-                    size="sm"
-                    className="h-auto flex-1 justify-start gap-2 px-1.5 py-1.5"
-                  >
-                    <Workflow
-                      size={14}
-                      className={cn("shrink-0", selected ? "text-accent" : "text-muted")}
-                    />
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate text-left text-sm",
-                        selected ? "font-medium text-accent" : "text-fg",
-                      )}
-                    >
-                      {f.name || f.id}
-                    </span>
-                    <span className="text-[10px] uppercase text-muted">v{f.version}</span>
-                  </Button>
-                  <Button
-                    aria-label={`delete flow ${f.id}`}
-                    onClick={() => onDelete(f.id)}
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 text-muted hover:text-destructive"
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </li>
-            );
-          })
-        )}
-      </ul>
-    </AppRail>
+    <>
+      <RosterRail
+        noun="flow"
+        icon={Workflow}
+        items={roster.map((f) => ({ id: f.id, title: f.name || f.id, badge: `v${f.version}` }))}
+        selectedId={openId}
+        onSelect={(id) => void onOpen(id)}
+        emptyText="No flows yet."
+        createPlaceholder="New flow…"
+        onCreate={(name) => onCreate(flowId(), name)}
+        onCollapse={onCollapse}
+        onRemove={setPendingDelete}
+      />
+
+      {pendingDelete && (
+        <ConfirmDestructive
+          title={`Delete ${pendingDelete.title}`}
+          consequence="This flow and its saved graph will be removed. It can be recreated but its current graph is not recoverable."
+          reversible={false}
+          escalation="none"
+          confirmLabel="Delete"
+          onConfirm={() => {
+            void onDelete(pendingDelete.id);
+            setPendingDelete(null);
+          }}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
+    </>
   );
 }

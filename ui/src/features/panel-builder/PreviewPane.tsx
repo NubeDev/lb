@@ -8,6 +8,8 @@
 // subtree is wrapped in `FreezeProvider` so a frozen editor reshapes cached frames instead of re-querying
 // the datasource (data-studio-ux, edit-without-requery). One responsibility: render the draft preview.
 
+import { ChevronDown, ChevronRight } from "lucide-react";
+
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
@@ -25,17 +27,62 @@ interface Props {
   tableView?: boolean;
   /** Freeze the datasource fetch — the rendered preview reshapes cached frames instead of re-querying. */
   frozen?: boolean;
+  /** Collapsible mode (stacked builder): `open` + `onOpenChange` turn the "Preview" label into a
+   *  disclosure — collapsed, only the header bar renders, and the reclaimed height goes to whatever
+   *  flex sibling wants it (the options surface). Omit both for the always-open pane (split layout). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function PreviewPane({ cell, ws, scope = emptyScope(), refreshKey = 0, tableView = false, frozen = false }: Props) {
+export function PreviewPane({
+  cell,
+  ws,
+  scope = emptyScope(),
+  refreshKey = 0,
+  tableView = false,
+  frozen = false,
+  open = true,
+  onOpenChange,
+}: Props) {
   // Display-only view override: the SAVED cell is untouched; only what the preview draws changes. A cell
   // with no view of its own renders via `cellView`'s timeseries default (WidgetView), so a viewless cell
   // previews as a chart rather than "unsupported view:".
   const previewCell: Cell = { ...cell, i: "preview", ...(tableView ? { view: "table" } : {}) };
+  const label = (
+    <span className="text-[11px] uppercase tracking-wide text-muted">Preview{tableView ? " · table" : ""}</span>
+  );
+  if (!open) {
+    // Collapsed: just the disclosure bar — the pane surrenders its height to the flex siblings.
+    return (
+      <button
+        type="button"
+        aria-label="preview disclosure"
+        aria-expanded={false}
+        className="flex w-full items-center gap-1.5 rounded-lg border border-border bg-panel px-3 py-2 text-left hover:border-fg/30"
+        onClick={() => onOpenChange?.(true)}
+      >
+        <ChevronRight size={12} className="text-muted" />
+        {label}
+      </button>
+    );
+  }
   return (
     <div className="flex h-full min-h-[12rem] flex-col rounded-lg border border-border bg-panel p-3" aria-label="panel preview">
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-[11px] uppercase tracking-wide text-muted">Preview{tableView ? " · table" : ""}</span>
+        {onOpenChange ? (
+          <button
+            type="button"
+            aria-label="preview disclosure"
+            aria-expanded
+            className="flex items-center gap-1.5 hover:text-fg"
+            onClick={() => onOpenChange(false)}
+          >
+            <ChevronDown size={12} className="text-muted" />
+            {label}
+          </button>
+        ) : (
+          label
+        )}
       </div>
       <div className="min-h-0 flex-1">
         <FreezeProvider value={frozen}>

@@ -35,11 +35,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   node-clamped), run progress as ws-scoped bus motion + completion via the outbox (cross-node
   `agent.watch`), and the signed token on routed edge→hub invokes (hub verifies, never trusts).
   Fallback chains / the served OpenAI face / the curated tool menu stay deferred to their owning topics.
+  `agent-context-basket-scope.md` (**shipped**) gives the dock an **Ask | Tools** toggle mounting the
+  SHARED channel `CommandPalette` (no second palette), and a **context basket**: gather durable
+  channel items (a query result, a rich response, a note) via a per-row paperclip and the next ask
+  carries their ids (`AgentPayload.context_items` — refs, not bodies); the worker resolves + fences
+  them into the run's goal ws/channel-scoped with hard caps (`channel/context_items.rs`, the sibling
+  of the page-context fence).
 - `agent-personas/` — **user-selectable agent focus**: a persona = `{granted_tools,
   grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
   active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the
   capability wall (effective = persona ∩ agent ∩ caller). Fixes the observed "agent confused by
-  the whole surface" symptom. Umbrella `agent-personas-scope.md` + four sub-scopes:
+  the whole surface" symptom. Umbrella `agent-personas-scope.md` + four sub-scopes (+ #5 correction):
   `persona-model-scope.md` (the record, two tiers, `agent.persona.*` CRUD, `extends`, run-assembly
   application on both runtimes — absorbs acp-driver's unbuilt `granted_tools`/`persona_skill`),
   `persona-grounding-scope.md` (seed the FULL `docs/skills` corpus + promote `docs/testing/`
@@ -50,7 +56,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   extension-builder; destructive verbs excluded from all), `persona-coding-scope.md` (the
   extension-builder posture — "100% coding, never on its own": devkit surface only, Ask-gated
   publish/install via the shipped Part-2 policy, in-house-runtime-only until the external-agent
-  capability wall ships).
+  capability wall ships), and `persona-session-scope.md` (#5, post-ship correction: the workspace
+  enables a roster (`enabled_personas`), each run applies ONE persona — context-suggested from the
+  page via `Persona.surfaces` (client-matched, rule 10) with a sticky per-tab pin sent as the
+  per-invoke `persona` arg; defaults = `Prefs.agent_persona` axis (member → ws-default fold);
+  union-of-N rejected, `extends` records stay the composition path; zero new verbs).
 - `app/` — the **React Native mobile app** (iOS/Android): a thin RN shell that is the fourth
   client of the gateway (login → many workspaces → REST + SSE; **zenoh-ts rejected** — it would
   expose a second, unmediated server surface beside the gateway), plus **federated app extensions**
@@ -137,7 +147,19 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   DataFusion pages only by predicate **pushdown** to the real source, and anything that must load at
   dashboard speed is **mirrored** into the series plane and keyset-paged there; a chart **downsamples**
   (time-bucket min/max/avg) rather than paging raw points. Offset paging and DataFusion-as-primary-pager
-  rejected. Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
+  rejected. **`sqlite-datasource-demo-scope.md`** makes the sidecar's shipped `sqlite` kind
+  first-class (kind select + path-DSN semantics in the Datasources UI) and emits the demo building
+  dataset into a SQLite file (`seed.py --sqlite`, lite profile + `make seed-demo-sqlite`) — the
+  Docker-free demo source the Data Studio 10x demo toggle points at.
+  **`datasource-samples-scope.md`** adds `federation.sample {source, tables?, limit?}` — one bounded,
+  AI-prompt-ready snapshot of a source (tables + columns + real foreign keys + `LIMIT 10` rows per
+  table) under the existing `federation.query` cap, so an agent writes correct SQL in one round trip
+  instead of N+1 `federation.schema` calls with no relationship metadata.
+  **`federation-pushdown-scope.md`** makes single-source `federation.query` push the whole validated
+  SELECT down to the source engine (the pinned providers' `*-federation` features +
+  datafusion-federation) instead of streaming base-table rows into DataFusion and joining in the
+  sidecar — the demo JOIN/GROUP BY drops from 3–4 s to engine speed; same verb, caps, and envelope.
+  Decomposed into `page-cursor-scope.md` (A: the cursor codec + keyset primitive),
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
@@ -188,6 +210,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
   regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
   a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence).
+- `desktop/` — the Tauri v2 desktop shell as a **shipped executable**. `desktop-packaging-scope.md`
+  builds the existing `lazybones-shell` (`ui/src-tauri` — node in-process + window, the `workstation`
+  persona) into **plain binaries** (no AppImage/installer) for Linux x86-64 (`tauri build --no-bundle`
+  + `--features desktop`; dynamically links webkit2gtk-4.1) and Windows x86-64 (WebView2 is
+  OS-provided, exe is standalone), via a GitHub Actions matrix + a real-binary boot smoke. Zero
+  product code — toolchain, build wiring, proof. The Tauri command-layer verb gap stays a separate ask.
+  `desktop-build-container-scope.md` makes that slice's "real dev box or CI" line **reproducible**: one
+  Docker image (`desktop/docker/`) with the webkit2gtk-4.1 toolchain + Rust + pnpm that produces the
+  bare ELF from a clean checkout — host-pollution-free, same image dev and CI use, build-only (the
+  shipped binary is a windowed app, not a container workload). Linux-x86-64 only; darwin/windows stay
+  on their native runners (rejected in the parent scope).
 - `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
   earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
   over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed
@@ -351,6 +384,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   legible, denies surfaced honestly. It is only ever as authorized as the token it presents. v1 auth = the dev-login token; it is the **named first consumer** of
   `auth-caps/api-keys-scope.md` when API keys ship. Adds **no new MCP verbs, capabilities, or tables**;
   retires the `curl + jq` publish flow and folds `lb-pack` into `lb devkit sign` over the `lb-devkit` lib.
+- `clients/` — **external starter client libraries** for the gateway surface
+  (`client-libraries-scope.md`): one thin library per language (TypeScript/Node, Python, Go, Rust)
+  under repo-root `clients/`, each exposing the same five-method shape — `Client` (base URL + bearer)
+  + `login()` + `writeSamples()` + `latestSample()` + `callMcp()`, plus a `signWebhook()` /
+  `postWebhook()` helper for the third-party caller path. Deliberately **not** a full SDK: the shape to
+  extend, with every other verb reachable through the universal `POST /mcp/call` bridge. No mocks, no
+  fake backends — the README recipes hit a real `make cloud` node seeded via the real write paths. Adds
+  **no new MCP verbs, capabilities, routes, or tables**; the four folders live outside both the core
+  `rust/Cargo.toml` workspace and the root `pnpm-workspace.yaml` so a change here cannot break the
+  core build.
 - `frontend/` — the React/Tauri UI shell; `agent-dock-scope.md` (the persistent
   `@nube/panel` right-dock AI panel — open on every page, survives navigation, durable
   channel-backed session history with new-session, always the active catalog agent,
@@ -372,6 +415,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   desktop webview and the browser; e.g. a dashboard scoped to a date range), `data-console-scope.md` (the workspace
   data console: an admin-gated raw table browser + react-flow graph view, and an ingest/series explorer
   with manual write — the raw exploratory counterpart to the dashboard, for users who aren't good at SQL), and
+  `query-builder/` (the **query-builder 10x** subtopic — a Tabularis-grade drag-and-connect visual JOIN
+  builder + a schema-aware CodeMirror editor + a standalone `/t/$ws/query` workbench view that also opens as
+  a Data Studio pane; UI-only, extends the shipped `SqlBuilderQuery`/`emitSql` seam, no backend; plus
+  `tabularis-harvest.md` — what else to take from Tabularis), and
   `theme-switcher-scope.md` (local shell preferences for light/dark mode and three token-bound accent palettes),
   and its successor `theme-customizer-scope.md` (the ported shadcn-store Customizer: a preset library +
   radius + import + custom colors that write the project's **base** design tokens so every existing
@@ -406,8 +453,34 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   response table honor through one resolver; extract the input widgets + registry out of the palette/
   dashboard/reminders feature folders into a common `lib/widgets/` library; and version the federation mount
   context with an input `value`/`onValue` channel + `defineWidget` so extensions can author form widgets,
-  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore).
-  `frontend/dashboard/viz/` holds the
+  not just read-only tiles — additive over the shipped v2 widget contract, no new verb/cap/datastore), and
+  `system-catalog-scope.md` (grow `@nube/source-picker` into the one **workspace system catalog**: the
+  model/loader seam gains local-schema/channels/insights/inbox loaders and a second UI skin — the browsable
+  click-to-insert explorer tree extracted from the rules panel's `DataExplorer` — so rules, Data Studio,
+  dashboards, and extension UIs all browse "what exists in this workspace" through one package; enumerate +
+  pick only, shipped verbs only, honest per-section deny), and
+  `data-studio-10x-scope.md` (the **Data Studio 10x** ask, follow-on to the shipped
+  `data-studio-scope.md` v2/v3: swap flexlayout-react for **Dockview** as the dock engine; open the
+  app's own pages — Flows/Rules/Data/Datasources/Ingest — **as panes** inside the studio (the real
+  routed view components, one persisted per-member arrangement, an `AppPage` embedded mode); rework
+  the builder into a **query-first → visual viz-gallery → options-drawer** flow; and an honest
+  **seeded-demo-data** preview toggle (real records via the `iot_demo` seed + `docker/postgres/seed.py`,
+  never client-fabricated frames — rule 9)), and
+   `webhooks-admin-scope.md` (the **Webhooks admin page adopts the `AppPage` shell** — a frontend-only
+   restyle/UX slice over the shipped `webhook.*` verbs: the page migrates off the legacy `AdminPanel`
+   onto the same canonical shell Dashboards/Rules use, the wizard upgrades to the surface discipline, and
+   the file splits one-component-per-file during the move. The first admin-tab migration; the other five
+   tabs follow under `admin-console-scope.md`), and
+   `query-builder-common-scope.md` (make the **Query Builder common**: a LOCAL TABLE source
+   (SurrealDB, `store.query`) gets the interactive Builder⇄Code editor today; an external DATASOURCE
+   (`federation.query` — postgres/timescale/sqlite) gets only a raw-SQL textarea. Lift the deferral
+   recorded in `dashboard/viz/datasource-binding-scope.md` — its prerequisite (`federation.schema
+   {source, table?}`) has shipped. One shared `SqlBuilderQuery` state, N dialect emitters behind a
+   `SqlDialect` seam (`toSurrealQL.ts` stays one impl; add a standard-SQL emitter for federation);
+   the same `SqlQueryEditor` for both, fed by `federation.schema` for federation dropdowns. The wire
+   shape (`federation.query {source, sql}`) is unchanged — pure UI + a TS emitter module, no new
+   verb/cap/table).
+   `frontend/dashboard/viz/` holds the
   **Grafana-compatible visualization** slice (the ask): adopt Grafana's panel/`fieldConfig`/transformation/
   datasource model and dashboard JSON so charts gain the full standard option surface, render units/dates/
   numbers through `prefs/` user-prefs, query any datasource (not just native SurrealDB), and import/export

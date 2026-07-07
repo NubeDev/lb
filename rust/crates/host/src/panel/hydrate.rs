@@ -40,8 +40,22 @@ pub async fn hydrate_cells(
 /// Resolve one ref cell. `panel_ref` is `panel:{id}` (or a bare slug); `panel_get` re-checks the three
 /// gates under the viewer, so an unreadable panel yields the placeholder (deny is indistinguishable
 /// from missing to the viewer — both are "not accessible", never the spec).
+///
+/// **Owner shortcut:** a viewer who OWNS the panel reads its own spec directly from the store. Owning a
+/// panel implies being able to read it (you created it, possibly via `dashboard.pin` which writes the
+/// panel as a side effect of attaching it to a dashboard — that caller has `mcp:dashboard.pin:call` but
+/// not necessarily `mcp:panel.get:call`, and their just-pinned widget must render, not degrade to the
+/// placeholder). Non-owner viewers still go through `panel_get`'s three gates (workspace → cap →
+/// visibility).
 async fn hydrate_one(store: &Store, principal: &Principal, ws: &str, cell: Cell) -> Cell {
     let id = cell.panel_ref.trim_start_matches("panel:");
+    // Owner shortcut: a raw read first, then an owner check. Cheaper than `panel_get`'s full gate chain
+    // when it hits, and the raw read returns `None` for a missing panel just like `panel_get` does.
+    if let Ok(Some(p)) = super::store::read_panel(store, ws, id).await {
+        if !p.deleted && p.owner == principal.owner_sub() {
+            return resolved_cell(&cell, p);
+        }
+    }
     match panel_get(store, principal, ws, id).await {
         Ok(panel) => resolved_cell(&cell, panel),
         Err(_) => placeholder_cell(cell),

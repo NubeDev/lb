@@ -37,13 +37,14 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 [dependencies.tauri]
 version = "2"
 optional = true
+features = []
 
 [features]
 desktop = ["dep:tauri"]
 
 [build-dependencies]
 # Pure-Rust codegen (no system libs). build.rs only *calls* it for the `desktop` feature.
-tauri-build = "2"
+tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

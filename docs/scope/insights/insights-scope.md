@@ -298,19 +298,29 @@ Real store/bus/gateway, seeded records, no fakes (rule 9). Mandatory + key cases
 
 ## Open questions
 
+> **v1 dispositions (shipped 2026-07-05):** the record + occurrences + subscriptions + notify ladder
+> all shipped (MCP verbs, gateway REST+SSE, UI, persona, skill). What's marked "Resolved v1" below is
+> closed; the rest are documented follow-ups, not gaps. The two producer doors (rhai handle + flow
+> sink node) are the named deferred slice — today producers reach `insight.raise` via the MCP verb.
+
 1. Should `alert(...)` in the rules cage also raise an insight (one call = finding + attention
-   + record), or stay attention-only? (Recommend: stay; revisit after real rule authorship.)
-2. Severity: closed `info|warning|critical` forever, or admin-extensible? (Closed until a
-   vertical proves a fourth level; extra dimensions are tags.)
-3. Per-producer raise quota (new-key rate limit) — needed, or is WriteMeter + flow bounds
-   enough?
+   + record), or stay attention-only? **Open follow-up** (recommend stay; revisit after real rule
+   authorship). Not a v1 gap — the explicit `insight.raise` MCP verb is the door today.
+2. Severity: closed `info|warning|critical` forever, or admin-extensible? **Resolved v1: closed**
+   — extra dimensions ride tags; reopen when a vertical proves a fourth level.
+3. Per-producer raise quota (new-key rate limit) — needed, or is WriteMeter + flow bounds enough?
+   **Open follow-up** — same-key storms are absorbed by dedup; new-key storms are bounded by the
+   rules `WriteMeter` / flow-run scope today.
 4. Retention default for `resolved` insights (90 days? admin-set?) — decided in the retention
-   follow-up.
-5. Auto-pinning the analyst persona when the dock opens on the Insights page — personas
-   catalog Q3; mechanism exists (per-invoke override), only the mapping is deferred.
-6. Sub-scope questions live with their docs: occurrence ring per-insight sizing
-   (occurrences Q1), sub filter globs / team-owned subs / inbox sink (subscriptions Q1–3),
-   severity-tiered cooldowns / quiet hours / AI-narrated digests (notify Q1–4).
+   follow-up. **Open follow-up** (the `job-retention-scope.md` precedent) — must land before any
+   production fleet (append-heavy tables).
+5. Auto-pinning the analyst persona when the dock opens on the Insights page — personas catalog
+   Q3; mechanism exists (per-invoke override), only the mapping is deferred. **Open follow-up**
+   (personas-catalog Q3).
+6. Sub-scope questions live with their docs: occurrence ring per-insight sizing (occurrences Q1 —
+   resolved v1 workspace-only), sub filter globs / team-owned subs / inbox sink (subscriptions Q1–3 —
+   resolved exact-only / open / open), severity-tiered cooldowns / quiet hours / AI-narrated digests
+   (notify Q1–4 — resolved one-cooldown / open / resolved deliveries-worth / open).
 
 ## Related
 

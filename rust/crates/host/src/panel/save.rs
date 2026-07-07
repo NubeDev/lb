@@ -39,12 +39,12 @@ pub async fn panel_save(
     // treated as absent — a save with that id resurrects it under the new owner (create).
     let (owner, visibility) = match read_panel(store, ws, id).await?.filter(|p| !p.deleted) {
         Some(existing) => {
-            if existing.owner != principal.sub() {
+            if existing.owner != principal.owner_sub() {
                 return Err(PanelError::Denied);
             }
             (existing.owner, existing.visibility)
         }
-        None => (principal.sub().to_string(), Visibility::Private),
+        None => (principal.owner_sub().to_string(), Visibility::Private),
     };
 
     let panel = Panel {

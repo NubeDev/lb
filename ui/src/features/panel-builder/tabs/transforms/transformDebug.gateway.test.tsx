@@ -7,7 +7,7 @@
 import { describe, expect, it, beforeAll } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 
-import { useRealGateway, signInReal, signInWithCaps, seedSeries } from "@/test/gateway-session";
+import { useRealGateway, signInWithCaps, seedSeries } from "@/test/gateway-session";
 import type { Cell } from "@/lib/dashboard";
 import { useVizSteps } from "@/features/dashboard/builder/useVizSteps";
 

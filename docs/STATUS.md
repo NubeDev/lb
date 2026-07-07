@@ -16,28 +16,251 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just scoped (2026-07-05, docs only): insights — a durable data-insight record.** The answer to
-"do we need an insight system, or is it just a term?": ~80% is already shipped (rules
-`emit`/`alert`, flows sinks, inbox/outbox, channels, tags, personas + the agent dock); the one
-missing piece is a durable `insight:{ws}:{id}` record with severity, origin provenance
-(rule/flow/agent + run), `dedup_key` occurrence counting (flap-suppression + re-open), and an
-`open → acked → resolved` lifecycle — raised via a rules rhai handle / a flow `insight` sink node /
-plain `insight.*` MCP verbs, faceted through the tag graph, surfaced on an Insights page whose AI
-layer is the shipped agent dock + a data-only `builtin.insights-analyst` persona. Channel-per-rule,
-insight-as-outbox-effect, and insight-as-inbox-item all considered and rejected in-scope. Fraud +
-SkySpark-style HVAC verticals (`docker/postgres/seed.py`) build on it with zero core branches.
-Three sub-scopes carry the key features: **occurrences** (a per-insight transaction log — one lite
-size-capped row per raise in a capped ring, lifetime `count` beyond it), **subscriptions** (a
-member subscribes a channel to all / a rule / an identity / a tag facet / a severity floor,
-delivered under a stored reminders-pattern principal), and **notify** (the anti-spam digest
-ladder — noisy keys decay immediate→hourly→daily→weekly→monthly and climb back when quiet;
-first-occurrence/severity-escalation/re-open always break through; ack suppresses; ws policy
-defaults + per-sub overrides + a per-member prefs kill switch).
-Scope [`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3
-sub-scopes); stub
-[`public/insights/insights.md`](public/insights/insights.md); session
-[`sessions/insights/insights-scope-session.md`](sessions/insights/insights-scope-session.md).
-Not yet built — next up when picked.
+**Just shipped (2026-07-06): agent context basket — dock Tools mode + `context_items`.** The dock
+gained an **Ask | Tools** toggle that mounts the SHARED channel `CommandPalette` against the dock
+session (same catalog / JSON-Schema arg rail — zero duplication), and a **context basket**: a
+paperclip on every dock row gathers durable items (query results, rich responses, notes); the next
+ask carries their ids as the new additive `AgentPayload.context_items` (refs, not bodies), and the
+agent worker resolves + fences the bodies into the run's goal at drive time
+(`crates/host/src/channel/context_items.rs` — ws/channel-scoped store reads, 8-ref reject cap,
+8 KB/item truncation, untrusted-data fence; the sibling of the page-context fence). Rust lib 136
+green (incl. the mandatory ws-isolation + cross-channel fence tests); dock gateway suite 10 green
+incl. the end-to-end gather→ask→ref case. Scope
+[`agent-context-basket-scope.md`](scope/agent/agent-context-basket-scope.md), session
+[`agent-context-basket-session.md`](sessions/agent/agent-context-basket-session.md). **Next up:**
+the same gather seam on the channels surface; asset/PDF refs once ingest exposes item handles.
+
+**Also shipped (2026-07-06): `federation.sample` — one AI-ready snapshot of a datasource.** New MCP
+verb `federation.sample {source, tables?, limit?}` returns, in ONE bounded call, every table's
+columns, its **real foreign keys** (new best-effort `Source::foreign_keys` — SQLite
+`pragma_foreign_key_list`, Postgres `information_schema`; default `[]`), and up to `limit` (10,
+cap 50) sample rows — long cells truncated, `password`/`secret`/`token`-like columns redacted — the
+context a model needs to write correct SQL without N+1 `federation.schema` probes (which carry no
+FK metadata at all; the ERD infers joins by naming). Rides `federation.schema`'s exact pipeline +
+the same `mcp:federation.query:call` cap (gate alias in `tool_call.rs`); descriptor in the
+palette/agent catalog. e2e in `federation_sqlite_test.rs` (real-FK + 12-row + redaction fixture,
+cap-deny + ws-isolation). Scope
+[`datasource-samples-scope.md`](scope/datasources/datasource-samples-scope.md), session
+[`datasource-samples-session.md`](sessions/datasources/datasource-samples-session.md), skill
+[`datasources`](skills/datasources/SKILL.md). **Next up:** a "Copy AI context" button on
+`DatasourceDetail`; the ERD real-FK upgrade.
+
+**Also shipped (2026-07-06): saved queries on the Datasources page.** `DatasourceDetail`'s SQL editor
+header (beside Run) gained Save / Saved-queries dialogs riding the existing `query.*` verbs — no new
+verb/cap/table. `useDatasourceQueries.ts` filters the `query.list` roster client-side to
+`target === "datasource:<name>"` and saves `lang:"raw"` records; loading resolves the full record via
+`query.get`. Shipped truth: `public/datasources/datasources.md` §"Saved queries". The `querydef.*`
+chain sketched in the query-builder scopes is dead — those scopes now build on `query.*`.
+
+**Follow-up shipped (2026-07-06): the Open dialog gained copy + expand-to-view.** Each saved-query
+row in `SavedQueriesDialog` now has (a) a clipboard copy button and (b) a chevron that expands the
+row to render the SQL inline in the SAME read-only `SqlEditor` the workbench's Code mode uses (real
+syntax highlighting, not a flat `<pre>`). Both lazy-load via the shipped `query.get` (one fetch per
+row, cached for the dialog session). Session
+[`saved-queries-copy-expand-session.md`](sessions/datasources/saved-queries-copy-expand-session.md).
+
+**Also shipped (2026-07-06): the Query Builder is common across dialects — federation sources get the visual builder.**
+A LOCAL TABLE source (SurrealDB, `store.query`) gets the interactive Builder⇄Code editor; an external
+DATASOURCE (`federation.query` — postgres/timescale/sqlite, e.g. `demo-buildings`) USED to get only a
+raw-SQL textarea. The lift was a deferral recorded in
+[`scope/frontend/dashboard/viz/datasource-binding-scope.md`](scope/frontend/dashboard/viz/datasource-binding-scope.md)
+("Deferred: `federation.datasource.schema` … a federation target uses the raw-SQL editor until it
+lands") — liftable once `federation.schema {source, table?}` shipped. The builder UI is now **one
+component for every datasource kind**: the dialect is behind a seam, never a fork. **(1) The emitter
+seam** — `panel-kit/sql/dialect.ts` `emitSql(dialect, query)` dispatches between `toSurrealQL.ts`
+(UNCHANGED — `math::sum(col)`, bare identifiers, `count()`) and a NEW `toStandardSql.ts` (ANSI SELECT
+— `SUM("col")`, double-quoted identifiers, `COUNT(*)`, single-quoted string literals). The `dialect`
+is keyed on the target's datasource `kind` (config data, never a hardcoded datasource name — rule 10).
+**(2) The shared state stays put** — `panel-kit/sql/query.ts` (`SqlBuilderQuery`) is unchanged.
+**(3) The editor becomes transport-agnostic** — `SqlQueryEditor` accepts `dialect: SqlDialect` +
+`schema: Schema` props and stops importing `readSchema` itself; the host (`QueryTab.tsx`) decides the
+source + the dialect. **(4) Federation dropdowns from `federation.schema`** — two new hooks
+(`useLocalSchema`, `useFederationSchema`) wrap the shipped `readSchema()` / `discoverTables`+
+`describeTable` and project to ONE `Schema` shape (the editor consumes one shape regardless of
+dialect; `federation.schema` is workspace-pinned, gated under `mcp:federation.query:call`, lazy
+per-table column fill). **(5) Migration** — a federation cell now carries `options.sql` (the builder
+state) so reopening returns to the builder (the round-trip surreal had all along); a pre-slice
+federation cell (no `options.sql`) reopens to Code mode with the saved SQL preserved — no fabricated
+builder query. **Nothing else moves:** the wire shape (`federation.query {source, sql}`) is
+unchanged; the render path (`viz.query`) is unchanged; NO new MCP verb / cap / table / outbox target /
+host change. Surreal-path behaviour is preserved byte-for-byte (pinned by a surreal-regression
+gateway test: `math::avg` preview, not `AVG("…")`). **Tests (real gateway, rule 9):** UI unit
+**737/737** (was 705; +15 dialect/standard-SQL goldens, +2 cellEditorState federation round-trip
+cases — builder-carried + pre-slice migration); new gateway
+`queryBuilderCommon.gateway.test.tsx` **4/4** — HEADLINE (a federation target opens `SqlQueryEditor`,
+NOT the legacy textarea; `federation.schema` fires) + surreal-regression (dialect=surreal confirmed)
++ the MANDATORY capability-deny (no `mcp:federation.query:call` → schema discovery denied → empty
+dropdown, editor still renders) + MANDATORY workspace-isolation (ws-B's `datasource.list` does not
+include ws-A's source). The federation sidecar is NOT spawned in the UI test env (a true external a
+UI test cannot cheaply run) — `federation.schema` resolves to an honest typed error and the editor
+DEGRADES to empty (the system-catalog deny contract); the real-row round-trip stays
+`rust/crates/host/tests/federation_sqlite_test.rs`'s job (unchanged, stays green). `pnpm exec tsc
+--noEmit` clean (only the pre-existing `transformDebug.gateway` red remains); `pnpm exec eslint` clean
+on touched files. **Pre-existing reds (NOT this slice's — verified by `git stash` + rerun on clean
+master):** `sqlSource.gateway`, `SystemView.gateway`, `WorkflowView.gateway`, `ProofPanel.gateway`,
+`CommandPalette.reminders.gateway`, `App.gateway`, `PanelPage.gateway`, `AuthoringPanel.gateway`,
+`McpServiceView.gateway`, `InboxView.gateway` — all fail identically on the stashed baseline; all
+QueryTab/SqlQueryEditor-touching gateway tests (`panelEditor.gateway`, `DataStudioBuilderFlow.gateway`,
+`DataStudio.gateway`, `flowsPanelEditor.gateway`) are GREEN. Scope
+[`scope/frontend/query-builder-common-scope.md`](scope/frontend/query-builder-common-scope.md) (OQs
+all resolved as recommended); session
+[`sessions/frontend/query-builder-common-session.md`](sessions/frontend/query-builder-common-session.md);
+public [`public/frontend/data-studio.md`](public/frontend/data-studio.md) ("Query builder — common
+across dialects"). **Named follow-ups (not silent gaps):** the rail Sources-tree drill into
+federation tables/columns (compose a `readFederationSchema` loader onto `@nube/source-picker`'s
+`SourceLoaders`); a per-dialect time-bucket emit for the chart `time-series` format hint (the natural
+trigger for splitting `toStandardSql.ts` per dialect); a CodeMirror standard-SQL grammar (cosmetic).
+
+---
+
+**Just shipped (2026-07-05): Data Studio 10x — Dockview workbench, pages-as-panes, query-first builder.**
+The four-phase UI refresh of the multi-pane data workbench, landed end to end: **(1) engine swap** —
+`flexlayout-react` is gone, `dockview-react` (MIT, React-first) is the one dock engine (tabs, nested
+splits, floating groups, maximize, popout, JSON serialize/restore; theme via `--dv-*` CSS vars aliased
+to the shell tokens under `.dockview-theme-lb`; tab titles ellipsize with full-title tooltips; double-
+click rename via prompt). The persisted layout record is **versioned by engine** (`{engine:"dockview",
+model}`); a legacy flexlayout blob falls back to the default workbench + a **one-time "layout was reset"
+notice** (no silent draft loss). **(2) pages-as-panes** — a "+ Open view" header menu lists the core
+surfaces (Flows, Rules, Data, Datasources, Ingest) and opens each as a dock pane mounting the **REAL
+routed view component** (`FlowsView`/`RulesView`/…): same code path, same gateway, same caps — never a
+re-implementation. An `embedded` mode on `AppPage` suppresses a view's own full-width header inside a
+pane (the dock tab is the title bar); standalone routes keep it. One pane per view kind (the menu
+re-activates an open pane); Data Studio itself is excluded (no recursive embedding); the kind set is
+opaque data (rule 10 — the dock never branches on a host subsystem id). **(3) query-first builder** —
+picking a source / opening a library panel / **New panel** opens ONE stacked builder tab whose stage 1
+is a compact toolbar (inline title, Run, freeze/table/inspect, ONE Save split-button) + the focused
+query editor; NO preview / viz pills / options until rows exist. Rows returned → stage 2 reveals the
+live preview + a **viz gallery** (one thumbnail card per widget type; the 6 chart-likes get a live
+mini-render through the ONE `viz.query`/`WidgetView` path, the 3 labeled cards Table/AI-widget/Template
+don't; shape-gating mirrors `VizPicker`) + a collapsed searchable Options drawer (stage 3). The "Saved
+as library panel …" banner is now a compact badge; Save-as-library lives behind the Save split-button's
+caret menu (gated by `mcp:panel.save:call`). The gallery proves the ONE-query invariant — preview + 9
+thumbnails share one `vizQueryKey` cache entry (the view is not part of the key); asserted in tests.
+**(4) Demo data, honestly seeded (rule 9)** — when a query returns 0 rows AND the seeded SQLite
+`demo-buildings` datasource exists, the empty preview offers "Preview with demo data" (real records
+through the real `federation.query` engine, same render path); demo state is badged and AUTO-YIELDS the
+moment the user's query has rows. The rail's Sources tab is now a `CatalogExplorer` host (the workspace
+system catalog, shipped same day) — datasources → tables → columns, series, channels, insights as ONE
+honest tree; click → builder tab with the studio's `onSelect` mapping. **No new verb / cap / table /
+host change** — pure UI composition over shipped `layout.*` / `panel.*` / `viz.query` / each pane's own
+verbs. **Tests (real store/bus/gateway/caps, rule 9):** UI gateway `DataStudio.gateway` **8/8**
+(incl. the MANDATORY capability-deny + workspace-isolation + the legacy-layout fallback),
+`DataStudioPanes.gateway` **5/5** (REAL view mounts, AppPage embedded mode, layout round-trip, deny
+via `allowed`), `DataStudioBuilderFlow.gateway` **5/5** (query-first staging, ONE-query gallery
+asserted via the `ipc.invoke` spy pattern, panel.save round-trip, demo integrity, viz.query deny);
+units **33/33** across 5 new files (record versioning, pane registry, gallery type-mapping, drawer
+disclosure, demo state machine — `useDemoPreview`'s only fake is the pure `useDatasourceList` seam per
+the system-catalog precedent); `panelEditor.gateway` + `flowsPanelEditor.gateway` split-layout parity
+**10/10** green. Frontend unit total **705/705** (was 672); `pnpm exec tsc --noEmit` clean (only the
+pre-existing reds remain: FlowsCanvas.gateway, transformDebug.gateway). **One bug surfaced + fixed:**
+the CODE-ONLY session's new files reintroduced bare `rounded` (banned by the radius-scale guard
+shipped 2026-07-04); six offenders mapped to token-derived stops (`rounded-md` for menu items,
+`rounded-sm` for tight chips) — debug entry
+[`debugging/frontend/data-studio-10x-bare-rounded-radius-guard.md`](debugging/frontend/data-studio-10x-bare-rounded-radius-guard.md).
+Scope [`scope/frontend/data-studio-10x-scope.md`](scope/frontend/data-studio-10x-scope.md) (open
+questions OQ1/OQ3/OQ4 all resolved as recommended); session
+[`sessions/frontend/data-studio-10x-session.md`](sessions/frontend/data-studio-10x-session.md); public
+[`public/frontend/data-studio.md`](public/frontend/data-studio.md).
+
+---
+
+**Just shipped (2026-07-05): `@nube/source-picker` grew into the workspace system catalog.** The
+package went from a *picker* (the shipped combobox) to a catalog with **two UI skins** — the
+existing combobox AND a new browsable explorer tree (`<CatalogExplorer>`), extracted from the rules
+panel's `DataExplorer`. **One loader seam (`SourceLoaders`), one orchestration (`loadCatalog`/
+`useCatalog`), two projections**: the picker collapses a deny into an empty group (its existing
+contract), the explorer surfaces a deny VISIBLY ("Not permitted.", never a fabricated roster). Per
+section the explorer shows an HONEST tri-state — loading skeleton, "Not permitted." deny, teaching
+empty, ready rows (incl. a table→column tree for `store.schema`). **Four new optional loaders land
+over already-shipped verbs** — `readSchema` (`store.schema`), `listChannels` (`channel.list`),
+`listInsights` (`insight.list`), `listInbox` (`inbox.list`); absent loader ⇒ absent section, so a
+host composes which subsystems its surface shows. Sections are registry-driven data; the click yields
+a `CatalogEntry` (a tagged row) the HOST maps onto its snippet (the rules panel: `source("name")` /
+bare identifier / `history("series","name","24h")`). **The rules `DataExplorer` is now a thin
+loaders-adapter + Rhai-snippet mapping; `useDataExplorer` is deleted; `ui/src/components/schema/` is
+deleted (the package's `CatalogSchemaTree` is the one tree).** Honor the non-goals: no new node
+verbs, no query execution/editing in the package (its one job is *enumerate + pick*), no
+outbox/webhook sections (no roster verbs — named follow-ups). Self-themed via scoped `--sp-*` tokens
+under `.sp-root.sp-catalog` (the @nube/panel discipline). **Tests (rule 9):** package unit **46/46**
+(`useCatalog` per-section state + `CatalogExplorer` every-state rendering, with an injected fake
+LOADER OBJECT — a pure function seam, NOT a fake backend); the real path proven by the host suites
+— `AuthoringPanel.gateway.test.tsx` **7/7** (the parity gate), UI unit **672/672**, picker consumers
+(DataStudio / framesIn / rulesSource / fieldNamePicker) untouched and green. Scope
+[`scope/frontend/system-catalog-scope.md`](scope/frontend/system-catalog-scope.md) (open questions
+all resolved); session
+[`sessions/frontend/system-catalog-session.md`](sessions/frontend/system-catalog-session.md); public
+[`public/frontend/frontend.md`](public/frontend/frontend.md) ("The workspace system catalog").
+
+---
+
+**Just shipped (2026-07-05): sidebar icon colors — Settings → Theme → Icon colors.** One click
+auto-assigns every rail icon a distinct color from a **prefilled 100-color palette** (golden-angle
+hue spread, frozen data); each icon is then individually editable via an in-DOM swatch popover
+(10×10 grid + custom hex), and **Clear all** fully reverts. Rides the existing `ui_theme` prefs blob
+— one new optional `iconColors` axis, zero backend change (no new verb/cap/table). Application is a
+single inline `style={{ color }}` on the lucide `<Icon>` in `NavRail` (works in expanded and
+collapsed rail). In-DOM popover, not a native `<input type="color">` — sidesteps the WebKitGTK
+silent-no-op the appearance scope flagged. Scope
+[`scope/frontend/theme-icon-colors-scope.md`](scope/frontend/theme-icon-colors-scope.md); session
+[`sessions/frontend/theme-icon-colors-session.md`](sessions/frontend/theme-icon-colors-session.md).
+Frontend green: 109 files / 672 tests; `pnpm exec tsc --noEmit` adds no new errors.
+
+---
+
+**Just hardened (2026-07-05, later the same day): the widget-builder E2E loop now works live.**
+"add a widget for avg meter usage" (GLM-4.6, in-house runtime, `/dashboards`) now runs clean end to
+end: schema discovery → proven query → one `dashboard.save` appending to the OPEN dashboard, owned
+by the asking user. Five root causes fixed along the way: orphan `role:"tool"` messages made the
+model ignore tool errors (conformant assistant-echo wire shape); `information_schema` probes are now
+ANSWERED read-only instead of steered away; an error REPLY from the federation sidecar was treated
+as a crash and burned the restart budget (five failed queries took federation dark); agent-created
+dashboards were owned by the derived `agent:session` sub and invisible to the user
+(`Principal::owner_sub` delegation root); `dashboard.save`/`share` arg ergonomics (descriptors,
+stringified-JSON/null tolerance, `widget_type` default). Persona now targets the open dashboard
+(page-context `search.d`) and must PROVE a query returns data before saving. `MAX_STEPS` 8 → 16.
+Session [`sessions/agent/widget-builder-e2e-hardening-session.md`](sessions/agent/widget-builder-e2e-hardening-session.md);
+five new debugging entries under `debugging/agent/` + `debugging/federation/`.
+
+---
+
+**Just fixed (2026-07-05): the agent menu was starved — `tools.catalog` now serves the full
+host-native inventory.** A persona run (widget-builder on `/dashboards`) saw only 3 tools because
+the catalog only enumerated the ~11 guided-palette descriptors, so `reachable_tools` could never
+advertise `datasource.*`/`store.query`/`series.*`/`viz.query`/`flows.*`/… regardless of caps or
+persona; the `HOST_TOOLS` inventory had also drifted (whole dispatched families missing, stale
+hand-copied coverage list). Fixed at the catalog layer (name-only rows ∩ `is_host_native` ∩ the
+same per-verb `authorize_tool`), inventory completed, dispatch families now shared consts both the
+dispatcher and the coverage test derive from. Persona resolve/narrow was proven innocent. Regression
+`persona_menu_full_catalog_test`; debugging entry
+[`debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md`](debugging/agent/persona-menu-missing-tools-catalog-descriptor-only.md);
+session [`sessions/agent/persona-menu-full-catalog-session.md`](sessions/agent/persona-menu-full-catalog-session.md).
+Follow-up (recorded): inventory rows carry no arg schema until a verb grows a palette descriptor.
+
+---
+
+**Just shipped (2026-07-05): insights — the durable data-finding record + adaptive notify.** The
+one missing record type is in: a persisted, queryable data finding (`insight:{ws}:{id}` — severity,
+origin provenance, dedup-keyed occurrence counting, `open → acked → resolved` lifecycle) raised by
+any principal via `insight.*` MCP verbs, discovered through the tag graph, and surfaced on an
+Insights page with the agent dock + `builtin.insights-analyst` persona. Three sub-features compose
+onto it: **occurrences** (a per-insight transaction ring — last N firings, 2 KB-capped, `oseq`),
+**subscriptions** (a member subscribes a channel to all / a rule / an identity / a tag facet / a
+severity floor; fire-time re-checked stored principal; deny ⇒ dormant + owner note), and **notify**
+(the anti-spam digest ladder — `L0 immediate → … → L4 monthly`; breakthroughs always deliver; ack
+suppresses; one digest per `(sub, window)`; per-sub `throttle_override`/`muted`; per-member prefs
+kill switch; durable reactor over the injected clock). New crate `lb-insights`; host `insight.*`
+verbs (every verb over `POST /mcp/call`); `/insights…` REST + `/insights/events` SSE;
+`ui/src/features/insights/`; `builtin.insights-analyst` grounded by `core.insights` (the seeded
+SKILL.md). Domain-free (rule 10): core never learns "fraud"/"HVAC". **Tests (real store/bus/
+gateway, rule 9):** ladder unit **10/10**, host integration **14/14** (per-verb cap-deny +
+ws-isolation + dedup/ring/2 KB-reject/matcher/ladder/digest-idempotency/kill-switch), gateway routes
+**4/4**, UI gateway **4/4**; `core_skills_test` 11/11 (`core.insights` seeds + resolves); `pnpm test`
+631/631. Follow-ups (recorded, not gaps): the rhai handle + flow `insight` sink producer doors;
+InsightDetail origin deep-link + typed body renderer; retention/purge. Scope
+[`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3 sub-scopes);
+shipped [`public/insights/insights.md`](public/insights/insights.md); skill
+[`skills/insights/SKILL.md`](skills/insights/SKILL.md); session
+[`sessions/insights/insights-session.md`](sessions/insights/insights-session.md).
 
 ---
 
@@ -625,6 +848,27 @@ devkit input, + a real-scaffold e2e + the "never on its own" suspend-e2e). Two b
 (the clamp-vs-merge floor + a TOML sub-table binding drop of `runtimes`). Session:
 [`sessions/agent-personas/persona-coding-session.md`](sessions/agent-personas/persona-coding-session.md).
 Public: [`public/agent-personas/agent-personas.md`](public/agent-personas/agent-personas.md).
+
+**#5 persona-session SHIPPED (2026-07-05) — the post-ship correction of #1's selection model.** Live
+use showed #1's single `agent.config.active_persona` workspace-wide toggle was wrong twice over:
+two members (or one member's two tabs) can't hold different focuses, and hand-picking a focus
+workspace-wide is backwards when the dock already knows where the user is. This slice replaces the
+toggle with three ideas, **zero new verbs**: (a) the workspace **enables a roster**
+(`agent.config.enabled_personas: Option<Vec<String>>`; None = all enabled — the curation layer);
+(b) exactly **one** persona per run, **suggested client-side** from the page surface via new
+`Persona.surfaces: Vec<String>` (matched over the enabled roster by the dock — rule 10, no core
+branch), with a sticky per-tab **pin** in `sessionStorage`; (c) defaults re-homed to a new nullable
+`Prefs.agent_persona` axis (member → ws-default fold). Run assembly (`apply.rs`/`resolve_effective`)
+untouched; one-shot boot migration copies any legacy `active_persona` into the ws-default axis
+(decode-only thereafter). Backend: **9 host tests green** (precedence table, roster semantics,
+disabled-named-error, ws-isolation, independence, migration, surfaces-as-data, capability-deny);
+UI: **8 PersonaSettings + 6 DockPersonaChip gateway tests green** (chip == sent payload for context
+match + pin; pin survives remount; pin in tab A never changes tab B; disabled absent from picker;
+explicit-disabled invoke error; second member's own server fold). Decisions: empty roster = cleared
+= all enabled (disabling-all unsupported); `""` clears a prefs axis; multi-match = id-sorted first;
+list computes `enabled` server-side. Session:
+[`sessions/agent-personas/persona-session-session.md`](sessions/agent-personas/persona-session-session.md).
+
 
 **Just shipped (2026-07-03): active-agent wiring — the active pick is the ONE implicit agent
 everywhere (branch `master`).** A workspace picks one agent and no surface asks again; the pick's
@@ -1690,6 +1934,7 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 | extension widgets in the builder palette | frontend | S9+ | **shipped** | [widget-palette](scope/frontend/dashboard/widget-palette-scope.md) | [widget-palette](sessions/frontend/widget-palette-session.md) | the **last mile** of the extension-widget story over the shipped v2 builder — a packaged `[[widget]]` tile is now **addable from the palette**, not only renderable from a hand-authored cell key. **No backend, no v2/`mountWidget`/`[[widget]]` contract change** — a pure frontend discovery-and-gating slice. `sourcePicker.ts` gains a **`"widget"` group** + **`extWidgetEntries(rows)`** (one entry per `row.widgets[]` tile, label `<ext> · <tile.label>`, carries the tile icon + the resolved `ext:<id>/<widget>` view key; `widgetIdOf` **exported from `ExtWidget.tsx`** so picker and renderer share ONE slug — the key built == the key parsed), folded into `buildSourceEntries` (tool-harvesting `extension`/`action` entries kept — a tile and its tools are both useful). `WidgetBuilder.tsx` gains an **"Extension widgets" `PickerGroup`**; selecting a tile **hides the view chooser** (`viewsFor` returns the single packaged view) and forces the candidate cell to `{ v:2, view:"ext:<id>/<widget>" }` (no source/action — the tile owns its data via `scope ∩ grant`); preview routes through the shipped `WidgetView → ExtWidget` over the **real bridge**, trust-tiered unchanged. **The edit gate:** a new `canEdit` prop renders the whole add surface **only** when the session holds `mcp:dashboard.save:call` — derived in `DashboardView.tsx` from `useAppRoutingContext().caps` (the shell's existing grant source the nav gates on; **no new backend read**); the host re-check on `dashboard.save` stays the authoritative backstop. Tests (real gateway, real installed `proof-panel`, no fakes): **+4 UI unit** (one `widget` entry per tile · viewKey = `widgetIdOf` slug · no source/action · folded-with-tool-entries · disabled-skipped) + **+6 UI real-gateway** (full round-trip: palette lists `Proof Ping` → select hides chooser → preview mounts real `ExtWidget`, `proof.demo` latest asserted live → **Add** persists `view:"ext:proof-panel/proof-ping"` → `getDashboard` re-reads · **cap-deny headline**: `canEdit=false` empty add surface **AND** `dashboard.save` denied server-side for a principal lacking the cap · **ws-isolation** ws-B picker lists only ws-B tiles · **trust-tier from the palette path** installed widget → **in-process**); `DashboardView.gateway.test.tsx` now wraps the view in a **real `RoutingContextProvider`** fed the real session caps (no mock). **Trust-tier follow-up (same session):** publishing `proof-panel` live exposed that the iframe tier could NOT render an installed widget — the remote externalizes React to the **shell import map** (in-process only), so it rendered blank with `Failed to resolve module specifier "react"`. Fixed by routing **every installed extension widget in-process** (the publish/install cap IS the trust gate); the sandboxed iframe tier is now **scripted author code only** (`trust.ts` `extWidgetTier()` → `"in-process"`, `ExtWidget` dropped its dead iframe branch + `remoteIframeCode`). [debug](debugging/frontend/ext-widget-iframe-tier-cannot-resolve-bare-react.md). **Live e2e** `ui/e2e/dashboard-widget.spec.ts` (built shell :4173 + real node :8080, real Chromium): login → Dashboards → create → pick "proof-panel · Proof Ping" from the **Extension widgets** group → tile mounts **in-process** w/ the host's single React → renders the **real `proof.demo`** value over the bridge → Add persists → re-renders in the grid; **no iframe, no error wrapper, no `Failed to resolve module specifier react`, no hook-call crash**; existing `proof-panel.spec.ts` page e2e still green (no regression). Verified live: `make publish-ext EXT=proof-panel` → HTTP 204 installed+loaded, `ext.list` shows the `Proof Ping` widget, `remoteEntry.js` HTTP 200, dashboard.save round-trip of an `ext:proof-panel/proof-ping` cell over the live node. `pnpm test` **48** + `pnpm test:gateway` **110** + 2 Playwright e2e + tsc + **0 eslint errors** green. **SSE follow-up (same session):** to exercise the **live feed** + prove the picker's one-entry-per-`[[widget]]` with a real N>1 ext, `proof-panel` now ships a **2nd tile "Proof Ping Live"** — backfills with `series.latest` then **subscribes** via `bridge.watch("series.watch")` → the shipped `openSeriesStream` → gateway SSE `GET /series/{s}/stream` → ws motion subject, ticking per live sample, no reload/poll (the whole SSE chain was already shipped — this is the first widget that USES it). `mountWidget` now **dispatches by `widgetId`** (`proof-ping`/`proof-ping-live`); 2nd `[[widget]]` block + `series.watch` in scope + `mcp:series.watch:call` in `[capabilities] request` (so `ui_decl::narrow` keeps it — verified live in `ext.list`; SSE authorizes on `series.read`). +3 proof-panel unit (`WidgetLiveTile.test.tsx`: backfill→live-tick×2→badge · unsubscribe-on-unmount · deny) over a `watchBridge` double + **1 live Playwright e2e** `dashboard-widget-live.spec.ts` (built shell + real node: add Proof Ping Live from palette → backfill → **write a new sample → tile ticks live, no reload**). proof-panel ui **15** + all **3** dashboard/page e2e green; republished live (HTTP 204, both widgets in `ext.list`). All scope open Qs were pre-decided; the `widget_type` vs `view` detail resolved in-build (`view` drives render, `widget_type` stays the v1 `"chart"` fallback). |
 | dashboard surface (grid + widgets) — Phase 1 | frontend | S9+ | **shipped** | [dashboard](scope/frontend/dashboard-scope.md) + [dashboard-widgets](scope/frontend/dashboard-widgets-scope.md) | [dashboard](sessions/frontend/dashboard-session.md) | **Phase 1 SHIPPED** — the `vision/0003` IoT dashboard, first-party over real seeded series. Full vertical: **`seed_iot_demo`** (real ingest path → `cooler.temp`/`fryer.state` + tag-graph tags) · host **`dashboard`** svc (`get`/`list`/`save`-UPSERT/`delete`/`share`, 5 caps, one verb/file) with the **full S4 three-gate authz** — gate-3 `visibility.rs` reuses the shipped `share`/`member` edges (private→team→workspace, **non-member denied**) · **series motion** (`ingest/motion.rs`: `publish_sample`+`subscribe_series` on `ws/{id}/series/{series}` — the one piece the scope assumed but didn't exist) · `routes/dashboard.rs` mirror + **`GET /series/{s}/stream` SSE** (the channel-stream analog) + `POST /ingest` now publishes motion. UI `features/dashboard/`: `react-grid-layout` grid (layout↔`cells[]` in the `dashboard:{id}` record, **not** localStorage), built-in **chart/stat/gauge** widgets (`useSeries`: `series.read` backfill + live SSE fold), tag/series binding palette, cap-gated nav. **5 host + 6 gateway + 3 real-gateway Vitest** (CRUD · deny-per-verb · gate-3 member/non-member · 2-ws iso · seed integrity · **live sample over a real socket** · UI create→bind→render→persist · tag-bound `series.find`). `cargo test --workspace`/fmt + `pnpm test`(20)/`test:gateway`(56)/`build` green; no SDK/WIT/cap-grammar change. **Phase 2 (federated widgets, contracts frozen `v:1`) NOT started** — the trust boundary warrants its own reviewed slice; Phase 1 proves the binding contract first. **Phase 3** (real fleet) unbuilt |
 | make collaboration real | frontend | S7 | **shipped** | [collaboration](scope/frontend/collaboration-scope.md) | [collaboration](sessions/frontend/collaboration-session.md) | the UI went from a 1-screen S2 demo on fakes to a **real collaboration app over a real session**. **Identity keystone:** demo principal DELETED — `POST /login` mints a signed `lb_auth` token (dev credential store); **every** gateway route `verify`s the bearer token → workspace+caps from the **token, not the request** (§7); SSE auth via `?token=` (EventSource can't set a header). New host services: `channel_registry` (`channel_create`/`channel_list` + create-on-post, reuses chan pub/sub gate), `members` (`list_members`/`add_team_member` over S4 edges, `mcp:members.*`), `inbox` (`list_inbox`/`resolve_inbox` over `lb_inbox`, `mcp:inbox.*`), `outbox` (read-only `outbox_status`, `mcp:outbox.status`), `workspaces` (`workspace_list`/`create` in reserved ns). New gateway routes mirror each 1:1. UI: `lib/session/`+`useSession`, workspace switcher, channel list, members view, **rendered presence** (`usePresence` idempotent roster), real inbox view (replaces the workflow fake on the real path — Approve/Reject = S6 gate), read-only outbox view; `App.tsx` hardcoded `WS`/`CHANNEL`/`AUTHOR` gone. **Two real sessions** make the ws-isolation test real (ws-B sees none of ws-A). +5 host collab (cap-deny + ws-iso each verb) +14 gateway (session: issue/verify/forged/expired/ws-from-token · deny · 2-session iso · registry · real inbox · outbox pending→delivered · live SSE) +6 Vitest views; cargo build/fmt/file-size + pnpm build/test green; no core/WIT change |
+| **SQLite datasource, first-class + the Docker-free demo dataset** — surface the shipped `source/sqlite.rs` engine as a real datasource kind and emit the demo building dataset into one `.db` file (answers Data Studio 10x OQ2 the lite way) | datasources | post-S10 | **shipped** (2026-07-05) | [sqlite-datasource-demo](scope/datasources/sqlite-datasource-demo-scope.md) | [session](sessions/datasources/sqlite-datasource-demo-session.md) | **All 4 goals landed.** Seeder: `seed.py --sqlite <path>` + new `sinks_sqlite.py` (same `inventory`/`generators`/`tags` brains, stdlib sqlite3, drop+recreate idempotent; lite defaults `--months 1 --interval 15` ≈956k readings in ~15s — verified twice-run-identical + element-wise equal to the generator output). **`make seed-demo-sqlite`** (→ `docker/postgres/seed-demo-sqlite.sh`) generates `.lazybones/data/demo/buildings.db` and registers `demo-buildings` via the normal `datasource.add`; `FED_ENDPOINTS` default grew **`127.0.0.1:0`** — the convention endpoint for file sources (rejected: exempting sqlite from `enforce_endpoint`, a rule-10 kind-branch in a core mediation chokepoint). UI: `AddDatasourceForm` kind is a **select** over a `KINDS` data array (per-kind DSN placeholders; sqlite prefills the convention endpoint + shows the node-local-path note). `source/sqlite.rs` now **refuses a missing path** with "resolves on the node running the federation sidecar, not the client" — SQLite would otherwise silently create an empty db that probes green; the path (= DSN) is never echoed. Tests green: NEW no-Docker **`host/tests/federation_sqlite_test.rs`** (probe/schema/query vs a real seeded `.db` · missing-path error + no-empty-file-created · path-DSN redaction in list+result · **cap-deny** · **ws-isolation**) + `DatasourcesAdmin.gateway.test.tsx` 6/6 (kind select, sqlite add, redaction holds for a path DSN). Promoted to `public/datasources/datasources.md`. |
 
 ---
 

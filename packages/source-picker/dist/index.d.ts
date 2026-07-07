@@ -1,4 +1,5 @@
 import { JSX as JSX_2 } from 'react';
+import { ReactNode } from 'react';
 
 /** A write action — the tool a switch/slider/button calls on interaction. `argsTemplate` carries a
  *  `{{value}}` slot the interaction fills. */
@@ -17,10 +18,177 @@ export declare const BUILDER_SOURCE_GROUPS: SourceGroup[];
  *  (`SourceInputs.datasources`), surfaced by the UI separately from these entries. */
 export declare function buildSourceEntries(inputs: SourceInputs): SourceEntry[];
 
+/** The canonical section registry. A host renders whichever of these its loaders cover; ids stay
+ *  opaque (rule 10 — no core branch on a host's "known subsystem list"). */
+export declare const CATALOG_SECTION_SPECS: CatalogSectionSpec[];
+
+/** A teaching empty state — used by per-kind row renderers when the section is ready but holds zero
+ *  rows (e.g. "No external datasources registered."). */
+export declare function CatalogEmpty({ children }: {
+    children: ReactNode;
+}): JSX_2.Element;
+
+/** What a click in the explorer yields — a tagged row the HOST maps onto its snippet/bind. Each kind
+ *  carries ONLY the fields a host needs to form that mapping; the package owns no host semantics
+ *  (rule 10). The host's `onSelect` is the one place "what this pick MEANS" is decided. */
+export declare type CatalogEntry = {
+    kind: "datasource";
+    id: string;
+    name: string;
+    rowKind: string;
+    endpoint?: string;
+} | {
+    kind: "table";
+    id: string;
+    table: string;
+} | {
+    kind: "column";
+    id: string;
+    table: string;
+    column: string;
+} | {
+    kind: "series";
+    id: string;
+    name: string;
+} | {
+    kind: "channel";
+    id: string;
+    name: string;
+} | {
+    kind: "insight";
+    id: string;
+    title: string;
+    severity?: string;
+    status?: string;
+} | {
+    kind: "inbox";
+    id: string;
+    channel: string;
+} | {
+    kind: "query";
+    id: string;
+    name: string;
+    target?: string;
+};
+
+/** The system-catalog explorer panel. */
+export declare function CatalogExplorer({ sections, onSelect, onLoadSection, sectionSpecs, className, }: CatalogExplorerProps): JSX_2.Element;
+
+export declare interface CatalogExplorerProps {
+    /** The per-section state from `useCatalog`. Sections absent here (the host wired no loader) are
+     *  skipped even if `sections` lists them — absent loader ⇒ absent section. */
+    sections: CatalogSections;
+    /** Called with the picked `CatalogEntry` whenever a row is clicked. The host maps the entry onto
+     *  its own snippet/bind (a Rhai `source("name")`, a SQL table name, a dashboard cell source). */
+    onSelect: (entry: CatalogEntry) => void;
+    /** Fired the first time a user expands a section whose state is still `idle` — the host's cue to
+     *  run that section's loader. Wire to `useCatalog`'s `loadSection`. Optional (a host that pre-seeds
+     *  `ready` data never triggers it); omitting means every section renders open + ready (the eager
+     *  contract from before lazy loading — render tests use this). */
+    onLoadSection?: (kind: CatalogSectionKind) => void;
+    /** Which sections to render + their labels/hints, in display order. Defaults to the canonical
+     *  `CATALOG_SECTION_SPECS`. A host that wants a subset (e.g. just `datasources` + `series`) passes
+     *  its own filtered list. */
+    sectionSpecs?: CatalogSectionSpec[];
+    /** Extra className on the root. */
+    className?: string;
+}
+
+/** A table → column tree with click-to-pick, using shadcn's file-tree pattern. Tolerates an empty
+ *  schema (the parent shows the teaching-empty/deny; this renders nothing for `tables: []`). */
+export declare function CatalogSchemaTree({ schema, onSelect }: CatalogSchemaTreeProps): JSX_2.Element;
+
+export declare interface CatalogSchemaTreeProps {
+    schema: Schema;
+    /** Called when a table header (no `column`) or a column row is clicked. */
+    onSelect: (entry: CatalogEntry) => void;
+}
+
+/** A collapsible section: a clickable header (chevron + title + hint) + the body. The header toggles
+ *  open/close; the first open of an `idle` section fires `onOpen` so the host can lazy-load it. */
+export declare function CatalogSection<T>({ spec, state, onOpen, defaultOpen, children }: CatalogSectionProps<T>): JSX_2.Element;
+
+/** The schema of `CatalogSections.data` per section kind. The explorer kinds carry row arrays (or
+ *  `Schema` for the local-tables section, which the tree renderer walks); the picker-only kinds
+ *  (`extensions`/`rules`/`flowSummaries`/`flowDescriptors`) carry the row shapes `loadSourcePicker`
+ *  composes from. */
+export declare interface CatalogSectionData {
+    datasources: DatasourceRow[];
+    schema: Schema;
+    series: string[];
+    channels: ChannelRow[];
+    insights: InsightRow[];
+    inbox: InboxRow[];
+    queries: QuerySummary[];
+    extensions: ExtRow[];
+    rules: RuleSummary[];
+    flowSummaries: FlowSummary[];
+    flowDescriptors: NodeDescriptor[];
+}
+
+/** The catalog's section vocabulary. Each kind is 1:1 with a single `SourceLoaders` read. Adding a
+ *  section = adding a kind here + a row type + a loader entry on `SourceLoaders`. The renderer is
+ *  kind-agnostic (it renders a `CatalogSectionSpec`'s label/hint + the section's `SectionState`),
+ *  so a new kind needs no renderer change.
+ *
+ *  NOTE: this is the FULL vocabulary the catalog CAN cover (so `loadSourcePicker` projects every
+ *  loader it needs off the same per-section state). `CATALOG_SECTION_SPECS` below is the SUBSET the
+ *  EXPLORER skin renders today — a host composes which sections its surface shows. `extensions`,
+ *  `rules`, `flowSummaries`, `flowDescriptors` are picker-only projections today (no explorer
+ *  section) but share the orchestration. */
+export declare type CatalogSectionKind = "datasources" | "schema" | "series" | "channels" | "insights" | "inbox" | "queries" | "extensions" | "rules" | "flowSummaries" | "flowDescriptors";
+
+export declare interface CatalogSectionProps<T> {
+    spec: CatalogSectionSpec;
+    state: SectionState<T>;
+    /** Fired the first time the user expands a section whose state is still `idle` — the host's cue to
+     *  trigger this section's loader. The collapsible handles its own open/close thereafter; this is
+     *  the lazy-load trigger, not an open/close controller. Optional (a host that pre-seeds `ready`
+     *  state never triggers it). */
+    onOpen?: () => void;
+    /** Force the section open on first mount (default: open iff `state` is past `idle`). Tests + hosts
+     *  that pre-seed `ready` data pass `defaultOpen` so rows render without a click. */
+    defaultOpen?: boolean;
+    /** The ready-body renderer — receives the section's data and returns the row tree. The explorer
+     *  composes this per kind (datasource rows / the schema table tree / channel rows / …). */
+    children: (data: T) => ReactNode;
+}
+
+/** The catalog's per-section honest state. A section is `undefined` when the host supplied no
+ *  loader for it (absent ⇒ absent section); `{status:"loading"}` while in flight; `{status:"ready"}`
+ *  on success; `{status:"denied"}` on throw (capability wall — never a fake list). */
+export declare type CatalogSections = {
+    [K in CatalogSectionKind]?: SectionState<CatalogSectionData[K]>;
+};
+
+/** A section's declarative descriptor — its kind (loader-keyed), its human label, and a one-line
+ *  hint. Exported as `CATALOG_SECTION_SPECS` (the canonical list); a host composes its surface by
+ *  which loaders it wires (absent loader ⇒ absent section). */
+export declare interface CatalogSectionSpec {
+    kind: CatalogSectionKind;
+    label: string;
+    hint: string;
+}
+
+/** Channel rows → catalog entries. */
+export declare function channelEntries(rows: ChannelRow[]): CatalogEntry[];
+
+/** A registered channel row (the subset of `channel.list` the catalog needs — id only; the registry
+ *  record carries more, the package keeps the seam minimal). */
+export declare interface ChannelRow {
+    id: string;
+}
+
+/** Datasource rows → catalog entries. The id is the name (stable round-trip key). */
+export declare function datasourceEntries(rows: DatasourceRow[]): CatalogEntry[];
+
 /** A registered federation datasource (from `datasource.list`). */
 export declare interface DatasourceRow {
     name: string;
     kind: string;
+    /** Optional endpoint label (mirrors `datasource.list`'s `endpoint`). The catalog row renders it as
+     *  a `kind · endpoint` sub-label; absent ⇒ just `kind`. */
+    endpoint?: string;
 }
 
 /** Installed-extension TOOL entries — split an extension's `ui`/`widgets[]` scope tools into READ
@@ -75,12 +243,45 @@ export declare interface FlowSummary {
     name: string;
 }
 
+/** Inbox rows → catalog entries. */
+export declare function inboxEntries(rows: InboxRow[]): CatalogEntry[];
+
+/** An inbox item summary row (the subset of `inbox.list`'s `Item` the catalog renders). */
+export declare interface InboxRow {
+    id: string;
+    channel: string;
+}
+
+/** Insight rows → catalog entries. */
+export declare function insightEntries(rows: InsightRow[]): CatalogEntry[];
+
+/** An insight summary row (the subset of `insight.list`'s `items[]` the catalog renders). Severity
+ *  + status are optional so a host that only has `id`/`title` still renders. */
+export declare interface InsightRow {
+    id: string;
+    title: string;
+    severity?: string;
+    status?: string;
+}
+
 /** Live (Zenoh) entries — each series also offers a live `series.watch` stream. */
 export declare function liveEntries(seriesNames: string[]): SourceEntry[];
 
-/** Run every loader (deny-tolerant) and fold the results into picker entries. The Flows group composes
- *  `flows.list` (flows the caller may reach) + `flows.nodes` (descriptors) + a `flows.get` per flow; a
- *  flow the caller cannot `flows.get` is silently skipped. */
+/** Run every loader the host wired (deny-tolerant per section). Each present loader resolves to
+ *  `ready`/`denied` independently; absent loaders yield an absent (undefined) section. The
+ *  orchestration is the single source of truth — the picker's deny→empty collapse and the
+ *  explorer's visible tri-state both project off the record this returns.
+ *
+ *  `publish` (optional) is invoked once per section as it resolves, with the cumulative
+ *  `CatalogSections` record — so a caller (the `useCatalog` hook) can surface each section's state
+ *  the moment it lands instead of waiting for every loader. Late calls after the caller is
+ *  unmounted/cancelled are the caller's concern (it passes a `publish` that no-ops on cancel). */
+export declare function loadCatalog(loaders: SourceLoaders, publish?: (merge: (current: CatalogSections) => CatalogSections) => void): Promise<CatalogSections>;
+
+/** Run every loader (deny-tolerant; absent loader ⇒ absent input) and fold the results into picker
+ *  entries. The Flows group composes `flows.list` + `flows.nodes` + a per-flow `flows.get` — the
+ *  catalog exposes the first two as `flowSummaries`/`flowDescriptors`; `getFlow` is per-flow so it
+ *  stays picker-side (the catalog is a per-loader record, not a per-item join). */
 export declare function loadSourcePicker(loaders: SourceLoaders): Promise<SourcePickerResult>;
 
 /** A node descriptor (from `flows.nodes`) — the port lists the picker offers as bindings. */
@@ -102,6 +303,29 @@ export declare function PickerGroup({ entries, group, label, }: {
     group: SourceEntry["group"];
     label: string;
 }): JSX_2.Element | null;
+
+/** Saved-query rows → catalog entries. The id is the query's slug (stable round-trip key); `target`
+ *  rides along so the explorer's renderer can sub-label a platform query vs a federated one. */
+export declare function queryCatalogEntries(rows: QuerySummary[]): CatalogEntry[];
+
+/** Saved-query entries — one per `query.list` row. Each ⇒ a read `query.run {id}` source: the host
+ *  compiles the saved PRQL/raw text for the target's dialect and dispatches to `store.query`
+ *  (platform) or `federation.query` (datasource), returning the SAME `{columns, rows}` shape every
+ *  other tabular source yields. `query.run` COMPOSES the target's cap, it never widens it (rule 5):
+ *  the caller needs `mcp:query.run:call` AND the underlying target cap, re-checked per call. Whether
+ *  the saved text is currently valid is the author's concern — an honest failure if not. */
+export declare function queryEntries(queries: QuerySummary[]): SourceEntry[];
+
+/** A saved query's summary (the subset of `query.list`'s `queries[]` the picker renders) — a saved
+ *  query is a read source (`query.run {id}` → `{columns, rows}`), so it mirrors `RuleSummary`.
+ *  `target` (optional) is the host's `"platform"` | `"datasource:<name>"` string; the catalog row
+ *  renders it as a sub-label so an author can tell a platform query from a federated one at a glance.
+ *  Absent ⇒ just the name (a host that only returns `{id,name}` still renders). */
+export declare interface QuerySummary {
+    id: string;
+    name: string;
+    target?: string;
+}
 
 /** The read/source groups, in display order, with their section labels. `action` is omitted (write
  *  controls are a separate authoring intent); a host that wants them passes its own list (see
@@ -136,6 +360,53 @@ export declare interface RuleSummary {
     params?: RuleParam[];
 }
 
+/** The workspace's local-store schema (every table + its columns) — the result of `readSchema`. */
+export declare interface Schema {
+    tables: SchemaTable[];
+}
+
+/** One column of a local-store table as `store.schema` reports it (mirrors the shell's `SchemaColumn`
+ *  shape, homed here so the package stands alone — system-catalog scope). */
+export declare interface SchemaColumn {
+    name: string;
+    type: string;
+}
+
+/** Schema → (table, column) entries — the columns of every table, flattened. The explorer's tree
+ *  groups these under their table; the package exposes them flat so a host that wants a flat
+ *  column picker can also consume them. */
+export declare function schemaColumnEntries(schema: Schema): CatalogEntry[];
+
+/** One local-store table + its columns (the `store.schema` row shape). */
+export declare interface SchemaTable {
+    name: string;
+    columns: SchemaColumn[];
+}
+
+/** Schema → table entries (one per table). Columns are addressed by the `column` kind via
+ *  `schemaColumnEntries` (the explorer's table→column tree opens a table, then lists its columns). */
+export declare function schemaTableEntries(schema: Schema): CatalogEntry[];
+
+/** A section's load state — never a fake "ready with empty data" when the read was denied. This is
+ *  the contract the EXPLORER skin surfaces visibly (loading skeleton / "Not permitted." / ready) and
+ *  the COMBOBOX collapses into an empty group via projection. Moved in from the rules panel's
+ *  `useDataExplorer` (system-catalog scope).
+ *
+ *  `idle` is the lazy-load contract: the section is collapsed and its loader has NOT fired yet. The
+ *  loader fires the first time a user expands the section (the explorer's `onOpen`), then transitions
+ *  to `loading` → `ready`/`denied`. Subsequent collapse/re-expand keeps the cached data (no refire). */
+export declare type SectionState<T> = {
+    status: "idle";
+} | {
+    status: "loading";
+} | {
+    status: "ready";
+    data: T;
+} | {
+    status: "denied";
+    error: string;
+};
+
 /** Fold a chosen entry into a `SourceSelection` (drop the labelling fields; keep what the host stores). */
 export declare function selectionOf(entry: SourceEntry): {
     id: string;
@@ -143,6 +414,9 @@ export declare function selectionOf(entry: SourceEntry): {
     action?: Action;
     viewKey?: string;
 };
+
+/** Series names → catalog entries (one per series). */
+export declare function seriesCatalogEntries(names: string[]): CatalogEntry[];
 
 /** Series entries — each ⇒ `series.read` of that series. */
 export declare function seriesEntries(seriesNames: string[]): SourceEntry[];
@@ -187,7 +461,7 @@ export declare interface SourceEntry {
     id: string;
     /** The grouping origin (the picker's sections). `widget` is a packaged `[[widget]]` tile (a finished
      *  widget the developer shipped — distinct from `extension`, which offers an extension's raw tools). */
-    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules";
+    group: "series" | "live" | "extension" | "action" | "sql" | "widget" | "flows" | "rules" | "queries";
     /** What the author sees — never a raw tool name. */
     label: string;
     /** For a `widget` entry: the icon name the tile declared (lucide id). */
@@ -223,6 +497,7 @@ export declare interface SourceInputs {
     descriptors?: NodeDescriptor[];
     datasources?: DatasourceRow[];
     rules?: RuleSummary[];
+    queries?: QuerySummary[];
 }
 
 /** The INJECTED read seam. The host implements each over its own transport (the shell delegates to
@@ -246,6 +521,22 @@ export declare interface SourceLoaders {
     /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
      *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
     listRules?: () => Promise<RuleSummary[]>;
+    /** Saved PRQL/raw queries the caller may run (from `query.list`). Drives the Queries group — each ⇒
+     *  a `query.run {id}` read source (re-gated per call, no-widening: the caller still needs the
+     *  target's underlying cap). Optional + deny-tolerant like every loader. */
+    listQueries?: () => Promise<QuerySummary[]>;
+    /** The workspace's local-store schema (from `store.schema`). Drives the explorer's Local-tables
+     *  section (table → column tree). Absent ⇒ the section is absent (a host that only wants the
+     *  picker groups skips it). */
+    readSchema?: () => Promise<Schema>;
+    /** Registered channels (from `channel.list`). Drives the explorer's Channels section. */
+    listChannels?: () => Promise<ChannelRow[]>;
+    /** Insights (from `insight.list`). Drives the explorer's Insights section. The host may pre-filter
+     *  (status/severity) in its loader closure — the package just enumerates what it returns. */
+    listInsights?: () => Promise<InsightRow[]>;
+    /** Inbox items (from `inbox.list`). `inbox.list` is per-channel, so the host fixes the channel in
+     *  its loader closure; the package calls it with no args. */
+    listInbox?: () => Promise<InboxRow[]>;
 }
 
 export declare function SourcePicker({ entries, value, onSelect, loading, groups, "aria-label": ariaLabel, className, }: SourcePickerProps): JSX_2.Element;
@@ -302,6 +593,22 @@ export declare const SQL_SOURCE_ID = "sql:query";
 /** The single "SQL query" picker entry. Its `source.tool` is `store.query` so a host's tool set
  *  includes it (the bridge's leash); the concrete `sql` is filled by the host's SQL editor. */
 export declare function sqlSourceEntry(): SourceEntry;
+
+/** Lazy catalog. `loaders` is the host's read seam; `ws` keys the re-init (the workspace switch). The
+ *  initial idle record is computed once per `loaders` reference via `useState`'s lazy initializer —
+ *  every wired section starts `idle` on FIRST render (no useEffect timing gap). The `ws` effect resets
+ *  the record on workspace switch (the user re-opens each section to re-fetch under the new ws). */
+export declare function useCatalog(loaders: SourceLoaders, ws: string): UseCatalogResult;
+
+/** The lazy catalog — the per-section state record plus the `loadSection(kind)` action the explorer
+ *  fires on first expand. The host reads `sections` for rendering; passes `loadSection` to the
+ *  `<CatalogExplorer>` so its section headers can trigger their own loads. */
+declare interface UseCatalogResult {
+    sections: CatalogSections;
+    /** Fire one section's loader (deny-tolerant; absent loader ⇒ the section stays `undefined`).
+     *  Idempotent — calling it again on an already-loaded section is a no-op (the cached state persists). */
+    loadSection: (kind: CatalogSectionKind) => void;
+}
 
 /** Load + assemble the picker. `loaders` is the host's read seam; `ws` keys the re-load (the workspace
  *  switch). The effect keys on `ws` ONLY and reads `loaders` through a ref kept current every render —

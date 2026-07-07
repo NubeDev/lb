@@ -35,6 +35,8 @@ import { ChartTooltip } from "./ChartTooltip";
 import { ChartState } from "./ChartStates";
 import { formatXTick, isTemporalAxis } from "./axisFormat";
 import { useReducedMotion } from "./useReducedMotion";
+import { downsampleRows } from "./downsample";
+import { useChartBudget } from "./chartBudget";
 
 interface Props {
   rows: Array<Record<string, unknown>>;
@@ -52,7 +54,18 @@ const defaultFormat = (n: number) => (Number.isInteger(n) ? n.toLocaleString() :
 
 export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = defaultFormat, ariaLabel }: Props) {
   const reduced = useReducedMotion();
-  const frame = useMemo(() => buildPlot(rows, spec), [rows, spec]);
+  const budget = useChartBudget();
+  // Downsample what is DRAWN (shared-x representative rows — see downsample.ts) AFTER the full-data
+  // aggregation: buildPlot's grouping/reduction still sees every row, only the plotted frame shrinks.
+  // EVERY series is always drawn (never hide data) — a high-cardinality split instead shrinks the
+  // per-series point budget so the TOTAL drawn points stay bounded (600 series can't mean 600×1500
+  // SVG points), floored so each series still has a visible shape.
+  const frame = useMemo(() => {
+    const f = buildPlot(rows, spec);
+    const rowBudget = Math.max(50, Math.floor((budget * 8) / Math.max(1, f.series.length)));
+    const cap = Math.min(budget, rowBudget);
+    return f.data.length > cap ? { ...f, data: downsampleRows(f.data, cap) } : f;
+  }, [rows, spec, budget]);
 
   if (!isPlottable(spec)) return <ChartState tone="table-only" />;
   if (frame.data.length === 0) return <ChartState tone="empty" />;
@@ -73,7 +86,7 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
       <Wrap ariaLabel={ariaLabel ?? "pie chart"}>
         <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <Tooltip content={<ChartTooltip valueFormatter={valueFormatter} colorOf={() => "hsl(var(--accent))"} />} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: 11, maxHeight: 88, overflowY: "auto" }} />
           <Pie
             data={frame.data}
             dataKey="value"
@@ -98,7 +111,13 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
 
   const grid = <CartesianGrid {...gridProps} vertical={spec.type === "bar" && !spec.horizontal ? false : true} />;
   const tooltip = <Tooltip cursor={{ fill: "hsl(var(--accent) / 0.06)" }} content={<ChartTooltip valueFormatter={valueFormatter} colorOf={colorFor} />} />;
-  const legend = frame.series.length > 1 ? <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} iconType="plainline" /> : null;
+  // The legend is CONTAINED, whatever the series count: past ~4 rows of entries it scrolls inside the
+  // pane instead of painting over the page (the 600-series "split by point_id" failure). Every series
+  // keeps its entry — bounding the box, not the data.
+  const legend =
+    frame.series.length > 1 ? (
+      <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4, maxHeight: 88, overflowY: "auto" }} iconType="plainline" />
+    ) : null;
 
   const xAxis = (
     <XAxis
@@ -215,7 +234,7 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
 
 function Wrap({ children, ariaLabel }: { children: React.ReactElement; ariaLabel: string }) {
   return (
-    <div className="min-h-0 flex-1" role="img" aria-label={ariaLabel}>
+    <div className="min-h-0 flex-1 overflow-hidden" role="img" aria-label={ariaLabel}>
       <ResponsiveContainer width="100%" height="100%" minHeight={0}>
         {children}
       </ResponsiveContainer>

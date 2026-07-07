@@ -51,6 +51,34 @@ pub struct Prefs {
     /// workspace can ship a default; it is not an i18n axis and no `format.*` reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_theme: Option<serde_json::Value>,
+    /// The workspace **branding** blob (workspace-branding scope): admin-owned workspace identity
+    /// (`{ site_name, site_abbr, tagline, login_heading }`). Strings only — image marks live as
+    /// assets at reserved ids (`branding:{icon,favicon,logo}`), NOT in this blob (a blob that grew
+    /// with each upload would bloat every prefs read). Prefs stores/folds it whole; like `ui_theme`
+    /// it is opaque data the frontend validates. The resolved value is the **workspace-default**
+    /// link in practice — branding is admin-owned, so a member never writes this axis, but the same
+    /// fold machinery carries it for free. `None` = inherit (the shell falls back to its compiled
+    /// Lazybones default brand).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_branding: Option<serde_json::Value>,
+    /// The member's (or workspace-default's) insight-notification global kill switch
+    /// (insights-notify-scope.md). `None` = inherit (the resolved chain defaults to `true` —
+    /// notifications ON). `Some(false)` ⇒ the digest reactor skips every delivery for this member's
+    /// subscriptions (accounting continues, so re-enabling picks up sane digests). This is a
+    /// whole-fold nullable axis (the shipped prefs pattern) — the host reads it once at delivery
+    /// time; zero host/gateway plumbing beyond that read. Not an i18n axis; no `format.*` reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub insight_notifications: Option<bool>,
+    /// The member's (or workspace-default's) **default agent persona id** (persona-session #5 — where
+    /// #1's `agent.config.active_persona` toggle re-homed). Consulted by the host's `resolve_persona`
+    /// when an invoke carries no explicit `persona`: member record → workspace-default record, first
+    /// `Some` wins. The id is OPAQUE data (rule 10); a dangling id warns + runs un-narrowed at the
+    /// consumer, never here. `None` = inherit; an **empty string clears the axis** (the MERGE-can't-
+    /// write-null workaround — the consumer's `filter(|s| !s.is_empty())` treats it as unset). A
+    /// whole-fold nullable axis (the `insight_notifications` pattern): not an i18n axis, not in
+    /// `ResolvedPrefs`, no `format.*` reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_persona: Option<String>,
 }
 
 /// Deserialize an `option<object>` column: a present map decodes normally, a stored `null` (the
@@ -80,6 +108,11 @@ pub struct ResolvedPrefs {
     /// layer parses it. `None` when neither the member nor the workspace set one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_theme: Option<serde_json::Value>,
+    /// The resolved workspace branding blob (workspace-branding scope). Opaque; the frontend's
+    /// `lib/branding` parses it. `None` when no workspace default is set — the shell falls back to
+    /// the compiled Lazybones brand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_branding: Option<serde_json::Value>,
 }
 
 impl ResolvedPrefs {

@@ -10,6 +10,7 @@ import { App } from "./App";
 import "./styles/globals.css";
 import "@nube/nav-rail/style.css"; // the reusable nav rail's self-contained tokens + utilities
 import "@nube/panel/style.css"; // the reusable resizable panel's self-contained tokens + utilities
+import "@nube/source-picker/style.css"; // the reusable source picker's scoped `--sp-*` tokens + tree styles
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

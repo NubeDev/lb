@@ -73,6 +73,17 @@ export interface RuleSummary {
   params?: RuleParam[];
 }
 
+/** A saved query's summary (the subset of `query.list`'s `queries[]` the picker renders) — a saved
+ *  query is a read source (`query.run {id}` → `{columns, rows}`), so it mirrors `RuleSummary`.
+ *  `target` (optional) is the host's `"platform"` | `"datasource:<name>"` string; the catalog row
+ *  renders it as a sub-label so an author can tell a platform query from a federated one at a glance.
+ *  Absent ⇒ just the name (a host that only returns `{id,name}` still renders). */
+export interface QuerySummary {
+  id: string;
+  name: string;
+  target?: string;
+}
+
 /** A flow node (the subset the picker reads to enumerate ports). */
 export interface FlowNode {
   id: string;
@@ -97,7 +108,63 @@ export interface NodeDescriptor {
 export interface DatasourceRow {
   name: string;
   kind: string;
+  /** Optional endpoint label (mirrors `datasource.list`'s `endpoint`). The catalog row renders it as
+   *  a `kind · endpoint` sub-label; absent ⇒ just `kind`. */
+  endpoint?: string;
 }
+
+/** One column of a local-store table as `store.schema` reports it (mirrors the shell's `SchemaColumn`
+ *  shape, homed here so the package stands alone — system-catalog scope). */
+export interface SchemaColumn {
+  name: string;
+  type: string;
+}
+
+/** One local-store table + its columns (the `store.schema` row shape). */
+export interface SchemaTable {
+  name: string;
+  columns: SchemaColumn[];
+}
+
+/** The workspace's local-store schema (every table + its columns) — the result of `readSchema`. */
+export interface Schema {
+  tables: SchemaTable[];
+}
+
+/** A registered channel row (the subset of `channel.list` the catalog needs — id only; the registry
+ *  record carries more, the package keeps the seam minimal). */
+export interface ChannelRow {
+  id: string;
+}
+
+/** An insight summary row (the subset of `insight.list`'s `items[]` the catalog renders). Severity
+ *  + status are optional so a host that only has `id`/`title` still renders. */
+export interface InsightRow {
+  id: string;
+  title: string;
+  severity?: string;
+  status?: string;
+}
+
+/** An inbox item summary row (the subset of `inbox.list`'s `Item` the catalog renders). */
+export interface InboxRow {
+  id: string;
+  channel: string;
+}
+
+/** A section's load state — never a fake "ready with empty data" when the read was denied. This is
+ *  the contract the EXPLORER skin surfaces visibly (loading skeleton / "Not permitted." / ready) and
+ *  the COMBOBOX collapses into an empty group via projection. Moved in from the rules panel's
+ *  `useDataExplorer` (system-catalog scope).
+ *
+ *  `idle` is the lazy-load contract: the section is collapsed and its loader has NOT fired yet. The
+ *  loader fires the first time a user expands the section (the explorer's `onOpen`), then transitions
+ *  to `loading` → `ready`/`denied`. Subsequent collapse/re-expand keeps the cached data (no refire). */
+export type SectionState<T> =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ready"; data: T }
+  | { status: "denied"; error: string };
 
 /** The INJECTED read seam. The host implements each over its own transport (the shell delegates to
  *  its `@/lib/*` clients; an extension calls its `bridge.call`). Every function is allowed to reject /
@@ -120,6 +187,22 @@ export interface SourceLoaders {
   /** Saved rules the caller may run (from `rules.list`). Drives the Rules group — each ⇒ a `rules.run`
    *  read source (the rule fetches + computes in the cage and returns records the panel draws). */
   listRules?: () => Promise<RuleSummary[]>;
+  /** Saved PRQL/raw queries the caller may run (from `query.list`). Drives the Queries group — each ⇒
+   *  a `query.run {id}` read source (re-gated per call, no-widening: the caller still needs the
+   *  target's underlying cap). Optional + deny-tolerant like every loader. */
+  listQueries?: () => Promise<QuerySummary[]>;
+  /** The workspace's local-store schema (from `store.schema`). Drives the explorer's Local-tables
+   *  section (table → column tree). Absent ⇒ the section is absent (a host that only wants the
+   *  picker groups skips it). */
+  readSchema?: () => Promise<Schema>;
+  /** Registered channels (from `channel.list`). Drives the explorer's Channels section. */
+  listChannels?: () => Promise<ChannelRow[]>;
+  /** Insights (from `insight.list`). Drives the explorer's Insights section. The host may pre-filter
+   *  (status/severity) in its loader closure — the package just enumerates what it returns. */
+  listInsights?: () => Promise<InsightRow[]>;
+  /** Inbox items (from `inbox.list`). `inbox.list` is per-channel, so the host fixes the channel in
+   *  its loader closure; the package calls it with no args. */
+  listInbox?: () => Promise<InboxRow[]>;
 }
 
 /** What selecting a picker entry yields — the host maps this onto whatever it persists (a dashboard

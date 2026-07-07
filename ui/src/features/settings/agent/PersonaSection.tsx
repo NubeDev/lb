@@ -1,8 +1,8 @@
-// The Persona section of the Agent tab (agent-personas scope #1) — the three new panes below the
-// definition catalog, one mental model: *agent = who runs (definition) × what for (persona)*. It owns
-// the persona catalog (pick/create/edit/delete), and — for the selected-or-active persona — the
-// read-only Effective-tools view and the Permissions (Allow/Ask/Deny) pane. The definition catalog
-// stays in `AgentTab`; this is the "what for" half.
+// The Persona section of the Agent tab (agent-personas scope #1, reworked by persona-session #5) —
+// the three panes below the definition catalog. One mental model: *agent = who runs (definition) ×
+// what for (persona)*. The roster (enable/disable per persona) curates the dock's advertisement +
+// context-match layer; the per-member and workspace defaults live in the prefs chain (member → ws);
+// the dock's per-tab pin is the last-mile override. The definition catalog stays in `AgentTab`.
 //
 // The boundary (load-bearing): every pane here edits ADVERTISEMENT + SUPERVISION, never the wall. No
 // control grants or revokes a capability; Effective-tools shows the live `persona ∩ agent ∩ caller`.
@@ -26,8 +26,12 @@ interface Props {
 type EditorState = { open: false } | { open: true; editing: Persona | null };
 
 export function PersonaSection({ caps }: Props) {
-  // Picking writes `agent.config.active_persona` — the same admin-only set cap the definition pick uses.
-  const canPick = hasCap(caps, CAP.agentConfigSet);
+  // Roster writes need `agent.config.set` (admin) — the same gate the definition/runtime pick uses.
+  const canSetRoster = hasCap(caps, CAP.agentConfigSet);
+  // "My default" is member-level — every member may write their own prefs record.
+  const canSetMemberDefault = hasCap(caps, CAP.prefsSet);
+  // "Workspace default" needs the admin `prefs.set_default` cap.
+  const canSetWsDefault = hasCap(caps, CAP.prefsSetDefault);
   const canManage =
     hasCap(caps, CAP.agentPersonaCreate) ||
     hasCap(caps, CAP.agentPersonaUpdate) ||
@@ -38,10 +42,11 @@ export function PersonaSection({ caps }: Props) {
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [error, setError] = useState<string | null>(null);
   // Which persona the Effective-tools + Permissions panes reflect: an explicit selection, else the
-  // active one. Kept as an id so a reload/pick stays in sync (opaque string — no branch on its value).
+  // first enabled persona (a sensible default for inspection). Kept as an id (opaque — no branch).
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const focusId = selectedId ?? catalog.activeId ?? undefined;
+  const firstEnabledId = catalog.personas.find((p) => p.enabled)?.id;
+  const focusId = selectedId ?? firstEnabledId ?? catalog.personas[0]?.id;
   const focusPersona = catalog.personas.find((p) => p.id === focusId);
 
   const guard = async (fn: () => Promise<void>) => {
@@ -60,7 +65,8 @@ export function PersonaSection({ caps }: Props) {
           <h2 className="text-sm font-semibold text-fg">Persona — what the agent runs for</h2>
           <p className="text-[11px] leading-snug text-muted">
             The definition above picks <em>who runs</em> (runtime + model); a persona picks{" "}
-            <em>what for</em> — its focused tool menu, pinned skills, and identity. Editing a persona
+            <em>what for</em> — its focused tool menu, pinned skills, and identity. The roster curates
+            which personas the dock can suggest; defaults live in your preferences. Editing a persona
             changes what the agent is <em>shown</em>, never what it may reach.
           </p>
         </div>
@@ -96,6 +102,7 @@ export function PersonaSection({ caps }: Props) {
                   granted_tools: persona.granted_tools,
                   grounding_skills: persona.grounding_skills,
                   extends: persona.extends,
+                  surfaces: persona.surfaces,
                   policy_preset: persona.policy_preset,
                   runtimes: persona.runtimes,
                 });
@@ -111,22 +118,30 @@ export function PersonaSection({ caps }: Props) {
       ) : (
         <PersonaCatalog
           personas={catalog.personas}
-          activeId={catalog.activeId}
-          canPick={canPick}
+          memberDefaultId={catalog.memberDefaultId}
+          wsDefaultId={catalog.wsDefaultId}
+          canSetRoster={canSetRoster}
+          canSetMemberDefault={canSetMemberDefault}
+          canSetWsDefault={canSetWsDefault}
           canManage={canManage}
-          onPick={(persona) => void guard(() => catalog.pick(persona))}
+          onToggleEnabled={(persona) => void guard(() => catalog.toggleEnabled(persona))}
+          onSetMemberDefault={(id) => void guard(() => catalog.setMemberDefault(id))}
+          onClearMemberDefault={() => void guard(() => catalog.clearMemberDefault())}
+          onSetWsDefault={(id) => void guard(() => catalog.setWsDefault(id))}
+          onClearWsDefault={() => void guard(() => catalog.clearWsDefault())}
           onEdit={(persona) => setEditor({ open: true, editing: persona })}
           onDelete={(persona) => void guard(() => catalog.remove(persona.id))}
         />
       )}
 
-      {!canPick && !canManage && (
+      {!canSetRoster && !canManage && !canSetWsDefault && (
         <p className="mt-3 text-[11px] text-muted">
-          You can view the workspace personas. Changing them requires an administrator.
+          You can view the workspace personas and set your own default. Changing the roster or the
+          workspace default requires an administrator.
         </p>
       )}
 
-      {/* Effective tools — the live `persona ∩ agent ∩ caller` for the selected-or-active persona. */}
+      {/* Effective tools — the live `persona ∩ agent ∩ caller` for the selected persona. */}
       <section className="mt-8" aria-label="effective tools section">
         <div className="mb-2 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold text-fg">Effective tools</h3>
@@ -137,10 +152,10 @@ export function PersonaSection({ caps }: Props) {
               value={focusId ?? ""}
               onChange={(e) => setSelectedId(e.target.value || null)}
             >
-              <option value="">{catalog.activeId ? "Active persona" : "No active persona"}</option>
               {catalog.personas.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.label}
+                  {p.enabled ? "" : " (disabled)"}
                 </option>
               ))}
             </Select>
