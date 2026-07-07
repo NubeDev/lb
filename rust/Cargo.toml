@@ -6,6 +6,14 @@
 # excluded from the workspace: it targets a different platform and is built separately by
 # the host's build script. Listing it as a workspace member would force the whole workspace
 # onto the wasm target.
+#
+# `control-engine` is ALSO excluded: it depends on `rubix-ce` (a pinned private git dep that
+# needs auth to fetch), and a workspace member's deps are resolved into the shared Cargo.lock
+# for EVERY `cargo build -p <anything>` / `--workspace`. Keeping it out means the default
+# build (the node binary, lb-pack, CI) needs ZERO knowledge of CE — it's 100% an opt-in
+# extension, built only via `make control-engine` (extensions/control-engine/build.sh). The
+# crate is otherwise self-contained (path deps into the shared crates; see its Cargo.toml).
+# Mirrors how hello/hello-v2/github-bridge/thecrew are excluded.
 [workspace]
 resolver = "2"
 members = [
@@ -43,7 +51,6 @@ members = [
     "crates/telemetry",
     "crates/undo",
     "crates/viz",
-    "extensions/control-engine",
     "extensions/echo-sidecar",
     "extensions/federation",
     "extensions/fleet-monitor",
@@ -59,7 +66,7 @@ members = [
     "role/cli",
     "tools/pack",
 ]
-exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel", "extensions/echarts-panel", "extensions/thecrew"]
+exclude = ["extensions/hello", "extensions/hello-v2", "extensions/github-bridge", "extensions/proof-panel", "extensions/echarts-panel", "extensions/thecrew", "extensions/control-engine"]
 
 [workspace.package]
 version = "0.1.0"

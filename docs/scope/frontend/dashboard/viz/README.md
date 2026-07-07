@@ -79,6 +79,15 @@ additive-`v` discipline, and couples our store to Grafana's `schemaVersion` chur
    doesn't show the same options as add"). A Grafana-style panel editor (viz picker + Query / Transform /
    Panel options / Field / Overrides tabs) with live preview, built on shadcn + `ui-standards`, with
    **one** field-code path so add and edit can never drift.
+8. [`panel-wizard-scope.md`](panel-wizard-scope.md) — **the create-flow wizard** (the user's "Field is
+   overwhelming and half of it does nothing"): a stepped wizard (source → chart type → small option
+   sections) whose headline is **preview-per-option** — each option card carries a live mini-preview of its
+   effect, so live options show their effect instantly and dead options surface themselves. A thin shell
+   over the SAME `cellEditorState`/`writeOption`/`usePanelData` engine as the editor (no-drift by
+   construction); the simplified-sections + preview engine later **ports back into the editor's Field tab**
+   to replace its dead-option rows. Isolated from data studio until validated; real seeded previews (no
+   fakes). Backed by the [`fieldTabBaseline`](../../../../../../ui/src/features/dashboard/views/fieldTabBaseline.gateway.test.tsx)
+   LIVE/DEAD contract.
 
 ## Goals (the umbrella)
 

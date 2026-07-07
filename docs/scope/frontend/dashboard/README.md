@@ -41,7 +41,10 @@ because existing session docs point at them; new dashboard notes should live her
    [`datasource-binding-scope.md`](viz/datasource-binding-scope.md) (datasources beyond native SurrealDB),
    [`import-export-scope.md`](viz/import-export-scope.md) (Grafana JSON in/out), and
    [`panel-editor-scope.md`](viz/panel-editor-scope.md) (the editor UX + the add≡edit parity fix). Additive
-   over the shipped v2 contract.
+   over the shipped v2 contract. **`viz/panel-wizard-scope.md`** adds the create-flow **wizard**
+   (preview-per-option, one engine with the Field tab) — the Field-tab baseline audit
+   ([`debugging/frontend/field-tab-options-that-do-nothing.md`](../../../debugging/frontend/field-tab-options-that-do-nothing.md))
+   is its input.
 3f. [`source-picker-package-scope.md`](source-picker-package-scope.md) — **extract the shipped source
    picker into a reusable `@nube/source-picker` package** so a user (or AI) can select a value from the
    DB / datasources / Zenoh (live series) / flows the SAME way the dashboard does, from OUTSIDE the

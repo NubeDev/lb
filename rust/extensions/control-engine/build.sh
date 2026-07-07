@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
 # Build the `control-engine` extension — the native (Tier-2) CE bridge extension
-# (control-engine scope). A host-platform binary AND a workspace member, so it builds
-# for the host target via the shared workspace target/ dir. Produces:
-#   rust/target/release/control-engine   (the binary the host supervisor spawns over stdio)
-#   ui/dist/remoteEntry.js               (the S7 federated wiresheet page the shell dynamic-imports)
+# (control-engine scope). EXCLUDED from the host workspace (it pins `rubix-ce`, a private
+# git dep), so this builds it STANDALONE from its own dir. Produces:
+#   rust/target/{debug,release}/control-engine   (the binary the host supervisor spawns over stdio)
+#   ui/dist/remoteEntry.js                        (the S7 federated wiresheet page the shell dynamic-imports)
 set -euo pipefail
 cd "$(dirname "$0")"
-# -p against the workspace so it shares the workspace lockfile and target dir.
-cargo build -p control-engine
-cargo build --release -p control-engine
-echo "built: control-engine (workspace target/{debug,release}/control-engine)"
+# Share the workspace target dir so the supervisor + host integration test find the binary at
+# rust/target/{debug,release}/control-engine (unchanged from when this was a workspace member).
+# CWD is rust/extensions/control-engine, so ../.. = rust/.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$(cd ../.. && pwd)/target}"
+cargo build
+cargo build --release
+echo "built: control-engine (${CARGO_TARGET_DIR}/{debug,release}/control-engine)"
 
 # S7 federated UI bundle. The ext UI is a STANDALONE package (its own lockfile, --ignore-workspace) that
 # resolves the vendored `@nube/ce-wiresheet` by ALIAS to its BUILT dist (vite.config.ts) — so build the

@@ -102,7 +102,7 @@ pub async fn mount(node: Arc<Node>) {
     if !bin.exists() {
         eprintln!(
             "control-engine: sidecar binary not found at {} — build it with \
-             `cargo build -p control-engine` (skipping install)",
+             `make control-engine` (skipping install)",
             bin.display()
         );
         return;

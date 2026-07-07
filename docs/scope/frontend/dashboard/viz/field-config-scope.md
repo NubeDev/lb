@@ -240,6 +240,32 @@ No blocking open questions — these are the long-term answers the build follows
   a sig-fig option in [`prefs-scope`](../../../prefs/user-prefs-scope.md) later — it's a formatter feature,
   not a field-config shape change.
 
+## Known gaps (the Field-tab baseline, 2026-07-07)
+
+A real-gateway audit ([`debugging/frontend/field-tab-options-that-do-nothing.md`](../../../../debugging/frontend/field-tab-options-that-do-nothing.md);
+regression net `ui/src/features/dashboard/views/fieldTabBaseline.gateway.test.tsx`, 24 green) classified
+every registered Field-tab option LIVE (observable render change) vs DEAD (stored + round-tripped, but
+no renderer reads it). The editor-parity phase registered Grafana's full surface to complete the
+**editor**; the matching **render** work only landed for the standard bridge + a few graph styles, and
+`registryRoundTrip.test.ts` checks only the de/serializer, not the renderer — so the gap was invisible to
+the green suite. These are the named follow-ups (the UX-simplify session decides per option: implement
+the render path, or remove the option from the per-view registry so the editor never offers what the
+renderer won't draw):
+
+- **`timeseries` DEAD (9):** `mappings` (TS never calls `applyMappings`), `links` (no drilldown render),
+  `custom.lineInterpolation` (recharts hardcodes `monotone`), `custom.gradientMode`, `custom.showPoints`,
+  `custom.spanNulls`, `custom.axisPlacement` (the axis is `hide`n), `custom.stacking.mode`,
+  `custom.thresholdsStyle.mode`.
+- **`timeseries` PARTIAL (1):** `color` scheme — only `fixed` mode renders; `palette-*`/`continuous-*`
+  silently fall back to the accent token (`fieldconfig/color.ts`). Either implement or scope the
+  `ColorSchemeEditor` mode list so the picker never offers a mode the resolver degrades.
+- **`table` DEAD (4):** `custom.width`, `custom.align`, `custom.cellOptions.type`, `custom.filterable`
+  (the renderer introspects columns but applies none of them).
+- **Registry render-guard (the prevention):** extend `registryRoundTrip.test.ts`'s exhaustiveness
+  pattern to RENDER behavior — a new `OptionDef` whose `views` includes V must be observed by a test
+  that renders V and asserts the option changes the output, or it fails. So the next option registered
+  to "complete the editor" cannot go dead silently again.
+
 ## Related
 
 - [`README.md`](README.md) — the viz umbrella + the reconciliation table (`fieldConfig` row).

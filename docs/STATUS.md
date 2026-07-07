@@ -16,6 +16,33 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-07): Field-tab baseline audit — what works vs what's dead.** The panel editor's
+**Field** section was "overwhelming and half the options do nothing" (the user's report). The audit
+proves it: a real-gateway test (`fieldTabBaseline.gateway.test.tsx`, 24 green) classifies every
+registered Field-tab option as LIVE (setting it changes the rendered output observably) or DEAD (stored +
+round-tripped, but no renderer reads it → zero visible effect). **The headline: ~half the `timeseries`
+Field-tab options are DEAD** (`mappings`, `links`, `custom.lineInterpolation`/`gradientMode`/`showPoints`/
+`spanNulls`/`axisPlacement`/`stacking.mode`/`thresholdsStyle.mode`) and **all of `table`'s per-column
+`custom.*`** (width/align/cell-type/filter). The single-stat family (`stat`/`gauge`/`bargauge`/
+`piechart`) is in good shape — the shared `valueFieldOptions` + `formatValue` + `applyMappings` bridge
+covers the standard options. Root cause: the editor-parity phase registered Grafana's full surface to
+make the EDITOR complete; the matching render work only landed for the standard bridge + a few graph
+styles, and `registryRoundTrip.test.ts` only checks the de/serializer, not the renderer — so the gap was
+invisible to the green suite. The baseline test IS the contract for the next step. **Next up (scoped + handed off):** the
+**panel wizard** — a stepped create flow whose headline is **preview-per-option** (each option card shows a
+live mini-preview of its effect; dead options surface themselves), a thin shell over the existing
+`cellEditorState`/`writeOption`/`usePanelData` engine (no second surface → no drift), isolated from data
+studio as a dedicated route until proven, then ported back into the editor's Field tab. Presentation-option
+previews re-shape cached frames via the shipped `viz.query` fetch/shape split (no backend hit); only data
+steps re-query. Scope
+[`scope/frontend/dashboard/viz/panel-wizard-scope.md`](scope/frontend/dashboard/viz/panel-wizard-scope.md)
+(no open questions — all long-term decisions taken), handover
+[`sessions/frontend/HANDOVER-panel-wizard-build.md`](sessions/frontend/HANDOVER-panel-wizard-build.md).
+Debug entry
+[`debugging/frontend/field-tab-options-that-do-nothing.md`](debugging/frontend/field-tab-options-that-do-nothing.md),
+baseline session
+[`dashboard-field-tab-baseline-session.md`](sessions/frontend/dashboard-field-tab-baseline-session.md).
+
 **Just shipped (2026-07-06): agent context basket — dock Tools mode + `context_items`.** The dock
 gained an **Ask | Tools** toggle that mounts the SHARED channel `CommandPalette` against the dock
 session (same catalog / JSON-Schema arg rail — zero duplication), and a **context basket**: a

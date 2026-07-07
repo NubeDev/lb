@@ -121,7 +121,7 @@ async fn container_toolchain_builds_same_artifact_as_process_toolchain() {
 
 /// Private-dep credential (integration): the streamed log never contains the git token, whether a
 /// build succeeds or fails. Skips if Docker/the image aren't available. This is the regression
-/// test for the `control-engine` `exit 101` symptom (docs/debugging/extensions/).
+/// test for a native extension's `exit 101` symptom (docs/debugging/extensions/).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn container_build_log_never_contains_the_git_token() {
     let _guard = env_lock();

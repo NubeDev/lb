@@ -1,18 +1,29 @@
 # `control-engine` — the native (Tier-2) Control Engine (CE) bridge extension
 # (control-engine scope). A supervised host binary that holds the long-lived CE
 # REST/WS connection (via the `rubix-ce` client crate) and serves the caps-gated
-# `control-engine.*` MCP surface. Like `federation`/`echo-sidecar` it is a native
-# binary for the host target, so it IS a workspace member, and it speaks the SAME
-# `lb-supervisor` wire protocol over stdio.
+# `control-engine.*` MCP surface. It speaks the SAME `lb-supervisor` wire protocol
+# over stdio as `federation`/`echo-sidecar`.
+#
+# EXCLUDED from the host workspace (rust/Cargo.toml `exclude`) and therefore
+# SELF-CONTAINED: it pins its own deps instead of inheriting `[workspace.dependencies]`.
+# Why: `rubix-ce` is a private pinned git dep (auth-required to fetch), and any
+# workspace member's deps are resolved into the shared Cargo.lock on EVERY
+# `cargo build`/`--workspace`. Keeping this crate out means the default node build
+# + CI need ZERO CE knowledge — control-engine is 100% an opt-in extension
+# (control-engine scope §"100% extension": the core stays CE-ignorant, and so does
+# the default WORKSPACE). Built only via `make control-engine` (build.sh) or the
+# `cargo build` run from this dir by the host integration test (which skips if the
+# git dep can't be fetched). Mirrors how hello/hello-v2/thecrew are excluded.
 #
 # The CE client (`rubix-ce`) and its REST/WS deps live ONLY here — core crates link
-# no CE code (control-engine scope §"100% extension": the core stays CE-ignorant).
+# no CE code. Path deps point back into the shared crates (../../crates/*), so this
+# still tracks local source; it just no longer drags `rubix-ce` into the workspace lockfile.
 [package]
 name = "control-engine"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.90"
 
 [lib]
 name = "control_engine"
@@ -25,18 +36,18 @@ path = "src/main.rs"
 [dependencies]
 # Reuse the supervisor's wire protocol + framing verbatim — child and host agree on
 # the ABI by sharing the crate (no drift), exactly like federation/echo-sidecar.
-lb-supervisor = { workspace = true }
+lb-supervisor = { path = "../../crates/supervisor" }
 # The host callback transport (S4): the sidecar reaches the store (`store.write`/
 # `store.query`/`store.delete` for the `ce_appliance` registry) via the node-signed
 # `LB_EXT_TOKEN` over `POST /mcp/call`. Shared crate, so the callback ABI cannot drift.
-lb-sidecar-client = { workspace = true }
+lb-sidecar-client = { path = "../../crates/sidecar-client" }
 # Parse the injected `LB_EXT_TOKEN` grant for the per-verb capability self-check (the
 # inbound `native.call` carries no caller identity — the sidecar self-checks its grant).
-lb-auth = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+lb-auth = { path = "../../crates/auth" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 async-trait = "0.1"
-thiserror = { workspace = true }
+thiserror = "2"
 
 # The CE client crate (control-engine scope Decision: pinned git dependency, still
 # update-with-approval). `rest` pulls `ws`; `CeRestClient<WsStreamTransport>::new`
@@ -51,7 +62,7 @@ rubix-ce = { git = "https://github.com/NubeIO/ce-client-rust", rev = "51ab97edf3
 # `sync` (the watch-registry Mutex is std, but the fake's channel sender lives in tokio sync).
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "time", "sync"] }
 # S6 COV pump consumes the `CovStream` (a `futures::Stream`) via `StreamExt::next`.
-futures = { workspace = true }
+futures = "0.3"
 
 # The `rubix-ce` REST/WS client (an external git dep we can't edit) pulls `reqwest` with its DEFAULT
 # `default-tls` feature → `native-tls` → `openssl-sys`, which needs a system OpenSSL + pkg-config to
@@ -68,7 +79,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 # bypasses `rubix-ce`'s strict `EdgeDto` decode so a dangling edge can't blank the
 # canvas. Same pin/features as the rest of the workspace (rustls-tls, no default-tls);
 # Cargo unifies it with the `reqwest` `rubix-ce` already pulls.
-reqwest = { workspace = true }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [features]
 default = []
@@ -84,11 +95,11 @@ ce-fake = []
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "io-std", "sync", "net"] }
 # The S4 appliance-registry integration test drives the registry verbs against a REAL spawned gateway
 # + node + store + caps (the native-callback pattern from ros/tests/crud_test.rs). No mocks.
-lb-host = { workspace = true }
-lb-role-gateway = { workspace = true }
-lb-auth = { workspace = true }
-axum = { workspace = true }
+lb-host = { path = "../../crates/host" }
+lb-role-gateway = { path = "../../role/gateway" }
+lb-auth = { path = "../../crates/auth" }
+axum = "0.8"
 # S6 watch integration test: assert the COV frame on the real series bus subject + the durable copy.
-lb-bus = { workspace = true }
-lb-ingest = { workspace = true }
-lb-store = { workspace = true }
+lb-bus = { path = "../../crates/bus" }
+lb-ingest = { path = "../../crates/ingest" }
+lb-store = { path = "../../crates/store" }

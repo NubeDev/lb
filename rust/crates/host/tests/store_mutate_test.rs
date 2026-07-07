@@ -29,13 +29,13 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
 }
 
-const TABLE: &str = "ce_appliance";
+const TABLE: &str = "widget";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn write_round_trips_and_delete_removes() {
     let ws = "sm-rt";
     let store = Store::memory().await.unwrap();
-    let p = principal("user:ada", ws, &["store:ce_appliance:write"]);
+    let p = principal("user:ada", ws, &["store:widget:write"]);
 
     let value = json!({ "id": "plant-1", "name": "Plant 1", "mode": "local" });
     let (t, id) = store_write_run(&store, &p, ws, TABLE, "plant-1", &value)
@@ -70,12 +70,12 @@ async fn write_round_trips_and_delete_removes() {
 async fn write_without_the_per_table_cap_is_denied_and_nothing_is_written() {
     let ws = "sm-deny";
     let store = Store::memory().await.unwrap();
-    // Holds the WRONG table's grant — the per-table gate must still deny `ce_appliance`.
+    // Holds the WRONG table's grant — the per-table gate must still deny `widget`.
     let p = principal("user:mallory", ws, &["store:other_table:write"]);
 
     let err = store_write_run(&store, &p, ws, TABLE, "x", &json!({ "a": 1 }))
         .await
-        .expect_err("denied without store:ce_appliance:write");
+        .expect_err("denied without store:widget:write");
     assert!(
         matches!(err, StoreMutateError::Denied),
         "opaque deny: {err:?}"
@@ -95,7 +95,7 @@ async fn write_without_the_per_table_cap_is_denied_and_nothing_is_written() {
 async fn delete_without_the_cap_is_denied_and_nothing_is_erased() {
     let ws = "sm-deny-del";
     let store = Store::memory().await.unwrap();
-    let writer = principal("user:ada", ws, &["store:ce_appliance:write"]);
+    let writer = principal("user:ada", ws, &["store:widget:write"]);
     let nocap = principal("user:mallory", ws, &["store:other_table:write"]);
 
     store_write_run(&store, &writer, ws, TABLE, "keep", &json!({ "a": 1 }))
@@ -123,8 +123,8 @@ async fn delete_without_the_cap_is_denied_and_nothing_is_erased() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn a_ws_b_write_is_invisible_to_ws_a() {
     let store = Store::memory().await.unwrap();
-    let a = principal("user:a", "ws-a", &["store:ce_appliance:write"]);
-    let b = principal("user:b", "ws-b", &["store:ce_appliance:write"]);
+    let a = principal("user:a", "ws-a", &["store:widget:write"]);
+    let b = principal("user:b", "ws-b", &["store:widget:write"]);
 
     // Same table:id, different workspaces (each token carries its own ws).
     store_write_run(
