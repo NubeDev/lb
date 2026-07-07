@@ -134,11 +134,10 @@ impl Visitor for TableCollector {
     fn pre_visit_table_factor(&mut self, table_factor: &TableFactor) -> ControlFlow<()> {
         if let TableFactor::Table { name, .. } = table_factor {
             let qualifier_is = |what: &str| {
-                name.0
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .any(|p| p.as_ident().is_some_and(|i| i.value.eq_ignore_ascii_case(what)))
+                name.0.iter().rev().skip(1).any(|p| {
+                    p.as_ident()
+                        .is_some_and(|i| i.value.eq_ignore_ascii_case(what))
+                })
             };
             let last = name
                 .0
@@ -222,7 +221,10 @@ mod tests {
     fn information_schema_views_flagged_not_collected() {
         let v = validate_select("SELECT table_name FROM information_schema.tables").unwrap();
         assert!(v.wants_info_tables && !v.wants_info_columns);
-        assert!(v.tables.is_empty(), "catalog views must not register as user tables");
+        assert!(
+            v.tables.is_empty(),
+            "catalog views must not register as user tables"
+        );
 
         let v = validate_select(
             "select column_name from INFORMATION_SCHEMA.columns where table_name = 'meter'",

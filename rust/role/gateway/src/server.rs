@@ -24,20 +24,20 @@ use crate::routes::{
     link_doc, list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
     list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
     list_inbox, list_insights, list_members, list_navs, list_occurrences, list_panels, list_roles,
-    list_rules, list_series, list_tables, list_team_members, list_teams, list_users, list_webhooks,
-    list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage,
-    patch_flow_run, pin_dashboards, post_message, post_webhook, publish_extension, publish_message,
-    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, remove_datasource,
-    remove_member, remove_team_member, rename_team, rename_workspace, render_catalog_message,
-    reset_extension, resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs,
-    revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey,
-    rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream, save_dashboard,
-    save_flow, save_nav, save_panel, save_rule, scan_table, series_stream, serve_ext_ui,
-    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
-    set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel, system_acp,
-    system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, update_def, update_flow_node,
-    write_samples,
+    list_rules, list_series, list_shares_nav, list_tables, list_team_members, list_teams,
+    list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog,
+    native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook,
+    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
+    read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
+    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
+    resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route,
+    revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule,
+    run_stream, save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table,
+    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
+    set_default_prefs, set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
+    share_panel, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
+    update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -270,6 +270,8 @@ pub fn router(gw: Gateway) -> Router {
         .route("/navs", get(list_navs).post(save_nav))
         .route("/navs/{id}", get(get_nav).delete(delete_nav))
         .route("/navs/{id}/share", post(share_nav))
+        .route("/navs/{id}/unshare", post(unshare_nav))
+        .route("/navs/{id}/shares", get(list_shares_nav))
         .route("/nav/resolve", get(resolve_nav))
         .route("/nav/default", post(set_default_nav))
         .route("/nav/pref", get(get_nav_pref).post(set_nav_pref))

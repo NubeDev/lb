@@ -12,9 +12,9 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    add_member, dashboard_save, nav_delete, nav_get, nav_list, nav_pref_get, nav_pref_set,
-    nav_resolve, nav_save, nav_set_default, nav_share, tags_add, Cell, NavError, NavFacet, NavItem,
-    NavResolvedSource, NavVisibility, Node, NAV_MAX_ITEMS,
+    add_member, dashboard_save, nav_delete, nav_get, nav_list, nav_list_shares, nav_pref_get,
+    nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, tags_add, Cell,
+    NavError, NavFacet, NavItem, NavResolvedSource, NavVisibility, Node, NAV_MAX_ITEMS,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -750,4 +750,210 @@ async fn group_children_are_stripped_independently() {
     let r = nav_resolve(&node, &ada2, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
     assert_eq!(grp.items.len(), 2, "both survive with the cap");
+}
+
+// --- share roster: list_shares + unshare (the add/remove team surface) --------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn share_roster_lists_and_revokes_team_shares() {
+    let ws = "ws-nav-shares";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let ada = principal(
+        "user:ada",
+        ws,
+        &[GET, LIST, SAVE, SHARE, RESOLVE, "store:doc/*:write"],
+    );
+
+    nav_save(
+        store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![surface_item("Channels", "channels")],
+        1,
+    )
+    .await
+    .unwrap();
+
+    // Empty roster before any share.
+    assert!(nav_list_shares(store, &ada, ws, "ops")
+        .await
+        .unwrap()
+        .is_empty());
+
+    // Share to TWO teams (each call writes one edge; the underlying relate is multi-edge).
+    add_member(store, &ada, ws, "team:ops", "user:ben")
+        .await
+        .unwrap();
+    add_member(store, &ada, ws, "team:eng", "user:cleo")
+        .await
+        .unwrap();
+    nav_share(
+        store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+    nav_share(
+        store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:eng"),
+        3,
+    )
+    .await
+    .unwrap();
+
+    // The roster reflects both — order unspecified, so compare as a set.
+    let shares = nav_list_shares(store, &ada, ws, "ops").await.unwrap();
+    let mut sorted = shares.clone();
+    sorted.sort();
+    assert_eq!(sorted, vec!["team:eng", "team:ops"]);
+
+    // Both members resolve the nav (they're in a shared team).
+    let ben = principal("user:ben", ws, &[GET, RESOLVE]);
+    let cleo = principal("user:cleo", ws, &[GET, RESOLVE]);
+    assert_eq!(nav_resolve(&node, &ben, ws).await.unwrap().nav_id, "ops");
+    assert_eq!(nav_resolve(&node, &cleo, ws).await.unwrap().nav_id, "ops");
+
+    // Revoke the ops share → roster drops it; ben stops resolving, cleo (still in team:eng) keeps it.
+    nav_unshare(store, &ada, ws, "ops", "team:ops", 4)
+        .await
+        .unwrap();
+    let shares = nav_list_shares(store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(shares, vec!["team:eng"]);
+
+    assert_eq!(
+        nav_resolve(&node, &cleo, ws).await.unwrap().source,
+        NavResolvedSource::Team,
+        "cleo still resolves via team:eng"
+    );
+    // Ben: no longer a member of any shared team → falls through to the fallback.
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Fallback,
+        "ben no longer resolves after the unshare"
+    );
+    // And a direct get is denied again (gate-3 reads the live relations).
+    assert!(matches!(
+        nav_get(store, &ben, ws, "ops").await.unwrap_err(),
+        NavError::Denied
+    ));
+
+    // Re-unshare is idempotent (revoking a never-/already-revoked edge is a no-op tombstone).
+    nav_unshare(store, &ada, ws, "ops", "team:ops", 5)
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn unshare_and_list_shares_denied_without_cap() {
+    let ws = "ws-nav-shares-deny";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+    let nobody = principal("user:nobody", ws, &[]);
+
+    nav_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+        .await
+        .unwrap();
+    nav_share(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+
+    // `nav.share` cap gates both new verbs — a capless caller is denied before anything runs.
+    assert!(matches!(
+        nav_list_shares(&store, &nobody, ws, "ops")
+            .await
+            .unwrap_err(),
+        NavError::Denied
+    ));
+    assert!(matches!(
+        nav_unshare(&store, &nobody, ws, "ops", "team:ops", 3)
+            .await
+            .unwrap_err(),
+        NavError::Denied
+    ));
+    // The share edge survived — the deny left no mutation.
+    assert_eq!(
+        nav_list_shares(&store, &ada, ws, "ops").await.unwrap(),
+        vec!["team:ops"]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn list_shares_and_unshare_owner_only_and_workspace_walled() {
+    let ws = "ws-nav-shares-own";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+    // A same-workspace peer who holds the share cap but is NOT the owner.
+    let mallory = principal("user:mallory", ws, ALL);
+    // A cross-workspace caller who owns a same-id nav over there.
+    let ben = principal("user:ben", "ws-b", ALL);
+
+    nav_save(&store, &ada, ws, "ops", "Ops", vec![], 1)
+        .await
+        .unwrap();
+    nav_share(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+
+    // Mallory (cap, non-owner) is denied — exposing the share roster to a peer would leak which
+    // other teams exist.
+    assert!(matches!(
+        nav_list_shares(&store, &mallory, ws, "ops")
+            .await
+            .unwrap_err(),
+        NavError::Denied
+    ));
+    assert!(matches!(
+        nav_unshare(&store, &mallory, ws, "ops", "team:ops", 3)
+            .await
+            .unwrap_err(),
+        NavError::Denied
+    ));
+
+    // Ben in ws-B cannot read or revoke ws-A's share (the workspace wall, rule 6). Reached in his
+    // OWN workspace (where the nav doesn't exist) it reads as NotFound — no existence signal.
+    assert!(matches!(
+        nav_list_shares(&store, &ben, "ws-b", "ops")
+            .await
+            .unwrap_err(),
+        NavError::NotFound
+    ));
+    assert!(matches!(
+        nav_unshare(&store, &ben, "ws-b", "ops", "team:ops", 5)
+            .await
+            .unwrap_err(),
+        NavError::NotFound
+    ));
+    // ws-A's share is untouched by the cross-ws attempt.
+    assert_eq!(
+        nav_list_shares(&store, &ada, ws, "ops").await.unwrap(),
+        vec!["team:ops"]
+    );
 }

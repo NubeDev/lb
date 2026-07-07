@@ -26,6 +26,9 @@ import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper"
 
 import { StatPanel } from "./stat/StatPanel";
 import { GaugePanel } from "./gauge/GaugePanel";
+import { BarGaugePanel } from "./bargauge/BarGaugePanel";
+import { BarChartPanel } from "./barchart/BarChartPanel";
+import { PieChartPanel } from "./piechart/PieChartPanel";
 import { TimeseriesView } from "./timeseries/TimeseriesView";
 import { TablePanel } from "./table/TablePanel";
 
@@ -54,7 +57,9 @@ function setOpt(cell: Cell, optionId: string, value: unknown): Cell {
 
 // Registry lookup kept behind a lazy import so this view-level test does not pull the whole editor tree
 // at module load (and so the failure is clear if an option id is renamed).
-import { optionById } from "@/features/panel-builder/options/registry";
+import { optionById, optionsForView } from "@/features/panel-builder/options/registry";
+import { OPTION_LIVENESS, WIZARD_VIEWS, optionLiveness } from "@/features/panel-builder/options/optionLiveness";
+import type { View } from "@/lib/dashboard";
 
 /** The plain-HTML DOM, with recharts `<svg>` subtrees removed. The wrapper (header / readout / legend /
  *  chart-host `data-draw-style` + `style`) is what Field-tab options affect and what we compare. */
@@ -290,6 +295,175 @@ describe("Field tab — table per-column DEAD options (real gateway)", () => {
     const withOpt = setOpt(base, id, value);
     const changed = await renderTable(ws, withOpt);
     expect(changed.html, `table option ${id} should be DEAD but changed the rendered DOM`).toBe(baseline.html);
+  });
+});
+
+// ===================================================================================================
+// optionLiveness.ts — the wizard's LIVE/DEAD table, ENFORCED. The wizard's preview-per-option surface
+// reads a DECLARED per-(view, option) `live` flag (the dead-option "renderer pending" annotation). This
+// block pins that declaration to reality: (a) exhaustiveness — every option the registry exposes for a
+// wizard view has a row — and (b) accuracy — every option the DEAD-render tests above prove dead is
+// declared DEAD here. Declare + test (the project's house pattern — the radius-scale guard, the registry
+// round-trip). A new option added to defs/* fails (a) until it gets a row; an implemented render path
+// that flips a DEAD option fails (b) until the row + the DEAD list are updated together.
+// ===================================================================================================
+describe("optionLiveness table — declared, exhaustive, accurate", () => {
+  // The DEAD pairs the render tests above PROVE — the source of truth this table must match. Kept in
+  // sync with the two `DEAD` arrays in the timeseries + table describe blocks above.
+  const PROVEN_DEAD: Array<{ view: View; optionId: string }> = [
+    // timeseries — the original baseline DEAD list
+    { view: "timeseries", optionId: "mappings" },
+    { view: "timeseries", optionId: "links" },
+    { view: "timeseries", optionId: "custom.lineInterpolation" },
+    { view: "timeseries", optionId: "custom.gradientMode" },
+    { view: "timeseries", optionId: "custom.showPoints" },
+    { view: "timeseries", optionId: "custom.spanNulls" },
+    { view: "timeseries", optionId: "custom.axisPlacement" },
+    { view: "timeseries", optionId: "custom.stacking.mode" },
+    { view: "timeseries", optionId: "custom.thresholdsStyle.mode" },
+    // table — per-column custom.* (no per-column renderer) + mappings (no applyMappings)
+    { view: "table", optionId: "mappings" },
+    { view: "table", optionId: "links" },
+    { view: "table", optionId: "custom.width" },
+    { view: "table", optionId: "custom.align" },
+    { view: "table", optionId: "custom.cellOptions.type" },
+    { view: "table", optionId: "custom.filterable" },
+    // barchart — never calls applyMappings; empty state is a hardcoded "no data yet" (noValue unread)
+    { view: "barchart", optionId: "mappings" },
+    { view: "barchart", optionId: "noValue" },
+    // `links` — DEAD on every wizard view (no drilldown renderer anywhere in the codebase)
+    { view: "barchart", optionId: "links" },
+    { view: "stat", optionId: "links" },
+    { view: "gauge", optionId: "links" },
+    { view: "bargauge", optionId: "links" },
+    { view: "piechart", optionId: "links" },
+  ];
+
+  it.each(WIZARD_VIEWS)("view %s: every registered option has a liveness row (exhaustive)", (view) => {
+    const rows = OPTION_LIVENESS[view];
+    expect(rows, `no liveness table for wizard view ${view}`).toBeDefined();
+    const registered = optionsForView(view).map((d) => d.id);
+    for (const id of registered) {
+      expect(id in rows, `option ${id} registered for ${view} has no liveness row`).toBe(true);
+    }
+  });
+
+  it("no liveness row references an option that is not registered for its view (no orphans)", () => {
+    for (const view of WIZARD_VIEWS) {
+      const rows = OPTION_LIVENESS[view];
+      const registered = new Set(optionsForView(view).map((d) => d.id));
+      for (const id of Object.keys(rows)) {
+        expect(registered.has(id), `liveness row ${view}/${id} is not in the registry for ${view}`).toBe(true);
+      }
+    }
+  });
+
+  it.each(PROVEN_DEAD)("proven-DEAD pair %s/%s is declared DEAD in the table", ({ view, optionId }) => {
+    expect(optionLiveness(view, optionId), `${view}/${optionId} is rendered DEAD above; the table must agree`).toBe(false);
+  });
+
+  it("every option registered against ANY wizard view that the table marks DEAD is in PROVEN_DEAD (no undeclared death)", () => {
+    // A row marked DEAD without a render test proving it is a freehand classification — exactly what
+    // this guard exists to ban. Either prove it DEAD in a render test (add to PROVEN_DEAD), or flip it
+    // back to LIVE. The table never silently invents a DEAD option.
+    for (const view of WIZARD_VIEWS) {
+      const rows = OPTION_LIVENESS[view];
+      for (const [id, live] of Object.entries(rows)) {
+        if (live) continue;
+        const proven = PROVEN_DEAD.some((p) => p.view === view && p.optionId === id);
+        expect(proven, `${view}/${id} is declared DEAD but no render test proves it — add one or mark LIVE`).toBe(true);
+      }
+    }
+  });
+});
+
+// ===================================================================================================
+// `links` (data links) — DEAD on EVERY wizard view; `mappings` DEAD on table. No renderer in the codebase
+// honors either (no drilldown UI; only StatPanel calls applyMappings). These extend the timeseries DEAD
+// proofs above to the rest of the wizard view set, so the optionLiveness declaration for `links: false`
+// on every view and `table/mappings: false` is render-proven, not freehand.
+// ===================================================================================================
+describe("Field tab — links DEAD on every wizard view; mappings DEAD on table (real gateway)", () => {
+  const LINK_SAMPLE = [{ title: "Docs", url: "https://x/${__value.text}", targetBlank: true }];
+  const MAPPING_SAMPLE = [{ type: "value", options: { "7": { text: "SEVEN" } } }];
+
+  // The render helper per view — each waits for that view's stable readout, then returns plainDom.
+  async function renderView(ws: string, cell: Cell): Promise<string> {
+    const view = cell.view;
+    const { container, unmount } = render(
+      <WithDashboardCache ws={ws}>
+        {view === "stat" ? <StatPanel cell={cell} label="S" /> : null}
+        {view === "gauge" ? <GaugePanel cell={cell} label="G" /> : null}
+        {view === "bargauge" ? <BarGaugePanel cell={cell} label="B" /> : null}
+        {view === "barchart" ? <BarChartPanel cell={cell} label="B" /> : null}
+        {view === "piechart" ? <PieChartPanel cell={cell} label="P" /> : null}
+        {view === "timeseries" ? <TimeseriesView cell={cell} label="T" /> : null}
+        {view === "table" ? <TablePanel cell={cell} label="T" /> : null}
+      </WithDashboardCache>,
+    );
+    if (view === "table") {
+      await waitFor(() => expect(container.querySelector("table")).toBeInTheDocument());
+      await new Promise((r) => setTimeout(r, 30));
+    } else if (view === "timeseries") {
+      // TimeseriesView's stable readout is the `latest` span; the SVG is non-deterministic.
+      await waitFor(() => expect(screen.getByLabelText("timeseries latest")).toBeInTheDocument());
+    } else {
+      // The single-stat family each exposes an `aria-label="<view> panel"` root.
+      await waitFor(() => expect(container.querySelector(`[aria-label="${view} panel"]`)).toBeInTheDocument());
+    }
+    const html = plainDom(container);
+    unmount();
+    cleanup();
+    return html;
+  }
+
+  it.each(WIZARD_VIEWS)("links DEAD on %s — setting it leaves the rendered DOM unchanged", async (view) => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedOne("l.dead", 7);
+    const base = baseCell(view, "l.dead");
+    const baseline = await renderView(ws, base);
+    const withLinks = setOpt(base, "links", LINK_SAMPLE);
+    const changed = await renderView(ws, withLinks);
+    expect(changed, `links should be DEAD on ${view} but changed the rendered DOM`).toBe(baseline);
+  });
+
+  it("barchart mappings DEAD — setting it leaves the rendered barchart unchanged", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedOne("m.bar", 7);
+    const base = baseCell("barchart", "m.bar");
+    const baseline = await renderView(ws, base);
+    const withMappings = setOpt(base, "mappings", MAPPING_SAMPLE);
+    const changed = await renderView(ws, withMappings);
+    expect(changed, "barchart mappings should be DEAD but changed the rendered DOM").toBe(baseline);
+  });
+
+  it("barchart noValue DEAD — the empty state says 'no data yet' regardless of a declared noValue", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // NO seed — the empty state is where a LIVE noValue would have to show up.
+    const cell = setOpt(baseCell("barchart", "empty.bar"), "noValue", "N/A");
+    const { container, unmount } = render(
+      <WithDashboardCache ws={ws}>
+        <BarChartPanel cell={cell} label="B" />
+      </WithDashboardCache>,
+    );
+    await waitFor(() => expect(container.textContent).toContain("no data yet"));
+    expect(container.textContent, "barchart noValue should be DEAD (unread by the renderer)").not.toContain("N/A");
+    unmount();
+    cleanup();
+  });
+
+  it("table mappings DEAD — setting it leaves the rendered table unchanged", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedOne("m.tbl", 7);
+    const base = baseCell("table", "m.tbl");
+    const baseline = await renderView(ws, base);
+    const withMappings = setOpt(base, "mappings", MAPPING_SAMPLE);
+    const changed = await renderView(ws, withMappings);
+    expect(changed, "table mappings should be DEAD but changed the rendered DOM").toBe(baseline);
   });
 });
 

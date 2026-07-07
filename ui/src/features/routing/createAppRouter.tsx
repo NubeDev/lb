@@ -17,6 +17,8 @@ import { AdminView, WebhooksAdmin } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
+import { PanelWizard } from "@/features/panel-builder/wizard/PanelWizard";
+import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { DataStudioView } from "@/features/data-studio";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
@@ -100,6 +102,15 @@ const dashboardsRoute = createRoute({
   path: "/dashboards",
   validateSearch: validateDashboardSearch,
   component: DashboardsRoute,
+});
+
+// The stepped panel wizard (panel-wizard scope) — a dedicated, deep-linkable route, maximally isolated
+// from data studio (a new route cannot perturb the editor's Sheet mount). Cap-gated on `dashboard.save`
+// in the component (the host re-checks it on save); a viewer without the cap lands on DefaultRedirect.
+const newPanelRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/dashboards/$d/new-panel",
+  component: NewPanelRoute,
 });
 
 // The standalone library-panel page (library-panels scope): a directly-linkable single panel, no
@@ -208,6 +219,7 @@ const routeTree = rootRoute.addChildren([
     tenantIndexRoute,
     channelsRoute,
     dashboardsRoute,
+    newPanelRoute,
     panelRoute,
     dataStudioRoute,
     coreRoute("/rules", "rules", () => <Rules />),
@@ -324,6 +336,9 @@ function DashboardsRoute() {
       onOpenInDataStudio={() =>
         void go({ to: fullPathForSurface(ctx.workspace, "data-studio") })
       }
+      onOpenPanelWizard={(d) =>
+        void go({ to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/${encodeURIComponent(d)}/new-panel` })
+      }
     />
   );
 }
@@ -339,6 +354,29 @@ function DataStudioRoute() {
       range={range}
       onSearchChange={(next) => void navigate({ search: next })}
     />
+  );
+}
+
+// The stepped panel wizard (panel-wizard scope): a dedicated route, isolated from data studio. Cap-gated
+// on `dashboard.save` — the wizard's Save (step 8) reuses the editor's existing gate; the host re-checks
+// it on save. A viewer without the cap never sees the wizard entry point. Wrapped in
+// `DashboardCacheProvider` so the wizard's `usePanelData`/`useSourcePicker` reads share the per-visit
+// read cache + the ws context the dashboard itself uses.
+function NewPanelRoute() {
+  const ctx = useAppRoutingContext();
+  const { d } = newPanelRoute.useParams();
+  const navigate = useNavigate();
+  if (!hasCap(ctx.caps, CAP.dashboardSave)) return <DefaultRedirect />;
+  return (
+    <DashboardCacheProvider ws={ctx.workspace}>
+      <div className="flex h-full flex-col">
+        <PanelWizard
+          ws={ctx.workspace}
+          dashboardId={decodeURIComponent(d)}
+          onExit={() => void navigate({ to: fullPathForSurface(ctx.workspace, "dashboards") })}
+        />
+      </div>
+    </DashboardCacheProvider>
   );
 }
 

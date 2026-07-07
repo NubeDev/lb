@@ -4,7 +4,7 @@
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
 import { useEffect, useState } from "react";
-import { LayoutGrid, Share2, Variable as VariableIcon } from "lucide-react";
+import { LayoutGrid, Plus, Share2, Variable as VariableIcon } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
@@ -43,6 +43,10 @@ interface Props {
   /** Open Data Studio (`/t/$ws/data-studio`) — the panel-authoring surface since data-studio v2.
    *  Wired by the route; passed down to each cell's hover affordance. Omitted ⇒ no button. */
   onOpenInDataStudio?: () => void;
+  /** Open the stepped panel wizard at `/t/$ws/dashboards/$d/new-panel` (panel-wizard scope). Admin-only
+   *  in the UI (matches `AddLibraryPanel`'s gate); the route re-checks `mcp:dashboard.save:call`. Omitted
+   *  ⇒ no button. */
+  onOpenPanelWizard?: (dashboardId: string) => void;
 }
 
 /** The dashboard surface, wrapped in its per-visit read cache. `DashboardCacheProvider` is keyed on `ws`
@@ -56,7 +60,7 @@ export function DashboardView(props: Props) {
   );
 }
 
-function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: Props) {
+function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onOpenPanelWizard }: Props) {
   const dash = useDashboard(ws);
   // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
   // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
@@ -273,9 +277,23 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio }: P
             onSave={(vars: Variable[]) => void dash.saveVariables(vars)}
           />
           {/* Panel AUTHORING lives in Data Studio now (data-studio scope v2) — the dashboard only
-              PLACES library panels (ref cells) and renders. Build/edit panels at /t/$ws/data-studio. */}
+              PLACES library panels (ref cells) and renders. Build/edit panels at /t/$ws/data-studio.
+              The stepped WIZARD (panel-wizard scope) is a second authoring entry — deep-linkable + the
+              preview-per-option surface; the dashboard offers it as a one-click "New panel" beside the
+              library-placement flow. */}
           {canEdit && (
             <div className="flex items-center gap-2 border-b border-border bg-panel-2/70 px-3 py-2">
+              {onOpenPanelWizard && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  aria-label="new panel"
+                  onClick={() => onOpenPanelWizard(current.id)}
+                >
+                  <Plus size={12} className="mr-1" />
+                  New panel
+                </Button>
+              )}
               <AddLibraryPanel
                 existing={current.cells}
                 onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}

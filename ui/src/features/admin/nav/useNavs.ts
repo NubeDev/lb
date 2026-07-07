@@ -7,10 +7,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import {
   deleteNav,
+  listNavShares,
   listNavs,
   saveNav,
   setDefaultNav,
   shareNav,
+  unshareNav,
   type NavItem,
   type NavSummary,
   type Visibility,
@@ -27,6 +29,7 @@ export interface NavSources {
 export function useNavs(ws: string) {
   const [navs, setNavs] = useState<NavSummary[]>([]);
   const [sources, setSources] = useState<NavSources>({ dashboards: [], extensions: [] });
+  const [shares, setShares] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +38,22 @@ export function useNavs(ws: string) {
       setNavs(await listNavs());
     } catch (e) {
       setError(String(e));
+    }
+  }, []);
+
+  // Load the share roster for the nav currently being edited (`null`/empty → none). Owner-only;
+  // fails closed (a non-owner editor is gated at the builder entry, so we never reach this with no
+  // write cap). Cleared on Back.
+  const reloadShares = useCallback(async (id: string | null) => {
+    if (!id) {
+      setShares([]);
+      return;
+    }
+    try {
+      setShares(await listNavShares(id));
+    } catch (e) {
+      setError(String(e));
+      setShares([]);
     }
   }, []);
 
@@ -81,13 +100,22 @@ export function useNavs(ws: string) {
     async (id: string, visibility: Visibility, team?: string) => {
       await shareNav(id, visibility, team);
       await reloadNavs();
+      await reloadShares(id);
     },
-    [reloadNavs],
+    [reloadNavs, reloadShares],
+  );
+
+  const unshare = useCallback(
+    async (id: string, team: string) => {
+      await unshareNav(id, team);
+      await reloadShares(id);
+    },
+    [reloadShares],
   );
 
   const setDefault = useCallback(async (id: string) => {
     await setDefaultNav(id);
   }, []);
 
-  return { navs, sources, error, loading, reload, save, remove, share, setDefault };
+  return { navs, sources, shares, reloadShares, error, loading, reload, save, remove, share, unshare, setDefault };
 }

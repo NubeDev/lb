@@ -115,8 +115,8 @@ pub use membership::{
 pub use message::{delete_message, edit_message};
 pub use native::native_call;
 pub use nav::{
-    delete_nav, get_nav, get_nav_pref, list_navs, resolve_nav, save_nav, set_default_nav,
-    set_nav_pref, share_nav,
+    delete_nav, get_nav, get_nav_pref, list_navs, list_shares_nav, resolve_nav, save_nav,
+    set_default_nav, set_nav_pref, share_nav, unshare_nav,
 };
 pub use outbox::get_outbox_status;
 pub use panel::{delete_panel, get_panel, list_panels, panel_usage, save_panel, share_panel};

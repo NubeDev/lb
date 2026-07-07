@@ -599,6 +599,14 @@ case "dashboard_save": {
       const { id, visibility, team } = args as { id: string; visibility: string; team?: string };
       return postJson<T>(`${base}/navs/${enc(id)}/share`, { visibility, team });
     }
+    case "nav_unshare": {
+      const { id, team } = args as { id: string; team: string };
+      return postJson<T>(`${base}/navs/${enc(id)}/unshare`, { team });
+    }
+    case "nav_list_shares": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/navs/${enc(id)}/shares`);
+    }
     case "nav_set_default": {
       const { id } = args as { id: string };
       return postJson<T>(`${base}/nav/default`, { id });

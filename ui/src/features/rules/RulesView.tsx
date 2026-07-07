@@ -1,25 +1,32 @@
-// RulesView — the rules workbench page (rules-workbench + rules-editor-ux scopes): a guided
-// three-region Playground shaped like the dashboard surfaces. Left: a RuleRail of saved rules.
-// Center: an AppPageHeader (Run + an ALWAYS-available Save) over the CodeMirror editor and the run
-// result (a ResultBar status header over the RunResult). Right: the AuthoringPanel (Functions |
-// Examples | Data). All state + the real `invoke` calls live in `useRules`; this is the layout, the
-// insert wiring, the ⌘S/inline-name save flow. One component per file (FILE-LAYOUT).
+// RulesView — the rules workbench page (rules-workbench + rules-editor-ux + rules-workflow-convergence
+// scopes). A two-tab surface: the Editor (the three-region Playground — RuleRail + AppPageHeader over
+// the CodeMirror editor + run result, with the AuthoringPanel on the right) and Workflows (the
+// rule-author view over the flows engine — pick WHEN a rule runs, the host stores it as a flow).
+//
+// The page follows the canonical tabbed-surface shape (the same one AdminView uses): an
+// `<AppPageHeader>`-led `<section>` with `<Tabs>` below. All editor state + the real `invoke` calls
+// live in `useRules`; all workflow state lives in `useRuleWorkflows`; this is the layout, the insert
+// wiring, the ⌘S/inline-name save flow, and the tab switch. One component per file (FILE-LAYOUT).
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { FileCode2, Pencil, Play, Save } from "lucide-react";
 
-import { AppPage } from "@/components/app/page";
+import { AppPageHeader } from "@/components/app/page-header";
 import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRules } from "./useRules";
 import { RuleRail } from "./RuleRail";
 import { RuleEditor } from "./RuleEditor";
 import { ResultBar, type ResultView } from "./ResultBar";
 import { RunResult } from "./RunResult";
 import { AuthoringPanel } from "./panel/AuthoringPanel";
+import { RulesWorkflowsTab } from "./RulesWorkflowsTab";
 import type { CodeEditorHandle } from "@/components/codeeditor";
 import { useVerticalSplit, SplitHandle } from "@/lib/split";
+
+type Tab = "editor" | "workflows";
 
 interface RulesViewProps {
   ws: string;
@@ -46,6 +53,12 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ruleId]);
 
+  // A deep link to a specific rule forces the editor tab — a user clicking `/rules/some-rule` from
+  // outside (a dashboard link, a deep-link email) expects to land on the rule, not the workflows list.
+  useEffect(() => {
+    if (ruleId) setTab("editor");
+  }, [ruleId]);
+
   // One inline name field serves both flows: rename an open rule, or name-on-first-save an ad-hoc
   // buffer. `mode` says which — so ⌘S on an unsaved buffer opens it in "save" mode instead of failing.
   const [nameField, setNameField] = useState<null | "rename" | "save">(null);
@@ -55,6 +68,10 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   // Table (typed views) vs. JSON (verbatim) — the result-region view toggle, owned here so the
   // ResultBar toggle and the RunResult body stay in sync.
   const [resultView, setResultView] = useState<ResultView>("table");
+  // The page tab: the rules editor (default) or the workflows list. A deep link to a specific rule
+  // (`/rules/$rule`) forces the editor so the open rule is the thing the user lands on, not the
+  // workflows roster.
+  const [tab, setTab] = useState<Tab>("editor");
   // A draggable divider between the CodeMirror editor (top) and the run-result region (bottom):
   // the editor is the larger half by default; drag up to grow the result, down to grow the editor.
   const split = useVerticalSplit(0.7);
@@ -114,61 +131,152 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   const saveLabel = r.selectedId ? (r.dirty ? "Save" : "Saved") : "Save";
 
   return (
-    <AppPage
-      label="rules workbench"
-      icon={FileCode2}
-      title={selectedName ?? r.selectedId ?? "Untitled rule"}
-      description="Author and run Rhai rules over live workspace data."
-      workspace={ws}
-      actions={
-        <>
-          <Button aria-label="run rule" size="sm" disabled={r.running} onClick={() => void r.run()}>
-            <Play size={14} /> {r.running ? "Running…" : "Run"}
-          </Button>
-          {r.selectedId ? (
-            <Button aria-label="rename rule" size="sm" variant="ghost" onClick={openRename}>
-              <Pencil size={14} /> Rename
+    <section aria-label="rules workbench" className="flex h-full min-w-0 flex-col bg-bg text-fg">
+      <AppPageHeader
+        icon={FileCode2}
+        title={selectedName ?? r.selectedId ?? "Untitled rule"}
+        description="Author Rhai rules and wire them into workflows that run on a schedule or event."
+        workspace={ws}
+        actions={
+          <>
+            <Button aria-label="run rule" size="sm" disabled={r.running} onClick={() => void r.run()}>
+              <Play size={14} /> {r.running ? "Running…" : "Run"}
             </Button>
-          ) : null}
-          {/* Save is ALWAYS present — the fix for "I can't save a rule". Unopened buffers save-as. */}
-          <Button
-            aria-label="save rule"
-            size="sm"
-            variant={r.dirty || !r.selectedId ? "default" : "outline"}
-            disabled={r.selectedId != null && !r.dirty}
-            onClick={() => void doSave()}
-          >
-            <Save size={14} /> {saveLabel}
-          </Button>
-          {r.dirty ? (
-            <span aria-label="dirty indicator" className="text-xs font-medium text-accent">
-              ● Unsaved
-            </span>
-          ) : null}
-        </>
-      }
-    >
-      {railOpen ? (
-      <RuleRail
-        roster={r.roster}
-        selectedId={r.selectedId}
-        // Navigate to the rule's URL; the effect above opens it. Falls back to a direct open when this
-        // view isn't URL-driven (e.g. an embedded/test render with no `onSelectRule`).
-        onOpen={(id) => (onSelectRule ? onSelectRule(id) : void r.open(id))}
-        onDelete={async (id) => {
-          await r.remove(id);
-          // Deleting the open rule drops back to the bare `/rules` URL (the buffer was reset).
-          if (onSelectRule && id === r.selectedId) onSelectRule(null);
-        }}
-        onCreate={async (name) => {
-          const id = await r.create(name);
-          if (id && onSelectRule) onSelectRule(id);
-          return id;
-        }}
-        onCollapse={() => setRailOpen(false)}
+            {r.selectedId ? (
+              <Button aria-label="rename rule" size="sm" variant="ghost" onClick={openRename}>
+                <Pencil size={14} /> Rename
+              </Button>
+            ) : null}
+            {/* Save is ALWAYS present — the fix for "I can't save a rule". Unopened buffers save-as.
+                Visible on the editor tab; the actions row is page-wide so it remains reachable. */}
+            <Button
+              aria-label="save rule"
+              size="sm"
+              variant={r.dirty || !r.selectedId ? "default" : "outline"}
+              disabled={r.selectedId != null && !r.dirty}
+              onClick={() => void doSave()}
+            >
+              <Save size={14} /> {saveLabel}
+            </Button>
+            {r.dirty ? (
+              <span aria-label="dirty indicator" className="text-xs font-medium text-accent">
+                ● Unsaved
+              </span>
+            ) : null}
+          </>
+        }
       />
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as Tab)}
+        className="min-h-0 flex-1 flex flex-col"
+      >
+        <TabsList className="m-2 self-start">
+          <TabsTrigger value="editor" aria-label="editor tab">
+            Editor
+          </TabsTrigger>
+          <TabsTrigger value="workflows" aria-label="workflows tab">
+            Workflows
+          </TabsTrigger>
+        </TabsList>
+
+        {/* The body is rendered directly (not via TabsContent) — TabsContent wraps children in <Reveal>,
+            which collapses the editor's flex-1 sizing chain and breaks the CodeMirror region. The
+            Studio section uses the same shape. The `tab` state already owns which panel is shown. */}
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {tab === "editor" ? (
+            <EditorBody
+              railOpen={railOpen}
+              onCollapseRail={() => setRailOpen(false)}
+              onExpandRail={() => setRailOpen(true)}
+              rules={r}
+              nameField={nameField}
+              nameValue={nameValue}
+              setNameValue={setNameValue}
+              submitName={submitName}
+              dismissName={() => setNameField(null)}
+              ws={ws}
+              insert={insert}
+              editorRef={editorRef}
+              split={split}
+              resultView={resultView}
+              setResultView={setResultView}
+              onSelectRule={onSelectRule}
+            />
+          ) : (
+            <RulesWorkflowsTab ws={ws} ruleRoster={r.roster} onJumpToRule={(id) => {
+              if (onSelectRule) onSelectRule(id);
+              setTab("editor");
+            }} />
+          )}
+        </div>
+      </Tabs>
+    </section>
+  );
+}
+
+/** The editor body — extracted so the RulesView return stays scannable. Owns no state; everything
+ *  comes from the parent (the workbench hook + the inline-name field + the split + the URL sync). */
+interface EditorBodyProps {
+  railOpen: boolean;
+  onCollapseRail: () => void;
+  onExpandRail: () => void;
+  rules: ReturnType<typeof useRules>;
+  nameField: null | "rename" | "save";
+  nameValue: string;
+  setNameValue: (v: string) => void;
+  submitName: (e: FormEvent) => void;
+  dismissName: () => void;
+  ws: string;
+  insert: (snippet: string) => void;
+  editorRef: React.RefObject<CodeEditorHandle>;
+  split: ReturnType<typeof useVerticalSplit>;
+  resultView: ResultView;
+  setResultView: (v: ResultView) => void;
+  onSelectRule?: (id: string | null) => void;
+}
+
+function EditorBody({
+  railOpen,
+  onCollapseRail,
+  onExpandRail,
+  rules: r,
+  nameField,
+  nameValue,
+  setNameValue,
+  submitName,
+  dismissName,
+  ws,
+  insert,
+  editorRef,
+  split,
+  resultView,
+  setResultView,
+  onSelectRule,
+}: EditorBodyProps) {
+  return (
+    <div className="flex h-full min-h-0 min-w-0">
+      {railOpen ? (
+        <RuleRail
+          roster={r.roster}
+          selectedId={r.selectedId}
+          // Navigate to the rule's URL; the effect above opens it. Falls back to a direct open when
+          // this view isn't URL-driven (e.g. an embedded/test render with no `onSelectRule`).
+          onOpen={(id) => (onSelectRule ? onSelectRule(id) : void r.open(id))}
+          onDelete={async (id) => {
+            await r.remove(id);
+            // Deleting the open rule drops back to the bare `/rules` URL (the buffer was reset).
+            if (onSelectRule && id === r.selectedId) onSelectRule(null);
+          }}
+          onCreate={async (name) => {
+            const id = await r.create(name);
+            if (id && onSelectRule) onSelectRule(id);
+            return id;
+          }}
+          onCollapse={onCollapseRail}
+        />
       ) : (
-        <CollapsedRail noun="rule" onExpand={() => setRailOpen(true)} />
+        <CollapsedRail noun="rule" onExpand={onExpandRail} />
       )}
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -190,7 +298,7 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
               value={nameValue}
               onChange={(e) => setNameValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setNameField(null);
+                if (e.key === "Escape") dismissName();
               }}
             />
             <Button
@@ -206,7 +314,7 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
               size="sm"
               variant="ghost"
               type="button"
-              onClick={() => setNameField(null)}
+              onClick={dismissName}
             >
               Cancel
             </Button>
@@ -254,6 +362,6 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
           />
         </div>
       </div>
-    </AppPage>
+    </div>
   );
 }

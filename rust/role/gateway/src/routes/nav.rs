@@ -147,6 +147,44 @@ pub async fn share_nav(
     Ok(Json(serde_json::to_value(n).unwrap_or(Value::Null)))
 }
 
+/// `POST /navs/{id}/unshare` body — revoke one team share edge.
+#[derive(Debug, Deserialize)]
+pub struct UnshareNav {
+    pub team: String,
+}
+
+/// `POST /navs/{id}/unshare` — revoke one S4 share edge (the inverse write). Gated `nav.share`
+/// (same cap as `share`); owner-only. Idempotent. Returns the unchanged nav.
+pub async fn unshare_nav(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<UnshareNav>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let n = lb_host::nav_unshare(&gw.node.store, &p, p.ws(), &id, &body.team, gw.now())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(n).unwrap_or(Value::Null)))
+}
+
+/// `GET /navs/{id}/shares` — enumerate the live team shares. Gated `nav.share`; owner-only.
+pub async fn list_shares_nav(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let teams = lb_host::nav_list_shares(&gw.node.store, &p, p.ws(), &id)
+        .await
+        .map_err(status)?;
+    Ok(Json(json!({ "teams": teams })))
+}
+
 /// `POST /nav/default` body — set the workspace-default nav (empty `id` clears it).
 #[derive(Debug, Deserialize)]
 pub struct SetDefaultNav {

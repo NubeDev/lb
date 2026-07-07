@@ -350,7 +350,10 @@ async fn prior_results_are_folded_in_the_conformant_tool_call_shape() {
     let echo = &messages[3];
     assert_eq!(echo["role"], "assistant");
     assert_eq!(echo["tool_calls"][0]["id"], "call_1");
-    assert_eq!(echo["tool_calls"][0]["function"]["name"], "federation.query");
+    assert_eq!(
+        echo["tool_calls"][0]["function"]["name"],
+        "federation.query"
+    );
     assert_eq!(
         echo["tool_calls"][0]["function"]["arguments"],
         "{\"source\":\"timescale\",\"sql\":\"SELECT 1\"}"

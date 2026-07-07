@@ -15,8 +15,12 @@ use std::time::Duration;
 
 use datafusion::catalog::TableProvider;
 use datafusion::sql::TableReference;
-use datafusion_table_providers::sql::db_connection_pool::sqlitepool::{SqliteConnectionPool, SqliteConnectionPoolFactory};
-use datafusion_table_providers::sql::db_connection_pool::{dbconnection::get_schema, DbConnectionPool, Mode};
+use datafusion_table_providers::sql::db_connection_pool::sqlitepool::{
+    SqliteConnectionPool, SqliteConnectionPoolFactory,
+};
+use datafusion_table_providers::sql::db_connection_pool::{
+    dbconnection::get_schema, DbConnectionPool, Mode,
+};
 use datafusion_table_providers::sqlite::sql_table::SQLiteTable;
 use datafusion_table_providers::sqlite::DynSqliteConnectionPool;
 
@@ -60,7 +64,9 @@ impl Source for SqliteSource {
     async fn probe(&self) -> Result<(), SourceError> {
         // A real probe: resolve sqlite_master as a provider, forcing a live connection to the file.
         // The federated path is irrelevant to a probe — it only needs to know the file opens.
-        let _ = self.table_provider(&TableReference::bare("sqlite_master")).await?;
+        let _ = self
+            .table_provider(&TableReference::bare("sqlite_master"))
+            .await?;
         Ok(())
     }
 

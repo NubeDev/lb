@@ -33,6 +33,18 @@ export function shareNav(id: string, visibility: Visibility, team?: string): Pro
   return invoke<Nav>("nav_share", { id, visibility, team });
 }
 
+/** Revoke one team share edge (owner-only; idempotent). Mirrors `nav.unshare`. Same `nav.share`
+ *  cap as `share` — the inverse write under one grant. */
+export function unshareNav(id: string, team: string): Promise<Nav> {
+  return invoke<Nav>("nav_unshare", { id, team });
+}
+
+/** List the teams a nav is currently shared to (owner-only). Mirrors `nav.list_shares` — the
+ *  builder's share-roster read, the exact set the resolver walks. */
+export function listNavShares(id: string): Promise<string[]> {
+  return invoke<{ teams: string[] }>("nav_list_shares", { id }).then((r) => r.teams);
+}
+
 /** Set the one workspace-default nav pointer (admin-ish; empty `id` clears it). Mirrors
  *  `nav.set_default`. */
 export function setDefaultNav(id: string): Promise<void> {

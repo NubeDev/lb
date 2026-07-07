@@ -28,13 +28,17 @@ Field-tab options are DEAD** (`mappings`, `links`, `custom.lineInterpolation`/`g
 covers the standard options. Root cause: the editor-parity phase registered Grafana's full surface to
 make the EDITOR complete; the matching render work only landed for the standard bridge + a few graph
 styles, and `registryRoundTrip.test.ts` only checks the de/serializer, not the renderer — so the gap was
-invisible to the green suite. The baseline test IS the contract for the next step. **Next up (scoped + handed off):** the
-**panel wizard** — a stepped create flow whose headline is **preview-per-option** (each option card shows a
-live mini-preview of its effect; dead options surface themselves), a thin shell over the existing
-`cellEditorState`/`writeOption`/`usePanelData` engine (no second surface → no drift), isolated from data
-studio as a dedicated route until proven, then ported back into the editor's Field tab. Presentation-option
-previews re-shape cached frames via the shipped `viz.query` fetch/shape split (no backend hit); only data
-steps re-query. Scope
+invisible to the green suite. The baseline test IS the contract for the next step. **Built (Phase 1):** the
+**panel wizard** — a stepped create flow (Source → Chart type → Options → Transform/Save) on its own route,
+a thin shell over the existing `cellEditorState`/`writeOption`/`usePanelData` engine (no second surface →
+no drift). The Options step is a **compact grouped form beside ONE pinned `OptionFocusPreview`** (scope
+resolved decision #3): hovering/editing an option points the single preview's `optionFocus` at it; dead
+options surface their honest "renderer pending" note in the row. (An earlier cut mounted a chart per option
+card — ~20 simultaneous renders; redesigned to the one-preview surface, see
+[`sessions/frontend/panel-wizard-one-preview-redesign-session.md`](sessions/frontend/panel-wizard-one-preview-redesign-session.md).)
+Presentation-option edits re-shape cached frames via the shipped `viz.query` fetch/shape split (no backend
+hit); only data steps re-query. Next: SourceStep discoverability (SQL/datasource picking) + the Phase-2
+Field-tab port-back. Scope
 [`scope/frontend/dashboard/viz/panel-wizard-scope.md`](scope/frontend/dashboard/viz/panel-wizard-scope.md)
 (no open questions — all long-term decisions taken), handover
 [`sessions/frontend/HANDOVER-panel-wizard-build.md`](sessions/frontend/HANDOVER-panel-wizard-build.md).

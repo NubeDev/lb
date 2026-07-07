@@ -40,6 +40,26 @@ describe("reduceOptions frame→value bridge", () => {
       { name: "1", value: 6 },
     ]);
   });
+
+  it("SQL frames (no value/payload column): the FIRST numeric column charts; the string column names", () => {
+    // The federation.query shape — a summary row has no `value` column. The deterministic contract:
+    // first numeric column = the point; first string column = the category name.
+    const rows = [
+      { point_id: "meter-001-kwh", reading_count: 2880, avg_value: 4.87 },
+      { point_id: "meter-002-kwh", reading_count: 2880, avg_value: 1.1 },
+    ];
+    expect(frameCategories(rows, { calcs: [] })).toEqual([
+      { name: "meter-001-kwh", value: 2880 },
+      { name: "meter-002-kwh", value: 2880 },
+    ]);
+    expect(reduceFrame(rows, { calcs: ["last"] })).toBe(2880);
+    // Numeric-looking STRINGS never chart (an id/timestamp column must not become a point) — a row
+    // with only string columns yields no categories, never a fabricated 0.
+    expect(frameCategories([{ id: "123", when: "2026-06-05T10:45:00+00:00" }], { calcs: [] })).toEqual([]);
+    // A series row with a NULL payload stays null — the key exists, so the column scan never kicks in
+    // (seq/ts must not silently become the point).
+    expect(reduceFrame([{ series: "cpu", seq: 7, payload: null, ts: 99 }], { calcs: ["last"] })).toBe(null);
+  });
 });
 
 describe("result-shape ↔ type validation", () => {

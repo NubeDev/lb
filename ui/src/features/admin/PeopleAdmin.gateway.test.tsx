@@ -66,7 +66,7 @@ describe("PeopleAdmin (real gateway)", () => {
 
     await user.click(screen.getByLabelText("new user"));
     await user.type(screen.getByLabelText("new user id"), "carol");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByRole("button", { name: "create user" }));
 
     const table = await screen.findByRole("table");
     expect(await within(table).findByText("carol")).toBeInTheDocument();

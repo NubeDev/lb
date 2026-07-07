@@ -1006,6 +1006,31 @@ The panel-builder loop is Grafana-Explore-grade — query, see data, tweak with 
 Scope: [`../../scope/frontend/dashboard/data-studio-ux-scope.md`](../../scope/frontend/dashboard/data-studio-ux-scope.md);
 session: [`../../sessions/frontend/dashboard/data-studio-ux-session.md`](../../sessions/frontend/dashboard/data-studio-ux-session.md).
 
+## Panel wizard — one pinned preview (shipped 2026-07-07)
+
+A stepped **create** flow (Source → Chart type → Options → Transform/Save) on its own route
+(`/t/$ws/dashboard/$d/new-panel`), a thin shell over the existing panel model: state is
+`EditorState`, every step writes through `writeOption`, save serializes through `editorStateToCell`
+→ `dashboard.save` — no second authoring surface, no drift.
+
+- **ONE preview.** The pinned right-hand pane is the only chart. On the Options step it renders
+  through `OptionFocusPreview` (the real `WidgetView` plus a focus marker): hovering or editing an
+  option sets `optionFocus`, and co-located CSS emphasizes the region that option affects (the value
+  readout for `decimals`/`unit`/`thresholds`; the chart canvas for `custom.*` graph styles). This is
+  the scope's resolved decision #3 — an earlier cut mounted a chart per option card (~20 renders on
+  a timeseries) and was redesigned away.
+- **Compact option form.** Options render as grouped rows (`OptionSectionCard`: label + registry
+  `Control`, no chart of its own). A DEAD option (per `optionLiveness`) carries the honest
+  "no visible effect — renderer pending" note in its row.
+- **Cost model.** A presentation-option toggle re-shapes cached frames via the `viz.query`
+  fetch/shape split — no datasource re-fetch (pinned by a delegating `ipc.invoke` counter in
+  `optionsStep.gateway.test.tsx`). Only data steps (source/chart-type/transform) re-query.
+- **Concepts tour.** A one-time dismissible react-joyride pass (per-user localStorage flag) names
+  the surface; the live preview does the teaching.
+
+Scope: [`../../scope/frontend/dashboard/viz/panel-wizard-scope.md`](../../scope/frontend/dashboard/viz/panel-wizard-scope.md);
+session: [`../../sessions/frontend/panel-wizard-one-preview-redesign-session.md`](../../sessions/frontend/panel-wizard-one-preview-redesign-session.md).
+
 ## Related
 
 - Scope index: [`../../scope/frontend/dashboard/README.md`](../../scope/frontend/dashboard/README.md)

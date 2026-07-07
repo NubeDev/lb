@@ -329,7 +329,9 @@ mod tests {
     /// enabled context, then run `sql` and return the shaped result. Used by the structural tests.
     async fn run_via_federated(source: &dyn Source, sql: &str) -> QueryResult {
         let validated = validate_select(sql).expect("validate");
-        register_and_run(source, &validated, sql).await.expect("run")
+        register_and_run(source, &validated, sql)
+            .await
+            .expect("run")
     }
 
     /// 1. Correctness heart — the demo-shaped JOIN + GROUP BY + ORDER BY returns the exact expected
@@ -363,11 +365,18 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn bare_count_star_works_under_pushdown() {
         let (_dsn, source) = demo_source(40).await;
-        let out = run_via_federated(source.as_ref(), "SELECT COUNT(*) AS n FROM point_reading").await;
+        let out =
+            run_via_federated(source.as_ref(), "SELECT COUNT(*) AS n FROM point_reading").await;
         assert_eq!(out.columns, vec!["n".to_string()]);
         assert_eq!(out.rows.len(), 1);
-        let n = out.rows[0][0].as_i64().or_else(|| out.rows[0][0].as_f64().map(|x| x as i64)).unwrap();
-        assert_eq!(n, 40, "COUNT(*) returns the row count under pushdown: {out:?}");
+        let n = out.rows[0][0]
+            .as_i64()
+            .or_else(|| out.rows[0][0].as_f64().map(|x| x as i64))
+            .unwrap();
+        assert_eq!(
+            n, 40,
+            "COUNT(*) returns the row count under pushdown: {out:?}"
+        );
     }
 
     /// 3. Structural — a multi-table single-source query plans as ONE federated scan (not a flaky
@@ -389,7 +398,13 @@ mod tests {
         // `EXPLAIN` returns rows shaped `(plan_type: Utf8, plan: Utf8)` — the plan column carries
         // the formatted logical+physical plan. Concatenate every cell of every row so we don't miss
         // the federated node whichever row it lands in.
-        let batches = ctx.sql(&format!("EXPLAIN {sql}")).await.unwrap().collect().await.unwrap();
+        let batches = ctx
+            .sql(&format!("EXPLAIN {sql}"))
+            .await
+            .unwrap()
+            .collect()
+            .await
+            .unwrap();
         let mut full = String::new();
         for batch in &batches {
             use arrow::array::AsArray;
@@ -454,4 +469,3 @@ mod tests {
         }
     }
 }
-

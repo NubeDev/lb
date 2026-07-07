@@ -1,0 +1,32 @@
+/* The option-focus-preview wrapper styles (panel-wizard scope, step 2). The wrapper itself is a plain
+ * flex container that fills its slot; the `focus-region-*` classes drive the EMPHASIS — the visual cue
+ * that draws the eye to the region the focused option affects. The render underneath is the real
+ * `WidgetView`; this CSS only scales / highlights, never re-implements. */
+
+.option-focus-preview {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* The value region (the readout for `decimals`/`unit`/`thresholds`/`color`/`mappings`/…): enlarge the
+ * value readout so the formatting change is the obvious thing in the frame. Targets the aria-labelled
+ * value spans StatPanel / GaugePanel / TimeseriesView emit. */
+.option-focus-preview.focus-region-value [aria-label="stat value"],
+.option-focus-preview.focus-region-value [aria-label="gauge value"],
+.option-focus-preview.focus-region-value [aria-label="timeseries latest"] {
+  font-size: 1.6rem;
+  font-weight: 600;
+}
+
+/* The chart region (the SVG canvas for `custom.*` draw styles): add a thin accent ring so the chart is
+ * framed as the focused surface. */
+.option-focus-preview.focus-region-chart [aria-label^="timeseries"],
+.option-focus-preview.focus-region-chart [aria-label="timeseries line"] {
+  outline: 2px solid var(--accent, hsl(217 91% 60%));
+  outline-offset: 2px;
+  border-radius: var(--radius-md, 0.375rem);
+}

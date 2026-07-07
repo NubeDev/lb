@@ -12,7 +12,8 @@ import userEvent from "@testing-library/user-event";
 
 import { NavAdmin } from "./NavAdmin";
 import { CAP } from "@/lib/session/admin-caps";
-import { resolveNav, saveNav, shareNav, setNavPref, getNav } from "@/lib/nav";
+import { resolveNav, saveNav, shareNav, listNavShares, setNavPref, getNav } from "@/lib/nav";
+import { addMember } from "@/lib/members/members.api";
 import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-session";
 
 let n = 0;
@@ -112,5 +113,54 @@ describe("NavAdmin (real gateway)", () => {
     // No nav authored → the fallback tier (the UI renders its built-in SURFACES, never blank).
     expect(resolved.source).toBe("fallback");
     expect(resolved.items).toEqual([]);
+  });
+
+  it("lists and removes team shares through the builder (the add/remove team surface)", async () => {
+    // Ada authors a nav, shares it to TWO teams (each call writes one S4 share edge), then opens
+    // the builder and sees both in the share roster. She removes one via the UI; the surviving
+    // team's member still resolves the nav, the removed team's member falls through to the
+    // fallback. Proves the round-trip the rust `share_roster_*` tests cover, over the real gateway.
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await saveNav("ops", "Ops", [{ kind: "surface", surface: "channels", label: "Channels" }]);
+
+    // Put ben in team:ops, cleo in team:eng (each via the real members_add edge write).
+    await addMember("team:ops", "user:ben");
+    await addMember("team:eng", "user:cleo");
+    // Two share edges accumulate (relate is multi-edge).
+    await shareNav("ops", "team", "team:ops");
+    await shareNav("ops", "team", "team:eng");
+
+    // The API client sees both.
+    let shares = await listNavShares("ops");
+    expect(shares.sort()).toEqual(["team:eng", "team:ops"]);
+
+    // Ben resolves the nav via team:ops before the unshare.
+    await signInWithCaps("user:ben", ws, [CAP.navResolve]);
+    expect((await resolveNav()).nav_id).toBe("ops");
+
+    // Back to Ada: open the builder, the roster renders both, remove team:ops from the UI.
+    await signInReal("user:ada", ws);
+    const user = userEvent.setup();
+    render(<NavAdmin ws={ws} caps={AUTHOR_CAPS} />);
+    await user.click(await screen.findByLabelText("Edit Ops"));
+    const roster = await screen.findByTestId("nav-shares");
+    await waitFor(() => expect(within(roster).getByText("team:ops")).toBeInTheDocument());
+    expect(within(roster).getByText("team:eng")).toBeInTheDocument();
+
+    await user.click(within(roster).getByLabelText("Remove share to team:ops"));
+    await waitFor(() =>
+      expect(within(roster).queryByText("team:ops")).not.toBeInTheDocument(),
+    );
+
+    // The API confirms: only team:eng survives.
+    shares = await listNavShares("ops");
+    expect(shares).toEqual(["team:eng"]);
+
+    // Ben no longer resolves the nav (his team's share was revoked); cleo still does.
+    await signInWithCaps("user:ben", ws, [CAP.navResolve]);
+    expect((await resolveNav()).source).toBe("fallback");
+    await signInWithCaps("user:cleo", ws, [CAP.navResolve]);
+    expect((await resolveNav()).nav_id).toBe("ops");
   });
 });

@@ -53,7 +53,8 @@ pub(crate) fn extract_widget_block(answer: &str) -> Option<(String, String)> {
     // Belt-and-braces: the gate permits only a `rich_result` envelope to be posted as a widget; a
     // stray code block that parsed as chat (no `kind`) must not land as a "widget".
     let value: serde_json::Value = serde_json::from_str(&body).ok()?;
-    if value.get("kind").and_then(serde_json::Value::as_str) != Some(super::payload::KIND_RICH_RESULT)
+    if value.get("kind").and_then(serde_json::Value::as_str)
+        != Some(super::payload::KIND_RICH_RESULT)
     {
         return None;
     }
@@ -90,13 +91,21 @@ fn find_fenced_block<'a>(text: &'a str, info: &str) -> Option<(&'a str, &'a str,
                 let l = text[j..le].trim_start();
                 if l.starts_with("```") {
                     let body_end = j; // exclude the trailing newline so the body has none.
-                    let after_close = if le < bytes.len() { le + 1 } else { bytes.len() };
+                    let after_close = if le < bytes.len() {
+                        le + 1
+                    } else {
+                        bytes.len()
+                    };
                     let before = &text[..line_start];
                     let body = &text[body_start..body_end];
                     let after = &text[after_close.min(bytes.len())..];
                     return Some((before, body, after));
                 }
-                j = if le < bytes.len() { le + 1 } else { bytes.len() };
+                j = if le < bytes.len() {
+                    le + 1
+                } else {
+                    bytes.len()
+                };
             }
             // Opener with no closer — not a block, leave the text untouched.
             return None;
@@ -157,7 +166,10 @@ mod tests {
     fn a_table_envelope_is_also_extracted() {
         let answer = format!("```lb-widget\n{}\n```", table_body());
         let (stripped, body) = extract_widget_block(&answer).expect("extracted");
-        assert!(stripped.is_empty(), "no surrounding text → empty stripped answer");
+        assert!(
+            stripped.is_empty(),
+            "no surrounding text → empty stripped answer"
+        );
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(v["view"], "table");
     }
@@ -173,7 +185,10 @@ mod tests {
         let answer = format!("```lb-widget\n{body}\n```");
         let (_stripped, body) = extract_widget_block(&answer).expect("extracted + normalized");
         let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-        assert!(v["options"]["genui"]["ir"].is_object(), "ir must be the parsed object");
+        assert!(
+            v["options"]["genui"]["ir"].is_object(),
+            "ir must be the parsed object"
+        );
     }
 
     #[test]

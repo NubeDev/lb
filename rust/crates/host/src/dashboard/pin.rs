@@ -134,7 +134,10 @@ pub async fn dashboard_pin(
             return Err(DashboardError::Denied);
         }
         Some(existing) => (existing.owner, existing.visibility),
-        None => (principal.owner_sub().to_string(), crate::panel::Visibility::Private),
+        None => (
+            principal.owner_sub().to_string(),
+            crate::panel::Visibility::Private,
+        ),
     };
     let panel = crate::panel::Panel {
         id: panel_id.clone(),

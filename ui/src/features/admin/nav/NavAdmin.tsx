@@ -42,7 +42,8 @@ interface Props {
 }
 
 export function NavAdmin({ ws, caps }: Props) {
-  const { navs, sources, error, loading, save, remove, share, setDefault } = useNavs(ws);
+  const { navs, sources, shares, reloadShares, error, loading, save, remove, share, unshare, setDefault } =
+    useNavs(ws);
   const canWrite = hasCap(caps, CAP.navSave);
 
   // The nav currently being edited: its id/title/items + a dirty flag. `null` = the roster view.
@@ -85,6 +86,7 @@ export function NavAdmin({ ws, caps }: Props) {
       setTitle(n.title);
       setItems(n.items ?? []);
       setShareVis(n.visibility);
+      await reloadShares(n.id);
     } catch (e) {
       setMsg(String(e));
     } finally {
@@ -173,6 +175,21 @@ export function NavAdmin({ ws, caps }: Props) {
     try {
       await share(editId, shareVis, shareVis === "team" ? shareTeam : undefined);
       setMsg(`Visibility set to ${shareVis}.`);
+      setShareTeam("");
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doUnshare = async (team: string) => {
+    if (!editId) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await unshare(editId, team);
+      setMsg(`Removed share to ${team}.`);
     } catch (e) {
       setMsg(String(e));
     } finally {
@@ -482,6 +499,40 @@ export function NavAdmin({ ws, caps }: Props) {
               </Button>
             </div>
           </div>
+
+          {/* The live share roster — every team this nav is currently shared to, each removable.
+              A nav has no per-user share by design; a user reaches it by being a member of one of
+              these teams (managed in the Teams admin via teams.add_member/remove_member). */}
+          <section className="flex flex-col gap-2" data-testid="nav-shares">
+            <h4 className="text-xs font-semibold uppercase text-muted">Shared to teams</h4>
+            {shares.length === 0 ? (
+              <div className="text-sm text-muted">
+                {shareVis === "team"
+                  ? "Not shared to any team yet — add one above."
+                  : "Team shares apply only at the Team visibility tier."}
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {shares.map((team) => (
+                  <li
+                    key={team}
+                    className="flex items-center justify-between rounded-md border border-border p-2"
+                  >
+                    <code className="text-sm">{team}</code>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => void doUnshare(team)}
+                      disabled={busy}
+                      aria-label={`Remove share to ${team}`}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </section>
       )}
     </div>

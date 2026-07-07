@@ -44,9 +44,7 @@ const standardSelectors = [
 
 // Views that predate the standard. Convert one → remove it here. SHRINKS toward empty.
 const LEGACY_VIEWS = [
-  "src/features/admin/PeopleAdmin.tsx",
   "src/features/admin/RolesAdmin.tsx",
-  "src/features/admin/TeamsAdmin.tsx",
   "src/features/admin/WorkspacesAdmin.tsx",
   "src/features/agent/AgentView.tsx",
   "src/features/dashboard/AddWidget.tsx",

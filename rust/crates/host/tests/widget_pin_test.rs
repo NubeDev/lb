@@ -644,10 +644,16 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     assert_eq!(cell["source"]["tool"], "reminder.list");
 
     // The persisted cell (raw store, post-strip) is layout + ref only — no spec on the cell row.
-    let raw = dashboard_get(&node.store, &ada, ws, "ops").await.expect("get");
+    let raw = dashboard_get(&node.store, &ada, ws, "ops")
+        .await
+        .expect("get");
     // `dashboard_get` hydrates too — to see the STORED shape we read the raw row via the panel read.
     // The hydrated view shows the panel_ref + spec; the cell's `panelRef` is what makes it a ref.
-    let stored_cell = raw.cells.iter().find(|c| c.i == "pin-reminder-list").unwrap();
+    let stored_cell = raw
+        .cells
+        .iter()
+        .find(|c| c.i == "pin-reminder-list")
+        .unwrap();
     assert_eq!(
         stored_cell.panel_ref, "panel:reminder-list",
         "the persisted cell references the panel"
@@ -683,7 +689,10 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
         .await
         .expect("panel_get on the re-pinned panel");
     assert_eq!(panel2.id, panel.id, "same panel slug reused");
-    assert_eq!(panel2.updated_ts, 20, "the panel record was touched on the second pin");
+    assert_eq!(
+        panel2.updated_ts, 20,
+        "the panel record was touched on the second pin"
+    );
 }
 
 /// An envelope `title` (typed by the user in the pin dialog, or set by the agent in the fenced
@@ -711,7 +720,10 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
     )
     .await
     .expect("pin");
-    assert_eq!(d["cells"][0]["title"], "Site Energy Ranking", "cell carries the widget name");
+    assert_eq!(
+        d["cells"][0]["title"], "Site Energy Ranking",
+        "cell carries the widget name"
+    );
 
     let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
         .await
@@ -733,5 +745,8 @@ async fn pin_envelope_title_names_the_cell_and_the_panel() {
     )
     .await
     .expect("pin without title");
-    assert_eq!(d2["cells"][0]["title"], "", "untitled envelope leaves the cell title empty");
+    assert_eq!(
+        d2["cells"][0]["title"], "",
+        "untitled envelope leaves the cell title empty"
+    );
 }

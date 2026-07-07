@@ -1011,7 +1011,11 @@ async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel
         ],
     );
 
-    let body = agent_request_body("make me a stat widget for avg session time", None, "run-stat-block");
+    let body = agent_request_body(
+        "make me a stat widget for avg session time",
+        None,
+        "run-stat-block",
+    );
     post(
         &node,
         &p,
@@ -1035,7 +1039,8 @@ async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel
         "the fenced block must be stripped from the persisted answer: {answer_text}"
     );
     assert!(
-        answer_text.contains("Here's the average session time:") && answer_text.contains("Want me to pin it?"),
+        answer_text.contains("Here's the average session time:")
+            && answer_text.contains("Want me to pin it?"),
         "the surrounding prose stays: {answer_text}"
     );
 

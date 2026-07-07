@@ -16,8 +16,8 @@ use serde_json::{json, Value};
 
 use super::model::{NavItem, Visibility};
 use super::{
-    nav_delete, nav_get, nav_list, nav_pref_get, nav_pref_set, nav_resolve, nav_save,
-    nav_set_default, nav_share, NavError,
+    nav_delete, nav_get, nav_list, nav_list_shares, nav_pref_get, nav_pref_set, nav_resolve,
+    nav_save, nav_set_default, nav_share, nav_unshare, NavError,
 };
 use crate::boot::Node;
 
@@ -86,6 +86,27 @@ pub async fn call_nav_tool(
             .await
             .map_err(to_tool)?;
             Ok(serde_json::to_value(n).unwrap_or(Value::Null))
+        }
+        "nav.unshare" => {
+            // The inverse write under the SAME `mcp:nav.share:call` cap — no separate grant.
+            let n = nav_unshare(
+                &node.store,
+                principal,
+                ws,
+                str_arg(input, "id")?,
+                str_arg(input, "team")?,
+                u64_arg(input, "now")?,
+            )
+            .await
+            .map_err(to_tool)?;
+            Ok(serde_json::to_value(n).unwrap_or(Value::Null))
+        }
+        "nav.list_shares" => {
+            // The share-roster read under the same `mcp:nav.share:call` cap (owner-only inside).
+            let teams = nav_list_shares(&node.store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(to_tool)?;
+            Ok(json!({ "teams": teams }))
         }
         "nav.set_default" => {
             nav_set_default(

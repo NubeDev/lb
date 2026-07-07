@@ -60,14 +60,22 @@ export interface QueryWorkbenchProps {
    *  other string ⇒ the federation datasource of that name (standard dialect). Config data, never
    *  an extension id (rule 10). */
   source: string;
+  /** Optional adoption seam for hosts that BIND the authored query somewhere (the panel wizard's
+   *  source step): called with the SQL that actually runs — on Run (for PRQL, the compiled SQL) and
+   *  when a saved SQL query is loaded. Absent for the standalone homes (Datasources/Data/Studio). */
+  onUseSql?: (sql: string) => void;
+  /** Optional initial editor state (first mount only). A binding host that REMOUNTS the workbench
+   *  (the wizard's Back/Next) passes its persisted `SqlSourceState` so the authored query survives
+   *  the round-trip instead of resetting to an empty editor. */
+  initial?: SqlSourceState;
 }
 
 /** The Query workbench — editor + run bar + results + (federation only) saved queries. */
-export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) {
+export function QueryWorkbench({ ws, sel, onSel, source, onUseSql, initial }: QueryWorkbenchProps) {
   const isSurreal = source === SURREAL_LOCAL;
   const dialect: SqlDialect = isSurreal ? "surreal" : "standard";
 
-  const [state, setState] = useState<SqlSourceState>(emptySqlSource());
+  const [state, setState] = useState<SqlSourceState>(() => initial ?? emptySqlSource());
   const rootRef = useRef<HTMLDivElement>(null);
   const split = useWorkbenchSplit(rootRef);
   // Every table the builder references — the FROM table plus each canvas-joined table — so the
@@ -114,6 +122,9 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
           format: "table",
           lang: q.lang === "prql" ? "prql" : "sql",
         });
+        // A loaded SQL saved query is directly runnable — hand it to a binding host. PRQL text must
+        // go through Run (compile) first, so it is adopted there with the compiled SQL.
+        if (q.lang !== "prql") onUseSql?.(q.text);
       })
       .catch(() => {
         /* a load failure (deny/NotFound) leaves the editor as-is — honest, no fabricated text */
@@ -149,11 +160,15 @@ export function QueryWorkbench({ ws, sel, onSel, source }: QueryWorkbenchProps) 
     setHistory(recordRun(ws, source, text, Date.now()));
     setCompileError(null);
     if (!prqlActive) {
+      onUseSql?.(text);
       void run.run(text);
       return;
     }
     void compileQuery({ lang: "prql", text, target: `datasource:${source}` })
-      .then((res) => run.run(res.sql))
+      .then((res) => {
+        onUseSql?.(res.sql);
+        return run.run(res.sql);
+      })
       .catch((e) => setCompileError(e instanceof Error ? e.message : String(e)));
   };
 
