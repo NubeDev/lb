@@ -110,6 +110,9 @@ describe("Pin to dashboard (Slice B)", () => {
     await userEvent.selectOptions(select, "__new__");
     const titleInput = screen.getByRole("textbox", { name: /New dashboard title/i });
     await userEvent.type(titleInput, "Ops");
+    // Name the widget itself — flows through `envelope.title` into the minted cell + reusable panel.
+    const nameInput = screen.getByRole("textbox", { name: /Widget name/i });
+    await userEvent.type(nameInput, "Cooler reminders");
     const confirm = screen.getByRole("button", { name: /Create \+ pin/i });
     await userEvent.click(confirm);
 
@@ -130,6 +133,7 @@ describe("Pin to dashboard (Slice B)", () => {
     const cell = full.cells[0];
     expect(cell.i).toBe("pin-reminder-list");
     expect(cell.view).toBe("table");
+    expect(cell.title).toBe("Cooler reminders");
     expect(cell.source?.tool).toBe("reminder.list");
     expect(cell.options?.rowControls).toHaveLength(3);
     // The `tools` fold: the three row-control verbs (`reminder.update`/`fire`/`delete`) become hidden

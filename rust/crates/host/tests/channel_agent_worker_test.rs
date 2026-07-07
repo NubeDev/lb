@@ -968,3 +968,114 @@ async fn an_invalid_widget_block_in_the_answer_is_left_untouched_no_widget_lands
         "an invalid block is left in the answer (visible to the user): {answer_text}"
     );
 }
+
+/// RENDER-WIDGETS (built-in view dock path): the no-`channel.post` extractor is GENERIC over the
+/// `rich_result` view. A `view:"stat"` fenced block (the shipped single-number renderer — NOT genui)
+/// is split off by the worker exactly like the genui case: the durable `agent_result` carries the
+/// STRIPPED prose, and a separate `rich_result` widget item with `view:"stat"` lands in the same
+/// dock channel under the worker's authorship, correlated to the run (`w:<job>`). This locks the
+/// non-genui render path: a `stat`/`chart`/`gauge`/`table`/etc. preview works identically to `genui`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_stat_widget_block_in_the_answer_is_split_off_by_the_worker_no_channel_post() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ws = "acme";
+    let cid = "dock-user-ada-stat-block";
+
+    // A built-in `view:"stat"` envelope — the shipped StatPanel renderer, not genui. Bound to a real
+    // store.query the worker re-runs at view time; `fieldConfig.defaults.unit` styles the value (the
+    // render-widgets skill's "average session time" example).
+    let envelope = serde_json::json!({
+        "kind": "rich_result", "v": 2, "view": "stat",
+        "source": { "tool": "store.query",
+                    "args": { "sql": "SELECT duration_s AS value FROM session LIMIT 1" } },
+        "options": { "reduceOptions": { "calcs": ["mean"], "fields": ["value"] },
+                     "textMode": "auto", "colorMode": "value" },
+        "fieldConfig": { "defaults": { "unit": "s" } },
+        "tools": ["store.query"],
+    })
+    .to_string();
+
+    // The model emits the widget INSIDE its prose answer — no `channel.post` tool call.
+    let answer = format!(
+        "Here's the average session time:\n\n```lb-widget\n{envelope}\n```\nWant me to pin it?"
+    );
+    node.install_runtimes(RuntimeRegistry::with_default(answer_model(&answer)));
+
+    // NOTE: no `mcp:channel.post:call` grant — the dock path requires NO channel-post capability.
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("make me a stat widget for avg session time", None, "run-stat-block");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("agent request posts");
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The agent_result is STRIPPED — the fenced block (and the envelope JSON) is gone from the answer.
+    let result = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("agent_result posted");
+    let parsed: serde_json::Value = serde_json::from_str(&result.body).expect("json");
+    assert_eq!(parsed["kind"], "agent_result");
+    let answer_text = parsed["answer"].as_str().expect("answer string");
+    assert!(
+        !answer_text.contains("```lb-widget") && !answer_text.contains("\"view\":\"stat\""),
+        "the fenced block must be stripped from the persisted answer: {answer_text}"
+    );
+    assert!(
+        answer_text.contains("Here's the average session time:") && answer_text.contains("Want me to pin it?"),
+        "the surrounding prose stays: {answer_text}"
+    );
+
+    // A separate `rich_result` widget item with view:"stat" landed in the same channel under the
+    // worker's authorship, correlated to the run (`w:<job>`).
+    let items = history(&node.store, &p, ws, cid).await.expect("history");
+    let widget = items
+        .iter()
+        .find(|i| {
+            serde_json::from_str::<serde_json::Value>(&i.body)
+                .map(|v| v["kind"] == "rich_result")
+                .unwrap_or(false)
+        })
+        .expect("the worker posted a rich_result widget item into the dock channel");
+    assert_eq!(widget.author, "system:agent-worker");
+    assert_eq!(widget.id, "w:run-stat-block");
+    let w: serde_json::Value = serde_json::from_str(&widget.body).unwrap();
+    assert_eq!(w["view"], "stat", "the non-genui view survives the split");
+    assert_eq!(w["source"]["tool"], "store.query");
+    assert_eq!(w["options"]["reduceOptions"]["calcs"][0], "mean");
+    assert_eq!(w["fieldConfig"]["defaults"]["unit"], "s");
+
+    // The widget item sorts AFTER the agent_result (worker posts widget at ts+1).
+    let result_idx = items
+        .iter()
+        .position(|i| i.id == "a:run-stat-block")
+        .expect("result present");
+    let widget_idx = items
+        .iter()
+        .position(|i| i.id == "w:run-stat-block")
+        .expect("widget present");
+    assert!(widget_idx > result_idx, "widget lands after the answer");
+
+    // WORKSPACE ISOLATION (mandatory): a ws-B principal cannot read the widget item.
+    let outsider = principal("globex", &[&format!("bus:chan/{cid}:sub")]);
+    assert!(
+        history(&node.store, &outsider, "globex", cid)
+            .await
+            .map(|items| items.is_empty())
+            .unwrap_or(true),
+        "the stat widget item must be invisible outside its workspace"
+    );
+}

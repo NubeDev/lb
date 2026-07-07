@@ -49,6 +49,7 @@ pub const DEFAULT_CORE_SKILLS: &[&str] = &[
     "core.genui-widget",
     "core.panels",
     "core.dashboard-widgets",
+    "core.render-widgets",
     // rules-author
     "core.rules",
     // workspace-admin

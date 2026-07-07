@@ -685,3 +685,53 @@ async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
     assert_eq!(panel2.id, panel.id, "same panel slug reused");
     assert_eq!(panel2.updated_ts, 20, "the panel record was touched on the second pin");
 }
+
+/// An envelope `title` (typed by the user in the pin dialog, or set by the agent in the fenced
+/// block) names BOTH the minted dashboard cell and the reusable panel record. Regression for the
+/// "pinned widgets are all called '<tool> widget'" gap.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_envelope_title_names_the_cell_and_the_panel() {
+    let ws = "wp-title";
+    let node = Arc::new(Node::boot().await.unwrap());
+    const PANEL_GET: &str = "mcp:panel.get:call";
+    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+
+    let env = json!({
+        "view": "table",
+        "title": "Site Energy Ranking",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("pin");
+    assert_eq!(d["cells"][0]["title"], "Site Energy Ranking", "cell carries the widget name");
+
+    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get");
+    assert_eq!(panel.title, "Site Energy Ranking", "panel is named too");
+
+    // No title in the envelope → the derived fallback still applies (no regression).
+    let env2 = json!({
+        "view": "table",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d2 = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops2", "title": "Ops2", "envelope": env2, "now": 20 }),
+    )
+    .await
+    .expect("pin without title");
+    assert_eq!(d2["cells"][0]["title"], "", "untitled envelope leaves the cell title empty");
+}

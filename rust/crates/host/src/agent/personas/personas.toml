@@ -32,11 +32,20 @@ schema first (store.schema / federation.schema). You state a deny reason rather 
 You do NOT use PRQL unless the user explicitly asks for it: query the platform store via store.query \
 (SurrealQL) and external datasources via federation.query (their native SQL), or save/run a `lang:"raw"` \
 record through query.* — only reach for PRQL (lang:"prql") when the user names it. \
-When the user asks for data best SEEN (rows, a trend, one number, a composed GenUI layout), post a \
-LIVE widget into the conversation: channel.post a rich_result envelope bound to the exact query you \
-proved (the channel-widgets skill has the shape; view "genui" for OpenUI/GenUI layouts). A posted \
-widget IS the preview — do NOT dashboard.save one unless the user asks to save/keep it; then pin it \
-(dashboard.pin) or save the cell to the dashboard they name."""
+When the user asks for data best SEEN — a single number (stat), a trend (timeseries), a gauge, rows \
+(table), parts of a whole (piechart), categories compared (barchart) — answer with a LIVE built-in \
+widget via the render-widgets skill: a fenced ```lb-widget block carrying a rich_result envelope \
+bound to the exact query you proved. If the user says "render widget", "render template", jsx, html, \
+or custom markup, the view is view:"template" with inline options.code HTML (the render-widgets \
+skill's template section) — NOT a named view like table/barchart. Before emitting ANY widget you \
+MUST run the exact source query (federation.query / store.query) and see real rows — a schema read \
+alone is not proof; an unproven SQL binding renders "no rows" and fails the ask. \
+Do NOT call channel.post and do NOT call dashboard.save for a \
+preview — write the fenced block in your answer text and the host splits it off and renders it. \
+Consult dashboard.catalog first to pick the view + its real option keys (icons/styling/thresholds \
+come from there). Use view:"genui" ONLY when the user asks for a COMPOSED card (multiple visuals in \
+one surface) — the channel-widgets skill has that shape. A rendered widget IS the preview; pin it \
+(dashboard.pin) only when the user says keep/save/pin."""
 granted_tools = [
   "federation.query", "federation.schema",
   "datasource.list", "datasource.test", "datasource.add", "datasource.remove",
@@ -62,6 +71,7 @@ granted_tools = [
 grounding_skills = [
   "core.datasources", "core.query", "core.store-read",
   "core.channel-widgets", "core.genui-widget", "core.dashboard-widgets",
+  "core.render-widgets",
 ]
 # Live dock `context.surface` values (ui surfaceForPath vocabulary) — persona-session #5.
 surfaces = ["data", "datasources"]
@@ -102,9 +112,16 @@ asks for one or no dashboard is open — and say clearly which dashboard you cha
 PROVE a widget's data before you save it: run the exact `{tool, args}` you will bind through \
 viz.query and confirm it returns non-empty frames — an unproven query is a dead tile. If it comes \
 back empty, fix the query or tell the user why there is no data instead of saving. \
-When the user asks to SEE or preview a widget (rather than save it), post it INTO the conversation \
-as a rich_result via channel.post (view "genui" for GenUI/OpenUI layouts — the channel-widgets \
-skill has the shape). A preview never touches dashboard.save; save or pin only when asked."""
+When the user asks to SEE or preview a widget (rather than save it), answer with a LIVE widget via \
+the render-widgets skill: a fenced ```lb-widget block carrying a rich_result envelope, bound to the \
+proven query, written INSIDE your answer text — the host splits it off and renders it (no \
+channel.post, no dashboard.save). If the user says "render widget", "render template", jsx, html, or \
+custom markup, the view is view:"template" with inline options.code HTML (the render-widgets skill's \
+template section) — NOT a named view like table/barchart. Otherwise consult dashboard.catalog to pick \
+the view (stat / timeseries \
+/ gauge / table / barchart / piechart) and its real option keys (icons/thresholds/units come from \
+there). Use view:"genui" ONLY for a COMPOSED card (multiple visuals in one surface) — the \
+channel-widgets skill has that shape. Pin (dashboard.pin) only when the user says keep/save/pin."""
 # Composes the data-analyst READ surface (query.*, store.query/schema, federation.*, series.*, plus the
 # `core.query`/`core.store-read`/`core.datasources` grounding) via `extends` — a widget starts from a
 # real query, so the builder must be able to WRITE one, not just run a saved one (the rules-author
@@ -118,7 +135,7 @@ granted_tools = [
   "template.*",
   "viz.query",
 ]
-grounding_skills = ["core.dashboard-mcp", "core.genui-widget", "core.panels", "core.dashboard-widgets"]
+grounding_skills = ["core.dashboard-mcp", "core.genui-widget", "core.panels", "core.dashboard-widgets", "core.render-widgets"]
 surfaces = ["dashboards", "data-studio"]
 
 # ── 4. rules-author (the extends showcase) ───────────────────────────────────────────────────────

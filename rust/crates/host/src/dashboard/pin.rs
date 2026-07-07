@@ -332,6 +332,14 @@ pub fn mint_cell_from_envelope(
     let options = envelope.get("options").cloned().unwrap_or(Value::Null);
     let field_config = envelope.get("fieldConfig").cloned().unwrap_or(Value::Null);
 
+    // The envelope's `title` names the minted cell (and, via `panel_title_from_envelope`, the reusable
+    // panel). The pin UI lets the user type this; an agent may set it in the fenced envelope too.
+    let title = envelope
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+
     // Layout: preserve an existing cell's geometry on re-pin (idempotent), else default.
     let (x, y, w, h) = match existing {
         Some(c) => (c.x, c.y, c.w, c.h),
@@ -346,7 +354,7 @@ pub fn mint_cell_from_envelope(
         h,
         v: 3,
         widget_type: view.to_string(),
-        title: String::new(),
+        title,
         view: view.to_string(),
         binding: Value::Null,
         source,
@@ -449,7 +457,7 @@ pub fn pin_descriptor() -> ToolDescriptor {
             "properties": {
                 "dashboard": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "The target dashboard id (idempotent UPSERT: fresh id creates, existing id updates owner-only)" } },
                 "title": { "type": "string", "x-lb": { "label": "Dashboard title", "description": "Used only when creating a fresh dashboard" } },
-                "envelope": { "type": "object", "x-lb": { "label": "Render envelope", "description": "The x-lb-render envelope (a tool's descriptor.result or a channel rich_result body minus kind/v): { view, source?, action?, options?, tools?, fieldConfig? }" } }
+                "envelope": { "type": "object", "x-lb": { "label": "Render envelope", "description": "The x-lb-render envelope (a tool's descriptor.result or a channel rich_result body minus kind/v): { view, title?, source?, action?, options?, tools?, fieldConfig? } — title names the pinned widget/panel" } }
             },
             "required": ["dashboard", "envelope"]
         })),

@@ -40,6 +40,10 @@ export function PinToDashboard({ payload }: Props) {
   const [dashboards, setDashboards] = useState<DashboardSummary[]>([]);
   const [target, setTarget] = useState<string>("");
   const [newTitle, setNewTitle] = useState("");
+  const [widgetName, setWidgetName] = useState(() => {
+    const t = (payload as { title?: unknown }).title;
+    return typeof t === "string" ? t : "";
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pinnedName, setPinnedName] = useState<string | null>(null);
@@ -85,7 +89,8 @@ export function PinToDashboard({ payload }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const d = await pinDashboard(id, envelope, isNew ? newTitle || "Pinned" : "");
+      const named = widgetName.trim() ? { ...envelope, title: widgetName.trim() } : envelope;
+      const d = await pinDashboard(id, named, isNew ? newTitle || "Pinned" : "");
       setPinnedName(d.title || id);
       setOpen(false);
     } catch (e: unknown) {
@@ -158,6 +163,14 @@ export function PinToDashboard({ payload }: Props) {
               aria-label="New dashboard title"
             />
           )}
+          <Input
+            className="mb-2 h-8 text-xs"
+            placeholder="Widget name (optional)"
+            value={widgetName}
+            onChange={(e) => setWidgetName(e.target.value)}
+            aria-label="Widget name"
+          />
+
           <Button
             variant="default"
             size="sm"

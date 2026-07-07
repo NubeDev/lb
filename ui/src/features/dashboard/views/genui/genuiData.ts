@@ -24,8 +24,22 @@ export type GenUiDataModel = { data: Record<string, RefData> };
 
 /** Shape one target's `SourceState` into the refId entry the IR reads. */
 export function refDataOf(state: SourceState): RefData {
-  const value = state.latest ?? (state.rows.length === 1 ? firstScalar(state.rows[0]) : null);
+  // The IR's `value: { $bind: "/data/A/value" }` is for a SCALAR (a stat/gauge reading). `state.latest`
+  // can be a whole row OBJECT when the source has no `value`/`payload` field — `useSource.toLatest`
+  // falls back to the whole row to keep templates/scripted views flexible, but a stat binding would
+  // then render `[object Object]`. Coerce: a non-scalar `latest` is dropped here so we fall through to
+  // `firstScalar(rows[0])`, which extracts the row's first column (e.g. `avg_kw` from `SELECT AVG(...)`).
+  // Templates/scripted views still see the row object — they read `state.latest` directly elsewhere.
+  const scalarLatest = isScalar(state.latest) ? state.latest : null;
+  const value = scalarLatest ?? (state.rows.length === 1 ? firstScalar(state.rows[0]) : null);
   return { rows: state.rows, latest: state.latest, value, loading: state.loading, denied: state.denied };
+}
+
+/** A JSON scalar a stat/gauge can render directly: number/string/boolean (or null). Anything else
+ *  (an object/array — e.g. the whole row `toLatest` returns when no `value` field exists) is NOT a
+ *  scalar and is dropped from the IR's `/data/{refId}/value` resolution path. */
+function isScalar(v: unknown): boolean {
+  return v === null || typeof v === "number" || typeof v === "string" || typeof v === "boolean";
 }
 
 /** For a single-row result, expose its first field (or the `value` field) as the scalar a stat binds. */
