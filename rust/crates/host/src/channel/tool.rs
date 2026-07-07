@@ -33,7 +33,17 @@ pub async fn call_channel_tool(
 ) -> Result<Value, ToolError> {
     match qualified_tool {
         "channel.post" => {
-            let cid = arg_str(input, "cid")?;
+            // `channel` accepted as an alias (models guess it); a miss names WHERE the cid comes
+            // from — the live run burned 13 turns on a bare "missing arg: cid" (2026-07-06).
+            let cid = arg_str(input, "cid")
+                .or_else(|_| arg_str(input, "channel"))
+                .map_err(|_| {
+                    ToolError::BadInput(
+                        "missing arg: cid — the channel id to post into. In an agent run it is \
+                         given in your goal as `[conversation channel: <cid>]`; pass that value."
+                            .to_string(),
+                    )
+                })?;
             // Author is FORCED to the caller — a request `author` is ignored (never spoofable).
             let item = item_from_input(principal, input)?;
             let stored = super::post(node, principal, ws, cid, item)
@@ -85,7 +95,15 @@ pub async fn call_channel_tool(
 /// Build the posted [`Item`] from the input, FORCING the author to the caller's `sub`. `id` is
 /// caller-supplied for idempotency; `ts` is the caller's logical clock (no wall-clock in core).
 fn item_from_input(principal: &Principal, input: &Value) -> Result<Item, ToolError> {
-    let id = arg_str(input, "id")?.to_string();
+    let id = arg_str(input, "id")
+        .map_err(|_| {
+            ToolError::BadInput(
+                "missing arg: id — a fresh unique message id you mint (idempotency key), \
+                 e.g. `widget-readings-1`; re-posting the same id replaces the message."
+                    .to_string(),
+            )
+        })?
+        .to_string();
     let body = input
         .get("body")
         .and_then(Value::as_str)
@@ -97,6 +115,29 @@ fn item_from_input(principal: &Principal, input: &Value) -> Result<Item, ToolErr
     // parity, no special-casing here. `channel` is filled in by `post` from `cid`.
     let item = Item::new(id, "", principal.sub().to_string(), body, ts);
     Ok(item)
+}
+
+/// The `channel.post` descriptor (channel-widgets scope). A REAL arg schema so a model can form the
+/// call — the name-only catalog row left the live agent guessing arg names and burning its whole run
+/// on `missing arg: cid` (the same lesson as `dashboard.save`'s descriptor: every write verb an AI
+/// persona leans on needs a schema).
+pub fn post_descriptor() -> lb_mcp::ToolDescriptor {
+    lb_mcp::ToolDescriptor {
+        name: "channel.post".to_string(),
+        title: "Post a message to a channel".to_string(),
+        group: "channel".to_string(),
+        input_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "cid": { "type": "string", "x-lb": { "label": "Channel id", "description": "The channel to post into. In an agent run, use the conversation channel id given in your goal as `[conversation channel: <cid>]`" } },
+                "id": { "type": "string", "x-lb": { "label": "Message id", "description": "A fresh unique id you mint (idempotency key), e.g. `widget-readings-1`; re-posting the same id replaces the message" } },
+                "ts": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "The caller's logical clock (any increasing integer)" } },
+                "body": { "type": "string", "x-lb": { "label": "Body", "description": "The message text, or a rich_result render envelope serialized as ONE JSON string (see the channel-widgets skill)" } }
+            },
+            "required": ["cid", "id", "body"]
+        })),
+        result: None,
+    }
 }
 
 /// Read a required string arg or a clean `BadInput`.

@@ -5,12 +5,17 @@
 # NAMES ONLY: `api_key_env` is the NAME of an env var, never the key value. The key stays in the node
 # env / lb-secrets. Model ids are provider data — a drift is a one-line edit + re-seed, no code change.
 #
-# Six built-ins: in-house (runtime `default`) and open-interpreter (runtime `open-interpreter-default`)
-# × Z.AI glm-4.6 / glm-5.1 / glm-5.2, over the `zaicoding` coding endpoint (ZAI_API_KEY). A node
-# without the `external-agent` feature still seeds the open-interpreter entries but filters them from
-# the catalog list (registry drift — symmetric, no `if cloud`).
+# Nine built-ins, all over the `zaicoding` coding endpoint (ZAI_API_KEY) — the token has balance only on
+# the coding endpoint, which serves the full Z.AI model line (the standard `api.z.ai/api/paas/v4` endpoint
+# answers "Insufficient balance" for it). Three groups:
+#   - in-house coding (runtime `default`): glm-4.6 / glm-5.1 / glm-5.2 — for code-heavy agent work.
+#   - in-house general (runtime `default`): glm-4.5-air / glm-4.5 / glm-5-turbo — faster + cheaper, for
+#     non-code platform work (widgets, dashboards, data analysis, SQL).
+#   - open-interpreter (runtime `open-interpreter-default`): glm-4.6 / glm-5.1 / glm-5.2 (external-agent
+#     feature). A node without the feature still seeds these but filters them from the catalog list
+#     (registry drift — symmetric, no `if cloud`).
 
-# --- In-house (runtime `default`) ---
+# --- In-house coding models (runtime `default`) ---
 
 [[agent]]
 id = "in-house-glm-4.6"
@@ -42,6 +47,42 @@ runtime = "default"
 [agent.model_endpoint]
 provider = "zaicoding"
 model = "glm-5.2"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+# --- In-house general-purpose models (runtime `default`) — faster + cheaper, for non-code platform
+# work: widgets, dashboards, data analysis, SQL. The same `zaicoding` coding endpoint serves them.
+
+[[agent]]
+id = "in-house-glm-4.5-air"
+label = "In-house — Z.AI GLM-4.5-Air"
+description = "The in-house agent loop over Z.AI GLM-4.5-Air — fastest/cheapest; ideal for widgets, SQL, data lookups."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-4.5-air"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "in-house-glm-4.5"
+label = "In-house — Z.AI GLM-4.5"
+description = "The in-house agent loop over Z.AI GLM-4.5 — balanced general-purpose; data analysis and dashboards."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-4.5"
+api_key_env = "ZAI_API_KEY"
+base_url = "https://api.z.ai/api/coding/paas/v4"
+
+[[agent]]
+id = "in-house-glm-5-turbo"
+label = "In-house — Z.AI GLM-5-Turbo"
+description = "The in-house agent loop over Z.AI GLM-5-Turbo — fast flagship for higher-quality general work."
+runtime = "default"
+[agent.model_endpoint]
+provider = "zaicoding"
+model = "glm-5-turbo"
 api_key_env = "ZAI_API_KEY"
 base_url = "https://api.z.ai/api/coding/paas/v4"
 

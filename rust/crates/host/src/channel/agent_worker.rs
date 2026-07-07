@@ -277,8 +277,23 @@ pub async fn drive_queued_run(
         RunLifecycle::Finished => match outcome {
             Ok(answer) => {
                 let (answer, truncated) = cap_answer(answer);
+                // CHANNEL-WIDGETS (no-`channel.post` dock path): if the agent's answer carries a
+                // fenced ```lb-widget block, split it off — strip the block from the persisted
+                // `agent_result` text and post the envelope as a separate `rich_result` item to THIS
+                // dock channel (the worker owns the cid; the model never calls `channel.post`). The
+                // dock's live-refresh merges the widget item in through the same path a `channel.post`
+                // would, rendered by the shipped ResponseView. A present-but-invalid block is left in
+                // the answer (no widget lands) — the worker is best-effort, not a second gate.
+                let (answer, widget_body) =
+                    match super::widget_extract::extract_widget_block(&answer) {
+                        Some((stripped, body)) => (stripped, Some(body)),
+                        None => (answer, None),
+                    };
                 let body = agent_result_body(goal, &runtime_label, run_job, &answer, truncated);
                 let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
+                if let Some(body) = widget_body {
+                    let _ = post_widget_item(node, ws, cid, run_job, body, *ts + 1).await;
+                }
             }
             Err(msg) => {
                 let body = agent_error_body(goal, &msg);
@@ -415,6 +430,24 @@ async fn post_worker_item(
     ts: u64,
 ) -> Result<(), super::error::ChannelError> {
     let item = Item::new(format!("a:{job}"), cid, WORKER_AUTHOR, body, ts);
+    super::post::deliver(&node.store, &node.bus, ws, cid, item)
+        .await
+        .map(|_| ())
+}
+
+/// Post a worker-authored **widget** item — a `rich_result` render envelope the agent emitted as a
+/// fenced block in its answer (the no-`channel.post` dock path). Same `deliver` path as the answer
+/// (STATE-first, then MOTION; no `pub` gate — the host posts its own widget), id `w:<job>` so a
+/// client can correlate it with the run; `ts` orders it after the `agent_result`.
+async fn post_widget_item(
+    node: &Node,
+    ws: &str,
+    cid: &str,
+    job: &str,
+    body: String,
+    ts: u64,
+) -> Result<(), super::error::ChannelError> {
+    let item = Item::new(format!("w:{job}"), cid, WORKER_AUTHOR, body, ts);
     super::post::deliver(&node.store, &node.bus, ws, cid, item)
         .await
         .map(|_| ())

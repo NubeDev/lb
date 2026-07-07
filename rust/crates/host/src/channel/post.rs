@@ -42,7 +42,10 @@ pub async fn post(
     // same catalog checks as `dashboard.save` BEFORE it lands — a posted preview never touches the
     // save path, so this is its only chance to be rejected loudly instead of rendering broken in the
     // dock. After authorize (a denied caller learns nothing), before persist (a bad IR never lands).
-    super::genui_check::check_rich_result_genui(&item.body)?;
+    // A JSON-string `ir` is normalized to the object the renderer expects (lenient-args).
+    if let Some(normalized) = super::genui_check::check_rich_result_genui(&item.body)? {
+        item.body = normalized;
+    }
 
     item.channel = cid.to_string();
     let delivered = deliver(&node.store, &node.bus, ws, cid, item).await?;

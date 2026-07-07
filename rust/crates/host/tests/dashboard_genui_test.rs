@@ -141,12 +141,24 @@ async fn allows_an_unauthored_draft() {
         .await
         .expect("a genui block with no ir is a savable draft");
 
-    // (c) but a PRESENT, non-object `ir` is malformed → rejected.
+    // (c) but a PRESENT, non-object `ir` is malformed → rejected. (A string that PARSES to a valid
+    // IR object is normalized instead — see (d) — so only an unparseable string reaches this.)
     assert_rejected(
         json!({ "v": 1, "ir": "not-an-object" }),
-        "must be an object",
+        "must be a JSON object",
     )
     .await;
+
+    // (d) lenient-args: a JSON-STRING ir that parses to a valid IR object saves (normalized to the
+    // object the renderer expects) — the live-model stall was retrying exactly this shape.
+    let c4 = genui_cell(json!({ "v": 1, "ir": good_ir().to_string() }));
+    let saved = dashboard_save(&store, &ada, ws, "d4", "D", vec![c4], vec![], 12)
+        .await
+        .expect("a stringified-but-valid ir is normalized and saves");
+    assert!(
+        saved.cells[0].options["genui"]["ir"].is_object(),
+        "the persisted ir must be the parsed object, not the string"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

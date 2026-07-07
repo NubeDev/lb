@@ -1,103 +1,126 @@
 # HANDOVER — GenUI widget previews in the agent dock (channel-widgets)
 
-**Date:** 2026-07-06 · **Branch:** `insights-v1` (uncommitted work) · **Workspace under test:** `acme`, user `user:ada`
+**Date:** 2026-07-07 · **Branch:** `insights-v1` (Rust/e2e work committed in `8c30f43` + later
+uncommitted doc/code — check `git status`) · **Test workspace:** `acme`, user `user:ada` ·
+**Persona:** `builtin.widget-builder` · **Prev handover:** superseded by this file.
 
-## The goal
+## The goal (unchanged)
 
-From the agent dock: ask a data question → the agent posts a **live widget preview into the
-conversation** (`rich_result` channel item), including composed **GenUI** layouts bound to real
-queries — and the user can pin it to a dashboard. Preview must NEVER `dashboard.save`.
+From the agent dock: ask a data question → the agent posts a **live GenUI widget preview into the
+dock conversation** (`rich_result` channel item) — rendered, not raw — pin-able to a dashboard.
+Preview must NEVER `dashboard.save`.
 
-## Current state — ONE bug left
+## CURRENT STATE — one bug left (again), everything else fixed & proven
 
-The pipeline works end-to-end EXCEPT the final render: the model emits a **wrong IR dialect**.
+**The user's live symptom right now:** the agent's `channel.post` succeeds ("its still just
+sending it on the channel"), but **NO rendered preview appears in the agent-dock panel**.
 
-Live evidence (latest dock run, widget-builder persona): agent ran `dashboard.catalog` →
-`federation.query` (proved the SQL) → `channel.post` ✓. The posted envelope is
-`view:"genui"` with `options.genui.ir` shaped like:
+**What is PROVEN to work** (don't re-litigate):
+- The dock's render path works: `ui/e2e/agent-dock-genui-preview.spec.ts` (1/1 green) posts a
+  genui rich_result via the real gateway into a dock-prefixed session channel
+  (`dock-user-ada-e2egenui01`), opens the dock in Chromium, selects the session in the picker, and
+  the composed surface renders INSIDE the dock (screenshot
+  `ui/e2e/__screenshots__/agent-dock-genui-preview.png`). Channels-surface twin:
+  `channel-genui-preview.spec.ts` (3/3 green).
+- The host gate chain works and is live-verified — see "Shipped fixes" below.
 
-```json
-{ "components": { "root": { "type": "stack", ... } } }
+**Prime hypotheses for the remaining bug (investigate in this order):**
+1. **The post lands in the WRONG channel.** The run goal ends with
+   `[conversation channel: <cid>]` (`channel/agent_worker.rs`), but the model may post to another
+   cid (one it saw via `channel.list`, or the page-context channel — the user was on the
+   `datasources` surface). CHECK FIRST: `channel.list` + `channel.history` over `/mcp/call` to
+   find WHERE the ✓'d rich_result actually landed vs the dock session's own `dock-user-ada-…` id
+   (the dock picker shows the current session id). If mismatched → make the dock cid unmissable
+   (e.g. repeat it in the skill/persona text, or have the worker inject/force `cid` for
+   `channel.post` when the model omits/mangles it — the worker KNOWS the cid).
+2. **The dock doesn't live-refresh on another author's post.** The e2e SELECTS the session after
+   the item exists (history read). If the user keeps the dock open during the run, the new item
+   must arrive via the live subscribe path (`useDockSession` → subscribe/SSE). Check whether
+   `useDockSession` merges live bus items posted by `agent:session` while a run is active — write
+   a gateway/e2e test: open dock on a session, THEN post the rich_result via API, assert it
+   appears WITHOUT re-selecting the session.
+3. Body stored ≠ body sent (already had one of these — see round 5). Verify with the
+   history-inspection snippet below.
+
+**Debug snippet — find where the widget actually landed** (adapt cid):
+```bash
+TOKEN=$(curl -s -X POST http://127.0.0.1:8080/login -H 'content-type: application/json' \
+  -d '{"user":"user:ada","workspace":"acme"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
+# list channels (incl. dock-… sessions), then per-channel:
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"tool":"channel.history","args":{"cid":"<cid>"}}'
+# for each rich_result item: json.loads(body) must succeed and kind/view/options.genui.ir be sane.
 ```
 
-Defects vs the real IR (`packages/genui/src/ir/types.ts`):
-- uses `"type"` instead of `"component"` per component;
-- no per-component `id` field;
-- missing `ir.v` (must be `1`) and missing `surface: { "surfaceId": "...", "root": "<root id>" }`.
+## Shipped fixes (all live-verified on the node, rounds 1–5, 2026-07-06→07)
 
-So `GenUiView` (ui/src/features/dashboard/views/genui/GenUiView.tsx) shows its invalid/draft
-state in the dock instead of the widget. **Nothing validates a rich_result at post time** — unlike
-`dashboard.save`, which runs `check_genui_cells` and whose loud errors let the model self-correct
-(that self-correction visibly worked in an earlier run).
+Failure ladder as observed live, each rung closed host-side:
+1. **Wrong IR dialect** (`type` vs `component`, no ids, no `v`, no `surface`) rendered broken →
+   `channel/genui_check.rs` gates every `channel::post` (after authorize, before persist) with the
+   SAME validator as `dashboard.save`, extracted as `dashboard/genui.rs::check_genui_block`.
+2. **One-defect-per-turn errors** burned 5 retries → validator now collects ALL defects into one
+   message + appends a minimal valid IR template (`IR_TEMPLATE`).
+3. **Stringified `ir`** stalled the loop → `normalize_genui_block` parses a JSON-string `ir` to
+   the object at BOTH seams (channel post rewrites the body; `dashboard_save` pre-validation).
+4. **`channel.post` had NO arg schema** → 13×`missing arg: cid` burned a whole run →
+   `channel/tool.rs::post_descriptor` ({cid,id,ts,body}, cid described as "given in your goal as
+   `[conversation channel: <cid>]`"), registered in `tools/descriptor.rs::host_descriptors`;
+   `validate_args` misses now append the arg's own `x-lb.description`; `channel` accepted as cid
+   alias; handler cid/id misses steer.
+5. **Missing ONE closing brace** → invalid JSON slipped the gate's chat-tolerance, landed as chat,
+   dock showed raw JSON → a `{`-leading body naming `"kind"` that fails JSON parse is now a loud
+   `BadInput` with the parser's position; real chat unaffected.
 
-## Recommended next step (do this)
+Plumbing: `ChannelError::BadInput` (new) → `ToolError::BadInput` over MCP; HTTP 400 in
+`role/gateway/src/routes/post.rs`. Skill `docs/skills/channel-widgets/SKILL.md` gained a "Common
+IR mistakes" block (object-not-string ir, component/id/v/surface, action-less controls).
 
-1. **Validate genui rich_result bodies at `channel.post`, host-side.** In
-   `rust/crates/host/src/channel/tool.rs` (or `post` path): when the posted body parses as
-   `kind:"rich_result"` with `view:"genui"`, run the SAME structural checks as
-   `rust/crates/host/src/dashboard/genui.rs::check_genui_cells` (ir is object, numeric `v`,
-   `components` map, names resolve in `genui_catalog.json`, root defined, ≤8KB) and return a
-   loud `BadInput` naming the defect (e.g. "component `root`: use `component`, not `type`;
-   missing `surface.surfaceId`"). The agent loop feeds tool errors back — the model fixes itself.
-2. **Tighten the skill** `docs/skills/channel-widgets/SKILL.md`: add a "common mistakes" block —
-   `component` not `type`; every component repeats its `id`; `ir.v: 1` + `surface` required;
-   controls (slider/button) need an `action` wired to a tool or they are decorative.
-3. Optional UI defense: run `@nube/genui` normalize/validate warnings in `ResponseView` for genui
-   payloads and render the warnings honestly.
-4. Retest in the dock (restart node first): ask
-   *"use this query to build a genui widget … add a preset limit slider and a run button"* —
-   expect a rendered GenUI card, then Pin it and confirm the dashboard cell renders with data.
+## Tests (all green; run after any change)
 
-## What already shipped today (all tested green)
+- `cd rust && cargo test -p lb-host --lib genui` — 8 gate units (incl. missing-brace, string-ir).
+- `cargo test -p lb-host --test channel_agent_worker_test` — 11 (incl.
+  `a_malformed_genui_rich_result_is_rejected_and_the_corrected_repost_lands`).
+- `cargo test -p lb-host --test dashboard_genui_test` (8) / `dashboard_test` (10) /
+  `widget_pin_test` (11) / messaging suites / `cargo test -p lb-role-gateway` (build
+  `cargo build -p echo-sidecar` first or native_call_routes_test reds).
+- E2E (needs node on :8080 = `make dev`, built shell on :4173 = `make ui-preview`):
+  `cd ui && npx playwright test e2e/channel-genui-preview.spec.ts e2e/agent-dock-genui-preview.spec.ts`.
 
-Slice 1 — agent posts widgets:
-- `agent/personas/personas.toml` — data-analyst absorbed the widget surface (user decision:
-  no persona-switching): + `channel.post`, `dashboard.pin`, `dashboard.*`, `panel.*`,
-  `layout.get/set`, `template.*`; grounding = datasources/query/store-read/**channel-widgets**/
-  **genui-widget**/**dashboard-widgets**. Both personas' identities: "a posted widget IS the
-  preview — dashboard.save/pin only when asked" (fixes the 6× failed dashboard.save loop).
-- `channel/agent_worker.rs` — run goal now ends with `[conversation channel: <cid>]`.
-- `docs/skills/channel-widgets/SKILL.md` → seeded `core.channel-widgets` (corpus auto-embeds
-  from docs/skills/*/SKILL.md via lb-assets build.rs). Added to
-  `workspaces/default_skills.rs::DEFAULT_CORE_SKILLS`.
+## Live-environment gotchas (bit us repeatedly)
 
-Slice 2 — genui envelopes:
-- `channel/payload.rs` — `RichResultPayload.sources` (opaque Value; v3 Target list) +
-  UI mirror `ui/src/lib/channel/payload.types.ts`.
-- `ui/src/features/channel/ResponseView.tsx::buildCell` — declared `sources[]` first/un-hidden;
-  no duplicate hidden leash entries. Mirrored in `rust/.../dashboard/pin.rs` (pin carries
-  `sources[]` verbatim — it used to drop them).
-- `ui/src/features/dashboard/views/genui/genuiData.ts::genuiTargets` — hidden-only sources[]
-  no longer shadow the v2 single `source` (promoted to refId `A`).
+- **The node NEVER hot-reloads.** After ANY Rust change: `cargo build -p node && make kill && make dev`.
+- The user often restarts the node themselves — before debugging "it didn't change", verify the
+  running binary: probe an endpoint for the new behavior, and `ls -l /proc/<pid>/exe` (no
+  `(deleted)`).
+- `make ui-preview` (port 4173) is only needed for Playwright; the user's dev shell is :5173.
+- Transcript exports ("Copy for AI") show the run-feed's FULL tool inputs — the STORED channel
+  item can differ (round 5). Always inspect `channel.history` for ground truth.
+- Old dock sessions carry earlier broken items (raw-JSON chat) — they render raw forever; test in
+  a NEW session.
 
-Also earlier today (separate fix, shipped): `agent/run.rs` one-shot **nudge** — a `done` turn
-with empty content after tool work re-asks the model once instead of settling on the preamble
-(`docs/debugging/agent/run-finished-empty-after-tool-work-answers-with-preamble.md`).
+## Key files
 
-## Tests / commands
+- Gate: `rust/crates/host/src/channel/genui_check.rs` · shared validator + template:
+  `rust/crates/host/src/dashboard/genui.rs` · post path: `rust/crates/host/src/channel/post.rs`
+- Descriptor: `rust/crates/host/src/channel/tool.rs::post_descriptor` + collector
+  `rust/crates/host/src/tools/descriptor.rs` (enriched `validate_args`)
+- Goal cid line: `rust/crates/host/src/channel/agent_worker.rs`
+- Dock UI: `ui/src/features/agent-dock/AgentDock.tsx` (mounts shared `MessageList`),
+  `useDockSession.ts` (items + live refresh — hypothesis 2 lives here), `dockId.ts` (id grammar)
+- Render: `MessageItem.tsx` (`parsePayload` null → raw text fallback) → `ResponseView` →
+  `WidgetView` → `packages/genui` (`GenUiView`)
+- E2E: `ui/e2e/agent-dock-genui-preview.spec.ts`, `ui/e2e/channel-genui-preview.spec.ts`
+- Debug history (rounds 1–5, full detail):
+  `docs/debugging/agent/genui-preview-posts-wrong-ir-dialect-renders-broken.md`
+- Session log: `docs/sessions/agent/channel-widgets-session.md` · Scope:
+  `docs/scope/channels/channel-widgets-scope.md`
 
-- `cd rust && cargo test -p lb-host --test channel_agent_worker_test` — 10 ✓ (incl. NEW
-  rich_result post happy-path + cid-in-goal + ws-isolation; channel.post capability-deny).
-- `cargo test -p lb-host --test widget_pin_test` — 11 ✓ (incl. NEW genui sources carry-through).
-- `cargo test -p lb-host --test agent_answer_fallback_test` — 3 ✓ (nudge).
-- Persona/skill/dashboard suites ✓; `cargo build -p node` ✓.
-- `cd ui && pnpm vitest run src/features/dashboard/views/genui/genuiData.test.ts
-  src/features/channel/ResponseView.test.tsx` — 16 ✓; `tsc --noEmit` ✓.
+## Recommended next step (concrete)
 
-## Live-environment notes (important)
-
-- **The dev node must be restarted** to pick up personas/skill/worker changes:
-  `make kill && make dev` (node never hot-reloads; this bit us twice today).
-- `core.channel-widgets` / `core.genui-widget` / `core.dashboard-widgets` were **granted to the
-  existing `acme` workspace manually** (default grants apply only at workspace creation):
-  `POST /skills/{id}/grant` as ada → 204 ×3. Fresh workspaces get them automatically.
-- Dock render path (all pre-existing, unchanged): `MessageList → MessageItem(kind rich_result)
-  → ResponseView.buildCell → WidgetView → GenUiView`; Pin button = `PinToDashboard` →
-  `dashboard.pin`.
-- Known cosmetic: `exportTranscript` shows a rich_result as raw JSON (follow-up in scope doc).
-
-## Docs
-
-- Scope: `docs/scope/channels/channel-widgets-scope.md` (decisions + follow-ups).
-- Session: `docs/sessions/agent/channel-widgets-session.md`.
-- Debugging (earlier fix): `docs/debugging/agent/run-finished-empty-after-tool-work-answers-with-preamble.md`.
+Run the debug snippet against the user's LATEST run: find the ✓'d rich_result item, note its
+channel id, compare with the dock session id the user had open. Then either (a) fix targeting —
+strongest option: in `agent_worker`/dispatch, **force/inject the run's own cid** into a
+`channel.post` whose cid ≠ the conversation channel (or at least warn in the tool result), since
+the worker owns the ground truth; or (b) fix dock live-refresh per hypothesis 2 with a
+subscribe-while-open e2e. Then a fresh dock session live retest: "make me a genui widget and show
+me it here".

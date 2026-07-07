@@ -3,7 +3,10 @@
 # selection lives here. S1 runs solo.
 [package]
 name = "node"
-version.workspace = true
+# Local override of the workspace version: the node binary's version keys the core-skill boot seeder
+# (core.<name>@<version> — idempotent on (id, version)). Bump this when the embedded skill corpus
+# changes so a restart re-seeds the new bodies instead of skipping them as no-ops.
+version = "0.1.2"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true

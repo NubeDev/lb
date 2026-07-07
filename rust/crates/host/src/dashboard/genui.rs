@@ -79,6 +79,24 @@ pub fn check_genui_cells(cells: &[Cell]) -> Result<(), DashboardError> {
     Ok(())
 }
 
+/// Lenient-args normalization (the `typed_arg` precedent — serde strictness at an AI seam is a
+/// five-turn tax): an LLM regularly JSON-encodes the IR as a STRING inside the genui block. If
+/// `genui.ir` is a string that parses to a JSON object, replace it with the parsed object so the
+/// validators — and the renderer — see the real IR. Anything else is left alone for the checker to
+/// reject with its precise message. Returns `true` when it rewrote (the caller re-serializes).
+pub fn normalize_genui_block(genui: &mut Value) -> bool {
+    let Some(Value::String(raw)) = genui.get("ir") else {
+        return false;
+    };
+    match serde_json::from_str::<Value>(raw) {
+        Ok(parsed @ Value::Object(_)) => {
+            genui["ir"] = parsed;
+            true
+        }
+        _ => false,
+    }
+}
+
 fn bad(cell_i: &str, msg: impl std::fmt::Display) -> DashboardError {
     DashboardError::BadInput(format!("cell {cell_i} (genui): {msg}"))
 }
@@ -98,24 +116,40 @@ fn check_genui_cell(cell: &Cell) -> Result<(), DashboardError> {
     check_genui_block(genui).map_err(|msg| bad(&cell.i, msg))
 }
 
+/// A compact, complete, valid IR appended to every structural rejection — the AI author writes the
+/// dialect from foreign priors, so the error must SHOW the shape once instead of steering one field
+/// per turn (live run 2026-07-06 round 2 burned 5 turns fixing one defect at a time).
+const IR_TEMPLATE: &str = r#"{"v":1,"surface":{"surfaceId":"s1","root":"root"},"components":{"root":{"id":"root","component":"stack","children":["t1"]},"t1":{"id":"t1","component":"text","props":{"value":"hi"}}}}"#;
+
 /// Structurally validate a `{ v, ir, meta? }` genui block whose `ir` is present. Shared by the
 /// dashboard save path ([`check_genui_cells`], which skips IR-less drafts first) and the channel
 /// `rich_result` post path (`channel::genui_check`, where a missing IR is itself an error — a posted
-/// preview with nothing to render is a broken post, not a draft). Error messages name the defect AND
-/// the fix, because on the channel path they feed straight back into the agent loop as the tool error
-/// the model self-corrects from.
+/// preview with nothing to render is a broken post, not a draft).
+///
+/// Error messages are written FOR the agent loop: every independent defect is collected into ONE
+/// message (a first-failure return teaches one field per turn — a five-turn tax, measured live), each
+/// names the fix, and the canonical template is appended so a from-scratch rewrite lands in one retry.
 pub fn check_genui_block(genui: &Value) -> Result<(), String> {
     let cat = catalog();
 
+    // Shape gates — without an IR object there is nothing further to enumerate.
     let ir = match genui.get("ir") {
-        None | Some(Value::Null) => return Err("options.genui has no `ir` object".to_string()),
+        None | Some(Value::Null) => {
+            return Err(with_template(
+                "options.genui has no `ir` object".to_string(),
+            ));
+        }
         Some(ir) if !ir.is_object() => {
-            return Err("options.genui.ir must be an object".to_string());
+            return Err(with_template(
+                "options.genui.ir must be a JSON object, not a string — pass the IR inline, unquoted"
+                    .to_string(),
+            ));
         }
         Some(ir) => ir,
     };
 
-    // Size bound — measure the WHOLE block (IR + meta), as it will be persisted.
+    // Size bound — measure the WHOLE block (IR + meta), as it will be persisted. Fatal alone: the
+    // right fix is a smaller widget, not field edits.
     let size = serde_json::to_vec(genui)
         .map(|v| v.len())
         .unwrap_or(usize::MAX);
@@ -125,44 +159,44 @@ pub fn check_genui_block(genui: &Value) -> Result<(), String> {
         ));
     }
 
+    let mut defects: Vec<String> = Vec::new();
+
     // IR schema version present and known (not newer than this node's catalog can render).
-    let v = ir
-        .get("v")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| "IR has no numeric `v` (the IR requires `\"v\": 1`)".to_string())?;
-    if v == 0 || v > cat.version {
-        return Err(format!(
+    match ir.get("v").and_then(Value::as_u64) {
+        None => defects.push("IR has no numeric `v` (the IR requires `\"v\": 1`)".to_string()),
+        Some(v) if v == 0 || v > cat.version => defects.push(format!(
             "IR schema v{v} is unknown to this node (catalog v{})",
             cat.version
-        ));
+        )),
+        Some(_) => {}
     }
 
     // Every component resolves in the catalog, names itself via `component` (NOT `type` — the most
     // common LLM dialect slip), and repeats its map key as `id` (the TS validator's `id-mismatch`).
-    let components = ir
-        .get("components")
-        .and_then(Value::as_object)
-        .ok_or_else(|| "IR has no `components` map".to_string())?;
-    if components.is_empty() {
-        return Err("IR has no components".to_string());
-    }
+    let components = match ir.get("components").and_then(Value::as_object) {
+        None => {
+            defects.push("IR has no `components` map".to_string());
+            return Err(join_defects(defects));
+        }
+        Some(c) if c.is_empty() => {
+            defects.push("IR has no components".to_string());
+            return Err(join_defects(defects));
+        }
+        Some(c) => c,
+    };
     for (id, comp) in components {
-        let name = match comp.get("component").and_then(Value::as_str) {
-            Some(name) => name,
-            None if comp.get("type").is_some() => {
-                return Err(format!(
-                    "component {id} uses `type`; the IR field is `component` (e.g. {{\"id\":\"{id}\",\"component\":\"stack\",...}})"
-                ));
-            }
-            None => return Err(format!("component {id} has no `component` name")),
-        };
-        if !cat.names.contains(name) {
-            return Err(format!(
+        match comp.get("component").and_then(Value::as_str) {
+            Some(name) if !cat.names.contains(name) => defects.push(format!(
                 "component \"{name}\" (id {id}) is not in the catalog"
-            ));
+            )),
+            Some(_) => {}
+            None if comp.get("type").is_some() => defects.push(format!(
+                "component {id} uses `type`; the IR field is `component` (e.g. {{\"id\":\"{id}\",\"component\":\"stack\",...}})"
+            )),
+            None => defects.push(format!("component {id} has no `component` name")),
         }
         if comp.get("id").and_then(Value::as_str) != Some(id.as_str()) {
-            return Err(format!(
+            defects.push(format!(
                 "component {id} must repeat its map key as `id: \"{id}\"`"
             ));
         }
@@ -175,10 +209,31 @@ pub fn check_genui_block(genui: &Value) -> Result<(), String> {
         .and_then(Value::as_str)
         .unwrap_or("");
     if root.is_empty() || !components.contains_key(root) {
-        return Err(
+        defects.push(
             "IR needs `surface: {\"surfaceId\": \"...\", \"root\": \"<a defined component id>\"}`"
                 .to_string(),
         );
     }
-    Ok(())
+
+    if defects.is_empty() {
+        Ok(())
+    } else {
+        Err(join_defects(defects))
+    }
+}
+
+fn join_defects(defects: Vec<String>) -> String {
+    with_template(if defects.len() == 1 {
+        defects.into_iter().next().expect("non-empty")
+    } else {
+        format!(
+            "{} defects — fix ALL in one retry: {}",
+            defects.len(),
+            defects.join("; ")
+        )
+    })
+}
+
+fn with_template(msg: String) -> String {
+    format!("{msg}. A minimal valid IR: {IR_TEMPLATE}")
 }

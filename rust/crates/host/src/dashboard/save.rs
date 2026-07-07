@@ -52,13 +52,22 @@ pub async fn dashboard_save(
     ws: &str,
     id: &str,
     title: &str,
-    cells: Vec<Cell>,
+    mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
 ) -> Result<Dashboard, DashboardError> {
     authorize_dashboard(principal, ws, "dashboard.save")?;
     if id.is_empty() {
         return Err(DashboardError::BadInput("empty dashboard id".into()));
+    }
+    // Lenient-args normalization BEFORE validation: an AI writer regularly sends `options.genui.ir`
+    // as a JSON-encoded string; parse it into the object the validator and renderer expect.
+    for cell in &mut cells {
+        if cell.view == "genui" {
+            if let Some(genui) = cell.options.get_mut("genui") {
+                super::genui::normalize_genui_block(genui);
+            }
+        }
     }
     // v3 record bounds — reject an over-cap fieldConfig/transform list rather than store it unbounded
     // (panel-model scope: keep the dashboard record small for the roster/list read). The host is the

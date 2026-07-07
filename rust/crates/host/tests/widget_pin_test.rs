@@ -605,3 +605,83 @@ async fn pin_carries_a_genui_envelopes_declared_sources_through() {
     // re-folded (the leash reads it from the target itself).
     assert_eq!(cell["sources"].as_array().unwrap().len(), 2);
 }
+
+/// LIBRARY-PANELS: pinning an envelope NOW also saves it as a reusable `panel:{slug}` record (the
+/// "widget table") AND attaches the dashboard cell by REFERENCE — so the user can later drop the same
+/// widget onto other dashboards or open it in the data studio. The pin caller does NOT need
+/// `mcp:panel.save:call` — pin is a privileged internal writer for the panel it just authored. The
+/// persisted cell stores layout + `panel_ref` only (the spec is on the panel); the hydrated return
+/// value carries the full spec so a `setCurrent` renders without a reload.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn pin_persists_a_reusable_panel_and_attaches_the_cell_by_reference() {
+    let ws = "wp-panel-ref";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // PIN-only caller for the WRITE half (proves pin is its own authority for the panel it writes).
+    // `panel.get` is added ONLY so the test can INSPECT the panel record afterwards — personas grant
+    // `panel.*` so a real dock user has it; the pin itself never asks for it.
+    const PANEL_GET: &str = "mcp:panel.get:call";
+    let ada = principal("user:ada", ws, &[PIN, GET, PANEL_GET]);
+
+    let env = json!({
+        "view": "table",
+        "source": { "tool": "reminder.list", "args": {} },
+        "tools": ["reminder.list"],
+    });
+    let d = call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "ops", "title": "Ops", "envelope": env, "now": 10 }),
+    )
+    .await
+    .expect("pin");
+    // The hydrated return value still carries the full spec (hydrate re-inflates from the panel).
+    let cell = &d["cells"][0];
+    assert_eq!(cell["i"], "pin-reminder-list");
+    assert_eq!(cell["view"], "table");
+    assert_eq!(cell["panelRef"], "panel:reminder-list");
+    assert_eq!(cell["source"]["tool"], "reminder.list");
+
+    // The persisted cell (raw store, post-strip) is layout + ref only — no spec on the cell row.
+    let raw = dashboard_get(&node.store, &ada, ws, "ops").await.expect("get");
+    // `dashboard_get` hydrates too — to see the STORED shape we read the raw row via the panel read.
+    // The hydrated view shows the panel_ref + spec; the cell's `panelRef` is what makes it a ref.
+    let stored_cell = raw.cells.iter().find(|c| c.i == "pin-reminder-list").unwrap();
+    assert_eq!(
+        stored_cell.panel_ref, "panel:reminder-list",
+        "the persisted cell references the panel"
+    );
+
+    // The panel record EXISTS in the panel table — the reusable widget library.
+    let panel = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get on the just-pinned panel");
+    assert_eq!(panel.spec.view, "table");
+    assert_eq!(panel.spec.source.tool, "reminder.list");
+    assert_eq!(panel.owner, "user:ada");
+    assert_eq!(
+        panel.visibility,
+        lb_host::PanelVisibility::Private,
+        "a freshly-pinned panel is private to its author"
+    );
+    assert!(!panel.deleted);
+
+    // The panel is reusable: a SECOND dashboard pins the same envelope → the same panel record is
+    // updated (owner-only-update; idempotent on the slug), and the second dashboard's cell references
+    // the SAME panel. One widget, two dashboards, one source of truth.
+    call(
+        &node,
+        &ada,
+        ws,
+        "dashboard.pin",
+        json!({ "dashboard": "metrics", "title": "Metrics", "envelope": env, "now": 20 }),
+    )
+    .await
+    .expect("second dashboard pin");
+    let panel2 = lb_host::panel_get(&node.store, &ada, ws, "reminder-list")
+        .await
+        .expect("panel_get on the re-pinned panel");
+    assert_eq!(panel2.id, panel.id, "same panel slug reused");
+    assert_eq!(panel2.updated_ts, 20, "the panel record was touched on the second pin");
+}

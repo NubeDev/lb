@@ -1,9 +1,10 @@
 //! `agent.def.*` — the agent-definition catalog (agent-catalog scope). Boots a REAL `Node` (no mocks;
 //! testing §0 — store + registry + gate all real), seeds the built-ins through the real boot seeder,
 //! and drives the five verbs. Covers:
-//!   - SEED + node-runnable FILTER: the seeder writes the six built-ins into `_lb_agents`; `list`
-//!     returns the in-house three (the `default` runtime the node always offers) and OMITS the
-//!     open-interpreter three (the feature/runtime is not offered in this test build);
+//!   - SEED + node-runnable FILTER: the seeder writes the nine built-ins into `_lb_agents`; `list`
+//!     returns the in-house six (the `default` runtime the node always offers — three coding plus three
+//!     general-purpose) and OMITS the open-interpreter three (the feature/runtime is not offered in this
+//!     test build);
 //!   - SEED IDEMPOTENCY: a second seed is a no-op in effect (no duplicates; same catalog);
 //!   - CAPABILITY-DENY, per verb (§2.1, opaque): each verb denied without its own cap;
 //!   - READ-ONLY BUILT-IN TIER: create/update/delete of a `builtin.*` id is `BadInput` (reserved),
@@ -69,16 +70,17 @@ async fn seed_lists_node_runnable_builtins_and_filters_the_rest() {
     let seeded = seed_agent_definitions(&node.store).await.expect("seed");
     assert_eq!(
         seeded.len(),
-        6,
-        "six built-ins seeded (in-house + open-interpreter × 3)"
+        9,
+        "nine built-ins seeded (6 in-house coding/general + 3 open-interpreter)"
     );
 
     let ws = "defs-seed";
     let p = admin("user:ada", ws);
     let list = agent_def_list(&node, &p, ws).await.expect("list");
 
-    // The in-house three (runtime `default`, always offered) list; the open-interpreter three do NOT
-    // (their runtime is not registered in this test build) — the node-runnable filter, symmetric.
+    // The in-house six (runtime `default`, always offered) list — three coding (glm-4.6/5.1/5.2) and
+    // three general-purpose (glm-4.5-air/4.5/5-turbo); the open-interpreter three do NOT (their runtime
+    // is not registered in this test build) — the node-runnable filter, symmetric.
     let ids: Vec<&str> = list.iter().map(|d| d.id.as_str()).collect();
     assert!(
         ids.contains(&"builtin.in-house-glm-4.6"),
@@ -86,6 +88,12 @@ async fn seed_lists_node_runnable_builtins_and_filters_the_rest() {
     );
     assert!(ids.contains(&"builtin.in-house-glm-5.1"));
     assert!(ids.contains(&"builtin.in-house-glm-5.2"));
+    assert!(
+        ids.contains(&"builtin.in-house-glm-4.5-air")
+            && ids.contains(&"builtin.in-house-glm-4.5")
+            && ids.contains(&"builtin.in-house-glm-5-turbo"),
+        "the general-purpose in-house built-ins list: {ids:?}"
+    );
     assert!(
         !ids.iter()
             .any(|id| id.starts_with("builtin.open-interpreter")),
@@ -125,7 +133,7 @@ async fn seed_is_idempotent() {
     let list = agent_def_list(&node, &p, ws).await.expect("list");
     let builtins = list.iter().filter(|d| d.builtin).count();
     assert_eq!(
-        builtins, 3,
+        builtins, 6,
         "a re-seed introduces no duplicate built-ins (LWW upsert)"
     );
 }
