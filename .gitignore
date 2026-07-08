@@ -69,3 +69,4 @@ ui/src-tauri/icons/StoreLogo.png
 # only the dir's README.md is tracked (the `!` line below un-ignores it).
 desktop/build/linux/executable/*
 !desktop/build/linux/executable/README.md
+rust/.pnpm-store/v10/projects/83ddac89125c051d0decf4f112b22160
