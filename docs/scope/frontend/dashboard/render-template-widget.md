@@ -283,7 +283,7 @@ in `rust/crates/host/src/render_templates/*.rs`.
 
 ## Related docs
 
-- `docs/public/frontend/dashboard.md` — the scripted-view / iframe-tier summary (trust
+- `doc-site/content/public/frontend/dashboard.mdx` — the scripted-view / iframe-tier summary (trust
   tier, CSP, postMessage) and shipped status.
 - `docs/scope/frontend/dashboard/widget-builder-scope.md` — the originating scope
   ("Scripted views", "No in-process untrusted code", open Q3 on the inline threshold).

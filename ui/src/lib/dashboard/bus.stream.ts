@@ -7,8 +7,7 @@
 // the caller then has only its backfilled state, by design. The subject is a query param (it contains
 // `/`); the token rides as `?token=` (EventSource can't set an Authorization header).
 
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 
 /** A live bus stream handle — call `close()` to stop (the hook does this on unmount). */
 export interface BusStream {
@@ -21,22 +20,17 @@ export function openBusStream(
   subject: string,
   onMessage: (payload: unknown) => void,
 ): BusStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  const url = `${base}/bus/stream?subject=${encodeURIComponent(subject)}&token=${encodeURIComponent(
-    sessionToken(),
-  )}`;
-  const es = new EventSource(url);
-
-  es.addEventListener("message", (e) => {
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub: the `bus:{subject}` subject rides the one multiplexed connection.
+  // The subject keeps its `/`s and inner colons — the mux splits kind on the FIRST colon, and the host
+  // walls the subject exactly as the dedicated route did. `event: message` payload is unchanged.
+  const unsubscribe = eventHub.subscribeSubject(`bus:${subject}`, (frame) => {
+    if (frame.event !== "message") return;
     try {
-      onMessage(JSON.parse((e as MessageEvent).data));
+      onMessage(JSON.parse(frame.data));
     } catch {
       // a malformed frame never breaks the stream
     }
   });
-
-  return { close: () => es.close() };
+  return { close: unsubscribe };
 }

@@ -59,7 +59,7 @@ The panel builder/editor itself is **shared with Data Studio** — it lives in
 ## Docs (read for the *why*)
 - **Scope (flat, older):** `docs/scope/frontend/dashboard-scope.md` (the surface + asset/authz model) · `dashboard-viewer-mode-scope.md` (admin-only editing) · `dashboard-widgets-scope.md` (widgets as extensions, the mediated bridge) · `dashboard-query-cache-scope.md`.
 - **Scope (subtopic — new notes go here):** `docs/scope/frontend/dashboard/README.md` is the index. Key ones: `library-panels-scope.md`, `source-picker-package-scope.md`, `rules-as-source-scope.md`, `ext-widget-source-binding-scope.md`, `reusable-pages-scope.md`, `data-studio-ux-scope.md`, the `widget-*` set. **`dashboard/viz/`** holds the Grafana-compat visualization slice: `panel-model-scope.md`, `panel-editor-scope.md`, `chart-types-scope.md`, `field-config-scope.md`, `transformations-scope.md`, `datasource-binding-scope.md`, `import-export-scope.md`, `editor-parity-scope.md`, `xy-plot-builder-scope.md`.
-- **Public:** `docs/public/frontend/dashboard.md` (the trimmed shipped truth — large; grep it).
+- **Public:** `doc-site/content/public/frontend/dashboard.mdx` (the trimmed shipped truth — large; grep it).
 - **Sessions (the messy middle, ~30 files):** `docs/sessions/frontend/` — grep `dashboard`, `widget`, `viz`, `panel`, `xy-plot`.
 - **Bug history:** `docs/debugging/frontend/` (grep `dashboard`/`viz`/`widget`).
 - **Data Studio** (sibling surface, shares the builder): `docs/prompts/data-studio/README.md`.

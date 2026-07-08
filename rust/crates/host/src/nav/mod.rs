@@ -33,6 +33,7 @@ mod list;
 mod list_shares;
 mod model;
 mod pref;
+mod reach;
 mod resolve;
 mod resolve_template_group;
 mod save;
@@ -55,6 +56,7 @@ pub use model::{
     ResolvedSource, Visibility, MAX_HIDDEN, MAX_ITEMS, MAX_PINNED, MAX_TAG_GROUP,
 };
 pub use pref::{nav_pref_get, nav_pref_set};
+pub use reach::{reach_caps, reach_check, REACH_ALL};
 pub use resolve::nav_resolve;
 pub use save::nav_save;
 pub use share::nav_share;

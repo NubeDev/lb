@@ -62,6 +62,12 @@ pub struct Gateway {
     /// `DevTrustAny` so existing password-less test logins keep working (the security gate lives in
     /// the env-driven production `boot` path). Behind `Arc<dyn>` so axum clones it cheaply.
     pub credential_check: Arc<dyn crate::session::CredentialCheck>,
+    /// The unified-event-stream hub (unified-event-stream scope): the process-wide, ephemeral registry
+    /// of the browser's one multiplexed SSE connection per session and its live subject subscriptions.
+    /// No durable state — a dropped connection drops its subscriptions. Shared (`Clone`d cheaply) across
+    /// handlers so the `GET /events/stream` body and the `POST /events/{sid}/*` control verbs address
+    /// the same connections.
+    pub events: crate::session::events::EventHub,
 }
 
 impl Gateway {
@@ -139,6 +145,7 @@ impl Gateway {
             // password-less test logins keep working. Production `boot` overrides via env
             // (`with_credential_check(credential_check_from_env())`), which hard-refuses in release.
             credential_check: Arc::new(crate::session::DevTrustAny),
+            events: crate::session::events::EventHub::new(),
         }
     }
 

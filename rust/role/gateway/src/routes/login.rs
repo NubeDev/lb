@@ -126,6 +126,30 @@ pub async fn login(
         claims.caps.sort();
         claims.caps.dedup();
     }
+
+    // nav-reach scope: fold the subject's NAV-DERIVED reach caps (`reach:<surface>:view`) into the
+    // token. Reach is now gated by caps like everything else — the surface entry routes require the
+    // matching `reach:<surface>:view` (or the fallback wildcard) to OPEN a page. A subject given a
+    // curated one-page nav reaches ONLY that page; a subject with no nav (fallback) gets `reach:*:view`
+    // and reaches all (so a default member/admin is never locked out). This runs AFTER the grant fold
+    // so the resolver strips items against the caller's FULL caps — reach can only ever name a surface
+    // the caller could already reach (no-widening). Best-effort: a resolve hiccup falls back to the
+    // permissive wildcard rather than locking the user out of their own session.
+    let reach_principal = lb_auth::Principal::routed(
+        principal.clone(),
+        req.workspace.clone(),
+        claims.caps.clone(),
+    );
+    let reach = match lb_host::nav_resolve(&gw.node, &reach_principal, &req.workspace).await {
+        Ok(resolved) => lb_host::reach_caps(&resolved),
+        // Never fail login on a nav-resolve error — degrade OPEN (reach all), same posture as the
+        // grant fold above (a store hiccup never narrows a session below its floor).
+        Err(_) => vec![lb_host::REACH_ALL.to_string()],
+    };
+    claims.caps.extend(reach);
+    claims.caps.sort();
+    claims.caps.dedup();
+
     let caps = claims.caps.clone();
     let token = mint(&gw.key, &claims);
 

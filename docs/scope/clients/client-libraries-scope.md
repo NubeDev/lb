@@ -227,13 +227,13 @@ that is the **only** layer allowed to run without the real node.
 - README §6.6 (identity/auth/caps), §7 (the workspace wall), §6.1 (ingest/
   series), §6.13 (the SSE surface a future streaming helper would ride).
 - Auth path: `docs/scope/auth-caps/api-keys-scope.md`,
-  `docs/public/auth-caps/auth-caps.md`, source `rust/crates/apikey/`,
+  `doc-site/content/public/auth-caps/auth-caps.mdx`, source `rust/crates/apikey/`,
   `rust/role/gateway/src/session/authenticate.rs`.
-- Ingest path: `docs/scope/ingest/ingest-scope.md`, `docs/public/ingest/ingest.md`,
+- Ingest path: `docs/scope/ingest/ingest-scope.md`, `doc-site/content/public/ingest/ingest.mdx`,
   `docs/skills/ingest-series/SKILL.md`, source `rust/crates/ingest/`,
   routes `rust/role/gateway/src/routes/ingest.rs`.
 - Webhook path: `docs/scope/ingest/webhooks-scope.md`,
-  `docs/public/ingest/webhooks.md`, source `rust/role/gateway/src/routes/webhook.rs`,
+  `doc-site/content/public/ingest/webhooks.mdx`, source `rust/role/gateway/src/routes/webhook.rs`,
   `rust/role/gateway/src/routes/admin_webhooks.rs`.
 - MCP bridge: `docs/scope/mcp/`, route `rust/role/gateway/src/routes/mcp.rs`.
 - Sibling skill (the canonical wire reference): `docs/skills/ingest-series/SKILL.md`.

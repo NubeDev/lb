@@ -10,6 +10,7 @@
 mod authenticate;
 mod credential;
 mod credentials;
+mod reach;
 mod trusted;
 
 pub use authenticate::{authenticate, verify_token, AuthRejection};
@@ -18,4 +19,5 @@ pub use credential::{
     DEV_LOGIN_ENV,
 };
 pub use credentials::dev_claims;
+pub use reach::require_reach;
 pub use trusted::trusted_from_env;

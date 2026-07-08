@@ -518,7 +518,7 @@ empty list + denied call), not just as a manual curl.
 
 ## Related
 
-- Extension model + tiers + manifest (source of truth): `docs/public/extensions/extensions.md`,
+- Extension model + tiers + manifest (source of truth): `doc-site/content/public/extensions/extensions.mdx`,
   `docs/scope/extensions/extensions-scope.md` (§13 manifest contract).
 - Devkit implementation: `rust/crates/devkit/` (scaffold/build/inspect/template/feature/signing),
   host wiring `rust/crates/host/src/devkit/`, gateway routes `rust/role/gateway/src/routes/ext.rs`.

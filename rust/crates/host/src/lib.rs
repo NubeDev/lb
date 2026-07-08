@@ -128,8 +128,8 @@ pub use authz::{
     admin_only_caps, author_caps, authz_resolve, call_authz_tool, ensure_builtin_authz_roles,
     grants_assign, grants_list, grants_revoke, member_role_caps, resolve_caps, revoke_subject,
     revoke_tokens, roles_define, roles_delete, roles_list, teams_create, teams_list, token_revoked,
-    viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant, SourcedCap,
-    Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
+    viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant,
+    SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
@@ -240,10 +240,11 @@ pub use native::{
 pub use nav::{
     call_nav_tool, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares,
     nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
-    Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
+    reach_caps, reach_check, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_HIDDEN as NAV_MAX_HIDDEN,
     MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
+    REACH_ALL,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
@@ -253,6 +254,10 @@ pub use panel::{
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
 // into `lb_supervisor` internals.
+/// A fresh sortable ULID (re-exported from `lb_store`) — the gateway's event-stream hub mints its
+/// per-connection `sid` with it, without taking a direct `lb-store` dependency (it already depends on
+/// `lb-host`). One id source for the whole node.
+pub use lb_store::new_ulid;
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,

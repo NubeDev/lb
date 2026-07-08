@@ -151,4 +151,4 @@ the one-liner per OS, where the binary lands, and the smoke command.
   two targets on it.
 - `docs/scope/node-roles/node-roles-scope.md` + README §5 — the `workstation` persona.
 - README §6.13 (Frontend — UI delivery: Tauri-local vs browser-remote), §3 rule 1 (symmetric nodes).
-- `docs/public/desktop/desktop.md` — the public doc this promotes to.
+- `doc-site/content/public/desktop/desktop.mdx` — the public doc this promotes to.

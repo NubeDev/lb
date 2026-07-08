@@ -76,6 +76,36 @@ describe("flowGraph export round-trip", () => {
     expect(a.type).toBe("count");
     expect(a.config).toEqual({ k: 1 });
   });
+
+  it("loads a stored node position onto the canvas (geometry persists — the drag bug fix)", () => {
+    const positioned: Flow = {
+      ...FLOW,
+      nodes: [
+        { id: "start", type: "trigger", needs: [], config: {}, position: { x: 700, y: 40 } },
+        ...FLOW.nodes.slice(1),
+      ],
+    };
+    const canvas = flowToNodes(positioned);
+    // The stored position wins over the grid fallback.
+    expect(canvas.find((n) => n.id === "start")!.position).toEqual({ x: 700, y: 40 });
+  });
+
+  it("falls back to the grid layout for a node with no stored position (pre-geometry flow)", () => {
+    // FLOW's nodes carry no `position` — each gets the deterministic grid slot, not undefined.
+    const canvas = flowToNodes(FLOW);
+    expect(canvas[0].position).toEqual({ x: 0, y: 0 });
+    expect(canvas[1].position).toEqual({ x: 240, y: 0 });
+  });
+
+  it("serializes a dragged position back on save, rounded to whole pixels", () => {
+    const nodes = flowToNodes(FLOW);
+    // Simulate a drag: move `a` to a fractional coordinate (React Flow reports sub-pixel deltas).
+    const dragged = nodes.map((n) =>
+      n.id === "a" ? { ...n, position: { x: 512.4, y: 128.6 } } : n,
+    );
+    const out = nodesToFlowNodes(dragged, flowToEdges(FLOW), FLOW);
+    expect(out.find((n) => n.id === "a")!.position).toEqual({ x: 512, y: 129 });
+  });
 });
 
 describe("snapshotValues", () => {

@@ -368,7 +368,7 @@ Run them: `cd rust && cargo test -p lb-cli`.
 - Grammar scope: `docs/scope/core/resource-verbs-scope.md` (the common `ls|show|rm|start|stop|status|
   watch` grammar every family follows — the source of "The common resource grammar" section above),
   with `docs/scope/jobs/job-control-scope.md` (`lb job ls|cancel|retry|watch`) as its first new tenant.
-- Public: `docs/public/cli/cli.md` (the shipped truth).
+- Public: `doc-site/content/public/cli/cli.mdx` (the shipped truth).
 - Session: `docs/sessions/cli/operator-cli-session.md` (the build log + green tests).
 - Implementation: `rust/role/cli/` (client lib + `lb` binary); the seams it uses —
   `rust/role/gateway/src/routes/mcp.rs` (`/mcp/call`), `…/routes/login.rs`, `…/routes/ext.rs`

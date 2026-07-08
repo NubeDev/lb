@@ -187,7 +187,7 @@ externals behind the `Toolchain` trait, §0 — no mocks, no fake build):
 - `docs/scope/extensions/ext-sdk-scope.md` — the devkit generate→build→publish flow and the
   `Toolchain` trait this extends; the `LB_DEVKIT_ROOT` / capability / publish contract we
   reuse unchanged.
-- `docs/public/extensions/dev-flow.md` — the shipped Studio dev flow (build/publish UX).
+- `doc-site/content/public/extensions/dev-flow.mdx` — the shipped Studio dev flow (build/publish UX).
 - `rust/extensions/control-engine/docs/control-engine-scope.md` — the private-dep extension
   (`NubeIO/ce-client-rust`) whose build failure motivated this scope.
 - `docker/README.md` — one-image / config-not-branches conventions; this adds a **toolchain**

@@ -40,9 +40,11 @@
 //! authenticated principal holds — and member/admin caps ride their ROLE grant through `resolve_caps`,
 //! so a `viewer`-role token is never silently re-widened to a member (the leak that let bob reach Rules).
 //!
-//! Load-bearing (do NOT re-classify to admin): the `.catalog`/`.pin`/datasources-chain caps the
-//! `mcp:*.<verb>:call` wildcards miss (see `credentials.rs` history). Their unit guards moved with
-//! them into `credentials.rs`'s tests over `member_role_caps()`.
+//! Load-bearing (do NOT re-classify): the `.catalog`/`.pin` render caps the `mcp:*.<verb>:call`
+//! wildcards miss (see `credentials.rs` history) live in the VIEWER set — guarded by the unit tests
+//! here (`viewer_bundle_keeps_render_path`) and by `credentials.rs`'s tests over the viewer floor.
+//! The datasource-REGISTRATION chain (`datasource.add`/`native.call`/`secret:federation/*:write`) is
+//! AUTHOR-tier — a viewer reads sources (`federation.query`) but does not register them.
 
 use lb_store::{read, write, Store, StoreError};
 
@@ -86,7 +88,7 @@ pub fn author_caps() -> Vec<String> {
 /// plus manage members/teams/roles/grants, run the cross-member lenses, drive the extension
 /// lifecycle, and write workspace defaults.
 pub fn workspace_admin_role_caps() -> Vec<String> {
-    let mut caps = to_owned(MEMBER_CAPS);
+    let mut caps = member_role_caps();
     caps.extend(to_owned(ADMIN_ONLY_CAPS));
     caps.sort();
     caps.dedup();
@@ -606,10 +608,7 @@ mod tests {
                 member.contains(&c),
                 "member must hold every author cap: {c}"
             );
-            assert!(
-                !viewer.contains(&c),
-                "viewer must hold NO author cap: {c}"
-            );
+            assert!(!viewer.contains(&c), "viewer must hold NO author cap: {c}");
         }
         // Belt-and-braces: member is exactly viewer ∪ author (no stray cap in either direction).
         assert!(

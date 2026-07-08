@@ -126,7 +126,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
   datasource).
-- `bus/` — the Zenoh message bus (motion).
+- `bus/` — the Zenoh message bus (motion). `unified-event-stream-scope.md` adds the **browser
+  leg**: one multiplexed SSE connection per app session carrying every live feed as a
+  cap-re-checked *subject* (run/channel/series/flows/telemetry/insights), replacing the
+  one-`EventSource`-per-feed pattern that saturates the browser's ~6-connection HTTP/1.1
+  pool and makes an active agent run "block" navigation (browsers refuse cleartext HTTP/2,
+  so the cap is structural on the plain-HTTP posture; verified live —
+  `debugging/frontend/agent-dock-blocks-navigation-sse-pool-exhaustion.md`).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via

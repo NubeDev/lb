@@ -30,8 +30,15 @@ so "assigned" provably means "renders."
   it to a team's nav), the tooling *offers* to share the closure to the same team and warns on gaps
   — a guided, explicit step. It never auto-grants a capability the assigner doesn't hold (no-widening,
   `caller ∩ admin_approved` stays intact).
-- **The nav stays a pure lens.** A menu entry never carries a cap and never widens reach; the fix is
-  to make the team's role hold the caps the entry points at, not to grant from the entry.
+- **The nav is a pure lens for WIDENING (never grants), but gates reach for NARROWING.** A menu entry
+  never carries a cap and never *widens* reach — the fix for a broken assignment is to make the team's
+  role hold the caps the entry points at, not to grant from the entry. **Update (`nav-reach-scope.md`,
+  shipped):** a *curated* nav now also *gates* reach in the narrowing direction — it is the allow-list
+  of reachable core surfaces (`reach:<surface>:view`, derived from the resolved nav at login, enforced
+  by the dedicated `GET /surface/{s}` route). One page in the nav ⇒ that is the only page reachable
+  (read included); a *fallback* nav (no curated menu) reaches all (`reach:*:view`, so a default
+  member/admin is never locked out). This still never widens: reach is only ever emitted for a surface
+  the resolver already kept, so the nav can subtract reachable surfaces but never add one.
 
 ## Non-goals
 

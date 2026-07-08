@@ -7,8 +7,9 @@
 // plus the XSS floor: react-markdown builds vnodes (no raw HTML), so an <script> in the source is
 // rendered as visible text, never as an executable element.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { MarkdownView } from "./MarkdownView";
 
@@ -76,6 +77,43 @@ describe("MarkdownView — fenced non-JSON blocks and inline code", () => {
     const code = screen.getByText("npm install");
     expect(code.tagName).toBe("CODE");
     expect(code.closest("pre")).toBeNull();
+  });
+});
+
+describe("MarkdownView — per-block Copy code affordance (ChatGPT-style)", () => {
+  it("mounts a Copy code button on a fenced code block", () => {
+    render(<MarkdownView>{"```rust\nfn main() {}\n```"}</MarkdownView>);
+    expect(screen.getByLabelText("copy code")).toBeInTheDocument();
+  });
+
+  it("mounts a Copy code button on a ```json block", () => {
+    render(<MarkdownView>{"```json\n{\"a\":1}\n```"}</MarkdownView>);
+    expect(screen.getByLabelText("copy code")).toBeInTheDocument();
+  });
+
+  it("does NOT mount a Copy code button on inline code", () => {
+    render(<MarkdownView>{"Use `npm install` to add it."}</MarkdownView>);
+    expect(screen.queryByLabelText("copy code")).toBeNull();
+  });
+
+  it("copies the block's raw source (not the rendered tree) when a ```json Copy code is clicked", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const source = "{\"name\":\"ada\",\"age\":36}";
+    const md = "```json\n" + source + "\n```";
+    render(<MarkdownView>{md}</MarkdownView>);
+    await userEvent.click(screen.getByLabelText("copy code"));
+    expect(writeText).toHaveBeenCalledWith(source);
+    vi.unstubAllGlobals();
+  });
+
+  it("copies the raw source when a ```rust Copy code is clicked", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    render(<MarkdownView>{"```rust\nfn main() {}\n```"}</MarkdownView>);
+    await userEvent.click(screen.getByLabelText("copy code"));
+    expect(writeText).toHaveBeenCalledWith("fn main() {}");
+    vi.unstubAllGlobals();
   });
 });
 
