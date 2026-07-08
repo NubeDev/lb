@@ -16,6 +16,7 @@ import userEvent from "@testing-library/user-event";
 
 import { WorkspacesAdmin } from "./WorkspacesAdmin";
 import { createWorkspace } from "@/lib/workspace/workspace.api";
+import { CAP } from "@/lib/session";
 import { useRealGateway, signInReal } from "@/test/gateway-session";
 
 let n = 0;
@@ -41,6 +42,24 @@ describe("WorkspacesAdmin (real gateway)", () => {
 
     // After the reversible archive the workspace is hidden from the default (active) directory view.
     await waitFor(() => expect(screen.queryByText(target)).not.toBeInTheDocument());
+  });
+
+  it("creates a workspace from the New-workspace form — the new row lands in the real directory", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    const target = nextTarget();
+    await signInReal("user:ada", ws);
+
+    // The create control is cap-gated for display; pass the real create cap (the gateway also re-checks).
+    render(<WorkspacesAdmin ws={ws} caps={[CAP.workspaceCreate]} />);
+
+    await user.click(screen.getByLabelText("new workspace"));
+    await user.type(screen.getByLabelText("workspace id"), target);
+    await user.type(screen.getByLabelText("workspace name"), "Pilot");
+    await user.click(screen.getByLabelText("create workspace"));
+
+    // The real `workspace_create` writes the directory record, so the row appears in the live list.
+    await screen.findByText(target);
   });
 
   it("purge requires typing the workspace id (the type-name gate) and then tombstones it", async () => {
