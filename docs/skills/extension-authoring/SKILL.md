@@ -73,6 +73,7 @@ Send `Authorization: Bearer $TOKEN` on every call. Caps you need for the inner l
 | Templates | `mcp:devkit.templates:call` |
 | Root (path anchor) | `mcp:devkit.root:call` |
 | Scaffold | `mcp:devkit.scaffold:call` |
+| **Customize source** | `mcp:devkit.write_file:call` *(the agent authoring verb — see §3.3)* |
 | Build | `mcp:devkit.build:call` + `mcp:bus.watch:call` (to stream the log) |
 | Inspect | `mcp:devkit.inspect:call` |
 | Publish | `mcp:ext.publish:call` *(Ask-gated for you — see §5)* |
@@ -96,7 +97,11 @@ curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN"
 
 `features` are presets that expand into `[capabilities] request` in the scaffolded manifest:
 `ui` (a federated UI page + widget bridge), `series-read` (`series.read/latest/find`), `ingest`
-(`ingest.write`), `kv` (`template.get/save`).
+(`ingest.write`), `kv` (`template.get/save`), `datasources` (`federation.query/schema` +
+`datasource.list` — the caps an extension needs to query an external datasource like postgres,
+sqlite, or the `demo-buildings` source). **Pass `features` as a real JSON array**, not a stringified
+one: `["ui","datasources"]` not `"[\"ui\",\"datasources\"]"`. (The host tolerates the stringified
+form, but the real array is the correct shape — use it.)
 
 ### 3.2 Scaffold — `devkit.scaffold` (into the devkit root)
 
@@ -126,7 +131,55 @@ rust/extensions/weather-panel/
 └── ui/                   # only with the `ui` feature — a module-federation remote (./mount)
 ```
 
-### 3.3 Code it within FILE-LAYOUT (§4) — then build — `devkit.build`
+### 3.3 Customize the scaffolded source — `devkit.write_file`
+
+This is the verb that lets an **MCP-only agent** (no shell, no `Write` tool, no filesystem access
+— the in-house runtime, or an external agent behind the bridge) author a real page/tool between
+scaffold and build. Without it the scaffold → build loop can only ship the sample template; with it
+the agent writes its own `App.tsx` / `src/lib.rs` / `extension.toml` over the one MCP contract.
+
+`args` is `{ path, content }`. `path` is resolved under the devkit root by the SAME
+`resolve_under_root` gate `scaffold`/`build`/`inspect` use, so the traversal / symlink-escape guards
+all apply — the agent can only write inside its own scaffolded dir. `content` is the UTF-8 source
+body (text only; no binary). It creates parent dirs as needed and **overwrites** if the file exists,
+so it is both "create" and "edit".
+
+```bash
+# Author the real page: replace the sample App.tsx with one that queries demo-buildings through
+# the federated bridge (the page's ONLY data path — never a token, DB, or fetch).
+jq -n --rawfile body ./App.tsx '{tool:"devkit.write_file",args:{path:"weather-panel/ui/src/App.tsx",content:$body}}' \
+  > /tmp/write_call.json
+curl -s -X POST http://127.0.0.1:8080/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' --data @/tmp/write_call.json
+# → { "path":"/abs/repo/rust/extensions/weather-panel/ui/src/App.tsx", "bytes":5930 }   (WriteFileReport)
+```
+
+The `path` is **relative to the devkit root** (`<id>/ui/src/App.tsx`, not the absolute path) OR an
+absolute path that lives under the root. A `..` segment or a path outside the root is rejected
+("path escapes LB_DEVKIT_ROOT" / "traversal") — write_file can't escape the devkit root, same as
+scaffold can't. Use the id-relative form; it's portable.
+
+**What to write for each shape:**
+- **UI page** (`features:["ui"]`) — replace `ui/src/App.tsx` with your real page. Keep the
+  `.lbx-<id>` root wrapper in `mount.tsx` (it anchors the theme tokens — §8) and the `bridge` import;
+  call data ONLY through `bridge.call(tool, args)` (e.g. `bridge.call("federation.query", …)`). Do
+  NOT rewrite `src_contract.ts` (frozen mirror) or `tokens.css` unless you mean to.
+- **WASM guest tool** (`tier:"wasm"`, no `ui`) — replace `src/lib.rs` with your tool dispatch
+  against the WIT world; declare each tool in `extension.toml`'s `[[tools]]`.
+- **Native sidecar** (`tier:"native"`) — replace `src/main.rs` against the supervisor wire.
+
+**Gotchas:**
+- **Write before build.** `devkit.build` compiles what's on disk; `write_file` is how the bytes get
+  there over MCP. The order is always scaffold → write_file → build.
+- **The runtime call name keeps the id verbatim.** A tool `[[tools]] name="ping"` on extension
+  `energy-dashboard` is called as `energy-dashboard.ping` (the resolver splits on the FIRST dot).
+  Do NOT convert `-` → `.` in tool names you reference from the page or the `[ui] scope`;
+  `energy-dashboard.ping` is right, `energy.dashboard.ping` is wrong.
+- **`content` is a JSON string.** For a multi-line source body, build the request body with
+  `jq -n --rawfile` (or `--arg`) so newlines/quotes are escaped correctly — don't hand-quote it in
+  the shell or the JSON will break on the first `"`.
+
+### 3.4 Build — `devkit.build`
 
 `args` is `{ path, ts? }`. `ts` (millis) is optional but seeds the `job_id` / `log_subject` — pass a
 unique value so concurrent builds don't collide.
@@ -150,7 +203,7 @@ curl -sN "http://127.0.0.1:8080/bus/stream?subject=$(jq -rn --arg s "$SUBJECT" '
 # data:"devkit build: failed"        ← terminal failure line
 ```
 
-### 3.4 Inspect — `devkit.inspect` (your pre-flight and proof)
+### 3.5 Inspect — `devkit.inspect` (your pre-flight and proof)
 
 `args` is `{ path }`. Call it **before** building (to check the toolchain) and **after** (to prove
 an artifact was written):
@@ -264,6 +317,39 @@ entry = "remoteEntry.js"   label = "Weather"   icon = "cloud"
 scope = ["weather-panel.ping", "series.read", "series.latest"]   # read-only tools the page may call
 ```
 
+## 8. The themed UI template (Tailwind v4 + recharts + shadcn tokens)
+
+When you scaffold with `features:["ui"]`, the template is **already themed — correct by
+construction**. You do not write CSS from scratch; you wire tokens and replace sample data. The
+shape below is what `devkit.scaffold` writes into `ui/` — understand it before rewriting.
+
+- **Tailwind v4 via `@tailwindcss/vite`, with NO preflight.** A federated widget must not reset the
+  host's base styles, so the template disables Tailwind's preflight. Do not re-enable it. The build
+  is `pnpm install && vite build` (already in `build.sh`).
+- **Theme tokens live in `src/styles/tokens.css`, scoped under `.lbx-<id>` — NEVER `:root`.** Each
+  token aliases a host shadcn var with a standalone fallback, so the same artifact renders under both
+  the host shell and standalone dev:
+  ```css
+  .lbx-weather-panel {
+    --lbx-bg:      var(--background, 210 20% 98.5%);
+    --lbx-chart-1: var(--chart-1, 200 80% 50%);
+    /* … */
+  }
+  ```
+  When federated into the LB shell, the host's `--background` / `--chart-1` / etc cascade through
+  (the workspace theme — light or dark — wins). When developed standalone, the fallback palette
+  renders. Either way the widget looks native.
+- **The chart ramp: `--lbx-chart-1..8` alias `--chart-1..8`.** A recharts series reads
+  `hsl(var(--lbx-chart-1))` for its stroke — it follows the workspace theme automatically, light and
+  dark. Do not hardcode hex; read the token.
+- **The sample chart in `src/widgets/SampleChart.tsx` is a recharts `LineChart`.** Replace its data,
+  keep its stroke token (`stroke="hsl(var(--lbx-chart-1))"`). That token binding is the whole point.
+- **The root wrapper in `src/mount.tsx` (`<div className="lbx-<id>">`) is load-bearing** — it anchors
+  the scoped tokens from `tokens.css`. Keep it even when rewriting the page; a widget whose root
+  loses the class renders unstyled (no token resolves).
+- **`src_contract.ts` is a frozen mirror of the host's widget mount contract (v4). Do NOT edit it.**
+  It is regenerated from the host when the world moves; treat edits as a build break, not a shortcut.
+
 ## Gotchas
 
 - **Paths must be under the devkit root.** Pass the absolute `path` `devkit.scaffold` returned; a
@@ -278,6 +364,74 @@ scope = ["weather-panel.ping", "series.read", "series.latest"]   # read-only too
   stored). Deny is opaque — if a call "vanishes", check the token's caps and workspace.
 - **Don't publish as a reflex.** `ext.publish` and `native.install` are Ask-gated for this persona —
   they mutate the running workspace; propose with `devkit.inspect` substance and let the human decide.
+
+## 9. The agent-driven E2E (MCP-only, no shell, no hand-edits)
+
+The proof that an agent driving **only** the MCP API can build and ship a working extension. Every
+step below is a real HTTP call to the running node — no `cp`, no `Write` tool, no backend restart
+after publish. This is the exact sequence the energy-dashboard live run used (grounded in a real
+`make cloud` node + `make seed-demo-sqlite` → the `demo-buildings` sqlite source).
+
+```bash
+GW=http://127.0.0.1:8080
+# 1. Login (dev-login bootstraps a workspace-admin member of `acme`).
+TOKEN=$(curl -s -X POST $GW/login -H 'content-type: application/json' \
+  -d '{"user":"user:ada","workspace":"acme"}' | jq -r .token)
+
+# 2. Scaffold a UI + datasources extension over MCP.
+EXT=$(curl -s -X POST $GW/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"tool":"devkit.scaffold","args":{"id":"energy-dashboard","tier":"wasm","features":["ui","datasources"]}}' \
+  | jq -r .path)                       # /abs/repo/rust/extensions/energy-dashboard
+
+# 3. Author the real page — replace the sample App.tsx through devkit.write_file.
+#    (App.tsx calls bridge.call("federation.query", {source:"demo-buildings", sql:…}) — the ONLY
+#    data path; the page never sees a token/DB/fetch.)
+jq -n --rawfile body ./App.tsx \
+  '{tool:"devkit.write_file",args:{path:"energy-dashboard/ui/src/App.tsx",content:$body}}' > /tmp/w.json
+curl -s -X POST $GW/mcp/call -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' --data @/tmp/w.json
+# → {"path":"…/energy-dashboard/ui/src/App.tsx","bytes":5930}
+
+# 4. Build (wasm32-wasip2 + the federated UI bundle). Stream the log if you want progress.
+TS=$(date +%s%3N)
+curl -s -X POST $GW/mcp/call -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d "{\"tool\":\"devkit.build\",\"args\":{\"path\":\"$EXT\",\"ts\":$TS}}"   # → {job_id, log_subject}
+# Poll devkit.inspect until built:true with a fresh wasm + remote-entry artifact.
+
+# 5. Publish — POST /extensions signs with the node's dev-publisher key, verifies, installs, and
+#    hot-loads. 204 = live, NO restart.
+curl -s -o /dev/null -w "%{http_code}\n" -X POST $GW/extensions \
+  -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d "{\"path\":\"$EXT\"}"               # → 204
+
+# 6. Verify the page's data path answers (the bridge call the mounted page fires on load):
+curl -s -X POST $GW/mcp/call -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
+  -d '{"tool":"federation.query","args":{"source":"demo-buildings","sql":"SELECT s.name AS site, ROUND(SUM(pr.value),1) AS kwh FROM point_reading pr JOIN point p ON p.id=pr.point_id JOIN meter m ON m.id=p.meter_id JOIN site s ON s.id=m.site_id WHERE p.name LIKE '"'"'%Energy kWh%'"'"' GROUP BY s.name ORDER BY kwh DESC LIMIT 8"}}'
+# → {"columns":["site","kwh"],"rows":[["Riverside Data Center",49022.9],…]}
+
+# 7. Verify the federated bundle the shell dynamic-imports is served:
+curl -s -o /dev/null -w "%{http_code} %{size_download}B\n" \
+  $GW/extensions/energy-dashboard/ui/remoteEntry.js          # → 200 558429B
+
+# 8. Verify it's installed + enabled + running (REST — ext.* is not an MCP-dispatched family):
+curl -s -H "authorization: Bearer $TOKEN" $GW/extensions \
+  | jq '.[] | select(.ext=="energy-dashboard") | {ext,enabled,running,ui:.ui.label}'
+```
+
+Open the shell (`make ui-preview` for the built shell, or `make dev` for vite) → click
+**energy-dashboard** in the sidebar → the page renders the real kWh-by-site bar chart + table,
+themed from the workspace tokens. No file was touched by hand between scaffold and build; no
+restart was needed after publish.
+
+> **Calling the scaffold's own `<id>.ping` tool directly** (`POST /mcp/call` with
+> `energy-dashboard.ping`) needs `mcp:<id>.<tool>:call` in the caller's cap set. The dev-login token
+> carries a static cap list and the publish flow does not (yet) auto-grant a freshly published
+> extension's tool call caps — see
+> `docs/debugging/extensions/publish-does-not-grant-tool-call-caps.md`. For a **UI/data-dashboard**
+> extension the page's `federation.query` bridge call IS the tool driving (the data path the user
+> sees); the scaffold's `ping` is boilerplate. The WASM-tool E2E (G5b), where the tool itself is the
+> deliverable, is the run that surfaces this cap-grant gap and is gated on resolving it.
 
 ## Related
 

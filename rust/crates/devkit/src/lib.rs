@@ -17,6 +17,7 @@ mod scaffold;
 mod signing;
 mod template;
 mod toolchain;
+mod write_file;
 
 pub use build::build_extension;
 pub use container_toolchain::{ContainerConfig, ContainerToolchain};
@@ -24,7 +25,7 @@ pub use feature::{feature_caps, Feature};
 pub use inspect::inspect_extension;
 pub use model::{
     Artifact, BuildReport, BuildRequest, BuildStatus, InspectReport, ScaffoldReport,
-    ScaffoldRequest, TemplateInfo, Tier, ToolchainReadiness,
+    ScaffoldRequest, TemplateInfo, Tier, ToolchainReadiness, WriteFileReport,
 };
 pub use publisher_key::{load_or_create_key, publisher_trust_line, LoadedPublisherKey};
 pub use root::{default_devkit_root, resolve_under_root};
@@ -32,3 +33,4 @@ pub use scaffold::scaffold_extension;
 pub use signing::sign_artifact;
 pub use template::templates;
 pub use toolchain::{ProcessToolchain, Toolchain};
+pub use write_file::write_file;

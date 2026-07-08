@@ -16,9 +16,11 @@ import {
   getFlow,
   listFlows,
   saveFlow,
+  updateFlowNode,
   type Flow,
   type FlowSummary,
 } from "@/lib/flows";
+import type { TriggerConfig } from "./workflowTrigger";
 
 /** A roster row + its hydrated lifecycle + linkage fields. The summary lacks everything but
  *  `{id, name, version, nodes}`; we fetch each flow's full record (small N for a workspace) and
@@ -42,7 +44,7 @@ export interface CreateWorkflowInput {
   /** The saved rule to run — becomes a `rule` node wired off the trigger (`config.rule = ruleId`). */
   ruleId: string;
   /** The trigger config — `{mode, cron?, series?, inject_mode?}`. The view's picker owns the shape. */
-  triggerConfig: Record<string, unknown>;
+  triggerConfig: TriggerConfig;
   /** Start enabled (the default — most authors expect the flow armed the moment they save). */
   enabled?: boolean;
 }
@@ -53,8 +55,26 @@ export interface RuleWorkflowsState {
   error: string | null;
   refresh: () => Promise<void>;
   create: (input: CreateWorkflowInput) => Promise<{ ok: boolean; id?: string; error?: string }>;
+  /** Replace the trigger node's config on the saved flow (`flows.node.update`), validated against
+   *  the trigger descriptor's schema server-side. Bumps the flow version; the roster re-paints the
+   *  new schedule/series + the next-fire hint on success. */
+  updateTrigger: (
+    id: string,
+    triggerConfig: TriggerConfig,
+  ) => Promise<{ ok: boolean; error?: string }>;
   toggle: (id: string, enabled: boolean) => Promise<void>;
   remove: (id: string) => Promise<void>;
+}
+
+/** Coerce the typed trigger config to the wire `Record<string, unknown>` a FlowNode expects. The
+ *  trigger descriptor's schema validates the same keys; this preserves only the ones the chosen mode
+ *  sets (no `cron: undefined` leaking into the saved record). */
+function triggerConfigToRecord(cfg: TriggerConfig): Record<string, unknown> {
+  const out: Record<string, unknown> = { mode: cfg.mode };
+  if (cfg.cron !== undefined) out.cron = cfg.cron;
+  if (cfg.series !== undefined) out.series = cfg.series;
+  if (cfg.inject_mode !== undefined) out.inject_mode = cfg.inject_mode;
+  return out;
 }
 
 /** Find the trigger node on a saved flow. The seed every blank flow ships with is the node of
@@ -138,7 +158,7 @@ export function useRuleWorkflows(ws: string): RuleWorkflowsState {
           version: 1,
           enabled: input.enabled ?? true,
           nodes: [
-            { id: "start", type: "trigger", needs: [], config: input.triggerConfig },
+            { id: "start", type: "trigger", needs: [], config: triggerConfigToRecord(input.triggerConfig) },
             // The rule runs off the trigger — `needs: ["start"]` is the DAG edge. `config.rule` is the
             // saved-rule id the `rule` node dispatches via `rules.eval` (`{rule_id, params}`).
             { id: "run-rule", type: "rule", needs: ["start"], config: { rule: input.ruleId } },
@@ -170,6 +190,30 @@ export function useRuleWorkflows(ws: string): RuleWorkflowsState {
     [refresh],
   );
 
+  const updateTrigger = useCallback(
+    async (
+      id: string,
+      triggerConfig: TriggerConfig,
+    ): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        // The trigger node's id is the seed id every blank flow ships with (`blankFlow` in FlowsView
+        // + this hook's `create`). For a flow that came from the Workflows tab it's always "start";
+        // a hand-built flow that landed here by accident keeps whatever id its trigger has, which we
+        // already hydrated onto the row.
+        const row = rows.find((r) => r.id === id);
+        const nodeId = row?.trigger?.id ?? "start";
+        await updateFlowNode(id, nodeId, triggerConfigToRecord(triggerConfig));
+        await refresh();
+        return { ok: true };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        return { ok: false, error: msg };
+      }
+    },
+    [refresh, rows],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       try {
@@ -183,5 +227,5 @@ export function useRuleWorkflows(ws: string): RuleWorkflowsState {
     [refresh],
   );
 
-  return { rows, loading, error, refresh, create, toggle, remove };
+  return { rows, loading, error, refresh, create, updateTrigger, toggle, remove };
 }

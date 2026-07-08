@@ -1,0 +1,63 @@
+/*
+ * The extension's scoped theme tokens (external-agent-authoring scope S3).
+ *
+ * Inherits the host shell's shadcn vars when federated; falls back to standalone defaults when
+ * built/developed in isolation. SCOPED to `.lbx-energy-dashboard` ONLY — never `:root`. When this widget is
+ * INJECTED into the host document (the LB shell), a `:root` write would leak the extension's
+ * palette onto the host's OWN `--background`/`--card`/… (same names), overriding the whole shell
+ * — the federated-CSS leak (ce-wiresheet scope). Scoped under the root class, the cascade reaches
+ * only this widget's subtree, and the host's vars are inherited via `var(--host, <fallback>)`.
+ *
+ * The chart ramp aliases `--chart-1..8` so a recharts series colored from `hsl(var(--lbx-chart-1))`
+ * follows the workspace theme automatically in both light and dark. A standalone `pnpm dev` renders
+ * on the fallback palette below (the host vars are absent → the fallback wins).
+ */
+.lbx-energy-dashboard {
+  --lbx-bg: var(--background, 210 20% 98.5%);
+  --lbx-fg: var(--foreground, 222 30% 16%);
+  --lbx-muted: var(--muted-foreground, 220 10% 40%);
+  --lbx-border: var(--border, 215 16% 86%);
+  --lbx-card: var(--card, 0 0% 100%);
+  --lbx-card-foreground: var(--card-foreground, 222 30% 16%);
+  --lbx-accent: var(--accent, 178 72% 27%);
+  --lbx-accent-foreground: var(--accent-foreground, 210 20% 98.5%);
+  --lbx-chart-1: var(--chart-1, 262 68% 50%);
+  --lbx-chart-2: var(--chart-2, 173 62% 32%);
+  --lbx-chart-3: var(--chart-3, 25 85% 45%);
+  --lbx-chart-4: var(--chart-4, 199 82% 38%);
+  --lbx-chart-5: var(--chart-5, 340 70% 48%);
+  --lbx-chart-6: var(--chart-6, 142 55% 36%);
+  --lbx-chart-7: var(--chart-7, 43 92% 36%);
+  --lbx-chart-8: var(--chart-8, 217 78% 48%);
+  --lbx-radius: var(--radius, 0.5rem);
+
+  background-color: hsl(var(--lbx-bg));
+  color: hsl(var(--lbx-fg));
+  font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
+}
+
+/*
+ * Dark-mode standalone fallback. When NOT federated (no `.dark` ancestor), the extension's own
+ * root can carry `[data-theme="dark"]` to switch to a dark standalone palette. When federated,
+ * the host's `.dark` class cascades automatically (the vars above read the host's overridden
+ * `--background`/`--chart-1`/etc — this block is never reached because the `var(--host, fallback)`
+ * already resolved to the host's dark value).
+ */
+.lbx-energy-dashboard[data-theme="dark"] {
+  --lbx-bg: 218 22% 7%;
+  --lbx-fg: 215 20% 92%;
+  --lbx-muted: 215 10% 66%;
+  --lbx-border: 217 14% 21%;
+  --lbx-card: 218 18% 10%;
+  --lbx-card-foreground: 215 20% 92%;
+  --lbx-accent: 174 62% 50%;
+  --lbx-accent-foreground: 218 22% 7%;
+  --lbx-chart-1: 258 88% 70%;
+  --lbx-chart-2: 172 62% 52%;
+  --lbx-chart-3: 27 90% 62%;
+  --lbx-chart-4: 197 85% 60%;
+  --lbx-chart-5: 340 78% 66%;
+  --lbx-chart-6: 142 58% 56%;
+  --lbx-chart-7: 46 92% 58%;
+  --lbx-chart-8: 217 88% 68%;
+}

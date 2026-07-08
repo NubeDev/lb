@@ -109,6 +109,8 @@ mod tests {
             caps: vec![],
             iat: 0,
             exp: 9_999_999_999,
+            constraint: None,
+            run_id: None,
         }
     }
 

@@ -77,6 +77,8 @@ fn mint_child_token(key: &SigningKey, ws: &str, ext_id: &str, granted: &[String]
         caps: granted.to_vec(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     mint(key, &claims)
 }

@@ -359,6 +359,42 @@ pub async fn flow_run_stream(
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 
+/// `GET /flows/{id}/debug/stream?token=` — the **live debug feed** the canvas debug panel tails
+/// (debug-node-scope). Mirrors `flow_run_stream`: open once with `EventSource` and receive `debug`
+/// frames (each one wire message a `debug` node published — JSON/text/markdown, attribution + a
+/// `collapseBytes` hint). **Deltas-only in v1** (motion-only — no snapshot, no replay): a late opener
+/// sees messages from attach onward. Auth is the `?token=` query param; `watch_flow_debug` runs the
+/// `mcp:flows.debug.watch:call` gate (a `403` before any body) and the bus subject is workspace-walled,
+/// so a ws-B session can never observe a ws-A flow's debug stream.
+pub async fn flow_debug_stream(
+    State(gw): State<Gateway>,
+    Path(id): Path<String>,
+    Query(auth): Query<StreamAuth>,
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)> {
+    let principal = verify_token(&gw, &auth.token)
+        .await
+        .map_err(|e| e.into_response())?;
+    let ws = principal.ws().to_string();
+    // Authorize + declare the live feed up front (workspace-first). A denial here is a 403 before any
+    // stream body is produced.
+    let watch = lb_host::watch_flow_debug(&gw.node.store, &gw.node.bus, &principal, &ws, &id)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+
+    // Fold the live debug feed (`debug` frames) until the client closes. No snapshot phase — v1 is
+    // deltas-only (a late opener tails from now).
+    let stream = futures::stream::unfold(watch.stream, |live| async move {
+        live.recv().await.map(|event| {
+            let ev = Event::default()
+                .event("debug")
+                .json_data(&event)
+                .unwrap_or_else(|_| Event::default().comment("encode error"));
+            (Ok(ev), live)
+        })
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+}
+
 /// Forward one `flows.*` MCP call through the host (re-checking the cap), returning its JSON output.
 async fn call(
     gw: &Gateway,

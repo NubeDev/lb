@@ -53,6 +53,7 @@ async fn agent_drives_a_real_run() {
         workspace,
         Duration::from_secs(120),
         None, // no injected key — the standalone smoke reads the key from the process env (fallback)
+        &[],  // no bridge env — the standalone smoke has no MCP shim
         None, // no live sink in the standalone driver smoke — just collect + assert
     )
     .await

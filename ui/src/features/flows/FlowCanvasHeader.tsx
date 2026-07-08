@@ -4,7 +4,7 @@
 // Presentational: every action + piece of state is a prop.
 
 import { useRef } from "react";
-import { Download, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Bug, Download, RotateCcw, Trash2, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,10 +19,14 @@ export interface FlowCanvasHeaderProps extends FlowToolbarProps {
   runStatus: string | null;
   saveError: string | null;
   runError: string | null;
+  /** Whether the debug panel drawer is open (debug-node-scope). */
+  debugOpen: boolean;
   onUndo: () => void;
   onExport: () => void;
   onImport: (file: File) => void;
   onDelete: () => void;
+  /** Toggle the debug panel drawer (debug-node-scope — Node-RED's debug sidebar). */
+  onToggleDebug: () => void;
 }
 
 export function FlowCanvasHeader({
@@ -30,10 +34,12 @@ export function FlowCanvasHeader({
   runStatus,
   saveError,
   runError,
+  debugOpen,
   onUndo,
   onExport,
   onImport,
   onDelete,
+  onToggleDebug,
   ...toolbar
 }: FlowCanvasHeaderProps) {
   const importedFile = useRef<HTMLInputElement>(null);
@@ -72,6 +78,20 @@ export function FlowCanvasHeader({
         }}
       />
       <div className="ml-auto flex flex-wrap items-center gap-2">
+        {/* The debug panel toggle (debug-node-scope) — Node-RED's debug-sidebar tab, always reachable
+            from the header. Highlighted (default variant) when the drawer is open. */}
+        <Button
+          aria-label={debugOpen ? "close debug panel" : "open debug panel"}
+          aria-pressed={debugOpen}
+          onClick={onToggleDebug}
+          variant={debugOpen ? "default" : "outline"}
+          size="sm"
+          className="gap-1.5"
+          title="Debug panel (watch what each node emits)"
+        >
+          <Bug size={13} />
+          Debug
+        </Button>
         {runStatus ? (
           <Badge
             variant="outline"

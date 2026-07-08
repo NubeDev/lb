@@ -18,7 +18,7 @@ export function invokeAgent(
   ws: string,
   jobId: string,
   goal: string,
-  opts?: { skill?: string; doc?: string; persona?: string; author?: string; caps?: string[] },
+  opts?: { skill?: string; doc?: string; persona?: string; runtime?: string; author?: string; caps?: string[] },
 ): Promise<AgentResult> {
   return invoke<AgentResult>("agent_invoke", {
     ws,
@@ -27,6 +27,7 @@ export function invokeAgent(
     skill: opts?.skill,
     doc: opts?.doc,
     persona: opts?.persona,
+    runtime: opts?.runtime,
     author: opts?.author,
     caps: opts?.caps,
   });

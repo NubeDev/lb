@@ -24,10 +24,13 @@ path = "src/lib.rs"
 [dependencies]
 lb-host.workspace = true
 lb-auth.workspace = true
+lb-jobs.workspace = true
 lb-run-events.workspace = true
 lb-external-agent.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 # The seam/registry/swap tests drive the runtime through the host registry against a real Node

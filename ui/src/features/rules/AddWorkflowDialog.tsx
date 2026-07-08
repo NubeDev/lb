@@ -10,9 +10,8 @@
 // scenes; the user sees only a row in the table.
 
 import { useMemo, useState, type FormEvent } from "react";
-import { Check, Clock, Hand, Power, Radio, Search, Zap } from "lucide-react";
+import { Check, Search } from "lucide-react";
 
-import { CronBuilder } from "@/features/reminders/CronBuilder";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,8 +25,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { SavedRule } from "@/lib/rules";
+import { WorkflowTriggerPicker } from "./WorkflowTriggerPicker";
 import type { CreateWorkflowInput } from "./useRuleWorkflows";
-import type { TriggerMode } from "./workflowTrigger";
+import { defaultTriggerConfig, type TriggerConfig } from "./workflowTrigger";
 
 interface AddWorkflowDialogProps {
   open: boolean;
@@ -37,31 +37,11 @@ interface AddWorkflowDialogProps {
   onCreate: (input: CreateWorkflowInput) => Promise<{ ok: boolean; error?: string }>;
 }
 
-interface TriggerChoice {
-  mode: TriggerMode;
-  icon: typeof Clock;
-  title: string;
-  blurb: string;
-}
-
-// The picker surfaces the modes that read as "when this runs" to a non-flow author. `manual` stays
-// available but de-emphasized (last) — most authors reach for Schedule or Event.
-const CHOICES: TriggerChoice[] = [
-  { mode: "cron", icon: Clock, title: "On a schedule", blurb: "Hourly, daily, or a custom cron." },
-  { mode: "event", icon: Radio, title: "On an event", blurb: "When a series is published." },
-  { mode: "boot", icon: Power, title: "On boot", blurb: "Once, when the node starts." },
-  { mode: "inject", icon: Zap, title: "On inject", blurb: "When a value is pushed in." },
-  { mode: "manual", icon: Hand, title: "Manual", blurb: "Only when you press Run." },
-];
-
 export function AddWorkflowDialog({ open, onOpenChange, ruleRoster, onCreate }: AddWorkflowDialogProps) {
   const [ruleId, setRuleId] = useState<string | null>(null);
   const [ruleQuery, setRuleQuery] = useState("");
   const [name, setName] = useState("");
-  const [mode, setMode] = useState<TriggerMode>("cron");
-  const [cron, setCron] = useState("0 * * * *");
-  const [series, setSeries] = useState("");
-  const [injectMode, setInjectMode] = useState<"fire" | "retain">("fire");
+  const [trigger, setTrigger] = useState<TriggerConfig>(defaultTriggerConfig());
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,10 +56,7 @@ export function AddWorkflowDialog({ open, onOpenChange, ruleRoster, onCreate }: 
     setRuleId(null);
     setRuleQuery("");
     setName("");
-    setMode("cron");
-    setCron("0 * * * *");
-    setSeries("");
-    setInjectMode("fire");
+    setTrigger(defaultTriggerConfig());
     setSubmitting(false);
     setError(null);
   }
@@ -109,14 +86,15 @@ export function AddWorkflowDialog({ open, onOpenChange, ruleRoster, onCreate }: 
       setError("Give the workflow a name.");
       return;
     }
-    const triggerConfig: Record<string, unknown> = { mode };
-    if (mode === "cron") triggerConfig.cron = cron;
-    if (mode === "event") triggerConfig.series = series.trim();
-    if (mode === "inject") triggerConfig.inject_mode = injectMode;
 
     setSubmitting(true);
     setError(null);
-    const res = await onCreate({ name: trimmedName, ruleId, triggerConfig, enabled: true });
+    const res = await onCreate({
+      name: trimmedName,
+      ruleId,
+      triggerConfig: trigger,
+      enabled: true,
+    });
     if (res.ok) {
       reset();
       onOpenChange(false);
@@ -200,84 +178,11 @@ export function AddWorkflowDialog({ open, onOpenChange, ruleRoster, onCreate }: 
             />
           </div>
 
-          {/* Trigger picker — WHEN the rule runs. */}
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-xs font-medium text-fg">When it runs</legend>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              {CHOICES.map((c) => {
-                const Icon = c.icon;
-                const active = mode === c.mode;
-                return (
-                  <Button
-                    key={c.mode}
-                    type="button"
-                    variant="outline"
-                    aria-pressed={active}
-                    onClick={() => setMode(c.mode)}
-                    className={cn(
-                      "h-auto items-start gap-2.5 whitespace-normal px-3 py-2 text-left",
-                      active ? "border-accent/40 bg-accent/5 hover:bg-accent/5" : "hover:bg-accent/[0.03]",
-                    )}
-                  >
-                    <Icon size={16} className={cn("mt-0.5 shrink-0", active ? "text-accent" : "text-muted")} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-xs font-medium text-fg">{c.title}</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-muted">{c.blurb}</span>
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          {mode === "cron" ? (
-            <div className="flex flex-col gap-1.5">
-              <Label>Schedule</Label>
-              <div className="rounded-md border border-border bg-bg p-2">
-                <CronBuilder value={cron} onChange={setCron} />
-              </div>
-              <span className="font-mono text-[10px] text-muted">
-                cron: <span className="text-fg">{cron}</span>
-              </span>
-            </div>
-          ) : null}
-
-          {mode === "event" ? (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="workflow-series">Series to watch</Label>
-              <Input
-                id="workflow-series"
-                placeholder="series name"
-                value={series}
-                onChange={(e) => setSeries(e.target.value)}
-              />
-            </div>
-          ) : null}
-
-          {mode === "inject" ? (
-            <div className="flex flex-col gap-1.5">
-              <Label>Inject behaviour</Label>
-              <div className="flex gap-2">
-                {(["fire", "retain"] as const).map((m) => (
-                  <Button
-                    key={m}
-                    type="button"
-                    variant="outline"
-                    aria-pressed={injectMode === m}
-                    onClick={() => setInjectMode(m)}
-                    className={cn(
-                      "flex-1 px-3 py-1.5 text-xs font-medium",
-                      injectMode === m
-                        ? "border-accent/40 bg-accent/5 text-accent hover:bg-accent/5"
-                        : "text-muted hover:bg-accent/[0.03]",
-                    )}
-                  >
-                    {m === "fire" ? "Fire (one-shot run)" : "Retain (hold the value)"}
-                  </Button>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          {/* Trigger picker — WHEN the rule runs. Shared with the Edit dialog. */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-medium text-fg">When it runs</span>
+            <WorkflowTriggerPicker config={trigger} onChange={setTrigger} />
+          </div>
 
           {error ? (
             <p role="alert" className="text-xs text-destructive">

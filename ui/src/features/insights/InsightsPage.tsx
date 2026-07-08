@@ -1,12 +1,12 @@
-// The Insights page shell — the layout frame holding the facets sidebar, the list, and the
+// The Insights page shell — the layout frame holding the filters toolbar, the list, and the
 // detail drawer (insights umbrella scope). Route: `/t/$ws/insights` (the routing scope's deep-
 // linkable target). The page is a THIN LAYOUT: data + actions live in `useInsights` + the
 // sibling components; this file only places them on the grid.
 //
 // Voice match with the Inbox surface (collaboration scope, slice 4): the same `AppPageHeader`
 // band + master–detail grid over the shadcn primitives. Insights reads as one product with
-// Inbox, not a separate skin — the only structural difference is the facets rail on the left
-// (a third pane), because insights are AND-filtered across status/severity/producer/tags.
+// Inbox, not a separate skin. The filters sit ABOVE the list (a normal search/table toolbar),
+// not in a left rail — so the list+detail pair gets the full width.
 
 import { useState } from "react";
 import { Lightbulb, RefreshCw } from "lucide-react";
@@ -29,9 +29,9 @@ interface Props {
 }
 
 /**
- * The Insights page. Three-pane layout: facets | list | (optional) detail drawer. The drawer
- * opens when a row is selected; closing it returns focus to the list. The filter is owned by the
- * hook (so a facet change re-fetches); the sidebar drives it through `state.setFilter`.
+ * The Insights page. The filters toolbar sits above the master list; the (optional) detail
+ * drawer opens on the right when a row is selected. The filter is owned by the hook (so a facet
+ * change re-fetches); the toolbar drives it through `state.setFilter`.
  */
 export function InsightsPage({ ws }: Props): JSX.Element {
   const [filter, setFilter] = useState<ListQuery>(INITIAL_FILTER);
@@ -73,39 +73,33 @@ export function InsightsPage({ ws }: Props): JSX.Element {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[18rem_1fr] lg:grid-cols-[18rem_1fr_28rem]">
-        {/* Facets rail — the AND-filter the list reads. Same border treatment as the Inbox list
-            pane (a hairline divider, not a boxed card) so the two surfaces share a register. */}
-        <aside
-          aria-label="insight filters"
-          className="min-h-0 overflow-y-auto border-b border-border bg-panel/40 md:border-b-0 md:border-r"
-        >
-          <div className="px-4 pt-4">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">
-              Filters
-            </h2>
-          </div>
-          <div className="px-4 pb-4">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[1fr_28rem]">
+        {/* Master column: filters toolbar pinned above the list. The toolbar is the AND-filter
+            the list reads (status / severity / producer ref / tag facets); a hairline divider
+            separates it from the scrollable list the way a table header sits above rows. */}
+        <main className="flex min-h-0 flex-col">
+          <div
+            aria-label="insight filters"
+            className="shrink-0 border-b border-border bg-panel/40 px-4 py-3"
+          >
             <InsightFacets filter={filter} onChange={onFilterChange} />
           </div>
-        </aside>
-
-        {/* Master list. */}
-        <main className="min-h-0 overflow-y-auto">
-          <InsightsList
-            items={state.items}
-            loading={state.loading}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            hasMore={state.nextCursor !== null}
-            onLoadMore={() => void state.loadMore()}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <InsightsList
+              items={state.items}
+              loading={state.loading}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              hasMore={state.nextCursor !== null}
+              onLoadMore={() => void state.loadMore()}
+            />
+          </div>
         </main>
 
-        {/* Detail pane — the investigation surface (lg+). Mirrors the Inbox reading pane. */}
+        {/* Detail pane — the investigation surface (md+). Mirrors the Inbox reading pane. */}
         <aside
           aria-label="insight detail"
-          className="hidden min-h-0 overflow-y-auto border-l border-border bg-panel/40 lg:block"
+          className="hidden min-h-0 overflow-y-auto border-l border-border bg-panel/40 md:block"
         >
           {selectedId ? (
             <div className="p-4">

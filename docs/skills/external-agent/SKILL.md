@@ -249,6 +249,32 @@ EXTAGENT_SMOKE=1 ZAI_API_KEY=sk-… \
 
 ---
 
+## 7. The MCP bridge (agent-authored extensions)
+
+When you invoke `builtin.extension-builder` over an external runtime (e.g.
+`open-interpreter-default`), the agent runs with the **MCP shim as its ONLY tool server**. The agent
+can reach the platform exclusively through the same capability-gated MCP seam as the UI — never
+around it.
+
+- **The shim (`lb-mcp-shim`) forwards every `tools/call` to the gateway's `POST /mcp/call`.** The
+  gateway re-runs `caps::check` on every call — exactly as it does for the UI. Nothing is reachable
+  from the subprocess that the caller could not already do; the agent inherits no authority by being
+  a subprocess.
+- **The run token is short-TTL (5 min), run-scoped, and run-status-gated.** If the run is cancelled,
+  the token is refused instantly — even if unexpired. The shim refreshes at 60% TTL, so a long agent
+  turn stays live without holding a long-lived credential.
+- **The Ask floor still fires over the bridge.** `ext.publish`, `native.install`, etc. return
+  `"awaiting approval"` as the tool result. The agent reports this and ends its turn. The human
+  approves in the dock / Studio, and the effect fires from the suspension — the agent never holds the
+  authority to publish or install on its own.
+- **The agent never sees the token.** It lives only in the shim's env + the per-run MCP config file
+  (mode `0600`, deleted with the scratch dir). The agent calls `tools/call` against a localhost URL;
+  the shim attaches the bearer. There is no surface where the model can exfiltrate or reuse it.
+- **This is NOT a sandbox.** The OS-level confinement (namespaces / seccomp) is
+  `capability-wall-scope.md`. The safety floor today is: **scratch-dir cwd seal + Ask-gated
+  publish/install + admin-only surface.** State this plainly — do not oversell the bridge as the
+  confinement layer; it is the authority layer, and the two are different things.
+
 ## Surface summary
 
 | Verb | Cap | Level | Route | Purpose |

@@ -38,6 +38,8 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
 }
@@ -157,7 +159,12 @@ async fn the_persona_carries_the_ask_preset_on_node_mutating_verbs() {
         );
     }
     // The inner loop is NOT gated (supervision that prompts on every build gets turned off).
-    for fluid in ["devkit.scaffold", "devkit.build", "devkit.inspect"] {
+    for fluid in [
+        "devkit.scaffold",
+        "devkit.write_file",
+        "devkit.build",
+        "devkit.inspect",
+    ] {
         assert!(
             !preset.ask.iter().any(|t| t == fluid) && !preset.deny.iter().any(|t| t == fluid),
             "{fluid} stays Allow — the edit/build inner loop is fluid"

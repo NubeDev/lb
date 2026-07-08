@@ -4938,6 +4938,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lb-mcp-shim"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lb-outbox"
 version = "0.1.0"
 dependencies = [
@@ -5045,8 +5057,10 @@ dependencies = [
  "lb-external-agent",
  "lb-host",
  "lb-inbox",
+ "lb-jobs",
  "lb-run-events",
  "lb-secrets",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
@@ -5072,6 +5086,7 @@ dependencies = [
  "lb-insights",
  "lb-jobs",
  "lb-mcp",
+ "lb-mcp-shim",
  "lb-outbox",
  "lb-prefs",
  "lb-registry",

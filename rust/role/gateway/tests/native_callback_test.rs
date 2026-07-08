@@ -38,6 +38,8 @@ fn child_token(key: &SigningKey, ws: &str, ext_id: &str, caps: &[&str]) -> Strin
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: NOW - 1,
         exp: NOW + 10_000,
+        constraint: None,
+        run_id: None,
     };
     mint(key, &claims)
 }

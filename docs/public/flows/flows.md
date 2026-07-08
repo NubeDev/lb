@@ -320,6 +320,55 @@ capability-deny), `host::flows_data_engine_test` (11: Tier B two-firing + **work
 accumulator**, switch gating, split→join + split→map→join, delay park+resume, rate-limit). Bug found +
 fixed: `debugging/flows/switch-else-branch-fires-unconditionally.md`.
 
+## The debug node + debug panel — Node-RED's debug sidebar, over the shipped plane (shipped 2026-07-08)
+
+`debug-node-scope` — drop a `debug` node on a wire, open the sidebar, watch the messages stream past
+live. The Node-RED headline debugging posture, on our durable per-node engine.
+
+- **One new built-in `debug` node** (`builtins/observability.rs`, `kind = sink`, one `payload` in, no
+  out — a terminal **observer** that never gates a subtree). Same descriptor shape as the data-pack;
+  runs inside `flows.run` (**no new execution cap**). Config: `label`, `format`
+  (`auto|json|text|markdown`), `collapse_bytes`, `rate_limit`.
+- **Motion-only (rule 3 made literal).** On settle the node publishes the wire message onto a
+  workspace-walled **per-flow** Zenoh subject `flow_debug:{ws}:{flow}` (relative `flow/{flow}/debug`
+  under `ws/{id}/`) — **fire-and-forget, no SurrealDB record, no new table.** A late-attaching panel
+  tails from attach (deltas-only, no snapshot/replay — Node-RED sidebar parity). The node's own
+  Decision-5 envelope DOES record (pass-through settle, like any sink); the published debug *tail* is
+  the projection, never the store. Persistence-to-disc is the named follow-up (reuses the series
+  substrate, no new table).
+- **Per-flow, not per-run.** The `run_id` is attribution carried *in* each message, not the partition
+  — so "open a flow, watch debug" is honest for a triggered/source flow that has no long-lived run.
+- **One new live-feed verb** `flows.debug.watch {flow_id}` (member-level cap
+  `mcp:flows.debug.watch:call`) + a gateway **SSE** route `GET /flows/{id}/debug/stream?token=` — a
+  near-verbatim copy of the shipped `flows.watch` trio (`run_debug.rs` mirrors `watch.rs`), deltas-only.
+  Workspace-walled two ways (the cap gate + the `{ws}/` bus prefix).
+- **Format resolved host-side (Decision 5).** `auto` sniffs at publish time: object/array (or a string
+  that parses as one) → `json`; a markdown-marked string → `markdown`; else `text`. The resolved format
+  rides on the message so the browser is a pure renderer.
+- **Publish governor (Risk 1).** A per-`(ws,flow,node)` sliding-1s-window caps real messages at
+  `rate_limit` (default 50/s); breach flushes one `dropped: k` sentinel so the panel shows "N dropped"
+  rather than lagging. Debug is best-effort motion, not a reliable log.
+- **The panel** (`features/flows/debug/`, a right-side drawer in the canvas): JSON → collapsible tree
+  (`@microlink/react-json-view`), text → `<pre>`, markdown → the shared `MarkdownView`
+  (`react-markdown`+`remark-gfm`); **long content auto-collapses** behind a "show more" disclosure
+  (full value always on the wire — collapse is presentation only). Pause/resume, clear,
+  filter-by-node, follow. Component state (cleared on unmount — no client-durable state).
+
+The `catch`/`status`/`complete`/`link` observability nodes stay deferred to sibling scopes (the
+`data-nodes`/`flow-context` defer-lists); this shipped `debug` only. Recommended that `catch` publish
+onto the **same** `flow_debug` subject (`kind`-tagged) so the panel renders errors inline.
+
+Proven (real store/bus/caps — CLAUDE §9): `lb-flows` unit (81 incl. the bumped `builtins_in_one_shape`
+at 33 nodes), `host::flows_debug_test` (7: publishes motion, format resolution json/markdown/text,
+**motion-only regression** [no debug-log record], **cap-deny**, **workspace-isolation**, **late-attach
+deltas-only**, **publish governor**), `lb-role-gateway` (16 still green). UI unit `DebugValueView` (9:
+format dispatch + auto-collapse + dropped sentinel); UI gateway `flowsDebug.gateway` (2: the `debug`
+node ships in the real palette under `Observability`, a flow with one saves + runs to terminal). The
+SSE transport is proven at the Rust layer; jsdom has no `EventSource`, so the UI gateway test proves
+the palette+run wire and the unit test proves the rendering. Scope
+[`scope/flows/debug-node-scope.md`](../../scope/flows/debug-node-scope.md); session
+[`sessions/flows/debug-node-session.md`](../../sessions/flows/debug-node-session.md).
+
 ## Where to read
 - **Drive it (agent/API):** `skills/flows-mcp/SKILL.md` — the operating manual for the whole `flows.*`
   surface over MCP/REST (CRUD flows + nodes, run/watch/lifecycle, the 28-node palette, inject/enable).

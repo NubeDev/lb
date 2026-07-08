@@ -51,6 +51,11 @@ pub struct InvokeRequest {
     /// token-derived (§7).
     #[serde(default)]
     pub context: Option<serde_json::Value>,
+    /// Optional **runtime** selector (external-agent-authoring scope S4): the Studio "Generate with
+    /// agent" card names the external runtime (`open-interpreter-default` etc) here. Absent ⇒ the
+    /// workspace default (the genui/dashboard path). Opaque id (rule 10) — resolved by the registry.
+    #[serde(default)]
+    pub runtime: Option<String>,
 }
 
 /// The run's result — the UI's `AgentResult` shape (`agent.types.ts`): the agent's final answer + the
@@ -91,10 +96,11 @@ pub async fn agent_invoke(
     // Drive the ACTIVE agent: `runtime = None` → the ONE resolution seam picks the workspace default (or
     // the registry default). The invoke gate fires inside; the caller's own caps bound the run
     // (`agent ∩ caller`). The registry is the node's installed one (routed + in-channel share it).
+    // The Studio "Generate with agent" card passes an explicit `runtime` (scope S4); absent → default.
     let answer = invoke_via_runtime(
         &gw.node,
         &gw.node.runtimes(),
-        None,
+        req.runtime.as_deref(),
         req.persona.as_deref(),
         &principal,
         &principal.caps().to_vec(),

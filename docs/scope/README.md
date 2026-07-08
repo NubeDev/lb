@@ -83,6 +83,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   we are the ACP *client*. The agent's only tools are our caps-checked MCP surface (built-ins off + an
   OS sandbox, fail-closed); its models route through our gateway. Built once against the official Rust
   SDK, so the whole ACP registry is pluggable by config; the default runtime stays the in-house loop.
+  `agent-ext-authoring-scope.md` makes the external agent an **extension author** (any tier — wasm
+  Rust tools, native sidecars, federated UI pages): a stdio MCP shim bridges the subprocess onto the
+  caps-checked tool surface (run-scoped token per `agent-key-lifecycle`), unlocks
+  `builtin.extension-builder` on external runtimes (Ask-gated publish preserved), and upgrades the
+  devkit `ui` template to shadcn/recharts on the shell theme.
 - `agent-run/` — the agent **run** as a first-class object: a canonical `RunEvent` stream, an ACP
   stdio adapter (Zed/Cursor drive the agent), per-tool-call Allow/Deny/Ask with **durable
   suspend/resume**, and **model-activated skills** (the model picks from a granted catalog). Opens up

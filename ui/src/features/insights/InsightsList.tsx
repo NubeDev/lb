@@ -1,14 +1,26 @@
-// The insights list — the rows in the center pane. Mirrors the Inbox master-list voice: a
-// scrollable `<ul>` of `<li>` rows, each a button with an active-state left rail (`border-l-2`),
-// an accent severity dot, a truncated title, and quiet meta beneath. The data marks unique to
-// insights (severity tone, status badge, dedup key, count) layer onto that shared shape — same
-// product, different signals. One component per file (FILE-LAYOUT §4 frontend).
+// The insights list — the rows in the center pane, rendered with the shadcn `Table` primitive
+// (ui-standards-scope): `Table` / `TableHeader` / `TableBody` / `TableRow` / `TableHead` /
+// `TableCell` from `components/ui/*`. Same data the master-list carried, now reading like a real
+// ops table — a sticky header, severity dots (critical pulses), a truncated mono meta line under
+// the title, and a relative time-ago. Click a row to open the detail drawer (which still shows
+// occurrences). One component per file (FILE-LAYOUT §4 frontend).
+//
+// Tokens only — destructive/warning/accent-2 carry the severity hues, no raw `red-…`/`amber-…`
+// literals. Selection rides on the `Table` row's `data-state="selected"` accent tint.
 
 import { Lightbulb, RefreshCw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { Insight, Severity, Status } from "@/lib/insights/insights.types";
 
@@ -23,7 +35,7 @@ interface Props {
   onLoadMore?: () => void;
 }
 
-/** Render the insights list. Newest-first (the verb already orders). */
+/** Render the insights list as a shadcn `Table`. Newest-first (the verb already orders). */
 export function InsightsList({
   items,
   loading,
@@ -37,42 +49,89 @@ export function InsightsList({
   }
   return (
     <div className="flex h-full flex-col">
-      <ul role="list" className="min-h-0 flex-1 overflow-y-auto">
-        {items.map((it) => {
-          const active = it.id === selectedId;
-          return (
-            <li key={it.id} role="listitem" className="border-b border-border last:border-b-0">
-              <button
-                type="button"
-                onClick={() => onSelect(it.id)}
-                aria-current={active ? "true" : undefined}
-                className={cn(
-                  "flex w-full items-start gap-3 border-l-2 px-4 py-3 text-left transition-colors",
-                  active
-                    ? "border-l-accent bg-accent/10"
-                    : "border-l-transparent hover:bg-panel",
-                )}
-              >
-                <SeverityDot severity={it.severity} />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-fg">{it.title}</span>
-                    <StatusBadge status={it.status} />
-                  </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
-                    <Badge variant="secondary" className="font-mono text-[10px]">
-                      {it.dedup_key}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <Table>
+          <TableHeader className="sticky top-0 z-10 bg-bg/80 backdrop-blur-sm">
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-[8rem]">Key</TableHead>
+              <TableHead>Incident / Resource</TableHead>
+              <TableHead className="w-[7rem]">Severity</TableHead>
+              <TableHead className="w-[7rem]">Status</TableHead>
+              <TableHead className="w-[8rem] text-right">Last seen</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((it) => {
+              const active = it.id === selectedId;
+              const tone = severityTone(it.severity);
+              return (
+                <TableRow
+                  key={it.id}
+                  data-state={active ? "selected" : undefined}
+                  aria-selected={active}
+                  aria-label={`select insight ${it.dedup_key}`}
+                  onClick={() => onSelect(it.id)}
+                  className="cursor-pointer"
+                >
+                  {/* Dedup key — mono, muted, truncated. */}
+                  <TableCell className="truncate font-mono text-[11px] text-muted">
+                    {it.dedup_key}
+                  </TableCell>
+
+                  {/* Severity dot + title + mono meta (origin · run · count). */}
+                  <TableCell>
+                    <div className="flex min-w-0 items-start gap-2.5">
+                      <span
+                        className={cn(
+                          "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full",
+                          tone.dot,
+                          it.severity === "critical" && "animate-pulse",
+                        )}
+                        role="img"
+                        aria-label={`severity: ${it.severity}`}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-fg">{it.title}</p>
+                        <p className="truncate font-mono text-[11px] text-muted">
+                          {it.origin.kind}:{it.origin.ref}
+                          {it.origin.run ? ` · run:${it.origin.run}` : ""}
+                          <span aria-hidden> · ×{it.count}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </TableCell>
+
+                  {/* Severity badge. */}
+                  <TableCell>
+                    <Badge
+                      variant={
+                        it.severity === "critical"
+                          ? "destructive"
+                          : it.severity === "warning"
+                            ? "warning"
+                            : "accent2"
+                      }
+                      className="text-[10px] font-bold uppercase"
+                    >
+                      {it.severity}
                     </Badge>
-                    <span>×{it.count}</span>
-                    <span aria-hidden>·</span>
-                    <span>{new Date(it.last_ts).toLocaleString()}</span>
-                  </span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                  </TableCell>
+
+                  {/* Status badge. */}
+                  <TableCell>
+                    <StatusBadge status={it.status} />
+                  </TableCell>
+
+                  {/* Time-ago. */}
+                  <TableCell className="text-right font-mono text-[11px] text-muted">
+                    {timeAgo(it.last_ts)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
       {hasMore && (
         <div className="border-t border-border p-2">
           <Button
@@ -92,22 +151,11 @@ export function InsightsList({
   );
 }
 
-/** Severity as a colored dot — `destructive`/`warning`/`accent-2` follow the theme tokens (the
- *  widened palette), not raw Tailwind hues, so dark/light both read right. */
-function SeverityDot({ severity }: { severity: Severity }): JSX.Element {
-  const tone =
-    severity === "critical"
-      ? "bg-destructive"
-      : severity === "warning"
-        ? "bg-warning"
-        : "bg-accent-2";
-  return (
-    <span
-      className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", tone)}
-      role="img"
-      aria-label={`severity: ${severity}`}
-    />
-  );
+/** Severity → dot tone (matches the facet dots). */
+function severityTone(s: Severity): { dot: string } {
+  if (s === "critical") return { dot: "bg-destructive" };
+  if (s === "warning") return { dot: "bg-warning" };
+  return { dot: "bg-accent-2" };
 }
 
 /** Status as a Badge — `open` reads as the primary accent (action due), `acked` as warning
@@ -115,10 +163,22 @@ function SeverityDot({ severity }: { severity: Severity }): JSX.Element {
 function StatusBadge({ status }: { status: Status }): JSX.Element {
   const variant = status === "open" ? "default" : status === "acked" ? "warning" : "success";
   return (
-    <Badge variant={variant} className="ml-auto shrink-0 text-[10px] uppercase">
+    <Badge variant={variant} className="text-[10px] uppercase">
       {status}
     </Badge>
   );
+}
+
+/** A compact relative-time formatter ("2m ago", "1h 22m ago", "3d ago"). */
+function timeAgo(ts: number): string {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m}m ${s % 60}s ago` : `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return m % 60 ? `${h}h ${m % 60}m ago` : `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
 }
 
 /** The resting empty pane — mirrors the Inbox `EmptyPane`. A single quiet card; the icon spins

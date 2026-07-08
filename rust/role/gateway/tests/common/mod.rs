@@ -38,6 +38,33 @@ pub fn token(key: &SigningKey, sub: &str, ws: &str, caps: &[&str]) -> String {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: NOW - 1,
         exp: NOW + 10_000,
+        constraint: None,
+        run_id: None,
+    };
+    mint(key, &claims)
+}
+
+/// Mint a **run-scoped** token signed by `key` — the shape the external-agent role mints and the
+/// shim presents at `/mcp/call`. Carries `run_id` (so the gateway's verify consults run-status,
+/// D3) + `constraint` (so gate 2b enforces `agent ∩ caller`). Used by the refresh-route + the
+/// run-status-gated-verify tests.
+pub fn run_token(
+    key: &SigningKey,
+    sub: &str,
+    ws: &str,
+    caps: &[&str],
+    constraint: Option<&[&str]>,
+    run_id: &str,
+) -> String {
+    let claims = Claims {
+        sub: sub.into(),
+        ws: ws.into(),
+        role: Role::Member,
+        caps: caps.iter().map(|s| s.to_string()).collect(),
+        iat: NOW - 1,
+        exp: NOW + 10_000,
+        constraint: constraint.map(|c| c.iter().map(|s| s.to_string()).collect()),
+        run_id: Some(run_id.to_string()),
     };
     mint(key, &claims)
 }

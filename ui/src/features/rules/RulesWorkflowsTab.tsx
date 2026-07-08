@@ -16,7 +16,7 @@
 // rules, shared with the editor.
 
 import { useState } from "react";
-import { ExternalLink, Plus, Trash2, Workflow } from "lucide-react";
+import { ExternalLink, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 
 import { AppEmptyState } from "@/components/app/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -33,6 +33,7 @@ import {
 import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import type { SavedRule } from "@/lib/rules";
 import { AddWorkflowDialog } from "./AddWorkflowDialog";
+import { EditWorkflowDialog } from "./EditWorkflowDialog";
 import { useRuleWorkflows, type WorkflowRow } from "./useRuleWorkflows";
 import { readTrigger } from "./workflowTrigger";
 
@@ -104,6 +105,7 @@ function WorkflowListRow({
   onJumpToRule,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   row: WorkflowRow;
   ws: string;
@@ -111,6 +113,8 @@ function WorkflowListRow({
   onJumpToRule?: (id: string) => void;
   onToggle: (id: string, enabled: boolean) => void;
   onDelete: (id: string) => void;
+  /** Open the Edit dialog for this row's trigger. */
+  onEdit: (row: WorkflowRow) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const triggerNode = row.trigger;
@@ -159,6 +163,15 @@ function WorkflowListRow({
             onCheckedChange={(checked) => onToggle(row.id, checked)}
           />
           <Button
+            aria-label={`edit workflow ${row.name || row.id}`}
+            variant="ghost"
+            size="icon"
+            title="Edit trigger"
+            onClick={() => onEdit(row)}
+          >
+            <Pencil size={14} />
+          </Button>
+          <Button
             asChild
             variant="ghost"
             size="icon"
@@ -202,9 +215,12 @@ function WorkflowListRow({
 export function RulesWorkflowsTab({ ws, ruleRoster, onJumpToRule }: RulesWorkflowsTabProps) {
   const state = useRuleWorkflows(ws);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<WorkflowRow | null>(null);
 
   const ruleNameById = (id: string | null) =>
     id ? (ruleRoster.find((r) => r.id === id)?.name ?? null) : null;
+  const ruleById = (id: string | null): SavedRule | null =>
+    id ? (ruleRoster.find((r) => r.id === id) ?? null) : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -261,6 +277,7 @@ export function RulesWorkflowsTab({ ws, ruleRoster, onJumpToRule }: RulesWorkflo
                   onJumpToRule={onJumpToRule}
                   onToggle={state.toggle}
                   onDelete={state.remove}
+                  onEdit={setEditing}
                 />
               ))}
             </TableBody>
@@ -276,6 +293,22 @@ export function RulesWorkflowsTab({ ws, ruleRoster, onJumpToRule }: RulesWorkflo
           const res = await state.create(input);
           return { ok: res.ok, error: res.error };
         }}
+      />
+
+      <EditWorkflowDialog
+        open={editing !== null}
+        onOpenChange={(o) => !o && setEditing(null)}
+        workflow={
+          editing
+            ? {
+                id: editing.id,
+                name: editing.name || editing.id,
+                triggerConfig: editing.trigger?.config ?? null,
+              }
+            : null
+        }
+        rule={editing ? ruleById(editing.ruleId) : null}
+        onSave={async (id, triggerConfig) => state.updateTrigger(id, triggerConfig)}
       />
     </div>
   );

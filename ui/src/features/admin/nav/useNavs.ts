@@ -19,16 +19,18 @@ import {
 } from "@/lib/nav";
 import { listDashboards, type DashboardSummary } from "@/lib/dashboard";
 import { listExtensions, type ExtRow } from "@/lib/ext/ext.api";
+import { listTeams, type TeamView } from "@/lib/admin/teams.api";
 
 export interface NavSources {
   dashboards: DashboardSummary[];
   extensions: ExtRow[];
+  teams: TeamView[];
 }
 
 /** The nav roster + the pickable sources + the write actions. Reloads the roster after every write. */
 export function useNavs(ws: string) {
   const [navs, setNavs] = useState<NavSummary[]>([]);
-  const [sources, setSources] = useState<NavSources>({ dashboards: [], extensions: [] });
+  const [sources, setSources] = useState<NavSources>({ dashboards: [], extensions: [], teams: [] });
   const [shares, setShares] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,13 +63,19 @@ export function useNavs(ws: string) {
     setLoading(true);
     setError(null);
     try {
-      // The three real sources the builder picks from — dashboards + ext pages (surfaces are the
-      // static core set the builder ships inline). Each is a real list call, workspace-walled.
-      const [dashboards, extensions] = await Promise.all([
+      // The real sources the builder picks from — dashboards + ext pages + teams (surfaces are the
+      // static core set the builder ships inline). Each is a real list call, workspace-walled. Teams
+      // populate the share dropdown so the user never types a team id by hand.
+      const [dashboards, extensions, teams] = await Promise.all([
         listDashboards().catch(() => [] as DashboardSummary[]),
         listExtensions().catch(() => [] as ExtRow[]),
+        listTeams().catch(() => [] as TeamView[]),
       ]);
-      setSources({ dashboards, extensions: extensions.filter((e: ExtRow) => e.ui?.entry) });
+      setSources({
+        dashboards,
+        extensions: extensions.filter((e: ExtRow) => e.ui?.entry),
+        teams,
+      });
       await reloadNavs();
     } catch (e) {
       setError(String(e));

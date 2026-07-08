@@ -168,13 +168,36 @@ export function NavAdmin({ ws, caps }: Props) {
     }
   };
 
-  const doShare = async () => {
+  const applyTier = async () => {
     if (!editId) return;
     setBusy(true);
     setMsg(null);
     try {
-      await share(editId, shareVis, shareVis === "team" ? shareTeam : undefined);
+      // Set the visibility tier only — no team edge here. The team edges are managed by the
+      // add/remove actions below; the tier is the asset's overall reach (private/team/workspace).
+      await share(editId, shareVis, undefined);
       setMsg(`Visibility set to ${shareVis}.`);
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addTeam = async () => {
+    if (!editId || !shareTeam) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      // Writes one S4 `nav -[share]-> team` edge; the underlying relate is multi-edge, so each add
+      // accumulates. Forces the Team tier (a team share is meaningless at private/workspace).
+      if (shareVis !== "team") {
+        setShareVis("team");
+        await share(editId, "team", shareTeam);
+      } else {
+        await share(editId, "team", shareTeam);
+      }
+      setMsg(`Shared to ${shareTeam}.`);
       setShareTeam("");
     } catch (e) {
       setMsg(String(e));
@@ -463,54 +486,41 @@ export function NavAdmin({ ws, caps }: Props) {
             </Button>
           </div>
 
-          {/* Save + share */}
+          {/* Save + visibility tier */}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => void doSave()} disabled={busy} aria-label="Save nav">
               Save
             </Button>
-            <div className="flex items-center gap-2">
-              <Select
-                className="w-32"
-                aria-label="Visibility"
-                value={shareVis}
-                onChange={(e) => setShareVis(e.target.value as Visibility)}
-              >
-                <option value="private">Private</option>
-                <option value="team">Team</option>
-                <option value="workspace">Workspace</option>
-              </Select>
-              {shareVis === "team" && (
-                <Input
-                  aria-label="Team"
-                  placeholder="team:ops"
-                  className="w-32"
-                  value={shareTeam}
-                  onChange={(e) => setShareTeam(e.target.value)}
-                />
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void doShare()}
-                disabled={busy || !editId}
-                aria-label="Apply visibility"
-              >
-                Apply visibility
-              </Button>
-            </div>
+            <Select
+              className="w-32"
+              aria-label="Visibility"
+              value={shareVis}
+              onChange={(e) => setShareVis(e.target.value as Visibility)}
+            >
+              <option value="private">Private</option>
+              <option value="team">Team</option>
+              <option value="workspace">Workspace</option>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void applyTier()}
+              disabled={busy || !editId}
+              aria-label="Apply visibility"
+            >
+              Apply visibility
+            </Button>
           </div>
 
           {/* The live share roster — every team this nav is currently shared to, each removable.
               A nav has no per-user share by design; a user reaches it by being a member of one of
               these teams (managed in the Teams admin via teams.add_member/remove_member). */}
           <section className="flex flex-col gap-2" data-testid="nav-shares">
-            <h4 className="text-xs font-semibold uppercase text-muted">Shared to teams</h4>
+            <h4 className="text-xs font-semibold uppercase text-muted">
+              Shared to teams {shares.length > 0 && `(${shares.length})`}
+            </h4>
             {shares.length === 0 ? (
-              <div className="text-sm text-muted">
-                {shareVis === "team"
-                  ? "Not shared to any team yet — add one above."
-                  : "Team shares apply only at the Team visibility tier."}
-              </div>
+              <div className="text-sm text-muted">Not shared to any team yet.</div>
             ) : (
               <ul className="flex flex-col gap-1">
                 {shares.map((team) => (
@@ -532,6 +542,41 @@ export function NavAdmin({ ws, caps }: Props) {
                 ))}
               </ul>
             )}
+
+            {/* Add a team — one S4 share edge per call; the underlying relate is multi-edge, so
+                adding accumulates. Adding a team forces the Team tier. The dropdown is fed by the
+                real `teams.list` (no typing ids); if no teams exist yet, the user creates them in
+                the Teams admin. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select
+                className="w-48"
+                aria-label="Team to add"
+                value={shareTeam}
+                onChange={(e) => setShareTeam(e.target.value)}
+              >
+                <option value="">
+                  {sources.teams.length === 0 ? "No teams — create one in Teams" : "Pick a team"}
+                </option>
+                {sources.teams.map((t) => (
+                  <option key={t.team} value={t.team}>
+                    {t.name || t.team}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void addTeam()}
+                disabled={busy || !editId || !shareTeam}
+                aria-label="Add team share"
+              >
+                Add team
+              </Button>
+            </div>
+            <p className="text-xs text-muted">
+              To share to a single user, put them in a team here and add the team — a nav has no
+              per-user tier (manage membership in the Teams admin).
+            </p>
           </section>
         </section>
       )}

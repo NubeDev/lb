@@ -36,10 +36,13 @@ use lb_host::{
     get_agent_config, resolve_endpoint_key_host, AgentError, AgentRuntime, Node, RunContext,
     RuntimeRegistry,
 };
+use lb_jobs::{complete, create, Job, JobStatus};
 use lb_run_events::{RunEvent, RunOutcome};
 
+pub mod bridge;
 pub mod profiles;
 pub mod scratch;
+pub mod token;
 
 /// Re-exported so a caller (the node binary) names the model-endpoint config type without depending
 /// on the leaf `lb-external-agent` crate directly.
@@ -63,6 +66,9 @@ pub struct AcpRuntime {
     agent: ResolvedAgent,
     scratch_base: PathBuf,
     timeout: Duration,
+    /// The shim binary name/path the wrapper's MCP config points at. `None` ⇒ `"lb-mcp-shim"`
+    /// (expected on the node's `PATH`). Configurable so a deployment can point at an absolute path.
+    shim_bin: Option<String>,
 }
 
 impl AcpRuntime {
@@ -76,7 +82,15 @@ impl AcpRuntime {
             agent,
             scratch_base,
             timeout: DEFAULT_RUN_TIMEOUT,
+            shim_bin: None,
         })
+    }
+
+    /// Override the shim binary path (default: `"lb-mcp-shim"` on `PATH`). Used when the node binary
+    /// is installed in a known location and the shim sits beside it.
+    pub fn with_shim_bin(mut self, shim_bin: impl Into<String>) -> Self {
+        self.shim_bin = Some(shim_bin.into());
+        self
     }
 }
 
@@ -97,6 +111,27 @@ impl AgentRuntime for AcpRuntime {
             // kernel confinement of this same dir.
             let scratch = ScratchDir::create(&self.scratch_base, ctx.ws, ctx.job_id)
                 .map_err(|e| AgentError::BadInput(format!("scratch dir: {e}")))?;
+
+            // DURABLE JOB RECORD (run-lifecycle #5 + agent-key-lifecycle D3): create the job so the
+            // gateway's run-status gate (`verify_token` → `lb_jobs::load`) can refuse a cancelled
+            // run's token instantly. The payload carries the persona's Ask floor (`ask` list) so the
+            // gateway's `/mcp/call` can enforce the same Ask suspension for bridged calls that the
+            // in-house loop enforces at the model-proposal layer. Marked Done/Failed at the end.
+            let ask_floor = ctx
+                .persona_preset
+                .map(|p| p.ask.clone())
+                .unwrap_or_default();
+            let payload = serde_json::to_string(&RunPayload {
+                goal: ctx.goal.to_string(),
+                ask: ask_floor,
+            })
+            .unwrap_or_else(|_| String::new());
+            let _ = create(
+                &node.store,
+                ctx.ws,
+                &Job::new(ctx.job_id, "agent-session", &payload, ctx.ts),
+            )
+            .await;
 
             // LIVE MOTION: publish each `RunEvent` the moment its stdout line decodes, so a watcher
             // (agent-run Part 3 / the channel run-feed) sees the agent work in real time — tool calls,
@@ -147,6 +182,43 @@ impl AgentRuntime for AcpRuntime {
             // (the fallback), so a workspace that set nothing keeps working exactly as before.
             let key = key_value.as_deref().map(|v| (key_env, v));
 
+            // MCP-SHIM BRIDGE (external-agent-authoring scope S1d): mint a short-TTL run-scoped
+            // token for the derived principal, build the narrowed menu JSON, write the wrapper's
+            // MCP config into the scratch dir, and produce the bridge env vars the child carries.
+            // The shim (spawned by the agent as its MCP server) inherits these env vars, reads the
+            // menu by path, and forwards every `tools/call` to the gateway — which re-checks caps
+            // exactly as it does for the UI. `None` ⇒ the wrapper has no MCP bridge today; the run
+            // proceeds pre-bridge (the agent has no host-tool reach, same as before this slice).
+            //
+            // The token never appears in the goal, a transcript, or a log — only in the per-child
+            // env map + the per-run config file inside the sealed scratch dir (mode 0600).
+            let derived = ctx.caller.derive("agent:session", ctx.agent_caps.to_vec());
+            let now = ctx.ts;
+            let node_key = node.key();
+            let run_tok = token::mint_run_token(
+                &node_key,
+                &derived,
+                ctx.job_id,
+                now,
+                token::DEFAULT_RUN_TOKEN_TTL_SECS,
+            );
+            let bridge_env = match bridge::build(
+                self.agent.wrapper.as_ref(),
+                scratch.path(),
+                ctx.job_id,
+                ctx.tools,
+                &run_tok,
+                self.shim_bin.as_deref().unwrap_or("lb-mcp-shim"),
+            ) {
+                Ok(Some(b)) => b.env,
+                Ok(None) => Vec::new(),
+                Err(e) => {
+                    return Err(AgentError::BadInput(format!(
+                        "write MCP bridge config: {e}"
+                    )))
+                }
+            };
+
             // Drive the real subprocess over the shipped `exec --json` transport, streaming each event
             // live (above) AND collecting them for the final answer. The cwd is the sealed scratch dir —
             // NOT the caller's workspace path (the `drive(.., workspace, ..)` cwd gap #5 flagged).
@@ -158,6 +230,7 @@ impl AgentRuntime for AcpRuntime {
                 &cwd,
                 self.timeout,
                 key,
+                &bridge_env,
                 Some(&tx),
             )
             .await
@@ -178,14 +251,29 @@ impl AgentRuntime for AcpRuntime {
                     // are usually empty on a failed turn. Fall back to it so the channel `agent_error`
                     // carries a real reason instead of an empty string.
                     let reason = finish_message(&events).unwrap_or(answer);
+                    let _ = complete(&node.store, ctx.ws, ctx.job_id, JobStatus::Failed).await;
                     Err(AgentError::BadInput(format!(
                         "external agent run ended failed: {reason}"
                     )))
                 }
-                _ => Ok(answer),
+                _ => {
+                    let _ = complete(&node.store, ctx.ws, ctx.job_id, JobStatus::Done).await;
+                    Ok(answer)
+                }
             }
         })
     }
+}
+
+/// The serialized job payload for an external-agent run. Stored in the durable `job:{id}` record
+/// so the gateway can read it on each bridged call (the Ask floor) and the run-status gate can
+/// consult the status. Minimal: the goal (for audit) + the persona's Ask tool list (for the
+/// gateway's bridged-call gate). Kept as a plain struct so the gateway can deserialize it without
+/// a dep on this role crate.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RunPayload {
+    pub goal: String,
+    pub ask: Vec<String>,
 }
 
 /// The run's final answer = the concatenation of assistant `TextDelta`s (per-step in this transport,

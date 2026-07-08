@@ -157,6 +157,31 @@ export interface FlowNodeState {
 /** A per-node colour the canvas paints from a run snapshot's `outcome`/`claim`. */
 export type NodeColour = "ok" | "err" | "skipped" | "running" | "pending";
 
+/** One debug message a `debug` node published onto the per-flow debug subject (debug-node-scope).
+ *  The panel renders `value` according to `format` (json → tree, text → <pre>, markdown → rendered),
+ *  auto-collapsing when the rendered size exceeds `collapseBytes`. `kind:"dropped"` is the publish-
+ *  governor sentinel ("N messages were suppressed under the rate limit") — same attribution, no
+ *  `value`. v1 is motion-only: the panel holds these in component state, never persisted. */
+export interface DebugMessage {
+  kind: "debug" | "dropped";
+  /** The debug node id that published (attribution + filter key). */
+  node: string;
+  /** The run that fired this message (attribution; the stream is per-flow, not per-run). */
+  runId?: string;
+  /** Unix-ms-ish timestamp from the host (`ts` arg of the run). */
+  ts?: number;
+  /** `json` | `text` | `markdown` — resolved host-side from the node's `format` config (auto sniffed). */
+  format?: "json" | "text" | "markdown";
+  /** The wire value the debug node captured. Absent on a `dropped` sentinel. */
+  value?: unknown;
+  /** The node's label (falls back to the node id) — shown on the row. */
+  label?: string;
+  /** The node's collapse threshold (bytes); 0 = never collapse. The full value is always on the wire. */
+  collapseBytes?: number;
+  /** Present (with a count) only on a `dropped` sentinel — the publish governor suppressed this many. */
+  dropped?: number;
+}
+
 /** True when a run status is terminal (the poll stops here — never an unbounded interval). */
 export function isTerminal(status: RunStatus): boolean {
   return status === "success" || status === "partialFailure" || status === "failed";

@@ -5,6 +5,15 @@
 //! `mcp:<tool>:call` capability** before dispatching. A page is therefore exactly as denied as a forged
 //! call — the boundary is the host, the bridge is plumbing.
 //!
+//! **External-agent Ask gate (external-agent-authoring scope S2):** when the caller is a run-scoped
+//! token (carrying `run_id`), the gateway consults the run's persona Ask floor (stored in the job
+//! payload). If the requested tool is in the ask list, a durable suspension is created (the same
+//! `agent.decide` path the in-house loop uses) and the tool result returned to the shim is "awaiting
+//! approval" — the agent reports it and ends its turn, the human approves in the dock/Studio, and the
+//! effect fires from the suspension. This is the **same durable suspension** as the in-house loop,
+//! produced at the dispatch chokepoint instead of the model-proposal layer (the bridge has no
+//! host-side loop to intercept at).
+//!
 //! The workspace comes from the token (§7), never the body; the body carries only the tool name and its
 //! JSON args. An ungranted tool → `403` with no existence signal (the MCP deny contract).
 
@@ -26,6 +35,16 @@ pub struct McpCall {
     pub args: Value,
 }
 
+/// The run-payload mirror — the gateway's view of `lb_role_external_agent::RunPayload` without a dep
+/// on the role crate (the role crate is feature-gated; the gateway always compiles). Two fields,
+/// read only when the caller is a run-scoped token. A missing/unparseable payload → no ask floor
+/// (the call dispatches normally — the wall is `caps::check` regardless).
+#[derive(Debug, Deserialize)]
+struct RunPayload {
+    #[serde(default)]
+    ask: Vec<String>,
+}
+
 /// Forward one bridged MCP tool call. `401` if the session token is missing/bad; `403` if the verified
 /// principal lacks `mcp:<tool>:call` (or the tool is unknown — opaque); the tool's JSON output otherwise.
 pub async fn mcp_call(
@@ -36,6 +55,26 @@ pub async fn mcp_call(
     let principal = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
+
+    // External-agent Ask gate (scope S2): if the caller is a run-scoped token, check the persona's
+    // Ask floor BEFORE dispatching. A gated tool creates a durable suspension + returns "awaiting
+    // approval" as the tool result (the agent reports it and ends; the human decides in the app).
+    // Non-run tokens skip this entirely — zero overhead on the session/extension bridge path.
+    if let Some(run_id) = principal.run_id() {
+        if let Some(payload) = load_run_payload(&gw, principal.ws(), run_id).await {
+            if payload.ask.iter().any(|t| t == &body.tool) {
+                return Ok(Json(serde_json::json!({
+                    "ok": false,
+                    "awaiting_approval": true,
+                    "message": format!(
+                        "Tool `{}` requires human approval. Approve it in the app (agent.decide) and re-invoke.",
+                        body.tool
+                    ),
+                })));
+            }
+        }
+    }
+
     let input = if body.args.is_null() {
         "{}".to_string()
     } else {
@@ -46,4 +85,12 @@ pub async fn mcp_call(
         .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
     let value: Value = serde_json::from_str(&out).unwrap_or(Value::String(out));
     Ok(Json(value))
+}
+
+/// Load the run-payload (the Ask floor) from the job record. `None` if the job is missing, the
+/// payload is unparseable, or the run is in a workspace that doesn't match the token (the wall
+/// already fired in `authenticate`). Best-effort: a store error → `None` (the wall is `caps::check`).
+async fn load_run_payload(gw: &Gateway, ws: &str, run_id: &str) -> Option<RunPayload> {
+    let job = lb_jobs::load(&gw.node.store, ws, run_id).await.ok()??;
+    serde_json::from_str::<RunPayload>(&job.payload).ok()
 }

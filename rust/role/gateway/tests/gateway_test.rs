@@ -94,6 +94,8 @@ async fn an_expired_token_is_rejected() {
             caps: vec!["bus:chan/general:pub".into()],
             iat: 0,
             exp: NOW - 1, // already expired at the gateway clock
+            constraint: None,
+            run_id: None,
         };
         mint(&key, &claims)
     };

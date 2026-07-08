@@ -16,6 +16,12 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-08): external-agent authoring S1–S4 — the MCP-shim bridge, persona unlock, themed UI template, Studio card.** A spawned external agent (Open Interpreter / codex-family) can now call the node's MCP tools — and only those — over a stdio MCP shim that forwards every `tools/call` to `POST /mcp/call` under a run-scoped token. The gateway re-checks `caps::check` on every call exactly as it does for the UI. **S1 (bridge):** new crate `lb-mcp-shim` (`rust/crates/mcp-shim/` — stdio JSON-RPC ⇄ HTTP), run-token mint (`role/external-agent/src/token.rs` — 5-min TTL, carries the derived principal's caps + the caller's `constraint` + `run_id`), gateway run-status gate D3 (`verify_token` refuses a terminal run's token even if unexpired — hard cancel is instant), refresh route `POST /agent/runs/{id}/token/refresh` (D2 — proactive at 60% TTL + one-shot 401 self-heal), per-wrapper MCP config (`CodexWrapper::mcp_config` writes `config.toml` under `<scratch>/codex-home/`). `Claims` gained `constraint` + `run_id` (both `#[serde(default)]` — legacy tokens deserialize unchanged). **S2 (persona unlock + Ask-over-bridge):** `extension-builder` `runtimes` unlocked for the external ids; `/mcp/call` enforces the persona Ask floor for run-scoped tokens — `ext.publish` returns "awaiting approval" as the tool result (the agent reports it and ends; the human decides in the dock/Studio; the effect fires from the suspension). **S3 (themed template):** the devkit's `ui` template is correct-by-construction themed — Tailwind v4, scoped shadcn-token aliasing (`.lbx-<id>`, never `:root`), recharts `LineChart` colored from `--chart-1`, no preflight. **S4 (skills + card):** skill docs gained the theming/bridge sections; the Studio Build tab gained a "Generate with agent" card (sugar over `agent.invoke` with `persona:"builtin.extension-builder"`). **Tests (real gateway, rule 9):** `mcp_bridge_test.rs` **8/8** (tools/list + tools/call round-trip + the MANDATORY cap-deny + D3 cancelled-run + ws-isolation + token-not-in-stdout + Ask-over-bridge); `run_token_refresh_route_test.rs` **6/6**; shim lib **10/10**; scaffold **6/6** (themed shape); contract-mirrors guard **5/5**; `tsc --noEmit` clean. **S5 (the two live E2E runs) gated on user confirmation** — the deterministic skeleton is proven; the model-in-the-loop confirmation needs a real Open Interpreter binary + `make dev EXTAGENT=1 DEVKIT_BUILDER=container`. Scope
+[`scope/external-agent/agent-ext-authoring-scope.md`](scope/external-agent/agent-ext-authoring-scope.md);
+session [`sessions/external-agent/agent-ext-authoring-session.md`](sessions/external-agent/agent-ext-authoring-session.md).
+
+---
+
 **Just shipped (2026-07-07): Field-tab baseline audit — what works vs what's dead.** The panel editor's
 **Field** section was "overwhelming and half the options do nothing" (the user's report). The audit
 proves it: a real-gateway test (`fieldTabBaseline.gateway.test.tsx`, 24 green) classifies every
@@ -326,6 +332,32 @@ rippled into existing flows tests (all fixed: flows_run/flipflop/multi_trigger/t
 (open questions resolved); session
 [`sessions/flows/rules-workflow-convergence-session.md`](sessions/flows/rules-workflow-convergence-session.md);
 public [`public/flows/flows.md`](public/flows/flows.md). `scope/coding-workflow/*` **retired**.
+
+**Just shipped (2026-07-08): the debug node + debug panel — Node-RED's debug sidebar over the shipped
+plane.** Drop a built-in `debug` node on a wire, open the sidebar, watch messages stream past live.
+**Motion-only (rule 3 made literal):** the node publishes each wire message onto a workspace-walled
+**per-flow** Zenoh subject `flow_debug:{ws}:{flow}` (fire-and-forget, **no SurrealDB record, no new
+table**); a late-attaching panel tails from attach (deltas-only, no replay). One new built-in `debug`
+(`kind = sink`, runs inside `flows.run` — no new exec cap), one new live-feed verb
+`flows.debug.watch {flow_id}` (cap `mcp:flows.debug.watch:call`) + gateway SSE route
+`GET /flows/{id}/debug/stream`. Format (`auto|json|text|markdown`) resolved **host-side**; the canvas
+panel renders JSON as a collapsible tree, text as `<pre>`, markdown via the shared `MarkdownView`,
+auto-collapsing long values. A per-node sliding-window governor (default 50/s) caps a hot source and
+flushes a `dropped: k` sentinel. The `catch`/`status`/`complete`/`link` pack stays deferred (sibling
+scopes). **Tests (real store/bus/caps — rule 9):** `flows_debug_test.rs` **7/7** — incl. the
+**motion-only regression** (no debug-log record written), **capability-deny** + **workspace-isolation**
+(the mandatory categories), **late-attach deltas-only**, and the **publish governor**; `lb-flows`
+unit 81 (the bumped `builtins_in_one_shape` at 33 nodes); UI `DebugValueView.test.tsx` 9 (format
+dispatch + auto-collapse + dropped sentinel); UI `flowsDebug.gateway.test.ts` 2 (real gateway: the
+`debug` node ships in the palette under `Observability`, a flow with one runs to terminal).
+`cargo build --workspace` + `cargo fmt` clean (my files); `pnpm exec tsc --noEmit` clean; flows UI
+tests 57/57. **Pre-existing branch reds — NOT this session:** a parallel session is mid-`Claims`
+migration and left several test files + the `test_gateway` seed on the old shape; I made the one-line
+fix to `test_gateway_seed.rs` so the gateway harness builds, the rest are theirs. Scope
+[`scope/flows/debug-node-scope.md`](scope/flows/debug-node-scope.md) (open questions resolved);
+session [`sessions/flows/debug-node-session.md`](sessions/flows/debug-node-session.md); public
+[`public/flows/flows.md`](public/flows/flows.md) (new "debug node + panel" section); skill
+[`skills/flows-debug/SKILL.md`](skills/flows-debug/SKILL.md).
 
 **Also shipped (2026-07-05): webhooks — a first-class inbound-HTTP surface, keyed and mediated.** A
 webhook is a **named, workspace-walled, credential-protected inbound endpoint** the platform owns

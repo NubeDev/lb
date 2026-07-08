@@ -5,16 +5,36 @@
 // own file, view imports them).
 
 import type { LucideIcon } from "lucide-react";
-import {
-  Clock,
-  Hand,
-  Power,
-  Radio,
-  SquareTerminal,
-  Zap,
-} from "lucide-react";
+import { Clock, Hand, Power, Radio, Zap } from "lucide-react";
 
 export type TriggerMode = "manual" | "cron" | "event" | "inject" | "boot";
+
+/** The trigger node's config — the shape its descriptor's schema validates (mirrors
+ *  `TriggerConfigFields`). One object the Add/Edit dialogs and the hook all share. */
+export interface TriggerConfig {
+  mode: TriggerMode;
+  cron?: string;
+  series?: string;
+  inject_mode?: "fire" | "retain";
+}
+
+/** Build a default trigger config (used by the Add dialog's initial state). */
+export function defaultTriggerConfig(): TriggerConfig {
+  return { mode: "cron", cron: "0 * * * *" };
+}
+
+/** Coerce an arbitrary config record (off a saved flow's trigger node) into the typed shape. Falls
+ *  back to "manual" when the mode is missing or unrecognized, so a hand-built flow without a trigger
+ *  config reads as Manual rather than crashing the picker. */
+export function readTriggerConfig(config: Record<string, unknown> | null | undefined): TriggerConfig {
+  const cfg = config ?? {};
+  const mode = modeOf(cfg.mode);
+  const out: TriggerConfig = { mode };
+  if (typeof cfg.cron === "string") out.cron = cfg.cron;
+  if (typeof cfg.series === "string") out.series = cfg.series;
+  if (cfg.inject_mode === "fire" || cfg.inject_mode === "retain") out.inject_mode = cfg.inject_mode;
+  return out;
+}
 
 export interface TriggerView {
   mode: TriggerMode;
@@ -87,10 +107,4 @@ export function readTrigger(config: Record<string, unknown> | null | undefined):
     default:
       return { mode: "manual", icon: Hand, label: MODE_LABEL.manual, caption: null };
   }
-}
-
-/** The trigger icon for a row that has NO trigger node yet (a hand-built flow with no entry point).
- *  Reads as a manual / unstarted flow. */
-export function fallbackTriggerIcon(): LucideIcon {
-  return SquareTerminal;
 }

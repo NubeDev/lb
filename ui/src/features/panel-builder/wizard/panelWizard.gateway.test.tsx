@@ -96,4 +96,30 @@ describe("PanelWizard — source + chart-type steps over real seeded rows (real 
     expect(screen.getByLabelText("wizard view picked").textContent).toContain("stat");
     cleanup();
   });
+
+  it("the chart-type step mounts the shared Plot editor (PlotBuilder) for plottable views, hides it for stat", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedOne("cooler.temp", 9);
+    const user = userEvent.setup();
+    render(
+      <WithDashboardCache ws={ws}>
+        <PanelWizard ws={ws} dashboardId="d-any" onExit={() => {}} />
+      </WithDashboardCache>,
+    );
+    await user.click(screen.getByLabelText("wizard source"));
+    await user.click(await screen.findByRole("option", { name: "cooler.temp" }));
+    await waitFor(() => expect(screen.getByLabelText("timeseries latest")).toBeInTheDocument());
+
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard chart-type step")).toBeInTheDocument());
+
+    // Default view (timeseries) is plottable — the editor's SAME PlotAxesTab mounts with live fields.
+    await waitFor(() => expect(screen.getByLabelText("plot axes tab")).toBeInTheDocument());
+
+    // Switching to a non-plottable view (stat) removes the plot section.
+    await user.click(screen.getByLabelText("viz stat"));
+    await waitFor(() => expect(screen.queryByLabelText("plot axes tab")).toBeNull());
+    cleanup();
+  });
 });

@@ -86,10 +86,18 @@ fn native_files(request: &ScaffoldRequest) -> Vec<RenderedFile> {
 fn ui_files(request: &ScaffoldRequest) -> Vec<RenderedFile> {
     vec![
         file("ui/package.json", render(UI_PACKAGE, request)),
+        file("ui/pnpm-workspace.yaml", UI_PNPM_WS.into()),
         file("ui/index.html", render(UI_INDEX, request)),
         file("ui/src/App.tsx", render(UI_APP, request)),
+        file("ui/src/bridge.ts", render(UI_BRIDGE, request)),
         file("ui/src/mount.tsx", render(UI_MOUNT, request)),
         file("ui/src/remoteEntry.ts", render(UI_REMOTE, request)),
+        file(
+            "ui/src/widgets/SampleChart.tsx",
+            render(UI_SAMPLE_CHART, request),
+        ),
+        file("ui/src/styles/main.css", render(UI_MAIN_CSS, request)),
+        file("ui/src/styles/tokens.css", render(UI_TOKENS_CSS, request)),
         file("ui/tsconfig.json", UI_TSCONFIG.into()),
         file("ui/vite.config.ts", render(UI_VITE, request)),
     ]
@@ -117,15 +125,35 @@ fn render_manifest(request: &ScaffoldRequest) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     let ui = if request.features.contains(&Feature::Ui) {
+        // The [ui] scope controls which MCP tools the bridge ALLOWS the page to call (defense in
+        // depth — the host re-checks caps regardless). Must include every tool the page reaches:
+        // the extension's own tool ({id}.ping) PLUS the feature-derived tools (federation.query,
+        // series.read, etc.). Derive from feature_caps so they stay in sync.
+        //
+        // The own-tool qualified name is `<id>.<tool>` with the id VERBATIM — the runtime resolves
+        // `<ext>.<tool>` by splitting on the FIRST dot (split_once), and the registry key is the
+        // manifest id as-is (`energy-dashboard`, NOT `energy.dashboard`). A kebab→dot swap here
+        // would make the scope entry never match the runtime name for any hyphenated id.
+        let own_tool = format!("{}.ping", request.id);
+        let scope_tools: Vec<String> = std::iter::once(own_tool)
+            .chain(
+                feature_caps(&request.features)
+                    .into_iter()
+                    .map(|cap| cap.trim_start_matches("mcp:").trim_end_matches(":call").to_string()),
+            )
+            .map(|t| format!("\"{t}\""))
+            .collect();
+        let scope = scope_tools.join(", ");
         format!(
             r#"
 [ui]
 entry = "remoteEntry.js"
 label = "{id}"
 icon = "box"
-scope = ["{id}.ping"]
+scope = [{scope}]
 "#,
-            id = request.id
+            id = request.id,
+            scope = scope
         )
     } else {
         String::new()
@@ -185,9 +213,14 @@ const BUILD_SH: &str = include_str!("../templates/common/build.sh.tmpl");
 const WASM_LIB: &str = include_str!("../templates/wasm/src_lib.rs.tmpl");
 const NATIVE_MAIN: &str = include_str!("../templates/native/src_main.rs.tmpl");
 const UI_PACKAGE: &str = include_str!("../templates/ui/package.json.tmpl");
+const UI_PNPM_WS: &str = include_str!("../templates/ui/pnpm-workspace.yaml.tmpl");
 const UI_INDEX: &str = include_str!("../templates/ui/index.html.tmpl");
 const UI_APP: &str = include_str!("../templates/ui/src_App.tsx.tmpl");
+const UI_BRIDGE: &str = include_str!("../templates/ui/src_bridge.ts.tmpl");
 const UI_MOUNT: &str = include_str!("../templates/ui/src_mount.tsx.tmpl");
 const UI_REMOTE: &str = include_str!("../templates/ui/src_remoteEntry.ts.tmpl");
+const UI_SAMPLE_CHART: &str = include_str!("../templates/ui/src_widgets_SampleChart.tsx.tmpl");
+const UI_MAIN_CSS: &str = include_str!("../templates/ui/src_styles_main.css.tmpl");
+const UI_TOKENS_CSS: &str = include_str!("../templates/ui/src_styles_tokens.css.tmpl");
 const UI_TSCONFIG: &str = include_str!("../templates/ui/tsconfig.json.tmpl");
 const UI_VITE: &str = include_str!("../templates/ui/vite.config.ts.tmpl");

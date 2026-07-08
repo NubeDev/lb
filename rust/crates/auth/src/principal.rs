@@ -41,19 +41,35 @@ pub struct Principal {
     /// the agent creates on the caller's behalf belongs to the CALLER — audit still shows the
     /// `agent:*` sub acted, but ownership/visibility walls resolve to the human who asked.
     delegator: Option<String>,
+    /// The run id this token is scoped to (agent-key-lifecycle D3). `None` for an ordinary principal;
+    /// `Some` for a run-scoped token that was verified (so the gateway can re-check run-status on
+    /// subsequent requests — hard cancel is instant, D3). NOT a delegation field — set by `verify`
+    /// from the Claims, never by `derive`.
+    run_id: Option<String>,
 }
 
 impl Principal {
-    /// Crate-internal: built by `verify` after the signature and expiry check pass. No constraint
-    /// (an ordinary actor is bounded only by its own caps).
-    pub(crate) fn new(sub: String, ws: String, role: Role, caps: Vec<String>) -> Self {
+    /// Crate-internal: built by `verify` when the token carries delegation/run claims (a run-scoped
+    /// token minted by the external-agent role). Populates [`constraint`](Self::constraint) and
+    /// [`run_id`](Self::run_id) from the signed claims so the gateway's two-gate + run-status
+    /// checks fire on the verified principal exactly as they would on a derived one. Two `None`s
+    /// is the ordinary-token path (no constraint, no run scoping).
+    pub(crate) fn from_token_claims(
+        sub: String,
+        ws: String,
+        role: Role,
+        caps: Vec<String>,
+        constraint: Option<Vec<String>>,
+        run_id: Option<String>,
+    ) -> Self {
         Self {
             sub,
             ws,
             role,
             caps,
-            constraint: None,
+            constraint,
             delegator: None,
+            run_id,
         }
     }
 
@@ -73,6 +89,7 @@ impl Principal {
             caps,
             constraint: None,
             delegator: None,
+            run_id: None,
         }
     }
 
@@ -93,6 +110,7 @@ impl Principal {
             caps,
             constraint: None,
             delegator: None,
+            run_id: None,
         }
     }
 
@@ -120,6 +138,9 @@ impl Principal {
             // Same root-preservation rule as `constraint`: a nested derive still acts for the
             // ORIGINAL caller, never for the intermediate agent.
             delegator: Some(self.delegator.clone().unwrap_or_else(|| self.sub.clone())),
+            // A derived in-process principal is NOT run-scoped (the run_id is a token-only claim,
+            // set by `verify` from a run token). The run-status gate fires at the gateway, not here.
+            run_id: None,
         }
     }
 
@@ -154,5 +175,12 @@ impl Principal {
     /// for an ordinary principal (bounded only by `caps`). Read by `caps::check`.
     pub fn constraint(&self) -> Option<&[String]> {
         self.constraint.as_deref()
+    }
+
+    /// The run id this token is scoped to (agent-key-lifecycle D3). `None` for an ordinary principal;
+    /// `Some(run_id)` for a verified run-scoped token. Read by the gateway's `verify_token` to
+    /// consult the job's status — a terminal run's token is refused even if unexpired.
+    pub fn run_id(&self) -> Option<&str> {
+        self.run_id.as_deref()
     }
 }

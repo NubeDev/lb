@@ -22,6 +22,11 @@ lb-insights.workspace = true
 lb-prefs.workspace = true
 lb-assets.workspace = true
 lb-apikey.workspace = true
+# The run-token verify/refresh path (agent-key-lifecycle D3) reads the job's status — terminal
+# run ⇒ token refused even if unexpired (hard cancel is instant). The host re-exports job verbs
+# but the raw `Job::status` read is cheapest here, so the gateway reaches the store crate
+# directly (it already depends on `lb-host`, which itself depends on `lb-jobs`).
+lb-jobs.workspace = true
 # Only the `test_gateway` harness binary uses lb-outbox (to seed real effects). It is optional and
 # pulled in by the `test-harness` feature, so the production crate doesn't carry it.
 lb-outbox = { workspace = true, optional = true }
@@ -53,9 +58,13 @@ name = "test_gateway"
 required-features = ["test-harness"]
 
 [dev-dependencies]
-# The active-agent-wiring route test loads the durable agent-session job back to prove it lands in the
-# caller's workspace (the hard wall) — `lb_jobs::load(store, ws, id)` is ws-scoped.
+# The active-agent-wiring route test loads the durable agent-session job back to prove it lands in
+# the caller's workspace (the hard wall) — `lb_jobs::load(store, ws, id)` is ws-scoped.
 lb-jobs.workspace = true
+# The bridge integration test drives the REAL shim lib (`serve_on`) against this real gateway over a
+# duplex pair — no spawned binary, no fake backend (rule 9). The shim's `tools/call` → `POST
+# /mcp/call` round-trip is proven end-to-end, including the run-status gate + the MCP deny contract.
+lb-mcp-shim.workspace = true
 lb-outbox.workspace = true
 lb-registry.workspace = true
 lb-supervisor.workspace = true

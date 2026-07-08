@@ -11,6 +11,8 @@ fn claims(exp: u64) -> Claims {
         caps: vec!["mcp:hello.echo:call".into()],
         iat: 0,
         exp,
+        constraint: None,
+        run_id: None,
     }
 }
 

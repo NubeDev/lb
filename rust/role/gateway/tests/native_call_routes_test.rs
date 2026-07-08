@@ -28,6 +28,8 @@ fn token(key: &SigningKey, ws: &str, caps: &[&str]) -> String {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: NOW - 1,
         exp: NOW + 10_000,
+        constraint: None,
+        run_id: None,
     };
     mint(key, &claims)
 }

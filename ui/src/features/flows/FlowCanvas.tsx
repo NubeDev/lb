@@ -56,6 +56,8 @@ import { FlowCanvasHeader } from "./FlowCanvasHeader";
 import { flowDirty } from "./flowDirty";
 import { useLiveValues } from "./useLiveValues";
 import { downloadFlow, parseImportedFlow } from "./flowTransfer";
+import { DebugPanel } from "./debug/DebugPanel";
+import { defaultConfig } from "./defaultConfig";
 
 const nodeTypes = { flow: FlowNodeView };
 
@@ -92,6 +94,10 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const [saveError, setSaveError] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
+  // The debug panel drawer (debug-node-scope). Toggled by the Bug button in the header; tails the
+  // flow's `debug` nodes over the SSE route. Auto-opens when a debug node is present in the flow on
+  // open (Node-RED shows the sidebar when there's something to debug).
+  const [debugOpen, setDebugOpen] = useState(false);
   // The DEPLOYED graph — what the running system currently holds. The canvas is a draft; Deploy is
   // enabled only when the buffer differs from this (Node-RED posture). Updated on every successful
   // Deploy/per-node Save so the dirty flag clears (flow-deploy-ux scope).
@@ -109,6 +115,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     setPanelError(null);
     setUndoStack([]);
     setDeployedFlow(flow); // a freshly-opened flow IS the deployed graph → Deploy starts clean.
+    // Auto-open the debug panel when the flow has a debug node (Node-RED shows the sidebar when
+    // there's something to debug). The operator can still close it from the header toggle.
+    setDebugOpen(flow.nodes.some((n) => n.type === "debug"));
     void reattach(flow.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.id]);
@@ -225,7 +234,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
         ...ns,
         { id, type: "flow", position: { x: 360, y: 120 + ns.length * 20 }, data: { type: desc.type, colour: "pending", locked: false, gated: false } },
       ]);
-      setConfigs((c) => ({ ...c, [id]: {} }));
+      // Seed the per-node starter config (a freshly-added `rhai` node, for example, opens with a
+      // working payload-routing template instead of a blank source box).
+      setConfigs((c) => ({ ...c, [id]: defaultConfig(desc.type) }));
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes.length],
@@ -429,6 +440,8 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
         runStatus={snapshot?.status ?? null}
         saveError={saveError}
         runError={runError}
+        debugOpen={debugOpen}
+        onToggleDebug={() => setDebugOpen((o) => !o)}
         onUndo={handleUndo}
         onExport={handleExport}
         onImport={(f) => void handleImport(f)}
@@ -482,6 +495,9 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
           onClose={() => setSelectedId(null)}
           error={panelError}
         />
+        {debugOpen ? (
+          <DebugPanel flowId={flow.id} onClose={() => setDebugOpen(false)} />
+        ) : null}
       </div>
     </section>
   );

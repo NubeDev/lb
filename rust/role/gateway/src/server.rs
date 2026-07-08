@@ -16,28 +16,29 @@ use crate::routes::{
     define_role, delete_dashboard, delete_def, delete_flow, delete_message, delete_nav,
     delete_panel, delete_role, delete_rule, delete_team, delete_user, disable_extension,
     disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
-    flow_node_state, flow_run_stream, format_datetime, format_number, format_quantity,
-    get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow,
-    get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_nav,
-    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, get_webhook, grant_skill,
-    identity_workspaces_route, inject_flow, insight_events, latest_sample, lifecycle_flow,
-    link_doc, list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
-    list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
-    list_inbox, list_insights, list_members, list_navs, list_occurrences, list_panels, list_roles,
-    list_rules, list_series, list_shares_nav, list_tables, list_team_members, list_teams,
-    list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog,
-    native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook,
-    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
-    read_samples, read_schema, remove_datasource, remove_member, remove_team_member, rename_team,
-    rename_workspace, render_catalog_message, reset_extension, resolve_caps, resolve_inbox,
-    resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route,
-    revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule,
-    run_stream, save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table,
-    series_stream, serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav,
-    set_default_prefs, set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
-    share_panel, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
-    update_def, update_flow_node, write_samples,
+    flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
+    format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def,
+    get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_insight,
+    get_layout, get_nav, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule,
+    get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
+    latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels, list_dashboards,
+    list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
+    list_flows, list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
+    list_occurrences, list_panels, list_roles, list_rules, list_series, list_shares_nav,
+    list_tables, list_team_members, list_teams, list_users, list_webhooks, list_workspaces,
+    load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage, patch_flow_run,
+    pin_dashboards, post_message, post_webhook, publish_extension, publish_message,
+    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, refresh_run_token,
+    remove_datasource, remove_member, remove_team_member, rename_team, rename_workspace,
+    render_catalog_message, reset_extension, resolve_caps, resolve_inbox, resolve_insight,
+    resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook,
+    rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
+    save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
+    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
+    set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
+    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
+    update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -79,6 +80,10 @@ pub fn router(gw: Gateway) -> Router {
         // agent-dock run controls — stop / pause / resume a live run (`{op}` = cancel|pause|resume).
         // Header-authed; the host verbs re-check `mcp:agent.control:call` workspace-first (opaque 403).
         .route("/runs/{job}/{op}", post(run_control))
+        // external-agent run-token refresh (agent-key-lifecycle D2): the stdio MCP shim re-mints
+        // its short-TTL bearer here, proactively at 60% TTL AND as a one-shot self-heal on a 401.
+        // Run-status-gated inside `authenticate` (D3) — a terminal run's refresh is refused.
+        .route("/agent/runs/{id}/token/refresh", post(refresh_run_token))
         .route(
             "/teams/{team}/members",
             get(list_team_members).post(add_team_member),
@@ -301,6 +306,10 @@ pub fn router(gw: Gateway) -> Router {
         .route("/flows/{id}/inject", post(inject_flow))
         .route("/flows/{id}/runs", get(list_flow_runs))
         .route("/flows/{id}/node_state", get(flow_node_state))
+        // The live debug feed (debug-node-scope): `EventSource` opens this to tail what a flow's
+        // `debug` nodes publish — `debug` frames (json/text/markdown, deltas-only in v1). Gated
+        // `flows.debug.watch`. GET under `/flows/{id}/…`, so it sits beside the flow's other routes.
+        .route("/flows/{id}/debug/stream", get(flow_debug_stream))
         .route("/flows/runs/{run_id}", get(get_flow_run))
         // The live settle feed (flow-runtime-control-scope): `EventSource` opens this and folds a
         // `snapshot` frame then `flow` deltas as each node settles + a terminal `run-finished` — the

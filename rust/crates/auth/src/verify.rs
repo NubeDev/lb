@@ -35,10 +35,16 @@ pub fn verify(key: &SigningKey, token: &str, now: u64) -> Result<Principal, Auth
         return Err(AuthError::Expired);
     }
 
-    Ok(Principal::new(
+    // A run-scoped token (agent-key-lifecycle D1–D5) carries `constraint` (the caller's caps, so
+    // gate 2b fires on the verified principal) + `run_id` (so the gateway can refuse a terminal
+    // run's token). An ordinary token has neither — `Principal::from_token_claims` with two
+    // `None`s is equivalent to the old `Principal::new`.
+    Ok(Principal::from_token_claims(
         claims.sub,
         claims.ws,
         claims.role,
         claims.caps,
+        claims.constraint,
+        claims.run_id,
     ))
 }

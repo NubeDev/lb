@@ -90,6 +90,7 @@ async fn drive_injects_the_resolved_key_into_the_child_env() {
         workspace,
         Duration::from_secs(30),
         Some((env_name, "sealed-key-VALUE-42")), // the resolved sealed key, injected for this child
+        &[],
         None,
     )
     .await
@@ -123,6 +124,7 @@ async fn no_injection_falls_back_to_the_process_env() {
         workspace,
         Duration::from_secs(30),
         None, // no injection → inherit the process env (the fallback path)
+        &[],
         None,
     )
     .await

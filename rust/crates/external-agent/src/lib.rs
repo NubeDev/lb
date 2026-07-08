@@ -33,5 +33,5 @@ pub mod wrappers;
 
 pub use driver::{drive, DriveError};
 pub use profile::{AgentProfile, ModelEndpoint};
-pub use wrapper::{AgentWrapper, Decoded};
+pub use wrapper::{AgentWrapper, Decoded, McpConfig};
 pub use wrappers::{CodexWrapper, VtcodeWrapper};

@@ -361,6 +361,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "scaffold a new extension from a template",
     },
     HostTool {
+        tool: "devkit.write_file",
+        group: "devkit",
+        description: "write or replace a source file inside a scaffolded extension dir",
+    },
+    HostTool {
         tool: "devkit.inspect",
         group: "devkit",
         description: "inspect an extension's manifest + build inputs",

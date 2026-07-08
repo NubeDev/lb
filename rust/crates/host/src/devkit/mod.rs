@@ -12,6 +12,7 @@ mod root;
 mod scaffold;
 mod templates;
 mod tool;
+mod write_file;
 
 pub use authorize::authorize_devkit;
 pub use build::{devkit_build, BuildStarted};
@@ -22,3 +23,4 @@ pub use root::{devkit_root, DevkitRoot};
 pub use scaffold::devkit_scaffold;
 pub use templates::devkit_templates;
 pub use tool::call_devkit_tool;
+pub use write_file::devkit_write_file;

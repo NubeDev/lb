@@ -87,6 +87,20 @@ pub async fn verify_token(gw: &Gateway, token: &str) -> Result<Principal, AuthRe
     if is_live_revoked(gw, &principal).await {
         return Err(AuthRejection::Invalid);
     }
+    // Run-status gate (agent-key-lifecycle D3): a run-scoped token (carrying `run_id`) is refused
+    // when its job is terminal (cancelled/failed/done), EVEN if unexpired. This is the "braces" to
+    // the TTL's "belt" — hard cancel is instant, without shortening the TTL (which would just add
+    // churn). Collapses to the same opaque `Invalid` so a caller can't tell a run-status refusal
+    // from an expired/revoked credential (no oracle). A store read error is deny-by-default —
+    // failing closed here is correct for a run-scoped credential (the alternative is honoring a
+    // token whose run we can't confirm is live, which is exactly the post-cancel spend window D3
+    // forbids). Ordinary tokens (no `run_id`) skip this read entirely — zero overhead on the hot
+    // session path.
+    if let Some(run_id) = principal.run_id() {
+        if !run_is_live(gw, principal.ws(), run_id).await {
+            return Err(AuthRejection::Invalid);
+        }
+    }
     Ok(principal)
 }
 
@@ -100,6 +114,17 @@ async fn is_live_revoked(gw: &Gateway, principal: &Principal) -> bool {
     token_revoked(&gw.node.store, principal.ws(), &subject)
         .await
         .unwrap_or(false)
+}
+
+/// Is the run-scoped job at `(ws, run_id)` still live (Running/Suspended)? Terminal states
+/// (Done/Failed/Cancelled) return `false` — the token must be refused (D3). A missing job record
+/// is `false` (a token naming an unknown run is not honored). A store read error is `false`
+/// (deny-by-default for a run-scoped credential — see `verify_token`).
+async fn run_is_live(gw: &Gateway, ws: &str, run_id: &str) -> bool {
+    match lb_jobs::load(&gw.node.store, ws, run_id).await {
+        Ok(Some(job)) => job.status.is_resumable(),
+        _ => false,
+    }
 }
 
 /// Verify an API-key bearer credential: parse → O(1) ws-scoped lookup → constant-time HMAC compare

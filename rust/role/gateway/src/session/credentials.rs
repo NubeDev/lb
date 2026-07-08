@@ -93,6 +93,7 @@ fn member_caps() -> Vec<String> {
         // these so the built-in Studio can scaffold/build/inspect through the universal MCP bridge.
         "mcp:devkit.templates:call",
         "mcp:devkit.scaffold:call",
+        "mcp:devkit.write_file:call",
         "mcp:devkit.inspect:call",
         "mcp:devkit.build:call",
         // Studio "open existing" folder picker: `devkit.root` anchors the browse at the devkit root,
@@ -332,6 +333,11 @@ fn member_caps() -> Vec<String> {
         "mcp:flows.node_state:call",
         "mcp:flows.enable:call",
         "mcp:flows.inject:call",
+        // flows debug panel (debug-node-scope): the live debug stream a `debug` node publishes. Member-
+        // level — reading your own workspace's debug tail is as member-level as watching a run. The
+        // gateway re-checks the cap server-side; the bus subject is workspace-walled. The `debug` node
+        // itself needs no cap (it runs inside `flows.run`).
+        "mcp:flows.debug.watch:call",
         // prefs (user-prefs scope): reading/writing your OWN presentation settings is member-level —
         // as member-level as building your own dashboard or reading your own flow. `prefs.get`/
         // `prefs.resolve`/`prefs.set` force the target to the caller's own `sub` (structural, beyond
@@ -522,6 +528,8 @@ pub fn dev_claims(user: &str, workspace: &str, now: u64, ttl: u64) -> Claims {
         caps: member_caps(),
         iat: now,
         exp: now.saturating_add(ttl),
+        constraint: None,
+        run_id: None,
     }
 }
 

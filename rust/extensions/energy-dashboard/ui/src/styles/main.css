@@ -1,0 +1,18 @@
+/*
+ * The CSS entry — Tailwind v4 utilities + theme (NO preflight) + the scoped tokens.
+ *
+ * NO `@import "tailwindcss"` (that includes preflight, which would reset the host's base styles
+ * when this widget is federated into the shell — h2/p/ul lose their host margins, buttons lose
+ * their host styling). Instead: `@import "tailwindcss/theme"` (the design-token CSS vars) +
+ * `@import "tailwindcss/utilities"` (the generated utilities). Preflight stays off.
+ *
+ * The scoped tokens (`tokens.css`) define `.lbx-energy-dashboard` and its dark-mode twin. Every utility class
+ * the template uses resolves its color/spacing against the host's shadcn vars (inherited through
+ * the aliases), so a Tailwind `text-muted-foreground`-style class reads the right palette. The
+ * template uses inline `hsl(var(--lbx-*))` for explicit token reads (charts, borders) to stay
+ * framework-agnostic — a widget that prefers Tailwind utility classes can `@apply` them inside
+ * the `.lbx-energy-dashboard` scope.
+ */
+@import "tailwindcss/theme";
+@import "tailwindcss/utilities";
+@import "./tokens.css";

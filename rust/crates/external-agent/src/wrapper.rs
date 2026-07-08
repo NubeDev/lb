@@ -14,6 +14,8 @@
 //! the driver and identical across agents. Each wrapper stays a thin, tolerant adapter over a third
 //! party we don't control — unknown event shapes are dropped, never fatal.
 
+use std::path::Path;
+
 use lb_run_events::RunEvent;
 
 use crate::profile::AgentProfile;
@@ -50,4 +52,28 @@ pub trait AgentWrapper: Send + Sync {
     /// counter (wrappers are per-step like the v1 in-house loop; the driver owns numbering). A line
     /// the wrapper can't parse must return [`Decoded::Ignore`], not panic — third-party schemas drift.
     fn decode_line(&self, line: &str, turn: u32) -> Decoded;
+
+    /// The per-wrapper MCP-server config the role crate writes into the run's scratch dir so the
+    /// agent binary spawns `lb-mcp-shim` (the bridge) as its MCP server. `shim_bin` is the shim
+    /// binary name/path (e.g. `"lb-mcp-shim"` on PATH); `scratch` is the per-run dir the config
+    /// file should name resources relative to (the menu JSON, the run id, etc.). `None` ⇒ this
+    /// wrapper has no MCP bridge today (the pre-bridge path; the agent runs without host-tool
+    /// reach). Adding one is an impl in the wrapper's own file, never a driver change.
+    ///
+    /// The config contents are wrapper-specific (codex writes a `config.toml` `[mcp_servers.lb]`
+    /// stanza; a future wrapper writes whatever it reads). The bridge ENV vars (`LB_MCP_*`) are
+    /// NOT the wrapper's concern — the role crate sets those on the child regardless; this is only
+    /// the file that tells the agent WHERE to find its MCP server.
+    fn mcp_config(&self, _shim_bin: &str, _scratch: &Path) -> Option<McpConfig> {
+        None
+    }
+}
+
+/// The per-wrapper MCP config file the role crate writes into the scratch dir. `file_name` is
+/// relative to the scratch dir (e.g. `"config.toml"` for codex's `CODEX_HOME`); `contents` is the
+/// full file body. The role crate writes it with mode 0600 (the env stanzas carry the run token).
+#[derive(Debug, Clone)]
+pub struct McpConfig {
+    pub file_name: String,
+    pub contents: String,
 }

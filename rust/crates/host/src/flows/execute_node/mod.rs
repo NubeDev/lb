@@ -9,14 +9,17 @@
 //! - [`stateful`] — `filter` (RBE) + `batch`/`unique` (the durable bounded accumulator, Tier B).
 //! - [`switch`] — multi-output conditional routing / edge gating (Decision 14).
 //! - [`delay`] — durable delay + rate-limit, parking on the resume seam (Decision 16).
+//! - [`debug`] — Node-RED's debug node: a motion-only sink that publishes each wire message onto the
+//!   per-flow debug subject for the canvas debug panel to tail (debug-node-scope).
 //!
 //! Every dispatch goes through the one host chokepoint `call_tool`, so each node-tool's own gate is
 //! re-checked — a flow whose node calls a tool the caller lacks is **denied at that node** (no
-//! widening). The data/JSON pack nodes dispatch no external tool, so they add no new cap surface — the
-//! deny path stays the existing "no `flows.run` cap → the run never starts".
+//! widening). The data/JSON pack nodes and the `debug` node dispatch no external tool, so they add no
+//! new cap surface — the deny path stays the existing "no `flows.run` cap → the run never starts".
 
 mod approval;
 mod core;
+mod debug;
 mod delay;
 mod pure;
 mod sink;
@@ -223,6 +226,11 @@ async fn dispatch(
         ),
         "delay" => {
             return delay::dispatch_delay(node, ws, flow, node_id, config, &inputs, now).await
+        }
+        // Node-RED's debug node: publish the payload onto the flow's debug subject as motion (no
+        // store, no downstream — a terminal observer). Runs under `flows.run`; no new cap.
+        "debug" => {
+            debug::dispatch_debug(node, ws, &flow.id, run_id, node_id, config, &inputs, now).await
         }
         // The approval gate parks the run (like `delay`) until a reviewer resolves its inbox item; the
         // flow-approval reactor resumes it. Returns `Dispatched` directly (it may Park).

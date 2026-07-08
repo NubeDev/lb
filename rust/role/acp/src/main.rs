@@ -61,6 +61,8 @@ async fn main() -> std::io::Result<()> {
         caps: caps.clone(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
 

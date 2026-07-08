@@ -55,6 +55,11 @@ pub enum DriveError {
 /// `None` keeps the pre-sealed-key behavior — the child inherits whatever the operator set in the node
 /// env (the fallback). Only the value crosses here; it never enters the [`AgentProfile`] (pure data).
 ///
+/// `extra_env` is the **bridge env** — additional `(NAME, value)` pairs set on the child for one run
+/// (the MCP-shim bridge: `LB_MCP_GATEWAY_URL`, `LB_MCP_RUN_TOKEN`, `LB_MCP_RUN_ID`, `LB_MCP_MENU_PATH`,
+/// `LB_MCP_REFRESH_AT_SEC`). The values never enter the [`AgentProfile`] or a log — they are set on the
+/// child's env map, not ours. Empty for a wrapper that runs without the bridge (the pre-bridge path).
+///
 /// `sink` is an unbounded channel (never blocks the read loop); a closed receiver is ignored (the run
 /// keeps going and still returns its collected events).
 pub async fn drive(
@@ -64,6 +69,7 @@ pub async fn drive(
     workspace: &str,
     timeout: Duration,
     key: Option<(&str, &str)>,
+    extra_env: &[(String, String)],
     sink: Option<&tokio::sync::mpsc::UnboundedSender<RunEvent>>,
 ) -> Result<Vec<RunEvent>, DriveError> {
     let args = wrapper.command_args(profile, goal, workspace);
@@ -76,6 +82,11 @@ pub async fn drive(
     // Inject the resolved key under its env NAME for THIS child only — the sealed-key value never
     // touches the node's own env, a record, or a log (it is set on the child's env map, not ours).
     if let Some((name, value)) = key {
+        cmd.env(name, value);
+    }
+    // Inject the bridge env (the shim reads these; codex/Open-Interpreter inherits them to its MCP
+    // child). The run token + gateway URL live ONLY here for this child — never a record or log.
+    for (name, value) in extra_env {
         cmd.env(name, value);
     }
     let mut child = cmd.spawn().map_err(|source| DriveError::Spawn {

@@ -31,6 +31,7 @@ pub mod record;
 pub mod retain_runs;
 pub mod retention_sweep;
 pub mod run;
+pub mod run_debug;
 pub mod run_store;
 pub mod runs;
 pub mod save;
@@ -47,6 +48,7 @@ pub use react_interval::{flipflop_run_id, react_to_flows_interval};
 pub use react_source::{react_to_flow_sources, source_run_id, SourceReactorPass};
 pub use reactor_loop::spawn_flow_reactors;
 pub use reconcile::{placement_matches, reconcile_flows, ReconcilePass as FlowReconcilePass};
+pub use run_debug::{watch_flow_debug, FlowDebugWatch};
 pub use source::{arm_source, disarm_source, source_series};
 pub use watch::{watch_flow_run, FlowWatch};
 
@@ -231,6 +233,9 @@ async fn dispatch(
         // `flows.watch` is a live SSE stream, not a JSON dispatch — the gateway's
         // `/flows/runs/{run}/stream` route calls `watch_flow_run` directly (its `mcp:flows.watch:call`
         // gate runs inside). Mirrors `agent.watch`. A JSON call here is therefore not-found.
+        // `flows.debug.watch` is likewise a live SSE stream (the per-flow debug tail the canvas debug
+        // panel opens): the gateway's `/flows/{id}/debug/stream` route calls `watch_flow_debug`
+        // directly. A JSON call here is not-found. (debug-node-scope)
         _ => Err(FlowsError::BadInput(format!(
             "unknown flows verb: {qualified_tool}"
         ))),

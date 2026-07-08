@@ -28,10 +28,39 @@ pub struct TemplateInfo {
     pub world: String,
 }
 
+/// Tolerant deserialization for the `features` field: models frequently pass it as a **stringified
+/// JSON array** (`"[\"ui\", \"series-read\"]"`) instead of a real array. This helper accepts BOTH
+/// shapes — a real array deserializes normally; a string is parsed as JSON first. Absent ⇒ empty.
+fn deserialize_features<'de, D>(deserializer: D) -> Result<Vec<Feature>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Array(Vec<Feature>),
+        String(String),
+    }
+
+    match Option::<Raw>::deserialize(deserializer)? {
+        None => Ok(Vec::new()),
+        Some(Raw::Array(v)) => Ok(v),
+        Some(Raw::String(s)) => {
+            // The model passed a stringified JSON array — parse it.
+            let parsed: Vec<Feature> = serde_json::from_str(&s)
+                .map_err(|e| Error::custom(format!("features string is not valid JSON: {e}")))?;
+            Ok(parsed)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScaffoldRequest {
     pub id: String,
     pub tier: Tier,
+    #[serde(default, deserialize_with = "deserialize_features")]
     pub features: Vec<Feature>,
 }
 
@@ -39,6 +68,14 @@ pub struct ScaffoldRequest {
 pub struct ScaffoldReport {
     pub path: PathBuf,
     pub files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteFileReport {
+    /// The canonical absolute path that was written (resolved under the devkit root).
+    pub path: PathBuf,
+    /// The number of UTF-8 bytes written.
+    pub bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

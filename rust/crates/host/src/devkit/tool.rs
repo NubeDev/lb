@@ -8,7 +8,8 @@ use serde_json::{json, Value};
 use crate::Node;
 
 use super::{
-    devkit_build, devkit_inspect, devkit_root, devkit_scaffold, devkit_templates, DevkitError,
+    devkit_build, devkit_inspect, devkit_root, devkit_scaffold, devkit_templates,
+    devkit_write_file, DevkitError,
 };
 
 pub async fn call_devkit_tool(
@@ -25,6 +26,18 @@ pub async fn call_devkit_tool(
             let req: lb_devkit::ScaffoldRequest = serde_json::from_value(input.clone())
                 .map_err(|e| ToolError::BadInput(e.to_string()))?;
             let report = devkit_scaffold(principal, ws, None, &req)?;
+            Ok(serde_json::to_value(report).unwrap())
+        }
+        "devkit.write_file" => {
+            // `path` is resolved under the devkit root (the same `resolve_under_root` gate
+            // scaffold/build/inspect use). `content` is the UTF-8 source body. An agent authors
+            // its page/tool by writing files here between scaffold and build.
+            let path = path_arg(input)?;
+            let content = input
+                .get("content")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ToolError::BadInput("missing/invalid arg: content".into()))?;
+            let report = devkit_write_file(principal, ws, None, &path, content)?;
             Ok(serde_json::to_value(report).unwrap())
         }
         "devkit.inspect" => {

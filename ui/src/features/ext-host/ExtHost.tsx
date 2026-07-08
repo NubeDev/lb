@@ -41,8 +41,11 @@ export function ExtHost({ ext, ui, workspace }: Props) {
     // Fix: give THIS effect-run its own child <div> under `host`. Runs mount into DIFFERENT nodes, so
     // neither wipes the other's DOM, and a mount that resolves after cleanup can't leak — its teardown
     // lives in the same `alive`/holder closure and always unmounts the root THIS run created.
+    // The slot is the extension's scroll region: every built-in page gets one from `AppPage`, but
+    // `ExtRoute` mounts us raw into the shell's `overflow-hidden` outlet chain — without an
+    // `overflow-y-auto` here, taller-than-viewport extension content gets clipped and no scrollbar appears.
     const slot = document.createElement("div");
-    slot.className = "h-full w-full";
+    slot.className = "h-full w-full overflow-y-auto";
     host.appendChild(slot);
 
     let alive = true;

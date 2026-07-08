@@ -12,6 +12,7 @@ import { AppPageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { BuildStep } from "./BuildStep";
 import { CreateStep } from "./CreateStep";
+import { GenerateWithAgent } from "./GenerateWithAgent";
 import { PublishStep } from "./PublishStep";
 import { Stepper } from "./Stepper";
 import { STUDIO_STEPS } from "./steps";
@@ -57,6 +58,11 @@ export function StudioView({ ws, embedded = false }: Props) {
       )}
 
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4">
+        {/* The "Generate with agent" card — only on the Build tab (embedded) + only when external
+         * runtimes are registered. It's sugar over `agent.invoke` with persona `extension-builder`;
+         * the manual wizard below is untouched. */}
+        {embedded && <GenerateWithAgent ws={ws} />}
+
         <div className="shrink-0 py-6">
           <Stepper step={w.step} onGoBack={w.goTo} />
         </div>

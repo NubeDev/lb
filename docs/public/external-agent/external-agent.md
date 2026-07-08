@@ -13,6 +13,10 @@ gateway. This page documents, once shipped, each slice:
 - **capability-wall** — built-ins-off fail-closed + OS sandbox + MCP-only tool exposure (the safety gate).
 - **model-routing** — models via the gateway's OpenAI-compatible endpoint + scoped token + audit.
 - **run-lifecycle** — the durable run job + resume-per-profile + subprocess supervision + `agent.watch`/`agent.runtimes`.
+- **agent-ext-authoring** — the external agent as an extension author (wasm/native/UI): stdio MCP shim
+  bridge + run-scoped token, `builtin.extension-builder` unlocked on external runtimes (Ask-gated
+  publish preserved), themed shadcn/recharts devkit `ui` template
+  (`../../scope/external-agent/agent-ext-authoring-scope.md`).
 
 ## Agent config — the per-workspace default runtime (shipped)
 

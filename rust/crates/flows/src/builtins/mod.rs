@@ -10,6 +10,7 @@
 //! - [`parse`] — four text↔structure nodes (`csv`/`xml`/`yaml`/`base64`), malformed input FAILS the node.
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
 //! - [`function`] — `filter` (RBE), `unique` (dedupe), `switch` (routing), `delay` (durable park).
+//! - [`observability`] — `debug` (Node-RED's debug node: a motion-only sink the debug panel tails).
 //!
 //! Every built-in speaks the **message envelope** (flow-message-envelope-scope D6): input port
 //! `payload` (+ `topic` carried alongside), output `payload` (+ any field it sets, e.g. the sequence
@@ -18,20 +19,22 @@
 pub mod core;
 pub mod data;
 pub mod function;
+pub mod observability;
 pub mod parse;
 pub mod sequence;
 
 use crate::descriptor::NodeDescriptor;
 
-/// The full built-in registry: the eight spine nodes ∪ the twenty data/JSON pack nodes, in the one
-/// shared shape. The merged `flows.nodes` verb unions this with each installed extension's `[[node]]`
-/// descriptors.
+/// The full built-in registry: the spine nodes ∪ the data/JSON pack ∪ the observability nodes, in the
+/// one shared shape. The merged `flows.nodes` verb unions this with each installed extension's
+/// `[[node]]` descriptors.
 pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     let mut out = core::core_descriptors();
     out.extend(data::data_descriptors());
     out.extend(parse::parse_descriptors());
     out.extend(sequence::sequence_descriptors());
     out.extend(function::function_descriptors());
+    out.extend(observability::observability_descriptors());
     out
 }
 
@@ -79,6 +82,8 @@ mod tests {
         "unique",
         "switch",
         "delay",
+        // observability (1)
+        "debug",
     ];
 
     #[test]
@@ -86,7 +91,11 @@ mod tests {
         let d = builtin_descriptors();
         let types: Vec<&str> = d.iter().map(|x| x.r#type.as_str()).collect();
         assert_eq!(types, EXPECTED);
-        assert_eq!(d.len(), 32, "12 spine + 20 data/JSON pack nodes");
+        assert_eq!(
+            d.len(),
+            33,
+            "12 spine + 20 data/JSON pack + 1 observability"
+        );
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {
             crate::config_schema::compile_schema(&desc.config)
@@ -153,9 +162,10 @@ mod tests {
     #[test]
     fn data_pack_nodes_are_envelope_transforms() {
         // Every one of the twenty data/JSON-pack nodes is a payload→payload transform (the drop-in
-        // mould). They follow the 12 spine nodes (trigger…sink), so the pack is `EXPECTED[12..]`.
+        // mould). They follow the 12 spine nodes (trigger…sink), so the pack is `EXPECTED[12..32]`.
+        // `EXPECTED[32..]` is the observability pack (`debug`, a sink — NOT a transform), excluded here.
         let d = builtin_descriptors();
-        for ty in &EXPECTED[12..] {
+        for ty in &EXPECTED[12..32] {
             let desc = d.iter().find(|x| &x.r#type == ty).unwrap();
             assert_eq!(desc.kind, NodeKind::Transform, "{ty} should be a transform");
             assert_eq!(desc.inputs, vec!["payload".to_string()], "{ty} input");

@@ -146,7 +146,9 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 p-4">
         <div className="grid min-h-0 content-start gap-3 overflow-y-auto" aria-label="wizard step">
           {step === "source" && <SourceStep ws={ws} state={state} patch={patchAndBump} />}
-          {step === "chartType" && <ChartTypeStep state={state} onChange={changeView} />}
+          {step === "chartType" && (
+            <ChartTypeStep state={state} onChange={changeView} draft={cell} patch={patch} refreshKey={refreshKey} />
+          )}
           {step === "options" && (
             <OptionsStep
               state={state}

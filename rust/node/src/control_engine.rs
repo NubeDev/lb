@@ -48,6 +48,8 @@ fn admin_principal(ws: &str) -> Principal {
         ],
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).expect("freshly minted token verifies")
 }

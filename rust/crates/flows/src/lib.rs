@@ -34,6 +34,7 @@ pub mod registry;
 
 pub use binding::{resolve_bindings, NodeOutput};
 pub use builtins::builtin_descriptors;
+pub use builtins::observability::{DEFAULT_COLLAPSE_BYTES, DEFAULT_RATE_LIMIT};
 pub use coalesce::{Coalesce, CoalesceStrategy};
 pub use config_schema::{compile_schema, validate_config, ConfigSchemaError};
 pub use descriptor::{NodeDescriptor, NodeKind};

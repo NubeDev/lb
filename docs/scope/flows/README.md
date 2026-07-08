@@ -29,6 +29,7 @@ canonical **Decisions (v1)** that every other doc references by number.
 | [chains-retirement-scope.md](chains-retirement-scope.md) | **Retire `chains` — flows are the one DAG engine.** Executes Decision 6 to its end: **delete** the `chains.*` verbs, the host `chains` module, the `lb_rules::workflow` model, the gateway routes, and the React chain canvas (flows are a proven superset). No alias — a clean pre-1.0 cut. `rule-chains-scope.md` retires to lineage. |
 | [flow-context-scope.md](flow-context-scope.md) | **Node-RED context — node / flow / global state.** One `flow_context` table (three id shapes: `node:{flow}:{node}:{key}` / `flow:{flow}:{key}` / `global:{key}`), rhai `context`/`flow`/`global` handles via a `ContextSeam` (the shipped `ai`/`inbox` handle pattern) with atomic `incr`, `${context.<scope>.<key>}` in bindings so `change`/`switch` read it, `flows.context.*` verbs + a canvas context panel, governors + teardown/orphan GC. Generalises the `counter` node's `flow_node_memory`. Flags the `catch`/`status` observability-node pack as the next parity gap (owned by `data-nodes`' defer-list). |
 | [flow-plc-reliability-scope.md](flow-plc-reliability-scope.md) | **PLC-grade reliability + the reactive run model.** Fixes the frozen-`gw.now` constant-run-id bug (one finished run looked perpetually re-runnable → store `Invalid revision`/transaction-conflict, flickering controls), hardens the run-store write against concurrent rev RMW (per-key lock + retry, the capped-ring precedent), and wires **Run = deploy** for triggered/source flows (Node-RED reactive posture: arm via `flows.enable`+`start_on_boot`, reconciler-owned, survives restart; Stop disarms) while a manual chain stays one-shot. |
+| [debug-node-scope.md](debug-node-scope.md) | **Node-RED's debug node + sidebar, over the shipped plane.** One new host-resolved built-in `debug` (kind `sink`, one `payload` in, no out — runs under `flows.run`, no new exec cap) that publishes each wire message as **motion** onto a ws-walled `flow_debug:{ws}:{flow}` subject (fire-and-forget, no SurrealDB record — rule 3 made literal), one new live-feed verb `flows.debug.watch` + a gateway SSE route (a near-verbatim copy of `flows.watch`), and a dockable **debug panel** rendering `json`/`text`/`markdown` type-aware (JSON tree, `react-markdown`+`remark-gfm` already deps) with **auto-collapse** for long values. v1 is motion-only (browser tail, no replay); persistence-to-disc is the named follow-up. Ships the `debug` node from the observability pack `data-nodes`/`flow-context` defer-list; `catch`/`status`/`complete`/`link` stay sibling scopes. |
 
 ## Build order (suggested)
 
@@ -45,6 +46,12 @@ switch/slider/JSON, which consumes the envelope's `payload`/`topic` ports).
 any time, **Tier B** (durable-state nodes) once the accumulator record is settled, **Tier C**
 (`switch`/`split`/`join`/`delay`) only after the `flow-run` engine seam for gating/sequences is
 decided. Not a prerequisite for anything else; purely additive palette content.
+
+**Observability (`debug-node`):** the Node-RED debug node + sidebar — a host-resolved `sink` that
+publishes wire messages as **motion** onto a `flow_debug` subject, plus a `flows.debug.watch` SSE verb
++ a canvas debug panel (json/text/markdown, auto-collapse). Builds *after* `flow-runtime-control`
+(it copies the `flows.watch` SSE trio verbatim) and `flow-message-envelope` (it reads `payload`); ships
+the `debug` node only, with `catch`/`status`/`complete`/`link` left as the recommended next pack.
 
 ## Related (platform primitives reused)
 

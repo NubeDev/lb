@@ -287,7 +287,7 @@ substance (declared caps, tools, size) and wait for a human decision. Built ≠ 
 approved you drive the new tool via its own MCP call and confirm it via tools.catalog / telemetry.read \
 before reporting."""
 granted_tools = [
-  "devkit.templates", "devkit.scaffold", "devkit.inspect", "devkit.build", "devkit.root",
+  "devkit.templates", "devkit.scaffold", "devkit.write_file", "devkit.inspect", "devkit.build", "devkit.root",
   "host.fs.list",
   "ext.list", "ext.publish", "ext.disable", "ext.uninstall",
   "native.install", "native.call", "native.reset",
@@ -297,13 +297,16 @@ granted_tools = [
 grounding_skills = ["core.extension-authoring", "core.extensions", "core.e2e-backend"]
 # (like `runtimes`, MUST precede the `[persona.policy_preset]` sub-table header)
 surfaces = ["extensions", "studio"]
-# Runtime restriction: in-house ONLY until the external-agent capability-wall sandbox ships (external
-# runtimes get scratch=workdir + egress=gateway; the in-house loop is bounded by the MCP wall alone,
-# which is honest here because no raw fs/shell verb exists in the catalog). Applying this persona with
-# any other runtime fails at run start with a named error (apply.rs::check_runtime).
+# Runtime restriction: UNLOCKED for external runtimes (external-agent-authoring scope S2). The
+# external bridge is now live: the shim confines every tool call to `POST /mcp/call` (re-checked
+# by `caps::check`), the run token is run-status-gated (D3 — hard cancel is instant), and the Ask
+# floor fires at the gateway for bridged calls (same durable suspension as the in-house loop). The
+# OS sandbox (namespaces/seccomp) stays in `capability-wall-scope.md` — publish/install are still
+# Ask-gated, which is the actual safety floor. A member gets the honest deny on the first devkit
+# verb (admin-tier caps); the persona is only useful to an admin caller.
 # NOTE (TOML): `runtimes` MUST precede the `[persona.policy_preset]` sub-table — once a sub-table header
 # opens, subsequent bare keys bind to IT, not the parent persona (a real bug caught by the #4 test).
-runtimes = ["default"]
+runtimes = ["default", "open-interpreter-default", "vtcode-default", "codex-default"]
 # SAFETY POSTURE (persona-coding #4):
 # The Ask floor — every node-mutating verb requires a human decision (durable suspension, agent.decide).
 # The edit-build-inspect inner loop stays Allow (fluid) — supervision that prompts on every build is

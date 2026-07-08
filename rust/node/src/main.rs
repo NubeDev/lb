@@ -225,6 +225,8 @@ async fn main() -> anyhow::Result<()> {
         caps: vec!["mcp:hello.echo:call".into()],
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
     let principal = lb_auth::verify(&key, &token, 1).expect("freshly minted token verifies");

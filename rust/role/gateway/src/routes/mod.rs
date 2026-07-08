@@ -44,6 +44,7 @@ mod prefs;
 mod rules;
 mod run_control;
 mod run_stream;
+mod run_token_refresh;
 mod series_stream;
 mod store_query;
 pub(crate) mod stream;
@@ -89,9 +90,9 @@ pub use ext::{
 };
 pub use ext_ui::serve_ext_ui;
 pub use flows::{
-    delete_flow, enable_flow, flow_node_state, flow_run_stream, get_flow, get_flow_node,
-    get_flow_run, inject_flow, lifecycle_flow, list_flow_nodes, list_flow_runs, list_flows,
-    patch_flow_run, run_flow, save_flow, update_flow_node,
+    delete_flow, enable_flow, flow_debug_stream, flow_node_state, flow_run_stream, get_flow,
+    get_flow_node, get_flow_run, inject_flow, lifecycle_flow, list_flow_nodes, list_flow_runs,
+    list_flows, patch_flow_run, run_flow, save_flow, update_flow_node,
 };
 pub use history::get_history;
 pub use identity::{
@@ -128,6 +129,7 @@ pub use prefs::{
 pub use rules::{delete_rule, get_rule, list_rules, run_rule, save_rule};
 pub use run_control::run_control;
 pub use run_stream::run_stream;
+pub use run_token_refresh::refresh_run_token;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};
 pub use stream::channel_stream;

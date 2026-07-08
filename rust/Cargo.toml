@@ -34,6 +34,7 @@ members = [
     "crates/insights",
     "crates/jobs",
     "crates/mcp",
+    "crates/mcp-shim",
     "crates/outbox",
     "crates/prefs",
     "crates/prql",
@@ -92,6 +93,7 @@ lb-ingest = { path = "crates/ingest" }
 lb-insights = { path = "crates/insights" }
 lb-jobs = { path = "crates/jobs" }
 lb-mcp = { path = "crates/mcp" }
+lb-mcp-shim = { path = "crates/mcp-shim" }
 lb-outbox = { path = "crates/outbox" }
 lb-prefs = { path = "crates/prefs" }
 lb-prql = { path = "crates/prql" }

@@ -203,6 +203,8 @@ async fn seed_session(
         ws: req.workspace.clone(),
         role: Role::Member,
         caps: req.caps.clone(),
+        constraint: None,
+        run_id: None,
         iat: gw.now().saturating_sub(1),
         exp: gw.now().saturating_add(10_000),
     };
