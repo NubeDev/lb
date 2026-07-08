@@ -3,29 +3,43 @@
 // "you won't see this again"), then discarded from UI state; the list NEVER renders a hash or secret
 // (the Rust test pins the wire; here we assert the rendered DOM too). Read-only/read-write is the
 // badge from the key's assigned built-in role. All verbs re-check `mcp:apikey.manage:call` server-side
-// — the tab's presence is display convenience only. Uses the shadcn primitives (ui-standards scope).
+// — the tab's presence is display convenience only.
+//
+// Built on shadcn primitives (access-console consistency): the shared `Table` (sticky header) + the
+// shared `AdminToolbar` (search + "New key"), no local page header (the `AdminView` tab strip owns it),
+// no raw `<table>`. Tokens only — the revoke uses the `Button` `destructive` variant.
 
 import { useState } from "react";
-import { Copy, KeyRound, RotateCw, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Plus, RotateCw, Trash2 } from "lucide-react";
 
+import { AppEmptyState } from "@/components/app/empty-state";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AdminPanel } from "./AdminPanel";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AdminToolbar } from "./AdminToolbar";
 import { useApiKeys } from "./useApiKeys";
 
 interface Props {
-  ws: string;
+  ws?: string;
 }
 
 const KINDS = ["appliance", "cli", "api", "agent"] as const;
 const ROLES = ["apikey-read", "apikey-write"] as const;
 
-export function ApiKeysAdmin({ ws }: Props) {
+export function ApiKeysAdmin(_: Props) {
   const { keys, error, newSecret, create, revoke, rotate, clearSecret } = useApiKeys();
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState("");
   const [kind, setKind] = useState<string>("appliance");
   const [role, setRole] = useState<string>("apikey-read");
+  const [filter, setFilter] = useState("");
 
   async function save() {
     const trimmed = label.trim();
@@ -35,21 +49,45 @@ export function ApiKeysAdmin({ ws }: Props) {
     setCreating(false);
   }
 
-  const action = (
-    <Button variant="default" size="sm" aria-label="new key" onClick={() => setCreating((c) => !c)}>
-      <KeyRound size={13} /> New key
-    </Button>
+  const q = filter.toLowerCase();
+  const visible = keys.filter(
+    (k) => k.label.toLowerCase().includes(q) || k.prefix.toLowerCase().includes(q),
   );
 
   return (
-    <AdminPanel icon={KeyRound} title="API Keys" ws={ws} action={action} error={error}>
-      <div className="space-y-3 px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {error && (
+        <div
+          role="alert"
+          className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+        >
+          {error}
+        </div>
+      )}
+
+      <AdminToolbar
+        search={filter}
+        onSearch={setFilter}
+        searchPlaceholder="Filter keys…"
+        action={
+          <Button size="sm" aria-label="new key" onClick={() => setCreating((c) => !c)}>
+            <Plus size={13} /> {creating ? "Cancel" : "New key"}
+          </Button>
+        }
+      />
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {newSecret && (
-          <div role="alert" className="space-y-2 rounded-md border border-accent/25 bg-accent/10 px-3 py-2">
+          <div
+            role="alert"
+            className="space-y-2 rounded-md border border-accent/25 bg-accent/10 px-3 py-2"
+          >
             <p className="text-xs font-medium text-accent">
               Copy the key now — you won&apos;t see this secret again.
             </p>
-            <code className="block break-all rounded-md bg-bg px-2 py-1 font-mono text-xs">{newSecret}</code>
+            <code className="block break-all rounded-md bg-bg px-2 py-1 font-mono text-xs">
+              {newSecret}
+            </code>
             <div className="flex gap-2">
               <Button
                 variant="outline"
@@ -112,37 +150,44 @@ export function ApiKeysAdmin({ ws }: Props) {
                 ))}
               </div>
             </fieldset>
-            <Button variant="default" size="sm" aria-label="create key" disabled={!label.trim()} onClick={() => void save()}>
+            <Button
+              size="sm"
+              aria-label="create key"
+              disabled={!label.trim()}
+              onClick={() => void save()}
+            >
               Create key
             </Button>
           </div>
         )}
 
-        {keys.length === 0 ? (
-          <p className="text-sm text-muted">No API keys yet. Create one to mint a credential.</p>
+        {visible.length === 0 ? (
+          <AppEmptyState
+            icon={KeyRound}
+            title={filter ? "No keys match." : "No API keys yet."}
+            description={filter ? "Clear the filter to see every key." : "Create one to mint a credential."}
+          />
         ) : (
-          <table className="w-full text-sm" aria-label="api keys">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted">
-                <th className="px-2 py-1.5 font-medium">Label</th>
-                <th className="px-2 py-1.5 font-medium">Kind</th>
-                <th className="px-2 py-1.5 font-medium">Prefix</th>
-                <th className="px-2 py-1.5 font-medium">Badge</th>
-                <th className="px-2 py-1.5 font-medium">Status</th>
-                <th className="px-2 py-1.5 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((k) => (
-                <tr key={k.id} className="border-b border-border/50">
-                  <td className="px-2 py-1.5">{k.label}</td>
-                  <td className="px-2 py-1.5 text-xs text-muted">{k.kind}</td>
-                  <td className="px-2 py-1.5 font-mono text-xs text-muted">{k.prefix}</td>
-                  <td className="px-2 py-1.5 text-xs">{k.badge}</td>
-                  <td className="px-2 py-1.5 text-xs">
-                    {k.status === "__revoked__" ? "revoked" : k.status}
-                  </td>
-                  <td className="px-2 py-1.5 text-right">
+          <Table aria-label="api keys">
+            <TableHeader sticky>
+              <TableRow>
+                <TableHead>Label</TableHead>
+                <TableHead>Kind</TableHead>
+                <TableHead>Prefix</TableHead>
+                <TableHead>Badge</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.map((k) => (
+                <TableRow key={k.id}>
+                  <TableCell className="font-medium text-fg">{k.label}</TableCell>
+                  <TableCell className="text-muted">{k.kind}</TableCell>
+                  <TableCell className="font-mono text-muted">{k.prefix}</TableCell>
+                  <TableCell>{k.badge}</TableCell>
+                  <TableCell>{k.status === "__revoked__" ? "revoked" : k.status}</TableCell>
+                  <TableCell className="text-right">
                     {k.status !== "__revoked__" && (
                       <span className="flex justify-end gap-1">
                         <Button
@@ -163,13 +208,13 @@ export function ApiKeysAdmin({ ws }: Props) {
                         </Button>
                       </span>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
       </div>
-    </AdminPanel>
+    </div>
   );
 }

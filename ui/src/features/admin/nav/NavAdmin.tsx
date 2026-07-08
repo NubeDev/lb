@@ -6,11 +6,13 @@
 // is the boundary. Markup + local edit state; the data + writes live in `useNavs`.
 
 import { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { AdminToolbar } from "../AdminToolbar";
 import { CAP, hasCap } from "@/lib/session";
 import type { NavItem, Visibility } from "@/lib/nav";
 import { useNavs } from "./useNavs";
@@ -68,6 +70,13 @@ export function NavAdmin({ ws, caps }: Props) {
   // Share form state.
   const [shareVis, setShareVis] = useState<Visibility>("private");
   const [shareTeam, setShareTeam] = useState("");
+  const [filter, setFilter] = useState("");
+
+  const visibleNavs = navs.filter(
+    (n) =>
+      n.title.toLowerCase().includes(filter.toLowerCase()) ||
+      n.id.toLowerCase().includes(filter.toLowerCase()),
+  );
 
   const startNew = () => {
     setEditId("");
@@ -248,12 +257,16 @@ export function NavAdmin({ ws, caps }: Props) {
       {editId === null ? (
         // ── Roster ──
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Navigation menus</h3>
-            <Button size="sm" onClick={startNew} aria-label="New nav">
-              New nav
-            </Button>
-          </div>
+          <AdminToolbar
+            search={navs.length ? filter : undefined}
+            onSearch={navs.length ? setFilter : undefined}
+            searchPlaceholder="Filter navs…"
+            action={
+              <Button size="sm" onClick={startNew} aria-label="New nav">
+                <Plus size={13} /> New nav
+              </Button>
+            }
+          />
           {loading ? (
             <div className="text-sm text-muted">Loading…</div>
           ) : navs.length === 0 ? (
@@ -262,7 +275,7 @@ export function NavAdmin({ ws, caps }: Props) {
             </div>
           ) : (
             <ul className="flex flex-col gap-2">
-              {navs.map((n) => (
+              {visibleNavs.map((n) => (
                 <li
                   key={n.id}
                   className="flex items-center justify-between rounded-md border border-border p-2"

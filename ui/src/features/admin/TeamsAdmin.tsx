@@ -11,13 +11,14 @@
 // body stacks on phone-width (`flex-col md:flex-row`, no fixed `w-1/2`).
 
 import { useState } from "react";
-import { UserMinus, UserPlus, UsersRound } from "lucide-react";
+import { Plus, UserMinus, UserPlus, UsersRound } from "lucide-react";
 
 import { AppEmptyState } from "@/components/app/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { AdminToolbar } from "./AdminToolbar";
 import {
   Table,
   TableBody,
@@ -63,7 +64,9 @@ export function TeamsAdmin(_: Props) {
   const [newTeam, setNewTeam] = useState("");
   const [newMember, setNewMember] = useState("");
   const [pending, setPending] = useState<Pending>(null);
+  const [filter, setFilter] = useState("");
 
+  const visibleTeams = teams.filter((t) => t.team.toLowerCase().includes(filter.toLowerCase()));
   const members = selected ? membersByTeam[selected] ?? [] : [];
   const memberSet = new Set(members.map(bare));
   const candidates = users.filter((u) => u.active && !memberSet.has(u.user));
@@ -82,17 +85,22 @@ export function TeamsAdmin(_: Props) {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Left: the roster of teams. Stacks above the detail on a phone. */}
-        <div className="min-w-0 flex-1 border-b border-border md:max-w-[28rem] md:border-b-0 md:border-r">
-          <div className="flex items-center justify-end border-b border-border bg-panel px-3 py-2">
-            <Button
-              variant={!creating ? "default" : "outline"}
-              size="sm"
-              aria-label="new team"
-              onClick={() => setCreating((c) => !c)}
-            >
-              <UsersRound size={13} /> {creating ? "Cancel" : "New team"}
-            </Button>
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col border-b border-border md:max-w-[28rem] md:border-b-0 md:border-r">
+          <AdminToolbar
+            search={filter}
+            onSearch={setFilter}
+            searchPlaceholder="Filter teams…"
+            action={
+              <Button
+                variant={!creating ? "default" : "outline"}
+                size="sm"
+                aria-label="new team"
+                onClick={() => setCreating((c) => !c)}
+              >
+                <Plus size={13} /> {creating ? "Cancel" : "New team"}
+              </Button>
+            }
+          />
           {creating && (
             <form
               className="flex gap-2 border-b border-border bg-panel px-3 py-2"
@@ -119,6 +127,7 @@ export function TeamsAdmin(_: Props) {
               </Button>
             </form>
           )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {teams.length === 0 && !creating ? (
             <AppEmptyState
               icon={UsersRound}
@@ -127,14 +136,14 @@ export function TeamsAdmin(_: Props) {
             />
           ) : (
             <Table>
-              <TableHeader>
+              <TableHeader sticky>
                 <TableRow>
                   <TableHead>Team</TableHead>
                   <TableHead>Members</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teams.map((t) => (
+                {visibleTeams.map((t) => (
                   <TableRow
                     key={t.team}
                     aria-label={`select ${t.team}`}
@@ -152,6 +161,7 @@ export function TeamsAdmin(_: Props) {
               </TableBody>
             </Table>
           )}
+          </div>
         </div>
 
         {/* Right: the selected team's members + inherited access. */}

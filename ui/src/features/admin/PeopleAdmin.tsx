@@ -13,12 +13,13 @@
 // body stacks on phone-width (`flex-col md:flex-row`, no fixed `w-1/2`).
 
 import { useState } from "react";
-import { UserPlus, Users } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 
 import { AppEmptyState } from "@/components/app/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AdminToolbar } from "./AdminToolbar";
 import {
   Table,
   TableBody,
@@ -56,9 +57,11 @@ export function PeopleAdmin({ caps }: Props) {
   const [creating, setCreating] = useState(false);
   const [newUser, setNewUser] = useState("");
   const [pending, setPending] = useState<Pending>(null);
+  const [filter, setFilter] = useState("");
 
   const sel = members.find((m) => m.sub === selected) ?? null;
   const roleNames = roles.map((r) => r.name);
+  const visibleMembers = members.filter((m) => bare(m.sub).toLowerCase().includes(filter.toLowerCase()));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -73,17 +76,22 @@ export function PeopleAdmin({ caps }: Props) {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Left: the roster of members. Stacks above the detail on a phone. */}
-        <div className="min-w-0 flex-1 border-b border-border md:max-w-[32rem] md:border-b-0 md:border-r">
-          <div className="flex items-center justify-end border-b border-border bg-panel px-3 py-2">
-            <Button
-              variant={!creating ? "default" : "outline"}
-              size="sm"
-              aria-label="new user"
-              onClick={() => setCreating((c) => !c)}
-            >
-              <UserPlus size={13} /> {creating ? "Cancel" : "New user"}
-            </Button>
-          </div>
+        <div className="flex min-w-0 flex-1 flex-col border-b border-border md:max-w-[32rem] md:border-b-0 md:border-r">
+          <AdminToolbar
+            search={filter}
+            onSearch={setFilter}
+            searchPlaceholder="Filter members…"
+            action={
+              <Button
+                variant={!creating ? "default" : "outline"}
+                size="sm"
+                aria-label="new user"
+                onClick={() => setCreating((c) => !c)}
+              >
+                <Plus size={13} /> {creating ? "Cancel" : "New user"}
+              </Button>
+            }
+          />
           {creating && (
             <form
               className="flex gap-2 border-b border-border bg-panel px-3 py-2"
@@ -110,6 +118,7 @@ export function PeopleAdmin({ caps }: Props) {
               </Button>
             </form>
           )}
+          <div className="min-h-0 flex-1 overflow-y-auto">
           {members.length === 0 && !creating ? (
             <AppEmptyState
               icon={Users}
@@ -118,14 +127,14 @@ export function PeopleAdmin({ caps }: Props) {
             />
           ) : (
             <Table>
-              <TableHeader>
+              <TableHeader sticky>
                 <TableRow>
                   <TableHead>Member</TableHead>
                   <TableHead>Teams</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {members.map((m) => (
+                {visibleMembers.map((m) => (
                   <TableRow
                     key={m.sub}
                     aria-label={`select ${bare(m.sub)}`}
@@ -143,6 +152,7 @@ export function PeopleAdmin({ caps }: Props) {
               </TableBody>
             </Table>
           )}
+          </div>
         </div>
 
         {/* Right: the selected member's detail. */}
