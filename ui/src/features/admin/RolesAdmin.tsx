@@ -236,8 +236,10 @@ export function RolesAdmin({ caps }: Props) {
         </div>
 
         {/* Right: the editor — opens only for a selected role (edit) or after "New role" (create);
-            otherwise a placeholder, so "New role" has a visible effect. */}
-        <div className="min-w-0 flex-1 overflow-y-auto px-4 py-4">
+            otherwise a placeholder, so "New role" has a visible effect. Structured like the left
+            panel — a top BAR (a flex sibling, same `min-h-12 py-2` as the `AdminToolbar`) then a
+            separate scroll region — so the two panels' top bars sit on the exact same row. */}
+        <div className="flex min-w-0 flex-1 flex-col">
           {!selRole && !creating ? (
             <AppEmptyState
               icon={KeyRound}
@@ -245,10 +247,10 @@ export function RolesAdmin({ caps }: Props) {
               description="Select a role to edit it, or click “New role” to create one."
             />
           ) : (
-          <div className="space-y-4">
-            {/* Sticky header keeps the title + Save pinned while the (long) cap tree scrolls under
-                it. `-mx-4 -mt-4 px-4` cancels the pane's padding so the bar spans full width. */}
-            <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center gap-2 border-b border-border bg-panel px-4 py-3">
+          <>
+            {/* The editor's top bar — mirrors the left `AdminToolbar` box (min-h-12, py-2, border-b,
+                bg-panel) so the title + Save line up with the roster's search + New role. */}
+            <div className="flex min-h-12 items-center gap-2 border-b border-border bg-panel px-4 py-2">
               <h2 className="text-sm font-semibold text-fg">
                 {selRole ? `Edit role: ${selRole.name}` : "New role"}
               </h2>
@@ -273,6 +275,7 @@ export function RolesAdmin({ caps }: Props) {
                 )}
               </div>
             </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
             <div>
               <label
                 htmlFor="role-name"
@@ -378,7 +381,8 @@ export function RolesAdmin({ caps }: Props) {
                 </>
               )}
             </div>
-          </div>
+            </div>
+          </>
           )}
         </div>
       </div>

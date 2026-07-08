@@ -205,6 +205,10 @@ standard:
 
 ## Related
 
+- `scope/frontend/admin-page-patterns-scope.md` — the **copy-this-shape layout recipes**
+  (floating panel, list-toolbar, list/detail alignment, inline create-form) extracted from the
+  Access console. Read it to build any list-or-list/detail console; this doc is the rules, that
+  one is the concrete patterns + a pre-flight checklist.
 - `scope/frontend/ui-design-scope.md` — the look/tokens brief (this doc adds the *how*).
 - `scope/frontend/frontend-scope.md` — the shell plan; its open question "shadcn/ui primitives:
   pull in the generator when the component set grows" is what this scope answers.

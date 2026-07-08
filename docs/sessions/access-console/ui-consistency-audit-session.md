@@ -123,8 +123,64 @@ below all 209 rows. Redesigned:
 
 Tests: `groupCaps` 8/8; `RolesAdmin.gateway.test.tsx` 3/3; `tsc` clean. No test edits needed.
 
+## Second pass (2026-07-08) — floating panel, alignment, Workspaces create
+
+Screenshot-driven polish, all in `ui/src/features/admin/`. The reusable recipes extracted
+from this pass live in **`docs/scope/frontend/admin-page-patterns-scope.md`** (P1–P4 + a
+pre-flight checklist) — read that to apply the same look to the next console.
+
+- **Nav roster → shared `Table`.** `nav/NavAdmin.tsx` rendered its roster as a `<ul>` of
+  cards; converted to the shared `Table` (Title / Visibility / Id / Actions) so it matches
+  API Keys and the other list tabs. Empty/filtered states use `AppEmptyState`.
+
+- **Nav "New nav" keeps the toolbar mounted.** The Nav editor used to replace the whole
+  roster (including its search bar). Extracted the editor JSX to a `navEditor` const and made
+  the `AdminToolbar` always-mounted; its action flips **New nav ⇄ Cancel** and the editor
+  renders below it — mirroring the API Keys create flow (pattern **P4**).
+
+- **Floating content panel (pattern P1).** The Access console content sat flat on `bg-bg`
+  while the tab strip was a floating rounded-bordered pill, so the content read as a square
+  with an "invisible" border. Wrapped all `TabsContent` in one panel matching the tab-strip
+  material (`rounded-lg border border-border bg-panel-2/70 overflow-hidden`), floated on a
+  shared `px-2`/`m-2` gutter so the strip and content align as two floating panels. Change is
+  in `AdminView.tsx` only — the shared `Tabs` primitive is untouched (scoped, per CLAUDE §10).
+  Verified with a token-accurate static render (not the live app; the change is CSS-only and
+  the component tree is covered by the passing gateway tests).
+
+- **Table left-padding consistency.** API Keys and Nav wrapped their scroll container in
+  `px-4`, indenting their tables ~16px more than Workspaces/People/Teams/Roles (which are
+  edge-to-edge). Removed the container padding from both; moved the inset onto the non-table
+  children (`mx-4 mt-3` on the create form / secret banner). All six tables now share one left
+  edge (pattern **P2** invariant).
+
+- **Workspaces "New workspace" (net-new).** The Workspaces tab was lifecycle-only
+  (list/rename/archive/purge); creation lived only in the switcher. Added the create flow
+  (pattern **P4**): a `create(ws, name)` method on `useWorkspacesAdmin.ts` wired to the
+  existing real `workspace.create` verb (`ui/src/lib/workspace/workspace.api.ts`), a new
+  `CAP.workspaceCreate` (`mcp:workspace.create:call`) in `admin-caps.ts`, and a toolbar
+  button + id/name form in `WorkspacesAdmin.tsx` gated by `hasCap`. `AdminView.tsx` now passes
+  `caps` to the tab. New gateway test drives the form against the real node and asserts the row
+  lands in the live directory. The verb gates against the caller's own workspace server-side
+  (unchanged — same as the switcher).
+
+- **List/detail bar alignment (pattern P3).** In Roles, the roster's `AdminToolbar` and the
+  editor's header sat at different heights, so their rows didn't line up. Root cause: the
+  editor header was a **sticky element with `-mt-4`/`-mx-4` negative margins inside a `py-4`
+  scroll pane**, which offset its effective top from the flush left toolbar. Restructured the
+  right panel to be structurally identical to the left — a plain first-child bar
+  (`min-h-12 py-2 border-b bg-panel`) then a separate `overflow-y-auto` body. Also pinned the
+  shared `AdminToolbar` to `min-h-12` so bar height is content-independent everywhere. Save
+  stays visible while the cap tree scrolls (the bar is outside the scroll region).
+
+Tests (second pass): AdminView 4/4, ApiKeysAdmin 2/2, NavAdmin 5/5, WorkspacesAdmin 3/3,
+PeopleAdmin 3/3, TeamsAdmin 2/2, RolesAdmin 3/3; `tsc --noEmit` clean.
+
 ## Follow-ups
 
 - Overview (card grid) was already clean; left as-is.
 - The `solid` Button variant on the API-key kind/role selectors is the only `solid`
   usage; kept (valid variant, not a violation).
+- **Promote `admin-page-patterns-scope.md` to `public/frontend/`** once a second console
+  (settings, an extension admin UI) adopts P1–P4 — that proves the recipes generalize.
+- Consider adding a **rename** row-action to Workspaces (`useWorkspacesAdmin` already exposes
+  `rename`, which also un-archives); the table currently shows only Archive/Purge.
