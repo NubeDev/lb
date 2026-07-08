@@ -85,11 +85,11 @@ export function ApiKeysAdmin(_: Props) {
         }
       />
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {newSecret && (
           <div
             role="alert"
-            className="space-y-2 rounded-md border border-accent/25 bg-accent/10 px-3 py-2"
+            className="mx-4 mt-3 space-y-2 rounded-md border border-accent/25 bg-accent/10 px-3 py-2"
           >
             <p className="text-xs font-medium text-accent">
               Copy the key now — you won&apos;t see this secret again.
@@ -114,7 +114,7 @@ export function ApiKeysAdmin(_: Props) {
         )}
 
         {creating && (
-          <div className="space-y-3 rounded-md border border-border bg-panel px-3 py-3">
+          <div className="mx-4 mt-3 space-y-3 rounded-md border border-border bg-panel px-3 py-3">
             <label className="block text-xs text-muted">
               Label
               <Input

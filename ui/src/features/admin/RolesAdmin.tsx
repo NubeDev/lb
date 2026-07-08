@@ -12,11 +12,12 @@
 // body stacks on phone-width (`flex-col md:flex-row`, no fixed `w-1/2`), matching PeopleAdmin.
 
 import { useEffect, useMemo, useState } from "react";
-import { KeyRound, Plus } from "lucide-react";
+import { KeyRound, Plus, ChevronDown, ChevronRight } from "lucide-react";
 
 import { AppEmptyState } from "@/components/app/empty-state";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -31,6 +32,7 @@ import { hasCap } from "@/lib/session";
 import { CAP } from "@/lib/session/admin-caps";
 import { ConfirmDestructive } from "@/features/confirm";
 import { AdminToolbar } from "./AdminToolbar";
+import { groupCaps } from "./roles/groupCaps";
 import { useRoles } from "./useRoles";
 
 interface Props {
@@ -53,6 +55,9 @@ export function RolesAdmin({ caps }: Props) {
   // click "New role" (create). Until then the right pane is a placeholder — so "New role" visibly
   // opens the form instead of appearing to do nothing.
   const [creating, setCreating] = useState(false);
+  // Which cap groups the user has explicitly expanded. Groups also auto-open when they hold a
+  // checked cap or match the filter (see `isOpen`), so this only tracks manual toggles.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   const canDelete = hasCap(caps, CAP.rolesManage);
 
@@ -79,7 +84,22 @@ export function RolesAdmin({ caps }: Props) {
   );
 
   const visibleRoles = roles.filter((r) => r.name.toLowerCase().includes(roleFilter.toLowerCase()));
-  const visibleCaps = candidates.filter((c) => c.toLowerCase().includes(capFilter.toLowerCase()));
+
+  // The caps bucketed by extension (agent, dashboard, …) — the whole set, so per-group counts are
+  // filter-independent. The filter only narrows the rendered ROWS (below), matching the old
+  // substring-on-full-cap semantics.
+  const groups = useMemo(() => groupCaps(candidates), [candidates]);
+  const q = capFilter.trim().toLowerCase();
+  const anyMatch = q === "" || candidates.some((c) => c.toLowerCase().includes(q));
+
+  /** A group is open when the user expanded it, OR it holds a checked cap, OR (with an active
+   *  filter) it has a matching row — so selecting a role reveals its caps and filtering reveals hits. */
+  function isOpen(group: string, caps: { cap: string }[]): boolean {
+    if (openGroups.has(group)) return true;
+    if (caps.some((e) => draftCaps.has(e.cap))) return true;
+    if (q !== "" && caps.some((e) => e.cap.toLowerCase().includes(q))) return true;
+    return false;
+  }
 
   function startNew() {
     setSelected(null);
@@ -91,6 +111,20 @@ export function RolesAdmin({ caps }: Props) {
     setDraftCaps((prev) => {
       const next = new Set(prev);
       next.has(cap) ? next.delete(cap) : next.add(cap);
+      return next;
+    });
+  }
+  function toggleGroup(group: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      next.has(group) ? next.delete(group) : next.add(group);
+      return next;
+    });
+  }
+  function setGroupAll(caps: { cap: string }[], on: boolean) {
+    setDraftCaps((prev) => {
+      const next = new Set(prev);
+      for (const { cap } of caps) (on ? next.add(cap) : next.delete(cap));
       return next;
     });
   }
@@ -212,21 +246,32 @@ export function RolesAdmin({ caps }: Props) {
             />
           ) : (
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
+            {/* Sticky header keeps the title + Save pinned while the (long) cap tree scrolls under
+                it. `-mx-4 -mt-4 px-4` cancels the pane's padding so the bar spans full width. */}
+            <div className="sticky top-0 z-10 -mx-4 -mt-4 flex items-center gap-2 border-b border-border bg-panel px-4 py-3">
               <h2 className="text-sm font-semibold text-fg">
                 {selRole ? `Edit role: ${selRole.name}` : "New role"}
               </h2>
-              {creating && (
+              <div className="ml-auto flex items-center gap-2">
                 <Button
-                  variant="ghost"
                   size="sm"
-                  className="ml-auto"
-                  aria-label="cancel new role"
-                  onClick={() => setCreating(false)}
+                  aria-label="save role"
+                  disabled={!draftName.trim()}
+                  onClick={() => void save()}
                 >
-                  Cancel
+                  {selRole ? "Save changes" : "Create role"}
                 </Button>
-              )}
+                {creating && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="cancel new role"
+                    onClick={() => setCreating(false)}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               <label
@@ -263,37 +308,76 @@ export function RolesAdmin({ caps }: Props) {
                     value={capFilter}
                     onChange={(e) => setCapFilter(e.target.value)}
                   />
-                  {visibleCaps.length === 0 ? (
+                  {!anyMatch ? (
                     <p className="text-xs text-muted">No capabilities match the filter.</p>
                   ) : (
-                    <ul className="space-y-1">
-                      {visibleCaps.map((cap) => (
-                        <li key={cap} className="flex items-center gap-2 text-xs">
-                          <Checkbox
-                            id={`cap-${cap}`}
-                            aria-label={`include ${cap}`}
-                            checked={draftCaps.has(cap)}
-                            onChange={() => toggle(cap)}
-                          />
-                          <label htmlFor={`cap-${cap}`} className="cursor-pointer font-mono">
-                            {cap}
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
+                    <div className="space-y-1">
+                      {groups.map(({ group, caps: groupCapsList }) => {
+                        const rows = q
+                          ? groupCapsList.filter((e) => e.cap.toLowerCase().includes(q))
+                          : groupCapsList;
+                        if (rows.length === 0) return null; // group has no filter hit — hide it
+                        const checked = groupCapsList.filter((e) => draftCaps.has(e.cap)).length;
+                        const total = groupCapsList.length;
+                        const open = isOpen(group, groupCapsList);
+                        const allOn = checked === total;
+                        return (
+                          <Collapsible key={group} open={open}>
+                            <div className="flex items-center gap-1">
+                              <CollapsibleTrigger
+                                aria-label={`toggle group ${group}`}
+                                onClick={() => toggleGroup(group)}
+                                className="flex flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-xs hover:bg-bg/60"
+                              >
+                                {open ? (
+                                  <ChevronDown size={13} className="text-muted" />
+                                ) : (
+                                  <ChevronRight size={13} className="text-muted" />
+                                )}
+                                <span className="font-medium text-fg">{group}</span>
+                                <span className="text-muted">
+                                  {checked}/{total}
+                                </span>
+                              </CollapsibleTrigger>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[0.6875rem]"
+                                aria-label={allOn ? `deselect all ${group}` : `select all ${group}`}
+                                onClick={() => setGroupAll(groupCapsList, !allOn)}
+                              >
+                                {allOn ? "None" : "All"}
+                              </Button>
+                            </div>
+                            <CollapsibleContent forceMount className="data-[state=closed]:hidden">
+                              <ul className="ml-5 space-y-1 border-l border-border pl-3">
+                                {rows.map(({ cap, label }) => (
+                                  <li key={cap} className="flex items-center gap-2 text-xs">
+                                    <Checkbox
+                                      id={`cap-${cap}`}
+                                      aria-label={`include ${cap}`}
+                                      checked={draftCaps.has(cap)}
+                                      onChange={() => toggle(cap)}
+                                    />
+                                    <label
+                                      htmlFor={`cap-${cap}`}
+                                      title={cap}
+                                      className="cursor-pointer font-mono"
+                                    >
+                                      {label}
+                                    </label>
+                                  </li>
+                                ))}
+                              </ul>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
                   )}
                 </>
               )}
             </div>
-
-            <Button
-              size="sm"
-              aria-label="save role"
-              disabled={!draftName.trim()}
-              onClick={() => void save()}
-            >
-              {selRole ? "Save changes" : "Create role"}
-            </Button>
           </div>
           )}
         </div>

@@ -6,12 +6,21 @@
 // is the boundary. Markup + local edit state; the data + writes live in `useNavs`.
 
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { List, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { AppEmptyState } from "@/components/app/empty-state";
 import { AdminToolbar } from "../AdminToolbar";
 import { CAP, hasCap } from "@/lib/session";
 import type { NavItem, Visibility } from "@/lib/nav";
@@ -246,6 +255,278 @@ export function NavAdmin({ ws, caps }: Props) {
     );
   }
 
+  // The editor form — rendered inline below the (always-mounted) roster toolbar so the search bar
+  // stays put while editing, mirroring the API Keys "New key" flow.
+  const navEditor = (
+    <>
+      <Input
+        aria-label="Nav title"
+        placeholder="Menu title (e.g. Operations)"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+
+      {/* The ordered items list */}
+      <ol className="flex flex-col gap-2" data-testid="nav-items">
+        {items.map((it, i) => (
+          <li
+            key={`${it.kind}-${i}`}
+            className="flex items-center justify-between rounded-md border border-border p-2"
+          >
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{it.kind}</Badge>
+              <span className="text-sm">
+                {it.label ||
+                  it.surface ||
+                  it.dashboard ||
+                  it.ext ||
+                  it.facets?.map((f) => f.key).join(",")}
+              </span>
+            </div>
+            <div className="flex gap-1">
+              <Button size="sm" variant="ghost" onClick={() => move(i, -1)} aria-label="Move up">
+                ↑
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => move(i, 1)} aria-label="Move down">
+                ↓
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => removeItem(i)}
+                aria-label="Remove item"
+              >
+                ✕
+              </Button>
+            </div>
+          </li>
+        ))}
+        {items.length === 0 && (
+          <li className="text-sm text-muted">No items yet — add one below.</li>
+        )}
+      </ol>
+
+      {/* Add-item form */}
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2">
+        <Select
+          className="w-36"
+          aria-label="Item kind"
+          value={addKind}
+          onChange={(e) => setAddKind(e.target.value as NavItem["kind"])}
+        >
+          <option value="surface">Surface</option>
+          <option value="dashboard">Dashboard</option>
+          <option value="ext">Extension</option>
+          {/* Two dynamism mechanisms, named side by side (reusable-pages scope, "one mental model"):
+              tag-group = MANY dashboards (by tag); template-group = ONE dashboard, many bindings. */}
+          <option value="tag-group">Dashboards by tag</option>
+          <option value="template-group">One dashboard per ⟨value⟩</option>
+          <option value="group">Group</option>
+        </Select>
+
+        {addKind === "surface" && (
+          <Select
+            className="w-40"
+            aria-label="Surface"
+            value={addSurface}
+            onChange={(e) => setAddSurface(e.target.value)}
+          >
+            {CORE_SURFACES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        )}
+        {addKind === "dashboard" && (
+          <>
+            <Select
+              className="w-48"
+              aria-label="Dashboard"
+              value={addDashboard}
+              onChange={(e) => setAddDashboard(e.target.value)}
+            >
+              <option value="">Pick a dashboard</option>
+              {dashOptions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </Select>
+            {/* reusable-pages: an optional pinned binding → a curated named instance in the menu. */}
+            <Input
+              aria-label="Pinned vars"
+              placeholder="Pin vars (site=plant-2)"
+              className="w-44"
+              value={addPinned}
+              onChange={(e) => setAddPinned(e.target.value)}
+            />
+          </>
+        )}
+        {addKind === "template-group" && (
+          // reusable-pages: pick the TEMPLATE dashboard, the parameter it binds, and the facet key
+          // whose distinct values fan it out (one menu page per value, no dashboard copy).
+          <>
+            <Select
+              className="w-48"
+              aria-label="Template dashboard"
+              value={addDashboard}
+              onChange={(e) => setAddDashboard(e.target.value)}
+            >
+              <option value="">Pick a template</option>
+              {dashOptions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </Select>
+            <Input
+              aria-label="Template parameter"
+              placeholder="Parameter (e.g. site)"
+              className="w-36"
+              value={addVar}
+              onChange={(e) => setAddVar(e.target.value)}
+            />
+            <Input
+              aria-label="Fan-out facet key"
+              placeholder="Facet key (e.g. site)"
+              className="w-36"
+              value={addFacetKey}
+              onChange={(e) => setAddFacetKey(e.target.value)}
+            />
+          </>
+        )}
+        {addKind === "ext" && (
+          <Select
+            className="w-48"
+            aria-label="Extension"
+            value={addExt}
+            onChange={(e) => setAddExt(e.target.value)}
+          >
+            <option value="">Pick an extension</option>
+            {extOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.label}
+              </option>
+            ))}
+          </Select>
+        )}
+        {addKind === "tag-group" && (
+          <Input
+            aria-label="Facet key"
+            placeholder="Facet key (e.g. site)"
+            className="w-40"
+            value={addFacetKey}
+            onChange={(e) => setAddFacetKey(e.target.value)}
+          />
+        )}
+        <Input
+          aria-label="Item label"
+          placeholder="Label (optional)"
+          className="w-40"
+          value={addLabel}
+          onChange={(e) => setAddLabel(e.target.value)}
+        />
+        <Button size="sm" variant="outline" onClick={addItem} aria-label="Add item">
+          Add item
+        </Button>
+      </div>
+
+      {/* Save + visibility tier */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" onClick={() => void doSave()} disabled={busy} aria-label="Save nav">
+          Save
+        </Button>
+        <Select
+          className="w-32"
+          aria-label="Visibility"
+          value={shareVis}
+          onChange={(e) => setShareVis(e.target.value as Visibility)}
+        >
+          <option value="private">Private</option>
+          <option value="team">Team</option>
+          <option value="workspace">Workspace</option>
+        </Select>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => void applyTier()}
+          disabled={busy || !editId}
+          aria-label="Apply visibility"
+        >
+          Apply visibility
+        </Button>
+      </div>
+
+      {/* The live share roster — every team this nav is currently shared to, each removable.
+          A nav has no per-user share by design; a user reaches it by being a member of one of
+          these teams (managed in the Teams admin via teams.add_member/remove_member). */}
+      <section className="flex flex-col gap-2" data-testid="nav-shares">
+        <h4 className="text-xs font-semibold uppercase text-muted">
+          Shared to teams {shares.length > 0 && `(${shares.length})`}
+        </h4>
+        {shares.length === 0 ? (
+          <div className="text-sm text-muted">Not shared to any team yet.</div>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {shares.map((team) => (
+              <li
+                key={team}
+                className="flex items-center justify-between rounded-md border border-border p-2"
+              >
+                <code className="text-sm">{team}</code>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => void doUnshare(team)}
+                  disabled={busy}
+                  aria-label={`Remove share to ${team}`}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Add a team — one S4 share edge per call; the underlying relate is multi-edge, so
+            adding accumulates. Adding a team forces the Team tier. The dropdown is fed by the
+            real `teams.list` (no typing ids); if no teams exist yet, the user creates them in
+            the Teams admin. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            className="w-48"
+            aria-label="Team to add"
+            value={shareTeam}
+            onChange={(e) => setShareTeam(e.target.value)}
+          >
+            <option value="">
+              {sources.teams.length === 0 ? "No teams — create one in Teams" : "Pick a team"}
+            </option>
+            {sources.teams.map((t) => (
+              <option key={t.team} value={t.team}>
+                {t.name || t.team}
+              </option>
+            ))}
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void addTeam()}
+            disabled={busy || !editId || !shareTeam}
+            aria-label="Add team share"
+          >
+            Add team
+          </Button>
+        </div>
+        <p className="text-xs text-muted">
+          To share to a single user, put them in a team here and add the team — a nav has no
+          per-user tier (manage membership in the Teams admin).
+        </p>
+      </section>
+    </>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="nav-admin">
       {error && (
@@ -257,353 +538,110 @@ export function NavAdmin({ ws, caps }: Props) {
         </div>
       )}
 
-      {editId === null ? (
-        // ── Roster ──
-        <section className="flex min-h-0 flex-1 flex-col">
-          <AdminToolbar
-            search={navs.length ? filter : undefined}
-            onSearch={navs.length ? setFilter : undefined}
-            searchPlaceholder="Filter navs…"
-            action={
+      <section className="flex min-h-0 flex-1 flex-col">
+        <AdminToolbar
+          search={navs.length ? filter : undefined}
+          onSearch={navs.length ? setFilter : undefined}
+          searchPlaceholder="Filter navs…"
+          action={
+            editId === null ? (
               <Button size="sm" onClick={startNew} aria-label="New nav">
                 <Plus size={13} /> New nav
               </Button>
-            }
-          />
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          {loading ? (
-            <div className="text-sm text-muted">Loading…</div>
-          ) : navs.length === 0 ? (
-            <div className="text-sm text-muted">
-              No navs yet. Members see the built-in sidebar until you build one.
-            </div>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {visibleNavs.map((n) => (
-                <li
-                  key={n.id}
-                  className="flex items-center justify-between rounded-md border border-border p-2"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{n.title}</span>
-                    <Badge variant="outline">{n.visibility}</Badge>
-                    <code className="text-xs text-muted">{n.id}</code>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void startEdit(n.id)}
-                      aria-label={`Edit ${n.title}`}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void setDefault(n.id)}
-                      aria-label={`Set ${n.title} as workspace default`}
-                    >
-                      Make default
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => void remove(n.id)}
-                      aria-label={`Delete ${n.title}`}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-          </div>
-        </section>
-      ) : (
-        // ── Editor ──
-        <section className="flex min-h-0 flex-1 flex-col">
-          <AdminToolbar
-            action={
+            ) : (
               <>
                 {msg && <span className="text-xs text-muted">{msg}</span>}
-                <Button size="sm" variant="outline" onClick={() => setEditId(null)} aria-label="Back">
-                  ← Back
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditId(null)}
+                  aria-label="Back"
+                >
+                  Cancel
                 </Button>
               </>
-            }
-          />
-          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
-
-          <Input
-            aria-label="Nav title"
-            placeholder="Menu title (e.g. Operations)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-
-          {/* The ordered items list */}
-          <ol className="flex flex-col gap-2" data-testid="nav-items">
-            {items.map((it, i) => (
-              <li
-                key={`${it.kind}-${i}`}
-                className="flex items-center justify-between rounded-md border border-border p-2"
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">{it.kind}</Badge>
-                  <span className="text-sm">
-                    {it.label ||
-                      it.surface ||
-                      it.dashboard ||
-                      it.ext ||
-                      it.facets?.map((f) => f.key).join(",")}
-                  </span>
-                </div>
-                <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => move(i, -1)} aria-label="Move up">
-                    ↑
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => move(i, 1)} aria-label="Move down">
-                    ↓
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => removeItem(i)}
-                    aria-label="Remove item"
-                  >
-                    ✕
-                  </Button>
-                </div>
-              </li>
-            ))}
-            {items.length === 0 && (
-              <li className="text-sm text-muted">No items yet — add one below.</li>
-            )}
-          </ol>
-
-          {/* Add-item form */}
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2">
-            <Select
-              className="w-36"
-              aria-label="Item kind"
-              value={addKind}
-              onChange={(e) => setAddKind(e.target.value as NavItem["kind"])}
-            >
-              <option value="surface">Surface</option>
-              <option value="dashboard">Dashboard</option>
-              <option value="ext">Extension</option>
-              {/* Two dynamism mechanisms, named side by side (reusable-pages scope, "one mental model"):
-                  tag-group = MANY dashboards (by tag); template-group = ONE dashboard, many bindings. */}
-              <option value="tag-group">Dashboards by tag</option>
-              <option value="template-group">One dashboard per ⟨value⟩</option>
-              <option value="group">Group</option>
-            </Select>
-
-            {addKind === "surface" && (
-              <Select
-                className="w-40"
-                aria-label="Surface"
-                value={addSurface}
-                onChange={(e) => setAddSurface(e.target.value)}
-              >
-                {CORE_SURFACES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {addKind === "dashboard" && (
-              <>
-                <Select
-                  className="w-48"
-                  aria-label="Dashboard"
-                  value={addDashboard}
-                  onChange={(e) => setAddDashboard(e.target.value)}
-                >
-                  <option value="">Pick a dashboard</option>
-                  {dashOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.label}
-                    </option>
-                  ))}
-                </Select>
-                {/* reusable-pages: an optional pinned binding → a curated named instance in the menu. */}
-                <Input
-                  aria-label="Pinned vars"
-                  placeholder="Pin vars (site=plant-2)"
-                  className="w-44"
-                  value={addPinned}
-                  onChange={(e) => setAddPinned(e.target.value)}
-                />
-              </>
-            )}
-            {addKind === "template-group" && (
-              // reusable-pages: pick the TEMPLATE dashboard, the parameter it binds, and the facet key
-              // whose distinct values fan it out (one menu page per value, no dashboard copy).
-              <>
-                <Select
-                  className="w-48"
-                  aria-label="Template dashboard"
-                  value={addDashboard}
-                  onChange={(e) => setAddDashboard(e.target.value)}
-                >
-                  <option value="">Pick a template</option>
-                  {dashOptions.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.label}
-                    </option>
-                  ))}
-                </Select>
-                <Input
-                  aria-label="Template parameter"
-                  placeholder="Parameter (e.g. site)"
-                  className="w-36"
-                  value={addVar}
-                  onChange={(e) => setAddVar(e.target.value)}
-                />
-                <Input
-                  aria-label="Fan-out facet key"
-                  placeholder="Facet key (e.g. site)"
-                  className="w-36"
-                  value={addFacetKey}
-                  onChange={(e) => setAddFacetKey(e.target.value)}
-                />
-              </>
-            )}
-            {addKind === "ext" && (
-              <Select
-                className="w-48"
-                aria-label="Extension"
-                value={addExt}
-                onChange={(e) => setAddExt(e.target.value)}
-              >
-                <option value="">Pick an extension</option>
-                {extOptions.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.label}
-                  </option>
-                ))}
-              </Select>
-            )}
-            {addKind === "tag-group" && (
-              <Input
-                aria-label="Facet key"
-                placeholder="Facet key (e.g. site)"
-                className="w-40"
-                value={addFacetKey}
-                onChange={(e) => setAddFacetKey(e.target.value)}
-              />
-            )}
-            <Input
-              aria-label="Item label"
-              placeholder="Label (optional)"
-              className="w-40"
-              value={addLabel}
-              onChange={(e) => setAddLabel(e.target.value)}
-            />
-            <Button size="sm" variant="outline" onClick={addItem} aria-label="Add item">
-              Add item
-            </Button>
-          </div>
-
-          {/* Save + visibility tier */}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => void doSave()} disabled={busy} aria-label="Save nav">
-              Save
-            </Button>
-            <Select
-              className="w-32"
-              aria-label="Visibility"
-              value={shareVis}
-              onChange={(e) => setShareVis(e.target.value as Visibility)}
-            >
-              <option value="private">Private</option>
-              <option value="team">Team</option>
-              <option value="workspace">Workspace</option>
-            </Select>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void applyTier()}
-              disabled={busy || !editId}
-              aria-label="Apply visibility"
-            >
-              Apply visibility
-            </Button>
-          </div>
-
-          {/* The live share roster — every team this nav is currently shared to, each removable.
-              A nav has no per-user share by design; a user reaches it by being a member of one of
-              these teams (managed in the Teams admin via teams.add_member/remove_member). */}
-          <section className="flex flex-col gap-2" data-testid="nav-shares">
-            <h4 className="text-xs font-semibold uppercase text-muted">
-              Shared to teams {shares.length > 0 && `(${shares.length})`}
-            </h4>
-            {shares.length === 0 ? (
-              <div className="text-sm text-muted">Not shared to any team yet.</div>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {shares.map((team) => (
-                  <li
-                    key={team}
-                    className="flex items-center justify-between rounded-md border border-border p-2"
-                  >
-                    <code className="text-sm">{team}</code>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => void doUnshare(team)}
-                      disabled={busy}
-                      aria-label={`Remove share to ${team}`}
-                    >
-                      Remove
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            {/* Add a team — one S4 share edge per call; the underlying relate is multi-edge, so
-                adding accumulates. Adding a team forces the Team tier. The dropdown is fed by the
-                real `teams.list` (no typing ids); if no teams exist yet, the user creates them in
-                the Teams admin. */}
-            <div className="flex flex-wrap items-center gap-2">
-              <Select
-                className="w-48"
-                aria-label="Team to add"
-                value={shareTeam}
-                onChange={(e) => setShareTeam(e.target.value)}
-              >
-                <option value="">
-                  {sources.teams.length === 0 ? "No teams — create one in Teams" : "Pick a team"}
-                </option>
-                {sources.teams.map((t) => (
-                  <option key={t.team} value={t.team}>
-                    {t.name || t.team}
-                  </option>
-                ))}
-              </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void addTeam()}
-                disabled={busy || !editId || !shareTeam}
-                aria-label="Add team share"
-              >
-                Add team
-              </Button>
+            )
+          }
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {editId !== null && (
+            // ── Editor (rendered inline below the toolbar, roster stays put) ──
+            <div className="flex flex-col gap-3 p-4">
+              {navEditor}
             </div>
-            <p className="text-xs text-muted">
-              To share to a single user, put them in a team here and add the team — a nav has no
-              per-user tier (manage membership in the Teams admin).
-            </p>
-          </section>
-          </div>
-        </section>
-      )}
+          )}
+          {editId === null && (
+          <>
+          {loading ? (
+            <div className="text-sm text-muted">Loading…</div>
+          ) : navs.length === 0 || visibleNavs.length === 0 ? (
+            <AppEmptyState
+              icon={List}
+              title={
+                navs.length === 0 ? "No navs yet." : "No navs match."
+              }
+              description={
+                navs.length === 0
+                  ? "Members see the built-in sidebar until you build one."
+                  : "Clear the filter to see every nav."
+              }
+            />
+          ) : (
+            <Table aria-label="navs">
+              <TableHeader sticky>
+                <TableRow>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Visibility</TableHead>
+                  <TableHead>Id</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {visibleNavs.map((n) => (
+                  <TableRow key={n.id}>
+                    <TableCell className="font-medium text-fg">{n.title}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{n.visibility}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-muted">{n.id}</TableCell>
+                    <TableCell className="text-right">
+                      <span className="flex justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void startEdit(n.id)}
+                          aria-label={`Edit ${n.title}`}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => void setDefault(n.id)}
+                          aria-label={`Set ${n.title} as workspace default`}
+                        >
+                          Make default
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => void remove(n.id)}
+                          aria-label={`Delete ${n.title}`}
+                        >
+                          Delete
+                        </Button>
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          </>
+          )}
+        </div>
+      </section>
     </div>
   );
 }
+

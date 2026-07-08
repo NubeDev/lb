@@ -102,6 +102,27 @@ Decisions (with the user):
 - **Disabled ≠ glass.** The washed-out "Create key" / "Apply visibility" buttons are the
   normal `disabled:opacity-50` state (empty required field / unsaved nav), not a style bug.
 
+## Roles capability tree (follow-up, same area)
+
+The Roles editor's 209-item `mcp:…:call` checklist was flat and un-navigable, and Save sat
+below all 209 rows. Redesigned:
+
+- **New pure helper** `ui/src/features/admin/roles/groupCaps.ts` (+ `groupCaps.test.ts`, 8
+  cases) — buckets caps by their first id-segment (the extension). `mcp:` prefix + `:call`
+  suffix stripped for the display label; wildcards → `*` group; non-`mcp:` caps → `other`.
+  Deterministic ordering (named groups alphabetical, `*` then `other` last).
+- **`RolesAdmin.tsx`**: the checklist is now **collapsible groups** (Radix `Collapsible`),
+  each with a `checked/total` badge and an All/None button. Rows show the short label
+  (`def.list`) with the full cap in `title` + the (unchanged) `include ${cap}` aria-label.
+  Groups start **collapsed** but auto-expand when they hold a checked cap or match the filter
+  (best-practice: compact overview, never hides selections). **Save moved into a sticky header**
+  so it's reachable without scrolling.
+- **Load-bearing detail:** `CollapsibleContent forceMount` + `data-[state=closed]:hidden`
+  keeps every checkbox mounted while collapsed, so the gateway test's
+  `getByLabelText("include mcp:user.manage:call")` (which never expands the group) stays green.
+
+Tests: `groupCaps` 8/8; `RolesAdmin.gateway.test.tsx` 3/3; `tsc` clean. No test edits needed.
+
 ## Follow-ups
 
 - Overview (card grid) was already clean; left as-is.
