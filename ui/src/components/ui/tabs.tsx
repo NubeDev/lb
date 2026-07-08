@@ -97,13 +97,20 @@ function TabsContent({ value, className, children, ...props }: TabsContentProps)
       id={`${baseId}-panel-${value}`}
       aria-labelledby={`${baseId}-tab-${value}`}
       data-slot="tabs-content"
-      className={cn("focus-visible:outline-none", className)}
+      // A flex column so a `min-h-0 flex-1` panel inside can own a bounded scroll region — without
+      // `display:flex` here the block box collapses the flex-height chain and the panel can't scroll.
+      className={cn("flex min-h-0 flex-col focus-visible:outline-none", className)}
       tabIndex={0}
       {...props}
     >
       {/* A tab swap re-mounts this panel (inactive → null), so a keyed Reveal gives the incoming panel a
-          fade+slide entrance — gated by the member's motion pref (off = static). Shell tab-transition. */}
-      <Reveal key={value}>{children}</Reveal>
+          fade+slide entrance — gated by the member's motion pref (off = static). Shell tab-transition.
+          The Reveal wrapper carries the flex-height chain so a `min-h-0 flex-1` panel can own its own
+          scroll region (without this the block-level wrapper collapses the chain and the panel can't
+          scroll). */}
+      <Reveal key={value} className="flex min-h-0 flex-1 flex-col">
+        {children}
+      </Reveal>
     </div>
   );
 }
