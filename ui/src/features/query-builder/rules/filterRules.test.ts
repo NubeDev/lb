@@ -16,7 +16,7 @@ import {
   schemaToFields,
   toRuleGroup,
   withRuleMeta,
-} from "./filterQueryBuilder";
+} from "./filterRules";
 
 const schema: Schema = {
   tables: [

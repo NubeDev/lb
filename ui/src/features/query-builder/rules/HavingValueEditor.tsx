@@ -12,7 +12,7 @@ import type { ValueEditorProps } from "react-querybuilder";
 
 import { Input } from "@/components/ui/input";
 import type { SqlAggregation } from "@/lib/panel-kit/sql/query";
-import { ruleAtPath, withRuleMeta } from "./filterQueryBuilder";
+import { ruleAtPath, withRuleMeta } from "./filterRules";
 
 /** The shared field styling — matches the retired VisualRows `FIELD` flavour (FILE-LAYOUT). */
 const FIELD =
