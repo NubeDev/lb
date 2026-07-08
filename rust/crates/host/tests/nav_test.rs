@@ -351,7 +351,9 @@ async fn workspace_isolation() {
 }
 
 async fn ada_sets_pick(store: &Store, ada: &Principal, ws: &str, id: &str) {
-    nav_pref_set(store, ada, ws, Some(id), None, 5).await.unwrap();
+    nav_pref_set(store, ada, ws, Some(id), None, 5)
+        .await
+        .unwrap();
 }
 
 // --- mandatory: gate-3 team-shared deny (non-member) --------------------------------------------
@@ -565,7 +567,9 @@ async fn resolution_precedence_pick_over_team_over_default_over_fallback() {
     nav_save(store, &ada, ws, "mine", "Mine", vec![], 5)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, Some("mine"), None, 6).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("mine"), None, 6)
+        .await
+        .unwrap();
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::Pick);
     assert_eq!(r.nav_id, "mine");
@@ -622,7 +626,9 @@ async fn tag_group_expands_dynamically_and_respects_reachability() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("sites"), None, 2).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("sites"), None, 2)
+        .await
+        .unwrap();
 
     // Before tagging: the tag-group is empty (no dashboard carries a `site` facet).
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
@@ -686,7 +692,9 @@ async fn member_owns_own_pref_cannot_touch_anothers() {
     let store = Store::memory().await.unwrap();
     // A plain member (only the resolve cap) sets their OWN pick — no admin cap needed.
     let ben = principal("user:ben", ws, &[RESOLVE]);
-    nav_pref_set(&store, &ben, ws, Some("somepick"), None, 1).await.unwrap();
+    nav_pref_set(&store, &ben, ws, Some("somepick"), None, 1)
+        .await
+        .unwrap();
     assert_eq!(
         nav_pref_get(&store, &ben, ws).await.unwrap().active,
         "somepick"
@@ -699,7 +707,9 @@ async fn member_owns_own_pref_cannot_touch_anothers() {
         .unwrap()
         .active
         .is_empty());
-    nav_pref_set(&store, &ada, ws, Some("adapick"), None, 2).await.unwrap();
+    nav_pref_set(&store, &ada, ws, Some("adapick"), None, 2)
+        .await
+        .unwrap();
     // Ben's is still his own, unchanged.
     assert_eq!(
         nav_pref_get(&store, &ben, ws).await.unwrap().active,
@@ -736,7 +746,9 @@ async fn group_children_are_stripped_independently() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("admin"), None, 2).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("admin"), None, 2)
+        .await
+        .unwrap();
 
     // Ada holds RESOLVE but NOT rules.run → inside the group, `rules` strips, `channels` stays.
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
@@ -1047,7 +1059,9 @@ async fn hide_strips_menu_but_never_blocks_direct_access() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, Some("ops"), None, 2).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("ops"), None, 2)
+        .await
+        .unwrap();
 
     // Ada holds every cap — before the hide, all three entries resolve.
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
@@ -1120,7 +1134,9 @@ async fn hide_applies_inside_groups_and_at_every_tier() {
         .unwrap();
 
     // Workspace-default tier.
-    nav_set_default(store, &ada, ws, "grouped", 3).await.unwrap();
+    nav_set_default(store, &ada, ws, "grouped", 3)
+        .await
+        .unwrap();
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
     assert_eq!(r.source, NavResolvedSource::WorkspaceDefault);
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
@@ -1246,7 +1262,9 @@ async fn pins_resolve_ordered_cap_stripped_and_never_mutated() {
     assert_eq!(refs, vec!["dashboard:fav", "channels"], "member order kept");
 
     // `pinned: None` (an active-pick-only write) leaves pins untouched.
-    nav_pref_set(store, &ada, ws, Some(""), None, 3).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some(""), None, 3)
+        .await
+        .unwrap();
     assert_eq!(nav_pref_get(store, &ada, ws).await.unwrap().pinned.len(), 2);
 }
 
@@ -1268,7 +1286,11 @@ async fn hide_beats_pin_and_unhide_restores() {
     nav_hidden_set(store, &ada, ws, vec!["channels".into()], 2)
         .await
         .unwrap();
-    assert!(nav_resolve(&node, &ada, ws).await.unwrap().pinned.is_empty());
+    assert!(nav_resolve(&node, &ada, ws)
+        .await
+        .unwrap()
+        .pinned
+        .is_empty());
 
     // Un-hide → the pin is back, with NO write to nav_pref in between.
     nav_hidden_set(store, &ada, ws, vec![], 3).await.unwrap();
@@ -1289,7 +1311,11 @@ async fn pins_member_owned_and_bounded() {
         .await
         .unwrap();
     // Ben's pins are independent (keyed by the principal sub — never a body field).
-    assert!(nav_pref_get(&store, &ben, ws).await.unwrap().pinned.is_empty());
+    assert!(nav_pref_get(&store, &ben, ws)
+        .await
+        .unwrap()
+        .pinned
+        .is_empty());
 
     // Over the pin cap → rejected, nothing persisted over the old value.
     let too_many: Vec<String> = (0..(NAV_MAX_PINNED + 1)).map(|i| format!("p{i}")).collect();
@@ -1304,4 +1330,3 @@ async fn pins_member_owned_and_bounded() {
         vec!["rules".to_string()]
     );
 }
-

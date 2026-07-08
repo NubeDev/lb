@@ -16,7 +16,38 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-08): flow editor UI polish — "less is more" chrome consolidation.** The flows editor's header dropped from ~10 always-visible controls to Deploy · Run⇄Stop (one morphing button) · Pause⇄Resume (one mid-run toggle) · Debug · `⋯` (new `FlowOverflowMenu`: Enable/Disable, Live values, Undo, Export…, Import…, Delete — with a header **"Disabled" badge** so the safety state never hides). Config and Debug became tabs in ONE resizable right dock (new `RightDock.tsx` — they can no longer co-render side by side). The node config panel got a real header/status-line/sticky-footer design with ONE context-aware primary action (`Save node`, or `Patch run` mid-run; `Save flow` dropped — Deploy is the only whole-flow write). Export/Import became a dialog (`FlowTransferDialog.tsx`): JSON preview, pretty⇄compact, Copy/Download, selected-nodes scope with a loud stripped-wires count, paste-or-file import through the real save path. **Found + fixed en route:** the shipped debug panel was never in the repo — a bare `debug` `.gitignore` pattern swallowed `ui/src/features/flows/debug/` at commit time; anchored the pattern and REBUILT the panel for real (SSE tail + type-aware rows + per-node filter; `debugging/frontend/flows-debug-panel-swallowed-by-bare-gitignore-pattern.md`). UI-only — no verb/descriptor/runtime changes. **Tests:** flows suite 10 files / 67 green (incl. new RightDock never-co-render + transfer-dialog cases), `tsc` + eslint clean. Scope
+**Just shipped (2026-07-08): the desktop standalone full-stack build mode (`full` feature).** The
+`lazybones-shell` desktop binary shipped in a **thin IPC mode** (Tauri window + 5 `channel_*`/
+`agent_invoke` commands over a hardcoded demo principal) — the React UI bundled into the webview
+is built for the HTTP/SSE gateway, so login and every gateway verb had nothing to answer them.
+This slice adds a **second build mode** (not a rewrite): the cargo feature **`full`** (implies
+`desktop`) mounts the SSE/HTTP gateway **in-process on `127.0.0.1:8800`** + runs the boot seeders
+(`user:ada` → workspace-admin of `acme`, the core-skill/agent/persona catalogs, the four background
+reactors), so the packaged binary is a 100% standalone node — login, MCP, SSE, agents, flows,
+insights — with no external node. The webview talks to the loopback gateway over HTTP exactly as
+the browser does against `make dev`; one transport-priority flip in `invoke.ts` (an explicit
+`VITE_GATEWAY_URL` wins over Tauri IPC) makes the same UI work in both modes. **No `if desktop` in
+any core crate** (rule 1) — the only switch is the shell crate's own cargo feature; the gateway is
+reached through the same gated HTTP surface as the browser (rule 5/7). Make entrypoints:
+`make -C desktop linux-executable` (thin, unchanged) / `make -C desktop linux-full` (full) /
+`make -C desktop smoke-full` (xvfb boot + `curl /login` → token → real `POST /mcp/call`); Windows
+peers (`windows-full`). **Tests (real store/bus/gateway, rule 9):** the optional-dep seam holds
+(`cargo test -p lazybones-shell` feature-off 2/2 — the property that keeps every CI lane webkit-free);
+`cargo test --features full` **6/6** incl. the headline `full_loopback_test.rs` — a NON-windowed boot
+of `boot_full` on `127.0.0.1:0` + reqwest: login returns a real signed token for `user:ada`/`acme`,
+that token drives a real `tools.catalog` `POST /mcp/call`, AND the mandatory deny (`user:stranger` →
+403, the wall holds). `cargo fmt` clean. One host-only snap `libpthread` quirk blocked the local
+WINDOWED smoke (not a code bug — runs clean in the container; the non-windowed test is the portable
+proof) — logged. **Non-goals (recorded):** persistent store/key (fresh state per launch, seeders
+idempotent), native sidecars (federation/control-engine — `make dev` for those), runtime port
+(`8800` fixed, baked into the UI). Scope
+[`scope/desktop/desktop-standalone-backend-scope.md`](scope/desktop/desktop-standalone-backend-scope.md);
+session [`sessions/desktop/desktop-standalone-backend-session.md`](sessions/desktop/desktop-standalone-backend-session.md);
+debug [`debugging/desktop/full-binary-snap-libpthread-crash-at-window-init.md`](debugging/desktop/full-binary-snap-libpthread-crash-at-window-init.md).
+
+---
+
+**Previously shipped (2026-07-08): flow editor UI polish — "less is more" chrome consolidation.** The flows editor's header dropped from ~10 always-visible controls to Deploy · Run⇄Stop (one morphing button) · Pause⇄Resume (one mid-run toggle) · Debug · `⋯` (new `FlowOverflowMenu`: Enable/Disable, Live values, Undo, Export…, Import…, Delete — with a header **"Disabled" badge** so the safety state never hides). Config and Debug became tabs in ONE resizable right dock (new `RightDock.tsx` — they can no longer co-render side by side). The node config panel got a real header/status-line/sticky-footer design with ONE context-aware primary action (`Save node`, or `Patch run` mid-run; `Save flow` dropped — Deploy is the only whole-flow write). Export/Import became a dialog (`FlowTransferDialog.tsx`): JSON preview, pretty⇄compact, Copy/Download, selected-nodes scope with a loud stripped-wires count, paste-or-file import through the real save path. **Found + fixed en route:** the shipped debug panel was never in the repo — a bare `debug` `.gitignore` pattern swallowed `ui/src/features/flows/debug/` at commit time; anchored the pattern and REBUILT the panel for real (SSE tail + type-aware rows + per-node filter; `debugging/frontend/flows-debug-panel-swallowed-by-bare-gitignore-pattern.md`). UI-only — no verb/descriptor/runtime changes. **Tests:** flows suite 10 files / 67 green (incl. new RightDock never-co-render + transfer-dialog cases), `tsc` + eslint clean. Scope
 [`scope/flows/flow-ui-polish-scope.md`](scope/flows/flow-ui-polish-scope.md);
 session [`sessions/flows/flow-ui-polish-session.md`](sessions/flows/flow-ui-polish-session.md).
 

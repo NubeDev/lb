@@ -144,9 +144,10 @@ pub async fn call_nav_tool(
             // clobbers the pick); present sets/clears it (`""` clears).
             let id = match input.get("id") {
                 None | Some(Value::Null) => None,
-                Some(v) => Some(v.as_str().ok_or_else(|| {
-                    ToolError::BadInput("arg not a string: id".to_string())
-                })?),
+                Some(v) => Some(
+                    v.as_str()
+                        .ok_or_else(|| ToolError::BadInput("arg not a string: id".to_string()))?,
+                ),
             };
             let pref = nav_pref_set(
                 &node.store,

@@ -10,18 +10,8 @@ use crate::state::NodeHandle;
 
 /// Post `item` to `channel` as the session principal. Returns the stored item. Errors are
 /// stringified for the IPC boundary (the UI shows them; a `Denied` reads as "denied").
-pub async fn channel_post(
-    handle: &NodeHandle,
-    channel: &str,
-    item: Item,
-) -> Result<Item, String> {
-    post(
-        &handle.node,
-        &handle.principal,
-        &handle.ws,
-        channel,
-        item,
-    )
-    .await
-    .map_err(|e| e.to_string())
+pub async fn channel_post(handle: &NodeHandle, channel: &str, item: Item) -> Result<Item, String> {
+    post(&handle.node, &handle.principal, &handle.ws, channel, item)
+        .await
+        .map_err(|e| e.to_string())
 }

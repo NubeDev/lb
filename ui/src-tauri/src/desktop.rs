@@ -93,6 +93,32 @@ pub fn run() {
     let handle = rt
         .block_on(NodeHandle::boot("acme"))
         .expect("node boots for the shell");
+
+    // `full` feature: mount the SSE/HTTP gateway in-process on a loopback port + run the
+    // boot seeders so the packaged shell is a 100% standalone node (login, MCP, SSE, the
+    // lot) with no external node to talk to. The webview talks to this loopback origin over
+    // HTTP exactly as the browser does against `make dev` (its `VITE_GATEWAY_URL` is baked
+    // to match). The serve task is held for the app's life — dropping it stops serving.
+    // Thin shell (`desktop` only, the default): this block is absent; the UI uses Tauri IPC.
+    #[cfg(feature = "full")]
+    let _gateway = {
+        // Capture the node + ws off the handle before it moves into `shared` (full needs to
+        // mount the gateway onto the SAME in-process node the IPC commands reach).
+        let node = handle.node.clone();
+        let ws = handle.ws.clone();
+        let addr = lazybones_shell::full::resolve_addr();
+        // A bind failure (port taken) is a hard error for the full mode — the app is useless
+        // without the loopback gateway. Surface it but still open the window so the operator
+        // sees the message rather than a silent exit; every UI call then fails loudly.
+        match rt.block_on(lazybones_shell::full::boot_full(node, &ws, addr)) {
+            Ok(jh) => Some(jh),
+            Err(e) => {
+                eprintln!("full: loopback gateway failed to bind {addr}: {e}");
+                None
+            }
+        }
+    };
+
     let shared: Shared = Arc::new(Mutex::new(handle));
 
     tauri::Builder::default()

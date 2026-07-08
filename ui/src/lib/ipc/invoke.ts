@@ -32,8 +32,19 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 }
 
 /** Invoke a node command by name. Mirrors the Rust command names (`channel_post`, …). Always hits a
- *  REAL node — the Tauri host or the HTTP gateway. Throws if neither is reachable (no fake fallback). */
+ *  REAL node — the Tauri host or the HTTP gateway. Throws if neither is reachable (no fake fallback).
+ *
+ *  Transport priority:
+ *    1. Explicit `VITE_GATEWAY_URL` (the **full-stack** desktop build, baked at UI build time so the
+ *       webview talks to the in-process loopback gateway; AND the browser build) → real HTTP.
+ *    2. Else, inside the Tauri shell with no baked gateway URL (the **thin** desktop build) → Tauri IPC.
+ *    3. Else (a browser with no explicit URL) → the default local dev gateway over HTTP.
+ *
+ *  The full-stack desktop build wins over Tauri IPC by baking `VITE_GATEWAY_URL` — so the same
+ *  webview reuses the entire HTTP/SSE surface the browser is built and tested against, with no
+ *  per-verb IPC mirroring. The thin shell leaves it unset so IPC wins. */
 export function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (import.meta.env.VITE_GATEWAY_URL !== undefined) return httpInvoke<T>(cmd, args);
   if (inTauri()) return tauriInvoke<T>(cmd, args);
   if (gatewayUrl() !== "") return httpInvoke<T>(cmd, args);
   return Promise.reject(

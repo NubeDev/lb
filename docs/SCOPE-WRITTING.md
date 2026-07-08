@@ -33,7 +33,7 @@ For a feature with topic name `<topic>` (kebab-case) and a specific ask `<name>`
 |---|---|---|---|
 | **Scope doc** | `scope/<topic>/<name>-scope.md` | now | Fully written (the deliverable). |
 | **Session doc** | `sessions/<topic>/<name>-session.md` | when work starts | Created from the ABOUT-DOCS template, status `in-progress`. |
-| **Public stub** | `public/<topic>/<topic>.md` | now, if missing | A `TODO` placeholder, filled on ship. |
+| **Public stub** | `doc-site/content/public/<topic>/<topic>.md` | now, if missing | A `TODO` placeholder, filled on ship. |
 | **Skill doc** | `skills/<name>/SKILL.md` | on ship, **if** it exposes a drivable surface | Written/maintained by the implementing session, grounded in a live run. Scope names it; §6 flags whether one is needed. |
 | **Debug area** | `debugging/<topic>/` | on first bug | Created lazily; entries per `debugging-scope.md`. |
 | **Index updates** | see §7 | now | Cross-links wired both ways. |
@@ -51,7 +51,7 @@ top-to-bottom. Match an existing topic if one fits (`caps`, `sync`, `mcp`, `jobs
 
 - `scope/<topic>/<name>-scope.md`
 - `sessions/<topic>/<name>-session.md`
-- `public/<topic>/<topic>.md`
+- `doc-site/content/public/<topic>/<topic>.md`
 - `debugging/<topic>/<symptom>.md`
 
 `<name>` is the specific ask within the topic (often equal to `<topic>` for the first
@@ -68,7 +68,7 @@ scope, then more specific later — e.g. `channels-threading`).
    touches, so the new doc is consistent and references the right `§` numbers.
 4. **Write the scope doc** from the template in §5, working through the platform
    checklist in §6. This is where the thinking goes.
-5. **Create the public stub** if `public/<topic>/<topic>.md` doesn't exist (TODO
+5. **Create the public stub** if `doc-site/content/public/<topic>/<topic>.md` doesn't exist (TODO
    placeholder — it gets filled when the feature ships).
 6. **Wire the indexes and cross-references** (§7).
 7. **Run the self-check** (§8) before handing back.
@@ -84,7 +84,7 @@ implementing session knows what "done" means.
 ```markdown
 # <Topic> scope — <short title>
 
-Status: scope (the ask). Promotes to `public/<topic>/` once shipped.
+Status: scope (the ask). Promotes to `doc-site/content/public/<topic>/` once shipped.
 
 One-paragraph statement of what we want and why. No implementation detail — the brief.
 
@@ -196,7 +196,7 @@ the outbox compose: the job does the work, the outbox delivers the effects.
 ## 7. Indexes & cross-references to update
 
 - **`scope/README.md`** — add/confirm the topic is listed.
-- **`public/<topic>/<topic>.md`** — create the TODO stub if missing.
+- **`doc-site/content/public/<topic>/<topic>.md`** — create the TODO stub if missing.
 - **`skills/<name>/SKILL.md`** — if the feature exposes a drivable surface (§6), note that the
   implementing session owns writing/maintaining it; link it from the scope's "Related".
 - **`README.md`** — if this adds a core component or changes one, update the relevant
@@ -218,7 +218,7 @@ Hand back only when all are true:
 - [ ] The **skill doc** is decided: either the scope names the `skills/<name>/SKILL.md` the build will
   write, or it states N/A (no agent-/API-drivable surface) with the reason (§6 checklist).
 - [ ] Open questions are specific and answerable.
-- [ ] `public/<topic>/<topic>.md` exists (at least as a TODO stub).
+- [ ] `doc-site/content/public/<topic>/<topic>.md` exists (at least as a TODO stub).
 - [ ] Indexes and cross-references (§7) are updated.
 - [ ] The doc matches the house voice: practical, decisive, recommends rather than surveys.
 

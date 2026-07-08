@@ -15,6 +15,6 @@ mod session;
 mod signing_key;
 mod state;
 
-pub use server::{router, serve};
+pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
 pub use state::Gateway;

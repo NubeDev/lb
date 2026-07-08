@@ -20,8 +20,7 @@ use crate::routes::{
     format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def,
     get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_insight,
     get_layout, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs,
-    get_rule,
-    get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
+    get_rule, get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
     latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels, list_dashboards,
     list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
     list_flows, list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
@@ -37,10 +36,9 @@ use crate::routes::{
     save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
     serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
     set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
-    share_panel,
-    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, write_samples,
+    share_panel, system_acp, system_overview, system_subsystem, system_tools, system_topology,
+    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
+    update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -348,5 +346,14 @@ pub fn router(gw: Gateway) -> Router {
 /// transport points here.
 pub async fn serve(gw: Gateway, addr: std::net::SocketAddr) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, router(gw)).await
+}
+
+/// Serve the gateway on a caller-bound listener — the construction-is-not-serving split (above)
+/// extended to the socket, so a caller that wants the OS to pick a free port (`bind 127.0.0.1:0`)
+/// can learn the chosen address off the listener before serving. Used by the desktop shell's
+/// `full` mode (and its non-windowed boot test) so the loopback gateway is reachable without a
+/// fixed port. The caller owns the listener's lifetime; `axum::serve` stops when it closes.
+pub async fn serve_listener(gw: Gateway, listener: tokio::net::TcpListener) -> std::io::Result<()> {
     axum::serve(listener, router(gw)).await
 }
