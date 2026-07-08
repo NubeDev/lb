@@ -28,6 +28,8 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
     verify(&key, &token, 1).expect("token verifies")
@@ -262,6 +264,46 @@ async fn each_verb_is_denied_without_its_cap() {
         .unwrap_err(),
         DashboardError::Denied
     ));
+}
+
+// dashboard.delete's admin override: a non-owner holding the base DELETE cap alone stays denied
+// (owner-only, like save/share); granting `dashboard.delete_any` too lets them tombstone someone
+// else's dashboard. Regression for the UI bug where an admin's delete confirm silently no-op'd —
+// the roster showed the delete affordance for every dashboard (gated on ANY admin cap) but the host
+// only ever checked ownership, so a non-owner admin's click ran the confirm dialog and then hit an
+// opaque Denied with no visible feedback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_any_cap_lets_a_non_owner_admin_delete() {
+    let ws = "ws-dash-delete-any";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+    dashboard_save(&store, &ada, ws, "ops", "Ops", vec![], vec![], 1)
+        .await
+        .unwrap();
+
+    // A non-owner with the plain DELETE cap (no admin override) is still denied.
+    let admin_without_override = principal("user:admin", ws, &[GET, LIST, DELETE]);
+    assert!(matches!(
+        dashboard_delete(&store, &admin_without_override, ws, "ops", 2)
+            .await
+            .unwrap_err(),
+        DashboardError::Denied
+    ));
+    // Still there — the denied attempt did not tombstone it.
+    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    assert!(roster.iter().any(|s| s.id == "ops"));
+
+    // The same principal, now also holding `dashboard.delete_any`, succeeds.
+    let admin_with_override = principal(
+        "user:admin",
+        ws,
+        &[GET, LIST, DELETE, "mcp:dashboard.delete_any:call"],
+    );
+    dashboard_delete(&store, &admin_with_override, ws, "ops", 3)
+        .await
+        .unwrap();
+    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    assert!(!roster.iter().any(|s| s.id == "ops"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

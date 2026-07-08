@@ -7,7 +7,7 @@ instead of inventing new ones. It is the execution counterpart to `SCOPE-WRITTIN
 | Phase | Playbook | Produces |
 |---|---|---|
 | Plan the ask | `SCOPE-WRITTING.md` | `scope/<topic>/<name>-scope.md` |
-| **Build the ask** | **this file** | code + tests + `sessions/…` + `debugging/…` + `public/…` |
+| **Build the ask** | **this file** | code + tests + `sessions/…` + `debugging/…` + `doc-site/content/public/…` |
 
 > **Read first (don't duplicate):** `STAGES.md` (which stage we're in + its exit gate),
 > `FILE-LAYOUT.md` (one responsibility per file — read before writing any code),
@@ -40,11 +40,11 @@ A coding session is **not done** until all of these exist. This is the same chec
 | **Green output** | pasted into the session doc | yes |
 | **Session doc** | `sessions/<topic>/<name>-session.md` | yes |
 | **Debug entries** | `debugging/<area>/<symptom>.md` + `debugging/README.md` row | only if something broke |
-| **Public promotion** | `public/<topic>/<topic>.md` + `public/SCOPE.md` | only if something shipped |
+| **Public promotion** | `doc-site/content/public/<topic>/<topic>.md` + `doc-site/content/public/SCOPE.mdx` | only if something shipped |
 | **Scope updates** | open questions in `scope/<topic>/…` resolved or refreshed | yes |
 | **STATUS.md** | mark the slice/stage state | yes |
 
-The "only if" rows are not loopholes: a slice that touched no `public/` and hit no bugs is
+The "only if" rows are not loopholes: a slice that touched no `doc-site/content/public/` and hit no bugs is
 the exception, not the norm. If you wrote code, you wrote tests and you moved STATUS.
 
 ---
@@ -89,9 +89,10 @@ the exception, not the norm. If you wrote code, you wrote tests and you moved ST
    `debugging/<area>/<symptom>.md` entry and keep it as you investigate. On resolution:
    root cause + fix + a regression test that fails-before/passes-after, then update
    `debugging/README.md`. Cross-link session ↔ debug ↔ test.
-7. **Promote what shipped.** Move durable truth into `public/<topic>/<topic>.md` and
-   update `public/SCOPE.md`. The session log stays as the messy history; `public/` is the
-   trimmed truth a new person reads.
+7. **Promote what shipped.** Move durable truth into `doc-site/content/public/<topic>/<topic>.md`
+   and update `doc-site/content/public/SCOPE.mdx`. (Public docs live in the doc-site now — MDX,
+   authored directly under `doc-site/content/public/`; the old `docs/public/` is gone.) The session
+   log stays as the messy history; `public/` is the trimmed truth a new person reads.
 8. **Close the scope.** Resolve or refresh the scope doc's open questions; if you
    discovered the scope was wrong, fix it there — don't silently diverge.
 9. **Move STATUS.** Update `STATUS.md`: the slice's state, and the stage's exit-gate
@@ -142,7 +143,7 @@ Hand back only when **all** are true (this consolidates the scattered checklists
       a **deny-test per verb**, and the **green output is pasted** in the session doc.
 - [ ] Every bug fixed this session has a **regression test** and a closed **debug entry**.
 - [ ] `sessions/<topic>/<name>-session.md` is filled in (not a stub).
-- [ ] Anything shipped is in **`public/`** and `public/SCOPE.md`.
+- [ ] Anything shipped is in **`doc-site/content/public/`** and `doc-site/content/public/SCOPE.mdx`.
 - [ ] The scope doc's **open questions** are current.
 - [ ] **`STATUS.md`** reflects the new state.
 - [ ] scope ↔ session ↔ public ↔ debug are **cross-linked**.
@@ -166,7 +167,7 @@ Build this slice end to end and COMPLETE — every verb the scope's MCP surface 
 subset. Write the code within FILE-LAYOUT. Ship tests on BOTH backend and frontend
 (including the mandatory capability-deny and workspace-isolation tests, plus a deny-test
 per verb) — real infra seeded via the real write path, NO mock data and NO fake backend
-— and paste the green output. Log any debugging, promote what shipped to public/, update
+— and paste the green output. Log any debugging, promote what shipped to doc-site/content/public/, update
 the scope's open questions, and move STATUS.md. Then show me the session doc and the test
 output. Do what's best long-term, not what's easiest now; if you must defer a verb, say so
 explicitly as a scope non-goal — never leave a silent gap.

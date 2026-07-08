@@ -57,12 +57,14 @@ async fn local_output_matches_remote_shape() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn local_denies_a_verb_outside_the_dev_claims_set() {
     // Parity deny test: local is NOT an admin backdoor — a verb NOT in dev_claims is denied exactly
-    // like a member token would be. `prefs.set_default` is deliberately NOT in dev_claims (it writes
-    // the workspace default — admin-only, ungranted to the dev member).
+    // like a member token would be. `telemetry.purge` is the destructive node-admin op (a separate,
+    // higher grant than the read the dev session carries) and is deliberately NOT in dev_claims, so
+    // the cap gate denies it before dispatch. (Was `prefs.set_default`, but that landed in dev_claims
+    // when the workspace-branding/theme admin editors needed it — the dev login doubles as admin.)
     let local = Local::boot("user:ada", "acme").await.unwrap();
-    let result = local.call("prefs.set_default", json!({})).await;
+    let result = local.call("telemetry.purge", json!({})).await;
     match result {
-        Err(CliError::Denied { tool }) => assert_eq!(tool, "prefs.set_default"),
+        Err(CliError::Denied { tool }) => assert_eq!(tool, "telemetry.purge"),
         other => panic!("local must deny an ungranted verb, got {other:?}"),
     }
 }

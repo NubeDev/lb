@@ -230,11 +230,12 @@ pub use native::{
     NativeServiceError, NativeStatus, SidecarMap, Supervised,
 };
 pub use nav::{
-    call_nav_tool, nav_delete, nav_get, nav_list, nav_list_shares, nav_pref_get, nav_pref_set,
-    nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, Nav, NavError, NavFacet,
-    NavItem, NavPref, NavSummary, ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
-    ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_ITEMS as NAV_MAX_ITEMS,
-    MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
+    call_nav_tool, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares,
+    nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
+    Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
+    ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
+    ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_HIDDEN as NAV_MAX_HIDDEN,
+    MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,

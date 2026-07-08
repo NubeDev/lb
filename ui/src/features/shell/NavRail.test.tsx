@@ -19,6 +19,9 @@ afterEach(cleanup);
 function renderRail(props: {
   allowed: CoreSurface[];
   resolvedItems?: ResolvedNavItem[] | null;
+  hidden?: string[];
+  pinned?: ResolvedNavItem[];
+  onTogglePin?: (ref: string) => void;
 }) {
   return render(
     <ThemeProvider>
@@ -30,6 +33,9 @@ function renderRail(props: {
             onSignOut={vi.fn()}
             allowed={props.allowed}
             resolvedItems={props.resolvedItems}
+            hidden={props.hidden}
+            pinned={props.pinned}
+            onTogglePin={props.onTogglePin}
           />
         </SidebarProvider>
       </BrandingProvider>
@@ -119,6 +125,45 @@ describe("NavRail resolved-nav rendering", () => {
     renderRail({ allowed: ["channels", "dashboards"], resolvedItems: null });
     expect(screen.queryByText("Build")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Studio" })).not.toBeInTheDocument();
+  });
+
+  it("subtracts the workspace hidden-set from the FALLBACK rail (hide-and-pins scope)", () => {
+    // The server can't strip the client-side fallback menu, so the rail subtracts the `hidden`
+    // echo itself. Hiding is declutter only — routes are untouched (a server concern).
+    renderRail({
+      allowed: ["channels", "dashboards", "rules"],
+      resolvedItems: null,
+      hidden: ["dashboards"],
+    });
+    expect(screen.getByRole("button", { name: "Channels" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dashboards" })).not.toBeInTheDocument();
+  });
+
+  it("renders the Pinned section above the menu, from the resolved pins (hide-and-pins scope)", () => {
+    const pinned: ResolvedNavItem[] = [
+      { kind: "surface", label: "Rules", surface: "rules" },
+      { kind: "dashboard", label: "Fav Board", dashboard: "dashboard:fav" },
+    ];
+    renderRail({ allowed: ["channels"], resolvedItems: null, pinned });
+    expect(screen.getByText("Pinned")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Rules" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fav Board" })).toBeInTheDocument();
+    // No pins → no Pinned header (covered by every other test: none renders "Pinned").
+  });
+
+  it("flips a pin through onTogglePin with the entry's ref (rail-only affordance)", () => {
+    const onTogglePin = vi.fn();
+    renderRail({
+      allowed: ["channels"],
+      resolvedItems: null,
+      pinned: [{ kind: "surface", label: "Rules", surface: "rules" }],
+      onTogglePin,
+    });
+    // The pinned entry's toggle reads "Unpin" (pressed); the un-pinned fallback entry offers "Pin".
+    screen.getByRole("button", { name: "Unpin" }).click();
+    expect(onTogglePin).toHaveBeenCalledWith("rules");
+    screen.getAllByRole("button", { name: "Pin" })[0].click();
+    expect(onTogglePin).toHaveBeenCalledWith("channels");
   });
 
   it("spreads the member's theme layout (variant/side) onto the shadcn <Sidebar>", () => {

@@ -22,6 +22,8 @@ fn principal(ws: &str, caps: &[String]) -> Principal {
         caps: caps.to_vec(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
 }

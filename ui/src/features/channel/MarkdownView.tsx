@@ -85,7 +85,7 @@ export function MarkdownView({ children }: Props) {
             }
             // Inline code.
             return (
-              <code className="rounded bg-panel-2/80 px-1 py-0.5 font-mono text-[0.85em] text-accent">
+              <code className="rounded-sm bg-panel-2/80 px-1 py-0.5 font-mono text-[0.85em] text-accent">
                 {code}
               </code>
             );

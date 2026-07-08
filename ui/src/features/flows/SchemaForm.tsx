@@ -86,7 +86,9 @@ export function SchemaForm({ schema, value, onChange, disabled, errors = {} }: S
         />
       ))}
       {Object.keys(props).length === 0 ? (
-        <div className="text-xs text-muted">No configuration.</div>
+        <div className="rounded-md border border-dashed border-border px-2 py-3 text-center text-xs text-muted">
+          This node has no configuration.
+        </div>
       ) : null}
     </div>
   );
@@ -112,7 +114,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   if (enumOpts) {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Select
           aria-label={name}
           disabled={disabled}
@@ -131,23 +133,30 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
   }
 
   if (type === "boolean") {
+    // Booleans render as one label+control ROW (the checkbox sits beside its label, not under it).
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn checkbox primitive; a native checkbox */}
-        <input
-          type="checkbox"
-          aria-label={name}
-          disabled={disabled}
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-      </Labeled>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-xs font-medium text-fg">
+          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn checkbox primitive; a native checkbox */}
+          <input
+            type="checkbox"
+            aria-label={name}
+            disabled={disabled}
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          {label}
+          {required ? <span className="text-destructive"> *</span> : null}
+        </label>
+        <Help schema={schema} />
+        {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      </div>
     );
   }
 
   if (type === "integer" || type === "number") {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="number"
           aria-label={name}
@@ -161,7 +170,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   if (type === "string") {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="text"
           aria-label={name}
@@ -199,7 +208,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   if (type === "array") {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="text"
           aria-label={name}
@@ -225,12 +234,14 @@ function Labeled({
   label,
   required,
   error,
+  schema,
   children,
 }: {
   name: string;
   label: string;
   required: boolean;
   error?: string;
+  schema?: JsonSchema;
   children: React.ReactNode;
 }) {
   return (
@@ -240,9 +251,18 @@ function Labeled({
         {required ? <span className="text-destructive"> *</span> : null}
       </label>
       {children}
+      <Help schema={schema} />
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>
   );
+}
+
+/** The field's help line — the schema's own `description`, rendered under the control (flow-ui-polish:
+ *  the descriptor already carries the words; the form just stopped dropping them). */
+function Help({ schema }: { schema?: JsonSchema }) {
+  const text = schema?.description;
+  if (typeof text !== "string" || text.length === 0) return null;
+  return <span className="text-[11px] leading-snug text-muted">{text}</span>;
 }
 
 function parseNum(s: string, integer: boolean): number | undefined {

@@ -15,6 +15,8 @@ fn principal_in(ws: &str, caps: &[&str]) -> lb_auth::Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: 100,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
     verify(&key, &token, 1).expect("token verifies")

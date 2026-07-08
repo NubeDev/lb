@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lazybones</title>
+    <title></title>
     <script>
       (() => {
+        // Theme boot (no flash) — color-scheme + accent from the cache, applied before first paint.
         try {
           const raw = localStorage.getItem("lb.theme");
           const parsed = raw ? JSON.parse(raw) : {};
@@ -17,6 +18,33 @@
         } catch {
           document.documentElement.dataset.themeAccent = "amber";
           document.documentElement.style.colorScheme = "dark";
+        }
+        // Branding boot (no flash) — the workspace's cached brand (`lb.brand.<ws>`) drives the tab
+        // title + favicon before React mounts. The `<ws>` is parsed from the URL hash (`/t/<ws>/…`);
+        // the token's real workspace is reconciled by the provider on mount, so a mismatched/stale
+        // key here only means a one-round-trip neutral tab before the resolve lands. Neutral (empty)
+        // title on a cache miss — the platform name is never shown.
+        try {
+          const m = location.hash.match(/^#?\/t\/([^/?#]+)/);
+          const ws = m ? decodeURIComponent(m[1]) : "";
+          if (ws) {
+            const raw = localStorage.getItem("lb.brand." + ws);
+            if (raw) {
+              const brand = JSON.parse(raw);
+              if (typeof brand.siteName === "string" && brand.siteName) document.title = brand.siteName;
+              if (typeof brand.faviconDataUri === "string" && /^data:image\//.test(brand.faviconDataUri)) {
+                let link = document.querySelector("link[rel='icon']");
+                if (!link) {
+                  link = document.createElement("link");
+                  link.rel = "icon";
+                  document.head.appendChild(link);
+                }
+                link.href = brand.faviconDataUri;
+              }
+            }
+          }
+        } catch {
+          // Best-effort boot — a miss leaves the neutral title; the provider resolves on mount.
         }
       })();
     </script>

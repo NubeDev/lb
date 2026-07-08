@@ -92,6 +92,8 @@ mod tests {
             caps: vec!["mcp:inbox.list:call".into()],
             iat: 0,
             exp: u64::MAX,
+            constraint: None,
+            run_id: None,
         };
         mint(&key, &claims)
     }

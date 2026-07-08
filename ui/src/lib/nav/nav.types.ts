@@ -91,16 +91,32 @@ export interface ResolvedItem {
 }
 
 /** The `nav.resolve` payload — the caller's effective menu. On `fallback`, `items` is empty and the
- *  UI renders its built-in `SURFACES` (never a blank rail). */
+ *  UI renders its built-in `SURFACES` (never a blank rail), minus `hidden`, with `pinned` above. */
 export interface ResolvedNav {
   source: ResolvedSource;
   nav_id?: string;
   title?: string;
   items: ResolvedItem[];
+  /** The workspace hidden-set ECHO (hide-and-pins scope) — refs (bare surface key | `ext:<id>` |
+   *  `dashboard:<id>`) the admin hid. The UI subtracts these from its client-side fallback menu
+   *  (the one tier the server can't strip); resolved `items`/`pinned` arrive already stripped.
+   *  Hiding never blocks a route — declutter only. */
+  hidden?: string[];
+  /** The caller's pinned favorites, already resolved (cap-, ext-, and hidden-stripped — hide beats
+   *  pin), in the member's order. Rendered as a Pinned section above whichever menu applies. */
+  pinned?: ResolvedItem[];
 }
 
-/** The member's active-nav pick record (`nav_pref`). `active` empty = no pick. */
+/** The member's active-nav pick record (`nav_pref`). `active` empty = no pick; `pinned` holds the
+ *  member's ordered favorite refs (hide-and-pins scope) — the RAW stored refs, not resolved items. */
 export interface NavPref {
   active: string;
+  pinned?: string[];
+  updated_ts: number;
+}
+
+/** The workspace sidebar hidden-set record (`nav_hidden`; hide-and-pins scope). */
+export interface NavHidden {
+  hidden: string[];
   updated_ts: number;
 }

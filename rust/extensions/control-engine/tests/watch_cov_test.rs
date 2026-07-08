@@ -51,6 +51,8 @@ fn child_token(key: &SigningKey, ws: &str, caps: &[String]) -> String {
         caps: caps.to_vec(),
         iat: NOW - 1,
         exp: NOW + 10_000,
+        constraint: None,
+        run_id: None,
     };
     mint(key, &claims)
 }

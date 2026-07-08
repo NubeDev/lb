@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use lb_devkit::{resolve_under_root, scaffold_extension, write_file, Feature, ScaffoldRequest, Tier};
+use lb_devkit::{
+    resolve_under_root, scaffold_extension, write_file, Feature, ScaffoldRequest, Tier,
+};
 
 fn temp_root(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
@@ -29,8 +31,7 @@ fn writes_a_new_file_under_the_extension_dir() {
     let body = "// energy dashboard widget\n";
     let out = write_file(Some(&root), target, body).unwrap();
     assert_eq!(out.bytes, body.len() as u64);
-    let on_disk =
-        std::fs::read_to_string(report.path.join("src/widgets/Energy.tsx")).unwrap();
+    let on_disk = std::fs::read_to_string(report.path.join("src/widgets/Energy.tsx")).unwrap();
     assert_eq!(on_disk, "// energy dashboard widget\n");
 }
 
@@ -55,12 +56,7 @@ fn rejects_path_outside_the_devkit_root() {
     // before any byte is written. This is the safety floor: write_file can't escape the devkit root.
     let root = temp_root("escape");
     scaffold_extension(Some(&root), &request("writer-c")).unwrap();
-    let err = write_file(
-        Some(&root),
-        Path::new("../escape.tsx"),
-        "x",
-    )
-    .unwrap_err();
+    let err = write_file(Some(&root), Path::new("../escape.tsx"), "x").unwrap_err();
     assert!(err.to_string().contains("traversal") || err.to_string().contains("escapes"));
     assert!(!root.join("../escape.tsx").exists());
 }

@@ -53,6 +53,8 @@ fn admin(sub: &str, ws: &str) -> Principal {
             .collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).expect("token verifies")
 }
@@ -336,6 +338,8 @@ async fn the_key_resolves_sealed_workspace_secret_over_env() {
             caps: vec!["secret:agent/*:write".into()],
             iat: 0,
             exp: u64::MAX,
+            constraint: None,
+            run_id: None,
         };
         verify(&key, &mint(&key, &claims), 1).unwrap()
     };
@@ -412,6 +416,8 @@ async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
             caps: vec!["secret:agent/*:write".into()],
             iat: 0,
             exp: u64::MAX,
+            constraint: None,
+            run_id: None,
         };
         verify(&key, &mint(&key, &claims), 1).unwrap()
     };

@@ -265,8 +265,12 @@ export function PieChartSvg({
   ariaLabel: string;
 }) {
   return (
-    <div className="widget-no-drag min-h-0 flex-1" role="img" aria-label={ariaLabel}>
-      <PieChart width={280} height={180} style={{ width: "100%", height: "100%" }}>
+    // Sized by the CONTAINER (same fix as the sparkline above — a fixed-viewport chart stretched by CSS
+    // lets the legend's internal height swallow the plot area). The legend is CONTAINED: past ~4 rows it
+    // scrolls inside the pane instead of squeezing the pie to nothing.
+    <div className="widget-no-drag min-h-0 w-full flex-1 overflow-hidden" role="img" aria-label={ariaLabel}>
+      <ResponsiveContainer width="100%" height="100%" minHeight={0}>
+      <PieChart>
         {showTooltip && (
           <Tooltip
             isAnimationActive={false}
@@ -274,7 +278,7 @@ export function PieChartSvg({
             contentStyle={tooltipStyle}
           />
         )}
-        {showLegend && <RechartsLegend wrapperStyle={{ fontSize: 11 }} />}
+        {showLegend && <RechartsLegend wrapperStyle={{ fontSize: 11, maxHeight: 72, overflowY: "auto" }} />}
         <Pie
           data={data}
           dataKey="value"
@@ -290,6 +294,7 @@ export function PieChartSvg({
           ))}
         </Pie>
       </PieChart>
+      </ResponsiveContainer>
     </div>
   );
 }

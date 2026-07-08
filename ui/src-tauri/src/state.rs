@@ -32,6 +32,8 @@ impl NodeHandle {
             caps: vec!["bus:chan/*:pub".into(), "bus:chan/*:sub".into()],
             iat: 0,
             exp: u64::MAX,
+            constraint: None,
+            run_id: None,
         };
         let token = mint(&key, &claims);
         let principal = verify(&key, &token, 1).map_err(|e| e.to_string())?;

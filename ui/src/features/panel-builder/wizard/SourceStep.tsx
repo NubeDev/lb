@@ -111,7 +111,7 @@ export function SourceStep({ ws, state, patch }: Props) {
   };
 
   return (
-    <div className="grid gap-3" aria-label="wizard source step">
+    <div className="flex min-h-0 flex-1 flex-col gap-3" aria-label="wizard source step">
       <div className="grid gap-1">
         <h2 className="text-sm font-medium text-fg">Pick a source</h2>
         <p className="text-xs text-muted">
@@ -151,14 +151,16 @@ export function SourceStep({ ws, state, patch }: Props) {
         </label>
       )}
       {fedSource && (
-        <div className="grid gap-1.5">
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-1.5">
           <p className="text-[11px] text-muted">
             Author against <code className="text-fg">{fedSource}</code> — Run a query (or load a saved
             one) to use it as the panel's source.
           </p>
-          <div className="h-[26rem] min-h-0 overflow-hidden rounded-md border border-border" aria-label="wizard datasource workbench">
+          <div className="min-h-[26rem] overflow-hidden rounded-md border border-border" aria-label="wizard datasource workbench">
             {/* `initial={state.sql}` — the wizard REMOUNTS this on Back/Next; seeding from the
-                persisted EditorState keeps the authored query instead of resetting the editor. */}
+                persisted EditorState keeps the authored query instead of resetting the editor.
+                Fills the wizard's available height (a fixed 26rem was cramped for the visual/SQL
+                builder on any real monitor) with a 26rem floor so it never collapses. */}
             <QueryWorkbench ws={ws} source={fedSource} sel={sel} onSel={setSel} onUseSql={adoptSql} initial={state.sql} />
           </div>
         </div>

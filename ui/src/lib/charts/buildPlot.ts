@@ -10,6 +10,7 @@
 // One responsibility: (rows, spec) → PlotFrame. Field typing is `fieldKind`; the SVG is `PlotChart`.
 
 import type { PlotSpec } from "./plotSpec";
+import { capPieSlices } from "./pieSlices";
 
 export interface PlotSeries {
   /** The data-array key holding this series' numeric value. */
@@ -61,7 +62,10 @@ function histogram(rows: Array<Record<string, unknown>>, field: string, bins: nu
   return { data: buckets, xKey: X_KEY, series: [{ key: "count", name: "count" }] };
 }
 
-/** Aggregate one y field per distinct x category (pie / bar-of-categories) — sum collides. */
+/** Aggregate one y field per distinct x category (the pie) — sum collides duplicates, then the slice
+ *  list is CAPPED (`capPieSlices`): top slices by value, the tail bucketed into an explicit "Other (n)".
+ *  A high-cardinality category (each timestamp of a timeseries) would otherwise be 100 invisible
+ *  slivers behind a legend wall — aggregated visibly, never hidden. */
 function aggregate(rows: Array<Record<string, unknown>>, xField: string, yField: string): PlotFrame {
   const totals = new Map<string, number>();
   for (const row of rows) {
@@ -70,7 +74,8 @@ function aggregate(rows: Array<Record<string, unknown>>, xField: string, yField:
     const name = xLabel(row[xField]);
     totals.set(name, (totals.get(name) ?? 0) + y);
   }
-  const data = [...totals].map(([name, value]) => ({ [X_KEY]: name, value }));
+  const slices = capPieSlices([...totals].map(([name, value]) => ({ name, value })));
+  const data = slices.map(({ name, value }) => ({ [X_KEY]: name, value }));
   return { data, xKey: X_KEY, series: [{ key: "value", name: yField }] };
 }
 

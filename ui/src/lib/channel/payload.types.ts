@@ -116,6 +116,19 @@ export interface AgentErrorPayload {
   error: string;
 }
 
+/** `kind: "agent_stalled"` — the worker's pause-and-ask item: an (external) run made no progress for
+ *  the no-progress ceiling and was PAUSED (suspended, resumable). NOT terminal — the dock renders a
+ *  "Keep going" (resume) / "Stop" (cancel) prompt wired to `job`. Mirrors the Rust
+ *  `AgentStalledPayload` (rust/crates/host/src/channel/payload.rs). */
+export interface AgentStalledPayload {
+  kind: "agent_stalled";
+  goal: string;
+  /** The run job — the dock wires resume/stop (`/runs/{job}/{op}`) to it. */
+  job: string;
+  /** The honest, human-facing explanation shown above the keep-going/stop choice. */
+  message: string;
+}
+
 /** `kind: "rich_result"` — the render-envelope (channel rich responses scope). Mirrors the Rust
  *  `RichResultPayload` (rust/crates/host/src/channel/payload.rs) ONE-TO-ONE. A worker's viewable
  *  response: a `view` over inline `data` and/or a re-runnable `source`, with row-control `options`, an
@@ -159,6 +172,7 @@ export type ItemPayload =
   | AgentPayload
   | AgentResultPayload
   | AgentErrorPayload
+  | AgentStalledPayload
   | RichResultPayload;
 
 const KINDS = new Set([
@@ -168,6 +182,7 @@ const KINDS = new Set([
   "agent",
   "agent_result",
   "agent_error",
+  "agent_stalled",
   "rich_result",
 ]);
 

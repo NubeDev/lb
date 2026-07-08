@@ -14,9 +14,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PreferencesTab } from "./PreferencesTab";
 import { AgentTab } from "./AgentTab";
 import { BrandingTab } from "./BrandingTab";
+import { SidebarTab } from "./SidebarTab";
 import { ThemeSettingsTab } from "./ThemeSettingsTab";
 
-const TABS = ["preferences", "branding", "theme", "agent"] as const;
+const TABS = ["preferences", "branding", "theme", "sidebar", "agent"] as const;
 export type SettingsTab = (typeof TABS)[number];
 
 /** Coerce an arbitrary URL segment to a valid tab (unknown → the default). */
@@ -58,6 +59,9 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
           <TabsTrigger value="theme" aria-label="Theme">
             Theme
           </TabsTrigger>
+          <TabsTrigger value="sidebar" aria-label="Sidebar">
+            Sidebar
+          </TabsTrigger>
           <TabsTrigger value="agent" aria-label="Agent">
             Agent
           </TabsTrigger>
@@ -70,6 +74,10 @@ export function SettingsView({ ws, caps, tab, onTabChange }: Props) {
         </TabsContent>
         <TabsContent value="theme" className="min-h-0 flex-1 overflow-y-auto">
           <ThemeSettingsTab />
+        </TabsContent>
+        <TabsContent value="sidebar" className="min-h-0 flex-1 overflow-y-auto">
+          {/* hide-and-pins scope: the workspace sidebar hidden-set (admin curation; member read-only). */}
+          <SidebarTab ws={ws} caps={caps} />
         </TabsContent>
         <TabsContent value="agent" className="min-h-0 flex-1 overflow-y-auto">
           <AgentTab ws={ws} caps={caps} />

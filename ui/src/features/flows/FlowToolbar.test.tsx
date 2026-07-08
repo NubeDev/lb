@@ -1,6 +1,6 @@
-// The flow toolbar — the Node-RED operator controls (flow-deploy-ux scope). Pure-path render tests
-// over the presentational component: Deploy is enabled ONLY when dirty; Enable/Disable reflects the
-// durable flag; the live-values switch fires its handler; Suspend/Resume/Stop appear only mid-run.
+// The flow toolbar — the consolidated operator controls (flow-ui-polish scope). Pure-path render
+// tests over the presentational component: Deploy is enabled ONLY when dirty; Run morphs to Stop
+// mid-run; the single Pause⇄Resume toggle tracks the run's suspended status.
 
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
@@ -11,13 +11,10 @@ function props(over: Partial<FlowToolbarProps> = {}): FlowToolbarProps {
   return {
     dirty: false,
     runActive: false,
-    enabled: true,
-    liveValues: false,
+    runStatus: null,
     onDeploy: vi.fn(),
     onRun: vi.fn(),
     onLifecycle: vi.fn(),
-    onToggleEnabled: vi.fn(),
-    onToggleLiveValues: vi.fn(),
     ...over,
   };
 }
@@ -40,43 +37,32 @@ describe("FlowToolbar", () => {
     expect(p.onDeploy).toHaveBeenCalledOnce();
   });
 
-  it("shows Disable when enabled, Enable when disabled — and fires onToggleEnabled", () => {
-    const p = props({ enabled: true });
-    const { rerender } = render(<FlowToolbar {...p} />);
-    expect(screen.getByLabelText("disable flow")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("disable flow"));
-    expect(p.onToggleEnabled).toHaveBeenCalledOnce();
-
-    rerender(<FlowToolbar {...props({ enabled: false })} />);
-    expect(screen.getByLabelText("enable flow")).toBeTruthy();
-  });
-
-  it("the live-values switch fires onToggleLiveValues", () => {
-    const p = props({ liveValues: false });
+  it("idle: Run is shown, Stop/Pause are not (the morphing button, idle side)", () => {
+    const p = props({ runActive: false });
     render(<FlowToolbar {...p} />);
-    fireEvent.click(screen.getByLabelText("toggle live values"));
-    expect(p.onToggleLiveValues).toHaveBeenCalledWith(true);
-  });
-
-  it("Suspend/Resume/Stop appear only while a run is active", () => {
-    const { rerender } = render(<FlowToolbar {...props({ runActive: false })} />);
+    fireEvent.click(screen.getByLabelText("run flow"));
+    expect(p.onRun).toHaveBeenCalledOnce();
     expect(screen.queryByLabelText("stop run")).toBeNull();
-    rerender(<FlowToolbar {...props({ runActive: true })} />);
-    expect(screen.getByLabelText("suspend run")).toBeTruthy();
-    expect(screen.getByLabelText("resume run")).toBeTruthy();
-    expect(screen.getByLabelText("stop run")).toBeTruthy();
+    expect(screen.queryByLabelText("suspend run")).toBeNull();
   });
 
-  it("Run is disabled while a run is active (no double-start)", () => {
-    render(<FlowToolbar {...props({ runActive: true })} />);
-    expect((screen.getByLabelText("run flow") as HTMLButtonElement).disabled).toBe(true);
+  it("run active: Run morphs to Stop (cancel) and the Pause toggle appears", () => {
+    const p = props({ runActive: true, runStatus: "running" });
+    render(<FlowToolbar {...p} />);
+    expect(screen.queryByLabelText("run flow")).toBeNull();
+    fireEvent.click(screen.getByLabelText("stop run"));
+    expect(p.onLifecycle).toHaveBeenCalledWith("cancel");
+    fireEvent.click(screen.getByLabelText("suspend run"));
+    expect(p.onLifecycle).toHaveBeenCalledWith("suspend");
+    // ONE toggle: while not suspended there is no separate Resume button.
+    expect(screen.queryByLabelText("resume run")).toBeNull();
   });
 
-  it("Run is always 'Run' — the toolbar does not inspect the graph to relabel it", () => {
-    // No 'Test run' distinction: a flow is a live runtime; Run fires it once now regardless of whether
-    // it also self-fires. (The old 'scheduled → Test run' relabel keyed off graph shape and is gone.)
-    render(<FlowToolbar {...props()} />);
-    expect(screen.getByLabelText("run flow").textContent).toContain("Run");
-    expect(screen.queryByLabelText("test run flow")).toBeNull();
+  it("suspended run: the toggle flips to Resume", () => {
+    const p = props({ runActive: true, runStatus: "suspended" });
+    render(<FlowToolbar {...p} />);
+    expect(screen.queryByLabelText("suspend run")).toBeNull();
+    fireEvent.click(screen.getByLabelText("resume run"));
+    expect(p.onLifecycle).toHaveBeenCalledWith("resume");
   });
 });

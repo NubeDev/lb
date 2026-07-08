@@ -18,6 +18,13 @@ pub enum AgentError {
     /// A store operation failed underneath.
     #[error("store error: {0}")]
     Store(#[from] lb_store::StoreError),
+    /// The run made **no progress** for the no-progress ceiling and was PAUSED (not failed) so the user
+    /// can decide (external-agent run-lifecycle). The run job is left `Suspended` (resumable from the
+    /// cursor); the caller surfaces an actionable "keep going / stop" prompt rather than a dead error.
+    /// Distinct from `BadInput` (a genuine fault) and `Denied` (an authorization signal) so the worker/
+    /// dock can render the pause-and-ask state. Not a terminal outcome — a resume continues the run.
+    #[error("stalled: no progress")]
+    Stalled,
     /// A persona pinned a grounding skill the run's principal cannot load (ungranted / unreadable).
     /// Fail-closed: the run is refused at start, before any model spend (persona-model scope,
     /// "an ungranted pinned skill fails the run at start with the named error"). Named (not opaque

@@ -136,11 +136,11 @@ fn render_manifest(request: &ScaffoldRequest) -> String {
         // would make the scope entry never match the runtime name for any hyphenated id.
         let own_tool = format!("{}.ping", request.id);
         let scope_tools: Vec<String> = std::iter::once(own_tool)
-            .chain(
-                feature_caps(&request.features)
-                    .into_iter()
-                    .map(|cap| cap.trim_start_matches("mcp:").trim_end_matches(":call").to_string()),
-            )
+            .chain(feature_caps(&request.features).into_iter().map(|cap| {
+                cap.trim_start_matches("mcp:")
+                    .trim_end_matches(":call")
+                    .to_string()
+            }))
             .map(|t| format!("\"{t}\""))
             .collect();
         let scope = scope_tools.join(", ");

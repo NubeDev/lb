@@ -50,7 +50,8 @@ menu + curates their own pick — `nav.pref.*` gate on `nav.resolve`); writes
 | Share / visibility | `POST /navs/{id}/share` | `{"tool":"nav.share","args":{…}}` | `id,visibility,team?,now*` |
 | Set workspace default | `POST /nav/default` | `{"tool":"nav.set_default","args":{"id":"…","now":…}}` | `id,now*` |
 | Resolve effective menu | `GET /nav/resolve` | `{"tool":"nav.resolve","args":{}}` | — |
-| Read/set my pick | `GET|POST /nav/pref` | `{"tool":"nav.pref.get|set","args":{…}}` | `id?,now*` |
+| Read/set my pick + pins | `GET|POST /nav/pref` | `{"tool":"nav.pref.get|set","args":{…}}` | `id?,pinned?,now*` |
+| Read/set workspace hidden-set | `GET|POST /nav/hidden` | `{"tool":"nav.hidden.get|set","args":{…}}` | `hidden[],now*` |
 
 ## 3. The entry kinds (+ one `group` level)
 
@@ -102,6 +103,31 @@ curl -s http://127.0.0.1:8080/nav/resolve -H "Authorization: Bearer $TOKEN" \
 
 `source` is `pick | team | workspace-default | fallback`. A `fallback` carries no items — the UI renders
 its built-in surfaces (never blank).
+
+The payload also carries (hide-and-pins scope, on EVERY source incl. `fallback`):
+
+- `hidden[]` — the workspace **hidden-set** echo. The rail subtracts these refs from its built-in
+  fallback menu (the one tier the server can't strip); resolved `items`/`pinned` arrive already
+  stripped. Hiding is DECLUTTER, never authz — a permitted deep link still loads.
+- `pinned[]` — the caller's **pinned favorites**, resolved (cap-, uninstalled-ext-, and
+  hidden-stripped — hide beats pin), in the member's order. Rendered as a "Pinned" section above
+  whichever menu applies.
+
+Refs share one grammar everywhere: a bare surface key (`"rules"`), `ext:<id>`, or `dashboard:<id>`.
+
+```bash
+# Admin: hide the Dashboards surface + one extension page for the whole workspace.
+curl -s -X POST http://127.0.0.1:8080/nav/hidden -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{ "hidden": ["dashboards", "ext:mqtt"] }'
+
+# Member: pin favorites (ordered). A PARTIAL write — omitting `id` leaves the active pick alone.
+curl -s -X POST http://127.0.0.1:8080/nav/pref -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{ "pinned": ["rules", "dashboard:cooler-health"] }'
+```
+
+Caps: `nav.hidden.get` rides `mcp:nav.resolve:call` (member); `nav.hidden.set` rides
+`mcp:nav.save:call` (admin — the same authority as `nav.set_default`). Pins ride `nav.pref.*`
+(member-owned, keyed to the token `sub`). Bounds: 200 hidden refs, 50 pins (`BadInput` over).
 
 ## 5. Publish a template dashboard as a per-site menu (reusable pages)
 

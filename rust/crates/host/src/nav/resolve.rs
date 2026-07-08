@@ -15,7 +15,7 @@
 //!
 //! Member-level: gated by `mcp:nav.resolve:call` (every member resolves their own menu).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use lb_auth::Principal;
@@ -28,7 +28,7 @@ use super::model::{
     Nav, NavFacet, NavItem, ResolvedItem, ResolvedNav, ResolvedSource, Visibility, MAX_TAG_GROUP,
 };
 use super::resolve_template_group::resolve_template_group;
-use super::store::{read_default, read_nav, read_pref, scan_navs};
+use super::store::{read_default, read_hidden, read_nav, read_pref, scan_navs};
 use super::surfaces::surface_gate_cap;
 use super::visibility::may_read_nav;
 use crate::authz::holds_cap;
@@ -47,15 +47,28 @@ pub async fn nav_resolve(
 ) -> Result<ResolvedNav, NavError> {
     authorize_nav(principal, ws, "nav.resolve")?;
 
+    // The workspace hidden-set (hide-and-pins scope) — the THIRD strip filter, applied after
+    // cap-strip and uninstalled-ext-strip, at EVERY tier. Echoed back so the UI can subtract the
+    // one tier the server can't: its own built-in `SURFACES`/ext-slot fallback menu.
+    let hidden_record = read_hidden(&node.store, ws).await?.unwrap_or_default();
+    let hidden: BTreeSet<String> = hidden_record.hidden.iter().cloned().collect();
+
+    // The caller's pins, resolved through the SAME item pipeline (cap-strip + ext-strip), then
+    // hidden-stripped (hide beats pin). A stale/stripped pin never mutates the stored record.
+    let pinned = resolve_pins(node, principal, ws, &hidden).await?;
+
     let (nav, source) = match pick_nav(&node.store, principal, ws).await? {
         Some(picked) => picked,
-        // No nav applies — the caller renders its built-in fallback (never blank).
+        // No nav applies — the caller renders its built-in fallback (never blank), minus `hidden`,
+        // with `pinned` above it.
         None => {
             return Ok(ResolvedNav {
                 source: ResolvedSource::Fallback,
                 nav_id: String::new(),
                 title: String::new(),
                 items: Vec::new(),
+                hidden: hidden_record.hidden,
+                pinned,
             })
         }
     };
@@ -63,7 +76,9 @@ pub async fn nav_resolve(
     let mut items = Vec::new();
     for item in &nav.items {
         if let Some(resolved) = resolve_item(node, principal, ws, item).await? {
-            items.push(resolved);
+            if let Some(kept) = strip_hidden(resolved, &hidden) {
+                items.push(kept);
+            }
         }
     }
 
@@ -72,7 +87,92 @@ pub async fn nav_resolve(
         nav_id: nav.id.clone(),
         title: nav.title.clone(),
         items,
+        hidden: hidden_record.hidden,
+        pinned,
     })
+}
+
+/// The hidden-set filter (hide-and-pins scope) — drop a resolved item whose ref the admin hid, and
+/// recurse into a `group`'s children (the group itself stays: an author section header survives, its
+/// hidden members don't). The ref grammar mirrors [`item_ref`]: bare surface key, `ext:<id>`,
+/// `dashboard:<id>` — all matched as opaque strings (rule 10).
+fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<ResolvedItem> {
+    if hidden.is_empty() {
+        return Some(item);
+    }
+    if item.kind == "group" {
+        let mut kept = item;
+        kept.items = kept
+            .items
+            .into_iter()
+            .filter_map(|c| strip_hidden(c, hidden))
+            .collect();
+        return Some(kept);
+    }
+    if hidden.contains(&item_ref(&item)) {
+        return None; // hidden — declutter only; the route stays reachable by deep link.
+    }
+    Some(item)
+}
+
+/// A resolved item's ref in the shared hide/pin grammar.
+fn item_ref(item: &ResolvedItem) -> String {
+    match item.kind.as_str() {
+        "ext" => format!("ext:{}", item.ext),
+        "dashboard" => item.dashboard.clone(),
+        _ => item.surface.clone(),
+    }
+}
+
+/// Resolve the caller's pinned refs (`nav_pref.pinned`) to rendered items, in the member's order.
+/// Each ref maps to a synthetic [`NavItem`] and runs through the SAME `resolve_item` pipeline as a
+/// menu entry — so a pin the caller can't reach (cap), that no longer exists (deleted dashboard,
+/// uninstalled ext), or that the admin hid (hide beats pin) strips silently. The stored record is
+/// never mutated by a strip, so a later un-hide/regrant restores the pin for free.
+async fn resolve_pins(
+    node: &Arc<Node>,
+    principal: &Principal,
+    ws: &str,
+    hidden: &BTreeSet<String>,
+) -> Result<Vec<ResolvedItem>, NavError> {
+    let pref = read_pref(&node.store, ws, principal.sub())
+        .await?
+        .unwrap_or_default();
+    let mut pinned = Vec::new();
+    for pin in &pref.pinned {
+        if hidden.contains(pin) {
+            continue; // hide beats pin — the admin's curation lever actually declutters.
+        }
+        let item = pin_to_item(pin);
+        if let Some(resolved) = resolve_item(node, principal, ws, &item).await? {
+            pinned.push(resolved);
+        }
+    }
+    Ok(pinned)
+}
+
+/// Map a pin ref to the synthetic authored item the resolver understands. `dashboard:<id>` and
+/// `ext:<id>` select their kinds; anything else is a core surface key. All opaque data.
+fn pin_to_item(pin: &str) -> NavItem {
+    if pin.starts_with("dashboard:") {
+        NavItem {
+            kind: "dashboard".into(),
+            dashboard: pin.to_string(),
+            ..NavItem::default()
+        }
+    } else if let Some(ext) = pin.strip_prefix("ext:") {
+        NavItem {
+            kind: "ext".into(),
+            ext: ext.to_string(),
+            ..NavItem::default()
+        }
+    } else {
+        NavItem {
+            kind: "surface".into(),
+            surface: pin.to_string(),
+            ..NavItem::default()
+        }
+    }
 }
 
 /// The 4-tier pick: personal pick → first team-shared nav → workspace-default → `None` (fallback).

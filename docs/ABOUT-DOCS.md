@@ -3,18 +3,22 @@
 How `docs/` is organized and which folder a given note belongs in.
 
 The docs track a feature through three stages — **what we want → how we built it → what shipped**.
-Each top-level folder is one stage. Inside each, group by topic (e.g. `tracing/`, `dashboards/`).
+Two of those stages live under `docs/`; the shipped stage (`public/`) lives in `doc-site/content/public/`
+(see "The three stages" below). Inside each, group by topic (e.g. `tracing/`, `dashboards/`).
 
 ```
 docs/
 ├── scope/      ← "hey, we want this"   — the ask, before any work
 ├── sessions/   ← the AI-agent sessions — what was done, while doing it
-├── public/     ← production / shipped  — what actually got done
 ├── skills/     ← runnable how-to guides — drive a shipped surface over MCP/REST
 ├── testing/    ← e2e runbooks          — drive the real backend/frontend end to end
 ├── vision/     ← the north star        — the big-picture framework direction
 └── debugging/  ← the working history   — every issue and how it became working
 ```
+
+> **Shipped (`public/`) lives in `doc-site/`.** The `docs/public/` folder is gone — the durable, reader-facing
+> truth is authored and edited directly in [`doc-site/content/public/`](../doc-site/content/public/) as MDX.
+> `scope/` and `sessions/` stay in `docs/` and are not published.
 
 Four areas sit outside the three-stage flow: `vision/` (why the platform exists),
 `debugging/` (the append-only debugging memory — see "Testing & debugging" below),
@@ -50,16 +54,20 @@ the actual diffs and reasoning. Tied to a scope doc above it.
 - Example: `sessions/dashboards/multiple-dashboards-session.md`
 - Captures *how* it got done, not just that it did.
 
-### `public/` — production, what got done
+### `public/` — production, what got done (lives in `doc-site/`)
 
 The **shipped, durable** documentation — the source of truth for what exists in
 production now. Trimmed of session noise: deployment, architecture, the final scope
-as built. This is what a new person reads.
+as built. This is what a new person reads, and what the doc-site renders.
 
-- `public/SCOPE.md` — the project scope as actually built.
-- `public/DEPLOYMENT.md` — runtime, ports, how to run it.
-- `public/DIAGRAMS.md` — visual reference.
-- Topic subfolders (`public/tracing/`, `public/ce/`) hold per-area shipped docs.
+> **This stage is not under `docs/`.** It lives in
+> [`doc-site/content/public/`](../doc-site/content/public/) as MDX (`.mdx`), so the authoring location and
+> the rendered site are one and the same. The old `docs/public/` folder has been removed.
+
+- `doc-site/content/public/SCOPE.mdx` — the project scope as actually built.
+- `doc-site/content/public/DEPLOYMENT.mdx` — runtime, ports, how to run it.
+- `doc-site/content/public/DIAGRAMS.mdx` — visual reference.
+- Topic subfolders (`content/public/tracing/`, `content/public/ce/`) hold per-area shipped docs.
 
 ## `skills/` — runnable operational guides
 
@@ -93,7 +101,8 @@ understand *why*; read `scope → sessions → public` to follow a specific feat
 
 - **Starting something new?** Write a `scope/<topic>/<name>.md` — the ask.
 - **Building it (esp. with an agent)?** Log it in `sessions/<topic>/<name>.md`.
-- **Shipped it?** Promote the durable parts into `public/` (and update `public/SCOPE.md`).
+- **Shipped it?** Promote the durable parts into `doc-site/content/public/` (and update
+  `doc-site/content/public/SCOPE.mdx`).
 - **Shipped a drivable surface (MCP verbs / REST routes / an automatable task)?** Write or update the
   matching `skills/<name>/SKILL.md` so an agent can operate it.
 - **Want the big picture?** Read `vision/`.
@@ -128,9 +137,10 @@ docs is **incomplete** — treat the doc as a deliverable equal to the code.
 ### At the end of a session
 
 - **Resolve or update open questions** in the relevant `scope/` doc.
-- **Promote durable truth to `public/`** if something shipped: update the per-area
-  `public/<topic>/` doc and `public/SCOPE.md`. The session log stays as the messy history;
-  `public/` is the trimmed source of truth a new person reads.
+- **Promote durable truth to `doc-site/content/public/`** if something shipped: update the per-area
+  `content/public/<topic>/` doc and `content/public/SCOPE.mdx`. The session log stays as the messy
+  history; `public/` is the trimmed source of truth a new person reads. (Pages are MDX — see the
+  doc-site README's MDX notes when adding new pages.)
 - **Write/maintain the skill** if the change adds or alters an agent- or API-drivable surface:
   create or update `skills/<name>/SKILL.md`, grounded in a live run against the real node (paste real
   payloads). If the surface it documents changed, update it in this same session — a stale skill
@@ -158,7 +168,7 @@ not optional extras:
 A session is done when: the work is complete **and** the session doc exists and is filled
 in **and** the change is tested (mandatory categories included) **and** any debugging is
 captured in `debugging/` with a regression test **and** any shipped change is reflected in
-`public/` **and** any agent-/API-drivable surface it touched has a current
+`doc-site/content/public/` **and** any agent-/API-drivable surface it touched has a current
 `skills/<name>/SKILL.md` **and** the scope doc's open questions are current. If any of those is
 missing, the session is not done.
 
@@ -196,7 +206,8 @@ Links to any `debugging/<area>/<symptom>.md` entries opened this session, each w
 regression test. "None" if nothing broke.
 
 ## Public / scope updates
-What was promoted to `public/<topic>/` + `public/SCOPE.md`, and which scope open questions
+What was promoted to `doc-site/content/public/<topic>/` + `content/public/SCOPE.mdx`, and which scope open
+questions
 were resolved or refreshed.
 
 ## Skill docs
@@ -217,6 +228,7 @@ What didn't work, and what was learned.
 ## Publishing (Nextra)
 
 The reader-facing docs are rendered by a [Nextra](https://nextra.site/) site in
-[`../doc-site/`](../doc-site/README.md). It publishes `public/`, `skills/`, and `vision/`; `scope/`
-and `sessions/` are working material and are not published by default. **Author here in
-`docs/`** — never fork content into `doc-site/`.
+[`../doc-site/`](../doc-site/README.md). The shipped `public/` docs **live inside the site** —
+`doc-site/content/public/` (MDX) — so authoring and rendering are one and the same; `vision/` is pulled
+from `docs/vision/` via a symlink. `scope/`, `sessions/`, and `debugging/` are working material and are
+not published. Edit the shipped docs directly under `doc-site/content/public/`.
