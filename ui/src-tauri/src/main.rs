@@ -3,6 +3,9 @@
 //! command layer builds + tests on a machine with no webkit toolchain), it prints how to run
 //! the windowed build and exits. Role/window selection is config, not core code (§3.1).
 
+// Windows: GUI subsystem in release builds so no console window opens behind the app.
+#![cfg_attr(all(not(debug_assertions), windows), windows_subsystem = "windows")]
+
 #[cfg(not(feature = "desktop"))]
 fn main() {
     eprintln!(

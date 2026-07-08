@@ -19,7 +19,8 @@ use crate::routes::{
     flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
     format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def,
     get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_insight,
-    get_layout, get_nav, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule,
+    get_layout, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs,
+    get_rule,
     get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
     latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels, list_dashboards,
     list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
@@ -35,7 +36,8 @@ use crate::routes::{
     rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
     save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
     serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
-    set_layout, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
+    share_panel,
     system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
     test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
     update_flow_node, write_samples,
@@ -280,6 +282,9 @@ pub fn router(gw: Gateway) -> Router {
         .route("/nav/resolve", get(resolve_nav))
         .route("/nav/default", post(set_default_nav))
         .route("/nav/pref", get(get_nav_pref).post(set_nav_pref))
+        // hide-and-pins scope: the workspace sidebar hidden-set (read member-level; write admin —
+        // rides `nav.save`). Declutter only — every page verb is still re-checked on click.
+        .route("/nav/hidden", get(get_nav_hidden).post(set_nav_hidden))
         // ui-layout (data-studio scope v2) — the member-owned per-surface workbench layout.
         .route("/layout/{surface}", get(get_layout).put(set_layout))
         // rules (rules-workbench scope, Phase 1) — the browser's `rules.*` Playground CRUD + run.

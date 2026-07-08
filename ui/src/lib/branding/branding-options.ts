@@ -4,7 +4,14 @@
 //
 // Branding is **admin-owned workspace identity** (NOT a per-member preference): every member of a
 // workspace resolves the same brand through `prefs.resolve`. The shell falls back to the compiled
-// `DEFAULT_BRANDING` (the Lazybones mark/name) when no workspace default is set.
+// `DEFAULT_BRANDING` when no workspace default is set AND no boot cache has landed yet.
+//
+// The default is deliberately **neutral** (empty strings): the platform's own name must NEVER show
+// in a workspace's chrome. The resolved brand is painted pre-flash from the localStorage boot cache
+// (`branding-cache.ts`, mirroring the theme discipline); the neutral default is only the brief
+// first-ever-visit state before the first `prefs.resolve` lands. Editor input placeholders use
+// `BRANDING_PLACEHOLDERS` (generic examples), NOT the default, so the editor keeps its hint without
+// the product name appearing anywhere.
 //
 // Image marks (logo/favicon/icon) are embedded as data-URIs DIRECTLY in the blob rather than as
 // separate `assets.*` records — this keeps the brand atomic on a single prefs read AND sidesteps
@@ -13,12 +20,22 @@
 // backed pipeline is the deferred slice for larger marks. See `branding-assets.ts` for the
 // File→data-URI helper + size/mime validation.
 
-/** The shell's compiled default brand — what shows when a workspace has set none. Mirrors the
- *  hardcoded chrome (`NavRail`'s "lb" tile + "Lazybones" + "workspace ops") this scope replaces. */
+/** The shell's compiled default brand — NEUTRAL (no product name). Shown only for the brief
+ *  first-ever-visit window before the boot cache / first `prefs.resolve` lands. A workspace that
+ *  has set no brand stays neutral (empty) until an admin sets one in Settings → Branding. */
 export const DEFAULT_BRANDING = Object.freeze({
-  siteName: "Lazybones",
-  siteAbbr: "lb",
-  tagline: "workspace ops",
+  siteName: "",
+  siteAbbr: "",
+  tagline: "",
+});
+
+/** Generic example placeholders for the admin editor's text inputs — NOT a brand, NOT shown in
+ *  chrome. Keeps the editor's hint ("what goes here?") without the product name appearing anywhere
+ *  in the shell or its fallbacks. Used by `BrandingTab` for its `<input placeholder=…>`. */
+export const BRANDING_PLACEHOLDERS = Object.freeze({
+  siteName: "Workspace name",
+  siteAbbr: "AB",
+  tagline: "a short subtitle",
 });
 
 /** The accepted image MIME types for the three brand image slots. SVG is allowed for the logo +

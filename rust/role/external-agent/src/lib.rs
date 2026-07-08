@@ -72,7 +72,7 @@ const DEFAULT_RUN_TIMEOUT: Duration = Duration::from_secs(600);
 /// is the edge case; the transport emits reasoning/step events during real work, so quiet this long is
 /// a strong stuck signal. Tunable per runtime via [`AcpRuntime::with_no_progress_ceiling`] (a test uses
 /// a tiny value against a scripted silent runtime).
-const NO_PROGRESS_CEILING: Duration = Duration::from_secs(90);
+const NO_PROGRESS_CEILING: Duration = Duration::from_secs(8); // TEMP E2E — revert to 90 before commit
 
 /// The ONE external runtime (external-agent #2, `AcpRuntime`). One per registered profile id; the body
 /// is identical across agents (the difference is the [`ResolvedAgent`] it holds). Named `AcpRuntime`

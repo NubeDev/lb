@@ -366,6 +366,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   tag-group** (dashboards matching a tag facet). `nav.resolve` returns the caller's effective menu —
   pick + tag-expand + **cap-strip** — the menu is a **lens over existing access, never a grant path**;
   the sidebar (`NavRail`) renders it, falling back to the built-in `SURFACES` set.
+  `nav-hide-and-pins-scope.md` extends it with a workspace-admin **hidden-set**
+  (`nav.hidden_get/set` — hide e.g. the Dashboard surface from every tier incl. the
+  fallback; declutter only, never blocks a route) and per-user **pins**
+  (`nav_pref.pinned` — a personal ordered Pinned section atop the rail); hide beats pin.
 - `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
   **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
   (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.

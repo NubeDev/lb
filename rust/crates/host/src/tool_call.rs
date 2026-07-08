@@ -128,9 +128,13 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         "outbox.enqueue"
     } else if qualified_tool.starts_with("telemetry.") {
         crate::read_or_admin_cap(qualified_tool)
-    } else if qualified_tool.starts_with("nav.pref.") {
+    } else if qualified_tool.starts_with("nav.pref.") || qualified_tool == "nav.hidden.get" {
+        // hide-and-pins scope: reading the hidden-set is part of resolving one's own menu (the
+        // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant.
         "nav.resolve"
-    } else if qualified_tool == "nav.set_default" {
+    } else if qualified_tool == "nav.set_default" || qualified_tool == "nav.hidden.set" {
+        // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
+        // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap.
         "nav.save"
     } else {
         qualified_tool

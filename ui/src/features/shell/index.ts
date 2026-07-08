@@ -2,6 +2,6 @@
 
 export { NavRail } from "./NavRail";
 export { StatusBar } from "./StatusBar";
-export { RAIL_SURFACES } from "./NavRail";
+export { RAIL_SURFACES, SURFACE_GROUPS } from "./NavRail";
 export type { Surface, CoreSurface, ExtSlot, ResolvedNavItem } from "./NavRail";
 export { useResolvedNav } from "./useResolvedNav";

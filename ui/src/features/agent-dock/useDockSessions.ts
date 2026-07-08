@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { createChannel, listChannels } from "@/lib/channel/channel.api";
 import { dockPrefixFor, isOwnDockChannel, mintDockId } from "./dockId";
+import { readDockSession, writeDockSession } from "./dockSessionStore";
 
 export interface DockSessionsState {
   /** The user's dock session ids, newest-first (the picker list). Includes the current unposted one. */
@@ -31,9 +32,17 @@ export interface DockSessionsState {
 /** Drive the dock's sessions for `ws` / `principal`. Loads the user's own `dock.` channels; seeds a
  *  fresh current session on first mount so the dock always has somewhere to post. */
 export function useDockSessions(ws: string, principal: string): DockSessionsState {
-  // The current session id — minted once on first mount (lazy init) so opening the dock always lands
-  // on a usable (possibly empty, uncreated) session. Reset only via select/newSession.
-  const [current, setCurrent] = useState<string>(() => mintDockId(principal));
+  // The current session id — RESTORE the last-open one for this ws/principal if there is one AND it
+  // still belongs to this user (the persisted id could be stale after a server-side delete in a
+  // future v, or corrupted in storage); otherwise mint a fresh one. v1 has no delete, so the happy
+  // path on a page refresh is: the stored id is valid ⇒ land back on the SAME conversation, not a
+  // fresh empty session. The validity check (`isOwnDockChannel`) also enforces the workspace + user
+  // wall client-side: a key written for another ws/user can never load here (the storage key already
+  // encodes both, and the id's own prefix must match too — belt and braces).
+  const [current, setCurrent] = useState<string>(() => {
+    const stored = readDockSession(ws, principal);
+    return stored && isOwnDockChannel(stored, principal) ? stored : mintDockId(principal);
+  });
   const [listed, setListed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,6 +80,14 @@ export function useDockSessions(ws: string, principal: string): DockSessionsStat
       cancelled = true;
     };
   }, [ws, current]);
+
+  // Persist the current session id so a page refresh / new tab reopens where the user left off (the
+  // chrome shape — mirrors `useDockChrome`'s localStorage effect; NOT the persona-pin sessionStorage
+  // shape, because a dock session is a per-USER conversation that's fine to share across tabs). One
+  // effect catches every change: the restore above, `select`, and `newSession` — no per-call writes.
+  useEffect(() => {
+    writeDockSession(ws, principal, current);
+  }, [ws, principal, current]);
 
   // The picker list: the durable sessions plus the (possibly not-yet-created) current one, deduped,
   // newest-first. Dock ids are lexicographically time-ordered (the ulid), so a reverse sort is newest.

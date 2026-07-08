@@ -66,6 +66,11 @@ export const CAP = {
   dashboardList: "mcp:dashboard.list:call",
   dashboardGet: "mcp:dashboard.get:call",
   dashboardSave: "mcp:dashboard.save:call",
+  // dashboardDeleteAny — ADMIN override: the host checks this as a second gate inside
+  // `dashboard.delete` when the caller isn't the dashboard's owner. Lets the roster's delete
+  // affordance work for a dashboard an admin didn't create (e.g. one an agent made on a member's
+  // behalf); without it the confirm dialog runs but the host silently denies the delete.
+  dashboardDeleteAny: "mcp:dashboard.delete_any:call",
   // library panels (library-panels scope): the reusable + standalone panel asset. Member-level like
   // dashboards — `panelGet` gates the standalone `/panel/{id}` page + the editor's link/unlink reads;
   // `panelSave` gates Save-as-library. Sharing a panel shares its DEFINITION only — its `sources[]`

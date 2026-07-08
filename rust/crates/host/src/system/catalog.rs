@@ -242,6 +242,12 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "delete a dashboard the caller owns",
     },
     HostTool {
+        tool: "dashboard.delete_any",
+        group: "dashboard",
+        description:
+            "admin override: delete any dashboard in the workspace, not just the caller's own",
+    },
+    HostTool {
         tool: "dashboard.share",
         group: "dashboard",
         description: "share a dashboard with another principal/team",
@@ -321,7 +327,19 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "nav.pref.set",
         group: "nav",
-        description: "set the caller's own active-nav pick",
+        description: "set the caller's own active-nav pick and/or pinned favorites",
+    },
+    // hide-and-pins scope: the workspace hidden-set — the admin's one subtractive sidebar-curation
+    // lever (declutter only; hiding never blocks a route).
+    HostTool {
+        tool: "nav.hidden.get",
+        group: "nav",
+        description: "read the workspace sidebar hidden-set",
+    },
+    HostTool {
+        tool: "nav.hidden.set",
+        group: "nav",
+        description: "replace the workspace sidebar hidden-set (admin)",
     },
     // template.* — the durable scripted-view snippets the widget builder persists (widget-builder scope).
     HostTool {

@@ -37,6 +37,8 @@ fn token(key: &SigningKey, ws: &str, caps: &[&str]) -> String {
             caps: caps.iter().map(|s| s.to_string()).collect(),
             iat: 0,
             exp: u64::MAX,
+            constraint: None,
+            run_id: None,
         },
     )
 }

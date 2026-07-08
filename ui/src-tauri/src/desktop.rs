@@ -101,7 +101,8 @@ pub fn run() {
             channel_post,
             channel_history,
             channel_edit,
-            channel_delete
+            channel_delete,
+            agent_invoke
         ])
         .run(tauri::generate_context!())
         .expect("error running the Lazybones shell");

@@ -35,7 +35,7 @@ function preview(value: unknown): string {
   }
 }
 
-export function FlowNodeView({ id, data }: NodeProps<FlowCanvasNode>) {
+export function FlowNodeView({ id, data, selected }: NodeProps<FlowCanvasNode>) {
   const out = preview(data.output);
   // Entry nodes (trigger/source) have no input port — render no target handle so they cannot be
   // wired upstream (the descriptor declares no inputs; the canvas honours it).
@@ -48,8 +48,11 @@ export function FlowNodeView({ id, data }: NodeProps<FlowCanvasNode>) {
       data-locked={data.locked ? "true" : "false"}
       data-gated={data.gated ? "true" : "false"}
       className={cn(
-        "relative w-[180px] rounded-lg border-2 bg-card px-3 py-2 text-xs shadow-sm shadow-black/5",
+        // The hover/selected treatment conveys state (which node the dock is editing), 150–250ms,
+        // transform-free so `prefers-reduced-motion` needs no special-casing (flow-ui-polish).
+        "relative w-[180px] rounded-lg border-2 bg-card px-3 py-2 text-xs shadow-sm shadow-black/5 transition-shadow duration-200 hover:shadow-md hover:shadow-black/10",
         COLOUR_BORDER[data.colour],
+        selected && "ring-2 ring-accent/50",
         data.locked && "opacity-90",
         data.gated && "opacity-60",
       )}

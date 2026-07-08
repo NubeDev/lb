@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { CAP, hasCap } from "@/lib/session";
 import {
   BRAND_IMAGE_ACCEPT,
+  BRANDING_PLACEHOLDERS,
   DEFAULT_BRANDING,
   MAX_BRAND_IMAGE_BYTES,
   readBrandImage,
@@ -132,7 +133,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={80}
             disabled={!canSetDefault}
             onChange={(e) => updateString("siteName", e.target.value)}
-            placeholder={DEFAULT_BRANDING.siteName}
+            placeholder={BRANDING_PLACEHOLDERS.siteName}
           />
         </Field>
         <Field
@@ -146,7 +147,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={4}
             disabled={!canSetDefault}
             onChange={(e) => updateString("siteAbbr", e.target.value)}
-            placeholder={DEFAULT_BRANDING.siteAbbr}
+            placeholder={BRANDING_PLACEHOLDERS.siteAbbr}
           />
         </Field>
         <Field
@@ -160,7 +161,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={120}
             disabled={!canSetDefault}
             onChange={(e) => updateString("tagline", e.target.value)}
-            placeholder={DEFAULT_BRANDING.tagline}
+            placeholder={BRANDING_PLACEHOLDERS.tagline}
           />
         </Field>
       </FieldGroup>

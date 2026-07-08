@@ -1,7 +1,7 @@
 // The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. It uses the same global
 // Lazybones tokens as the rest of the shell, with cap-gated entries supplied by App.tsx.
 
-import { Hash, LayoutDashboard, LogOut, Puzzle } from "lucide-react";
+import { Hash, LayoutDashboard, LogOut, Pin, Puzzle } from "lucide-react";
 
 import {
   Sidebar,
@@ -88,6 +88,23 @@ interface Props {
   /** reusable-pages: navigate to a specific board (`dashboard:{id}`), optionally applying a pinned/
    *  template binding as `?var-<name>=<value>`. Falls back to the plain Dashboards surface when absent. */
   onSelectDashboard?: (dashboard: string, vars?: Record<string, string>) => void;
+  /** hide-and-pins: the workspace hidden-set echo (`nav.resolve`) — refs subtracted from the
+   *  built-in FALLBACK rail (the resolved menu arrives already stripped server-side). Declutter
+   *  only: route gates are untouched; a permitted deep link still works. */
+  hidden?: string[];
+  /** hide-and-pins: the caller's pinned favorites, resolved server-side (cap-, ext-, and
+   *  hidden-stripped), in the member's order. Rendered as a Pinned section above the menu. */
+  pinned?: ResolvedNavItem[];
+  /** hide-and-pins: flip one pin ref (bare surface key | `ext:<id>` | `dashboard:<id>`) in the
+   *  member-owned `nav_pref`. When absent, the rail shows no pin affordance. */
+  onTogglePin?: (ref: string) => void;
+}
+
+/** A rail entry's ref in the shared hide/pin grammar (mirrors the resolver's `item_ref`). */
+function itemRef(it: ResolvedNavItem): string {
+  if (it.kind === "ext" && it.ext) return `ext:${it.ext}`;
+  if (it.kind === "dashboard" && it.dashboard) return it.dashboard;
+  return it.surface ?? "";
 }
 
 /** The built-in fallback rail, bucketed into labelled categories so it reads as sections rather than
@@ -95,7 +112,7 @@ interface Props {
  *  applies (`resolvedItems`), that owns grouping instead (nav scope). `settings` lives in the footer,
  *  not a group. A group whose members are all cap-stripped renders nothing (no empty label). The icon
  *  + label per key come from the shared `SURFACE_DEF` map (`surfaceDefs.ts`) — never re-defined here. */
-const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
+export const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
   {
     label: "Workspace",
     items: ["channels", "dashboards", "inbox", "outbox",
@@ -177,14 +194,18 @@ export function NavRail({
   extSlots = [],
   resolvedItems = null,
   onSelectDashboard,
+  hidden = [],
+  pinned = [],
+  onTogglePin,
 }: Props) {
   // The sidebar variant/collapsible/side come from the member's theme (Customizer → Layout tab), so
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
   const { theme } = useTheme();
   const { variant, collapsible, side } = theme.layout;
-  // The workspace brand (workspace-branding scope). `brand` is always set (the provider seeds the
-  // compiled Lazybones default before the first prefs resolve lands). The admin sets it in Settings
-  // → Branding; every member of the workspace resolves the same brand.
+  // The workspace brand (workspace-branding scope). `brand` is always set: the provider seeds from
+  // the localStorage boot cache (no flash on refresh) or the neutral default on a first-ever visit,
+  // then the live `prefs.resolve` confirms it. The admin sets it in Settings → Branding; every
+  // member of the workspace resolves the same brand.
   const { brand } = useBranding();
   // Per-icon color overrides (Settings → Theme → Icon colors). Applied as inline `color` so it wins
   // over the button's text-* classes without fighting specificity, and inherits into the lucide
@@ -194,11 +215,44 @@ export function NavRail({
     return typeof key === "string" ? theme.iconColors[key] : undefined;
   };
 
-  const item = (key: Surface, label: string, Icon: typeof Hash, onClick?: () => void) => {
+  // The refs currently pinned (for the toggle's pressed state). Derived from the RESOLVED pins —
+  // a stripped pin isn't visible, so it can't be toggled here (the stored record keeps it; it
+  // comes back when un-hidden/regranted).
+  const pinnedRefs = new Set(pinned.map(itemRef));
+
+  // The hover pin/unpin toggle (hide-and-pins scope) — rail-only affordance, member-owned write.
+  // Hidden entirely in icon-collapsed mode (no room) and when the shell passed no handler.
+  const pinToggle = (ref: string) => {
+    if (!onTogglePin || !ref) return null;
+    const isPinned = pinnedRefs.has(ref);
+    return (
+      <button
+        type="button"
+        aria-label={isPinned ? "Unpin" : "Pin"}
+        aria-pressed={isPinned}
+        title={isPinned ? "Unpin" : "Pin"}
+        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-sm p-1 text-muted opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/navitem:opacity-100 group-data-[collapsible=icon]:hidden"
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin(ref);
+        }}
+      >
+        <Pin className={`h-3.5 w-3.5 ${isPinned ? "fill-current" : ""}`} />
+      </button>
+    );
+  };
+
+  const item = (
+    key: Surface,
+    label: string,
+    Icon: typeof Hash,
+    onClick?: () => void,
+    pinRef?: string,
+  ) => {
     const selected = active === key;
     const iconColor = iconColorFor(key);
     return (
-      <SidebarMenuItem key={`${key}:${label}`}>
+      <SidebarMenuItem key={`${key}:${label}`} className="group/navitem relative">
         <SidebarMenuButton
           aria-label={label}
           aria-current={selected ? "page" : undefined}
@@ -209,6 +263,7 @@ export function NavRail({
           <Icon style={iconColor ? { color: iconColor } : undefined} />
           <span>{label}</span>
         </SidebarMenuButton>
+        {pinRef !== undefined && pinToggle(pinRef)}
       </SidebarMenuItem>
     );
   };
@@ -221,18 +276,21 @@ export function NavRail({
   const resolvedItem = (it: ResolvedNavItem, keyHint: string) => {
     if (it.kind === "surface" && it.surface) {
       const key = it.surface as Surface;
-      return item(key, it.label, SURFACE_DEF[it.surface as CoreSurface]?.icon ?? Hash);
+      return item(key, it.label, SURFACE_DEF[it.surface as CoreSurface]?.icon ?? Hash, undefined, itemRef(it));
     }
     if (it.kind === "ext" && it.ext) {
       const key = `ext:${it.ext}` as Surface;
-      return item(key, it.label, Puzzle);
+      return item(key, it.label, Puzzle, undefined, itemRef(it));
     }
     if (it.kind === "dashboard") {
       // Deep-board links land on the specific board, applying any pinned/template binding as `?var-`
       // (reusable-pages) — falling back to the plain Dashboards surface when no deep-link handler.
       const varKey = it.vars ? `:${JSON.stringify(it.vars)}` : "";
       return (
-        <SidebarMenuItem key={`dash:${keyHint}:${it.dashboard ?? it.label}${varKey}`}>
+        <SidebarMenuItem
+          key={`dash:${keyHint}:${it.dashboard ?? it.label}${varKey}`}
+          className="group/navitem relative"
+        >
           <SidebarMenuButton
             aria-label={it.label}
             tooltip={it.label}
@@ -245,6 +303,8 @@ export function NavRail({
             <LayoutDashboard />
             <span>{it.label}</span>
           </SidebarMenuButton>
+          {/* A vars-bound entry is a nav-authored page instance — not pinnable by ref in v1. */}
+          {!it.vars && pinToggle(itemRef(it))}
         </SidebarMenuItem>
       );
     }
@@ -284,6 +344,22 @@ export function NavRail({
   // (never a blank rail — nav scope).
   const useResolved = !!resolvedItems && resolvedItems.length > 0;
 
+  // hide-and-pins: the Pinned section — the member's favorites, resolved (already stripped)
+  // server-side, above whichever menu applies. Renders nothing when the member has no live pins.
+  const pinnedGroup = pinned.length > 0 && (
+    <SidebarGroup>
+      <SidebarGroupLabel>Pinned</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>{pinned.map((it, i) => resolvedItem(it, `pin-${i}`))}</SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+
+  // hide-and-pins: the FALLBACK is the one tier the server can't strip (the menu lives here), so
+  // subtract the workspace hidden-set client-side. Refs are opaque strings; an ext slot's key is
+  // already its `ext:<id>` ref. Declutter only — routes stay reachable by deep link.
+  const isHidden = (ref: string) => hidden.includes(ref);
+
   return (
     <Sidebar collapsible={collapsible} variant={variant} side={side}>
       <SidebarHeader>
@@ -307,12 +383,15 @@ export function NavRail({
       </SidebarHeader>
 
       <SidebarContent>
+        {pinnedGroup}
         {useResolved ? (
-          // A user-/team-authored nav applies — render the resolved (cap-stripped) menu (nav scope).
+          // A user-/team-authored nav applies — render the resolved (cap-stripped, hidden-stripped)
+          // menu (nav scope).
           resolvedMenu(resolvedItems!)
         ) : (
-          // Fallback: the built-in `SURFACE_GROUPS`, cap-gated by `allowed` (never a blank rail). Each
-          // category is a labelled section; a group whose members are all cap-stripped renders nothing.
+          // Fallback: the built-in `SURFACE_GROUPS`, cap-gated by `allowed` and minus the workspace
+          // hidden-set (never a blank rail). Each category is a labelled section; a group whose
+          // members are all stripped renders nothing.
           <>
             {SURFACE_GROUPS.map((grp) => {
               // The merged "Studio" entry (keyed `extensions`) shows when EITHER of its tabs' caps is
@@ -320,7 +399,7 @@ export function NavRail({
               // which forwards to the first tab the session can reach (a build-only user gets Build).
               const canSee = (s: CoreSurface) =>
                 allowed.includes(s) || (s === "extensions" && allowed.includes("studio"));
-              const visible = grp.items.filter(canSee);
+              const visible = grp.items.filter((s) => canSee(s) && !isHidden(s));
               if (visible.length === 0) return null;
               return (
                 <SidebarGroup key={grp.label}>
@@ -329,7 +408,7 @@ export function NavRail({
                     <SidebarMenu>
                       {visible.map((key) => {
                         const def = SURFACE_DEF[key];
-                        return item(key, def.label, def.icon);
+                        return item(key, def.label, def.icon, undefined, key);
                       })}
                     </SidebarMenu>
                   </SidebarGroupContent>
@@ -337,12 +416,14 @@ export function NavRail({
               );
             })}
 
-            {extSlots.length > 0 && (
+            {extSlots.filter((s) => !isHidden(`ext:${s.ext}`)).length > 0 && (
               <SidebarGroup>
                 <SidebarGroupLabel>Extensions</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {extSlots.map((s) => item(`ext:${s.ext}`, s.label, Puzzle))}
+                    {extSlots
+                      .filter((s) => !isHidden(`ext:${s.ext}`))
+                      .map((s) => item(`ext:${s.ext}`, s.label, Puzzle, undefined, `ext:${s.ext}`))}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

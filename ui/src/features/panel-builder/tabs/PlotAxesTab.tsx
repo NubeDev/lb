@@ -26,9 +26,11 @@ interface Props {
   patch: (next: Partial<EditorState>) => void;
   scope?: VarScope;
   refreshKey?: number;
+  /** Forwarded to `PlotBuilder` — a host with its own pinned preview (the wizard) passes `false`. */
+  preview?: boolean;
 }
 
-export function PlotAxesTab({ draft, state, patch, scope = emptyScope(), refreshKey = 0 }: Props) {
+export function PlotAxesTab({ draft, state, patch, scope = emptyScope(), refreshKey = 0, preview = true }: Props) {
   const { rows, loading, denied } = usePanelData(draft, scope, refreshKey);
   const fields = useMemo(() => inferFields(rows), [rows]);
 
@@ -59,7 +61,7 @@ export function PlotAxesTab({ draft, state, patch, scope = emptyScope(), refresh
           </Button>
         )}
       </div>
-      <PlotBuilder fields={fields} rows={rows} spec={spec} onChange={setSpec} />
+      <PlotBuilder fields={fields} rows={rows} spec={spec} onChange={setSpec} preview={preview} />
     </div>
   );
 }

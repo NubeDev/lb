@@ -4,6 +4,7 @@
 # Two invocation modes from one image (the scope's "one image, many output types" decision):
 #   make linux-executable          dev: bind-mount the repo, binary lands on host (warm caches)
 #   make linux-executable SEED_DEMO=1  same + generate the demo-building SQLite dataset alongside
+#   make windows-executable        cross-build the Windows .exe (+ demo db) → build/windows/
 #   make artifact                  CI : multi-stage build, extract just the ELF as a tar
 #   make seed-demo                 standalone: generate just the demo SQLite file
 #   make image                     build the base toolchain image only (prereq for dev)
@@ -35,13 +36,22 @@ DEMO_DB := $(DEST_DIR)/demo-buildings.db
 SEED_DIR := $(REPO_ROOT)/docker/postgres
 UID_GID := $$(id -u):$$(id -g)
 
+# Windows cross-compile lane (cargo-xwin → x86_64-pc-windows-msvc). Bare .exe, no
+# MSI/NSIS — mirrors the Linux "plain executable" slice; Windows provides WebView2 at
+# runtime. lb-xwin caches the xwin-fetched Windows SDK/CRT across builds.
+WIN_IMAGE := lazybones-shell-builder-windows:local
+WIN_BINARY_REL := ui/src-tauri/target/x86_64-pc-windows-msvc/release/lazybones-shell.exe
+WIN_BINARY := $(REPO_ROOT)/$(WIN_BINARY_REL)
+WIN_DEST_DIR := $(THIS_DIR)/build/windows
+WIN_DEST := $(WIN_DEST_DIR)/lazybones-shell.exe
+
 DOCKER_BUILD := docker build -f $(DOCKERFILE)
 DOCKER_RUN := docker run --rm --user $(UID_GID) \
   -v "$(REPO_ROOT)":/build \
   -v lb-cargo:/usr/local/cargo/registry \
   -v lb-pnpm:/usr/local/pnpm/store
 
-.PHONY: image linux-executable artifact seed-demo smoke clean help
+.PHONY: image windows-image linux-executable windows-executable artifact seed-demo smoke clean help
 .DEFAULT_GOAL := help
 
 help: ## Show this help.
@@ -67,6 +77,17 @@ seed-demo: ## Generate the demo-building SQLite dataset (lite) at build/linux/ex
 	@cd "$(SEED_DIR)" && python3 seed.py --sqlite "$(DEMO_DB)"
 	@echo "Demo data: $(DEMO_DB) ($$(du -h "$(DEMO_DB)" | cut -f1))"
 
+windows-image: ## Build the Windows cross toolchain image (base + clang/lld/nasm + cargo-xwin).
+	$(DOCKER_BUILD) --target windows -t $(WIN_IMAGE) $(REPO_ROOT)
+
+windows-executable: windows-image ## Cross-build the .exe via container; binary + demo db → build/windows/.
+	$(DOCKER_RUN) -v lb-xwin:/usr/local/xwin $(WIN_IMAGE)
+	@mkdir -p "$(WIN_DEST_DIR)"
+	@cp -f "$(WIN_BINARY)" "$(WIN_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_DEST_DIR)" DEMO_DB="$(WIN_DEST_DIR)/demo-buildings.db"
+	@echo "Binary: $(WIN_DEST)"
+	@file "$(WIN_DEST)" 2>/dev/null || true
+
 artifact: ## CI: build + extract just the ELF as a tar (reproducible, no bind-mount).
 	@mkdir -p "$(DEST_DIR)"
 	$(DOCKER_BUILD) --target artifact --output type=tar,dest=$(ARTIFACT) $(REPO_ROOT)
@@ -81,5 +102,5 @@ smoke: ## Boot the just-built binary under xvfb in the container (liveness check
 	  if kill -0 $$SH 2>/dev/null; then echo "alive after 5s"; kill $$SH; exit 0; \
 	  else echo "DEAD within 5s"; exit 1; fi'
 
-clean: ## Remove the cargo + pnpm named cache volumes (next build re-populates them).
-	docker volume rm lb-cargo lb-pnpm 2>/dev/null || true
+clean: ## Remove the cargo + pnpm + xwin named cache volumes (next build re-populates them).
+	docker volume rm lb-cargo lb-pnpm lb-xwin 2>/dev/null || true

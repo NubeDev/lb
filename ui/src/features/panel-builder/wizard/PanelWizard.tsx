@@ -8,7 +8,8 @@
 // OptionsStep, TransformStep, the joyride tour, and Save land in subsequent steps (each its own commit,
 // each green). A "skip to section" nav keeps the steps addressable, not forced.
 //
-// Layout: a 2-column grid — the active step on the left, the pinned `PreviewPane` on the right. The step
+// Layout: a resizable split (useSplitPane) — the active step on the left, the pinned `WizardPreview`
+// (chart | table | JSON, one render path) on the right, a draggable separator between them. The step
 // list + the dashboard id (the save target) thread through props; the wizard owns no persistence — Save
 // (step 8) calls `editorStateToCell` → `dashboard.save`.
 //
@@ -22,15 +23,16 @@ import { canonicalView } from "@/lib/dashboard";
 import { defaultCell } from "@/lib/panel-kit/defaultCell";
 import { cellToEditorState, editorStateToCell, type EditorState } from "@/lib/panel-kit/cellEditorState";
 import { defaultOptionsForView } from "@/features/panel-builder/viewOptions";
-import { PreviewPane } from "@/features/panel-builder/PreviewPane";
-import { OptionFocusPreview } from "@/features/panel-builder/options/OptionFocusPreview";
-import { optionById } from "@/features/panel-builder/options/registry";
+import { ResultRowsProvider } from "@/features/panel-builder/fields/RowsContext";
+import { usePanelData } from "@/features/dashboard/builder/usePanelData";
 import { Button } from "@/components/ui/button";
 
 import { SourceStep } from "./SourceStep";
 import { ChartTypeStep } from "./ChartTypeStep";
 import { OptionsStep } from "./OptionsStep";
 import { TransformStep } from "./TransformStep";
+import { WizardPreview } from "./WizardPreview";
+import { useSplitPane } from "./useSplitPane";
 import { useWizardPreview, WIZARD_CELL_I } from "./useWizardPreview";
 import { WIZARD_STEPS, type WizardStepId } from "./steps";
 
@@ -79,6 +81,12 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
   // fetch/shape cost model). Presentation-option patches flow into `state`; the hook re-derives the cell;
   // useVizQuery's fetch/shape split ensures a presentation toggle reshapes cached frames (no fetch).
   const { cell, refreshKey, bump } = useWizardPreview(state);
+  // The draft's resolved rows — the SAME `usePanelData` resolution the preview renders (useVizQuery's
+  // fetch key dedupes; no second query). Feeds the rows context (the template step's "Copy AI prompt"
+  // embeds real data) and the preview's JSON mode.
+  const { rows } = usePanelData(cell, undefined, refreshKey, { frozen });
+  // The draggable step↔preview split (display-only, persisted per-browser).
+  const split = useSplitPane();
   const patchAndBump = useCallback(
     (next: Partial<EditorState>) => {
       patch(next);
@@ -143,11 +151,23 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
         })}
       </nav>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-4 p-4">
-        <div className="grid min-h-0 content-start gap-3 overflow-y-auto" aria-label="wizard step">
+      <div
+        ref={split.containerRef}
+        className="grid min-h-0 flex-1 p-4"
+        style={{ gridTemplateColumns: `minmax(0,${split.fraction}fr) auto minmax(0,${1 - split.fraction}fr)` }}
+      >
+        <ResultRowsProvider rows={rows}>
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1" aria-label="wizard step">
           {step === "source" && <SourceStep ws={ws} state={state} patch={patchAndBump} />}
           {step === "chartType" && (
-            <ChartTypeStep state={state} onChange={changeView} draft={cell} patch={patch} refreshKey={refreshKey} />
+            <ChartTypeStep
+              state={state}
+              onChange={changeView}
+              draft={cell}
+              patch={patch}
+              refreshKey={refreshKey}
+              ws={ws}
+            />
           )}
           {step === "options" && (
             <OptionsStep
@@ -191,37 +211,36 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
           </div>
         </div>
 
-        {/* The pinned full-panel preview — the ONE chart in the wizard. On the options step it renders
-            through OptionFocusPreview so the focused option's region is emphasized (same WidgetView, one
-            render path — no drift). Elsewhere it is the SAME PreviewPane/WidgetView the editor uses; the
-            freeze toggle (TransformStep) pins the FETCH so transform edits reshape frames, no re-fetch. */}
-        <div className="min-h-0">
-          {step === "options" ? (
-            <div
-              className="flex h-full min-h-[12rem] flex-col rounded-lg border border-border bg-panel p-3"
-              aria-label="panel preview"
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-wide text-muted">Preview</span>
-                {focusedOption && (
-                  <span className="rounded-sm bg-accent/10 px-1.5 py-0.5 text-[11px] text-muted" aria-label="focused option">
-                    editing · {optionById(focusedOption)?.label ?? focusedOption}
-                  </span>
-                )}
-              </div>
-              <div className="min-h-0 flex-1">
-                <OptionFocusPreview
-                  cell={cell}
-                  workspace={ws}
-                  refreshKey={refreshKey}
-                  optionFocus={focusedOption ? { optionId: focusedOption } : undefined}
-                />
-              </div>
-            </div>
-          ) : (
-            <PreviewPane cell={cell} ws={ws} refreshKey={refreshKey} frozen={frozen} />
-          )}
+        {/* The draggable divider — resize the step↔preview balance with the mouse or arrow keys. */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="resize wizard panes"
+          tabIndex={0}
+          onPointerDown={split.onPointerDown}
+          onKeyDown={split.onKeyDown}
+          className="group mx-1.5 flex w-2 cursor-col-resize touch-none items-center justify-center rounded-sm outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        >
+          <div className="h-10 w-0.5 rounded-full bg-border transition-colors group-hover:bg-accent/60 group-focus-visible:bg-accent" />
         </div>
+
+        {/* The pinned full-panel preview — the ONE chart in the wizard, with a display-only
+            Chart | Table | JSON toggle. On the options step, chart mode renders through
+            OptionFocusPreview so the focused option's region is emphasized (same WidgetView, one render
+            path — no drift). The freeze toggle (TransformStep) pins the FETCH so transform edits reshape
+            frames, no re-fetch. */}
+        <div className="min-h-0">
+          <WizardPreview
+            cell={cell}
+            ws={ws}
+            refreshKey={refreshKey}
+            frozen={frozen}
+            step={step}
+            focusedOption={step === "options" ? focusedOption : undefined}
+            rows={rows}
+          />
+        </div>
+        </ResultRowsProvider>
       </div>
     </div>
   );

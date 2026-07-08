@@ -222,6 +222,12 @@ fn member_caps() -> Vec<String> {
         "mcp:dashboard.save:call",
         "mcp:dashboard.delete:call",
         "mcp:dashboard.share:call",
+        // dashboard.delete_any — ADMIN override, checked only as the second gate inside
+        // `dashboard_delete` when the caller isn't the owner. Granted here because the dev login
+        // doubles as admin (same convention as `prefs.set_default` above); a real non-admin member
+        // role MUST NOT carry it. Lets an admin clean up a dashboard another member (or an agent
+        // acting on their behalf) owns, without granting blanket save/share override.
+        "mcp:dashboard.delete_any:call",
         // widget-catalog scope (Slice A): the widget palette read. Member-level — every member may
         // read the palette (it grants knowledge, not access; the write stays gated on dashboard.save).
         // LOAD-BEARING: the `mcp:*.{get,list,write,create,update,delete,post}:call` wildcards below do
@@ -345,11 +351,15 @@ fn member_caps() -> Vec<String> {
         // nothing; it just lets a member RENDER their own screen (the viz layer resolves the viewer's
         // prefs to localize a timestamp/quantity via `format.datetime`/`format.quantity`, which are
         // grant-free but need the resolved axes). Without this a member could build a dashboard but
-        // not resolve the prefs to format it (flow-ts-display scope). `prefs.set_default` stays
-        // admin-only (NOT granted here) — it writes the WORKSPACE default, not a personal record.
+        // not resolve the prefs to format it (flow-ts-display scope). `prefs.set_default` writes the
+        // WORKSPACE default (an ADMIN act), granted here because the dev login doubles as admin —
+        // beside `message.set_catalog`/`agent.config.set` below — so the workspace-branding + theme
+        // admin editors work end to end over the dev session (workspace-branding/theme-customizer
+        // scopes). A real non-admin member role MUST NOT carry it; the host re-checks server-side.
         "mcp:prefs.get:call",
         "mcp:prefs.resolve:call",
         "mcp:prefs.set:call",
+        "mcp:prefs.set_default:call",
         // i18n catalogs (i18n-catalogs scope, prefs Phase 2). `message.render` (render a catalog
         // message for the CALLER) + `prefs.catalog` (read the merged override-over-builtin map for
         // the caller's own workspace) are member-level — a member must render/read to localize their
@@ -580,5 +590,40 @@ mod tests {
                 "dev login must grant {needed} for the Datasources page to work end to end"
             );
         }
+    }
+
+    /// The workspace-branding + theme-customizer admin editors persist the workspace default over
+    /// `prefs.set_default` (admin-gated, writes the `workspace_prefs:[ws]` record). The dev login
+    /// "doubles as admin" — it carries the other admin-set verbs (`message.set_catalog`,
+    /// `agent.config.set`, `agent.policy.set`) — but `prefs.set_default` was missed and no
+    /// `mcp:*.set_default:call` wildcard covers it, so an admin in the dev session was denied on
+    /// the branding editor (the "Editing it requires an administrator" stale gate). This locks the
+    /// grant in. Also asserts the replacement local-deny-test verb (`telemetry.purge` — the
+    /// destructive node-admin op) stays OUT of the dev set, so the CLI parity-deny test keeps teeth.
+    #[test]
+    fn dev_login_carries_admin_prefs_set_default_but_not_telemetry_purge() {
+        let caps = member_caps();
+        assert!(
+            caps.iter().any(|c| c == "mcp:prefs.set_default:call"),
+            "dev login (admin) must grant mcp:prefs.set_default:call — the branding/theme workspace-default editors deny without it"
+        );
+        assert!(
+            !caps.iter().any(|c| c == "mcp:telemetry.purge:call"),
+            "telemetry.purge is a destructive node-admin op — it must stay OUT of the dev set (the local parity-deny test relies on it being ungranted)"
+        );
+    }
+
+    /// `dashboard.delete_any` is the admin override `dashboard_delete` checks as a second gate when
+    /// the caller isn't the dashboard's owner. Without it in the dev grant set, the roster's delete
+    /// button ran the confirm dialog for every dashboard (gated on ANY admin cap in the UI) but the
+    /// host silently denied deleting one the dev session didn't own — no visible error, looked like
+    /// the button did nothing.
+    #[test]
+    fn dev_login_carries_dashboard_delete_any() {
+        let caps = member_caps();
+        assert!(
+            caps.iter().any(|c| c == "mcp:dashboard.delete_any:call"),
+            "dev login (admin) must grant mcp:dashboard.delete_any:call — the roster's delete-any-dashboard affordance denies without it"
+        );
     }
 }

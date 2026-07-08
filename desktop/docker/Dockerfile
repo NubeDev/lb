@@ -72,6 +72,25 @@ RUN chmod +x /usr/local/bin/build.sh
 # Default: build the shell. Override (`docker run ... <cmd>`) for the in-container smoke.
 ENTRYPOINT ["/usr/local/bin/build.sh"]
 
+# ─── windows: base + the MSVC cross toolchain (cargo-xwin) ───────────────────────
+# Cross-compiles the shell to x86_64-pc-windows-msvc from Linux. Windows uses the
+# OS-provided WebView2 (no webkit needed on the target); the C deps in the shell's
+# lock (ring, zstd-sys) build with clang-cl against the xwin-fetched Windows SDK/CRT.
+# nasm is for ring's assembly on the msvc target; lld-link is the linker cargo-xwin
+# drives. The SDK/CRT download lands in XWIN_CACHE_DIR — mount a named volume there
+# (see desktop/Makefile) so it is fetched once, not per build.
+FROM base AS windows
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      clang lld llvm nasm cmake \
+    && rm -rf /var/lib/apt/lists/*
+RUN rustup target add x86_64-pc-windows-msvc \
+ && cargo install --locked cargo-xwin
+ENV XWIN_CACHE_DIR=/usr/local/xwin
+RUN mkdir -p /usr/local/xwin && chmod -R 0777 /usr/local/xwin
+COPY desktop/docker/build-windows.sh /usr/local/bin/build-windows.sh
+RUN chmod +x /usr/local/bin/build-windows.sh
+ENTRYPOINT ["/usr/local/bin/build-windows.sh"]
+
 # ─── builder: COPY repo + RUN build (reached transitively by --target artifact) ──
 # CI reproducible path: no bind-mount, the repo is baked in, the build is deterministic
 # from a clean checkout.

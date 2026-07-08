@@ -5,7 +5,7 @@
 
 use lb_store::{read, scan, write, Store, StoreError};
 
-use super::model::{Nav, NavPref, DEFAULT_TABLE, PREF_TABLE, TABLE};
+use super::model::{Nav, NavHidden, NavPref, DEFAULT_TABLE, HIDDEN_TABLE, PREF_TABLE, TABLE};
 
 /// The largest roster a single `nav.list` returns (one scan page). A workspace with more navs than
 /// this is a named follow-up (paged roster) — stated, not silently truncated.
@@ -20,6 +20,9 @@ fn pref_id(user: &str) -> String {
 
 /// The constant record id of the one workspace-default pointer per workspace.
 const DEFAULT_ID: &str = "default";
+
+/// The constant record id of the one hidden-set per workspace (`nav_hidden:[ws]`).
+const HIDDEN_ID: &str = "hidden";
 
 /// Read `nav:{id}` in `ws`. `None` if absent in this namespace (the hard wall) — a tombstoned record
 /// still deserializes (callers treat `deleted` as absent).
@@ -80,6 +83,26 @@ pub async fn write_pref(
 ) -> Result<(), StoreError> {
     let value = serde_json::to_value(pref).map_err(|e| StoreError::Decode(e.to_string()))?;
     write(store, ws, PREF_TABLE, &pref_id(user), &value).await
+}
+
+/// Read the workspace hidden-set (`nav_hidden:[ws]`). `None` when the admin never set one — the
+/// resolver treats that as an empty set (nothing hidden).
+pub async fn read_hidden(store: &Store, ws: &str) -> Result<Option<NavHidden>, StoreError> {
+    match read(store, ws, HIDDEN_TABLE, HIDDEN_ID).await? {
+        Some(v) => {
+            let h: NavHidden =
+                serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string()))?;
+            Ok(Some(h))
+        }
+        None => Ok(None),
+    }
+}
+
+/// UPSERT the workspace hidden-set. Idempotent on the one `[ws]` record (LWW; an empty `hidden`
+/// clears it — a tombstone shape, like the default pointer).
+pub async fn write_hidden(store: &Store, ws: &str, h: &NavHidden) -> Result<(), StoreError> {
+    let value = serde_json::to_value(h).map_err(|e| StoreError::Decode(e.to_string()))?;
+    write(store, ws, HIDDEN_TABLE, HIDDEN_ID, &value).await
 }
 
 /// Read the workspace-default nav id (`workspace_nav_default:[ws]`). `None` when none is set.
