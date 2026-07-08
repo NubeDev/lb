@@ -76,6 +76,32 @@ worked, then converge every tab on one pattern using the already-committed primi
   scroll, a working filter, "New X" in the same place, and no `red-*` literal
   (`grep -rn "red-" ui/src/features/admin` → none).
 
+## Polish round (post-review, same session)
+
+Screenshots surfaced three "these look different" issues; fixed:
+
+- **"＋ Cancel" bug** — the New button kept the `Plus` icon when its label flipped to
+  "Cancel". Now the icon shows only in the "New X" state and the open state is a clean
+  `outline` "Cancel". Fixed in `ApiKeysAdmin`, `PeopleAdmin`, `TeamsAdmin`.
+- **Nav editor looked like a different surface** — it opened straight to a bare "← Back"
+  with no toolbar, and Nav's whole layout was inset by a root `p-4` so its toolbar didn't
+  align with the other tabs. Restructured `nav/NavAdmin.tsx`: root is now flush
+  `flex h-full min-h-0 flex-col`, both roster and editor lead with a full-bleed
+  `AdminToolbar`, and only the scroll body below carries `p-4`.
+- **Loud filled chips** — the API-key kind/role selectors (and the Webhooks auth-mode
+  selectors) used the `solid` (filled teal) variant when selected, the loudest element on
+  the screen. Switched selected → `default` (accent *tint* + accent text + subtle border),
+  matching the quieter console. Only admin touched; the app-wide `solid` uses (Studio,
+  dashboards, query-workbench) are their own features and were left.
+
+Decisions (with the user):
+- **Dropdowns stay native.** The `Select` primitive is a native `<select>` (token-styled
+  closed control; OS menu when open) used in 32 files app-wide — the deliberate
+  accessible/mobile choice. Making Nav a `Combobox` would make Nav the lone exception.
+  Migrating everything to `Combobox` is noted as a separate app-wide task, out of scope.
+- **Disabled ≠ glass.** The washed-out "Create key" / "Apply visibility" buttons are the
+  normal `disabled:opacity-50` state (empty required field / unsaved nav), not a style bug.
+
 ## Follow-ups
 
 - Overview (card grid) was already clean; left as-is.

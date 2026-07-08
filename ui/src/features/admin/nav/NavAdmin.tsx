@@ -247,16 +247,19 @@ export function NavAdmin({ ws, caps }: Props) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 p-4" data-testid="nav-admin">
+    <div className="flex h-full min-h-0 flex-col" data-testid="nav-admin">
       {error && (
-        <div className="text-sm text-destructive" role="alert">
+        <div
+          role="alert"
+          className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+        >
           {error}
         </div>
       )}
 
       {editId === null ? (
         // ── Roster ──
-        <section className="flex flex-col gap-3">
+        <section className="flex min-h-0 flex-1 flex-col">
           <AdminToolbar
             search={navs.length ? filter : undefined}
             onSearch={navs.length ? setFilter : undefined}
@@ -267,6 +270,7 @@ export function NavAdmin({ ws, caps }: Props) {
               </Button>
             }
           />
+          <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="text-sm text-muted">Loading…</div>
           ) : navs.length === 0 ? (
@@ -315,16 +319,22 @@ export function NavAdmin({ ws, caps }: Props) {
               ))}
             </ul>
           )}
+          </div>
         </section>
       ) : (
         // ── Editor ──
-        <section className="flex min-h-0 flex-1 flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <Button size="sm" variant="ghost" onClick={() => setEditId(null)} aria-label="Back">
-              ← Back
-            </Button>
-            {msg && <span className="text-xs text-muted">{msg}</span>}
-          </div>
+        <section className="flex min-h-0 flex-1 flex-col">
+          <AdminToolbar
+            action={
+              <>
+                {msg && <span className="text-xs text-muted">{msg}</span>}
+                <Button size="sm" variant="outline" onClick={() => setEditId(null)} aria-label="Back">
+                  ← Back
+                </Button>
+              </>
+            }
+          />
+          <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
 
           <Input
             aria-label="Nav title"
@@ -591,6 +601,7 @@ export function NavAdmin({ ws, caps }: Props) {
               per-user tier (manage membership in the Teams admin).
             </p>
           </section>
+          </div>
         </section>
       )}
     </div>

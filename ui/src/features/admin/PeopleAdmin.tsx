@@ -88,7 +88,11 @@ export function PeopleAdmin({ caps }: Props) {
                 aria-label="new user"
                 onClick={() => setCreating((c) => !c)}
               >
-                <Plus size={13} /> {creating ? "Cancel" : "New user"}
+                {creating ? "Cancel" : (
+                <>
+                  <Plus size={13} /> New user
+                </>
+              )}
               </Button>
             }
           />

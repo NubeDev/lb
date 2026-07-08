@@ -70,8 +70,17 @@ export function ApiKeysAdmin(_: Props) {
         onSearch={setFilter}
         searchPlaceholder="Filter keys…"
         action={
-          <Button size="sm" aria-label="new key" onClick={() => setCreating((c) => !c)}>
-            <Plus size={13} /> {creating ? "Cancel" : "New key"}
+          <Button
+            variant={creating ? "outline" : "default"}
+            size="sm"
+            aria-label="new key"
+            onClick={() => setCreating((c) => !c)}
+          >
+            {creating ? "Cancel" : (
+              <>
+                <Plus size={13} /> New key
+              </>
+            )}
           </Button>
         }
       />
@@ -122,7 +131,7 @@ export function ApiKeysAdmin(_: Props) {
                 {KINDS.map((k) => (
                   <Button
                     key={k}
-                    variant={kind === k ? "solid" : "outline"}
+                    variant={kind === k ? "default" : "outline"}
                     size="sm"
                     aria-label={`kind ${k}`}
                     aria-pressed={kind === k}
@@ -139,7 +148,7 @@ export function ApiKeysAdmin(_: Props) {
                 {ROLES.map((r) => (
                   <Button
                     key={r}
-                    variant={role === r ? "solid" : "outline"}
+                    variant={role === r ? "default" : "outline"}
                     size="sm"
                     aria-label={`role ${r}`}
                     aria-pressed={role === r}

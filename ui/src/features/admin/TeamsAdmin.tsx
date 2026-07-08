@@ -97,7 +97,11 @@ export function TeamsAdmin(_: Props) {
                 aria-label="new team"
                 onClick={() => setCreating((c) => !c)}
               >
-                <Plus size={13} /> {creating ? "Cancel" : "New team"}
+                {creating ? "Cancel" : (
+                  <>
+                    <Plus size={13} /> New team
+                  </>
+                )}
               </Button>
             }
           />
