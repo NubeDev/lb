@@ -43,6 +43,9 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        // Ordinary session token (not a run-scoped delegation) — no caller bound, no run scope.
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -374,6 +377,99 @@ async fn a_run_that_exceeds_the_supervision_ceiling_is_reaped_with_an_agent_erro
         errors.len(),
         1,
         "exactly one error even after re-drain: {errors:?}"
+    );
+}
+
+/// A runtime that mimics the external driver's **no-progress stall**: it suspends its own run job and
+/// returns `AgentError::Stalled` — exactly what `AcpRuntime::run` does when its watchdog fires. The
+/// worker must turn this into an actionable `agent_stalled` pause-and-ask item (NOT an `agent_error`),
+/// leaving the run resumable.
+struct StalledRuntime;
+
+impl AgentRuntime for StalledRuntime {
+    fn id(&self) -> &str {
+        "default"
+    }
+
+    fn run<'a>(
+        &'a self,
+        node: &'a std::sync::Arc<Node>,
+        ctx: RunContext<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, lb_host::AgentError>> + Send + 'a>> {
+        Box::pin(async move {
+            // The real driver creates the run job, then on stall suspends it and returns `Stalled`.
+            // Mirror that: ensure the run job exists (the AcpRuntime creates it at start) before
+            // suspending, so the worker sees a `Suspended` run job exactly as in production.
+            let job = lb_jobs::Job::new(ctx.job_id, "agent-session", "", ctx.ts);
+            let _ = lb_jobs::create(&node.store, ctx.ws, &job).await;
+            let _ = lb_jobs::suspend(&node.store, ctx.ws, ctx.job_id).await;
+            Err(lb_host::AgentError::Stalled)
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn a_stalled_run_posts_an_actionable_agent_stalled_prompt_and_stays_resumable() {
+    // PAUSE-AND-ASK (external-agent run-lifecycle): a run that stalls is PAUSED, not failed. The worker
+    // posts a distinct `agent_stalled` item (the dock renders keep-going/stop) and the run job stays
+    // `Suspended` so `resume_run` ("keep going") can continue it. This is NOT an `agent_error`.
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let mut registry = RuntimeRegistry::with_default(answer_model("unused"));
+    registry.register(Arc::new(StalledRuntime)); // overrides `default` with the stalling runtime
+    node.install_runtimes(registry);
+
+    let ws = "acme";
+    let cid = "ops";
+    let p = principal(
+        ws,
+        &[
+            &format!("bus:chan/{cid}:pub"),
+            &format!("bus:chan/{cid}:sub"),
+            INVOKE,
+        ],
+    );
+
+    let body = agent_request_body("build a thing", None, "run-stall");
+    post(
+        &node,
+        &p,
+        ws,
+        cid,
+        Item::new("q1", cid, "user:ada", body, 1),
+    )
+    .await
+    .expect("the request posts");
+
+    drain_channel_agent_runs(&node, ws).await;
+
+    // The worker posted an `agent_stalled` prompt carrying the run job + an honest message — NOT an
+    // `agent_error` (the run is paused, not dead).
+    let item = worker_item(&node, &p, ws, cid)
+        .await
+        .expect("a stalled run posts a pause-and-ask item");
+    let parsed: serde_json::Value = serde_json::from_str(&item.body).expect("json body");
+    assert_eq!(
+        parsed["kind"], "agent_stalled",
+        "stall is a pause-and-ask item, not an error: {parsed:?}"
+    );
+    assert_eq!(
+        parsed["job"], "run-stall",
+        "carries the run job for resume/stop"
+    );
+    assert!(
+        parsed["message"].as_str().unwrap_or("").contains("stuck"),
+        "honest prompt: {parsed:?}"
+    );
+
+    // The run job stays SUSPENDED (resumable) — "keep going" (resume_run) can continue it.
+    let job = lb_jobs::load(&node.store, ws, "run-stall")
+        .await
+        .expect("load")
+        .expect("run job exists");
+    assert!(
+        matches!(job.status, lb_jobs::JobStatus::Suspended),
+        "a stalled run stays Suspended (resumable), got {:?}",
+        job.status
     );
 }
 

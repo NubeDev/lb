@@ -27,8 +27,7 @@ pub fn write_file(root: Option<&Path>, path: &Path, content: &str) -> Result<Wri
         .map(std::path::PathBuf::from)
         .unwrap_or_else(default_devkit_root);
     let resolved = resolve_under_root(&root, path)?;
-    std::fs::write(&resolved, content)
-        .with_context(|| format!("write {}", resolved.display()))?;
+    std::fs::write(&resolved, content).with_context(|| format!("write {}", resolved.display()))?;
     make_executable_if_script(&resolved)?;
     Ok(WriteFileReport {
         path: resolved,

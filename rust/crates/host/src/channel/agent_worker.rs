@@ -43,7 +43,8 @@ use lb_jobs::{Job, JobStatus};
 
 use super::agent_job::{ChannelAgentJob, CHANNEL_AGENT_KIND};
 use super::payload::{
-    agent_error_body, agent_result_body, parse_payload, AgentPayload, ItemPayload,
+    agent_error_body, agent_result_body, agent_stalled_body, parse_payload, AgentPayload,
+    ItemPayload,
 };
 use crate::agent::{invoke_via_runtime, reachable_tools, AgentError, Substrate};
 use crate::boot::Node;
@@ -76,6 +77,14 @@ const TIMEOUT_MESSAGE: &str = "agent run exceeded its time limit and was stopped
 /// The message posted as an `agent_error` when a run was STOPPED by a user (agent-dock run controls) —
 /// distinct from a fault or a deny; the dock renders it as the terminal "stopped" state.
 const STOPPED_MESSAGE: &str = "run stopped";
+
+/// The human-facing prompt on a pause-and-ask `agent_stalled` item — an external run that went quiet
+/// (no tool calls or output) past the no-progress ceiling and was PAUSED so the user decides. The dock
+/// renders "Keep going" (resume from the cursor) / "Stop" (cancel) beneath it. Honest about *why*
+/// (stuck, not slow) so the user can re-prompt with clearer grounding if they stop.
+const STALL_PROMPT: &str =
+    "The agent hasn't made progress (no tool calls or output) for a while — it may be stuck. \
+     Keep going, or stop?";
 
 /// How a driven run actually ended, read from the durable run-job status AFTER the drive returns — the
 /// loop returns `Ok` whether it finished, was paused, or was stopped, so the status is the authority.
@@ -258,6 +267,19 @@ pub async fn drive_queued_run(
     )
     .await;
 
+    // STALLED (pause-and-ask): the run made no progress for the no-progress ceiling and the driver
+    // SUSPENDED it (resumable). This looks like `Paused` to `run_lifecycle_state` (both are
+    // `Suspended`), but a stall must post an ACTIONABLE `agent_stalled` item (the dock renders keep-
+    // going/stop) whereas a user pause posts nothing. Disambiguate on the drive fault, before the
+    // lifecycle match. The enqueue job is retired below so the reactor doesn't re-drive the paused
+    // run; "keep going" is `resume_run` (re-enqueue), "stop" is `stop_run` (cancel).
+    if matches!(outcome, Err(DriveFault::Stalled)) {
+        let body = agent_stalled_body(goal, run_job, STALL_PROMPT);
+        let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
+        finish_enqueue(node, ws, enqueue_id).await;
+        return;
+    }
+
     // RUN CONTROLS (agent-dock): the loop can return `Ok` because it finished OR because it was
     // PAUSED / STOPPED at a turn boundary (both return the partial answer). Re-read the durable run
     // status to tell them apart — only a genuinely-finished run posts the durable `agent_result`.
@@ -295,10 +317,13 @@ pub async fn drive_queued_run(
                     let _ = post_widget_item(node, ws, cid, run_job, body, *ts + 1).await;
                 }
             }
-            Err(msg) => {
+            // A terminal fault → `agent_error`. `Stalled` was already handled above (it never
+            // reaches here), so any remaining fault is a genuine, message-carrying one.
+            Err(DriveFault::Message(msg)) => {
                 let body = agent_error_body(goal, &msg);
                 let _ = post_worker_item(node, ws, cid, run_job, body, *ts).await;
             }
+            Err(DriveFault::Stalled) => {}
         },
     }
 
@@ -346,14 +371,14 @@ async fn drive_run(
     job: &str,
     ts: u64,
     ceiling: Duration,
-) -> Result<String, String> {
+) -> Result<String, DriveFault> {
     let registry = node.runtimes();
 
     // OPAQUE unknown-runtime: a named runtime that isn't registered collapses to the same deny as a
     // missing grant — no runtime-existence leak. (Absent runtime → default, always present.)
     if let Some(id) = runtime {
         if registry.resolve(Some(id)).is_err() {
-            return Err(OPAQUE_DENY.to_string());
+            return Err(DriveFault::Message(OPAQUE_DENY.to_string()));
         }
     }
 
@@ -396,13 +421,27 @@ async fn drive_run(
         // Ran to completion within the ceiling.
         Ok(result) => result.map_err(|e| match e {
             // Deny is opaque — same message as an unknown runtime (no capability/existence leak).
-            AgentError::Denied => OPAQUE_DENY.to_string(),
+            AgentError::Denied => DriveFault::Message(OPAQUE_DENY.to_string()),
+            // A no-progress stall PAUSED the run (the driver suspended it) — not a fault. Surface it
+            // distinctly so the caller posts the actionable pause-and-ask item, not a dead error.
+            AgentError::Stalled => DriveFault::Stalled,
             // A genuine run fault is honest and distinct (e.g. the external subprocess failed).
-            other => format!("agent run failed: {other}"),
+            other => DriveFault::Message(format!("agent run failed: {other}")),
         }),
         // Exceeded the ceiling → reaped. Honest, distinct message (not the opaque deny).
-        Err(_elapsed) => Err(TIMEOUT_MESSAGE.to_string()),
+        Err(_elapsed) => Err(DriveFault::Message(TIMEOUT_MESSAGE.to_string())),
     }
+}
+
+/// How a driven run FAILED (the `Err` arm of [`drive_run`]). Most faults carry an already-shaped
+/// message for an `agent_error` item; a [`DriveFault::Stalled`] is the special non-terminal case —
+/// the run was paused at the no-progress ceiling and the caller posts the actionable `agent_stalled`
+/// pause-and-ask item instead.
+enum DriveFault {
+    /// A terminal fault (or an opaque deny) — post its message as an `agent_error`.
+    Message(String),
+    /// The run stalled and was PAUSED (suspended, resumable). Post the `agent_stalled` prompt.
+    Stalled,
 }
 
 /// Enforce the byte cap on the answer. Returns `(answer, truncated)`; trims to a char boundary at or

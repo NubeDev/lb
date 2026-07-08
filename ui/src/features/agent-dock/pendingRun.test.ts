@@ -28,6 +28,15 @@ function errorItem(job: string, error: string, ts: number): Item {
     ts,
   };
 }
+function stalledItem(job: string, message: string, ts: number): Item {
+  return {
+    id: `a:${job}`,
+    channel: "dock.x",
+    author: "system:agent-worker",
+    body: JSON.stringify({ kind: "agent_stalled", goal: "g", job, message }),
+    ts,
+  };
+}
 
 describe("latestPendingRun", () => {
   it("returns none for an empty / chat-only session", () => {
@@ -57,5 +66,24 @@ describe("latestPendingRun", () => {
     const r = latestPendingRun(items);
     expect(r.hasError).toBe(true);
     expect(r.errorText).toBe("agent not permitted");
+  });
+
+  it("marks Stalled (not Done/Error) with the prompt when an agent_stalled landed", () => {
+    const items = [agentReq("run-2", "q", 1), stalledItem("run-2", "it may be stuck. Keep going?", 2)];
+    const r = latestPendingRun(items);
+    expect(r.stalled).toBe(true);
+    expect(r.stalledText).toBe("it may be stuck. Keep going?");
+    // A stall is NOT terminal — the run stays resumable.
+    expect(r.hasResult).toBe(false);
+    expect(r.hasError).toBe(false);
+    expect(r.job).toBe("run-2");
+  });
+
+  it("clears the stall once a durable result replaces it (resume completed)", () => {
+    // After "keep going", the worker posts a fresh result under the same a:<job> id.
+    const items = [agentReq("run-2", "q", 1), result("run-2", 3)];
+    const r = latestPendingRun(items);
+    expect(r.stalled).toBe(false);
+    expect(r.hasResult).toBe(true);
   });
 });

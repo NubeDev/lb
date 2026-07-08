@@ -85,9 +85,11 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
   );
 
   const pending = latestPendingRun(session.items);
-  // Watch the newest run while it has no durable result/error yet (active). The run stream degrades
-  // honestly when `mcp:agent.watch:call` is absent; the durable answer still lands via the channel.
-  const active = pending.job != null && !pending.hasResult && !pending.hasError;
+  // Watch the newest run while it is truly RUNNING — no durable result/error AND not paused-for-a-stall
+  // decision (a stalled run is suspended, its stream ended; keep the strip but stop watching). The run
+  // stream degrades honestly when `mcp:agent.watch:call` is absent; the durable answer still lands.
+  const active =
+    pending.job != null && !pending.hasResult && !pending.hasError && !pending.stalled;
   const run = useDockRun(pending.job ?? "", active, pending.hasResult, pending.hasError, now);
 
   // Run controls (agent-dock run controls): pause/stop/resume the live run over `mcp:agent.control`.
@@ -217,7 +219,7 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
         )}
       </div>
 
-      {(active || run.phase === "error" || run.degraded || run.feed.tools.length > 0) && (
+      {(active || pending.stalled || run.phase === "error" || run.degraded || run.feed.tools.length > 0) && (
         <div className="border-t border-border bg-panel-2/40 px-3 py-2">
           <DockRunStatus
             phase={run.phase}
@@ -226,10 +228,16 @@ export function AgentDock({ ws, principal, width, onWidth, onClose, onRunningCha
             degraded={run.degraded}
             errorText={pending.errorText}
             paused={paused}
+            stalled={pending.stalled}
+            stalledText={pending.stalledText}
             onRetry={() => pending.goal && void session.ask(pending.goal)}
             onPause={active && !paused ? () => void control("pause") : undefined}
             onStop={active && !paused ? () => void control("stop") : undefined}
             onResume={paused ? () => void control("resume") : undefined}
+            // PAUSE-AND-ASK: a stalled run is suspended — "Keep going" resumes it from the cursor,
+            // "Stop" cancels. Wired directly off `pending.stalled` (the run isn't `active`).
+            onKeepGoing={pending.stalled ? () => void control("resume") : undefined}
+            onStopStalled={pending.stalled ? () => void control("stop") : undefined}
           />
           {controlError && (
             <p role="alert" className="mt-1 text-xs text-destructive">

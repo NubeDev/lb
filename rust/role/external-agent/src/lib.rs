@@ -57,6 +57,23 @@ use scratch::{default_scratch_base, ScratchDir};
 /// supervisor's bounded, killable, reap-on-every-exit-path run.
 const DEFAULT_RUN_TIMEOUT: Duration = Duration::from_secs(600);
 
+/// **No-progress (stall) ceiling** — the wall-clock quiet period after which a run that has emitted no
+/// `RunEvent` (no tool call, no text, no reasoning) is reaped as *stuck*, distinct from the outer
+/// wall-time ceiling that bounds a run that is *making progress but slow*. This closes the gap
+/// `run-lifecycle-scope.md` flags open: the in-house loop self-bounds at `MAX_STEPS`, but an external
+/// subprocess was bounded ONLY by wall-time — so a flailing agent (e.g. one shelling `make dev` in a
+/// loop) burned the full 15-minute ceiling before failing. A stall is reaped in `NO_PROGRESS_CEILING`
+/// instead: the `drive` future is dropped (closing the ACP session + subprocess stdio, the same reaper
+/// seam the wall uses), and the run ends with a distinct, honest message so the caller can tell a
+/// *stuck* agent from a *slow* one.
+///
+/// Reset by EVERY streamed `RunEvent`, so a run that is genuinely working (streaming tool calls / text)
+/// never trips it — only true silence does. A model that thinks for a while WITHOUT emitting any event
+/// is the edge case; the transport emits reasoning/step events during real work, so quiet this long is
+/// a strong stuck signal. Tunable per runtime via [`AcpRuntime::with_no_progress_ceiling`] (a test uses
+/// a tiny value against a scripted silent runtime).
+const NO_PROGRESS_CEILING: Duration = Duration::from_secs(90);
+
 /// The ONE external runtime (external-agent #2, `AcpRuntime`). One per registered profile id; the body
 /// is identical across agents (the difference is the [`ResolvedAgent`] it holds). Named `AcpRuntime`
 /// after its integration target even though this slice's wire is `exec --json` — the ACP swap is
@@ -66,6 +83,9 @@ pub struct AcpRuntime {
     agent: ResolvedAgent,
     scratch_base: PathBuf,
     timeout: Duration,
+    /// The no-progress (stall) ceiling — a run silent this long is reaped as stuck. Defaults to
+    /// [`NO_PROGRESS_CEILING`]; a test overrides it to a tiny value.
+    no_progress: Duration,
     /// The shim binary name/path the wrapper's MCP config points at. `None` ⇒ `"lb-mcp-shim"`
     /// (expected on the node's `PATH`). Configurable so a deployment can point at an absolute path.
     shim_bin: Option<String>,
@@ -82,8 +102,31 @@ impl AcpRuntime {
             agent,
             scratch_base,
             timeout: DEFAULT_RUN_TIMEOUT,
+            no_progress: NO_PROGRESS_CEILING,
             shim_bin: None,
         })
+    }
+
+    /// Override the no-progress (stall) ceiling (default: [`NO_PROGRESS_CEILING`]). Used by a test to
+    /// reap a scripted silent runtime at a tiny quiet period.
+    pub fn with_no_progress_ceiling(mut self, quiet: Duration) -> Self {
+        self.no_progress = quiet;
+        self
+    }
+
+    /// Construct an `AcpRuntime` from an explicit [`ResolvedAgent`] (profile + wrapper) rather than a
+    /// built-in id. This is the seam a **test** uses to drive a scripted wrapper/binary (e.g. a silent
+    /// `sleep` to exercise the no-progress ceiling) without a real agent CLI — the run body is
+    /// identical to a built-in profile's.
+    pub fn from_resolved(id: &str, agent: ResolvedAgent, scratch_base: PathBuf) -> Self {
+        Self {
+            id: id.to_string(),
+            agent,
+            scratch_base,
+            timeout: DEFAULT_RUN_TIMEOUT,
+            no_progress: NO_PROGRESS_CEILING,
+            shim_bin: None,
+        }
     }
 
     /// Override the shim binary path (default: `"lb-mcp-shim"` on `PATH`). Used when the node binary
@@ -142,8 +185,17 @@ impl AgentRuntime for AcpRuntime {
             let bus = node.bus.clone();
             let ws = ctx.ws.to_string();
             let job = ctx.job_id.to_string();
+            // NO-PROGRESS WATCHDOG (run-lifecycle #5, stall ceiling): a shared "last activity" tick,
+            // bumped by the publisher on every streamed `RunEvent`. A separate watchdog future polls it
+            // and fires when the run has been silent past `no_progress`. Racing `drive` against the
+            // watchdog lets a STUCK run be reaped promptly (drop `drive` → reap the subprocess) instead
+            // of burning the whole outer wall-time ceiling. Seeded to "now" so the clock starts at spawn.
+            let progress = Arc::new(tokio::sync::Notify::new());
+            let progress_pub = progress.clone();
             let publisher = tokio::spawn(async move {
                 while let Some(event) = rx.recv().await {
+                    // Any event = progress; wake the watchdog so it re-arms from now.
+                    progress_pub.notify_one();
                     lb_host::publish_run_event(&bus, &ws, &job, &event).await;
                 }
             });
@@ -223,7 +275,7 @@ impl AgentRuntime for AcpRuntime {
             // live (above) AND collecting them for the final answer. The cwd is the sealed scratch dir —
             // NOT the caller's workspace path (the `drive(.., workspace, ..)` cwd gap #5 flagged).
             let cwd = scratch.path().to_string_lossy().into_owned();
-            let events = drive(
+            let run_fut = drive(
                 self.agent.wrapper.as_ref(),
                 &self.agent.profile,
                 ctx.goal,
@@ -232,9 +284,44 @@ impl AgentRuntime for AcpRuntime {
                 key,
                 &bridge_env,
                 Some(&tx),
-            )
-            .await
-            .map_err(|e| AgentError::BadInput(format!("external agent run failed: {e}")))?;
+            );
+            // RACE the run against the no-progress watchdog. The watchdog waits `no_progress`; each
+            // streamed event (`progress.notified()`) restarts the wait. If it elapses with no event,
+            // the run is STUCK — we drop `run_fut` (reaping the subprocess, same as the wall ceiling)
+            // and return a distinct stall error so the caller can tell "stuck" from "slow"/"denied".
+            let quiet = self.no_progress;
+            let events = {
+                tokio::pin!(run_fut);
+                loop {
+                    let watchdog = async {
+                        loop {
+                            match tokio::time::timeout(quiet, progress.notified()).await {
+                                // An event arrived within the quiet window → re-arm from now.
+                                Ok(()) => continue,
+                                // Silence past the ceiling → stuck.
+                                Err(_) => return,
+                            }
+                        }
+                    };
+                    tokio::select! {
+                        r = &mut run_fut => break r
+                            .map_err(|e| AgentError::BadInput(
+                                format!("external agent run failed: {e}"),
+                            ))?,
+                        () = watchdog => {
+                            // Dropping `run_fut` on the next scope exit reaps the child. Instead of
+                            // FAILING the run (a dead end), PAUSE it — `suspend` leaves the job
+                            // `Suspended`/resumable from its cursor — and return the distinct
+                            // `Stalled` error so the worker posts an actionable "keep going / stop"
+                            // prompt. A user "keep going" is the shipped `resume_run` (re-enqueue +
+                            // rehydrate from the cursor); "stop" is `stop_run` (cancel). The subprocess
+                            // is reaped either way (drop); a resume re-spawns a fresh one from the goal.
+                            let _ = lb_jobs::suspend(&node.store, ctx.ws, ctx.job_id).await;
+                            return Err(AgentError::Stalled);
+                        }
+                    }
+                }
+            };
             // Close the sink and let the publisher drain every streamed event before we return.
             drop(tx);
             let _ = publisher.await;
@@ -318,9 +405,38 @@ pub fn register(
     scratch_base: Option<PathBuf>,
 ) {
     let base = scratch_base.unwrap_or_else(default_scratch_base);
+    // Resolve the MCP shim binary the wrappers' config points the agent at. Default `"lb-mcp-shim"`
+    // assumes it's on `PATH` — which is FALSE for a `make dev`/`cargo run` node (the shim is a sibling
+    // binary in the target dir, not installed). If we leave the bare name, the agent's MCP-server child
+    // fails to spawn, the agent gets NO host tools, and falls back to flailing in its own shell (the
+    // real incident behind the no-progress reap). So prefer a shim sitting NEXT TO the node binary
+    // (`<current_exe_dir>/lb-mcp-shim`), which covers both the dev target dir and an installed layout;
+    // fall back to the PATH name only if we can't locate the node exe or the sibling is absent.
+    let shim_bin = resolve_shim_bin();
     for id in BUILTIN_IDS {
         if let Some(rt) = AcpRuntime::new(id, model.clone(), base.clone()) {
+            let rt = match &shim_bin {
+                Some(path) => rt.with_shim_bin(path.clone()),
+                None => rt,
+            };
             registry.register(Arc::new(rt));
         }
     }
+}
+
+/// Locate the `lb-mcp-shim` binary sitting beside the running node binary. Returns the absolute path
+/// when a sibling `lb-mcp-shim[.exe]` exists (dev target dir OR an installed `bin/` layout), else
+/// `None` (fall back to the bare `PATH` name). Pure filesystem probe — no spawn.
+fn resolve_shim_bin() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    let dir = exe.parent()?;
+    let name = if cfg!(windows) {
+        "lb-mcp-shim.exe"
+    } else {
+        "lb-mcp-shim"
+    };
+    let sibling = dir.join(name);
+    sibling
+        .exists()
+        .then(|| sibling.to_string_lossy().into_owned())
 }

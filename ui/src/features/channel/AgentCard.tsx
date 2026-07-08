@@ -9,17 +9,22 @@
 //   - `agent_error`  — an opaque/honest failure (e.g. "agent not permitted").
 // RENDER only (FILE-LAYOUT: no data/effects here).
 
-import { AlertTriangle, Bot, Check, Loader2, Wrench, X } from "lucide-react";
+import { AlertTriangle, Bot, Check, Loader2, Pause, Wrench, X } from "lucide-react";
 
 import type {
   AgentErrorPayload,
   AgentPayload,
   AgentResultPayload,
+  AgentStalledPayload,
 } from "@/lib/channel/payload.types";
 import { useRunFeed, type RunToolCall } from "./useRunFeed";
 import { MarkdownView } from "./MarkdownView";
 
-type AgentKindPayload = AgentPayload | AgentResultPayload | AgentErrorPayload;
+type AgentKindPayload =
+  | AgentPayload
+  | AgentResultPayload
+  | AgentErrorPayload
+  | AgentStalledPayload;
 
 interface Props {
   payload: AgentKindPayload;
@@ -109,6 +114,25 @@ export function AgentCard({ payload, settled }: Props) {
     // (Returning null here was the "my message vanished after the agent replied" bug.)
     if (settled) return <UserGoalCard goal={payload.goal} />;
     return <RunningCard payload={payload} />;
+  }
+
+  if (payload.kind === "agent_stalled") {
+    // PAUSE-AND-ASK on the channel surface: the run stalled and was suspended. This card is render-only
+    // (FILE-LAYOUT — no control wiring here), so it shows the honest paused state and points to the dock
+    // for the Keep going / Stop controls (which own the `agent.control` calls). The goal stays on the
+    // `agent` card above as the user's turn.
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+        aria-label="agent run paused — stalled"
+      >
+        <Pause size={14} className="mt-0.5 shrink-0 text-amber-500" />
+        <p className="min-w-0 break-words text-fg">
+          {payload.message} <span className="text-muted">Open the agent dock to keep going or stop.</span>
+        </p>
+      </div>
+    );
   }
 
   if (payload.kind === "agent_error") {

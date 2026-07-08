@@ -29,6 +29,11 @@ interface Props {
   errorText?: string | null;
   /** True when the user has paused the run (optimistic) — show Resume instead of Pause/Stop. */
   paused?: boolean;
+  /** True when the run STALLED (no progress) and was suspended awaiting a keep-going/stop decision —
+   *  a durable, server-authoritative pause (distinct from the optimistic user `paused`). */
+  stalled?: boolean;
+  /** The honest prompt text from the `agent_stalled` item (why it may be stuck). */
+  stalledText?: string | null;
   onRetry: () => void;
   /** Pause the live run (suspend). Absent → the controls are hidden (no `agent.control` wiring). */
   onPause?: () => void;
@@ -36,6 +41,10 @@ interface Props {
   onStop?: () => void;
   /** Resume a paused run. */
   onResume?: () => void;
+  /** Keep going after a stall — resume the suspended run from its cursor. */
+  onKeepGoing?: () => void;
+  /** Stop after a stall — cancel the suspended run (terminal). */
+  onStopStalled?: () => void;
 }
 
 /** The live activity line: the current tool call, else the reasoning line, else a generic "thinking". */
@@ -53,11 +62,60 @@ export function DockRunStatus({
   degraded,
   errorText,
   paused,
+  stalled,
+  stalledText,
   onRetry,
   onPause,
   onStop,
   onResume,
+  onKeepGoing,
+  onStopStalled,
 }: Props) {
+  // STALLED — the run made no progress and was suspended (server-authoritative pause-and-ask). Show an
+  // honest explanation + an explicit choice: Keep going (resume from the cursor) or Stop (cancel). Takes
+  // precedence over the live phase (the stream ended when the run suspended). Distinct from `paused`
+  // (the user's own optimistic pause): a stall is the system asking the user to decide.
+  if (stalled && phase !== "done" && phase !== "error") {
+    return (
+      <div
+        role="alert"
+        className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm"
+        aria-label="run stalled — awaiting your decision"
+      >
+        <Pause size={14} className="mt-0.5 shrink-0 text-amber-500" />
+        <div className="min-w-0 flex-1">
+          <p className="break-words text-fg">
+            {stalledText || "The agent hasn't made progress for a while — it may be stuck."}
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            {onKeepGoing && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={onKeepGoing}
+                aria-label="keep going"
+                className="h-7 gap-1 px-2.5 text-xs"
+              >
+                <Play size={12} /> Keep going
+              </Button>
+            )}
+            {onStopStalled && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={onStopStalled}
+                aria-label="stop run"
+                className="h-7 gap-1 px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Square size={11} /> Stop
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   // PAUSED — the user suspended the run. A distinct, honest state (not a spinner, not an error): show
   // it's paused + a Resume button. Takes precedence over the live phase (the stream may have ended).
   if (paused && phase !== "done" && phase !== "error") {
