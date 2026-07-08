@@ -1,8 +1,35 @@
+import { SampleChart } from "./widgets/SampleChart";
+
+/*
+ * The default scaffold page. An agent that fills in real data replaces the sample chart + the
+ * heading, but keeps the `.lbx-{id}` root wrapper (mount.tsx) so the theme cascade + chart palette
+ * resolve from the workspace tokens. The inline `hsl(var(--lbx-*))` reads are the explicit token
+ * path — a widget that prefers Tailwind utility classes can swap them in under the same root.
+ */
 export function App() {
   return (
-    <section style={{ padding: 24, fontFamily: "system-ui, sans-serif" }}>
-      <h2>{id}</h2>
-      <p>Generated Extension Studio page.</p>
+    <section style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+      <header>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "hsl(var(--lbx-fg))" }}>
+          {id}
+        </h2>
+        <p style={{ margin: "4px 0 0", fontSize: 13, color: "hsl(var(--lbx-muted))" }}>
+          Generated extension page — themed + charted. Replace this with your content.
+        </p>
+      </header>
+      <div
+        style={{
+          background: "hsl(var(--lbx-card))",
+          border: "1px solid hsl(var(--lbx-border))",
+          borderRadius: "calc(var(--lbx-radius))",
+          padding: 16,
+        }}
+      >
+        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 500, color: "hsl(var(--lbx-card-foreground))" }}>
+          Sample chart
+        </h3>
+        <SampleChart />
+      </div>
     </section>
   );
 }
