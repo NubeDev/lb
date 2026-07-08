@@ -13,10 +13,12 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
+use lb_authz::Subject;
+
 use super::model::{Cell, Visibility};
 use super::{
-    dashboard_delete, dashboard_get, dashboard_list, dashboard_pin, dashboard_save,
-    dashboard_share, DashboardError,
+    dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
+    dashboard_save, dashboard_share, DashboardError,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -80,6 +82,26 @@ pub async fn call_dashboard_tool(
             .await
             .map_err(to_tool)?;
             Ok(serde_json::to_value(d).unwrap_or(Value::Null))
+        }
+        "dashboard.access_check" => {
+            // access-model scope: the read-only dependency-closure preflight. `dashboard` is the id;
+            // `subject`/`team` names WHOSE reach to check (defaults to the caller for a self-preflight).
+            // The subject string is a `user:`/`team:` handle parsed into a `Subject`.
+            let dashboard_id = str_arg(input, "dashboard").or_else(|_| str_arg(input, "id"))?;
+            let subject_str = input
+                .get("subject")
+                .or_else(|| input.get("team"))
+                .and_then(Value::as_str)
+                .unwrap_or(principal.sub());
+            let subject = Subject::parse(subject_str).ok_or_else(|| {
+                ToolError::BadInput(format!(
+                    "bad subject `{subject_str}` — expected user:<name> or team:<name>"
+                ))
+            })?;
+            let report = dashboard_access_check(store, principal, ws, dashboard_id, &subject)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(report).unwrap_or(Value::Null))
         }
         "dashboard.delete" => {
             dashboard_delete(

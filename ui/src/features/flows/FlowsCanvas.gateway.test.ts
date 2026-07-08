@@ -72,6 +72,12 @@ describe("flows canvas (real gateway)", () => {
     // The webhook source's config is just `{webhook_id}` (the picker over `webhook.list`).
     const webhook = nodes.find((d) => d.type === "webhook");
     expect((webhook?.config.properties as Record<string, unknown> | undefined)?.webhook_id).toBeTruthy();
+    // The rhai node's `source` declares `format: "rhai"` so SchemaForm renders it in the shared code
+    // editor (not a one-line input). Assert the hint survives the real descriptor round-trip — this is
+    // what the running node must serve for the editor to appear (a stale node serves the old shape).
+    const rhai = nodes.find((d) => d.type === "rhai");
+    const source = (rhai?.config.properties as Record<string, { format?: string }> | undefined)?.source;
+    expect(source?.format).toBe("rhai");
     expect(types).toContain("mqtt.publish");
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");

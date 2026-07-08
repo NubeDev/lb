@@ -116,7 +116,16 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and `global-identity-scope.md` (the **Slack model** the README §7/§6.6 name but the code never built:
   a global, hub-authoritative identity in a system directory linked to workspaces by a `membership`
   record, login resolving to a person's workspaces, and a real workspace switcher — promotes the
-  stated design to implementation; the gap surfaced in the access-console session).
+  stated design to implementation; the gap surfaced in the access-console session), and
+  `login-hardening-scope.md` (the `POST /login` dev-shim's two leaks a live session found: **no
+  credential check** — any body mints a token — and **every login gets an admin-grade cap bundle**
+  so a nominal member can add members / self-grant `workspace.delete`; adds a `CredentialCheck` seam
+  + role-scoped cap issuance behind the same `mint`/`verify` boundary, restoring README §6.6 RBAC),
+  and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
+  that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
+  `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
+  a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
+  datasource).
 - `bus/` — the Zenoh message bus (motion).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a

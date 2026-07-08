@@ -19,12 +19,19 @@ use serde::{Deserialize, Serialize};
 use crate::session::dev_claims;
 use crate::state::Gateway;
 
-/// The dev-login request: who, and into which workspace. A real credential (password / OIDC code)
-/// lands here later behind the same seam.
+/// The login request: who, into which workspace, and the credential proving it (login-hardening
+/// scope). `secret` is the password checked by the node's `CredentialCheck` before minting. It is
+/// OPTIONAL on the wire: a `DevTrustAny` node (dev/CI, `LB_DEV_LOGIN`) ignores it (password-less);
+/// a `PasswordHash` node requires it (an empty/absent secret → `401`). A future OIDC impl reads a
+/// `code` here behind the same seam.
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub user: String,
     pub workspace: String,
+    /// The login secret (password). Optional so a dev-login body may omit it; the credential check
+    /// decides whether its absence is allowed.
+    #[serde(default)]
+    pub secret: String,
 }
 
 /// The issued session: the signed token plus the resolved principal + workspace (so the UI need not
@@ -85,6 +92,20 @@ pub async fn login(
             (
                 StatusCode::FORBIDDEN,
                 "not a member of any workspace".into(),
+            )
+        })?;
+    // Credential check (login-hardening scope, change 2): PROVE identity before minting. A
+    // `PasswordHash` node checks argon2 against the stored `(ws, user)` credential; a `DevTrustAny`
+    // node (opt-in via `LB_DEV_LOGIN`) passes password-less. A bad/absent secret is an opaque `401`
+    // with NO token — authenticity is decided before authority, and before any claim is built. Runs
+    // after membership resolution so the credential is verified for a real member of a real ws.
+    gw.credential_check
+        .verify(&gw.node, &req.workspace, &principal, &req.secret)
+        .await
+        .map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "invalid or missing credential".into(),
             )
         })?;
     let mut claims = dev_claims(&principal, &req.workspace, gw.now(), SESSION_TTL_SECS);

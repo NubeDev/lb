@@ -55,6 +55,13 @@ pub struct Gateway {
     /// random pepper so API keys work locally without a configured one. Held behind `Arc` so axum
     /// clones it cheaply per request.
     pub pepper: Arc<[u8]>,
+    /// The credential check `login` runs BEFORE minting a token (login-hardening scope). Selected by
+    /// `LB_DEV_LOGIN` in production ([`boot`]): set → `DevTrustAny` (dev/CI, password-less); unset →
+    /// `PasswordHash` (argon2 against the stored credential — a real secret is required). Tests
+    /// override via [`Gateway::with_credential_check`]; the `new`/`new_live` seams default to
+    /// `DevTrustAny` so existing password-less test logins keep working (the security gate lives in
+    /// the env-driven production `boot` path). Behind `Arc<dyn>` so axum clones it cheaply.
+    pub credential_check: Arc<dyn crate::session::CredentialCheck>,
 }
 
 impl Gateway {
@@ -71,7 +78,15 @@ impl Gateway {
         // still gets a fresh ephemeral key (nothing durable to pair it with).
         // Production reads the live wall clock per request (fixed_now = None) — never a value frozen
         // at boot. The wall-clock read lives in `Gateway::now`.
-        Ok(Self::new_live(Arc::new(node), crate::signing_key::resolve()).with_pepper_from_env())
+        // Select the credential check from the environment: `LB_DEV_LOGIN` set → `DevTrustAny`
+        // (dev/CI, password-less); unset → `PasswordHash` (a real argon2 credential is required —
+        // the release default hard-refuses a password-less login). Only the env-driven production
+        // `boot` path applies this gate; the `new`/`new_live` test seams stay `DevTrustAny`.
+        Ok(
+            Self::new_live(Arc::new(node), crate::signing_key::resolve())
+                .with_pepper_from_env()
+                .with_credential_check(crate::session::credential_check_from_env()),
+        )
     }
 
     /// The current unix-seconds clock: the injected fixed clock if a test pinned one, else a live
@@ -120,7 +135,22 @@ impl Gateway {
             ),
             // Dev default: a per-process random pepper (no committed constant). Tests override.
             pepper: Arc::from(random_pepper().as_slice()),
+            // Default to the password-less dev check on the `new`/`new_live` seams so existing
+            // password-less test logins keep working. Production `boot` overrides via env
+            // (`with_credential_check(credential_check_from_env())`), which hard-refuses in release.
+            credential_check: Arc::new(crate::session::DevTrustAny),
         }
+    }
+
+    /// Install the credential check `login` runs before minting (login-hardening scope). Production
+    /// `boot` selects it from `LB_DEV_LOGIN`; a test uses this to exercise the real `PasswordHash`
+    /// (`401` on bad/absent secret) path against a seeded credential. Builder-style.
+    pub fn with_credential_check(
+        mut self,
+        check: Arc<dyn crate::session::CredentialCheck>,
+    ) -> Self {
+        self.credential_check = check;
+        self
     }
 
     /// Point the extension-UI serve dir at `dir` (builder-style) — tests serve a fixture bundle.

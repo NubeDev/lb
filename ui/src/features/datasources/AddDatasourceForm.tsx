@@ -10,11 +10,20 @@
 // endpoint is the `127.0.0.1:0` convention (a file has no network endpoint) — prefilled, editable.
 
 import { useState } from "react";
+import { FolderOpen, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { AddDatasource } from "@/lib/datasources";
+import { type HostFsEntry, type HostFsList, hostHomeDir } from "@/lib/host/fs.api";
+import { HostPathPicker } from "@/lib/host/HostPathPicker";
 import { impliedGrants } from "./impliedGrants";
+
+/** A sqlite database file — `.db`/`.sqlite`/`.sqlite3` — is the picker's selectable entry. */
+function isSqliteFile(arg: HostFsList | HostFsEntry): boolean {
+  const e = arg as HostFsEntry;
+  return e.kind === "file" && /\.(db|sqlite|sqlite3)$/i.test(e.name);
+}
 
 /** The source kinds the federation sidecar accepts — data, not branches (sqlite-datasource-demo scope). */
 const KINDS = [
@@ -32,6 +41,10 @@ export function AddDatasourceForm({ onAdd }: Props) {
   const [kind, setKind] = useState<string>(KINDS[0].kind);
   const [endpoint, setEndpoint] = useState("");
   const [dsn, setDsn] = useState("");
+  // For sqlite the DSN is a node-local file path: offer a browse-the-node picker, with a type-it
+  // escape hatch for paths outside the browsable root (e.g. /var/lib/lb/...).
+  const [browse, setBrowse] = useState(false);
+  const isSqlite = kind === "sqlite";
 
   const meta = KINDS.find((k) => k.kind === kind) ?? KINDS[0];
   const grants = impliedGrants({ name, endpoint });
@@ -47,6 +60,7 @@ export function AddDatasourceForm({ onAdd }: Props) {
           setName("");
           setEndpoint("");
           setDsn("");
+          setBrowse(false);
         }
       }}
     >
@@ -64,6 +78,7 @@ export function AddDatasourceForm({ onAdd }: Props) {
           onChange={(e) => {
             const next = e.target.value;
             setKind(next);
+            if (next !== "sqlite") setBrowse(false);
             const nextMeta = KINDS.find((k) => k.kind === next);
             // A local-file kind has no network endpoint; prefill its convention (still editable).
             if (nextMeta?.localEndpoint) setEndpoint(nextMeta.localEndpoint);
@@ -82,19 +97,61 @@ export function AddDatasourceForm({ onAdd }: Props) {
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
         />
-        <Input
-          aria-label="datasource dsn"
-          type="password"
-          placeholder={meta.dsnHint}
-          value={dsn}
-          onChange={(e) => setDsn(e.target.value)}
-        />
+        {isSqlite ? (
+          // A file path isn't a secret — show it as plain text (the picker fills it when browsing).
+          <Input
+            aria-label="datasource dsn"
+            placeholder={meta.dsnHint}
+            value={dsn}
+            readOnly={browse}
+            onChange={(e) => setDsn(e.target.value)}
+          />
+        ) : (
+          <Input
+            aria-label="datasource dsn"
+            type="password"
+            placeholder={meta.dsnHint}
+            value={dsn}
+            onChange={(e) => setDsn(e.target.value)}
+          />
+        )}
       </div>
 
-      {kind === "sqlite" && (
-        <p className="text-xs text-muted">
-          The path is resolved on the node running the federation sidecar — not your browser.
-        </p>
+      {isSqlite && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted">
+              The path is resolved on the node running the federation sidecar — not your browser.
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs text-muted"
+              aria-label={browse ? "type db path" : "browse for db file"}
+              onClick={() => setBrowse((b) => !b)}
+            >
+              {browse ? <Pencil size={13} /> : <FolderOpen size={13} />}
+              {browse ? "Type path" : "Browse node"}
+            </Button>
+          </div>
+          {browse && (
+            <HostPathPicker
+              value={dsn}
+              onPick={setDsn}
+              mode="file"
+              // The sqlite DB is a plain node-local file that lives ANYWHERE on the node, NOT under
+              // the devkit/extensions tree — anchor the browse at the node's home dir (a clean
+              // starting point where user data lives), not the noisy filesystem root.
+              resolveRoot={() => hostHomeDir().then((h) => h.path)}
+              // Home is only a starting point — a DB may live outside it (e.g. /var/lib/lb/…),
+              // so let "Up" walk above the anchor.
+              confineToRoot={false}
+              selectable={isSqliteFile}
+              manualPlaceholder="/var/lib/lb/demo/buildings.db"
+            />
+          )}
+        </div>
       )}
 
       {/* The implied grants — display only. The real approval is the host install-grant record. */}

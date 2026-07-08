@@ -9,16 +9,19 @@
 // wiring, the ⌘S/inline-name save flow, and the tab switch. One component per file (FILE-LAYOUT).
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { FileCode2, Pencil, Play, Save } from "lucide-react";
+import { FileCode2, Pencil, Play, Save, WandSparkles } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
 import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRules } from "./useRules";
+import { useAutoFormat } from "./useAutoFormat";
 import { RuleRail } from "./RuleRail";
 import { RuleEditor } from "./RuleEditor";
+import { formatRhai } from "./formatRhai";
 import { ResultBar, type ResultView } from "./ResultBar";
 import { RunResult } from "./RunResult";
 import { AuthoringPanel } from "./panel/AuthoringPanel";
@@ -38,6 +41,7 @@ interface RulesViewProps {
 
 export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
   const r = useRules(ws);
+  const autoFormat = useAutoFormat();
   const editorRef = useRef<CodeEditorHandle>(null);
 
   // The URL is the source of truth for which rule is open. When `ruleId` changes (deep link, back/
@@ -78,6 +82,17 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
 
   const insert = (snippet: string) => editorRef.current?.insertSnippet(snippet);
   const selectedName = r.name ?? null;
+
+  // Reformat the buffer in place. `formatRhai` is idempotent, so a re-format on an already-tidy
+  // buffer is a no-op (no spurious dirty flip). Shared by the manual Format button and the
+  // auto-format-on-blur path.
+  function formatBuffer() {
+    const next = formatRhai(r.buffer);
+    if (next !== r.buffer) r.setBuffer(next);
+  }
+  // Auto-format fires when the editor loses focus (a settle point — never mid-keystroke), and only
+  // when the user has toggled it on. Blur also precedes any Run/Save, so those read the tidy buffer.
+  const onEditorBlur = autoFormat.enabled ? formatBuffer : undefined;
 
   function openRename() {
     setNameValue(selectedName ?? r.selectedId ?? "");
@@ -142,6 +157,25 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
             <Button aria-label="run rule" size="sm" disabled={r.running} onClick={() => void r.run()}>
               <Play size={14} /> {r.running ? "Running…" : "Run"}
             </Button>
+            <Button
+              aria-label="format rule code"
+              size="sm"
+              variant="ghost"
+              disabled={!r.buffer.trim()}
+              onClick={formatBuffer}
+            >
+              <WandSparkles size={14} /> Format
+            </Button>
+            {/* Auto-format toggle — persisted in localStorage (browser-wide), so the choice sticks
+                across reloads. When on, the buffer is tidied whenever the editor loses focus. */}
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted">
+              <Switch
+                aria-label="auto-format on blur"
+                checked={autoFormat.enabled}
+                onCheckedChange={autoFormat.toggle}
+              />
+              Auto
+            </label>
             {r.selectedId ? (
               <Button aria-label="rename rule" size="sm" variant="ghost" onClick={openRename}>
                 <Pencil size={14} /> Rename
@@ -198,6 +232,7 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
               ws={ws}
               insert={insert}
               editorRef={editorRef}
+              onEditorBlur={onEditorBlur}
               split={split}
               resultView={resultView}
               setResultView={setResultView}
@@ -230,6 +265,8 @@ interface EditorBodyProps {
   ws: string;
   insert: (snippet: string) => void;
   editorRef: React.RefObject<CodeEditorHandle>;
+  /** Fired on editor blur when auto-format is enabled (undefined = auto-format off). */
+  onEditorBlur?: () => void;
   split: ReturnType<typeof useVerticalSplit>;
   resultView: ResultView;
   setResultView: (v: ResultView) => void;
@@ -249,6 +286,7 @@ function EditorBody({
   ws,
   insert,
   editorRef,
+  onEditorBlur,
   split,
   resultView,
   setResultView,
@@ -327,7 +365,12 @@ function EditorBody({
               className="flex min-h-[6rem] shrink-0 flex-col overflow-hidden"
               style={{ flexBasis: split.topBasis, pointerEvents: split.dragging ? "none" : undefined }}
             >
-              <RuleEditor ref={editorRef} body={r.buffer} onChange={r.setBuffer} />
+              <RuleEditor
+                ref={editorRef}
+                body={r.buffer}
+                onChange={r.setBuffer}
+                onBlur={onEditorBlur}
+              />
             </div>
             <SplitHandle onPointerDown={split.onHandleDown} label="resize editor and result" />
             <div

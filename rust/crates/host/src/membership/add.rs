@@ -28,6 +28,9 @@ pub async fn membership_add(
     ts: u64,
 ) -> Result<(), MembershipError> {
     authorize_tool(principal, ws, "members.manage").map_err(|_| MembershipError::Denied)?;
+    // Seed the built-in role records so the `role:member` grant below resolves to member caps
+    // (login-hardening scope). Idempotent; a joined member gets ONLY `role:member` (not admin).
+    crate::authz::ensure_builtin_authz_roles(store, ws).await?;
     raw::membership_add_raw(store, ws, sub, ts).await?;
     // System-grant the built-in member role. Best-effort identity creation so the directory lists the
     // joined identity (lazy migration, decision #10) — a write error here is non-fatal to the join.

@@ -53,6 +53,11 @@ async fn bootstrap_first_member(
     sub: &str,
     ts: u64,
 ) -> Result<(), MembershipError> {
+    // Seed the built-in `member`/`workspace-admin` role RECORDS so the grants below actually
+    // resolve to caps (login-hardening scope). Without this the role grants are inert (the role
+    // records carry no caps) and the first login would mint a powerless admin token — the mirror of
+    // the over-broad member bundle we removed. Idempotent (no-op once the rows exist).
+    crate::authz::ensure_builtin_authz_roles(store, ws).await?;
     raw::membership_add_raw(store, ws, sub, ts).await?;
     if let Some(name) = sub.strip_prefix("user:") {
         let subject = lb_authz::Subject::User(name.to_string());

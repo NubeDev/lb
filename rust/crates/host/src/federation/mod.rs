@@ -37,8 +37,11 @@ pub use add::datasource_add;
 pub use error::FederationError;
 pub use list::{datasource_list, DatasourceSummary};
 pub use mirror::federation_mirror;
+pub use net::enforce_endpoint;
 pub use query::{federation_query, query_descriptor};
-pub use record::{datasource_tag, resolve as resolve_datasource, Datasource, TABLE};
+pub use record::{
+    datasource_tag, put as put_datasource, resolve as resolve_datasource, Datasource, TABLE,
+};
 pub use remove::datasource_remove;
 pub use sample::{federation_sample, sample_descriptor};
 pub use schema::{federation_schema, schema_descriptor};

@@ -12,12 +12,14 @@ import { CodeEditor, type CodeEditorHandle } from "@/components/codeeditor";
 interface RuleEditorProps {
   body: string;
   onChange: (body: string) => void;
+  /** Fired when the editor loses focus — the workbench uses it to auto-format when that's enabled. */
+  onBlur?: () => void;
 }
 
 // `forwardRef` exposes the editor's `insertSnippet` handle so the authoring panel can drop a snippet at
 // the cursor (the click-to-insert primitive).
 export const RuleEditor = forwardRef<CodeEditorHandle, RuleEditorProps>(function RuleEditor(
-  { body, onChange },
+  { body, onChange, onBlur },
   editorRef,
 ) {
   return (
@@ -27,6 +29,7 @@ export const RuleEditor = forwardRef<CodeEditorHandle, RuleEditorProps>(function
         ariaLabel="rule editor"
         value={body}
         onChange={onChange}
+        onBlur={onBlur}
         extensions={[javascript()]}
         height="100%"
       />

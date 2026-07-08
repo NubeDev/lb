@@ -26,3 +26,14 @@ export interface HostFsList {
 export function listHostDir(path: string): Promise<HostFsList> {
   return invoke<HostFsList>("mcp_call", { tool: "host.fs.list", args: { path } });
 }
+
+export interface HostFsHome {
+  /** The node's home directory, normalized to forward slashes. */
+  path: string;
+  os: string;
+}
+
+/** The node's home directory — a stable absolute anchor a filesystem picker starts browsing from. */
+export function hostHomeDir(): Promise<HostFsHome> {
+  return invoke<HostFsHome>("mcp_call", { tool: "host.fs.home", args: {} });
+}

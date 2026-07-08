@@ -44,6 +44,11 @@ pub async fn call_host_tool(
             let out = super::fs::host_fs_list(input)?;
             serde_json::to_value(out).map_err(|e| ToolError::Extension(e.to_string()))
         }
+        "host.fs.home" => {
+            authorize_tool(principal, ws, "host.fs.home").map_err(|_| ToolError::Denied)?;
+            let out = super::fs::host_fs_home()?;
+            serde_json::to_value(out).map_err(|e| ToolError::Extension(e.to_string()))
+        }
         _ => Err(ToolError::NotFound),
     }
 }

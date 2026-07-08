@@ -43,6 +43,10 @@ export interface FlowNode {
   with?: Record<string, unknown>;
   /** The node's config, validated against its descriptor's schema at save. */
   config?: Record<string, unknown> | null;
+  /** The node's canvas position (editor geometry). Optional — a pre-geometry flow (or a headless
+   *  author) omits it and the canvas falls back to a grid layout. Pure view state: it never affects
+   *  DAG math, validation, or run order. */
+  position?: { x: number; y: number };
 }
 
 /** What happens when a node fails after retries. `halt` prunes the subtree; `continue` releases

@@ -13,9 +13,17 @@
 import { useMemo } from "react";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
-
+import { CodeEditor, codeLanguageExtension } from "@/components/codeeditor";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { RhaiExampleLibrary } from "./examples/RhaiExampleLibrary";
+
+// A code `format` may register a helper that renders BELOW its editor (keyed on the opaque schema
+// hint, not a node type). Rhai gets its examples library; add an entry here to give another language
+// its own helper. `onUse(body)` replaces the field's source with the chosen snippet.
+const CODE_FIELD_HELPERS: Record<string, (p: { onUse: (body: string) => void }) => JSX.Element> = {
+  rhai: RhaiExampleLibrary,
+};
 
 /** A JSON-Schema 2020-12 document (the descriptor's `config`). */
 export type JsonSchema = Record<string, unknown>;
@@ -169,6 +177,28 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
   }
 
   if (type === "string") {
+    const codeLang = codeLanguageExtension(schema.format);
+    if (codeLang) {
+      const Helper = CODE_FIELD_HELPERS[schema.format as string] as
+        | ((p: { onUse: (body: string) => void }) => JSX.Element)
+        | undefined;
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <div className="overflow-hidden rounded-md border border-border">
+            <CodeEditor
+              ariaLabel={name}
+              value={String(value ?? "")}
+              onChange={(v) => onChange(v)}
+              extensions={[codeLang]}
+              height="12rem"
+            />
+          </div>
+          {/* A format may register a below-editor helper (e.g. rhai → an examples library). Data-driven
+              off the opaque `format` hint, so no field logic branches on a node type. */}
+          {Helper && !disabled ? <Helper onUse={(body) => onChange(body)} /> : null}
+        </Labeled>
+      );
+    }
     return (
       <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input

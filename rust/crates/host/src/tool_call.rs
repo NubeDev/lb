@@ -81,6 +81,10 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "telemetry.",
     "history.",
     "tools.",
+    // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
+    // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
+    // `identity.*` verbs also have dedicated admin REST routes; reaching them here too is uniform.
+    "identity.",
 ];
 
 /// The prefix-less host-native verbs (`undo`/`redo`) + the four `store.*` verbs dispatched by exact
@@ -124,6 +128,11 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
 pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
     if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
         "federation.query"
+    } else if qualified_tool == "identity.set_credential" {
+        // login-hardening scope: setting a user's password is the SAME admin authority as managing
+        // identities — it rides the existing `mcp:identity.manage:call` grant (the scope's MCP §6.1
+        // decision), not a new per-verb cap. The verb re-checks `identity.manage` inside.
+        "identity.manage"
     } else if qualified_tool == "outbox.enqueue_held" {
         "outbox.enqueue"
     } else if qualified_tool.starts_with("telemetry.") {
@@ -461,6 +470,14 @@ async fn dispatch_at_depth(
             // through the undo auto-capture wrapper like every other store mutation.
             crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input)
                 .await?
+        } else if qualified_tool == "identity.set_credential" {
+            // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
+            // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.
+            crate::call_credential_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("identity.") {
+            // The other identity directory verbs (create/get/list/workspaces), reachable over the same
+            // bridge as their dedicated admin REST routes. Each re-checks `mcp:identity.manage:call`.
+            crate::call_identity_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {
             crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("reminder.") {
