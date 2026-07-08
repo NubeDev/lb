@@ -164,16 +164,18 @@ EXT_ARTIFACT := $(ART_DIR)/$(EXT).artifact.json
 EXT_UI_DIST  := $(BE_DIR)/extensions/$(EXT)/ui/dist
 EXT_UI_SERVE := $(BE_DIR)/extensions-ui/$(EXT)
 
-.PHONY: setup build build-be build-wasm build-ui \
+.PHONY: setup build build-be build-wasm build-packages build-ui \
         dev edge cloud ui ui-preview pack publish-ext trusted-pubkey seed-thecrew \
         test test-be test-ui lint fmt fmt-check size clean kill purge-store
 
-# One-time setup: install the UI deps and make sure the wasm target is installed (the
-# rust-toolchain.toml already pins it, but `rustup target add` is idempotent and saves
-# a confusing first-build failure on a fresh box).
+# One-time setup: install the UI deps, build the shared workspace packages, and make
+# sure the wasm target is installed (the rust-toolchain.toml already pins it, but
+# `rustup target add` is idempotent and saves a confusing first-build failure on a
+# fresh box).
 setup:
 	rustup target add $(WASM_TARGET) || true
 	cd $(UI_DIR) && pnpm install
+	$(MAKE) build-packages
 	@echo "setup done — now: make dev"
 
 build: build-wasm build-be build-ui
@@ -189,14 +191,32 @@ build-wasm:
 build-be: build-wasm
 	cd $(BE_DIR) && cargo build --workspace
 
-build-ui:
-	cd $(UI_DIR) && pnpm install && pnpm build
+# The shared @nube/* workspace libraries that `ui` consumes as `workspace:*`. The UI's
+# `tsc`/vite resolves each via its `dist/` (its package.json `types` points there), so a
+# missing `dist/` makes the whole import resolve to `any` — e.g. NavMenu's `onSelect`
+# param goes implicitly-any and `tsc --noEmit` fails.
+#
+# Every consumed package ships its `dist/` committed to git EXCEPT @nube/nav-rail, which
+# is the one that has to be built on a fresh checkout — so that's the only one we build
+# here. (@nube/ce-wiresheet is CE-only, opt-in behind CE=1/CE_BASE and built by the
+# separate `control-engine` target; it is deliberately NOT built in the default path.)
+UI_PACKAGES := nav-rail
+
+# Build only the packages that lack a committed dist (each package's own `build` = vite
+# build). --filter scopes pnpm so nothing else — ce-wiresheet, the broken source-picker
+# lib build — is dragged into the default dev/build path.
+build-packages:
+	cd $(UI_DIR)/.. && pnpm install
+	pnpm $(foreach p,$(UI_PACKAGES),--filter @nube/$(p)) run build
+
+build-ui: build-packages
+	cd $(UI_DIR) && pnpm build
 
 # The demo loop: the cloud node (gateway mounted) + the UI browser build pointed at
 # it, in ONE foreground process group so Ctrl-C (or `make kill`) stops both. The trap
 # reaps the children on exit so no orphan keeps a port held. Builds the wasm guest
 # first (the node needs it at startup).
-dev: build-wasm trusted-pubkey federation $(if $(CE_BASE),control-engine,)
+dev: build-wasm build-packages trusted-pubkey federation $(if $(CE_BASE),control-engine,)
 	@mkdir -p $(STORE_DIR)
 	@echo "node gateway → $(GW_URL)   UI → http://127.0.0.1:$(UI_PORT)   (ws=$(WS), store=$(STORE_PATH))"
 	@echo "datasources → federation sidecar endpoints: $(if $(FED_ENDPOINTS),$(FED_ENDPOINTS),<disabled>)"

@@ -6,4 +6,4 @@ export {
   toRuleGroup,
   RQB_COMBINATORS,
   RQB_OPERATORS,
-} from "./filterQueryBuilder";
+} from "./filterRules";

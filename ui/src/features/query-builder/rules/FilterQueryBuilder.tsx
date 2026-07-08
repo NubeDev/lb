@@ -11,7 +11,7 @@
 // only SQL string owner. The emitters and goldens never change.
 //
 // One responsibility per file (FILE-LAYOUT): this file is only the WHERE+HAVING host. The pure
-// projection lives in `filterQueryBuilder.ts`; the HAVING aggregation editor in `HavingValueEditor.tsx`.
+// projection lives in `filterRules.ts`; the HAVING aggregation editor in `HavingValueEditor.tsx`.
 
 import { QueryBuilder } from "react-querybuilder";
 import type { RuleGroupTypeIC } from "react-querybuilder";
@@ -24,7 +24,7 @@ import {
   RQB_OPERATORS,
   schemaToFields,
   toRuleGroup,
-} from "./filterQueryBuilder";
+} from "./filterRules";
 import { HavingValueEditor } from "./HavingValueEditor";
 
 /** Shared field styling mapped onto our tokens — the same flavour the retired VisualRows used so the
