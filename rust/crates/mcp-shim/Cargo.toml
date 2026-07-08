@@ -1,0 +1,31 @@
+[package]
+name = "lb-mcp-shim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# The stdio MCP ⇄ `POST /mcp/call` bridge for an external agent run (external-agent-authoring
+# scope S1). A tiny binary spawned as the agent's ONLY configured MCP server: it speaks JSON-RPC
+# over stdio to the agent and forwards every `tools/call` to the gateway, which re-checks caps
+# exactly as it does for the UI. The shim holds NO state beyond the run token + the menu file —
+# it is plumbing, never a second server surface (scope/README rule).
+#
+# Intentionally a leaf crate: NO dep on `lb-host`/`lb-auth`/`lb-mcp`. It is a pure HTTP+JSON-RPC
+# adapter so the OFF build (no `external-agent` feature) carries none of this. The token arrives
+# via env (set by the role crate at run start); the menu arrives via a JSON file path (also env).
+
+[[bin]]
+name = "lb-mcp-shim"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "io-std"] }
+reqwest = { workspace = true }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "io-util", "io-std", "time"] }
