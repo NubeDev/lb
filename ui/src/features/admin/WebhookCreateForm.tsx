@@ -63,7 +63,7 @@ export function WebhookCreateForm({ onCreate, onCancel }: Props) {
           {MODES.map((m) => (
             <Button
               key={m.key}
-              variant={mode === m.key ? "solid" : "outline"}
+              variant={mode === m.key ? "default" : "outline"}
               size="sm"
               aria-label={`mode ${m.key}`}
               aria-pressed={mode === m.key}

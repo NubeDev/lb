@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_rules::{AiLimits, GridJson, Rule, RuleEngine, RuleLimits, RuleOutput, RuleRun};
+use serde_json::Value;
 use support::{RecordingData, RecordingMessaging, ScriptedAi};
 
 fn seeded() -> Arc<RecordingData> {
@@ -24,6 +25,16 @@ fn seeded() -> Arc<RecordingData> {
 
 fn run(
     data: Arc<RecordingData>,
+    body: &str,
+) -> (RuleOutput, lb_rules::RuleRun, Arc<RecordingData>) {
+    run_with(data, "series", body)
+}
+
+/// Same as `run()` but lets a test name the granted source (the federation-shape tests use
+/// `"warehouse"` instead of the platform `"series"` fixture).
+fn run_with(
+    data: Arc<RecordingData>,
+    source: &str,
     body: &str,
 ) -> (RuleOutput, lb_rules::RuleRun, Arc<RecordingData>) {
     let ai = Arc::new(ScriptedAi {
@@ -47,7 +58,7 @@ fn run(
         params: vec![],
     };
     let mut allow = HashSet::new();
-    allow.insert("series".to_string());
+    allow.insert(source.to_string());
     let mut rr = RuleRun::new("acme".into(), Arc::new(allow), rhai::Map::new(), 0);
     let out = eng.run(&rule, &mut rr).unwrap();
     (out, rr, data)
@@ -111,4 +122,69 @@ fn alert_marks_finding_for_routing() {
 fn empty_body_is_nothing() {
     let (out, _rr, _data) = run(seeded(), r#"let x = 1;"#);
     assert!(matches!(out, RuleOutput::Nothing), "got {out:?}");
+}
+
+/// Federation's wire shape is column-aligned ARRAYS (`extensions/federation/src/query.rs::shape`
+/// re-projects Arrow objects to `[v, …]`), not keyed objects. `records()` must collapse those to named
+/// maps at the seam boundary so the catalog's `Array<Map>` contract holds on every source kind —
+/// otherwise the documented `category(query(...).records(), ...)` one-liner fails on the federation
+/// path with "every row must be a record". This pins the contract on the federation shape directly.
+#[test]
+fn records_returns_named_maps_from_federation_positional_rows() {
+    let data = Arc::new(RecordingData::federation(
+        &["warehouse"],
+        GridJson {
+            columns: vec!["building".into(), "kwh".into()],
+            rows: vec![
+                serde_json::json!(["Riverside", 4.68]),
+                serde_json::json!(["Westend", 0.79]),
+            ],
+        },
+    ));
+    // `r.building` (named field access) works only if `records()` returned a map; on positional
+    // rows it would be `Unknown property 'building' for type 'array'`.
+    let (out, _rr, _data) = run_with(
+        data,
+        "warehouse",
+        r#"let rows = source("warehouse").records(); rows[0].building"#,
+    );
+    match out {
+        RuleOutput::Scalar(v) => assert_eq!(v, serde_json::json!("Riverside")),
+        other => panic!("expected the named field to resolve, got {other:?}"),
+    }
+}
+
+/// The chart helpers require maps; on the federation path that used to fail. With `records()`
+/// returning maps, the documented one-liner `category(query(...).records(), ...)` works end-to-end
+/// on federation data — the slice-3 (rules-for-widgets) promise, pinned at the unit layer.
+#[test]
+fn category_runs_on_federation_records() {
+    let data = Arc::new(RecordingData::federation(
+        &["warehouse"],
+        GridJson {
+            columns: vec!["building".into(), "kwh".into()],
+            rows: vec![
+                serde_json::json!(["Riverside", 4.68]),
+                serde_json::json!(["Westend", 0.79]),
+            ],
+        },
+    ));
+    let (out, _rr, _data) = run_with(
+        data,
+        "warehouse",
+        r#"let rows = source("warehouse").records(); category(rows, "building", "kwh")"#,
+    );
+    match out {
+        RuleOutput::Scalar(Value::Array(rows)) => {
+            assert_eq!(rows.len(), 2, "one trimmed row per source row");
+            assert_eq!(rows[0]["building"], serde_json::json!("Riverside"));
+            assert_eq!(rows[0]["kwh"], serde_json::json!(4.68));
+            assert_eq!(
+                rows[0].as_object().unwrap().len(),
+                2,
+                "category trimmed to label + value only"
+            );
+        }
+        other => panic!("expected a scalar array from category(), got {other:?}"),
+    }
 }

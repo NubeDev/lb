@@ -13,16 +13,21 @@ import { useState } from "react";
 import { FolderOpen, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { AddDatasource } from "@/lib/datasources";
 import { type HostFsEntry, type HostFsList, hostHomeDir } from "@/lib/host/fs.api";
 import { HostPathPicker } from "@/lib/host/HostPathPicker";
 import { impliedGrants } from "./impliedGrants";
 
+/** The file extensions a sqlite DB carries — the single source for both "selectable" and "narrow view". */
+const SQLITE_EXTS = ["db", "sqlite", "sqlite3"] as const;
+
 /** A sqlite database file — `.db`/`.sqlite`/`.sqlite3` — is the picker's selectable entry. */
 function isSqliteFile(arg: HostFsList | HostFsEntry): boolean {
   const e = arg as HostFsEntry;
-  return e.kind === "file" && /\.(db|sqlite|sqlite3)$/i.test(e.name);
+  return e.kind === "file" && new RegExp(`\\.(${SQLITE_EXTS.join("|")})$`, "i").test(e.name);
 }
 
 /** The source kinds the federation sidecar accepts — data, not branches (sqlite-datasource-demo scope). */
@@ -44,6 +49,11 @@ export function AddDatasourceForm({ onAdd }: Props) {
   // For sqlite the DSN is a node-local file path: offer a browse-the-node picker, with a type-it
   // escape hatch for paths outside the browsable root (e.g. /var/lib/lb/...).
   const [browse, setBrowse] = useState(false);
+  // Two browse conveniences, both ON by default and toggle-able: narrow the view to common DB files
+  // so the target is easy to spot, and hide dot-prefixed (hidden) dirs/files. A user who keeps a DB
+  // in a dotfolder, or under a non-standard extension, turns the relevant one off.
+  const [onlyDbFiles, setOnlyDbFiles] = useState(true);
+  const [showHidden, setShowHidden] = useState(false);
   const isSqlite = kind === "sqlite";
 
   const meta = KINDS.find((k) => k.kind === kind) ?? KINDS[0];
@@ -136,20 +146,44 @@ export function AddDatasourceForm({ onAdd }: Props) {
             </Button>
           </div>
           {browse && (
-            <HostPathPicker
-              value={dsn}
-              onPick={setDsn}
-              mode="file"
-              // The sqlite DB is a plain node-local file that lives ANYWHERE on the node, NOT under
-              // the devkit/extensions tree — anchor the browse at the node's home dir (a clean
-              // starting point where user data lives), not the noisy filesystem root.
-              resolveRoot={() => hostHomeDir().then((h) => h.path)}
-              // Home is only a starting point — a DB may live outside it (e.g. /var/lib/lb/…),
-              // so let "Up" walk above the anchor.
-              confineToRoot={false}
-              selectable={isSqliteFile}
-              manualPlaceholder="/var/lib/lb/demo/buildings.db"
-            />
+            <>
+              <div className="flex flex-wrap items-center gap-4">
+                <Label className="flex items-center gap-1.5 text-xs text-muted">
+                  <Checkbox
+                    aria-label="only show database files"
+                    checked={onlyDbFiles}
+                    onChange={(e) => setOnlyDbFiles(e.target.checked)}
+                  />
+                  Only show <span className="font-mono">.db</span> files
+                </Label>
+                <Label className="flex items-center gap-1.5 text-xs text-muted">
+                  <Checkbox
+                    aria-label="show hidden entries"
+                    checked={showHidden}
+                    onChange={(e) => setShowHidden(e.target.checked)}
+                  />
+                  Show hidden dirs
+                </Label>
+              </div>
+              <HostPathPicker
+                value={dsn}
+                onPick={setDsn}
+                mode="file"
+                // The sqlite DB is a plain node-local file that lives ANYWHERE on the node, NOT under
+                // the devkit/extensions tree — anchor the browse at the node's home dir (a clean
+                // starting point where user data lives), not the noisy filesystem root.
+                resolveRoot={() => hostHomeDir().then((h) => h.path)}
+                // Home is only a starting point — a DB may live outside it (e.g. /var/lib/lb/…),
+                // so let "Up" walk above the anchor.
+                confineToRoot={false}
+                selectable={isSqliteFile}
+                // The same sqlite extensions `isSqliteFile` deems selectable — narrowing the VIEW to
+                // them (dirs stay, for navigation) so the DB is easy to find. Off = show every file.
+                narrowExtensions={onlyDbFiles ? [...SQLITE_EXTS] : undefined}
+                hideHidden={!showHidden}
+                manualPlaceholder="/var/lib/lb/demo/buildings.db"
+              />
+            </>
           )}
         </div>
       )}

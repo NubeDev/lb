@@ -19,11 +19,22 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   );
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+function TableHeader({
+  className,
+  sticky,
+  ...props
+}: React.ComponentProps<"thead"> & {
+  /** Pin the header so it stays put while rows scroll (matches the `DataView` treatment). */
+  sticky?: boolean;
+}) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("border-b border-border bg-card/40 [&_tr]:border-b", className)}
+      className={cn(
+        "border-b border-border bg-card/40 [&_tr]:border-b",
+        sticky && "sticky top-0 z-10 bg-panel shadow-[0_1px_0_hsl(var(--border))]",
+        className,
+      )}
       {...props}
     />
   );

@@ -51,7 +51,7 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "host.fs.list",
         group: "host",
-        description: "a bounded directory listing with per-entry metadata",
+        description: "a bounded directory listing with per-entry metadata; optional name/extensions/include_hidden filters",
     },
     HostTool {
         tool: "host.fs.home",

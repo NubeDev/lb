@@ -41,6 +41,18 @@ export interface HostPathPickerProps {
   confineToRoot?: boolean;
   /** Optional banner renderer for "dir" mode (extension-picker guidance). Omit for "file" mode. */
   renderBanner?: (ctx: { ready: boolean; loading: boolean; folder: string }) => React.ReactNode;
+  /**
+   * Whether dot-prefixed entries (hidden files AND dirs) are listed. Default true = hidden are
+   * hidden. Applied SERVER-SIDE by `host.fs.list` so it affects dirs too — a caller toggle.
+   */
+  hideHidden?: boolean;
+  /**
+   * Optional file-extension narrowing (e.g. `["db","sqlite"]`) applied CLIENT-SIDE: non-matching
+   * FILES are dropped from the view, but directories always remain so the user can still navigate.
+   * Omit (or empty) to show every file. This is a view filter, not `selectable` — a shown file may
+   * still be un-pickable per `selectable`, and vice-versa.
+   */
+  narrowExtensions?: string[];
 }
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -60,6 +72,8 @@ export function HostPathPicker({
   manualPlaceholder,
   confineToRoot = true,
   renderBanner,
+  hideHidden = true,
+  narrowExtensions,
 }: HostPathPickerProps) {
   const [root, setRoot] = useState<string | null>(null);
   const [cwd, setCwd] = useState("");
@@ -95,7 +109,9 @@ export function HostPathPicker({
     let alive = true;
     setLoading(true);
     setError(null);
-    listHostDir(cwd)
+    // Hidden-ness is a server-side filter so it hides dirs too; extension narrowing is client-side
+    // (below) so navigable folders are never dropped.
+    listHostDir(cwd, { includeHidden: !hideHidden })
       .then((l) => {
         if (!alive) return;
         setList(l);
@@ -110,7 +126,7 @@ export function HostPathPicker({
     return () => {
       alive = false;
     };
-  }, [cwd, mode, onPick, selectable]);
+  }, [cwd, mode, onPick, selectable, hideHidden]);
 
   if (error && !root)
     return <ManualFallback value={value} onPick={onPick} error={error} placeholder={manualPlaceholder} />;
@@ -118,7 +134,10 @@ export function HostPathPicker({
   // "Up" stops at the anchor when it's a hard wall; otherwise only at the true filesystem root.
   const atCeiling = confineToRoot ? !!root && cwd === root : cwd === parent(cwd);
   const ready = mode === "dir" && !!list && selectable(list);
-  const entries = list ? [...list.entries].sort(dirsFirst) : [];
+  const narrow = normalizeExts(narrowExtensions);
+  const entries = list
+    ? [...list.entries].filter((e) => keepEntry(e, narrow, value === join(cwd, e.name))).sort(dirsFirst)
+    : [];
 
   return (
     <div className="flex min-h-0 flex-col gap-2">
@@ -148,7 +167,12 @@ export function HostPathPicker({
               <span className="truncate text-amber-700 dark:text-amber-300">{error}</span>
             </Row>
           ) : entries.length === 0 && !loading ? (
-            <Row muted>This folder is empty.</Row>
+            // Distinguish a truly-empty folder from one where the extension narrow hid every file.
+            <Row muted>
+              {list && list.entries.length > 0 && narrow.length > 0
+                ? `No .${narrow.join("/.")} files here — clear the filter to see everything.`
+                : "This folder is empty."}
+            </Row>
           ) : (
             entries.map((e) => (
               <EntryRow
@@ -168,6 +192,25 @@ export function HostPathPicker({
       {renderBanner?.({ ready, loading, folder: base(cwd) })}
     </div>
   );
+}
+
+/** Normalize a caller extension list to bare, lowercased forms (`".DB"` → `"db"`); [] means "no narrow". */
+function normalizeExts(exts: string[] | undefined): string[] {
+  return (exts ?? [])
+    .map((e) => e.trim().replace(/^\./, "").toLowerCase())
+    .filter((e) => e.length > 0);
+}
+
+/**
+ * A view-filter predicate for the entry list. Directories are always kept (navigation), as is the
+ * current selection (so it stays visible even if it no longer matches). With no narrow, every file
+ * is kept; otherwise a file is kept only when its extension is in the narrow set.
+ */
+function keepEntry(entry: HostFsEntry, narrow: string[], selected: boolean): boolean {
+  if (entry.kind === "dir" || narrow.length === 0 || selected) return true;
+  const dot = entry.name.lastIndexOf(".");
+  if (dot <= 0) return false;
+  return narrow.includes(entry.name.slice(dot + 1).toLowerCase());
 }
 
 function dirsFirst(a: HostFsEntry, b: HostFsEntry): number {

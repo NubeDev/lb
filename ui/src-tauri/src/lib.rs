@@ -10,6 +10,16 @@
 #[cfg(feature = "full")]
 pub mod full;
 
+// The bundled federation datasources sidecar mount (desktop-federation-bundle scope). `full`-only:
+// the thin shell ships no sidecar. Public so `boot_full` + the loopback test can drive it.
+#[cfg(feature = "full")]
+pub mod federation;
+
+// The per-user persistent store path resolver (desktop-persistent-store scope). `full`-only: the
+// windowed boot fills `LB_STORE_PATH` so a restart keeps the user's work. Public so `run` calls it.
+#[cfg(feature = "full")]
+pub mod store;
+
 mod commands;
 mod state;
 

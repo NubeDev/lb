@@ -57,7 +57,7 @@ function renderDashboard(ws: string) {
           switchWorkspace: () => {},
         }}
       >
-        <DashboardView ws={ws} onOpenInDataStudio={() => {}} />
+        <DashboardView ws={ws} onEditPanel={() => {}} />
       </RoutingContextProvider>
     </ThemeProvider>,
   );
@@ -91,7 +91,7 @@ function renderDashboardWithSearch(ws: string, searchRef: { current: DashboardSe
               searchRef.current = next;
               setSearch(next);
             }}
-            onOpenInDataStudio={() => {}}
+            onEditPanel={() => {}}
           />
         </RoutingContextProvider>
       </ThemeProvider>
@@ -146,11 +146,9 @@ describe("DashboardView (real gateway)", () => {
     await user.click(await screen.findByRole("option", { name: /Cooler temp/ }));
     await screen.findByLabelText("cell w1");
 
-    // NO in-place per-cell editor on the placed cell (authoring removed; geometry/remove remain) —
-    // but the cell DOES carry an "open in data studio" affordance, since Data Studio is where panels
-    // are authored now (the dashboard only places + renders). It navigates to /t/$ws/data-studio.
-    expect(screen.queryByLabelText("edit cell w1")).toBeNull();
-    expect(screen.getByLabelText("open cell w1 in data studio")).toBeInTheDocument();
+    // The placed cell carries an "edit" affordance that opens the stepped panel wizard in EDIT mode
+    // (`…/new-panel?cell=w1`) over this existing cell — the dashboard places + renders, the wizard edits.
+    expect(screen.getByLabelText("edit cell w1")).toBeInTheDocument();
 
     // Persisted + hydrated: a fresh render re-loads the dashboard, the host hydrates the ref cell on
     // `dashboard.get`, and it renders the timeseries over real rows (the SVG line + latest).

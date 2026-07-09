@@ -12,6 +12,7 @@
 // only names the cap STRINGS (`CAP`) the UI compares the server-issued caps against to gate display.
 
 export const CAP = {
+  workspaceCreate: "mcp:workspace.create:call",
   workspaceDelete: "mcp:workspace.delete:call",
   workspacePurge: "mcp:workspace.purge:call",
   userManage: "mcp:user.manage:call",

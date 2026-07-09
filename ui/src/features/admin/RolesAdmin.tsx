@@ -4,31 +4,60 @@
 // `role:<name>` strings. The candidate caps are the admin's OWN session caps (∪ caps already in any
 // role) — which is exactly the no-widening set the server enforces, so the UI can't offer something
 // the gateway will reject. Save calls `roles.define` (define replaces, so this is create AND edit).
+//
+// Built on shadcn primitives (access-console consistency): the shared `Table` (sticky header), the
+// shared `AdminToolbar` (search + "New role"), `Button`/`Input`/`Checkbox` — no raw `<table>`/
+// `<button>`/`<input>` and no local page header (the `AdminView` tab strip owns it). Tokens only —
+// destructive actions use the `Button` `destructive` variant, never `red-…` literals. The two-region
+// body stacks on phone-width (`flex-col md:flex-row`, no fixed `w-1/2`), matching PeopleAdmin.
 
-import { useEffect, useState } from "react";
-import { KeyRound } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { KeyRound, Plus, ChevronDown, ChevronRight } from "lucide-react";
 
+import { AppEmptyState } from "@/components/app/empty-state";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { BUILTIN_ROLES } from "@/lib/admin/roles.api";
 import { hasCap } from "@/lib/session";
 import { CAP } from "@/lib/session/admin-caps";
 import { ConfirmDestructive } from "@/features/confirm";
-import { AdminPanel } from "./AdminPanel";
+import { AdminToolbar } from "./AdminToolbar";
+import { groupCaps } from "./roles/groupCaps";
 import { useRoles } from "./useRoles";
 
 interface Props {
-  ws: string;
+  /** The workspace is shown in the parent `AdminView`'s header; kept on the prop for API compat. */
+  ws?: string;
   /** The admin's session caps — gates roles.delete (`mcp:roles.manage:call`). */
   caps: string[] | undefined;
 }
 
-export function RolesAdmin({ ws, caps }: Props) {
+export function RolesAdmin({ caps }: Props) {
   const { roles, error, define, remove } = useRoles();
   const [selected, setSelected] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftCaps, setDraftCaps] = useState<Set<string>>(new Set());
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deleteResult, setDeleteResult] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState("");
+  const [capFilter, setCapFilter] = useState("");
+  // The editor is a RESPONSE, not an always-on form: it opens only after you pick a role (edit) or
+  // click "New role" (create). Until then the right pane is a placeholder — so "New role" visibly
+  // opens the form instead of appearing to do nothing.
+  const [creating, setCreating] = useState(false);
+  // Which cap groups the user has explicitly expanded. Groups also auto-open when they hold a
+  // checked cap or match the filter (see `isOpen`), so this only tracks manual toggles.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
 
   const canDelete = hasCap(caps, CAP.rolesManage);
 
@@ -43,14 +72,40 @@ export function RolesAdmin({ ws, caps }: Props) {
   // The caps the admin may bundle: their own session caps, plus any cap already used by a role so an
   // existing role stays editable even if it lists a cap the current admin lacks (it just can't be
   // re-added if removed — the server would reject widening).
-  const candidates = Array.from(
-    new Set([...(caps ?? []).filter((c) => c.startsWith("mcp:")), ...roles.flatMap((r) => r.caps)]),
-  ).sort();
+  const candidates = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...(caps ?? []).filter((c) => c.startsWith("mcp:")),
+          ...roles.flatMap((r) => r.caps),
+        ]),
+      ).sort(),
+    [caps, roles],
+  );
+
+  const visibleRoles = roles.filter((r) => r.name.toLowerCase().includes(roleFilter.toLowerCase()));
+
+  // The caps bucketed by extension (agent, dashboard, …) — the whole set, so per-group counts are
+  // filter-independent. The filter only narrows the rendered ROWS (below), matching the old
+  // substring-on-full-cap semantics.
+  const groups = useMemo(() => groupCaps(candidates), [candidates]);
+  const q = capFilter.trim().toLowerCase();
+  const anyMatch = q === "" || candidates.some((c) => c.toLowerCase().includes(q));
+
+  /** A group is open when the user expanded it, OR it holds a checked cap, OR (with an active
+   *  filter) it has a matching row — so selecting a role reveals its caps and filtering reveals hits. */
+  function isOpen(group: string, caps: { cap: string }[]): boolean {
+    if (openGroups.has(group)) return true;
+    if (caps.some((e) => draftCaps.has(e.cap))) return true;
+    if (q !== "" && caps.some((e) => e.cap.toLowerCase().includes(q))) return true;
+    return false;
+  }
 
   function startNew() {
     setSelected(null);
     setDraftName("");
     setDraftCaps(new Set());
+    setCreating(true);
   }
   function toggle(cap: string) {
     setDraftCaps((prev) => {
@@ -59,94 +114,179 @@ export function RolesAdmin({ ws, caps }: Props) {
       return next;
     });
   }
+  function toggleGroup(group: string) {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      next.has(group) ? next.delete(group) : next.add(group);
+      return next;
+    });
+  }
+  function setGroupAll(caps: { cap: string }[], on: boolean) {
+    setDraftCaps((prev) => {
+      const next = new Set(prev);
+      for (const { cap } of caps) (on ? next.add(cap) : next.delete(cap));
+      return next;
+    });
+  }
   async function save() {
     const name = draftName.trim();
     if (!name) return;
     await define(name, [...draftCaps]);
     setSelected(name);
+    setCreating(false);
   }
 
-  const action = (
-    <button
-      aria-label="new role"
-      className="flex items-center gap-1 rounded-md bg-accent/15 px-2 py-1 text-xs text-accent"
-      onClick={startNew}
-    >
-      <KeyRound size={13} /> New role
-    </button>
-  );
-
   return (
-    <AdminPanel icon={KeyRound} title="Roles" ws={ws} action={action} error={error}>
-      <div className="flex h-full">
-        <div className="w-1/2 min-w-0 border-r border-border">
-          {roles.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-muted">
-              No roles yet. Create one to bundle capabilities.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted">
-                  <th className="px-3 py-1.5 font-medium">Role</th>
-                  <th className="px-3 py-1.5 font-medium">Capabilities</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((r) => {
-                  const immutable = BUILTIN_ROLES.has(r.name);
-                  return (
-                    <tr
-                      key={r.name}
-                      aria-label={`select role ${r.name}`}
-                      aria-selected={selected === r.name}
-                      className={`cursor-pointer border-b border-border/50 ${
-                        selected === r.name ? "bg-accent/10" : "hover:bg-panel"
-                      }`}
-                      onClick={() => setSelected(r.name)}
-                    >
-                      <td className="px-3 py-1.5">
-                        {r.name}
-                        {immutable && (
-                          <span className="ml-1.5 text-[0.6875rem] text-muted">(built-in)</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-1.5 text-xs text-muted">{r.caps.length}</td>
-                      <td className="px-3 py-1.5 text-right">
-                        {canDelete && !immutable && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            size="sm"
-                            aria-label={`delete role ${r.name}`}
-                            className="scale-90"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingDelete(r.name);
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+    <div className="flex min-h-0 flex-1 flex-col">
+      {error && (
+        <div
+          role="alert"
+          className="border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+        >
+          {error}
+        </div>
+      )}
+      {deleteResult && (
+        <p
+          role="status"
+          className="border-b border-border bg-panel px-4 py-2 text-xs text-muted"
+        >
+          {deleteResult}
+        </p>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        {/* Left: the roster of roles. Stacks above the editor on a phone. */}
+        <div className="flex min-w-0 flex-1 flex-col border-b border-border md:max-w-[32rem] md:border-b-0 md:border-r">
+          <AdminToolbar
+            search={roleFilter}
+            onSearch={setRoleFilter}
+            searchPlaceholder="Filter roles…"
+            action={
+              <Button size="sm" aria-label="new role" onClick={startNew}>
+                <Plus size={13} /> New role
+              </Button>
+            }
+          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {visibleRoles.length === 0 ? (
+              <AppEmptyState
+                icon={KeyRound}
+                title={roleFilter ? "No roles match." : "No roles yet."}
+                description={
+                  roleFilter
+                    ? "Clear the filter to see every role."
+                    : "Create one to bundle capabilities."
+                }
+              />
+            ) : (
+              <Table>
+                <TableHeader sticky>
+                  <TableRow>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Capabilities</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visibleRoles.map((r) => {
+                    const immutable = BUILTIN_ROLES.has(r.name);
+                    return (
+                      <TableRow
+                        key={r.name}
+                        aria-label={`select role ${r.name}`}
+                        aria-selected={selected === r.name}
+                        data-state={selected === r.name ? "selected" : undefined}
+                        className="cursor-pointer"
+                        onClick={() => {
+                          setSelected(r.name);
+                          setCreating(false);
+                        }}
+                      >
+                        <TableCell className="font-medium text-fg">
+                          {r.name}
+                          {immutable && (
+                            <span className="ml-1.5 text-[0.6875rem] text-muted">(built-in)</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted">{r.caps.length}</TableCell>
+                        <TableCell className="text-right">
+                          {canDelete && !immutable && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              aria-label={`delete role ${r.name}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingDelete(r.name);
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
         </div>
 
-        <div className="w-1/2 min-w-0 overflow-y-auto px-4 py-3">
-          <div className="space-y-3">
+        {/* Right: the editor — opens only for a selected role (edit) or after "New role" (create);
+            otherwise a placeholder, so "New role" has a visible effect. Structured like the left
+            panel — a top BAR (a flex sibling, same `min-h-12 py-2` as the `AdminToolbar`) then a
+            separate scroll region — so the two panels' top bars sit on the exact same row. */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {!selRole && !creating ? (
+            <AppEmptyState
+              icon={KeyRound}
+              title="No role selected."
+              description="Select a role to edit it, or click “New role” to create one."
+            />
+          ) : (
+          <>
+            {/* The editor's top bar — mirrors the left `AdminToolbar` box (min-h-12, py-2, border-b,
+                bg-panel) so the title + Save line up with the roster's search + New role. */}
+            <div className="flex min-h-12 items-center gap-2 border-b border-border bg-panel px-4 py-2">
+              <h2 className="text-sm font-semibold text-fg">
+                {selRole ? `Edit role: ${selRole.name}` : "New role"}
+              </h2>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  size="sm"
+                  aria-label="save role"
+                  disabled={!draftName.trim()}
+                  onClick={() => void save()}
+                >
+                  {selRole ? "Save changes" : "Create role"}
+                </Button>
+                {creating && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="cancel new role"
+                    onClick={() => setCreating(false)}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
             <div>
-              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted">
+              <label
+                htmlFor="role-name"
+                className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted"
+              >
                 Role name
               </label>
-              <input
+              <Input
+                id="role-name"
                 aria-label="role name"
-                className="w-full rounded-md bg-panel px-2 py-1 text-sm disabled:opacity-60"
+                className="h-8"
                 placeholder="e.g. operator"
                 value={draftName}
                 disabled={selRole !== null}
@@ -155,7 +295,7 @@ export function RolesAdmin({ ws, caps }: Props) {
             </div>
 
             <div>
-              <h3 className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
+              <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                 Capabilities ({draftCaps.size})
               </h3>
               {candidates.length === 0 ? (
@@ -163,42 +303,89 @@ export function RolesAdmin({ ws, caps }: Props) {
                   You hold no capabilities to bundle (no-widening).
                 </p>
               ) : (
-                <ul className="space-y-1">
-                  {candidates.map((cap) => (
-                    <li key={cap} className="flex items-center gap-2 text-xs">
-                      <input
-                        type="checkbox"
-                        id={`cap-${cap}`}
-                        aria-label={`include ${cap}`}
-                        checked={draftCaps.has(cap)}
-                        onChange={() => toggle(cap)}
-                      />
-                      <label htmlFor={`cap-${cap}`} className="font-mono">
-                        {cap}
-                      </label>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <Input
+                    aria-label="filter capabilities"
+                    className="mb-2 h-8"
+                    placeholder="Filter capabilities…"
+                    value={capFilter}
+                    onChange={(e) => setCapFilter(e.target.value)}
+                  />
+                  {!anyMatch ? (
+                    <p className="text-xs text-muted">No capabilities match the filter.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {groups.map(({ group, caps: groupCapsList }) => {
+                        const rows = q
+                          ? groupCapsList.filter((e) => e.cap.toLowerCase().includes(q))
+                          : groupCapsList;
+                        if (rows.length === 0) return null; // group has no filter hit — hide it
+                        const checked = groupCapsList.filter((e) => draftCaps.has(e.cap)).length;
+                        const total = groupCapsList.length;
+                        const open = isOpen(group, groupCapsList);
+                        const allOn = checked === total;
+                        return (
+                          <Collapsible key={group} open={open}>
+                            <div className="flex items-center gap-1">
+                              <CollapsibleTrigger
+                                aria-label={`toggle group ${group}`}
+                                onClick={() => toggleGroup(group)}
+                                className="flex flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-xs hover:bg-bg/60"
+                              >
+                                {open ? (
+                                  <ChevronDown size={13} className="text-muted" />
+                                ) : (
+                                  <ChevronRight size={13} className="text-muted" />
+                                )}
+                                <span className="font-medium text-fg">{group}</span>
+                                <span className="text-muted">
+                                  {checked}/{total}
+                                </span>
+                              </CollapsibleTrigger>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-[0.6875rem]"
+                                aria-label={allOn ? `deselect all ${group}` : `select all ${group}`}
+                                onClick={() => setGroupAll(groupCapsList, !allOn)}
+                              >
+                                {allOn ? "None" : "All"}
+                              </Button>
+                            </div>
+                            <CollapsibleContent forceMount className="data-[state=closed]:hidden">
+                              <ul className="ml-5 space-y-1 border-l border-border pl-3">
+                                {rows.map(({ cap, label }) => (
+                                  <li key={cap} className="flex items-center gap-2 text-xs">
+                                    <Checkbox
+                                      id={`cap-${cap}`}
+                                      aria-label={`include ${cap}`}
+                                      checked={draftCaps.has(cap)}
+                                      onChange={() => toggle(cap)}
+                                    />
+                                    <label
+                                      htmlFor={`cap-${cap}`}
+                                      title={cap}
+                                      className="cursor-pointer font-mono"
+                                    >
+                                      {label}
+                                    </label>
+                                  </li>
+                                ))}
+                              </ul>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
-
-            <button
-              aria-label="save role"
-              className="rounded-md bg-accent/15 px-3 py-1 text-xs text-accent disabled:opacity-40"
-              disabled={!draftName.trim()}
-              onClick={() => void save()}
-            >
-              {selRole ? "Save changes" : "Create role"}
-            </button>
-          </div>
+            </div>
+          </>
+          )}
         </div>
       </div>
-
-      {deleteResult && (
-        <p className="px-4 py-2 text-xs text-muted" role="status">
-          {deleteResult}
-        </p>
-      )}
 
       {pendingDelete && (
         <ConfirmDestructive
@@ -211,12 +398,14 @@ export function RolesAdmin({ ws, caps }: Props) {
             const name = pendingDelete;
             setPendingDelete(null);
             const affected = await remove(name);
-            setDeleteResult(`Deleted role ${name} — un-assigned from ${affected} subject${affected === 1 ? "" : "s"}.`);
+            setDeleteResult(
+              `Deleted role ${name} — un-assigned from ${affected} subject${affected === 1 ? "" : "s"}.`,
+            );
             if (selected === name) setSelected(null);
           }}
           onCancel={() => setPendingDelete(null)}
         />
       )}
-    </AdminPanel>
+    </div>
   );
 }

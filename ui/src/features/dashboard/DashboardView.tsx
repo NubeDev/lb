@@ -4,7 +4,14 @@
 // live over the series SSE (motion, rule 3). Wiring + layout only; each piece owns its data.
 
 import { useEffect, useState } from "react";
-import { LayoutGrid, Plus, Share2, Variable as VariableIcon } from "lucide-react";
+import {
+  Download,
+  LayoutGrid,
+  Plus,
+  Settings2,
+  Share2,
+  Variable as VariableIcon,
+} from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
@@ -24,9 +31,17 @@ import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import { RefreshControl } from "./RefreshControl";
 import { useAutoRefresh } from "./useAutoRefresh";
 import { useDashboard } from "./useDashboard";
+import { useDashboardIo } from "./io/useDashboardIo";
 import { useSourcePicker } from "./builder/useSourcePicker";
 import { DashboardCacheProvider } from "./cache/DashboardQueryProvider";
 import type { Cell, Variable, Visibility } from "@/lib/dashboard";
+import {
+  dashboardToPortable,
+  cellLabel,
+  slugFromTitle,
+  BUNDLE_EXT,
+} from "@/lib/dashboard";
+import { cellToSpec } from "@/lib/panel";
 import type { DashboardSearch } from "@/features/routing/search";
 import { varsFromSearch, withVar } from "@/features/routing/search";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
@@ -40,13 +55,16 @@ interface Props {
   /** Update the whole dashboard search (range, refresh, var-* selection) — one router navigate.
    *  Variable selection + refresh ride here so they round-trip in the URL (Slices 2/4). */
   onSearchChange?: (search: DashboardSearch) => void;
-  /** Open Data Studio (`/t/$ws/data-studio`) — the panel-authoring surface since data-studio v2.
-   *  Wired by the route; passed down to each cell's hover affordance. Omitted ⇒ no button. */
-  onOpenInDataStudio?: () => void;
+  /** Edit an existing panel in the stepped wizard (`…/new-panel?cell=<i>`, EDIT mode). Wired by the
+   *  route; passed down to each cell's hover affordance. Called with the cell key. Omitted ⇒ no button. */
+  onEditPanel?: (dashboardId: string, cellId: string) => void;
   /** Open the stepped panel wizard at `/t/$ws/dashboards/$d/new-panel` (panel-wizard scope). Admin-only
    *  in the UI (matches `AddLibraryPanel`'s gate); the route re-checks `mcp:dashboard.save:call`. Omitted
    *  ⇒ no button. */
   onOpenPanelWizard?: (dashboardId: string) => void;
+  /** Open the Dashboards manager (`/t/$ws/dashboards/manage`) — the full-CRUD library + import/export.
+   *  Wired by the route. Omitted ⇒ no button. */
+  onManage?: () => void;
 }
 
 /** The dashboard surface, wrapped in its per-visit read cache. `DashboardCacheProvider` is keyed on `ws`
@@ -60,8 +78,16 @@ export function DashboardView(props: Props) {
   );
 }
 
-function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onOpenPanelWizard }: Props) {
+function DashboardViewInner({
+  ws,
+  range,
+  onSearchChange,
+  onEditPanel,
+  onOpenPanelWizard,
+  onManage,
+}: Props) {
   const dash = useDashboard(ws);
+  const io = useDashboardIo();
   // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
   // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
   // the source combobox. See useSourcePicker's `enabled` opt.)
@@ -104,7 +130,12 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
   };
   // Resolve the variable scope shell-side (Slice 3): the URL selection + the built-ins from the token +
   // time range. Interpolated into every cell call + handed to extension tiles as ctx.vars/ctx.timeRange.
-  const scope = useVarScope(current?.variables ?? [], range, current?.id ?? "", ws);
+  const scope = useVarScope(
+    current?.variables ?? [],
+    range,
+    current?.id ?? "",
+    ws,
+  );
   // reusable-pages: a template dashboard's `required` variables that are still UNBOUND (no URL value,
   // no default). While any is unbound the grid must NOT fire (a `$site`-literal query is a footgun) —
   // we render the honest `RequiredVarGate` in place of the grid, before any cell bridge call.
@@ -128,6 +159,18 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
       error={dash.error}
       actions={
         <>
+          {onManage && (
+            <Button
+              aria-label="manage dashboards"
+              variant="ghost"
+              size="sm"
+              className="text-muted hover:text-fg"
+              title="Manage all dashboards — import / export"
+              onClick={onManage}
+            >
+              <Settings2 size={13} className="mr-1" /> Manage
+            </Button>
+          )}
           {current && (
             <Badge variant="outline" className="rounded-full">
               {current.visibility}
@@ -136,9 +179,16 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
           {current && (current.variables ?? []).some((v) => v.required) && (
             // reusable-pages: this dashboard is a TEMPLATE — surface its parameter count (a small hint,
             // not a new record type; a template is just a dashboard with required variables).
-            <Badge variant="outline" className="rounded-full" title="A template page — a required variable must be picked to load it.">
-              template · {(current.variables ?? []).filter((v) => v.required).length} param
-              {(current.variables ?? []).filter((v) => v.required).length === 1 ? "" : "s"}
+            <Badge
+              variant="outline"
+              className="rounded-full"
+              title="A template page — a required variable must be picked to load it."
+            >
+              template ·{" "}
+              {(current.variables ?? []).filter((v) => v.required).length} param
+              {(current.variables ?? []).filter((v) => v.required).length === 1
+                ? ""
+                : "s"}
             </Badge>
           )}
           {range && (
@@ -148,7 +198,9 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
                 className="h-8 w-[8.5rem] text-xs"
                 type="date"
                 value={range.from}
-                onChange={(e) => onSearchChange?.({ ...range, from: e.target.value })}
+                onChange={(e) =>
+                  onSearchChange?.({ ...range, from: e.target.value })
+                }
               />
               <span>to</span>
               <Input
@@ -156,7 +208,9 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
                 className="h-8 w-[8.5rem] text-xs"
                 type="date"
                 value={range.to}
-                onChange={(e) => onSearchChange?.({ ...range, to: e.target.value })}
+                onChange={(e) =>
+                  onSearchChange?.({ ...range, to: e.target.value })
+                }
               />
             </div>
           )}
@@ -177,6 +231,24 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
                 onClick={copyLink}
               >
                 <Share2 size={13} />
+              </Button>
+              <Button
+                aria-label="export dashboard"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                title="Export this dashboard"
+                disabled={io.busy}
+                onClick={() =>
+                  io.downloadBundle(
+                    [dashboardToPortable(current)],
+                    [],
+                    `${current.id}${BUNDLE_EXT}`,
+                    new Date().toISOString(),
+                  )
+                }
+              >
+                <Download size={13} />
               </Button>
               <Select
                 aria-label="dashboard visibility"
@@ -237,7 +309,10 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
             onCollapse={() => setRosterOpen(false)}
           />
         ) : (
-          <CollapsedRail noun="dashboard" onExpand={() => setRosterOpen(true)} />
+          <CollapsedRail
+            noun="dashboard"
+            onExpand={() => setRosterOpen(true)}
+          />
         ))}
 
       {current && confirmDelete && (
@@ -296,7 +371,9 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
               )}
               <AddLibraryPanel
                 existing={current.cells}
-                onAdd={(cell: Cell) => void dash.saveCells([...current.cells, cell])}
+                onAdd={(cell: Cell) =>
+                  void dash.saveCells([...current.cells, cell])
+                }
               />
             </div>
           )}
@@ -315,8 +392,24 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
                 installed={picker.installed}
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
-                onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
-                onOpenInDataStudio={onOpenInDataStudio}
+                onRemove={(i) =>
+                  void dash.saveCells(current.cells.filter((c) => c.i !== i))
+                }
+                onEditPanel={
+                  onEditPanel ? (i) => onEditPanel(current.id, i) : undefined
+                }
+                onExportCell={(i) => {
+                  const src = current.cells.find((c) => c.i === i);
+                  if (!src) return;
+                  // Export ONE widget as a standalone panel entry (the non-layout spec), so it can be
+                  // imported into any dashboard. Reuses the shipped Cell→PanelSpec bridge.
+                  io.downloadBundle(
+                    [],
+                    [{ id: i, title: cellLabel(src), spec: cellToSpec(src) }],
+                    `${slugFromTitle(cellLabel(src))}${BUNDLE_EXT}`,
+                    new Date().toISOString(),
+                  );
+                }}
                 onDuplicate={(i) => {
                   const src = current.cells.find((c) => c.i === i);
                   if (!src) return;

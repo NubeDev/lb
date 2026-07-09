@@ -26,6 +26,7 @@ mod dbschema_record;
 mod dbschema_save;
 mod error;
 mod export;
+mod install;
 mod list;
 mod migrate;
 mod mirror;
@@ -50,6 +51,7 @@ pub use dbschema_record::{schema_tag, DbSchemaRecord, SCHEMA_VERSION, TABLE as D
 pub use dbschema_save::dbschema_save;
 pub use error::FederationError;
 pub use export::{export_descriptor, federation_export, ExportFrom};
+pub use install::{install_federation, Installed, SeedSource};
 pub use list::{datasource_list, DatasourceSummary};
 pub use migrate::{federation_migrate, migrate_descriptor};
 pub use mirror::federation_mirror;

@@ -1,6 +1,9 @@
-# dockerignore — scoped to the desktop builder image (`desktop/docker/Dockerfile`, which
-# uses the repo root as its build context for the `builder`/`artifact` stages). Keeps
-# `COPY . /build` small and prevents host build state from leaking into the CI image.
+# dockerignore — the ONE ignore file for every repo-root-context Docker build: the desktop
+# builder image (`desktop/docker/Dockerfile`) AND the deploy image (`deploy/common/Dockerfile`,
+# see `deploy/README.md`). Docker resolves `.dockerignore` from the CONTEXT ROOT, not next to
+# the Dockerfile — a per-Dockerfile ignore file needs `buildx build --ignorefile`, which the
+# classic (non-buildx) `docker build`/`docker compose build` used for local dev and CI does not
+# support. So this is it: one file, every driver, no drift.
 #
 # Everything excluded here is either regenerated inside the image (target/, dist/,
 # node_modules/) or irrelevant to the build (VCS, editor config, the artifact tarballs
@@ -50,6 +53,16 @@ docs/sessions/
 # The Nextra doc-site is ~1 GB (node_modules) and unrelated to the binary build.
 doc-site/
 
-# Other top-level workspaces that the desktop build does not touch
-docker/postgres/
+# Other top-level workspaces neither build touches
 app/shell/
+
+# docker/postgres/ carries the demo-dataset generator the DEPLOY image needs at runtime
+# (deploy/common/Dockerfile copies these into /opt/lazybones/seed/ — see seed-demo-sqlite.sh) —
+# allow just those files; the rest (compose stack, .env, __pycache__, init SQL) is dev-only.
+docker/postgres/
+!docker/postgres/seed.py
+!docker/postgres/generators.py
+!docker/postgres/inventory.py
+!docker/postgres/tags.py
+!docker/postgres/sinks_sqlite.py
+!docker/postgres/seed-demo-sqlite.sh

@@ -44,6 +44,10 @@ interface Props {
   dashboardId: string;
   /** Navigate back to the dashboard (a Cancel affordance + the post-Save redirect). */
   onExit: () => void;
+  /** EDIT mode: the existing cell being edited. When set, the wizard seeds from this cell and Save
+   *  REPLACES it in place (keeping its geometry + key) instead of appending a new panel. Omitted ⇒
+   *  the create flow (a fresh `defaultCell` seed, append at the next free row). */
+  editCell?: Cell;
 }
 
 /** Reset the per-view `options` to the new view's defaults when the chart type changes (mirrors the
@@ -52,11 +56,14 @@ function withViewReset(next: View): Partial<EditorState> {
   return { view: next, options: defaultOptionsForView(next) };
 }
 
-export function PanelWizard({ ws, dashboardId, onExit }: Props) {
-  // The wizard's working state — `cellToEditorState(defaultCell(...))`, the SAME seed ADD uses in the
-  // editor. No wizard-only field; every step writes through `patch`.
+export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
+  // The wizard's working state. In EDIT mode it seeds from the existing cell (the SAME
+  // `cellToEditorState` the editor uses — no wizard-only field, so no drift); in CREATE mode it seeds
+  // from `defaultCell(...)`, the same seed ADD uses. Every step writes through `patch`.
   const [state, setState] = useState<EditorState>(() =>
-    cellToEditorState(defaultCell("timeseries", WIZARD_CELL_I, undefined, defaultOptionsForView("timeseries"))),
+    editCell
+      ? cellToEditorState(editCell)
+      : cellToEditorState(defaultCell("timeseries", WIZARD_CELL_I, undefined, defaultOptionsForView("timeseries"))),
   );
   const [step, setStep] = useState<WizardStepId>("source");
   const [frozen, setFrozen] = useState(false);
@@ -109,25 +116,33 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      const draftBase = defaultCell(state.view || "timeseries", WIZARD_CELL_I);
+      // In EDIT mode the base IS the existing cell, so serializing keeps its key + geometry (the
+      // fields `editorStateToCell` doesn't own). In CREATE mode the base is a fresh `defaultCell`.
+      const draftBase = editCell ?? defaultCell(state.view || "timeseries", WIZARD_CELL_I);
       const cell = editorStateToCell(state, draftBase);
       const { getDashboard, saveDashboard } = await import("@/lib/dashboard/dashboard.api");
       const target = await getDashboard(dashboardId);
-      // Place at the next free y so the new panel doesn't overlap (mirrors the editor's append behavior).
-      const maxY = target.cells.reduce((m, c) => Math.max(m, c.y + c.h), 0);
-      const placed: Cell = { ...cell, i: `panel-${Date.now()}`, x: 0, y: maxY };
-      await saveDashboard(dashboardId, target.title, [...target.cells, placed], target.variables ?? []);
+      let cells: Cell[];
+      if (editCell) {
+        // REPLACE the edited cell in place — same key, same geometry (carried by `draftBase`).
+        cells = target.cells.map((c) => (c.i === editCell.i ? { ...cell, i: editCell.i } : c));
+      } else {
+        // Place at the next free y so the new panel doesn't overlap (mirrors the editor's append).
+        const maxY = target.cells.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+        cells = [...target.cells, { ...cell, i: `panel-${Date.now()}`, x: 0, y: maxY }];
+      }
+      await saveDashboard(dashboardId, target.title, cells, target.variables ?? []);
       onExit();
     } finally {
       setSaving(false);
     }
-  }, [state, dashboardId, onExit]);
+  }, [state, dashboardId, onExit, editCell]);
 
   return (
     <div className="flex h-full flex-col" aria-label="panel wizard" data-wizard-step={step}>
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="grid gap-0.5">
-          <div className="text-sm font-medium text-fg">New panel</div>
+          <div className="text-sm font-medium text-fg">{editCell ? "Edit panel" : "New panel"}</div>
           <div className="text-[11px] text-muted">dashboard {dashboardId}</div>
         </div>
         <Button variant="ghost" size="sm" onClick={onExit} aria-label="cancel wizard">

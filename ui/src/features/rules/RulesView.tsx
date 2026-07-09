@@ -204,10 +204,18 @@ export function RulesView({ ws, ruleId = null, onSelectRule }: RulesViewProps) {
               onSelectRule={onSelectRule}
             />
           ) : (
-            <RulesWorkflowsTab ws={ws} ruleRoster={r.roster} onJumpToRule={(id) => {
-              if (onSelectRule) onSelectRule(id);
-              setTab("editor");
-            }} />
+            // The Workflows table gets the Access-console floating-panel chrome (admin-page-patterns
+            // P1): a rounded-bordered `bg-panel-2/70` panel floated with a matching gutter, so the
+            // table reads as a lifted panel like API Keys. Scoped to this tab — the Editor keeps its
+            // full-bleed flex-height workbench (a panel's `overflow-hidden` would collapse its chain).
+            <div className="flex h-full min-h-0 flex-col px-2 pb-2">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel-2/70">
+                <RulesWorkflowsTab ws={ws} ruleRoster={r.roster} onJumpToRule={(id) => {
+                  if (onSelectRule) onSelectRule(id);
+                  setTab("editor");
+                }} />
+              </div>
+            </div>
           )}
         </div>
       </Tabs>

@@ -284,6 +284,44 @@ docker-build:
 		-e PKG="$(PKG)" -e PROFILE="$(PROFILE)" -e FEATURES="$(FEATURES)" \
 		$(DOCKER_BUILD_IMAGE) lb-build $(TARGET)
 
+# ---------------------------------------------------------------------------------------------------
+# Fly.io deploy (deploy/, docs/scope/deploy/fly-deploy-scope.md). One image (deploy/common/Dockerfile)
+# reused verbatim by local Docker, CI, and Fly — see deploy/README.md. No dependency containers: the
+# store is embedded, datasources ride the federation sidecar in SQLite mode (no bundled Postgres).
+#   make fly-local        build + run the canonical image behind mkcert TLS on https://localhost
+#   make fly-local-down   stop the local HTTPS pre-flight (keeps volumes)
+#   make fly-smoke        run deploy/fly/smoke.sh against a running container (default: local compose)
+#   make fly-deploy       fly deploy, wired to the shared Dockerfile/ignorefile
+#   make fly-logs / fly-ssh / fly-status
+FLY_APP ?= lazybones
+
+.PHONY: fly-local fly-local-down fly-smoke fly-deploy fly-logs fly-ssh fly-status
+fly-local:
+	docker compose -f deploy/fly/compose.fly-local.yml --project-directory . up -d --build
+
+fly-local-down:
+	docker compose -f deploy/fly/compose.fly-local.yml --project-directory . down
+
+# Against the local plain-HTTP compose driver by default (deploy/common/compose.yml). Point it at a
+# live Fly app with: make fly-smoke SMOKE_URL=https://$(FLY_APP).fly.dev
+SMOKE_URL ?= http://127.0.0.1:8080
+fly-smoke:
+	bash deploy/fly/smoke.sh "$(SMOKE_URL)"
+
+fly-deploy:
+	fly deploy --app $(FLY_APP) --config deploy/fly/fly.toml \
+		--dockerfile deploy/common/Dockerfile --ignorefile .dockerignore \
+		--remote-only .
+
+fly-logs:
+	fly logs -a $(FLY_APP)
+
+fly-ssh:
+	fly ssh console -a $(FLY_APP)
+
+fly-status:
+	fly status -a $(FLY_APP)
+
 # EDGE posture: a solo node — its own authority, fully offline, NO gateway. This is
 # the same binary as `cloud`, just without LB_GATEWAY_ADDR set, so it runs the solo
 # spine demo and exits/serves locally only. No browser reaches it (that's the point).

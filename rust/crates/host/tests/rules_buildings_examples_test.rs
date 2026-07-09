@@ -1,6 +1,6 @@
 //! Regression test for the click-to-load BUILDINGS DEMO rule examples (rules-editor-ux / the beginner
-//! lesson, step 2). The three examples a newcomer clicks in the Rules editor
-//! (`buildings-intensity-query` / `-strict` / `-alert`) are HOST-OWNED strings in
+//! lesson, step 2). The four examples a newcomer clicks in the Rules editor
+//! (`buildings-intensity-query` / `-strict` / `-alert` / `-chart`) are HOST-OWNED strings in
 //! `crates/host/src/rules/buildings_examples.json` — the SAME file the UI imports
 //! (`ui/src/features/rules/examples/examples.ts`). This test `include_str!`s that JSON and runs each
 //! example body through the REAL path — no re-implementation, no drift: an edit to the shared JSON that
@@ -12,8 +12,9 @@
 //! (a true external), and the buildings bodies never touch `ai.*` so it is never even called.
 //!
 //! Mandatory categories: the happy path (query/strict → 8 rows, 0 findings; alert → 8 rows, 1 finding
-//! on Riverside), capability-deny (a caller missing `mcp:federation.query:call` is denied mid-run), and
-//! workspace-isolation (ws-B, with the cap but no registered source, cannot read ws-A's `demo-buildings`).
+//! on Riverside; chart → 8 rows trimmed to label+value), capability-deny (a caller missing
+//! `mcp:federation.query:call` is denied mid-run), and workspace-isolation (ws-B, with the cap but no
+//! registered source, cannot read ws-A's `demo-buildings`).
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -175,8 +176,10 @@ async fn register_buildings(node: &Arc<Node>, admin: &Principal, ws: &str, db: &
     .await;
 }
 
-/// Assert the run produced a scalar (`.records()` → an array) of exactly `n` positional rows — handover
-/// fact 6: the last-expression array is at `output` = `Scalar(array)`.
+/// Assert the run produced a scalar (`.records()` → an array of row MAPS) of exactly `n` rows. The
+/// cage's `records()` honors its `Array<Map>` catalog contract on both seam shapes — federation's
+/// column-aligned positional rows are zipped into named maps at `grid.rs::row_to_map`, so a row is
+/// `{"building": "...", "kwh_per_m2": ...}` keyed by the SELECT aliases (not a positional array).
 fn assert_rows(output: &RuleOutput, n: usize) -> Vec<Value> {
     match output {
         RuleOutput::Scalar(v) => {
@@ -240,14 +243,14 @@ async fn buildings_examples_run_end_to_end() {
     .await;
     let rows = assert_rows(&query.output, 8);
     assert_eq!(
-        rows[0][0].as_str(),
+        rows[0].get("building").and_then(|v| v.as_str()),
         Some("Riverside Data Center"),
-        "Riverside is the most energy-intense building (r[0] = name): {:?}",
+        "Riverside is the most energy-intense building (r.building): {:?}",
         rows[0]
     );
     assert!(
-        (rows[0][1].as_f64().unwrap() - 4.68).abs() < 0.01,
-        "Riverside is 4.68 kWh/m² (r[1] = intensity): {:?}",
+        (rows[0].get("kwh_per_m2").and_then(|v| v.as_f64()).unwrap() - 4.68).abs() < 0.01,
+        "Riverside is 4.68 kWh/m² (r.kwh_per_m2): {:?}",
         rows[0]
     );
     assert!(
@@ -303,6 +306,49 @@ async fn buildings_examples_run_end_to_end() {
         .await
         .unwrap();
     assert_eq!(items.len(), 1, "the alert routed one inbox item");
+
+    // --- CHART body: `category(...)` trims each row to one label + one numeric column (the bar/pie
+    // shape a panel draws). 8 rows still (one per building), each exactly 2 fields. This is the
+    // slice-3 (rules-for-widgets) promise pinned on the REAL federation path: a rule whose last
+    // line is `category(query(...).records(), ...)` is a complete chart-ready rule. ---
+    let chart = run(
+        &node,
+        &admin,
+        ws,
+        &cat.body("buildings-intensity-chart"),
+        35,
+    )
+    .await;
+    let chart_rows = assert_rows(&chart.output, 8);
+    // `category` trims to ONLY the label + value columns — nothing else leaks through.
+    assert_eq!(
+        chart_rows[0].as_object().unwrap().len(),
+        2,
+        "category trimmed to label + value: {:?}",
+        chart_rows[0]
+    );
+    assert_eq!(
+        chart_rows[0].get("building").and_then(|v| v.as_str()),
+        Some("Riverside Data Center"),
+        "the chart's first bar is Riverside (label column intact): {:?}",
+        chart_rows[0]
+    );
+    assert!(
+        (chart_rows[0]
+            .get("kwh_per_m2")
+            .and_then(|v| v.as_f64())
+            .unwrap()
+            - 4.68)
+            .abs()
+            < 0.01,
+        "the chart's first bar value is 4.68 kWh/m²: {:?}",
+        chart_rows[0]
+    );
+    assert!(
+        chart.findings.is_empty(),
+        "the chart body raises NO finding (pure shape trim): {:?}",
+        chart.findings
+    );
 
     // --- CAPABILITY-DENY: the same body, minus `mcp:federation.query:call`, is denied mid-run ---
     let no_fed = principal(ws, &["mcp:rules.run:call"]);

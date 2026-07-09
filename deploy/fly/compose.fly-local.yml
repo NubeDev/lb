@@ -1,0 +1,59 @@
+# deploy/fly/compose.fly-local.yml — local HTTPS pre-flight harness. Runs the CANONICAL image
+# (deploy/common/Dockerfile — identical to what `fly deploy` ships) behind a real TLS terminator
+# (Caddy + mkcert) on https://localhost. Catches HTTPS-only regressions before burning a Fly deploy
+# cycle. See ../README.md.
+#
+# Usage (from repo root):
+#   mkcert -install                        # one-time
+#   mkdir -p deploy/fly/certs && cd deploy/fly/certs && mkcert localhost 127.0.0.1
+#   make fly-local        # build + up
+#   make fly-local-down   # stop (keeps volumes)
+
+name: lazybones-fly-local
+
+services:
+  caddy-tls:
+    image: caddy:2-alpine
+    container_name: lazybones-fly-local-caddy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/common/Dockerfile
+    image: lazybones-fly:local
+    container_name: lazybones-fly-local-app
+    restart: unless-stopped
+    environment:
+      LB_WORKSPACE: acme
+      LB_SEED_USER: "user:ada"
+      LB_SIGNING_KEY: ${LB_SIGNING_KEY:-}
+    volumes:
+      - app-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    expose:
+      - "8080"
+
+volumes:
+  caddy-data:
+    name: lazybones-fly-local-caddy-data
+  caddy-config:
+    name: lazybones-fly-local-caddy-config
+  app-data:
+    name: lazybones-fly-local-data

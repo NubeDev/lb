@@ -22,9 +22,28 @@ export interface HostFsList {
   truncated: boolean;
 }
 
+/**
+ * Optional server-side narrowing for a directory listing. All fields are additive and default to the
+ * unfiltered behavior when omitted (`host.fs.list` applies them per-entry before its per-list cap):
+ *   - `name`          — case-insensitive substring the entry name must contain.
+ *   - `extensions`    — file extensions (with or without a leading dot, e.g. `"db"` or `".db"`);
+ *                       only real files match, case-insensitively.
+ *   - `includeHidden` — when false (default) dot-prefixed entries (files AND dirs) are hidden.
+ */
+export interface HostFsListFilter {
+  name?: string;
+  extensions?: string[];
+  includeHidden?: boolean;
+}
+
 /** List one directory level of host filesystem metadata. Entries arrive name-sorted. */
-export function listHostDir(path: string): Promise<HostFsList> {
-  return invoke<HostFsList>("mcp_call", { tool: "host.fs.list", args: { path } });
+export function listHostDir(path: string, filter?: HostFsListFilter): Promise<HostFsList> {
+  const args: Record<string, unknown> = { path };
+  if (filter?.name?.trim()) args.name = filter.name.trim();
+  if (filter?.extensions?.length) args.extensions = filter.extensions;
+  // Only send include_hidden when explicitly enabled — omission is the host's "hide hidden" default.
+  if (filter?.includeHidden) args.include_hidden = true;
+  return invoke<HostFsList>("mcp_call", { tool: "host.fs.list", args });
 }
 
 export interface HostFsHome {

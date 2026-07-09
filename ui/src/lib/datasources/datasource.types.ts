@@ -17,8 +17,9 @@ export interface AddDatasource {
   name: string;
   kind: string;
   endpoint: string;
-  /** The connection string. Write-only to the host; never read back. */
-  dsn: string;
+  /** The connection string. Write-only to the host; never read back. Optional — a file-backed
+   *  source (e.g. a sqlite path in `endpoint`) has no separate DSN. */
+  dsn?: string;
 }
 
 /** A connectivity probe result — green on `ok`, red with the error message otherwise. */

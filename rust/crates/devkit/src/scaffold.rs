@@ -36,6 +36,7 @@ pub fn scaffold_extension(
     })
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn make_executable_if_script(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {

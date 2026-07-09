@@ -60,6 +60,10 @@ describe("AddDatasourceForm sqlite picker (real gateway)", () => {
     await user.selectOptions(screen.getByLabelText("datasource kind"), "sqlite");
     await user.click(screen.getByRole("button", { name: "browse for db file" }));
 
+    // Turn the default "only .db files" narrowing OFF so the non-db sibling stays in the view — this
+    // test asserts the selectable/non-selectable rendering, which needs both files visible.
+    await user.click(screen.getByLabelText("only show database files"));
+
     // Scope entry lookups to the listing region (the breadcrumb also renders segment buttons).
     const entries = () => within(screen.getByLabelText("directory entries"));
 
@@ -78,5 +82,46 @@ describe("AddDatasourceForm sqlite picker (real gateway)", () => {
     // Clicking the file fills the DSN with its absolute node path.
     const dsn = screen.getByLabelText("datasource dsn") as HTMLInputElement;
     expect(dsn.value).toBe(dbPath);
+  });
+
+  it("defaults to only .db files + hidden entries off, and both toggles reveal the rest", async () => {
+    const user = userEvent.setup();
+    const ws = `ds-pick-${n++}`;
+    await signInWithCaps("user:ada", ws, [
+      "mcp:devkit.write_file:call",
+      "mcp:host.fs.list:call",
+      "mcp:host.fs.home:call",
+    ]);
+
+    // A visible db, a non-db sibling, and a HIDDEN db (dot-prefixed) — all real, same folder.
+    const dir = `ds-hidden-${Date.now()}`;
+    const dbPath = await seedFile(`${dir}/buildings.db`, "SQLite format 3 ");
+    await seedFile(`${dir}/notes.txt`, "not a database");
+    await seedFile(`${dir}/.secret.db`, "SQLite format 3 ");
+
+    const home = (await hostHomeDir()).path;
+    render(<AddDatasourceForm onAdd={() => {}} />);
+    await user.selectOptions(screen.getByLabelText("datasource kind"), "sqlite");
+    await user.click(screen.getByRole("button", { name: "browse for db file" }));
+
+    const entries = () => within(screen.getByLabelText("directory entries"));
+    const belowHome = dbPath.slice(home.length + 1).split("/").slice(0, -1);
+    for (const seg of belowHome) {
+      await user.click(await entries().findByRole("button", { name: seg }));
+    }
+
+    // Default: the .db is shown; the .txt is narrowed away; the hidden .secret.db is hidden.
+    await entries().findByRole("button", { name: /buildings\.db/ });
+    expect(entries().queryByText("notes.txt")).toBeNull();
+    expect(entries().queryByText(".secret.db")).toBeNull();
+
+    // Show hidden dirs → the dot-prefixed db appears (server-side include_hidden).
+    await user.click(screen.getByLabelText("show hidden entries"));
+    await entries().findByRole("button", { name: /\.secret\.db/ });
+    expect(entries().queryByText("notes.txt")).toBeNull(); // still narrowed to db files
+
+    // Turn off the db-only narrowing → the non-db sibling comes back (as static, non-selectable).
+    await user.click(screen.getByLabelText("only show database files"));
+    await entries().findByText("notes.txt");
   });
 });

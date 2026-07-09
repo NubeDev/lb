@@ -247,6 +247,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   bare ELF from a clean checkout — host-pollution-free, same image dev and CI use, build-only (the
   shipped binary is a windowed app, not a container workload). Linux-x86-64 only; darwin/windows stay
   on their native runners (rejected in the parent scope).
+  `desktop-standalone-backend-scope.md` adds the **`full`** build mode — the shell mounts the SSE/HTTP
+  gateway in-process on a loopback port + runs the boot seeders, so the packaged binary is a 100%
+  standalone node (login/MCP/SSE/agents/flows/rules/insights, no external node).
+  `desktop-federation-bundle-scope.md` closes the one hole in `full`: it **bundles the federation
+  sidecar** into the standalone build and auto-installs it at boot (with a `net:*` grant for the local
+  sqlite convention + the shipped `demo-buildings.db` pre-registered), so datasources register **and**
+  query end to end in the `.exe` — the "register-but-can't-test" gap otherwise fixed only by `make dev`.
 - `flows/` — the visual **node-graph flow engine** (`flows-scope.md`), the **one DAG engine** (the
   earlier `chains` engine is retired — `flows/chains-retirement-scope.md`): a node-red-style canvas
   over the shipped plane, not a new engine. Promotes the `rubix-cube` rule-DAG step into a typed
@@ -523,6 +530,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `@tanstack/react-query`, scoped to the dashboard route so the cache lives for the visit and clears on
   leave: collapses the 2–3× `viz.query` per draft panel, the twice-fetched source-picker bundle, and the
   per-cell series/flow reads to one shared call each; no host/verb/cap changes).
+- `deploy/` — shipping a node to a target host. `fly-deploy-scope.md` (the ask): a
+  one-command **Fly.io** deploy — a single Fly Machine running a Caddy-fronted Lazybones
+  `node` (the `cloud` posture) with an embedded SurrealDB store on a persistent volume and
+  the **federation sidecar in SQLite mode** (the shipped `demo-buildings.db`
+  pre-registered) — **no bundled/hosted Postgres** (rule 2). The load-bearing decision is
+  **reuse**: the Dockerfile, Caddyfile, entrypoint, config template, and `.dockerignore`
+  live once in `deploy/common/` and are shared verbatim across local Docker, GitHub CI,
+  and Fly, so the image is identical everywhere; `deploy/fly/` is a thin driver that only
+  *references* them. Adds **no** MCP verb/cap/route/table and touches no core crate —
+  toolchain + config + docs only. Adapts `/home/user/code/rust/dev-pulse/FLY.md`, dropping
+  its bundled-PG and OAuth steps. Assets: `deploy/common/`, `deploy/fly/`.
 - `testing/`, `debugging/` — the standards every session follows.
 
 See `../STAGES.md` for which stage each area lands in and `../STATUS.md` for what has shipped.

@@ -166,8 +166,9 @@ pub use ext::{
 };
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
-    enforce_endpoint, federation_mirror, federation_query, put_datasource, resolve_datasource,
-    Datasource, DatasourceSummary, FederationError,
+    enforce_endpoint, federation_mirror, federation_query, install_federation, put_datasource,
+    resolve_datasource, Datasource, DatasourceSummary, FederationError,
+    Installed as FederationInstalled, SeedSource,
 };
 pub use flows::error::FlowsError;
 pub use flows::{
