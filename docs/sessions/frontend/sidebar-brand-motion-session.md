@@ -24,6 +24,22 @@ The project already ships `motion@12` as a real dependency behind a single, disc
 So adding motion here means *using the existing gated seam*, not introducing a new engine or an
 ungated animation. That's the bar the ask set.
 
+## Follow-up: the motion was too quiet — made it land
+
+First pass (spring-on-hover + one-shot mount stagger) was correct for the register but barely
+perceptible in normal use (only fires on hover / at the login instant). Verified live via a Playwright
+screenshot against the dev server + real node, confirmed it, and added the piece you actually *feel*:
+
+- **Sliding active-selection pill** (`NavActivePill`, motion `layoutId="nav-active-pill"`). The accent
+  fill is now a single shared element that physically GLIDES from the old nav item to the new one on
+  every navigation, instead of snapping on/off per button. Caught mid-glide in a 45ms screenshot
+  crossing the "Automation" group label — visible on every click, which is the whole point. The
+  button drops its own `data-[active=true]` background/ring (`bg-transparent`); the pill is the fill.
+  Spring tuned to stiffness 380 / damping 32 so the ~250ms slide reads rather than teleports.
+- **Brand tile**: stronger hover (scale 1.1 + slight rotate + brightness) and an accent **glow** that
+  blooms behind the mark on hovering the row (`group/brandmark`).
+- **Icon hover-scale** (1.1) on every nav row.
+
 ## Changes
 
 - **`ui/src/features/shell/BrandHeader.tsx`** (new) — extracted the brand identity row out of

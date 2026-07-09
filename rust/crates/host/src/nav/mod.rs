@@ -22,6 +22,7 @@
 //!   - `nav.pref.get`/`nav.pref.set` ([`nav_pref_get`]/[`nav_pref_set`]) — the member-owned active pick.
 //!   - the MCP bridge ([`call_nav_tool`]) — the one MCP contract over all of the above.
 
+mod admin_lens;
 mod authorize;
 mod bounds;
 mod default;
@@ -44,6 +45,7 @@ mod tool;
 mod unshare;
 mod visibility;
 
+pub use bounds::BUILTIN_PICK;
 pub use default::nav_set_default;
 pub use delete::nav_delete;
 pub use error::NavError;

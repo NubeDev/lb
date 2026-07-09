@@ -1330,3 +1330,185 @@ async fn pins_member_owned_and_bounded() {
         vec!["rules".to_string()]
     );
 }
+
+// --- no-lockout (nav-no-lockout scope) ----------------------------------------------------------
+
+/// An admin-marker cap — its presence means the caller sees the admin console, so a curated nav must
+/// not silently replace it (mirrors the UI's `ADMIN_SECTION_CAPS`).
+const USER_MANAGE: &str = "mcp:user.manage:call";
+
+/// The HEADLINE no-lockout guarantee: a workspace admin is NEVER auto-narrowed by a team-shared nav
+/// or the workspace default — those tiers are skipped for admins, who fall through to the built-in
+/// sidebar. A NON-admin member of the same team still resolves the team nav (members are unaffected).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn admin_never_auto_narrowed_member_still_is() {
+    let ws = "ws-nav-nolock";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+
+    // Ada is an ADMIN (holds `user.manage`) AND can author navs. Ben is a plain member.
+    let ada = principal(
+        "user:ada",
+        ws,
+        &[
+            USER_MANAGE,
+            SAVE,
+            SHARE,
+            RESOLVE,
+            GET,
+            LIST,
+            "store:doc/*:write",
+        ],
+    );
+    let ben = principal("user:ben", ws, &[GET, LIST, RESOLVE]);
+
+    // A one-page nav shared to team:ops, AND set as the workspace default — both auto-apply tiers.
+    nav_save(
+        store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![surface_item("Channels", "channels")],
+        1,
+    )
+    .await
+    .unwrap();
+    add_member(store, &ada, ws, "team:ops", "user:ada")
+        .await
+        .unwrap();
+    add_member(store, &ada, ws, "team:ops", "user:ben")
+        .await
+        .unwrap();
+    nav_share(
+        store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+    nav_set_default(store, &ada, ws, "ops", 3).await.unwrap();
+
+    // Ada is an admin → NEITHER the team share NOR the default narrows her. She gets the built-in rail.
+    let rada = nav_resolve(&node, &ada, ws).await.unwrap();
+    assert_eq!(
+        rada.source,
+        NavResolvedSource::Fallback,
+        "an admin is never auto-narrowed by a team share / workspace default"
+    );
+
+    // Ben (non-admin, same team) DOES resolve the team nav — members are unaffected by the rule.
+    let rben = nav_resolve(&node, &ben, ws).await.unwrap();
+    assert_eq!(rben.source, NavResolvedSource::Team);
+    assert_eq!(rben.nav_id, "ops");
+
+    // The admin can still OPT IN explicitly: a personal pick (tier 1) is honored even for an admin.
+    nav_pref_set(store, &ada, ws, Some("ops"), None, 4)
+        .await
+        .unwrap();
+    let rada2 = nav_resolve(&node, &ada, ws).await.unwrap();
+    assert_eq!(
+        rada2.source,
+        NavResolvedSource::Pick,
+        "an admin's OWN explicit pick still applies (opt-in, never silent)"
+    );
+}
+
+/// The escape hatch: anyone handed a too-narrow nav can force the built-in sidebar via the reserved
+/// `__builtin__` pick (member-owned), and clear it to resume normal resolution.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn builtin_pick_sentinel_forces_fallback() {
+    let ws = "ws-nav-escape";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let ada = principal(
+        "user:ada",
+        ws,
+        &[SAVE, SHARE, RESOLVE, GET, LIST, "store:doc/*:write"],
+    );
+    let ben = principal("user:ben", ws, &[GET, LIST, RESOLVE]);
+
+    // A team nav Ben would normally resolve.
+    nav_save(
+        store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        vec![surface_item("Channels", "channels")],
+        1,
+    )
+    .await
+    .unwrap();
+    add_member(store, &ada, ws, "team:ops", "user:ben")
+        .await
+        .unwrap();
+    nav_share(
+        store,
+        &ada,
+        ws,
+        "ops",
+        NavVisibility::Team,
+        Some("team:ops"),
+        2,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Team
+    );
+
+    // Ben forces the built-in sidebar via the sentinel → fallback (skips team/default).
+    nav_pref_set(store, &ben, ws, Some(lb_host::NAV_BUILTIN_PICK), None, 3)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Fallback,
+        "the __builtin__ pick forces the built-in sidebar"
+    );
+
+    // Clearing the pick resumes normal resolution — the team nav is back.
+    nav_pref_set(store, &ben, ws, Some(""), None, 4)
+        .await
+        .unwrap();
+    assert_eq!(
+        nav_resolve(&node, &ben, ws).await.unwrap().source,
+        NavResolvedSource::Team
+    );
+}
+
+/// The reserved sentinel can never BE a real nav id — `nav.save` rejects the `__…__` shape so the
+/// pick axis stays unambiguous.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn reserved_nav_id_rejected() {
+    let ws = "ws-nav-reserved";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, &[SAVE]);
+    assert!(matches!(
+        nav_save(
+            &store,
+            &ada,
+            ws,
+            lb_host::NAV_BUILTIN_PICK,
+            "nope",
+            vec![],
+            1
+        )
+        .await
+        .unwrap_err(),
+        NavError::BadInput(_)
+    ));
+    // Any `__…__` shape is rejected, not just the one sentinel.
+    assert!(matches!(
+        nav_save(&store, &ada, ws, "__anything__", "nope", vec![], 1)
+            .await
+            .unwrap_err(),
+        NavError::BadInput(_)
+    ));
+}

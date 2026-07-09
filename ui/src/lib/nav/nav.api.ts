@@ -7,6 +7,12 @@
 import type { Nav, NavHidden, NavItem, NavPref, NavSummary, ResolvedNav, Visibility } from "./nav.types";
 import { invoke } from "@/lib/ipc/invoke";
 
+/** The reserved active-pick sentinel (no-lockout scope) — mirrors the host `nav::BUILTIN_PICK`. A
+ *  `nav_pref.active` of this value forces the built-in sidebar (the resolver skips the team/default
+ *  tiers), so anyone handed a too-narrow nav can escape to all the pages they can reach. `nav.save`
+ *  rejects it as an id server-side, so it can never collide with a real nav. */
+export const BUILTIN_PICK = "__builtin__";
+
 /** The roster the caller can reach (own + team-shared + workspace), summaries only. Mirrors
  *  `nav.list`. */
 export function listNavs(): Promise<NavSummary[]> {

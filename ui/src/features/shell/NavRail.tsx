@@ -1,7 +1,7 @@
 // The app sidebar — shadcn/ui Sidebar wired to Lazybones surfaces. It uses the same global
 // Lazybones tokens as the rest of the shell, with cap-gated entries supplied by App.tsx.
 
-import { Hash, LayoutDashboard, LogOut, Pin, Puzzle } from "lucide-react";
+import { Hash, LayoutDashboard, LayoutGrid, LogOut, Pin, Puzzle, Undo2 } from "lucide-react";
 
 import {
   Sidebar,
@@ -100,6 +100,15 @@ interface Props {
   /** hide-and-pins: flip one pin ref (bare surface key | `ext:<id>` | `dashboard:<id>`) in the
    *  member-owned `nav_pref`. When absent, the rail shows no pin affordance. */
   onTogglePin?: (ref: string) => void;
+  // ── no-lockout scope: the escape hatch — anyone handed a too-narrow nav can bail to all pages ──
+  /** Is the caller currently FORCING the built-in sidebar (their `__builtin__` pick)? Drives which
+   *  escape-hatch control shows. */
+  usingBuiltin?: boolean;
+  /** Force the built-in sidebar (member-owned pick). When absent, the "Show all pages" action is
+   *  hidden. Shown while a curated nav is applied so the caller is never trapped in it. */
+  onShowAllPages?: () => void;
+  /** Undo the force (resume normal team/default resolution). Shown while `usingBuiltin`. */
+  onUseMyMenu?: () => void;
 }
 
 /** A rail entry's ref in the shared hide/pin grammar (mirrors the resolver's `item_ref`). */
@@ -170,6 +179,9 @@ export function NavRail({
   hidden = [],
   pinned = [],
   onTogglePin,
+  usingBuiltin = false,
+  onShowAllPages,
+  onUseMyMenu,
 }: Props) {
   // The sidebar variant/collapsible/side come from the member's theme (Customizer → Layout tab), so
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
@@ -423,6 +435,29 @@ export function NavRail({
 
       <SidebarFooter>
         <SidebarMenu>
+          {/* no-lockout scope: the escape hatch. When a curated nav is applied, "Show all pages"
+              forces the built-in sidebar (so an over-narrow menu can never trap you); when already
+              forcing built-in, "Use my menu" resumes normal resolution. Both write the member-owned
+              pick — anyone can un-trap themselves, no admin needed. Hidden when neither applies. */}
+          {usingBuiltin && onUseMyMenu ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton aria-label="Use my menu" tooltip="Use my assigned menu" onClick={onUseMyMenu}>
+                <Undo2 />
+                <span>Use my menu</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : useResolved && onShowAllPages ? (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                aria-label="Show all pages"
+                tooltip="Show all pages (built-in sidebar)"
+                onClick={onShowAllPages}
+              >
+                <LayoutGrid />
+                <span>Show all pages</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          ) : null}
           {/* Settings moved to the page-header top-right (the gear next to the workspace chip) — the
               rail footer keeps only Sign out. A server-authored nav can still place settings itself. */}
           <SidebarMenuItem>

@@ -35,7 +35,8 @@ export function RoutedShell() {
   // back to the built-in SURFACES when null (no nav / denied). Route gates are untouched.
   // hide-and-pins: the payload also carries the workspace hidden-set echo (subtracted from the
   // fallback rail) and the member's pinned favorites (+ the rail's pin toggle).
-  const { items: resolvedItems, hidden, pinned, togglePin } = useResolvedNav(ctx.workspace);
+  const { items: resolvedItems, hidden, pinned, togglePin, usingBuiltin, showAllPages, useMyMenu } =
+    useResolvedNav(ctx.workspace);
 
   // The agent dock (agent-dock scope): shell-mounted so it outlives navigation. Chrome (open/width) is
   // owned here and shared with the StatusBar launcher; `mod+j` toggles it via one shell listener.
@@ -90,6 +91,9 @@ export function RoutedShell() {
         hidden={hidden}
         pinned={pinned}
         onTogglePin={togglePin}
+        usingBuiltin={usingBuiltin}
+        onShowAllPages={showAllPages}
+        onUseMyMenu={useMyMenu}
       />
 
       <SidebarInset className="min-w-0 overflow-hidden">

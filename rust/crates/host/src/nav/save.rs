@@ -12,7 +12,7 @@ use lb_auth::Principal;
 use lb_store::Store;
 
 use super::authorize::authorize_nav;
-use super::bounds::check_items;
+use super::bounds::{check_id, check_items};
 use super::error::NavError;
 use super::model::{Nav, NavItem, Visibility, SCHEMA_VERSION};
 use super::store::{read_nav, write_nav};
@@ -33,6 +33,7 @@ pub async fn nav_save(
     if id.is_empty() {
         return Err(NavError::BadInput("empty nav id".into()));
     }
+    check_id(id)?; // no-lockout: reject the reserved `__…__` shape (e.g. the built-in pick sentinel)
     check_items(&items)?;
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record is

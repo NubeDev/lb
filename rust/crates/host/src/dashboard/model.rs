@@ -403,7 +403,10 @@ mod tests {
         assert_eq!(v.sort, "alphaAsc");
         assert_eq!(v.refresh, "onTimeRange");
         assert_eq!(v.hide, "hideLabel");
-        assert_eq!(v.options, serde_json::json!([{ "text": "West", "value": "WST" }]));
+        assert_eq!(
+            v.options,
+            serde_json::json!([{ "text": "West", "value": "WST" }])
+        );
 
         // Re-serialize and confirm every advanced field survives the store round-trip (not dropped).
         let out = serde_json::to_value(&v).expect("serializes");
@@ -413,7 +416,10 @@ mod tests {
         assert_eq!(out["sort"], "alphaAsc");
         assert_eq!(out["refresh"], "onTimeRange");
         assert_eq!(out["hide"], "hideLabel");
-        assert_eq!(out["options"], serde_json::json!([{ "text": "West", "value": "WST" }]));
+        assert_eq!(
+            out["options"],
+            serde_json::json!([{ "text": "West", "value": "WST" }])
+        );
     }
 
     /// A dashboard's page-settings fields (`description`/`icon`/`color`) round-trip through the record

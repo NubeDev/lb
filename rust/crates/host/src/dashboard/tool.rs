@@ -184,10 +184,7 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 /// explicit `null` (the "preserve the stored value" signal — page-settings fields). A present
 /// non-string is coerced to `None` too (lenient — no reason to fail a whole save over it).
 fn opt_str_arg(input: &Value, key: &str) -> Option<String> {
-    input
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    input.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
 /// A u64 arg, tolerating the numeric-STRING form (`"1783235133"`) AI callers routinely emit —

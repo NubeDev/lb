@@ -146,11 +146,10 @@ pub use dashboard::{
     builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells,
     dashboard_access_check, dashboard_catalog, dashboard_delete, dashboard_get, dashboard_list,
     dashboard_pin, dashboard_save, dashboard_save_meta, dashboard_share, mint_cell_from_envelope,
-    pin_descriptor,
-    seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError, DashboardSummary,
-    DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport, Source as CellSource,
-    Target as CellTarget, Variable as DashboardVariable, Visibility as DashboardVisibility,
-    WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    pin_descriptor, seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError,
+    DashboardSummary, DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport,
+    Source as CellSource, Target as CellTarget, Variable as DashboardVariable,
+    Visibility as DashboardVisibility, WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
     MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
@@ -245,9 +244,9 @@ pub use nav::{
     nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
     reach_caps, reach_check, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
-    ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_HIDDEN as NAV_MAX_HIDDEN,
-    MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
-    REACH_ALL,
+    ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
+    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS,
+    MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,

@@ -7,6 +7,22 @@
 use super::error::NavError;
 use super::model::{NavItem, MAX_ITEMS};
 
+/// The reserved pick sentinel (no-lockout scope) — a `nav_pref.active` of this value means "force the
+/// built-in sidebar; ignore team/default tiers". It is NOT a real nav id, so `nav.save` must reject it
+/// (and any `__…__` reserved shape) to keep the pick axis unambiguous.
+pub const BUILTIN_PICK: &str = "__builtin__";
+
+/// Reject a nav id that collides with a reserved value (no-lockout scope). A reserved id is the
+/// `__…__` shape (currently just [`BUILTIN_PICK`]); a real nav can never BE the built-in sentinel.
+pub fn check_id(id: &str) -> Result<(), NavError> {
+    if id.starts_with("__") && id.ends_with("__") {
+        return Err(NavError::BadInput(format!(
+            "nav id `{id}` is reserved (the `__…__` shape is not a valid nav id)"
+        )));
+    }
+    Ok(())
+}
+
 /// The item kinds a nav may hold. A `group` nests one level of the non-group kinds. `template-group`
 /// (reusable-pages scope) is the one-dashboard-many-bindings fan-out — additive, next to `tag-group`.
 const KINDS: &[&str] = &[

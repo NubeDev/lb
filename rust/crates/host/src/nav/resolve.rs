@@ -22,7 +22,9 @@ use lb_auth::Principal;
 use lb_store::Store;
 use lb_tags::Facet;
 
+use super::admin_lens::is_workspace_admin;
 use super::authorize::authorize_nav;
+use super::bounds::BUILTIN_PICK;
 use super::error::NavError;
 use super::model::{
     Nav, NavFacet, NavItem, ResolvedItem, ResolvedNav, ResolvedSource, Visibility, MAX_TAG_GROUP,
@@ -184,12 +186,29 @@ async fn pick_nav(
     ws: &str,
 ) -> Result<Option<(Nav, ResolvedSource)>, NavError> {
     // Tier 1 — the member's personal pick. Only if it still resolves + is still readable.
+    // The reserved `__builtin__` sentinel (no-lockout scope) is an EXPLICIT "force the built-in
+    // sidebar" pick — return `None` immediately so tiers 2/3 are skipped and the caller renders its
+    // fallback rail. This is the escape hatch: anyone handed a too-narrow nav can bail to all the pages
+    // they can reach, via their own member-owned `nav.pref.set`.
     if let Some(pref) = read_pref(store, ws, principal.sub()).await? {
+        if pref.active == BUILTIN_PICK {
+            return Ok(None);
+        }
         if !pref.active.is_empty() {
             if let Some(nav) = readable_nav(store, principal, ws, &pref.active).await? {
                 return Ok(Some((nav, ResolvedSource::Pick)));
             }
         }
+    }
+
+    // No-lockout (nav-no-lockout scope): the auto-apply tiers (team share / workspace default) NEVER
+    // narrow a workspace admin. A curated nav shapes a MEMBER's menu; it must not silently replace an
+    // administrator's console (a team-shared 1-page nav, or any workspace default, would otherwise
+    // subtract the whole admin console from the rail with no in-app way back). An admin is narrowed
+    // ONLY by their own explicit tier-1 pick above; here they fall straight through to the built-in
+    // fallback. Members are unaffected — tiers 2/3 still apply to them.
+    if is_workspace_admin(principal, ws) {
+        return Ok(None);
     }
 
     // Tier 2 — the first team-shared nav readable by the caller (deterministic: id-ordered scan).

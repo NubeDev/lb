@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { getNavPref, resolveNav, setNavPins, type ResolvedItem } from "@/lib/nav";
+import { BUILTIN_PICK, getNavPref, resolveNav, setNavPins, setNavPref, type ResolvedItem } from "@/lib/nav";
 
 export interface ResolvedNavState {
   /** The resolved menu items, or `null` (loading / no nav / denied → fall back to SURFACES). */
@@ -24,6 +24,13 @@ export interface ResolvedNavState {
   pinned: ResolvedItem[];
   /** Flip one pin ref (bare surface key | `ext:<id>` | `dashboard:<id>`) and re-resolve. */
   togglePin: (ref: string) => void;
+  // ── no-lockout scope: the escape hatch (anyone handed a too-narrow nav can bail to all pages) ──
+  /** Is the caller currently forcing the built-in sidebar (their pick is the `__builtin__` sentinel)? */
+  usingBuiltin: boolean;
+  /** Force the built-in sidebar — write the `__builtin__` pick and re-resolve. Member-owned. */
+  showAllPages: () => void;
+  /** Undo the force — clear the pick so normal (team/default) resolution resumes. Member-owned. */
+  useMyMenu: () => void;
 }
 
 /** The caller's resolved menu + hidden echo + pins (nav / hide-and-pins scopes). */
@@ -31,17 +38,24 @@ export function useResolvedNav(ws: string): ResolvedNavState {
   const [items, setItems] = useState<ResolvedItem[] | null>(null);
   const [hidden, setHidden] = useState<string[]>([]);
   const [pinned, setPinned] = useState<ResolvedItem[]>([]);
+  // no-lockout: whether the caller is currently forcing the built-in sidebar (read from their pref).
+  const [usingBuiltin, setUsingBuiltin] = useState(false);
 
   const reload = useCallback(() => {
     let cancelled = false;
-    resolveNav()
-      .then((r) => {
+    // Resolve the menu AND read the raw pick in parallel — the pick tells us whether the caller is
+    // FORCING the built-in sidebar (`__builtin__` sentinel), which `resolveNav` reports only as a
+    // generic `fallback` (indistinguishable from "no nav exists"). We need the distinction to show
+    // the right escape-hatch label ("Use my menu" only when they've explicitly forced built-in).
+    Promise.all([resolveNav(), getNavPref().catch(() => null)])
+      .then(([r, pref]) => {
         if (cancelled) return;
         // `fallback` (or an empty menu) → null, so NavRail renders the built-in SURFACES —
         // still minus `hidden`, still with `pinned` above (both apply to every tier).
         setItems(r.source === "fallback" || r.items.length === 0 ? null : r.items);
         setHidden(r.hidden ?? []);
         setPinned(r.pinned ?? []);
+        setUsingBuiltin(pref?.active === BUILTIN_PICK);
       })
       .catch(() => {
         // A deny / transport error → fall back to SURFACES (never a blank rail, never an error rail).
@@ -49,12 +63,29 @@ export function useResolvedNav(ws: string): ResolvedNavState {
           setItems(null);
           setHidden([]);
           setPinned([]);
+          setUsingBuiltin(false);
         }
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // no-lockout: force / un-force the built-in sidebar via the member-owned pick, then re-resolve.
+  const showAllPages = useCallback(() => {
+    void setNavPref(BUILTIN_PICK)
+      .then(() => reload())
+      .catch(() => {
+        /* a deny/transport error leaves the rail as-is */
+      });
+  }, [reload]);
+  const useMyMenu = useCallback(() => {
+    void setNavPref("")
+      .then(() => reload())
+      .catch(() => {
+        /* a deny/transport error leaves the rail as-is */
+      });
+  }, [reload]);
 
   // Flip `ref` in the member's OWN stored pins (read the raw record — the resolved `pinned` is
   // stripped, so it can't be the write source), then re-resolve so the rail reflects it.
@@ -88,5 +119,5 @@ export function useResolvedNav(ws: string): ResolvedNavState {
     // Re-resolve when the workspace changes (the wall — a different ws is a different menu).
   }, [ws, reload]);
 
-  return { items, hidden, pinned, togglePin };
+  return { items, hidden, pinned, togglePin, usingBuiltin, showAllPages, useMyMenu };
 }

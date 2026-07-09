@@ -49,7 +49,7 @@ export function NavActivePill() {
       aria-hidden
       layoutId="nav-active-pill"
       className={className}
-      transition={{ type: "spring", stiffness: 620, damping: 42, mass: 0.9, duration: duration(0.3) }}
+      transition={{ type: "spring", stiffness: 380, damping: 32, mass: 1, duration: duration(0.42) }}
     />
   );
 }
