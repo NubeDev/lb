@@ -36,6 +36,8 @@ const LIST: &str = "mcp:insight.list:call";
 const ACK: &str = "mcp:insight.ack:call";
 const RESOLVE: &str = "mcp:insight.resolve:call";
 const OCC: &str = "mcp:insight.occurrences:call";
+const DELETE: &str = "mcp:insight.delete:call";
+const OCC_DELETE: &str = "mcp:insight.occurrence.delete:call";
 const SUB_CREATE: &str = "mcp:insight.sub.create:call";
 const SUB_LIST: &str = "mcp:insight.sub.list:call";
 const SUB_GET: &str = "mcp:insight.sub.get:call";
@@ -50,8 +52,8 @@ const INBOX_LIST: &str = "mcp:inbox.list:call";
 /// A caller holding the whole insight surface (+ inbox.list to read delivered notify posts).
 fn member_caps() -> Vec<&'static str> {
     vec![
-        RAISE, GET, LIST, ACK, RESOLVE, OCC, SUB_CREATE, SUB_LIST, SUB_GET, SUB_DELETE, SUB_MUTE,
-        POLICY_GET, POLICY_SET, CHAN_PUB, INBOX_LIST,
+        RAISE, GET, LIST, ACK, RESOLVE, OCC, DELETE, OCC_DELETE, SUB_CREATE, SUB_LIST, SUB_GET,
+        SUB_DELETE, SUB_MUTE, POLICY_GET, POLICY_SET, CHAN_PUB, INBOX_LIST,
     ]
 }
 
@@ -78,6 +80,130 @@ fn raise_input(dedup_key: &str, severity: &str, ts: u64) -> Value {
         "occurrence": { "data": { "score": 0.93 }, "severity": severity },
         "ts": ts,
     })
+}
+
+// --- regression: a raise that omits `ts` is backfilled with the wall-clock, not epoch 0 ----
+// A producer door (an interactive `rules.run`, an agent, the CLI) that forgets to stamp `ts`
+// used to land the record at the Unix epoch — the list then read "1/1/1970 … 20623d ago". The
+// host `insight_raise` now guards `ts == 0` and backfills epoch-millis. An explicit non-zero
+// `ts` still wins (determinism), covered by every other case here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn raise_without_ts_backfills_wall_clock_not_epoch() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ada = principal("user:ada", "acme", &member_caps());
+    // The raise input WITHOUT a `ts` field (a caller that forgot to stamp it).
+    let input = json!({
+        "dedup_key": "no-ts",
+        "severity": "warning",
+        "title": "raised with no ts",
+        "origin": { "kind": "rule", "ref": "rule:adhoc" },
+    });
+    let out = call(&node, &ada, "acme", "insight.raise", input)
+        .await
+        .expect("raise ok");
+    let id = out["id"].as_str().unwrap();
+    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    // A real epoch-millis wall-clock, not 0 (1970). 1.7e12 ms ≈ 2023 — any real run clears it.
+    let first = got["first_ts"].as_u64().unwrap();
+    let last = got["last_ts"].as_u64().unwrap();
+    assert!(
+        first > 1_600_000_000_000,
+        "first_ts backfilled to millis: {first}"
+    );
+    assert_eq!(first, last, "single raise: first_ts == last_ts");
+}
+
+// --- regression: an epoch-SECONDS `ts` (the gateway `rules/run` route stamps `gw.now()` =
+// `as_secs()`) is normalized to millis, not stored raw — else the UI renders it as Jan 1970 and
+// "20623d ago". The `[1e9, 1e12)` band ⇒ ×1000; a real millis clock and a tiny test clock pass through.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn raise_with_epoch_seconds_ts_is_normalized_to_millis() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ada = principal("user:ada", "acme", &member_caps());
+    // A real epoch-SECONDS wall-clock (~2026-07-10) — exactly what `gw.now()` produces.
+    let secs: u64 = 1_783_632_013;
+    let out = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("secs-ts", "warning", secs),
+    )
+    .await
+    .expect("raise ok");
+    let id = out["id"].as_str().unwrap();
+    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    // Stored as millis (×1000), so `new Date(first_ts)` renders as 2026, not 1970.
+    assert_eq!(got["first_ts"].as_u64().unwrap(), secs * 1000);
+    assert_eq!(got["last_ts"].as_u64().unwrap(), secs * 1000);
+    // The occurrence row carries the same normalized ts (it derives from the raise's `ts`).
+    let ring = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrences",
+        json!({ "insight_id": id }),
+    )
+    .await
+    .expect("occ list");
+    assert_eq!(
+        ring["items"][0]["ts"].as_u64().unwrap(),
+        secs * 1000,
+        "occurrence ts normalized to millis too"
+    );
+}
+
+// --- regression: the one-shot boot heal rewrites on-disk seconds-band ts to millis, idempotently.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn heal_rewrites_seconds_band_ts_to_millis_and_is_idempotent() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ada = principal("user:ada", "acme", &member_caps());
+    // Raise with a millis clock, then STOMP the stored ts back to seconds to simulate a legacy row
+    // (a record the pre-fix `rules/run` route wrote before normalization existed).
+    let secs: u64 = 1_783_632_013;
+    let out = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("legacy", "warning", secs * 1000),
+    )
+    .await
+    .expect("raise ok");
+    let id = out["id"].as_str().unwrap().to_string();
+    // The parent is stored under a `data` envelope; the occurrence row is flat.
+    node.store
+        .query_ws(
+            "acme",
+            "UPDATE type::thing('insight', $rid) SET data.first_ts = $s, data.last_ts = $s; \
+             UPDATE type::table('insight_occ') SET ts = $s WHERE insight_id = $rid",
+            vec![
+                ("s".into(), serde_json::json!(secs)),
+                ("rid".into(), serde_json::json!(id)),
+            ],
+        )
+        .await
+        .expect("stomp to seconds");
+
+    // Heal: seconds-band rows scale ×1000.
+    let fixed = lb_host::heal_insight_timestamps(&node.store, "acme").await;
+    assert!(
+        fixed >= 3,
+        "healed the two parent columns + the occurrence row (got {fixed})"
+    );
+    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    assert_eq!(got["first_ts"].as_u64().unwrap(), secs * 1000);
+    assert_eq!(got["last_ts"].as_u64().unwrap(), secs * 1000);
+
+    // Idempotent: a millis value is out of the seconds band, so a re-run touches nothing.
+    let again = lb_host::heal_insight_timestamps(&node.store, "acme").await;
+    assert_eq!(again, 0, "re-heal is a no-op on already-millis rows");
 }
 
 // --- mandatory: capability deny (per verb) -----------------------------------------------
@@ -180,6 +306,209 @@ async fn sub_create_denied_without_the_channel_pub() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_denied_without_the_cap() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let raiser = principal("user:ada", "acme", &member_caps());
+    let out = call(
+        &node,
+        &raiser,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "warning", 1),
+    )
+    .await
+    .expect("raise ok");
+    let id = out["id"].as_str().unwrap();
+    let p = principal("user:bob", "acme", &[RAISE, GET, LIST]); // no DELETE
+    let r = call(&node, &p, "acme", "insight.delete", json!({ "id": id })).await;
+    assert!(matches!(r, Err(ToolError::Denied)), "delete denied opaque");
+    // The deny left the record intact — a reader still sees it.
+    let got = call(&node, &raiser, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get ok");
+    assert_eq!(
+        got["id"].as_str().unwrap(),
+        id,
+        "record survived the denied delete"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn occurrence_delete_denied_without_the_cap() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let raiser = principal("user:ada", "acme", &member_caps());
+    let out = call(
+        &node,
+        &raiser,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "warning", 1),
+    )
+    .await
+    .expect("raise ok");
+    let id = out["id"].as_str().unwrap();
+    // occurrence.delete is NOT implied by the occurrences READ cap.
+    let p = principal("user:bob", "acme", &[RAISE, GET, OCC]);
+    let r = call(
+        &node,
+        &p,
+        "acme",
+        "insight.occurrence.delete",
+        json!({ "insight_id": id, "oseq": 1 }),
+    )
+    .await;
+    assert!(
+        matches!(r, Err(ToolError::Denied)),
+        "occurrence.delete denied even with insight.occurrences"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_removes_the_insight_and_cascades_its_occurrence_ring() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ada = principal("user:ada", "acme", &member_caps());
+    // Raise twice on the same dedup_key → one insight, two occurrence rows (ring).
+    let out = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "warning", 1),
+    )
+    .await
+    .expect("raise 1");
+    let id = out["id"].as_str().unwrap().to_string();
+    call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "critical", 2),
+    )
+    .await
+    .expect("raise 2");
+    let ring = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrences",
+        json!({ "insight_id": id }),
+    )
+    .await
+    .expect("occ list");
+    assert_eq!(
+        ring["items"].as_array().unwrap().len(),
+        2,
+        "two occurrences before delete"
+    );
+
+    // Delete cascades: parent gone AND its ring emptied.
+    call(&node, &ada, "acme", "insight.delete", json!({ "id": id }))
+        .await
+        .expect("delete ok");
+    let got = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get after delete");
+    assert!(got.is_null(), "insight is gone after delete");
+    let ring_after = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrences",
+        json!({ "insight_id": id }),
+    )
+    .await
+    .expect("occ list after delete");
+    assert_eq!(
+        ring_after["items"].as_array().unwrap().len(),
+        0,
+        "occurrence ring cascaded away with the parent"
+    );
+
+    // Idempotent — a second delete is still Ok.
+    call(&node, &ada, "acme", "insight.delete", json!({ "id": id }))
+        .await
+        .expect("second delete idempotent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn occurrence_delete_removes_one_row_and_leaves_count_untouched() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let ada = principal("user:ada", "acme", &member_caps());
+    call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "warning", 1),
+    )
+    .await
+    .expect("raise 1");
+    let out2 = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.raise",
+        raise_input("k1", "critical", 2),
+    )
+    .await
+    .expect("raise 2");
+    let id = out2["id"].as_str().unwrap().to_string();
+    // `count` is the lifetime firing total (2 after two raises).
+    let before = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get before");
+    assert_eq!(before["count"].as_u64().unwrap(), 2);
+
+    // The ring has two rows; grab the oldest oseq and delete just that one.
+    let ring = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrences",
+        json!({ "insight_id": id }),
+    )
+    .await
+    .expect("occ list");
+    let items = ring["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    let oseq = items.last().unwrap()["oseq"].as_u64().unwrap();
+    call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrence.delete",
+        json!({ "insight_id": id, "oseq": oseq }),
+    )
+    .await
+    .expect("occ delete ok");
+
+    // One row gone; the parent record + its lifetime count are untouched.
+    let ring_after = call(
+        &node,
+        &ada,
+        "acme",
+        "insight.occurrences",
+        json!({ "insight_id": id }),
+    )
+    .await
+    .expect("occ list after");
+    let after_items = ring_after["items"].as_array().unwrap();
+    assert_eq!(after_items.len(), 1, "one occurrence removed");
+    assert!(after_items
+        .iter()
+        .all(|o| o["oseq"].as_u64().unwrap() != oseq));
+    let after = call(&node, &ada, "acme", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get after");
+    assert_eq!(
+        after["count"].as_u64().unwrap(),
+        2,
+        "lifetime count unchanged by an occurrence delete"
+    );
+}
+
 // --- mandatory: workspace isolation ------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -208,6 +537,36 @@ async fn list_in_one_workspace_never_returns_another_workspaces_insights() {
         .await
         .expect("list ws-a");
     assert_eq!(page_a["items"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_in_one_workspace_cannot_reach_another_workspaces_insight() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let a = principal("user:ada", "ws-a", &member_caps());
+    let b = principal("user:bea", "ws-b", &member_caps());
+    let out = call(
+        &node,
+        &a,
+        "ws-a",
+        "insight.raise",
+        raise_input("ka", "critical", 1),
+    )
+    .await
+    .expect("raise in ws-a");
+    let id = out["id"].as_str().unwrap().to_string();
+    // ws-B holds the delete cap in ITS OWN workspace, but the id belongs to ws-A. The delete is
+    // scoped to ws-B, so it's a no-op there and ws-A's record survives (the hard wall §7).
+    call(&node, &b, "ws-b", "insight.delete", json!({ "id": id }))
+        .await
+        .expect("delete scoped to ws-b (no-op on a ws-a id)");
+    let got = call(&node, &a, "ws-a", "insight.get", json!({ "id": id }))
+        .await
+        .expect("get in ws-a");
+    assert_eq!(
+        got["id"].as_str().unwrap(),
+        id,
+        "ws-A's insight untouched by a ws-B delete of the same id"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

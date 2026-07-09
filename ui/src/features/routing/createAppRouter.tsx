@@ -18,6 +18,7 @@ import { ChannelView } from "@/features/channel";
 import { DashboardView, DashboardsManagerPage } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
 import { PanelWizard } from "@/features/panel-builder/wizard/PanelWizard";
+import { PICK_DASHBOARD } from "@/features/panel-builder/wizard/steps";
 import type { Cell } from "@/lib/dashboard";
 import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { DataStudioView } from "@/features/data-studio";
@@ -130,10 +131,19 @@ const dashboardsManageRoute = createRoute({
 const newPanelRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/dashboards/$d/new-panel",
-  // Optional `?cell=<id>` puts the wizard in EDIT mode over an existing panel (the dashboard cell's
-  // hover affordance links here). Absent ⇒ the create flow. It's the ONLY search this route reads.
-  validateSearch: (s: Record<string, unknown>): { cell?: string } =>
-    typeof s.cell === "string" && s.cell ? { cell: s.cell } : {},
+  // Optional searches:
+  //  - `?cell=<id>` puts the wizard in EDIT mode over an existing panel (the dashboard cell's hover
+  //    affordance links here). Absent ⇒ the create flow.
+  //  - `?ds=<name>&sql=<text>` prefills a federation datasource + query (the Datasources page's
+  //    "Create panel" action, opened under the PICK_DASHBOARD sentinel id). The wizard seeds the
+  //    source step from these and picks a destination dashboard on Save.
+  validateSearch: (s: Record<string, unknown>): { cell?: string; ds?: string; sql?: string } => {
+    const out: { cell?: string; ds?: string; sql?: string } = {};
+    if (typeof s.cell === "string" && s.cell) out.cell = s.cell;
+    if (typeof s.ds === "string" && s.ds) out.ds = s.ds;
+    if (typeof s.sql === "string" && s.sql) out.sql = s.sql;
+    return out;
+  },
   component: NewPanelRoute,
 });
 
@@ -444,8 +454,10 @@ function DataStudioRoute() {
 function NewPanelRoute() {
   const ctx = useAppRoutingContext();
   const { d } = newPanelRoute.useParams();
-  const { cell: cellId } = newPanelRoute.useSearch();
+  const { cell: cellId, ds, sql } = newPanelRoute.useSearch();
   const dashboardId = decodeURIComponent(d);
+  // No destination dashboard yet (the Datasources "Create panel" entry): the wizard picks one on Save.
+  const pickDashboard = dashboardId === PICK_DASHBOARD;
   const navigate = useNavigate();
   // EDIT mode (`?cell=`): load the target cell so the wizard seeds from it. A `new-panel` deep link
   // with no `cell` stays the create flow (editCell undefined). We fetch from the real store (no cache
@@ -474,13 +486,15 @@ function NewPanelRoute() {
         <PanelWizard
           ws={ctx.workspace}
           dashboardId={dashboardId}
+          pickDashboard={pickDashboard}
+          prefill={ds ? { source: ds, sql: sql ?? "" } : undefined}
           editCell={editCell ?? undefined}
-          onExit={() =>
+          onExit={(landOn) =>
             void navigate({
               to: fullPathForSurface(ctx.workspace, "dashboards"),
-              // Carry the target dashboard id so save/cancel land back ON the dashboard that was
-              // edited (the `?d=` selector the `/dashboards` grid reads), not the default one.
-              search: { d: dashboardId },
+              // Land back ON the dashboard the panel went to: the edited/target id, or (pick mode) the
+              // dashboard the wizard just saved into (`landOn`). The `?d=` selector the grid reads.
+              search: { d: landOn ?? dashboardId },
             })
           }
         />

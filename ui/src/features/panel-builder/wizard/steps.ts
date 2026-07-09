@@ -9,6 +9,13 @@ export interface WizardStep {
   label: string;
 }
 
+/** The sentinel dashboard id the wizard opens under when it is launched WITHOUT a destination dashboard
+ *  (the "Create panel" action on the Datasources query page). The wizard resolves it to the same single
+ *  deep-linkable `new-panel` route — no duplicate wiring — and, seeing the sentinel, renders a
+ *  "Save into which dashboard?" picker on its Save step instead of assuming a target. A real dashboard
+ *  id never collides: dashboard ids are slugs and this one is bracketed. */
+export const PICK_DASHBOARD = "__pick__";
+
 /** The ordered wizard steps. Source → ChartType → Options → Transform (Save is the trailing action on
  *  Transform, not a separate step). */
 export const WIZARD_STEPS: readonly WizardStep[] = [

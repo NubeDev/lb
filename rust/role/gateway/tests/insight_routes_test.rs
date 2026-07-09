@@ -14,7 +14,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{bearer, gateway, get_req, json_body, json_post, token};
+use common::{bearer, delete_req, gateway, get_req, json_body, json_post, token};
 use lb_role_gateway::router;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -27,6 +27,8 @@ const MEMBER_CAPS: &[&str] = &[
     "mcp:insight.ack:call",
     "mcp:insight.resolve:call",
     "mcp:insight.occurrences:call",
+    "mcp:insight.delete:call",
+    "mcp:insight.occurrence.delete:call",
     "mcp:insight.sub.create:call",
     "mcp:insight.sub.list:call",
     "mcp:insight.sub.get:call",
@@ -211,4 +213,106 @@ async fn raise_list_get_ack_resolve_round_trip() {
         .unwrap();
     let occ_body: Value = json_body(occ).await;
     assert_eq!(occ_body["items"].as_array().unwrap().len(), 1);
+}
+
+// --- DELETE routes: cascade delete + single-occurrence delete ----------------------------
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn delete_route_removes_the_insight_and_its_occurrences() {
+    let (gw, key) = gateway().await;
+    let app = router(gw);
+    let tok = member(&key, "user:ada", "ws-del");
+
+    // raise (one occurrence) over the MCP bridge.
+    mcp(
+        &app,
+        &tok,
+        "insight.raise",
+        json!({ "dedup_key": "k1", "severity": "warning", "title": "to delete",
+                "origin": { "kind": "manual", "ref": "test" },
+                "occurrence": { "data": { "score": 0.5 } }, "ts": 1 }),
+    )
+    .await;
+    let listed = app
+        .clone()
+        .oneshot(bearer(get_req("/insights"), &tok))
+        .await
+        .unwrap();
+    let list_body: Value = json_body(listed).await;
+    let id = list_body["items"][0]["id"].as_str().unwrap().to_string();
+
+    // DELETE /insights/{id} → 204; the record is gone and its ring cascaded away.
+    let deleted = app
+        .clone()
+        .oneshot(bearer(delete_req(&format!("/insights/{id}")), &tok))
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    let after = app
+        .clone()
+        .oneshot(bearer(get_req("/insights"), &tok))
+        .await
+        .unwrap();
+    let after_body: Value = json_body(after).await;
+    assert_eq!(after_body["items"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn occurrence_delete_route_removes_one_row() {
+    let (gw, key) = gateway().await;
+    let app = router(gw);
+    let tok = member(&key, "user:ada", "ws-occ");
+
+    // Two raises on one dedup_key → two occurrence rows.
+    for ts in [1, 2] {
+        mcp(
+            &app,
+            &tok,
+            "insight.raise",
+            json!({ "dedup_key": "k1", "severity": "warning", "title": "occ",
+                    "origin": { "kind": "manual", "ref": "test" },
+                    "occurrence": { "data": { "n": ts } }, "ts": ts }),
+        )
+        .await;
+    }
+    let listed = app
+        .clone()
+        .oneshot(bearer(get_req("/insights"), &tok))
+        .await
+        .unwrap();
+    let list_body: Value = json_body(listed).await;
+    let id = list_body["items"][0]["id"].as_str().unwrap().to_string();
+    let occ = app
+        .clone()
+        .oneshot(bearer(
+            get_req(&format!("/insights/{id}/occurrences")),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    let occ_body: Value = json_body(occ).await;
+    let items = occ_body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    let oseq = items.last().unwrap()["oseq"].as_u64().unwrap();
+
+    // DELETE /insights/{id}/occurrences/{oseq} → 204; one row gone, parent stays.
+    let deleted = app
+        .clone()
+        .oneshot(bearer(
+            delete_req(&format!("/insights/{id}/occurrences/{oseq}")),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    let occ_after = app
+        .clone()
+        .oneshot(bearer(
+            get_req(&format!("/insights/{id}/occurrences")),
+            &tok,
+        ))
+        .await
+        .unwrap();
+    let occ_after_body: Value = json_body(occ_after).await;
+    assert_eq!(occ_after_body["items"].as_array().unwrap().len(), 1);
 }

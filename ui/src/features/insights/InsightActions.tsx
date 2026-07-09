@@ -9,24 +9,26 @@
 // element across the click.
 
 import { useState } from "react";
-import { Check, CheckCheck, RefreshCw } from "lucide-react";
+import { Check, CheckCheck, RefreshCw, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ackInsight, resolveInsight } from "@/lib/insights/insights.api";
+import { ackInsight, deleteInsight, resolveInsight } from "@/lib/insights/insights.api";
 import type { Insight } from "@/lib/insights/insights.types";
 
 interface Props {
   insight: Insight;
   /** Called after an ack/resolve lands so the parent can refresh its view. */
   onActed?: () => void;
+  /** Called after the insight is deleted so the parent can close the pane + drop it from the list. */
+  onDeleted?: () => void;
 }
 
 /** The ack/resolve row for the detail pane. Ack is hidden once acked/resolved; resolve once
  *  resolved — the status-driven visibility so a stale action can't be re-fired. */
-export function InsightActions({ insight, onActed }: Props): JSX.Element {
-  const [busy, setBusy] = useState<"ack" | "resolve" | null>(null);
+export function InsightActions({ insight, onActed, onDeleted }: Props): JSX.Element {
+  const [busy, setBusy] = useState<"ack" | "resolve" | "delete" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function onAck() {
@@ -55,11 +57,47 @@ export function InsightActions({ insight, onActed }: Props): JSX.Element {
     }
   }
 
+  async function onDelete() {
+    // Destructive + cascading (deletes every occurrence too) — confirm before firing.
+    if (
+      !window.confirm(
+        `Delete this insight and all ${insight.count} of its occurrences? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    setBusy("delete");
+    setError(null);
+    try {
+      await deleteInsight(insight.id);
+      onDeleted?.();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const disabled = busy !== null;
 
   return (
     <div className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onDelete}
+          disabled={disabled}
+          className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+        >
+          {busy === "delete" ? (
+            <RefreshCw size={14} className={cn("animate-spin")} />
+          ) : (
+            <Trash2 size={14} />
+          )}
+          Delete
+        </Button>
         {insight.status === "open" && (
           <Button
             type="button"

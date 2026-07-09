@@ -28,6 +28,7 @@ import { AppPageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { QueryWorkbench } from "@/features/query-workbench";
+import { PICK_DASHBOARD } from "@/features/panel-builder/wizard/steps";
 import { DatasourceProbe } from "./DatasourceProbe";
 import { QueryResults } from "./QueryResults";
 import { TableDiscovery } from "./TableDiscovery";
@@ -195,6 +196,15 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
               source={source.name}
               sel={null}
               onSel={() => {}}
+              onCreatePanel={(sql) =>
+                // No dashboard is chosen here (this page isn't a dashboard) — open the panel wizard
+                // under the PICK_DASHBOARD sentinel with the source + SQL prefilled; the wizard picks
+                // the destination dashboard on its Save step.
+                void navigate({
+                  to: `/t/${encodeURIComponent(ws)}/dashboards/${encodeURIComponent(PICK_DASHBOARD)}/new-panel`,
+                  search: { ds: source.name, sql },
+                })
+              }
             />
           </div>
         )}

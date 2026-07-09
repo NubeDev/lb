@@ -73,7 +73,7 @@ export function TelemetryView() {
           {tel.pivotTrace && (
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">
-                Trace <code className="rounded-md bg-muted px-1">{tel.pivotTrace}</code>
+                Trace <code className="rounded-md bg-muted-bg px-1 text-fg">{tel.pivotTrace}</code>
               </span>
               <Button variant="outline" size="sm" onClick={tel.clearPivot}>
                 ← back to all events

@@ -21,9 +21,9 @@ use serde_json::{json, Value};
 
 use super::error::InsightSvcError;
 use super::{
-    insight_ack, insight_get, insight_list, insight_occurrences, insight_policy_get,
-    insight_policy_set, insight_raise, insight_resolve, insight_sub_create, insight_sub_delete,
-    insight_sub_get, insight_sub_list, insight_sub_mute,
+    insight_ack, insight_delete, insight_get, insight_list, insight_occurrence_delete,
+    insight_occurrences, insight_policy_get, insight_policy_set, insight_raise, insight_resolve,
+    insight_sub_create, insight_sub_delete, insight_sub_get, insight_sub_list, insight_sub_mute,
 };
 use crate::boot::Node;
 
@@ -83,6 +83,24 @@ pub async fn call_insight_tool(
                 str_arg(input, "id")?,
                 note,
                 u64_arg(input, "ts")?,
+            )
+            .await
+            .map_err(svc_to_tool)?;
+            Ok(json!({ "ok": true }))
+        }
+        "insight.delete" => {
+            insight_delete(store, principal, ws, str_arg(input, "id")?)
+                .await
+                .map_err(svc_to_tool)?;
+            Ok(json!({ "ok": true }))
+        }
+        "insight.occurrence.delete" => {
+            insight_occurrence_delete(
+                store,
+                principal,
+                ws,
+                str_arg(input, "insight_id")?,
+                u64_arg(input, "oseq")?,
             )
             .await
             .map_err(svc_to_tool)?;

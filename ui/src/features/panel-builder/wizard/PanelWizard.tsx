@@ -37,17 +37,54 @@ import { useSplitPane } from "./useSplitPane";
 import { useWizardPreview, WIZARD_CELL_I } from "./useWizardPreview";
 import { WIZARD_STEPS, type WizardStepId } from "./steps";
 
+/** A prefilled federation source + query (the Datasources page's "Create panel" entry) — seeds the
+ *  wizard's first step so the user lands already bound to the query they just ran. */
+export interface PanelPrefill {
+  /** The federation datasource name. */
+  source: string;
+  /** The SQL that ran (the real statement — compiled SQL for PRQL). */
+  sql: string;
+}
+
 interface Props {
   /** The viewer's session workspace. */
   ws: string;
-  /** The dashboard id the finished panel will be saved into (step 8). */
+  /** The dashboard id the finished panel will be saved into (step 8). In PICK mode this is the
+   *  `PICK_DASHBOARD` sentinel — the real target is chosen on the Save step. */
   dashboardId: string;
-  /** Navigate back to the dashboard (a Cancel affordance + the post-Save redirect). */
-  onExit: () => void;
+  /** Navigate back to the dashboard. `landOn` (PICK mode, after Save) is the id the panel was saved
+   *  into, so the caller lands on that dashboard rather than the sentinel. */
+  onExit: (landOn?: string) => void;
+  /** PICK mode: no destination dashboard was chosen up front (the Datasources "Create panel" entry).
+   *  The wizard renders a "Save into which dashboard?" picker on its Save step and gates Save on it. */
+  pickDashboard?: boolean;
+  /** A prefilled datasource + query (the Datasources "Create panel" entry) — seeds the source step. */
+  prefill?: PanelPrefill;
   /** EDIT mode: the existing cell being edited. When set, the wizard seeds from this cell and Save
    *  REPLACES it in place (keeping its geometry + key) instead of appending a new panel. Omitted ⇒
    *  the create flow (a fresh `defaultCell` seed, append at the next free row). */
   editCell?: Cell;
+}
+
+/** Seed EditorState from a prefilled federation datasource + query — mirrors SourceStep's
+ *  `selectDatasource` + `adoptSql` (a `federation.query` target, table view, the SQL in code mode) so
+ *  the wizard opens already bound to the ran query. */
+function seedFromPrefill(ws: string, prefill: PanelPrefill): EditorState {
+  const base = cellToEditorState(
+    defaultCell("table", WIZARD_CELL_I, undefined, defaultOptionsForView("table")),
+  );
+  return {
+    ...base,
+    sql: { mode: "code", rawSql: prefill.sql, format: "table" },
+    targets: [
+      {
+        refId: "A",
+        tool: "federation.query",
+        args: { source: prefill.source, sql: prefill.sql },
+        datasource: { type: "federation", uid: `datasource:${ws}:${prefill.source}` },
+      },
+    ],
+  };
 }
 
 /** Reset the per-view `options` to the new view's defaults when the chart type changes (mirrors the
@@ -56,15 +93,21 @@ function withViewReset(next: View): Partial<EditorState> {
   return { view: next, options: defaultOptionsForView(next) };
 }
 
-export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
+export function PanelWizard({ ws, dashboardId, onExit, pickDashboard, prefill, editCell }: Props) {
   // The wizard's working state. In EDIT mode it seeds from the existing cell (the SAME
-  // `cellToEditorState` the editor uses — no wizard-only field, so no drift); in CREATE mode it seeds
-  // from `defaultCell(...)`, the same seed ADD uses. Every step writes through `patch`.
+  // `cellToEditorState` the editor uses — no wizard-only field, so no drift); with a `prefill` (the
+  // Datasources "Create panel" entry) it seeds bound to the ran query; in CREATE mode it seeds from
+  // `defaultCell(...)`, the same seed ADD uses. Every step writes through `patch`.
   const [state, setState] = useState<EditorState>(() =>
     editCell
       ? cellToEditorState(editCell)
-      : cellToEditorState(defaultCell("timeseries", WIZARD_CELL_I, undefined, defaultOptionsForView("timeseries"))),
+      : prefill
+        ? seedFromPrefill(ws, prefill)
+        : cellToEditorState(defaultCell("timeseries", WIZARD_CELL_I, undefined, defaultOptionsForView("timeseries"))),
   );
+  // PICK mode (no dashboard chosen up front): the destination dashboard the user selects on the Save
+  // step. Save is gated on it. Non-pick mode always targets `dashboardId`.
+  const [pickedDashboard, setPickedDashboard] = useState<string>("");
   const [step, setStep] = useState<WizardStepId>("source");
   const [frozen, setFrozen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,7 +156,11 @@ export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
   /** Save the finished panel: serialize the wizard's state through `editorStateToCell` (the SAME path the
    *  editor's Save uses), append to the dashboard's cells, persist via `dashboard.save`. The host re-checks
    *  `mcp:dashboard.save:call` on save (the wizard's only cap; no new verb). */
+  // The dashboard the panel lands in: the picked one in PICK mode, else the route's `dashboardId`.
+  const targetDashboardId = pickDashboard ? pickedDashboard : dashboardId;
+
   const save = useCallback(async () => {
+    if (!targetDashboardId) return; // PICK mode with no dashboard chosen — the button is disabled.
     setSaving(true);
     try {
       // In EDIT mode the base IS the existing cell, so serializing keeps its key + geometry (the
@@ -121,7 +168,7 @@ export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
       const draftBase = editCell ?? defaultCell(state.view || "timeseries", WIZARD_CELL_I);
       const cell = editorStateToCell(state, draftBase);
       const { getDashboard, saveDashboard } = await import("@/lib/dashboard/dashboard.api");
-      const target = await getDashboard(dashboardId);
+      const target = await getDashboard(targetDashboardId);
       let cells: Cell[];
       if (editCell) {
         // REPLACE the edited cell in place — same key, same geometry (carried by `draftBase`).
@@ -131,21 +178,23 @@ export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
         const maxY = target.cells.reduce((m, c) => Math.max(m, c.y + c.h), 0);
         cells = [...target.cells, { ...cell, i: `panel-${Date.now()}`, x: 0, y: maxY }];
       }
-      await saveDashboard(dashboardId, target.title, cells, target.variables ?? []);
-      onExit();
+      await saveDashboard(targetDashboardId, target.title, cells, target.variables ?? []);
+      onExit(targetDashboardId);
     } finally {
       setSaving(false);
     }
-  }, [state, dashboardId, onExit, editCell]);
+  }, [state, targetDashboardId, onExit, editCell]);
 
   return (
     <div className="flex h-full flex-col" aria-label="panel wizard" data-wizard-step={step}>
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="grid gap-0.5">
           <div className="text-sm font-medium text-fg">{editCell ? "Edit panel" : "New panel"}</div>
-          <div className="text-[11px] text-muted">dashboard {dashboardId}</div>
+          <div className="text-[11px] text-muted">
+            {pickDashboard ? "choose a dashboard on the last step" : `dashboard ${dashboardId}`}
+          </div>
         </div>
-        <Button variant="ghost" size="sm" onClick={onExit} aria-label="cancel wizard">
+        <Button variant="ghost" size="sm" onClick={() => onExit()} aria-label="cancel wizard">
           Cancel
         </Button>
       </header>
@@ -215,6 +264,10 @@ export function PanelWizard({ ws, dashboardId, onExit, editCell }: Props) {
               onFrozenChange={setFrozen}
               onSave={save}
               saving={saving}
+              pickDashboard={pickDashboard}
+              selectedDashboard={pickedDashboard}
+              onSelectDashboard={setPickedDashboard}
+              canSave={!!targetDashboardId}
             />
           )}
 

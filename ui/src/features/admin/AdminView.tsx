@@ -19,7 +19,7 @@ import { TeamsAdmin } from "./TeamsAdmin";
 import { RolesAdmin } from "./RolesAdmin";
 import { WorkspacesAdmin } from "./WorkspacesAdmin";
 import { NavAdmin } from "./nav/NavAdmin";
-import { SetupWizard } from "./setup/SetupWizard";
+import { SetupHub } from "./setup/SetupHub";
 
 type Tab = "overview" | "setup" | "people" | "teams" | "roles" | "workspaces" | "apikeys" | "nav";
 
@@ -79,7 +79,7 @@ export function AdminView({ ws, caps }: Props) {
             <AccessOverview ws={ws} caps={caps} onJump={(j) => setTab(j)} />
           </TabsContent>
           <TabsContent value="setup" className="min-h-0 flex-1">
-            <SetupWizard ws={ws} caps={caps} />
+            <SetupHub ws={ws} caps={caps} />
           </TabsContent>
           <TabsContent value="people" className="min-h-0 flex-1">
             <PeopleAdmin ws={ws} caps={caps} />

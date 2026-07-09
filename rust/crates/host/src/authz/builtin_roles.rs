@@ -267,6 +267,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:outbox.enqueue:call",
     // insight producer raise (a viewer only reads/acts on insights).
     "mcp:insight.raise:call",
+    // insight DESTROY — delete an insight (cascades its ring) or one occurrence row. Erasing shared
+    // content + evidence is an authoring reach a bare viewer must NOT have (only reads/acks/resolves).
+    "mcp:insight.delete:call",
+    "mcp:insight.occurrence.delete:call",
     // Studio local-dev devkit: scaffold/build/inspect/write — the authoring toolchain.
     "mcp:devkit.templates:call",
     "mcp:devkit.scaffold:call",

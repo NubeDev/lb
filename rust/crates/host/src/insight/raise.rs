@@ -36,6 +36,18 @@ pub async fn insight_raise(
 ) -> Result<lb_insights::RaiseOutcome, InsightSvcError> {
     authorize_tool(principal, ws, "insight.raise").map_err(|_| InsightSvcError::Denied)?;
     input.producer = principal.sub().to_string();
+    // Low-level guard: `insight.ts` is stored + rendered as epoch MILLISECONDS (the UI does
+    // `new Date(ts)` / `Date.now() - ts`, `insight::reactor` stamps `as_millis`). Two producer
+    // doors get it wrong and land records in 1970:
+    //   1. A door that forgot to stamp `ts` (or handed `0`) → the Unix epoch.
+    //   2. The gateway `rules/run` route stamps `gw.now()`, which is epoch SECONDS (`as_secs()`) —
+    //      `new Date(1.78e9)` renders as Jan 1970, and `Date.now() - 1.78e9` reads "20623d ago".
+    // This host layer — the single funnel every producer door reaches — normalizes both to millis
+    // (the crate stays wall-clock-free, testing §3). `0` backfills the wall-clock. A value in the
+    // plausible epoch-SECONDS band (~2001..33658, i.e. `[1e9, 1e12)`) is scaled ×1000. A real
+    // epoch-millis `ts` (≥ 1e12) and a tiny deterministic test/logical clock (< 1e9) both pass
+    // through untouched — so flows + tests seeding fixed small clocks stay reproducible.
+    input.ts = normalize_ts(input.ts);
     let now = input.ts;
     let tags = input.tags.clone();
 
@@ -113,6 +125,36 @@ pub async fn insight_raise(
     }
 
     Ok(outcome)
+}
+
+/// Epoch-seconds band: any real wall-clock date from ~2001-09 (`1e9`) up to ~year 33658 (`1e12`).
+/// A `ts` here was almost certainly stamped in SECONDS (e.g. the gateway's `gw.now()` = `as_secs()`);
+/// scale it to the millis `insight.ts` is defined in. Below `1e9` = a tiny logical/test clock (leave
+/// it); at/above `1e12` = already epoch-millis (leave it).
+pub(super) const TS_SECONDS_MIN: u64 = 1_000_000_000; // 1e9  — ~2001-09-09 in seconds
+pub(super) const TS_MILLIS_MIN: u64 = 1_000_000_000_000; // 1e12 — ~2001-09-09 in millis
+
+/// Normalize a raise `ts` to epoch milliseconds. `0` ⇒ the host wall-clock. A value in the
+/// epoch-seconds band (`[1e9, 1e12)`) ⇒ ×1000. Everything else (a real ms clock, or a tiny
+/// deterministic test/logical clock) passes through unchanged. See the guard in [`insight_raise`].
+fn normalize_ts(ts: u64) -> u64 {
+    if ts == 0 {
+        now_ms()
+    } else if (TS_SECONDS_MIN..TS_MILLIS_MIN).contains(&ts) {
+        ts * 1000
+    } else {
+        ts
+    }
+}
+
+/// The host wall-clock as epoch milliseconds — the unit `insight.ts` is stored + rendered in
+/// (`InsightsList.timeAgo` does `Date.now() - ts`, `insight::reactor` stamps `as_millis`). Used to
+/// backfill a `ts` a producer door omitted (see the guard in [`insight_raise`]).
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Materialize the insight's tag facets as `{ k: v }` for the matcher's subset check. Reads the tag

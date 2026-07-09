@@ -27,11 +27,16 @@ interface CodeEditorProps {
   ariaLabel?: string;
   /** Fired when the editor loses focus — a natural, non-disruptive moment to auto-format. */
   onBlur?: () => void;
+  /** Read-only mode: syntax-highlighted, selectable, but not editable (a preview surface). Defaults
+   *  to `true` (editable). When `false`, CodeMirror keeps highlighting + selection but blocks input and
+   *  hides the caret — the reuse seam for "show this code, don't let me change it" (e.g. a wizard that
+   *  previews a canonical rule the user only runs). */
+  editable?: boolean;
 }
 
 /** A controlled CodeMirror editor exposing an `insertSnippet` ref handle. */
 export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
-  { value, onChange, extensions, height = "100%", ariaLabel = "code editor", onBlur },
+  { value, onChange, extensions, height = "100%", ariaLabel = "code editor", onBlur, editable = true },
   handleRef,
 ) {
   const { ref, insertSnippet } = useEditorInsert();
@@ -53,6 +58,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       extensions={extensions}
       theme={mode}
       height={height}
+      editable={editable}
     />
   );
 });

@@ -62,7 +62,7 @@ function LevelBadge({ level }: { level: string }) {
       ? "bg-destructive/15 text-destructive"
       : level === "warn"
         ? "bg-warning/15 text-warning"
-        : "bg-muted text-muted-foreground";
+        : "bg-muted-bg text-muted-foreground";
   return (
     <Badge variant="outline" className={`w-12 shrink-0 justify-center ${tone}`}>
       {level || "—"}

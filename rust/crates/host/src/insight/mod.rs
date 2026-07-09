@@ -13,7 +13,9 @@
 //!   - `insight.list` ([`insight_list`]) — faceted, keyset-paged newest-first.
 //!   - `insight.ack` ([`insight_ack`]) — `open → acked` (status_by host-forced).
 //!   - `insight.resolve` ([`insight_resolve`]) — `* → resolved` (idempotent).
+//!   - `insight.delete` ([`insight_delete`]) — hard-delete an insight + cascade its ring (idempotent).
 //!   - `insight.occurrences` ([`insight_occurrences`]) — read the per-insight occurrence ring.
+//!   - `insight.occurrence.delete` ([`insight_occurrence_delete`]) — delete one ring row (idempotent).
 //!   - `insight.sub.{create,list,get,delete,mute}` — channel subscriptions (subscriptions scope).
 //!   - `insight.policy.{get,set}` — the workspace policy record (notify scope).
 //!   - the MCP bridge ([`call_insight_tool`]) — the one MCP contract over all of the above.
@@ -22,10 +24,13 @@
 //! reactor follows the flows/reminders owner-election precedent; both are stubbed).
 
 mod ack;
+mod delete;
 mod error;
 mod get;
+mod heal_ts;
 mod list;
 mod notify;
+mod occ_delete;
 mod occurrences;
 mod policy_get;
 mod policy_set;
@@ -41,9 +46,12 @@ mod tool;
 mod watch;
 
 pub use ack::insight_ack;
+pub use delete::insight_delete;
 pub use error::InsightSvcError;
 pub use get::insight_get;
+pub use heal_ts::heal_insight_timestamps;
 pub use list::insight_list;
+pub use occ_delete::insight_occurrence_delete;
 pub use occurrences::insight_occurrences;
 pub use policy_get::insight_policy_get;
 pub use policy_set::insight_policy_set;

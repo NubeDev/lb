@@ -38,6 +38,20 @@ export function resolveInsight(id: string, note?: string): Promise<void> {
   return mcp<void>("insight.resolve", { id, note, ts: Date.now() });
 }
 
+/** Hard-delete an insight, cascading its occurrence ring. Mirrors `insight.delete` (idempotent). */
+export function deleteInsight(id: string): Promise<void> {
+  return mcp<void>("insight.delete", { id });
+}
+
+/** Delete one occurrence (transaction) from an insight's ring by its `oseq`. Mirrors
+ *  `insight.occurrence.delete` (idempotent). */
+export function deleteOccurrence(insightId: string, oseq: number): Promise<void> {
+  return mcp<void>("insight.occurrence.delete", {
+    insight_id: insightId,
+    oseq,
+  });
+}
+
 /** Read the per-insight occurrence ring, newest-first. Mirrors `insight.occurrences`. */
 export function listOccurrences(
   insightId: string,

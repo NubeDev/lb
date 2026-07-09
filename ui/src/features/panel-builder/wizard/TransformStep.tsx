@@ -12,6 +12,7 @@
 //
 // One responsibility: the wizard's transform surface (a thin wrap over TransformTab + the freeze toggle).
 
+import { useEffect, useState } from "react";
 import { Snowflake } from "lucide-react";
 
 import type { Cell, View } from "@/lib/dashboard";
@@ -21,6 +22,9 @@ import { emptyScope } from "@/lib/vars";
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
 import { TransformTab } from "@/features/panel-builder/tabs/TransformTab";
 import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { listDashboards } from "@/lib/dashboard/dashboard.api";
+import type { DashboardSummary } from "@/lib/dashboard";
 
 interface Props {
   state: EditorState;
@@ -40,6 +44,34 @@ interface Props {
   onSave: () => void;
   /** Is a save in flight? Disables the Save button + flips its label. */
   saving?: boolean;
+  /** PICK mode: no destination dashboard was chosen up front (the Datasources "Create panel" entry).
+   *  Renders a "Save into" dashboard picker beside the Save button. */
+  pickDashboard?: boolean;
+  /** The picked destination dashboard id (PICK mode). */
+  selectedDashboard?: string;
+  /** Update the picked destination dashboard (PICK mode). */
+  onSelectDashboard?: (id: string) => void;
+  /** Whether Save is allowed — false in PICK mode until a dashboard is chosen. */
+  canSave?: boolean;
+}
+
+/** Load the dashboards the caller can save into (the PICK-mode picker). Same `dashboard.list` the
+ *  roster reads — membership-filtered host-side; a deny collapses to an honest empty list. */
+function useDashboardChoices(enabled: boolean): DashboardSummary[] {
+  const [choices, setChoices] = useState<DashboardSummary[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    void listDashboards()
+      .then((r) => live && setChoices(r))
+      .catch(() => {
+        /* deny/failure → honest empty list (the Save button stays disabled) */
+      });
+    return () => {
+      live = false;
+    };
+  }, [enabled]);
+  return choices;
 }
 
 export function TransformStep({
@@ -52,7 +84,12 @@ export function TransformStep({
   onFrozenChange,
   onSave,
   saving = false,
+  pickDashboard = false,
+  selectedDashboard = "",
+  onSelectDashboard,
+  canSave = true,
 }: Props) {
+  const dashboardChoices = useDashboardChoices(pickDashboard);
   // Suppress the unused-view warning — the wizard's transform step is independent of view; the cell's
   // view is whatever ChartTypeStep picked.
   const _view = canonicalView(state.view || "timeseries") as View;
@@ -87,8 +124,27 @@ export function TransformStep({
 
       <TransformTab state={state} patch={patch} draft={cell} scope={scope} refreshKey={refreshKey} />
 
-      <div className="mt-2 flex justify-end">
-        <Button onClick={onSave} disabled={saving} aria-label="save panel">
+      <div className="mt-2 flex items-end justify-end gap-2">
+        {/* PICK mode (launched from a datasource, not a dashboard): choose where the panel lands. */}
+        {pickDashboard && (
+          <label className="mr-auto grid gap-1 text-xs text-muted">
+            Save into
+            <Select
+              aria-label="destination dashboard"
+              className="h-8 w-56"
+              value={selectedDashboard}
+              onChange={(e) => onSelectDashboard?.(e.target.value)}
+            >
+              <option value="">— choose a dashboard —</option>
+              {dashboardChoices.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.title}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        <Button onClick={onSave} disabled={saving || !canSave} aria-label="save panel">
           {saving ? "Saving…" : "Save panel"}
         </Button>
       </div>

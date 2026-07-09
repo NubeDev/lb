@@ -227,6 +227,13 @@ async fn main() -> anyhow::Result<()> {
         std::time::Duration::from_secs(2),
     );
 
+    // INSIGHT TS HEAL (one-shot, idempotent): historical insights raised through the gateway
+    // `rules/run` route landed with `gw.now()` = epoch SECONDS as their `ts`, so the UI rendered
+    // them as Jan 1970. New raises normalize at the write; this rewrites the on-disk seconds-band
+    // rows (`[1e9, 1e12)`) ×1000. A no-op once healed (millis are out of the band), so it's safe to
+    // run every boot.
+    let _ = lb_host::heal_insight_timestamps(&node.store, &ws).await;
+
     // INSIGHT DIGEST REACTOR TICK (insight-notify scope): tame the anti-spam ladder — scan the
     // `insight_notify` ladder state, digest keys whose window elapsed into ONE message per (sub,
     // window), decay quiet keys, and post under each sub's stored principal (fire-time re-checked).

@@ -124,14 +124,7 @@ docs/testing/e2e-*.md            (runbook: drive the real surface, run the CRUD 
    regression test lands back in the real suite  (bug stays dead)
 ```
 
-The `cargo test` / vitest suites already ran and passed **before** this loop starts —
-that's the scope/session that built the feature. This folder picks up from a green build
-and asks the next question the suite can't: *does the real running system do it?* The
-runbook's job ends at "pass or fail". A **pass** is an observed result against the design.
-A **fail** is not written up in `docs/testing/` — it's a *finding* that gets filed as a
-`debugging/` entry with a regression test. That separation is the whole point: this folder
-is "prove the running product works", `debugging/` is "here's what broke and how it was
-fixed".
+
 
 - **Green?** Record the observed result in the session doc (`../ABOUT-DOCS.md` — green is
   a claim that must be *shown*), **leave the artifacts in place**, and hand the user the

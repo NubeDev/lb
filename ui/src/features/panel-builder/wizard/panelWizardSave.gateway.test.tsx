@@ -156,6 +156,57 @@ describe("PanelWizard Save — the no-drift invariant + cap gate + isolation (re
     cleanup();
   });
 
+  it("PICK MODE: launched from a datasource (no dashboard), the wizard picks a destination on Save and lands the panel there", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Two dashboards exist; the wizard was opened without one (the Datasources "Create panel" entry).
+    await saveDashboard("d-pick-a", "Alpha", []);
+    await saveDashboard("d-pick-b", "Beta", []);
+
+    const user = userEvent.setup();
+    const exits: (string | undefined)[] = [];
+    render(
+      <WithDashboardCache ws={ws}>
+        <PanelWizard
+          ws={ws}
+          dashboardId="__pick__"
+          pickDashboard
+          prefill={{ source: "demo-buildings", sql: "SELECT 1 AS n" }}
+          onExit={(landOn) => exits.push(landOn)}
+        />
+      </WithDashboardCache>,
+    );
+    // The source is already bound from the prefill — the header nudges toward picking on the last step.
+    expect(screen.getByText("choose a dashboard on the last step")).toBeInTheDocument();
+    // Walk to Transform (Source → ChartType → Options → Transform).
+    await waitFor(() => expect(screen.getByLabelText("wizard source step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard chart-type step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard options step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard transform step")).toBeInTheDocument());
+
+    // Save is gated until a dashboard is chosen.
+    expect(screen.getByLabelText("save panel")).toBeDisabled();
+    // Pick the destination dashboard, then save.
+    await waitFor(() =>
+      expect(screen.getByRole("option", { name: "Beta" })).toBeInTheDocument(),
+    );
+    await user.selectOptions(screen.getByLabelText("destination dashboard"), "d-pick-b");
+    expect(screen.getByLabelText("save panel")).toBeEnabled();
+    await user.click(screen.getByLabelText("save panel"));
+
+    // The panel lands in the CHOSEN dashboard (Beta), not the other one, and onExit reports it.
+    await waitFor(async () => {
+      const d = await getDashboard("d-pick-b");
+      expect(d.cells.length).toBe(1);
+    });
+    expect((await getDashboard("d-pick-a")).cells.length).toBe(0);
+    expect(exits).toContain("d-pick-b");
+    cleanup();
+  });
+
   it("EDIT MODE: opening the wizard with editCell replaces the cell in place (same key + geometry), not append", async () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);

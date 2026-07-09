@@ -8,13 +8,18 @@
 // now the shared shadcn register so it reads as the same product as the Inbox reading pane.
 
 import { useEffect, useState } from "react";
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, RefreshCw, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { getInsight, listOccurrences } from "@/lib/insights/insights.api";
+import {
+  deleteOccurrence,
+  getInsight,
+  listOccurrences,
+} from "@/lib/insights/insights.api";
 import type { Insight, OccurrencePage, Severity, Status } from "@/lib/insights/insights.types";
 import { InsightActions } from "./InsightActions";
 
@@ -23,16 +28,20 @@ interface Props {
   /** Called after an ack/resolve lands so the parent list can refresh (and the pane re-opens
    *  with the new status). Optional — the pane also re-fetches its own record. */
   onActed?: () => void;
+  /** Called after the whole insight is deleted so the parent can close the pane + refresh. */
+  onDeleted?: () => void;
 }
 
 /** The detail pane for insight `id`. Fetches the full record + the first page of occurrences. */
-export function InsightDetail({ id, onActed }: Props): JSX.Element {
+export function InsightDetail({ id, onActed, onDeleted }: Props): JSX.Element {
   const [insight, setInsight] = useState<Insight | null>(null);
   const [occurrences, setOccurrences] = useState<OccurrencePage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  // Bumped after an ack/resolve so the pane re-fetches the record with its new status.
+  // Bumped after an ack/resolve (or an occurrence delete) so the pane re-fetches.
   const [version, setVersion] = useState(0);
+  // The occurrence row currently being deleted (by `oseq`) — drives its spinner + disables it.
+  const [deletingOcc, setDeletingOcc] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,6 +71,23 @@ export function InsightDetail({ id, onActed }: Props): JSX.Element {
   function handleActed() {
     setVersion((v) => v + 1);
     onActed?.();
+  }
+
+  async function handleDeleteOccurrence(oseq: number) {
+    setDeletingOcc(oseq);
+    setError(null);
+    try {
+      await deleteOccurrence(id, oseq);
+      // Drop the row locally for instant feedback, then re-fetch to stay authoritative.
+      setOccurrences((page) =>
+        page ? { ...page, items: page.items.filter((o) => o.oseq !== oseq) } : page,
+      );
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingOcc(null);
+    }
   }
 
   if (error) {
@@ -144,13 +170,31 @@ export function InsightDetail({ id, onActed }: Props): JSX.Element {
             {occurrences?.items.map((o) => (
               <li
                 key={o.oseq}
-                className="rounded-md border border-border bg-panel-2/30 px-2.5 py-1.5 text-xs"
+                className="group rounded-md border border-border bg-panel-2/30 px-2.5 py-1.5 text-xs"
               >
                 <div className="flex items-center justify-between gap-2">
                   <SeverityBadge severity={o.severity} />
-                  <span className="text-muted">
-                    {new Date(o.ts).toLocaleString()}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted">
+                      {new Date(o.ts).toLocaleString()}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Delete occurrence"
+                      title="Delete this occurrence"
+                      onClick={() => handleDeleteOccurrence(o.oseq)}
+                      disabled={deletingOcc !== null}
+                      className="size-6 text-muted opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      {deletingOcc === o.oseq ? (
+                        <RefreshCw size={12} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={12} />
+                      )}
+                    </Button>
+                  </div>
                 </div>
                 {o.data !== undefined && (
                   <pre className="mt-1.5 overflow-x-auto text-[10px] text-muted">
@@ -164,7 +208,11 @@ export function InsightDetail({ id, onActed }: Props): JSX.Element {
       </CardContent>
 
       <CardFooter className="flex-col items-stretch gap-2">
-        <InsightActions insight={insight} onActed={handleActed} />
+        <InsightActions
+          insight={insight}
+          onActed={handleActed}
+          onDeleted={onDeleted}
+        />
       </CardFooter>
     </Card>
   );

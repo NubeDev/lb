@@ -182,9 +182,19 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "resolve an insight (* → resolved; idempotent)",
     },
     HostTool {
+        tool: "insight.delete",
+        group: "insight",
+        description: "hard-delete an insight and cascade its occurrence ring (idempotent)",
+    },
+    HostTool {
         tool: "insight.occurrences",
         group: "insight",
         description: "read the per-insight occurrence ring (newest-first, keyset-paged)",
+    },
+    HostTool {
+        tool: "insight.occurrence.delete",
+        group: "insight",
+        description: "delete one row from an insight's occurrence ring by oseq (idempotent)",
     },
     HostTool {
         tool: "insight.sub.create",

@@ -126,6 +126,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
   datasource).
+- `admin/setup/` — **setup wizards**: the AI-facing playbook for building a guided, multi-step flow
+  in the Setup tab (`setup-wizards-scope.md`). The hard rule it enforces: a wizard is **pure
+  orchestration over existing editors/hooks/verbs** — if the surface it guides already exists, the
+  wizard **reuses that exact code** (or extracts a shared component), never a fork. Documents the
+  generic `StepFlow` framework, the four files a wizard touches, the required **reuse ledger**, and the
+  worked lessons (Appearance = provider-coupled editors reused as-is; Ingest = the "it didn't actually
+  create it" bug → a step that claims to create must persist before advancing, and the real-gateway
+  test must read the effect back).
 - `bus/` — the Zenoh message bus (motion). `unified-event-stream-scope.md` adds the **browser
   leg**: one multiplexed SSE connection per app session carrying every live feed as a
   cap-re-checked *subject* (run/channel/series/flows/telemetry/insights), replacing the

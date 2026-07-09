@@ -30,7 +30,7 @@ export function AuditLane({ hasAuditGrant }: Props) {
         <p className="max-w-md text-sm text-muted-foreground">
           This session does not hold the audit read grant, so the audit lane is hidden. The telemetry
           lane (operational, sampled, evictable) is independent and requires only{" "}
-          <code className="rounded-md bg-muted px-1">telemetry:read</code>.
+          <code className="rounded-md bg-muted-bg px-1 text-fg">telemetry:read</code>.
         </p>
       )}
     </div>

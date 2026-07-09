@@ -97,6 +97,38 @@ pub async fn resolve_insight(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `DELETE /insights/{id}` — hard-delete the insight and cascade its occurrence ring. Gated by
+/// `mcp:insight.delete:call` (a member-level destroy). Idempotent — deleting a gone insight is 204.
+pub async fn delete_insight(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::insight_delete(&gw.node.store, &principal, principal.ws(), &id)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /insights/{id}/occurrences/{oseq}` — delete one row from the occurrence ring by its
+/// stable per-insight sequence. Gated by `mcp:insight.occurrence.delete:call`. Idempotent (204).
+pub async fn delete_occurrence(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Path((id, oseq)): Path<(String, u64)>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let principal = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    lb_host::insight_occurrence_delete(&gw.node.store, &principal, principal.ws(), &id, oseq)
+        .await
+        .map_err(|e| (StatusCode::FORBIDDEN, e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 /// `GET /insights/{id}/occurrences` — the per-insight occurrence ring, newest-first. Pagination
 /// via `?cursor.seq=…&limit=…`.
 #[derive(Debug, Deserialize)]

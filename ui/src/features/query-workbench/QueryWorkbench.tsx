@@ -27,7 +27,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { compileQuery } from "@/lib/queries";
-import { Loader2, Maximize2, Minimize2, Play } from "lucide-react";
+import { BarChart3, Loader2, Maximize2, Minimize2, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { formatMs } from "@/lib/format/formatMs";
@@ -68,10 +68,16 @@ export interface QueryWorkbenchProps {
    *  (the wizard's Back/Next) passes its persisted `SqlSourceState` so the authored query survives
    *  the round-trip instead of resetting to an empty editor. */
   initial?: SqlSourceState;
+  /** Optional "turn this query into a dashboard panel" seam. When set, a "Create panel" action
+   *  appears in the run bar once a query has run; it's called with the SQL that actually ran (the
+   *  compiled SQL for PRQL). The host (the Datasources page) navigates to the panel wizard with the
+   *  source + SQL prefilled — the wizard then picks the destination dashboard on its Save step. Absent
+   *  for the binding homes (the wizard already IS the panel builder) and the surreal ad-hoc box. */
+  onCreatePanel?: (sql: string) => void;
 }
 
 /** The Query workbench — editor + run bar + results + (federation only) saved queries. */
-export function QueryWorkbench({ ws, sel, onSel, source, onUseSql, initial }: QueryWorkbenchProps) {
+export function QueryWorkbench({ ws, sel, onSel, source, onUseSql, initial, onCreatePanel }: QueryWorkbenchProps) {
   const isSurreal = source === SURREAL_LOCAL;
   const dialect: SqlDialect = isSurreal ? "surreal" : "standard";
 
@@ -211,6 +217,22 @@ export function QueryWorkbench({ ws, sel, onSel, source, onUseSql, initial }: Qu
           {run.loading ? <Loader2 size={13} className="animate-spin" /> : <Play size={13} />} Run
         </Button>
         <RunHistoryMenu entries={history} onRestore={onRestoreHistory} />
+        {/* Turn the query that just ran into a dashboard panel (federation only — the surreal ad-hoc
+            box has no datasource to bind). Enabled once a statement has run and returned; carries the
+            REAL SQL the engine saw (`run.lastSql`, the compiled SQL for PRQL). */}
+        {onCreatePanel && !isSurreal && (
+          <Button
+            aria-label="create panel from query"
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={!run.lastSql || run.loading}
+            title={run.lastSql ? "Build a dashboard panel from this query" : "Run a query first"}
+            onClick={() => run.lastSql && onCreatePanel(run.lastSql)}
+          >
+            <BarChart3 size={13} /> Create panel
+          </Button>
+        )}
         {lastDraftAt !== null && (
           <span
             aria-label="live draft indicator"

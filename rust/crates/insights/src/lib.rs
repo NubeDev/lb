@@ -22,6 +22,7 @@
 //! `docs/sessions/insights/insights-scaffold-session.md` for the punch-list.
 
 mod ack;
+mod delete;
 mod error;
 mod get;
 mod intent;
@@ -32,6 +33,7 @@ mod notify_apply;
 mod notify_state;
 mod notify_store;
 mod occ_append;
+mod occ_delete;
 mod occurrence;
 mod occurrences;
 mod origin;
@@ -56,6 +58,7 @@ mod insight;
 mod insight_id;
 
 pub use ack::ack;
+pub use delete::delete;
 pub use error::InsightsError;
 pub use get::get;
 pub use intent::{Intent, IntentKind};
@@ -66,6 +69,7 @@ pub use notify_apply::apply_intents;
 pub use notify_state::NotifyState;
 pub use notify_store::{all_notify, notify_id, read_notify, write_notify};
 pub use occ_append::{append_occurrence, validate_occurrence_size};
+pub use occ_delete::delete_occurrence;
 pub use occurrence::Occurrence;
 pub use occurrences::{occurrences, OccCursor, OccurrencePage};
 pub use origin::{Origin, OriginKind};

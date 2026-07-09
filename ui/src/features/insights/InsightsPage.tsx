@@ -103,7 +103,15 @@ export function InsightsPage({ ws }: Props): JSX.Element {
         >
           {selectedId ? (
             <div className="p-4">
-              <InsightDetail id={selectedId} onActed={() => void state.refresh()} />
+              <InsightDetail
+                id={selectedId}
+                onActed={() => void state.refresh()}
+                onDeleted={() => {
+                  // The insight is gone — close the pane and refresh the list so it drops out.
+                  setSelectedId(null);
+                  void state.refresh();
+                }}
+              />
             </div>
           ) : (
             <div className="p-4">

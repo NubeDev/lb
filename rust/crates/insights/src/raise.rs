@@ -53,7 +53,10 @@ pub struct RaiseInput {
     pub tags: std::collections::BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub occurrence: Option<RaiseOccurrence>,
-    /// Caller-injected logical timestamp (no wall-clock — testing §3).
+    /// Caller-injected logical timestamp (no wall-clock — testing §3). Serde-defaults to `0` so a
+    /// producer door may omit it; the host layer (`insight_raise`) backfills the wall-clock on `0`
+    /// (this crate stays wall-clock-free). A deterministic caller passes an explicit non-zero `ts`.
+    #[serde(default)]
     pub ts: u64,
     /// Host-stamped from the raising principal (`user:…`/`key:…`/`ext:…`) — un-spoofable. Serde
     /// defaults to empty so the MCP door can deserialize a caller's body that (correctly) omits it;
