@@ -1,8 +1,8 @@
 // The Dashboards manager page, driven against a REAL in-process gateway (dashboard scope; CLAUDE §9).
 // Covers the full-CRUD library surface: it lists seeded dashboards, creates one, imports a pasted
 // bundle (which appears in the table), and duplicates a row — all through the shipped `dashboard.*`
-// verbs + the real HTTP transport, admin caps from the real signed session. Export is a browser
-// download (no bytes to assert in jsdom); its data path is covered by `io/dashboardIo.gateway.test.tsx`.
+// verbs + the real HTTP transport, admin caps from the real signed session. Export opens the shared
+// JSON popout (view / copy / download); its store round-trip is covered by `io/dashboardIo.gateway.test.tsx`.
 
 import { describe, expect, it, beforeAll } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -113,5 +113,29 @@ describe("DashboardsManagerPage (real gateway)", () => {
     // The real record exists.
     const created = await getDashboard("fresh");
     expect(created.title).toBe("Fresh");
+  });
+
+  it("opens the export popout showing the bundle JSON (view / copy / download)", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await saveDashboard("ops", "Ops board", [cell]);
+
+    renderManager(ws);
+    // The per-row export icon opens the shared JSON popout with the real bundle bytes.
+    await user.click(await screen.findByLabelText("export Ops board"));
+
+    const payload = await screen.findByLabelText("json payload");
+    expect(payload.textContent).toContain(
+      '"kind": "lazybones.dashboard-bundle"',
+    );
+    expect(payload.textContent).toContain("Ops board");
+    // The popout offers a copy affordance + a download.
+    expect(
+      screen.getByRole("button", { name: /copy json/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /download/i }),
+    ).toBeInTheDocument();
   });
 });

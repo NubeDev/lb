@@ -75,6 +75,27 @@ Commands: `pnpm test` (unit) and `pnpm test:gateway` (real node). `tsc --noEmit`
 (the Grid raw-`<button>` warnings pre-exist that file's affordance pattern — the new export button follows
 it 1:1).
 
+## Follow-up (same session): a reusable "view / copy / download JSON" popout
+
+The user asked for a **popout modal that copies to clipboard and/or JSON, made reusable in the lib**, then
+used in the dashboard. Shipped as three shared pieces (one responsibility each):
+
+- `lib/clipboard/useClipboard.ts` — the one copy-to-clipboard hook (`copied`/`error`/`copy`), self-
+  resetting, graceful when the clipboard is denied.
+- `lib/download/downloadText.ts` — the shared file-download helper (promoted out of the dashboard-local
+  `io/downloadText.ts`, which is now deleted; `useDashboardIo` imports the shared one).
+- `components/ui/copy-button.tsx` — a `CopyButton` primitive over `useClipboard` (icon-only or labelled).
+- `components/app/json-popout.tsx` — `JsonPopout`: a modal that pretty-prints a `json` value (or a raw
+  `text`), with **Copy** + optional **Download**, degrading a non-serializable value instead of throwing.
+
+**Used in the dashboard:** the header "Export this dashboard", the per-widget grid export, and the
+manager's per-row + multi-select export now all **open the popout** (view → copy or download) instead of an
+immediate file download. `useDashboardIo` was slimmed to **import-only** (export is a pure read that builds
+a bundle and hands it to the popout — no orchestration state needed). Tests:
+`components/app/json-popout.test.tsx` (3 unit; a stubbed browser clipboard — a test-only shim of a browser
+API, not a fake backend) + the manager gateway test now asserts the export popout renders the real bundle
+JSON with copy/download affordances.
+
 ## Rejected alternatives
 
 - **Grafana-JSON verbs now** — rejected for this session: it's a large backend feature (mapper +

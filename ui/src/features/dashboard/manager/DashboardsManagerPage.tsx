@@ -38,8 +38,14 @@ import {
   saveDashboard,
   dashboardToPortable,
   slugFromTitle,
+  makeBundle,
 } from "@/lib/dashboard";
-import type { DashboardSummary, PortableDashboard } from "@/lib/dashboard";
+import type {
+  DashboardSummary,
+  PortableDashboard,
+  DashboardBundle,
+} from "@/lib/dashboard";
+import { JsonPopout } from "@/components/app/json-popout";
 import { isAdmin } from "@/lib/session";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
 import { DashboardCacheProvider } from "../cache/DashboardQueryProvider";
@@ -79,6 +85,11 @@ function ManagerInner({ ws, onOpen }: Props) {
     null,
   );
   const [importOpen, setImportOpen] = useState(false);
+  const [exportTarget, setExportTarget] = useState<{
+    title: string;
+    bundle: DashboardBundle;
+    filename: string;
+  } | null>(null);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -100,13 +111,29 @@ function ManagerInner({ ws, onOpen }: Props) {
       return next;
     });
 
+  // Build an export bundle from ids (the roster carries only summaries, so read each full record) and
+  // open the shared JSON popout to view / copy / download it.
+  const openExport = async (ids: string[], title: string, filename: string) => {
+    if (ids.length === 0) return;
+    const dashboards: PortableDashboard[] = [];
+    for (const id of ids)
+      dashboards.push(dashboardToPortable(await getDashboard(id)));
+    setExportTarget({
+      title,
+      bundle: makeBundle(dashboards, [], new Date().toISOString()),
+      filename,
+    });
+  };
   const exportSelected = () => {
     const ids = rows.filter((d) => selected.has(d.id)).map((d) => d.id);
-    if (ids.length === 0) return;
-    void io.exportBundle(ids, [], undefined, new Date().toISOString());
+    void openExport(
+      ids,
+      `Export ${ids.length} dashboard${ids.length === 1 ? "" : "s"}`,
+      "dashboards.lbdash.json",
+    );
   };
   const exportOne = (id: string) =>
-    void io.exportBundle([id], [], undefined, new Date().toISOString());
+    void openExport([id], "Export dashboard", `${bare(id)}.lbdash.json`);
 
   const duplicate = async (id: string) => {
     // Duplicate = read the full record (the roster carries only summaries) + save a fresh, non-colliding
@@ -369,6 +396,18 @@ function ManagerInner({ ws, onOpen }: Props) {
         busy={io.busy}
         onImport={doImport}
       />
+
+      {exportTarget && (
+        <JsonPopout
+          open
+          onOpenChange={(o) => !o && setExportTarget(null)}
+          title={exportTarget.title}
+          description="Copy this bundle or download it as a .lbdash.json file, then Import it anywhere."
+          json={exportTarget.bundle}
+          copyLabel="Copy JSON"
+          downloadName={exportTarget.filename}
+        />
+      )}
     </AppPage>
   );
 

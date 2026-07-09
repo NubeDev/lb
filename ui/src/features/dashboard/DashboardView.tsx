@@ -31,7 +31,6 @@ import { ConfirmDestructive } from "@/features/confirm/ConfirmDestructive";
 import { RefreshControl } from "./RefreshControl";
 import { useAutoRefresh } from "./useAutoRefresh";
 import { useDashboard } from "./useDashboard";
-import { useDashboardIo } from "./io/useDashboardIo";
 import { useSourcePicker } from "./builder/useSourcePicker";
 import { DashboardCacheProvider } from "./cache/DashboardQueryProvider";
 import type { Cell, Variable, Visibility } from "@/lib/dashboard";
@@ -39,9 +38,12 @@ import {
   dashboardToPortable,
   cellLabel,
   slugFromTitle,
+  makeBundle,
   BUNDLE_EXT,
+  type DashboardBundle,
 } from "@/lib/dashboard";
 import { cellToSpec } from "@/lib/panel";
+import { JsonPopout } from "@/components/app/json-popout";
 import type { DashboardSearch } from "@/features/routing/search";
 import { varsFromSearch, withVar } from "@/features/routing/search";
 import { useAppRoutingContext } from "@/features/routing/RoutingContextProvider";
@@ -87,7 +89,6 @@ function DashboardViewInner({
   onManage,
 }: Props) {
   const dash = useDashboard(ws);
-  const io = useDashboardIo();
   // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
   // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
   // the source combobox. See useSourcePicker's `enabled` opt.)
@@ -113,6 +114,38 @@ function DashboardViewInner({
   };
   const [varEditorOpen, setVarEditorOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The export popout — view/copy/download the bundle JSON for the whole dashboard OR a single widget.
+  // `null` = closed; otherwise the built bundle payload + a suggested filename.
+  const [exportTarget, setExportTarget] = useState<{
+    title: string;
+    bundle: DashboardBundle;
+    filename: string;
+  } | null>(null);
+  const exportDashboard = () => {
+    if (!current) return;
+    setExportTarget({
+      title: `Export “${current.title}”`,
+      bundle: makeBundle(
+        [dashboardToPortable(current)],
+        [],
+        new Date().toISOString(),
+      ),
+      filename: `${current.id}${BUNDLE_EXT}`,
+    });
+  };
+  const exportWidget = (i: string) => {
+    const src = current?.cells.find((c) => c.i === i);
+    if (!src) return;
+    setExportTarget({
+      title: `Export widget “${cellLabel(src)}”`,
+      bundle: makeBundle(
+        [],
+        [{ id: i, title: cellLabel(src), spec: cellToSpec(src) }],
+        new Date().toISOString(),
+      ),
+      filename: `${slugFromTitle(cellLabel(src))}${BUNDLE_EXT}`,
+    });
+  };
   // The roster rail folds to a thin strip (the minimize affordance in its header toggles this) so the
   // grid gets the full body width. Defaults open; the symmetric expand control lives in the strip.
   const [rosterOpen, setRosterOpen] = useState(true);
@@ -237,16 +270,8 @@ function DashboardViewInner({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                title="Export this dashboard"
-                disabled={io.busy}
-                onClick={() =>
-                  io.downloadBundle(
-                    [dashboardToPortable(current)],
-                    [],
-                    `${current.id}${BUNDLE_EXT}`,
-                    new Date().toISOString(),
-                  )
-                }
+                title="Export this dashboard — view / copy / download JSON"
+                onClick={exportDashboard}
               >
                 <Download size={13} />
               </Button>
@@ -330,6 +355,18 @@ function DashboardViewInner({
         />
       )}
 
+      {exportTarget && (
+        <JsonPopout
+          open
+          onOpenChange={(o) => !o && setExportTarget(null)}
+          title={exportTarget.title}
+          description="Copy this bundle or download it as a .lbdash.json file. Import it from the Dashboards manager (in this or another workspace)."
+          json={exportTarget.bundle}
+          copyLabel="Copy JSON"
+          downloadName={exportTarget.filename}
+        />
+      )}
+
       {!current ? (
         <AppEmptyState
           icon={LayoutGrid}
@@ -398,18 +435,7 @@ function DashboardViewInner({
                 onEditPanel={
                   onEditPanel ? (i) => onEditPanel(current.id, i) : undefined
                 }
-                onExportCell={(i) => {
-                  const src = current.cells.find((c) => c.i === i);
-                  if (!src) return;
-                  // Export ONE widget as a standalone panel entry (the non-layout spec), so it can be
-                  // imported into any dashboard. Reuses the shipped Cell→PanelSpec bridge.
-                  io.downloadBundle(
-                    [],
-                    [{ id: i, title: cellLabel(src), spec: cellToSpec(src) }],
-                    `${slugFromTitle(cellLabel(src))}${BUNDLE_EXT}`,
-                    new Date().toISOString(),
-                  );
-                }}
+                onExportCell={exportWidget}
                 onDuplicate={(i) => {
                   const src = current.cells.find((c) => c.i === i);
                   if (!src) return;

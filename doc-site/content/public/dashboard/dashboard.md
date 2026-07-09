@@ -15,7 +15,8 @@ bundle you export can only ever land in **your** workspace under **your** accoun
   (`/dashboards/manage`): a searchable table of every dashboard you can reach, with **create, rename,
   duplicate, delete**, plus **Import** and multi-select **Export**.
 - **Export** — export the open dashboard (header ↓ icon), one widget (its hover ↓ icon), or several
-  dashboards at once (select rows in the manager → **Export**). A `.lbdash.json` file downloads.
+  dashboards at once (select rows in the manager → **Export**). A popout opens showing the bundle JSON,
+  where you can **Copy** it to the clipboard or **Download** the `.lbdash.json` file.
 - **Import** — paste a bundle or choose a file; a preview shows exactly what it carries (and warns about
   anything it skipped) before you confirm. On an id collision you choose **Keep both** (a fresh, renamed
   copy — the default, never overwrites) or **Overwrite** (only your own records; the server enforces it).

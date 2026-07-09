@@ -1,8 +1,8 @@
-// Download a text string as a file (the export "save" step). One responsibility: turn a string + a
-// filename into a browser download via an object URL + a synthetic anchor click. Guarded for the
+// Download a text string as a file (the shared "save to disk" step). One responsibility: turn a string +
+// a filename into a browser download via an object URL + a synthetic anchor click. Guarded for the
 // non-DOM (test/SSR) path so importing this module never assumes a `document`. In the Tauri shell the
 // same anchor-download works (the webview honors `download`); a native save-dialog is a later polish,
-// not a blocker — the bytes are identical.
+// not a blocker — the bytes are identical. Shared lib (used by the JSON popout, dashboard export, …).
 
 /** Trigger a download of `text` as `filename` (MIME `application/json` by default). No-op (returns
  *  false) when there is no DOM. */
