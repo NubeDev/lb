@@ -203,13 +203,21 @@ impl Grid {
         Ok(self.head(1).collect_json()?.columns)
     }
 
-    /// Collect to a rhai array of maps — the bounded "give me the rows" escape hatch.
+    /// Collect to a rhai array of maps — the bounded "give me the rows" escape hatch. The catalog
+    /// promises `Array<Map>` and every consumer (the `chart` helpers' `as_map`, `emit` data, a plain
+    /// `for r in rows { r.col }`) reads named fields, so a positional row is normalized HERE, not at
+    /// each call site. Two seam shapes feed this: the **platform** path (`store.query`/SurrealDB)
+    /// returns JSON OBJECTS (`{"col": v, …}`) which pass through unchanged; the **federation** path
+    /// (DataFusion over sqlite/postgres — see `extensions/federation/src/query.rs::shape`) returns
+    /// column-aligned ARRAYS (`[v, …]`) which `row_to_map` zips with `columns` into a map here.
+    /// Honoring the contract at the seam boundary is what makes `timeseries(query(...).records(), "ts")`
+    /// a complete chart-ready rule on every source kind, not just the platform one.
     pub fn records(&self) -> Result<Array, Box<EvalAltResult>> {
         let grid = self.collect_json()?;
         Ok(grid
             .rows
             .into_iter()
-            .map(|r| Dynamic::from(json_to_dynamic(&r)))
+            .map(|r| Dynamic::from(row_to_map(&r, &grid.columns)))
             .collect())
     }
 }
@@ -291,6 +299,38 @@ pub fn string_list(arr: Array) -> Result<Vec<String>, Box<EvalAltResult>> {
                 .map_err(|_| rhai_err("expected a string in the array"))
         })
         .collect()
+}
+
+/// Normalize one collected row into a rhai Map, regardless of which seam shape produced it:
+///   - a JSON OBJECT (`{"col": v, …}`, the platform/Surreal path) → map of the same keys;
+///   - a JSON ARRAY (`[v, …]`, the federation column-aligned path) → map keyed by `columns`, in order;
+///   - a bare scalar (rare; a single-column result reduced to one cell) → single-cell map under the
+///     first column name (or `"value"` if `columns` is somehow empty — an honest shape, never a crash).
+///
+/// This is the seam boundary where the two wire shapes collapse to the one shape every cage consumer
+/// reads: a named map. Centralizing it here is what makes `records()` honor its `Array<Map>` catalog
+/// contract on every source kind, so the `chart` helpers and a plain `r.col` access work uniformly.
+pub fn row_to_map(row: &Value, columns: &[String]) -> Dynamic {
+    match row {
+        Value::Object(_) => json_to_dynamic(row),
+        Value::Array(cells) => {
+            let mut m = Map::new();
+            for (i, c) in cells.iter().enumerate() {
+                let key = columns
+                    .get(i)
+                    .cloned()
+                    .unwrap_or_else(|| format!("col_{i}"));
+                m.insert(key.into(), json_to_dynamic(c));
+            }
+            Dynamic::from_map(m)
+        }
+        other => {
+            let mut m = Map::new();
+            let key = columns.first().cloned().unwrap_or_else(|| "value".into());
+            m.insert(key.into(), json_to_dynamic(other));
+            Dynamic::from_map(m)
+        }
+    }
 }
 
 /// serde_json::Value → a rhai Dynamic (recursive).

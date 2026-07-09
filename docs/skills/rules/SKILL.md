@@ -211,6 +211,12 @@ Raw rows keep working — the helpers are normalization sugar, not a required la
 non-numeric column is a clear **author error** (surfaced verbatim in the run result), never a silent
 empty chart.
 
+`.records()` returns maps keyed by the SELECT aliases on **every** source kind — federation (sqlite/
+postgres, whose wire shape is column-aligned arrays) collapses to maps at the cage seam, so the same
+one-liner works against `demo-buildings` (federation) and a Surreal source alike. The catalog has a
+worked `category(...)` example: `buildings-intensity-chart` (a bar-chart of kWh per m² per building);
+bind a panel to `{tool:"rules.run", args:{rule_id:"buildings-intensity-chart"}}` and it renders.
+
 **Heavy rules + fast refresh don't mix.** A rule re-runs per panel per refresh (bounded by `RuleLimits`
 + the `viz.query` timeout, but **not** by frequency). A big `frame()`/slow federation query on a 5 s
 auto-refresh multiplies — same exposure as a heavy SQL source. Keep expensive rules on slow refreshes.
