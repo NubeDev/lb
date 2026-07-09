@@ -85,6 +85,17 @@ describe("normalizeBranding", () => {
     expect(got.loginHeading).toBeUndefined();
   });
 
+  it("keeps a set loginSubheading", () => {
+    const got = normalizeBranding({ loginSubheading: "Access your Acme workspace." });
+    expect(got.loginSubheading).toBe("Access your Acme workspace.");
+  });
+
+  it("keeps a valid loginLogoDataUri but drops a non-image string", () => {
+    const uri = "data:image/png;base64,AAAA";
+    expect(normalizeBranding({ loginLogoDataUri: uri }).loginLogoDataUri).toBe(uri);
+    expect(normalizeBranding({ loginLogoDataUri: "not-a-data-uri" }).loginLogoDataUri).toBeUndefined();
+  });
+
   it("never surfaces the product name — the default is neutral, the placeholders are generic", () => {
     // The platform name ("Lazybones") must never appear in chrome or editor hints. The compiled
     // default is empty (no brand until an admin sets one); the editor placeholders are generic

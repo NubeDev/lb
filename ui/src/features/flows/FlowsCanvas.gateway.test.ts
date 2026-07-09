@@ -72,6 +72,12 @@ describe("flows canvas (real gateway)", () => {
     // The webhook source's config is just `{webhook_id}` (the picker over `webhook.list`).
     const webhook = nodes.find((d) => d.type === "webhook");
     expect((webhook?.config.properties as Record<string, unknown> | undefined)?.webhook_id).toBeTruthy();
+    // The rhai node's `source` declares `format: "rhai"` so SchemaForm renders it in the shared code
+    // editor (not a one-line input). Assert the hint survives the real descriptor round-trip — this is
+    // what the running node must serve for the editor to appear (a stale node serves the old shape).
+    const rhai = nodes.find((d) => d.type === "rhai");
+    const source = (rhai?.config.properties as Record<string, { format?: string }> | undefined)?.source;
+    expect(source?.format).toBe("rhai");
     expect(types).toContain("mqtt.publish");
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");
@@ -95,6 +101,54 @@ describe("flows canvas (real gateway)", () => {
 
     const list = await listFlows();
     expect(list.map((f) => f.id)).toContain("cooler");
+  });
+
+  it("persists node canvas positions through save → get (the drag-layout fix)", async () => {
+    await signInReal("user:ada", nextWs());
+    const positioned: Flow = {
+      id: "positioned",
+      name: "positioned",
+      version: 1,
+      failurePolicy: "halt",
+      nodes: [
+        { id: "start", type: "trigger", needs: [], config: { mode: "manual" }, position: { x: 700, y: 40 } },
+        { id: "a", type: "count", needs: ["start"], config: {}, position: { x: 123, y: 456 } },
+      ],
+    };
+    await saveFlow(positioned);
+    const got = await getFlow("positioned");
+    const byId = Object.fromEntries(got.nodes.map((n) => [n.id, n]));
+    // Geometry round-trips exactly — a reloaded canvas renders the dragged layout, not the grid.
+    expect(byId.start.position).toEqual({ x: 700, y: 40 });
+    expect(byId.a.position).toEqual({ x: 123, y: 456 });
+    // And the canvas serialization surfaces it (flowToNodes prefers the stored position).
+    expect(flowToNodes(got).find((n) => n.id === "a")!.position).toEqual({ x: 123, y: 456 });
+  });
+
+  it("rename is a name-only save that preserves the graph + geometry", async () => {
+    await signInReal("user:ada", nextWs());
+    const original: Flow = {
+      id: "renameable",
+      name: "Original Name",
+      version: 1,
+      failurePolicy: "halt",
+      nodes: [{ id: "start", type: "trigger", needs: [], config: { mode: "manual" }, position: { x: 300, y: 90 } }],
+    };
+    await saveFlow(original);
+    // The rename path (useFlows.rename): read the flow, save it back with a new name only.
+    const target = await getFlow("renameable");
+    await saveFlow({ ...target, name: "New Name" });
+
+    const got = await getFlow("renameable");
+    expect(got.name).toBe("New Name");
+    // The graph + geometry survive a rename (a title-only save must not blank the layout).
+    expect(got.nodes[0].type).toBe("trigger");
+    expect(got.nodes[0].position).toEqual({ x: 300, y: 90 });
+    // The version bumped (a save is a new version — Decision 1).
+    expect(got.version).toBeGreaterThan(original.version);
+    // The roster reflects the new name.
+    const list = await listFlows();
+    expect(list.find((f) => f.id === "renameable")?.name).toBe("New Name");
   });
 
   it("save REJECTS an invalid DAG inline (the host's 400 — the canvas edge error)", async () => {

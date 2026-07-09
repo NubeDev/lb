@@ -19,6 +19,7 @@ mod bus;
 mod callback;
 mod channel;
 mod channel_registry;
+mod credential;
 mod dashboard;
 mod dbview;
 mod devkit;
@@ -124,9 +125,11 @@ pub use assets::{
 // write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
 // through `lb_host` without depending on `lb_assets` directly.
 pub use authz::{
-    authz_resolve, call_authz_tool, grants_assign, grants_list, grants_revoke, resolve_caps,
-    revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
-    teams_list, token_revoked, AuthzError, AuthzRole, CapSource, Grant, SourcedCap, Subject, Team,
+    admin_only_caps, author_caps, authz_resolve, call_authz_tool, ensure_builtin_authz_roles,
+    grants_assign, grants_list, grants_revoke, member_role_caps, resolve_caps, revoke_subject,
+    revoke_tokens, roles_define, roles_delete, roles_list, teams_create, teams_list, token_revoked,
+    viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant,
+    SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
@@ -139,12 +142,13 @@ pub use channel::{
 };
 pub use channel_registry::{channel_create, channel_list, register_on_post, ChannelRecord};
 pub use dashboard::{
-    builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells, dashboard_catalog,
-    dashboard_delete, dashboard_get, dashboard_list, dashboard_pin, dashboard_save,
-    dashboard_share, mint_cell_from_envelope, pin_descriptor, seed_iot_demo, Action, Cell,
-    Dashboard, DashboardError, DashboardSummary, ExtWidget as DashboardExtWidget, SeedReport,
-    Source as CellSource, Target as CellTarget, Variable as DashboardVariable,
-    Visibility as DashboardVisibility, WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
+    builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells,
+    dashboard_access_check, dashboard_catalog, dashboard_delete, dashboard_get, dashboard_list,
+    dashboard_pin, dashboard_save, dashboard_share, mint_cell_from_envelope, pin_descriptor,
+    seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError, DashboardSummary,
+    DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport, Source as CellSource,
+    Target as CellTarget, Variable as DashboardVariable, Visibility as DashboardVisibility,
+    WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
     MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
@@ -162,8 +166,8 @@ pub use ext::{
 };
 pub use federation::{
     call_federation_tool, datasource_add, datasource_list, datasource_remove, datasource_test,
-    federation_mirror, federation_query, resolve_datasource, Datasource, DatasourceSummary,
-    FederationError,
+    enforce_endpoint, federation_mirror, federation_query, put_datasource, resolve_datasource,
+    Datasource, DatasourceSummary, FederationError,
 };
 pub use flows::error::FlowsError;
 pub use flows::{
@@ -186,6 +190,10 @@ pub mod flow_engine {
     pub use crate::flows::retain_runs::{retain_runs, DEFAULT_FINISHED_RUN_CAP};
     pub use crate::flows::run_store::set_run_status;
 }
+pub use credential::{
+    call_credential_tool, credential_verify, identity_set_credential, CredentialCheck,
+    CredentialError,
+};
 pub use host_tools::{
     call_host_tool, call_secret_tool, host_fs_list, host_fs_stat, host_net_info, host_net_reach,
     host_time_now, host_time_zones, HostFsEntry, HostFsList, HostFsStat, HostNetAddress,
@@ -232,10 +240,11 @@ pub use native::{
 pub use nav::{
     call_nav_tool, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares,
     nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare,
-    Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
+    reach_caps, reach_check, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility, MAX_HIDDEN as NAV_MAX_HIDDEN,
     MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP,
+    REACH_ALL,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
@@ -245,6 +254,10 @@ pub use panel::{
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
 // into `lb_supervisor` internals.
+/// A fresh sortable ULID (re-exported from `lb_store`) — the gateway's event-stream hub mints its
+/// per-connection `sid` with it, without taking a direct `lb-store` dependency (it already depends on
+/// `lb-host`). One id source for the whole node.
+pub use lb_store::new_ulid;
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,

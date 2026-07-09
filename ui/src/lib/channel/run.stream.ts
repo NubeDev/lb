@@ -6,8 +6,7 @@
 // real gateway — in the Tauri shell / tests there is no gateway URL and the caller skips it (there the
 // answer still arrives via the channel post→refresh / SSE round trip). Sibling of `channel.stream.ts`.
 
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 
 /** One observable thing in a run — mirrors the Rust `RunEvent` (`#[serde(tag="type", kebab-case)]`,
  *  `rust/crates/run-events/src/event.rs`), so the wire `type` values are kebab-case. */
@@ -40,28 +39,21 @@ export function openRunStream(
   onEvent: (event: RunEvent) => void,
   onError?: () => void,
 ): RunStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  const url = `${base}/runs/${encodeURIComponent(job)}/stream?token=${encodeURIComponent(
-    sessionToken(),
-  )}`;
-  const es = new EventSource(url);
-
-  // The gateway emits `event: run` frames, each carrying one JSON-encoded RunEvent.
-  es.addEventListener("run", (e) => {
-    try {
-      onEvent(JSON.parse((e as MessageEvent).data) as RunEvent);
-    } catch {
-      // a malformed frame never breaks the stream
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub (unified-event-stream scope): the `run:{job}` subject rides the
+  // one multiplexed connection. The frame shape is unchanged — the gateway wraps the SAME `event: run`
+  // payload in the mux envelope, and the hub hands it back verbatim. The gate (`mcp:agent.watch:call`)
+  // still runs on subscribe; a deny arrives as an opaque `error` frame, which we surface via `onError`.
+  const unsubscribe = eventHub.subscribeSubject(`run:${job}`, (frame) => {
+    if (frame.event === "run") {
+      try {
+        onEvent(JSON.parse(frame.data) as RunEvent);
+      } catch {
+        // a malformed frame never breaks the stream
+      }
+    } else if (frame.event === "error") {
+      onError?.();
     }
   });
-
-  // An EventSource error covers a connect refusal (403/401 before any frame) AND a mid-stream drop.
-  // We report it and let the caller decide (degrade / show retry); EventSource itself would otherwise
-  // silently retry forever, which reads as a dead spinner.
-  if (onError) es.addEventListener("error", () => onError());
-
-  return { close: () => es.close() };
+  return { close: unsubscribe };
 }

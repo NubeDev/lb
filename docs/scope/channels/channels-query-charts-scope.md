@@ -191,5 +191,5 @@ All resolved in the build session ([channels-query-charts-session.md](../../sess
 - `ui/src/features/datasources/useDatasourceQuery.ts` — the existing real `federation.query` client seam.
 - `README.md` §6 (channels/bus), §6.7 (secret redaction), §6.10 (jobs — for the future batch case),
   §3 (the non-negotiables this honors).
-- `docs/public/channels/channels.md` — promotion target on ship.
+- `doc-site/content/public/channels/channels.mdx` — promotion target on ship.
 - Future: a dashboards scope can consume `query_result` items as panels.

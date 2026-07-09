@@ -93,7 +93,7 @@ crash).
   `docs/scope/frontend/query-builder/` — start with `query-builder-10x-scope.md` (umbrella); slice 3
   (`query-workbench-view-scope.md`) is the new `+ Open view → Query` pane — it follows the `workbenchPanes.tsx`
   pages-as-panes registry + `OpenViewMenu.tsx` documented in the tables above (one `VIEW_PANES` line).
-- **Public:** `docs/public/frontend/data-studio.md`.
+- **Public:** `doc-site/content/public/frontend/data-studio.mdx`.
 - **Sessions (the messy middle):** `docs/sessions/frontend/data-studio-10x-session.md`,
   `data-studio-rail-session.md`, `data-studio-v2-workbench-session.md`,
   `data-studio-v3-stacked-view-session.md`, `dashboard-open-in-data-studio-session.md`.

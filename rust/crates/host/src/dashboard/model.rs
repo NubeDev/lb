@@ -114,7 +114,7 @@ pub struct Target {
 /// All v2/v3 fields are serde-defaulted so a v1 series cell deserializes unchanged (a v1 cell is a v2
 /// cell whose tool set is the four read verbs; a v2 cell is a v3 cell with one target + empty
 /// field-config). The receiver rejects an unknown major `v`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct Cell {
     /// react-grid-layout item key (stable per cell).
     pub i: String,

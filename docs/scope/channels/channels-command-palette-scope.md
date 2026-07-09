@@ -207,4 +207,4 @@ All resolved in the build session ([channels-command-palette-session.md](../../s
 - `rust/crates/host/src/tool_call.rs` — the one MCP bridge every emitted call dispatches through.
 - `rust/crates/host/src/authz/grants.rs` (`grants_list`) — the cap-list the catalog intersects with.
 - `README.md` §3 (rules 5/7), §6 (channels/bus), §6.7 (secret redaction).
-- `docs/public/channels/channels.md` — promotion target on ship.
+- `doc-site/content/public/channels/channels.mdx` — promotion target on ship.

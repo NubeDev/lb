@@ -295,6 +295,6 @@ Resolved in the build session ([channels-agent-session.md](../../sessions/channe
 - `rust/crates/host/src/channel/query_worker.rs` / `post.rs` — the worker + hook point to sit beside.
 - `README.md` §6 (channels/bus), §6.9 (jobs), §6.16 (shared agents), §6.14/§6.15 (gateway run-SSE), §7
   (tenancy), §3 (the non-negotiables this honors).
-- `docs/public/channels/channels.md` — promotion target on ship.
+- `doc-site/content/public/channels/channels.mdx` — promotion target on ship.
 </content>
 </invoke>

@@ -125,7 +125,7 @@ pub fn core_descriptors() -> Vec<NodeDescriptor> {
                     "required": ["source"],
                     "additionalProperties": false,
                     "properties": {
-                        "source": {"type": "string"},
+                        "source": {"type": "string", "format": "rhai", "description": "the rhai source the cage runs (message envelope in, findings out)"},
                         "timeout_ms": {"type": "integer", "minimum": 1, "description": "override the rule cage's wall-clock deadline for this node, in ms"}
                     }
                 }),

@@ -7,8 +7,7 @@
 // the caller skips opening it (live updates there come from the post→refresh round trip, S2).
 
 import type { Item } from "./channel.types";
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 
 /** Callbacks for the SSE event kinds the gateway emits. */
 export interface ChannelStreamHandlers {
@@ -30,50 +29,27 @@ export function openChannelStream(
   channel: string,
   handlers: ChannelStreamHandlers,
 ): ChannelStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  // The token rides as a query param: `EventSource` cannot set an Authorization header, and the
-  // gateway's stream route authenticates by `?token=` for exactly this reason (the hard wall holds —
-  // workspace + caps come from the verified token).
-  const url = `${base}/channels/${encodeURIComponent(channel)}/stream?token=${encodeURIComponent(
-    sessionToken(),
-  )}`;
-  const es = new EventSource(url);
-
-  es.addEventListener("message", (e) => {
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub: the `channel:{channel}` subject rides the one multiplexed
+  // connection. The gateway merges the same three feeds (message/delete/presence) into this subject, so
+  // the frame handling below is unchanged — the hub just hands each `{event, data}` back verbatim.
+  const unsubscribe = eventHub.subscribeSubject(`channel:${channel}`, (frame) => {
     try {
-      handlers.onMessage(JSON.parse((e as MessageEvent).data) as Item);
-    } catch {
-      // a malformed frame never breaks the stream
-    }
-  });
-
-  if (handlers.onDelete) {
-    es.addEventListener("delete", (e) => {
-      try {
-        const { id } = JSON.parse((e as MessageEvent).data) as { id: string };
+      if (frame.event === "message") {
+        handlers.onMessage(JSON.parse(frame.data) as Item);
+      } else if (frame.event === "delete") {
+        const { id } = JSON.parse(frame.data) as { id: string };
         handlers.onDelete?.(id);
-      } catch {
-        /* ignore */
-      }
-    });
-  }
-
-  if (handlers.onPresence) {
-    es.addEventListener("presence", (e) => {
-      try {
-        const { member, present } = JSON.parse((e as MessageEvent).data) as {
+      } else if (frame.event === "presence") {
+        const { member, present } = JSON.parse(frame.data) as {
           member: string;
           present: boolean;
         };
         handlers.onPresence?.(member, present);
-      } catch {
-        /* ignore */
       }
-    });
-  }
-
-  return { close: () => es.close() };
+    } catch {
+      // a malformed frame never breaks the stream
+    }
+  });
+  return { close: unsubscribe };
 }

@@ -20,6 +20,7 @@ mod channel_registry;
 mod dashboard;
 mod datasources;
 mod dbview;
+mod events;
 mod ext;
 mod ext_ui;
 mod flows;
@@ -48,6 +49,7 @@ mod run_token_refresh;
 mod series_stream;
 mod store_query;
 pub(crate) mod stream;
+mod surface;
 mod system;
 mod telemetry_stream;
 mod webhook;
@@ -84,6 +86,7 @@ pub use dashboard::{
 };
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
+pub use events::{events_stream, events_subscribe, events_unsubscribe};
 pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, reset_extension,
     uninstall_extension,
@@ -133,6 +136,7 @@ pub use run_token_refresh::refresh_run_token;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};
 pub use stream::channel_stream;
+pub use surface::surface_reach;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
 pub use webhook::post_webhook;

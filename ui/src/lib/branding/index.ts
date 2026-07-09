@@ -18,3 +18,4 @@ export {
   readWorkspaceDefaultBranding,
 } from "./branding-prefs";
 export { BRAND_IMAGE_ACCEPT, readBrandImage } from "./branding-assets";
+export { loadCachedBrand, saveCachedBrand, clearCachedBrand } from "./branding-cache";

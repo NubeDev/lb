@@ -93,7 +93,21 @@ pub struct Node {
     /// The node's config, validated against its descriptor's schema at save.
     #[serde(default)]
     pub config: Value,
+    /// The node's canvas position (editor geometry). Optional + serde-default so pre-geometry flows
+    /// still load (no migration) and a headless caller may omit it; the editor falls back to a grid
+    /// layout when absent. Pure view state — it never affects DAG math, validation, or run order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub position: Option<Position>,
 }
+
+/// A node's canvas coordinates (editor geometry only — see `Node::position`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Position {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Eq for Position {}
 
 impl Node {
     pub fn new(id: impl Into<String>, node_type: impl Into<String>) -> Self {
@@ -103,6 +117,7 @@ impl Node {
             needs: Vec::new(),
             with: serde_json::Map::new(),
             config: Value::Null,
+            position: None,
         }
     }
 }
@@ -389,6 +404,7 @@ mod tests {
             needs: needs.iter().map(|s| s.to_string()).collect(),
             with: Default::default(),
             config: json!({}),
+            position: None,
         }
     }
 

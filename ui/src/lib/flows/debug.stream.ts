@@ -8,8 +8,7 @@
 // (Tauri/tests) — the caller then renders "stream unavailable", not an error. The token rides as
 // `?token=` (EventSource can't set an Authorization header).
 
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 
 import type { DebugMessage } from "./flows.types";
 
@@ -25,22 +24,16 @@ export function openFlowDebugStream(
   flowId: string,
   onMessage: (msg: DebugMessage) => void,
 ): FlowDebugStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  const url = `${base}/flows/${encodeURIComponent(flowId)}/debug/stream?token=${encodeURIComponent(
-    sessionToken(),
-  )}`;
-  const es = new EventSource(url);
-
-  es.addEventListener("debug", (e) => {
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub: the `flow-debug:{flowId}` subject rides the one multiplexed
+  // connection. Deltas-only (no snapshot), exactly as the dedicated route; `event: debug` unchanged.
+  const unsubscribe = eventHub.subscribeSubject(`flow-debug:${flowId}`, (frame) => {
+    if (frame.event !== "debug") return;
     try {
-      onMessage(JSON.parse((e as MessageEvent).data) as DebugMessage);
+      onMessage(JSON.parse(frame.data) as DebugMessage);
     } catch {
       // a malformed frame never breaks the stream
     }
   });
-
-  return { close: () => es.close() };
+  return { close: unsubscribe };
 }

@@ -30,8 +30,9 @@ export interface FlowNodeData extends Record<string, unknown> {
 
 export type FlowCanvasNode = Node<FlowNodeData, "flow">;
 
-/** A simple left-to-right grid layout for a node index (the record holds no geometry — the canvas is
- *  a view of the DAG, not a stored layout). Columns of three keep a small DAG readable. */
+/** A simple left-to-right grid layout for a node index — the FALLBACK used only when a node carries
+ *  no stored `position` (a pre-geometry flow, or a node just added by a headless author). Columns of
+ *  three keep a small DAG readable until the author drags nodes and saves their geometry. */
 function layout(index: number): { x: number; y: number } {
   return { x: (index % 3) * 240, y: Math.floor(index / 3) * 130 };
 }
@@ -44,7 +45,9 @@ export function flowToNodes(
   return flow.nodes.map((n, i) => ({
     id: n.id,
     type: "flow",
-    position: layout(i),
+    // Stored geometry wins; the grid `layout(i)` is only the fallback for a node that never saved a
+    // position (a pre-geometry flow). This is what makes a dragged layout persist across reloads.
+    position: n.position ?? layout(i),
     data: {
       type: n.type,
       kind: opts.kind?.[n.id],
@@ -69,7 +72,7 @@ export function flowToEdges(flow: Flow): Edge[] {
 /** React Flow nodes + edges → a flow's `nodes[]` (the inverse — a faithful save). Each canvas node
  *  becomes a graph node; each edge `source->target` becomes `target.needs += source`. Preserves
  *  `type`/`config`/`with` from the prior flow (canvas edits topology + node type; the SchemaForm
- *  edits config). */
+ *  edits config) and serializes the node's canvas `position` so a dragged layout persists. */
 export function nodesToFlowNodes(
   nodes: FlowCanvasNode[],
   edges: Edge[],
@@ -89,6 +92,9 @@ export function nodesToFlowNodes(
       needs: needsById.get(n.id) ?? [],
       with: prev?.with,
       config: prev?.config,
+      // Persist the canvas geometry so a dragged layout survives a save/reload (round its coords to
+      // avoid churning the record with sub-pixel drag noise).
+      position: { x: Math.round(n.position.x), y: Math.round(n.position.y) },
     };
   });
 }

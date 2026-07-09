@@ -58,7 +58,7 @@ build-time embed). This slice closes the gaps between them.
 - Vector/semantic retrieval over skill bodies (agent-memory v2 territory).
 - Workspace-authored grounding docs — already possible today (`assets.put_skill`, user tier);
   nothing new needed.
-- Seeding `docs/scope/` or `docs/public/` wholesale — scope docs describe *asks*, not shipped
+- Seeding `docs/scope/` or `doc-site/content/public/` wholesale — scope docs describe *asks*, not shipped
   truth; grounding the agent in unshipped designs would *cause* confusion, not cure it. Skills
   are written from live behavior (the skills rule) — that boundary is the point.
 

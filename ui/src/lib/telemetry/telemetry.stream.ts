@@ -8,8 +8,7 @@
 // `?token=` query param (EventSource can't set headers); the gateway authenticates by it, checks
 // `mcp:telemetry.read:call` (403 before any body), and the bus subject is ws-walled.
 
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 import { normalizeRow } from "./telemetry.api";
 import type { TelemetryRow } from "./telemetry.types";
 
@@ -24,22 +23,17 @@ export interface TelemetryStream {
 export function openTelemetryStream(
   onRow: (row: TelemetryRow) => void,
 ): TelemetryStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  const url = `${base}/telemetry/stream?token=${encodeURIComponent(sessionToken())}`;
-  const es = new EventSource(url);
-
-  const fold = (e: Event) => {
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub: the `telemetry` subject rides the one multiplexed connection.
+  // Both the catch-up `snapshot` frames and the live `telemetry` frames fold through `normalizeRow`,
+  // exactly as the dedicated route emitted them.
+  const unsubscribe = eventHub.subscribeSubject("telemetry", (frame) => {
+    if (frame.event !== "snapshot" && frame.event !== "telemetry") return;
     try {
-      onRow(normalizeRow(JSON.parse((e as MessageEvent).data) as Record<string, unknown>));
+      onRow(normalizeRow(JSON.parse(frame.data) as Record<string, unknown>));
     } catch {
       // a malformed frame never breaks the stream
     }
-  };
-  es.addEventListener("snapshot", fold);
-  es.addEventListener("telemetry", fold);
-
-  return { close: () => es.close() };
+  });
+  return { close: unsubscribe };
 }

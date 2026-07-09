@@ -3,13 +3,16 @@
 // vnodes (no raw HTML reaches the DOM unless `rehype-raw` is added — we don't), so `dompurify` isn't
 // needed here. ```json fenced blocks``` render as the workbench's INTERACTIVE JSON tree
 // (`@microlink/react-json-view` — already a dep, used by `features/rules/JsonTree`); other fenced
-// blocks render as a styled `<pre><code>`; inline code styles inline. One responsibility (FILE-LAYOUT):
-// markdown in, React out — no data/effects.
+// blocks render as a styled `<pre><code>`; inline code styles inline. Every fenced block carries a
+// ChatGPT-style header (language label + per-block "Copy code" button via `CodeBlockCopyButton`).
+// One responsibility (FILE-LAYOUT): markdown in, React out — no data/effects (the copy state lives in
+// `CodeBlockCopyButton`, a separate file).
 
 import type { ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import ReactJson from "@microlink/react-json-view";
+import { CodeBlockCopyButton } from "./CodeBlockCopyButton";
 
 interface Props {
   /** The markdown source — typically `payload.answer` or a streamed `feed.text` delta accumulation. */
@@ -29,29 +32,59 @@ function tryParseJson(text: string): unknown | null {
   }
 }
 
-/** Render a parsed JSON value as the interactive tree. Primitives get wrapped so the tree has a root. */
-function JsonBlock({ value }: { value: unknown }) {
+/** A fenced block's header bar — the language label on the left, the per-block "Copy code" button on
+ *  the right (the ChatGPT-style affordance). Pure presentation; the copy state lives in
+ *  `CodeBlockCopyButton`. */
+function BlockHeader({ lang, raw }: { lang: string; raw: string }) {
+  return (
+    <div className="flex items-center justify-between border-b border-border bg-panel-2/60 px-2 py-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">{lang}</span>
+      <CodeBlockCopyButton text={raw} />
+    </div>
+  );
+}
+
+/** Render a parsed JSON value as the interactive tree, with a Copy-code header (copies the raw source). */
+function JsonBlock({ value, raw }: { value: unknown; raw: string }) {
   const root = value !== null && typeof value === "object" ? (value as object) : { value };
   return (
     <div
       aria-label="json block"
-      className="my-2 rounded-md border border-border bg-panel-2/40 p-2"
+      className="my-2 overflow-hidden rounded-md border border-border bg-panel-2/40"
     >
-      <ReactJson
-        src={root}
-        name={false}
-        theme={JSON_THEME}
-        iconStyle="triangle"
-        indentWidth={2}
-        collapsed={false}
-        groupArraysAfterLength={100}
-        collapseStringsAfterLength={200}
-        displayDataTypes={false}
-        displayObjectSize
-        enableClipboard
-        quotesOnKeys={false}
-        style={{ backgroundColor: "transparent", fontFamily: "var(--font-mono, monospace)" }}
-      />
+      <BlockHeader lang="json" raw={raw} />
+      <div className="p-2">
+        <ReactJson
+          src={root}
+          name={false}
+          theme={JSON_THEME}
+          iconStyle="triangle"
+          indentWidth={2}
+          collapsed={false}
+          groupArraysAfterLength={100}
+          collapseStringsAfterLength={200}
+          displayDataTypes={false}
+          displayObjectSize
+          enableClipboard
+          quotesOnKeys={false}
+          style={{ backgroundColor: "transparent", fontFamily: "var(--font-mono, monospace)" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** A fenced non-JSON code block — header (lang + copy) over a scrollable `<pre><code>`. */
+function CodeBlock({ lang, raw }: { lang: string; raw: string }) {
+  return (
+    <div
+      aria-label="code block"
+      className="my-2 overflow-hidden rounded-md border border-border bg-panel-2/60"
+    >
+      <BlockHeader lang={lang} raw={raw} />
+      <pre className="overflow-x-auto p-2 text-xs leading-5">
+        <code className="font-mono text-fg/90">{raw}</code>
+      </pre>
     </div>
   );
 }
@@ -73,15 +106,11 @@ export function MarkdownView({ children }: Props) {
             // JSON tree (interactive) — only when the block parses to a value.
             if (match?.[1] === "json") {
               const parsed = tryParseJson(raw);
-              if (parsed !== null) return <JsonBlock value={parsed} />;
+              if (parsed !== null) return <JsonBlock value={parsed} raw={raw} />;
             }
 
             if (isBlock) {
-              return (
-                <pre className="my-2 overflow-x-auto rounded-md border border-border bg-panel-2/60 p-2 text-xs leading-5">
-                  <code className="font-mono text-fg/90">{raw}</code>
-                </pre>
-              );
+              return <CodeBlock lang={match?.[1] ?? "text"} raw={raw} />;
             }
             // Inline code.
             return (

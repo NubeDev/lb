@@ -14,6 +14,14 @@ pub enum Surface {
     /// `host:port` (datasources scope: `net:tls:tsdb.acme:5432`). Enforced pre-connect by the
     /// supervisor (`requested ∩ admin_approved`); core crates never open sockets.
     Net,
+    /// Page **reach** — may this subject OPEN a core surface (page)? `reach:<surface>:view`
+    /// (nav-reach scope). Orthogonal to the data caps that gate a page's tiles/reads: a subject may
+    /// hold `series.read` (so their dashboard tile renders) yet lack `reach:ingest:view` (so the
+    /// Ingest page 403s). The reach caps are DERIVED from the subject's resolved nav at login — a
+    /// curated nav yields one `reach:<surface>:view` per menu surface; a fallback (no nav) yields the
+    /// wildcard `reach:*:view` (reaches all, so a default member/admin is never locked out). The nav
+    /// gates reach without widening: reach is only emitted for surfaces the resolver already kept.
+    Reach,
 }
 
 impl Surface {
@@ -24,6 +32,7 @@ impl Surface {
             Surface::Bus => "bus",
             Surface::Secret => "secret",
             Surface::Net => "net",
+            Surface::Reach => "reach",
         }
     }
 
@@ -34,6 +43,7 @@ impl Surface {
             "bus" => Some(Surface::Bus),
             "secret" => Some(Surface::Secret),
             "net" => Some(Surface::Net),
+            "reach" => Some(Surface::Reach),
             _ => None,
         }
     }
@@ -50,6 +60,8 @@ pub enum Action {
     Get,
     /// Open an outbound connection (the `net` surface): `net:tls:host:5432:connect`.
     Connect,
+    /// Open (reach) a core surface (the `reach` surface): `reach:rules:view` (nav-reach scope).
+    View,
     Any,
 }
 
@@ -63,6 +75,7 @@ impl Action {
             Action::Sub => "sub",
             Action::Get => "get",
             Action::Connect => "connect",
+            Action::View => "view",
             Action::Any => "*",
         }
     }
@@ -76,6 +89,7 @@ impl Action {
             "sub" => Some(Action::Sub),
             "get" => Some(Action::Get),
             "connect" => Some(Action::Connect),
+            "view" => Some(Action::View),
             "*" => Some(Action::Any),
             _ => None,
         }

@@ -168,21 +168,28 @@ export function NavAdmin({ ws, caps }: Props) {
     }
   };
 
-  const applyTier = async () => {
+  // Set the nav's overall audience tier (private / workspace) — the "Just me" / "Everyone" toggle.
+  // Team sharing is `addTeam` (which force-sets the team tier itself); this handles the two non-team
+  // audiences. Self-applying: one click writes it, no separate Save.
+  const applyVis = async (vis: Visibility) => {
     if (!editId) return;
     setBusy(true);
     setMsg(null);
     try {
-      // Set the visibility tier only — no team edge here. The team edges are managed by the
-      // add/remove actions below; the tier is the asset's overall reach (private/team/workspace).
-      await share(editId, shareVis, undefined);
-      setMsg(`Visibility set to ${shareVis}.`);
+      await share(editId, vis, undefined);
+      setShareVis(vis);
+      setMsg(vis === "workspace" ? "Shared with everyone." : "Set to private.");
     } catch (e) {
       setMsg(String(e));
     } finally {
       setBusy(false);
     }
   };
+
+  // A team's human name from the loaded roster (falls back to the raw id). The share roster stores
+  // ids; the picker + list show names so an admin never reads `team:ops`.
+  const teamName = (team: string): string =>
+    sources.teams.find((t) => t.team === team)?.name || team;
 
   const addTeam = async () => {
     if (!editId || !shareTeam) return;
@@ -486,49 +493,38 @@ export function NavAdmin({ ws, caps }: Props) {
             </Button>
           </div>
 
-          {/* Save + visibility tier */}
+          {/* Save the nav's items/title. Audience (who sees it) is the section below — no separate
+              "apply visibility" step, so a nav can't be Saved-but-invisible by accident. */}
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={() => void doSave()} disabled={busy} aria-label="Save nav">
               Save
             </Button>
-            <Select
-              className="w-32"
-              aria-label="Visibility"
-              value={shareVis}
-              onChange={(e) => setShareVis(e.target.value as Visibility)}
-            >
-              <option value="private">Private</option>
-              <option value="team">Team</option>
-              <option value="workspace">Workspace</option>
-            </Select>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void applyTier()}
-              disabled={busy || !editId}
-              aria-label="Apply visibility"
-            >
-              Apply visibility
-            </Button>
           </div>
 
-          {/* The live share roster — every team this nav is currently shared to, each removable.
-              A nav has no per-user share by design; a user reaches it by being a member of one of
-              these teams (managed in the Teams admin via teams.add_member/remove_member). */}
+          {/* ── Who sees this nav ── the ONE audience control. The old model had three moving parts
+              (Save, a visibility <Select>, an "Apply visibility" button, AND a separate team-add), so
+              an admin could build a nav, walk away, and leave it `private` = invisible to everyone.
+              Now audience is explicit and self-applying: "Just me" (private, default), one or more
+              teams (auto-switches to the Team tier + writes the edge in one click), or "Everyone"
+              (workspace). No tier dropdown to forget. A member reaches a team-shared nav by being in
+              that team (Teams admin). */}
           <section className="flex flex-col gap-2" data-testid="nav-shares">
-            <h4 className="text-xs font-semibold uppercase text-muted">
-              Shared to teams {shares.length > 0 && `(${shares.length})`}
-            </h4>
-            {shares.length === 0 ? (
-              <div className="text-sm text-muted">Not shared to any team yet.</div>
-            ) : (
+            <h4 className="text-xs font-semibold uppercase text-muted">Who sees this nav</h4>
+            <div className="text-sm text-muted">
+              {shareVis === "workspace"
+                ? "Everyone in the workspace."
+                : shares.length > 0
+                  ? `Members of ${shares.length === 1 ? "this team" : "these teams"}:`
+                  : "Only you (private). Add a team below, or share with everyone."}
+            </div>
+            {shareVis !== "workspace" && shares.length > 0 && (
               <ul className="flex flex-col gap-1">
                 {shares.map((team) => (
                   <li
                     key={team}
                     className="flex items-center justify-between rounded-md border border-border p-2"
                   >
-                    <code className="text-sm">{team}</code>
+                    <code className="text-sm">{teamName(team)}</code>
                     <Button
                       size="sm"
                       variant="destructive"
@@ -543,10 +539,11 @@ export function NavAdmin({ ws, caps }: Props) {
               </ul>
             )}
 
-            {/* Add a team — one S4 share edge per call; the underlying relate is multi-edge, so
-                adding accumulates. Adding a team forces the Team tier. The dropdown is fed by the
-                real `teams.list` (no typing ids); if no teams exist yet, the user creates them in
-                the Teams admin. */}
+            {/* Add a team — one click both switches the nav to the Team tier AND writes the
+                `nav -[share]-> team` edge (see `addTeam`). The dropdown is fed by the real
+                `teams.list` (no typing ids); if no teams exist yet, create one in the Teams admin.
+                Hidden when the nav is already Workspace-wide (adding a team there is meaningless). */}
+            {shareVis !== "workspace" && (
             <div className="flex flex-wrap items-center gap-2">
               <Select
                 className="w-48"
@@ -573,9 +570,38 @@ export function NavAdmin({ ws, caps }: Props) {
                 Add team
               </Button>
             </div>
+            )}
+
+            {/* Workspace-wide toggle — the "everyone" audience, opposite the per-team shares. Setting
+                Workspace makes every member see it (no team needed); "Just me" pulls it back to
+                private. Both self-apply (`applyVis`), so audience is always one click, never a
+                separate Save. */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {shareVis === "workspace" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void applyVis("private")}
+                  disabled={busy || !editId}
+                  aria-label="Make private"
+                >
+                  Make private (just me)
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void applyVis("workspace")}
+                  disabled={busy || !editId}
+                  aria-label="Share with everyone"
+                >
+                  Share with everyone in workspace
+                </Button>
+              )}
+            </div>
             <p className="text-xs text-muted">
-              To share to a single user, put them in a team here and add the team — a nav has no
-              per-user tier (manage membership in the Teams admin).
+              To share to a single user, put them in a team and add it here — a nav has no per-user
+              audience (manage membership in the Teams admin).
             </p>
           </section>
         </section>

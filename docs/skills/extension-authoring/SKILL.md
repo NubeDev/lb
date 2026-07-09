@@ -456,7 +456,7 @@ restart was needed after publish.
   `docs/skills/extensions/SKILL.md` — **the companion; don't duplicate it here**.
 - Drive-what-you-built runbook: `core.e2e-backend` / `docs/testing/e2e-backend.md`.
 - Manifest + tiers + WIT boundary (source of truth): `docs/scope/extensions/extensions-scope.md`
-  (§13 manifest), `docs/public/extensions/extensions.md`.
+  (§13 manifest), `doc-site/content/public/extensions/extensions.mdx`.
 - File layout the persona codes within: `docs/FILE-LAYOUT.md`.
 - Devkit implementation: `rust/crates/devkit/` (scaffold/build/inspect/template/feature/signing) +
   host wiring `rust/crates/host/src/devkit/`; gateway route `rust/role/gateway/src/routes/ext.rs`.

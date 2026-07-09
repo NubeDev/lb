@@ -6,6 +6,12 @@
 #   make linux-full           FULL standalone: in-process gateway + boot seeders → 100% standalone node.
 #   make windows-executable   THIN shell (.exe).
 #   make windows-full         FULL standalone (.exe).
+#
+# demo-buildings.db (seed-demo): generated unconditionally for windows-executable/linux-full/
+# windows-full; opt-in via SEED_DEMO=1 for linux-executable. Registering it as a live datasource
+# needs a RUNNING gateway — for `full` binaries, boot the binary then run
+# docker/postgres/seed-demo-sqlite.sh against its loopback gateway (http://127.0.0.1:8800); it
+# is Docker-free (jq + curl + python3).
 # Plus the one-image helpers:
 #   make artifact             CI : multi-stage build, extract just the ELF as a tar
 #   make seed-demo            standalone: generate just the demo SQLite file
@@ -89,6 +95,7 @@ linux-full: image ## FULL standalone build (in-process gateway + seeders); binar
 	$(DOCKER_RUN) -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(IMAGE)
 	@mkdir -p "$(FULL_DEST_DIR)"
 	@cp -f "$(BINARY)" "$(FULL_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(FULL_DEST_DIR)" DEMO_DB="$(FULL_DEST_DIR)/demo-buildings.db"
 	@echo "Binary (full): $(FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
 	@file "$(FULL_DEST)" 2>/dev/null || true
 
@@ -114,6 +121,7 @@ windows-full: windows-image ## Cross-build the FULL standalone .exe → build/wi
 	$(DOCKER_RUN) -v lb-xwin:/usr/local/xwin -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(WIN_IMAGE)
 	@mkdir -p "$(WIN_FULL_DEST_DIR)"
 	@cp -f "$(WIN_BINARY)" "$(WIN_FULL_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_FULL_DEST_DIR)" DEMO_DB="$(WIN_FULL_DEST_DIR)/demo-buildings.db"
 	@echo "Binary (full): $(WIN_FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
 	@file "$(WIN_FULL_DEST)" 2>/dev/null || true
 

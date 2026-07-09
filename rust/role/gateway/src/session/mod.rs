@@ -8,9 +8,17 @@
 //!     verified). A real credential check / IdP plugs in here behind the same `verify` seam.
 
 mod authenticate;
+mod credential;
 mod credentials;
+pub mod events;
+mod reach;
 mod trusted;
 
 pub use authenticate::{authenticate, verify_token, AuthRejection};
+pub use credential::{
+    credential_check_from_env, CredentialCheck, CredentialRejection, DevTrustAny, PasswordHash,
+    DEV_LOGIN_ENV,
+};
 pub use credentials::dev_claims;
+pub use reach::require_reach;
 pub use trusted::trusted_from_env;

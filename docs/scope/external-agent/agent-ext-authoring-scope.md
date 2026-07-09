@@ -276,7 +276,7 @@ session doc and update this scope.
 - Run the WASM E2E (G5b) as soon as S2 is green — it validates the bridge/persona/Ask core
   without waiting on the template work.
 - S5 gate: demo **both** E2E runs to the user; **only after they confirm they work** promote to
-  `docs/public/external-agent/` + `docs/public/extensions/dev-flow.md` (template section),
+  `doc-site/content/public/external-agent/` + `doc-site/content/public/extensions/dev-flow.mdx` (template section),
   update both SKILL.md files and `docs/STATUS.md`.
 
 ## Related

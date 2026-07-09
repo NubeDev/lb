@@ -144,7 +144,7 @@ the *recipient's* resolved language via **ICU MessageFormat 1 (MF1)** catalogs. 
 
 ## Related
 
-- Scope + shipped doc: `docs/scope/prefs/user-prefs-scope.md`, `docs/public/prefs/prefs.md`,
+- Scope + shipped doc: `docs/scope/prefs/user-prefs-scope.md`, `doc-site/content/public/prefs/prefs.mdx`,
   `docs/sessions/prefs/lb-prefs-session.md`; i18n: `docs/scope/prefs/i18n-catalogs-scope.md`.
 - Source-unit provenance (the `unit:`/`dimension:` tag `format.quantity` reads): `docs/scope/tags/`.
 - Capability/workspace/canonical rules: `README.md` §3, §6.5, §6.8, §7.

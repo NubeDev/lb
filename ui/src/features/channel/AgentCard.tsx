@@ -19,6 +19,7 @@ import type {
 } from "@/lib/channel/payload.types";
 import { useRunFeed, type RunToolCall } from "./useRunFeed";
 import { MarkdownView } from "./MarkdownView";
+import { AnswerCopyButton } from "./AnswerCopyButton";
 
 type AgentKindPayload =
   | AgentPayload
@@ -152,6 +153,7 @@ export function AgentCard({ payload, settled }: Props) {
     <div aria-label="agent result" className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <RuntimeChip runtime={payload.runtime} />
+        <AnswerCopyButton text={payload.answer} className="ml-auto" />
       </div>
       <MarkdownView>{payload.answer}</MarkdownView>
       {payload.truncated && (

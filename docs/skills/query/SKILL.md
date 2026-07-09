@@ -124,7 +124,7 @@ the collect. (See `docs/scope/rules/rules-engine-scope.md`.)
 ## Related
 
 - Scope + shipped doc: `docs/scope/query/prql-query-scope.md`,
-  `docs/sessions/query/prql-query-session.md`, `docs/public/query/query.md`.
+  `docs/sessions/query/prql-query-session.md`, `doc-site/content/public/query/query.mdx`.
 - The datasource engine a `datasource:` target dispatches to: `docs/skills/datasources/SKILL.md`,
   `docs/scope/datasources/datasources-scope.md` (+ the hard line: SurrealDB is never a DataFusion
   *source*).

@@ -51,6 +51,7 @@ pub use store::{read_panel, write_panel};
 pub use tool::call_panel_tool;
 pub use usage::panel_usage;
 pub use validate::validate_and_strip_refs;
+pub use visibility::may_read_panel;
 // Crate-internal: the spec-bounds check `panel.save` runs — `dashboard.pin` reuses it on its
 // panel-write so a pinned envelope is bounded by the same per-record limit as a hand-authored one.
 pub(crate) use bounds::check_spec_bounds;

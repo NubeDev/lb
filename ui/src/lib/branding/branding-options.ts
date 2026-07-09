@@ -36,6 +36,8 @@ export const BRANDING_PLACEHOLDERS = Object.freeze({
   siteName: "Workspace name",
   siteAbbr: "AB",
   tagline: "a short subtitle",
+  loginHeading: "Sign in",
+  loginSubheading: "Choose an identity and workspace boundary for this session.",
 });
 
 /** The accepted image MIME types for the three brand image slots. SVG is allowed for the logo +
@@ -65,9 +67,15 @@ export interface Branding {
   siteAbbr: string;
   /** Subtitle under the name (e.g. "workspace ops"). Empty string hides the line. */
   tagline: string;
-  /** Optional login-page heading for the (deferred) pre-auth branding surface. Defaults to the
-   *  siteName when not set; harmless to leave unset today. */
+  /** Optional login-page heading (e.g. "Sign in to Acme"). Falls back to "Sign in" on the login
+   *  screen when unset. */
   loginHeading?: string;
+  /** Optional login-page sub-heading — the line under the heading (e.g. "Choose an identity and
+   *  workspace boundary for this session."). Empty/unset shows the compiled default sub-line. */
+  loginSubheading?: string;
+  /** Optional login-page logo image data-URI. Rendered in the login card header in place of the
+   *  generic sign-in glyph when set. */
+  loginLogoDataUri?: string;
   /** Optional full-logo image data-URI (e.g. the "Acme" wordmark). Replaces the tile+name pair in
    *  the sidebar header when present. */
   logoDataUri?: string;
@@ -107,11 +115,14 @@ export function normalizeBranding(value: unknown): Branding {
   const c = value as Record<string, unknown>;
   if (isNonEmptyStr(c.siteName)) out.siteName = c.siteName.slice(0, 80);
   if (isNonEmptyStr(c.siteAbbr)) out.siteAbbr = c.siteAbbr.slice(0, 4);
-  // tagline + loginHeading may legitimately be the empty string (hide the line), so accept any string.
+  // tagline + loginHeading/loginSubheading may legitimately be the empty string (hide the line), so accept any string.
   if (typeof c.tagline === "string") out.tagline = c.tagline.slice(0, 120);
   if (typeof c.loginHeading === "string" && c.loginHeading.length > 0) out.loginHeading = c.loginHeading.slice(0, 120);
+  if (typeof c.loginSubheading === "string" && c.loginSubheading.length > 0)
+    out.loginSubheading = c.loginSubheading.slice(0, 200);
   if (isImageDataUri(c.logoDataUri)) out.logoDataUri = c.logoDataUri;
   if (isImageDataUri(c.iconDataUri)) out.iconDataUri = c.iconDataUri;
   if (isImageDataUri(c.faviconDataUri)) out.faviconDataUri = c.faviconDataUri;
+  if (isImageDataUri(c.loginLogoDataUri)) out.loginLogoDataUri = c.loginLogoDataUri;
   return out;
 }

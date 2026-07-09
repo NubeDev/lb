@@ -38,15 +38,17 @@ async function signIn(ws: string) {
   await signInWithCaps("user:ada", ws, REMINDER_CAPS);
 }
 
-/** Author one channel-post reminder through the real create form. Leaves the default schedule
- *  (`0 8 * * 0,1`) — the cron widget round-trips it; we only fill id + the action body. */
+/** Author one channel-post reminder through the real create dialog. Opens "New reminder", leaves the
+ *  default schedule (`0 8 * * 0,1`) — the cron widget round-trips it; we only fill id + the action
+ *  body — then submits. The submit closes the dialog and the real `reminder.list` refresh lists it. */
 async function authorReminder(
   user: ReturnType<typeof userEvent.setup>,
   id: string,
   channel: string,
   body: string,
 ) {
-  await user.type(screen.getByLabelText("reminder id"), id);
+  await user.click(screen.getByLabelText("new reminder"));
+  await user.type(await screen.findByLabelText("reminder id"), id);
   // The default action kind is channel-post; fill its two fields.
   await user.type(screen.getByPlaceholderText("channel (e.g. team)"), channel);
   await user.type(screen.getByPlaceholderText("message body"), body);
@@ -110,6 +112,9 @@ describe("RemindersView (real gateway)", () => {
 
     const row = await screen.findByLabelText("reminder to-delete");
     await user.click(within(row).getByLabelText("delete reminder to-delete"));
+    // Deletes route through ConfirmDestructive — confirm the (no-escalation) gate. Its confirm
+    // button carries aria-label="confirm action" (the accessible name wins over the visible label).
+    await user.click(await screen.findByLabelText("confirm action"));
 
     // Gone from the list (the real `reminder.list` no longer returns the tombstoned row)…
     await waitForGone("reminder to-delete");

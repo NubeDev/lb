@@ -3,7 +3,8 @@
 // the maintained inner-sidebar look); this file only maps flows onto it: the timestamp id scheme
 // (derived here, not from the title), the version badge (`v{n}`), and a delete confirm (the rail hands
 // the item back, the feature owns the destructive gate — flows previously deleted with no confirm,
-// which was a gap). No rename — flows have no rename verb. One component per file (FILE-LAYOUT).
+// which was a gap). Rename is the shared roster's inline title editor (hover pencil), wired to a
+// name-only `flows.save` in the feature (useFlows.rename). One component per file (FILE-LAYOUT).
 
 import { useState } from "react";
 import { Workflow } from "lucide-react";
@@ -17,6 +18,8 @@ export interface FlowRailProps {
   openId: string | null;
   onOpen: (id: string) => Promise<void> | void;
   onDelete: (id: string) => Promise<void> | void;
+  /** Inline rename (the shared roster's hover pencil) — a name-only `flows.save`. */
+  onRename: (id: string, name: string) => void;
   /** Name-first create: the rail's inline field supplies the name; the adapter derives the id (the
    *  flow's timestamp scheme) and hands both to the host, which seeds a blank flow with that name. */
   onCreate: (id: string, name: string) => void;
@@ -29,7 +32,7 @@ function flowId(): string {
   return `flow-${Date.now()}`;
 }
 
-export function FlowRail({ roster, openId, onOpen, onDelete, onCreate, onCollapse }: FlowRailProps) {
+export function FlowRail({ roster, openId, onOpen, onDelete, onRename, onCreate, onCollapse }: FlowRailProps) {
   // The flow pending a delete confirm — the rail hands the item back; the feature owns the gate.
   const [pendingDelete, setPendingDelete] = useState<RosterItem | null>(null);
 
@@ -44,6 +47,7 @@ export function FlowRail({ roster, openId, onOpen, onDelete, onCreate, onCollaps
         emptyText="No flows yet."
         createPlaceholder="New flow…"
         onCreate={(name) => onCreate(flowId(), name)}
+        onRename={onRename}
         onCollapse={onCollapse}
         onRemove={setPendingDelete}
       />

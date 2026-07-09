@@ -41,7 +41,7 @@ function blankFlow(id: string, name: string): Flow {
 }
 
 export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
-  const { roster, open, palette, error, load, save, remove, setOpen } = useFlows(ws);
+  const { roster, open, palette, error, load, save, rename, remove, setOpen } = useFlows(ws);
   const [draftId, setDraftId] = useState(0); // bump to force a fresh canvas on "new"
   // The flow rail folds to the shared thin strip (same affordance as the dashboard/rules rosters).
   const [railOpen, setRailOpen] = useState(true);
@@ -102,6 +102,7 @@ export function FlowsView({ ws, flowId, onSelectFlow }: FlowsViewProps) {
           openId={open?.id ?? null}
           onOpen={onOpen}
           onDelete={onRemove}
+          onRename={(id, name) => void rename(id, name)}
           onCreate={onCreate}
           onCollapse={() => setRailOpen(false)}
         />

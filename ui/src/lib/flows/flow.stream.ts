@@ -8,8 +8,7 @@
 // (Tauri/tests) — the caller then falls back to its bounded `flows.runs.get` poll, by design. The
 // token rides as `?token=` (EventSource can't set an Authorization header).
 
-import { gatewayUrl } from "@/lib/ipc/http";
-import { sessionToken } from "@/lib/session/session.store";
+import { eventHub, liveStreamAvailable } from "@/lib/events/hub";
 
 import type { FlowRunSnapshot } from "./flows.types";
 
@@ -31,29 +30,19 @@ export function openFlowRunStream(
   onSnapshot: (snap: FlowRunSnapshot) => void,
   onEvent: (event: FlowStreamEvent) => void,
 ): FlowRunStream | null {
-  const base = gatewayUrl();
-  if (base === "" && import.meta.env.VITE_GATEWAY_URL === undefined) return null;
-  if (typeof EventSource === "undefined") return null;
-
-  const url = `${base}/flows/runs/${encodeURIComponent(runId)}/stream?token=${encodeURIComponent(
-    sessionToken(),
-  )}`;
-  const es = new EventSource(url);
-
-  es.addEventListener("snapshot", (e) => {
+  if (!liveStreamAvailable()) return null;
+  // Delegates to the shared event hub: the `flow-run:{runId}` subject rides the one multiplexed
+  // connection. The `snapshot` then `flow` frames are byte-identical to the dedicated route's.
+  const unsubscribe = eventHub.subscribeSubject(`flow-run:${runId}`, (frame) => {
     try {
-      onSnapshot(JSON.parse((e as MessageEvent).data) as FlowRunSnapshot);
+      if (frame.event === "snapshot") {
+        onSnapshot(JSON.parse(frame.data) as FlowRunSnapshot);
+      } else if (frame.event === "flow") {
+        onEvent(JSON.parse(frame.data) as FlowStreamEvent);
+      }
     } catch {
       // a malformed frame never breaks the stream
     }
   });
-  es.addEventListener("flow", (e) => {
-    try {
-      onEvent(JSON.parse((e as MessageEvent).data) as FlowStreamEvent);
-    } catch {
-      // a malformed frame never breaks the stream
-    }
-  });
-
-  return { close: () => es.close() };
+  return { close: unsubscribe };
 }

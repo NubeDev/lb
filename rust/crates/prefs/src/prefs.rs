@@ -51,10 +51,11 @@ pub struct Prefs {
     /// workspace can ship a default; it is not an i18n axis and no `format.*` reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ui_theme: Option<serde_json::Value>,
-    /// The workspace **branding** blob (workspace-branding scope): admin-owned workspace identity
-    /// (`{ site_name, site_abbr, tagline, login_heading }`). Strings only — image marks live as
-    /// assets at reserved ids (`branding:{icon,favicon,logo}`), NOT in this blob (a blob that grew
-    /// with each upload would bloat every prefs read). Prefs stores/folds it whole; like `ui_theme`
+    /// The workspace **branding** blob (workspace-branding scope): admin-owned workspace identity —
+    /// the frontend `Branding` shape (`{ siteName, siteAbbr, tagline, loginHeading, loginSubheading }`
+    /// plus small `*DataUri` image marks for the sidebar + login logo, capped per the scope so the
+    /// blob stays bounded). Opaque to prefs — Rust never inspects the shape. Prefs stores/folds it
+    /// whole; like `ui_theme`
     /// it is opaque data the frontend validates. The resolved value is the **workspace-default**
     /// link in practice — branding is admin-owned, so a member never writes this axis, but the same
     /// fold machinery carries it for free. `None` = inherit (the shell falls back to its compiled

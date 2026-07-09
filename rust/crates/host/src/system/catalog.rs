@@ -53,6 +53,11 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "host",
         description: "a bounded directory listing with per-entry metadata",
     },
+    HostTool {
+        tool: "host.fs.home",
+        group: "host",
+        description: "the node's home directory (a stable anchor to browse from)",
+    },
     // system.* — the read-only workspace topology + status console (system-map scope).
     HostTool {
         tool: "system.overview",
@@ -251,6 +256,19 @@ const HOST_TOOLS: &[HostTool] = &[
         tool: "dashboard.share",
         group: "dashboard",
         description: "share a dashboard with another principal/team",
+    },
+    HostTool {
+        tool: "dashboard.access_check",
+        group: "dashboard",
+        description:
+            "read-only preflight: walk a dashboard's dependency closure and report, per dependency, whether a subject/team can render it (access-model scope)",
+    },
+    // identity.* — the credential-management admin verb (login-hardening scope). The directory
+    // verbs (create/get/list/workspaces) also have dedicated admin REST routes.
+    HostTool {
+        tool: "identity.set_credential",
+        group: "identity",
+        description: "admin: set/rotate a user's login password (argon2-hashed; never returns the hash)",
     },
     // panel.* — the reusable + standalone library-panel asset (library-panels scope).
     HostTool {

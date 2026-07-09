@@ -15,30 +15,31 @@ use crate::routes::{
     create_def, create_identity, create_team, create_user, create_webhook, create_workspace,
     define_role, delete_dashboard, delete_def, delete_flow, delete_message, delete_nav,
     delete_panel, delete_role, delete_rule, delete_team, delete_user, disable_extension,
-    disable_user, edit_message, enable_extension, enable_flow, enable_user, find_series,
-    flow_debug_stream, flow_node_state, flow_run_stream, format_datetime, format_number,
-    format_quantity, get_agent_config_route, get_apikey, get_catalog, get_dashboard, get_def,
-    get_doc, get_flow, get_flow_node, get_flow_run, get_history, get_identity, get_insight,
-    get_layout, get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs,
-    get_rule, get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
-    latest_sample, lifecycle_flow, link_doc, list_apikeys, list_channels, list_dashboards,
-    list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes, list_flow_runs,
-    list_flows, list_grants, list_identities, list_inbox, list_insights, list_members, list_navs,
-    list_occurrences, list_panels, list_roles, list_rules, list_series, list_shares_nav,
-    list_tables, list_team_members, list_teams, list_users, list_webhooks, list_workspaces,
-    load_skill, login, mcp_call, mcp_catalog, native_call, panel_usage, patch_flow_run,
-    pin_dashboards, post_message, post_webhook, publish_extension, publish_message,
-    purge_workspace, put_doc, put_skill, read_graph, read_samples, read_schema, refresh_run_token,
-    remove_datasource, remove_member, remove_team_member, rename_team, rename_workspace,
-    render_catalog_message, reset_extension, resolve_caps, resolve_inbox, resolve_insight,
-    resolve_nav, resolve_prefs, revoke_apikey, revoke_grant, revoke_tokens_route, revoke_webhook,
-    rotate_apikey, rotate_webhook, run_control, run_flow, run_query, run_rule, run_stream,
-    save_dashboard, save_flow, save_nav, save_panel, save_rule, scan_table, series_stream,
-    serve_ext_ui, set_agent_config_route, set_catalog, set_default_nav, set_default_prefs,
-    set_layout, set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav,
-    share_panel, system_acp, system_overview, system_subsystem, system_tools, system_topology,
-    telemetry_stream, test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav,
-    update_def, update_flow_node, write_samples,
+    disable_user, edit_message, enable_extension, enable_flow, enable_user, events_stream,
+    events_subscribe, events_unsubscribe, find_series, flow_debug_stream, flow_node_state,
+    flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
+    get_apikey, get_catalog, get_dashboard, get_def, get_doc, get_flow, get_flow_node,
+    get_flow_run, get_history, get_identity, get_insight, get_layout, get_nav, get_nav_hidden,
+    get_nav_pref, get_outbox_status, get_panel, get_prefs, get_rule, get_webhook, grant_skill,
+    identity_workspaces_route, inject_flow, insight_events, latest_sample, lifecycle_flow,
+    link_doc, list_apikeys, list_channels, list_dashboards, list_datasources, list_defs, list_docs,
+    list_extensions, list_flow_nodes, list_flow_runs, list_flows, list_grants, list_identities,
+    list_inbox, list_insights, list_members, list_navs, list_occurrences, list_panels, list_roles,
+    list_rules, list_series, list_shares_nav, list_tables, list_team_members, list_teams,
+    list_users, list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog,
+    native_call, panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook,
+    publish_extension, publish_message, purge_workspace, put_doc, put_skill, read_graph,
+    read_samples, read_schema, refresh_run_token, remove_datasource, remove_member,
+    remove_team_member, rename_team, rename_workspace, render_catalog_message, reset_extension,
+    resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
+    revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
+    run_flow, run_query, run_rule, run_stream, save_dashboard, save_flow, save_nav, save_panel,
+    save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route, set_catalog,
+    set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref, set_prefs,
+    share_dashboard, share_doc, share_nav, share_panel, surface_reach, system_acp, system_overview,
+    system_subsystem, system_tools, system_topology, telemetry_stream, test_active_def,
+    test_datasource, test_def, uninstall_extension, unshare_nav, update_def, update_flow_node,
+    write_samples,
 };
 use crate::state::Gateway;
 
@@ -206,6 +207,12 @@ pub fn router(gw: Gateway) -> Router {
         // …), the peer of /mcp/call for the native tier (native-tier scope).
         .route("/native/call", post(native_call))
         .route("/mcp/catalog", get(mcp_catalog))
+        // nav-reach scope: the per-page reach preflight. `GET /surface/{surface}` is `200` iff the
+        // caller's resolved nav grants `reach:<surface>:view` (or the fallback wildcard), else an
+        // opaque `403`. A gated page's client loader awaits this before rendering; the shared data
+        // routes (`/series`, `/rules`, …) stay open so tiles/pickers still work. `{surface}` is opaque
+        // (rule 10). This is the SERVER boundary that makes a curated nav the allow-list of pages.
+        .route("/surface/{surface}", get(surface_reach))
         .route("/extensions/{ext}/enable", post(enable_extension))
         .route("/extensions/{ext}/disable", post(disable_extension))
         // native-tier resilience: re-arm an exhausted restart budget + force a fresh child (the
@@ -338,6 +345,15 @@ pub fn router(gw: Gateway) -> Router {
         // (the motion analog of the series stream, for non-series subjects). Subject walled from the token.
         .route("/bus/publish", post(publish_message))
         .route("/bus/stream", get(bus_stream))
+        // unified event stream (unified-event-stream scope) — the browser's ONE multiplexed SSE
+        // connection per session. `GET /events/stream?token=` opens it (a `hello {sid}` frame mints the
+        // stream id); `POST /events/{sid}/subscribe|unsubscribe {subject}` add/remove live subjects on
+        // the existing connection. Each subscribe re-runs the subject's dedicated-route gate + ws wall;
+        // a deny is an opaque per-subject `error` frame, never a connection kill. This is the fix for the
+        // SSE-pool-exhaustion defect (per-feature EventSources saturating the browser's ~6-conn cap).
+        .route("/events/stream", get(events_stream))
+        .route("/events/{sid}/subscribe", post(events_subscribe))
+        .route("/events/{sid}/unsubscribe", post(events_unsubscribe))
         .layer(CorsLayer::permissive())
         .with_state(gw)
 }

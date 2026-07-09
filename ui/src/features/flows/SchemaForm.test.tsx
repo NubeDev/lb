@@ -104,4 +104,31 @@ describe("SchemaForm rendering (type dispatch)", () => {
     fireEvent.change(input, { target: { value: "a/b" } });
     expect(captured.topic).toBe("a/b");
   });
+
+  it("renders a string field with a code `format` as the CodeMirror editor (rhai node source)", () => {
+    // The rhai node's `source` field declares `format: rhai` — SchemaForm resolves that to the shared
+    // code editor instead of a one-line <Input>, so the flow author edits rhai in the same surface the
+    // rules workbench uses. The hint is opaque data (no branch on node type).
+    const schema: JsonSchema = {
+      type: "object",
+      required: ["source"],
+      properties: { source: { type: "string", format: "rhai" } },
+    };
+    render(<SchemaForm schema={schema} value={{ source: "payload" }} onChange={() => {}} />);
+    // CodeMirror renders a `.cm-editor`, not an <input> — the plain string branch would give an <input>.
+    const field = screen.getByLabelText("source");
+    expect(field.closest(".cm-editor") ?? field.querySelector?.(".cm-editor")).toBeTruthy();
+    // The rhai code field also renders the examples library below the editor (the `format: rhai`
+    // helper) so the author can copy/load a starter snippet.
+    expect(screen.getByLabelText("rhai examples")).toBeTruthy();
+  });
+
+  it("hides the rhai examples library when the field is disabled (executed-node lock)", () => {
+    const schema: JsonSchema = {
+      type: "object",
+      properties: { source: { type: "string", format: "rhai" } },
+    };
+    render(<SchemaForm schema={schema} value={{ source: "payload" }} onChange={() => {}} disabled />);
+    expect(screen.queryByLabelText("rhai examples")).toBeNull();
+  });
 });
