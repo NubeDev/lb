@@ -13,8 +13,10 @@ use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
 use super::{
-    datasource_add, datasource_list, datasource_remove, datasource_test, federation_mirror,
-    federation_query, federation_sample, federation_schema,
+    datasource_add, datasource_list, datasource_remove, datasource_test, dbschema_delete,
+    dbschema_get, dbschema_list, dbschema_save, federation_export, federation_migrate,
+    federation_mirror, federation_query, federation_sample, federation_schema, federation_write,
+    ExportFrom,
 };
 use crate::boot::Node;
 
@@ -83,6 +85,122 @@ pub async fn call_federation_tool(
             )
             .await?;
             Ok(json!({ "job_id": id }))
+        }
+        "federation.write" => {
+            let source = str_arg(input, "source")?;
+            let table = str_arg(input, "table")?;
+            let columns: Vec<String> = input
+                .get("columns")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| ToolError::BadInput("missing string-array arg: columns".into()))?
+                .iter()
+                .filter_map(|c| c.as_str().map(str::to_string))
+                .collect();
+            let rows: Vec<Value> = input
+                .get("rows")
+                .and_then(|v| v.as_array())
+                .ok_or_else(|| ToolError::BadInput("missing array arg: rows".into()))?
+                .clone();
+            let key: Option<Vec<String>> = input.get("key").and_then(|v| v.as_array()).map(|a| {
+                a.iter()
+                    .filter_map(|c| c.as_str().map(str::to_string))
+                    .collect()
+            });
+            let out = federation_write(
+                node,
+                &launcher,
+                principal,
+                ws,
+                source,
+                table,
+                &columns,
+                &rows,
+                key.as_deref(),
+                ts,
+            )
+            .await?;
+            Ok(out)
+        }
+        "federation.migrate" => {
+            let source = str_arg(input, "source")?;
+            let schema = input
+                .get("schema")
+                .ok_or_else(|| ToolError::BadInput("missing object arg: schema".into()))?;
+            let dry_run = input
+                .get("dry_run")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let out =
+                federation_migrate(node, &launcher, principal, ws, source, schema, dry_run, ts)
+                    .await?;
+            Ok(out)
+        }
+        "federation.export" => {
+            let source = str_arg(input, "source")?;
+            let job_id = str_arg(input, "job_id")?;
+            let table = str_arg(input, "table")?;
+            let from_series = input
+                .get("from")
+                .and_then(|v| v.get("series"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ToolError::BadInput("from.series is required (v1: series-only)".into())
+                })?;
+            let range = input
+                .get("range")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize);
+            let columns: Option<Vec<String>> =
+                input.get("columns").and_then(|v| v.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|c| c.as_str().map(str::to_string))
+                        .collect()
+                });
+            let key: Option<Vec<String>> = input.get("key").and_then(|v| v.as_array()).map(|a| {
+                a.iter()
+                    .filter_map(|c| c.as_str().map(str::to_string))
+                    .collect()
+            });
+            let id = federation_export(
+                node,
+                &launcher,
+                principal,
+                ws,
+                job_id,
+                source,
+                &ExportFrom::Series {
+                    name: from_series.to_string(),
+                    range,
+                },
+                table,
+                columns.as_deref(),
+                key.as_deref(),
+                ts,
+            )
+            .await?;
+            Ok(json!({ "job_id": id }))
+        }
+        "dbschema.save" => {
+            let name = str_arg(input, "name")?;
+            let schema = input
+                .get("schema")
+                .ok_or_else(|| ToolError::BadInput("missing object arg: schema".into()))?;
+            dbschema_save(node, principal, ws, name, schema, ts).await?;
+            Ok(json!({ "ok": true }))
+        }
+        "dbschema.get" => {
+            let name = str_arg(input, "name")?;
+            let out = dbschema_get(node, principal, ws, name).await?;
+            Ok(out.unwrap_or_else(|| json!({ "found": false })))
+        }
+        "dbschema.list" => {
+            let out = dbschema_list(node, principal, ws).await?;
+            Ok(out)
+        }
+        "dbschema.delete" => {
+            let name = str_arg(input, "name")?;
+            dbschema_delete(node, principal, ws, name, ts).await?;
+            Ok(json!({ "ok": true }))
         }
         "datasource.add" => {
             let name = str_arg(input, "name")?;

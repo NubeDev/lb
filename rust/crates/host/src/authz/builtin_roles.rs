@@ -278,6 +278,17 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:datasource.remove:call",
     "mcp:datasource.test:call",
     "secret:federation/*:write",
+    // schema-designer write plane — the member WRITES to their own sources + EXPORTS platform
+    // data out. `dbschema.save`/`delete` ride the `mcp:*.write:call`/`mcp:*.delete:call` author
+    // wildcards; `dbschema.get`/`list` ride the viewer read wildcards. These three name concrete
+    // verbs (no wildcard covers `federation.write`/`export` — a viewer must NOT reach them). The
+    // `dbschema.save`/`delete` verbs name concrete caps too (`.save`/`.delete` are their own verbs,
+    // not matched by the `.write`/`.delete` wildcards — the wildcard segment is the verb, not a
+    // suffix).
+    "mcp:federation.write:call",
+    "mcp:federation.export:call",
+    "mcp:dbschema.save:call",
+    "mcp:dbschema.delete:call",
     // ingest — a member WRITES their own series (producer = the authed principal). Reads are viewer.
     "mcp:ingest.write:call",
     // documents WRITE (a member's own shared docs).
@@ -433,6 +444,10 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:agent.def.test:call",
     "mcp:secret.set:call",
     "secret:agent/*:write",
+    // schema-designer: applying DDL to an external DB is the destructive authority — admin-only
+    // (open-question lean #1: member saves the design, admin migrates). The dry_run default keeps
+    // a plan-only call safe, but the cap gates the apply step regardless.
+    "mcp:federation.migrate:call",
     // shared agent-memory (workspace scope) write — an admin decides every member's agent may write it.
     "store:agent_memory/workspace:write",
     // api-keys + webhooks management surfaces + their secret writes.
