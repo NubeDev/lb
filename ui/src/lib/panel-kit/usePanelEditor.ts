@@ -16,6 +16,11 @@ import { cellToEditorState, editorStateToCell, type EditorState } from "./cellEd
 /** The cartesian chart views that support the shared X/Y plot builder (the Plot tab). */
 export const PLOTTABLE_VIEWS: ReadonlySet<string> = new Set(["timeseries", "barchart", "piechart"]);
 
+/** Views that bind NO data source — they read their own data (e.g. `insights` reads the `insight.*`
+ *  verbs through its own client), so the wizard's Source step is optional for them and the "pick a
+ *  source" gate must not block advancing. A source-bound view (every viz, genui, template) is absent. */
+export const SOURCELESS_VIEWS: ReadonlySet<string> = new Set(["insights"]);
+
 export interface PanelEditorMachine {
   /** The full working state — every authorable group, rebuilt from the cell via the ONE serializer. */
   state: EditorState;

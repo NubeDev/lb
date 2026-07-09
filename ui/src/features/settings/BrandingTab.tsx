@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { CAP, hasCap } from "@/lib/session";
 import {
   BRAND_IMAGE_ACCEPT,
+  BRANDING_PLACEHOLDERS,
   DEFAULT_BRANDING,
   MAX_BRAND_IMAGE_BYTES,
   readBrandImage,
@@ -64,7 +65,10 @@ export function BrandingTab({ caps }: Props) {
     setBrand((prev) => ({ ...prev, [key]: value }));
   };
 
-  const uploadImage = async (key: "logoDataUri" | "iconDataUri" | "faviconDataUri", file: File | null) => {
+  const uploadImage = async (
+    key: "logoDataUri" | "iconDataUri" | "faviconDataUri" | "loginLogoDataUri",
+    file: File | null,
+  ) => {
     if (!file) return;
     setImageError(null);
     try {
@@ -76,7 +80,7 @@ export function BrandingTab({ caps }: Props) {
     }
   };
 
-  const clearImage = (key: "logoDataUri" | "iconDataUri" | "faviconDataUri") => {
+  const clearImage = (key: "logoDataUri" | "iconDataUri" | "faviconDataUri" | "loginLogoDataUri") => {
     setImageError(null);
     setBrand((prev) => {
       const next = { ...prev };
@@ -132,7 +136,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={80}
             disabled={!canSetDefault}
             onChange={(e) => updateString("siteName", e.target.value)}
-            placeholder={DEFAULT_BRANDING.siteName}
+            placeholder={BRANDING_PLACEHOLDERS.siteName}
           />
         </Field>
         <Field
@@ -146,7 +150,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={4}
             disabled={!canSetDefault}
             onChange={(e) => updateString("siteAbbr", e.target.value)}
-            placeholder={DEFAULT_BRANDING.siteAbbr}
+            placeholder={BRANDING_PLACEHOLDERS.siteAbbr}
           />
         </Field>
         <Field
@@ -160,7 +164,7 @@ export function BrandingTab({ caps }: Props) {
             maxLength={120}
             disabled={!canSetDefault}
             onChange={(e) => updateString("tagline", e.target.value)}
-            placeholder={DEFAULT_BRANDING.tagline}
+            placeholder={BRANDING_PLACEHOLDERS.tagline}
           />
         </Field>
       </FieldGroup>
@@ -195,6 +199,49 @@ export function BrandingTab({ caps }: Props) {
           disabled={!canSetDefault}
           onUpload={(f) => uploadImage("faviconDataUri", f)}
           onClear={() => clearImage("faviconDataUri")}
+        />
+      </FieldGroup>
+
+      <FieldGroup title="Login page">
+        <p className="mb-2 text-[11px] leading-snug text-muted">
+          Shown on the sign-in screen for this workspace. The login page paints from the last brand
+          this browser resolved for the workspace, so a change appears on the next sign-in.
+        </p>
+        <Field
+          label="Heading"
+          htmlFor="brand-login-heading"
+          help="The bold title on the sign-in card. Defaults to “Sign in” when empty."
+        >
+          <Input
+            id="brand-login-heading"
+            value={brand.loginHeading ?? ""}
+            maxLength={120}
+            disabled={!canSetDefault}
+            onChange={(e) => updateString("loginHeading", e.target.value)}
+            placeholder={BRANDING_PLACEHOLDERS.loginHeading}
+          />
+        </Field>
+        <Field
+          label="Sub-heading"
+          htmlFor="brand-login-subheading"
+          help="The line under the heading. Defaults to the standard prompt when empty."
+        >
+          <Input
+            id="brand-login-subheading"
+            value={brand.loginSubheading ?? ""}
+            maxLength={200}
+            disabled={!canSetDefault}
+            onChange={(e) => updateString("loginSubheading", e.target.value)}
+            placeholder={BRANDING_PLACEHOLDERS.loginSubheading}
+          />
+        </Field>
+        <BrandImageField
+          label="Login logo"
+          help="Shown in the sign-in card header in place of the generic sign-in glyph."
+          dataUri={brand.loginLogoDataUri}
+          disabled={!canSetDefault}
+          onUpload={(f) => uploadImage("loginLogoDataUri", f)}
+          onClear={() => clearImage("loginLogoDataUri")}
         />
       </FieldGroup>
 

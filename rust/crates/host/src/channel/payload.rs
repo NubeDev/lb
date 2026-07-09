@@ -38,6 +38,11 @@ pub const KIND_ERROR: &str = "query_error";
 pub const KIND_AGENT: &str = "agent";
 pub const KIND_AGENT_RESULT: &str = "agent_result";
 pub const KIND_AGENT_ERROR: &str = "agent_error";
+/// `kind: "agent_stalled"` — an external run made NO progress for the no-progress ceiling and was
+/// PAUSED (suspended, resumable) so the user can decide "keep going" (resume) or "stop" (cancel).
+/// NOT terminal — distinct from `agent_error` so the dock renders an actionable prompt, not a dead
+/// error. The run job is `Suspended`; the item carries the `job` so the dock wires resume/stop to it.
+pub const KIND_AGENT_STALLED: &str = "agent_stalled";
 pub const KIND_RICH_RESULT: &str = "rich_result";
 
 /// A parsed kind-tagged payload pulled out of an item `body`. Chat (no `kind`) is `None` upstream.
@@ -50,6 +55,7 @@ pub enum ItemPayload {
     Agent(AgentPayload),
     AgentResult(AgentResultPayload),
     AgentError(AgentErrorPayload),
+    AgentStalled(AgentStalledPayload),
     RichResult(RichResultPayload),
 }
 
@@ -139,6 +145,18 @@ pub struct AgentErrorPayload {
     pub error: String,
 }
 
+/// `kind: "agent_stalled"` — the agent worker's pause-and-ask item: the run made no progress for the
+/// no-progress ceiling and was suspended (resumable). Carries the run `job` so the dock can wire the
+/// "keep going" (resume) / "stop" (cancel) controls to it, plus an honest message for display. The
+/// run is NOT over — a resume continues from the cursor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentStalledPayload {
+    pub goal: String,
+    pub job: String,
+    /// The honest, human-facing explanation shown above the keep-going/stop choice.
+    pub message: String,
+}
+
 /// `kind: "rich_result"` — the render-envelope (channel rich responses scope). A worker's viewable
 /// response: a `view` over inline `data` and/or a re-runnable `source`, with row-control `options`, an
 /// optional control `action`, and the `tools` set the response's bridge may forward. `v` is the
@@ -203,6 +221,7 @@ pub fn parse_payload(body: &str) -> Option<ItemPayload> {
             | KIND_AGENT
             | KIND_AGENT_RESULT
             | KIND_AGENT_ERROR
+            | KIND_AGENT_STALLED
             | KIND_RICH_RESULT
     ) {
         return None;
@@ -265,6 +284,16 @@ pub fn agent_error_body(goal: &str, error: &str) -> String {
     encode_payload(&ItemPayload::AgentError(AgentErrorPayload {
         goal: goal.into(),
         error: error.into(),
+    }))
+}
+
+/// Build the `agent_stalled` body for a run paused at the no-progress ceiling — the pause-and-ask
+/// item the dock renders with keep-going/stop controls wired to `job`.
+pub fn agent_stalled_body(goal: &str, job: &str, message: &str) -> String {
+    encode_payload(&ItemPayload::AgentStalled(AgentStalledPayload {
+        goal: goal.into(),
+        job: job.into(),
+        message: message.into(),
     }))
 }
 
@@ -460,6 +489,25 @@ mod tests {
         let e = agent_error_body("g", "agent not permitted");
         match parse_payload(&e).expect("parsed") {
             ItemPayload::AgentError(p) => assert_eq!(p.error, "agent not permitted"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    // Pause-and-ask: an `agent_stalled` body carries the run `job` (so the dock wires resume/stop) +
+    // the honest prompt, and serializes to the `kind:"agent_stalled"` the UI keys on.
+    #[test]
+    fn agent_stalled_body_round_trips_with_job_and_message() {
+        let body = agent_stalled_body("build a thing", "run-42", "it may be stuck. Keep going?");
+        assert!(
+            body.contains(r#""kind":"agent_stalled""#),
+            "wire kind: {body}"
+        );
+        match parse_payload(&body).expect("parsed") {
+            ItemPayload::AgentStalled(p) => {
+                assert_eq!(p.job, "run-42");
+                assert_eq!(p.goal, "build a thing");
+                assert!(p.message.contains("stuck"));
+            }
             _ => panic!("wrong variant"),
         }
     }

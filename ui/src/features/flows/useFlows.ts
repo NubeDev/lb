@@ -25,6 +25,8 @@ export interface FlowsState {
   refresh: () => Promise<void>;
   load: (id: string) => Promise<void>;
   save: (flow: Flow) => Promise<{ ok: boolean; version?: number; error?: string }>;
+  /** Rename a flow — a name-only `flows.save` that preserves the graph (nodes/config/geometry). */
+  rename: (id: string, name: string) => Promise<void>;
   remove: (id: string) => Promise<void>;
   setOpen: (flow: Flow | null) => void;
 }
@@ -82,6 +84,26 @@ export function useFlows(ws: string): FlowsState {
     [refresh],
   );
 
+  /** Rename a flow: a name-only save. Reuse the open copy when it's the target, else read the flow
+   *  first so the rename never blanks its graph (a title-only save must round-trip nodes + geometry —
+   *  same shape as the dashboard rename). Bumps the version like any save (Decision 1). */
+  const rename = useCallback(
+    async (id: string, name: string) => {
+      const t = name.trim();
+      if (!t) return;
+      try {
+        const target = open && open.id === id ? open : await getFlow(id);
+        const { version } = await saveFlow({ ...target, name: t });
+        setOpen((cur) => (cur?.id === id ? { ...target, name: t, version } : cur));
+        await refresh();
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [open, refresh],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       await deleteFlow(id);
@@ -91,5 +113,5 @@ export function useFlows(ws: string): FlowsState {
     [refresh],
   );
 
-  return { roster, open, palette, error, refresh, load, save, remove, setOpen };
+  return { roster, open, palette, error, refresh, load, save, rename, remove, setOpen };
 }

@@ -1,14 +1,24 @@
 # desktop/Makefile — one-liner entrypoints for the Linux desktop build container.
 # See desktop/docker/README.md and docs/scope/desktop/desktop-build-container-scope.md.
 #
-# Two invocation modes from one image (the scope's "one image, many output types" decision):
-#   make linux-executable          dev: bind-mount the repo, binary lands on host (warm caches)
-#   make linux-executable SEED_DEMO=1  same + generate the demo-building SQLite dataset alongside
-#   make artifact                  CI : multi-stage build, extract just the ELF as a tar
-#   make seed-demo                 standalone: generate just the demo SQLite file
-#   make image                     build the base toolchain image only (prereq for dev)
-#   make smoke                     boot the just-built binary under xvfb (liveness check)
-#   make clean                     remove the named cache volumes
+# TWO build modes per OS (docs/scope/desktop/desktop-standalone-backend-scope.md):
+#   make linux-executable     THIN shell: Tauri window + the 5 IPC commands (default).
+#   make linux-full           FULL standalone: in-process gateway + boot seeders → 100% standalone node.
+#   make windows-executable   THIN shell (.exe).
+#   make windows-full         FULL standalone (.exe).
+#
+# demo-buildings.db (seed-demo): generated unconditionally for windows-executable/linux-full/
+# windows-full; opt-in via SEED_DEMO=1 for linux-executable. Registering it as a live datasource
+# needs a RUNNING gateway — for `full` binaries, boot the binary then run
+# docker/postgres/seed-demo-sqlite.sh against its loopback gateway (http://127.0.0.1:8800); it
+# is Docker-free (jq + curl + python3).
+# Plus the one-image helpers:
+#   make artifact             CI : multi-stage build, extract just the ELF as a tar
+#   make seed-demo            standalone: generate just the demo SQLite file
+#   make image                build the base toolchain image only (prereq for dev)
+#   make smoke                boot the just-built THIN binary under xvfb (liveness check)
+#   make smoke-full           boot the just-built FULL binary + prove login works over loopback
+#   make clean                remove the named cache volumes
 #
 # All `docker build` commands use the repo root as context (so COPY . /build in the
 # builder stage and the repo-root .dockerignore both apply).
@@ -35,13 +45,34 @@ DEMO_DB := $(DEST_DIR)/demo-buildings.db
 SEED_DIR := $(REPO_ROOT)/docker/postgres
 UID_GID := $$(id -u):$$(id -g)
 
+# Windows cross-compile lane (cargo-xwin → x86_64-pc-windows-msvc). Bare .exe, no
+# MSI/NSIS — mirrors the Linux "plain executable" slice; Windows provides WebView2 at
+# runtime. lb-xwin caches the xwin-fetched Windows SDK/CRT across builds.
+WIN_IMAGE := lazybones-shell-builder-windows:local
+WIN_BINARY_REL := ui/src-tauri/target/x86_64-pc-windows-msvc/release/lazybones-shell.exe
+WIN_BINARY := $(REPO_ROOT)/$(WIN_BINARY_REL)
+WIN_DEST_DIR := $(THIS_DIR)/build/windows
+WIN_DEST := $(WIN_DEST_DIR)/lazybones-shell.exe
+
+# The FULL standalone build outputs (mounts the in-process gateway + boot seeders, so the
+# packaged binary is a 100% standalone node — login/MCP/SSE/agents all work with no external
+# node). Separate output dirs so a thin + full build never clobber each other; same cargo
+# binary name, just a different feature set (LB_SHELL_FEATURES=desktop,full).
+FULL_DEST_DIR := $(THIS_DIR)/build/linux/full
+FULL_DEST := $(FULL_DEST_DIR)/lazybones-shell
+WIN_FULL_DEST_DIR := $(THIS_DIR)/build/windows-full
+WIN_FULL_DEST := $(WIN_FULL_DEST_DIR)/lazybones-shell.exe
+# The loopback origin the in-process gateway binds + the UI is baked against. Override ONLY
+# if you rebuild both the binary AND the UI with the same value (the contract is they match).
+LOOPBACK_ADDR ?= 127.0.0.1:8800
+
 DOCKER_BUILD := docker build -f $(DOCKERFILE)
 DOCKER_RUN := docker run --rm --user $(UID_GID) \
   -v "$(REPO_ROOT)":/build \
   -v lb-cargo:/usr/local/cargo/registry \
   -v lb-pnpm:/usr/local/pnpm/store
 
-.PHONY: image linux-executable artifact seed-demo smoke clean help
+.PHONY: image windows-image linux-executable linux-full windows-executable windows-full artifact seed-demo smoke smoke-full clean help
 .DEFAULT_GOAL := help
 
 help: ## Show this help.
@@ -60,12 +91,39 @@ endif
 	@echo "Binary: $(DEST)"
 	@file "$(DEST)" 2>/dev/null || true
 
+linux-full: image ## FULL standalone build (in-process gateway + seeders); binary → build/linux/full/.
+	$(DOCKER_RUN) -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(IMAGE)
+	@mkdir -p "$(FULL_DEST_DIR)"
+	@cp -f "$(BINARY)" "$(FULL_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(FULL_DEST_DIR)" DEMO_DB="$(FULL_DEST_DIR)/demo-buildings.db"
+	@echo "Binary (full): $(FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@file "$(FULL_DEST)" 2>/dev/null || true
+
 seed-demo: ## Generate the demo-building SQLite dataset (lite) at build/linux/executable/demo-buildings.db.
 	@command -v python3 >/dev/null || { echo "seed-demo needs python3 on the host"; exit 1; }
 	@mkdir -p "$(DEST_DIR)"
 	@echo "-> generating demo dataset (lite profile) into $(DEMO_DB)"
 	@cd "$(SEED_DIR)" && python3 seed.py --sqlite "$(DEMO_DB)"
 	@echo "Demo data: $(DEMO_DB) ($$(du -h "$(DEMO_DB)" | cut -f1))"
+
+windows-image: ## Build the Windows cross toolchain image (base + clang/lld/nasm + cargo-xwin).
+	$(DOCKER_BUILD) --target windows -t $(WIN_IMAGE) $(REPO_ROOT)
+
+windows-executable: windows-image ## Cross-build the .exe via container; binary + demo db → build/windows/.
+	$(DOCKER_RUN) -v lb-xwin:/usr/local/xwin $(WIN_IMAGE)
+	@mkdir -p "$(WIN_DEST_DIR)"
+	@cp -f "$(WIN_BINARY)" "$(WIN_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_DEST_DIR)" DEMO_DB="$(WIN_DEST_DIR)/demo-buildings.db"
+	@echo "Binary: $(WIN_DEST)"
+	@file "$(WIN_DEST)" 2>/dev/null || true
+
+windows-full: windows-image ## Cross-build the FULL standalone .exe → build/windows-full/.
+	$(DOCKER_RUN) -v lb-xwin:/usr/local/xwin -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(WIN_IMAGE)
+	@mkdir -p "$(WIN_FULL_DEST_DIR)"
+	@cp -f "$(WIN_BINARY)" "$(WIN_FULL_DEST)"
+	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_FULL_DEST_DIR)" DEMO_DB="$(WIN_FULL_DEST_DIR)/demo-buildings.db"
+	@echo "Binary (full): $(WIN_FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@file "$(WIN_FULL_DEST)" 2>/dev/null || true
 
 artifact: ## CI: build + extract just the ELF as a tar (reproducible, no bind-mount).
 	@mkdir -p "$(DEST_DIR)"
@@ -81,5 +139,18 @@ smoke: ## Boot the just-built binary under xvfb in the container (liveness check
 	  if kill -0 $$SH 2>/dev/null; then echo "alive after 5s"; kill $$SH; exit 0; \
 	  else echo "DEAD within 5s"; exit 1; fi'
 
-clean: ## Remove the cargo + pnpm named cache volumes (next build re-populates them).
-	docker volume rm lb-cargo lb-pnpm 2>/dev/null || true
+smoke-full: ## Boot the just-built FULL binary under xvfb + prove login works over the loopback gateway.
+	@test -x "$(FULL_DEST)" || { echo "Run 'make linux-full' first."; exit 1; }
+	$(DOCKER_RUN) --entrypoint bash -v "$(FULL_DEST)":/lb/lazybones-shell $(IMAGE) -c '\
+	  xvfb-run -a /lb/lazybones-shell & SH=$$!; \
+	  sleep 6; \
+	  if ! kill -0 $$SH 2>/dev/null; then echo "DEAD within 6s"; exit 1; fi; \
+	  BODY=$$(curl -fsS -X POST http://$(LOOPBACK_ADDR)/login -H "content-type: application/json" \
+	      -d "{\"user\":\"user:ada\",\"workspace\":\"acme\"}" 2>/dev/null || echo ""); \
+	  if echo "$$BODY" | grep -q "\"token\""; then \
+	    echo "login OK over loopback gateway (http://$(LOOPBACK_ADDR))"; \
+	  else echo "LOGIN FAILED (body: $$BODY)"; kill $$SH; exit 1; fi; \
+	  kill $$SH 2>/dev/null || true'
+
+clean: ## Remove the cargo + pnpm + xwin named cache volumes (next build re-populates them).
+	docker volume rm lb-cargo lb-pnpm lb-xwin 2>/dev/null || true

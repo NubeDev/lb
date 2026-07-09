@@ -1,8 +1,7 @@
 # A `template`/chart/table cell bound to `{tool:"rules.run"}` renders ZERO rows (the rules-as-source render path is empty)
 
 - Area: frontend / host
-- Status: **open** (surfaced during the render-template-inprocess scope; out of that scope's "no
-  pipeline change" boundary)
+- Status: **fixed** (2026-07-09, rules-for-widgets-scope slice 1 — see Resolution below)
 - First seen: 2026-07-05
 - Session: [`../../sessions/frontend/dashboard/render-template-inprocess-session.md`](../../sessions/frontend/dashboard/render-template-inprocess-session.md)
 - Regression test: `ui/src/features/dashboard/views/templateView.gateway.test.tsx` — the
@@ -60,7 +59,7 @@ chart, table, stat). The PICKER and the rules workbench are unaffected. The new 
 the series/SQL gateway test rendering 3 real rows) — so it will render rule rows the moment this host
 gap is fixed, with **no template-side change**.
 
-## Fix (for the host owner — separate scope)
+## Fix (for the host owner — scoped: [`../../scope/frontend/dashboard/rules-for-widgets-scope.md`](../../scope/frontend/dashboard/rules-for-widgets-scope.md), slice 1)
 
 1. **Layer 1:** trace why `call_tool_at_depth("rules.run", …)` from inside `viz_query` returns `Err`
    (so `dispatch_target` falls to its empty-rows arm). Likely candidates: the `ts`/`now` the dispatch
@@ -74,6 +73,46 @@ gap is fixed, with **no template-side change**.
    the existing lock-step comment.)
 3. Add a host integration test: a panel bound to `{tool:"rules.run"}` renders the rule's rows through
    `viz_query` end to end (the gateway test's `it.skip` case un-skips once green).
+
+## Resolution (2026-07-09)
+
+Built as rules-for-widgets-scope slice 1. The diagnostic came FIRST, as the scope demanded: a failing
+Rust integration test (`viz_query_test::rules_target_scalar_array_renders_rows`) seeded a real saved
+rule and drove `viz.query` over `{tool:"rules.run"}`. It returned **`rows.len() == 1`, not `0`** — so
+against the **in-process** host, Layer 1's recursive dispatch **succeeds** (the `Err→Vec::new()` arm did
+NOT fire); the whole `RunResult` collapsed to one JSON-blob row. That relocates the real defect to
+**Layer 2** for this path. (The `Err`-at-depth the original report saw was NOT a structural depth>0
+failure — the in-process dispatch composes the same `call_rules_tool` branch identically. It was the
+Layer-2 envelope-collapse symptom mis-read as an `Err`: with `viz.query` returning ONE JSON-blob row
+whose keys are the `RunResult` envelope (`output`/`findings`/…), the render read no `h`/`v` fields and
+looked "empty" downstream — indistinguishable from the `Err→Vec::new()` arm when only the rendered
+result is observed. It was never a cap/model-resolution difference between the direct `rules_run`
+channel and the recursive dispatch.)
+
+**Spawned-gateway path verified green (2026-07-09).** The suspicion above is now confirmed by a REAL
+spawned-gateway regression, not just the in-process host: `templateView.gateway.test.tsx::"renders real
+rows from a RULES source (rules.run)"` runs under `pnpm test:gateway` against the `test_gateway` binary.
+It signs in with EXACTLY `[mcp:rules.run:call, mcp:rules.save:call, mcp:viz.query:call, store:rule:read,
+store:rule:write]` (`signInWithCaps`), saves the rule body
+`let rows = [#{ h: 0, v: 10 }, #{ h: 1, v: 20 }, #{ h: 2, v: 30 }]; rows`, binds a `template` cell to
+`{tool:"rules.run", args:{rule_id:"hourly"}}`, resolves it through `viz.query` via `usePanelData`, and
+asserts **3 rows** (`h`/`v` rendered). It is GREEN. The original "Layer 1 `Err` at the spawned gateway"
+does not reproduce after the Layer 2 fix — the harness gap is closed by the envelope unwrap alone. No
+"separate cap/model-resolution issue" remains.
+
+Fix — **Layer 2 only**, generically by shape (no rules branch in the dispatcher, CLAUDE §10 held):
+`viz/frame.rs::result_to_rows` now unwraps a rules envelope FIRST via `unwrap_rule_envelope`: a full
+`RunResult` (`{output, findings, log, ms}`) recurses into `output`; a bare `RuleOutput` is
+`kind`-discriminated — `scalar`→the value (recursed, so an array → N rows, a non-array → one `{value}`
+row), `grid`→the shared columnar zip (extracted into `columnar_rows`, reused so the `kind:"grid"` key
+can't re-match and loop), `findings`/`nothing`→empty. Mirrored client-side in
+`useSource.ts::unwrapRuleEnvelope` per the lock-step comment. No dispatcher change was needed.
+
+Regression tests (all green): the un-skipped gateway test
+`templateView.gateway.test.tsx::"renders real rows from a RULES source (rules.run)"`; host integration
+`rules_target_scalar_array_renders_rows` + mandatory `rules_target_denied_without_run_cap_is_honest_empty`
++ `rules_target_workspace_isolation`; unit `viz::frame::rule_run_result_*` (scalar-array / grid /
+scalar-non-array / findings-empty).
 
 ## Lesson
 

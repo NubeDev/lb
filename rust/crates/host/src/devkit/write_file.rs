@@ -20,6 +20,5 @@ pub fn devkit_write_file(
     content: &str,
 ) -> Result<lb_devkit::WriteFileReport, DevkitError> {
     authorize_devkit(principal, ws, "write_file")?;
-    lb_devkit::write_file(root, path, content)
-        .map_err(|e| DevkitError::Devkit(e.to_string()))
+    lb_devkit::write_file(root, path, content).map_err(|e| DevkitError::Devkit(e.to_string()))
 }

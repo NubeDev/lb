@@ -25,11 +25,13 @@ interface CodeEditorProps {
   extensions: Extension[];
   height?: string;
   ariaLabel?: string;
+  /** Fired when the editor loses focus — a natural, non-disruptive moment to auto-format. */
+  onBlur?: () => void;
 }
 
 /** A controlled CodeMirror editor exposing an `insertSnippet` ref handle. */
 export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
-  { value, onChange, extensions, height = "100%", ariaLabel = "code editor" },
+  { value, onChange, extensions, height = "100%", ariaLabel = "code editor", onBlur },
   handleRef,
 ) {
   const { ref, insertSnippet } = useEditorInsert();
@@ -47,6 +49,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       aria-label={ariaLabel}
       value={value}
       onChange={onChange}
+      onBlur={onBlur}
       extensions={extensions}
       theme={mode}
       height={height}

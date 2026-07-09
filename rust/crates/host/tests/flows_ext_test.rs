@@ -29,6 +29,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }

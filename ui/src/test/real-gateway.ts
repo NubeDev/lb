@@ -36,6 +36,11 @@ export default async function setup({ provide }: GlobalSetupContext) {
       env: {
         ...process.env,
         PORT: "0",
+        // Login-hardening: `Gateway::boot()` selects its credential check from the env —
+        // unset `LB_DEV_LOGIN` → `PasswordHash` (a real argon2 secret required), which would
+        // `401` the password-less `signInReal` login. The harness is dev/CI, so opt into the
+        // `DevTrustAny` (password-less) check the same way `make dev` does.
+        LB_DEV_LOGIN: "1",
         LB_DEVKIT_ROOT: path.join(RUST, "extensions"),
         LB_DIR: path.join(RUST, "target", "devkit-gateway-lb"),
       },

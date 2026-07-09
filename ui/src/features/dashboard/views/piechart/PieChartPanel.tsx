@@ -7,6 +7,7 @@
 import type { Cell } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import { emptyScope } from "@/lib/vars";
+import { capPieSlices } from "@/lib/charts";
 
 import { WidgetHeader, WidgetMessage } from "../../widgets/chrome";
 import { PieChartSvg, type CategoryDatum } from "../../widgets/recharts";
@@ -32,7 +33,10 @@ export function PieChartPanel({ cell, label, scope = emptyScope(), refreshKey = 
   const options = readPieChartOptions(cell.options);
   const opts = valueFieldOptions(cell);
 
-  const cats = frameCategories(rows, options.reduceOptions);
+  // Cap the slices to a readable pie: duplicate names merge (sum), the tail buckets into an explicit
+  // "Other (n)" slice. A per-timestamp frame (a timeseries fed to a pie) would otherwise draw 100
+  // invisible slivers behind a legend wall — the tail is aggregated visibly, never hidden.
+  const cats = capPieSlices(frameCategories(rows, options.reduceOptions));
   if (cats.length === 0) return <WidgetMessage tone="muted">no data yet</WidgetMessage>;
 
   const total = cats.reduce((a, c) => a + c.value, 0);

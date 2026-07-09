@@ -76,8 +76,8 @@ Docs, tests, and debug history are deliverables, not optional. Before finishing 
 - if anything broke, **log a `docs/debugging/<area>/<symptom>.md` entry**, fix it, add a
   **regression test**, and update `docs/debugging/README.md`
   (`docs/scope/debugging/debugging-scope.md`);
-- promote anything shipped into `docs/public/` and keep the matching `docs/scope/` open
-  questions current.
+- promote anything shipped into `doc-site/content/public/` (MDX) and keep the matching
+  `docs/scope/` open questions current.
 
 Full rules and templates: `docs/ABOUT-DOCS.md` → "Rules for AI sessions". A session that
 changed things but left no docs/tests/debugging record is **incomplete**.
@@ -138,7 +138,7 @@ in every doc and (later) every PR:
 
 - Keep `README.md` section numbers stable; many docs cross-reference them.
 - New feature? Start a `docs/scope/<topic>/<name>-scope.md` (the ask). Log agent
-  work in `docs/sessions/<topic>/`. Promote shipped truth to `docs/public/`.
+  work in `docs/sessions/<topic>/`. Promote shipped truth to `doc-site/content/public/` (MDX).
 - Match the existing voice: practical, architecture-scope friendly, decisive.
   Prefer a recommendation over an exhaustive survey.
 - When you make an architectural decision, note the alternative you rejected and

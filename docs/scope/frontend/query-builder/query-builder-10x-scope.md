@@ -259,7 +259,7 @@ dead and no second store exists.
 - `docs/scope/frontend/data-studio-10x-scope.md` + `docs/prompts/data-studio/README.md` — the Data Studio surface + the standalone-view/pages-as-panes registration map.
 - `docs/scope/frontend/system-catalog-scope.md` — the `@nube/source-picker` catalog the canvas drags from.
 - `docs/scope/datasources/sqlite-datasource-demo-scope.md` — the seeded `demo-buildings` fixture the gateway test runs against.
-- `docs/public/frontend/data-studio.md` · `docs/public/frontend/query-builder.md` (the stub this promotes into).
+- `doc-site/content/public/frontend/data-studio.mdx` · `doc-site/content/public/frontend/query-builder.mdx` (the stub this promotes into).
 - Tabularis source (read-only reference, do NOT copy code wholesale): `/tmp/tabularis/src/components/ui/VisualQueryBuilder.tsx`, `/tmp/tabularis/src/utils/visualQuery.ts`, `/tmp/tabularis/src/utils/autocomplete.ts`, `/tmp/tabularis/src/utils/sqlSplitter/`.
 </content>
 </invoke>

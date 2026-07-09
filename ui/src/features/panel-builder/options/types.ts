@@ -50,6 +50,11 @@ export interface OptionDef {
    *  a list scopes a per-viz option (e.g. `custom.lineWidth` → timeseries). Drives the Field/per-viz
    *  tab rendering AND which options the override picker offers for the current viz. */
   views?: View[];
+  /** Views this option is EXCLUDED from, even when it would otherwise be universal (`views` absent).
+   *  For a view that carries no fieldConfig (e.g. `insights` — a list widget, not a field render), the
+   *  standard field options (unit/decimals/thresholds…) are noise; excluding them keeps its Options step
+   *  to the options that actually apply. Absent = no exclusion. */
+  excludeViews?: View[];
   /** Keywords that also match this option in the options search (beyond label/id). */
   keywords?: string[];
 }

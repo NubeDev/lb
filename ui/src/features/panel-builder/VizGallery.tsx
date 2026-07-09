@@ -9,7 +9,7 @@
 
 import type { Cell, View } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
-import { LayoutTemplate, Sparkles, Table2 } from "lucide-react";
+import { LayoutTemplate, Lightbulb, Sparkles, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { WidgetView } from "@/features/dashboard/views/WidgetView";
@@ -32,6 +32,7 @@ const LABEL_VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "table", label: "Table", icon: Table2 },
   { id: "genui", label: "AI widget", icon: Sparkles },
   { id: "template", label: "Template", icon: LayoutTemplate },
+  { id: "insights", label: "Insights", icon: Lightbulb },
 ];
 
 interface Props {

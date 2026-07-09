@@ -7,7 +7,9 @@ deny-tolerant — `rulesEntries`/`listRules` in the package + `useSourcePicker.t
 `{tool:"rules.run"}` rendering the rule's rows through `viz.query` — is **blocked by a host gap**
 (`viz.query`'s recursive dispatch of `rules.run` returns empty for every view, regardless of caps;
 the `RuleOutput` envelope is also not unwrapped). Tracked in
-[`../../../debugging/frontend/rules-as-source-render-path-empty.md`](../../../debugging/frontend/rules-as-source-render-path-empty.md).
+[`../../../debugging/frontend/rules-as-source-render-path-empty.md`](../../../debugging/frontend/rules-as-source-render-path-empty.md);
+**the render half is now scoped as its own slice** — [`rules-for-widgets-scope.md`](rules-for-widgets-scope.md)
+(the host fix + read-only panel runs + chart-return helpers in the cage).
 Parent: the reusable source picker
 ([`source-picker-package-scope.md`](source-picker-package-scope.md)) and the rules cage
 ([`../../rules/rules-engine-scope.md`](../../rules/rules-engine-scope.md),

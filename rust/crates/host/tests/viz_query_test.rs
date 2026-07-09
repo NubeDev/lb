@@ -37,6 +37,8 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
     verify(&key, &token, 1).expect("token verifies")
@@ -309,6 +311,122 @@ async fn frames_in_shapes_without_resolving_a_source() {
     // Same filtered+sorted result as the store-backed pipeline test — the ONE transform impl.
     assert_eq!(payloads, vec![50.0, 30.0, 10.0], "shaped inline frames");
     assert_eq!(out["frames"][0]["refId"], json!("A"), "refId preserved");
+}
+
+const RUN: &str = "mcp:rules.run:call";
+const SAVE: &str = "mcp:rules.save:call";
+const GET: &str = "mcp:rules.get:call";
+const RULE_READ: &str = "store:rule:read";
+const RULE_WRITE: &str = "store:rule:write";
+
+/// Save a rule by id/body through the real `rules.save` verb.
+async fn save_rule(node: &Arc<Node>, p: &Principal, ws: &str, id: &str, body: &str) {
+    call_tool(
+        node,
+        p,
+        ws,
+        "rules.save",
+        &json!({ "id": id, "name": id, "body": body }).to_string(),
+    )
+    .await
+    .expect("rules.save");
+}
+
+/// A panel with one `rules.run` target over a saved rule id.
+fn rules_panel(rule_id: &str) -> Value {
+    json!({
+        "sources": [{ "refId": "A", "tool": "rules.run", "args": { "rule_id": rule_id } }],
+        "transformations": [],
+    })
+}
+
+// Slice 1 diagnostic (rules-for-widgets-scope): a panel bound to `{tool:"rules.run"}` must render the
+// rule's rows through the recursive dispatch. A rule whose last expression is an array of row maps
+// (`RuleOutput::Scalar(value:[…])`) is the scalar-array kind.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rules_target_scalar_array_renders_rows() {
+    let ws = "viz-rules-scalar";
+    let node = Arc::new(Node::boot().await.unwrap());
+    let caps = &[VIZ, RUN, SAVE, GET, RULE_READ, RULE_WRITE];
+    let p = principal("user:ada", ws, caps);
+    save_rule(
+        &node,
+        &p,
+        ws,
+        "hourly",
+        "let rows = [#{ h: 0, v: 10 }, #{ h: 1, v: 20 }, #{ h: 2, v: 30 }]; rows",
+    )
+    .await;
+
+    let out = viz_query(&node, &p, ws, rules_panel("hourly"))
+        .await
+        .expect("viz.query runs over a rules.run target");
+    let rows = out["rows"].as_array().expect("rows");
+    assert_eq!(rows.len(), 3, "the rule's 3 rows render through viz.query");
+    assert_eq!(rows[0]["v"], json!(10));
+    assert_eq!(rows[2]["v"], json!(30));
+}
+
+// MANDATORY (rules-for-widgets-scope Testing plan): a viewer holding `viz.query` but NOT `rules.run`
+// gets an honest EMPTY frame for a rules target — no bypass, no 500, no other source's data.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rules_target_denied_without_run_cap_is_honest_empty() {
+    let ws = "viz-rules-deny";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // A writer with the full grant saves the rule so it exists in the store.
+    let writer = principal(
+        "user:seed",
+        ws,
+        &[VIZ, RUN, SAVE, GET, RULE_READ, RULE_WRITE],
+    );
+    save_rule(&node, &writer, ws, "hourly", "[#{ v: 1 }, #{ v: 2 }]").await;
+
+    // The caller holds viz.query but NOT rules.run → the recursive dispatch denies inside → empty.
+    let caller = principal("user:ada", ws, &[VIZ]);
+    let out = viz_query(&node, &caller, ws, rules_panel("hourly"))
+        .await
+        .expect("viz.query itself is granted");
+    assert!(
+        out["rows"].as_array().unwrap().is_empty(),
+        "a denied rules target → honest empty rows"
+    );
+}
+
+// MANDATORY: a rule saved in ws-A yields NO rows for a ws-B viewer's identical panel (the hard wall,
+// re-proven at the render layer — the store read + caps check both refuse before the cage runs).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn rules_target_workspace_isolation() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    let caps = &[VIZ, RUN, SAVE, GET, RULE_READ, RULE_WRITE];
+    let a = principal("user:ada", "ws-a", caps);
+    save_rule(
+        &node,
+        &a,
+        "ws-a",
+        "hourly",
+        "[#{ v: 1 }, #{ v: 2 }, #{ v: 3 }]",
+    )
+    .await;
+
+    // Sanity: ws-A sees its own 3 rows through this path.
+    let out_a = viz_query(&node, &a, "ws-a", rules_panel("hourly"))
+        .await
+        .unwrap();
+    assert_eq!(
+        out_a["rows"].as_array().unwrap().len(),
+        3,
+        "ws-A sees its rule's rows"
+    );
+
+    // ws-B runs the SAME panel (same rule id) — the rule does not exist in ws-B → empty.
+    let b = principal("user:bob", "ws-b", caps);
+    let out_b = viz_query(&node, &b, "ws-b", rules_panel("hourly"))
+        .await
+        .expect("viz.query runs in ws-b");
+    assert!(
+        out_b["rows"].as_array().unwrap().is_empty(),
+        "ws-B sees none of ws-A's rule rows"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

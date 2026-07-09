@@ -220,14 +220,19 @@ pub async fn get_nav_pref(
     Ok(Json(serde_json::to_value(pref).unwrap_or(Value::Null)))
 }
 
-/// `POST /nav/pref` body — set the caller's own active-nav pick (empty `id` clears it).
+/// `POST /nav/pref` body — set the caller's own active-nav pick (empty `id` clears it) and/or their
+/// pinned favorites (hide-and-pins scope). `pinned` absent = pins untouched; present = full replace.
 #[derive(Debug, Deserialize)]
 pub struct SetNavPref {
-    pub id: String,
+    /// Absent = leave the active pick untouched (a pin-only write); `""` clears it.
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub pinned: Option<Vec<String>>,
 }
 
-/// `POST /nav/pref` — set the caller's own active-nav pick. Keyed to the token `sub` (a caller cannot
-/// set another user's pick). Gated `nav.resolve`; member-level.
+/// `POST /nav/pref` — set the caller's own active-nav pick and/or pins. Keyed to the token `sub` (a
+/// caller cannot set another user's pick or pins). Gated `nav.resolve`; member-level.
 pub async fn set_nav_pref(
     State(gw): State<Gateway>,
     headers: HeaderMap,
@@ -236,10 +241,56 @@ pub async fn set_nav_pref(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let pref = lb_host::nav_pref_set(&gw.node.store, &p, p.ws(), &body.id, gw.now())
+    let pref = lb_host::nav_pref_set(
+        &gw.node.store,
+        &p,
+        p.ws(),
+        body.id.as_deref(),
+        body.pinned,
+        gw.now(),
+    )
+    .await
+    .map_err(status)?;
+    Ok(Json(serde_json::to_value(pref).unwrap_or(Value::Null)))
+}
+
+/// `GET /nav/hidden` — the workspace sidebar hidden-set (hide-and-pins scope). Member-level (rides
+/// `nav.resolve` — the resolver echoes the same set to every member anyway).
+pub async fn get_nav_hidden(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let h = lb_host::nav_hidden_get(&gw.node.store, &p, p.ws())
         .await
         .map_err(status)?;
-    Ok(Json(serde_json::to_value(pref).unwrap_or(Value::Null)))
+    Ok(Json(serde_json::to_value(h).unwrap_or(Value::Null)))
+}
+
+/// `POST /nav/hidden` body — replace the workspace hidden-set (empty clears it).
+#[derive(Debug, Deserialize)]
+pub struct SetNavHidden {
+    #[serde(default)]
+    pub hidden: Vec<String>,
+}
+
+/// `POST /nav/hidden` — replace the workspace sidebar hidden-set (full-set LWW; bounded). Gated
+/// `nav.save` (the menu-authoring authority, like `/nav/default`). Hiding never blocks a route —
+/// every page verb is still re-checked on click; this only shapes what the rail lists.
+pub async fn set_nav_hidden(
+    State(gw): State<Gateway>,
+    headers: HeaderMap,
+    Json(body): Json<SetNavHidden>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    let p = authenticate(&gw, &headers)
+        .await
+        .map_err(|e| e.into_response())?;
+    let h = lb_host::nav_hidden_set(&gw.node.store, &p, p.ws(), body.hidden, gw.now())
+        .await
+        .map_err(status)?;
+    Ok(Json(serde_json::to_value(h).unwrap_or(Value::Null)))
 }
 
 fn parse_visibility(s: &str) -> Option<NavVisibility> {

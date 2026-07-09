@@ -27,6 +27,9 @@ interface Props {
   onChange: (spec: PlotSpec) => void;
   valueFormatter?: (n: number) => string;
   className?: string;
+  /** Render the builder's own live preview beside the controls (default). A host that already pins a
+   *  full-panel preview (the panel wizard) passes `false` — controls only, full width, ONE chart. */
+  preview?: boolean;
 }
 
 const TYPES: { type: PlotType; label: string; icon: typeof LineChart }[] = [
@@ -38,7 +41,7 @@ const TYPES: { type: PlotType; label: string; icon: typeof LineChart }[] = [
   { type: "histogram", label: "Histogram", icon: BarChartBig },
 ];
 
-export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, className }: Props) {
+export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, className, preview = true }: Props) {
   const nums = useMemo(() => numericFields(fields), [fields]);
   const categories = useMemo(() => fields.filter((f) => f.kind !== "number").map((f) => f.name), [fields]);
   const set = (patch: Partial<PlotSpec>) => onChange({ ...spec, ...patch });
@@ -54,13 +57,17 @@ export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, clas
   const canSmooth = spec.type === "line" || spec.type === "area";
 
   return (
-    <div className={cn("flex flex-col gap-4 lg:flex-row", className)}>
+    <div className={cn("flex flex-col gap-4", preview && "lg:flex-row", className)}>
       {/* controls */}
-      <div className="flex min-w-0 flex-col gap-4 lg:w-64 lg:shrink-0">
+      <div className={cn("flex min-w-0 flex-col gap-4", preview && "lg:w-64 lg:shrink-0")}>
         {/* chart type */}
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-xs font-medium text-muted">Chart type</legend>
-          <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="chart type">
+          <div
+            className={cn("grid grid-cols-3 gap-1.5", !preview && "sm:grid-cols-6")}
+            role="radiogroup"
+            aria-label="chart type"
+          >
             {TYPES.map(({ type, label, icon: Icon }) => {
               const active = spec.type === type;
               return (
@@ -97,6 +104,12 @@ export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, clas
                 </option>
               ))}
             </Select>
+            {spec.type === "pie" && fields.find((f) => f.name === spec.xField)?.kind === "time" && (
+              <p className="text-[11px] text-warn" aria-label="pie category hint">
+                A time field makes a poor pie category — every timestamp becomes a slice. Pick a
+                categorical field instead.
+              </p>
+            )}
           </label>
         )}
 
@@ -176,6 +189,7 @@ export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, clas
       </div>
 
       {/* live preview */}
+      {preview && (
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-muted">Preview</span>
@@ -187,6 +201,7 @@ export function PlotBuilder({ fields, rows, spec, onChange, valueFormatter, clas
           <PlotChart rows={rows} spec={spec} valueFormatter={valueFormatter} ariaLabel="plot preview" />
         </div>
       </div>
+      )}
     </div>
   );
 }

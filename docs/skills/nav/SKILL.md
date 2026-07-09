@@ -19,10 +19,19 @@ A **nav** is a workspace asset — the `dashboard` shape cloned: a `nav:{id}` re
 edge. NavRail renders the resolved nav, **falling back** to the built-in `SURFACES` set when no nav
 exists (never a blank rail).
 
-**The nav is a LENS, never a grant.** An item carries no caps and cannot widen reach. `nav.resolve`
-strips every item the caller can't reach, and the gateway re-checks every page verb on click regardless.
-"Give the ops team these pages" = define a **role** (the cap bundle) + share a **nav** to the team — the
-role grants, the nav shapes the menu.
+**The nav is a LENS for WIDENING (never a grant), but GATES REACH for NARROWING.** An item carries no
+caps and cannot *widen* reach: `nav.resolve` strips every item the caller can't reach, and the gateway
+re-checks every page verb on click regardless. "Give the ops team these pages" = define a **role** (the
+cap bundle) + share a **nav** to the team — the role grants, the nav shapes the menu.
+
+**Update (`nav-reach-scope.md`, shipped): a curated nav now GATES REACH.** The resolved nav is turned
+into `reach:<surface>:view` caps at login; the dedicated `GET /surface/{s}` route enforces them
+server-side. So a subject given a **one-page** nav can reach ONLY that page (read included — other core
+pages 403 at `/surface/{s}` and are dropped from the rail). A **fallback** nav (no curated menu) yields
+`reach:*:view` and reaches all, so a default member/admin is never locked out. This still never widens:
+reach is only emitted for a surface the resolver already kept, so the nav can *subtract* reachable pages
+but never *add* one. To restrict a viewer to specific pages: give them the `viewer` role AND a curated
+nav — the role makes them read-only, the nav makes only those pages reachable.
 
 The gateway derives the **workspace + owner from the bearer token**, never the body (README §6/§7).
 
@@ -50,7 +59,8 @@ menu + curates their own pick — `nav.pref.*` gate on `nav.resolve`); writes
 | Share / visibility | `POST /navs/{id}/share` | `{"tool":"nav.share","args":{…}}` | `id,visibility,team?,now*` |
 | Set workspace default | `POST /nav/default` | `{"tool":"nav.set_default","args":{"id":"…","now":…}}` | `id,now*` |
 | Resolve effective menu | `GET /nav/resolve` | `{"tool":"nav.resolve","args":{}}` | — |
-| Read/set my pick | `GET|POST /nav/pref` | `{"tool":"nav.pref.get|set","args":{…}}` | `id?,now*` |
+| Read/set my pick + pins | `GET|POST /nav/pref` | `{"tool":"nav.pref.get|set","args":{…}}` | `id?,pinned?,now*` |
+| Read/set workspace hidden-set | `GET|POST /nav/hidden` | `{"tool":"nav.hidden.get|set","args":{…}}` | `hidden[],now*` |
 
 ## 3. The entry kinds (+ one `group` level)
 
@@ -103,6 +113,31 @@ curl -s http://127.0.0.1:8080/nav/resolve -H "Authorization: Bearer $TOKEN" \
 `source` is `pick | team | workspace-default | fallback`. A `fallback` carries no items — the UI renders
 its built-in surfaces (never blank).
 
+The payload also carries (hide-and-pins scope, on EVERY source incl. `fallback`):
+
+- `hidden[]` — the workspace **hidden-set** echo. The rail subtracts these refs from its built-in
+  fallback menu (the one tier the server can't strip); resolved `items`/`pinned` arrive already
+  stripped. Hiding is DECLUTTER, never authz — a permitted deep link still loads.
+- `pinned[]` — the caller's **pinned favorites**, resolved (cap-, uninstalled-ext-, and
+  hidden-stripped — hide beats pin), in the member's order. Rendered as a "Pinned" section above
+  whichever menu applies.
+
+Refs share one grammar everywhere: a bare surface key (`"rules"`), `ext:<id>`, or `dashboard:<id>`.
+
+```bash
+# Admin: hide the Dashboards surface + one extension page for the whole workspace.
+curl -s -X POST http://127.0.0.1:8080/nav/hidden -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{ "hidden": ["dashboards", "ext:mqtt"] }'
+
+# Member: pin favorites (ordered). A PARTIAL write — omitting `id` leaves the active pick alone.
+curl -s -X POST http://127.0.0.1:8080/nav/pref -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{ "pinned": ["rules", "dashboard:cooler-health"] }'
+```
+
+Caps: `nav.hidden.get` rides `mcp:nav.resolve:call` (member); `nav.hidden.set` rides
+`mcp:nav.save:call` (admin — the same authority as `nav.set_default`). Pins ride `nav.pref.*`
+(member-owned, keyed to the token `sub`). Bounds: 200 hidden refs, 50 pins (`BadInput` over).
+
 ## 5. Publish a template dashboard as a per-site menu (reusable pages)
 
 A **template dashboard** is an ordinary dashboard whose `variables[]` are its parameters — mark one
@@ -152,6 +187,10 @@ re-check server-side on visit.
 
 - **Nav never widens (the headline):** an item the caller lacks the cap for is stripped by `resolve`
   AND still 403s on direct access — the lens grants nothing. Never author a cap into an item.
+- **Nav GATES reach (the narrowing half, `nav-reach-scope.md`):** a curated nav is the allow-list of
+  reachable core pages. Login folds the resolved nav into `reach:<surface>:view` caps; `GET /surface/{s}`
+  enforces them. One page in the nav ⇒ only that page reaches (read included). A fallback nav reaches
+  all (`reach:*:view`) — the gate bites only for an explicitly curated menu, so no default lock-out.
 - **Caps: 100 items per nav** (authored, incl. `group` children); **50 dashboards per expanded
   tag-group** at resolve (over-cap authored → `BadInput`; over-cap expansion is logged, not silently
   dropped).

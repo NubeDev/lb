@@ -200,7 +200,7 @@ Via the dedicated REST route the same save is `POST /dashboards` with body
 
 ## Related
 
-- Dashboard model + verbs (source of truth): `docs/public/frontend/dashboard.md`.
-- The X/Y plot builder: `docs/public/frontend/dashboard.md` → "X/Y plot builder",
+- Dashboard model + verbs (source of truth): `doc-site/content/public/frontend/dashboard.mdx`.
+- The X/Y plot builder: `doc-site/content/public/frontend/dashboard.mdx` → "X/Y plot builder",
   `docs/scope/frontend/dashboard/viz/xy-plot-builder-scope.md`.
 - Capability / workspace rules: `README.md` §3, §6, §7; `docs/scope/auth-caps/`.

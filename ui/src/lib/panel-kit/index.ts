@@ -14,6 +14,7 @@ export { saveDraftAsPanel, slugify } from "./saveAsLibrary";
 export {
   usePanelEditor,
   PLOTTABLE_VIEWS,
+  SOURCELESS_VIEWS,
   type PanelEditorMachine,
   type UsePanelEditorOptions,
 } from "./usePanelEditor";

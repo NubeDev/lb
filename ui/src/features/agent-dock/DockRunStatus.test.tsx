@@ -52,6 +52,48 @@ describe("DockRunStatus controls", () => {
     expect(onResume).toHaveBeenCalledOnce();
   });
 
+  it("renders the stall pause-and-ask prompt with Keep going + Stop, and fires them", async () => {
+    const user = userEvent.setup();
+    const onKeepGoing = vi.fn();
+    const onStopStalled = vi.fn();
+    render(
+      <DockRunStatus
+        phase="working"
+        feed={FEED}
+        elapsedSec={95}
+        degraded={false}
+        stalled
+        stalledText="The agent hasn't made progress for a while — it may be stuck."
+        onRetry={() => {}}
+        onKeepGoing={onKeepGoing}
+        onStopStalled={onStopStalled}
+      />,
+    );
+    // The honest prompt shows, and the run reads as awaiting a decision (not a bare spinner/error).
+    expect(screen.getByLabelText("run stalled — awaiting your decision")).toBeInTheDocument();
+    expect(screen.getByText(/may be stuck/)).toBeInTheDocument();
+    await user.click(screen.getByLabelText("keep going"));
+    await user.click(screen.getByLabelText("stop run"));
+    expect(onKeepGoing).toHaveBeenCalledOnce();
+    expect(onStopStalled).toHaveBeenCalledOnce();
+  });
+
+  it("stall prompt yields to a terminal Done/Error state (the decision was made)", () => {
+    render(
+      <DockRunStatus
+        phase="done"
+        feed={FEED}
+        elapsedSec={95}
+        degraded={false}
+        stalled
+        onRetry={() => {}}
+        onKeepGoing={() => {}}
+      />,
+    );
+    // Done wins — the stall prompt is gone once the run settled.
+    expect(screen.queryByLabelText("run stalled — awaiting your decision")).toBeNull();
+  });
+
   it("shows controls even in the pre-delta Sent state (the run may already be driving)", () => {
     render(
       <DockRunStatus

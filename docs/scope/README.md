@@ -116,8 +116,23 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   and `global-identity-scope.md` (the **Slack model** the README §7/§6.6 name but the code never built:
   a global, hub-authoritative identity in a system directory linked to workspaces by a `membership`
   record, login resolving to a person's workspaces, and a real workspace switcher — promotes the
-  stated design to implementation; the gap surfaced in the access-console session).
-- `bus/` — the Zenoh message bus (motion).
+  stated design to implementation; the gap surfaced in the access-console session), and
+  `login-hardening-scope.md` (the `POST /login` dev-shim's two leaks a live session found: **no
+  credential check** — any body mints a token — and **every login gets an admin-grade cap bundle**
+  so a nominal member can add members / self-grant `workspace.delete`; adds a `CredentialCheck` seam
+  + role-scoped cap issuance behind the same `mint`/`verify` boundary, restoring README §6.6 RBAC),
+  and `access-model-scope.md` (**team-as-the-unit-of-access** + a `dashboard.access_check` preflight
+  that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
+  `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
+  a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
+  datasource).
+- `bus/` — the Zenoh message bus (motion). `unified-event-stream-scope.md` adds the **browser
+  leg**: one multiplexed SSE connection per app session carrying every live feed as a
+  cap-re-checked *subject* (run/channel/series/flows/telemetry/insights), replacing the
+  one-`EventSource`-per-feed pattern that saturates the browser's ~6-connection HTTP/1.1
+  pool and makes an active agent run "block" navigation (browsers refuse cleartext HTTP/2,
+  so the cap is structural on the plain-HTTP posture; verified live —
+  `debugging/frontend/agent-dock-blocks-navigation-sse-pool-exhaustion.md`).
 - `coding-workflow/` — the S6 worked example: issue → triage → approval → job → outbox.
 - `rules/` — the embedded **rules/processing engine** (`lb-rules`), ported from `rubix-cube`: a
   sandboxed `rhai` cage + a lazy `Grid` + a verb library (`rules-engine-scope.md`, data via
@@ -168,6 +183,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
+  **`schema-designer-scope.md`** adds the federation **write plane** + visual schema design: a
+  `db_schema:{ws}:{name}` record edited on a React Flow canvas (tables/columns/PK/FK; tabularis
+  Apache-2.0 lift, ChartDB UX-reference-only), applied by an Ask-gated `federation.migrate`
+  (dry-run-default DDL diff), written per-message by a bounded upsert `federation.write` (the
+  flow `tool`-node target), and backfilled by `federation.export` — a checkpointed `lb-jobs`
+  batch, the outbound dual of `federation.mirror`. External DBs become sinks, never authority.
 - `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
   extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
   extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):
@@ -322,7 +343,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   back when quiet; first-occurrence / severity-escalation / re-open always break through; ack
   suppresses; ws policy record + per-sub overrides + per-member kill switch). The fraud and
   HVAC/energy (SkySpark-style, `docker/postgres/seed.py`) verticals build on it as
-  config/extensions with zero core branches.
+  config/extensions with zero core branches. `rule-raises-insight-scope.md` builds the **rule
+  producer door**: a rule body raises/**acks**/**closes** an insight in one line via a new
+  `insight` rhai handle over the existing verbs (no new verb, no new cap), deciding the
+  `route:false` read-only-panel suppression and the emit/alert boundary. Index:
+  `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of
@@ -366,6 +391,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   tag-group** (dashboards matching a tag facet). `nav.resolve` returns the caller's effective menu —
   pick + tag-expand + **cap-strip** — the menu is a **lens over existing access, never a grant path**;
   the sidebar (`NavRail`) renders it, falling back to the built-in `SURFACES` set.
+  `nav-hide-and-pins-scope.md` extends it with a workspace-admin **hidden-set**
+  (`nav.hidden_get/set` — hide e.g. the Dashboard surface from every tier incl. the
+  fallback; declutter only, never blocks a route) and per-user **pins**
+  (`nav_pref.pinned` — a personal ordered Pinned section atop the rail); hide beats pin.
 - `query/` — saved **PRQL** queries (`prql-query-scope.md`): author once in PRQL (or `lang:"raw"`),
   **save as an editable `query:{ws}:{id}` record**, and run against the SurrealDB-native store
   (`store.query`) or a registered datasource (`federation.query`) through one `query.*` MCP family.

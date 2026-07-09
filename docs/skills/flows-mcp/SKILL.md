@@ -252,7 +252,7 @@ trigger) starts a one-shot run instead. `flows.node_state` reads the retained va
 
 ## Related
 
-- Flow model + Decisions (the source of truth): `docs/public/flows/flows.md`;
+- Flow model + Decisions (the source of truth): `doc-site/content/public/flows/flows.mdx`;
   spine `docs/scope/flows/flows-scope.md` (Decisions 1–16), descriptor `docs/scope/flows/node-descriptor-scope.md`.
 - The data/JSON node pack (the 20 data nodes): `docs/scope/flows/data-nodes-scope.md`,
   session `docs/sessions/flows/data-nodes-session.md`.

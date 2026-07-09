@@ -40,6 +40,7 @@ describe("PanelWizard — source + chart-type steps over real seeded rows (real 
     // The wizard mounts at the source step.
     expect(screen.getByLabelText("wizard source step")).toBeDefined();
     // Click the source combobox to open its options; assert the seeded series is offered.
+    await user.click(await screen.findByLabelText("source track workspace"));
     await user.click(screen.getByLabelText("wizard source"));
     const opt = await screen.findByRole("option", { name: "cooler.temp" });
     expect(opt).toBeDefined();
@@ -57,6 +58,7 @@ describe("PanelWizard — source + chart-type steps over real seeded rows (real 
       </WithDashboardCache>,
     );
     // Open the source combobox + pick the seeded series entry.
+    await user.click(await screen.findByLabelText("source track workspace"));
     await user.click(screen.getByLabelText("wizard source"));
     const opt = await screen.findByRole("option", { name: "cooler.temp" });
     await user.click(opt);
@@ -79,6 +81,7 @@ describe("PanelWizard — source + chart-type steps over real seeded rows (real 
       </WithDashboardCache>,
     );
     // Pick a source first (the chart-type step's enablement carries over once a target exists).
+    await user.click(await screen.findByLabelText("source track workspace"));
     await user.click(screen.getByLabelText("wizard source"));
     const opt = await screen.findByRole("option", { name: "cooler.temp" });
     await user.click(opt);
@@ -107,6 +110,7 @@ describe("PanelWizard — source + chart-type steps over real seeded rows (real 
         <PanelWizard ws={ws} dashboardId="d-any" onExit={() => {}} />
       </WithDashboardCache>,
     );
+    await user.click(await screen.findByLabelText("source track workspace"));
     await user.click(screen.getByLabelText("wizard source"));
     await user.click(await screen.findByRole("option", { name: "cooler.temp" }));
     await waitFor(() => expect(screen.getByLabelText("timeseries latest")).toBeInTheDocument());

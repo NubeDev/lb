@@ -53,6 +53,11 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "host",
         description: "a bounded directory listing with per-entry metadata",
     },
+    HostTool {
+        tool: "host.fs.home",
+        group: "host",
+        description: "the node's home directory (a stable anchor to browse from)",
+    },
     // system.* — the read-only workspace topology + status console (system-map scope).
     HostTool {
         tool: "system.overview",
@@ -242,9 +247,28 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "delete a dashboard the caller owns",
     },
     HostTool {
+        tool: "dashboard.delete_any",
+        group: "dashboard",
+        description:
+            "admin override: delete any dashboard in the workspace, not just the caller's own",
+    },
+    HostTool {
         tool: "dashboard.share",
         group: "dashboard",
         description: "share a dashboard with another principal/team",
+    },
+    HostTool {
+        tool: "dashboard.access_check",
+        group: "dashboard",
+        description:
+            "read-only preflight: walk a dashboard's dependency closure and report, per dependency, whether a subject/team can render it (access-model scope)",
+    },
+    // identity.* — the credential-management admin verb (login-hardening scope). The directory
+    // verbs (create/get/list/workspaces) also have dedicated admin REST routes.
+    HostTool {
+        tool: "identity.set_credential",
+        group: "identity",
+        description: "admin: set/rotate a user's login password (argon2-hashed; never returns the hash)",
     },
     // panel.* — the reusable + standalone library-panel asset (library-panels scope).
     HostTool {
@@ -321,7 +345,19 @@ const HOST_TOOLS: &[HostTool] = &[
     HostTool {
         tool: "nav.pref.set",
         group: "nav",
-        description: "set the caller's own active-nav pick",
+        description: "set the caller's own active-nav pick and/or pinned favorites",
+    },
+    // hide-and-pins scope: the workspace hidden-set — the admin's one subtractive sidebar-curation
+    // lever (declutter only; hiding never blocks a route).
+    HostTool {
+        tool: "nav.hidden.get",
+        group: "nav",
+        description: "read the workspace sidebar hidden-set",
+    },
+    HostTool {
+        tool: "nav.hidden.set",
+        group: "nav",
+        description: "replace the workspace sidebar hidden-set (admin)",
     },
     // template.* — the durable scripted-view snippets the widget builder persists (widget-builder scope).
     HostTool {
@@ -463,6 +499,41 @@ const HOST_TOOLS: &[HostTool] = &[
         tool: "federation.mirror",
         group: "federation",
         description: "mirror an external query's rows into the embedded store",
+    },
+    HostTool {
+        tool: "federation.write",
+        group: "federation",
+        description: "write rows to a registered datasource (bounded INSERT/UPSERT)",
+    },
+    HostTool {
+        tool: "federation.migrate",
+        group: "federation",
+        description: "plan/apply a designed schema to a datasource (additive DDL, dry-run default)",
+    },
+    HostTool {
+        tool: "federation.export",
+        group: "federation",
+        description: "export platform series data to an external datasource (durable job)",
+    },
+    HostTool {
+        tool: "dbschema.save",
+        group: "dbschema",
+        description: "save a designed schema record (tables/columns/PK/FK + layout)",
+    },
+    HostTool {
+        tool: "dbschema.get",
+        group: "dbschema",
+        description: "read one designed schema record (full, layout included)",
+    },
+    HostTool {
+        tool: "dbschema.list",
+        group: "dbschema",
+        description: "list the workspace's designed schema records (name + table count)",
+    },
+    HostTool {
+        tool: "dbschema.delete",
+        group: "dbschema",
+        description: "remove a designed schema record (tombstones — never touches a live DB)",
     },
     // viz.query — the ONE viz bridge (widget-platform scope).
     HostTool {

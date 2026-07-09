@@ -5,10 +5,12 @@
 
 mod ai;
 pub(crate) mod channel;
+mod chart;
 mod data;
 mod duration;
 mod emit;
 pub(crate) mod inbox;
+pub(crate) mod insight;
 pub(crate) mod outbox;
 mod timeseries;
 
@@ -16,6 +18,7 @@ pub use ai::AiHandle;
 pub use channel::ChannelHandle;
 pub use emit::Collectors;
 pub use inbox::InboxHandle;
+pub use insight::InsightHandle;
 pub use outbox::OutboxHandle;
 
 use std::collections::HashSet;
@@ -27,17 +30,20 @@ use crate::grid::{Col, Grid, GridCtx, GroupedGrid, Span};
 use crate::meter::{AiMeter, WriteMeter};
 use crate::seam::{AiSeam, DataSeam, MessagingSeam};
 
-/// The four scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox`, `channel`.
-/// Returned so the engine can push them after registering the verbs.
+/// The five scope handles a run pushes as top-level variables: `ai`, `inbox`, `outbox`, `channel`,
+/// `insight`. Returned so the engine can push them after registering the verbs.
 pub struct RunHandles {
     pub ai: AiHandle,
     pub inbox: InboxHandle,
     pub outbox: OutboxHandle,
     pub channel: ChannelHandle,
+    pub insight: InsightHandle,
 }
 
 /// Register the grid value types + every verb family into `engine`. Returns the scope handles to push
-/// (`ai`/`inbox`/`outbox`).
+/// (`ai`/`inbox`/`outbox`/`channel`/`insight`). `route` is the run's read-only flag (false = a panel
+/// repaint: the `insight` handle no-ops); `origin_ref` is the rule id/name stamped into a raise's
+/// default `Origin.ref`.
 #[allow(clippy::too_many_arguments)]
 pub fn register(
     engine: &mut Engine,
@@ -52,21 +58,26 @@ pub fn register(
     messaging: Arc<dyn MessagingSeam>,
     write_meter: Arc<WriteMeter>,
     now: u64,
+    route: bool,
+    origin_ref: String,
 ) -> RunHandles {
     register_types(engine);
     register_grid_methods(engine);
     data::register(engine, ctx.clone(), allow.clone(), inputs);
     timeseries::register(engine);
-    emit::register(engine, collectors);
+    chart::register(engine);
+    emit::register(engine, collectors.clone());
     ai::register(engine);
     inbox::register(engine);
     outbox::register(engine);
     channel::register(engine);
+    insight::register(engine);
     RunHandles {
         ai: AiHandle::new(ai_seam, ctx, data, allow, meter, context_rows),
         inbox: InboxHandle::new(messaging.clone(), write_meter.clone(), now),
         outbox: OutboxHandle::new(messaging.clone(), write_meter.clone(), now),
-        channel: ChannelHandle::new(messaging, write_meter, now),
+        channel: ChannelHandle::new(messaging.clone(), write_meter.clone(), now),
+        insight: InsightHandle::new(messaging, write_meter, now, route, origin_ref, collectors),
     }
 }
 

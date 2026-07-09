@@ -16,8 +16,8 @@ use serde_json::{json, Value};
 
 use super::model::{NavItem, Visibility};
 use super::{
-    nav_delete, nav_get, nav_list, nav_list_shares, nav_pref_get, nav_pref_set, nav_resolve,
-    nav_save, nav_set_default, nav_share, nav_unshare, NavError,
+    nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list, nav_list_shares, nav_pref_get,
+    nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share, nav_unshare, NavError,
 };
 use crate::boot::Node;
 
@@ -131,16 +131,51 @@ pub async fn call_nav_tool(
             Ok(serde_json::to_value(pref).unwrap_or(Value::Null))
         }
         "nav.pref.set" => {
+            // `pinned` is OPTIONAL (hide-and-pins scope): absent leaves the member's pins untouched
+            // (the pre-pins callers keep their exact behavior); present replaces them (bounded).
+            let pinned = match input.get("pinned") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    serde_json::from_value::<Vec<String>>(v.clone())
+                        .map_err(|e| ToolError::BadInput(format!("pinned: {e}")))?,
+                ),
+            };
+            // `id` is optional too: absent leaves the active pick untouched (a pin toggle never
+            // clobbers the pick); present sets/clears it (`""` clears).
+            let id = match input.get("id") {
+                None | Some(Value::Null) => None,
+                Some(v) => Some(
+                    v.as_str()
+                        .ok_or_else(|| ToolError::BadInput("arg not a string: id".to_string()))?,
+                ),
+            };
             let pref = nav_pref_set(
                 &node.store,
                 principal,
                 ws,
-                str_arg(input, "id")?,
+                id,
+                pinned,
                 u64_arg(input, "now")?,
             )
             .await
             .map_err(to_tool)?;
             Ok(serde_json::to_value(pref).unwrap_or(Value::Null))
+        }
+        "nav.hidden.get" => {
+            // Member-level read (rides `nav.resolve`) — the settings tab + the resolver's echo.
+            let h = nav_hidden_get(&node.store, principal, ws)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(h).unwrap_or(Value::Null))
+        }
+        "nav.hidden.set" => {
+            // Admin write (rides `mcp:nav.save:call`, like `nav.set_default`) — full-set LWW.
+            let hidden: Vec<String> = serde_json::from_value(arg(input, "hidden")?.clone())
+                .map_err(|e| ToolError::BadInput(format!("hidden: {e}")))?;
+            let h = nav_hidden_set(&node.store, principal, ws, hidden, u64_arg(input, "now")?)
+                .await
+                .map_err(to_tool)?;
+            Ok(serde_json::to_value(h).unwrap_or(Value::Null))
         }
         _ => Err(ToolError::NotFound),
     }

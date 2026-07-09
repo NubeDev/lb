@@ -14,3 +14,5 @@ export { inferFields, numericFields, defaultXField } from "./fieldKind";
 export type { PlotFrame, PlotSeries } from "./buildPlot";
 export { buildPlot } from "./buildPlot";
 export { suggestPlot, suggestFromFields } from "./suggestPlot";
+export type { PieSlice } from "./pieSlices";
+export { capPieSlices, MAX_PIE_SLICES } from "./pieSlices";

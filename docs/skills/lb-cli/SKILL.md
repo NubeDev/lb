@@ -87,9 +87,9 @@ A verb your token lacks is refused by the server (`403`); `lb` relays that verba
 non-zero — it does **not** invent a success:
 
 ```bash
-lb call prefs.set_default '{}'          # admin-only; a dev member lacks it
-# DENIED  mcp:prefs.set_default:call
-echo $?                                 # 3
+lb call telemetry.purge '{}'              # node-admin op; a dev member lacks it
+# DENIED  mcp:telemetry.purge:call
+echo $?                                  # 3
 ```
 
 Exit codes a script can branch on: `0` ok · `2` bad input · `3` **DENIED** · `4` no stored
@@ -247,8 +247,8 @@ lb local -w acme call inbox.list '{"channel":"general"}'
 # ws: acme  user: user:ada  role: member  mode: local
 # (no rows)
 
-lb local -w acme call prefs.set_default '{}'      # parity deny — same as a member token
-# DENIED  mcp:prefs.set_default:call    (exit 3)
+lb local -w acme call telemetry.purge '{}'        # parity deny — same as a member token
+# DENIED  mcp:telemetry.purge:call    (exit 3)
 ```
 
 Local output is identical to remote (same claim set, same dispatch) — only the header's `mode:`
@@ -301,7 +301,7 @@ $LB login --url $URL -w acme
 $LB call inbox.list '{"channel":"ops"}' -o json          # { "items": [] }
 $LB devkit sign hello-v2 --out /tmp/a.json               # signed hello v0.2.0 → …
 $LB ext publish /tmp/a.json                              # published hello v0.2.0 — installed, live
-$LB call prefs.set_default '{}'; echo $?                 # DENIED … ; 3  (honest deny)
+$LB call telemetry.purge '{}'; echo $?             # DENIED … ; 3  (honest deny)
 
 # offline: the same commands, no gateway
 $LB local -w acme whoami
@@ -368,7 +368,7 @@ Run them: `cd rust && cargo test -p lb-cli`.
 - Grammar scope: `docs/scope/core/resource-verbs-scope.md` (the common `ls|show|rm|start|stop|status|
   watch` grammar every family follows — the source of "The common resource grammar" section above),
   with `docs/scope/jobs/job-control-scope.md` (`lb job ls|cancel|retry|watch`) as its first new tenant.
-- Public: `docs/public/cli/cli.md` (the shipped truth).
+- Public: `doc-site/content/public/cli/cli.mdx` (the shipped truth).
 - Session: `docs/sessions/cli/operator-cli-session.md` (the build log + green tests).
 - Implementation: `rust/role/cli/` (client lib + `lb` binary); the seams it uses —
   `rust/role/gateway/src/routes/mcp.rs` (`/mcp/call`), `…/routes/login.rs`, `…/routes/ext.rs`

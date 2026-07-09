@@ -178,6 +178,113 @@ outbox trio the coding workflow ships — no new approval primitive.
   released effect can never exceed what was staged. The reviewer sees the exact held effect before
   approving (informed consent).
 
+## 6. Returning chart data — a rule IS a panel source (rules-for-widgets)
+
+A rule's **`output`** (the last expression) is what a dashboard/widget draws when it binds a
+`{tool:"rules.run", args:{rule_id}}` source. The convention: **the last expression is an array of row
+maps**; a `time` column makes it a time-series. `RuleOutput::Scalar(array)` and `RuleOutput::Grid`
+(a returned `Grid`) both render — the host unwraps the envelope by shape. (Findings/`log` do **not**
+render as rows — they're the insights/inbox plane's food; a panel draws `output` only.)
+
+You don't have to reverse-engineer the shape. The **chart-return helpers** (`chart` family, pure compute
+over rows, zero authority) make it one line:
+
+```rhai
+// One line per building → a multi-line chart. `wide` pivots long rows to one column per series.
+let rows = query("demo-buildings",
+  "SELECT s.name AS building, substr(pr.time,1,10) AS ts, ROUND(SUM(pr.value),0) AS kwh
+   FROM point_reading pr JOIN point p ON p.id = pr.point_id
+   JOIN meter m ON m.id = p.meter_id JOIN site s ON s.id = m.site_id
+   WHERE p.name = 'Energy kWh' GROUP BY s.name, ts").records();
+wide(rows, "ts", "building", "kwh")
+```
+
+| Helper | Shape |
+|---|---|
+| `timeseries(rows, "ts")` | Normalize `ts` (ISO-8601 string \| epoch-secs \| epoch-ms → canonical epoch-ms), rename it `time`, sort ascending. The frame builder tags the x-axis without guessing. |
+| `timeseries(rows, "ts", ["v1","v2"])` | Same, plus trim to `time` + the named value columns. |
+| `wide(rows, "ts", "series", "value")` | Long→wide pivot: one row per timestamp, one numeric column per distinct `series` (multi-line shape). |
+| `category(rows, "name", "value")` | Bar/pie shape: one label column + one numeric column (validated). |
+
+Raw rows keep working — the helpers are normalization sugar, not a required layer.
+`timeseries(query(…).records(), "ts")` as the last line is a complete chart-ready rule. A missing/
+non-numeric column is a clear **author error** (surfaced verbatim in the run result), never a silent
+empty chart.
+
+`.records()` returns maps keyed by the SELECT aliases on **every** source kind — federation (sqlite/
+postgres, whose wire shape is column-aligned arrays) collapses to maps at the cage seam, so the same
+one-liner works against `demo-buildings` (federation) and a Surreal source alike. The catalog has a
+worked `category(...)` example: `buildings-intensity-chart` (a bar-chart of kWh per m² per building);
+bind a panel to `{tool:"rules.run", args:{rule_id:"buildings-intensity-chart"}}` and it renders.
+
+**Heavy rules + fast refresh don't mix.** A rule re-runs per panel per refresh (bounded by `RuleLimits`
++ the `viz.query` timeout, but **not** by frequency). A big `frame()`/slow federation query on a 5 s
+auto-refresh multiplies — same exposure as a heavy SQL source. Keep expensive rules on slow refreshes.
+
+**Panel runs are read-only.** The picker emits `route:false` on a rule source, so a repainting dashboard
+does **not** stamp a new inbox item + must-deliver outbox entry on every refresh from an `alert()` in the
+body — the finding still returns in the result, it just doesn't fan out. A scheduled flow
+(`rules.eval`, default `route:true`) still alerts: one rule, two consumption modes.
+
+## 7. Raising an insight — a durable fault record from the rule body (rule-raises-insight)
+
+A threshold rule that notices a fault can record it as a **durable, deduped insight** in one line —
+no flow, no `insight` sink node. The `insight` handle is the **rule producer door** onto the insight
+plane, riding the same generic MCP seam as `inbox`/`outbox`/`channel`:
+
+```rhai
+let hot = history("series", "cooler.temp", "24h").filter("value > 5.0");
+if hot.size() > 0 {
+    let id = insight.raise(#{
+        dedup_key: "cooler-temp-high",   // stable identity — re-raising the same key upserts, never duplicates
+        severity: "warning",             // info | warning | critical
+        title: "Cooler temp high",
+        body: #{ series: "cooler.temp", value: 9.1 },   // free-form evidence
+        tags: #{ area: "hvac" },         // facets for the matcher / Insights page filters
+    });
+    // …and when the same rule later sees a human behind the run, or the fault clear:
+    insight.ack(id);            // open → acked   (stop paging, keep the record)
+    insight.close(id);          // * → resolved   ("close" maps to the insight.resolve verb)
+    insight.close(id, "manual");// optional note on close
+}
+```
+
+- `insight.raise(#{…}) -> id` returns the insight's stable id so you can `ack`/`close` it later **in
+  the same body**. You may omit `origin` — the cage defaults it to `{ kind:"rule", ref:<rule id> }`
+  (the rule *is* the origin). `producer`/`acked_by`/`resolved_by` are **host-forced from the
+  principal** — a rule can't forge an actor even by putting one in the map.
+- `insight.close(id)` is the author-facing name for the **`insight.resolve`** verb/cap (grepping for
+  `resolve`? `close` is its cage name).
+- **Caps:** raise needs `mcp:insight.raise:call`, ack `mcp:insight.ack:call`, close
+  `mcp:insight.resolve:call` — each re-checked mid-run under `caller ∩ grant`. **No new capability**
+  and **no new MCP verb**: this is a cage door onto the three verbs that already ship.
+- **Metered:** each raise/ack/close is a charged write (like `channel.post`), so an insight-storm loop
+  trips `max_writes` — the same DoS bound.
+
+### `emit` vs `alert` vs `insight.raise` — which door?
+
+| You want… | Use | Lives where | Lifespan |
+|---|---|---|---|
+| A value in the run's **result** (a number, a row, a note the caller reads back) | `emit(#{…})` / `log(…)` | The `findings` this run returns | Ephemeral — gone after the run |
+| To **route attention now** (an inbox item + a must-deliver outbox notification) | `alert(#{…})` | Inbox + outbox (motion), subject to `route:false` | The inbox item's lifecycle |
+| A **durable, queryable, deduped** cross-cutting fault record with severity + occurrence history + a lifecycle | `insight.raise(#{…})` | The `insight:{ws}:{id}` record + occurrence ring (state) | open → acked → resolved, deduped on `dedup_key` |
+
+The one-liner: **`emit` is what this run found; `alert` is "someone look now"; `insight.raise` is
+"this fault exists in the world until closed".** They compose — a rule can `emit` a summary *and*
+`insight.raise` the underlying fault.
+
+### `route:false` panel runs raise nothing
+
+A panel repaint runs the rule `route:false` (see §6). On such a run **every `insight` method is a
+no-op**: it charges nothing, writes nothing, logs an honest `insight.<verb> skipped: read-only panel
+run` line, and `raise` returns an echoed id so the body doesn't error. Rationale: an `insight.raise`
+is a *stronger* effect than `alert()` — it writes a durable record **and** fans out the notify ladder.
+If `alert()` is suppressed on a repaint, raising an insight (the heavier effect) must be too — otherwise
+a dashboard viewed by ten people, refreshing every 30 s, would inflate the insight's `count` and
+re-fire notifications purely from *viewing*. Dedup collapses the *record* to one, but not the
+count-bump / occurrence append / notify re-fire — so the whole call is skipped, not just deduped. A
+scheduled flow (`rules.eval`, default `route:true`) raises normally: one rule, two consumption modes.
+
 ## Gotchas
 
 - **A run can't widen its invoker** — a data verb hitting a source the *caller* lacks is denied
@@ -200,6 +307,13 @@ outbox trio the coding workflow ships — no new approval primitive.
   `held`, so the relay skips it; nothing fires on the mere *request*. It fires only after
   `inbox.resolve(id, "approved")` and the reactor's release. A rule resolving its *own* request is
   possible (if the caller holds `inbox.resolve`) but is a foot-gun, not the intent — human sign-off is.
+- **`insight.close` is `insight.resolve`** — the author-facing name differs from the verb/cap. Hold
+  `mcp:insight.resolve:call` (not `…close…`) to close from a rule.
+- **A re-open still charges** — a `route:true` re-run at the same `dedup_key` charges the meter even
+  when the raise only bumps `count` (no new record). The meter counts write *attempts*, not new rows.
+- **`insight.raise` is produce-only from a rule** — a rule *produces* insights; it does not browse them
+  (no `insight.get`/`list` in the cage). Query the data plane (`source("store")`) if a rule must branch
+  on an existing insight's state.
 
 ## Related
 

@@ -3315,6 +3315,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]
@@ -4824,11 +4825,13 @@ name = "lb-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "argon2",
  "async-trait",
  "base64ct",
  "chrono",
  "chrono-tz",
  "dashmap 6.2.1",
+ "dirs 5.0.1",
  "ed25519-dalek",
  "hmac 0.12.1",
  "hostname",
@@ -5070,6 +5073,7 @@ dependencies = [
 name = "lb-role-gateway"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "ed25519-dalek",
  "futures",

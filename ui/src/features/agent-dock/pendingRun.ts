@@ -17,9 +17,22 @@ export interface PendingRun {
   hasError: boolean;
   /** The error text from a durable `agent_error`, when present. */
   errorText: string | null;
+  /** True once a durable `agent_stalled` item exists — the run PAUSED for a keep-going/stop decision.
+   *  NOT terminal (the run is Suspended/resumable); the dock renders an actionable prompt. */
+  stalled: boolean;
+  /** The honest prompt text from a durable `agent_stalled`, when present. */
+  stalledText: string | null;
 }
 
-const NONE: PendingRun = { job: null, goal: null, hasResult: false, hasError: false, errorText: null };
+const NONE: PendingRun = {
+  job: null,
+  goal: null,
+  hasResult: false,
+  hasError: false,
+  errorText: null,
+  stalled: false,
+  stalledText: null,
+};
 
 /** Find the newest `kind:"agent"` request and its terminal state. The worker posts the durable answer
  *  as an item whose id is `a:<job>` — an `agent_result` (Done) or `agent_error` (Error). */
@@ -37,17 +50,16 @@ export function latestPendingRun(items: Item[]): PendingRun {
   if (answer) {
     const p = parsePayload(answer.body);
     if (p?.kind === "agent_result") {
-      return { job: request.job, goal: request.goal, hasResult: true, hasError: false, errorText: null };
+      return { ...NONE, job: request.job, goal: request.goal, hasResult: true };
     }
     if (p?.kind === "agent_error") {
-      return {
-        job: request.job,
-        goal: request.goal,
-        hasResult: false,
-        hasError: true,
-        errorText: p.error,
-      };
+      return { ...NONE, job: request.job, goal: request.goal, hasError: true, errorText: p.error };
+    }
+    // PAUSE-AND-ASK: the run stalled and was suspended. Non-terminal — the dock shows keep-going/stop.
+    // A later `resume_run` replaces this item with a fresh result/error, so `stalled` naturally clears.
+    if (p?.kind === "agent_stalled") {
+      return { ...NONE, job: request.job, goal: request.goal, stalled: true, stalledText: p.message };
     }
   }
-  return { job: request.job, goal: request.goal, hasResult: false, hasError: false, errorText: null };
+  return { ...NONE, job: request.job, goal: request.goal };
 }

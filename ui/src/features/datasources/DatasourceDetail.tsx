@@ -21,6 +21,7 @@ import {
   Loader2,
   Network,
   Table2,
+  Wand2,
 } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
@@ -38,6 +39,12 @@ import type { DatasourceSummary, ProbeResult } from "@/lib/datasources";
 // is toggled on (mirror of data/DataGraph's lazy chunk).
 const SchemaErd = lazy(() => import("./erd/SchemaErd"));
 
+// The Schemas tab is lazy too: mounting it is what fires `dbschema.list` (via SchemaDesignerList).
+// Keeping it off the initial chunk means the MCP call only happens once the user clicks the tab.
+const SchemaDesignerList = lazy(() =>
+  import("./designer/SchemaDesignerList").then((m) => ({ default: m.SchemaDesignerList })),
+);
+
 interface Props {
   ws: string;
   source: DatasourceSummary;
@@ -47,9 +54,10 @@ interface Props {
 }
 
 /** Discovery = the no-SQL browse (TableDiscovery + bounded preview OR the schema ERD diagram);
- *  Query = the full workbench (Builder⇄Code editor + Run + results + saved queries). Default Discovery
- *  (the legacy no-SQL affordance). */
-type Mode = "discovery" | "query";
+ *  Query = the full workbench (Builder⇄Code editor + Run + results + saved queries);
+ *  Schemas = the designed-schema roster (schema-designer). Default Discovery (the legacy no-SQL
+ *  affordance). Schemas is lazy: its list-verb fires only when the tab is selected. */
+type Mode = "discovery" | "query" | "schemas";
 
 /** The Discovery tab's two views: List (the table rail + bounded preview) vs Diagram (the schema ERD).
  *  Default List (the legacy no-SQL affordance); Diagram is a lazy chunk. */
@@ -58,6 +66,7 @@ type DiscoveryView = "list" | "diagram";
 const PREVIEW_LIMIT = 100;
 
 export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
+  const navigate = useNavigate();
   const q = useDatasourceQuery(source.name);
   const [mode, setMode] = useState<Mode>("discovery");
   const [discoveryView, setDiscoveryView] = useState<DiscoveryView>("list");
@@ -189,6 +198,35 @@ export function DatasourceDetail({ ws, source, probe, onTest, onBack }: Props) {
             />
           </div>
         )}
+
+        {mode === "schemas" && (
+          <div className="min-h-0 min-w-0 flex-1">
+            {/* Lazy: first render is what fires `dbschema.list`, so the verb only runs once the
+                Schemas tab is clicked. Schemas are workspace-scoped today (not yet pinned to a
+                datasource); rows open the shared designer canvas, and the designer's Migrate flow is
+                where a schema is applied to this (or any) source. */}
+            <Suspense
+              fallback={
+                <div className="flex h-full items-center justify-center bg-bg text-sm text-muted">
+                  <Loader2 size={14} className="mr-2 animate-spin" /> Loading schemas…
+                </div>
+              }
+            >
+              <SchemaDesignerList
+                ws={ws}
+                onOpen={(name) =>
+                  void navigate({
+                    to: `/t/${encodeURIComponent(ws)}/schemas/${encodeURIComponent(name)}`,
+                    // A fresh canvas opened from this datasource auto-imports its catalog (the user
+                    // picks nothing). An existing schema already has its tables — don't re-import
+                    // over it, so `from` rides only on the `new` path.
+                    search: name === "new" ? { from: source.name } : {},
+                  })
+                }
+              />
+            </Suspense>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -220,6 +258,16 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
         onClick={() => onChange("query")}
       >
         <Database size={13} /> Query
+      </Button>
+      <Button
+        role="tab"
+        aria-selected={mode === "schemas"}
+        variant={mode === "schemas" ? "default" : "ghost"}
+        size="sm"
+        className="h-7 gap-1.5 px-2.5 text-xs"
+        onClick={() => onChange("schemas")}
+      >
+        <Wand2 size={13} /> Schemas
       </Button>
     </div>
   );

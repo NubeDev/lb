@@ -20,6 +20,7 @@ mod channel_registry;
 mod dashboard;
 mod datasources;
 mod dbview;
+mod events;
 mod ext;
 mod ext_ui;
 mod flows;
@@ -48,6 +49,7 @@ mod run_token_refresh;
 mod series_stream;
 mod store_query;
 pub(crate) mod stream;
+mod surface;
 mod system;
 mod telemetry_stream;
 mod webhook;
@@ -84,6 +86,7 @@ pub use dashboard::{
 };
 pub use datasources::{add_datasource, list_datasources, remove_datasource, test_datasource};
 pub use dbview::{list_tables, read_graph, scan_table};
+pub use events::{events_stream, events_subscribe, events_unsubscribe};
 pub use ext::{
     disable_extension, enable_extension, list_extensions, publish_extension, reset_extension,
     uninstall_extension,
@@ -116,8 +119,8 @@ pub use membership::{
 pub use message::{delete_message, edit_message};
 pub use native::native_call;
 pub use nav::{
-    delete_nav, get_nav, get_nav_pref, list_navs, list_shares_nav, resolve_nav, save_nav,
-    set_default_nav, set_nav_pref, share_nav, unshare_nav,
+    delete_nav, get_nav, get_nav_hidden, get_nav_pref, list_navs, list_shares_nav, resolve_nav,
+    save_nav, set_default_nav, set_nav_hidden, set_nav_pref, share_nav, unshare_nav,
 };
 pub use outbox::get_outbox_status;
 pub use panel::{delete_panel, get_panel, list_panels, panel_usage, save_panel, share_panel};
@@ -133,6 +136,7 @@ pub use run_token_refresh::refresh_run_token;
 pub use series_stream::series_stream;
 pub use store_query::{read_schema, run_query};
 pub use stream::channel_stream;
+pub use surface::surface_reach;
 pub use system::{system_acp, system_overview, system_subsystem, system_tools, system_topology};
 pub use telemetry_stream::telemetry_stream;
 pub use webhook::post_webhook;

@@ -1,10 +1,11 @@
-// The typed-node DAG canvas (flows-canvas scope, Wave 3). React Flow renders the open flow: nodes =
-// typed graph nodes, edges = `needs`. An author drags node types from the palette onto the canvas,
-// wires them, and configures each via the schema-rendered side panel. Save calls `flows.save` — a
+// The typed-node DAG canvas (flows-canvas scope, Wave 3; chrome consolidated per flow-ui-polish).
+// React Flow renders the open flow: nodes = typed graph nodes, edges = `needs`. An author drags node
+// types from the palette onto the canvas, wires them, and configures each via the right dock's Config
+// tab (Config | Debug — ONE dock, never two side-by-side panels). Deploy calls `flows.save` — a
 // cyclic/invalid DAG or schema-invalid node config renders the host's `400` message INLINE (no
 // crash). Run calls `flows.run` then the canvas polls `flows.runs.get` (bounded) and paints each node
 // as it settles, with suspend/resume/cancel + the executed-node-lock + `flows.patch_run` for
-// unexecuted nodes (Decision 1/12). Import/export round-trips the flow JSON; undo restores a prior
+// unexecuted nodes (Decision 1/12). Import/export live in the transfer dialog; undo restores a prior
 // graph (node + edges) atomically by re-saving the previous version.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -55,11 +56,15 @@ import { FlowRuntimeBanner } from "./FlowRuntimeBanner";
 import { FlowCanvasHeader } from "./FlowCanvasHeader";
 import { flowDirty } from "./flowDirty";
 import { useLiveValues } from "./useLiveValues";
-import { downloadFlow, parseImportedFlow } from "./flowTransfer";
+import { FlowTransferDialog, type TransferTab } from "./FlowTransferDialog";
+import { RightDock, type DockTab } from "./RightDock";
 import { DebugPanel } from "./debug/DebugPanel";
 import { defaultConfig } from "./defaultConfig";
 
 const nodeTypes = { flow: FlowNodeView };
+
+/** Smoother default wires + a state-conveying hover/selection treatment (flow-ui-polish). */
+const defaultEdgeOptions = { type: "smoothstep" as const };
 
 /** How often the canvas re-polls a RUNNING flow's node-state + runs so live values (and the count
  *  "going up") surface without reopening. A few seconds matches the reactor tick — frequent enough to
@@ -94,10 +99,11 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
   const [saveError, setSaveError] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [undoStack, setUndoStack] = useState<UndoEntry[]>([]);
-  // The debug panel drawer (debug-node-scope). Toggled by the Bug button in the header; tails the
-  // flow's `debug` nodes over the SSE route. Auto-opens when a debug node is present in the flow on
-  // open (Node-RED shows the sidebar when there's something to debug).
-  const [debugOpen, setDebugOpen] = useState(false);
+  // The right dock (flow-ui-polish): ONE panel, Config | Debug as tabs. `null` = closed. Selecting a
+  // node opens/switches to Config; the header's Debug button opens/switches to Debug.
+  const [dockTab, setDockTab] = useState<DockTab | null>(null);
+  // The transfer dialog (export/import) — opened from the header's overflow menu.
+  const [transferTab, setTransferTab] = useState<TransferTab | null>(null);
   // The DEPLOYED graph — what the running system currently holds. The canvas is a draft; Deploy is
   // enabled only when the buffer differs from this (Node-RED posture). Updated on every successful
   // Deploy/per-node Save so the dirty flag clears (flow-deploy-ux scope).
@@ -114,10 +120,11 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     setSaveError(null);
     setPanelError(null);
     setUndoStack([]);
+    setTransferTab(null);
     setDeployedFlow(flow); // a freshly-opened flow IS the deployed graph → Deploy starts clean.
-    // Auto-open the debug panel when the flow has a debug node (Node-RED shows the sidebar when
+    // Auto-open the dock's Debug tab when the flow has a debug node (Node-RED shows the sidebar when
     // there's something to debug). The operator can still close it from the header toggle.
-    setDebugOpen(flow.nodes.some((n) => n.type === "debug"));
+    setDockTab(flow.nodes.some((n) => n.type === "debug") ? "debug" : null);
     void reattach(flow.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow.id]);
@@ -384,26 +391,15 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     }
   }, [snapshot, selectedId, configs]);
 
-  // Import/export the flow JSON (graph + node configs + version). The canonical connection data is
-  // each node's `needs` (the record shape the host stores + import re-validates). For legibility we
-  // ALSO emit a derived top-level `edges: [{from,to}]` so the connections are visible at a glance in
-  // the exported file (the "I can't see the node connections" report) — it is informational; import
-  // ignores it and re-derives the graph from `needs`.
-  const handleExport = useCallback(() => downloadFlow(buildFlow()), [buildFlow]);
-
+  /** Apply an imported flow through the real save path (schema + DAG re-validation). On success the
+   *  parent reopens the flow (re-seeding the canvas + deployed graph). */
   const handleImport = useCallback(
-    async (file: File) => {
-      try {
-        // Re-validate the imported graph through the real save path (schema + DAG). Surfaces a 400
-        // inline on mismatch; on success the parent reopens the flow (re-seeding the canvas + deployed).
-        const next = await parseImportedFlow(file, flow);
-        const res = await onSave(next);
-        if (!res.ok) setSaveError(res.error ?? "import failed");
-      } catch (e) {
-        setSaveError(e instanceof Error ? e.message : String(e));
-      }
+    async (next: Flow): Promise<{ ok: boolean; error?: string }> => {
+      const res = await onSave(next);
+      if (!res.ok) setSaveError(res.error ?? "import failed");
+      return res;
     },
-    [flow, onSave],
+    [onSave],
   );
 
   const handleDelete = useCallback(async () => {
@@ -429,23 +425,22 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
       <FlowCanvasHeader
         dirty={dirty}
         runActive={runActive}
+        runStatus={snapshot?.status ?? null}
         enabled={enabled}
         liveValues={liveValues}
-        onDeploy={handleSave}
-        onRun={handleRun}
-        onLifecycle={handleLifecycle}
-        onToggleEnabled={handleToggleEnabled}
-        onToggleLiveValues={toggleLiveValues}
         canUndo={undoStack.length > 0}
-        runStatus={snapshot?.status ?? null}
         saveError={saveError}
         runError={runError}
-        debugOpen={debugOpen}
-        onToggleDebug={() => setDebugOpen((o) => !o)}
-        onUndo={handleUndo}
-        onExport={handleExport}
-        onImport={(f) => void handleImport(f)}
-        onDelete={handleDelete}
+        debugOpen={dockTab === "debug"}
+        onDeploy={() => void handleSave()}
+        onRun={() => void handleRun()}
+        onLifecycle={(op) => void handleLifecycle(op)}
+        onToggleEnabled={() => void handleToggleEnabled()}
+        onToggleLiveValues={toggleLiveValues}
+        onToggleDebug={() => setDockTab((t) => (t === "debug" ? null : "debug"))}
+        onUndo={() => void handleUndo()}
+        onTransfer={setTransferTab}
+        onDelete={() => void handleDelete()}
       />
       <FlowRuntimeBanner runtime={runtime} nowSecs={nowSecs} runCount={runs.length} />
       {snapshot ? (
@@ -469,10 +464,14 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
             nodes={paintedNodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            defaultEdgeOptions={defaultEdgeOptions}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
-            onNodeClick={(_, n) => setSelectedId(n.id)}
+            onNodeClick={(_, n) => {
+              setSelectedId(n.id);
+              setDockTab("config"); // selecting a node opens/switches the dock to Config
+            }}
             onNodeDoubleClick={(_, n) => onDeleteNode(n.id)}
             fitView
           >
@@ -480,25 +479,39 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
             <Controls />
           </ReactFlow>
         </div>
-        <NodeConfigPanel
-          node={selectedNode}
-          descriptor={selectedDescriptor}
-          locked={selectedId ? locked.has(selectedId) : false}
-          runActive={runActive}
-          config={selectedId ? configs[selectedId] ?? {} : {}}
-          onConfigChange={(next) =>
-            selectedId && setConfigs((c) => ({ ...c, [selectedId]: next }))
-          }
-          onSave={handleSave}
-          onSaveNode={handleSaveNode}
-          onPatch={handlePatch}
-          onClose={() => setSelectedId(null)}
-          error={panelError}
-        />
-        {debugOpen ? (
-          <DebugPanel flowId={flow.id} onClose={() => setDebugOpen(false)} />
+        {dockTab ? (
+          <RightDock
+            tab={dockTab}
+            onTabChange={setDockTab}
+            onClose={() => setDockTab(null)}
+            config={
+              <NodeConfigPanel
+                node={selectedNode}
+                descriptor={selectedDescriptor}
+                locked={selectedId ? locked.has(selectedId) : false}
+                runActive={runActive}
+                config={selectedId ? configs[selectedId] ?? {} : {}}
+                onConfigChange={(next) =>
+                  selectedId && setConfigs((c) => ({ ...c, [selectedId]: next }))
+                }
+                onSaveNode={handleSaveNode}
+                onPatch={handlePatch}
+                error={panelError}
+              />
+            }
+            debug={<DebugPanel flowId={flow.id} />}
+          />
         ) : null}
       </div>
+      <FlowTransferDialog
+        flow={buildFlow()}
+        selectedIds={selectedId ? new Set([selectedId]) : new Set()}
+        open={transferTab !== null}
+        tab={transferTab ?? "export"}
+        onTabChange={(t) => setTransferTab(t)}
+        onClose={() => setTransferTab(null)}
+        onImport={handleImport}
+      />
     </section>
   );
 }

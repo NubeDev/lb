@@ -59,6 +59,11 @@ arrow-json = "58"
 # OpenSSL from source so no system OpenSSL/pkg-config is required (datasources scope: heavy/native
 # deps live ONLY in this extension). Optional → off by default (sqlite path links no TLS).
 openssl = { version = "0.10", features = ["vendored"], optional = true }
+# The wire driver behind `PostgresConnectionPool` — named directly ONLY for `apply_ddl`/`write_rows`,
+# which the read-only DataFusion provider path cannot express (they need a live `execute` + a
+# transaction). Pinned to the same 0.7 the pool already links (one `tokio-postgres` in the graph).
+# Gated on `postgres`; the sqlite path never pulls it.
+tokio-postgres = { version = "0.7", optional = true, features = ["with-serde_json-1"] }
 
 # Direct catalog reads the DataFusion provider path cannot express (`PRAGMA foreign_key_list` for
 # `federation.sample`'s relationships). Same version/features as the host's dev-dep so the one
@@ -75,4 +80,4 @@ default = []
 # `openssl/vendored` build deps: a C compiler + ranlib). Build with `--features postgres`.
 # `postgres-federation` rides along — the `PostgresTableFactory::table_provider` wraps in a
 # `FederatedTableProviderAdaptor` automatically when the feature is on (no source-code change).
-postgres = ["datafusion-table-providers/postgres", "datafusion-table-providers/postgres-federation", "dep:openssl"]
+postgres = ["datafusion-table-providers/postgres", "datafusion-table-providers/postgres-federation", "dep:openssl", "dep:tokio-postgres"]

@@ -13,9 +13,18 @@
 import { useMemo } from "react";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
-
+import { CodeEditor, codeLanguageExtension } from "@/components/codeeditor";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { RhaiExampleLibrary } from "./examples/RhaiExampleLibrary";
+import { DatasourcePickerInput, DbschemaTablePickerInput } from "./SchemaFormPickers";
+
+// A code `format` may register a helper that renders BELOW its editor (keyed on the opaque schema
+// hint, not a node type). Rhai gets its examples library; add an entry here to give another language
+// its own helper. `onUse(body)` replaces the field's source with the chosen snippet.
+const CODE_FIELD_HELPERS: Record<string, (p: { onUse: (body: string) => void }) => JSX.Element> = {
+  rhai: RhaiExampleLibrary,
+};
 
 /** A JSON-Schema 2020-12 document (the descriptor's `config`). */
 export type JsonSchema = Record<string, unknown>;
@@ -86,7 +95,9 @@ export function SchemaForm({ schema, value, onChange, disabled, errors = {} }: S
         />
       ))}
       {Object.keys(props).length === 0 ? (
-        <div className="text-xs text-muted">No configuration.</div>
+        <div className="rounded-md border border-dashed border-border px-2 py-3 text-center text-xs text-muted">
+          This node has no configuration.
+        </div>
       ) : null}
     </div>
   );
@@ -112,7 +123,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   if (enumOpts) {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Select
           aria-label={name}
           disabled={disabled}
@@ -131,23 +142,30 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
   }
 
   if (type === "boolean") {
+    // Booleans render as one label+control ROW (the checkbox sits beside its label, not under it).
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn checkbox primitive; a native checkbox */}
-        <input
-          type="checkbox"
-          aria-label={name}
-          disabled={disabled}
-          checked={Boolean(value)}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-      </Labeled>
+      <div className="flex flex-col gap-1">
+        <label className="flex items-center gap-2 text-xs font-medium text-fg">
+          {/* eslint-disable-next-line no-restricted-syntax -- no shadcn checkbox primitive; a native checkbox */}
+          <input
+            type="checkbox"
+            aria-label={name}
+            disabled={disabled}
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          {label}
+          {required ? <span className="text-destructive"> *</span> : null}
+        </label>
+        <Help schema={schema} />
+        {error ? <span className="text-xs text-destructive">{error}</span> : null}
+      </div>
     );
   }
 
   if (type === "integer" || type === "number") {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="number"
           aria-label={name}
@@ -160,8 +178,59 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
   }
 
   if (type === "string") {
+    const codeLang = codeLanguageExtension(schema.format);
+    if (codeLang) {
+      const Helper = CODE_FIELD_HELPERS[schema.format as string] as
+        | ((p: { onUse: (body: string) => void }) => JSX.Element)
+        | undefined;
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <div className="overflow-hidden rounded-md border border-border">
+            <CodeEditor
+              ariaLabel={name}
+              value={String(value ?? "")}
+              onChange={(v) => onChange(v)}
+              extensions={[codeLang]}
+              height="12rem"
+            />
+          </div>
+          {/* A format may register a below-editor helper (e.g. rhai → an examples library). Data-driven
+              off the opaque `format` hint, so no field logic branches on a node type. */}
+          {Helper && !disabled ? <Helper onUse={(body) => onChange(body)} /> : null}
+        </Labeled>
+      );
+    }
+    // The schema-designer pickers (schema-designer scope): a `format: "lb:datasource"` field renders
+    // a `<select>` of the workspace's registered datasources; a `format: "lb:table"` field renders
+    // a `<select>` of the tables in the schema named by a sibling `schema` field (read from
+    // `dbschema.get`). Data-driven off the opaque `format` hint — the form never branches on a node
+    // type or an extension id (rule 10). The picker lives in its own file (FILE-LAYOUT).
+    if (schema.format === "lb:datasource") {
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <DatasourcePickerInput
+            aria-label={name}
+            disabled={disabled}
+            value={String(value ?? "")}
+            onChange={(v) => onChange(v)}
+          />
+        </Labeled>
+      );
+    }
+    if (schema.format === "lb:table") {
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <DbschemaTablePickerInput
+            aria-label={name}
+            disabled={disabled}
+            value={String(value ?? "")}
+            onChange={(v) => onChange(v)}
+          />
+        </Labeled>
+      );
+    }
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="text"
           aria-label={name}
@@ -199,7 +268,7 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
 
   if (type === "array") {
     return (
-      <Labeled name={name} label={label} required={required} error={error}>
+      <Labeled name={name} label={label} required={required} error={error} schema={schema}>
         <Input
           type="text"
           aria-label={name}
@@ -225,12 +294,14 @@ function Labeled({
   label,
   required,
   error,
+  schema,
   children,
 }: {
   name: string;
   label: string;
   required: boolean;
   error?: string;
+  schema?: JsonSchema;
   children: React.ReactNode;
 }) {
   return (
@@ -240,9 +311,18 @@ function Labeled({
         {required ? <span className="text-destructive"> *</span> : null}
       </label>
       {children}
+      <Help schema={schema} />
       {error ? <span className="text-xs text-destructive">{error}</span> : null}
     </div>
   );
+}
+
+/** The field's help line — the schema's own `description`, rendered under the control (flow-ui-polish:
+ *  the descriptor already carries the words; the form just stopped dropping them). */
+function Help({ schema }: { schema?: JsonSchema }) {
+  const text = schema?.description;
+  if (typeof text !== "string" || text.length === 0) return null;
+  return <span className="text-[11px] leading-snug text-muted">{text}</span>;
 }
 
 function parseNum(s: string, integer: boolean): number | undefined {

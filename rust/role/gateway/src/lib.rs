@@ -11,10 +11,13 @@
 
 mod routes;
 mod server;
-mod session;
+/// The session seam (login-hardening scope): the credential check trait + impls (`DevTrustAny` /
+/// `PasswordHash`) and the token authenticate/mint helpers. `pub` so a test can wire a gateway with
+/// the real `PasswordHash` check (the production posture) instead of the password-less dev default.
+pub mod session;
 mod signing_key;
 mod state;
 
-pub use server::{router, serve};
+pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
 pub use state::Gateway;

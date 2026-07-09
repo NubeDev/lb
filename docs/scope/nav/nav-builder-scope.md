@@ -243,3 +243,5 @@ None — resolved above. Anything new the build surfaces goes here per HOW-TO-CO
 - `scope/frontend/nav-rail-scope.md` — the **panel section rail** (distinct: not user nav — do not confuse).
 - `scope/frontend/routing-scope.md` — `SURFACES`, `allowedSurfaces`, `CoreGate`, `ext:<id>` routing this renders through.
 - Skill: `skills/nav/SKILL.md` (see §6 below — required, drivable surface).
+- `nav-hide-and-pins-scope.md` — follow-on: workspace-admin hidden-set + per-user pins
+  (`nav_pref.pinned` fills the "optional pinned favorites" reservation above).

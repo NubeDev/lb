@@ -41,6 +41,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -65,6 +67,7 @@ fn source_flow(id: &str, node_id: &str) -> Flow {
         needs: vec![],
         with: Default::default(),
         config: json!({ "broker": "broker.local", "topic": "sensors/temp" }),
+        position: None,
     };
     Flow {
         workspace: "ws-a".into(),
@@ -148,6 +151,7 @@ async fn source_node_removal_orphans_only_the_removed_node() {
         needs: vec![],
         with: Default::default(),
         config: json!({ "broker": "b", "topic": "t2" }),
+        position: None,
     });
     let body = serde_json::to_value(&flow).unwrap().to_string();
     call_tool(&node, &p, "ws-a", "flows.save", &body)

@@ -6,17 +6,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BRANDING_PLACEHOLDERS,
   DEFAULT_BRANDING,
   MAX_BRAND_IMAGE_BYTES,
   normalizeBranding,
 } from "./branding-options";
 
 describe("normalizeBranding", () => {
-  it("returns the compiled Lazybones default for a non-object input", () => {
+  it("returns the neutral compiled default for a non-object input", () => {
+    // The default is deliberately empty (no product name) — the platform name must never show.
     expect(normalizeBranding(null)).toEqual(DEFAULT_BRANDING);
     expect(normalizeBranding(undefined)).toEqual(DEFAULT_BRANDING);
     expect(normalizeBranding("Acme")).toEqual(DEFAULT_BRANDING);
     expect(normalizeBranding(42)).toEqual(DEFAULT_BRANDING);
+    expect(DEFAULT_BRANDING.siteName).toBe("");
+    expect(DEFAULT_BRANDING.siteAbbr).toBe("");
   });
 
   it("fills unset axes from the compiled default, keeps set ones", () => {
@@ -79,5 +83,31 @@ describe("normalizeBranding", () => {
   it("drops a non-string loginHeading rather than partially applying", () => {
     const got = normalizeBranding({ loginHeading: 42 });
     expect(got.loginHeading).toBeUndefined();
+  });
+
+  it("keeps a set loginSubheading", () => {
+    const got = normalizeBranding({ loginSubheading: "Access your Acme workspace." });
+    expect(got.loginSubheading).toBe("Access your Acme workspace.");
+  });
+
+  it("keeps a valid loginLogoDataUri but drops a non-image string", () => {
+    const uri = "data:image/png;base64,AAAA";
+    expect(normalizeBranding({ loginLogoDataUri: uri }).loginLogoDataUri).toBe(uri);
+    expect(normalizeBranding({ loginLogoDataUri: "not-a-data-uri" }).loginLogoDataUri).toBeUndefined();
+  });
+
+  it("never surfaces the product name — the default is neutral, the placeholders are generic", () => {
+    // The platform name ("Lazybones") must never appear in chrome or editor hints. The compiled
+    // default is empty (no brand until an admin sets one); the editor placeholders are generic
+    // examples, NOT the product name.
+    const json = JSON.stringify({
+      ...DEFAULT_BRANDING,
+      ...BRANDING_PLACEHOLDERS,
+    });
+    expect(json).not.toContain("Lazybones");
+    expect(json).not.toContain("lazybones");
+    // Placeholders stay non-empty so the admin editor keeps its "what goes here?" hint.
+    expect(BRANDING_PLACEHOLDERS.siteName.length).toBeGreaterThan(0);
+    expect(BRANDING_PLACEHOLDERS.siteAbbr.length).toBeGreaterThan(0);
   });
 });

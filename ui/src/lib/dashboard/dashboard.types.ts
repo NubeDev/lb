@@ -51,6 +51,11 @@ export type View =
   // generative-UI: an AI-authored, catalog-constrained widget rendered from a persisted IR
   // (genui-scope). `options.genui = { v, ir, meta? }`; data flows through ordinary v3 `sources[]`.
   | "genui"
+  // insights: a triage list of the workspace's insights (findings raised by rules/flows/agents),
+  // rendered by the reusable `@nube/insights` widget. NOT source-bound — it reads the `insight.*`
+  // verbs through the shell's `InsightsClient`, filtered by `options.insights`. Read-only by default;
+  // `options.insights.interactive` turns on inline ack/resolve/dismiss (insights-package-scope).
+  | "insights"
   | `ext:${string}`;
 
 /** A datasource reference (viz datasource-binding scope; Phase 1 is always native `surreal`). `uid`

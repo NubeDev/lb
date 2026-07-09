@@ -113,6 +113,17 @@ fn idem_prefix(ws: &str, body: Option<&str>, rule_id: Option<&str>, now: u64) ->
     format!("rules.run:{ws}:{sel}:{now}")
 }
 
+/// The host wall-clock as epoch milliseconds — the unit `insight.ts` is stored + rendered in
+/// (`InsightsList.timeAgo` does `Date.now() - ts`, `insight::reactor` stamps `as_millis`). Used ONLY
+/// to backfill `now` when a `rules.*` caller omits `ts`; an explicit `ts` always wins so deterministic
+/// callers (flows, tests) stay reproducible. Read once here, at the MCP chokepoint (mirrors `now_ts`).
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 /// A cheap stable hash of an ad-hoc rule body for the idempotency key (FNV-1a — no wall-clock, no rng,
 /// deterministic so a re-run of the same body reuses the same key).
 fn body_hash(body: &str) -> u64 {
@@ -141,14 +152,30 @@ pub async fn call_rules_tool(
                 .and_then(|v| v.as_str())
                 .map(String::from);
             let params = params_to_rhai(input.get("params").unwrap_or(&Value::Null));
-            let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            // `ts` is the run's logical clock — the cage stamps it onto every `insight.raise`
+            // (`ts: now`) and every routed alert id. A deterministic caller (a flow, a test seeding a
+            // fixed clock) passes it explicitly; an interactive/UI `rules.run` omits it, and defaulting
+            // to `0` stamped every raised insight with the Unix epoch ("1/1/1970"). Backfill the host
+            // wall-clock (epoch millis, matching `now_ts`/`insight::reactor`) when the caller omits it,
+            // so an interactive run gets a real date while an explicit `ts` still wins (determinism).
+            let now = input
+                .get("ts")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_else(now_ms);
+            // `route` gates the alert fan-out — default `true` (existing behavior unchanged). A panel
+            // source sets `route:false` so a dashboard repaint doesn't spam the Inbox/Outbox
+            // (rules-for-widgets-scope slice 2). The viz plane never learns the flag exists — the
+            // picker composes it into `args`, exactly like the params form.
+            let route = input.get("route").and_then(|v| v.as_bool()).unwrap_or(true);
             // Resolve the workspace's model — the catalog pick (`agent.config`) → the node's model.
             // A configured workspace gets the real model; an unconfigured one gets the honest
             // `DisabledModel` error (now a *resolved* outcome, not a hardcoded default).
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
             let model = resolve_rule_model(node, principal, ws, idem).await;
-            let result =
-                rules_run(node, principal, ws, body, rule_id, params, model, now, None).await?;
+            let result = rules_run(
+                node, principal, ws, body, rule_id, params, model, now, None, route,
+            )
+            .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))
         }
         "rules.eval" => {
@@ -166,7 +193,17 @@ pub async fn call_rules_tool(
                 .unwrap_or_default();
             let explicit_params = input.get("params").cloned().unwrap_or(Value::Null);
             let timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
-            let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            // `ts` is the run's logical clock — the cage stamps it onto every `insight.raise`
+            // (`ts: now`) and every routed alert id. A deterministic caller (a flow, a test seeding a
+            // fixed clock) passes it explicitly; an interactive/UI `rules.run` omits it, and defaulting
+            // to `0` stamped every raised insight with the Unix epoch ("1/1/1970"). Backfill the host
+            // wall-clock (epoch millis, matching `now_ts`/`insight::reactor`) when the caller omits it,
+            // so an interactive run gets a real date while an explicit `ts` still wins (determinism).
+            let now = input
+                .get("ts")
+                .and_then(|v| v.as_u64())
+                .unwrap_or_else(now_ms);
+            let route = input.get("route").and_then(|v| v.as_bool()).unwrap_or(true);
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
             let model = resolve_rule_model(node, principal, ws, idem).await;
             let result = crate::rules::rules_eval(
@@ -180,6 +217,7 @@ pub async fn call_rules_tool(
                 timeout_ms,
                 model,
                 now,
+                route,
             )
             .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))

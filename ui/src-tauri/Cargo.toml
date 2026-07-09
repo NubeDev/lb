@@ -27,6 +27,11 @@ path = "src/main.rs"
 lb-host = { path = "../../rust/crates/host" }
 lb-auth = { path = "../../rust/crates/auth" }
 lb-inbox = { path = "../../rust/crates/inbox" }
+# The gateway + authz crates are only needed for the `full` build mode (mounting the SSE/HTTP
+# gateway in-process on loopback + the boot identity seed). Optional, like tauri, so the
+# headless command layer and the thin `desktop` shell never pull them in.
+lb-role-gateway = { path = "../../rust/role/gateway", optional = true }
+lb-authz = { path = "../../rust/crates/authz", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
@@ -41,6 +46,13 @@ features = []
 
 [features]
 desktop = ["dep:tauri"]
+# `full` = the standalone desktop product. Implies `desktop` (it still opens a window) and
+# additionally mounts the SSE/HTTP gateway in-process on a loopback port + runs the boot
+# seeders, so the packaged binary is a 100% standalone node — login, MCP, SSE, the agent
+# catalog, flows, all of it — with no external node to talk to. The webview talks to the
+# loopback gateway over HTTP exactly as the browser does against `make dev`. See
+# docs/scope/desktop/desktop-standalone-backend-scope.md.
+full = ["desktop", "dep:lb-role-gateway", "dep:lb-authz"]
 
 [build-dependencies]
 # Pure-Rust codegen (no system libs). build.rs only *calls* it for the `desktop` feature.
@@ -48,3 +60,6 @@ tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# reqwest drives the loopback gateway from the full-mode integration test (login + mcp/call
+# over real HTTP) — proving the standalone backend answers a real client with no display.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

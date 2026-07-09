@@ -3,3 +3,4 @@ export { CodeEditor } from "./CodeEditor";
 export type { CodeEditorHandle } from "./CodeEditor";
 export { useEditorInsert } from "./useEditorInsert";
 export type { EditorInsert } from "./useEditorInsert";
+export { codeLanguageExtension, isCodeFormat } from "./codeLanguage";

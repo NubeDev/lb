@@ -21,6 +21,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -45,6 +47,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         needs: vec![],
         with: Default::default(),
         config: json!({ "period_secs": period_secs, "start": start }),
+        position: None,
     };
     // A rhai node that echoes the trigger's payload through, so the run records the boolean value.
     let echo = Node {
@@ -53,6 +56,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         needs: vec![node_id.to_string()],
         with: Default::default(),
         config: json!({ "source": "payload" }),
+        position: None,
     };
     Flow {
         workspace: "ws".into(),

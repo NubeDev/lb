@@ -23,6 +23,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -68,6 +70,7 @@ fn sink_node(target: &str, name: &str, value: Value) -> Node {
         needs: vec![],
         with: serde_json::Map::from_iter([("payload".into(), value)]),
         config: json!({ "target": target, "name": name }),
+        position: None,
     }
 }
 
@@ -231,6 +234,7 @@ async fn sink_destination_uses_msg_topic_over_config_name() {
             ("topic".into(), json!("topic-channel")),
         ]),
         config: json!({ "target": "inbox", "name": "config-channel" }),
+        position: None,
     };
     let f = flow_with("sink-topic", sink);
     save_flow(&node, &p, &f).await;

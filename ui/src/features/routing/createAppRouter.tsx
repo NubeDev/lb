@@ -22,6 +22,7 @@ import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQuer
 import { DataStudioView } from "@/features/data-studio";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
+import { SchemaDesignerList, SchemaDesignerPage } from "@/features/datasources/designer";
 import { ExtHost, ExtErrorBoundary } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { StudioShell, type StudioTab } from "@/features/studio";
@@ -46,6 +47,7 @@ import {
   DEFAULT_CHANNEL,
   validateChannelSearch,
   validateDashboardSearch,
+  validateSchemaSearch,
 } from "./search";
 import { fullPathForSurface, pathForSurface, surfaceForPath, tenantPath } from "./surface";
 import { CAP, hasCap } from "@/lib/session";
@@ -139,6 +141,21 @@ const datasourceDetailRoute = createRoute({
   component: DatasourceDetailRoute,
 });
 
+// Schema-designer scope: the list + the canvas. Both ride the `datasources` surface cap (the
+// designer is part of the datasources feature — no new CoreSurface). The list route is `/schemas`
+// (sibling to `/datasources`); the canvas is `/schemas/$name` (`new` for a fresh unsaved design).
+const schemasRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/schemas",
+  component: SchemasRoute,
+});
+const schemaDetailRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/schemas/$name",
+  component: SchemaDetailRoute,
+  validateSearch: validateSchemaSearch,
+});
+
 // Settings tabs are deep-linkable: `/settings/<tab>` (preferences | agent | theme). The bare
 // `/settings` route redirects to the default tab, so an old link keeps working.
 const settingsTabRoute = createRoute({
@@ -228,6 +245,8 @@ const routeTree = rootRoute.addChildren([
     flowDetailRoute,
     coreRoute("/datasources", "datasources", () => <Datasources />),
     datasourceDetailRoute,
+    schemasRoute,
+    schemaDetailRoute,
     coreRoute("/reminders", "reminders", () => <Reminders />),
     coreRoute("/ingest", "ingest", () => <Ingest />),
     coreRoute("/webhooks", "webhooks", () => <Webhooks />),
@@ -519,6 +538,40 @@ function DatasourceDetailRoute() {
     <DatasourceDetailPage
       ws={ctx.workspace}
       name={decodeURIComponent(name)}
+    />
+  );
+}
+
+function SchemasRoute() {
+  const ctx = useAppRoutingContext();
+  const navigate = useNavigate();
+  if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
+  return (
+    <SchemaDesignerList
+      ws={ctx.workspace}
+      onOpen={(name) =>
+        void navigate({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/schemas/${encodeURIComponent(name)}`,
+        })
+      }
+    />
+  );
+}
+
+function SchemaDetailRoute() {
+  const ctx = useAppRoutingContext();
+  const { name } = schemaDetailRoute.useParams();
+  const { from } = schemaDetailRoute.useSearch();
+  const navigate = useNavigate();
+  if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
+  return (
+    <SchemaDesignerPage
+      ws={ctx.workspace}
+      name={decodeURIComponent(name)}
+      presetImportSource={from ?? null}
+      onBack={() =>
+        void navigate({ to: `/t/${encodeURIComponent(ctx.workspace)}/schemas` })
+      }
     />
   );
 }

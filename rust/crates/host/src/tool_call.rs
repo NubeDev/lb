@@ -70,6 +70,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "federation.",
     "flows.",
     "datasource.",
+    "dbschema.",
     "secret.",
     "host.",
     "prefs.",
@@ -81,6 +82,10 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "telemetry.",
     "history.",
     "tools.",
+    // login-hardening scope: the admin credential-management verb (`identity.set_credential`) rides
+    // the one MCP bridge like every other admin action, gated `mcp:identity.manage:call`. The other
+    // `identity.*` verbs also have dedicated admin REST routes; reaching them here too is uniform.
+    "identity.",
 ];
 
 /// The prefix-less host-native verbs (`undo`/`redo`) + the four `store.*` verbs dispatched by exact
@@ -124,13 +129,22 @@ pub(crate) fn is_host_native(qualified_tool: &str) -> bool {
 pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
     if qualified_tool == "federation.schema" || qualified_tool == "federation.sample" {
         "federation.query"
+    } else if qualified_tool == "identity.set_credential" {
+        // login-hardening scope: setting a user's password is the SAME admin authority as managing
+        // identities — it rides the existing `mcp:identity.manage:call` grant (the scope's MCP §6.1
+        // decision), not a new per-verb cap. The verb re-checks `identity.manage` inside.
+        "identity.manage"
     } else if qualified_tool == "outbox.enqueue_held" {
         "outbox.enqueue"
     } else if qualified_tool.starts_with("telemetry.") {
         crate::read_or_admin_cap(qualified_tool)
-    } else if qualified_tool.starts_with("nav.pref.") {
+    } else if qualified_tool.starts_with("nav.pref.") || qualified_tool == "nav.hidden.get" {
+        // hide-and-pins scope: reading the hidden-set is part of resolving one's own menu (the
+        // resolver echoes it to every member anyway) — same `mcp:nav.resolve:call` read grant.
         "nav.resolve"
-    } else if qualified_tool == "nav.set_default" {
+    } else if qualified_tool == "nav.set_default" || qualified_tool == "nav.hidden.set" {
+        // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
+        // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap.
         "nav.save"
     } else {
         qualified_tool
@@ -412,9 +426,11 @@ async fn dispatch_at_depth(
             crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("federation.")
             || qualified_tool.starts_with("datasource.")
+            || qualified_tool.starts_with("dbschema.")
         {
             // datasources scope: the federation host service (resolve source → net:* → mediate DSN →
-            // route to the supervised sidecar). The per-verb gate runs inside the service.
+            // route to the supervised sidecar) + the `dbschema.*` designed-record CRUD (schema-
+            // designer scope — store-only, no sidecar). The per-verb gate runs inside the service.
             crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?
@@ -457,6 +473,14 @@ async fn dispatch_at_depth(
             // through the undo auto-capture wrapper like every other store mutation.
             crate::call_store_mutate_tool(&node.store, principal, ws, qualified_tool, &input)
                 .await?
+        } else if qualified_tool == "identity.set_credential" {
+            // login-hardening scope: set/rotate a user's password hash. Gated `mcp:identity.manage:call`
+            // (the outer gate above ran it); the verb hashes argon2 before any write and returns no hash.
+            crate::call_credential_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("identity.") {
+            // The other identity directory verbs (create/get/list/workspaces), reachable over the same
+            // bridge as their dedicated admin REST routes. Each re-checks `mcp:identity.manage:call`.
+            crate::call_identity_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("bus.") {
             crate::call_bus_tool(&node.bus, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("reminder.") {

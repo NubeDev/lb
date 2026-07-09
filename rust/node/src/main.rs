@@ -26,6 +26,9 @@ async fn seed_dev_identity(node: &Node, ws: &str, user: &str) -> anyhow::Result<
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    // Seed the built-in `member`/`workspace-admin` role records so the role grants below resolve to
+    // caps (login-hardening scope). Idempotent; the same seam every login/create path runs.
+    lb_host::ensure_builtin_authz_roles(store, ws).await?;
     raw::identity_create(store, user, None, ts).await?;
     raw::membership_add_raw(store, ws, user, ts).await?;
     if let Some(name) = user.strip_prefix("user:") {

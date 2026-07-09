@@ -51,6 +51,9 @@ pub async fn workspace_create(
     {
         return Ok(record);
     }
+    // Seed the built-in role records so the role grants below resolve to caps (login-hardening scope).
+    // Best-effort like the bootstrap it precedes; idempotent (no-op once the rows exist).
+    let _ = crate::authz::ensure_builtin_authz_roles(store, ws).await;
     let _ = raw::membership_add_raw(store, ws, &creator, ts).await;
     if let Some(name_part) = creator.strip_prefix("user:") {
         let subject = lb_authz::Subject::User(name_part.to_string());

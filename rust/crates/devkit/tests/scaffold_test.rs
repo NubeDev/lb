@@ -167,7 +167,8 @@ fn scaffold_tolerates_missing_features() {
     // Absent features ⇒ empty vec (not an error). The agent sometimes omits the field.
     let root = temp_root("no-features");
     let json = r#"{"id":"no-feat","tier":"wasm"}"#;
-    let req: lb_devkit::ScaffoldRequest = serde_json::from_str(json).expect("absent features → empty");
+    let req: lb_devkit::ScaffoldRequest =
+        serde_json::from_str(json).expect("absent features → empty");
     assert!(req.features.is_empty());
     let report = scaffold_extension(Some(&root), &req).unwrap();
     assert!(report.path.join("src/lib.rs").is_file());
@@ -185,7 +186,16 @@ fn scaffold_with_datasources_feature_grants_federation_caps() {
     };
     let report = scaffold_extension(Some(&root), &req).unwrap();
     let manifest = std::fs::read_to_string(report.path.join("extension.toml")).unwrap();
-    assert!(manifest.contains("mcp:federation.query:call"), "federation.query cap granted");
-    assert!(manifest.contains("mcp:federation.schema:call"), "federation.schema cap granted");
-    assert!(manifest.contains("mcp:datasource.list:call"), "datasource.list cap granted");
+    assert!(
+        manifest.contains("mcp:federation.query:call"),
+        "federation.query cap granted"
+    );
+    assert!(
+        manifest.contains("mcp:federation.schema:call"),
+        "federation.schema cap granted"
+    );
+    assert!(
+        manifest.contains("mcp:datasource.list:call"),
+        "datasource.list cap granted"
+    );
 }

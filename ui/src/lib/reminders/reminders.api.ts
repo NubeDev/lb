@@ -65,6 +65,17 @@ export function getReminder(id: string): Promise<Reminder | null> {
   }).then((r) => r.reminder);
 }
 
+/** Fire a reminder now (run-now), independent of its schedule. Mirrors `reminder.fire`. Returns
+ *  whether a fresh firing was enqueued (`false` if already fired at this instant — idempotent).
+ *  Note: run-now re-resolves the stored principal's caps at fire time; a dev-login may be denied
+ *  (a documented pre-existing limitation) even though scheduled firing works under a durable grant. */
+export function fireReminder(id: string, ts?: number): Promise<{ fired: boolean; scheduledTs?: number }> {
+  return invoke<{ fired: boolean; scheduled_ts?: number }>("mcp_call", {
+    tool: "reminder.fire",
+    args: { id, ts: ts ?? 0 },
+  }).then((r) => ({ fired: r.fired, scheduledTs: r.scheduled_ts }));
+}
+
 /** List every non-deleted reminder in the workspace. Mirrors `reminder.list`. */
 export function listReminders(): Promise<Reminder[]> {
   return invoke<{ reminders: Reminder[] }>("mcp_call", {

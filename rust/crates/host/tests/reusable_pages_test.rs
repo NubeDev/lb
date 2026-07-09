@@ -38,6 +38,8 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     let token = mint(&key, &claims);
     verify(&key, &token, 1).expect("token verifies")
@@ -194,7 +196,9 @@ async fn template_group_expands_one_instance_per_facet_value() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ada, ws, "ops", 6).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("ops"), None, 6)
+        .await
+        .unwrap();
 
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();
@@ -275,7 +279,9 @@ async fn template_group_stripped_without_option_source_cap() {
     .unwrap();
     // Ben can RESOLVE + read the dashboard, but LACKS `tags.find` (the option source's cap).
     let ben = principal("user:ben", ws, &[RESOLVE, DASH_GET]);
-    nav_pref_set(store, &ben, ws, "ops", 4).await.unwrap();
+    nav_pref_set(store, &ben, ws, Some("ops"), None, 4)
+        .await
+        .unwrap();
     let r = nav_resolve(&node, &ben, ws).await.unwrap();
     // The whole entry is stripped — no group, no option value leaked (opaque).
     assert!(
@@ -325,7 +331,9 @@ async fn template_group_stripped_when_template_unreadable() {
     .unwrap();
     // Ben HOLDS tags.find (can enumerate values) but CANNOT read Ada's private template.
     let ben = principal("user:ben", ws, &[RESOLVE, DASH_GET, TAGS_FIND]);
-    nav_pref_set(store, &ben, ws, "ops", 4).await.unwrap();
+    nav_pref_set(store, &ben, ws, Some("ops"), None, 4)
+        .await
+        .unwrap();
     let r = nav_resolve(&node, &ben, ws).await.unwrap();
     assert!(
         r.items.iter().all(|i| i.kind != "group"),
@@ -383,7 +391,9 @@ async fn template_group_isolation_two_workspaces() {
     )
     .await
     .unwrap();
-    nav_pref_set(store, &ben, "ws-b", "ops", 6).await.unwrap();
+    nav_pref_set(store, &ben, "ws-b", Some("ops"), None, 6)
+        .await
+        .unwrap();
 
     // ws-B's expansion sees ONLY ws-B tag values — never ws-A's plant-1/plant-2.
     let r = nav_resolve(&node, &ben, "ws-b").await.unwrap();
@@ -434,7 +444,9 @@ async fn pinned_vars_on_dashboard_entry_round_trip_and_resolve() {
     nav_save(store, &ada, ws, "ops", "Operations", vec![entry], 2)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, "ops", 3).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("ops"), None, 3)
+        .await
+        .unwrap();
 
     // Round-trip: the pinned binding survives save→get.
     let got = lb_host::nav_get(store, &ada, ws, "ops").await.unwrap();
@@ -493,7 +505,9 @@ async fn template_group_query_option_source_enumerates_and_denies() {
     nav_save(store, &ada, ws, "ops", "Operations", vec![entry.clone()], 4)
         .await
         .unwrap();
-    nav_pref_set(store, &ada, ws, "ops", 5).await.unwrap();
+    nav_pref_set(store, &ada, ws, Some("ops"), None, 5)
+        .await
+        .unwrap();
 
     let r = nav_resolve(&node, &ada, ws).await.unwrap();
     let grp = r.items.iter().find(|i| i.kind == "group").unwrap();

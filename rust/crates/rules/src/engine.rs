@@ -44,6 +44,12 @@ pub struct RuleEngine {
     /// The per-run write budget (`env::rules::MAX_WRITES`, default 32). Charged by every
     /// motion-producing messaging write; reads are uncharged (rules-messaging-scope).
     max_writes: u32,
+    /// The run's read-only flag (rules-for-widgets slice 2). `false` = a panel repaint: the `insight`
+    /// handle no-ops (charges nothing, logs a skip) so a dashboard refresh doesn't stamp durable
+    /// records + notify fan-out on every paint (rule-raises-insight-scope §route:false). Defaults to
+    /// `true` (a normal routed run) via [`RuleEngine::new`]; a caller opts a panel run out with
+    /// [`RuleEngine::with_route`].
+    route: bool,
 }
 
 impl RuleEngine {
@@ -62,7 +68,15 @@ impl RuleEngine {
             limits,
             ai_limits,
             max_writes,
+            route: true,
         }
+    }
+
+    /// Set the run's `route` flag (rules-for-widgets slice 2). `false` = a read-only panel run: the
+    /// `insight` handle no-ops. The host passes the run's `route` here so the cage can honor it.
+    pub fn with_route(mut self, route: bool) -> Self {
+        self.route = route;
+        self
     }
 
     /// Evaluate `rule.body` against `run`. Returns the typed output; `run.findings`/`run.log`/
@@ -96,14 +110,17 @@ impl RuleEngine {
             self.messaging.clone(),
             write_meter,
             run.now,
+            self.route,
+            rule.name.clone(),
         );
 
-        // Build the scope: the `ai`/`inbox`/`outbox`/`channel` handles + each bound param as a var.
+        // Build the scope: the `ai`/`inbox`/`outbox`/`channel`/`insight` handles + each bound param.
         let mut scope = rhai::Scope::new();
         scope.push("ai", handles.ai);
         scope.push("inbox", handles.inbox);
         scope.push("outbox", handles.outbox);
         scope.push("channel", handles.channel);
+        scope.push("insight", handles.insight);
         for (name, value) in inputs.iter() {
             scope.push_dynamic(name.as_str(), value.clone());
         }

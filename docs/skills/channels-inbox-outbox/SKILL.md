@@ -185,9 +185,9 @@ curl -s http://127.0.0.1:8080/outbox -H "authorization: Bearer $TOKEN" | jq '.pe
 ## Related
 
 - Channels model + verbs (source of truth): `docs/scope/channels/channels-scope.md`,
-  `docs/public/channels/channels.md`.
+  `doc-site/content/public/channels/channels.mdx`.
 - Inbox/outbox model: `docs/scope/inbox-outbox/inbox-outbox-scope.md`,
-  `docs/scope/inbox-outbox/outbox-scope.md`, `docs/public/inbox-outbox/`.
+  `docs/scope/inbox-outbox/outbox-scope.md`, `doc-site/content/public/inbox-outbox/`.
 - Managing dashboards over the same bridge: `docs/skills/dashboard-mcp/SKILL.md`.
 - Capability / workspace rules: `README.md` §3, §6, §7; `docs/scope/auth-caps/`.
 - Gateway routes: `rust/role/gateway/src/server.rs` and `routes/`.

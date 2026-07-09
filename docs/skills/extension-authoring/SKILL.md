@@ -14,6 +14,23 @@ description: >-
 
 # Authoring an extension against the devkit
 
+> **STOP — read this before you run any shell command.** You author an extension **only** through the
+> devkit MCP verbs against the **already-running** node (`devkit.templates → devkit.scaffold →
+> devkit.write_file → devkit.build → devkit.inspect → ext.publish`). You do **NOT** build or run the
+> platform yourself. Specifically, **never**:
+> - `make dev`, `make build*`, `cargo build`, `cargo run`, or any build of *the repository* — the node
+>   is already up; `devkit.build` compiles your extension hermetically (container builder) for you.
+> - `git clone`/`cd` into the host repo, `chmod` its tree, or edit anything outside your scaffolded
+>   extension folder — the repo is read-only to you and unrelated to your task.
+> - hand-write `Cargo.toml`/`extension.toml`/`build.sh` from scratch — `devkit.scaffold` emits a
+>   correct-by-construction template; you only fill in the source with `devkit.write_file`.
+>
+> Work **only** inside your run's scratch cwd and the scaffold path `devkit.scaffold` returns. If you
+> find yourself shelling `make`, `cargo`, or `git` against the repo, you are off the rails — stop and
+> call `devkit.templates` instead. (If you are an **external agent** run: your host-tool reach is the
+> MCP bridge; your own shell is NOT the way in, and a run that only shells and never calls a `devkit.*`
+> verb is reaped as stalled.)
+
 In Lazybones **everything is an extension** — a chat app, a coding workplace, a flow node, a data
 panel. The devkit is the **sanctioned way your code enters the platform**: it never lands as a core
 crate or a special-cased branch (rule 10). An extension is *one folder* — a backend (a WASM component
@@ -439,7 +456,7 @@ restart was needed after publish.
   `docs/skills/extensions/SKILL.md` — **the companion; don't duplicate it here**.
 - Drive-what-you-built runbook: `core.e2e-backend` / `docs/testing/e2e-backend.md`.
 - Manifest + tiers + WIT boundary (source of truth): `docs/scope/extensions/extensions-scope.md`
-  (§13 manifest), `docs/public/extensions/extensions.md`.
+  (§13 manifest), `doc-site/content/public/extensions/extensions.mdx`.
 - File layout the persona codes within: `docs/FILE-LAYOUT.md`.
 - Devkit implementation: `rust/crates/devkit/` (scaffold/build/inspect/template/feature/signing) +
   host wiring `rust/crates/host/src/devkit/`; gateway route `rust/role/gateway/src/routes/ext.rs`.

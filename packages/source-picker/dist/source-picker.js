@@ -111,7 +111,7 @@ function ne(e) {
     id: `rule:${t.id}`,
     group: "rules",
     label: t.name || t.id,
-    source: { tool: "rules.run", args: { rule_id: t.id } },
+    source: { tool: "rules.run", args: { rule_id: t.id, route: !1 } },
     writes: !1,
     params: t.params ?? []
   }));

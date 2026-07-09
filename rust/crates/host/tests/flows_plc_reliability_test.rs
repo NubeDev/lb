@@ -25,6 +25,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -46,6 +48,7 @@ fn count_node(id: &str, needs: &[&str], items: Value) -> Node {
         needs: needs.iter().map(|s| s.to_string()).collect(),
         with: serde_json::Map::from_iter([("items".into(), items)]),
         config: json!({}),
+        position: None,
     }
 }
 

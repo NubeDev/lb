@@ -46,6 +46,9 @@ serde.workspace = true
 serde_json.workspace = true
 futures.workspace = true
 rand.workspace = true
+# The `CredentialCheck` login seam (login-hardening scope) is an `async fn` trait — one impl calls
+# `lb_host::credential_verify` (a store read). Same pinned version the host crate uses.
+async-trait.workspace = true
 
 [features]
 # Enables the test-only `test_gateway` binary (the UI real-gateway Vitest harness) + its seed deps.

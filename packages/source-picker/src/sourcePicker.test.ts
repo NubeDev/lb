@@ -86,7 +86,8 @@ describe("rulesEntries", () => {
     expect(rule.id).toBe("rule:r1");
     expect(rule.label).toBe("Hourly mean");
     expect(rule.writes).toBe(false);
-    expect(rule.source).toEqual({ tool: "rules.run", args: { rule_id: "r1" } });
+    // route:false makes a panel run read-only (no alert fan-out on repaint — slice 2).
+    expect(rule.source).toEqual({ tool: "rules.run", args: { rule_id: "r1", route: false } });
   });
 
   it("falls back to the id when a rule has no name", () => {
@@ -117,7 +118,7 @@ describe("rulesEntries", () => {
     const entries = buildSourceEntries({ rules: [{ id: "r1", name: "R1" }] });
     expect(entries.find((e) => e.group === "rules")?.source).toEqual({
       tool: "rules.run",
-      args: { rule_id: "r1" },
+      args: { rule_id: "r1", route: false },
     });
   });
 });

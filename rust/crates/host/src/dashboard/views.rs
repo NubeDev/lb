@@ -74,6 +74,14 @@ pub fn builtin_view_ids() -> Vec<String> {
 pub fn check_view_cells(cells: &[Cell]) -> Result<(), DashboardError> {
     let views = builtin_views();
     for cell in cells {
+        // A ref cell (library-panels scope: "the ref is authoritative") carries an echoed hydrated
+        // spec that `validate_and_strip_refs` — the NEXT step in `dashboard.save`'s chain — drops
+        // entirely, re-hydrating `view` from the panel record on read. Validating that throwaway echo
+        // here would reject a save whose actual stored cell will have an EMPTY view (the panel record
+        // supplies it later). So a non-empty `panel_ref` is out of this validator's jurisdiction.
+        if !cell.panel_ref.is_empty() {
+            continue;
+        }
         let view = cell.view.as_str();
         // A pre-view (v1) cell may carry no `view` and fall back to `widget_type` at render; an empty
         // view is not a hallucinated view, so we do not reject it here (the render path handles a v1

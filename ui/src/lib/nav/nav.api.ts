@@ -4,7 +4,7 @@
 // the session token (the hard wall, §7), never an argument. The nav grants NOTHING — resolving is a
 // pure lens over the caps the session already holds.
 
-import type { Nav, NavItem, NavPref, NavSummary, ResolvedNav, Visibility } from "./nav.types";
+import type { Nav, NavHidden, NavItem, NavPref, NavSummary, ResolvedNav, Visibility } from "./nav.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The roster the caller can reach (own + team-shared + workspace), summaries only. Mirrors
@@ -63,7 +63,27 @@ export function getNavPref(): Promise<NavPref> {
 }
 
 /** Set the caller's OWN active-nav pick (empty `id` clears it; keyed to the token sub — a caller
- *  cannot set another user's pick). Mirrors `nav.pref.set`. */
+ *  cannot set another user's pick). Mirrors `nav.pref.set`. Pins are untouched. */
 export function setNavPref(id: string): Promise<NavPref> {
   return invoke<NavPref>("nav_pref_set", { id });
+}
+
+/** Replace the caller's OWN pinned favorites (hide-and-pins scope) — ordered refs in the shared
+ *  grammar (bare surface key | `ext:<id>` | `dashboard:<id>`). The active pick is untouched (the
+ *  partial-write `nav.pref.set`). Member-owned; bounded server-side. */
+export function setNavPins(pinned: string[]): Promise<NavPref> {
+  return invoke<NavPref>("nav_pref_set", { pinned });
+}
+
+/** Read the workspace sidebar hidden-set (hide-and-pins scope). Member-level — the same set the
+ *  resolver echoes. Mirrors `nav.hidden.get`. */
+export function getNavHidden(): Promise<NavHidden> {
+  return invoke<NavHidden>("nav_hidden_get", {});
+}
+
+/** Replace the workspace sidebar hidden-set (admin — rides `nav.save`; full-set LWW, empty clears).
+ *  Hiding never blocks a route: declutter only, every page verb re-checked on click. Mirrors
+ *  `nav.hidden.set`. */
+export function setNavHidden(hidden: string[]): Promise<NavHidden> {
+  return invoke<NavHidden>("nav_hidden_set", { hidden });
 }

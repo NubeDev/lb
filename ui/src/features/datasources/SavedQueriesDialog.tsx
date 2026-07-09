@@ -193,7 +193,7 @@ export function SavedQueriesDialog({
                       <button
                         type="button"
                         aria-label={`open ${q.name || q.id}`}
-                        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded px-1 py-0.5 text-left hover:bg-panel/40"
+                        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 rounded-sm px-1 py-0.5 text-left hover:bg-panel/40"
                         onClick={() => choose(q)}
                       >
                         <span className="truncate text-sm font-medium">{q.name || q.id}</span>

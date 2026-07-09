@@ -24,6 +24,12 @@ pub const PREF_TABLE: &str = "nav_pref";
 /// deterministic, not "first/most-recent visibility:workspace nav wins".
 pub const DEFAULT_TABLE: &str = "workspace_nav_default";
 
+/// The table the workspace hidden-set lives in — `nav_hidden:[ws]` (one row per ws, admin-set;
+/// hide-and-pins scope). A subtractive curation record applied by the resolver at EVERY tier
+/// (including the built-in `SURFACES` fallback, which the UI subtracts client-side from the
+/// `ResolvedNav::hidden` echo). Hiding never blocks a route — declutter only, never authz.
+pub const HIDDEN_TABLE: &str = "nav_hidden";
+
 /// Our nav document version, pinned on [`Nav::schema_version`] at save. Bumped only when the stored
 /// document shape changes.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -35,6 +41,14 @@ pub const MAX_ITEMS: usize = 100;
 /// The largest number of dashboards one `tag-group` entry expands to at resolve time (nav scope: cap
 /// tag-group results separately so a broad facet can't blow up the menu). Extra matches are dropped.
 pub const MAX_TAG_GROUP: usize = 50;
+
+/// The largest hidden-set `nav.hidden.set` accepts (hide-and-pins scope, "Bounds"). Rejected over-cap
+/// (`BadInput`), never silently truncated.
+pub const MAX_HIDDEN: usize = 200;
+
+/// The most pins one member may hold (`nav_pref.pinned`; hide-and-pins scope, "Bounds"). Rejected
+/// over-cap (`BadInput`), never silently truncated.
+pub const MAX_PINNED: usize = 50;
 
 /// A nav's visibility tier — the S4 asset-sharing tiers (nav scope, "How it fits"; identical to the
 /// dashboard tiers, so the same gate-3 read check applies unchanged).
@@ -172,6 +186,25 @@ pub struct NavPref {
     /// The nav id the member has picked (`nav:{id}`), or empty for "no pick" (a tombstone shape).
     #[serde(default)]
     pub active: String,
+    /// The member's **pinned favorites** (hide-and-pins scope) — an ORDERED list of item refs in the
+    /// shared ref grammar: a bare surface key (`"rules"`), `ext:<id>` (opaque, rule 10), or
+    /// `dashboard:<id>`. Resolved server-side into `ResolvedNav::pinned` (cap- and hidden-stripped);
+    /// a stale ref strips silently at resolve WITHOUT mutating this record, so restores are free.
+    /// Additive field — a pre-pins record deserializes with no pins.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned: Vec<String>,
+    pub updated_ts: u64,
+}
+
+/// The workspace hidden-set record (`nav_hidden:[ws]`; hide-and-pins scope) — the admin's one
+/// subtractive curation lever. `hidden` holds item refs in the same grammar as [`NavPref::pinned`]
+/// (bare surface key | `ext:<id>` | `dashboard:<id>`), each treated as OPAQUE data (rule 10). Hiding
+/// is a lens like the nav itself: a hidden page a caller is permitted to reach still loads by deep
+/// link — the resolver only stops LISTING it (menu + pins; hide beats pin).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct NavHidden {
+    #[serde(default)]
+    pub hidden: Vec<String>,
     pub updated_ts: u64,
 }
 
@@ -202,8 +235,19 @@ pub struct ResolvedNav {
     pub nav_id: String,
     #[serde(default)]
     pub title: String,
-    /// The resolved, tag-expanded, cap-stripped items. Empty on a `Fallback`.
+    /// The resolved, tag-expanded, cap-stripped, hidden-stripped items. Empty on a `Fallback`.
     pub items: Vec<ResolvedItem>,
+    /// The workspace hidden-set ECHO (hide-and-pins scope) — the refs the admin hid, returned so the
+    /// UI can subtract them from its built-in `SURFACES`/ext-slot **fallback** too (the one tier the
+    /// server cannot strip, because the fallback menu lives client-side). Present on every source,
+    /// including `Fallback`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hidden: Vec<String>,
+    /// The caller's **pinned favorites**, already resolved (cap-, uninstalled-ext-, and
+    /// hidden-stripped — hide beats pin), in the member's order. Present on every source, including
+    /// `Fallback` — pins render above whichever menu applies.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned: Vec<ResolvedItem>,
 }
 
 /// One resolved menu entry — a `NavItem` after tag-expansion + cap-strip. A `tag-group` becomes a

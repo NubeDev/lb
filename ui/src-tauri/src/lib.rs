@@ -5,6 +5,11 @@
 //! webkit window toolchain (`cargo test -p lazybones-shell`). The `desktop` feature + the bin
 //! add the Tauri `#[command]` wrappers and the window.
 
+// The standalone full-stack boot (mounts the in-process gateway + boot seeders). Only
+// compiled under the `full` feature; the thin shell + the headless command layer skip it.
+#[cfg(feature = "full")]
+pub mod full;
+
 mod commands;
 mod state;
 

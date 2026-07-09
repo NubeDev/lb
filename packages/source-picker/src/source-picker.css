@@ -4,10 +4,13 @@
  * the picker follows the app theme; a host overrides by setting `--sp-*` on any ancestor. */
 
 .sp-root {
-  --sp-bg: var(--bg, hsl(222 14% 11%));
-  --sp-fg: var(--fg, hsl(210 20% 92%));
-  --sp-border: var(--border, hsl(215 14% 24%));
-  --sp-accent: var(--accent, hsl(199 89% 48%));
+  /* The host's shadcn vars are RAW HSL CHANNELS (`--bg: 218 22% 7%`), not colors — `var(--bg)` alone
+   * is an invalid <color> and silently renders transparent (the see-through combobox popover). Wrap
+   * in hsl(); the fallback channels apply when the host defines no theme at all. */
+  --sp-bg: hsl(var(--bg, 222 14% 11%));
+  --sp-fg: hsl(var(--fg, 210 20% 92%));
+  --sp-border: hsl(var(--border, 215 14% 24%));
+  --sp-accent: hsl(var(--accent, 199 89% 48%));
 
   display: grid;
   gap: 0.25rem;

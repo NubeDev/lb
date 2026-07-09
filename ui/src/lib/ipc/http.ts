@@ -618,8 +618,16 @@ case "dashboard_save": {
     case "nav_pref_get":
       return getJson<T>(`${base}/nav/pref`);
     case "nav_pref_set": {
-      const { id } = args as { id: string };
-      return postJson<T>(`${base}/nav/pref`, { id });
+      // Partial write (hide-and-pins scope): `id` absent leaves the active pick untouched (a
+      // pin-only toggle never clobbers it); `pinned` absent leaves the pins untouched.
+      const { id, pinned } = args as { id?: string; pinned?: string[] };
+      return postJson<T>(`${base}/nav/pref`, { id, pinned });
+    }
+    case "nav_hidden_get":
+      return getJson<T>(`${base}/nav/hidden`);
+    case "nav_hidden_set": {
+      const { hidden } = args as { hidden: string[] };
+      return postJson<T>(`${base}/nav/hidden`, { hidden });
     }
 
     // ── ui-layout (data-studio scope v2): the member-owned per-surface workbench layout. The

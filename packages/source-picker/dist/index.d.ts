@@ -348,7 +348,12 @@ export declare interface RuleParam {
  *  from the gated sources, computes over the rows in the cage (the data-stdlib: time/stats/`Frame`),
  *  and RETURNS records the panel draws (rules-as-source-scope). A rule is the most general query — the
  *  picker offers it as one opaque tool source, re-gated at the host per call (`mcp:rules.run:call`);
- *  whether its output is chart-shaped is the rule author's concern, an honest failure if not. */
+ *  whether its output is chart-shaped is the rule author's concern, an honest failure if not.
+ *
+ *  `route:false` on the emitted source makes a panel run READ-ONLY (rules-for-widgets-scope slice 2):
+ *  the host skips the `alert()` fan-out so a 30 s auto-refresh doesn't stamp a fresh Inbox item + a
+ *  must-deliver Outbox entry on every repaint. The host composes the arg exactly like the params form;
+ *  `viz.query` never learns the flag exists (it stays an opaque `{tool, args}` to the viz plane). */
 export declare function rulesEntries(rules: RuleSummary[]): SourceEntry[];
 
 /** A saved rule's summary (the subset of `rules.list` the picker needs) — a rule is a read source

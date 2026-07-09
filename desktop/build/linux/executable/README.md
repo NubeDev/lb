@@ -1,7 +1,10 @@
 # build/linux/executable/
 
 The **bare-executable** build type — the plain ELF `lazybones-shell`, no installer wrapper.
-This is the current Linux desktop deliverable (the packaging scope's first slice).
+This is the **thin shell** (Tauri window + 5 IPC commands, no in-process gateway): the
+packaging scope's first slice. For the **full standalone** build (in-process gateway + boot
+seeders → login/MCP/SSE all work with no external node), see
+[`../full/README.md`](../full/README.md) and `make -C desktop linux-full`.
 
 `make -C desktop linux-executable` builds the binary in the container and copies it here:
 

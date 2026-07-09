@@ -23,6 +23,8 @@ fn principal(ws: &str, caps: &[&str]) -> Principal {
         caps: caps.iter().map(|s| s.to_string()).collect(),
         iat: 0,
         exp: u64::MAX,
+        constraint: None,
+        run_id: None,
     };
     verify(&key, &mint(&key, &claims), 1).unwrap()
 }
@@ -49,6 +51,7 @@ fn rhai_flow(id: &str) -> Flow {
         needs: vec![],
         with: Default::default(),
         config: json!({"source":"1"}),
+        position: None,
     };
     Flow {
         workspace: "ws".into(),
@@ -101,6 +104,7 @@ async fn inject_retain_updates_state_and_starts_no_run() {
         needs: vec![],
         with: Default::default(),
         config: json!({"mode":"inject","inject_mode":"retain"}),
+        position: None,
     };
     let mut f = rhai_flow("cool");
     f.nodes = vec![n];
@@ -129,6 +133,7 @@ async fn inject_fire_starts_one_run() {
         needs: vec![],
         with: Default::default(),
         config: json!({"mode":"inject","inject_mode":"fire"}),
+        position: None,
     };
     let mut f = rhai_flow("fire");
     f.nodes = vec![n];
@@ -151,6 +156,7 @@ fn cron_node_flow(id: &str, node_id: &str, spec: &str) -> Flow {
         needs: vec![],
         with: Default::default(),
         config: json!({ "mode": "cron", "cron": spec }),
+        position: None,
     };
     let a = Node {
         id: "a".into(),
@@ -158,6 +164,7 @@ fn cron_node_flow(id: &str, node_id: &str, spec: &str) -> Flow {
         needs: vec![node_id.to_string()],
         with: Default::default(),
         config: json!({"source":"1"}),
+        position: None,
     };
     let mut f = rhai_flow(id);
     f.nodes = vec![trig, a];
@@ -220,6 +227,7 @@ async fn cron_trigger_node_fires_its_subgraph() {
         needs: vec![],
         with: Default::default(),
         config: json!({ "mode": "cron", "cron": "* * * * *" }),
+        position: None,
     };
     let counter = Node {
         id: "a".into(),
@@ -227,6 +235,7 @@ async fn cron_trigger_node_fires_its_subgraph() {
         needs: vec!["trigger-5".into()],
         with: serde_json::Map::from_iter([("payload".into(), json!([1, 2, 3, 4]))]),
         config: json!({}),
+        position: None,
     };
     let mut f = rhai_flow("chain4");
     f.nodes = vec![trig, counter];
@@ -349,6 +358,7 @@ fn ctl_flow(id: &str, static_payload: Value) -> Flow {
         needs: vec![],
         with: serde_json::Map::from_iter([("payload".into(), static_payload)]),
         config: json!({ "source": "payload" }),
+        position: None,
     };
     let mut f = rhai_flow(id);
     f.nodes = vec![ctl];
@@ -658,6 +668,7 @@ async fn reconciler_disarms_a_disabled_flow() {
         needs: vec![],
         with: Default::default(),
         config: json!({"broker":"b","topic":"t"}),
+        position: None,
     };
     let mut f = rhai_flow("rc");
     f.nodes = vec![src];

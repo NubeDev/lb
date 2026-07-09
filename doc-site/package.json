@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Lazybones documentation site (Nextra) — renders ../docs/public + ../docs/vision",
+  "description": "Lazybones documentation site (Nextra) — renders content/public + ../docs/vision",
   "scripts": {
     "dev": "next dev --port 3010",
     "build": "next build",

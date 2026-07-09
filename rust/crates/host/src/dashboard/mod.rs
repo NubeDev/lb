@@ -15,6 +15,7 @@
 //!   - the MCP bridge ([`call_dashboard_tool`]) — the one MCP contract over all of the above.
 //!   - the demo seed ([`seed_iot_demo`]) — real `Sample`s + tags via the real ingest path.
 
+mod access_check;
 mod authorize;
 mod bounds;
 mod catalog;
@@ -33,6 +34,7 @@ mod tool;
 mod views;
 mod visibility;
 
+pub use access_check::{dashboard_access_check, AccessReport, DepKind, DepVerdict};
 pub use bounds::{check_spec_bounds, MAX_OVERRIDES, MAX_TRANSFORMS};
 pub use catalog::{catalog_descriptor, dashboard_catalog, ExtWidget, WidgetCatalog};
 pub use delete::dashboard_delete;

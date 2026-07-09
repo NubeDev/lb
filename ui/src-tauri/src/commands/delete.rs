@@ -7,11 +7,7 @@ use lb_host::delete;
 use crate::state::NodeHandle;
 
 /// Delete message `id` from `channel` as the session principal. Only the message's author may.
-pub async fn channel_delete(
-    handle: &NodeHandle,
-    channel: &str,
-    id: &str,
-) -> Result<(), String> {
+pub async fn channel_delete(handle: &NodeHandle, channel: &str, id: &str) -> Result<(), String> {
     delete(&handle.node, &handle.principal, &handle.ws, channel, id)
         .await
         .map_err(|e| e.to_string())

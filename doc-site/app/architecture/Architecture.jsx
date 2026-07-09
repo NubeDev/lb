@@ -43,8 +43,9 @@ export default function Architecture() {
       {tab === 'stack' ? <StackView /> : <AuthView />}
 
       <footer className="lb-foot">
-        Grounded in <code>docs/public/SCOPE.md</code>, <code>docs/public/DIAGRAMS.md</code>, and{' '}
-        <code>docs/public/auth-caps/auth-caps.md</code>. Working scopes live in{' '}
+        Grounded in <code>doc-site/content/public/SCOPE.mdx</code>,{' '}
+        <code>doc-site/content/public/DIAGRAMS.mdx</code>, and{' '}
+        <code>doc-site/content/public/auth-caps/auth-caps.mdx</code>. Working scopes live in{' '}
         <code>docs/scope/</code>.
       </footer>
 

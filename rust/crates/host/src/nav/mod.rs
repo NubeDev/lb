@@ -28,10 +28,12 @@ mod default;
 mod delete;
 mod error;
 mod get;
+mod hidden;
 mod list;
 mod list_shares;
 mod model;
 mod pref;
+mod reach;
 mod resolve;
 mod resolve_template_group;
 mod save;
@@ -46,13 +48,15 @@ pub use default::nav_set_default;
 pub use delete::nav_delete;
 pub use error::NavError;
 pub use get::nav_get;
+pub use hidden::{nav_hidden_get, nav_hidden_set};
 pub use list::nav_list;
 pub use list_shares::nav_list_shares;
 pub use model::{
-    Nav, NavFacet, NavItem, NavPref, NavSummary, ResolvedItem, ResolvedNav, ResolvedSource,
-    Visibility, MAX_ITEMS, MAX_TAG_GROUP,
+    Nav, NavFacet, NavHidden, NavItem, NavPref, NavSummary, ResolvedItem, ResolvedNav,
+    ResolvedSource, Visibility, MAX_HIDDEN, MAX_ITEMS, MAX_PINNED, MAX_TAG_GROUP,
 };
 pub use pref::{nav_pref_get, nav_pref_set};
+pub use reach::{reach_caps, reach_check, REACH_ALL};
 pub use resolve::nav_resolve;
 pub use save::nav_save;
 pub use share::nav_share;

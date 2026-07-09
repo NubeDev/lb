@@ -98,6 +98,23 @@ because existing session docs point at them; new dashboard notes should live her
     bound to `rules.run` renders empty for every view — out of scope, tracked in
     `debugging/frontend/rules-as-source-render-path-empty.md`). See the shipped iframe reference
     [`render-template-widget.md`](render-template-widget.md).
+3m. [`rules-as-source-scope.md`](rules-as-source-scope.md) — **a saved rule is a picker source**:
+    the Rules group in the source picker (`rules.run {rule_id}` + typed params) — the **picker**
+    half shipped 2026-07-05; the **render** half (a view bound to `rules.run` actually drawing the
+    rule's rows) is blocked by a host gap and is scoped as its own slice:
+    [`rules-for-widgets-scope.md`](rules-for-widgets-scope.md) — fix the `viz.query` recursive
+    dispatch + unwrap the `RuleOutput` envelope, add read-only panel runs (`route:false` so a
+    30 s auto-refresh never spams the Inbox), and ship chart-return helpers in the cage
+    (`timeseries`/`wide`/`category`) so "make this rule chartable" is one line.
+3n. [`panel-wizard-source-discoverability-scope.md`](panel-wizard-source-discoverability-scope.md) —
+    **SHIPPED (2026-07-09)** — **"bind this panel to a saved RULE" is now a one-glance path in the
+    new-panel wizard**. The picker + render halves shipped (3m), but the wizard's step-1
+    Source chooser only names "rule" in the *Workspace source* card's subtitle and buries the Rules
+    group seventh in a flattened combobox — a user hunting a rule clicks *Datasource* and lands in the
+    SQL workbench. Recommendation: keep the three-bucket cards (no 5th "Rule" card — rejected: it
+    fractures one generic picker seam into per-kind cards), rewrite the card subtitle to front-load
+    "rule/series/saved query", reorder the Rules group to lead the workspace sub-picker, and add an
+    empty-Rules line. Labelling-only, CLAUDE §10 held.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -119,6 +136,14 @@ because existing session docs point at them; new dashboard notes should live her
   store reads and receive live samples through the series SSE stream.
 - Extension manifests may declare several `[[widget]]` tiles. Those tiles persist on the `Install`,
   are narrowed to the approved grant, and surface in `ext.list`.
+- **Rule discoverability in the new-panel wizard** ([`panel-wizard-source-discoverability-scope.md`](panel-wizard-source-discoverability-scope.md),
+  SHIPPED 2026-07-09): the wizard's step-1 **Workspace source** card front-loads "rule / series / saved
+  query", its source list opens with the **Rules** group first (not buried seventh), and an empty
+  workspace shows "No saved rules yet — create one in Rules". Picking a rule emits the shipped
+  `{tool:"rules.run", args:{rule_id, route:false}}`. Labelling/order only — one generic picker seam, no
+  per-source branch (CLAUDE §10). See
+  [`public/dashboard/dashboard.md`](../../../../doc-site/content/public/dashboard/dashboard.md) →
+  "New-panel wizard — binding a panel to a saved rule".
 
 ## What is not shipped yet
 
@@ -152,11 +177,16 @@ because existing session docs point at them; new dashboard notes should live her
   catalog is a **host-owned JSON data file** (`widget_catalog.json`, the `genui_catalog.json` pattern) —
   backend-driven and client-agnostic (the web UI **and** the RN app render from it). Sibling of the
   (shipped) human `widget-palette-scope.md`.
+- **Rules rendering in widgets** — a panel/widget bound to a saved rule renders zero rows for every
+  view (the `viz.query` → `rules.run` recursive dispatch fails and the `RuleOutput` envelope is not
+  unwrapped) — **scoped, not built**: [`rules-for-widgets-scope.md`](rules-for-widgets-scope.md)
+  (fix the two host layers, `route:false` read-only panel runs, chart-return helpers in the cage).
+  The picker half (Rules group + typed params) already shipped
+  ([`rules-as-source-scope.md`](rules-as-source-scope.md)).
 - The **reusable source-picker package** (`@nube/source-picker`) — extract the shipped picker (db /
   datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
   **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard
   refactors onto it first (parity), then `thecrew` consumes it.
-
 ## Authoring rule
 
 Keep new docs in this directory focused on dashboard scope. When a slice ships, promote the stable facts

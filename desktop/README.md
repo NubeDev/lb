@@ -54,9 +54,11 @@ host webkit2gtk-4.1 install required, same binary, host stays clean.
   flag) is the open question tracked in the scope.
 - **darwin / windows:** the OS/arch axis is recorded in
   [`../docs/scope/platform-targets/platform-targets-scope.md`](../docs/scope/platform-targets/platform-targets-scope.md).
-  Windows uses the OS-provided WebView2 (genuinely standalone on Win10/11); macOS needs
-  the WebKit toolchain + notarization. `docs/windows/` and `docs/darwin/` are empty
-  stubs until those slices land.
+  macOS needs the WebKit toolchain + notarization (`docs/darwin/` is an empty stub until
+  that slice lands). **Windows is shipped**: `make windows-executable` cross-compiles the
+  bare `.exe` (`x86_64-pc-windows-msvc` via cargo-xwin; OS-provided WebView2 makes it
+  genuinely standalone on Win10/11) plus the demo SQLite dataset into `build/windows/` —
+  see [`docs/windows/README.md`](docs/windows/README.md).
 
 ## Pointers
 

@@ -92,10 +92,10 @@ export function OptionsStep({ state, patch, onFocusOption, focusedOption, userId
     <div className="grid gap-4" aria-label="wizard options step">
       <WizardTour userId={userId} />
       <div className="grid gap-1">
-        <h2 className="text-sm font-medium text-fg">Options</h2>
+        <h2 className="text-sm font-medium text-fg">Advanced options</h2>
         <p className="text-xs text-muted">
-          Set how the panel looks. The preview on the right highlights the part each option affects as you
-          edit it.
+          The basics live on the Chart type step — this is the full per-view option set. The preview on
+          the right highlights the part each option affects as you edit it.
         </p>
       </div>
       {groups.map(({ group, options }, i) => {

@@ -43,7 +43,13 @@ interface Props {
 function isAgentPayload(
   p: ReturnType<typeof parsePayload>,
 ): p is Extract<NonNullable<ReturnType<typeof parsePayload>>, { kind: `agent${string}` }> {
-  return !!p && (p.kind === "agent" || p.kind === "agent_result" || p.kind === "agent_error");
+  return (
+    !!p &&
+    (p.kind === "agent" ||
+      p.kind === "agent_result" ||
+      p.kind === "agent_error" ||
+      p.kind === "agent_stalled")
+  );
 }
 
 /** A `rich_result` render-envelope routes to ResponseView (mounts the shipped WidgetView). */

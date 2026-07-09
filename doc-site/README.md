@@ -5,36 +5,35 @@ The published documentation site, built with [Nextra 4](https://nextra.site/)
 
 ## What this is — and isn't
 
-- **Source of truth stays in `../docs/`.** Authored markdown lives there and
-  follows the three-stage flow (`scope/` → `sessions/` → `public/`); see
-  [`../docs/ABOUT-DOCS.md`](../docs/ABOUT-DOCS.md).
-- **This site renders the *published* docs** — i.e. `../docs/public/` plus
-  `../docs/vision/`. It is the reader-facing presentation layer, not a second
-  place to author content.
-- `scope/` and `sessions/` are working material and are **not** published
-  (only `public/` and `vision/` are wired in — see "Content wiring" below).
+- **The shipped docs live here.** `content/public/` is the real, authored home for the *published*
+  documentation (as MDX) — not a symlink, not a fork. It was promoted out of `docs/` so there is exactly
+  one source of truth for what shipped.
+- `content/vision/` is still a symlink into [`../docs/vision/`](../docs/vision/) (the north star).
+- `scope/`, `sessions/`, and `debugging/` stay in [`../docs/`](../docs/ABOUT-DOCS.md) and are **not**
+  published — they're working material.
 
-So: write docs in `../docs/`, promote durable truth into `../docs/public/`, and
-the site picks it up. Don't fork doc content into `doc-site/`.
+So: the public/shipped docs are authored and edited directly under `doc-site/content/public/`; `vision/`
+is pulled from `docs/`.
 
 ## Content wiring
 
-Nextra 4 reads from `content/`. We do **not** copy or fork the docs — `content/`
-contains only symlinks into the real source plus the site's own landing page:
+Nextra 4 reads from `content/`:
 
 ```
 content/
 ├── index.mdx      ← site landing page (authored here — it's chrome, not a doc)
 ├── _meta.js       ← top-level nav ordering (Home / Docs / Vision)
-├── public   → ../../docs/public    (symlink — the shipped docs)
-└── vision   → ../../docs/vision    (symlink — the north star)
+├── public/        ← the shipped docs, authored here as .mdx (was docs/public/)
+└── vision  → ../../docs/vision    (symlink — the north star)
 ```
 
-Because `scope/`, `sessions/`, and `debugging/` are never symlinked, they can
-never leak onto the site. Markdown (`.md`) is rendered as-is — **no MDX
-conversion needed**. Use `.mdx` only if a page needs embedded React components.
+Public pages are **MDX** (`.mdx`). Use Markdown (`.md`) only for the rare page that must stay plain. When
+converting prose to MDX, mind that raw `<tag>`, `{expr}`, and `}` in prose are parsed as JSX — escape them
+(backticks for inline code, or `\`-escape) or keep them inside fenced/inline code spans. Multi-line inline
+code spans that interleave other backticks on the same line can mis-close; keep brace-heavy code spans on a
+single line.
 
-> Route casing is preserved from the source filename. A file `docs/public/SCOPE.md`
+> Route casing is preserved from the source filename. A file `content/public/SCOPE.mdx`
 > is served at `/public/SCOPE`, not `/public/scope`. Link with the exact casing.
 
 ## Prerequisites
@@ -78,7 +77,7 @@ doc-site/
 │   ├── layout.jsx                # root layout: Nextra theme <Layout>/<Navbar>/<Footer>
 │   ├── globals.css               # small theme overrides
 │   └── [[...mdxPath]]/page.jsx   # catch-all that renders every MDX/MD page
-├── content/                      # symlinks into ../docs + landing page (see above)
+├── content/                      # public/ (real .mdx) + vision symlink + landing page
 ├── mdx-components.js             # wires the docs theme's MDX components
 ├── next.config.mjs               # nextra() + static export + base path
 ├── tsconfig.json

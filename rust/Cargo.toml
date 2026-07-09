@@ -196,6 +196,11 @@ sha2 = "0.10"
 # HMAC-SHA256 for the generic webhook signature verification (`webhook/verify.rs`). Pairs with `sha2`
 # (above); the constant-time HMAC over the raw request body, mediated by the host on verify.
 hmac = "0.12"
+# Argon2id password hashing for the login credential check (login-hardening scope). The credential
+# record stores ONLY a PHC-string hash (salt embedded), never a plaintext; `PasswordHash::verify`
+# uses the constant-time verifier. Already in the tree transitively (surrealdb); pinned here as a
+# direct dep of `lb-host` where the credential store lives.
+argon2 = "0.5"
 
 # HTTP/SSE gateway (the browser path, README §6.13). axum is the chosen Rust web framework
 # (key-stack listed it TBD; resolved here). tower-http adds permissive CORS for the dev UI.

@@ -32,8 +32,10 @@ const ENVELOPE_KEYS: &[&str] = &["payload", "topic"];
 /// Run a rule for a flow node. `envelope` is the resolved node inputs (`{payload, topic, ...}`); its
 /// fields become rule params (so a rule reads `params.payload`), merged UNDER an explicit `params`
 /// object if one was supplied (explicit params win). `body` xor `rule_id` selects the rule; a
-/// `timeout_ms` (if present) overrides the cage deadline for this eval. Returns the run result — the
-/// caller (the `rhai`/`rule` node) projects `output`/`findings` onto the emitted envelope.
+/// `timeout_ms` (if present) overrides the cage deadline for this eval. `route` gates the alert
+/// fan-out (default `true` for a flow node — it wants the findings routed); a caller composing a
+/// read-only eval can pass `false`. Returns the run result — the caller (the `rhai`/`rule` node)
+/// projects `output`/`findings` onto the emitted envelope.
 #[allow(clippy::too_many_arguments)]
 pub async fn rules_eval(
     node: &Arc<Node>,
@@ -46,11 +48,12 @@ pub async fn rules_eval(
     timeout_ms: Option<u64>,
     model: Arc<dyn RuleModel>,
     now: u64,
+    route: bool,
 ) -> Result<RunResult, RulesError> {
     let params = envelope_to_params(envelope, explicit_params);
     let limits = timeout_ms.map(override_timeout);
     rules_run(
-        node, principal, ws, body, rule_id, params, model, now, limits,
+        node, principal, ws, body, rule_id, params, model, now, limits, route,
     )
     .await
 }

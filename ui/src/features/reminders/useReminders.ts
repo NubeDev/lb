@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   createReminder,
   deleteReminder,
+  fireReminder,
   listReminders,
   updateReminder,
 } from "@/lib/reminders/reminders.api";
@@ -80,5 +81,17 @@ export function useReminders() {
     [refresh],
   );
 
-  return { ...state, refresh, create, update, remove };
+  // Run-now — fire the reminder immediately, independent of its schedule, then refresh so the run
+  // count / next-attempt reflect the firing. Returns the fire result so the caller can surface a
+  // deny (the documented dev-login run-now limitation) without treating it as a page-level error.
+  const fire = useCallback(
+    async (id: string) => {
+      const res = await fireReminder(id, nowSecs());
+      await refresh();
+      return res;
+    },
+    [refresh],
+  );
+
+  return { ...state, refresh, create, update, remove, fire };
 }
