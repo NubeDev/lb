@@ -500,6 +500,41 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "federation",
         description: "mirror an external query's rows into the embedded store",
     },
+    HostTool {
+        tool: "federation.write",
+        group: "federation",
+        description: "write rows to a registered datasource (bounded INSERT/UPSERT)",
+    },
+    HostTool {
+        tool: "federation.migrate",
+        group: "federation",
+        description: "plan/apply a designed schema to a datasource (additive DDL, dry-run default)",
+    },
+    HostTool {
+        tool: "federation.export",
+        group: "federation",
+        description: "export platform series data to an external datasource (durable job)",
+    },
+    HostTool {
+        tool: "dbschema.save",
+        group: "dbschema",
+        description: "save a designed schema record (tables/columns/PK/FK + layout)",
+    },
+    HostTool {
+        tool: "dbschema.get",
+        group: "dbschema",
+        description: "read one designed schema record (full, layout included)",
+    },
+    HostTool {
+        tool: "dbschema.list",
+        group: "dbschema",
+        description: "list the workspace's designed schema records (name + table count)",
+    },
+    HostTool {
+        tool: "dbschema.delete",
+        group: "dbschema",
+        description: "remove a designed schema record (tombstones — never touches a live DB)",
+    },
     // viz.query — the ONE viz bridge (widget-platform scope).
     HostTool {
         tool: "viz.query",

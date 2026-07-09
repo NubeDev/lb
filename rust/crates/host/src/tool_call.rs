@@ -70,6 +70,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "federation.",
     "flows.",
     "datasource.",
+    "dbschema.",
     "secret.",
     "host.",
     "prefs.",
@@ -425,9 +426,11 @@ async fn dispatch_at_depth(
             crate::call_flows_tool_boxed(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("federation.")
             || qualified_tool.starts_with("datasource.")
+            || qualified_tool.starts_with("dbschema.")
         {
             // datasources scope: the federation host service (resolve source → net:* → mediate DSN →
-            // route to the supervised sidecar). The per-verb gate runs inside the service.
+            // route to the supervised sidecar) + the `dbschema.*` designed-record CRUD (schema-
+            // designer scope — store-only, no sidecar). The per-verb gate runs inside the service.
             crate::call_federation_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("host.") {
             crate::call_host_tool(node, principal, ws, qualified_tool, &input).await?

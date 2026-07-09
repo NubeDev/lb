@@ -23,6 +23,13 @@ use datafusion::sql::TableReference;
 pub use postgres::PostgresSource;
 pub use sqlite::SqliteSource;
 
+pub mod dialect;
+#[allow(unused_imports)]
+pub use dialect::{
+    canonicalize_live_type, plan_migrate, DdlStatement, DesignColumn, DesignFk, DesignSchema,
+    DesignTable, DestructiveRefusal, LiveCatalog, LiveColumn, NEUTRAL_TYPES,
+};
+
 /// A discovered table in an external source (the `federation.schema` list result).
 #[derive(Debug, Clone)]
 pub struct TableMeta {
@@ -75,6 +82,49 @@ pub trait Source: Send + Sync {
     async fn foreign_keys(&self, _table: &str) -> Result<Vec<ForeignKeyMeta>, SourceError> {
         Ok(Vec::new())
     }
+
+    /// List `table`'s columns with their types NORMALIZED to the canonical vocabulary (the
+    /// migrate-diff read). This is the load-bearing function for diff idempotence — `varchar(255)`
+    /// and `text` must both read as `text`, or migrate plans spurious ALTERs forever (scope Risk 1).
+    /// Default impl derives this from the Arrow schema; per-kind impls may override with a direct
+    /// catalog read (sqlite `PRAGMA table_info`, postgres `information_schema.columns`) for richer
+    /// type names than Arrow exposes.
+    async fn list_columns_with_types(
+        &self,
+        table: &str,
+        kind: &str,
+    ) -> Result<Vec<LiveColumn>, SourceError> {
+        let provider = self.table_provider(&TableReference::bare(table)).await?;
+        let schema = provider.schema();
+        Ok(schema
+            .fields()
+            .iter()
+            .map(|f| LiveColumn {
+                name: f.name().clone(),
+                neutral_type: canonicalize_live_type(&f.data_type().to_string(), kind),
+                nullable: f.is_nullable(),
+            })
+            .collect())
+    }
+
+    /// Apply a batch of DDL statements atomically (one transaction where the dialect allows it —
+    /// Postgres DDL is transactional; sqlite wraps the batch in `BEGIN`/`COMMIT`). Used by the
+    /// `federation.migrate` apply step. The statements are the planner's allow-listed output
+    /// (CREATE TABLE / ADD COLUMN / ADD CONSTRAINT FK) — never caller SQL.
+    async fn apply_ddl(&self, stmts: &[DdlStatement]) -> Result<(), SourceError>;
+
+    /// Write `rows` (each a column-aligned `Vec<Value>`) into `table`. When `key` names conflict
+    /// columns, the write is an UPSERT (ON CONFLICT DO UPDATE) — idempotent under redelivery
+    /// (scope: a flow firing twice writes the same row once). Returns the affected row count.
+    /// Used by `federation.write` and `federation.export`. Values are parameterized (never
+    /// inlined into SQL) — a caller cannot inject SQL through a cell value.
+    async fn write_rows(
+        &self,
+        table: &str,
+        columns: &[String],
+        rows: &[Vec<serde_json::Value>],
+        key: Option<&[String]>,
+    ) -> Result<u64, SourceError>;
 }
 
 /// A source-layer error. The DSN is NEVER included in the message (secret mediation — datasources

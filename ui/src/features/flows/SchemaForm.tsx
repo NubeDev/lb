@@ -17,6 +17,7 @@ import { CodeEditor, codeLanguageExtension } from "@/components/codeeditor";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { RhaiExampleLibrary } from "./examples/RhaiExampleLibrary";
+import { DatasourcePickerInput, DbschemaTablePickerInput } from "./SchemaFormPickers";
 
 // A code `format` may register a helper that renders BELOW its editor (keyed on the opaque schema
 // hint, not a node type). Rhai gets its examples library; add an entry here to give another language
@@ -196,6 +197,35 @@ function Field({ name, label, schema, required, value, disabled, error, onChange
           {/* A format may register a below-editor helper (e.g. rhai → an examples library). Data-driven
               off the opaque `format` hint, so no field logic branches on a node type. */}
           {Helper && !disabled ? <Helper onUse={(body) => onChange(body)} /> : null}
+        </Labeled>
+      );
+    }
+    // The schema-designer pickers (schema-designer scope): a `format: "lb:datasource"` field renders
+    // a `<select>` of the workspace's registered datasources; a `format: "lb:table"` field renders
+    // a `<select>` of the tables in the schema named by a sibling `schema` field (read from
+    // `dbschema.get`). Data-driven off the opaque `format` hint — the form never branches on a node
+    // type or an extension id (rule 10). The picker lives in its own file (FILE-LAYOUT).
+    if (schema.format === "lb:datasource") {
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <DatasourcePickerInput
+            aria-label={name}
+            disabled={disabled}
+            value={String(value ?? "")}
+            onChange={(v) => onChange(v)}
+          />
+        </Labeled>
+      );
+    }
+    if (schema.format === "lb:table") {
+      return (
+        <Labeled name={name} label={label} required={required} error={error} schema={schema}>
+          <DbschemaTablePickerInput
+            aria-label={name}
+            disabled={disabled}
+            value={String(value ?? "")}
+            onChange={(v) => onChange(v)}
+          />
         </Labeled>
       );
     }

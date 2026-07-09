@@ -16,10 +16,12 @@
 //! (its `spice_engine` wrapper over the `datafusion` crate + its SQL validator), MIT/Apache-2.0.
 
 mod info_schema;
+mod migrate;
 mod query;
 mod sample;
 mod source;
 mod validate;
+mod write;
 
 use lb_supervisor::{read_frame, write_frame, CallParams, Method, Reply, Request};
 use serde_json::{json, Value};
@@ -87,6 +89,8 @@ async fn handle_call(req: &Request) -> Reply {
         "federation.query" => federation_query(req.id, &input).await,
         "federation.schema" => federation_schema(req.id, &input).await,
         "federation.sample" => federation_sample(req.id, &input).await,
+        "federation.write" => federation_write(req.id, &input).await,
+        "federation.migrate" => federation_migrate(req.id, &input).await,
         "datasource.test" => datasource_test(req.id, &input).await,
         other => Reply::err(req.id, format!("unknown tool: {other}")),
     }
@@ -174,6 +178,73 @@ async fn datasource_test(id: u64, input: &Value) -> Reply {
     };
     match query::probe(kind, dsn).await {
         Ok(()) => Reply::ok(id, json!({ "ok": true }).to_string()),
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.write {kind, dsn, table, columns, rows, key?}` — bounded INSERT/UPSERT (schema-
+/// designer scope). The host resolves the source + mediates the DSN; this sidecar generates the
+/// parameterized SQL and runs it through `Source::write_rows`. Row-capped; past the cap the error
+/// steers to `federation.export`. The DSN never appears in the reply.
+async fn federation_write(id: u64, input: &Value) -> Reply {
+    let (kind, dsn, table) = match (
+        str_of(input, "kind"),
+        str_of(input, "dsn"),
+        str_of(input, "table"),
+    ) {
+        (Some(k), Some(d), Some(t)) => (k, d, t),
+        _ => return Reply::err(id, "missing kind/dsn/table"),
+    };
+    let columns: Vec<String> = match input.get("columns").and_then(|v| v.as_array()) {
+        Some(a) => a
+            .iter()
+            .filter_map(|c| c.as_str().map(str::to_string))
+            .collect(),
+        None => return Reply::err(id, "missing columns"),
+    };
+    let rows: Vec<Value> = input
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let key: Option<Vec<String>> = input.get("key").and_then(|v| v.as_array()).map(|a| {
+        a.iter()
+            .filter_map(|c| c.as_str().map(str::to_string))
+            .collect()
+    });
+
+    let key_ref: Option<&[String]> = key.as_deref();
+    match write::run_write(kind, dsn, table, &columns, &rows, key_ref).await {
+        Ok(affected) => {
+            let out = json!({ "affected": affected });
+            Reply::ok(id, out.to_string())
+        }
+        Err(e) => Reply::err(id, e),
+    }
+}
+
+/// `federation.migrate {kind, dsn, schema, dry_run?}` — diff the desired schema vs the live
+/// catalog, plan additive DDL, and (when `dry_run` is false) apply it (schema-designer scope). The
+/// host resolves the source + mediates the DSN; this sidecar reads the live catalog, plans via the
+/// pure `dialect::plan_migrate`, and applies via `Source::apply_ddl` in one transaction.
+async fn federation_migrate(id: u64, input: &Value) -> Reply {
+    let (kind, dsn) = match (str_of(input, "kind"), str_of(input, "dsn")) {
+        (Some(k), Some(d)) => (k, d),
+        _ => return Reply::err(id, "missing kind/dsn"),
+    };
+    let Some(schema_value) = input.get("schema") else {
+        return Reply::err(id, "missing schema");
+    };
+    let schema: source::DesignSchema = match serde_json::from_value(schema_value.clone()) {
+        Ok(s) => s,
+        Err(e) => return Reply::err(id, format!("bad schema: {e}")),
+    };
+    let dry_run = input
+        .get("dry_run")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    match migrate::run_migrate(kind, dsn, &schema, dry_run).await {
+        Ok(value) => Reply::ok(id, value.to_string()),
         Err(e) => Reply::err(id, e),
     }
 }

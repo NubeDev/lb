@@ -28,6 +28,11 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // The AI-context snapshot (datasource-samples scope): one call returning tables + columns
         // + foreign keys + LIMIT-n rows, so a model can write correct SQL without probing.
         crate::federation::sample_descriptor(),
+        // The write plane (schema-designer scope): bounded INSERT/UPSERT + DDL migrate + durable
+        // export. Each gates on its own cap; `federation.migrate` is admin + dry-run-default.
+        crate::federation::write_descriptor(),
+        crate::federation::migrate_descriptor(),
+        crate::federation::export_descriptor(),
         crate::query::save_descriptor(),
         crate::query::run_descriptor(),
         crate::query::compile_descriptor(),
