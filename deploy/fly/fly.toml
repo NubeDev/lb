@@ -1,0 +1,65 @@
+# deploy/fly/fly.toml — single-app Fly.io deployment for a Lazybones `node`.
+#
+# One Machine runs Caddy on :8080 (serves the SPA, reverse-proxies the gateway) fronting the same
+# `node` binary `make dev` runs — cloud posture selected purely by `LB_GATEWAY_ADDR` (README rule
+# 1: symmetric nodes, no `if cloud`). SurrealDB is embedded (rule 2) — there is no attached DB
+# service. See docs/scope/deploy/fly-deploy-scope.md.
+#
+# Deploy: `make fly-deploy` (wraps `fly deploy` with the shared Dockerfile/ignorefile — see
+# ../fly/README.md for first-time app/volume/secret setup).
+
+app             = "lazybones"
+primary_region  = "cdg"
+kill_signal     = "SIGINT"
+kill_timeout    = "30s"
+
+[build]
+  dockerfile = "deploy/common/Dockerfile"
+
+[deploy]
+  strategy = "immediate"
+
+[env]
+  # Non-secret runtime knobs. LB_SIGNING_KEY (the stable gateway signing seed — see
+  # rust/node/src/main.rs `gateway_signing_key()`) is set via `fly secrets set`, never here.
+  LB_WORKSPACE  = "acme"
+  LB_SEED_USER  = "user:ada"
+  RUST_LOG      = "info"
+
+[http_service]
+  internal_port        = 8080
+  force_https          = true
+  auto_stop_machines    = "stop"
+  auto_start_machines  = true
+  min_machines_running = 1
+  processes            = ["app"]
+
+  [http_service.concurrency]
+    type       = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    interval     = "30s"
+    timeout      = "5s"
+    grace_period = "30s"
+    method       = "GET"
+    # Caddy serves the SPA shell regardless of node health; a real gateway probe (`/workspaces`,
+    # which 401s without a token but proves the reverse-proxy hop is alive) is the deeper check —
+    # add it once the gateway ships a dedicated unauthenticated `/health` route.
+    path         = "/"
+
+[[vm]]
+  size     = "shared-cpu-1x"
+  memory   = "1gb"
+  cpu_kind = "shared"
+  cpus     = 1
+
+# Persistent volume: the embedded SurrealKV store + the seeded demo SQLite file.
+[mounts]
+  source                     = "lb_data"
+  destination                = "/data"
+  initial_size               = "1gb"
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "1gb"
+  auto_extend_size_limit     = "10gb"

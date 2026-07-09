@@ -155,4 +155,42 @@ describe("PanelWizard Save — the no-drift invariant + cap gate + isolation (re
     expect((await getDashboard("d-button")).cells[0]!.view).toBe("timeseries");
     cleanup();
   });
+
+  it("EDIT MODE: opening the wizard with editCell replaces the cell in place (same key + geometry), not append", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedOne("cooler.temp", 42);
+    // An existing panel on the dashboard at a fixed key + geometry (what the dashboard grid holds).
+    const existing = buildViaWriteOption("stat", "cooler.temp", [["decimals", 0]]);
+    const placed: Cell = { ...editorStateToCell(cellToEditorState(existing), defaultCell("stat", "w")), i: "w7", x: 3, y: 5, w: 6, h: 4 };
+    await saveDashboard("d-edit", "Ops", [placed]);
+
+    const user = userEvent.setup();
+    render(
+      <WithDashboardCache ws={ws}>
+        <PanelWizard ws={ws} dashboardId="d-edit" editCell={placed} onExit={() => {}} />
+      </WithDashboardCache>,
+    );
+    // Edit mode seeds from the existing cell — the header says "Edit panel".
+    expect(screen.getByText("Edit panel")).toBeInTheDocument();
+    // Walk to Save (no re-pick needed; the source is already bound) and persist.
+    await waitFor(() => expect(screen.getByLabelText("wizard source step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard chart-type step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard options step")).toBeInTheDocument());
+    await user.click(screen.getByText("Next"));
+    await waitFor(() => expect(screen.getByLabelText("wizard transform step")).toBeInTheDocument());
+    await user.click(screen.getByLabelText("save panel"));
+
+    // Replaced IN PLACE: still ONE cell, same key + geometry — not appended as a second panel.
+    await waitFor(async () => {
+      const d = await getDashboard("d-edit");
+      expect(d.cells.length).toBe(1);
+    });
+    const cell = (await getDashboard("d-edit")).cells[0]!;
+    expect(cell.i).toBe("w7");
+    expect([cell.x, cell.y, cell.w, cell.h]).toEqual([3, 5, 6, 4]);
+    cleanup();
+  });
 });

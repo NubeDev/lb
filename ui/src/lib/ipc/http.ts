@@ -649,13 +649,20 @@ case "dashboard_save": {
     case "datasource_list":
       return getJson<T>(`${base}/datasources`);
     case "datasource_add": {
+      // `dsn` is optional — a file-backed source (sqlite path in `endpoint`) has none. Send it only
+      // when non-empty; the gateway's body now accepts its absence (was a required field → 422).
       const { name, kind, endpoint, dsn } = args as {
         name: string;
         kind: string;
         endpoint: string;
-        dsn: string;
+        dsn?: string;
       };
-      return postJson<T>(`${base}/datasources`, { name, kind, endpoint, dsn });
+      return postJson<T>(`${base}/datasources`, {
+        name,
+        kind,
+        endpoint,
+        ...(dsn ? { dsn } : {}),
+      });
     }
     case "datasource_remove": {
       const { name } = args as { name: string };

@@ -34,13 +34,17 @@ pub async fn list_datasources(
 }
 
 /// The `POST /datasources` body — register a source. The DSN exists only here (the Add submit); it is
-/// forwarded to the host and never read back.
+/// forwarded to the host and never read back. **`dsn` is optional** — a file-backed source (e.g. a
+/// sqlite `endpoint` that IS the db path) carries no separate connection string, and the host's
+/// `datasource.add` already treats it as `Option`. Requiring it here made axum reject a DSN-less add
+/// with a `422` before the handler ran (the "add datasource denied" symptom); default it to absent.
 #[derive(Debug, Deserialize)]
 pub struct AddDatasource {
     pub name: String,
     pub kind: String,
     pub endpoint: String,
-    pub dsn: String,
+    #[serde(default)]
+    pub dsn: Option<String>,
 }
 
 /// `POST /datasources` — register a datasource (DSN → `lb_secrets` host-side; only the ref persisted).
@@ -53,13 +57,17 @@ pub async fn add_datasource(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let input = json!({
+    let mut input = json!({
         "name": body.name,
         "kind": body.kind,
         "endpoint": body.endpoint,
-        "dsn": body.dsn,
         "ts": gw.now(),
     });
+    // Only forward `dsn` when the submit actually carried one — a DSN-less (file-backed) source omits
+    // it, and the host reads `dsn` as `Option` (an empty string would be stored as an empty secret).
+    if let Some(dsn) = body.dsn.filter(|d| !d.is_empty()) {
+        input["dsn"] = json!(dsn);
+    }
     let out = lb_host::call_tool(&gw.node, &p, p.ws(), "datasource.add", &input.to_string())
         .await
         .map_err(status)?;

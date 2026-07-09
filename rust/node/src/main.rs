@@ -15,6 +15,34 @@ mod control_engine;
 mod external_agent;
 mod federation;
 
+/// The gateway's signing key: a **stable** key from `LB_SIGNING_KEY` (64 hex chars = 32-byte Ed25519
+/// seed) when set, otherwise a fresh one per boot (S1 default). A deployed node (Fly, any long-lived
+/// host) wants a key that survives a restart — every session token else dies with the process — so
+/// the binary boundary (§3.1's thin role-aware layer) reads it from config/secret, never generates one
+/// in that path. Falls back to `SigningKey::generate()` on missing/malformed input, matching prior
+/// behavior for `make dev` and tests.
+fn gateway_signing_key() -> SigningKey {
+    let Ok(hex_seed) = std::env::var("LB_SIGNING_KEY") else {
+        return SigningKey::generate();
+    };
+    let hex_seed = hex_seed.trim();
+    if hex_seed.len() != 64 {
+        eprintln!("LB_SIGNING_KEY: expected 64 hex chars (32-byte seed), got {} — generating a fresh key", hex_seed.len());
+        return SigningKey::generate();
+    }
+    let mut seed = [0u8; 32];
+    for (i, byte) in seed.iter_mut().enumerate() {
+        match u8::from_str_radix(&hex_seed[i * 2..i * 2 + 2], 16) {
+            Ok(b) => *byte = b,
+            Err(_) => {
+                eprintln!("LB_SIGNING_KEY: not valid hex — generating a fresh key");
+                return SigningKey::generate();
+            }
+        }
+    }
+    SigningKey::from_seed(&seed)
+}
+
 /// Seed the dev `user` as a `workspace-admin` member of `ws`: create the global identity (idempotent),
 /// write the membership row (idempotent), and grant the built-in `member` + `workspace-admin` roles
 /// (idempotent). Operator provisioning at boot — the login gate still enforces membership; this just
@@ -259,7 +287,7 @@ async fn main() -> anyhow::Result<()> {
         // A LIVE clock (not a value frozen here at boot): `Gateway::new_live` reads wall time per
         // request, so token iat/exp and any derived ts advance. `Gateway::new(.., now)` is the
         // fixed-clock TEST seam only.
-        let gw = lb_role_gateway::Gateway::new_live(node.clone(), SigningKey::generate());
+        let gw = lb_role_gateway::Gateway::new_live(node.clone(), gateway_signing_key());
         // The gateway just installed its signing key onto the node (`Gateway::new_live` →
         // `node.install_key`), so NOW there is ONE signing identity. Mount the native sidecar roles
         // here — `install_native` mints each child's `LB_EXT_TOKEN` with that shared `node.key()`, so

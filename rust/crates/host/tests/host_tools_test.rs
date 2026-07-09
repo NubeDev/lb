@@ -354,3 +354,102 @@ async fn dto_allow_lists_leak_no_file_contents_or_extra_network_fields() {
     assert!(!net.to_string().contains("routes"));
     assert!(!net.to_string().contains("env"));
 }
+
+/// Build a filter-exercising tree: mixed extensions, a hidden file and dir, and a
+/// name to substring-match on. Real files/dirs in a real temp dir.
+fn temp_filter_tree(name: &str) -> PathBuf {
+    let id = TEMP_ID.fetch_add(1, Ordering::SeqCst);
+    let root =
+        std::env::temp_dir().join(format!("lb-host-filter-{name}-{}-{id}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("temp dir");
+    std::fs::create_dir_all(root.join("visible-dir")).expect("dir");
+    std::fs::create_dir_all(root.join(".hidden-dir")).expect("hidden dir");
+    for f in [
+        "notes.txt",
+        "readme.TXT",
+        "data.db",
+        "schema.sql",
+        "report.pdf",
+        ".hidden.txt",
+        "no-extension",
+    ] {
+        std::fs::write(root.join(f), b"x").expect("file");
+    }
+    root
+}
+
+fn entry_names(list: &Value) -> Vec<String> {
+    list["entries"]
+        .as_array()
+        .expect("entries")
+        .iter()
+        .map(|e| e["name"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn fs_list_filters_by_extension_hides_hidden_and_matches_name() {
+    let node = Arc::new(Node::boot().await.unwrap());
+    let ws = "host-fs-filter";
+    let p = principal("user:filter", ws, &[FS_LIST]);
+    let root = temp_filter_tree("filter");
+
+    // Default: hidden entries excluded, everything else present.
+    let all = call(&node, &p, ws, "host.fs.list", json!({ "path": &root }))
+        .await
+        .unwrap();
+    let names = entry_names(&all);
+    assert!(!names.iter().any(|n| n.starts_with('.')), "hidden excluded");
+    assert!(names.contains(&"notes.txt".to_string()));
+    assert!(names.contains(&"visible-dir".to_string()));
+
+    // include_hidden surfaces dot entries (file and dir).
+    let hidden = call(
+        &node,
+        &p,
+        ws,
+        "host.fs.list",
+        json!({ "path": &root, "include_hidden": true }),
+    )
+    .await
+    .unwrap();
+    let names = entry_names(&hidden);
+    assert!(names.contains(&".hidden.txt".to_string()));
+    assert!(names.contains(&".hidden-dir".to_string()));
+
+    // Extension filter is case-insensitive and accepts leading-dot or bare forms.
+    let by_ext = call(
+        &node,
+        &p,
+        ws,
+        "host.fs.list",
+        json!({ "path": &root, "extensions": [".txt", "db", "sql"] }),
+    )
+    .await
+    .unwrap();
+    let names = entry_names(&by_ext);
+    assert_eq!(
+        names,
+        vec![
+            "data.db".to_string(),
+            "notes.txt".to_string(),
+            "readme.TXT".to_string(),
+            "schema.sql".to_string(),
+        ]
+    );
+
+    // Name filter is a case-insensitive substring; combines with the hidden rule.
+    let by_name = call(
+        &node,
+        &p,
+        ws,
+        "host.fs.list",
+        json!({ "path": &root, "name": "READ" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(entry_names(&by_name), vec!["readme.TXT".to_string()]);
+
+    let _ = std::fs::remove_dir_all(&root);
+}

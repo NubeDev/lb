@@ -32,6 +32,10 @@ lb-inbox = { path = "../../rust/crates/inbox" }
 # headless command layer and the thin `desktop` shell never pull them in.
 lb-role-gateway = { path = "../../rust/role/gateway", optional = true }
 lb-authz = { path = "../../rust/crates/authz", optional = true }
+# Resolve the per-user data dir for the `full` desktop's persistent store (OS-standard: %APPDATA%
+# on Windows, ~/.local/share on Linux, ~/Library/Application Support on macOS). Already a workspace
+# dep (host_tools/fs/home.rs); optional here, pulled in only by the `full` feature.
+dirs = { version = "5", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
@@ -52,7 +56,7 @@ desktop = ["dep:tauri"]
 # catalog, flows, all of it — with no external node to talk to. The webview talks to the
 # loopback gateway over HTTP exactly as the browser does against `make dev`. See
 # docs/scope/desktop/desktop-standalone-backend-scope.md.
-full = ["desktop", "dep:lb-role-gateway", "dep:lb-authz"]
+full = ["desktop", "dep:lb-role-gateway", "dep:lb-authz", "dep:dirs"]
 
 [build-dependencies]
 # Pure-Rust codegen (no system libs). build.rs only *calls* it for the `desktop` feature.
@@ -63,3 +67,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 # reqwest drives the loopback gateway from the full-mode integration test (login + mcp/call
 # over real HTTP) — proving the standalone backend answers a real client with no display.
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Seeds a REAL sqlite fixture for the federation-bundle test (a real on-disk db the bundled
+# sidecar queries — testing §0's sanctioned external). `bundled` = its own sqlite3, no system dep.
+rusqlite = { version = "0.37", features = ["bundled"] }

@@ -45,6 +45,53 @@ fn add_body() -> Value {
     })
 }
 
+/// Regression (`dsn` was a required field on the `POST /datasources` body): a file-backed source
+/// (a sqlite `endpoint` that IS the db path) carries no separate DSN, and the host's `datasource.add`
+/// treats `dsn` as `Option`. Requiring it at the gateway made axum reject a DSN-less add with a `422`
+/// **before the handler ran** — surfacing in the UI as "add datasource denied". This asserts a
+/// DSN-less body now round-trips (200/ok) and the source lists. Before the fix: 422.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn add_without_a_dsn_is_accepted_over_the_gateway() {
+    let (gw, key) = gateway().await;
+    let tok = token(&key, "user:ada", "acme", CAPS);
+
+    let body = json!({
+        "name": "buildings",
+        "kind": "sqlite",
+        "endpoint": "127.0.0.1:0",
+        // no "dsn" — the sqlite file path lives in `endpoint`/is picked separately; the field is absent.
+    });
+    let resp = router(gw.clone())
+        .oneshot(bearer(json_post("/datasources", body), &tok))
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "a DSN-less add must be accepted (was 422 when `dsn` was required)"
+    );
+    let added: Value = json_body(resp).await;
+    assert_eq!(added["ok"], true);
+
+    // And it lists (the record persisted).
+    let list = router(gw.clone())
+        .oneshot(bearer(get_req("/datasources"), &tok))
+        .await
+        .unwrap();
+    assert_eq!(list.status(), StatusCode::OK);
+    let body: Value = json_body(list).await;
+    let names: Vec<&str> = body["datasources"]
+        .as_array()
+        .expect("datasources array")
+        .iter()
+        .filter_map(|s| s["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"buildings"),
+        "the DSN-less source persisted (got {names:?})"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn add_then_list_round_trip_over_the_gateway() {
     let (gw, key) = gateway().await;

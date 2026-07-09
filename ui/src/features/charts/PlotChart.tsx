@@ -109,6 +109,15 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
     );
   }
 
+  // A line/area needs ≥2 points to draw a visible segment. When every series is a single point (e.g.
+  // "split by" is the same field as the x axis, so each group has one point), the stroke is invisible
+  // and `dot={false}` hides the symbol too — the chart looks empty though the data is there. Force the
+  // symbols on in that case so single-point series still render.
+  const showDots = frame.series.every(
+    (s) => frame.data.filter((d) => d[s.key] != null).length <= 1,
+  );
+  const lineDot = showDots ? { r: 3 } : false;
+
   const grid = <CartesianGrid {...gridProps} vertical={spec.type === "bar" && !spec.horizontal ? false : true} />;
   const tooltip = <Tooltip cursor={{ fill: "hsl(var(--accent) / 0.06)" }} content={<ChartTooltip valueFormatter={valueFormatter} colorOf={colorFor} />} />;
   // The legend is CONTAINED, whatever the series count: past ~4 rows of entries it scrolls inside the
@@ -208,7 +217,7 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
           {tooltip}
           {legend}
           {frame.series.map((s, i) => (
-            <Area key={s.key} type={spec.smooth ? "monotone" : "linear"} dataKey={s.key} name={s.name} stackId={spec.stacked ? "s" : undefined} stroke={seriesColor(i, frame.series.length)} strokeWidth={2} fill={`url(#fill-${s.key})`} dot={false} activeDot={{ r: 3.5 }} isAnimationActive={animate} connectNulls />
+            <Area key={s.key} type={spec.smooth ? "monotone" : "linear"} dataKey={s.key} name={s.name} stackId={spec.stacked ? "s" : undefined} stroke={seriesColor(i, frame.series.length)} strokeWidth={2} fill={`url(#fill-${s.key})`} dot={lineDot} activeDot={{ r: 3.5 }} isAnimationActive={animate} connectNulls />
           ))}
         </AreaChart>
       </Wrap>
@@ -225,7 +234,7 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
         {tooltip}
         {legend}
         {frame.series.map((s, i) => (
-          <Line key={s.key} type={spec.smooth ? "monotone" : "linear"} dataKey={s.key} name={s.name} stroke={seriesColor(i, frame.series.length)} strokeWidth={2} dot={false} activeDot={{ r: 3.5 }} isAnimationActive={animate} connectNulls />
+          <Line key={s.key} type={spec.smooth ? "monotone" : "linear"} dataKey={s.key} name={s.name} stroke={seriesColor(i, frame.series.length)} strokeWidth={2} dot={lineDot} activeDot={{ r: 3.5 }} isAnimationActive={animate} connectNulls />
         ))}
       </LineChart>
     </Wrap>

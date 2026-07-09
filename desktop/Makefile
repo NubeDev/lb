@@ -31,6 +31,9 @@ IMAGE := lazybones-shell-builder:local
 # Where cargo/tauri drops the raw ELF (bind-mounted back to the host, gitignored under target/).
 BINARY_REL := ui/src-tauri/target/release/lazybones-shell
 BINARY := $(REPO_ROOT)/$(BINARY_REL)
+# The federation datasources sidecar (sqlite-only), built by build.sh in `full` mode and copied
+# beside the shell so the standalone binary can register + query the shipped demo db.
+FED_BINARY := $(REPO_ROOT)/rust/target/release/federation
 # The canonical "pick up the binary here" location — one dir per build type under build/linux/.
 # The bare-executable type holds the built ELF (+ the CI tarball); deb/rpm/appimage get their own.
 DEST_DIR := $(THIS_DIR)/build/linux/executable
@@ -51,6 +54,8 @@ UID_GID := $$(id -u):$$(id -g)
 WIN_IMAGE := lazybones-shell-builder-windows:local
 WIN_BINARY_REL := ui/src-tauri/target/x86_64-pc-windows-msvc/release/lazybones-shell.exe
 WIN_BINARY := $(REPO_ROOT)/$(WIN_BINARY_REL)
+# The federation sidecar cross-built for Windows (sqlite-only), copied beside the .exe in full mode.
+WIN_FED_BINARY := $(REPO_ROOT)/rust/target/x86_64-pc-windows-msvc/release/federation.exe
 WIN_DEST_DIR := $(THIS_DIR)/build/windows
 WIN_DEST := $(WIN_DEST_DIR)/lazybones-shell.exe
 
@@ -72,7 +77,7 @@ DOCKER_RUN := docker run --rm --user $(UID_GID) \
   -v lb-cargo:/usr/local/cargo/registry \
   -v lb-pnpm:/usr/local/pnpm/store
 
-.PHONY: image windows-image linux-executable linux-full windows-executable windows-full artifact seed-demo smoke smoke-full clean help
+.PHONY: image windows-image linux-executable linux-full windows-executable windows-full artifact seed-demo smoke smoke-full smoke-full-persist clean help
 .DEFAULT_GOAL := help
 
 help: ## Show this help.
@@ -91,12 +96,15 @@ endif
 	@echo "Binary: $(DEST)"
 	@file "$(DEST)" 2>/dev/null || true
 
-linux-full: image ## FULL standalone build (in-process gateway + seeders); binary → build/linux/full/.
+linux-full: image ## FULL standalone build (in-process gateway + seeders + federation sidecar); → build/linux/full/.
 	$(DOCKER_RUN) -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(IMAGE)
 	@mkdir -p "$(FULL_DEST_DIR)"
 	@cp -f "$(BINARY)" "$(FULL_DEST)"
+	@test -x "$(FED_BINARY)" || { echo "federation sidecar missing at $(FED_BINARY) (build.sh should have built it)"; exit 1; }
+	@cp -f "$(FED_BINARY)" "$(FULL_DEST_DIR)/federation"
 	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(FULL_DEST_DIR)" DEMO_DB="$(FULL_DEST_DIR)/demo-buildings.db"
 	@echo "Binary (full): $(FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@echo "Sidecar (full): $(FULL_DEST_DIR)/federation  (datasources: sqlite demo pre-registered)"
 	@file "$(FULL_DEST)" 2>/dev/null || true
 
 seed-demo: ## Generate the demo-building SQLite dataset (lite) at build/linux/executable/demo-buildings.db.
@@ -117,12 +125,15 @@ windows-executable: windows-image ## Cross-build the .exe via container; binary 
 	@echo "Binary: $(WIN_DEST)"
 	@file "$(WIN_DEST)" 2>/dev/null || true
 
-windows-full: windows-image ## Cross-build the FULL standalone .exe → build/windows-full/.
+windows-full: windows-image ## Cross-build the FULL standalone .exe (+ federation.exe) → build/windows-full/.
 	$(DOCKER_RUN) -v lb-xwin:/usr/local/xwin -e LB_SHELL_FEATURES=desktop,full -e LB_DESKTOP_GATEWAY_ADDR=$(LOOPBACK_ADDR) $(WIN_IMAGE)
 	@mkdir -p "$(WIN_FULL_DEST_DIR)"
 	@cp -f "$(WIN_BINARY)" "$(WIN_FULL_DEST)"
+	@test -f "$(WIN_FED_BINARY)" || { echo "federation.exe missing at $(WIN_FED_BINARY) (build-windows.sh should have built it)"; exit 1; }
+	@cp -f "$(WIN_FED_BINARY)" "$(WIN_FULL_DEST_DIR)/federation.exe"
 	@$(MAKE) --no-print-directory seed-demo DEST_DIR="$(WIN_FULL_DEST_DIR)" DEMO_DB="$(WIN_FULL_DEST_DIR)/demo-buildings.db"
 	@echo "Binary (full): $(WIN_FULL_DEST)  — login at http://$(LOOPBACK_ADDR) as user:ada / acme"
+	@echo "Sidecar (full): $(WIN_FULL_DEST_DIR)/federation.exe  (datasources: sqlite demo pre-registered)"
 	@file "$(WIN_FULL_DEST)" 2>/dev/null || true
 
 artifact: ## CI: build + extract just the ELF as a tar (reproducible, no bind-mount).
@@ -139,17 +150,46 @@ smoke: ## Boot the just-built binary under xvfb in the container (liveness check
 	  if kill -0 $$SH 2>/dev/null; then echo "alive after 5s"; kill $$SH; exit 0; \
 	  else echo "DEAD within 5s"; exit 1; fi'
 
-smoke-full: ## Boot the just-built FULL binary under xvfb + prove login works over the loopback gateway.
+smoke-full: ## Boot the just-built FULL binary under xvfb + prove login AND a datasource.test go green.
 	@test -x "$(FULL_DEST)" || { echo "Run 'make linux-full' first."; exit 1; }
-	$(DOCKER_RUN) --entrypoint bash -v "$(FULL_DEST)":/lb/lazybones-shell $(IMAGE) -c '\
-	  xvfb-run -a /lb/lazybones-shell & SH=$$!; \
-	  sleep 6; \
-	  if ! kill -0 $$SH 2>/dev/null; then echo "DEAD within 6s"; exit 1; fi; \
+	@test -x "$(FULL_DEST_DIR)/federation" || { echo "federation sidecar missing beside the binary — run 'make linux-full'."; exit 1; }
+	$(DOCKER_RUN) --entrypoint bash -v "$(FULL_DEST_DIR)":/lb $(IMAGE) -c '\
+	  cd /lb && xvfb-run -a ./lazybones-shell & SH=$$!; \
+	  sleep 8; \
+	  if ! kill -0 $$SH 2>/dev/null; then echo "DEAD within 8s"; exit 1; fi; \
 	  BODY=$$(curl -fsS -X POST http://$(LOOPBACK_ADDR)/login -H "content-type: application/json" \
 	      -d "{\"user\":\"user:ada\",\"workspace\":\"acme\"}" 2>/dev/null || echo ""); \
-	  if echo "$$BODY" | grep -q "\"token\""; then \
-	    echo "login OK over loopback gateway (http://$(LOOPBACK_ADDR))"; \
-	  else echo "LOGIN FAILED (body: $$BODY)"; kill $$SH; exit 1; fi; \
+	  TOKEN=$$(echo "$$BODY" | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p"); \
+	  if [ -z "$$TOKEN" ]; then echo "LOGIN FAILED (body: $$BODY)"; kill $$SH; exit 1; fi; \
+	  echo "login OK over loopback gateway (http://$(LOOPBACK_ADDR))"; \
+	  TEST=$$(curl -fsS -X POST http://$(LOOPBACK_ADDR)/mcp/call -H "authorization: Bearer $$TOKEN" \
+	      -H "content-type: application/json" \
+	      -d "{\"tool\":\"datasource.test\",\"args\":{\"source\":\"demo-buildings\",\"ts\":1}}" 2>/dev/null || echo ""); \
+	  if echo "$$TEST" | grep -q "\"ok\":true"; then \
+	    echo "datasources OK: bundled sidecar installed + demo-buildings probes green"; \
+	  else echo "DATASOURCE TEST FAILED (body: $$TEST) — sidecar bundle regression"; kill $$SH; exit 1; fi; \
+	  kill $$SH 2>/dev/null || true'
+
+smoke-full-persist: ## Boot the FULL binary TWICE against a fixed store dir + prove user data survives the restart.
+	@test -x "$(FULL_DEST)" || { echo "Run 'make linux-full' first."; exit 1; }
+	$(DOCKER_RUN) --entrypoint bash -v "$(FULL_DEST_DIR)":/lb $(IMAGE) -c '\
+	  set -e; export LB_STORE_PATH=/tmp/lb-persist-store; rm -rf $$LB_STORE_PATH; \
+	  boot() { cd /lb && xvfb-run -a ./lazybones-shell & echo $$!; }; \
+	  tok() { curl -fsS -X POST http://$(LOOPBACK_ADDR)/login -H "content-type: application/json" \
+	      -d "{\"user\":\"user:ada\",\"workspace\":\"acme\"}" 2>/dev/null | sed -n "s/.*\"token\":\"\([^\"]*\)\".*/\1/p"; }; \
+	  SH=$$(boot); sleep 8; T=$$(tok); \
+	  if [ -z "$$T" ]; then echo "RUN1 LOGIN FAILED"; kill $$SH; exit 1; fi; \
+	  curl -fsS -X POST http://$(LOOPBACK_ADDR)/mcp/call -H "authorization: Bearer $$T" \
+	      -H "content-type: application/json" \
+	      -d "{\"tool\":\"datasource.add\",\"args\":{\"name\":\"persist-check\",\"kind\":\"sqlite\",\"endpoint\":\"127.0.0.1:0\",\"dsn\":\"/tmp/x.db\",\"ts\":1}}" >/dev/null; \
+	  echo "run1: wrote datasource persist-check"; kill $$SH; sleep 2; \
+	  SH=$$(boot); sleep 8; T=$$(tok); \
+	  if [ -z "$$T" ]; then echo "RUN2 LOGIN FAILED"; kill $$SH; exit 1; fi; \
+	  LIST=$$(curl -fsS -X POST http://$(LOOPBACK_ADDR)/mcp/call -H "authorization: Bearer $$T" \
+	      -H "content-type: application/json" -d "{\"tool\":\"datasource.list\",\"args\":{}}" 2>/dev/null); \
+	  if echo "$$LIST" | grep -q "persist-check"; then \
+	    echo "PERSIST OK: datasource written in run 1 survived the restart (run 2 lists it)"; \
+	  else echo "PERSIST FAILED: persist-check gone after restart (body: $$LIST)"; kill $$SH; exit 1; fi; \
 	  kill $$SH 2>/dev/null || true'
 
 clean: ## Remove the cargo + pnpm + xwin named cache volumes (next build re-populates them).

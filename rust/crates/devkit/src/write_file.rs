@@ -35,6 +35,7 @@ pub fn write_file(root: Option<&Path>, path: &Path, content: &str) -> Result<Wri
     })
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn make_executable_if_script(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
