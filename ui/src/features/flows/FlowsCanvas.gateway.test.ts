@@ -82,6 +82,14 @@ describe("flows canvas (real gateway)", () => {
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");
     expect((mqtt?.config.properties as Record<string, unknown> | undefined)?.topic).toBeTruthy();
+    // flow-input-ports-scope Slice 3/4: the wireless `link-out`/`link-in` pair ships as built-ins
+    // under a `Links` category, and `link-in`'s primary port carries the `any` (funnel) join policy.
+    const linkOut = nodes.find((d) => d.type === "link-out");
+    const linkIn = nodes.find((d) => d.type === "link-in");
+    expect(linkOut?.category).toBe("Links");
+    expect(linkIn?.category).toBe("Links");
+    expect(linkIn?.inputs).toContain("payload");
+    expect(linkIn?.inputPorts?.find((p) => p.name === "payload")?.join).toBe("any");
   });
 
   it("save round-trips a flow; get returns the typed graph; list shows it", async () => {

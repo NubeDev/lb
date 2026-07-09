@@ -37,6 +37,7 @@ import {
   type NodeDescriptor,
 } from "@/lib/flows";
 import {
+  effectiveInputPorts,
   flowToEdges,
   flowToNodes,
   isTerminalStatus,
@@ -205,11 +206,15 @@ export function FlowCanvas({ flow, palette, onSave, onDeleted }: FlowCanvasProps
     () =>
       nodes.map((n) => {
         const v = values[n.id];
+        const desc = descriptorByType.get(n.data.type);
         return {
           ...n,
           data: {
             ...n.data,
-            kind: descriptorByType.get(n.data.type)?.kind ?? n.data.kind,
+            kind: desc?.kind ?? n.data.kind,
+            // flow-input-ports-scope Slice 4: the descriptor's resolved input ports drive the per-
+            // named-port target handles + the any/all glyph the node renders.
+            inputPorts: desc ? effectiveInputPorts(desc) : n.data.inputPorts,
             colour: colours[n.id] ?? "pending",
             locked: locked.has(n.id),
             output: v?.output,

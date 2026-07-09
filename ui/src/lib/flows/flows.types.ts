@@ -12,6 +12,19 @@
  *  record does not (single source of truth — the descriptor is the join). */
 export type NodeKind = "trigger" | "transform" | "sink" | "source";
 
+/** The per-input-port join policy (flow-input-ports-scope Axis 2). `all` = a barrier (the node
+ *  fires once when every wired upstream on that port has settled — today's behaviour); `any` = a
+ *  funnel (the node fires once per settled upstream — Node-RED's fire-per-message OR). Slice 1
+ *  declares the type; the run engine honours `any` in a follow-up slice. */
+export type JoinPolicy = "all" | "any";
+
+/** One declared input port with its join policy (the `[[node.input]]` table form). `name` matches
+ *  an entry in `NodeDescriptor.inputs`; `join` defaults to `all` when omitted. */
+export interface InputPort {
+  name: string;
+  join?: JoinPolicy;
+}
+
 /** One node descriptor — the join between the editor (palette + schema form) and the engine. Built-ins
  *  (`trigger`/`tool`/`rhai`/`subflow`/`sink`) and extension (`<ext>.<type>`) descriptors share one
  *  shape (Decision: one registry, one renderer, no `if native` branch). */
@@ -25,11 +38,25 @@ export interface NodeDescriptor {
   icon?: string;
   /** The MCP tool this node dispatches (`rules.eval`, `<ext>.<tool>`, …). Engine gates it. */
   tool: string;
+  /** Named input ports (the simple string list). Per-port join policy rides `inputPorts`. */
   inputs: string[];
   outputs: string[];
+  /** Per-input-port join-policy table (flow-input-ports-scope Axis 2). Absent/empty ⇒ every port
+   *  is `all` (today's barrier behaviour). */
+  inputPorts?: InputPort[];
   configVersion: number;
   /** Inline JSON-Schema 2020-12 the SchemaForm renders + the host validates saved config against. */
   config: Record<string, unknown>;
+}
+
+/** A wired edge's **target input port** metadata (flow-input-ports-scope Axis 1 — a Node-RED wire
+ *  lands on a named input port). `toPort = null/undefined` ⇒ the node's primary input port (its
+ *  first declared input). */
+export interface InputWire {
+  /** The upstream node id this wire comes from (must also appear in the node's `needs`). */
+  from: string;
+  /** The named input port this wire lands on; absent ⇒ the node's primary input port. */
+  toPort?: string;
 }
 
 /** One flow node — a data-driven step. `type` keys into the merged registry; `config` is the validated
@@ -38,7 +65,12 @@ export interface FlowNode {
   id: string;
   /** The descriptor type: a built-in (`trigger`/`tool`/`rhai`/`subflow`/`sink`) or `<ext>.<type>`. */
   type: string;
+  /** The DAG dependency edges — the upstream node ids this node waits on (the topology). */
   needs: string[];
+  /** Per-edge target input-port metadata (flow-input-ports-scope Axis 1). One entry per edge that
+   *  targets a non-primary port; an edge with no entry defaults its `toPort` to the node's primary
+   *  input port. Absent/empty ⇒ every edge lands on the primary (a pre-ports flow, unchanged). */
+  inputs?: InputWire[];
   /** Input bindings: literal | `${steps.x.output}` | `${steps.x.findings}` | `${params.y}`. */
   with?: Record<string, unknown>;
   /** The node's config, validated against its descriptor's schema at save. */
