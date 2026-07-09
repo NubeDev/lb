@@ -53,35 +53,46 @@ export function AdminView({ ws, caps }: Props) {
         description="Access-first people, teams, roles, keys, and workspace controls."
         workspace={ws}
       />
-      <Tabs value={active} onValueChange={(v) => setTab(v as Tab)} className="min-h-0 flex-1">
-        <TabsList className="m-2 flex-wrap">
+      {/* The tab bar and the content panel are two MATCHING floating panels (same
+          `rounded-lg border border-border bg-panel-2/70` material as `TabsList`), floated with a
+          shared `2`-unit gutter so their left/right edges line up. `gap-0` because the strip
+          margin + panel own the spacing now. The content panel is `overflow-hidden` so each tab's
+          toolbar top-edge and the table's sticky header/rows clip to the corner radius. */}
+      <Tabs
+        value={active}
+        onValueChange={(v) => setTab(v as Tab)}
+        className="min-h-0 flex-1 gap-0 px-2 pb-2"
+      >
+        <TabsList className="mx-0 mb-2 mt-2 flex-wrap">
           {visible.map((t) => (
             <TabsTrigger key={t.key} value={t.key} aria-label={t.label}>
               {t.label}
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="overview" className="min-h-0 flex-1">
-          <AccessOverview ws={ws} caps={caps} onJump={(j) => setTab(j)} />
-        </TabsContent>
-        <TabsContent value="people" className="min-h-0 flex-1">
-          <PeopleAdmin ws={ws} caps={caps} />
-        </TabsContent>
-        <TabsContent value="teams" className="min-h-0 flex-1">
-          <TeamsAdmin ws={ws} />
-        </TabsContent>
-        <TabsContent value="roles" className="min-h-0 flex-1">
-          <RolesAdmin ws={ws} caps={caps} />
-        </TabsContent>
-        <TabsContent value="workspaces" className="min-h-0 flex-1">
-          <WorkspacesAdmin ws={ws} />
-        </TabsContent>
-        <TabsContent value="apikeys" className="min-h-0 flex-1">
-          <ApiKeysAdmin ws={ws} />
-        </TabsContent>
-        <TabsContent value="nav" className="min-h-0 flex-1">
-          <NavAdmin ws={ws} caps={caps} />
-        </TabsContent>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel-2/70">
+          <TabsContent value="overview" className="min-h-0 flex-1">
+            <AccessOverview ws={ws} caps={caps} onJump={(j) => setTab(j)} />
+          </TabsContent>
+          <TabsContent value="people" className="min-h-0 flex-1">
+            <PeopleAdmin ws={ws} caps={caps} />
+          </TabsContent>
+          <TabsContent value="teams" className="min-h-0 flex-1">
+            <TeamsAdmin ws={ws} />
+          </TabsContent>
+          <TabsContent value="roles" className="min-h-0 flex-1">
+            <RolesAdmin ws={ws} caps={caps} />
+          </TabsContent>
+          <TabsContent value="workspaces" className="min-h-0 flex-1">
+            <WorkspacesAdmin ws={ws} caps={caps} />
+          </TabsContent>
+          <TabsContent value="apikeys" className="min-h-0 flex-1">
+            <ApiKeysAdmin ws={ws} />
+          </TabsContent>
+          <TabsContent value="nav" className="min-h-0 flex-1">
+            <NavAdmin ws={ws} caps={caps} />
+          </TabsContent>
+        </div>
       </Tabs>
     </section>
   );

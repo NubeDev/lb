@@ -6,6 +6,7 @@ import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { NavRail, StatusBar, useResolvedNav, type Surface } from "@/features/shell";
+import { useTheme } from "@/lib/theme";
 import {
   AgentDock,
   DockLauncher,
@@ -27,6 +28,9 @@ export function RoutedShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const active = surfaceForPath(location.pathname);
+  // The collapsible mode (theme layout) is owned by the provider so every collapse affordance
+  // respects it — "none" makes the sidebar non-collapsible and always visible.
+  const { theme } = useTheme();
   // The caller's resolved nav menu (nav scope) — NavRail renders it (already cap-stripped), falling
   // back to the built-in SURFACES when null (no nav / denied). Route gates are untouched.
   // hide-and-pins: the payload also carries the workspace hidden-set echo (subtracted from the
@@ -70,7 +74,11 @@ export function RoutedShell() {
   };
 
   return (
-    <SidebarProvider defaultOpen={sidebarDefaultOpen()} className="h-full bg-bg">
+    <SidebarProvider
+      defaultOpen={sidebarDefaultOpen()}
+      collapsible={theme.layout.collapsible}
+      className="h-full bg-bg"
+    >
       <NavRail
         active={active}
         onSelect={selectSurface}

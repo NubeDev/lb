@@ -73,18 +73,22 @@ function WorkflowNameCell({
 }) {
   const canOpenRule = row.ruleId !== null && onJumpToRule;
   return (
-    <TableCell className="py-2.5">
-      <div className="flex flex-col gap-0.5">
+    <TableCell>
+      {/* Mirror the Trigger cell's two-line rhythm exactly (`leading-tight`, no gap, `text-xs`
+          primary + `text-[10px]` caption) so both stacks are the same height — otherwise this
+          taller stack skews the row's vertical center and the single-line Status/Actions cells
+          read as "not lined up". */}
+      <div className="flex flex-col leading-tight">
         {canOpenRule ? (
           <Button
             variant="ghost"
-            className="h-auto p-0 text-sm font-medium text-fg underline-offset-2 hover:bg-transparent hover:underline"
+            className="h-auto justify-start p-0 text-xs font-medium text-fg underline-offset-2 hover:bg-transparent hover:underline"
             onClick={() => row.ruleId && onJumpToRule(row.ruleId)}
           >
             {row.name || row.id}
           </Button>
         ) : (
-          <span className="text-sm font-medium text-fg">{row.name || row.id}</span>
+          <span className="text-xs font-medium text-fg">{row.name || row.id}</span>
         )}
         {row.ruleId ? (
           <span className="font-mono text-[10px] text-muted">

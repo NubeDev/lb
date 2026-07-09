@@ -39,9 +39,12 @@ describe("RolesAdmin (real gateway)", () => {
   });
 
   it("offers no caps to bundle when the admin holds none (no-widening)", async () => {
+    const user = userEvent.setup();
     const ws = nextWs();
     await signInReal("user:ada", ws);
     render(<RolesAdmin ws={ws} caps={[]} />);
+    // The editor opens on "New role" (the right pane is a placeholder until then).
+    await user.click(screen.getByLabelText("new role"));
     expect(
       await screen.findByText("You hold no capabilities to bundle (no-widening)."),
     ).toBeInTheDocument();

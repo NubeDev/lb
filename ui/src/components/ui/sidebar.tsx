@@ -24,6 +24,9 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void;
   isMobile: boolean;
   toggleSidebar: () => void;
+  // The collapsible mode is owned by the provider so every collapse affordance (trigger, rail,
+  // Cmd/Ctrl+B) respects it. "none" means the sidebar is always visible — no collapsing at all.
+  collapsible: "offcanvas" | "icon" | "none";
 };
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null);
@@ -41,6 +44,7 @@ function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  collapsible = "offcanvas",
   className,
   style,
   children,
@@ -49,6 +53,7 @@ function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  collapsible?: "offcanvas" | "icon" | "none";
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
@@ -73,6 +78,8 @@ function SidebarProvider({
   }, [isMobile, setOpen]);
 
   React.useEffect(() => {
+    // "none" mode disables collapsing entirely — the Cmd/Ctrl+B shortcut is inert.
+    if (collapsible === "none") return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -82,7 +89,12 @@ function SidebarProvider({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
+  }, [toggleSidebar, collapsible]);
+
+  // Switching to "none" while collapsed must force the sidebar back open — "none" means always visible.
+  React.useEffect(() => {
+    if (collapsible === "none" && !open) setOpen(true);
+  }, [collapsible, open, setOpen]);
 
   const state = open ? "expanded" : "collapsed";
   const contextValue = React.useMemo<SidebarContextProps>(
@@ -94,8 +106,9 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      collapsible,
     }),
-    [state, open, setOpen, isMobile, openMobile, toggleSidebar],
+    [state, open, setOpen, isMobile, openMobile, toggleSidebar, collapsible],
   );
 
   return (
@@ -123,16 +136,15 @@ function SidebarProvider({
 function Sidebar({
   side = "left",
   variant = "sidebar",
-  collapsible = "offcanvas",
   className,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right";
   variant?: "sidebar" | "floating" | "inset";
-  collapsible?: "offcanvas" | "icon" | "none";
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+  // The collapsible mode is owned by the provider (so every affordance respects it) — read it here.
+  const { isMobile, state, openMobile, setOpenMobile, collapsible } = useSidebar();
   const collapsed = state === "collapsed" && collapsible !== "none";
   const floating = variant === "floating" || variant === "inset";
 
@@ -221,7 +233,10 @@ function SidebarTrigger({
   onClick,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, collapsible } = useSidebar();
+
+  // "none" mode is non-collapsible — no toggle affordance at all.
+  if (collapsible === "none") return null;
 
   return (
     <Button
@@ -242,7 +257,10 @@ function SidebarTrigger({
 }
 
 function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, collapsible } = useSidebar();
+
+  // "none" mode is non-collapsible — the edge rail affordance disappears.
+  if (collapsible === "none") return null;
 
   return (
     <button

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { listWorkspaces } from "@/lib/workspace/workspace.api";
+import { createWorkspace, listWorkspaces } from "@/lib/workspace/workspace.api";
 import type { WorkspaceRecord } from "@/lib/workspace/workspace.types";
 import {
   archiveWorkspace,
@@ -17,6 +17,8 @@ export interface WorkspacesAdminState {
   workspaces: WorkspaceRecord[];
   error: string | null;
   refresh: () => Promise<void>;
+  /** Register a new workspace (id + display name) in the directory. Mirrors `workspace.create`. */
+  create: (ws: string, name: string) => Promise<void>;
   rename: (ws: string, name: string) => Promise<void>;
   archive: (ws: string) => Promise<void>;
   purge: (ws: string, confirm: string) => Promise<void>;
@@ -55,6 +57,7 @@ export function useWorkspacesAdmin(): WorkspacesAdminState {
     workspaces,
     error,
     refresh,
+    create: (ws, name) => run(() => createWorkspace(ws, name)),
     rename: (ws, name) => run(() => renameWorkspace(ws, name)),
     archive: (ws) => run(() => archiveWorkspace(ws)),
     purge: (ws, confirm) => run(() => purgeWorkspace(ws, confirm)),

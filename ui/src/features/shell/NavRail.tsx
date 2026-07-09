@@ -201,7 +201,7 @@ export function NavRail({
   // The sidebar variant/collapsible/side come from the member's theme (Customizer → Layout tab), so
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
   const { theme } = useTheme();
-  const { variant, collapsible, side } = theme.layout;
+  const { variant, side } = theme.layout;
   // The workspace brand (workspace-branding scope). `brand` is always set: the provider seeds from
   // the localStorage boot cache (no flash on refresh) or the neutral default on a first-ever visit,
   // then the live `prefs.resolve` confirms it. The admin sets it in Settings → Branding; every
@@ -361,24 +361,24 @@ export function NavRail({
   const isHidden = (ref: string) => hidden.includes(ref);
 
   return (
-    <Sidebar collapsible={collapsible} variant={variant} side={side}>
+    <Sidebar variant={variant} side={side}>
       <SidebarHeader>
-        <div className="hidden h-8 w-full items-center justify-center group-data-[collapsible=icon]:flex">
-          <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
-        </div>
-        <SidebarMenu className="group-data-[collapsible=icon]:hidden">
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" tooltip={brand.siteName} aria-label={brand.siteName}>
-              <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
-                {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <div className="flex items-center justify-end px-1 group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" />
+        {/* Header row: the collapse toggle is anchored top-left, immediately before the workspace
+            brand — reads as one intentional unit whether expanded or collapsed (icon mode centers it,
+            "none" mode renders no trigger, so only the brand shows). */}
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:justify-center">
+          <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" className="shrink-0" />
+          <SidebarMenu className="group-data-[collapsible=icon]:hidden">
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" tooltip={brand.siteName} aria-label={brand.siteName}>
+                <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
+                  {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
+                </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </div>
       </SidebarHeader>
 
