@@ -47,6 +47,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         needs: vec![],
         with: Default::default(),
         config: json!({ "period_secs": period_secs, "start": start }),
+        inputs: Vec::new(),
         position: None,
     };
     // A rhai node that echoes the trigger's payload through, so the run records the boolean value.
@@ -56,6 +57,7 @@ fn flipflop_flow(id: &str, node_id: &str, period_secs: u64, start: bool) -> Flow
         needs: vec![node_id.to_string()],
         with: Default::default(),
         config: json!({ "source": "payload" }),
+        inputs: Vec::new(),
         position: None,
     };
     Flow {

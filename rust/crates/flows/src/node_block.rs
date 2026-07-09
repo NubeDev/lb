@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::config_schema::{compile_schema, ConfigSchemaError};
-use crate::descriptor::{NodeDescriptor, NodeKind};
+use crate::descriptor::{InputPort, NodeDescriptor, NodeKind};
 
 /// The raw `[[node]]` manifest table — the additive block `lb-ext-loader` deserialises alongside the
 /// existing `[[tools]]`. Only `type`, `kind`, and `tool` are required; `title`/`category`/ports/
@@ -35,6 +35,12 @@ pub struct NodeBlock {
     pub inputs: Vec<String>,
     #[serde(default)]
     pub outputs: Vec<String>,
+    /// Per-input-port join-policy table (flow-input-ports-scope Axis 2 — the `[[node.input]]`
+    /// manifest block). Additive + serde-defaulted: an install written before this field
+    /// deserialises as empty (every port ⇒ `All`, today's behaviour). An entry overrides the policy
+    /// for its named port; the string `inputs = [...]` shorthand keeps its meaning.
+    #[serde(default)]
+    pub input_ports: Vec<InputPort>,
     #[serde(default = "default_config_version")]
     pub config_version: u32,
     #[serde(default = "default_config")]
@@ -88,6 +94,7 @@ pub fn validate_node_block(
         desc = desc.with_title(title);
     }
     desc = desc.with_ports(block.inputs.clone(), block.outputs.clone());
+    desc = desc.with_input_ports(block.input_ports.clone());
     desc.config_version = block.config_version;
     desc.config = block.config.clone();
     Ok(desc)
@@ -101,6 +108,7 @@ fn ext_tool(ext_id: &str, tool: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::descriptor::JoinPolicy;
     use serde_json::json;
 
     fn block(kind: NodeKind, tool: &str) -> NodeBlock {
@@ -112,6 +120,7 @@ mod tests {
             category: None,
             inputs: vec![],
             outputs: vec![],
+            input_ports: vec![],
             config_version: 1,
             config: json!({}),
         }
@@ -153,5 +162,23 @@ mod tests {
         assert_eq!(d.title, "MQTT In");
         assert_eq!(d.category, "Messaging");
         assert_eq!(d.outputs, vec!["sample".to_string()]);
+    }
+
+    #[test]
+    fn input_ports_table_carries_the_join_policy() {
+        // The `[[node.input]]` table form lifts into the descriptor's `input_ports`, overriding the
+        // `All` default for the named port (flow-input-ports-scope Axis 2).
+        let mut b = block(NodeKind::Sink, "publish");
+        b.inputs = vec!["payload".into()];
+        b.input_ports = vec![InputPort {
+            name: "payload".into(),
+            join: JoinPolicy::Any,
+        }];
+        let d = validate_node_block(&b, "mqtt", &["publish".into()]).unwrap();
+        assert_eq!(d.join_of(Some("payload")), JoinPolicy::Any);
+        // An empty table ⇒ the `All` default is preserved.
+        let b2 = block(NodeKind::Transform, "publish");
+        let d2 = validate_node_block(&b2, "mqtt", &["publish".into()]).unwrap();
+        assert_eq!(d2.join_of(None), JoinPolicy::All);
     }
 }

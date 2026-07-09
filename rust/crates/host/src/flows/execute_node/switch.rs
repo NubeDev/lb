@@ -23,18 +23,23 @@ use crate::boot::Node;
 
 use super::super::run_store;
 
-/// After a `switch` settles, release its matched dependents and gate the rest. Reads the switch's
-/// recorded output payload, evaluates the ordered rules against the routed value, and fans out.
+/// After a `switch` settles (under `fctx`), release its matched dependents and gate the rest — under
+/// the SAME `fctx`. Reads the switch's recorded output payload, evaluates the ordered rules against
+/// the routed value, and fans out: a matched dependent is released as a barrier slot (decrement,
+/// enqueue at 0) under `fctx`; an unmatched dependent's `(dep, fctx)` slot is gated Skipped (a
+/// `switch` upstream of an `any` port simply contributes no firing for that branch).
 pub(super) async fn release_matched(
     node: &Arc<Node>,
     ws: &str,
     flow: &Flow,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
     config: &Value,
+    subgraph: &HashSet<String>,
 ) -> Result<(), String> {
     // The routed value: the switch's payload (its input, passed through), narrowed by `property`.
-    let payload = run_store::read_step(&node.store, ws, run_id, node_id)
+    let payload = run_store::read_step(&node.store, ws, run_id, node_id, fctx)
         .await?
         .map(|s| s.output.get("payload").cloned().unwrap_or(Value::Null))
         .unwrap_or(Value::Null);
@@ -48,10 +53,14 @@ pub(super) async fn release_matched(
     let deps = flow.dependents();
     let switch_deps = deps.get(node_id).cloned().unwrap_or_default();
     for dep in switch_deps {
+        if !subgraph.contains(&dep) {
+            continue;
+        }
         if fire.contains(&dep) {
-            run_store::ready_one_dependent(&node.store, ws, run_id, &dep).await?;
+            run_store::ready_one_dependent(&node.store, ws, flow, run_id, &dep, fctx, subgraph)
+                .await?;
         } else {
-            run_store::skip_gated(&node.store, ws, flow, run_id, &dep).await?;
+            run_store::skip_gated(&node.store, ws, flow, run_id, &dep, fctx).await?;
         }
     }
     Ok(())

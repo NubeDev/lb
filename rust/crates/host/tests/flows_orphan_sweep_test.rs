@@ -67,6 +67,7 @@ fn source_flow(id: &str, node_id: &str) -> Flow {
         needs: vec![],
         with: Default::default(),
         config: json!({ "broker": "broker.local", "topic": "sensors/temp" }),
+        inputs: Vec::new(),
         position: None,
     };
     Flow {
@@ -151,6 +152,7 @@ async fn source_node_removal_orphans_only_the_removed_node() {
         needs: vec![],
         with: Default::default(),
         config: json!({ "broker": "b", "topic": "t2" }),
+        inputs: Vec::new(),
         position: None,
     });
     let body = serde_json::to_value(&flow).unwrap().to_string();

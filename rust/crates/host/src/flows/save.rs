@@ -9,7 +9,7 @@
 
 use lb_auth::Principal;
 use lb_caps::{check, Action, Decision, Request, Surface};
-use lb_flows::{validate_flow, Flow, FlowSummary, MAX_FLOW_NODES};
+use lb_flows::{validate_flow, validate_links, Flow, FlowSummary, MAX_FLOW_NODES};
 use lb_store::{read, scan, write, Store};
 use serde_json::Value;
 
@@ -28,6 +28,11 @@ pub async fn flows_save(
     authorize_store_write(principal, ws)?;
     flow.workspace = ws.to_string();
     validate_flow(flow, MAX_FLOW_NODES).map_err(|e| FlowsError::BadInput(e.to_string()))?; // rejected before any run
+                                                                                           // flow-input-ports-scope Slice 3: validate the wireless link-pair topology (a link-out naming a
+                                                                                           // missing link-in, a wire from a link-out, a dead link-in) BEFORE any run. Resolution to physical
+                                                                                           // edges happens at run load (`coordinator::resolve_links`); validation is save-time so a typo
+                                                                                           // surfaces here, not as a silent no-op at run.
+    validate_links(flow).map_err(|e| FlowsError::BadInput(e.to_string()))?;
     validate_node_configs(store, ws, flow).await?;
     // Decision 1: editing writes a new version. An existing flow's version bumps; the live run keeps
     // the version it pinned.
@@ -104,6 +109,51 @@ async fn validate_node_configs(store: &Store, ws: &str, flow: &Flow) -> Result<(
         lb_flows::validate_config(&desc.config, &n.config).map_err(|e| {
             FlowsError::BadInput(format!("node `{}` ({ }): {e}", n.id, n.node_type))
         })?;
+        // Per-port edge lint (flow-input-ports-scope Axis 1): every wired `to_port` must name a
+        // declared input port on this node's descriptor. A wire to an undeclared port is a mistake
+        // (a misnamed handle, or a port the node type does not expose) — caught at save, not silently
+        // dropped at run. An omitted `to_port` ⇒ the primary input (validated by existence of ≥1
+        // input port below when the node has any wired edge).
+        for e in &n.inputs {
+            let Some(port) = &e.to_port else { continue };
+            if !desc.inputs.iter().any(|p| p == port) {
+                return Err(FlowsError::BadInput(format!(
+                    "node `{}` ({}) wires upstream `{}` to undeclared input port `{}` (declared: [{}])",
+                    n.id,
+                    n.node_type,
+                    e.from,
+                    port,
+                    desc.inputs.join(", ")
+                )));
+            }
+        }
+        // A node with at least one wired edge must declare ≥1 input port (somewhere for the wire to
+        // land). A `trigger`/`source` (no inputs) receiving an inbound wire is a topology mistake.
+        if !n.needs.is_empty() && desc.inputs.is_empty() {
+            return Err(FlowsError::BadInput(format!(
+                "node `{}` ({}) has {} incoming wire(s) but declares no input port",
+                n.id,
+                n.node_type,
+                n.needs.len()
+            )));
+        }
+        // Policy-aware join lint (flow-input-ports-scope, replacing envelope D3's node-id-only lint).
+        // A multi-wire `all` port is a barrier that must bind `payload` explicitly (the engine cannot
+        // know which upstream's message to carry — silently picking one would hide a join bug / drop
+        // data). An `any` port with multiple wires is VALID — the funnel fires once per upstream
+        // (the whole point). The primary port is the load-bearing one for v1's single-port nodes.
+        let primary_policy = desc.join_of(None);
+        if n.needs.len() >= 2
+            && primary_policy == lb_flows::JoinPolicy::All
+            && !n.with.contains_key("payload")
+        {
+            return Err(FlowsError::BadInput(format!(
+                "node `{}` ({}) has {} wires into an `all` (join) input port — bind `payload` explicitly (an `any` funnel fires per upstream and needs no binding)",
+                n.id,
+                n.node_type,
+                n.needs.len()
+            )));
+        }
     }
     Ok(())
 }

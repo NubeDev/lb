@@ -4,16 +4,19 @@
 // underlying tool the caller lacks is SHOWN but marked gated (the menu reflects permissions; the
 // deny lives at the engine, never widened — `caller ∩ grant`).
 //
-// Styled as a compact, searchable catalog (icon + title + type per entry) using shadcn primitives +
-// tokens — the same look as the rest of the flows surface.
+// flow-input-ports-scope Slice 4: each entry shows the node's declared INPUT PORTS with their join
+// policy (a funnel glyph for `any`, a merge glyph for `all`) — so an author picks a node knowing
+// whether it funnels (debug/link-in) or joins (rhai/avg). Styled as a compact, searchable catalog
+// using shadcn primitives + tokens — the same look as the rest of the flows surface.
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Filter, Merge, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { NodeDescriptor } from "@/lib/flows";
+import type { JoinPolicy, NodeDescriptor } from "@/lib/flows";
+import { effectiveInputPorts } from "./flowGraph";
 import { nodeIcon } from "./flowIcons";
 
 interface PaletteProps {
@@ -76,6 +79,7 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
           </div>
           {g.items.map((n) => {
             const Icon = nodeIcon(n);
+            const ports = effectiveInputPorts(n);
             return (
               <Button
                 key={n.type}
@@ -93,6 +97,20 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-fg">{n.title}</span>
                   <span className="block truncate text-[10px] text-muted">{n.type}</span>
+                  {ports.length > 0 ? (
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-muted">
+                      {ports.map((p) => (
+                        <span
+                          key={p.name}
+                          className="inline-flex items-center gap-0.5"
+                          title={`${p.name}: ${p.join} (${p.join === "any" ? "funnel — fires per upstream" : "join — barrier"})`}
+                        >
+                          <PolicyMark join={p.join} />
+                          {p.name}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                 </span>
               </Button>
             );
@@ -106,4 +124,11 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
       ) : null}
     </div>
   );
+}
+
+/** The compact glyph marking a port's join policy in the palette — a funnel (`any`, fires per
+ *  upstream) or a merge (`all`, barrier join). Mirrors the canvas node's per-port glyph. */
+function PolicyMark({ join }: { join: JoinPolicy }) {
+  const Icon = join === "any" ? Filter : Merge;
+  return <Icon size={9} className={join === "any" ? "text-accent" : "text-muted"} aria-hidden />;
 }

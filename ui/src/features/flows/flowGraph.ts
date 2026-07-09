@@ -6,7 +6,44 @@
 
 import type { Edge, Node } from "@xyflow/react";
 
-import type { Flow, FlowNode, FlowNodeState, FlowRunSnapshot, NodeColour } from "@/lib/flows";
+import type {
+  Flow,
+  FlowNode,
+  FlowNodeState,
+  FlowRunSnapshot,
+  JoinPolicy,
+  NodeColour,
+  NodeDescriptor,
+} from "@/lib/flows";
+
+/** A resolved input port for canvas rendering: its name + the **effective** join policy (the
+ *  descriptor's per-kind default applied — `any` for a sink, `all` otherwise — then overridden by an
+ *  explicit `inputPorts` entry). Mirrors `NodeDescriptor::join_of` on the host (flow-input-ports-scope
+ *  Axis 2). */
+export interface CanvasInputPort {
+  name: string;
+  join: JoinPolicy;
+}
+
+/** The effective join policy a port settles under, applying the descriptor's per-kind default (`any`
+ *  for a `sink` — Node-RED's debug/funnel; `all` otherwise) then any explicit `inputPorts` override.
+ *  `port === undefined` resolves the primary (first) input port. Mirrors the host's `join_of`. */
+export function joinOf(desc: NodeDescriptor, port?: string): JoinPolicy {
+  const name =
+    port && port !== ""
+      ? port
+      : desc.inputs[0] ?? desc.inputPorts?.[0]?.name;
+  if (!name) return "all";
+  const declared = desc.inputPorts?.find((p) => p.name === name)?.join;
+  if (declared) return declared;
+  return desc.kind === "sink" ? "any" : "all";
+}
+
+/** The canvas-facing input ports of a descriptor: each declared `inputs[]` port paired with its
+ *  effective join policy. Empty for a trigger/source (no input ports ⇒ no target handle rendered). */
+export function effectiveInputPorts(desc: NodeDescriptor): CanvasInputPort[] {
+  return desc.inputs.map((name) => ({ name, join: joinOf(desc, name) }));
+}
 
 /** The data a custom `FlowNodeView` renders: the descriptor type, the live run colour, whether the
  *  node is executed (locked) during the active run, and whether its underlying tool the caller lacks
@@ -16,6 +53,10 @@ export interface FlowNodeData extends Record<string, unknown> {
   /** The descriptor `kind` — the canvas uses it to hide a trigger's target handle (no incoming edge
    *  on an entry node) and to pick affordances. Resolved from the registry, not stored on the node. */
   kind?: import("@/lib/flows").NodeKind;
+  /** The descriptor's resolved input ports (flow-input-ports-scope Slice 4) — the canvas renders one
+   *  target handle per named port, each with an `any`/`all` glyph. Absent ⇒ the node has no
+   *  descriptor yet (a single anonymous primary handle is rendered as the fallback). */
+  inputPorts?: CanvasInputPort[];
   colour: NodeColour;
   /** True once the node has executed in the active run → rendered read-only (Decision 1). */
   locked: boolean;
@@ -58,21 +99,39 @@ export function flowToNodes(
   }));
 }
 
-/** Flow → React Flow edges (one per `needs`: source = the dependency, target = the dependent node). */
+/** Flow → React Flow edges (one per `needs`: source = the dependency, target = the dependent node).
+ *  The edge's **target input port** (flow-input-ports-scope Axis 1) rides React Flow's
+ *  `targetHandle` (the named port the wire lands on; `null` ⇒ the node's primary input port). A wire
+ *  to a NAMED (non-primary) port carries a midpoint `label` so the wire's target is legible without a
+ *  separate inspector (flow-input-ports-scope Slice 4) — the common primary-only flow stays clean. */
 export function flowToEdges(flow: Flow): Edge[] {
   const edges: Edge[] = [];
   for (const node of flow.nodes) {
+    const portByFrom = new Map((node.inputs ?? []).map((w) => [w.from, w.toPort ?? null]));
     for (const dep of node.needs) {
-      edges.push({ id: `${dep}->${node.id}`, source: dep, target: node.id });
+      const toPort = portByFrom.get(dep) ?? null;
+      edges.push({
+        id: `${dep}->${node.id}`,
+        source: dep,
+        target: node.id,
+        // `targetHandle` carries the named input port (null = primary). React Flow renders handles
+        // by id; the canvas names its input handles after the descriptor's input ports.
+        targetHandle: toPort,
+        // The wire inspector: a named (non-primary) target port shows as a compact midpoint label so
+        // a multi-input node's wiring is readable. Primary-only wires stay label-free (clean canvas).
+        ...(toPort ? { label: toPort } : {}),
+      });
     }
   }
   return edges;
 }
 
 /** React Flow nodes + edges → a flow's `nodes[]` (the inverse — a faithful save). Each canvas node
- *  becomes a graph node; each edge `source->target` becomes `target.needs += source`. Preserves
- *  `type`/`config`/`with` from the prior flow (canvas edits topology + node type; the SchemaForm
- *  edits config) and serializes the node's canvas `position` so a dragged layout persists. */
+ *  becomes a graph node; each edge `source->target` becomes `target.needs += source` AND, when the
+ *  edge carries a non-primary `targetHandle`, a `target.inputs += {from, toPort}` entry (flow-input-
+ *  ports-scope Axis 1). Preserves `type`/`config`/`with` from the prior flow (canvas edits topology
+ *  + node type; the SchemaForm edits config) and serializes the node's canvas `position` so a dragged
+ *  layout persists. */
 export function nodesToFlowNodes(
   nodes: FlowCanvasNode[],
   edges: Edge[],
@@ -80,9 +139,22 @@ export function nodesToFlowNodes(
 ): FlowNode[] {
   const priorById = new Map(prior.nodes.map((n) => [n.id, n]));
   const needsById = new Map<string, string[]>(nodes.map((n) => [n.id, []]));
+  /** Per target node: the {from → toPort} map for edges that name a non-primary port. */
+  const portByTarget = new Map<string, { from: string; toPort?: string }[]>();
   for (const e of edges) {
     const list = needsById.get(e.target);
     if (list && !list.includes(e.source)) list.push(e.source);
+    // `targetHandle` carries the named input port; a null/empty handle ⇒ the primary port (omit the
+    // entry so a primary-only flow round-trips to the clean pre-ports shape).
+    const handle = typeof e.targetHandle === "string" ? e.targetHandle : null;
+    if (handle) {
+      let inputs = portByTarget.get(e.target);
+      if (!inputs) {
+        inputs = [];
+        portByTarget.set(e.target, inputs);
+      }
+      inputs.push({ from: e.source, toPort: handle });
+    }
   }
   return nodes.map((n) => {
     const prev = priorById.get(n.id);
@@ -90,6 +162,7 @@ export function nodesToFlowNodes(
       id: n.id,
       type: n.data.type,
       needs: needsById.get(n.id) ?? [],
+      inputs: portByTarget.get(n.id),
       with: prev?.with,
       config: prev?.config,
       // Persist the canvas geometry so a dragged layout survives a save/reload (round its coords to

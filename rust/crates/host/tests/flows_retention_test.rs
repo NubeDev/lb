@@ -50,6 +50,9 @@ async fn seed_run(store: &Store, ws: &str, run_id: &str, status: &str) {
             attempts: 1,
             ms: 0,
             patched_config: None,
+            fctx: String::new(),
+            triggered_by: None,
+            parent_fctx: None,
         };
         let step_id = format!("{run_id}:{node_id}");
         lb_store::write(

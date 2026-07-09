@@ -40,7 +40,7 @@ pub async fn flows_patch_run(
     if run.status == "cancelled" {
         return Err(FlowsError::BadInput("cannot patch a cancelled run".into()));
     }
-    let step = run_store::read_step(&node.store, ws, run_id, node_id)
+    let step = run_store::read_step(&node.store, ws, run_id, node_id, "")
         .await
         .map_err(FlowsError::Internal)?
         .ok_or(FlowsError::NotFound)?;
@@ -74,15 +74,35 @@ pub async fn flows_patch_run(
         ))
     })?;
 
-    // Persist the patched config on the step record (read back by the executor when the node's turn
-    // comes). Carried as a dedicated field so it never collides with a recorded output.
-    let mut rec = step;
+    // Persist the patched config on the `(node, "")` step record (read back by the executor when the
+    // node's turn comes — a non-empty-`fctx` firing falls back to it, so a patch is config-level not
+    // per-firing). Under frontier-only seeding a non-frontier node may have no `""` slot yet; create
+    // it Pending so the patch lands and the engine decrements it on release.
+    let mut rec = run_store::read_step(&node.store, ws, run_id, node_id, "")
+        .await
+        .map_err(FlowsError::Internal)?
+        .unwrap_or_else(|| super::record::FlowStepRecord {
+            run_id: run_id.into(),
+            node_id: node_id.into(),
+            claim: super::record::ClaimState::Pending,
+            indegree: 0,
+            outcome: String::new(),
+            output: Value::Null,
+            findings: Value::Null,
+            error: None,
+            attempts: 0,
+            ms: 0,
+            patched_config: None,
+            fctx: String::new(),
+            triggered_by: None,
+            parent_fctx: None,
+        });
     rec.patched_config = Some(config);
     lb_store::write(
         &node.store,
         ws,
         super::record::FLOW_STEP_TABLE,
-        &super::record::step_record_id(run_id, node_id),
+        &super::record::step_record_id(run_id, node_id, ""),
         &serde_json::to_value(&rec).map_err(|e| FlowsError::Internal(e.to_string()))?,
     )
     .await

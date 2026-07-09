@@ -1,10 +1,16 @@
 //! The `sink` node — a terminal write (flow-run-scope). `series`→`ingest.write`, `outbox`→the outbox
 //! (must-deliver, idempotent), `channel`/`inbox`→`inbox.record`. The destination = `msg.topic ??
 //! config.name` (the topic routes the message, like Node-RED); the sink writes `msg.payload`.
+//!
+//! flow-input-ports-scope: the outbox + inbox dedup keys are scoped by the firing context (`fctx`)
+//! when the sink sits inside an `any`-funnel's reach, so N firings are N idempotent deliveries (one
+//! per `(node, fctx)` slot), not one delivery swallowing the rest. The tripwire the scope named:
+//! "thread `fctx` through the outbox key wherever the node key is used today."
 
 use std::sync::Arc;
 
 use lb_auth::Principal;
+use lb_flows::slot_suffix;
 use serde_json::{json, Value};
 
 use crate::boot::Node;
@@ -20,6 +26,7 @@ pub(super) async fn dispatch_sink(
     ws: &str,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
     config: &Value,
     inputs: serde_json::Map<String, Value>,
     now: u64,
@@ -29,6 +36,10 @@ pub(super) async fn dispatch_sink(
     let topic = inputs.get("topic").and_then(|v| v.as_str());
     let name = topic.filter(|t| !t.is_empty()).unwrap_or(config_name);
     let value = inputs.get("payload").cloned().unwrap_or(Value::Null);
+    // The (node, fctx)-scoped suffix: `""` in the all-`all` common case (byte-for-byte today's key),
+    // `@{fctx}` for a sink inside an `any`-funnel's reach. Each funnel firing re-runs the sink under
+    // a distinct slot ⇒ a distinct dedup key ⇒ a distinct idempotent delivery.
+    let slot = slot_suffix(fctx);
     match target {
         "series" => {
             // `ingest.write` needs the full `Sample` shape: `producer` present (stamped inside the
@@ -54,9 +65,9 @@ pub(super) async fn dispatch_sink(
             }
         }
         "outbox" => {
-            // A must-deliver sink stages an outbox effect (transactional; deterministic id → resume
-            // no-op).
-            let effect_id = format!("{run_id}:{node_id}");
+            // A must-deliver sink stages an outbox effect (transactional; the (node, fctx)-scoped id
+            // ⇒ a redelivery of THIS firing no-ops, a different firing is its own delivery).
+            let effect_id = format!("{run_id}:{node_id}{slot}");
             match crate::outbox::enqueue_outbox(
                 &node.store,
                 principal,
@@ -74,9 +85,9 @@ pub(super) async fn dispatch_sink(
             }
         }
         "channel" | "inbox" => {
-            // `inbox.record` needs a stable `id` (idempotent on (channel,id)) — derive from (run,node);
-            // `body` must be a STRING.
-            let id = format!("{run_id}:{node_id}");
+            // `inbox.record` needs a stable `id` (idempotent on (channel,id)) — derive from
+            // (run,node,fctx); `body` must be a STRING.
+            let id = format!("{run_id}:{node_id}{slot}");
             let body = match &value {
                 Value::String(s) => s.clone(),
                 other => other.to_string(),

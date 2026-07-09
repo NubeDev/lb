@@ -6,15 +6,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  effectiveInputPorts,
   flowToEdges,
   flowToNodes,
   isTerminalStatus,
+  joinOf,
   lockedNodeIds,
   nodeStateValues,
   nodesToFlowNodes,
   snapshotValues,
 } from "./flowGraph";
-import type { Flow, FlowNodeState, FlowRunSnapshot } from "@/lib/flows";
+import type { Flow, FlowNodeState, FlowRunSnapshot, NodeDescriptor } from "@/lib/flows";
 
 describe("nodeStateValues (persistent runtime view)", () => {
   it("maps each node's envelope to its payload badge, omitting null values", () => {
@@ -106,6 +108,73 @@ describe("flowGraph export round-trip", () => {
     const out = nodesToFlowNodes(dragged, flowToEdges(FLOW), FLOW);
     expect(out.find((n) => n.id === "a")!.position).toEqual({ x: 512, y: 129 });
   });
+
+  // --- flow-input-ports-scope Axis 1: a wire's target input port round-trips ---
+
+  it("loads a stored `toPort` onto the edge's targetHandle", () => {
+    // `b` wires `a` to a named input port `secondary`; `start` lands on the primary (no entry).
+    const flow: Flow = {
+      ...FLOW,
+      nodes: [
+        { id: "start", type: "trigger", needs: [], config: {} },
+        { id: "a", type: "count", needs: ["start"], config: {} },
+        {
+          id: "b",
+          type: "count",
+          needs: ["a", "start"],
+          config: {},
+          inputs: [{ from: "a", toPort: "secondary" }],
+        },
+      ],
+    };
+    const edges = flowToEdges(flow);
+    const byId = Object.fromEntries(edges.map((e) => [`${e.source}->${e.target}`, e]));
+    // The named-port wire carries its `targetHandle`; the primary wire's handle is null.
+    expect(byId["a->b"].targetHandle).toBe("secondary");
+    expect(byId["start->b"].targetHandle).toBeNull();
+  });
+
+  it("round-trips a named `toPort` through load → export (and omits primary entries)", () => {
+    const flow: Flow = {
+      ...FLOW,
+      nodes: [
+        { id: "start", type: "trigger", needs: [], config: {} },
+        { id: "a", type: "count", needs: ["start"], config: {} },
+        {
+          id: "b",
+          type: "count",
+          needs: ["a", "start"],
+          config: {},
+          inputs: [{ from: "a", toPort: "secondary" }],
+        },
+      ],
+    };
+    const out = nodesToFlowNodes(flowToNodes(flow), flowToEdges(flow), flow);
+    const b = out.find((n) => n.id === "b")!;
+    // Only the non-primary wire appears in `inputs` (the primary wire stays implicit).
+    expect(b.inputs).toEqual([{ from: "a", toPort: "secondary" }]);
+    // And the inverse back to canvas edges preserves the handle.
+    const edgesBack = flowToEdges({
+      ...flow,
+      nodes: out as unknown as typeof flow.nodes,
+    });
+    const handle = Object.fromEntries(
+      edgesBack.map((e) => [`${e.source}->${e.target}`, e.targetHandle]),
+    );
+    expect(handle["a->b"]).toBe("secondary");
+    expect(handle["start->b"]).toBeNull();
+  });
+
+  it("a pre-ports flow (no `inputs`) round-trips with primary handles and no `inputs` field", () => {
+    // The clean back-compat shape: FLOW has no `inputs`, so every edge is the primary port and the
+    // exported node carries no `inputs` field (the honest primary-only shape).
+    const out = nodesToFlowNodes(flowToNodes(FLOW), flowToEdges(FLOW), FLOW);
+    for (const n of out) {
+      expect(n.inputs).toBeUndefined();
+    }
+    const edges = flowToEdges(FLOW);
+    expect(edges.every((e) => e.targetHandle == null)).toBe(true);
+  });
 });
 
 describe("snapshotValues", () => {
@@ -160,5 +229,98 @@ describe("lockedNodeIds (the executed-node editor lock)", () => {
   it("isTerminalStatus classifies the four settled statuses, not a live one", () => {
     expect(isTerminalStatus("running")).toBe(false);
     expect(isTerminalStatus("cancelled")).toBe(true);
+  });
+});
+
+// ───────────────── flow-input-ports-scope Slice 4: the canvas paints ports + policy ──────────────
+
+const desc = (
+  type: string,
+  kind: NodeDescriptor["kind"],
+  inputs: string[],
+  inputPorts?: NodeDescriptor["inputPorts"],
+): NodeDescriptor => ({
+  type,
+  title: type,
+  category: "Flow",
+  kind,
+  tool: "",
+  inputs,
+  outputs: [],
+  inputPorts,
+  configVersion: 1,
+  config: {},
+});
+
+describe("joinOf + effectiveInputPorts (the per-port policy the canvas paints)", () => {
+  it("defaults `all` for a transform and `any` for a sink (Node-RED's debug/funnel)", () => {
+    const rhai = desc("rhai", "transform", ["payload"]);
+    expect(joinOf(rhai)).toBe("all");
+    expect(joinOf(rhai, "payload")).toBe("all");
+    const dbg = desc("debug", "sink", ["payload"]);
+    expect(joinOf(dbg)).toBe("any");
+    expect(joinOf(dbg, "payload")).toBe("any");
+  });
+
+  it("an explicit `inputPorts` override wins over the per-kind default (both directions)", () => {
+    // A transform overridden to `any` (a custom funnel).
+    const funnel = desc("funnel", "transform", ["payload"], [
+      { name: "payload", join: "any" },
+    ]);
+    expect(joinOf(funnel)).toBe("any");
+    // A sink overridden back to `all` (a join-over-sink).
+    const joiner = desc("joiner", "sink", ["payload"], [{ name: "payload", join: "all" }]);
+    expect(joinOf(joiner, "payload")).toBe("all");
+  });
+
+  it("resolves the primary (first) port when no port name is given", () => {
+    const multi = desc("multi", "transform", ["left", "right"]);
+    expect(joinOf(multi)).toBe("all"); // left is primary, transform ⇒ all
+    expect(joinOf(multi, "right")).toBe("all");
+  });
+
+  it("effectiveInputPorts pairs each declared port with its effective policy", () => {
+    const dbg = desc("debug", "sink", ["payload"]);
+    expect(effectiveInputPorts(dbg)).toEqual([{ name: "payload", join: "any" }]);
+    const rhai = desc("rhai", "transform", ["payload"]);
+    expect(effectiveInputPorts(rhai)).toEqual([{ name: "payload", join: "all" }]);
+    // link-in is the canonical any-funnel collector.
+    const linkIn = desc("link-in", "transform", ["payload"], [{ name: "payload", join: "any" }]);
+    expect(effectiveInputPorts(linkIn)).toEqual([{ name: "payload", join: "any" }]);
+  });
+
+  it("a trigger/source with no inputs yields no canvas ports (no target handle)", () => {
+    const trig = desc("trigger", "trigger", []);
+    expect(effectiveInputPorts(trig)).toEqual([]);
+  });
+});
+
+describe("flowToEdges wire-inspector label (Slice 4)", () => {
+  it("labels a named-port wire with its target port; leaves primary wires clean", () => {
+    const flow: Flow = {
+      ...FLOW,
+      nodes: [
+        { id: "start", type: "trigger", needs: [], config: {} },
+        { id: "a", type: "count", needs: ["start"], config: {} },
+        {
+          id: "b",
+          type: "count",
+          needs: ["a", "start"],
+          config: {},
+          inputs: [{ from: "a", toPort: "secondary" }],
+        },
+      ],
+    };
+    const edges = flowToEdges(flow);
+    const byId = Object.fromEntries(edges.map((e) => [`${e.source}->${e.target}`, e]));
+    // The named-port wire carries a midpoint label (the wire inspector surface)…
+    expect(byId["a->b"].label).toBe("secondary");
+    // …the primary wire stays label-free (clean canvas for the common case).
+    expect(byId["start->b"].label).toBeUndefined();
+  });
+
+  it("a primary-only flow has no edge labels (the clean pre-ports canvas)", () => {
+    const edges = flowToEdges(FLOW);
+    expect(edges.every((e) => e.label === undefined)).toBe(true);
   });
 });
