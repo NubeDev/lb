@@ -181,7 +181,11 @@ function Sidebar({
 
   return (
     <div
-      className="group peer hidden text-fg md:block"
+      // On the right, `order-last` moves the whole sidebar (its in-flow `sidebar-gap` spacer
+      // included) after `SidebarInset` in the flex row, so the reserved space lands on the right —
+      // mirroring the left layout with no duplicated width logic. The gap remains the single
+      // source of spacing; the fixed container is pinned to the matching edge via `side` below.
+      className="group peer order-first hidden text-fg data-[side=right]:order-last md:block"
       data-state={state}
       data-collapsible={collapsed ? collapsible : ""}
       data-variant={variant}
@@ -204,7 +208,7 @@ function Sidebar({
           collapsed && collapsible === "offcanvas" && side === "right" && "-right-[var(--sidebar-width)]",
           collapsed && collapsible === "icon" ? iconWidth : expandedWidth,
           floating && "p-2",
-          !floating && "border-r border-border",
+          !floating && (side === "left" ? "border-r border-border" : "border-l border-border"),
           className,
         )}
         {...props}

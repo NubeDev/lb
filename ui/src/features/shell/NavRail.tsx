@@ -15,8 +15,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBranding } from "@/lib/branding";
 import { useTheme } from "@/lib/theme";
 
@@ -202,6 +203,13 @@ export function NavRail({
   // the shell chrome re-lays-out live and the choice persists/roams through the theme prefs blob.
   const { theme } = useTheme();
   const { variant, side } = theme.layout;
+  // The logo doubles as the collapse toggle (reusing the provider's `toggleSidebar`). It is only
+  // interactive when the collapsible mode allows collapsing — "none" means always-open, so the logo
+  // stays a plain static mark with no pointer/hover/tooltip and no toggle behavior.
+  const { toggleSidebar, collapsible, state } = useSidebar();
+  const canToggle = collapsible !== "none";
+  const expanded = state === "expanded";
+  const toggleLabel = expanded ? "Collapse sidebar" : "Expand sidebar";
   // The workspace brand (workspace-branding scope). `brand` is always set: the provider seeds from
   // the localStorage boot cache (no flash on refresh) or the neutral default on a first-ever visit,
   // then the live `prefs.resolve` confirms it. The admin sets it in Settings → Branding; every
@@ -363,20 +371,41 @@ export function NavRail({
   return (
     <Sidebar variant={variant} side={side}>
       <SidebarHeader>
-        {/* Header row: the collapse toggle is anchored top-left, immediately before the workspace
-            brand — reads as one intentional unit whether expanded or collapsed (icon mode centers it,
-            "none" mode renders no trigger, so only the brand shows). */}
-        <div className="flex items-center gap-1 group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger aria-label="Toggle sidebar" title="Toggle sidebar" className="shrink-0" />
-          <SidebarMenu className="group-data-[collapsible=icon]:hidden">
+        {/* Header row: the workspace brand IS the collapse toggle (no separate trigger button). When
+            the collapsible mode allows it, clicking/Enter/Space on the logo toggles expand/collapse;
+            in "none" mode the same markup renders as a plain static brand. Icon mode centers it. */}
+        <div className="flex items-center group-data-[collapsible=icon]:justify-center">
+          <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton size="lg" tooltip={brand.siteName} aria-label={brand.siteName}>
-                <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
-                  {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
+              {canToggle ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={toggleSidebar}
+                      aria-label={toggleLabel}
+                      className="flex w-full items-center gap-2 rounded-md p-2 text-left outline-none transition-[opacity,transform] hover:opacity-90 hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] group-data-[collapsible=icon]:justify-center"
+                    >
+                      <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
+                      <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                        <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
+                        {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
+                      </div>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" align="center">
+                    {toggleLabel}
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <div className="flex w-full items-center gap-2 p-2">
+                  <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
+                    {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
+                  </div>
                 </div>
-              </SidebarMenuButton>
+              )}
             </SidebarMenuItem>
           </SidebarMenu>
         </div>

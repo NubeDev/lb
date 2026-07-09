@@ -6,6 +6,7 @@
 // the (already-stripped) resolve payload contains, and falls back correctly. Markup only — no gateway.
 
 import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { NavRail, type CoreSurface, type ResolvedNavItem } from "./NavRail";
@@ -22,11 +23,12 @@ function renderRail(props: {
   hidden?: string[];
   pinned?: ResolvedNavItem[];
   onTogglePin?: (ref: string) => void;
+  collapsible?: "offcanvas" | "icon" | "none";
 }) {
   return render(
     <ThemeProvider>
       <BrandingProvider workspace="acme">
-        <SidebarProvider>
+        <SidebarProvider collapsible={props.collapsible}>
           <NavRail
             active="channels"
             onSelect={vi.fn()}
@@ -184,5 +186,36 @@ describe("NavRail resolved-nav rendering", () => {
     expect(sidebar).toHaveAttribute("data-variant", "floating");
     expect(sidebar).toHaveAttribute("data-side", "right");
     localStorage.clear();
+  });
+});
+
+describe("NavRail logo-as-toggle", () => {
+  it("renders the logo as a toggle button that collapses the sidebar, with state-aware label", async () => {
+    const user = userEvent.setup();
+    renderRail({ allowed: ["channels"], resolvedItems: null, collapsible: "icon" });
+    // Expanded → label reads "Collapse sidebar"; there is NO separate "Toggle sidebar" trigger button.
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    expect(screen.queryByRole("button", { name: "Toggle sidebar" })).not.toBeInTheDocument();
+    // Clicking collapses → the shared sidebar state flips, so the label becomes "Expand sidebar".
+    await user.click(toggle);
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
+  });
+
+  it("activates the logo toggle with the keyboard (native button → Enter/Space)", async () => {
+    const user = userEvent.setup();
+    renderRail({ allowed: ["channels"], resolvedItems: null, collapsible: "icon" });
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    toggle.focus();
+    expect(toggle).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
+  });
+
+  it("renders the logo as a plain static mark (no toggle) when collapsible mode is 'none'", () => {
+    renderRail({ allowed: ["channels"], resolvedItems: null, collapsible: "none" });
+    // No toggle affordance at all — not the old trigger, not the logo-button in either label.
+    expect(screen.queryByRole("button", { name: "Collapse sidebar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Expand sidebar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle sidebar" })).not.toBeInTheDocument();
   });
 });

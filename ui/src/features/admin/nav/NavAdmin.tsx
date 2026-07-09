@@ -266,12 +266,19 @@ export function NavAdmin({ ws, caps }: Props) {
   // stays put while editing, mirroring the API Keys "New key" flow.
   const navEditor = (
     <>
-      <Input
-        aria-label="Nav title"
-        placeholder="Menu title (e.g. Operations)"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-      />
+      {/* The nav's title + items, wrapped in the same bordered panel card the API Keys "New key"
+          form uses (labelled fields over inputs) so both create surfaces read as one system. */}
+      <div className="space-y-3 rounded-md border border-border bg-panel px-3 py-3">
+        <label className="block text-xs text-muted">
+          Menu title
+          <Input
+            aria-label="Nav title"
+            className="mt-1"
+            placeholder="Menu title (e.g. Operations)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </label>
 
       {/* The ordered items list */}
       <ol className="flex flex-col gap-2" data-testid="nav-items">
@@ -314,6 +321,8 @@ export function NavAdmin({ ws, caps }: Props) {
       </ol>
 
       {/* Add-item form */}
+      <fieldset className="text-xs text-muted">
+        <legend className="mb-1">Add item</legend>
       <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2">
         <Select
           className="w-36"
@@ -438,6 +447,7 @@ export function NavAdmin({ ws, caps }: Props) {
           Add item
         </Button>
       </div>
+      </fieldset>
 
       {/* Save the nav's items/title. Audience (who sees it) is the section below — no separate
           "apply visibility" step, so a nav can't be Saved-but-invisible by accident. */}
@@ -445,6 +455,7 @@ export function NavAdmin({ ws, caps }: Props) {
         <Button size="sm" onClick={() => void doSave()} disabled={busy} aria-label="Save nav">
           Save
         </Button>
+      </div>
       </div>
 
       {/* ── Who sees this nav ── the ONE audience control. The old model had three moving parts
@@ -454,7 +465,10 @@ export function NavAdmin({ ws, caps }: Props) {
           teams (auto-switches to the Team tier + writes the edge in one click), or "Everyone"
           (workspace). No tier dropdown to forget. A member reaches a team-shared nav by being in
           that team (Teams admin). */}
-      <section className="flex flex-col gap-2" data-testid="nav-shares">
+      <section
+        className="flex flex-col gap-2 rounded-md border border-border bg-panel px-3 py-3"
+        data-testid="nav-shares"
+      >
         <h4 className="text-xs font-semibold uppercase text-muted">Who sees this nav</h4>
         <div className="text-sm text-muted">
           {shareVis === "workspace"
