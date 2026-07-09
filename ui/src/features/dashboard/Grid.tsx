@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import GridLayout, { type Layout } from "react-grid-layout";
-import { Copy, GripHorizontal, Pencil, X } from "lucide-react";
+import { Copy, Download, GripHorizontal, Pencil, X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
 import type { Cell } from "@/lib/dashboard";
@@ -29,6 +29,9 @@ interface Props {
   /** Edit this panel in the stepped wizard (navigates to `…/new-panel?cell=<i>`, EDIT mode). Called
    *  with the cell key. Omitted ⇒ no button. */
   onEditPanel?: (i: string) => void;
+  /** Export this single cell as a widget bundle (`.lbdash.json`). Called with the cell key. Omitted ⇒
+   *  no button. Available to viewers too — exporting a definition doesn't widen data access. */
+  onExportCell?: (i: string) => void;
   /** Installed extensions (from `ext.list`) — needed to mount `ext:<id>/<widget>` cells. */
   installed?: ExtRow[];
   /** The current workspace (passed to widgets; the hard wall is enforced by the token server-side). */
@@ -50,6 +53,7 @@ export function Grid({
   onRemove,
   onDuplicate,
   onEditPanel,
+  onExportCell,
   installed,
   workspace,
   scope,
@@ -77,7 +81,13 @@ export function Grid({
     return () => observer.disconnect();
   }, []);
 
-  const layout: Layout[] = cells.map((c) => ({ i: c.i, x: c.x, y: c.y, w: c.w, h: c.h }));
+  const layout: Layout[] = cells.map((c) => ({
+    i: c.i,
+    x: c.x,
+    y: c.y,
+    w: c.w,
+    h: c.h,
+  }));
 
   // Merge a new layout (geometry only) back onto the cells (which carry binding/options/type).
   const apply = (next: Layout[]) => {
@@ -156,6 +166,16 @@ export function Grid({
                 >
                   <Copy size={13} />
                 </button>
+                {onExportCell && (
+                  <button
+                    aria-label={`export cell ${c.i}`}
+                    title="Export widget"
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition-[color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                    onClick={() => onExportCell(c.i)}
+                  >
+                    <Download size={13} />
+                  </button>
+                )}
                 <button
                   aria-label={`remove cell ${c.i}`}
                   title="Remove widget"
@@ -167,7 +187,14 @@ export function Grid({
               </div>
             )}
             <div className="min-h-0 flex-1 p-3">
-              <WidgetHost cell={c} range={range} installed={installed} workspace={workspace} scope={scope} refreshKey={refreshKey} />
+              <WidgetHost
+                cell={c}
+                range={range}
+                installed={installed}
+                workspace={workspace}
+                scope={scope}
+                refreshKey={refreshKey}
+              />
             </div>
           </div>
         ))}

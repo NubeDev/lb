@@ -15,7 +15,7 @@ import {
 
 import { AdminView, WebhooksAdmin } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
-import { DashboardView } from "@/features/dashboard";
+import { DashboardView, DashboardsManagerPage } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
 import { PanelWizard } from "@/features/panel-builder/wizard/PanelWizard";
 import type { Cell } from "@/lib/dashboard";
@@ -23,7 +23,10 @@ import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQuer
 import { DataStudioView } from "@/features/data-studio";
 import { DataView } from "@/features/data";
 import { DatasourcesAdmin, DatasourceDetailPage } from "@/features/datasources";
-import { SchemaDesignerList, SchemaDesignerPage } from "@/features/datasources/designer";
+import {
+  SchemaDesignerList,
+  SchemaDesignerPage,
+} from "@/features/datasources/designer";
 import { ExtHost, ExtErrorBoundary } from "@/features/ext-host";
 import { ExtensionsView } from "@/features/extensions";
 import { StudioShell, type StudioTab } from "@/features/studio";
@@ -50,7 +53,12 @@ import {
   validateDashboardSearch,
   validateSchemaSearch,
 } from "./search";
-import { fullPathForSurface, pathForSurface, surfaceForPath, tenantPath } from "./surface";
+import {
+  fullPathForSurface,
+  pathForSurface,
+  surfaceForPath,
+  tenantPath,
+} from "./surface";
 import { CAP, hasCap } from "@/lib/session";
 
 const rootRoute = createRootRouteWithContext<RoutingContext>()({
@@ -105,6 +113,15 @@ const dashboardsRoute = createRoute({
   path: "/dashboards",
   validateSearch: validateDashboardSearch,
   component: DashboardsRoute,
+});
+
+// The Dashboards manager (dashboard-management UX): the full-CRUD library table + bundle import/export,
+// a sibling of the live `/dashboards` grid. Reuses the `dashboards` surface cap (it's the same feature,
+// not a new CoreSurface); the manager's mutations re-check `dashboard.save`/`.delete` host-side.
+const dashboardsManageRoute = createRoute({
+  getParentRoute: () => tenantRoute,
+  path: "/dashboards/manage",
+  component: DashboardsManageRoute,
 });
 
 // The stepped panel wizard (panel-wizard scope) — a dedicated, deep-linkable route, maximally isolated
@@ -227,7 +244,11 @@ const extensionsRedirectRoute = createRoute({
   component: StudioDefaultRedirect,
 });
 
-function coreRoute(path: string, surface: CoreSurface, component: () => JSX.Element) {
+function coreRoute(
+  path: string,
+  surface: CoreSurface,
+  component: () => JSX.Element,
+) {
   return createRoute({
     getParentRoute: () => tenantRoute,
     path,
@@ -241,6 +262,7 @@ const routeTree = rootRoute.addChildren([
     tenantIndexRoute,
     channelsRoute,
     dashboardsRoute,
+    dashboardsManageRoute,
     newPanelRoute,
     panelRoute,
     dataStudioRoute,
@@ -323,7 +345,13 @@ function TenantlessRedirect() {
   return null;
 }
 
-function CoreGate({ surface, children }: { surface: CoreSurface; children: JSX.Element }) {
+function CoreGate({
+  surface,
+  children,
+}: {
+  surface: CoreSurface;
+  children: JSX.Element;
+}) {
   const ctx = useAppRoutingContext();
   if (!ctx.allowed.includes(surface)) return <DefaultRedirect />;
   return children;
@@ -364,7 +392,31 @@ function DashboardsRoute() {
         })
       }
       onOpenPanelWizard={(d) =>
-        void go({ to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/${encodeURIComponent(d)}/new-panel` })
+        void go({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/${encodeURIComponent(d)}/new-panel`,
+        })
+      }
+      onManage={() =>
+        void go({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/manage`,
+        })
+      }
+    />
+  );
+}
+
+function DashboardsManageRoute() {
+  const ctx = useAppRoutingContext();
+  const go = useNavigate();
+  if (!ctx.allowed.includes("dashboards")) return <DefaultRedirect />;
+  return (
+    <DashboardsManagerPage
+      ws={ctx.workspace}
+      onOpen={(id) =>
+        void go({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards`,
+          search: { d: id },
+        })
       }
     />
   );
@@ -398,7 +450,9 @@ function NewPanelRoute() {
   // EDIT mode (`?cell=`): load the target cell so the wizard seeds from it. A `new-panel` deep link
   // with no `cell` stays the create flow (editCell undefined). We fetch from the real store (no cache
   // of the specific cell) — the wizard holds off until it resolves so its state seeds correctly.
-  const [editCell, setEditCell] = useState<Cell | null | undefined>(cellId ? undefined : null);
+  const [editCell, setEditCell] = useState<Cell | null | undefined>(
+    cellId ? undefined : null,
+  );
   useEffect(() => {
     if (!cellId) return;
     let live = true;
@@ -421,7 +475,11 @@ function NewPanelRoute() {
           ws={ctx.workspace}
           dashboardId={dashboardId}
           editCell={editCell ?? undefined}
-          onExit={() => void navigate({ to: fullPathForSurface(ctx.workspace, "dashboards") })}
+          onExit={() =>
+            void navigate({
+              to: fullPathForSurface(ctx.workspace, "dashboards"),
+            })
+          }
         />
       </div>
     </DashboardCacheProvider>
@@ -564,10 +622,7 @@ function DatasourceDetailRoute() {
   const { name } = datasourceDetailRoute.useParams();
   if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
   return (
-    <DatasourceDetailPage
-      ws={ctx.workspace}
-      name={decodeURIComponent(name)}
-    />
+    <DatasourceDetailPage ws={ctx.workspace} name={decodeURIComponent(name)} />
   );
 }
 
@@ -637,7 +692,9 @@ function McpService() {
   return (
     <McpServiceView
       ws={ctx.workspace}
-      onBack={() => void navigate({ to: fullPathForSurface(ctx.workspace, "system") })}
+      onBack={() =>
+        void navigate({ to: fullPathForSurface(ctx.workspace, "system") })
+      }
     />
   );
 }
@@ -648,7 +705,9 @@ function AcpService() {
   return (
     <AcpServiceView
       ws={ctx.workspace}
-      onBack={() => void navigate({ to: fullPathForSurface(ctx.workspace, "system") })}
+      onBack={() =>
+        void navigate({ to: fullPathForSurface(ctx.workspace, "system") })
+      }
     />
   );
 }
@@ -728,7 +787,11 @@ function SettingsPage() {
   // Bare `/settings` redirects to the default tab so every Settings surface has a canonical deep link.
   const ctx = useAppRoutingContext();
   return (
-    <Navigate to="/t/$ws/settings/$tab" params={{ ws: ctx.workspace, tab: "preferences" }} replace />
+    <Navigate
+      to="/t/$ws/settings/$tab"
+      params={{ ws: ctx.workspace, tab: "preferences" }}
+      replace
+    />
   );
 }
 
@@ -743,7 +806,11 @@ function SettingsTabRoute() {
         caps={ctx.caps}
         tab={tab}
         onTabChange={(next) =>
-          void navigate({ to: "/t/$ws/settings/$tab", params: { ws: ctx.workspace, tab: next }, replace: true })
+          void navigate({
+            to: "/t/$ws/settings/$tab",
+            params: { ws: ctx.workspace, tab: next },
+            replace: true,
+          })
         }
       />
     </CoreGate>

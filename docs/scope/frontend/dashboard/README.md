@@ -115,11 +115,25 @@ because existing session docs point at them; new dashboard notes should live her
     fractures one generic picker seam into per-kind cards), rewrite the card subtitle to front-load
     "rule/series/saved query", reorder the Rules group to lead the workspace sub-picker, and add an
     empty-Rules line. Labelling-only, CLAUDE §10 held.
+3o. [`native-import-export-scope.md`](native-import-export-scope.md) — **SHIPPED (2026-07-09)** —
+    **native (our-format) import/export + a full-CRUD Dashboards manager**. A versioned `.lbdash.json`
+    **bundle** carries one-or-more dashboards AND/OR standalone widgets/panels (portable shape only —
+    **no workspace, no owner**; authority comes from the token on import, rule 6), replayed through the
+    **already-shipped** `dashboard.save`/`panel.save` — **zero new host verbs**. A `/t/$ws/dashboards/manage`
+    page adds the full-CRUD library table + the import/export toolbar; per-widget export rides the shipped
+    `cellToSpec` bridge. **Distinct from** the backend Grafana-JSON interchange
+    ([`viz/import-export-scope.md`](viz/import-export-scope.md)) — orthogonal, can coexist.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
 ## What is shipped
 
+- **Native import/export + the Dashboards manager** ([`native-import-export-scope.md`](native-import-export-scope.md),
+  SHIPPED 2026-07-09): a `.lbdash.json` **bundle** of whole dashboards and/or standalone widgets that
+  round-trips through the shipped `dashboard.*`/`panel.*` verbs (no new host surface; the bundle carries no
+  workspace/owner — import authority is the token, rule 6), plus a `/t/$ws/dashboards/manage` full-CRUD
+  library page with import/export. See [`public/dashboard/dashboard.md`](../../../../doc-site/content/public/dashboard/dashboard.md)
+  → "Native import/export + the Dashboards manager".
 - The **Data Studio editing loop** ([`data-studio-ux-scope.md`](data-studio-ux-scope.md),
   SHIPPED 2026-07-04): a query **status bar** (rows/frames/duration/error inline/why-empty),
   real **Run/Refresh** semantics for every datasource + ⌘-Enter (Data Studio's save is now
