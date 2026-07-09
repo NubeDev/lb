@@ -1,0 +1,98 @@
+{
+  "dashboard": {
+    "cells": [
+      {
+        "action": {
+          "args_template": null,
+          "tool": ""
+        },
+        "binding": null,
+        "description": "",
+        "fieldConfig": null,
+        "h": 8,
+        "i": "panel-1",
+        "options": null,
+        "panelRef": "",
+        "panelVars": null,
+        "pluginVersion": "",
+        "source": {
+          "args": null,
+          "tool": ""
+        },
+        "sources": [
+          {
+            "args": {
+              "datasource": {
+                "uid": "prom-001"
+              },
+              "refId": "A"
+            },
+            "datasource": {
+              "uid": "prom-001"
+            },
+            "hide": false,
+            "refId": "A",
+            "tool": ""
+          }
+        ],
+        "title": "",
+        "transformations": [],
+        "v": 3,
+        "view": "chart",
+        "w": 12,
+        "widget_type": "",
+        "x": 0,
+        "y": 0
+      }
+    ],
+    "color": "",
+    "deleted": false,
+    "description": "",
+    "icon": "",
+    "id": "sample",
+    "owner": "",
+    "schemaVersion": 3,
+    "title": "Sample",
+    "updated_ts": 0,
+    "variables": [],
+    "visibility": "private"
+  },
+  "report": {
+    "degraded": [
+      {
+        "at": "panels[0].targets[0]",
+        "code": "datasource.uid",
+        "fate": "degraded",
+        "reason": "Grafana datasource UID carried opaque; no federation mapping yet"
+      }
+    ],
+    "dropped": [
+      {
+        "at": "",
+        "code": "dashboard.editable",
+        "fate": "dropped",
+        "reason": "editable=false dropped (dashboards are always editable here)"
+      }
+    ],
+    "mapped": [
+      {
+        "at": "",
+        "code": "dashboard.title",
+        "fate": "mapped",
+        "reason": "title → Dashboard.title"
+      },
+      {
+        "at": "panels[0]",
+        "code": "panel.type",
+        "fate": "mapped",
+        "reason": "`timeseries` → view:\"chart\""
+      },
+      {
+        "at": "panels[0]",
+        "code": "panel.grid",
+        "fate": "mapped",
+        "reason": "24-col gridPos → x/y/w/h"
+      }
+    ]
+  }
+}

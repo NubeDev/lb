@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 42,
+  "title": "Advanced Variables",
+  "templating": {
+    "list": [
+      {
+        "name": "host",
+        "type": "query",
+        "query": "label_values(up{region=\"$region\"}, instance)",
+        "multi": true
+      },
+      {
+        "name": "region",
+        "type": "query",
+        "query": "label_values(up, region)"
+      },
+      {
+        "name": "interval",
+        "type": "interval",
+        "query": "1m,5m,10m,30m,1h"
+      },
+      {
+        "name": "const_token",
+        "type": "constant",
+        "query": "abc123",
+        "hide": 2
+      },
+      {
+        "name": "adhoc_filters",
+        "type": "adhoc",
+        "datasource": { "uid": "prom-001" }
+      },
+      {
+        "name": "groupby_field",
+        "type": "groupby"
+      },
+      {
+        "name": "text_note",
+        "type": "textbox",
+        "query": "hello"
+      },
+      {
+        "name": "options_var",
+        "type": "custom",
+        "query": "west,east",
+        "options": [
+          { "text": "West", "value": "west", "selected": false },
+          { "text": "East", "value": "east", "selected": true }
+        ],
+        "allValue": ".*",
+        "regex": "(?<text>.+)\\/(?<value>.+)",
+        "regexApplyTo": "value",
+        "sort": 3,
+        "refresh": 1,
+        "hide": 1
+      }
+    ]
+  },
+  "panels": []
+}

@@ -7,12 +7,19 @@
 // Editable only when the board is editable.
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, GripVertical, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Settings2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Cell } from "@/lib/dashboard";
-import { cellLabel, isCollapsed } from "@/lib/dashboard";
+import type { Cell, RowOptions } from "@/lib/dashboard";
+import { cellLabel, isCollapsed, rowOptions } from "@/lib/dashboard";
+import { RowOptionsDialog } from "./RowOptionsDialog";
 
 interface Props {
   cell: Cell;
@@ -25,6 +32,9 @@ interface Props {
   onRename?: (i: string, title: string) => void;
   /** Remove the row header (row-only delete). Omitted / non-editable ⇒ no remove affordance. */
   onRemove?: (i: string) => void;
+  /** Persist the row's presentation options (from the popout dialog). Omitted / non-editable ⇒ no
+   *  options gear. */
+  onOptions?: (i: string, options: RowOptions) => void;
 }
 
 export function RowHeader({
@@ -34,10 +44,13 @@ export function RowHeader({
   onToggleCollapse,
   onRename,
   onRemove,
+  onOptions,
 }: Props) {
   const collapsed = isCollapsed(cell);
+  const opts = rowOptions(cell);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const label = cellLabel(cell);
 
   const commit = () => {
@@ -52,7 +65,7 @@ export function RowHeader({
     // that toggles collapse; the grip + remove are siblings so no interactive element nests in another.
     <div
       data-row-header=""
-      className="group/row flex h-full w-full select-none items-center gap-1 border-b border-border/80 pl-1 pr-2"
+      className={`group/row flex h-full w-full select-none items-center gap-1 pl-1 pr-2 ${opts.showLine ? "border-b border-border/80" : ""}`}
       aria-label={`row ${label}`}
     >
       {editable && (
@@ -105,11 +118,24 @@ export function RowHeader({
             {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
           </span>
           <span className="truncate text-sm font-semibold text-fg">{label}</span>
-          {memberCount > 0 && (
+          {opts.showCount && memberCount > 0 && (
             <span className="shrink-0 text-xs font-normal text-muted">
               · {memberCount} panel{memberCount === 1 ? "" : "s"}
             </span>
           )}
+        </Button>
+      )}
+      {editable && onOptions && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={`row options ${cell.i}`}
+          title="Row options"
+          className="widget-no-drag h-6 w-6 shrink-0 text-muted opacity-0 transition-opacity hover:text-fg focus-visible:opacity-100 group-hover/row:opacity-100"
+          onClick={() => setOptionsOpen(true)}
+        >
+          <Settings2 size={13} />
         </Button>
       )}
       {editable && onRemove && (
@@ -124,6 +150,14 @@ export function RowHeader({
         >
           <X size={13} />
         </Button>
+      )}
+      {onOptions && (
+        <RowOptionsDialog
+          cell={cell}
+          open={optionsOpen}
+          onOpenChange={setOptionsOpen}
+          onSave={onOptions}
+        />
       )}
     </div>
   );

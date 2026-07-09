@@ -30,6 +30,11 @@ function lookup(name: string, scope: VarScope): VarValue | undefined {
   return undefined;
 }
 
+/** Escape a string for safe use inside a regex character/alternation context. */
+function reEscape(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /** Render a resolved value with a format hint. Multi-value aware (csv/pipe/json); a single value is
  *  treated as a one-element list for csv/pipe/json so the sink shape is consistent. */
 export function formatValue(value: VarValue, hint: FormatHint | undefined): string {
@@ -47,6 +52,23 @@ export function formatValue(value: VarValue, hint: FormatHint | undefined): stri
     case "doublequote":
       return list.map((v) => `"${String(v).replace(/"/g, '\\"')}"`).join(",");
     case "raw":
+      return list.join(",");
+    case "regex":
+      // A regex-safe alternation over the (escaped) values — `(web01|web02)`; a single value is escaped.
+      return list.length > 1
+        ? `(${list.map((v) => reEscape(String(v))).join("|")})`
+        : reEscape(String(list[0] ?? ""));
+    case "glob":
+      // A glob alternation over the values — `{web01,web02}`; a single value is bare.
+      return list.length > 1 ? `{${list.join(",")}}` : String(list[0] ?? "");
+    case "percentencode":
+      return list.map((v) => encodeURIComponent(String(v))).join(",");
+    case "sqlstring":
+      // Single-quoted SQL literals with `'`→`''` doubling — `'web01','web02'`.
+      return list.map((v) => `'${String(v).replace(/'/g, "''")}'`).join(",");
+    case "distributed":
+      // Graphite distributed form: first bare, the rest prefixed with the (unknown here) var name is
+      // Grafana-specific; we emit the values joined — the name-prefix is applied by the caller if needed.
       return list.join(",");
     default:
       // No hint: a single value is itself; a multi-value joins with commas (Grafana default).

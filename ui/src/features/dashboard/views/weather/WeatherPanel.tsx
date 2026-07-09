@@ -10,6 +10,7 @@ import { emptyScope } from "@/lib/vars";
 import { WidgetMessage } from "../../widgets/chrome";
 import { usePanelData } from "../../builder/usePanelData";
 import { wmoCondition } from "./wmoCode";
+import { observedLocal } from "./observedLocal";
 
 interface Props {
   cell: Cell;
@@ -28,8 +29,16 @@ export function WeatherPanel({ cell, label, scope = emptyScope(), refreshKey = 0
   const tempC = typeof row?.temp_c === "number" ? row.temp_c : null;
   const windKph = typeof row?.wind_kph === "number" ? row.wind_kph : null;
   const code = typeof row?.code === "number" ? row.code : null;
-  const observedTs = typeof row?.observed_ts === "string" ? row.observed_ts : null;
+  // observed_ts is a UTC epoch in SECONDS (the weather.current contract) — rendered in the viewer's
+  // browser timezone by `observedLocal`, so a Da Nang viewer sees their own wall-clock, not raw UTC.
+  const observedTs = typeof row?.observed_ts === "number" ? row.observed_ts : null;
   const location = typeof row?.location === "string" ? row.location : null;
+  // The header prefers the author's free-text location label (options.label, set on the Options step),
+  // then the caller's label prop, then the returned "lat,lon" string.
+  const optsLabel =
+    typeof (cell.options as Record<string, unknown> | null)?.label === "string"
+      ? ((cell.options as Record<string, unknown>).label as string).trim()
+      : "";
 
   if (tempC === null) return <WidgetMessage tone="muted">no value yet</WidgetMessage>;
 
@@ -37,7 +46,7 @@ export function WeatherPanel({ cell, label, scope = emptyScope(), refreshKey = 0
     <Card className="h-full justify-between border-none bg-panel shadow-none" aria-label="weather panel">
       <CardHeader className="pb-0">
         <div className="truncate text-xs font-medium" style={{ color: "hsl(var(--muted))" }}>
-          {label ?? location ?? "Weather"}
+          {optsLabel || label || location || "Weather"}
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-center gap-1 pt-2">
@@ -55,7 +64,7 @@ export function WeatherPanel({ cell, label, scope = emptyScope(), refreshKey = 0
           Wind {windKph !== null ? windKph.toFixed(1) : "—"} km/h
         </span>
         <span className="text-[0.65rem]" style={{ color: "hsl(var(--muted))" }} aria-label="weather updated">
-          {observedTs ? `Updated ${observedTs.replace("T", " ")}` : ""}
+          {observedTs !== null ? `Updated ${observedLocal(observedTs)}` : ""}
         </span>
       </CardContent>
     </Card>

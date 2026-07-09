@@ -31,3 +31,17 @@ export function writeOption(state: EditorState, def: OptionDef, value: unknown):
   }
   return { options: setPath(state.options, path, value) };
 }
+
+/** Return the state patch that sets a picked geocoded place onto the weather tile's location options —
+ *  `options.label`, `options.lat`, `options.lon` in ONE patch (the geo-search control writes all three
+ *  atomically; the single-path `writeOption` can't set sibling options). Pure. */
+export function writeGeoPlace(
+  state: EditorState,
+  place: { label: string; lat: number; lon: number },
+): Partial<EditorState> {
+  let options = state.options;
+  options = setPath(options, "label", place.label || undefined);
+  options = setPath(options, "lat", place.lat);
+  options = setPath(options, "lon", place.lon);
+  return { options };
+}

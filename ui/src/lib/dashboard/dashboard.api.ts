@@ -25,8 +25,26 @@ export function saveDashboard(
   title: string,
   cells: Cell[],
   variables?: Variable[],
+  meta?: DashboardMeta,
 ): Promise<Dashboard> {
-  return invoke<Dashboard>("dashboard_save", { id, title, cells, variables: variables ?? [] });
+  // `meta` (dashboard page-settings: description/icon/color) is OMITTED unless supplied — the host
+  // preserves the stored value for any absent key, so a plain layout/variable save never blanks the
+  // page chrome. Only the settings dialog passes `meta`.
+  return invoke<Dashboard>("dashboard_save", {
+    id,
+    title,
+    cells,
+    variables: variables ?? [],
+    ...(meta ?? {}),
+  });
+}
+
+/** The page-presentation fields (dashboard page-settings). Each is optional; an omitted key preserves
+ *  the stored value on save (host-side), a present key sets it. */
+export interface DashboardMeta {
+  description?: string;
+  icon?: string;
+  color?: string;
 }
 
 /** Soft-delete a dashboard (idempotent tombstone; owner-only). Mirrors `dashboard.delete`. */

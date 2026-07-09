@@ -518,14 +518,27 @@ export async function httpInvoke<T>(cmd: string, args?: Record<string, unknown>)
     }
 case "dashboard_save": {
       // `variables` is additive (widget-config-vars Slice 2) — forwarded so the bar + interpolation
-      // round-trip; a pre-variable caller omits it (the gateway defaults it to []).
-      const { id, title, cells, variables } = args as {
+      // round-trip; a pre-variable caller omits it (the gateway defaults it to []). `description`/
+      // `icon`/`color` are the page-settings fields (dashboard page-settings) — forwarded ONLY when
+      // present (undefined ⇒ omitted from the body ⇒ the host preserves the stored value).
+      const { id, title, cells, variables, description, icon, color } = args as {
         id: string;
         title: string;
         cells: unknown[];
         variables?: unknown[];
+        description?: string;
+        icon?: string;
+        color?: string;
       };
-      return postJson<T>(`${base}/dashboards`, { id, title, cells, variables: variables ?? [] });
+      return postJson<T>(`${base}/dashboards`, {
+        id,
+        title,
+        cells,
+        variables: variables ?? [],
+        ...(description !== undefined ? { description } : {}),
+        ...(icon !== undefined ? { icon } : {}),
+        ...(color !== undefined ? { color } : {}),
+      });
     }
     case "dashboard_pin": {
       // widget-platform scope (Slice B): mint a cell from an `x-lb-render` envelope and upsert it into

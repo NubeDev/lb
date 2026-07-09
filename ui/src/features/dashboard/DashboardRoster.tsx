@@ -62,6 +62,10 @@ export function DashboardRoster({
         items={roster.map((d) => ({
           ...d,
           badge: d.visibility !== "workspace" ? d.visibility : undefined,
+          // Page-settings icon/colour ride the summary, so the switcher paints them per row (falling
+          // back to the rail's shared LayoutDashboard when unset).
+          icon: d.icon || undefined,
+          iconColor: d.color || undefined,
         }))}
         selectedId={selectedId}
         onSelect={onSelect}

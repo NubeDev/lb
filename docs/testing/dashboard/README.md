@@ -284,6 +284,61 @@ are resolved **shell-side from the token** — un-spoofable, never cell-set. Thi
 You **observe** this layer live by opening the running app (Step 4): pick a site in the variable
 bar, watch the cell re-query, copy the URL, and confirm it reproduces the selection.
 
+**(d) The DATE / TIME RANGE picker + the `$__from`/`$__to` built-ins (the top-right controls).**
+The two date inputs + the `refresh` dropdown at the top-right of a dashboard drive the **time range**
+built-ins. Their state lives in the URL (`?from=YYYY-MM-DD&to=YYYY-MM-DD&refresh=off`, shareable), and
+the shell resolves them into `$__*` values a cell's SQL can reference. Driven live on 2026-07-09:
+
+**How the pickers resolve (verified in `ui/src/lib/vars/builtins.ts` + `useVarScope.ts`):**
+- The pickers write `?from`/`?to` as `YYYY-MM-DD`; `useVarScope` parses each via
+  `Date.parse(iso + "T00:00:00.000Z")` → **epoch milliseconds at UTC midnight**.
+- `resolveBuiltins` then exposes: **`$__from`/`$__to` = epoch MS** (strings), `$__range_ms`,
+  `$__range_s`, `$__range` (`"<n>s"`). `$__interval`/`$__interval_ms` come from an interval variable.
+- `refresh` (`off`/`5s`/…/`15m`, `?refresh=`) re-resolves query variables + re-runs each cell source on
+  each tick; `off` disables. It changes *when* cells re-run, not *what* they select.
+
+> **⚠ The epoch-ms-vs-column-type trap (the #1 time-range false bug — proven live).** `$__from`/`$__to`
+> interpolate to **epoch-ms numbers**, but the seeded `demo-buildings` `point_reading.time` column is an
+> **ISO-8601 string** (`"2026-07-09T08:45:00+00:00"`; the seed spans 2026-06-09 → 2026-07-09). A naïve
+> `WHERE time BETWEEN $__from AND $__to` compares an ISO string to a number → **0 rows** (verified). You
+> must convert **one side**. The working idiom against a federation (DuckDB) source is to lift the epoch
+> ms to a timestamp:
+>
+> ```sql
+> WHERE CAST(pr.time AS TIMESTAMP) BETWEEN to_timestamp($__from/1000) AND to_timestamp($__to/1000)
+> ```
+>
+> (For a `store.query`/SurrealDB series cell the platform stores epoch already, so `$__from`/`$__to`
+> compare directly — the conversion is a federation-source concern.) There is **no `$__from:date` ISO
+> hint** shipped yet (the scope names it as a follow-up), so do the cast in SQL.
+
+**Drive it live** — the same cell fired over two windows proves the picker filters:
+
+```bash
+# A cell using BOTH the site variable AND the time-range built-ins (dashboard e2e-site-time, left live):
+#   … WHERE s.name = '${site}' AND p.name='Energy kWh'
+#       AND CAST(pr.time AS TIMESTAMP) BETWEEN to_timestamp($__from/1000) AND to_timestamp($__to/1000)
+T=$(curl -s $BASE/dashboards/e2e-site-time -H "$A" | jq -r '.cells[0].sources[0].args.sql')
+
+# 1-day window (2026-07-01 → 2026-07-02): ?from=2026-07-01&to=2026-07-02
+F=1782950400000; TO=1783036800000
+S=${T//'${site}'/Central Mall}; S=${S//'$__from'/$F}; S=${S//'$__to'/$TO}
+curl -s -X POST $BASE/mcp/call -H "$A" -H "$C" -d "$(jq -n --arg s "$S" '{tool:"federation.query",args:{source:"demo-buildings",sql:$s}}')" | jq -c '.rows'
+# → [["Central Mall",461,96]]     (96 readings = 24h × 4 fifteen-min slots — the window is real)
+
+# full month (2026-06-09 → 2026-07-09): ?from=2026-06-09&to=2026-07-09
+F=1780963200000; TO=1783555200000
+S=${T//'${site}'/Central Mall}; S=${S//'$__from'/$F}; S=${S//'$__to'/$TO}
+curl -s -X POST $BASE/mcp/call -H "$A" -H "$C" -d "$(jq -n --arg s "$S" '{tool:"federation.query",args:{source:"demo-buildings",sql:$s}}')" | jq -c '.rows'
+# → [["Central Mall",13453,2844]]  (narrowing the picker cuts 2844 → 96 readings)
+```
+
+**Observe:** changing the date pickers changes the row count/sum — the range genuinely filters. In the
+app: set the two dates (or the `refresh` interval), watch the panel re-query, and confirm the URL carries
+`?from=…&to=…&refresh=…` so the exact window is shareable. To author a time-ranged cell, put the
+`to_timestamp($__from/1000)`/`$__to` idiom in **both** `sources[0].args.sql` and `options.sql.rawSql`
+(the editor-visibility rule from §2.2).
+
 ### 2.4 Permissions — the negative path
 
 ```bash

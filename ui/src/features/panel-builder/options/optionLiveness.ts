@@ -18,7 +18,7 @@ import type { OptionDef } from "./types";
 /** The views the wizard authors. Scope of `OPTION_LIVENESS`: every `(view, optionId)` pair where the
  *  registry's `appliesToView(view)` returns true for one of these views must have a row. A view outside
  *  this set (e.g. `plot`, `d3`, `ext:…`) is not wizard-authored — it has no liveness entry by design. */
-export const WIZARD_VIEWS: View[] = ["timeseries", "barchart", "stat", "gauge", "bargauge", "piechart", "table", "insights"];
+export const WIZARD_VIEWS: View[] = ["timeseries", "barchart", "stat", "gauge", "bargauge", "piechart", "table", "insights", "weather"];
 
 /**
  * The declared liveness table. Outer key = view; inner key = option id; value = `live`.
@@ -170,6 +170,16 @@ export const OPTION_LIVENESS: Record<string, Record<string, boolean>> = {
     "insights.status": true,
     "insights.severity": true,
     "insights.limit": true,
+  },
+  weather: {
+    // The weather tile is fieldConfig-less and SELF-SOURCED — its only options are the location that
+    // feeds `weather.current`. All LIVE: the geo search writes label + lat/lon from a picked place;
+    // `lat`/`lon` change the fetched conditions (proven — `usePanelData.weatherSource` reads them into
+    // the call); `label` changes the rendered header.
+    geo: true,
+    label: true,
+    lat: true,
+    lon: true,
   },
 };
 

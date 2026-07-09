@@ -17,10 +17,11 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useBranding } from "@/lib/branding";
 import { useTheme } from "@/lib/theme";
 
+import { BrandHeader } from "./BrandHeader";
+import { NavActivePill, NavMenuMotionItem } from "./NavMenuMotion";
 import { SURFACE_DEF, SURFACES } from "./surfaceDefs";
 
 /** The fixed core surfaces the shell ships. */
@@ -148,35 +149,6 @@ export const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
   },
 ];
 
-/** The brand mark — the workspace's identity in the rail header. Renders the **logo** image when
- *  the admin set one, else the **icon** image, else the text `siteAbbr` tile (the historical "lb").
- *  Same gradient tile as the compiled default so the fallback chain looks coherent at every step.
- *  `--accent-foreground` keeps the glyph legible on the accent in every preset/mode. */
-function BrandMark({ siteAbbr, logoDataUri, iconDataUri }: { siteAbbr: string; logoDataUri?: string; iconDataUri?: string }) {
-  // Prefer the logo image (a full mark); fall back to the icon image; fall back to the text tile.
-  if (logoDataUri || iconDataUri) {
-    return (
-      <img
-        src={logoDataUri ?? iconDataUri}
-        alt=""
-        aria-hidden="true"
-        className="h-8 w-8 shrink-0 rounded-lg object-contain"
-      />
-    );
-  }
-  return (
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold shadow-sm"
-      style={{
-        background: "linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-2)))",
-        color: "hsl(var(--accent-foreground))",
-      }}
-    >
-      {siteAbbr}
-    </div>
-  );
-}
-
 /** The flat list of sidebar surfaces the icon-colorizer (Settings → Theme) iterates: every rail entry
  *  (the body groups + the footer Settings entry) as `{ key, label }`. DATA, derived from the single
  *  source of truth in `surfaceDefs.ts` — never a second hand-maintained list. Extension slots
@@ -256,23 +228,32 @@ export function NavRail({
     Icon: typeof Hash,
     onClick?: () => void,
     pinRef?: string,
+    index = 0,
   ) => {
     const selected = active === key;
     const iconColor = iconColorFor(key);
     return (
-      <SidebarMenuItem key={`${key}:${label}`} className="group/navitem relative">
+      <NavMenuMotionItem key={`${key}:${label}`} index={index} className="group/navitem relative">
+        {/* The sliding shared-element pill provides the active fill; the button drops its own active
+            background/ring (keeps only the accent text + weight) so the single pill glides between
+            items on navigation instead of the fill snapping on/off. */}
+        {selected && <NavActivePill />}
         <SidebarMenuButton
           aria-label={label}
           aria-current={selected ? "page" : undefined}
           isActive={selected}
           tooltip={label}
           onClick={onClick ?? (() => onSelect(key))}
+          className="relative bg-transparent shadow-none data-[active=true]:bg-transparent data-[active=true]:shadow-none"
         >
-          <Icon style={iconColor ? { color: iconColor } : undefined} />
+          <Icon
+            className="transition-transform duration-200 group-hover/navitem:scale-110"
+            style={iconColor ? { color: iconColor } : undefined}
+          />
           <span>{label}</span>
         </SidebarMenuButton>
         {pinRef !== undefined && pinToggle(pinRef)}
-      </SidebarMenuItem>
+      </NavMenuMotionItem>
     );
   };
 
@@ -281,22 +262,23 @@ export function NavRail({
   // is a named follow-up — the lens still SHOWS the entry). The item was already cap-stripped
   // server-side, so anything here is reachable. Route gates are untouched: this only hides, never
   // blocks.
-  const resolvedItem = (it: ResolvedNavItem, keyHint: string) => {
+  const resolvedItem = (it: ResolvedNavItem, keyHint: string, index = 0) => {
     if (it.kind === "surface" && it.surface) {
       const key = it.surface as Surface;
-      return item(key, it.label, SURFACE_DEF[it.surface as CoreSurface]?.icon ?? Hash, undefined, itemRef(it));
+      return item(key, it.label, SURFACE_DEF[it.surface as CoreSurface]?.icon ?? Hash, undefined, itemRef(it), index);
     }
     if (it.kind === "ext" && it.ext) {
       const key = `ext:${it.ext}` as Surface;
-      return item(key, it.label, Puzzle, undefined, itemRef(it));
+      return item(key, it.label, Puzzle, undefined, itemRef(it), index);
     }
     if (it.kind === "dashboard") {
       // Deep-board links land on the specific board, applying any pinned/template binding as `?var-`
       // (reusable-pages) — falling back to the plain Dashboards surface when no deep-link handler.
       const varKey = it.vars ? `:${JSON.stringify(it.vars)}` : "";
       return (
-        <SidebarMenuItem
+        <NavMenuMotionItem
           key={`dash:${keyHint}:${it.dashboard ?? it.label}${varKey}`}
+          index={index}
           className="group/navitem relative"
         >
           <SidebarMenuButton
@@ -313,7 +295,7 @@ export function NavRail({
           </SidebarMenuButton>
           {/* A vars-bound entry is a nav-authored page instance — not pinnable by ref in v1. */}
           {!it.vars && pinToggle(itemRef(it))}
-        </SidebarMenuItem>
+        </NavMenuMotionItem>
       );
     }
     return null;
@@ -329,7 +311,7 @@ export function NavRail({
           <SidebarMenu>
             {items
               .filter((it) => it.kind !== "group")
-              .map((it, i) => resolvedItem(it, String(i)))}
+              .map((it, i) => resolvedItem(it, String(i), i))}
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -340,7 +322,7 @@ export function NavRail({
             <SidebarGroupLabel>{grp.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {(grp.items ?? []).map((it, i) => resolvedItem(it, `${gi}-${i}`))}
+                {(grp.items ?? []).map((it, i) => resolvedItem(it, `${gi}-${i}`, i))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -358,7 +340,7 @@ export function NavRail({
     <SidebarGroup>
       <SidebarGroupLabel>Pinned</SidebarGroupLabel>
       <SidebarGroupContent>
-        <SidebarMenu>{pinned.map((it, i) => resolvedItem(it, `pin-${i}`))}</SidebarMenu>
+        <SidebarMenu>{pinned.map((it, i) => resolvedItem(it, `pin-${i}`, i))}</SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
   );
@@ -372,40 +354,18 @@ export function NavRail({
     <Sidebar variant={variant} side={side}>
       <SidebarHeader>
         {/* Header row: the workspace brand IS the collapse toggle (no separate trigger button). When
-            the collapsible mode allows it, clicking/Enter/Space on the logo toggles expand/collapse;
-            in "none" mode the same markup renders as a plain static brand. Icon mode centers it. */}
+            the collapsible mode allows it, the brand mark springs on hover/press and clicking toggles
+            expand/collapse; in "none" mode it renders as a plain static brand. Motion is gated by the
+            member's preference (BrandHeader → useMotionPref). Icon mode centers it. */}
         <div className="flex items-center group-data-[collapsible=icon]:justify-center">
           <SidebarMenu>
             <SidebarMenuItem>
-              {canToggle ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={toggleSidebar}
-                      aria-label={toggleLabel}
-                      className="flex w-full items-center gap-2 rounded-md p-2 text-left outline-none transition-[opacity,transform] hover:opacity-90 hover:brightness-110 focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.98] group-data-[collapsible=icon]:justify-center"
-                    >
-                      <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
-                      <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                        <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
-                        {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
-                      </div>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right" align="center">
-                    {toggleLabel}
-                  </TooltipContent>
-                </Tooltip>
-              ) : (
-                <div className="flex w-full items-center gap-2 p-2">
-                  <BrandMark siteAbbr={brand.siteAbbr} logoDataUri={brand.logoDataUri} iconDataUri={brand.iconDataUri} />
-                  <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold tracking-tight">{brand.siteName}</span>
-                    {brand.tagline && <span className="truncate text-xs text-muted">{brand.tagline}</span>}
-                  </div>
-                </div>
-              )}
+              <BrandHeader
+                brand={brand}
+                canToggle={canToggle}
+                onToggle={toggleSidebar}
+                toggleLabel={toggleLabel}
+              />
             </SidebarMenuItem>
           </SidebarMenu>
         </div>
@@ -435,9 +395,9 @@ export function NavRail({
                   <SidebarGroupLabel>{grp.label}</SidebarGroupLabel>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {visible.map((key) => {
+                      {visible.map((key, i) => {
                         const def = SURFACE_DEF[key];
-                        return item(key, def.label, def.icon, undefined, key);
+                        return item(key, def.label, def.icon, undefined, key, i);
                       })}
                     </SidebarMenu>
                   </SidebarGroupContent>
@@ -452,7 +412,7 @@ export function NavRail({
                   <SidebarMenu>
                     {extSlots
                       .filter((s) => !isHidden(`ext:${s.ext}`))
-                      .map((s) => item(`ext:${s.ext}`, s.label, Puzzle, undefined, `ext:${s.ext}`))}
+                      .map((s, i) => item(`ext:${s.ext}`, s.label, Puzzle, undefined, `ext:${s.ext}`, i))}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>

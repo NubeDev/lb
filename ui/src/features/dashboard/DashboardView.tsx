@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 
 import { AppPage } from "@/components/app/page";
+import { resolveIcon } from "@/lib/icons";
+import {
+  DashboardSettingsDialog,
+  DEFAULT_DASHBOARD_DESCRIPTION,
+} from "./DashboardSettingsDialog";
 import { AppEmptyState } from "@/components/app/empty-state";
 import { CollapsedRail } from "@/components/app/rail-collapsed";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +48,7 @@ import {
   ROW_W,
   ROW_H,
   type DashboardBundle,
+  type RowOptions,
 } from "@/lib/dashboard";
 import { cellToSpec } from "@/lib/panel";
 import { JsonPopout } from "@/components/app/json-popout";
@@ -115,6 +121,7 @@ function DashboardViewInner({
     if (range && range.d === id) onSearchChange?.({ ...range, d: undefined });
   };
   const [varEditorOpen, setVarEditorOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   // The export popout — view/copy/download the bundle JSON for the whole dashboard OR a single widget.
   // `null` = closed; otherwise the built bundle payload + a suggested filename.
@@ -212,6 +219,15 @@ function DashboardViewInner({
       current.cells.map((c) => (c.i === i ? { ...c, title } : c)),
     );
   };
+  const saveRowOptions = (i: string, options: RowOptions) => {
+    if (!current) return;
+    // Merge the three presentation flags into the row cell's `options` (preserving any others).
+    void dash.saveCells(
+      current.cells.map((c) =>
+        c.i === i ? { ...c, options: { ...c.options, ...options } } : c,
+      ),
+    );
+  };
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(window.location.href);
@@ -221,9 +237,13 @@ function DashboardViewInner({
   return (
     <AppPage
       label="dashboard view"
-      icon={LayoutGrid}
+      // The page icon + colour are page settings (dashboard page-settings): resolve the stored name
+      // (fallback to the shell default), tint the chip with the stored colour. A page with no settings
+      // reads exactly as before.
+      icon={resolveIcon(current?.icon) ?? LayoutGrid}
+      iconColor={current?.color || undefined}
       title={current?.title ?? "Dashboards"}
-      description="Live workspace dashboards and series widgets."
+      description={current?.description?.trim() || DEFAULT_DASHBOARD_DESCRIPTION}
       workspace={ws}
       error={dash.error}
       actions={
@@ -336,6 +356,18 @@ function DashboardViewInner({
                 </Button>
               )}
               {canEdit && (
+                <Button
+                  aria-label="page settings"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  title="Page settings — subtitle, icon, colour"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings2 size={13} />
+                </Button>
+              )}
+              {canEdit && (
                 // Quiet at rest — a solid red button in persistent chrome shouts on every visit; the
                 // destructive tone belongs to the confirm step (ConfirmDestructive), not the resting header.
                 <Button
@@ -375,6 +407,15 @@ function DashboardViewInner({
             onExpand={() => setRosterOpen(true)}
           />
         ))}
+
+      {current && canEdit && (
+        <DashboardSettingsDialog
+          dashboard={current}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          onSave={(meta) => void dash.saveMeta(meta)}
+        />
+      )}
 
       {current && confirmDelete && (
         <ConfirmDestructive
@@ -416,6 +457,7 @@ function DashboardViewInner({
             selected={selectedVars}
             onChange={setVar}
             refreshKey={refreshKey}
+            scope={scope}
           />
           <VariableEditor
             ws={ws}
@@ -477,6 +519,7 @@ function DashboardViewInner({
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onToggleRow={toggleRow}
                 onRenameRow={renameRow}
+                onRowOptions={saveRowOptions}
                 onRemove={(i) =>
                   // Removing a ROW deletes only the header (row-only, the least-destructive default —
                   // panel-rows scope, "Delete UX default"); its positional members stay and merge into

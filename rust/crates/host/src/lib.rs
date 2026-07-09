@@ -145,7 +145,8 @@ pub use channel_registry::{channel_create, channel_list, register_on_post, Chann
 pub use dashboard::{
     builtin_view_ids, call_dashboard_tool, catalog_descriptor, check_view_cells,
     dashboard_access_check, dashboard_catalog, dashboard_delete, dashboard_get, dashboard_list,
-    dashboard_pin, dashboard_save, dashboard_share, mint_cell_from_envelope, pin_descriptor,
+    dashboard_pin, dashboard_save, dashboard_save_meta, dashboard_share, mint_cell_from_envelope,
+    pin_descriptor,
     seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError, DashboardSummary,
     DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport, Source as CellSource,
     Target as CellTarget, Variable as DashboardVariable, Visibility as DashboardVisibility,

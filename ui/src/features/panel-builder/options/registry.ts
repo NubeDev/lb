@@ -12,11 +12,14 @@ import { TIMESERIES_VIZ_OPTIONS } from "./defs/timeseriesViz";
 import { TABLE_OPTIONS } from "./defs/table";
 import { SINGLE_STAT_OPTIONS } from "./defs/singleStat";
 import { INSIGHTS_OPTIONS } from "./defs/insights";
+import { ROW_OPTIONS } from "./defs/row";
+import { WEATHER_OPTIONS } from "./defs/weather";
 
 /** Views that carry NO fieldConfig — the universal standard field options (unit/decimals/thresholds…)
- *  are noise there and are excluded from their Options step. `insights` is a list widget, not a field
- *  render. Kept alongside the aggregation so a new fieldConfig-less view opts out in one place. */
-const NO_FIELDCONFIG_VIEWS: View[] = ["insights", "weather"];
+ *  are noise there and are excluded from their Options step. `insights` is a list widget, `row` is a
+ *  layout header — neither is a field render. Kept alongside the aggregation so a new fieldConfig-less
+ *  view opts out in one place. */
+const NO_FIELDCONFIG_VIEWS: View[] = ["insights", "weather", "row"];
 
 /** Every registered option, in tab/display order (standard first, then per-viz groups). The standard
  *  (universal) options are excluded from the fieldConfig-less views. */
@@ -27,6 +30,8 @@ export const OPTION_REGISTRY: OptionDef[] = [
   ...TABLE_OPTIONS,
   ...SINGLE_STAT_OPTIONS,
   ...INSIGHTS_OPTIONS,
+  ...ROW_OPTIONS,
+  ...WEATHER_OPTIONS,
 ];
 
 /** The storage path for an option (its explicit `path` or, by default, its `id`). */

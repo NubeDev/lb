@@ -45,6 +45,10 @@ export function cellTools(cell: Cell): string[] {
   if (cell.action?.tool) tools.add(cell.action.tool);
   // A read-only stat/gauge control may also read its own source; covered above. The series read sibling
   // of a watch source is added by the builder when it sets the source.
+  // The `weather` view is SELF-SOURCED from the fixed `weather.current` verb (usePanelData builds the
+  // call) — a weather cell carries no user-picked source, so add its tool to the bridge leash here or
+  // the read is refused before it runs. Matches the weather branch in usePanelData.
+  if (cell.view === "weather") tools.add("weather.current");
   return [...tools];
 }
 

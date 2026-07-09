@@ -68,7 +68,9 @@ fn handle_one(mut stream: TcpStream, body: &str) {
     let _ = stream.flush();
 }
 
-const CANNED_BODY: &str = r#"{"current":{"time":"2026-07-09T12:00","temperature_2m":21.4,"wind_speed_10m":11.2,"weather_code":3}}"#;
+// `time` is a UTC epoch (SECONDS) — the node asks Open-Meteo for `timeformat=unixtime`. 1783598400 =
+// 2026-07-09T12:00:00Z. The UI renders it in the viewer's browser timezone.
+const CANNED_BODY: &str = r#"{"current":{"time":1783598400,"temperature_2m":21.4,"wind_speed_10m":11.2,"weather_code":3}}"#;
 
 /// A guard that restores (or clears) the shared process-wide env var on drop, so tests running in
 /// the same binary (`cargo test` = one process) don't leak a stub base into a sibling test.
@@ -118,7 +120,7 @@ async fn current_reads_a_real_local_stub_shaped_like_open_meteo() {
     assert_eq!(out["temp_c"], 21.4);
     assert_eq!(out["wind_kph"], 11.2);
     assert_eq!(out["code"], 3);
-    assert_eq!(out["observed_ts"], "2026-07-09T12:00");
+    assert_eq!(out["observed_ts"], 1783598400); // UTC epoch seconds (2026-07-09T12:00:00Z)
     assert_eq!(out["location"], "-27.47,153.02");
 }
 

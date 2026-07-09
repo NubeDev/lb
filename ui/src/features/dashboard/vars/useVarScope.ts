@@ -45,7 +45,10 @@ export function useVarScope(
     const values: Record<string, string | string[]> = {};
     for (const v of variables) {
       if (selection[v.name] !== undefined) {
-        values[v.name] = selection[v.name];
+        const sel = selection[v.name];
+        // The `$__all` sentinel (a single-value includeAll pick): a custom `allValue` emits verbatim,
+        // otherwise the sentinel is left literal for the interpolator to expand at format time.
+        values[v.name] = sel === "$__all" && v.allValue ? v.allValue : sel;
       } else if (v.type === "const" && v.const) {
         values[v.name] = v.const;
       } else if (v.type === "text" && v.text) {

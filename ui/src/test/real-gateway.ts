@@ -27,8 +27,10 @@ let weatherStub: http.Server | null = null;
  *  A real local HTTP server, not a mocked client (CLAUDE §9) — the ONE sanctioned external fake-
  *  boundary, shared across the whole gateway suite since the spawned node is a single long-lived
  *  process (its env is fixed at spawn time, so this can't vary per test). */
+// `time` is a UTC epoch (SECONDS) — the node requests `timeformat=unixtime`. 1783598400 =
+// 2026-07-09T12:00:00Z (the UI renders it in the viewer's browser timezone).
 const WEATHER_STUB_BODY = JSON.stringify({
-  current: { time: "2026-07-09T12:00", temperature_2m: 21.4, wind_speed_10m: 11.2, weather_code: 3 },
+  current: { time: 1783598400, temperature_2m: 21.4, wind_speed_10m: 11.2, weather_code: 3 },
 });
 
 /** Serve the canned weather body on an ephemeral loopback port; returns its base URL. */

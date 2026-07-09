@@ -1,12 +1,11 @@
 // The variable editor (widget-config-vars Slice 2) — add / edit / reorder dashboard variables in a
-// settings drawer. Each variable has a type, name, label, and a type-specific value source: a `query`/
-// `source` variable picks its resolver via the source picker (the same friendly-label picker the widget
-// builder uses — the author never types a tool name); `custom`/`interval` carry a comma list; `text`/
-// `const` a single value. Saving writes the DEFINITIONS to the record via `saveVariables` (the selection
-// stays in the URL). Gated on the edit cap by the opener.
+// settings drawer. Adding starts at the friendly TYPE PICKER (Grafana-parity); each variable is then a
+// SECTIONED row (`VariableRow`) — collapsed to a summary line by default, expanded one at a time into
+// General / Values / Selection / Advanced sections. Saving writes the DEFINITIONS to the record via
+// `saveVariables` (the selection stays in the URL). Gated on the edit cap by the opener.
 
 import { useState } from "react";
-import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { Plus } from "lucide-react";
 
 import {
   Sheet,
@@ -18,12 +17,30 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Variable, VariableType } from "@/lib/vars";
 import { useSourcePicker } from "../builder/useSourcePicker";
-import { PickerGroup, READ_SOURCE_GROUPS, type SourceEntry } from "../builder/sourcePicker";
+import { VariableTypePicker } from "./VariableTypePicker";
+import { VariableRow } from "./VariableRow";
 
-const FIELD =
-  "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
+/** The fixed resolver tool a `datasource` variable resolves against (advanced-variables scope). */
+const DATASOURCE_TOOL = "datasource.list";
 
-const TYPES: VariableType[] = ["query", "custom", "text", "const", "interval", "source"];
+/** A fresh variable of `type` with the right empty value shape (the `datasource` type carries its fixed
+ *  resolver so it resolves through the one `{tool,args}` path like any query variable). `name` is a
+ *  deterministic default the author renames inline. */
+function newVariable(type: VariableType, name: string): Variable {
+  const base: Variable = { name, type };
+  if (type === "custom") return { ...base, custom: [] };
+  if (type === "interval") return { ...base, interval: [] };
+  if (type === "datasource") return { ...base, query: { tool: DATASOURCE_TOOL } };
+  return base;
+}
+
+/** A `varN` name not already taken by a draft variable (so two quick adds don't collide). */
+function uniqueName(draft: Variable[]): string {
+  const taken = new Set(draft.map((v) => v.name));
+  let n = draft.length + 1;
+  while (taken.has(`var${n}`)) n += 1;
+  return `var${n}`;
+}
 
 interface Props {
   ws: string;
@@ -36,26 +53,43 @@ interface Props {
 export function VariableEditor({ ws, variables, open, onOpenChange, onSave }: Props) {
   const { entries } = useSourcePicker(ws);
   const [draft, setDraft] = useState<Variable[]>(variables);
+  // The "choose a type" step (Grafana-parity): shown for the first variable (empty state) and whenever
+  // the author adds another. Picking a type creates the variable and returns to the list.
+  const [picking, setPicking] = useState(false);
+  // Which row is expanded (index) — one at a time, so the panel scans; -1 = all collapsed.
+  const [expanded, setExpanded] = useState(0);
 
   // Re-seed the draft whenever the editor opens (so it reflects the current record, not a stale draft).
   const [wasOpen, setWasOpen] = useState(false);
   if (open && !wasOpen) {
     setDraft(variables);
+    setPicking(false);
+    setExpanded(variables.length ? 0 : -1);
     setWasOpen(true);
   }
   if (!open && wasOpen) setWasOpen(false);
 
   const update = (i: number, patch: Partial<Variable>) =>
     setDraft((d) => d.map((v, j) => (j === i ? { ...v, ...patch } : v)));
-  const add = () =>
-    setDraft((d) => [...d, { name: `var${d.length + 1}`, type: "custom", custom: [] }]);
-  const remove = (i: number) => setDraft((d) => d.filter((_, j) => j !== i));
+  /** Create a variable of the picked type (a unique default name), expand it, and leave the picker. */
+  const addOfType = (type: VariableType) => {
+    setDraft((d) => {
+      setExpanded(d.length); // expand the newly appended row
+      return [...d, newVariable(type, uniqueName(d))];
+    });
+    setPicking(false);
+  };
+  const remove = (i: number) => {
+    setDraft((d) => d.filter((_, j) => j !== i));
+    setExpanded((e) => (e === i ? -1 : e > i ? e - 1 : e));
+  };
   const move = (i: number, dir: -1 | 1) =>
     setDraft((d) => {
       const j = i + dir;
       if (j < 0 || j >= d.length) return d;
       const next = [...d];
       [next[i], next[j]] = [next[j], next[i]];
+      setExpanded((e) => (e === i ? j : e === j ? i : e));
       return next;
     });
 
@@ -64,6 +98,8 @@ export function VariableEditor({ ws, variables, open, onOpenChange, onSave }: Pr
     onOpenChange(false);
   };
 
+  const showPicker = picking || draft.length === 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg" aria-label="variable editor">
@@ -71,234 +107,41 @@ export function VariableEditor({ ws, variables, open, onOpenChange, onSave }: Pr
           <SheetTitle>Dashboard variables</SheetTitle>
           <SheetDescription>Define variables once; reference them as $name across the dashboard.</SheetDescription>
         </SheetHeader>
-        <div className="flex flex-col gap-3 px-4 pb-4 text-xs">
-          {draft.map((v, i) => (
-            <VariableRow
-              key={i}
-              variable={v}
-              entries={entries}
-              onChange={(patch) => update(i, patch)}
-              onRemove={() => remove(i)}
-              onMoveUp={() => move(i, -1)}
-              onMoveDown={() => move(i, 1)}
+        <div className="flex flex-col gap-3 px-4 pb-6">
+          {showPicker ? (
+            <VariableTypePicker
+              onPick={addOfType}
+              onCancel={picking && draft.length > 0 ? () => setPicking(false) : undefined}
             />
-          ))}
-          <div className="flex items-center gap-2">
-            <Button aria-label="add variable" size="sm" variant="outline" onClick={add}>
-              <Plus size={12} /> Add variable
-            </Button>
-            <Button aria-label="save variables" size="sm" className="ml-auto" onClick={save}>
-              Save variables
-            </Button>
-          </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                {draft.map((v, i) => (
+                  <VariableRow
+                    key={i}
+                    variable={v}
+                    entries={entries}
+                    expanded={expanded === i}
+                    onToggle={() => setExpanded((e) => (e === i ? -1 : i))}
+                    onChange={(patch) => update(i, patch)}
+                    onRemove={() => remove(i)}
+                    onMoveUp={() => move(i, -1)}
+                    onMoveDown={() => move(i, 1)}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Button aria-label="add variable" size="sm" variant="outline" onClick={() => setPicking(true)}>
+                  <Plus size={13} /> Add variable
+                </Button>
+                <Button aria-label="save variables" size="sm" className="ml-auto" onClick={save}>
+                  Save variables
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-// A comma-list input that keeps the raw typed text locally (so a mid-typed comma isn't eaten by a
-// live split/re-join), emitting the parsed list on every change. Re-seeds when the values change shape.
-function ListField({
-  label,
-  placeholder,
-  values,
-  onChange,
-}: {
-  label: string;
-  placeholder: string;
-  values: string[];
-  onChange: (values: string[]) => void;
-}) {
-  const [text, setText] = useState(values.join(", "));
-  return (
-    /* eslint-disable-next-line no-restricted-syntax -- token-bound native input */
-    <input
-      aria-label={label}
-      className={`${FIELD} w-64`}
-      placeholder={placeholder}
-      value={text}
-      onChange={(e) => {
-        setText(e.target.value);
-        onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean));
-      }}
-    />
-  );
-}
-
-function VariableRow({
-  variable,
-  entries,
-  onChange,
-  onRemove,
-  onMoveUp,
-  onMoveDown,
-}: {
-  variable: Variable;
-  entries: SourceEntry[];
-  onChange: (patch: Partial<Variable>) => void;
-  onRemove: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-}) {
-  const isQuery = variable.type === "query" || variable.type === "source";
-  // Only READ sources can resolve a variable: source-bearing, non-write entries (excludes flow input
-  // ports + the action group). Grouped for display by the package's canonical group list below.
-  const queryEntries = entries.filter((e) => e.source && !e.writes);
-  // The current query entry id (match the picker entry whose source.tool/args equals the variable's).
-  const selectedEntryId =
-    entries.find(
-      (e) => e.source?.tool === variable.query?.tool && (variable.type === "source" ? e.group === "extension" || e.group === "series" : true),
-    )?.id ?? "";
-
-  return (
-    <div className="rounded-md border border-border bg-bg/50 p-2" aria-label={`variable row ${variable.name}`}>
-      <div className="flex flex-wrap items-center gap-2">
-        {/* eslint-disable-next-line no-restricted-syntax -- token-bound native input; no shadcn Input variant */}
-        <input
-          aria-label="variable name"
-          className={`${FIELD} w-28`}
-          placeholder="name"
-          value={variable.name}
-          onChange={(e) => onChange({ name: e.target.value.replace(/[^\w.]/g, "") })}
-        />
-        {/* eslint-disable-next-line no-restricted-syntax -- token-bound native input */}
-        <input
-          aria-label="variable label"
-          className={`${FIELD} w-28`}
-          placeholder="label"
-          value={variable.label ?? ""}
-          onChange={(e) => onChange({ label: e.target.value })}
-        />
-        {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; token-bound */}
-        <select
-          aria-label="variable type"
-          className={FIELD}
-          value={variable.type}
-          onChange={(e) => onChange({ type: e.target.value as VariableType })}
-        >
-          {TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-        <button aria-label="move variable up" className="icon-button" onClick={onMoveUp}>
-          <ArrowUp size={12} />
-        </button>
-        <button aria-label="move variable down" className="icon-button" onClick={onMoveDown}>
-          <ArrowDown size={12} />
-        </button>
-        <button
-          aria-label="remove variable"
-          className="rounded-md p-1 text-muted hover:bg-red-500/10 hover:text-red-500"
-          onClick={onRemove}
-        >
-          <Trash2 size={12} />
-        </button>
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {/* reusable-pages: mark this variable a page PARAMETER. A required var left unbound makes the
-            dashboard render the "select a <label>" gate — this is what makes it a template. */}
-        <label
-          className="flex items-center gap-1.5 text-[11px] text-muted"
-          title="A required variable must be picked before the page loads (template page parameter)."
-        >
-          {/* eslint-disable-next-line no-restricted-syntax -- token-bound native checkbox */}
-          <input
-            aria-label="variable required page parameter"
-            type="checkbox"
-            className="h-3.5 w-3.5 rounded-md border-border accent-accent"
-            checked={!!variable.required}
-            onChange={(e) => onChange({ required: e.target.checked })}
-          />
-          required (page parameter)
-        </label>
-        {isQuery && (
-          /* eslint-disable-next-line no-restricted-syntax -- token-bound native select; the friendly source picker */
-          <select
-            aria-label="variable query source"
-            className={`${FIELD} w-64`}
-            value={selectedEntryId}
-            onChange={(e) => {
-              const entry = entries.find((x) => x.id === e.target.value);
-              if (entry?.source) onChange({ query: { tool: entry.source.tool, args: entry.source.args } });
-            }}
-          >
-            <option value="">— pick a source —</option>
-            {/* A variable resolver must be a READ source — pre-filter to source-bearing, non-write entries
-                (drops flow INPUT ports, which write and have no source), then group by the package's ONE
-                label list so the grouping/labelling matches the widget builder + Query tab exactly. */}
-            {READ_SOURCE_GROUPS.map(({ group, label }) => (
-              <PickerGroup
-                key={group}
-                entries={queryEntries}
-                group={group}
-                label={label}
-              />
-            ))}
-          </select>
-        )}
-        {variable.type === "custom" && (
-          <ListField
-            label="variable custom values"
-            placeholder="prod, staging, dev (comma-separated)"
-            values={variable.custom ?? []}
-            onChange={(custom) => onChange({ custom })}
-          />
-        )}
-        {variable.type === "interval" && (
-          <ListField
-            label="variable interval values"
-            placeholder="1m, 5m, 1h (comma-separated)"
-            values={variable.interval ?? []}
-            onChange={(interval) => onChange({ interval })}
-          />
-        )}
-        {variable.type === "text" && (
-          /* eslint-disable-next-line no-restricted-syntax -- token-bound native input */
-          <input
-            aria-label="variable text default"
-            className={`${FIELD} w-64`}
-            placeholder="default text"
-            value={variable.text ?? ""}
-            onChange={(e) => onChange({ text: e.target.value })}
-          />
-        )}
-        {variable.type === "const" && (
-          /* eslint-disable-next-line no-restricted-syntax -- token-bound native input */
-          <input
-            aria-label="variable const value"
-            className={`${FIELD} w-64`}
-            placeholder="fixed value"
-            value={variable.const ?? ""}
-            onChange={(e) => onChange({ const: e.target.value })}
-          />
-        )}
-        {isQuery && (
-          <>
-            <label className="flex items-center gap-1 text-muted">
-              <input
-                aria-label="variable multi"
-                type="checkbox"
-                checked={!!variable.multi}
-                onChange={(e) => onChange({ multi: e.target.checked })}
-              />
-              multi
-            </label>
-            <label className="flex items-center gap-1 text-muted">
-              <input
-                aria-label="variable include all"
-                type="checkbox"
-                checked={!!variable.includeAll}
-                onChange={(e) => onChange({ includeAll: e.target.checked })}
-              />
-              include all
-            </label>
-          </>
-        )}
-      </div>
-    </div>
   );
 }

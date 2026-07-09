@@ -32,6 +32,9 @@ pub fn save_descriptor() -> ToolDescriptor {
             "properties": {
                 "id": { "type": "string", "x-lb": { "label": "Dashboard id", "description": "Fresh id creates; existing id updates (owner-only)" } },
                 "title": { "type": "string", "x-lb": { "label": "Title" } },
+                "description": { "type": "string", "x-lb": { "label": "Description", "description": "Optional one-line subtitle for the page (omit to keep the existing one)" } },
+                "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
+                "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
                 "cells": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Cells", "description": "A JSON ARRAY of cell objects (never a JSON-encoded string). Each cell: { i, x, y, w, h, view, title?, sources?, options?, fieldConfig? } — view names come from dashboard.catalog; read an existing dashboard with dashboard.get for a template" } },
                 "variables": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Variables", "description": "Optional dashboard variables (omit if none)" } },
                 "now": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "Logical time of the save — unix epoch seconds" } }
@@ -52,6 +55,34 @@ pub async fn dashboard_save(
     ws: &str,
     id: &str,
     title: &str,
+    cells: Vec<Cell>,
+    variables: Vec<Variable>,
+    now: u64,
+) -> Result<Dashboard, DashboardError> {
+    // The common case (layout + variable saves): touch no page-settings field — every one is
+    // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
+    // `dashboard_save_meta` directly.
+    dashboard_save_meta(
+        store, principal, ws, id, title, None, None, None, cells, variables, now,
+    )
+    .await
+}
+
+/// `dashboard.save` with the page-presentation fields (dashboard page-settings). `description`/`icon`/
+/// `color` are each `None` = preserve the stored value across the save (the same preserve-on-omit
+/// discipline `visibility` uses, so a layout/variable save never blanks the page chrome), `Some` = set
+/// it. On create, `None` means empty. This is the full form; [`dashboard_save`] is the presentation-
+/// preserving wrapper every layout/variable caller uses.
+#[allow(clippy::too_many_arguments)]
+pub async fn dashboard_save_meta(
+    store: &Store,
+    principal: &Principal,
+    ws: &str,
+    id: &str,
+    title: &str,
+    description: Option<String>,
+    icon: Option<String>,
+    color: Option<String>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
@@ -94,19 +125,36 @@ pub async fn dashboard_save(
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
-    let (owner, visibility) = match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
-        Some(existing) => {
-            if existing.owner != principal.owner_sub() {
-                return Err(DashboardError::Denied);
+    let (owner, visibility, prev_desc, prev_icon, prev_color) =
+        match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
+            Some(existing) => {
+                if existing.owner != principal.owner_sub() {
+                    return Err(DashboardError::Denied);
+                }
+                (
+                    existing.owner,
+                    existing.visibility,
+                    existing.description,
+                    existing.icon,
+                    existing.color,
+                )
             }
-            (existing.owner, existing.visibility)
-        }
-        None => (principal.owner_sub().to_string(), Visibility::Private),
-    };
+            None => (
+                principal.owner_sub().to_string(),
+                Visibility::Private,
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
+        };
 
     let dashboard = Dashboard {
         id: id.to_string(),
         title: title.to_string(),
+        // Preserve on omit (None), set on Some — page presentation never gets blanked by a layout save.
+        description: description.unwrap_or(prev_desc),
+        icon: icon.unwrap_or(prev_icon),
+        color: color.unwrap_or(prev_color),
         owner,
         visibility,
         cells,

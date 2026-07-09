@@ -1,0 +1,34 @@
+# grafana-conv — the standalone Grafana → our-dashboard JSON converter.
+#
+# This is a **deliberately separate Cargo workspace** from `rust/` (per the
+# grafana-conversion scope, "How it fits the core"). The standalone shape is what
+# lets the conversion be proven against real exports with zero core surface: no
+# token, no workspace, no cap, no store, no bus. Folding the mapper into the host
+# behind a real `dashboard.import` verb is Stage 2 (viz/import-export-scope.md),
+# at which point the vendored `model.rs` mirror is deleted and the crate depends
+# on the host type directly — a wiring job, not a re-map.
+#
+# Layout:
+#   mapper/ — the pure `grafana_json → (Dashboard, ConversionReport)` crate.
+#   app/    — the thin Rust seam: an Axum `POST /convert` server (browser build).
+#             A Tauri command wrapper for desktop is added later.
+#   ui/     — the one-screen shadcn UI (drop/paste input → output + report).
+[workspace]
+resolver = "2"
+members = ["mapper", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+thiserror = "2"
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt"] }

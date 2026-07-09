@@ -51,6 +51,15 @@ pub async fn get_dashboard(
 pub struct SaveDashboard {
     pub id: String,
     pub title: String,
+    /// Page-presentation settings (dashboard page-settings) — each additive & OPTIONAL. An absent key
+    /// is `None` = preserve the stored value (so a plain layout/variable save never blanks the page
+    /// chrome); a present key sets it. Only the settings dialog sends these.
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub color: Option<String>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -68,12 +77,15 @@ pub async fn save_dashboard(
     let p = authenticate(&gw, &headers)
         .await
         .map_err(|e| e.into_response())?;
-    let d = lb_host::dashboard_save(
+    let d = lb_host::dashboard_save_meta(
         &gw.node.store,
         &p,
         p.ws(),
         &body.id,
         &body.title,
+        body.description,
+        body.icon,
+        body.color,
         body.cells,
         body.variables,
         gw.now(),

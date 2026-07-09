@@ -134,6 +134,14 @@ because existing session docs point at them; new dashboard notes should live her
     wider format hints — additive fields on the one `Variable`, no per-type code path, no new verb). The
     actual JSON in/out stays the existing [`viz/import-export-scope.md`](viz/import-export-scope.md) mapper,
     which these slices make rich enough to map a real page 1:1 instead of degrading it.
+3q. [`page-settings-scope.md`](page-settings-scope.md) — **SHIPPED (2026-07-09)** — **per-page presentation
+    settings**: a dashboard page gains an **icon**, an icon **colour**, and a one-line **description**
+    (the header blurb becomes that description's default). Three additive, host-opaque fields on the
+    `dashboard` record + `DashboardSummary`, written through the existing `dashboard.save` with the same
+    **preserve-on-omit** discipline `visibility` uses (a layout save never blanks the page chrome) — a
+    `dashboard_save_meta` full-form + a preserving `dashboard_save` wrapper, **zero new verbs**. A header
+    **Page settings** dialog (edit-cap gated) reuses the shared `ui/src/lib/icons` picker; the roster +
+    header paint the icon/colour; export/import carries it.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 

@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 
 interface AppPageHeaderProps {
   icon: LucideIcon;
+  /** Optional accent colour for the icon chip (any CSS colour). Omitted ⇒ the shell accent tokens. */
+  iconColor?: string;
   title: string;
   description?: string;
   workspace?: string;
@@ -29,6 +31,7 @@ function WorkspaceBadge({ workspace }: { workspace: string }) {
 
 function AppPageHeader({
   icon: Icon,
+  iconColor,
   title,
   description,
   workspace,
@@ -63,12 +66,25 @@ function AppPageHeader({
         }}
       />
       <div
-        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-accent"
-        style={{
-          borderColor: "hsl(var(--accent) / 0.25)",
-          background:
-            "linear-gradient(135deg, hsl(var(--accent) / 0.16), hsl(var(--accent-2) / 0.10))",
-        }}
+        className={cn(
+          "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border",
+          !iconColor && "text-accent",
+        )}
+        style={
+          iconColor
+            ? {
+                // A themed page (e.g. a dashboard's page settings): tint the chip with the chosen
+                // colour instead of the shell accent tokens.
+                color: iconColor,
+                borderColor: `${iconColor}40`,
+                background: `linear-gradient(135deg, ${iconColor}29, ${iconColor}14)`,
+              }
+            : {
+                borderColor: "hsl(var(--accent) / 0.25)",
+                background:
+                  "linear-gradient(135deg, hsl(var(--accent) / 0.16), hsl(var(--accent-2) / 0.10))",
+              }
+        }
       >
         <Icon size={16} />
       </div>

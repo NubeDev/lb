@@ -5,8 +5,20 @@
 // writes changes up via `onChange` (the parent maps to `withVar` + a router navigate). Definitions on
 // the record; selection in the URL (per-viewer, shareable).
 
-import type { Variable } from "@/lib/vars";
+import type { Variable, VarScope } from "@/lib/vars";
+import { Icon } from "@/lib/icons";
 import { useVariableOptions } from "./useVariableOptions";
+
+/** The bar-side label for a variable: an optional icon + the (possibly hidden) label text. */
+function VariableLabel({ icon, text }: { icon?: string; text: string }) {
+  if (!icon && !text) return null;
+  return (
+    <span className="flex items-center gap-1 text-muted">
+      {icon && <Icon name={icon} className="size-3.5 shrink-0" aria-hidden />}
+      {text && <span>{text}</span>}
+    </span>
+  );
+}
 
 interface Props {
   variables: Variable[];
@@ -16,14 +28,17 @@ interface Props {
   onChange: (name: string, value: string | string[] | undefined) => void;
   /** Bumped by auto-refresh (Slice 4) to re-resolve query variables. */
   refreshKey?: number;
+  /** The resolved scope — interpolated into a dependent variable's resolver args (chained resolution). */
+  scope?: VarScope;
 }
 
 const FIELD =
   "h-8 rounded-md border border-border bg-bg px-2.5 text-xs text-fg focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20";
 
-export function VariableBar({ variables, selected, onChange, refreshKey = 0 }: Props) {
-  // `const` variables carry no control (hidden fixed value); everything else gets a labelled control.
-  const visible = variables.filter((v) => v.type !== "const");
+export function VariableBar({ variables, selected, onChange, refreshKey = 0, scope }: Props) {
+  // `const` variables carry no control (hidden fixed value); `hide:hideVariable` is hidden too. Everything
+  // else gets a labelled control (a `hideLabel` variable shows only its control).
+  const visible = variables.filter((v) => v.type !== "const" && v.hide !== "hideVariable");
   if (visible.length === 0) return null;
 
   return (
@@ -38,6 +53,7 @@ export function VariableBar({ variables, selected, onChange, refreshKey = 0 }: P
           value={selected[v.name]}
           onChange={(val) => onChange(v.name, val)}
           refreshKey={refreshKey}
+          scope={scope}
         />
       ))}
     </div>
@@ -49,19 +65,23 @@ function VariableControl({
   value,
   onChange,
   refreshKey,
+  scope,
 }: {
   variable: Variable;
   value: string | string[] | undefined;
   onChange: (value: string | string[] | undefined) => void;
   refreshKey: number;
+  scope?: VarScope;
 }) {
   const label = variable.label?.trim() || variable.name;
+  // `hide:hideLabel` shows the control without its label text (Grafana parity).
+  const labelText = variable.hide === "hideLabel" ? "" : label;
 
   // A text variable is a free input (no option list).
   if (variable.type === "text") {
     return (
       <label className="flex items-center gap-1.5">
-        <span className="text-muted">{label}</span>
+        <VariableLabel icon={variable.icon} text={labelText} />
         {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Input variant here; token-bound */}
         <input
           aria-label={`variable ${variable.name}`}
@@ -73,7 +93,16 @@ function VariableControl({
     );
   }
 
-  return <SelectControl variable={variable} label={label} value={value} onChange={onChange} refreshKey={refreshKey} />;
+  return (
+    <SelectControl
+      variable={variable}
+      label={labelText}
+      value={value}
+      onChange={onChange}
+      refreshKey={refreshKey}
+      scope={scope}
+    />
+  );
 }
 
 const ALL_VALUE = "$__all";
@@ -84,20 +113,25 @@ function SelectControl({
   value,
   onChange,
   refreshKey,
+  scope,
 }: {
   variable: Variable;
   label: string;
   value: string | string[] | undefined;
   onChange: (value: string | string[] | undefined) => void;
   refreshKey: number;
+  scope?: VarScope;
 }) {
-  const { options, loading, denied } = useVariableOptions(variable, refreshKey);
+  const { options, loading, denied } = useVariableOptions(variable, refreshKey, scope);
   const current = Array.isArray(value) ? value : value !== undefined ? [value] : [];
 
   const onSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const picked = Array.from(e.target.selectedOptions, (o) => o.value);
     if (picked.includes(ALL_VALUE)) {
-      onChange(variable.multi ? options.map((o) => o.value) : ALL_VALUE);
+      // A custom `allValue` (e.g. `.*`) is emitted verbatim instead of expanding every option; otherwise
+      // a multi variable expands to every value, a single one carries the `$__all` sentinel.
+      if (variable.allValue) onChange(variable.allValue);
+      else onChange(variable.multi ? options.map((o) => o.value) : ALL_VALUE);
       return;
     }
     if (variable.multi) onChange(picked.length ? picked : undefined);
@@ -106,7 +140,7 @@ function SelectControl({
 
   return (
     <label className="flex items-center gap-1.5">
-      <span className="text-muted">{label}</span>
+      <VariableLabel icon={variable.icon} text={label} />
       {/* eslint-disable-next-line no-restricted-syntax -- no shadcn Select primitive; token-bound native */}
       <select
         aria-label={`variable ${variable.name}`}

@@ -268,7 +268,9 @@
       "data": false,
       "action": false,
       "options": [
-        { "id": "collapsed", "label": "Collapsed", "scope": "options", "path": "collapsed", "control": "toggle" }
+        { "id": "showCount", "label": "Show panel count", "scope": "options", "path": "showCount", "control": "toggle" },
+        { "id": "showLine", "label": "Show divider line", "scope": "options", "path": "showLine", "control": "toggle" },
+        { "id": "collapsed", "label": "Collapsed by default", "scope": "options", "path": "collapsed", "control": "toggle" }
       ]
     }
   ]

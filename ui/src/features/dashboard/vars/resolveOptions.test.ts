@@ -35,26 +35,35 @@ describe("isQueryVariable", () => {
   });
 });
 
-describe("rowsToOptions — shapes our read tools return", () => {
+describe("rowsToOptions — shapes our read tools return ({text,value})", () => {
   it("{ rows: [{name}] } (store.query / series.find)", () => {
     expect(rowsToOptions({ rows: [{ name: "web01" }, { name: "web02" }] })).toEqual([
-      { value: "web01", label: "web01" },
-      { value: "web02", label: "web02" },
+      { text: "web01", value: "web01" },
+      { text: "web02", value: "web02" },
     ]);
   });
   it("a bare array of strings", () => {
     expect(rowsToOptions(["a", "b"])).toEqual([
-      { value: "a", label: "a" },
-      { value: "b", label: "b" },
+      { text: "a", value: "a" },
+      { text: "b", value: "b" },
     ]);
   });
-  it("falls back to the first scalar column", () => {
-    expect(rowsToOptions({ rows: [{ ts: 1, host: "web01" }] })).toEqual([
-      { value: "1", label: "1" },
+  it("extracts the `series` array (series.find / series.list shape)", () => {
+    expect(rowsToOptions({ series: ["series:a", "series:b"] })).toEqual([
+      { text: "series:a", value: "series:a" },
+      { text: "series:b", value: "series:b" },
     ]);
+  });
+  it("honors the __text/__value convention (text ≠ value)", () => {
+    expect(rowsToOptions({ rows: [{ __text: "West", __value: "WST" }] })).toEqual([
+      { text: "West", value: "WST" },
+    ]);
+  });
+  it("falls back to the first scalar column for the value", () => {
+    expect(rowsToOptions({ rows: [{ ts: 1, host: "web01" }] })).toEqual([{ text: "1", value: "1" }]);
   });
   it("dedupes + drops empties, never throws on a bad shape", () => {
-    expect(rowsToOptions({ rows: ["a", "a", "", { name: "a" }] })).toEqual([{ value: "a", label: "a" }]);
+    expect(rowsToOptions({ rows: ["a", "a", "", { name: "a" }] })).toEqual([{ text: "a", value: "a" }]);
     expect(rowsToOptions(null)).toEqual([]);
     expect(rowsToOptions(42)).toEqual([]);
   });

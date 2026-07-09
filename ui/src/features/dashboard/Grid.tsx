@@ -33,6 +33,8 @@ interface Props {
   onToggleRow?: (i: string) => void;
   /** Rename a row cell inline (panel-rows). Omitted ⇒ read-only row title. */
   onRenameRow?: (i: string, title: string) => void;
+  /** Persist a row cell's presentation options from the popout (panel-rows). Omitted ⇒ no options gear. */
+  onRowOptions?: (i: string, options: import("@/lib/dashboard").RowOptions) => void;
   /** Edit this panel in the stepped wizard (navigates to `…/new-panel?cell=<i>`, EDIT mode). Called
    *  with the cell key. Omitted ⇒ no button. */
   onEditPanel?: (i: string) => void;
@@ -61,6 +63,7 @@ export function Grid({
   onDuplicate,
   onToggleRow,
   onRenameRow,
+  onRowOptions,
   onEditPanel,
   onExportCell,
   installed,
@@ -177,6 +180,7 @@ export function Grid({
                 onToggleCollapse={(i) => onToggleRow?.(i)}
                 onRename={onRenameRow}
                 onRemove={onRemove}
+                onOptions={onRowOptions}
               />
             </div>
           ) : (

@@ -33,6 +33,10 @@ export const BUNDLE_EXT = ".lbdash.json";
 export interface PortableDashboard {
   id: string;
   title: string;
+  /** Page-settings presentation (dashboard page-settings) — carried for export/import fidelity. */
+  description?: string;
+  icon?: string;
+  color?: string;
   cells: Cell[];
   variables?: Variable[];
   /** OUR panel-model doc version, carried for round-trip fidelity (never Grafana's schemaVersion). */
@@ -68,6 +72,9 @@ export function dashboardToPortable(d: Dashboard): PortableDashboard {
   return {
     id: bareId(d.id),
     title: d.title,
+    description: d.description || undefined,
+    icon: d.icon || undefined,
+    color: d.color || undefined,
     cells: d.cells,
     variables: d.variables && d.variables.length > 0 ? d.variables : undefined,
     schemaVersion: d.schemaVersion,
@@ -214,6 +221,9 @@ function validateDashboardEntry(
   return {
     id: id || slugFromTitle(title),
     title: title || id,
+    description: typeof d.description === "string" ? d.description : undefined,
+    icon: typeof d.icon === "string" ? d.icon : undefined,
+    color: typeof d.color === "string" ? d.color : undefined,
     cells,
     variables: variables && variables.length ? variables : undefined,
     schemaVersion:

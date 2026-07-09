@@ -12,19 +12,25 @@
 // `noun` seeds every aria-label ("select dashboard …", "new flow title", …) so tests and screen
 // readers speak the surface's own vocabulary. One component per file (FILE-LAYOUT).
 
-import { useState, type ComponentType } from "react";
+import { useState, type ComponentType, type CSSProperties } from "react";
 import { Check, PanelLeftClose, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { AppRail } from "@/components/app/rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { resolveIcon } from "@/lib/icons/resolve";
 
 export interface RosterItem {
   id: string;
   title: string;
   /** Small trailing caption (e.g. a visibility tier, a version tag). Omit for none. */
   badge?: string;
+  /** Optional per-item leading icon name (resolved via `@/lib/icons`) — overrides the rail's shared
+   *  `icon` for this row when set (e.g. a dashboard's page-settings icon). Omit ⇒ the shared icon. */
+  icon?: string;
+  /** Optional accent colour for this row's icon (any CSS colour). Omit ⇒ the default muted/accent tint. */
+  iconColor?: string;
 }
 
 interface RosterRailProps<T extends RosterItem> {
@@ -34,7 +40,11 @@ interface RosterRailProps<T extends RosterItem> {
   selectedId: string | null;
   onSelect: (id: string) => void;
   /** Per-item leading icon. */
-  icon: ComponentType<{ size?: number | string; className?: string }>;
+  icon: ComponentType<{
+    size?: number | string;
+    className?: string;
+    style?: CSSProperties;
+  }>;
   /** Empty-roster copy. Defaults to "No {noun}s yet." */
   emptyText?: string;
   /** Inline-create: wiring this grows the header field + button. Receives the trimmed title. */
@@ -181,7 +191,21 @@ export function RosterRail<T extends RosterItem>({
                     : "text-fg/90 hover:bg-fg/[0.06] hover:text-fg",
                 )}
               >
-                <Icon size={14} className={cn("shrink-0", active ? "" : "text-muted")} />
+                {(() => {
+                  // Per-item icon override (e.g. a dashboard's page-settings icon) falls back to the
+                  // rail's shared icon; a per-item colour tints it, else the default muted/accent.
+                  const RowIcon = resolveIcon(item.icon) ?? Icon;
+                  return (
+                    <RowIcon
+                      size={14}
+                      className={cn(
+                        "shrink-0",
+                        item.iconColor ? "" : active ? "" : "text-muted",
+                      )}
+                      style={item.iconColor ? { color: item.iconColor } : undefined}
+                    />
+                  );
+                })()}
                 <span className="min-w-0 flex-1 truncate">{item.title}</span>
                 {item.badge && (
                   <span className="shrink-0 text-[10px] font-medium text-muted/80">{item.badge}</span>

@@ -101,6 +101,8 @@ export function useDashboardIo(): DashboardIo {
               d.title,
               d.cells,
               d.variables ?? [],
+              // Carry the page-settings presentation on import (dashboard page-settings).
+              { description: d.description, icon: d.icon, color: d.color },
             );
             outcome.dashboards.push({
               id: bare(saved.id),

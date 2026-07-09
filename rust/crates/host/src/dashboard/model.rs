@@ -215,7 +215,11 @@ pub struct Variable {
     /// A human label for the bar dropdown (defaults to `name` in the UI).
     #[serde(default, deserialize_with = "null_default")]
     pub label: String,
-    /// The resolver kind: `query` | `custom` | `text` | `const` | `interval` | `source`.
+    /// An optional bar icon (a stable icon-lib name, e.g. `"map-pin"`) shown before the label
+    /// (advanced-variables scope). Opaque to the host — additive/defaulted.
+    #[serde(default, deserialize_with = "null_default")]
+    pub icon: String,
+    /// The resolver kind: `query` | `custom` | `text` | `const` | `interval` | `source` | `datasource`.
     #[serde(default, deserialize_with = "null_default")]
     pub r#type: String,
     /// `query`/`source`: the resolver `{ tool, args }` (opaque; re-checked per call).
@@ -245,6 +249,31 @@ pub struct Variable {
     /// Additive `#[serde(default, deserialize_with = "null_default")]` — a pre-reusable-pages dashboard round-trips unchanged.
     #[serde(default, deserialize_with = "null_default")]
     pub required: bool,
+
+    // ── Advanced template variables (advanced-variables scope) ──────────────────────────────────────
+    // All additive/defaulted so a pre-advanced dashboard round-trips byte-clean. The host stays opaque:
+    // these are definition data the client's resolver/interpolator consume, never host-interpreted.
+    /// Resolved/static `{text,value,selected?}` options when text ≠ value (opaque list).
+    #[serde(default, deserialize_with = "null_default")]
+    pub options: Value,
+    /// A literal emitted when "All" is selected instead of expanding every option (`.*`, …).
+    #[serde(default, rename = "allValue", deserialize_with = "null_default")]
+    pub all_value: String,
+    /// A regex applied to each resolved query row (filters + `(?<text>)`/`(?<value>)` capture split).
+    #[serde(default, deserialize_with = "null_default")]
+    pub regex: String,
+    /// Which side of a resolved row the regex applies to: `value` (default) | `text`.
+    #[serde(default, rename = "regexApplyTo", deserialize_with = "null_default")]
+    pub regex_apply_to: String,
+    /// Option sort order (`none` | `alphaAsc` | `alphaDesc` | `numAsc` | `numDesc` | `alphaCiAsc` | `alphaCiDesc`).
+    #[serde(default, deserialize_with = "null_default")]
+    pub sort: String,
+    /// When options re-resolve (`never` | `onLoad` | `onTimeRange`).
+    #[serde(default, deserialize_with = "null_default")]
+    pub refresh: String,
+    /// Bar visibility (`dontHide` | `hideLabel` | `hideVariable`).
+    #[serde(default, deserialize_with = "null_default")]
+    pub hide: String,
 }
 
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
@@ -253,6 +282,20 @@ pub struct Dashboard {
     /// Stable slug, unique per workspace (the record id `dashboard:{id}`).
     pub id: String,
     pub title: String,
+    /// A one-line human subtitle shown under the page title (dashboard page-settings). Additive/
+    /// defaulted — a pre-settings dashboard round-trips unchanged; the UI falls back to a default
+    /// blurb when empty. Opaque to the host beyond serde.
+    #[serde(default, deserialize_with = "null_default")]
+    pub description: String,
+    /// A stable icon-lib name (e.g. `"layout-dashboard"`, `"activity"`) painted in the roster row and
+    /// the page header (dashboard page-settings). Opaque to the host — additive/defaulted; the UI
+    /// resolves it (with a fallback) and ignores an unknown name.
+    #[serde(default, deserialize_with = "null_default")]
+    pub icon: String,
+    /// An accent colour for the page icon — any CSS colour string (`"#3b82f6"`, `"tomato"`). Opaque
+    /// to the host; additive/defaulted (empty = the shell accent).
+    #[serde(default, deserialize_with = "null_default")]
+    pub color: String,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     #[serde(default, deserialize_with = "null_default")]
@@ -281,6 +324,12 @@ pub struct Dashboard {
 pub struct DashboardSummary {
     pub id: String,
     pub title: String,
+    /// Roster affordances (dashboard page-settings) — carried on the cheap summary so the switcher
+    /// can paint the icon/colour without a full `get`. Additive/defaulted.
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default)]
+    pub color: String,
     pub visibility: Visibility,
     pub updated_ts: u64,
 }
@@ -290,6 +339,8 @@ impl From<&Dashboard> for DashboardSummary {
         Self {
             id: d.id.clone(),
             title: d.title.clone(),
+            icon: d.icon.clone(),
+            color: d.color.clone(),
             visibility: d.visibility,
             updated_ts: d.updated_ts,
         }
@@ -321,5 +372,100 @@ mod tests {
         assert_eq!(cell.title, "");
         assert!(cell.sources.is_empty());
         assert_eq!(cell.panel_ref, "");
+    }
+
+    /// The advanced-variables fields (icon + regex/sort/refresh/allValue/hide/options + the `datasource`
+    /// type) round-trip through `Variable` — the host stores the DEFINITIONS, so a field it drops is a
+    /// field the client silently loses on save. Regression for exactly that: the closed struct must carry
+    /// every additive field the UI sends.
+    #[test]
+    fn variable_round_trips_advanced_fields() {
+        let sent = serde_json::json!({
+            "name": "region",
+            "label": "Region",
+            "icon": "map-pin",
+            "type": "query",
+            "query": { "tool": "store.query", "args": { "sql": "SELECT name FROM region" } },
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "regex": "(?<text>.+) \\((?<value>[A-Z]+)\\)",
+            "regexApplyTo": "value",
+            "sort": "alphaAsc",
+            "refresh": "onTimeRange",
+            "hide": "hideLabel",
+            "options": [{ "text": "West", "value": "WST" }],
+        });
+        let v: Variable = serde_json::from_value(sent.clone()).expect("deserializes");
+        assert_eq!(v.icon, "map-pin");
+        assert_eq!(v.all_value, ".*");
+        assert_eq!(v.regex_apply_to, "value");
+        assert_eq!(v.sort, "alphaAsc");
+        assert_eq!(v.refresh, "onTimeRange");
+        assert_eq!(v.hide, "hideLabel");
+        assert_eq!(v.options, serde_json::json!([{ "text": "West", "value": "WST" }]));
+
+        // Re-serialize and confirm every advanced field survives the store round-trip (not dropped).
+        let out = serde_json::to_value(&v).expect("serializes");
+        assert_eq!(out["icon"], "map-pin");
+        assert_eq!(out["allValue"], ".*");
+        assert_eq!(out["regexApplyTo"], "value");
+        assert_eq!(out["sort"], "alphaAsc");
+        assert_eq!(out["refresh"], "onTimeRange");
+        assert_eq!(out["hide"], "hideLabel");
+        assert_eq!(out["options"], serde_json::json!([{ "text": "West", "value": "WST" }]));
+    }
+
+    /// A dashboard's page-settings fields (`description`/`icon`/`color`) round-trip through the record
+    /// AND onto the cheap summary — the host stores the definitions, so a field it drops is a setting
+    /// the client silently loses on save. Regression for exactly that.
+    #[test]
+    fn dashboard_page_settings_round_trip() {
+        let sent = serde_json::json!({
+            "id": "ops", "title": "Ops", "owner": "sub|u1", "updated_ts": 1,
+            "description": "Fleet health at a glance", "icon": "activity", "color": "#3b82f6",
+        });
+        let d: Dashboard = serde_json::from_value(sent).expect("deserializes");
+        assert_eq!(d.description, "Fleet health at a glance");
+        assert_eq!(d.icon, "activity");
+        assert_eq!(d.color, "#3b82f6");
+
+        let out = serde_json::to_value(&d).expect("serializes");
+        assert_eq!(out["description"], "Fleet health at a glance");
+        assert_eq!(out["icon"], "activity");
+        assert_eq!(out["color"], "#3b82f6");
+
+        // The summary carries icon + colour so the roster paints them without a full get.
+        let sum = DashboardSummary::from(&d);
+        assert_eq!(sum.icon, "activity");
+        assert_eq!(sum.color, "#3b82f6");
+    }
+
+    /// A pre-page-settings dashboard (no description/icon/color) still deserializes — the fields
+    /// default to empty, never a "missing field" error (additivity).
+    #[test]
+    fn dashboard_tolerates_pre_page_settings_shape() {
+        let d: Dashboard = serde_json::from_value(serde_json::json!({
+            "id": "old", "title": "Old", "owner": "sub|u1", "updated_ts": 1
+        }))
+        .expect("pre-settings shape deserializes");
+        assert!(d.description.is_empty());
+        assert!(d.icon.is_empty());
+        assert!(d.color.is_empty());
+    }
+
+    /// A pre-advanced variable (only the original fields) still deserializes — the new fields default,
+    /// never a "missing field" error (additivity).
+    #[test]
+    fn variable_tolerates_pre_advanced_shape() {
+        let v: Variable = serde_json::from_value(serde_json::json!({
+            "name": "env", "type": "custom", "custom": ["prod", "staging"]
+        }))
+        .expect("pre-advanced shape deserializes");
+        assert_eq!(v.name, "env");
+        assert_eq!(v.custom, vec!["prod", "staging"]);
+        assert!(v.icon.is_empty());
+        assert!(v.regex.is_empty());
+        assert_eq!(v.options, Value::Null);
     }
 }

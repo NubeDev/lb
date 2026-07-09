@@ -22,6 +22,7 @@ import { ColorSwatchPicker } from "@/components/ui/color-swatch";
 import { COLOR_SWATCHES } from "./palette";
 import { FieldNamePicker } from "../fields/FieldNamePicker";
 import { ThresholdsEditor } from "../tabs/ThresholdsEditor";
+import { GeoSearch } from "./controls/GeoSearch";
 
 interface Props {
   control: OptionControl;
@@ -92,5 +93,8 @@ export function Control({ control, label, value, onChange }: Props) {
       return <ColorSchemeEditor value={value as FieldColor | undefined} onChange={(v) => onChange(v)} />;
     case "data-links":
       return <DataLinksEditor value={value as DataLink[] | undefined} onChange={(v) => onChange(v)} />;
+    case "geo-search":
+      // Emits the whole picked place; OptionSectionCard routes it through `writeGeoPlace` (3 options).
+      return <GeoSearch label={label} value={typeof value === "string" ? value : undefined} onPick={(place) => onChange(place)} />;
   }
 }

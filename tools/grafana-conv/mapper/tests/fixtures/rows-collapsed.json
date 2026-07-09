@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 42,
+  "title": "Row Encoding Comparison — collapsed",
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Group A (collapsed)",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 },
+      "collapsed": true,
+      "panels": [
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Inner A",
+          "gridPos": { "x": 0, "y": 1, "w": 12, "h": 8 },
+          "targets": [ { "refId": "A", "expr": "metric_a" } ]
+        },
+        {
+          "id": 11,
+          "type": "stat",
+          "title": "Inner B",
+          "gridPos": { "x": 12, "y": 1, "w": 12, "h": 8 },
+          "targets": [ { "refId": "A", "expr": "metric_b" } ]
+        }
+      ]
+    }
+  ]
+}

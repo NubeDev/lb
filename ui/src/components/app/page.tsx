@@ -18,6 +18,9 @@ interface AppPageProps {
   /** aria-label for the section, e.g. "dashboard view". Also names the error region. */
   label: string;
   icon: LucideIcon;
+  /** Optional accent colour for the header icon chip (any CSS colour) — used by surfaces that let the
+   *  user theme a page (e.g. a dashboard's page settings). Omitted ⇒ the shell accent. */
+  iconColor?: string;
   title: string;
   description?: string;
   workspace?: string;
@@ -35,6 +38,7 @@ interface AppPageProps {
 export function AppPage({
   label,
   icon,
+  iconColor,
   title,
   description,
   workspace,
@@ -50,6 +54,7 @@ export function AppPage({
       {!inPane && (
         <AppPageHeader
           icon={icon}
+          iconColor={iconColor}
           title={title}
           description={description}
           workspace={workspace}

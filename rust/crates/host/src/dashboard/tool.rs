@@ -18,7 +18,7 @@ use lb_authz::Subject;
 use super::model::{Cell, Visibility};
 use super::{
     dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
-    dashboard_save, dashboard_share, DashboardError,
+    dashboard_save_meta, dashboard_share, DashboardError,
 };
 
 /// Dispatch a `dashboard.<verb>` MCP call. `input` is the verb's JSON arguments; the return is the
@@ -50,12 +50,18 @@ pub async fn call_dashboard_tool(
                 Some(v) if !v.is_null() => typed_arg(v, "variables")?,
                 _ => Vec::new(),
             };
-            let d = dashboard_save(
+            // Page presentation (dashboard page-settings) — additive & optional. An ABSENT key
+            // preserves the stored value (the settings dialog is the only writer; a layout/variable
+            // save omits them). `opt_str_arg` maps a present-and-string arg to `Some(_)`.
+            let d = dashboard_save_meta(
                 store,
                 principal,
                 ws,
                 str_arg(input, "id")?,
                 str_arg(input, "title")?,
+                opt_str_arg(input, "description"),
+                opt_str_arg(input, "icon"),
+                opt_str_arg(input, "color"),
                 cells,
                 variables,
                 u64_arg(input, "now")?,
@@ -172,6 +178,16 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
     arg(input, key)?
         .as_str()
         .ok_or_else(|| ToolError::BadInput(format!("arg not a string: {key}")))
+}
+
+/// An OPTIONAL string arg: `Some` when the key is present and a string, `None` when absent or
+/// explicit `null` (the "preserve the stored value" signal — page-settings fields). A present
+/// non-string is coerced to `None` too (lenient — no reason to fail a whole save over it).
+fn opt_str_arg(input: &Value, key: &str) -> Option<String> {
+    input
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 /// A u64 arg, tolerating the numeric-STRING form (`"1783235133"`) AI callers routinely emit —

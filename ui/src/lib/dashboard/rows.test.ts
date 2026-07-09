@@ -10,6 +10,7 @@ import {
   isCollapsed,
   rows,
   rowMembers,
+  rowOptions,
   ungroupedCells,
   visibleCells,
   ROW_W,
@@ -77,6 +78,21 @@ describe("panel rows — positional membership", () => {
     const cells = [cell("a", 0), cell("r1", 1, "row")];
     expect(isRow(cells[0])).toBe(false);
     expect(rowMembers(cells, cells[0])).toEqual([]);
+  });
+});
+
+describe("panel rows — presentation options", () => {
+  it("rowOptions defaults both display flags TRUE and collapsed FALSE (a pre-options row is unchanged)", () => {
+    expect(rowOptions(cell("r1", 0, "row"))).toEqual({
+      showCount: true,
+      showLine: true,
+      collapsed: false,
+    });
+  });
+
+  it("only an explicit false hides a flag; collapsed true is read", () => {
+    const c = cell("r1", 0, "row", { showCount: false, showLine: false, collapsed: true });
+    expect(rowOptions(c)).toEqual({ showCount: false, showLine: false, collapsed: true });
   });
 });
 

@@ -10,7 +10,7 @@ import { describe, expect, it, beforeAll } from "vitest";
 
 import { saveDashboard, getDashboard, listDashboards } from "@/lib/dashboard";
 import type { Cell } from "@/lib/dashboard";
-import { rowMembers, isCollapsed, ROW_W, ROW_H } from "@/lib/dashboard";
+import { rowMembers, isCollapsed, rowOptions, ROW_W, ROW_H } from "@/lib/dashboard";
 import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-session";
 import { CAP } from "@/lib/session";
 
@@ -82,6 +82,22 @@ describe("panel rows — gateway round-trip", () => {
     expect(isCollapsed(got.cells.find((c) => c.i === "r1")!)).toBe(true);
     // The member keeps its real geometry (collapse is a render flag, not a geometry rewrite).
     expect(got.cells.find((c) => c.i === "a")?.y).toBe(1);
+  });
+
+  it("the row presentation options (showCount/showLine/collapsed) round-trip byte-clean", async () => {
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+
+    const row = rowCell("r1", 0, "S");
+    row.options = { showCount: false, showLine: false, collapsed: true };
+    await saveDashboard("ops", "Ops", [row, panelCell("a", 1)]);
+
+    const got = await getDashboard("ops");
+    expect(rowOptions(got.cells.find((c) => c.i === "r1")!)).toEqual({
+      showCount: false,
+      showLine: false,
+      collapsed: true,
+    });
   });
 
   it("delete row-only leaves the members (positional — they merge into the region)", async () => {

@@ -242,6 +242,14 @@ export function cellLabel(cell: Cell): string {
 export interface Dashboard {
   id: string;
   title: string;
+  /** A one-line subtitle shown under the page title (dashboard page-settings). Empty → the UI's
+   *  default blurb. */
+  description?: string;
+  /** A stable icon-lib name for the page/roster icon (dashboard page-settings). Empty → the shell
+   *  default (`layout-dashboard`). Resolved via `@/lib/icons`. */
+  icon?: string;
+  /** A CSS accent colour for the page icon (dashboard page-settings). Empty → the shell accent. */
+  color?: string;
   owner: string;
   visibility: Visibility;
   cells: Cell[];
@@ -258,6 +266,10 @@ export interface Dashboard {
 export interface DashboardSummary {
   id: string;
   title: string;
+  /** Roster affordances (dashboard page-settings) — carried on the summary so the switcher paints the
+   *  icon/colour without a full get. Empty → the shell default. */
+  icon?: string;
+  color?: string;
   visibility: Visibility;
   updated_ts: number;
 }

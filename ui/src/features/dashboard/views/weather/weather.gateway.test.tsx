@@ -2,9 +2,14 @@
 // `weather.current` fetch is repointed (at spawn, in `real-gateway.ts`) at a real local HTTP stub
 // serving a canned Open-Meteo body — no mocked client, the one sanctioned external fake-boundary.
 //
-// Covers: WeatherPanel renders the seeded reading through `usePanelData` → `viz.query` →
-// `weather.current` (the same path every built-in view uses); the mandatory capability-deny (a
-// missing `mcp:weather.current:call` cap → honest denied, never a fabricated reading); and workspace
+// The `weather` view is SELF-SOURCED: `usePanelData` builds its `{tool:"weather.current", args:{lat,
+// lon}}` from `cell.options` (the location the Options step sets, defaulting to Brisbane) and runs it
+// through the plain `useSource` tool path — NOT `viz.query` (there is no datasource/transform pipeline,
+// it's one gated read returning one `{temp_c,…}` row). So its ONLY capability dependency is
+// `mcp:weather.current:call`; it needs no `mcp:viz.query:call`.
+//
+// Covers: WeatherPanel renders the seeded reading; the mandatory capability-deny (a missing
+// `mcp:weather.current:call` cap → honest "no access", never a fabricated reading); and workspace
 // isolation (a ws-B weather dashboard is invisible to ws-A).
 
 import { describe, expect, it, beforeAll } from "vitest";
@@ -14,6 +19,7 @@ import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-sessi
 import { saveDashboard, getDashboard } from "@/lib/dashboard/dashboard.api";
 import type { Cell } from "@/lib/dashboard";
 import { WeatherPanel } from "./WeatherPanel";
+import { observedLocal } from "./observedLocal";
 import { WithDashboardCache } from "@/features/dashboard/cache/testCacheWrapper";
 
 let n = 0;
@@ -21,26 +27,20 @@ const nextWs = () => `weather-${n++}`;
 
 beforeAll(() => useRealGateway());
 
-/** A weather cell over the `weather.current` target — a fixed lat/lon (the seeded stub ignores it). */
+/** A weather cell as the picker creates it: NO user-picked source — the location rides `options.lat/lon`
+ *  and `usePanelData` self-sources `weather.current` from it (the seeded stub ignores the coordinate). */
 function weatherCell(i: string): Cell {
   return {
     i, x: 0, y: 0, w: 6, h: 4, v: 3, widget_type: "chart", view: "weather",
     binding: { series: "" },
-    sources: [
-      {
-        refId: "A",
-        tool: "weather.current",
-        args: { lat: -27.47, lon: 153.02 },
-        datasource: { type: "surreal" },
-      },
-    ],
+    options: { lat: -27.47, lon: 153.02 },
   };
 }
 
-const WEATHER_CAPS = ["mcp:viz.query:call", "mcp:weather.current:call"];
+const WEATHER_CAPS = ["mcp:weather.current:call"];
 
 describe("WeatherPanel (real gateway)", () => {
-  it("renders the seeded reading through usePanelData → viz.query → weather.current", async () => {
+  it("renders the seeded reading — self-sourced from weather.current (no viz.query)", async () => {
     const ws = nextWs();
     await signInWithCaps("user:ada", ws, [
       ...WEATHER_CAPS,
@@ -63,34 +63,19 @@ describe("WeatherPanel (real gateway)", () => {
     });
     expect(screen.getByLabelText("weather condition").textContent).toBe("Overcast");
     expect(screen.getByLabelText("weather wind").textContent).toContain("11.2");
-    expect(screen.getByLabelText("weather updated").textContent).toContain("2026-07-09 12:00");
+    // The stub's `time` is the UTC epoch 1783598400 (2026-07-09T12:00:00Z); the panel renders it in the
+    // VIEWER's timezone. Assert against the same local-time formatter so this holds under any runner TZ.
+    expect(screen.getByLabelText("weather updated").textContent).toContain(observedLocal(1783598400));
   });
 });
 
 describe("weather.current capability-deny (real gateway)", () => {
-  it("without the weather.current cap the target degrades to an honest empty — never a fabricated reading", async () => {
-    // `viz.query`'s per-target denial degrades to an honest empty frame rather than surfacing as the
-    // panel's top-level `denied` state (viz/query.rs: "a denied target … degrades to an honest empty
-    // frame, never a fabrication") — so the panel shows its no-data state, not a number.
+  it("without the weather.current cap the panel is denied — an honest 'no access', never a fabricated reading", async () => {
+    // The self-source runs `weather.current` directly through `useSource`; a denied read surfaces as the
+    // panel's honest `denied` state ("no access to this source"), never a number. `weather.current` is
+    // the ONLY cap the weather tile needs, so signing in with nothing proves the deny.
     const ws = nextWs();
-    await signInWithCaps("user:ada", ws, ["mcp:viz.query:call"]); // NO mcp:weather.current:call
-    const cell = weatherCell("w");
-
-    render(
-      <WithDashboardCache ws={ws}>
-        <WeatherPanel cell={cell} label="Weather" />
-      </WithDashboardCache>,
-    );
-
-    await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/no value/i), {
-      timeout: 4000,
-    });
-    expect(screen.queryByLabelText("weather temp")).not.toBeInTheDocument();
-  });
-
-  it("without the viz.query cap itself the panel is denied, never a fabricated reading", async () => {
-    const ws = nextWs();
-    await signInWithCaps("user:ada", ws, ["mcp:weather.current:call"]); // NO mcp:viz.query:call
+    await signInWithCaps("user:ada", ws, ["mcp:dashboard.save:call"]); // NO mcp:weather.current:call
     const cell = weatherCell("w");
 
     render(

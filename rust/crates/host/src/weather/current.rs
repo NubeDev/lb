@@ -15,7 +15,10 @@ pub struct WeatherCurrent {
     pub temp_c: f64,
     pub wind_kph: f64,
     pub code: u32,
-    pub observed_ts: String,
+    /// Observation time as a UTC epoch in SECONDS (we ask Open-Meteo for `timeformat=unixtime`, so this
+    /// is an unambiguous instant, not a naive local string). The UI renders it in the VIEWER's browser
+    /// timezone — a naive `2026-07-09T10:45` string can't be converted correctly, an epoch can.
+    pub observed_ts: i64,
 }
 
 pub async fn weather_current(input: &Value) -> Result<WeatherCurrent, ToolError> {
@@ -23,8 +26,10 @@ pub async fn weather_current(input: &Value) -> Result<WeatherCurrent, ToolError>
     let lon = parse_coord(input, "lon")?;
 
     let base = std::env::var(OPEN_METEO_BASE_ENV).unwrap_or_else(|_| DEFAULT_BASE.to_string());
+    // `timeformat=unixtime` → `current.time` is a UTC epoch (seconds), not a naive tz-less string, so the
+    // UI can render it in the viewer's browser timezone.
     let url = format!(
-        "{base}/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m,weather_code"
+        "{base}/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,wind_speed_10m,weather_code&timeformat=unixtime"
     );
 
     let resp = reqwest::get(&url)
@@ -55,9 +60,8 @@ pub async fn weather_current(input: &Value) -> Result<WeatherCurrent, ToolError>
         as u32;
     let observed_ts = current
         .get("time")
-        .and_then(Value::as_str)
-        .ok_or_else(|| ToolError::Extension("weather response: missing time".into()))?
-        .to_string();
+        .and_then(Value::as_i64)
+        .ok_or_else(|| ToolError::Extension("weather response: missing time".into()))?;
 
     Ok(WeatherCurrent {
         location: format!("{lat},{lon}"),

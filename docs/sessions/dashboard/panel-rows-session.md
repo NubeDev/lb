@@ -36,6 +36,22 @@ No new host verb, no new table, no new cap.
   `WidgetView.tsx` keeps the catalog↔renderer bijection (`widgetCatalog.consistency.test`) — the Grid
   intercepts rows before the widget dispatcher, so that case is only a read-only fallback.
 
+## Row presentation options (added)
+
+Three per-row toggles, editable in a **popout modal** (`RowOptionsDialog.tsx`) opened from a gear on
+the row bar (hover), and also registered in the panel-builder option registry so the wizard's Options
+step edits the same defs:
+
+- **Show panel count** (`options.showCount`, default `true`) — the "· N panels" count beside the title.
+- **Show divider line** (`options.showLine`, default `true`) — the bottom rule under the bar.
+- **Collapsed by default** (`options.collapsed`, default `false`) — the stored open/closed state on load
+  (it IS the collapse flag; "default" = the value applied when the dashboard loads).
+
+Both display flags default TRUE so a pre-options row is unchanged; only an explicit `false` hides them
+(`rowOptions()` reader in `rows.ts`). Registry def `panel-builder/options/defs/row.ts` (group "Row",
+`row` added to `NO_FIELDCONFIG_VIEWS`); catalog `row` entry gains the two new `options`-scope toggles.
+`saveRowOptions` in `DashboardView` merges them into the cell's `options` via `dashboard.save`.
+
 ## Tests (all green)
 
 - **Unit** [`rows.test.ts`](../../../ui/src/lib/dashboard/rows.test.ts) — 9 tests: positional

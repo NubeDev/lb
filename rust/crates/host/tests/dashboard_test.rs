@@ -10,7 +10,8 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    add_member, dashboard_delete, dashboard_get, dashboard_list, dashboard_save, dashboard_share,
+    add_member, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
+    dashboard_save_meta, dashboard_share,
     seed_iot_demo, series_find, series_read_range, Cell, CellSource, CellTarget, DashboardError,
     DashboardVisibility, DASHBOARD_MAX_OVERRIDES, DASHBOARD_MAX_TRANSFORMS,
 };
@@ -129,6 +130,85 @@ async fn crud_round_trip() {
 
     // re-delete is an idempotent no-op
     dashboard_delete(&store, &ada, ws, "ops", 40).await.unwrap();
+}
+
+// dashboard page-settings: `description`/`icon`/`color` set via `dashboard_save_meta` round-trip through
+// get + list, and are PRESERVED across a plain `dashboard_save` (a layout/variable save must never blank
+// the page chrome — the same preserve-on-omit discipline `visibility` uses).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn page_settings_round_trip_and_preserve() {
+    let ws = "ws-dash-settings";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // Create with page settings.
+    dashboard_save_meta(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops",
+        Some("Fleet health at a glance".into()),
+        Some("activity".into()),
+        Some("#3b82f6".into()),
+        vec![chart_cell("cooler.temp")],
+        vec![],
+        10,
+    )
+    .await
+    .unwrap();
+
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.description, "Fleet health at a glance");
+    assert_eq!(got.icon, "activity");
+    assert_eq!(got.color, "#3b82f6");
+
+    // The cheap summary carries icon + colour (roster paints them without a full get).
+    let roster = dashboard_list(&store, &ada, ws).await.unwrap();
+    let row = roster.iter().find(|s| s.id == "ops").unwrap();
+    assert_eq!(row.icon, "activity");
+    assert_eq!(row.color, "#3b82f6");
+
+    // A plain layout save (the wrapper: no settings args) PRESERVES the page chrome.
+    dashboard_save(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops v2",
+        vec![chart_cell("cooler.temp"), chart_cell("fryer.state")],
+        vec![],
+        20,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.title, "Ops v2");
+    assert_eq!(got.cells.len(), 2);
+    assert_eq!(got.description, "Fleet health at a glance");
+    assert_eq!(got.icon, "activity");
+    assert_eq!(got.color, "#3b82f6");
+
+    // Setting one field via meta preserves the others (Some on icon, None on the rest).
+    dashboard_save_meta(
+        &store,
+        &ada,
+        ws,
+        "ops",
+        "Ops v2",
+        None,
+        Some("gauge".into()),
+        None,
+        got.cells.clone(),
+        vec![],
+        30,
+    )
+    .await
+    .unwrap();
+    let got = dashboard_get(&store, &ada, ws, "ops").await.unwrap();
+    assert_eq!(got.icon, "gauge");
+    assert_eq!(got.description, "Fleet health at a glance");
+    assert_eq!(got.color, "#3b82f6");
 }
 
 // widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no

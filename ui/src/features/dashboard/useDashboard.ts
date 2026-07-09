@@ -13,6 +13,7 @@ import {
   shareDashboard,
   type Cell,
   type Dashboard,
+  type DashboardMeta,
   type DashboardSummary,
   type Variable,
   type Visibility,
@@ -31,6 +32,9 @@ export interface DashboardState {
   saveVariables: (variables: Variable[]) => Promise<void>;
   /** Rename a dashboard (title-only `dashboard.save`, cells + variables preserved; owner-only). */
   rename: (id: string, title: string) => Promise<void>;
+  /** Persist the current dashboard's page settings — description/icon/color (dashboard page-settings).
+   *  Cells + variables preserved; omitted meta keys keep their stored value (owner-only). */
+  saveMeta: (meta: DashboardMeta) => Promise<void>;
   remove: (id: string) => Promise<void>;
   share: (visibility: Visibility, team?: string) => Promise<void>;
 }
@@ -127,6 +131,28 @@ export function useDashboard(ws: string): DashboardState {
     [current, refresh],
   );
 
+  const saveMeta = useCallback(
+    async (meta: DashboardMeta) => {
+      if (!current) return;
+      try {
+        // Cells + variables preserved; `meta` carries only the page-settings fields the dialog edited.
+        const d = await saveDashboard(
+          current.id,
+          current.title,
+          current.cells,
+          current.variables ?? [],
+          meta,
+        );
+        setCurrent(d);
+        await refresh();
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [current, refresh],
+  );
+
   const remove = useCallback(
     async (id: string) => {
       try {
@@ -164,6 +190,7 @@ export function useDashboard(ws: string): DashboardState {
     saveCells,
     saveVariables,
     rename,
+    saveMeta,
     remove,
     share,
   };

@@ -1,0 +1,25 @@
+# grafana-conv-mapper — the pure Grafana-JSON → our-`Dashboard` converter.
+#
+# The headline deliverable of the grafana-conv umbrella (Stage 0). A pure function
+# over serde values: `convert(grafana_json) -> (Dashboard, ConversionReport)`. It
+# has no I/O, no network, no token — it is bytes-in / bytes-out, which is exactly
+# what makes the standalone tool honest (rules: a fixture is a fixture, not a fake
+# backend).
+#
+# The output `Dashboard`/`Cell`/`Variable` types are a **vendored mirror** of
+# `rust/crates/host/src/dashboard/model.rs` (see `model.rs`). The mirror is header-
+# noted and guarded by a mirror-sync test so the fold-in never discovers a drifted
+# shape; Stage 2 deletes it and path-depends on the host crate.
+[package]
+name = "grafana-conv-mapper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true

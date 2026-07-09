@@ -5,12 +5,11 @@
 // server-side; the builder can never author a cap. Cap-gated for DISPLAY by `nav.save`; the gateway
 // is the boundary. Markup + local edit state; the data + writes live in `useNavs`.
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { List, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import {
   Table,
@@ -24,28 +23,8 @@ import { AppEmptyState } from "@/components/app/empty-state";
 import { AdminToolbar } from "../AdminToolbar";
 import { CAP, hasCap } from "@/lib/session";
 import type { NavItem, Visibility } from "@/lib/nav";
+import { NavItemsBuilder } from "./NavItemsBuilder";
 import { useNavs } from "./useNavs";
-
-/** The core surfaces a nav may link to (the static core set — surfaces are core, not extensions).
- *  Kept aligned with the shell's `SURFACES`; a nav entry stores the opaque key as data. */
-const CORE_SURFACES = [
-  "channels",
-  "dashboards",
-  "rules",
-  "flows",
-  "datasources",
-  "reminders",
-  "ingest",
-  "data",
-  "system",
-  "telemetry",
-  "inbox",
-  "outbox",
-  "admin",
-  "extensions",
-  "studio",
-  "settings",
-];
 
 interface Props {
   ws: string;
@@ -63,18 +42,6 @@ export function NavAdmin({ ws, caps }: Props) {
   const [items, setItems] = useState<NavItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-
-  // Item-add form state.
-  const [addKind, setAddKind] = useState<NavItem["kind"]>("surface");
-  const [addSurface, setAddSurface] = useState(CORE_SURFACES[0]);
-  const [addDashboard, setAddDashboard] = useState("");
-  const [addExt, setAddExt] = useState("");
-  const [addFacetKey, setAddFacetKey] = useState("");
-  const [addLabel, setAddLabel] = useState("");
-  // reusable-pages: template-group binds ONE dashboard's parameter (`addVar`) per facet value; a plain
-  // `dashboard` entry can carry a pinned binding (`addPinned`, `name=value, …`) as a named instance.
-  const [addVar, setAddVar] = useState("");
-  const [addPinned, setAddPinned] = useState("");
 
   // Share form state.
   const [shareVis, setShareVis] = useState<Visibility>("private");
@@ -111,60 +78,6 @@ export function NavAdmin({ ws, caps }: Props) {
       setBusy(false);
     }
   };
-
-  // Parse a `name=value, name2=value2` pinned-binding string into a `vars` record (reusable-pages).
-  const parsePinned = (raw: string): Record<string, string> => {
-    const out: Record<string, string> = {};
-    for (const pair of raw.split(",")) {
-      const [k, ...rest] = pair.split("=");
-      const name = k.trim();
-      const value = rest.join("=").trim();
-      if (name && value) out[name] = value;
-    }
-    return out;
-  };
-
-  const addItem = () => {
-    let it: NavItem | null = null;
-    if (addKind === "surface") it = { kind: "surface", surface: addSurface, label: addLabel };
-    else if (addKind === "dashboard" && addDashboard) {
-      // A plain dashboard entry, optionally carrying a pinned binding (a named page instance).
-      const vars = parsePinned(addPinned);
-      it = { kind: "dashboard", dashboard: addDashboard, label: addLabel };
-      if (Object.keys(vars).length) it.vars = vars;
-    } else if (addKind === "ext" && addExt) it = { kind: "ext", ext: addExt, label: addLabel };
-    else if (addKind === "tag-group" && addFacetKey)
-      it = { kind: "tag-group", label: addLabel || addFacetKey, facets: [{ key: addFacetKey }] };
-    else if (addKind === "template-group" && addDashboard && addVar && addFacetKey)
-      // reusable-pages: ONE dashboard fanned out per distinct value of `addFacetKey`, bound to `addVar`.
-      it = {
-        kind: "template-group",
-        label: addLabel || addFacetKey,
-        dashboard: addDashboard,
-        var: addVar,
-        facets: [{ key: addFacetKey }],
-      };
-    else if (addKind === "group") it = { kind: "group", label: addLabel || "Group", items: [] };
-    if (it) {
-      setItems((cur) => [...cur, it!]);
-      setAddLabel("");
-      setAddFacetKey("");
-      setAddVar("");
-      setAddPinned("");
-    }
-  };
-
-  const move = (i: number, delta: number) => {
-    setItems((cur) => {
-      const next = [...cur];
-      const j = i + delta;
-      if (j < 0 || j >= next.length) return cur;
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  };
-
-  const removeItem = (i: number) => setItems((cur) => cur.filter((_, k) => k !== i));
 
   const doSave = async () => {
     if (!editId && !title) {
@@ -245,15 +158,6 @@ export function NavAdmin({ ws, caps }: Props) {
     }
   };
 
-  const dashOptions = useMemo(
-    () => sources.dashboards.map((d) => ({ id: `dashboard:${d.id}`, label: d.title })),
-    [sources.dashboards],
-  );
-  const extOptions = useMemo(
-    () => sources.extensions.map((e) => ({ id: e.ext, label: e.ui?.label ?? e.ext })),
-    [sources.extensions],
-  );
-
   if (!canWrite) {
     return (
       <div className="p-4 text-sm text-muted" role="status">
@@ -269,185 +173,15 @@ export function NavAdmin({ ws, caps }: Props) {
       {/* The nav's title + items, wrapped in the same bordered panel card the API Keys "New key"
           form uses (labelled fields over inputs) so both create surfaces read as one system. */}
       <div className="space-y-3 rounded-md border border-border bg-panel px-3 py-3">
-        <label className="block text-xs text-muted">
-          Menu title
-          <Input
-            aria-label="Nav title"
-            className="mt-1"
-            placeholder="Menu title (e.g. Operations)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </label>
-
-      {/* The ordered items list */}
-      <ol className="flex flex-col gap-2" data-testid="nav-items">
-        {items.map((it, i) => (
-          <li
-            key={`${it.kind}-${i}`}
-            className="flex items-center justify-between rounded-md border border-border p-2"
-          >
-            <div className="flex items-center gap-2">
-              <Badge variant="outline">{it.kind}</Badge>
-              <span className="text-sm">
-                {it.label ||
-                  it.surface ||
-                  it.dashboard ||
-                  it.ext ||
-                  it.facets?.map((f) => f.key).join(",")}
-              </span>
-            </div>
-            <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={() => move(i, -1)} aria-label="Move up">
-                ↑
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => move(i, 1)} aria-label="Move down">
-                ↓
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => removeItem(i)}
-                aria-label="Remove item"
-              >
-                ✕
-              </Button>
-            </div>
-          </li>
-        ))}
-        {items.length === 0 && (
-          <li className="text-sm text-muted">No items yet — add one below.</li>
-        )}
-      </ol>
-
-      {/* Add-item form */}
-      <fieldset className="text-xs text-muted">
-        <legend className="mb-1">Add item</legend>
-      <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border p-2">
-        <Select
-          className="w-36"
-          aria-label="Item kind"
-          value={addKind}
-          onChange={(e) => setAddKind(e.target.value as NavItem["kind"])}
-        >
-          <option value="surface">Surface</option>
-          <option value="dashboard">Dashboard</option>
-          <option value="ext">Extension</option>
-          {/* Two dynamism mechanisms, named side by side (reusable-pages scope, "one mental model"):
-              tag-group = MANY dashboards (by tag); template-group = ONE dashboard, many bindings. */}
-          <option value="tag-group">Dashboards by tag</option>
-          <option value="template-group">One dashboard per ⟨value⟩</option>
-          <option value="group">Group</option>
-        </Select>
-
-        {addKind === "surface" && (
-          <Select
-            className="w-40"
-            aria-label="Surface"
-            value={addSurface}
-            onChange={(e) => setAddSurface(e.target.value)}
-          >
-            {CORE_SURFACES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </Select>
-        )}
-        {addKind === "dashboard" && (
-          <>
-            <Select
-              className="w-48"
-              aria-label="Dashboard"
-              value={addDashboard}
-              onChange={(e) => setAddDashboard(e.target.value)}
-            >
-              <option value="">Pick a dashboard</option>
-              {dashOptions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </Select>
-            {/* reusable-pages: an optional pinned binding → a curated named instance in the menu. */}
-            <Input
-              aria-label="Pinned vars"
-              placeholder="Pin vars (site=plant-2)"
-              className="w-44"
-              value={addPinned}
-              onChange={(e) => setAddPinned(e.target.value)}
-            />
-          </>
-        )}
-        {addKind === "template-group" && (
-          // reusable-pages: pick the TEMPLATE dashboard, the parameter it binds, and the facet key
-          // whose distinct values fan it out (one menu page per value, no dashboard copy).
-          <>
-            <Select
-              className="w-48"
-              aria-label="Template dashboard"
-              value={addDashboard}
-              onChange={(e) => setAddDashboard(e.target.value)}
-            >
-              <option value="">Pick a template</option>
-              {dashOptions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.label}
-                </option>
-              ))}
-            </Select>
-            <Input
-              aria-label="Template parameter"
-              placeholder="Parameter (e.g. site)"
-              className="w-36"
-              value={addVar}
-              onChange={(e) => setAddVar(e.target.value)}
-            />
-            <Input
-              aria-label="Fan-out facet key"
-              placeholder="Facet key (e.g. site)"
-              className="w-36"
-              value={addFacetKey}
-              onChange={(e) => setAddFacetKey(e.target.value)}
-            />
-          </>
-        )}
-        {addKind === "ext" && (
-          <Select
-            className="w-48"
-            aria-label="Extension"
-            value={addExt}
-            onChange={(e) => setAddExt(e.target.value)}
-          >
-            <option value="">Pick an extension</option>
-            {extOptions.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.label}
-              </option>
-            ))}
-          </Select>
-        )}
-        {addKind === "tag-group" && (
-          <Input
-            aria-label="Facet key"
-            placeholder="Facet key (e.g. site)"
-            className="w-40"
-            value={addFacetKey}
-            onChange={(e) => setAddFacetKey(e.target.value)}
-          />
-        )}
-        <Input
-          aria-label="Item label"
-          placeholder="Label (optional)"
-          className="w-40"
-          value={addLabel}
-          onChange={(e) => setAddLabel(e.target.value)}
+        {/* The shared menu composer — title + items list + add-item form. Reused verbatim by the
+            onboarding wizard's Access step (one grammar, one source of truth). */}
+        <NavItemsBuilder
+          title={title}
+          onTitleChange={setTitle}
+          items={items}
+          onItemsChange={setItems}
+          sources={{ dashboards: sources.dashboards, extensions: sources.extensions }}
         />
-        <Button size="sm" variant="outline" onClick={addItem} aria-label="Add item">
-          Add item
-        </Button>
-      </div>
-      </fieldset>
 
       {/* Save the nav's items/title. Audience (who sees it) is the section below — no separate
           "apply visibility" step, so a nav can't be Saved-but-invisible by accident. */}

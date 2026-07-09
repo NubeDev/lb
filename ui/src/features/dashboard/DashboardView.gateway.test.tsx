@@ -16,7 +16,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 
 import { DashboardView } from "./DashboardView";
-import { saveDashboard, deleteDashboard, shareDashboard } from "@/lib/dashboard";
+import { saveDashboard, getDashboard, deleteDashboard, shareDashboard } from "@/lib/dashboard";
 import { savePanel } from "@/lib/panel";
 import { cellToSpec } from "@/lib/panel";
 import type { Cell } from "@/lib/dashboard";
@@ -210,7 +210,8 @@ describe("DashboardView (real gateway)", () => {
     // the query-over-bridge resolution path is unit-tested in resolveOptions + store_query_test).
     await user.click(await screen.findByLabelText("edit variables"));
     const editor = within(await screen.findByLabelText("variable editor"));
-    await user.click(editor.getByLabelText("add variable"));
+    // The first variable is added through the friendly type picker (Grafana-parity): pick "Custom".
+    await user.click(editor.getByLabelText("add custom variable"));
     await user.clear(editor.getByLabelText("variable name"));
     await user.type(editor.getByLabelText("variable name"), "env");
     await user.type(editor.getByLabelText("variable custom values"), "prod, staging");
@@ -305,6 +306,41 @@ describe("DashboardView (real gateway)", () => {
     await user.click((await screen.findAllByLabelText("select dashboard ops"))[0]);
     expect((await screen.findAllByText("Operations")).length).toBeGreaterThan(0);
     expect((await screen.findAllByLabelText("cell w1")).length).toBeGreaterThan(0);
+  });
+
+  it("page settings — set description/icon/color through the dialog; it renders + persists; a layout save preserves it", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
+    await screen.findByLabelText("cell w1");
+
+    // Open the page-settings dialog and type a description, then save.
+    await user.click(await screen.findByLabelText("page settings"));
+    const field = await screen.findByLabelText("Dashboard description");
+    await user.clear(field);
+    await user.type(field, "Fleet health at a glance");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // The subtitle renders in the page header (the description replaces the default blurb).
+    expect(
+      (await screen.findAllByText("Fleet health at a glance")).length,
+    ).toBeGreaterThan(0);
+
+    // Persisted through the REAL record.
+    const got = await getDashboard("ops");
+    expect(got.description).toBe("Fleet health at a glance");
+
+    // A plain layout save (no meta) PRESERVES the page settings host-side (the preserve-on-omit rule).
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1"), builtSeriesCell("w2")]);
+    const after = await getDashboard("ops");
+    expect(after.description).toBe("Fleet health at a glance");
+    expect(after.cells.length).toBe(2);
   });
 
   it("deletes a dashboard from the roster through the confirm gate; it disappears from the list", async () => {

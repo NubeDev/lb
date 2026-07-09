@@ -19,8 +19,9 @@ import { TeamsAdmin } from "./TeamsAdmin";
 import { RolesAdmin } from "./RolesAdmin";
 import { WorkspacesAdmin } from "./WorkspacesAdmin";
 import { NavAdmin } from "./nav/NavAdmin";
+import { SetupWizard } from "./setup/SetupWizard";
 
-type Tab = "overview" | "people" | "teams" | "roles" | "workspaces" | "apikeys" | "nav";
+type Tab = "overview" | "setup" | "people" | "teams" | "roles" | "workspaces" | "apikeys" | "nav";
 
 interface Props {
   ws: string;
@@ -32,6 +33,9 @@ export function AdminView({ ws, caps }: Props) {
   const tabs: { key: Tab; label: string; show: boolean }[] = [
     // The overview lands whenever the admin section is visible at all.
     { key: "overview", label: "Overview", show: hasCap(caps, CAP.userManage) || hasCap(caps, CAP.teamsManage) || hasCap(caps, CAP.grantsAssign) || hasCap(caps, CAP.workspaceDelete) || hasCap(caps, CAP.apikeyManage) },
+    // setup (setup scope): the guided onboard-a-person wizard — orchestrates the People/Teams/Roles/Nav
+    // verbs into one flow. Shown when the admin can do the wiring it performs (any of user/teams/grants).
+    { key: "setup", label: "Setup", show: hasCap(caps, CAP.userManage) || hasCap(caps, CAP.teamsManage) || hasCap(caps, CAP.grantsAssign) },
     { key: "people", label: "People", show: hasCap(caps, CAP.userManage) },
     { key: "teams", label: "Teams", show: hasCap(caps, CAP.teamsManage) },
     { key: "roles", label: "Roles", show: hasCap(caps, CAP.grantsAssign) },
@@ -73,6 +77,9 @@ export function AdminView({ ws, caps }: Props) {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-border bg-panel-2/70">
           <TabsContent value="overview" className="min-h-0 flex-1">
             <AccessOverview ws={ws} caps={caps} onJump={(j) => setTab(j)} />
+          </TabsContent>
+          <TabsContent value="setup" className="min-h-0 flex-1">
+            <SetupWizard ws={ws} caps={caps} />
           </TabsContent>
           <TabsContent value="people" className="min-h-0 flex-1">
             <PeopleAdmin ws={ws} caps={caps} />
