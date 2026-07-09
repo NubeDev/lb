@@ -176,10 +176,15 @@ our shape) is small and lives inside the native crate, not a separate wasm modul
 
 A workspace admin adds their city and watches it on a dashboard, no key anywhere.
 
-1. **Build.** The node is compiled `--features weather` (a lean edge node that doesn't want it simply
-   omits the flag — nothing weather-shaped is in that binary).
-2. **Install + approve.** Admin installs the `weather` extension; the install asks the admin to approve
-   `net:tls:api.open-meteo.com:443`. Save stores `granted = requested ∩ approved`. No secret prompt —
+1. **Build + install in one command — `make dev WEATHER=1`.** This is the whole install story (it
+   mirrors `make dev CE=1` for control-engine + `EXTAGENT=1` for the compile feature): the flag (a)
+   compiles the node `weather` feature in, (b) builds the `weather` sidecar via its `build.sh`, and
+   (c) installs + supervises it at boot with `net:tls:api.open-meteo.com:443` **pre-approved** — so
+   it works on first boot. A plain `make dev` compiles **no** weather code (a lean node pays nothing;
+   rule 10). **No secret / no `ZAI_API_KEY`-style step — Open-Meteo is keyless.**
+2. **(Already approved by step 1.)** In production the admin installs the extension and approves
+   `net:tls:api.open-meteo.com:443` at the install dialog (`granted = requested ∩ approved`); the
+   `make dev WEATHER=1` path pre-approves it for the dev workspace. No secret prompt either way —
    there's no key.
 3. **Configure a location.** Admin → Weather → Add → `label:"Sydney", lat:-33.87, lon:151.21,
    store: true`. Writes `weather_location:acme:sydney`.

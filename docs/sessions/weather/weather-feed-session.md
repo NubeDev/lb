@@ -53,6 +53,47 @@ Weather is the same shape, one provider narrower and behind a default-off featur
   `kind="weather.poll"` with `run_at = now + 30min` (jobs-scope `run_at`); `weather.poll.now`
   enqueues the same `kind` immediately, returns the job id.
 
+**Makefile — `make dev WEATHER=1` (the install story, mirrors `CE=1` + `EXTAGENT=1`):**
+
+One flag drives the three halves. `WEATHER=1` is to weather what `CE=1` is to control-engine, plus
+the `EXTAGENT=1 → --features` compile toggle. Copy those two blocks verbatim; the shape:
+
+```makefile
+# Weather (weather native extension). OFF by default. Turn on for `make dev` with:
+#   make dev WEATHER=1
+# When on: compiles the node `weather` feature, builds the weather sidecar, installs +
+# supervises it at boot, and pre-approves its net:tls:api.open-meteo.com:443 connect.
+# Keyless (Open-Meteo) — no API key, no secret to set (unlike EXTAGENT's ZAI_API_KEY).
+ifeq ($(WEATHER),1)
+NODE_FEATURES += weather              # (1) compile-optional half — MUST be += not ?= so it
+WEATHER_ON    := 1                    #     combines with EXTAGENT=1 (external-agent uses ?=,
+endif                                 #     first-wins; += lets both features co-compile)
+WEATHER_ENV = $(if $(WEATHER_ON),LB_WEATHER_ENABLED=1,)   # (3) install + supervise at boot
+
+.PHONY: weather                       # (2) build the sidecar (the `federation:` pattern)
+weather:
+	bash $(BE_DIR)/extensions/weather/build.sh
+```
+
+- `dev:` gains `$(if $(WEATHER_ON),weather,)` in its prereq list (beside
+  `$(if $(CE_BASE),control-engine,)`), so the sidecar builds only when on.
+- `$(WEATHER_ENV)` joins `$(FED_ENV) $(CE_ENV) $(DEVKIT_ENV)` on the node run line (line ~235).
+- An echo line: `@echo "weather → $(if $(WEATHER_ON),Open-Meteo (keyless), pre-approved, <disabled>)"`.
+- **No secret/PATH warning block** — keyless is the point; unlike the `NODE_FEATURES` external-agent
+  warnings (`ZAI_API_KEY`/`interpreter`), `WEATHER=1` is zero-config.
+
+Node-side boot: `LB_WEATHER_ENABLED=1` is the env the `#[cfg(feature="weather")]` wiring reads to
+register the supervisor `Spec` + pre-approve `net:tls:api.open-meteo.com:443` (the `CE_BASE`/
+`FED_ENDPOINTS` env-gate pattern — the feature compiles it in, the env turns it on at boot).
+
+Resulting UX:
+
+| Command | Result |
+|---|---|
+| `make dev` | no weather (default build — nothing weather-shaped compiled, rule 10) |
+| `make dev WEATHER=1` | weather compiled + sidecar built + installed + Open-Meteo connect pre-approved |
+| `make dev WEATHER=1 EXTAGENT=1` | both features co-compile (the `+=` requirement above) |
+
 **Frontend `ui/…` (one widget over the federation-UI + Widget-Kit seam):**
 
 - `ui/src/features/weather/AddLocationForm.tsx` — admin add/list/remove (the `AddDatasourceForm`
