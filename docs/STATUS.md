@@ -16,8 +16,31 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-09): the federation datasources sidecar is bundled into the `full` desktop
-build.** The standalone `full` binary booted node + gateway (so login/MCP/SSE/agents/flows/rules
+**Just shipped (2026-07-09): the standalone `full` desktop build persists by default.** Reported: a
+desktop restart lost all user work. Cause: `Node::boot` opens `Store::memory()` unless
+`LB_STORE_PATH` is set, and the desktop shell never set it — every launch was a fresh, ephemeral
+node (a known, already-recorded non-goal, not a regression — but not acceptable for a shipped app).
+Fix: `ui/src-tauri/src/store.rs::ensure_store_path()` resolves the OS-standard per-user data dir
+(`dirs::data_dir()/lazybones/store`) and fills `LB_STORE_PATH` **at the windowed binary boundary**
+(`desktop.rs::run`, before `NodeHandle::boot`) if it's unset — so `open_store` opens the persistent
+SurrealKV engine it already supports for `make cloud`/`edge`. Deliberately NOT set inside
+`Node::boot`/`NodeHandle::boot`: those are called directly by the shell's own tests, which must stay
+ephemeral + isolated (a shared on-disk path would cross-contaminate concurrent runs) — the windowed
+`run()` path is the one only the shipped app takes. An explicit `LB_STORE_PATH` (custom/portable
+location, or empty for ephemeral) always wins. Boot seeders are unchanged (already idempotent
+LWW-upserts), so they refresh built-ins across app updates without touching user data. **Tests (real
+on-disk SurrealKV, rule 9):** `full_persist_test.rs` — boot `full` against a temp store path,
+register a datasource the seeders don't create, drop the node+gateway, RE-BOOT at the same path,
+assert it's still listed (the regression); `full_loopback_test`/`full_federation_test` stay green
+with no `LB_STORE_PATH` set, proving the default lives at the right seam. **Manually verified by the
+reporting user on a real `linux-full` build.** Non-goal (recorded): the gateway signing key is still
+fresh per launch, so a restart re-logs the user in even though their data is intact — a sibling
+follow-up. Scope
+[`scope/desktop/desktop-persistent-store-scope.md`](scope/desktop/desktop-persistent-store-scope.md);
+session [`sessions/desktop/desktop-persistent-store-session.md`](sessions/desktop/desktop-persistent-store-session.md).
+
+**Previously shipped (2026-07-09): the federation datasources sidecar is bundled into the `full`
+desktop build.** The standalone `full` binary booted node + gateway (so login/MCP/SSE/agents/flows/rules
 worked standalone) but had **one hole**: datasources. A user could `datasource.add` over the
 loopback gateway, but `datasource.test` / `federation.query` returned an opaque "denied" — the
 federation native sidecar that serves those verbs was not shipped in `full`, so no federation

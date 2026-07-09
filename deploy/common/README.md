@@ -2,9 +2,14 @@
 
 The build inputs that **every deploy driver reuses verbatim**: local Docker, GitHub CI,
 and the Fly.io deploy all point at these files. One Dockerfile, one Caddyfile, one
-entrypoint, one `.dockerignore`, one local compose file. A driver may only *reference* these
+entrypoint, one local compose file. A driver may only *reference* these
 — never fork them — so the image you run locally is the image CI builds is the image Fly
 runs (README §3 rule 1: one binary, config selects the role).
+
+The `.dockerignore` is the **repo root's**, not a copy in here — Docker resolves it from the
+build *context root*, always, regardless of which `-f <path>/Dockerfile` you point at (a
+per-Dockerfile ignore file needs `buildx build --ignorefile`, which local `docker compose
+build`/plain `docker build` don't use). One file, every driver, genuinely no drift.
 
 Scope: [`../../docs/scope/deploy/fly-deploy-scope.md`](../../docs/scope/deploy/fly-deploy-scope.md).
 
@@ -15,8 +20,9 @@ Scope: [`../../docs/scope/deploy/fly-deploy-scope.md`](../../docs/scope/deploy/f
 | `Dockerfile` | Three stages: Rust release build of `node` + the `federation` sidecar (postgres feature) + the `hello` wasm guest → pnpm SPA build (`VITE_GATEWAY_URL=""`, same-origin) → debian-slim runtime with Caddy + tini + the binaries + the SPA `dist/`. Build context is the **repo root**. |
 | `Caddyfile` | SPA-explicit + allow-all reverse proxy (`handle` blocks, first-match-wins; `auto_https off` — fly-proxy terminates TLS). Serves `/`, `/assets/*`, `/shims/*`, static roots; proxies everything else to `127.0.0.1:8731`. |
 | `entrypoint.sh` | Ensure `/data/{store,demo}` → start Caddy → start the node → best-effort seed `demo-buildings.db` once the gateway answers → wait on the node. The node is entirely env-driven (no config file — see `rust/node/src/main.rs`/`federation.rs`), so there is no template to render. |
-| `.dockerignore` | The whitelist ignore content, referenced by every driver so the build context is small and identical everywhere. |
 | `compose.yml` | Local plain-HTTP compose stack over the same image (a named volume for `/data`). |
+
+(`.dockerignore` lives at the **repo root** — see above.)
 
 ## Runtime env the node reads (set by a driver, not baked into the image)
 

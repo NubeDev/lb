@@ -310,7 +310,7 @@ fly-smoke:
 
 fly-deploy:
 	fly deploy --app $(FLY_APP) --config deploy/fly/fly.toml \
-		--dockerfile deploy/common/Dockerfile --ignorefile deploy/common/.dockerignore \
+		--dockerfile deploy/common/Dockerfile --ignorefile .dockerignore \
 		--remote-only .
 
 fly-logs:

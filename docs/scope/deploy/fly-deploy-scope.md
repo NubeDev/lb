@@ -97,13 +97,22 @@ everything else = backend": the app and the gateway share one origin.
   is entirely env-driven (no `config.toml` — see `rust/node/src/main.rs`/`federation.rs`), so
   there is no template to `envsubst`; the entrypoint just sets env vars directly. Simpler than
   the dev-pulse precedent, not a config-template port.
-- `deploy/common/.dockerignore` — the whitelist ignore content (one copy).
+- **The repo-root `.dockerignore`** (NOT a `deploy/common/` copy) — **discovered during
+  implementation:** Docker resolves `.dockerignore` from the *context root*, never next to the
+  Dockerfile; a per-Dockerfile ignore file only works with `buildx build --ignorefile`, which
+  local `docker compose build` and CI's classic `docker build` don't use. So there is exactly
+  ONE ignore file for every repo-root-context build (desktop's included), denylist-style, with a
+  narrow `!docker/postgres/seed*.py` etc. carve-out for the demo-dataset generator this deploy
+  needs. The originally-planned separate `deploy/common/.dockerignore` (a whitelist) would have
+  been silently ignored by two of the three drivers — the "same ignore file everywhere" goal
+  means literally the same *file*, not a same-content copy.
 
 Then each **driver** is a thin pointer, not a fork:
 
 - **Fly** (`deploy/fly/fly.toml`) — `[build]` names `deploy/common/Dockerfile`;
-  `make fly-deploy` passes `--dockerfile deploy/common/Dockerfile --ignorefile
-  deploy/common/.dockerignore`. `[mounts]` → `/data`. `[http_service]` → `:8080`.
+  `make fly-deploy` passes `--dockerfile deploy/common/Dockerfile --ignorefile .dockerignore`
+  (Fly's remote builder uses buildx, so this flag IS honored there). `[mounts]` → `/data`.
+  `[http_service]` → `:8080`.
 - **Local compose** (`deploy/common/compose.yml`) — same Dockerfile, a named volume for
   `/data`, plain HTTP on a host port.
 - **Local HTTPS pre-flight** (`deploy/fly/compose.fly-local.yml` +
@@ -165,7 +174,7 @@ a seed DSN at an external host), but they are **not** part of the default deploy
 2. **First-time Fly setup.** `fly apps create <app>`; `fly volumes create lb_data
    --region <r> --size 1`; `fly secrets set LB_SIGNING_KEY=… [model keys…]`.
 3. **Deploy.** `make fly-deploy` → `fly deploy --config deploy/fly/fly.toml --dockerfile
-   deploy/common/Dockerfile --ignorefile deploy/common/.dockerignore --remote-only .`.
+   deploy/common/Dockerfile --ignorefile .dockerignore --remote-only .`.
    The remote builder: Rust release (`node` + `federation`) → pnpm SPA
    (`VITE_GATEWAY_URL=""`) → runtime image.
 4. **Boot.** entrypoint sets the node's env vars directly (no config file — the node is

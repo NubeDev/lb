@@ -1,6 +1,8 @@
 # Desktop scope — persistent store for the standalone `full` build
 
-Status: scope (the ask). Promotes to `public/desktop/desktop.md` once shipped.
+Status: **SHIPPED**. Session:
+[`../../sessions/desktop/desktop-persistent-store-session.md`](../../sessions/desktop/desktop-persistent-store-session.md).
+Public: `public/desktop/desktop.md`.
 
 The standalone `full` desktop binary boots a **100% in-memory node per launch** (`Node::boot` →
 `open_store()` uses `Store::memory()` because `LB_STORE_PATH` is unset). So **every restart loses all

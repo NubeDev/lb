@@ -20,5 +20,14 @@ endpoint is refused pre-connect until an admin widens the grant (deferred). Set
 `LB_DESKTOP_NO_DEMO_SOURCE=1` to skip pre-registering the demo. Scope:
 `docs/scope/desktop/desktop-federation-bundle-scope.md`.
 
+**The full standalone build persists by default.** It opens a durable SurrealDB (SurrealKV) store
+under the OS-standard per-user data directory — `%APPDATA%\lazybones\store` on Windows,
+`~/.local/share/lazybones/store` on Linux, `~/Library/Application Support/lazybones/store` on
+macOS — so channels, dashboards, panels, and registered datasources all survive a restart. Override
+with `LB_STORE_PATH` (a custom/portable location) or set it to an empty string for an ephemeral,
+in-memory session. Note: the gateway's **signing key** is still generated fresh per launch, so a
+restart re-logs you in even though your data is intact (persisting the key is a follow-up). Scope:
+`docs/scope/desktop/desktop-persistent-store-scope.md`.
+
 Packaging, build container, and platform targets: `docs/scope/desktop/` +
 `desktop/docs/<os>/`.

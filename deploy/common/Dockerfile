@@ -80,6 +80,10 @@ COPY --from=rust-builder /tmp/federation  /usr/local/bin/federation
 # `CARGO_MANIFEST_DIR` is baked in at compile time as the builder's absolute path
 # (/src/rust/node). The manifest read is unconditional (no env override) so we mirror the exact
 # builder layout here rather than relocating it — no extra env needed for either file to resolve.
+# `/src/rust/node` itself must also exist (even empty): the compiled-in path is
+# `.../node/../extensions/hello/...`, and `openat` fails ENOENT on a missing INTERMEDIATE
+# component even though the target directory it resolves to is present.
+RUN mkdir -p /src/rust/node
 COPY --from=rust-builder /src/rust/extensions/hello/extension.toml \
      /src/rust/extensions/hello/extension.toml
 COPY --from=rust-builder /src/rust/extensions/hello/target/wasm32-wasip2/release/hello_ext.wasm \

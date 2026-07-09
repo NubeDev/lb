@@ -26,7 +26,7 @@ make fly-local-down   # tear down (keeps volumes)
 make fly-smoke        # run smoke.sh (default: local plain-HTTP compose on :8080)
 make fly-deploy       # fly deploy --config deploy/fly/fly.toml \
                        #   --dockerfile deploy/common/Dockerfile \
-                       #   --ignorefile deploy/common/.dockerignore --remote-only .
+                       #   --ignorefile .dockerignore --remote-only .
 make fly-logs / fly-ssh / fly-status
 ```
 
