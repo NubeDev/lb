@@ -96,6 +96,7 @@ fn flow_node(id: &str, ty: &str, needs: &[&str], config: Value) -> Node {
         needs: needs.iter().map(|s| s.to_string()).collect(),
         with: serde_json::Map::new(),
         config,
+        inputs: Vec::new(),
         position: None,
     }
 }

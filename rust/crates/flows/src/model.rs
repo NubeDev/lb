@@ -84,8 +84,18 @@ pub struct Node {
     /// The descriptor type: a built-in (`trigger`/`tool`/`rhai`/`subflow`/`sink`) or `<ext>.<type>`.
     #[serde(rename = "type")]
     pub node_type: String,
+    /// The DAG dependency edges — the upstream node ids this node waits on (the topology). Per
+    /// flow-input-ports-scope, `needs` stays the ordering/dependency edge; an edge's **target input
+    /// port** is additive metadata in [`Node::inputs`] (None ⇒ the node's primary input port).
     #[serde(default)]
     pub needs: Vec<String>,
+    /// Per-edge **target input port** metadata (flow-input-ports-scope Axis 1). One entry per edge
+    /// that targets a non-primary port (or that wants to name the primary explicitly); an edge with
+    /// no entry defaults its `to_port` to the node's first declared input port. Additive + serde-
+    /// defaulted so a pre-ports flow deserialises unchanged (every edge ⇒ primary input). Kept in
+    /// agreement with `needs` by [`validate_flow`]: every `from` here must be a `needs` entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inputs: Vec<InputEdge>,
     /// Input bindings: literal | `${steps.x}` | `${steps.x.payload}` | `${steps.x.<path>}` |
     /// `${params.y}` (the message-envelope grammar, flow-message-envelope-scope D5).
     #[serde(default)]
@@ -98,6 +108,31 @@ pub struct Node {
     /// layout when absent. Pure view state — it never affects DAG math, validation, or run order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<Position>,
+}
+
+/// A wired edge's **target input port** metadata (flow-input-ports-scope Axis 1 — a Node-RED wire
+/// lands on a named input port). `to_port = None` ⇒ the downstream node's primary input port (its
+/// first declared input), so a pre-ports single-input linear flow is unchanged. The `from` is the
+/// upstream node id (the same id that appears in [`Node::needs`]); an edge is identified by its
+/// `from` (a node lists another at most once in `needs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputEdge {
+    /// The upstream node id this wire comes from (must also appear in the node's `needs`).
+    pub from: String,
+    /// The named input port this wire lands on; `None` ⇒ the node's primary input port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_port: Option<String>,
+}
+
+impl InputEdge {
+    /// Construct an edge metadata entry targeting `to_port` from `from`.
+    pub fn new(from: impl Into<String>, to_port: Option<String>) -> Self {
+        Self {
+            from: from.into(),
+            to_port,
+        }
+    }
 }
 
 /// A node's canvas coordinates (editor geometry only — see `Node::position`).
@@ -115,10 +150,21 @@ impl Node {
             id: id.into(),
             node_type: node_type.into(),
             needs: Vec::new(),
+            inputs: Vec::new(),
             with: serde_json::Map::new(),
             config: Value::Null,
             position: None,
         }
+    }
+
+    /// The `to_port` this node wires from `upstream`, or `None` (⇒ the primary input port) when the
+    /// edge carries no port metadata. A node lists another at most once in `needs`, so the `from`
+    /// match is unique. Per flow-input-ports-scope Axis 1.
+    pub fn to_port_from(&self, upstream: &str) -> Option<String> {
+        self.inputs
+            .iter()
+            .find(|e| e.from == upstream)
+            .and_then(|e| e.to_port.clone())
     }
 }
 
@@ -276,6 +322,58 @@ impl Flow {
             })
             .collect()
     }
+
+    /// One node's in-subgraph indegree (the `all`-port barrier count — for v1's single-input-port
+    /// nodes, all of its in-subgraph `needs`). The per-slot release path (flow-input-ports-scope)
+    /// reads this when it first touches a barrier slot, instead of recomputing the whole map.
+    pub fn barrier_indegree(&self, node_id: &str, set: &HashSet<String>) -> usize {
+        self.node(node_id)
+            .map(|n| n.needs.iter().filter(|dep| set.contains(*dep)).count())
+            .unwrap_or(0)
+    }
+
+    /// The wired edges landing on `node_id`, as `(from, to_port)` pairs — the per-port view of this
+    /// node's incoming wires (flow-input-ports-scope Axis 1). `to_port = None` ⇒ the node's primary
+    /// input port (the edge carries no port metadata). The port label is read off [`Node::inputs`],
+    /// so this is pure graph math (no descriptor needed); resolving `None` to the actual primary
+    /// port name is the descriptor's job (host-side, where the registry lives).
+    pub fn edges_into(&self, node_id: &str) -> Vec<(String, Option<String>)> {
+        let Some(n) = self.node(node_id) else {
+            return Vec::new();
+        };
+        n.needs
+            .iter()
+            .map(|from| {
+                let to_port = n
+                    .inputs
+                    .iter()
+                    .find(|e| &e.from == from)
+                    .and_then(|e| e.to_port.clone());
+                (from.clone(), to_port)
+            })
+            .collect()
+    }
+
+    /// In-degree per **(node, port)** counting only `needs` whose source is in `set` — the per-port
+    /// barrier count a join policy reads (flow-input-ports-scope Axis 2). An `all` port's indegree
+    /// is its wired in-subgraph upstream count; an `any` port is released per settled upstream, not
+    /// as a barrier. The policy decision is the host's (it holds the registry); this helper gives
+    /// the per-port grouping the policy applies to. `to_port = None` is grouped under the primary
+    /// port sentinel `None`.
+    pub fn indegrees_within_by_port(
+        &self,
+        set: &HashSet<String>,
+    ) -> HashMap<(String, Option<String>), usize> {
+        let mut out: HashMap<(String, Option<String>), usize> = HashMap::new();
+        for n in self.nodes.iter().filter(|n| set.contains(&n.id)) {
+            for (from, to_port) in self.edges_into(&n.id) {
+                if set.contains(&from) {
+                    *out.entry((n.id.clone(), to_port)).or_insert(0) += 1;
+                }
+            }
+        }
+        out
+    }
 }
 
 /// The kinds of `node_type` a flow may reference, resolved from its descriptor at validate time.
@@ -307,7 +405,35 @@ pub enum DagError {
     #[error(
         "node {0} has {1} inputs — a join must bind `payload` (auto-wire is single-upstream only)"
     )]
+    #[allow(dead_code)]
+    // the policy-aware join lint lives in `flows.save` (registry-aware); this
+    // variant is retained on the public enum for callers that surface DagError.
     UnboundJoin(String, usize),
+    /// A `[[node.inputs]]` port entry whose `from` is not in the node's `needs` (the port metadata
+    /// drifted from the topology). The two must agree — a port label with no wire is a mistake.
+    #[error("node {0} has an input-port entry for upstream `{1}` which is not in its needs")]
+    PortForUnknownNeed(String, String),
+    /// A `link-out {target}` whose target names no `link-in {name}` — a wireless sender pointing
+    /// nowhere (flow-input-ports-scope Slice 3). Caught at save; the target is a naming typo.
+    #[error("link-out `{0}` targets `{1}` but no link-in names it")]
+    LinkOutMissingTarget(String, String),
+    /// A `link-out` with no `config.target` at all (an unfinished node).
+    #[error("link-out `{0}` has no `config.target` — set the target link-in name")]
+    LinkOutNoTarget(String),
+    /// A node wires from a `link-out` (lists one in its `needs`) — `link-out`'s only output is the
+    /// wireless name, not a data port; that wire vanishes when the link-out is dropped at run load.
+    #[error("node `{0}` wires from link-out `{1}` — link-out forwards wirelessly, wire from the matching link-in instead")]
+    WiresFromLinkOut(String, String),
+    /// A `link-in` with no `link-out` targeting it AND no physical wire — a dead node that would
+    /// never fire (almost certainly a naming typo on its `name` or a sender's `target`).
+    #[error("link-in `{0}` (name `{1}`) has no link-outs targeting it and no physical wires")]
+    LinkInDead(String, String),
+    /// Two `link-in` nodes share one `name` — ambiguous (the resolver would funnel both, silently
+    /// duplicating firings). A `link-in` name must be unique within a flow.
+    #[error(
+        "link-in name `{0}` is claimed by multiple link-in nodes {1:?} — names must be unique"
+    )]
+    LinkNameCollision(String, Vec<String>),
 }
 
 /// Validate a flow's DAG: non-empty, within `max_nodes`, unique ids, deps resolve, no self-edge,
@@ -332,6 +458,13 @@ pub fn validate_flow(flow: &Flow, max_nodes: usize) -> Result<(), DagError> {
             }
             if !ids.contains(dep.as_str()) {
                 return Err(DagError::UnknownDependency(n.id.clone(), dep.clone()));
+            }
+        }
+        // Per-edge port metadata must agree with `needs`: every `InputEdge.from` must be a `needs`
+        // entry (a port label for a wire that isn't wired is a mistake — the topology is `needs`).
+        for e in &n.inputs {
+            if !n.needs.iter().any(|need| need == &e.from) {
+                return Err(DagError::PortForUnknownNeed(n.id.clone(), e.from.clone()));
             }
         }
     }
@@ -359,15 +492,9 @@ pub fn validate_flow(flow: &Flow, max_nodes: usize) -> Result<(), DagError> {
     if processed != flow.nodes.len() {
         return Err(DagError::Cycle);
     }
-    // Join lint (flow-message-envelope-scope D3): auto-wire copies a SINGLE upstream's envelope. A
-    // node with ≥2 upstreams is a join — it MUST bind `payload` explicitly, else the engine cannot
-    // know which upstream's message to carry (silently picking one would hide a join bug). Reject at
-    // save so a forgotten binding never looks like it works while dropping data.
-    for n in &flow.nodes {
-        if n.needs.len() >= 2 && !n.with.contains_key("payload") {
-            return Err(DagError::UnboundJoin(n.id.clone(), n.needs.len()));
-        }
-    }
+    // (The join lint — "a multi-input `all` port must bind `payload`" — is policy-aware and lives in
+    // `flows.save`, where the descriptor registry resolves a port's `all` vs `any` policy. An `any`
+    // port with multiple wires is valid: the funnel fires once per upstream. flow-input-ports-scope.)
     Ok(())
 }
 
@@ -402,6 +529,7 @@ mod tests {
             id: id.into(),
             node_type: "rhai".into(),
             needs: needs.iter().map(|s| s.to_string()).collect(),
+            inputs: Vec::new(),
             with: Default::default(),
             config: json!({}),
             position: None,
@@ -498,13 +626,14 @@ mod tests {
 
     #[test]
     fn rejects_a_join_with_no_payload_binding() {
-        // ≥2 upstreams and no `with.payload` → the save-time join lint (D3).
+        // The join lint is policy-aware and lives in `flows.save` (where the descriptor registry
+        // resolves a port's `all` vs `any`). validate_flow's job is the pure DAG (cycle/dangling/
+        // dup/self-edge/port-agreement) — a multi-input node is structurally valid here; the binding
+        // check is save-time against the registry. (flow-input-ports-scope moved the lint off the
+        // pure model so an `any` funnel with N wires is not falsely rejected.)
         let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &["a", "b"])]);
-        assert_eq!(
-            validate_flow(&f, MAX_FLOW_NODES),
-            Err(DagError::UnboundJoin("c".into(), 2))
-        );
-        // ...and passes once `payload` is bound.
+        validate_flow(&f, MAX_FLOW_NODES).expect("pure DAG accepts a multi-input node");
+        // ...and a node that names its ports round-trips them.
         let f = flow(vec![
             node("a", &[]),
             node("b", &[]),
@@ -554,5 +683,84 @@ mod tests {
         // (x) alone, never waiting forever on a wire that carried no message this firing.
         assert_eq!(indeg["z"], 1);
         assert!(!indeg.contains_key("tB"));
+    }
+
+    // --- flow-input-ports-scope Axis 1: port-labelled edges ---
+
+    #[test]
+    fn input_edge_round_trips_with_to_port() {
+        // An edge targeting a named port serialises + deserialises faithfully (export/import).
+        let e = json!({"from": "mqtt-a", "toPort": "payload"});
+        let parsed: InputEdge = serde_json::from_value(e).unwrap();
+        assert_eq!(parsed, InputEdge::new("mqtt-a", Some("payload".into())));
+        let back = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(back["from"], "mqtt-a");
+        assert_eq!(back["toPort"], "payload");
+    }
+
+    #[test]
+    fn node_with_inputs_round_trips_and_a_pre_ports_node_loads_unchanged() {
+        // A pre-ports node (no `inputs` field) deserialises with empty `inputs` ⇒ every edge is the
+        // primary input (the back-compat / no-migration property).
+        let pre = json!({"id":"d","type":"debug","needs":["a","b"]});
+        let n: Node = serde_json::from_value(pre).unwrap();
+        assert!(n.inputs.is_empty());
+        assert_eq!(n.to_port_from("a"), None);
+        assert_eq!(n.to_port_from("b"), None);
+
+        // A node that names its ports round-trips them.
+        let mut n = node("d", &["a", "b"]);
+        n.inputs.push(InputEdge::new("a", Some("payload".into())));
+        let v = serde_json::to_value(&n).unwrap();
+        assert_eq!(v["inputs"][0]["from"], "a");
+        assert_eq!(v["inputs"][0]["toPort"], "payload");
+        let back: Node = serde_json::from_value(v).unwrap();
+        assert_eq!(back.to_port_from("a"), Some("payload".to_string()));
+        // An unmentioned edge ⇒ None (primary).
+        assert_eq!(back.to_port_from("b"), None);
+    }
+
+    #[test]
+    fn edges_into_returns_per_port_wires() {
+        // Two wires into `d` on the primary port, one wire into `joiner` on a named port.
+        let mut d = node("d", &["a", "b"]);
+        d.inputs.push(InputEdge::new("b", Some("control".into()))); // a ⇒ primary (None), b ⇒ control
+        let f = flow(vec![node("a", &[]), node("b", &[]), d]);
+        let edges = f.edges_into("d");
+        assert_eq!(edges.len(), 2);
+        // Each upstream's port is resolved from `inputs`; an absent entry ⇒ None (primary).
+        let by_from: std::collections::HashMap<&str, &Option<String>> =
+            edges.iter().map(|(f, p)| (f.as_str(), p)).collect();
+        assert_eq!(by_from["a"], &None);
+        assert_eq!(by_from["b"], &Some("control".to_string()));
+    }
+
+    #[test]
+    fn indegrees_within_by_port_groups_per_port() {
+        // joiner has two wires on the primary port (a, c) and one on `secondary` (b). A per-port
+        // barrier reads the primary count (2) and the `secondary` count (1) separately.
+        let mut joiner = node("joiner", &["a", "b", "c"]);
+        joiner
+            .inputs
+            .push(InputEdge::new("b", Some("secondary".into())));
+        let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &[]), joiner]);
+        let set: HashSet<String> = f.nodes.iter().map(|n| n.id.clone()).collect();
+        let by_port = f.indegrees_within_by_port(&set);
+        assert_eq!(by_port[&("joiner".into(), None)], 2); // a + c on the primary port
+        assert_eq!(by_port[&("joiner".into(), Some("secondary".into()))], 1); // b on secondary
+    }
+
+    #[test]
+    fn rejects_a_port_entry_for_a_wire_that_is_not_wired() {
+        // Port metadata must agree with `needs`: a `to_port` for an upstream NOT in `needs` is a
+        // mistake (a label with no wire). Caught at save before any run.
+        let mut n = node("d", &["a"]);
+        n.inputs
+            .push(InputEdge::new("ghost", Some("payload".into())));
+        let f = flow(vec![node("a", &[]), n]);
+        assert_eq!(
+            validate_flow(&f, MAX_FLOW_NODES),
+            Err(DagError::PortForUnknownNeed("d".into(), "ghost".into()))
+        );
     }
 }

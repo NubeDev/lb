@@ -27,6 +27,7 @@ mod stateful;
 mod subflow;
 mod switch;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use lb_auth::Principal;
@@ -46,7 +47,10 @@ pub(crate) enum Dispatched {
     Park,
 }
 
-/// Claim + run one node, then release its dependents / prune on failure (or park on a delay timer).
+/// Claim + run one `(node, fctx)` slot, then release its dependents per join policy / prune on
+/// failure (or park on a delay timer). `policies` carries the per-node descriptors (the join policy
+/// each dependent's port declares); `subgraph` is the run's reachable-from-entry node set (out-of-
+/// subgraph deps are not released).
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_one(
     node: &Arc<Node>,
@@ -55,11 +59,15 @@ pub async fn execute_one(
     run_id: &str,
     flow: &Flow,
     node_id: &str,
+    fctx: &str,
+    policies: &HashMap<String, lb_flows::NodeDescriptor>,
+    subgraph: &std::collections::HashSet<String>,
     params: &serde_json::Map<String, Value>,
     now: u64,
 ) -> Result<(), String> {
-    // CAS: only the winner runs the node (redelivery no-op).
-    if !run_store::claim_step(&node.store, ws, run_id, node_id).await? {
+    // CAS: only the winner runs the slot (redelivery no-op). The deterministic `fctx` makes a
+    // redelivered funnel firing re-claim the SAME slot.
+    if !run_store::claim_step(&node.store, ws, run_id, node_id, fctx).await? {
         return Ok(());
     }
     let node_spec = flow
@@ -67,13 +75,41 @@ pub async fn execute_one(
         .ok_or_else(|| format!("node {node_id} not in flow"))?;
     let node_type = node_spec.node_type.clone();
 
+    // Read the slot for the firing-context fields (`triggered_by`/`parent_fctx` for an `any` firing).
+    let step = run_store::read_step(&node.store, ws, run_id, node_id, fctx).await?;
+    let triggered_by = step.as_ref().and_then(|s| s.triggered_by.clone());
+    let parent_fctx = step.as_ref().and_then(|s| s.parent_fctx.clone());
+
     // Decision 1/12: a config-only `flows.patch_run` on this UNEXECUTED node overrides the flow's
-    // node config for this run (the patched value the operator set during a suspend).
-    let step = run_store::read_step(&node.store, ws, run_id, node_id).await?;
+    // node config for this run. `patch_run` writes onto the `(node, "")` slot, so a non-empty-`fctx`
+    // firing falls back to it (a patch is config-level, not per-firing).
     let config = step
         .as_ref()
         .and_then(|s| s.patched_config.clone())
+        .or_else(|| {
+            if fctx.is_empty() {
+                None
+            } else {
+                // Fall back to a `(node, "")` patched config (written by `flows.patch_run`).
+                None // (resolved below via an async read)
+            }
+        })
         .unwrap_or_else(|| node_spec.config.clone());
+    let config = if fctx.is_empty() {
+        config
+    } else if step
+        .as_ref()
+        .and_then(|s| s.patched_config.clone())
+        .is_none()
+    {
+        // Look up a `(node, "")` patched config (the patch_run surface) for this firing.
+        match run_store::read_step(&node.store, ws, run_id, node_id, "").await? {
+            Some(r) if r.patched_config.is_some() => r.patched_config.unwrap(),
+            _ => node_spec.config.clone(),
+        }
+    } else {
+        config
+    };
 
     let resolved = run_store::resolve_node_bindings(
         &node.store,
@@ -81,6 +117,9 @@ pub async fn execute_one(
         flow,
         run_id,
         node_id,
+        fctx,
+        triggered_by.as_deref(),
+        parent_fctx.as_deref(),
         &node_spec.with,
         params,
     )
@@ -101,7 +140,7 @@ pub async fn execute_one(
     // rule budget passed through to the sandbox, and this outer wall is the hard ceiling over it.
     let timeout_ms = config.get("timeout_ms").and_then(|v| v.as_u64());
     let dispatch_fut = dispatch(
-        node, principal, ws, run_id, flow, node_id, &node_type, &config, inputs, params, now,
+        node, principal, ws, run_id, flow, node_id, fctx, &node_type, &config, inputs, params, now,
     );
     let dispatched = match timeout_ms {
         Some(ms) if ms > 0 => {
@@ -115,10 +154,10 @@ pub async fn execute_one(
 
     let outcome = match dispatched {
         Dispatched::Park => {
-            // Durable delay (Decision 16): the timer has not elapsed. Reset this node to Enqueued (so a
+            // Durable delay (Decision 16): the timer has not elapsed. Reset this slot to Enqueued (so a
             // resume re-drives it) and suspend the run — the drive loop halts at the next control check,
-            // the un-run nodes stay pending, `flows.resume` with an advanced clock releases it.
-            run_store::park_step(&node.store, ws, run_id, node_id).await?;
+            // the un-run slots stay pending, `flows.resume` with an advanced clock releases it.
+            run_store::park_step(&node.store, ws, run_id, node_id, fctx).await?;
             run_store::set_run_status(&node.store, ws, run_id, "suspended").await?;
             return Ok(());
         }
@@ -140,11 +179,11 @@ pub async fn execute_one(
         },
         other => other,
     };
-    run_store::record_outcome(&node.store, ws, &flow.id, run_id, node_id, outcome).await?;
+    run_store::record_outcome(&node.store, ws, &flow.id, run_id, node_id, fctx, outcome).await?;
 
     // Record-THEN-publish (flow-runtime-control-scope): project the durable outcome onto the run's
-    // settle subject so any watcher sees the node go terminal live. Fire-and-forget.
-    if let Ok(Some(rec)) = run_store::read_step(&node.store, ws, run_id, node_id).await {
+    // settle subject so any watcher sees the slot go terminal live. Fire-and-forget.
+    if let Ok(Some(rec)) = run_store::read_step(&node.store, ws, run_id, node_id, fctx).await {
         let event = super::watch::node_settled_event(
             node_id,
             &rec.outcome,
@@ -155,14 +194,24 @@ pub async fn execute_one(
     }
 
     if (failed && flow.failure_policy == lb_flows::FailurePolicy::Halt) || suppressed {
-        run_store::skip_subtree(&node.store, ws, flow, run_id, node_id).await?;
+        run_store::skip_subtree(&node.store, ws, flow, run_id, node_id, fctx).await?;
     } else if node_type == "switch" && !failed {
         // Decision 14 edge-gating: fire only the dependents the matched rules name; gate (skip) the
-        // rest of the switch's exclusive subtrees. A `switch` that failed falls through to the normal
-        // release path above's Halt/Continue handling.
-        switch::release_matched(node, ws, flow, run_id, node_id, &config).await?;
+        // rest of the switch's exclusive subtrees — under THIS `fctx`. A `switch` that failed falls
+        // through to the normal release path above's Halt/Continue handling.
+        switch::release_matched(node, ws, flow, run_id, node_id, fctx, &config, subgraph).await?;
     } else {
-        let _ = run_store::ready_dependents(&node.store, ws, flow, run_id, node_id).await?;
+        run_store::release_dependents(
+            &node.store,
+            ws,
+            flow,
+            run_id,
+            node_id,
+            fctx,
+            policies,
+            subgraph,
+        )
+        .await?;
     }
     Ok(())
 }
@@ -177,6 +226,7 @@ async fn dispatch(
     run_id: &str,
     flow: &Flow,
     node_id: &str,
+    fctx: &str,
     node_type: &str,
     config: &Value,
     inputs: serde_json::Map<String, Value>,
@@ -213,7 +263,10 @@ async fn dispatch(
         "json" => core::json(config, &inputs),
         "counter" => core::counter(node, ws, flow, node_id, config, &inputs, now).await,
         "sink" => {
-            sink::dispatch_sink(node, principal, ws, run_id, node_id, config, inputs, now).await
+            sink::dispatch_sink(
+                node, principal, ws, run_id, node_id, fctx, config, inputs, now,
+            )
+            .await
         }
         "subflow" => subflow::dispatch_subflow(node, principal, ws, config, inputs, now).await,
         "filter" => stateful::filter(node, ws, flow, node_id, config, &inputs, now).await,
@@ -222,6 +275,14 @@ async fn dispatch(
         // `switch` passes the envelope through unchanged; the routing decision gates dependents in
         // `execute_one` (Decision 14), not here.
         "switch" => NodeOutcome::ok(
+            json!({ "payload": inputs.get("payload").cloned().unwrap_or(Value::Null) }),
+        ),
+        // The wireless `link-in` collector (flow-input-ports-scope Slice 3). At run load the
+        // coordinator resolved every `link-out {target}` onto this node's `any` primary port, so a
+        // `link-in` firing is just an `any`-funnel pass-through: the fctx-scoped auto-wire already
+        // placed the triggering upstream's envelope in `inputs`, and the node emits it unchanged. A
+        // downstream then settles once per `link-in` firing (the fctx propagates past the funnel).
+        "link-in" => NodeOutcome::ok(
             json!({ "payload": inputs.get("payload").cloned().unwrap_or(Value::Null) }),
         ),
         "delay" => {

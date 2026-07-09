@@ -46,7 +46,10 @@ pub struct FlowRunRecord {
     pub entry_node: Option<String>,
 }
 
-/// One node's durable state + recorded result.
+/// One node's durable state + recorded result. A run holds **one record per `(node, fctx)` slot**
+/// (flow-input-ports-scope): a barrier/frontier node has a single `fctx == ""` record (today's
+/// shape); a node downstream of an `any` funnel has one record PER firing, each under its minted
+/// `fctx`. The record id is [`step_record_id`] — byte-for-byte `{run}:{node}` when `fctx` is empty.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowStepRecord {
     pub run_id: String,
@@ -69,11 +72,30 @@ pub struct FlowStepRecord {
     /// reads this in place of the flow's node config when the node's turn comes; `None` otherwise.
     #[serde(default)]
     pub patched_config: Option<Value>,
+    /// The **firing context** this slot fired under (flow-input-ports-scope). Empty for a
+    /// barrier/frontier firing (the all-`all` common case ⇒ today's record shape); a minted id for an
+    /// `any`-funnel firing or a node downstream of one. The recorded `output` envelope carries this
+    /// same `fctx` so a downstream binding resolves the matching settle.
+    #[serde(default)]
+    pub fctx: String,
+    /// The upstream node id that TRIGGERED this firing, for an `any`-port firing (the single
+    /// arriving message the node auto-wires from). `None` for a barrier/frontier firing.
+    #[serde(default)]
+    pub triggered_by: Option<String>,
+    /// The firing context the triggering upstream carried (the parent wave), for an `any`-port
+    /// firing. The node reads `triggered_by`'s settle under this `fctx` to auto-wire its input.
+    /// `None` for a barrier/frontier firing.
+    #[serde(default)]
+    pub parent_fctx: Option<String>,
 }
 
-/// The id of a per-node record within a run.
-pub fn step_record_id(run_id: &str, node_id: &str) -> String {
-    format!("{run_id}:{node_id}")
+/// The id of a per-`(node, fctx)` slot record within a run. Empty `fctx` ⇒ `{run}:{node}`
+/// (byte-for-byte today's key); non-empty ⇒ `{run}:{node}@{fctx}` (the firing-context claim-key seam).
+pub fn step_record_id(run_id: &str, node_id: &str, fctx: &str) -> String {
+    format!(
+        "{run_id}:{node_id}{}",
+        lb_flows::firing_context::slot_suffix(fctx)
+    )
 }
 
 /// One trigger node's reactive cursor — the per-node state that lets a flow hold **N independent

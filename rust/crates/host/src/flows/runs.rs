@@ -111,14 +111,28 @@ async fn node_snapshot(store: &Store, ws: &str, run_id: &str) -> Result<Vec<Valu
             .and_then(|v| v.as_str())
             .unwrap_or("pending");
         let terminal = claim == "done";
-        steps.push(json!({
+        // The firing context labels WHICH firing this slot is (flow-input-ports-scope). Empty for a
+        // barrier/frontier firing (the all-`all` common case); a minted id for an `any`-funnel firing
+        // or a node downstream of one — so the debug story stays legible one hop past the funnel.
+        let fctx = inner.get("fctx").and_then(|v| v.as_str()).unwrap_or("");
+        let mut step = json!({
             "id": inner.get("node_id").cloned().unwrap_or(Value::Null),
             "claim": claim_for_display(claim),
             "terminal": terminal,
             "outcome": inner.get("outcome").cloned().unwrap_or(Value::Null),
             "output": inner.get("output").cloned().unwrap_or(Value::Null),
             "error": inner.get("error").cloned().unwrap_or(Value::Null),
-        }));
+        });
+        if !fctx.is_empty() {
+            step["fctx"] = Value::String(fctx.into());
+            // The upstream that triggered this firing (an `any`-funnel firing's single message).
+            if let Some(tb) = inner.get("triggered_by").cloned() {
+                if !tb.is_null() {
+                    step["triggeredBy"] = tb;
+                }
+            }
+        }
+        steps.push(step);
     }
     Ok(steps)
 }

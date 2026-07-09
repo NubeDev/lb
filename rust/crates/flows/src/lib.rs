@@ -27,6 +27,8 @@ pub mod builtins;
 pub mod coalesce;
 pub mod config_schema;
 pub mod descriptor;
+pub mod firing_context;
+pub mod link;
 pub mod model;
 pub mod node_block;
 pub mod ops;
@@ -37,10 +39,12 @@ pub use builtins::builtin_descriptors;
 pub use builtins::observability::{DEFAULT_COLLAPSE_BYTES, DEFAULT_RATE_LIMIT};
 pub use coalesce::{Coalesce, CoalesceStrategy};
 pub use config_schema::{compile_schema, validate_config, ConfigSchemaError};
-pub use descriptor::{NodeDescriptor, NodeKind};
+pub use descriptor::{InputPort, JoinPolicy, NodeDescriptor, NodeKind};
+pub use firing_context::{slot_suffix, triggering_upstream_of, FCTX_FIELD};
+pub use link::{resolve_links, validate_links};
 pub use model::{
-    is_builtin_type, validate_flow, Concurrency, DagError, FailurePolicy, Flow, FlowSummary, Node,
-    NodeConfig, Placement, BUILTIN_PREFIX, MAX_FLOW_NODES,
+    is_builtin_type, validate_flow, Concurrency, DagError, FailurePolicy, Flow, FlowSummary,
+    InputEdge, Node, NodeConfig, Placement, BUILTIN_PREFIX, MAX_FLOW_NODES,
 };
 pub use node_block::{validate_node_block, NodeBlock, NodeBlockError};
 pub use registry::merge_registry;

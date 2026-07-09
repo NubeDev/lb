@@ -11,6 +11,8 @@
 //! - [`sequence`] — `split`/`join` (array-carry + the `parts` contract) + `batch` (durable grouping).
 //! - [`function`] — `filter` (RBE), `unique` (dedupe), `switch` (routing), `delay` (durable park).
 //! - [`observability`] — `debug` (Node-RED's debug node: a motion-only sink the debug panel tails).
+//! - [`link`] — the wireless `link-out {target}` / `link-in {name}` pair (the `any`-funnel collector
+//!   that needs no physical wire; resolved at run load into ordinary port-targeted edges).
 //!
 //! Every built-in speaks the **message envelope** (flow-message-envelope-scope D6): input port
 //! `payload` (+ `topic` carried alongside), output `payload` (+ any field it sets, e.g. the sequence
@@ -19,15 +21,16 @@
 pub mod core;
 pub mod data;
 pub mod function;
+pub mod link;
 pub mod observability;
 pub mod parse;
 pub mod sequence;
 
 use crate::descriptor::NodeDescriptor;
 
-/// The full built-in registry: the spine nodes ∪ the data/JSON pack ∪ the observability nodes, in the
-/// one shared shape. The merged `flows.nodes` verb unions this with each installed extension's
-/// `[[node]]` descriptors.
+/// The full built-in registry: the spine nodes ∪ the data/JSON pack ∪ the observability nodes ∪ the
+/// link pair, in the one shared shape. The merged `flows.nodes` verb unions this with each installed
+/// extension's `[[node]]` descriptors.
 pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     let mut out = core::core_descriptors();
     out.extend(data::data_descriptors());
@@ -35,6 +38,7 @@ pub fn builtin_descriptors() -> Vec<NodeDescriptor> {
     out.extend(sequence::sequence_descriptors());
     out.extend(function::function_descriptors());
     out.extend(observability::observability_descriptors());
+    out.extend(link::link_descriptors());
     out
 }
 
@@ -84,6 +88,9 @@ mod tests {
         "delay",
         // observability (1)
         "debug",
+        // link (2)
+        "link-out",
+        "link-in",
     ];
 
     #[test]
@@ -93,8 +100,8 @@ mod tests {
         assert_eq!(types, EXPECTED);
         assert_eq!(
             d.len(),
-            33,
-            "12 spine + 20 data/JSON pack + 1 observability"
+            35,
+            "12 spine + 20 data/JSON pack + 1 observability + 2 link"
         );
         // Every built-in carries a compilable config schema (the load-time contract this test owns).
         for desc in &d {

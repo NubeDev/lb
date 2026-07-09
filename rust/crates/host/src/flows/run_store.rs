@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use lb_flows::{resolve_bindings, Flow, NodeOutput};
+use lb_flows::{resolve_bindings, Flow, NodeOutput, FCTX_FIELD};
 use lb_store::{read, scan, write_locked as write, Store};
 use serde_json::{json, Value};
 use tokio::sync::Mutex as AsyncMutex;
@@ -33,8 +33,16 @@ fn seed_lock(ws: &str, run_id: &str) -> Arc<AsyncMutex<()>> {
         .clone()
 }
 
-/// Seed a run: the coordinator record (pending, pinned `flow_version`) + a per-node state row (claim
-/// from in-degree). The pinned version is the spine of resume (Decision 1).
+/// Seed a run: the coordinator record (pending, pinned `flow_version`) + a step row for each
+/// **frontier** (in-degree-0 in-subgraph) node, keyed `(node, "")` Enqueued. Non-frontier nodes are
+/// NOT pre-seeded — their `(node, fctx)` slots are minted dynamically by [`release_dependents`] as
+/// upstreams settle (a barrier slot when its indegree hits 0; an `any`-funnel firing per settled
+/// upstream). The pinned version is the spine of resume (Decision 1).
+///
+/// For an all-`all` flow this is byte-for-byte today's end state: every node settles once at
+/// `fctx=""` under the key `{run}:{node}`. The only difference is *when* a non-frontier record
+/// appears (on first release, not at seed) — never observable in a terminal snapshot, and no test
+/// asserts a mid-run pending non-frontier node.
 pub async fn create_run(
     store: &Store,
     ws: &str,
@@ -73,10 +81,8 @@ pub async fn create_run(
     .await
     .map_err(|e| e.to_string())?;
     // Per-wire (Node-RED/FBP) seeding: a run fired FROM a trigger seeds only the subgraph reachable
-    // from it, with indegrees counted within that subgraph (a join waits only on its in-subgraph
-    // upstreams). `entry=None` keeps the whole-graph seed (manual "run all", resume, subflow). Nodes
-    // outside the set get NO step record — they are not part of this run (the wire never carried a
-    // message to them), so the drive/finalize loops simply never see them.
+    // from it. Frontier nodes (in-degree 0 within the subgraph) start `Enqueued` at `fctx=""`;
+    // everything else is minted dynamically by `release_dependents` as the run drives.
     let set = run_node_set_for(flow, entry);
     let indeg = match entry {
         Some(_) => flow.indegrees_within(&set),
@@ -86,16 +92,14 @@ pub async fn create_run(
         if !set.contains(&n.id) {
             continue;
         }
-        let d = indeg[&n.id];
+        if indeg[&n.id] != 0 {
+            continue; // a non-frontier node — minted on release, not here
+        }
         let rec = FlowStepRecord {
             run_id: run_id.to_string(),
             node_id: n.id.clone(),
-            claim: if d == 0 {
-                ClaimState::Enqueued
-            } else {
-                ClaimState::Pending
-            },
-            indegree: d,
+            claim: ClaimState::Enqueued,
+            indegree: 0,
             outcome: String::new(),
             output: Value::Null,
             findings: Value::Null,
@@ -103,6 +107,9 @@ pub async fn create_run(
             attempts: 0,
             ms: 0,
             patched_config: None,
+            fctx: String::new(),
+            triggered_by: None,
+            parent_fctx: None,
         };
         write_step(store, ws, &rec).await?;
     }
@@ -133,14 +140,18 @@ pub async fn run_node_set(
     Ok(run_node_set_for(flow, entry.as_deref()))
 }
 
-/// CAS claim a node: `Pending|Enqueued → Running`. Returns true if THIS call won the claim.
+/// CAS claim a `(node, fctx)` slot: `Pending|Enqueued → Running`. Returns true if THIS call won the
+/// claim. The deterministic `fctx` makes a redelivered message re-mint the same slot id and re-claim
+/// it (a no-op) — exactly-once per firing, one hop or ten past the funnel (Decision 8, now keyed on
+/// the slot).
 pub async fn claim_step(
     store: &Store,
     ws: &str,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
 ) -> Result<bool, String> {
-    let Some(mut rec) = read_step(store, ws, run_id, node_id).await? else {
+    let Some(mut rec) = read_step(store, ws, run_id, node_id, fctx).await? else {
         return Ok(false);
     };
     match rec.claim {
@@ -153,22 +164,25 @@ pub async fn claim_step(
     }
 }
 
-/// Record a node's terminal outcome (idempotent) + upsert `flow_node_state` last-value on Ok
-/// (Decision 5 — the dashboard instant read; history is the node's series, not this record).
+/// Record a `(node, fctx)` slot's terminal outcome (idempotent) + upsert `flow_node_state` last-value
+/// on Ok (Decision 5 — the dashboard instant read; history is the node's series, not this record).
 ///
 /// On `Ok`, the recorded value is the **message envelope** (flow-message-envelope-scope D1): the
 /// `carry` map (the incoming inputs minus `payload`, so `topic` and friends propagate down a linear
 /// chain — D4) merged under the node's `emitted` fields (which always include a fresh `payload`).
-/// A join (`carry` empty) records just `emitted`. `flow_node_state` stores the whole envelope (D9).
+/// A join (`carry` empty) records just `emitted`. The envelope also carries the slot's `fctx`
+/// (flow-input-ports-scope) so a downstream binding resolves the matching settle. `flow_node_state`
+/// stores the whole envelope (D9); for an `any`-funnel firing the last-value is the last firing's.
 pub async fn record_outcome(
     store: &Store,
     ws: &str,
     flow_id: &str,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
     outcome: NodeOutcome,
 ) -> Result<(), String> {
-    let Some(mut state) = read_step(store, ws, run_id, node_id).await? else {
+    let Some(mut state) = read_step(store, ws, run_id, node_id, fctx).await? else {
         return Ok(());
     };
     state.claim = ClaimState::Done;
@@ -185,6 +199,10 @@ pub async fn record_outcome(
                     envelope.insert(k, v);
                 }
             }
+            // flow-input-ports-scope: stamp the firing context into the envelope so a downstream
+            // binding `${steps.<this>}` resolves THIS firing's settle (empty in the all-`all` case ⇒
+            // no-op field for back-compat of a non-fctx-aware reader).
+            envelope.insert(FCTX_FIELD.into(), Value::String(fctx.to_string()));
             let envelope = Value::Object(envelope);
             state.outcome = "ok".into();
             state.output = envelope.clone();
@@ -229,12 +247,18 @@ impl NodeOutcome {
     }
 }
 
-/// Park a claimed node back to `Enqueued` without recording a terminal outcome — the durable-delay
-/// suspend seam (Decision 16). A `delay` whose timer has not elapsed calls this: the node is re-driven
-/// from `Enqueued` on the next `flows.resume` (with an advanced clock), never double-settling. A
-/// no-op if the step is already terminal.
-pub async fn park_step(store: &Store, ws: &str, run_id: &str, node_id: &str) -> Result<(), String> {
-    let Some(mut rec) = read_step(store, ws, run_id, node_id).await? else {
+/// Park a claimed `(node, fctx)` slot back to `Enqueued` without recording a terminal outcome — the
+/// durable-delay suspend seam (Decision 16). A `delay` whose timer has not elapsed calls this: the
+/// slot is re-driven from `Enqueued` on the next `flows.resume` (with an advanced clock), never
+/// double-settling. A no-op if the slot is already terminal.
+pub async fn park_step(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    node_id: &str,
+    fctx: &str,
+) -> Result<(), String> {
+    let Some(mut rec) = read_step(store, ws, run_id, node_id, fctx).await? else {
         return Ok(());
     };
     if rec.claim == ClaimState::Done {
@@ -244,83 +268,226 @@ pub async fn park_step(store: &Store, ws: &str, run_id: &str, node_id: &str) -> 
     write_step(store, ws, &rec).await
 }
 
-/// Decrement dependents' in-degree; return those that reached 0 (marked Enqueued).
-pub async fn ready_dependents(
+/// Release the dependents of a settled `(node, fctx)` slot, **per input-port join policy**
+/// (flow-input-ports-scope Axis 2). For each in-subgraph dependent `D` wired from `finished`:
+/// - **`all` port (barrier):** touch the `(D, fctx)` slot — create it Pending with D's in-subgraph
+///   barrier indegree if absent, then decrement (this upstream settled under `fctx`); at 0 → Enqueued.
+///   This is today's `ready_dependents` path; in an all-`all` flow `fctx` is `""` everywhere so the
+///   behaviour + keys are byte-identical.
+/// - **`any` port (funnel):** mint a NEW firing `(D, mint(fctx, D, finished))` Enqueued, with
+///   `triggered_by = finished` + `parent_fctx = fctx` — the Node-RED fire-per-message OR. Deterministic
+///   per `(D, finished, fctx)`, so a redelivered upstream re-mints the same slot id (a no-op).
+///
+/// `policies` carries each node's descriptor (read once at drive start, pinned with the flow version).
+/// `subgraph` is the run's node set (the reachable-from-entry set); out-of-subgraph deps are not
+/// released (a per-trigger run never fires them).
+pub async fn release_dependents(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
     finished: &str,
-) -> Result<Vec<String>, String> {
+    fctx: &str,
+    policies: &HashMap<String, lb_flows::NodeDescriptor>,
+    subgraph: &std::collections::HashSet<String>,
+) -> Result<(), String> {
     let dependents = flow.dependents();
     let deps = dependents.get(finished).cloned().unwrap_or_default();
-    let mut ready = Vec::new();
     for dep in deps {
-        let Some(mut rec) = read_step(store, ws, run_id, &dep).await? else {
-            continue;
-        };
-        if rec.claim != ClaimState::Pending {
-            rec.indegree = rec.indegree.saturating_sub(1);
-            write_step(store, ws, &rec).await?;
+        if !subgraph.contains(&dep) {
             continue;
         }
+        let Some(dep_node) = flow.node(&dep) else {
+            continue;
+        };
+        let port = dep_node.to_port_from(finished);
+        let policy = policies
+            .get(&dep)
+            .map(|d| d.join_of(port.as_deref()))
+            .unwrap_or(lb_flows::JoinPolicy::All);
+        match policy {
+            lb_flows::JoinPolicy::All => {
+                touch_barrier_slot(store, ws, flow, run_id, &dep, fctx, subgraph).await?;
+            }
+            lb_flows::JoinPolicy::Any => {
+                let new_fctx = lb_flows::firing_context::mint(dep.as_str(), finished, fctx);
+                mint_firing(store, ws, run_id, &dep, &new_fctx, finished, fctx).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Decrement an `all`-port dependent's `(node, fctx)` barrier slot; Enqueue at 0. Creates the slot
+/// Pending (with the node's in-subgraph barrier indegree) on first touch — the dynamic counterpart of
+/// today's pre-seed, so an all-`all` flow's slots appear exactly as before, just on first release
+/// rather than at seed (byte-identical keys + end state).
+async fn touch_barrier_slot(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+    dep: &str,
+    fctx: &str,
+    subgraph: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    let barrier_indegree = flow.barrier_indegree(dep, subgraph);
+    let Some(mut rec) = read_step(store, ws, run_id, dep, fctx).await? else {
+        // First touch: seed the slot Pending with its full barrier indegree, then this release
+        // decrements by one.
+        let rec = FlowStepRecord {
+            run_id: run_id.into(),
+            node_id: dep.into(),
+            claim: ClaimState::Pending,
+            indegree: barrier_indegree,
+            outcome: String::new(),
+            output: Value::Null,
+            findings: Value::Null,
+            error: None,
+            attempts: 0,
+            ms: 0,
+            patched_config: None,
+            fctx: fctx.into(),
+            triggered_by: None,
+            parent_fctx: None,
+        };
+        write_step(store, ws, &rec).await?;
+        let mut rec = rec;
         rec.indegree = rec.indegree.saturating_sub(1);
         if rec.indegree == 0 {
             rec.claim = ClaimState::Enqueued;
-            ready.push(dep);
         }
         write_step(store, ws, &rec).await?;
+        return Ok(());
+    };
+    // Idempotent guard: a re-release of the same (finished, fctx) must not double-decrement. The slot
+    // records the set of upstreams already counted via its `triggered_by`-style marker — here a
+    // barrier slot is touched once per distinct (upstream, fctx) by the drive, and a redelivered
+    // release of the SAME (upstream, fctx) would re-mint the same key. We rely on the caller driving
+    // each (node, fctx) settle exactly once (the CAS claim guarantees the settle is once). So a plain
+    // decrement is correct: one release per upstream settle.
+    if rec.claim == ClaimState::Done {
+        return Ok(()); // already terminal (a gated skip or a live path) — leave it
     }
-    Ok(ready)
+    rec.indegree = rec.indegree.saturating_sub(1);
+    if matches!(rec.claim, ClaimState::Pending) && rec.indegree == 0 {
+        rec.claim = ClaimState::Enqueued;
+    }
+    write_step(store, ws, &rec).await?;
+    Ok(())
 }
 
-/// Release exactly **one** dependent by decrementing its in-degree (enqueue at 0) — the selective
-/// counterpart of [`ready_dependents`], used by `switch` edge-gating (Decision 14) to fire only the
-/// dependents a matched rule named. Idempotent: a non-`Pending` dependent is only decremented.
-pub async fn ready_one_dependent(
+/// Mint an `any`-funnel firing slot `(node, new_fctx)` Enqueued, with the triggering upstream +
+/// parent fctx recorded so the executor can auto-wire the single arriving message. Idempotent: a
+/// redelivered upstream re-mints the same deterministic `new_fctx` and finds the slot already present
+/// → no-op (exactly-once per firing).
+async fn mint_firing(
     store: &Store,
     ws: &str,
     run_id: &str,
-    dep: &str,
+    node: &str,
+    new_fctx: &str,
+    triggered_by: &str,
+    parent_fctx: &str,
 ) -> Result<(), String> {
-    let Some(mut rec) = read_step(store, ws, run_id, dep).await? else {
-        return Ok(());
-    };
-    rec.indegree = rec.indegree.saturating_sub(1);
-    if rec.claim == ClaimState::Pending && rec.indegree == 0 {
-        rec.claim = ClaimState::Enqueued;
+    if read_step(store, ws, run_id, node, new_fctx)
+        .await?
+        .is_some()
+    {
+        return Ok(()); // already minted (a redelivery re-minted the same id) — exactly-once
     }
+    let rec = FlowStepRecord {
+        run_id: run_id.into(),
+        node_id: node.into(),
+        claim: ClaimState::Enqueued,
+        indegree: 0,
+        outcome: String::new(),
+        output: Value::Null,
+        findings: Value::Null,
+        error: None,
+        attempts: 0,
+        ms: 0,
+        patched_config: None,
+        fctx: new_fctx.into(),
+        triggered_by: Some(triggered_by.into()),
+        parent_fctx: Some(parent_fctx.into()),
+    };
     write_step(store, ws, &rec).await
 }
 
-/// Gate a node and its exclusive subtree as Skipped — a `switch` unmatched branch (Decision 14) or a
-/// suppressed stateful node's downstream. Marks `gated` itself Skipped (if not yet terminal), then
-/// cascades through its dependents (the `skip_subtree` walk seeded at `gated`). A node already
-/// Running/Done is left as-is (a live path reached it first — the disjoint-branch assumption).
+/// Release exactly **one** barrier dependent by decrementing its `(node, fctx)` in-degree (enqueue at
+/// 0) — the selective counterpart of [`release_dependents`], used by `switch` edge-gating
+/// (Decision 14) to fire only the dependents a matched rule named. Idempotent: a non-`Pending`
+/// dependent is only decremented.
+pub async fn ready_one_dependent(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+    dep: &str,
+    fctx: &str,
+    subgraph: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    touch_barrier_slot(store, ws, flow, run_id, dep, fctx, subgraph).await
+}
+
+/// Gate a `(node, fctx)` slot and its exclusive subtree as Skipped — a `switch` unmatched branch
+/// (Decision 14) or a suppressed stateful node's downstream. Marks `gated` itself Skipped (if not yet
+/// terminal), then cascades through its dependents under the SAME `fctx` (the `skip_subtree` walk
+/// seeded at `gated`). A slot already Running/Done is left as-is (a live path reached it first — the
+/// disjoint-branch assumption). For an `any` port, a gated upstream simply fires no slot (one fewer
+/// firing) — this marks a barrier slot Skipped so it never hangs the run.
 pub async fn skip_gated(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
     gated: &str,
+    fctx: &str,
 ) -> Result<(), String> {
-    if let Some(mut rec) = read_step(store, ws, run_id, gated).await? {
-        if matches!(rec.claim, ClaimState::Pending | ClaimState::Enqueued) {
-            rec.claim = ClaimState::Done;
-            rec.outcome = "skipped".into();
+    match read_step(store, ws, run_id, gated, fctx).await? {
+        Some(mut rec) => {
+            if matches!(rec.claim, ClaimState::Pending | ClaimState::Enqueued) {
+                rec.claim = ClaimState::Done;
+                rec.outcome = "skipped".into();
+                write_step(store, ws, &rec).await?;
+            }
+        }
+        None => {
+            // Frontier-only seeding: a gated dependent may have no slot yet. Create it Skipped so
+            // finalize counts it and the run does not hang on a never-released node.
+            let rec = FlowStepRecord {
+                run_id: run_id.into(),
+                node_id: gated.into(),
+                claim: ClaimState::Done,
+                indegree: 0,
+                outcome: "skipped".into(),
+                output: Value::Null,
+                findings: Value::Null,
+                error: None,
+                attempts: 0,
+                ms: 0,
+                patched_config: None,
+                fctx: fctx.into(),
+                triggered_by: None,
+                parent_fctx: None,
+            };
             write_step(store, ws, &rec).await?;
         }
     }
-    skip_subtree(store, ws, flow, run_id, gated).await
+    skip_subtree(store, ws, flow, run_id, gated, fctx).await
 }
 
-/// Mark the transitive subtree below a failed node as Skipped (Halt policy).
+/// Mark the transitive subtree below a failed `(node, fctx)` slot as Skipped (Halt policy), under the
+/// same `fctx`. Each direct dependent is touched under `fctx` (creating its slot Skipped if absent),
+/// then the walk cascades.
 pub async fn skip_subtree(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
     failed: &str,
+    fctx: &str,
 ) -> Result<(), String> {
     let dependents = flow.dependents();
     let mut queue: std::collections::VecDeque<String> =
@@ -330,45 +497,80 @@ pub async fn skip_subtree(
         if !seen.insert(id.clone()) {
             continue;
         }
-        if let Some(mut rec) = read_step(store, ws, run_id, &id).await? {
+        let mut made_skip = false;
+        if let Some(mut rec) = read_step(store, ws, run_id, &id, fctx).await? {
             if matches!(rec.claim, ClaimState::Pending | ClaimState::Enqueued) {
                 rec.claim = ClaimState::Done;
                 rec.outcome = "skipped".into();
                 write_step(store, ws, &rec).await?;
+                made_skip = true;
             }
+        } else {
+            // The dependent's slot does not exist yet (frontier-only seeding) — create it Skipped so
+            // finalize counts it and the run does not hang on a never-released slot.
+            let rec = FlowStepRecord {
+                run_id: run_id.into(),
+                node_id: id.clone(),
+                claim: ClaimState::Done,
+                indegree: 0,
+                outcome: "skipped".into(),
+                output: Value::Null,
+                findings: Value::Null,
+                error: None,
+                attempts: 0,
+                ms: 0,
+                patched_config: None,
+                fctx: fctx.into(),
+                triggered_by: None,
+                parent_fctx: None,
+            };
+            write_step(store, ws, &rec).await?;
+            made_skip = true;
         }
-        if let Some(next) = dependents.get(&id) {
-            for n in next {
-                queue.push_back(n.clone());
+        // Only cascade past a node we actually marked Skipped (a live/Done node keeps its subtree).
+        if made_skip {
+            if let Some(next) = dependents.get(&id) {
+                for n in next {
+                    queue.push_back(n.clone());
+                }
             }
         }
     }
     Ok(())
 }
 
-/// If every node is Done, write the terminal run status. Returns the new status string if finalised.
+/// If every slot of the run is terminal, write the run status. Returns the new status if finalised.
+///
+/// Run-terminal now **counts slots, not nodes** (flow-input-ports-scope): a run is done when every
+/// `(node, fctx)` slot it minted is `Done` AND every node in its subgraph has ≥1 slot (so a not-yet-
+/// released node keeps the run open). Scans the run's step records (keyed `{run}:…`).
 pub async fn finalize_if_complete(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
 ) -> Result<Option<String>, String> {
+    let set = run_node_set(store, ws, flow, run_id).await?;
+    // Read every slot this run minted (scan the step table, filter by run_id).
+    let slots = scan_run_slots(store, ws, run_id).await?;
     let mut any_failed = false;
     let mut any_ok = false;
-    // Only the run's OWN node set must be terminal — a per-trigger run finalises when ITS subgraph is
-    // done, never waiting on out-of-subgraph nodes (which carry no step record this run).
-    let set = run_node_set(store, ws, flow, run_id).await?;
-    for n in flow.nodes.iter().filter(|n| set.contains(&n.id)) {
-        let Some(rec) = read_step(store, ws, run_id, &n.id).await? else {
-            return Ok(None);
-        };
+    let mut touched_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for rec in &slots {
+        touched_nodes.insert(rec.node_id.clone());
         if rec.claim != ClaimState::Done {
-            return Ok(None);
+            return Ok(None); // an in-flight slot — not terminal
         }
         match rec.outcome.as_str() {
             "ok" => any_ok = true,
             "err" => any_failed = true,
             _ => {}
+        }
+    }
+    // Every subgraph node must have ≥1 slot (a not-yet-released node means the run is still driving).
+    for n in flow.nodes.iter().filter(|n| set.contains(&n.id)) {
+        if !touched_nodes.contains(&n.id) {
+            return Ok(None);
         }
     }
     let status = if any_failed && any_ok {
@@ -382,6 +584,46 @@ pub async fn finalize_if_complete(
     Ok(Some(status.to_string()))
 }
 
+/// Scan every `flow_step_output` slot minted for a run (filter by `run_id` on the record body).
+pub async fn scan_run_slots(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+) -> Result<Vec<FlowStepRecord>, String> {
+    let page = lb_store::scan(store, ws, FLOW_STEP_TABLE, lb_store::MAX_SCAN_LIMIT, None)
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for row in page.rows {
+        let inner = match row.data {
+            Value::Object(mut o) => o.remove("data").unwrap_or(Value::Null),
+            other => other,
+        };
+        if inner.get("run_id").and_then(|v| v.as_str()) != Some(run_id) {
+            continue;
+        }
+        if let Ok(rec) = serde_json::from_value::<FlowStepRecord>(inner) {
+            out.push(rec);
+        }
+    }
+    Ok(out)
+}
+
+/// The `(node, fctx)` slots currently `Enqueued` (the ready frontier). Scans the run's step records.
+pub async fn ready_slots(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let mut out = Vec::new();
+    for rec in scan_run_slots(store, ws, run_id).await? {
+        if rec.claim == ClaimState::Enqueued {
+            out.push((rec.node_id, rec.fctx));
+        }
+    }
+    Ok(out)
+}
+
 /// A node's resolved inputs (its incoming message, D2) plus the `carry` map to merge forward (D4).
 pub struct ResolvedInputs {
     /// The node's incoming `msg` — the map every builtin reads `payload`/`topic` from.
@@ -391,36 +633,75 @@ pub struct ResolvedInputs {
     pub carry: serde_json::Map<String, Value>,
 }
 
-/// Resolve a node's incoming message (flow-message-envelope-scope D2/D3). Auto-wire: if the node has
-/// **exactly one** `needs` upstream and its `with` does NOT bind `payload`, `inputs` = that upstream's
-/// **full recorded envelope** (a copy — Node-RED "drag a wire and it flows"). With an explicit `with`,
-/// `inputs` is built from the bindings only (no auto). With ≥2 upstreams and no `with` (a join), the
-/// save-time lint already rejected it; defensively `inputs` is empty here.
+/// Resolve a `(node, fctx)` slot's incoming message (flow-message-envelope-scope D2/D3, +
+/// flow-input-ports-scope for the `any`-funnel auto-wire). Two shapes:
 ///
-/// `carry` (D4) = `inputs` minus `payload`, but only when `inputs` came from a single upstream OR a
-/// single explicit `payload` binding (so `topic` propagates); a multi-input join carries nothing.
+/// - **`any`-funnel firing** (`triggered_by` set): the slot fires for exactly ONE upstream — the
+///   triggering one — whose envelope (settled under `parent_fctx`) is auto-wired as the input, and
+///   whose non-`payload` fields carry forward (Node-RED "metadata survives a join", unambiguous
+///   because each `any` firing has exactly one incoming message).
+/// - **barrier/frontier firing** (`triggered_by` None): today's logic. Auto-wire when there is
+///   exactly one `needs` upstream and no explicit `payload` binding (copy that upstream's envelope —
+///   resolved under THIS `fctx`); else build `inputs` from the explicit `with` bindings. `${steps.X}`
+///   resolves the upstream settle **carrying the same `fctx`** (empty in all-`all` ⇒ every settle,
+///   byte-for-byte today's resolution).
 pub async fn resolve_node_bindings(
     store: &Store,
     ws: &str,
     flow: &Flow,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
+    triggered_by: Option<&str>,
+    parent_fctx: Option<&str>,
     with: &serde_json::Map<String, Value>,
     params: &serde_json::Map<String, Value>,
 ) -> Result<ResolvedInputs, String> {
-    let mut recorded = HashMap::new();
-    for n in &flow.nodes {
-        if let Some(rec) = read_step(store, ws, run_id, &n.id).await? {
-            if rec.claim == ClaimState::Done && rec.outcome == "ok" {
-                recorded.insert(n.id.clone(), NodeOutput::new(rec.output));
-            }
-        }
-    }
     let needs = flow
         .node(node_id)
         .map(|n| n.needs.as_slice())
         .unwrap_or(&[]);
     let binds_payload = with.contains_key("payload");
+
+    // An `any`-funnel firing auto-wires its single triggering upstream (settled under `parent_fctx`).
+    if let Some(up) = triggered_by {
+        let pf = parent_fctx.unwrap_or("");
+        let envelope = match read_step(store, ws, run_id, up, pf).await? {
+            Some(rec) if rec.claim == ClaimState::Done && rec.outcome == "ok" => rec.output,
+            _ => Value::Null,
+        };
+        let mut inputs = match envelope {
+            Value::Object(m) => m,
+            other => {
+                let mut m = serde_json::Map::new();
+                m.insert("payload".into(), other);
+                m
+            }
+        };
+        // Apply any explicit non-`payload` bindings the author set on top (e.g. a hand-set `topic`),
+        // resolved against the triggering upstream's envelope.
+        let mut recorded = HashMap::new();
+        recorded.insert(up.to_string(), NodeOutput::new(inputs_serialize(&inputs)));
+        let bound = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
+        for (k, v) in bound {
+            inputs.insert(k, v);
+        }
+        overlay_retained_inputs(store, ws, &flow.id, node_id, &mut inputs).await?;
+        // The triggering upstream's non-`payload` fields carry forward (D4 / flow-input-ports-scope).
+        let carry = without_payload(&inputs);
+        return Ok(ResolvedInputs { inputs, carry });
+    }
+
+    // Barrier/frontier: build `recorded` from every done-ok settle carrying THIS `fctx` (the matching
+    // firing's upstreams). Empty `fctx` ⇒ every settle, byte-for-byte today's resolution.
+    let mut recorded = HashMap::new();
+    for n in &flow.nodes {
+        if let Some(rec) = read_step(store, ws, run_id, &n.id, fctx).await? {
+            if rec.claim == ClaimState::Done && rec.outcome == "ok" {
+                recorded.insert(n.id.clone(), NodeOutput::new(rec.output));
+            }
+        }
+    }
 
     // D3 auto-wire: single upstream, no explicit `payload` binding → copy the upstream's envelope.
     if needs.len() == 1 && !binds_payload {
@@ -462,6 +743,11 @@ pub async fn resolve_node_bindings(
         without_payload(&inputs)
     };
     Ok(ResolvedInputs { inputs, carry })
+}
+
+/// Serialize a map into an object `Value` (a tiny helper for the any-firing recorded-envelope build).
+fn inputs_serialize(m: &serde_json::Map<String, Value>) -> Value {
+    Value::Object(m.clone())
 }
 
 /// Overlay this node's retained `flow_input` onto its resolved `inputs`, establishing the binding
@@ -583,8 +869,9 @@ pub async fn read_step(
     ws: &str,
     run_id: &str,
     node_id: &str,
+    fctx: &str,
 ) -> Result<Option<FlowStepRecord>, String> {
-    let id = step_record_id(run_id, node_id);
+    let id = step_record_id(run_id, node_id, fctx);
     match read(store, ws, FLOW_STEP_TABLE, &id).await {
         Ok(Some(v)) => serde_json::from_value(v)
             .map(Some)
@@ -617,7 +904,7 @@ pub async fn set_run_status(
 }
 
 async fn write_step(store: &Store, ws: &str, rec: &FlowStepRecord) -> Result<(), String> {
-    let id = step_record_id(&rec.run_id, &rec.node_id);
+    let id = step_record_id(&rec.run_id, &rec.node_id, &rec.fctx);
     write(
         store,
         ws,

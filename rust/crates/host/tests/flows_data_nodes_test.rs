@@ -47,6 +47,7 @@ fn one_node_flow(id: &str, node_type: &str, config: Value, payload: Value) -> Fl
         needs: vec![],
         with: serde_json::Map::from_iter([("payload".into(), payload)]),
         config,
+        inputs: Vec::new(),
         position: None,
     };
     Flow {

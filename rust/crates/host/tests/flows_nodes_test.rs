@@ -48,6 +48,7 @@ fn node_block(r#type: &str, kind: NodeKind, tool: &str) -> NodeBlock {
         } else {
             vec!["sample".into()]
         },
+        input_ports: vec![],
         config_version: 1,
         config: json!({"type":"object","properties":{"topic":{"type":"string"}}}),
     }
@@ -102,6 +103,9 @@ const BUILTINS: &[&str] = &[
     "unique",
     "switch",
     "delay",
+    "debug",
+    "link-out",
+    "link-in",
 ];
 
 fn types(out: &serde_json::Value) -> Vec<String> {

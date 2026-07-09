@@ -54,7 +54,7 @@ pub(super) async fn dispatch_subflow(
             let mut folded = serde_json::Map::new();
             for n in &child.nodes {
                 if let Ok(Some(rec)) =
-                    run_store::read_step(&node.store, ws, &child_run, &n.id).await
+                    run_store::read_step(&node.store, ws, &child_run, &n.id, "").await
                 {
                     if rec.outcome == "ok" {
                         folded.insert(n.id.clone(), rec.output);
