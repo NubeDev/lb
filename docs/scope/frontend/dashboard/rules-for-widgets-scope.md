@@ -34,6 +34,10 @@ the author has to reverse-engineer — a small **chart-return helper family** in
 - **The wizard gets it for free.** The new-panel wizard's Source step uses the shipped source
   picker (`useSourcePicker`), so the Rules group appears there with no wizard change — the E2E
   test proves the full loop: pick a rule → preview shows real rows → save → dashboard renders.
+  **Correction (discoverability half, still open):** the group *renders* but is not *findable* — the
+  wizard's step-1 chooser only names "rule" in a card subtitle and buries Rules seventh in a flattened
+  combobox, so users bind through *Datasource* by mistake. The labelling fix is its own child scope:
+  [`panel-wizard-source-discoverability-scope.md`](panel-wizard-source-discoverability-scope.md).
 
 ## Non-goals
 
