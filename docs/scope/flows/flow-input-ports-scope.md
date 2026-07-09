@@ -1,16 +1,38 @@
 # Flows scope — port-labelled edges + a per-input-port join policy (the Node-RED multi-input model, done right)
 
-Status: scope (the ask). Promotes to [`public/flows/flows.md`](../../../doc-site/content/public/flows/flows.md)
-once shipped. Read the spine [`flows-scope.md`](flows-scope.md) (canonical **Decisions 1–16**),
+Status: **shipped** (2026-07-09, Slices 1–4). Promoted to
+[`public/flows/flows.md`](../../../doc-site/content/public/flows/flows.md). Read the spine
+[`flows-scope.md`](flows-scope.md) (canonical **Decisions 1–16**),
 [`flow-message-envelope-scope.md`](flow-message-envelope-scope.md) (the `{payload, topic}` envelope +
 auto-wire), [`node-descriptor-scope.md`](node-descriptor-scope.md) (ports), and
 [`flow-multi-trigger-reactive-scope.md`](flow-multi-trigger-reactive-scope.md) (N independent triggers,
 each firing its own subgraph) first.
 
+> **Slicing (recorded).** The scope landed in four slices, each honestly complete on its own
+> boundary: **Slice 1** (data model — `to_port`, the `join` policy table, per-port graph math, save
+> lints, UI wire types), **Slice 2** (the `any` runtime + the propagated firing-context `fctx` seam),
+> **Slice 3** (the `link` built-in pair + per-firing cap-deny/outbox-dedup + the propagate-past-the-
+> funnel headline), **Slice 4** (the per-port canvas). Sessions: `flow-input-ports-slice{1,2,3,4}`
+> under `sessions/flows/`.
+
 > **No backwards compatibility.** Flows is in development. This is a **structural** change to the edge
 > model — an edge stops being a bare node-id `needs` and gains a **target input port** — plus a new
 > per-port **join policy** in the descriptor. Re-save dev flows. There is no migration burden and no
 > alias; we cut cleanly (the envelope scope set the precedent).
+
+> **Build slicing (in flight).** This scope is large and is being built in four slices. **Slice 1
+> shipped 2026-07-09: the data-model foundation** — port-labelled edges (`to_port`), the descriptor
+> `join` policy table (`InputPort{ name, join }`), per-port graph math, `[[node.input]]` manifest
+> parse, and the registry-aware save lints. **Slice 2 shipped 2026-07-09: the `any` runtime + the
+> firing-context (`fctx`) seam** — the load-bearing piece. An `any` port releases once per settled
+> upstream, each firing scoped by a per-message identity (`fctx`) carried in the envelope, so
+> multiplicity survives past the funnel; every claim key + `${steps.*}` resolution is scoped by
+> `(node, fctx)` (empty in the all-`all` case ⇒ today's key byte-for-byte). `sink`-kind ports (incl.
+> `debug`) default to `any`; the join lint is per-port policy-aware. **Slice 3 (next): the `link`
+> built-in pair** (virtual OR edges — also unlocks the propagate-past-the-funnel + per-firing
+> cap-deny/outbox-dedup tests, which need a non-sink `any` node). **Slice 4:** the per-port canvas.
+> See [`sessions/flows/flow-input-ports-slice1-session.md`](../../sessions/flows/flow-input-ports-slice1-session.md)
+> + [`flow-input-ports-slice2-session.md`](../../sessions/flows/flow-input-ports-slice2-session.md).
 
 ## The ask (from the user, against the live design)
 
@@ -207,10 +229,16 @@ mid-implementation would force exactly the patch this doc exists to avoid. It is
    gates its wire, that slot **settles `Skipped` (empty, no firing)** rather than leaving the barrier
    unmet — so a 3-wire `any` port with one gated upstream fires **twice** and the run still reaches
    terminal (terminal-detection must settle gated-empty slots, not hang on them).
-5. **`link` built-in pair (`flows/builtins.rs`).** `link-out {target}` and `link-in {name}` — a `link-in`
-   has an `any` primary input and receives every `link-out` naming it, as a **virtual edge** resolved at
-   save into normal port-targeted `needs` (so the engine sees ordinary wires; the "wireless" part is
-   editor sugar). Same ws wall, same run, no new cap.
+5. **`link` built-in pair (`flows/builtins/link.rs` + `flows/link.rs`).** `link-out {target}` and
+   `link-in {name}` — a `link-in` has an `any` primary input and receives every `link-out` naming
+   it, as a **virtual edge resolved at run load into normal port-targeted `needs`** (so the engine
+   sees ordinary wires; the "wireless" part is editor sugar). **As built (Slice 3):** resolution is
+   run-load (`coordinator::start`/`drive` call `Flow::resolve_links` on a transient copy — the
+   persisted flow keeps the author's link nodes intact so the editor round-trips and a deleted
+   `link-out` can never leave a stale wire), NOT a save-time mutation; save-time only
+   `validate_links`s the topology (a `link-out` targeting a missing `link-in`, a wire from a
+   `link-out`, a dead `link-in`). Same ws wall, same run, no new cap. (The scope's original
+   save-time wording was rejected — see the Slice 3 session for the bugs that motivated the move.)
 6. **Carry-forward (`resolve_node_bindings`).** `all` port ⇒ [envelope D4](flow-message-envelope-scope.md)
    (emit only `emitted`). `any` port ⇒ carry the **single arriving** upstream's non-`payload` fields
    forward (unambiguous — one message per firing).
@@ -222,6 +250,11 @@ mid-implementation would force exactly the patch this doc exists to avoid. It is
    point).
 8. **Canvas (`flowGraph.ts` / `FlowNodeView`).** Per-named-port handles; `any` vs `all` glyph; wire
    inspector shows `to_port`; the palette shows a node's input ports + policies from `flows.nodes`.
+   **As built (Slice 4):** `joinOf`/`effectiveInputPorts` mirror the host `join_of`; a single-port
+   node keeps one anonymous handle (back-compat), a multi-port node stacks named handles (primary
+   anonymous, non-primary `id = portName`); each handle wears a funnel (`any`) / merge (`all`) glyph;
+   `flowToEdges` labels a named-port wire with its `toPort` (the wire-inspector surface); the palette
+   shows each port + policy mark; `link-out`/`link-in` render as their built-in descriptors.
 
 ## How it fits the core
 
@@ -366,24 +399,30 @@ and a new `any` set (funnel). Touch list: `flows_run_test`, `flows_nodes_test`,
 ## Open questions
 
 - **`any`-port firing order determinism.** Firings settle in upstream-completion order (non-deterministic
-  under concurrency). Is that acceptable (Node-RED is also arrival-ordered), or does any built-in need a
-  stable order? *Leaning:* accept arrival order (matches Node-RED); document it; a node needing order uses
-  an `all` join + explicit sort. Confirm no built-in relies on order.
-- **Should `link-in` allow an `all` policy?** A `link-in` is conceptually a funnel (`any`). Is there a
-  caller who wants a *join* over virtual edges? *Leaning:* v1 `link-in` is `any`-only; revisit if a real
-  join-over-links caller appears.
+  under concurrency). **Resolved (Slice 2):** accept arrival order (matches Node-RED); document it; a
+  node needing order uses an `all` join + explicit sort. No built-in relies on order.
+- **Should `link-in` allow an `all` policy?** A `link-in` is conceptually a funnel (`any`). **Resolved
+  (Slice 3):** v1 `link-in` is `any`-only (the descriptor declares `join = "any"` on `payload`); a
+  join-over-links caller has not appeared. If one does, a deliberate second node kind is the primitive.
 - **Mixed-policy multi-port nodes.** A future node with a `left` (`all`) and a `control` (`any`) port is
-  expressible in this model — do any v1 built-ins need it, or is it purely a capability we leave open?
-  *Leaning:* leave the model open (it costs nothing), ship no mixed built-in in v1.
-- **Collect-join (`all` over an `any` funnel) — defined or forbidden?** v1 **hard-errors** it (undefined
-  cross-firing-context semantics). But "wait for all N firings of a funnel and receive the N envelopes" is a
-  legitimate, bounded operation (the funnel settles exactly path-count slots). Is there a real caller?
-  *Leaning:* keep the hard error in v1; if a caller appears, define it as "an `all` port may barrier over a
-  funnel's **complete firing set** and receive the array" — a deliberate, tested primitive, not accidental
-  behaviour.
-- **`flows.patch_run` and port policy.** A config-only patch ([Decision 12](flows-scope.md)) can't change a
-  port's `join` (that's structural ⇒ new version). Confirm the patch validator rejects a policy change on a
-  live run.
+  expressible in this model. **Resolved (Slices 2–3):** the model is open (it costs nothing), but v1
+  ships no mixed-policy built-in — every built-in is single-port. The canvas already paints it
+  per-port (Slice 4) for an extension that declares one.
+- **Collect-join (`all` over an `any` funnel) — defined or forbidden?** **Resolved by what the runtime
+  does (Slice 3), which overturned the original "v1 hard-error" proposal.** An `all` port whose ONLY
+  upstream is a funnel **inherits the multiplicity** (fires once per funnel firing, each carrying one
+  envelope) — coherent via the `fctx` propagation, and exactly the propagate-past-the-funnel headline
+  topology (`W` is an `all` transform downstream of `link-in`). Hard-erroring "an `all` port reaching
+  through an `any` funnel" would forbid that load-bearing seam itself. The genuine footgun is
+  narrower — an `all` port **joining a funnel-carrying upstream with a different-`fctx` upstream**
+  (the barrier slot never completes). That needs a full `fctx`-lineage reachability analysis a
+  save-time heuristic can't soundly approximate; **left as a named follow-up** (collect-join
+  detection), not a silent gap. A true "collect-into-array" join (barrier over a funnel's COMPLETE
+  firing set) is a deliberate primitive if a caller appears.
+- **`flows.patch_run` and port policy.** **Resolved (Slice 3):** out of `patch_run`'s scope. A policy
+  is descriptor-level (`input_ports`); `patch_run` is config-only (Decision 1/12). A policy change is
+  structural ⇒ a new flow version, never a live-run patch — the shapes don't overlap, so no validator
+  is needed.
 
 ## Skill doc
 

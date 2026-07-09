@@ -16,7 +16,88 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-08): the desktop standalone full-stack build mode (`full` feature).** The
+**Just shipped (2026-07-09): flow input ports — Slice 2 (`any` runtime + `fctx`) + Slice 3 (the `link`
+pair) + Slice 4 (the per-port canvas). The `flow-input-ports` scope is COMPLETE.** Node-RED's
+"fire-per-message" OR is reachable end to end: three wires into one `any` port print **three** times,
+in one durable run, exactly-once per firing; multiplicity **propagates past the funnel**; and the
+wireless `link` pair + the per-port canvas ship. **The seam (Slice 2):** a **firing context (`fctx`)**
+— a per-message identity carried in an additive envelope field, minted at each `any` slot
+(deterministic per `(node, upstream, parent)`; nested funnels extend it: `link-in#mqtt-a` → `…·funnel2#w`),
+so every claim key + `${steps.*}` resolution is scoped by `(node, fctx)` and multiplicity survives past
+the funnel without a per-event fan-out storm. Empty `fctx` in the all-`all` case ⇒ `{run}:{node}` byte-
+for-byte; non-empty ⇒ `{run}:{node}@{fctx}`. **Slice 3 — the `link` pair:** `link-out {target}` /
+`link-in {name}` (built-ins under a `Links` category), the canonical `any`-funnel collector that needs
+no physical wire. Resolution is **run-load** (`coordinator::start`/`drive` call `Flow::resolve_links`
+on a transient copy — the persisted flow keeps the author's link nodes, so the editor round-trips the
+wireless sugar and a deleted `link-out` can never leave a stale wire); save-time only `validate_links`s
+the topology (a `link-out` targeting a missing `link-in`, a wire from a `link-out`, a dead `link-in`,
+a name collision). The **outbox/inbox dedup tripwire the scope named** is threaded: the sink's effect
+id is now `{run}:{node}@{fctx}` ⇒ N firings are N idempotent deliveries, not one swallowing the rest.
+**Slice 4 — the canvas:** per-named-input-port handles (one per declared port; a multi-port node stacks
+them, primary anonymous + non-primary `id = portName`), each wearing an `any` (funnel) vs `all` (join)
+glyph; `flowToEdges` labels a named-port wire with its `toPort` (the wire-inspector surface); the
+palette shows each node's input ports + policy marks. **Tests (real store/caps/gateway, rule 9):**
+`lb-flows` unit **108** (+12 `link` resolver/validator/descriptor); `lb-host` flows integration green
+across the full suite, with **+7 in `flows_run_test` → 39** — incl. **THE headline**
+`link_funnel_propagates_one_hop_past_the_funnel` (`link-in` any, 3 senders → transform `W` settles
+**three** times, each `W@<fctx>` reading its own firing's message — the fail-before for a naive
+depth-1 suffix), `link_funnel_denies_per_firing_at_a_downstream_tool` (N err settles), the
+`link_funnel_outbox_dedups_per_firing` (N distinct `@{fctx}` outbox effects read off the real store),
+`link_funnel_exactly_once_per_firing_on_redelivery`, the link save-lints, +
+`workspace_isolation_link_funnel_step_keys`. UI unit **93** (+7 `flowGraph` for `joinOf`/
+`effectiveInputPorts` + the wire-inspector label); UI gateway `FlowsCanvas.gateway` **15/15** (incl.
+the real-registry assertion that `link-out`/`link-in` ship under `Links` + `link-in`'s `any` port),
+`flowsDebug.gateway` 2/2, `FlowsRuntimeControl.gateway` 6/6. `cargo fmt` + `cargo build --workspace`
+clean; `tsc --noEmit` adds no new flows errors. **Pre-existing reds NOT this scope:** the 2
+`DebugValueView.test.tsx` unit cases (verified). Debug: [`debugging/flows/multi-input-node-fires-once-not-per-message.md`](debugging/flows/multi-input-node-fires-once-not-per-message.md).
+Scope [`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (**shipped** —
+OQs all resolved, incl. the collect-join question overturned by what the runtime does); sessions
+[`slice2`](sessions/flows/flow-input-ports-slice2-session.md) /
+[`slice3`](sessions/flows/flow-input-ports-slice3-session.md) /
+[`slice4`](sessions/flows/flow-input-ports-slice4-session.md); public [`public/flows/flows.md`](public/flows/flows.md).
+**Named follow-up (not a silent gap):** collect-join detection — an `all` port joining funnel-carrying
++ different-`fctx` upstreams can deadlock (needs full `fctx`-lineage reachability a save-time heuristic
+can't soundly approximate); the pure single-funnel-into-`all` case is coherent (inherits multiplicity,
+pinned by the headline test).
+
+---
+
+**Previously shipped (2026-07-09): flow input ports — Slice 1 (the data-model foundation).** The first of
+four slices of `flow-input-ports-scope.md` — the Node-RED multi-input model, done right. An edge
+gains a **target input port** (`to_port`, additive `inputs` metadata on the node; `None` ⇒ the
+primary input), and each input port declares a **join policy** (`all` barrier | `any` funnel) in a
+new descriptor table (`inputPorts` / `[[node.input]]`). **Slice 1 ships the data model only** — the
+port label + the policy ride as data the editor renders; the run engine still treats every input as
+an `all` barrier, so behaviour is **byte-identical** and the existing join lint (≥2 upstreams must
+bind `payload`) is **unchanged** → **no silent gap** (a 3-wire-into-`debug` flow still saves-rejected
+until Slice 2 honours `any`). Built: `lb-flows` `InputEdge{from,to_port}` + `Node.inputs` (additive,
+pre-ports flows load with empty ⇒ primary) + `JoinPolicy`/`InputPort` + `NodeDescriptor.input_ports`
++ `join_of()`/`primary_input()` + per-port graph math (`edges_into`, `indegrees_within_by_port`) +
+`[[node.input]]` manifest parse; `lb-host` registry-aware save lints (undeclared-port + no-input-port
+errors); UI wire types (`JoinPolicy`/`InputPort`/`InputWire`) + `flowGraph` round-trips `to_port` on
+the React Flow `targetHandle` (primary wires stay implicit). **Slicing recorded:** the `any` default
+flip + the lint relaxation MUST land with the runtime that honours them (Slice 2) — declaring `any`
+without the runtime would let a funnel save green then silently join. **Tests (real store/caps/gateway,
+rule 9):** `lb-flows` unit **91** (+5 port: edge round-trip, pre-ports-node-loads, `edges_into`,
+`indegrees_within_by_port`, port/needs-agreement); `lb-host` flows integration **127 across 13
+binaries** (the test sweep — every `Node{}` literal gained `inputs`; +4 new port-lint cases in
+`flows_run_test` incl. the no-silent-gap join-lint-still-holds guard → 29 there); UI `flowGraph.test`
+**15** (+3: `targetHandle` load, named-port round-trip, pre-ports clean shape). `cargo fmt` clean;
+`pnpm exec tsc --noEmit` adds no new flows errors. **Pre-existing red fixed in passing:**
+`flows_nodes_test` BUILTINS const was missing `debug` (stale since the debug node shipped) — corrected
+(verified red on master first). **Pre-existing reds NOT this slice:** `DebugValueView.test.tsx` (2 —
+identical on master). Scope
+[`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (slice-progress note
+added); session
+[`sessions/flows/flow-input-ports-slice1-session.md`](sessions/flows/flow-input-ports-slice1-session.md);
+public [`public/flows/flows.md`](public/flows/flows.md). **Next up:** Slice 2 — the `any` runtime +
+the propagated firing-context (`fctx`) seam (the load-bearing piece: a per-firing id carried in the
+envelope that scopes every claim/binding/job/outbox key so multiplicity survives one hop past the
+funnel; empty in the all-`all` case ⇒ today's key byte-for-byte).
+
+---
+
+**Previously shipped (2026-07-08): the desktop standalone full-stack build mode (`full` feature).** The
 `lazybones-shell` desktop binary shipped in a **thin IPC mode** (Tauri window + 5 `channel_*`/
 `agent_invoke` commands over a hardcoded demo principal) — the React UI bundled into the webview
 is built for the HTTP/SSE gateway, so login and every gateway verb had nothing to answer them.
