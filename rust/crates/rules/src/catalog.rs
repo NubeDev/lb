@@ -373,6 +373,25 @@ pub const CATALOG: &[FnEntry] = &[
         signature: "list(channel) -> Array",
         description: "List the workspace's channels. Uncharged read.",
     },
+    // ---- insight (verbs/insight.rs): the rule producer door onto the insight plane ----
+    FnEntry {
+        name: "insight.raise",
+        family: "insight",
+        signature: "raise(insight, item: Map) -> String",
+        description: "Raise (or dedup-upsert) a durable insight; returns its id. Charged write; no-op on a route:false panel run.",
+    },
+    FnEntry {
+        name: "insight.ack",
+        family: "insight",
+        signature: "ack(insight, id: String) -> ()",
+        description: "Acknowledge an insight (open -> acked). Charged write; no-op on a route:false panel run.",
+    },
+    FnEntry {
+        name: "insight.close",
+        family: "insight",
+        signature: "close(insight, id: String [, note: String]) -> ()",
+        description: "Close an insight (maps to the insight.resolve verb: * -> resolved). Charged write; no-op on a route:false panel run.",
+    },
 ];
 
 #[cfg(test)]
@@ -446,6 +465,7 @@ mod tests {
             "emit",
             "ai",
             "messaging",
+            "insight",
         ]
         .into_iter()
         .collect();
@@ -473,6 +493,7 @@ mod tests {
             "emit",
             "ai",
             "messaging",
+            "insight",
         ] {
             assert!(
                 families.contains(required),

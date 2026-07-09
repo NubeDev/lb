@@ -25,6 +25,14 @@ impl Collectors {
     pub fn drain_log(&self) -> Vec<LogLine> {
         std::mem::take(&mut self.log.lock().unwrap())
     }
+    /// Append one log line — the same collector `log(...)` writes to, used by handles that need to
+    /// record an honest note (e.g. `insight.raise` skipped on a `route:false` panel run).
+    pub fn log(&self, level: impl Into<String>, message: impl Into<String>) {
+        self.log.lock().unwrap().push(LogLine {
+            level: level.into(),
+            message: message.into(),
+        });
+    }
 }
 
 pub fn register(engine: &mut Engine, collectors: Arc<Collectors>) {

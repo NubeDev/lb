@@ -21,10 +21,23 @@ import { canonicalView } from "@/lib/dashboard";
 import { SOURCELESS_VIEWS } from "@/lib/panel-kit";
 import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
 import { READ_SOURCE_GROUPS, SourceCombobox, type SourceEntry, SQL_SOURCE_ID } from "@/features/dashboard/builder/sourcePicker";
+
+/** The group order for the WORKSPACE-source combobox — Rules first (panel-wizard-source-discoverability
+ *  scope: a user who clicked in on the word "rule" sees the "Rules" heading at a glance, not seventh).
+ *  Derived from the canonical `READ_SOURCE_GROUPS` (same labels, one vocabulary — source-picker-package
+ *  scope) with `flows` dropped (never a wizard source) and `rules` hoisted to the top. Reordering only —
+ *  the wizard still routes every kind through the same generic `selectEntry` (CLAUDE §10). */
+const WORKSPACE_SOURCE_GROUPS = (() => {
+  const shown = READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows");
+  const rules = shown.filter(({ group }) => group === "rules");
+  const rest = shown.filter(({ group }) => group !== "rules");
+  return [...rules, ...rest];
+})();
 import { Select } from "@/components/ui/select";
 import { defaultOptionsForView } from "@/features/panel-builder/viewOptions";
 import { useDatasourceList, refForOption } from "@/features/panel-builder/tabs/useDatasourceList";
 import { QueryWorkbench } from "@/features/query-workbench/QueryWorkbench";
+import { RuleWorkbench } from "./RuleWorkbench";
 
 interface Props {
   ws: string;
@@ -104,7 +117,7 @@ export function SourceStep({ ws, state, patch, onPickView, onAdvance }: Props) {
         {
           id: "workspace" as Track,
           label: "Workspace source",
-          hint: "A series, saved query, or rule already in this workspace.",
+          hint: "Bind to a saved rule, series, or saved query already in this workspace.",
           Icon: ListTree,
         },
         ...(fedOptions.length > 0
@@ -139,15 +152,24 @@ export function SourceStep({ ws, state, patch, onPickView, onAdvance }: Props) {
       patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }] });
   };
 
-  /** The picker entry id matching the current target (so the combobox reopens showing the picked source). */
-  const pickedEntryId = primary?.tool
+  /** The picker entry matching the current target (so the combobox reopens showing the picked source,
+   *  and the rule workbench reads the picked rule's declared `params`). Disambiguates a shared tool by
+   *  its identifying arg: `series` for a series read, `rule_id` for a rule (every rule shares
+   *  `rules.run`, so tool alone would collapse them — mirrors `sourcePicker.seedEntryId`). */
+  const pickedEntry = primary?.tool
     ? entries.find((e) => {
         if (e.source?.tool !== primary.tool) return false;
         const pickedSeries = (primary.args as { series?: string } | undefined)?.series;
-        if (!pickedSeries) return true;
-        return (e.source.args as { series?: string } | undefined)?.series === pickedSeries;
-      })?.id ?? ""
-    : "";
+        if (pickedSeries) return (e.source.args as { series?: string } | undefined)?.series === pickedSeries;
+        const pickedRuleId = (primary.args as { rule_id?: string } | undefined)?.rule_id;
+        if (pickedRuleId) return (e.source.args as { rule_id?: string } | undefined)?.rule_id === pickedRuleId;
+        return true;
+      }) ?? null
+    : null;
+  const pickedEntryId = pickedEntry?.id ?? "";
+  // A rule source shows the prove-it workbench (Run + params + rows) — the parity twin of the datasource
+  // track's embedded QueryWorkbench. Derived from the target's tool (no wizard-only flag).
+  const isRuleSource = primary?.tool === "rules.run";
 
   const selectEntry = (entry: SourceEntry | null) => {
     if (entry?.id === SQL_SOURCE_ID) {
@@ -265,11 +287,30 @@ export function SourceStep({ ws, state, patch, onPickView, onAdvance }: Props) {
               entries={entries}
               value={pickedEntryId}
               loading={loading}
-              groups={READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows")}
+              groups={WORKSPACE_SOURCE_GROUPS}
               onSelect={() => {}}
               onSelectEntry={(e) => selectEntry(e ?? null)}
             />
           </label>
+          {/* The Rules group leads the combobox, but an empty group renders NO heading — so a workspace
+              with no saved rules would leave the word the user came for invisible. Say it, and point at
+              where rules are made, so the path is discoverable before the first rule exists. Deny-tolerant:
+              a workspace without `mcp:rules.list:call` also yields no rules entries → same honest line. */}
+          {!loading && !entries.some((e) => e.group === "rules") && (
+            <p className="text-[11px] text-muted" aria-label="wizard no rules">
+              No saved rules yet — create one in <span className="text-fg">Rules</span> to bind it here.
+            </p>
+          )}
+          {/* A picked RULE gets the prove-it loop — params form + Run + rows — so it's tested before
+              binding, at parity with the datasource track's embedded workbench (CLAUDE §10: this is the
+              rule branch of the SAME generic source step, keyed on the target's tool, not a per-id case). */}
+          {isRuleSource && (
+            <RuleWorkbench
+              target={primary as Target}
+              params={pickedEntry?.params ?? []}
+              onChange={(next) => patch({ targets: [next] })}
+            />
+          )}
         </div>
       )}
 

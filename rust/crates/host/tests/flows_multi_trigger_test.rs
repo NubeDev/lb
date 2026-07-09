@@ -49,6 +49,7 @@ fn trigger(id: &str, mode: &str, cron: &str) -> Node {
         needs: vec![],
         with: Default::default(),
         config,
+        position: None,
     }
 }
 
@@ -59,6 +60,7 @@ fn rhai(id: &str, needs: &str) -> Node {
         needs: vec![needs.into()],
         with: Default::default(),
         config: json!({ "source": "1" }),
+        position: None,
     }
 }
 
@@ -246,6 +248,7 @@ async fn counter_node_increments_across_firings() {
                 needs: vec!["t".into()],
                 with: Default::default(),
                 config: json!({ "step": 1 }),
+                position: None,
             },
         ],
     );

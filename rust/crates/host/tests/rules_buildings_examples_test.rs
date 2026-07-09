@@ -180,15 +180,28 @@ async fn register_buildings(node: &Arc<Node>, admin: &Principal, ws: &str, db: &
 fn assert_rows(output: &RuleOutput, n: usize) -> Vec<Value> {
     match output {
         RuleOutput::Scalar(v) => {
-            let rows = v.as_array().expect("the result is the ranked table (an array)");
-            assert_eq!(rows.len(), n, "expected {n} building rows, got {}", rows.len());
+            let rows = v
+                .as_array()
+                .expect("the result is the ranked table (an array)");
+            assert_eq!(
+                rows.len(),
+                n,
+                "expected {n} building rows, got {}",
+                rows.len()
+            );
             rows.clone()
         }
         other => panic!("expected a scalar array result, got {other:?}"),
     }
 }
 
-async fn run(node: &Arc<Node>, p: &Principal, ws: &str, body: &str, now: u64) -> lb_host::RunResult {
+async fn run(
+    node: &Arc<Node>,
+    p: &Principal,
+    ws: &str,
+    body: &str,
+    now: u64,
+) -> lb_host::RunResult {
     rules_run(
         node,
         p,
@@ -217,7 +230,14 @@ async fn buildings_examples_run_end_to_end() {
     register_buildings(&node, &admin, ws, &db).await;
 
     // --- QUERY-ONLY body: 8 buildings, Riverside Data Center on top (4.68 kWh/m²), NO findings ---
-    let query = run(&node, &admin, ws, &cat.body("buildings-intensity-query"), 10).await;
+    let query = run(
+        &node,
+        &admin,
+        ws,
+        &cat.body("buildings-intensity-query"),
+        10,
+    )
+    .await;
     let rows = assert_rows(&query.output, 8);
     assert_eq!(
         rows[0][0].as_str(),
@@ -237,7 +257,14 @@ async fn buildings_examples_run_end_to_end() {
     );
 
     // --- STRICT body: same 8 rows, still no live finding (its emit block is commented out too) ---
-    let strict = run(&node, &admin, ws, &cat.body("buildings-intensity-strict"), 20).await;
+    let strict = run(
+        &node,
+        &admin,
+        ws,
+        &cat.body("buildings-intensity-strict"),
+        20,
+    )
+    .await;
     assert_rows(&strict.output, 8);
     assert!(
         strict.findings.is_empty(),
@@ -246,7 +273,14 @@ async fn buildings_examples_run_end_to_end() {
     );
 
     // --- ALERT body: same 8 rows, exactly ONE alert finding (only Riverside > 1.0 kWh/m²) ---
-    let alerted = run(&node, &admin, ws, &cat.body("buildings-intensity-alert"), 30).await;
+    let alerted = run(
+        &node,
+        &admin,
+        ws,
+        &cat.body("buildings-intensity-alert"),
+        30,
+    )
+    .await;
     assert_rows(&alerted.output, 8);
     assert_eq!(
         alerted.findings.len(),
@@ -255,7 +289,10 @@ async fn buildings_examples_run_end_to_end() {
         alerted.findings
     );
     let finding = &alerted.findings[0];
-    assert!(finding.is_alert(), "it is an alert (routes to inbox/outbox)");
+    assert!(
+        finding.is_alert(),
+        "it is an alert (routes to inbox/outbox)"
+    );
     assert_eq!(
         finding.data.get("building").and_then(|v| v.as_str()),
         Some("Riverside Data Center"),

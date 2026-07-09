@@ -3,7 +3,7 @@
 // a toolbar. The canvas + side-panel own the live graph edits; this page persists them on save.
 // shadcn-first. One responsibility, one file (FILE-LAYOUT).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Save, Wand2 } from "lucide-react";
 
 import { AppPageHeader } from "@/components/app/page-header";
@@ -31,6 +31,9 @@ interface Props {
   ws: string;
   /** The schema name to load (`new` for a fresh unsaved design). */
   name: string;
+  /** When set (the designer was opened from a datasource's Schemas tab), preset this source and
+   *  auto-import its catalog on mount — the user never has to pick a source. */
+  presetImportSource?: string | null;
   /** Navigate back to the list. */
   onBack: () => void;
 }
@@ -41,7 +44,7 @@ function emptyRecord(name: string): DbSchemaRecord {
 }
 
 /** The designer page. Loads the record on mount, owns mutations, persists on save. */
-export function SchemaDesignerPage({ ws, name, onBack }: Props) {
+export function SchemaDesignerPage({ ws, name, presetImportSource, onBack }: Props) {
   const isNew = name === "new" || name === "";
   const [record, setRecord] = useState<DbSchemaRecord>(emptyRecord(isNew ? "untitled" : name));
   const [loading, setLoading] = useState(!isNew);
@@ -83,6 +86,16 @@ export function SchemaDesignerPage({ ws, name, onBack }: Props) {
       .then((s) => setSchemaNames(s.map((x) => x.name)))
       .catch(() => {});
   }, [name, isNew]);
+
+  // Auto-import from the datasource the designer was opened from (Schemas tab): once the record has
+  // finished loading, preset the source and kick off the import — the user picks nothing. Fired once
+  // per preset (a ref guards against re-runs when `record`/`loading` change afterward).
+  const autoImported = useRef(false);
+  useEffect(() => {
+    if (!presetImportSource || loading || autoImported.current) return;
+    autoImported.current = true;
+    onImportSource(presetImportSource);
+  }, [presetImportSource, loading]);
 
   const onChange = useCallback((next: DbSchemaRecord) => {
     setRecord(next);
@@ -289,6 +302,7 @@ export function SchemaDesignerPage({ ws, name, onBack }: Props) {
                 setImportSource(null);
                 setDirty(true);
               }}
+              onImportError={(msg) => setError(`Import from "${importSource}" failed: ${msg}`)}
             />
           </div>
           <aside className="w-80 shrink-0 border-l border-border">

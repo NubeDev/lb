@@ -9,7 +9,7 @@
 // editable node + the import/save affordances are original. tabularis (Apache-2.0) inspired the
 // node shape; ChartDB (AGPL) is UX reference only — no code copied (scope license hygiene).
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   addEdge,
   applyEdgeChanges,
@@ -31,6 +31,7 @@ import { LayoutGrid, Loader2, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { describeTable } from "@/lib/datasources";
 import type { DbSchemaRecord } from "@/lib/datasources";
+import { mergeImport } from "./mergeImport";
 import {
   EditableTableNode,
   SchemaDesignerNodeContext,
@@ -49,6 +50,9 @@ interface Props {
   importing: boolean;
   /** Callback after an import completes (the page clears its importing state). */
   onImportDone: () => void;
+  /** Callback when an import fails (bad source, denied, unreachable catalog). The page surfaces the
+   *  message; without it a failed read would reject unhandled and the user would see nothing. */
+  onImportError?: (message: string) => void;
 }
 
 /** One FK edge's default styling (solid accent line with an arrowhead). */
@@ -69,14 +73,34 @@ export function SchemaDesignerCanvas({
   importSource,
   importing,
   onImportDone,
+  onImportError,
 }: Props) {
-  const { nodes: initialNodes, edges: initialEdges } = useMemo(
-    () => recordToFlow(record),
-    // Re-project only when the record NAME changes (a different schema loaded). Live edits mutate
-    // the graph below; re-projecting on every keystroke would fight the author's focus + cursor.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [record.name],
+  // Re-project when the record NAME changes (a different schema loaded) OR when the SET of table
+  // names changes (a table was added/removed/imported). Live column edits mutate the graph in place
+  // via the Context callback, so keying on the name-set — not the full record — avoids fighting the
+  // author's focus/cursor on every keystroke while still surfacing added/imported tables (which
+  // otherwise never appear: the import merges new tables under the same schema name). Sorted+joined
+  // so the key is order-stable.
+  // The canvas holds its own React Flow node/edge state (the FlowCanvas pattern) so drags land
+  // immediately and STICK. A fully-controlled nodes={memo(record)} graph snaps every drag back,
+  // because a memo keyed on the table-set cannot observe a position-only change. Local state is the
+  // live graph; every mutation is mirrored back into the record via onChange.
+  const [nodes, setNodes] = useState<Node<EditableTableNodeData>[]>(
+    () => recordToFlow(record).nodes,
   );
+  const [edges, setEdges] = useState<Edge[]>(() => recordToFlow(record).edges);
+
+  // Re-seed from the record when a different schema loads (NAME change) OR the SET of table names
+  // changes (a table added/removed/imported) - the two cases the local graph cannot derive itself.
+  // Column edits and drags stay local (keyed off the name-set) so a keystroke or drag never wipes
+  // the graph. Sorted+joined for an order-stable key.
+  const tableKey = record.tables.map((t) => t.name).sort().join(" ");
+  useEffect(() => {
+    const flow = recordToFlow(record);
+    setNodes(flow.nodes);
+    setEdges(flow.edges);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record.name, tableKey]);
 
   const nodeTypes = useMemo(
     () => ({ [SCHEMA_TABLE_NODE_TYPE]: EditableTableNode as unknown as typeof EditableTableNode }),
@@ -87,6 +111,12 @@ export function SchemaDesignerCanvas({
    *  type change, add/remove column, toggle PK/nullable) → the canvas merges it into the record. */
   const onNodeUpdate = useCallback(
     (id: string, next: EditableTableNodeData) => {
+      // Update the live node in place (so the edited columns/name re-render immediately) AND mirror
+      // the change into the record. A column edit does NOT change the table-set, so the re-seed
+      // effect won't fire — the local update here is what keeps the node visually current.
+      setNodes((ns) =>
+        ns.map((n) => (n.id === id ? { ...n, data: next } : n)),
+      );
       const tables = record.tables.map((t) =>
         t.name === id
           ? {
@@ -109,17 +139,20 @@ export function SchemaDesignerCanvas({
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const next = applyNodeChanges(changes, initialNodes) as Node<EditableTableNodeData>[];
+      // Apply to LOCAL state first (drags land + stick), then mirror positions into the record.
+      const next = applyNodeChanges(changes, nodes) as Node<EditableTableNodeData>[];
+      setNodes(next);
       onChange(mergeNodes(record, next));
     },
-    [initialNodes, record, onChange],
+    [nodes, record, onChange],
   );
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
-      const next = applyEdgeChanges(changes, initialEdges);
+      const next = applyEdgeChanges(changes, edges);
+      setEdges(next);
       onChange(mergeEdges(record, next));
     },
-    [initialEdges, record, onChange],
+    [edges, record, onChange],
   );
   const onConnect = useCallback(
     (conn: Connection) => {
@@ -145,41 +178,38 @@ export function SchemaDesignerCanvas({
         },
         data: { declared: true, name: "" },
       };
-      const next = addEdge(edge, initialEdges);
+      const next = addEdge(edge, edges);
+      setEdges(next);
       onChange(mergeEdges(record, next));
     },
-    [initialEdges, record, onChange],
+    [edges, record, onChange],
   );
 
   // The import-from-source path: read the live catalog's tables + columns and merge as new nodes.
+  // Gated on `importSource` only — the page sets `importSource` and `importing:true` together, so
+  // gating on `importing` here would short-circuit the effect before it ever ran (the spinner would
+  // then hang forever, since nothing calls `onImportDone`). `importing` is the UI-only busy flag.
   useEffect(() => {
-    if (!importSource || importing) return;
+    if (!importSource) return;
     let alive = true;
     (async () => {
       try {
         const tables = await import("../../../lib/datasources").then((m) => m.discoverTables(importSource));
         if (!alive) return;
-        const columnsByTable = await Promise.all(
-          tables.map(async (t) => [t.name, await describeTable(importSource, t.name)] as const),
+        const discovered = await Promise.all(
+          tables.map(async (t) => ({
+            name: t.name,
+            columns: await describeTable(importSource, t.name),
+          })),
         );
         if (!alive) return;
-        const importedTables = tables.map((t) => {
-          const cols = columnsByTable.find(([n]) => n === t.name)?.[1] ?? [];
-          return {
-            name: t.name,
-            pk: [] as string[],
-            columns: cols.map((c) => ({
-              name: c.name,
-              type: guessNeutralType(c.dataType),
-              nullable: c.nullable,
-            })),
-          };
-        });
-        const merged: DbSchemaRecord = {
-          ...record,
-          tables: [...record.tables, ...importedTables.filter((it) => !record.tables.some((rt) => rt.name === it.name))],
-        };
-        onChange(merged);
+        // The whole merge — dedup, neutral-type mapping, layout seeding, and FK inference (the same
+        // naming-convention inference the read-only ERD Diagram uses) — is the pure `mergeImport`.
+        onChange(mergeImport(record, discovered));
+      } catch (e) {
+        // A failed catalog read (denied / bad source / no sidecar) must be reported, not left to
+        // reject unhandled. Report only if still mounted for this source.
+        if (alive) onImportError?.(e instanceof Error ? e.message : String(e));
       } finally {
         if (alive) onImportDone();
       }
@@ -188,7 +218,7 @@ export function SchemaDesignerCanvas({
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [importSource, importing]);
+  }, [importSource]);
 
   const addTable = () => {
     const n = record.tables.length + 1;
@@ -205,12 +235,20 @@ export function SchemaDesignerCanvas({
   };
 
   const autoLayout = () => {
-    const { nodes } = recordToFlow(record);
-    const laid = layoutWithDagre(nodes, recordToFlow(record).edges);
+    const flow = recordToFlow(record);
+    const laid = layoutWithDagre(flow.nodes, flow.edges);
     const layout: Record<string, { x: number; y: number }> = { ...record.layout };
     for (const n of laid) {
       layout[n.data.name] = { x: n.position.x, y: n.position.y };
     }
+    // Auto-layout only moves nodes (no table-set change) so the re-seed effect won't fire — push the
+    // new positions into local state directly, and mirror the layout into the record.
+    setNodes((ns) =>
+      ns.map((n) => {
+        const pos = layout[n.data.name];
+        return pos ? { ...n, position: pos } : n;
+      }),
+    );
     onChange({ ...record, layout });
   };
 
@@ -218,8 +256,8 @@ export function SchemaDesignerCanvas({
     <div className="relative flex h-full w-full flex-col" data-testid="schema-designer-canvas">
       <SchemaDesignerNodeContext.Provider value={onNodeUpdate}>
         <ReactFlow
-          nodes={initialNodes}
-          edges={initialEdges}
+          nodes={nodes}
+          edges={edges}
           nodeTypes={nodeTypes}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
@@ -292,22 +330,6 @@ function mergeEdges(rec: DbSchemaRecord, edges: Edge[]): DbSchemaRecord {
       toColumns: [e.targetHandle!],
     }));
   return { ...rec, fks };
-}
-
-/** A loose guess at the neutral type from a live catalog type string (import-from-source). Maps
- *  common SQL type names back to the canonical vocabulary; unknown types default to `text`. */
-function guessNeutralType(liveType: string): string {
-  const lc = liveType.toLowerCase();
-  if (lc.includes("int")) return "integer";
-  if (lc.includes("char") || lc.includes("text") || lc.includes("string")) return "text";
-  if (lc.includes("float") || lc.includes("double") || lc.includes("real")) return "real";
-  if (lc.includes("bool")) return "boolean";
-  if (lc.includes("blob") || lc.includes("binary") || lc.includes("bytea")) return "blob";
-  if (lc.includes("timestamp") || lc.includes("datetime")) return "timestamp";
-  if (lc.includes("date")) return "date";
-  if (lc.includes("numeric") || lc.includes("decimal")) return "numeric";
-  if (lc.includes("json")) return "json";
-  return "text";
 }
 
 void Upload;

@@ -49,6 +49,7 @@ fn mknode(id: &str, ty: &str, needs: &[&str], with: Map<String, Value>, config: 
         needs: needs.iter().map(|s| s.to_string()).collect(),
         with,
         config,
+        position: None,
     }
 }
 
