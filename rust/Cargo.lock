@@ -4869,6 +4869,7 @@ dependencies = [
  "lb-undo",
  "lb-viz",
  "rand 0.8.6",
+ "reqwest",
  "rhai",
  "rusqlite",
  "serde",

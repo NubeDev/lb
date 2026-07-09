@@ -26,6 +26,20 @@ import { cellTools } from "../views/WidgetView";
 /** The streaming verbs that keep the live `useSource` SSE path (viz.stream is the un-built follow-up). */
 const WATCH_VERBS = new Set(["series.watch", "bus.watch"]);
 
+/** The `weather` view is SELF-SOURCED: its data always comes from the fixed `weather.current` verb
+ *  (weather scope), never a user-picked datasource — so a weather cell created by the picker (which
+ *  leaves `source.tool` empty) must still resolve, rather than degrade to "no access to this source".
+ *  We build its `{tool, args}` from `cell.options` (a lat/lon the config drawer sets) with a sensible
+ *  default, and run it through the plain `useSource` tool path (NOT `viz.query` — there is no
+ *  datasource/transform pipeline; it's one gated read returning one `{temp_c,…}` row). */
+function weatherSource(panel: Cell): { tool: string; args: Record<string, unknown> } | null {
+  if (panel.view !== "weather") return null;
+  const opts = (panel.options ?? {}) as Record<string, unknown>;
+  const lat = typeof opts.lat === "number" ? opts.lat : -27.47;
+  const lon = typeof opts.lon === "number" ? opts.lon : 153.02;
+  return { tool: "weather.current", args: { lat, lon } };
+}
+
 /** Shape a single extracted flow value into the `SourceState` rows every view reads. An ARRAY becomes
  *  rows (a table/timeseries plots them); an OBJECT becomes one row; a SCALAR a `{value}` row (stat/
  *  gauge/text). So the visual JSON-path selection drives ANY view, not just the JSON view. */
@@ -66,6 +80,7 @@ export function usePanelData(
   opts: UsePanelDataOptions = {},
 ): SourceState {
   const target = cellPrimaryTarget(panel);
+  const selfSource = weatherSource(panel);
   const isWatch = !!target && WATCH_VERBS.has(target.tool);
   // A FLOW source (`flows.node_state`) resolves CLIENT-SIDE through the flow read + JSON-path extraction
   // (the visual builder's selection), shaped into rows — so stat/gauge/table/timeseries all show the
@@ -75,10 +90,12 @@ export function usePanelData(
 
   // All hooks are ALWAYS called (rules-of-hooks) — only one is "live" per panel. The unused ones resolve
   // to a cheap state. The live path runs the watch source; viz.query the non-watch, non-flow panel.
-  const watchSource = isWatch && target ? { tool: target.tool, args: target.args } : undefined;
+  // The `live` slot serves EITHER a watch stream OR the weather self-source (a plain gated tool call —
+  // `useSource` streams only for a watch verb, so a non-watch `weather.current` is a one-shot read).
+  const directSource = isWatch && target ? { tool: target.tool, args: target.args } : (selfSource ?? undefined);
   const tools = cellTools(panel);
-  const live = useSource(watchSource, tools, scope, refreshKey);
-  const queried = useVizQuery(isWatch || flowBind ? EMPTY_PANEL : panel, scope, refreshKey, {
+  const live = useSource(directSource, tools, scope, refreshKey);
+  const queried = useVizQuery(isWatch || flowBind || selfSource ? EMPTY_PANEL : panel, scope, refreshKey, {
     frozen: opts.frozen,
   });
   const flow = useFlowNodeValue(
@@ -93,6 +110,8 @@ export function usePanelData(
   if (flowBind) return flowToState(flow.value, flow.loading, flow.denied);
   // A live watch source carries a `live` provenance so the status bar labels it a stream, not a fetch.
   if (isWatch) return { ...live, meta: { ...live.meta, source: "live" } };
+  // The weather self-source: a one-shot `weather.current` read (not a stream, not viz.query).
+  if (selfSource) return { ...live, meta: { ...live.meta, source: "fetch" } };
   return queried;
 }
 

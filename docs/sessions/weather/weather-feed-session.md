@@ -3,8 +3,53 @@
 - Date: 2026-07-09
 - Scope: [`../../scope/weather/weather-feed-scope.md`](../../scope/weather/weather-feed-scope.md)
 - Stage: post-S8 (extension surface — a sixth native reference extension)
-- Status: **planned** (build plan grounded in the real `federation` template; no code written this
-  session — docs-only commit per instruction)
+- Status: **shipped (revised approach)** — a simpler **direct-in-host `weather.current` tool +
+  dashboard widget** landed first (see "Shipped" below); the full extension build plan below is
+  retained as the next increment. Original docs-only status superseded.
+
+## Shipped (revised approach — direct-in-host `weather.current`)
+
+Per a follow-up instruction ("ship the simpler version first, update the scope doc"), the first
+increment is **not** the compile-optional native extension below. It is a `weather.current` MCP tool
+built **directly into the host crate** (a host-native tool, alongside the other `HOST_NATIVE_PREFIXES`
+verbs) plus one dashboard widget. No sidecar, no `lb-jobs` poll, no persistence, no cargo feature —
+the smallest thing that puts live weather on a dashboard. The extension plan below remains the path
+to the durable-poll + persist + admin-CRUD surface.
+
+**What landed (working tree; all tests green, `cargo build`/`fmt`/`tsc` clean):**
+
+Rust (`rust/crates/host/`):
+
+| File | Change |
+|---|---|
+| `src/weather/current.rs` | `weather_current(input)` → `reqwest::get` Open-Meteo → `{location, temp_c, wind_kph, code, observed_ts}`. Base URL overridable via `LB_WEATHER_OPEN_METEO_BASE` (test stub seam — the one sanctioned external boundary, rule 9). |
+| `src/weather/tool.rs` | `call_weather_tool` dispatcher; gates `mcp:weather.current:call`. |
+| `src/weather/mod.rs` | Module exports. |
+| `src/tool_call.rs` | `"weather."` added to `HOST_NATIVE_PREFIXES` + dispatch branch (generic prefix table — no `if ext=="weather"`, rule 10). |
+| `src/lib.rs` | `mod weather;` + re-exports. |
+| `src/system/catalog.rs` | Catalog entry for `weather.current`. |
+| `src/dashboard/widget_catalog.json` | `weather` view (kind `read`, `data true`). |
+| `src/authz/builtin_roles.rs` | `mcp:weather.current:call` in `VIEWER_CAPS`. |
+| `Cargo.toml` | `reqwest.workspace = true`. |
+| `tests/weather_tool_test.rs` | 4 tests: stub fetch, cap-deny, bad-input, ws-isolation. **All pass.** |
+
+UI (`ui/src/`):
+
+| File | Change |
+|---|---|
+| `features/dashboard/views/weather/WeatherPanel.tsx`, `wmoCode.ts` | shadcn `Card` widget + WMO code → label/icon. |
+| `features/dashboard/views/WidgetView.tsx` | `case "weather"`. |
+| `features/dashboard/views/weather/weather.gateway.test.tsx` | 4 gateway tests. **All pass.** |
+| `lib/dashboard/dashboard.types.ts` | `"weather"` added to `View`. |
+| `features/panel-builder/VizGallery.tsx`+`.test.tsx`, `VizPicker.tsx` | picker cards. |
+| `features/panel-builder/options/registry.ts` | `weather` in `NO_FIELDCONFIG_VIEWS` (fixes the `optionLiveness` throw — no fieldConfig row for weather). |
+| `features/panel-builder/options/registryRoundTrip.test.ts` | fieldConfig-less assertion. |
+| `test/real-gateway.ts` | starts a local HTTP stub, passes `LB_WEATHER_OPEN_METEO_BASE` to the spawned test node (rule 9 — real node, real store, stub only for the true external). |
+
+**Verified live** (2026-07-09): `POST /mcp/call {tool:"weather.current"}` on the running dev node
+(pid 2592555) returns real data:
+`{"location":"-27.47,153.02","temp_c":14.3,"wind_kph":5.3,"code":1,"observed_ts":"2026-07-09T10:00"}`.
+Fresh `POST /login` mints a token containing `mcp:weather.current:call`.
 
 ## Goal
 
@@ -146,7 +191,18 @@ the `Feed` trait — §0), with one opt-in network-gated live test.
 
 ## Debugging
 
-None — no code ran this session.
+- **"extension error: weather fetch failed: error sending request for url (…open-meteo…)"** on the
+  live node, while all tests + a standalone `reqwest` probe returned 200 OK. **Root cause: a
+  transient outbound-connectivity blip** at the time of the earlier test — not a code, cap, TLS-root,
+  or sandbox issue. Ruled out each hypothesis with evidence: (1) the node's parent chain is
+  `make dev` ← VSCode integrated terminal, **not** a Claude background task, so no harness sandbox;
+  (2) a fresh process launched with the node's **exact** `/proc/PID/environ` reaches Open-Meteo
+  (200 OK) — env/DNS/roots are fine; (3) the running binary is current (built 17:00, started 17:01,
+  exe not `(deleted)`) — not stale; (4) re-running the identical live `mcp/call` **now succeeds** with
+  real data. Note the reqwest TLS backend here is **`rustls-tls-native-roots`** (pulled in via
+  `polars-io`/`object_store`), not webpki-roots as an earlier note assumed — but `SSL_CERT_FILE`
+  resolves fine, so this was not the cause. No code change needed; logged as a debugging entry rather
+  than chased as a regression. See [`../../debugging/weather/weather-fetch-error-sending-request.md`](../../debugging/weather/weather-fetch-error-sending-request.md).
 
 ## Public / scope updates
 

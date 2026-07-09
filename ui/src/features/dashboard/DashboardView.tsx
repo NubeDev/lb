@@ -40,6 +40,8 @@ import {
   slugFromTitle,
   makeBundle,
   BUNDLE_EXT,
+  ROW_W,
+  ROW_H,
   type DashboardBundle,
 } from "@/lib/dashboard";
 import { cellToSpec } from "@/lib/panel";
@@ -176,6 +178,40 @@ function DashboardViewInner({
   // Auto-refresh (Slice 4): the URL interval drives a tick that re-resolves query variables + re-runs
   // each read cell's source (the watch streams compose — motion vs state). Pauses when the tab is hidden.
   const refreshKey = useAutoRefresh(range?.refresh);
+  // panel-rows: add a full-width row header at the bottom of the board; toggle a row's collapse; rename
+  // a row inline. All three ride `dashboard.save` (no new verb) via `dash.saveCells`.
+  const addRow = () => {
+    if (!current) return;
+    const bottom = current.cells.reduce((m, c) => Math.max(m, c.y + c.h), 0);
+    const row: Cell = {
+      i: nextKey(current.cells),
+      x: 0,
+      y: bottom,
+      w: ROW_W,
+      h: ROW_H,
+      widget_type: "chart",
+      view: "row",
+      binding: { series: "" },
+      title: "New row",
+    };
+    void dash.saveCells([...current.cells, row]);
+  };
+  const toggleRow = (i: string) => {
+    if (!current) return;
+    void dash.saveCells(
+      current.cells.map((c) =>
+        c.i === i
+          ? { ...c, options: { ...c.options, collapsed: !c.options?.collapsed } }
+          : c,
+      ),
+    );
+  };
+  const renameRow = (i: string, title: string) => {
+    if (!current) return;
+    void dash.saveCells(
+      current.cells.map((c) => (c.i === i ? { ...c, title } : c)),
+    );
+  };
   const copyLink = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       void navigator.clipboard.writeText(window.location.href);
@@ -412,6 +448,16 @@ function DashboardViewInner({
                   void dash.saveCells([...current.cells, cell])
                 }
               />
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="add row"
+                title="Add a collapsible section row"
+                onClick={addRow}
+              >
+                <Plus size={12} className="mr-1" />
+                Row
+              </Button>
             </div>
           )}
 
@@ -429,7 +475,12 @@ function DashboardViewInner({
                 installed={picker.installed}
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
+                onToggleRow={toggleRow}
+                onRenameRow={renameRow}
                 onRemove={(i) =>
+                  // Removing a ROW deletes only the header (row-only, the least-destructive default —
+                  // panel-rows scope, "Delete UX default"); its positional members stay and merge into
+                  // the preceding row / ungrouped region. Removing an ordinary cell drops just it.
                   void dash.saveCells(current.cells.filter((c) => c.i !== i))
                 }
                 onEditPanel={

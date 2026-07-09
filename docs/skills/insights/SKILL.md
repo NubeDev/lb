@@ -249,9 +249,12 @@ The persona is grounded by this `core.insights` skill.
   time, re-checked at every fire. Losing the channel grant flips the sub dormant (owner notified).
 - **The origin deep-link** from the detail drawer to the rule/flow/run route is a known follow-up
   (the workspace id isn't threaded into the drawer yet) — the origin is shown, just not yet clickable.
-- **Rules/flow producers (the rhai handle + the flow sink node) are scaffolded for a follow-up.**
-  Today producers reach `insight.raise` via the MCP verb (agents/extensions/CLI/manual); the rhai
-  cage handle and the built-in `insight` flow sink node land with the producer-doors slice.
+- **The rhai producer handle SHIPS; the flow sink node is the remaining follow-up.** A rule raises a
+  durable insight in-body via the `insight` cage handle (`insight.raise`/`ack`/`close`, catalog in
+  `lb_rules::CATALOG`, route-aware — no-op on a `route:false` panel run) — see `skills/rules/SKILL.md`
+  §7 and the `../../testing/insights/README.md` producer-door check. Agents/extensions/CLI/manual
+  reach `insight.raise` via the MCP verb. The built-in `insight` flow **sink node** is still scaffolded
+  for the producer-doors follow-up.
 
 ## Related
 

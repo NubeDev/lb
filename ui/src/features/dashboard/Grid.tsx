@@ -8,7 +8,10 @@ import GridLayout, { type Layout } from "react-grid-layout";
 import { Copy, Download, GripHorizontal, Pencil, X } from "lucide-react";
 
 import { WidgetHost } from "./WidgetHost";
+import { RowHeader } from "./views/RowHeader";
+import { canInspect, useDisplayOverride } from "./views/useDisplayOverride";
 import type { Cell } from "@/lib/dashboard";
+import { isRow, rowMembers, visibleCells } from "@/lib/dashboard";
 import type { VarScope } from "@/lib/vars";
 import type { ExtRow } from "@/lib/ext/ext.api";
 import type { DashboardSearch } from "@/features/routing/search";
@@ -26,6 +29,10 @@ interface Props {
   onRemove: (i: string) => void;
   /** Append a copy of a cell (the persistence seam). */
   onDuplicate: (i: string) => void;
+  /** Toggle a row cell's `options.collapsed` (panel-rows). Omitted ⇒ rows are non-collapsible. */
+  onToggleRow?: (i: string) => void;
+  /** Rename a row cell inline (panel-rows). Omitted ⇒ read-only row title. */
+  onRenameRow?: (i: string, title: string) => void;
   /** Edit this panel in the stepped wizard (navigates to `…/new-panel?cell=<i>`, EDIT mode). Called
    *  with the cell key. Omitted ⇒ no button. */
   onEditPanel?: (i: string) => void;
@@ -52,6 +59,8 @@ export function Grid({
   onLayout,
   onRemove,
   onDuplicate,
+  onToggleRow,
+  onRenameRow,
   onEditPanel,
   onExportCell,
   installed,
@@ -81,21 +90,48 @@ export function Grid({
     return () => observer.disconnect();
   }, []);
 
-  const layout: Layout[] = cells.map((c) => ({
+  // Only render the VISIBLE cells — a collapsed row's members are dropped from the render list (kept in
+  // the record at their real geometry, so expand restores them). The row header itself always renders.
+  const shown = visibleCells(cells);
+
+  const layout: Layout[] = shown.map((c) => ({
     i: c.i,
     x: c.x,
     y: c.y,
     w: c.w,
     h: c.h,
+    // A row header is a fixed-height full-width bar — it may move but never resize.
+    ...(isRow(c) ? { isResizable: false } : {}),
   }));
 
-  // Merge a new layout (geometry only) back onto the cells (which carry binding/options/type).
+  // Merge a new layout (geometry only) back onto the cells (which carry binding/options/type). A row
+  // that MOVED carries its members: we compute the row's Δy (new `y` − old `y`) and shift every cell
+  // that was a positional member of that row BEFORE the move by the same Δy — so a section stays intact
+  // when its header is dragged (panel-rows scope, "dragging a row must carry its members"). Members are
+  // resolved against the pre-move `cells` (visibleCells shows them for an expanded row; a collapsed
+  // row's members are hidden from the layout but still shift, keeping the section contiguous on expand).
   const apply = (next: Layout[]) => {
     const byKey = new Map(next.map((l) => [l.i, l]));
+    // Δy per moved row, plus the set of member keys to carry with it.
+    const memberShift = new Map<string, number>();
+    for (const c of cells) {
+      if (!isRow(c)) continue;
+      const l = byKey.get(c.i);
+      if (!l) continue;
+      const dy = l.y - c.y;
+      if (dy === 0) continue;
+      for (const m of rowMembers(cells, c)) {
+        // A member the layout also moved (it was on-screen and react-grid-layout repositioned it) is
+        // authoritative from `next`; only carry members the layout did NOT touch (hidden/collapsed).
+        if (!byKey.has(m.i)) memberShift.set(m.i, dy);
+      }
+    }
     onLayout(
       cells.map((c) => {
         const l = byKey.get(c.i);
-        return l ? { ...c, x: l.x, y: l.y, w: l.w, h: l.h } : c;
+        if (l) return { ...c, x: l.x, y: l.y, w: l.w, h: l.h };
+        const dy = memberShift.get(c.i);
+        return dy ? { ...c, y: c.y + dy } : c;
       }),
     );
   };
@@ -122,7 +158,28 @@ export function Grid({
         draggableHandle=".widget-drag-handle"
         draggableCancel=".widget-no-drag"
       >
-        {cells.map((c) => (
+        {shown.map((c) =>
+          isRow(c) ? (
+            // A row header: a full-width, flat, full-bleed section bar — NOT a widget frame (panel-rows
+            // scope). The bar owns its own chrome (drag handle + rename + collapse + remove) inline,
+            // Grafana-style; the grid item is a bare full-height wrapper so the bar aligns edge-to-edge
+            // with the panels below it (no inset gutter).
+            <div
+              key={c.i}
+              data-row=""
+              className="group/cell flex h-full flex-col"
+              aria-label={`row cell ${c.i}`}
+            >
+              <RowHeader
+                cell={c}
+                memberCount={rowMembers(cells, c).length}
+                editable={editable}
+                onToggleCollapse={(i) => onToggleRow?.(i)}
+                onRename={onRenameRow}
+                onRemove={onRemove}
+              />
+            </div>
+          ) : (
           <div
             key={c.i}
             data-panel=""
@@ -134,21 +191,93 @@ export function Grid({
             className="surface-panel group/cell flex flex-col overflow-hidden rounded-lg border border-border bg-panel shadow-[inset_0_1px_0_hsl(var(--fg)/0.045),var(--shadow-1)] transition-[box-shadow,border-color] hover:border-fg/25 hover:shadow-[inset_0_1px_0_hsl(var(--fg)/0.06),var(--shadow-2)]"
             aria-label={`cell ${c.i}`}
           >
-            {/* Edit affordances reveal on hover/focus (cleaner default; the tell of a polished board is a
-                quiet resting state). Keyboard focus still surfaces them. */}
-            {editable && (
-              <button
-                type="button"
-                aria-label={`move cell ${c.i}`}
-                title="Move widget"
-                className="widget-drag-handle absolute left-2 top-2 z-10 inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing group-hover/cell:opacity-100"
-              >
-                <GripHorizontal size={13} />
-              </button>
-            )}
-            {editable && (
-              <div className="widget-no-drag absolute right-2 top-2 z-10 flex items-center gap-0.5 opacity-0 transition-[opacity] focus-within:opacity-100 group-hover/cell:opacity-100">
-                {onEditPanel && (
+            <WidgetCell
+              cell={c}
+              editable={editable}
+              range={range}
+              installed={installed}
+              workspace={workspace}
+              scope={scope}
+              refreshKey={refreshKey}
+              onRemove={onRemove}
+              onDuplicate={onDuplicate}
+              onEditPanel={onEditPanel}
+              onExportCell={onExportCell}
+            />
+          </div>
+          ),
+        )}
+      </GridLayout>
+    </div>
+  );
+}
+
+/** One non-row widget cell's contents: the hover chrome (move/edit/duplicate/export/remove + the
+ *  display-mode toggle) and the widget host. Split out of the map so it can own the per-cell
+ *  `useDisplayOverride` hook (rules of hooks). The positioned grid-item div stays in the map so
+ *  react-grid-layout keeps cloning a plain element for layout. */
+function WidgetCell({
+  cell: c,
+  editable,
+  range,
+  installed,
+  workspace,
+  scope,
+  refreshKey,
+  onRemove,
+  onDuplicate,
+  onEditPanel,
+  onExportCell,
+}: {
+  cell: Cell;
+  editable: boolean;
+  range?: DashboardSearch;
+  installed?: ExtRow[];
+  workspace?: string;
+  scope?: VarScope;
+  refreshKey?: number;
+  onRemove: (i: string) => void;
+  onDuplicate: (i: string) => void;
+  onEditPanel?: (i: string) => void;
+  onExportCell?: (i: string) => void;
+}) {
+  const display = useDisplayOverride();
+  const DisplayIcon = display.icon;
+  return (
+    <>
+      {/* Display-mode toggle (viz → table → JSON → viz) — view-only, never persisted. Available to
+          VIEWERS too (it widens no data access; it re-renders the same frames the cell already read),
+          so it lives OUTSIDE the `editable` chrome. Only shown for read views that resolve frames. */}
+      {canInspect(c) && (
+        <div className="widget-no-drag absolute right-2 top-2 z-20 flex items-center">
+          <button
+            type="button"
+            aria-label={`toggle display mode for cell ${c.i}`}
+            aria-pressed={display.override !== null}
+            title={display.title}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 group-hover/cell:opacity-100 data-[on=true]:opacity-100 data-[on=true]:text-accent"
+            data-on={display.override !== null}
+            onClick={() => display.cycle()}
+          >
+            <DisplayIcon size={13} />
+          </button>
+        </div>
+      )}
+      {/* Edit affordances reveal on hover/focus (cleaner default; the tell of a polished board is a
+          quiet resting state). Keyboard focus still surfaces them. */}
+      {editable && (
+        <button
+          type="button"
+          aria-label={`move cell ${c.i}`}
+          title="Move widget"
+          className="widget-drag-handle absolute left-2 top-2 z-10 inline-flex h-6 w-6 cursor-grab items-center justify-center rounded-md text-muted opacity-0 transition-[opacity,color,background-color] hover:bg-panel-2 hover:text-fg focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 active:cursor-grabbing group-hover/cell:opacity-100"
+        >
+          <GripHorizontal size={13} />
+        </button>
+      )}
+      {editable && (
+        <div className={`widget-no-drag absolute ${canInspect(c) ? "right-9" : "right-2"} top-2 z-10 flex items-center gap-0.5 opacity-0 transition-[opacity] focus-within:opacity-100 group-hover/cell:opacity-100`}>
+          {onEditPanel && (
                   <button
                     aria-label={`edit cell ${c.i}`}
                     title="Edit panel"
@@ -186,19 +315,16 @@ export function Grid({
                 </button>
               </div>
             )}
-            <div className="min-h-0 flex-1 p-3">
-              <WidgetHost
-                cell={c}
-                range={range}
-                installed={installed}
-                workspace={workspace}
-                scope={scope}
-                refreshKey={refreshKey}
-              />
-            </div>
-          </div>
-        ))}
-      </GridLayout>
-    </div>
+      <div className="min-h-0 flex-1 p-3">
+        <WidgetHost
+          cell={display.applyTo(c)}
+          range={range}
+          installed={installed}
+          workspace={workspace}
+          scope={scope}
+          refreshKey={refreshKey}
+        />
+      </div>
+    </>
   );
 }

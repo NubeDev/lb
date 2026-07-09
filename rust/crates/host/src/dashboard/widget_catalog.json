@@ -248,6 +248,28 @@
         { "id": "insights.limit", "label": "Max items", "scope": "options", "path": "insights.limit", "control": "number" },
         { "id": "insights.showRefresh", "label": "Show refresh", "scope": "options", "path": "insights.showRefresh", "control": "toggle" }
       ]
+    },
+    {
+      "id": "weather",
+      "label": "Weather",
+      "kind": "read",
+      "version": 1,
+      "buildable": true,
+      "data": true,
+      "action": false,
+      "options": []
+    },
+    {
+      "id": "row",
+      "label": "Row",
+      "kind": "layout",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": false,
+      "options": [
+        { "id": "collapsed", "label": "Collapsed", "scope": "options", "path": "collapsed", "control": "toggle" }
+      ]
     }
   ]
 }

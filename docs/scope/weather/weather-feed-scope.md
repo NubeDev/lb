@@ -2,6 +2,18 @@
 
 Status: scope (the ask). Promotes to `public/weather/weather.md` once shipped. Topic: `weather`.
 
+> **Increment shipped 2026-07-09 — simpler direct-in-host `weather.current` first.** A follow-up
+> instruction was to ship the smallest useful slice before the full extension below. That slice is a
+> `weather.current` MCP tool built **directly into the host crate** (a host-native verb alongside the
+> other `HOST_NATIVE_PREFIXES` entries, gated by `mcp:weather.current:call`) plus **one dashboard
+> widget** — **no** sidecar, **no** `lb-jobs` 30-min poll, **no** series persistence, **no** cargo
+> feature, **no** location CRUD. Open-Meteo is still reached keyless behind the one test-overridable
+> base-URL seam (`LB_WEATHER_OPEN_METEO_BASE`). It is verified live (a real dashboard call returns real
+> conditions). The full compile-optional extension specified in the rest of this doc — durable poll +
+> run-now + persist toggle + admin-CRUD + `net:*` pre-approval — remains the next increment; nothing
+> below is retracted, it is deferred. Session:
+> [`../../sessions/weather/weather-feed-session.md`](../../sessions/weather/weather-feed-session.md).
+
 We want a workspace to **pull current weather for one or more locations from a free public feed and see
 it on a dashboard**, on a **30-minute schedule with a "Run now" button**, optionally **persisting each
 reading into the platform series plane** — all **without an API key** and **without adding a hard

@@ -16,7 +16,7 @@ import { INSIGHTS_OPTIONS } from "./defs/insights";
 /** Views that carry NO fieldConfig — the universal standard field options (unit/decimals/thresholds…)
  *  are noise there and are excluded from their Options step. `insights` is a list widget, not a field
  *  render. Kept alongside the aggregation so a new fieldConfig-less view opts out in one place. */
-const NO_FIELDCONFIG_VIEWS: View[] = ["insights"];
+const NO_FIELDCONFIG_VIEWS: View[] = ["insights", "weather"];
 
 /** Every registered option, in tab/display order (standard first, then per-viz groups). The standard
  *  (universal) options are excluded from the fieldConfig-less views. */

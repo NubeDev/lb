@@ -7,44 +7,71 @@
 //
 // One responsibility: pick a view, shape-validated.
 
+import {
+  BarChart3,
+  BarChartHorizontal,
+  CloudSun,
+  Gauge as GaugeIcon,
+  Hash,
+  LayoutTemplate,
+  Lightbulb,
+  LineChart,
+  PieChart,
+  Sparkles,
+  Table2,
+  ToggleLeft,
+  SlidersHorizontal,
+  Braces,
+  FileJson,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { View } from "@/lib/dashboard";
 import { type ResultShape, viewFitsShape } from "@/features/dashboard/views/shape";
 
-/** The buildable standard set (Phase 1+2), in Grafana's panel-picker order. */
-const VIEWS: { id: View; label: string }[] = [
-  { id: "timeseries", label: "Time series" },
-  { id: "barchart", label: "Bar chart" },
-  { id: "stat", label: "Stat" },
-  { id: "gauge", label: "Gauge" },
-  { id: "bargauge", label: "Bar gauge" },
-  { id: "piechart", label: "Pie chart" },
-  { id: "table", label: "Table" },
+/** The buildable standard set (Phase 1+2), in Grafana's panel-picker order. Each carries a small glyph
+ *  (mirrors `VizGallery`'s icon choices for the non-thumbnail cards) so the row scans by shape, not just
+ *  by reading every label. */
+const VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
+  { id: "timeseries", label: "Time series", icon: LineChart },
+  { id: "barchart", label: "Bar chart", icon: BarChart3 },
+  { id: "stat", label: "Stat", icon: Hash },
+  { id: "gauge", label: "Gauge", icon: GaugeIcon },
+  { id: "bargauge", label: "Bar gauge", icon: BarChartHorizontal },
+  { id: "piechart", label: "Pie chart", icon: PieChart },
+  { id: "table", label: "Table", icon: Table2 },
   // The AI-authored generative widget (genui-scope). Not shape-gated (`viewFitsShape` returns true for
   // non-standard views) — its data comes through arbitrary `sources[]` the agent binds, not one query
   // shape. Picking it swaps the Panel-options tab to the "AI widget" author surface.
-  { id: "genui", label: "AI widget" },
+  { id: "genui", label: "AI widget", icon: Sparkles },
   // The eval-free HTML template — author markup bound to the source rows via `{{path}}`/`{{#each}}`,
   // rendered IN-PROCESS (render-template-inprocess scope). Not shape-gated (data flows through any
   // `sources[]` like genui); picking it swaps the Panel-options tab to the template body editor. Stays
   // on the standard viz row (a template is a data view, not a flow control/read view).
-  { id: "template", label: "Template" },
+  { id: "template", label: "Template", icon: LayoutTemplate },
   // The insights triage list (insights-package-scope) — a list of the workspace's findings raised by
   // rules/flows/agents. Not shape-gated: it isn't source-bound (it reads the `insight.*` verbs through
   // the shell's InsightsClient), so it needs no target — picking it clears the source requirement.
-  { id: "insights", label: "Insights" },
+  { id: "insights", label: "Insights", icon: Lightbulb },
+  // Current conditions from the keyless `weather.current` verb (weather scope), rendered as a shadcn
+  // Card. Source-bound like the standard viz set (its target names `weather.current` + a lat/lon), so
+  // it stays shape-gated like any other read view would be — but it's not one of the query-shaped
+  // standard panels `viewFitsShape` validates against, so it is always enabled (parity with genui/template).
+  { id: "weather", label: "Weather", icon: CloudSun },
 ];
 
 /** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the
  *  WRITE controls (a switch sets a boolean, a slider a number, a JSON control a structured payload); an
  *  OUTPUT-port binding offers the JSON/object read view. Shape-validation doesn't apply (these aren't
  *  query-shaped), so they're always enabled when offered. */
-const FLOW_CONTROL_VIEWS: { id: View; label: string }[] = [
-  { id: "switch", label: "Switch" },
-  { id: "slider", label: "Slider" },
-  { id: "json", label: "JSON" },
+const FLOW_CONTROL_VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
+  { id: "switch", label: "Switch", icon: ToggleLeft },
+  { id: "slider", label: "Slider", icon: SlidersHorizontal },
+  { id: "json", label: "JSON", icon: Braces },
 ];
-const FLOW_READ_VIEWS: { id: View; label: string }[] = [{ id: "jsonview", label: "JSON view" }];
+const FLOW_READ_VIEWS: { id: View; label: string; icon: LucideIcon }[] = [
+  { id: "jsonview", label: "JSON view", icon: FileJson },
+];
 
 interface Props {
   view: View;
@@ -75,6 +102,7 @@ export function VizPicker({ view, onChange, shape = "unknown", flowKind = null }
               className="h-auto px-2.5 py-1"
               onClick={() => onChange(v.id)}
             >
+              <v.icon size={14} />
               {v.label}
             </Button>
           ))}
@@ -103,6 +131,7 @@ export function VizPicker({ view, onChange, shape = "unknown", flowKind = null }
               className={`h-auto px-2.5 py-1 ${!fits && !selected ? "cursor-not-allowed border-dashed text-muted/50" : ""}`}
               onClick={() => fits && onChange(v.id)}
             >
+              <v.icon size={14} />
               {v.label}
             </Button>
           );

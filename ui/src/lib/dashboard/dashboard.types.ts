@@ -56,6 +56,14 @@ export type View =
   // verbs through the shell's `InsightsClient`, filtered by `options.insights`. Read-only by default;
   // `options.insights.interactive` turns on inline ack/resolve/dismiss (insights-package-scope).
   | "insights"
+  // weather: a shadcn Card of current conditions from the host-native `weather.current` verb
+  // (weather scope). Source-bound like any other read view; `options.{lat,lon}` names the location.
+  | "weather"
+  // panel-rows: a full-width, titled, collapsible section header that groups the cells positionally
+  // beneath it (panel-rows scope). A LAYOUT view, not a data-bound viz — the grid special-cases it to
+  // draw a header bar and fold/unfold its members; `options.collapsed` is the view flag. `w:24`, small
+  // `h`. Membership is derived from geometry (see `rows.ts`), matching Grafana's expanded encoding.
+  | "row"
   | `ext:${string}`;
 
 /** A datasource reference (viz datasource-binding scope; Phase 1 is always native `surreal`). `uid`

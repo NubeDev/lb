@@ -58,6 +58,12 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "host",
         description: "the node's home directory (a stable anchor to browse from)",
     },
+    // weather.* — the keyless Open-Meteo current-conditions read verb (weather scope).
+    HostTool {
+        tool: "weather.current",
+        group: "weather",
+        description: "current temperature/wind/condition for a lat/lon from the free Open-Meteo feed",
+    },
     // system.* — the read-only workspace topology + status console (system-map scope).
     HostTool {
         tool: "system.overview",

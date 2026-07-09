@@ -70,6 +70,12 @@ dashmap.workspace = true
 # The `signature`-mode shared-secret generator (webhooks scope) — reuses `lb_apikey::generate_secret`
 # for the entropy; `rand` is only for the (currently-unused) `random_bytes` helper kept for parity.
 rand.workspace = true
+# The `weather.current` verb's outbound GET to the free, keyless Open-Meteo feed (weather scope).
+# A deliberate, explicit exception to the "reqwest never in core lb-host" precedent noted at
+# `rust/Cargo.toml` (which otherwise confines it to role crates like `registry-host`): weather was
+# asked for directly in the node/host crate, not as a role or an extension. `rustls-tls` — no system
+# OpenSSL dependency, same posture as every other reqwest use in the tree.
+reqwest.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

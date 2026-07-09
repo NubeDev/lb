@@ -78,3 +78,23 @@ the module docs state the rule explicitly. Protocol bridges remain out-of-core e
 - Producer-side staging bound + rate limits (scope defer-list).
 - `series.find` faceted discovery now lands on top of tags (slice 2) — wired this session.
 - STATUS.md updated: slice 1 shipped.
+
+## Session: recent-samples pagination (frontend, 2026-07-09)
+- Ask: the Ingest detail table dumped the whole tail (was `RECENT = 50` sliced client-side). Cap the
+  table at 10 rows/page with pagination.
+- Backend: **no change needed.** `series.read(series, from, to)` already takes an inclusive `[from,to]`
+  seq range ordered ascending (`crates/ingest/src/read.rs`). Paging is a bounded read per page, not a
+  fetch-all-then-slice — page N reads `[hi-9, hi]` where `hi = latest.seq - N*10`.
+- Frontend:
+  - `useIngest.ts` — replaced `RECENT` with `PAGE = 10`; added `page`/`hasOlder` state, a `loadPage`
+    helper (bounded `readSamples(lo,hi)` window, reversed newest-first), and a `goToPage` verb
+    (clamped `[0, floor(latest.seq/PAGE)]`). `select` resets to page 0; `write` refreshes via `select`
+    so a new sample lands you back on the newest page.
+  - `IngestView.tsx` — a compact prev/older (`ChevronLeft`/`ChevronRight`) control in the "recent
+    samples" header, only shown when `page > 0 || hasOlder`; "page N" label between the buttons; ends
+    disabled at both bounds.
+- Test: added `paginates the recent-samples table 10 at a time (older/newer)` to
+  `IngestView.gateway.test.tsx` — seeds 25 real samples, asserts the exact seq window per page
+  (25→16, 15→6, 5→1), older-disabled at the last page, and newer walks back. Reads the seq column via
+  row scan (payload/ts equal seq in the fixture, so a bare cell-name query is ambiguous). All 5 Ingest
+  gateway tests green (`pnpm test:gateway src/features/ingest/IngestView.gateway.test.tsx`).

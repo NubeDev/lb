@@ -10,8 +10,8 @@ import { listRealSeries, loadSchema, saveSchema } from "@/lib/ingest/schema.api"
 import type { Facet, Sample } from "@/lib/ingest/ingest.types";
 import type { SeriesSchema } from "@/lib/ingest/schema.types";
 
-/** How many recent samples the detail table reads (the tail). */
-const RECENT = 50;
+/** How many recent samples the detail table shows per page (the tail window). */
+const PAGE = 10;
 
 export interface IngestState {
   series: string[];
@@ -20,11 +20,17 @@ export interface IngestState {
   schema: SeriesSchema | null;
   latest: Sample | null;
   recent: Sample[];
+  /** The current 0-based page of the recent-samples table (page 0 = newest). */
+  page: number;
+  /** Whether an older page exists (i.e. samples older than the current window). */
+  hasOlder: boolean;
   error: string | null;
   /** Refresh the series list — `query` is a `key:value` facet filter, or a plain prefix, or empty. */
   search: (query: string) => Promise<void>;
   /** Select a series and load its schema + latest + recent samples. */
   select: (series: string) => Promise<void>;
+  /** Jump the recent-samples table to `page` (0 = newest); clamps at the ends. */
+  goToPage: (page: number) => Promise<void>;
   /** Push one sample (the manual-write form), then refresh the selected series' table. */
   write: (sample: Sample) => Promise<void>;
   /** Create a new series from the wizard: persist its schema, refresh the list, and select it. */
@@ -48,7 +54,26 @@ export function useIngest(): IngestState {
   const [schema, setSchema] = useState<SeriesSchema | null>(null);
   const [latest, setLatest] = useState<Sample | null>(null);
   const [recent, setRecent] = useState<Sample[]>([]);
+  const [page, setPage] = useState(0);
+  const [hasOlder, setHasOlder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Read one page (newest-first) of `series`, given its newest seq. Page 0 is the newest `PAGE`
+   *  samples; each later page steps `PAGE` further back. Fetches only that window from the gateway
+   *  (a bounded `series.read` range), never the whole tail. */
+  const loadPage = useCallback(async (s: string, topSeq: number, pageIdx: number) => {
+    const hi = topSeq - pageIdx * PAGE;
+    const lo = Math.max(0, hi - PAGE + 1);
+    if (hi < 0) {
+      setRecent([]);
+      setHasOlder(false);
+      return;
+    }
+    const rows = await readSamples(s, lo, hi);
+    // Seq-ascending from the read; the table shows newest-first.
+    setRecent(rows.slice().reverse());
+    setHasOlder(lo > 0);
+  }, []);
 
   const search = useCallback(async (query: string) => {
     try {
@@ -62,23 +87,39 @@ export function useIngest(): IngestState {
     }
   }, []);
 
-  const select = useCallback(async (s: string) => {
-    setSelected(s);
-    try {
-      const [sch, last, rows] = await Promise.all([
-        loadSchema(s),
-        latestSample(s),
-        readSamples(s),
-      ]);
-      setSchema(sch);
-      setLatest(last);
-      // Newest first (the read is seq-ascending; the table shows recent-first).
-      setRecent(rows.slice(-RECENT).reverse());
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
+  const select = useCallback(
+    async (s: string) => {
+      setSelected(s);
+      setPage(0);
+      try {
+        const [sch, last] = await Promise.all([loadSchema(s), latestSample(s)]);
+        setSchema(sch);
+        setLatest(last);
+        // Only the newest page of samples — a bounded read, not the whole tail.
+        await loadPage(s, last?.seq ?? -1, 0);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [loadPage],
+  );
+
+  const goToPage = useCallback(
+    async (next: number) => {
+      if (!selected || !latest) return;
+      const maxPage = Math.floor(latest.seq / PAGE);
+      const clamped = Math.max(0, Math.min(next, maxPage));
+      try {
+        await loadPage(selected, latest.seq, clamped);
+        setPage(clamped);
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [selected, latest, loadPage],
+  );
 
   const create = useCallback(
     async (s: SeriesSchema) => {
@@ -110,5 +151,19 @@ export function useIngest(): IngestState {
     void search("");
   }, [search]);
 
-  return { series, selected, schema, latest, recent, error, search, select, write, create };
+  return {
+    series,
+    selected,
+    schema,
+    latest,
+    recent,
+    page,
+    hasOlder,
+    error,
+    search,
+    select,
+    goToPage,
+    write,
+    create,
+  };
 }

@@ -4,7 +4,8 @@ description: >
   Use when asked to end-to-end test CHARTS / PANELS backed by the node's own series store
   (the internal telemetry feed, NOT an external datasource). Round-trip a panel definition,
   seed a real sample, and read it back through the series feed a chart renders. For charts
-  over a real external TimescaleDB, use `../datasources/` instead. Assumes suites are green.
+  over an external datasource (the Docker-free SQLite demo, or a real TimescaleDB), use
+  `../datasources/` instead. Assumes suites are green.
 ---
 
 # E2e charts runbook — prove a panel + its series feed work as designed
@@ -20,9 +21,10 @@ scope/session's job and assumed green — this runbook does **not** re-run it. I
 and read it back through the exact feed a chart widget renders.
 
 > **Which chart runbook?** This one covers a chart reading the node's **own** series store
-> (in-process, no external DB). A chart reading an **external** TimescaleDB has a hard DB
+> (in-process, no external DB). A chart reading an **external** datasource has a hard seed
 > prerequisite — use [`../datasources/README.md`](../datasources/README.md) for that (its
-> charts are blank without `docker/postgres/seed.sh`).
+> charts are blank until you seed + register a source; the default Docker-free path is
+> `make seed-demo-sqlite`).
 
 A panel is the reusable, non-layout half of a v3 dashboard cell: a `spec` with `sources[]`
 that re-check under the **viewer's** caps at render (a lens, never a grant). Owner + ws come

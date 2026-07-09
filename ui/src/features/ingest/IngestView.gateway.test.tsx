@@ -87,6 +87,48 @@ describe("IngestView (real gateway)", () => {
     expect(await screen.findByLabelText("select series node.cpu_temp")).toBeInTheDocument();
   });
 
+  it("paginates the recent-samples table 10 at a time (older/newer)", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Seed 25 real samples (seq 1..25) — three pages of 10/10/5, newest first.
+    for (let seq = 1; seq <= 25; seq++) {
+      await writeSample({ series: "node.cpu_temp", producer: "", ts: seq, seq, payload: seq });
+    }
+
+    render(<IngestView ws={ws} />);
+    await user.click(await screen.findByLabelText("select series node.cpu_temp"));
+
+    // The seq column is the first cell of each body row — read it to assert the window's contents.
+    const seqColumn = () =>
+      screen
+        .getAllByRole("row")
+        // Skip the header row (its cells are column-header role, not "cell").
+        .map((r) => within(r).queryAllByRole("cell")[0])
+        .filter(Boolean)
+        .map((c) => c!.textContent);
+
+    // Page 1 (newest): exactly 10 rows, seq 25 down to 16.
+    await screen.findByText("page 1");
+    await waitFor(() => expect(seqColumn()).toEqual(["25","24","23","22","21","20","19","18","17","16"]));
+
+    // Older → page 2: seq 15 down to 6.
+    await user.click(screen.getByLabelText("older samples"));
+    await screen.findByText("page 2");
+    await waitFor(() => expect(seqColumn()).toEqual(["15","14","13","12","11","10","9","8","7","6"]));
+
+    // Older → page 3 (partial): seq 5 down to 1, and the older control is now disabled.
+    await user.click(screen.getByLabelText("older samples"));
+    await screen.findByText("page 3");
+    await waitFor(() => expect(seqColumn()).toEqual(["5","4","3","2","1"]));
+    expect(screen.getByLabelText("older samples")).toBeDisabled();
+
+    // Newer → back to page 2.
+    await user.click(screen.getByLabelText("newer samples"));
+    await screen.findByText("page 2");
+    await waitFor(() => expect(seqColumn()).toEqual(["15","14","13","12","11","10","9","8","7","6"]));
+  });
+
   it("is workspace-isolated — a fresh workspace shows no other workspace's series", async () => {
     const ws = nextWs();
     await signInReal("user:ada", ws);

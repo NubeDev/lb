@@ -123,6 +123,17 @@ because existing session docs point at them; new dashboard notes should live her
     page adds the full-CRUD library table + the import/export toolbar; per-widget export rides the shipped
     `cellToSpec` bridge. **Distinct from** the backend Grafana-JSON interchange
     ([`viz/import-export-scope.md`](viz/import-export-scope.md)) — orthogonal, can coexist.
+3p. [`grafana-conversion-scope.md`](grafana-conversion-scope.md) — **convert a Grafana dashboard PAGE into
+    ours** (the *page* half; the *panel* half is [`viz/`](viz/README.md)). Umbrella + a **Stage-1 audit** —
+    a gap matrix of every Grafana dashboard-level feature × {have / close-now / degrade / out}, grounded in
+    the `/tmp/grafana` clone (schemaVersion 42). It ranks two model gaps "close now", each its own slice:
+    [`panel-rows-scope.md`](panel-rows-scope.md) (collapsible **row** grouping — a `Cell` with `view:"row"`,
+    positional membership, zero new verbs) and
+    [`dashboard-variables-advanced-scope.md`](dashboard-variables-advanced-scope.md) (Grafana-parity variable
+    depth — label≠value options, chained/dependent resolution, regex extraction, sort, refresh, `allValue`,
+    wider format hints — additive fields on the one `Variable`, no per-type code path, no new verb). The
+    actual JSON in/out stays the existing [`viz/import-export-scope.md`](viz/import-export-scope.md) mapper,
+    which these slices make rich enough to map a real page 1:1 instead of degrading it.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -201,6 +212,13 @@ because existing session docs point at them; new dashboard notes should live her
   datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
   **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard
   refactors onto it first (parity), then `thecrew` consumes it.
+- **Grafana → our-dashboard PAGE conversion** ([`grafana-conversion-scope.md`](grafana-conversion-scope.md))
+  is **scoped, not built**. Stage 1 (the audit / gap matrix) is written; the two model gaps it ranks
+  "close now" are their own slices — **panel rows** ([`panel-rows-scope.md`](panel-rows-scope.md)) and
+  **advanced variables** ([`dashboard-variables-advanced-scope.md`](dashboard-variables-advanced-scope.md)).
+  The JSON in/out is the existing (also unbuilt) [`viz/import-export-scope.md`](viz/import-export-scope.md)
+  mapper, which these slices make ready.
+
 ## Authoring rule
 
 Keep new docs in this directory focused on dashboard scope. When a slice ships, promote the stable facts

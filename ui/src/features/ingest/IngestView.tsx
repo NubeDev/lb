@@ -5,7 +5,7 @@
 // `useIngest`, the schema editor in the wizard.
 
 import { useMemo, useState } from "react";
-import { Activity, Database, Plus } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight, Database, Plus } from "lucide-react";
 
 import { useIngest } from "./useIngest";
 import { SeriesRail } from "./SeriesRail";
@@ -27,8 +27,21 @@ function renderPayload(p: unknown): string {
 }
 
 export function IngestView({ ws }: Props) {
-  const { series, selected, schema, latest, recent, error, search, select, write, create } =
-    useIngest();
+  const {
+    series,
+    selected,
+    schema,
+    latest,
+    recent,
+    page,
+    hasOlder,
+    error,
+    search,
+    select,
+    goToPage,
+    write,
+    create,
+  } = useIngest();
   const [query, setQuery] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
   // The name pre-seeded into the wizard — comes from the rail's inline "New series…" field (name-first
@@ -106,6 +119,9 @@ export function IngestView({ ws }: Props) {
               schema={schema}
               latest={latest}
               recent={recent}
+              page={page}
+              hasOlder={hasOlder}
+              onPage={goToPage}
               onWrite={write}
             />
           ) : empty ? (
@@ -156,12 +172,18 @@ function SeriesDetail({
   schema,
   latest,
   recent,
+  page,
+  hasOlder,
+  onPage,
   onWrite,
 }: {
   series: string;
   schema: SeriesSchema | null;
   latest: Sample | null;
   recent: Sample[];
+  page: number;
+  hasOlder: boolean;
+  onPage: (page: number) => Promise<void>;
   onWrite: (s: Sample) => Promise<void>;
 }) {
   return (
@@ -195,7 +217,32 @@ function SeriesDetail({
       </div>
 
       <div>
-        <div className="mb-1 text-xs text-muted">recent samples</div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs text-muted">recent samples</span>
+          {(page > 0 || hasOlder) && (
+            <div className="flex items-center gap-1.5 text-xs text-muted">
+              <button
+                type="button"
+                aria-label="newer samples"
+                disabled={page === 0}
+                onClick={() => void onPage(page - 1)}
+                className="rounded-md border border-border bg-bg p-1 transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-40 focus-visible:border-accent focus-visible:outline-none"
+              >
+                <ChevronLeft size={13} />
+              </button>
+              <span className="tabular-nums">page {page + 1}</span>
+              <button
+                type="button"
+                aria-label="older samples"
+                disabled={!hasOlder}
+                onClick={() => void onPage(page + 1)}
+                className="rounded-md border border-border bg-bg p-1 transition-colors hover:border-accent disabled:cursor-not-allowed disabled:opacity-40 focus-visible:border-accent focus-visible:outline-none"
+              >
+                <ChevronRight size={13} />
+              </button>
+            </div>
+          )}
+        </div>
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="text-xs text-muted">

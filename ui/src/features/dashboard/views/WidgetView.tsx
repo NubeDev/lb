@@ -30,6 +30,8 @@ import { JsonControl } from "./JsonControl";
 import { JsonView } from "./JsonView";
 import { GenUiView } from "./genui/GenUiView";
 import { InsightsView } from "./insights/InsightsView";
+import { WeatherPanel } from "./weather/WeatherPanel";
+import { RowHeader } from "./RowHeader";
 import { ExtWidget } from "../builder/ExtWidget";
 import { ExtErrorBoundary } from "@/features/ext-host/ExtErrorBoundary";
 
@@ -172,6 +174,17 @@ export function WidgetView({
       // verbs through the shell's `insightsClient`; `options.insights` drives the filter + read-only vs
       // ack/resolve/dismiss. The host re-checks the cap + workspace on every verb the widget calls.
       return <InsightsView cell={cell} label={label} />;
+    case "weather":
+      // A shadcn Card of current conditions from `weather.current`; data through `usePanelData` like
+      // every other built-in read view.
+      return <WeatherPanel cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "row":
+      // A panel-rows section header (panel-rows scope). A LAYOUT view: the Grid special-cases
+      // `view:"row"` and draws the collapsible header bar itself (with the collapse/rename affordances),
+      // so WidgetView normally never renders a row. This case exists to keep the catalog↔renderer
+      // bijection (widgetCatalog.consistency.test) and gives an honest fallback if a row cell is ever
+      // mounted through the widget frame directly (read-only, no member folding).
+      return <RowHeader cell={cell} memberCount={0} editable={false} onToggleCollapse={() => {}} />;
     default:
       return (
         <div className="flex h-full items-center justify-center text-xs text-muted" role="status">

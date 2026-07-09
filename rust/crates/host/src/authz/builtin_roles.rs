@@ -176,6 +176,9 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:series.find:call",
     "mcp:series.list:call",
     "mcp:series.watch:call",
+    // weather READ (weather scope) — a viewer's weather tile reads current conditions from the
+    // keyless Open-Meteo feed; a harmless read (no writes, no secret), like the series reads above.
+    "mcp:weather.current:call",
     // documents READ (a viewer reads shared docs; put_doc is author).
     "mcp:assets.get_doc:call",
     "mcp:assets.list_docs:call",

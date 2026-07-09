@@ -92,15 +92,18 @@ four before calling a feature "works as designed".
 | [`e2e-backend.md`](e2e-backend.md) | live `node` over its MCP/REST surface — real SurrealDB, real Zenoh, real capability wall. | `make build-wasm && make dev`, then drive the verbs. |
 | [`e2e-frontend.md`](e2e-frontend.md) | live UI against a real gateway, seeded with real records — no `*.fake.ts`. | `make build-wasm && make dev`, then click through the app. |
 | [`system/`](system/README.md) | live `/system/*` — the read-only admin topology/status console (admin-gated, ws-scoped). | `make dev` → mint a token → drive the four reads + the deny paths. |
-| [`dashboard/`](dashboard/README.md) | live `/dashboards` — owned dashboard assets, full CRUD + the workspace wall. | `make dev` → mint a token → round-trip create→read→update→delete. |
+| [`dashboard/`](dashboard/README.md) | live `/dashboards` + `/panels` — dashboard CRUD, library-panel reuse (ref cells), and the Grafana-style **variable** system (definition round-trip, the required-var access gate, URL/interpolation). | `make dev` → `make seed-demo-sqlite` → round-trip a dashboard + panel + a query-variable, run `dashboard.access_check`. |
 | [`charts/`](charts/README.md) | live `/panels` + the node's **own** series feed a chart renders (in-process, no external DB). | `make dev` → save a panel, ingest a sample, read the series back. |
 | [`nav/`](nav/README.md) | live `/navs` + the workspace-default pointer + per-user pref + the `nav.resolve` lens. | `make dev` → CRUD a nav, set default, resolve, confirm cap-strip. |
-| [`datasources/`](datasources/README.md) | live datasources + the **charts** that read them — real node **and a real seeded TimescaleDB**. | `docker/postgres` (up + `seed.sh`) → `make dev`, then look at the chart. |
+| [`datasources/`](datasources/README.md) | live datasources + the **charts** that read them — real node **and a real seeded SQLite building dataset** (no Docker). | `make dev` → `make seed-demo-sqlite` (seeds + registers `demo-buildings`), then look at the chart. |
+| [`rules/`](rules/README.md) | live `rules.*` — the sandboxed Rhai engine: run/save/get/list, real data reads, the cage + `caller ∩ grant` wall. | `make dev` → `make seed-demo-sqlite` → drive `rules.run`/`rules.save`. |
+| [`insights/`](insights/README.md) | live `insight.*` + `/insights` — the durable finding record (raise→dedup→ack→resolve→re-open) **and** the rule producer door. | `make dev` (+ `make seed-demo-sqlite` for the rule path) → drive `insight.*` + a raising rule. |
 
 All are bound by testing-scope §0: **no mocks, no fake backends.** Need data? Seed real
 records through the real write path (testing-scope §3.1). The datasources runbook has a
-**hard prerequisite**: its external DB must be **up and seeded** (`docker/postgres/seed.sh`)
-or every chart reads empty — that's its Step 0.
+**hard prerequisite**: its external source must be **seeded and registered**
+(`make seed-demo-sqlite` — the Docker-free SQLite demo dataset, `datasource.add` on a
+running node) or every chart reads empty — that's its Step 0.
 
 ---
 
@@ -158,8 +161,8 @@ state you tested it in**, with the evidence still on screen.
 - **End with a hand-off, not a teardown.** Your final response tells the user exactly how
   to see it for themselves: the URL / page / verb to open, what they should expect to see,
   and that it was left in place on purpose. Example:
-  > ✅ Left a datasource **`timescale`** and a chart on the **Energy kWh** point in place on
-  > the running node (`make dev`, http://127.0.0.1:8080). Open **Datasources → timescale**
+  > ✅ Left a datasource **`demo-buildings`** and a chart on an **Energy kWh** point in place
+  > on the running node (`make dev`, http://127.0.0.1:8080). Open **Datasources → demo-buildings**
   > and the **Energy** chart to confirm — I did **not** delete them so you can check.
 - **CRUD's `delete` step is the one exception, handled explicitly.** You still *prove*
   delete works — but do it on a throwaway record you created **for** that check, and say so.

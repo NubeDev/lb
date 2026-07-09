@@ -67,10 +67,17 @@ authority — a rule reading a source the caller lacks is denied mid-run, even t
 
 ## 3. Writing a rule
 
-To the author, `source("cooler.temp")` (platform) and `source("timescale")` (external) read alike —
-one `source(...)` surface, two correct paths beneath (SurrealDB-native `series.*`/`data.query` vs the
-`federation` extension's `federation.query`). The `Grid` stays lazy (composed query + context;
+To the author, `source("cooler.temp")` (platform) and `source("demo-buildings")` (external) read
+alike — one `source(...)` surface, two correct paths beneath (SurrealDB-native `series.*`/`data.query`
+vs the `federation` extension's `federation.query`). The `Grid` stays lazy (composed query + context;
 materializes only on `collect`/a `Col` reduction/`return`), so chaining never copies data.
+
+> **External-source examples need a registered datasource first.** The `demo-buildings` source used
+> below is the Docker-free SQLite building dataset — seed + register it in one command against a
+> running node: `make dev` then `make seed-demo-sqlite` (generates `.lazybones/data/demo/buildings.db`
+> and `datasource.add {kind:"sqlite", …}` in `acme`). See
+> [`../../testing/datasources/README.md`](../../testing/datasources/README.md) Step 0. Until then a
+> rule that reads `demo-buildings` is denied at the `source(...)` seam — the source doesn't exist yet.
 
 ```bash
 # ad-hoc run of a threshold+alert rule (the Playground path)
@@ -322,7 +329,9 @@ scheduled flow (`rules.eval`, default `route:true`) raises normally: one rule, t
   `docs/scope/rules/rules-ai-wiring-scope.md`.
 - The catalog pick a rule's `ai.*` honors: `docs/scope/agent/agent-catalog-scope.md` (`agent.config`).
 - The external-source engine `source("…")` reaches: `docs/skills/datasources/SKILL.md`
-  (`federation.query`) — and the SurrealDB-never-a-DataFusion-source hard line.
+  (`federation.query`) — and the SurrealDB-never-a-DataFusion-source hard line. To seed + register
+  the `demo-buildings` source these examples use (Docker-free): `docs/testing/datasources/README.md`
+  Step 0 (`make seed-demo-sqlite`).
 - Platform series a rule reads: `docs/skills/ingest-series/SKILL.md` (`series.*`).
 - `alert` targets: `docs/skills/channels-inbox-outbox/SKILL.md` (inbox/outbox).
 - Propose-and-approve loop: `docs/scope/rules/rules-approvals-scope.md` (the `needs:approval` item +

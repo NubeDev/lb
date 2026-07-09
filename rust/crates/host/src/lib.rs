@@ -67,6 +67,7 @@ mod undo;
 mod undo_capture;
 mod users;
 mod viz;
+mod weather;
 mod webhook;
 mod workspaces;
 
@@ -252,6 +253,7 @@ pub use panel::{
     panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary,
     PanelUsageRow, Visibility as PanelVisibility,
 };
+pub use weather::{call_weather_tool, weather_current, WeatherCurrent, OPEN_METEO_BASE_ENV};
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the
 // gateway's `/native/call` bridge) gets the whole native-tier surface from `lb_host` without reaching
 // into `lb_supervisor` internals.

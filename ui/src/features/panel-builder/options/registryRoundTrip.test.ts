@@ -90,6 +90,19 @@ describe("option registry round-trip", () => {
     }
   });
 
+  it("the fieldConfig-less views (insights, weather) expose no option cards", () => {
+    // A view in NO_FIELDCONFIG_VIEWS renders fixed fields, not a fieldConfig-formatted value — so the
+    // universal standard options (unit/decimals/color/thresholds…) are excluded and it has no per-viz
+    // defs. `optionsForView` returns []; the Options step is empty (and `optionLiveness` is never asked
+    // for a row it doesn't have — the "no row for weather/color" throw the wizard hit before this).
+    for (const view of ["insights", "weather"] as View[]) {
+      // insights carries its OWN `options.insights.*` defs; weather carries none at all.
+      const standardIds = optionsForView(view).filter((d) => d.scope === "fieldConfig");
+      expect(standardIds, `${view} must expose no fieldConfig options`).toEqual([]);
+    }
+    expect(optionsForView("weather")).toEqual([]);
+  });
+
   it("clearing every fieldConfig option prunes fieldConfig back to absent (no empty groups linger)", () => {
     const { cell } = fullyPopulatedCell("timeseries");
     let state = cellToEditorState(cell);
