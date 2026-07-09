@@ -29,6 +29,7 @@ import { ButtonControl } from "./ButtonControl";
 import { JsonControl } from "./JsonControl";
 import { JsonView } from "./JsonView";
 import { GenUiView } from "./genui/GenUiView";
+import { InsightsView } from "./insights/InsightsView";
 import { ExtWidget } from "../builder/ExtWidget";
 import { ExtErrorBoundary } from "@/features/ext-host/ExtErrorBoundary";
 
@@ -166,6 +167,11 @@ export function WidgetView({
       // (`options.genui.ir`); data flows through the cell's v3 `sources[]` via `usePanelData`, actions
       // through the leashed `cellTools` bridge (host re-checked). See genui/GenUiView.
       return <GenUiView cell={cell} label={label} scope={scope} refreshKey={refreshKey} />;
+    case "insights":
+      // The insights triage list — NOT source-bound. `@nube/insights`'s widget reads the `insight.*`
+      // verbs through the shell's `insightsClient`; `options.insights` drives the filter + read-only vs
+      // ack/resolve/dismiss. The host re-checks the cap + workspace on every verb the widget calls.
+      return <InsightsView cell={cell} label={label} />;
     default:
       return (
         <div className="flex h-full items-center justify-center text-xs text-muted" role="status">

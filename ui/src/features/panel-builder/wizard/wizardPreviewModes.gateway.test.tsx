@@ -27,6 +27,7 @@ async function mountAtChartType(ws: string, payload: number) {
       <PanelWizard ws={ws} dashboardId="d-any" onExit={() => {}} />
     </WithDashboardCache>,
   );
+  await user.click(await screen.findByLabelText("source track workspace"));
   await user.click(screen.getByLabelText("wizard source"));
   await user.click(await screen.findByRole("option", { name: "cooler.temp" }));
   await waitFor(() => expect(screen.getByLabelText("timeseries latest")).toBeInTheDocument());

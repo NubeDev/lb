@@ -160,6 +160,7 @@ async fn rule_reading_an_ungranted_source_is_denied_mid_run() {
         model,
         1,
         None,
+        true,
     )
     .await;
     assert!(res.is_err(), "collect without store.query must be denied");
@@ -195,6 +196,7 @@ async fn run_rollup_alert_rule_raises_inbox_item() {
         model,
         7,
         None,
+        true,
     )
     .await
     .unwrap();
@@ -206,6 +208,66 @@ async fn run_rollup_alert_rule_raises_inbox_item() {
         .await
         .unwrap();
     assert_eq!(items.len(), 1, "alert routed to inbox");
+}
+
+// rules-for-widgets-scope slice 2: a read-only run (`route:false`) still RETURNS the alert finding but
+// routes NOTHING — zero new inbox items, zero outbox entries. This is what keeps a 30 s dashboard
+// auto-refresh from spamming the Inbox/Outbox on every repaint. The default (`route:true`) path is
+// pinned by `run_rollup_alert_rule_raises_inbox_item` above.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn route_false_run_returns_findings_but_routes_nothing() {
+    let ws = "rules-route-false";
+    let node = Arc::new(Node::boot().await.unwrap());
+    // FULL + outbox.due so the test can count what (nothing) was enqueued.
+    let mut caps: Vec<&str> = FULL.to_vec();
+    caps.push("mcp:outbox.due:call");
+    let p = principal(ws, &caps);
+    seed_series(&node, &p, ws, "cooler.temp", &[3.0, 9.0, 4.0]).await;
+
+    let body = r#"
+        let hot = history("series", "cooler.temp", "24h").filter("value > 5.0");
+        if hot.size() > 0 {
+            alert(#{ level: "critical", series: "cooler.temp", msg: "hot" });
+        }
+    "#;
+    let model = Arc::new(ScriptedModel {
+        completion: "ok".into(),
+        tokens: 1,
+        proposed_sql: "SELECT 1 AS v".into(),
+    });
+    // route = false (the last arg) — the panel-repaint mode.
+    let result = rules_run(
+        &node,
+        &p,
+        ws,
+        Some(body.into()),
+        None,
+        rhai::Map::new(),
+        model,
+        7,
+        None,
+        false,
+    )
+    .await
+    .unwrap();
+
+    // The finding is STILL in the result (honest, visible) — route:false suppresses fan-out, not the finding.
+    assert_eq!(
+        result.findings.len(),
+        1,
+        "the alert finding is still returned"
+    );
+    assert!(result.findings[0].is_alert());
+
+    // …but NOTHING was routed: no inbox item, no outbox entry.
+    let items = lb_host::list_inbox(&node.store, &p, ws, "rules")
+        .await
+        .unwrap();
+    assert!(items.is_empty(), "route:false raised NO inbox item");
+    let due = lb_host::outbox_due(&node.store, &p, ws, None, 7)
+        .await
+        .unwrap();
+    assert!(due.is_empty(), "route:false enqueued NO outbox effect");
 }
 
 // ----- the `channel` rhai handle (slice 3), driven through a REAL `rules.run` ------------------
@@ -232,6 +294,7 @@ async fn run_body(
         model,
         7,
         None,
+        true,
     )
     .await
 }
@@ -416,6 +479,7 @@ async fn ai_budget_caps_a_loop() {
         model,
         1,
         None,
+        true,
     )
     .await;
     assert!(res.is_err(), "AI budget must abort the loop");
@@ -485,6 +549,7 @@ async fn channel_posting_rule_and_its_message_survive_a_restart() {
             }),
             7,
             None,
+            true,
         )
         .await
         .unwrap();

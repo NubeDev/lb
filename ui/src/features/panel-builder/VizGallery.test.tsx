@@ -50,16 +50,16 @@ function mountGallery(over: { view?: View; shape?: ResultShape } = {}) {
 }
 
 describe("VizGallery — the type-mapping + shape-gating", () => {
-  it("renders 9 type cards: 6 chart-likes (live mini-renders) + 3 labeled (table/genui/template)", () => {
+  it("renders 10 type cards: 6 chart-likes (live mini-renders) + 4 labeled (table/genui/template/insights)", () => {
     mountGallery();
     const cards = screen.getAllByRole("button", { name: /^viz / });
-    expect(cards.length).toBe(9);
+    expect(cards.length).toBe(10);
     // The chart-likes — the live-mini-render set.
     for (const v of ["timeseries", "barchart", "stat", "gauge", "bargauge", "piechart"]) {
       expect(screen.getByLabelText(`viz ${v}`)).toBeInTheDocument();
     }
-    // The labeled cards — no mini-render (a Template thumbnail is noise).
-    for (const v of ["table", "genui", "template"]) {
+    // The labeled cards — no mini-render (a Template thumbnail is noise; insights reads its own data).
+    for (const v of ["table", "genui", "template", "insights"]) {
       expect(screen.getByLabelText(`viz ${v}`)).toBeInTheDocument();
     }
   });

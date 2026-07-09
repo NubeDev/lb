@@ -174,7 +174,9 @@ rather than re-deciding. Each names the alternative rejected and why.
     *Rejected:* a port-labelled edge model (a bigger change than this pack owns) and a null/skip
     sentinel payload (a dependent can't tell "gated" from a legitimately-null value). Branches are
     expected disjoint (a Node-RED switch fans to distinct wires); a dependent shared with a live
-    branch is left to fire on its other path.
+    branch is left to fire on its other path. **The deferred port-labelled edge model this names is now
+    owned by [`flow-input-ports-scope.md`](flow-input-ports-scope.md)** — the Node-RED multi-input slice
+    (an edge targets a named input port; each port declares an `all` join vs `any` funnel policy).
 15. **`split`/`join` are array-carry, not per-message fan-out.** Node-RED fans a `split` into N
     independent messages; our one-shot-run model (Decision 9 — no parked runs, no per-event fan-out
     storm) resolves data-nodes Open Q2 to **array-carry**: `split` emits the sequence as **one**

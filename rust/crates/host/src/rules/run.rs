@@ -37,6 +37,12 @@ pub struct RunResult {
 /// `now` is the logical clock for inbox/outbox routing (no wall-clock in core); `model` is the AI seam.
 /// `limits` overrides the sandbox governors for THIS run (the flow `rules.eval` node's `timeout_ms`
 /// knob rides this); `None` uses the node-config defaults (`rule_limits()`).
+///
+/// `route` gates the alert fan-out (rules-for-widgets-scope slice 2): `true` (the default for the
+/// workbench + flows) routes each `alert()` finding to the Inbox + Outbox; `false` skips `route_alerts`
+/// so a panel auto-refreshing every 30 s does NOT stamp a new inbox item + must-deliver outbox entry on
+/// every repaint. Findings still return in the result either way (honest, visible) — `route:false` only
+/// suppresses the fan-out, it never hides a finding.
 #[allow(clippy::too_many_arguments)]
 pub async fn rules_run(
     node: &Arc<Node>,
@@ -48,6 +54,7 @@ pub async fn rules_run(
     model: Arc<dyn RuleModel>,
     now: u64,
     limits: Option<RuleLimits>,
+    route: bool,
 ) -> Result<RunResult, RulesError> {
     // Resolve the rule body: ad-hoc or by saved id.
     let (name, body, declared) = match (body, rule_id) {
@@ -121,8 +128,11 @@ pub async fn rules_run(
         Err(e) => return Err(RulesError::Internal(e.to_string())),
     };
 
-    // Route alert findings → inbox (attention) + outbox (must-deliver), per the scope.
-    route_alerts(node, principal, ws, &run.findings, now).await?;
+    // Route alert findings → inbox (attention) + outbox (must-deliver), per the scope — UNLESS this is a
+    // read-only run (`route:false`, e.g. a panel repaint). Findings still return below either way.
+    if route {
+        route_alerts(node, principal, ws, &run.findings, now).await?;
+    }
 
     Ok(RunResult {
         output,

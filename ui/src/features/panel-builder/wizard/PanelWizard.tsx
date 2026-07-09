@@ -21,6 +21,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import type { Cell, View } from "@/lib/dashboard";
 import { canonicalView } from "@/lib/dashboard";
 import { defaultCell } from "@/lib/panel-kit/defaultCell";
+import { SOURCELESS_VIEWS } from "@/lib/panel-kit";
 import { cellToEditorState, editorStateToCell, type EditorState } from "@/lib/panel-kit/cellEditorState";
 import { defaultOptionsForView } from "@/features/panel-builder/viewOptions";
 import { ResultRowsProvider } from "@/features/panel-builder/fields/RowsContext";
@@ -96,7 +97,11 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
   );
 
   const stepIndex = WIZARD_STEPS.findIndex((s) => s.id === step);
-  const canAdvance = step === "source" ? !!state.targets[0]?.tool : true;
+  // The source step gates on a picked target — EXCEPT for a sourceless view (e.g. `insights`), which
+  // reads its own data and binds no target. Such a view is chosen on the source step itself (the "no
+  // data source" affordance), so once picked, Next is free.
+  const sourceless = SOURCELESS_VIEWS.has(canonicalView(state.view || "timeseries"));
+  const canAdvance = step === "source" ? sourceless || !!state.targets[0]?.tool : true;
 
   /** Save the finished panel: serialize the wizard's state through `editorStateToCell` (the SAME path the
    *  editor's Save uses), append to the dashboard's cells, persist via `dashboard.save`. The host re-checks
@@ -158,7 +163,15 @@ export function PanelWizard({ ws, dashboardId, onExit }: Props) {
       >
         <ResultRowsProvider rows={rows}>
         <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1" aria-label="wizard step">
-          {step === "source" && <SourceStep ws={ws} state={state} patch={patchAndBump} />}
+          {step === "source" && (
+            <SourceStep
+              ws={ws}
+              state={state}
+              patch={patchAndBump}
+              onPickView={changeView}
+              onAdvance={() => setStep(WIZARD_STEPS[Math.min(stepIndex + 1, WIZARD_STEPS.length - 1)]!.id)}
+            />
+          )}
           {step === "chartType" && (
             <ChartTypeStep
               state={state}

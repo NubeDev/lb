@@ -19,6 +19,7 @@ import { PlotAxesTab } from "@/features/panel-builder/tabs/PlotAxesTab";
 import { TemplateOptionsEditor } from "@/features/panel-builder/tabs/options/TemplateOptionsEditor";
 import { GenUiAuthorTab } from "@/features/panel-builder/tabs/GenUiAuthorTab";
 import { StatBasics } from "./StatBasics";
+import { InsightsBasics } from "./InsightsBasics";
 
 interface Props {
   state: EditorState;
@@ -71,6 +72,20 @@ export function ChartTypeStep({ state, onChange, draft, patch, refreshKey, ws }:
             </p>
           </div>
           <StatBasics state={state} patch={patch} />
+        </section>
+      )}
+
+      {current === "insights" && (
+        <section className="grid gap-2 border-t border-border pt-4" aria-label="wizard insights section">
+          <div className="grid gap-1">
+            <h2 className="text-sm font-medium text-fg">Insights</h2>
+            <p className="text-xs text-muted">
+              A triage list of findings raised by rules, flows, and agents — no data source needed.
+              Choose whether viewers can act on rows, and the default focus. The preview on the right is
+              the real panel; fine-tune everything else in <span className="text-fg">3. Options</span>.
+            </p>
+          </div>
+          <InsightsBasics state={state} patch={patch} />
         </section>
       )}
 

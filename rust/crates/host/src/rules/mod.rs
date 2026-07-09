@@ -142,13 +142,20 @@ pub async fn call_rules_tool(
                 .map(String::from);
             let params = params_to_rhai(input.get("params").unwrap_or(&Value::Null));
             let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            // `route` gates the alert fan-out — default `true` (existing behavior unchanged). A panel
+            // source sets `route:false` so a dashboard repaint doesn't spam the Inbox/Outbox
+            // (rules-for-widgets-scope slice 2). The viz plane never learns the flag exists — the
+            // picker composes it into `args`, exactly like the params form.
+            let route = input.get("route").and_then(|v| v.as_bool()).unwrap_or(true);
             // Resolve the workspace's model — the catalog pick (`agent.config`) → the node's model.
             // A configured workspace gets the real model; an unconfigured one gets the honest
             // `DisabledModel` error (now a *resolved* outcome, not a hardcoded default).
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
             let model = resolve_rule_model(node, principal, ws, idem).await;
-            let result =
-                rules_run(node, principal, ws, body, rule_id, params, model, now, None).await?;
+            let result = rules_run(
+                node, principal, ws, body, rule_id, params, model, now, None, route,
+            )
+            .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))
         }
         "rules.eval" => {
@@ -167,6 +174,7 @@ pub async fn call_rules_tool(
             let explicit_params = input.get("params").cloned().unwrap_or(Value::Null);
             let timeout_ms = input.get("timeout_ms").and_then(|v| v.as_u64());
             let now = input.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+            let route = input.get("route").and_then(|v| v.as_bool()).unwrap_or(true);
             let idem = idem_prefix(ws, body.as_deref(), rule_id.as_deref(), now);
             let model = resolve_rule_model(node, principal, ws, idem).await;
             let result = crate::rules::rules_eval(
@@ -180,6 +188,7 @@ pub async fn call_rules_tool(
                 timeout_ms,
                 model,
                 now,
+                route,
             )
             .await?;
             Ok(serde_json::to_value(result).unwrap_or(Value::Null))

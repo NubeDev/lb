@@ -29,6 +29,10 @@ const VIEWS: { id: View; label: string }[] = [
   // `sources[]` like genui); picking it swaps the Panel-options tab to the template body editor. Stays
   // on the standard viz row (a template is a data view, not a flow control/read view).
   { id: "template", label: "Template" },
+  // The insights triage list (insights-package-scope) — a list of the workspace's findings raised by
+  // rules/flows/agents. Not shape-gated: it isn't source-bound (it reads the `insight.*` verbs through
+  // the shell's InsightsClient), so it needs no target — picking it clears the source requirement.
+  { id: "insights", label: "Insights" },
 ];
 
 /** The flow control/read views (flow-dashboard-binding-ux-scope). An INPUT-port binding offers the
