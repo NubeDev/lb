@@ -48,6 +48,7 @@ fn count_node(id: &str, needs: &[&str], items: Value) -> Node {
         needs: needs.iter().map(|s| s.to_string()).collect(),
         with: serde_json::Map::from_iter([("items".into(), items)]),
         config: json!({}),
+        position: None,
     }
 }
 

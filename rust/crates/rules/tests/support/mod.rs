@@ -67,6 +67,15 @@ impl MessagingSeam for RecordingMessaging {
             "outbox.status" => json!({ "effects": [] }),
             "channel.history" => json!({ "messages": [] }),
             "channel.list" => json!({ "channels": [] }),
+            // `insight.raise` echoes the outcome id (the handle returns it); a deterministic canned id
+            // derived from the dedup_key so a test can assert the handle surfaces it.
+            "insight.raise" => {
+                let key = input
+                    .get("dedup_key")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("k");
+                json!({ "id": format!("insight-{key}"), "status": "open", "count": 1, "created": true })
+            }
             _ => json!({ "ok": true }),
         })
     }

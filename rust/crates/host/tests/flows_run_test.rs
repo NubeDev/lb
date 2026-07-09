@@ -60,6 +60,7 @@ fn node(id: &str, ty: &str, needs: &[&str], config: Value) -> Node {
         needs: needs.iter().map(|s| s.to_string()).collect(),
         with: serde_json::Map::new(),
         config,
+        position: None,
     }
 }
 
@@ -178,6 +179,7 @@ async fn count_node_counts_its_input() {
         needs: vec![],
         with: serde_json::Map::from_iter([("payload".into(), json!([1, 2, 3, 4]))]),
         config: json!({}),
+        position: None,
     };
     let f = flow("cnt", vec![count]);
     save_flow(&node, &p, "ws", &f).await;
@@ -462,6 +464,7 @@ async fn subflow_parks_on_child_run() {
             needs: vec![],
             with: serde_json::Map::new(),
             config: json!({ "flow": "child@1" }),
+            position: None,
         }],
     );
     save_flow(&node, &p, "ws", &parent).await;
@@ -604,6 +607,7 @@ async fn counter_tick_mode_does_not_jump_by_payload_size() {
         needs: vec!["src".into()],
         with: serde_json::Map::new(),
         config: json!({}),
+        position: None,
     };
     let f = flow("tick", vec![rhai_node("src", &[], "[1, 2, 3, 4]"), counter]);
     save_flow(&node, &p, "ws", &f).await;
@@ -624,6 +628,7 @@ async fn counter_throughput_mode_adds_payload_size() {
         needs: vec!["src".into()],
         with: serde_json::Map::new(),
         config: json!({ "mode": "throughput" }),
+        position: None,
     };
     let f = flow("thru", vec![rhai_node("src", &[], "[1, 2, 3, 4]"), counter]);
     save_flow(&node, &p, "ws", &f).await;
@@ -652,6 +657,7 @@ fn json_node(id: &str, mode: &str, payload: Value, extra: Value) -> Node {
         needs: vec![],
         with: serde_json::Map::from_iter([("payload".into(), payload)]),
         config,
+        position: None,
     }
 }
 
@@ -736,6 +742,7 @@ async fn json_parse_carries_topic_forward() {
         needs: vec!["t".into()],
         with: serde_json::Map::new(),
         config: json!({ "mode": "parse" }),
+        position: None,
     };
     let f = flow("jtopic", vec![trig, j]);
     save_flow(&node, &p, "ws", &f).await;
@@ -764,6 +771,7 @@ fn node_with_topic(id: &str, topic: &str) -> Node {
         needs: vec![],
         with: serde_json::Map::new(),
         config: json!({ "mode": "manual", "topic": topic }),
+        position: None,
     }
 }
 

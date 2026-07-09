@@ -7,6 +7,18 @@ export interface ChannelSearch {
   c: string;
 }
 
+/** The schema-designer canvas search. `from` is an optional datasource name: when present (a user
+ *  opened the designer from a datasource's Schemas tab), the canvas presets that source and
+ *  auto-imports its catalog — the user never has to pick a source from the dropdown. */
+export interface SchemaSearch {
+  from?: string;
+}
+
+export function validateSchemaSearch(search: Record<string, unknown>): SchemaSearch {
+  const from = scalar(search.from)?.trim();
+  return from ? { from } : {};
+}
+
 // The dashboard search carries the date range, the auto-refresh interval (Slice 4), and the selected
 // variable values (Slice 2) as flat `var-<name>` URL params (repeated for multi-value). Selection lives
 // in the URL — per-viewer + shareable (Grafana parity); the variable DEFINITIONS live on the record. We

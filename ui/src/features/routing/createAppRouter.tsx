@@ -47,6 +47,7 @@ import {
   DEFAULT_CHANNEL,
   validateChannelSearch,
   validateDashboardSearch,
+  validateSchemaSearch,
 } from "./search";
 import { fullPathForSurface, pathForSurface, surfaceForPath, tenantPath } from "./surface";
 import { CAP, hasCap } from "@/lib/session";
@@ -152,6 +153,7 @@ const schemaDetailRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/schemas/$name",
   component: SchemaDetailRoute,
+  validateSearch: validateSchemaSearch,
 });
 
 // Settings tabs are deep-linkable: `/settings/<tab>` (preferences | agent | theme). The bare
@@ -559,12 +561,14 @@ function SchemasRoute() {
 function SchemaDetailRoute() {
   const ctx = useAppRoutingContext();
   const { name } = schemaDetailRoute.useParams();
+  const { from } = schemaDetailRoute.useSearch();
   const navigate = useNavigate();
   if (!ctx.allowed.includes("datasources")) return <DefaultRedirect />;
   return (
     <SchemaDesignerPage
       ws={ctx.workspace}
       name={decodeURIComponent(name)}
+      presetImportSource={from ?? null}
       onBack={() =>
         void navigate({ to: `/t/${encodeURIComponent(ctx.workspace)}/schemas` })
       }

@@ -15,9 +15,12 @@ use secrecy::SecretString;
 
 use super::{Source, SourceError};
 
-/// A connected Postgres source: the pool + a table-provider factory over it.
+/// A connected Postgres source: the pool + a table-provider factory over it. The pool is retained
+/// (not just the factory) so `apply_ddl`/`write_rows` can open a `connect_direct` connection and
+/// run real `execute`/transaction — the read-only DataFusion provider path cannot express a write.
 pub struct PostgresSource {
     factory: PostgresTableFactory,
+    pool: Arc<PostgresConnectionPool>,
 }
 
 impl PostgresSource {
@@ -36,11 +39,14 @@ impl PostgresSource {
         if !dsn.contains("sslmode") {
             params.insert("sslmode".into(), SecretString::from("disable".to_string()));
         }
-        let pool = PostgresConnectionPool::new(params)
-            .await
-            .map_err(|e| SourceError(format!("postgres pool: {e}")))?;
+        let pool = Arc::new(
+            PostgresConnectionPool::new(params)
+                .await
+                .map_err(|e| SourceError(format!("postgres pool: {e}")))?,
+        );
         Ok(Self {
-            factory: PostgresTableFactory::new(Arc::new(pool)),
+            factory: PostgresTableFactory::new(Arc::clone(&pool)),
+            pool,
         })
     }
 }
@@ -109,4 +115,179 @@ impl Source for PostgresSource {
             })
             .collect())
     }
+
+    /// Apply a DDL batch in ONE Postgres transaction (Postgres DDL is transactional — a mid-batch
+    /// failure rolls the whole migrate back, the scope's one-transaction invariant). The statements
+    /// are the planner's allow-listed output (CREATE TABLE / ADD COLUMN / ADD CONSTRAINT), never
+    /// caller SQL, so they run as literal `execute` with no parameters.
+    async fn apply_ddl(&self, stmts: &[super::DdlStatement]) -> Result<(), SourceError> {
+        if stmts.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self
+            .pool
+            .connect_direct()
+            .await
+            .map_err(|e| SourceError(format!("ddl connect: {e}")))?;
+        let tx = conn
+            .conn
+            .transaction()
+            .await
+            .map_err(|e| SourceError(format!("ddl begin: {e}")))?;
+        for stmt in stmts {
+            tx.execute(stmt.sql(), &[])
+                .await
+                .map_err(|e| SourceError(format!("apply ddl: {e}")))?;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| SourceError(format!("ddl commit: {e}")))?;
+        Ok(())
+    }
+
+    /// INSERT (or `ON CONFLICT(key) DO UPDATE` when `key` is given) with parameterized values — the
+    /// whole batch in one transaction so a mid-batch failure rolls everything back (federation.write
+    /// idempotence + the export no-duplicates invariant). Values are bound as `$n` params, NEVER
+    /// inlined into SQL — a caller cannot inject SQL through a cell value.
+    async fn write_rows(
+        &self,
+        table: &str,
+        columns: &[String],
+        rows: &[Vec<serde_json::Value>],
+        key: Option<&[String]>,
+    ) -> Result<u64, SourceError> {
+        if rows.is_empty() {
+            return Ok(0);
+        }
+        // Build the SQL once (identifiers quote_ident'd — validated caller-side + defense in depth),
+        // reuse the prepared statement per row.
+        let quoted_cols: Vec<String> = columns
+            .iter()
+            .map(|c| super::dialect::quote_ident(c))
+            .collect();
+        let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("${i}")).collect();
+        let mut sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            super::dialect::quote_ident(table),
+            quoted_cols.join(", "),
+            placeholders.join(", ")
+        );
+        if let Some(key) = key.filter(|k| !k.is_empty()) {
+            let conflict_cols: Vec<String> =
+                key.iter().map(|c| super::dialect::quote_ident(c)).collect();
+            let updates: Vec<String> = columns
+                .iter()
+                .filter(|c| !key.contains(c))
+                .map(|c| {
+                    let q = super::dialect::quote_ident(c);
+                    format!("{q}=excluded.{q}")
+                })
+                .collect();
+            if updates.is_empty() {
+                sql.push_str(&format!(
+                    " ON CONFLICT({}) DO NOTHING",
+                    conflict_cols.join(", ")
+                ));
+            } else {
+                sql.push_str(&format!(
+                    " ON CONFLICT({}) DO UPDATE SET {}",
+                    conflict_cols.join(", "),
+                    updates.join(", ")
+                ));
+            }
+        }
+
+        let mut conn = self
+            .pool
+            .connect_direct()
+            .await
+            .map_err(|e| SourceError(format!("write connect: {e}")))?;
+        let tx = conn
+            .conn
+            .transaction()
+            .await
+            .map_err(|e| SourceError(format!("write begin: {e}")))?;
+        let stmt = tx
+            .prepare(&sql)
+            .await
+            .map_err(|e| SourceError(format!("write prepare: {e}")))?;
+        let mut affected = 0u64;
+        for row in rows {
+            // `columns[i]` ↔ `row[i]` (column-aligned). Each cell becomes an owned PgValue that
+            // implements ToSql — parameterized, never inlined.
+            let params: Vec<PgValue> = row.iter().map(PgValue::from_json).collect();
+            let refs: Vec<&(dyn tokio_postgres::types::ToSql + Sync)> = params
+                .iter()
+                .map(|p| p as &(dyn tokio_postgres::types::ToSql + Sync))
+                .collect();
+            affected += tx
+                .execute(&stmt, refs.as_slice())
+                .await
+                .map_err(|e| SourceError(format!("write rows: {e}")))?;
+        }
+        tx.commit()
+            .await
+            .map_err(|e| SourceError(format!("write commit: {e}")))?;
+        Ok(affected)
+    }
+}
+
+/// An owned cell value bound as a Postgres `$n` parameter (parameterized — never inlined into SQL).
+/// Postgres is strictly typed, so we bind each JSON scalar as its natural Postgres type and let the
+/// server coerce into the target column (an `i64` into `integer`, `text` into `text`, `f64` into
+/// `numeric`/`double`). Structured JSON (arrays/objects) is sent as a `jsonb` value so a `json`/
+/// `jsonb` column reads it back structurally.
+#[derive(Debug)]
+enum PgValue {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Text(String),
+    Json(serde_json::Value),
+}
+
+impl PgValue {
+    fn from_json(v: &serde_json::Value) -> Self {
+        match v {
+            serde_json::Value::Null => PgValue::Null,
+            serde_json::Value::Bool(b) => PgValue::Bool(*b),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    PgValue::Int(i)
+                } else if let Some(f) = n.as_f64() {
+                    PgValue::Float(f)
+                } else {
+                    PgValue::Text(n.to_string())
+                }
+            }
+            serde_json::Value::String(s) => PgValue::Text(s.clone()),
+            other => PgValue::Json(other.clone()),
+        }
+    }
+}
+
+impl tokio_postgres::types::ToSql for PgValue {
+    fn to_sql(
+        &self,
+        ty: &tokio_postgres::types::Type,
+        out: &mut tokio_postgres::types::private::BytesMut,
+    ) -> Result<tokio_postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        match self {
+            PgValue::Null => Ok(tokio_postgres::types::IsNull::Yes),
+            PgValue::Bool(b) => b.to_sql(ty, out),
+            PgValue::Int(i) => i.to_sql(ty, out),
+            PgValue::Float(f) => f.to_sql(ty, out),
+            PgValue::Text(s) => s.to_sql(ty, out),
+            PgValue::Json(j) => j.to_sql(ty, out),
+        }
+    }
+
+    fn accepts(_ty: &tokio_postgres::types::Type) -> bool {
+        // Accept whatever the target column declares — the server drives coercion. Per-arm encoders
+        // above still refuse a genuine mismatch at `to_sql` time.
+        true
+    }
+
+    tokio_postgres::types::to_sql_checked!();
 }

@@ -42,7 +42,10 @@ pub struct RunResult {
 /// workbench + flows) routes each `alert()` finding to the Inbox + Outbox; `false` skips `route_alerts`
 /// so a panel auto-refreshing every 30 s does NOT stamp a new inbox item + must-deliver outbox entry on
 /// every repaint. Findings still return in the result either way (honest, visible) — `route:false` only
-/// suppresses the fan-out, it never hides a finding.
+/// suppresses the fan-out, it never hides a finding. `route` is ALSO threaded into the cage
+/// ([`RuleEngine::with_route`]): the `insight` handle no-ops raise/ack/close on a `route:false` run
+/// (rule-raises-insight-scope §route:false) — an `insight.raise` is a stronger effect than `alert()`,
+/// so if `alert()` is suppressed on a repaint, raising an insight must be too.
 #[allow(clippy::too_many_arguments)]
 pub async fn rules_run(
     node: &Arc<Node>,
@@ -91,6 +94,9 @@ pub async fn rules_run(
         tokio::runtime::Handle::current(),
     ));
 
+    // `route` is threaded into the cage (not just the post-run alert fan-out below): the `insight`
+    // handle honors it — a `route:false` panel repaint no-ops raise/ack/close (rule-raises-insight-scope
+    // §route:false), symmetric with how `route:false` skips `route_alerts` here.
     let engine = RuleEngine::new(
         data,
         ai,
@@ -98,7 +104,8 @@ pub async fn rules_run(
         limits.unwrap_or_else(rule_limits),
         ai_limits(),
         max_writes(),
-    );
+    )
+    .with_route(route);
     let rule = Rule {
         workspace: ws.to_string(),
         name,
