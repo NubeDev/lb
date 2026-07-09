@@ -28,6 +28,9 @@ node_modules/
 # corrupts the merge into `master`.
 .lazy/
 
+# mkcert-issued local cert pair for the Fly HTTPS pre-flight harness (deploy/fly/compose.fly-local.yml).
+deploy/fly/certs/
+
 # `make publish-ext` deploy target: the extension UI bundle the running node serves from
 # LB_EXT_UI_DIR. Pure build/deploy output (copied from each ext's ui/dist), never source.
 rust/extensions-ui/

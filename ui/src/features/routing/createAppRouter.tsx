@@ -1,7 +1,7 @@
 // TanStack Router tree for the shell URL grammar. Hash history is used by createAppRouter(), so the
 // same fragment URLs work under browser origins and Tauri custom-protocol origins.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   Navigate,
   createHashHistory,
@@ -18,6 +18,7 @@ import { ChannelView } from "@/features/channel";
 import { DashboardView } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
 import { PanelWizard } from "@/features/panel-builder/wizard/PanelWizard";
+import type { Cell } from "@/lib/dashboard";
 import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { DataStudioView } from "@/features/data-studio";
 import { DataView } from "@/features/data";
@@ -112,6 +113,10 @@ const dashboardsRoute = createRoute({
 const newPanelRoute = createRoute({
   getParentRoute: () => tenantRoute,
   path: "/dashboards/$d/new-panel",
+  // Optional `?cell=<id>` puts the wizard in EDIT mode over an existing panel (the dashboard cell's
+  // hover affordance links here). Absent ⇒ the create flow. It's the ONLY search this route reads.
+  validateSearch: (s: Record<string, unknown>): { cell?: string } =>
+    typeof s.cell === "string" && s.cell ? { cell: s.cell } : {},
   component: NewPanelRoute,
 });
 
@@ -352,8 +357,11 @@ function DashboardsRoute() {
       ws={ctx.workspace}
       range={range}
       onSearchChange={(next) => void searchNav({ search: next })}
-      onOpenInDataStudio={() =>
-        void go({ to: fullPathForSurface(ctx.workspace, "data-studio") })
+      onEditPanel={(d, cellId) =>
+        void go({
+          to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/${encodeURIComponent(d)}/new-panel`,
+          search: { cell: cellId },
+        })
       }
       onOpenPanelWizard={(d) =>
         void go({ to: `/t/${encodeURIComponent(ctx.workspace)}/dashboards/${encodeURIComponent(d)}/new-panel` })
@@ -384,14 +392,35 @@ function DataStudioRoute() {
 function NewPanelRoute() {
   const ctx = useAppRoutingContext();
   const { d } = newPanelRoute.useParams();
+  const { cell: cellId } = newPanelRoute.useSearch();
+  const dashboardId = decodeURIComponent(d);
   const navigate = useNavigate();
+  // EDIT mode (`?cell=`): load the target cell so the wizard seeds from it. A `new-panel` deep link
+  // with no `cell` stays the create flow (editCell undefined). We fetch from the real store (no cache
+  // of the specific cell) — the wizard holds off until it resolves so its state seeds correctly.
+  const [editCell, setEditCell] = useState<Cell | null | undefined>(cellId ? undefined : null);
+  useEffect(() => {
+    if (!cellId) return;
+    let live = true;
+    void (async () => {
+      const { getDashboard } = await import("@/lib/dashboard/dashboard.api");
+      const dash = await getDashboard(dashboardId);
+      if (live) setEditCell(dash.cells.find((c) => c.i === cellId) ?? null);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [cellId, dashboardId]);
   if (!hasCap(ctx.caps, CAP.dashboardSave)) return <DefaultRedirect />;
+  // Waiting on the edited cell — don't mount the wizard yet (its state seeds once from `editCell`).
+  if (editCell === undefined) return null;
   return (
     <DashboardCacheProvider ws={ctx.workspace}>
       <div className="flex h-full flex-col">
         <PanelWizard
           ws={ctx.workspace}
-          dashboardId={decodeURIComponent(d)}
+          dashboardId={dashboardId}
+          editCell={editCell ?? undefined}
           onExit={() => void navigate({ to: fullPathForSurface(ctx.workspace, "dashboards") })}
         />
       </div>

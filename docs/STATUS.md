@@ -16,7 +16,31 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-08): the desktop standalone full-stack build mode (`full` feature).** The
+**Just shipped (2026-07-09): the federation datasources sidecar is bundled into the `full` desktop
+build.** The standalone `full` binary booted node + gateway (so login/MCP/SSE/agents/flows/rules
+worked standalone) but had **one hole**: datasources. A user could `datasource.add` over the
+loopback gateway, but `datasource.test` / `federation.query` returned an opaque "denied" — the
+federation native sidecar that serves those verbs was not shipped in `full`, so no federation
+`Install` record existed and `enforce_endpoint` refused. This slice **bundles the sidecar** into the
+`full` package (`build.sh`/`build-windows.sh` build it sqlite-only — `rusqlite` bundled, no TLS/C
+dep; the desktop `Makefile` copies `federation(.exe)` beside the shell) and **auto-installs +
+supervises it at boot** (`ui/src-tauri/src/federation.rs::mount_federation`, called from `boot_full`
+after the signing-key install) with a sqlite-loopback grant (`net:tls:127.0.0.1:0:connect` +
+`secret:federation/*:get`), then pre-registers the shipped `demo-buildings.db` — so a double-clicked
+binary registers **and** queries a sqlite source with zero setup. The install path is a **shared,
+extension-agnostic helper** (`lb_host::install_federation`, taking manifest+grant+seed as opaque
+data — CLAUDE §10) that both `node/src/federation.rs` (env-driven, `make dev`) and the desktop boot
+call, so the grant/token computation lives in one place (no copy-paste drift — the bug class that
+motivated this). **Desktop default = sqlite-only**; postgres registers but is refused pre-connect
+until an admin widens the grant (deferred). **Tests (real sidecar/store/gateway, rule 9):**
+`full_federation_test.rs` boots `full`, and over the loopback gateway proves the regression
+(`datasource.test` → green, `federation.query` → rows), DSN redaction, the mandatory
+capability-deny (unapproved postgres endpoint refused *with* the sidecar present), and
+workspace-isolation (an `acme`-only source is unresolvable from ws `other`). `cargo fmt` clean.
+Scope [`scope/desktop/desktop-federation-bundle-scope.md`](scope/desktop/desktop-federation-bundle-scope.md);
+session [`sessions/desktop/desktop-federation-bundle-session.md`](sessions/desktop/desktop-federation-bundle-session.md).
+
+**Previously shipped (2026-07-08): the desktop standalone full-stack build mode (`full` feature).** The
 `lazybones-shell` desktop binary shipped in a **thin IPC mode** (Tauri window + 5 `channel_*`/
 `agent_invoke` commands over a hardcoded demo principal) — the React UI bundled into the webview
 is built for the HTTP/SSE gateway, so login and every gateway verb had nothing to answer them.

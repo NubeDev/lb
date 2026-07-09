@@ -334,7 +334,13 @@ async fn buildings_examples_run_end_to_end() {
         chart_rows[0]
     );
     assert!(
-        (chart_rows[0].get("kwh_per_m2").and_then(|v| v.as_f64()).unwrap() - 4.68).abs() < 0.01,
+        (chart_rows[0]
+            .get("kwh_per_m2")
+            .and_then(|v| v.as_f64())
+            .unwrap()
+            - 4.68)
+            .abs()
+            < 0.01,
         "the chart's first bar value is 4.68 kWh/m²: {:?}",
         chart_rows[0]
     );

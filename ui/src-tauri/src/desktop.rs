@@ -90,6 +90,15 @@ async fn agent_invoke(
 pub fn run() {
     // Boot the node before the window comes up (the shell IS a node).
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+
+    // `full` feature: default to a DURABLE per-user store so a restart keeps the user's work
+    // (desktop-persistent-store scope). Fill `LB_STORE_PATH` here — at the windowed binary boundary,
+    // BEFORE `NodeHandle::boot` — so `Node::boot`→`open_store` opens the persistent SurrealKV engine.
+    // Not inside `NodeHandle::boot`: the command/integration tests call that directly and must stay
+    // in-memory + isolated. An explicit `LB_STORE_PATH` (or an explicit empty one) is honored as-is.
+    #[cfg(feature = "full")]
+    println!("full: {}", lazybones_shell::store::ensure_store_path());
+
     let handle = rt
         .block_on(NodeHandle::boot("acme"))
         .expect("node boots for the shell");

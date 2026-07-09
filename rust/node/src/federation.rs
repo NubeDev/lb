@@ -22,8 +22,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{datasource_add, install_native, Node};
+use lb_host::{install_federation, Node, SeedSource};
 use lb_supervisor::OsLauncher;
 
 /// Wall-clock seconds since the Unix epoch — the install's `now` at the binary boundary.
@@ -32,28 +31,6 @@ fn unix_seconds() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-/// The admin service principal the federation install acts as in `ws` — holds exactly the native
-/// install gate, the secret-write (for the seed DSN), and the datasource-add caps. (A real
-/// login→token→principal session replaces this demo identity later, like the gateway's dev login.)
-fn admin_principal(ws: &str) -> Principal {
-    let key = SigningKey::generate();
-    let claims = Claims {
-        sub: "ext:federation-bootstrap".into(),
-        ws: ws.into(),
-        role: Role::Member,
-        caps: vec![
-            "mcp:native.install:call".into(),
-            "mcp:datasource.add:call".into(),
-            "secret:federation/*:write".into(),
-        ],
-        iat: 0,
-        exp: u64::MAX,
-        constraint: None,
-        run_id: None,
-    };
-    verify(&key, &mint(&key, &claims), 1).expect("freshly minted token verifies")
 }
 
 /// The federation extension manifest (compiled in so the binary needs no file at this path at run
@@ -94,12 +71,12 @@ pub async fn mount(node: Arc<Node>) {
     }
 
     let ws = std::env::var("LB_WORKSPACE").unwrap_or_else(|_| "acme".into());
-    let admin = admin_principal(&ws);
     let now = unix_seconds();
 
     // The admin-approved grant: one `net:tls:host:port:connect` per endpoint + the secret read the
-    // host needs to mediate a DSN to the pool. `requested ∩ admin_approved` is computed in
-    // `install_native`; here we approve exactly the configured endpoints (the per-endpoint wall).
+    // host needs to mediate a DSN to the pool. `requested ∩ admin_approved` is computed inside the
+    // shared helper (`install_native`); here we approve exactly the configured endpoints (the
+    // per-endpoint wall).
     let mut approved: Vec<String> = endpoints
         .iter()
         .filter_map(|e| e.rsplit_once(':'))
@@ -119,54 +96,33 @@ pub async fn mount(node: Arc<Node>) {
         return;
     }
 
-    match install_native(
-        &node,
-        &OsLauncher,
-        &admin,
-        &ws,
-        MANIFEST,
-        &dir_str,
-        &approved,
-        now,
-    )
-    .await
+    // Optional seed: pre-register one source so the Datasources page has a working entry on first
+    // boot. The DSN is mediated into lb-secrets by the helper (only the ref lands on the record).
+    let seed_env = (
+        std::env::var("LB_FEDERATION_SEED_NAME"),
+        std::env::var("LB_FEDERATION_SEED_KIND"),
+        std::env::var("LB_FEDERATION_SEED_ENDPOINT"),
+        std::env::var("LB_FEDERATION_SEED_DSN").ok(),
+    );
+    let seed = match &seed_env {
+        (Ok(name), Ok(kind), Ok(endpoint), dsn) => Some(SeedSource {
+            name,
+            kind,
+            endpoint,
+            dsn: dsn.as_deref(),
+        }),
+        _ => None,
+    };
+
+    // One shared install-and-seed path (desktop-federation-bundle scope): the same helper the
+    // desktop `full` boot calls, so the grant/token computation lives in ONE place. The federation
+    // manifest + approved endpoints are the binary's inputs; the helper stays extension-agnostic.
+    match install_federation(&node, &OsLauncher, &ws, MANIFEST, &dir_str, &approved, seed, now).await
     {
         Ok(s) => println!(
             "federation: installed sidecar in '{ws}' (tools={:?}, granted={:?}, approved endpoints={:?})",
             s.tools, s.granted_caps, endpoints
         ),
-        Err(e) => {
-            eprintln!("federation: sidecar install failed: {e}");
-            return;
-        }
-    }
-
-    // Optional seed: pre-register one source so the Datasources page has a working entry on first
-    // boot. The DSN is mediated into lb-secrets (only the ref lands on the record).
-    if let (Ok(name), Ok(kind), Ok(endpoint)) = (
-        std::env::var("LB_FEDERATION_SEED_NAME"),
-        std::env::var("LB_FEDERATION_SEED_KIND"),
-        std::env::var("LB_FEDERATION_SEED_ENDPOINT"),
-    ) {
-        let dsn = std::env::var("LB_FEDERATION_SEED_DSN").ok();
-        match datasource_add(
-            &node,
-            &admin,
-            &ws,
-            &name,
-            &kind,
-            &endpoint,
-            None,
-            dsn.as_deref(),
-            now,
-        )
-        .await
-        {
-            Ok(()) => {
-                println!("federation: seeded datasource '{name}' ({kind} @ {endpoint}) in '{ws}'")
-            }
-            // An already-registered source (a re-run on a persistent store) is fine — not fatal.
-            Err(e) => eprintln!("federation: seed datasource '{name}' skipped: {e}"),
-        }
+        Err(e) => eprintln!("federation: sidecar install/seed failed: {e}"),
     }
 }

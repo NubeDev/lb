@@ -21,6 +21,17 @@ case ",$FEATURES," in
     ADDR="${LB_DESKTOP_GATEWAY_ADDR:-127.0.0.1:8800}"
     export VITE_GATEWAY_URL="http://${ADDR}"
     echo "-> full-stack mode: VITE_GATEWAY_URL=$VITE_GATEWAY_URL (LB_DESKTOP_GATEWAY_ADDR=$ADDR)"
+    # Cross-build the federation datasources sidecar for the full desktop bundle (desktop-federation-
+    # bundle scope). SQLITE ONLY (no `--features postgres`): the sqlite path is default-on and links
+    # `rusqlite` bundled — it compiles its own sqlite3 under cargo-xwin, no system C dep and no
+    # TLS/OpenSSL. Same cargo-xwin runner + target as the shell, so one toolchain. The Makefile copies
+    # `federation.exe` beside the shell.
+    echo "-> cross-building federation.exe (sqlite-only) for the full desktop bundle"
+    # --manifest-path from the repo root, NOT `cd rust`: entering rust/ makes rustup try to sync the
+    # `rust-toolchain.toml` wasm target/components into the root-owned rustup home (Permission denied
+    # for the non-root container user). The repo-root cwd has no toolchain file (like the tauri build),
+    # so the pre-installed stable toolchain + the windows target added in the image are used as-is.
+    RUSTUP_TOOLCHAIN=stable cargo xwin build --manifest-path rust/Cargo.toml -p federation --release --target x86_64-pc-windows-msvc
     ;;
   *)
     echo "-> thin-shell mode: LB_SHELL_FEATURES=$FEATURES (UI uses Tauri IPC)"

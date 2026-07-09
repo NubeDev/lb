@@ -39,6 +39,13 @@ pub const LOOPBACK_ADDR: &str = "127.0.0.1:8800";
 async fn seed_dev_identity(node: &Node, ws: &str, user: &str) -> Result<(), String> {
     let store = &node.store;
     let ts = now_secs();
+    // Seed the built-in `member`/`workspace-admin` role RECORDS so the role grants below resolve
+    // to caps (login-hardening scope). Without this, `role:workspace-admin` is assigned but the
+    // role has no cap bundle, so the seeded user logs in with (almost) no reach — the "missing
+    // access to everything" symptom. Idempotent; mirrors `rust/node/src/main.rs:31` verbatim.
+    lb_host::ensure_builtin_authz_roles(store, ws)
+        .await
+        .map_err(|e| e.to_string())?;
     raw::identity_create(store, user, None, ts)
         .await
         .map_err(|e| e.to_string())?;
@@ -128,7 +135,16 @@ pub async fn boot_full(
     // The caller-owned listener lets the desktop bind a fixed port (its UI is baked to match)
     // while tests bind `127.0.0.1:0` for a collision-free port. CORS is already permissive
     // (`CorsLayer::permissive`), so the webview origin reaches the loopback origin cleanly.
+    // Keep a node handle for the federation mount below — it must run AFTER the key install.
+    let node_for_fed = node.clone();
     let gw = Gateway::new_live(node, SigningKey::generate());
+
+    // Bring up the bundled federation datasources sidecar (desktop-federation-bundle scope): a
+    // packaged `.exe` can register AND query the shipped sqlite demo out of the box. AFTER the
+    // gateway installed the signing key above (so the child token verifies), matching `node/main.rs`
+    // ordering. Best-effort + loud like the other seeders — never blocks the gateway.
+    crate::federation::mount_federation(node_for_fed, ws, now_secs()).await;
+
     let listener = TcpListener::bind(addr).await?;
     let bound = listener.local_addr()?;
     println!("full: loopback gateway on http://{bound} (login as {seed_user} / {ws})");

@@ -39,7 +39,10 @@ build mode**, not a rewrite of the first.
   binaries + env config (pre-approved endpoints, a running ce-rest). The desktop `full`
   boot does not mount them; a developer who wants them runs `make dev`. The core product
   (identity, channels, dashboards, flows, rules, insights, agent, ingest) is fully
-  functional without them.
+  functional without them. **Update:** the `federation` half of this non-goal is reversed by
+  [`desktop-federation-bundle-scope.md`](desktop-federation-bundle-scope.md) — it bundles +
+  auto-installs the federation sidecar into `full` so datasources test/query standalone
+  (`control-engine` remains deferred). Register-but-can't-test in `full` today is that gap.
 - **The `hello` wasm bring-up demo.** It needs the built `.wasm` at a relative path that
   does not exist beside an installed binary. `load_enabled` (re-load previously-published
   extensions from the durable cache) is a no-op on a fresh store and stays.

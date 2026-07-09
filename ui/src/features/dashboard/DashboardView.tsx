@@ -40,9 +40,9 @@ interface Props {
   /** Update the whole dashboard search (range, refresh, var-* selection) — one router navigate.
    *  Variable selection + refresh ride here so they round-trip in the URL (Slices 2/4). */
   onSearchChange?: (search: DashboardSearch) => void;
-  /** Open Data Studio (`/t/$ws/data-studio`) — the panel-authoring surface since data-studio v2.
-   *  Wired by the route; passed down to each cell's hover affordance. Omitted ⇒ no button. */
-  onOpenInDataStudio?: () => void;
+  /** Edit an existing panel in the stepped wizard (`…/new-panel?cell=<i>`, EDIT mode). Wired by the
+   *  route; passed down to each cell's hover affordance. Called with the cell key. Omitted ⇒ no button. */
+  onEditPanel?: (dashboardId: string, cellId: string) => void;
   /** Open the stepped panel wizard at `/t/$ws/dashboards/$d/new-panel` (panel-wizard scope). Admin-only
    *  in the UI (matches `AddLibraryPanel`'s gate); the route re-checks `mcp:dashboard.save:call`. Omitted
    *  ⇒ no button. */
@@ -60,7 +60,7 @@ export function DashboardView(props: Props) {
   );
 }
 
-function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onOpenPanelWizard }: Props) {
+function DashboardViewInner({ ws, range, onSearchChange, onEditPanel, onOpenPanelWizard }: Props) {
   const dash = useDashboard(ws);
   // EAGER: the dashboard's tiles need the `installed` extensions list to render, so the picker query
   // fires on mount. (The Data Studio QueryTab is the LAZY caller — deferred until the user focuses
@@ -316,7 +316,7 @@ function DashboardViewInner({ ws, range, onSearchChange, onOpenInDataStudio, onO
                 workspace={ws}
                 onLayout={(cells) => void dash.saveCells(cells)}
                 onRemove={(i) => void dash.saveCells(current.cells.filter((c) => c.i !== i))}
-                onOpenInDataStudio={onOpenInDataStudio}
+                onEditPanel={onEditPanel ? (i) => onEditPanel(current.id, i) : undefined}
                 onDuplicate={(i) => {
                   const src = current.cells.find((c) => c.i === i);
                   if (!src) return;

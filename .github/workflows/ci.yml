@@ -66,3 +66,13 @@ jobs:
       - name: Test (Vitest)
         working-directory: ui
         run: pnpm test
+
+  deploy-image:
+    # Proves the shared deploy image (deploy/common/Dockerfile — the SAME file local Docker and
+    # `fly deploy` build) still builds on every PR. Build-only in v1: no push, no deploy from CI —
+    # see docs/scope/deploy/fly-deploy-scope.md "CI: build-only or push?".
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build deploy/common/Dockerfile
+        run: docker build -f deploy/common/Dockerfile --tag lazybones:ci-deploy-check .

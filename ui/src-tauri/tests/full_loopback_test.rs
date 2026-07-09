@@ -75,6 +75,63 @@ async fn login_then_mcp_call_works_over_the_loopback_gateway() {
     assert!(!arr.is_empty(), "the catalog is non-empty");
 }
 
+/// Regression (missing `ensure_builtin_authz_roles` in `boot_full`): the seeded `user:ada` is
+/// granted `role:workspace-admin`, but if the built-in role RECORDS are never seeded the grant
+/// resolves to ZERO caps — the user logs in but is "missing access to everything" (every admin
+/// surface 403s). This drives a real ADMIN-ONLY route (`GET /admin/roles`, gated
+/// `mcp:roles.list:call`) with the seeded token: a 200 proves the workspace-admin cap bundle
+/// actually reached the token. Before the fix this was a 403; `tools.catalog` (a viewer read)
+/// passed regardless, so it never caught the gap.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn seeded_user_resolves_to_a_real_workspace_admin() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let (_gw, bound) = boot_full(node, "acme", addr)
+        .await
+        .expect("boot_full binds");
+    let base = format!("http://{bound}");
+
+    let client = reqwest::Client::new();
+    let login: Value = client
+        .post(format!("{base}/login"))
+        .json(&serde_json::json!({"user":"user:ada","workspace":"acme"}))
+        .send()
+        .await
+        .expect("login request")
+        .error_for_status()
+        .expect("login 200")
+        .json()
+        .await
+        .expect("login json");
+    let token = login["token"].as_str().expect("token").to_string();
+
+    // `GET /admin/roles` is admin-gated (`mcp:roles.list:call`, in the admin-only bundle). A
+    // workspace-admin gets 200; a capless user gets 403. This is the wall the fix restores.
+    let resp = client
+        .get(format!("{base}/admin/roles"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .expect("admin/roles request");
+    assert_eq!(
+        resp.status(),
+        reqwest::StatusCode::OK,
+        "seeded user:ada must reach the admin roles route (workspace-admin caps resolved)"
+    );
+    // And the built-in roles are actually seeded (the records the grant resolves against).
+    let roles: Value = resp.json().await.expect("roles json");
+    let names: Vec<&str> = roles
+        .as_array()
+        .expect("roles is an array")
+        .iter()
+        .filter_map(|r| r["name"].as_str())
+        .collect();
+    assert!(
+        names.contains(&"workspace-admin"),
+        "the workspace-admin role record must be seeded (got {names:?})"
+    );
+}
+
 /// A login for a user NOT seeded into the workspace is refused — the membership gate holds
 /// over the loopback gateway exactly as it does against `make dev`. This is the mandatory
 /// capability/deny contract (testing-scope §capability-deny) applied to the standalone boot:

@@ -1,0 +1,27 @@
+# Caddyfile.local — outer TLS terminator for the local HTTPS pre-flight harness
+# (compose.fly-local.yml). Terminates TLS on https://localhost with an mkcert-issued cert and
+# forwards to the canonical image's inner Caddy (deploy/common/Caddyfile) on app:8080 — mimicking
+# what fly-proxy does in production. See ../README.md.
+
+{
+	auto_https off
+	admin off
+}
+
+localhost, 127.0.0.1 {
+	tls /certs/localhost.pem /certs/localhost-key.pem
+
+	reverse_proxy app:8080 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host  {http.request.host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}

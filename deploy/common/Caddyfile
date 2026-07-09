@@ -1,0 +1,50 @@
+# Caddyfile — runs INSIDE the deployed container on :8080. Fronts the SPA + the node's gateway.
+#
+# Fly's edge (fly-proxy) terminates TLS for *.fly.dev / custom domains and forwards plain HTTP to
+# this listener — that's why we bind plain `:8080`, not `https://`. `deploy/fly/Caddyfile.local`
+# puts a SECOND Caddy in front locally (mkcert TLS) to mimic that edge for the HTTPS pre-flight.
+#
+# The SPA is a browser build with VITE_GATEWAY_URL="" (same-origin) — every API call the app makes
+# is a RELATIVE path (`/login`, `/mcp/call`, `/channels/…/stream`, …). So the split here is
+# "explicit SPA paths; everything else is the gateway" — a NEW gateway route never needs a Caddyfile
+# change (the dev-pulse `try_files`-eats-the-API lesson: keep the SPA match narrow and explicit, the
+# gateway match broad, and use `handle` blocks so the first match wins instead of falling through
+# `try_files`).
+
+{
+	servers {
+		trusted_proxies static private_ranges
+	}
+	admin off
+	auto_https off
+}
+
+:8080 {
+	encode zstd gzip
+
+	@hashed path_regexp \.[0-9a-f]{8,}\.(js|css|woff2?|png|jpg|svg|webp|avif)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+
+	# The SPA shell + its static assets/shims (ui-federation ships /shims/*.mjs re-exporters and
+	# popout.html alongside index.html — see ui/vite.config.ts).
+	@spa {
+		path / /index.html /popout.html /favicon.ico /robots.txt /manifest.json
+		path /assets/* /shims/*
+	}
+	handle @spa {
+		root * /usr/share/lazybones/web
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Everything else is the gateway (login, /mcp/call, /channels/*, /admin/*, SSE streams, …).
+	handle {
+		reverse_proxy 127.0.0.1:8731
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

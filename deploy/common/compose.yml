@@ -1,0 +1,30 @@
+# deploy/common/compose.yml — local plain-HTTP driver over the SAME image every other driver
+# builds (see ../README.md). Useful for a quick smoke test without mkcert/TLS or Fly.
+#
+# Usage (from repo root):
+#   docker compose -f deploy/common/compose.yml --project-directory . up -d --build
+#   curl http://localhost:8080/
+#   docker compose -f deploy/common/compose.yml --project-directory . down
+
+name: lazybones-local
+
+services:
+  node:
+    build:
+      context: ../..
+      dockerfile: deploy/common/Dockerfile
+    image: lazybones:local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      LB_WORKSPACE: acme
+      LB_SEED_USER: "user:ada"
+      # No LB_SIGNING_KEY set here on purpose — a throwaway local smoke test doesn't need session
+      # persistence across restarts. Set it (64 hex chars) to test that path too.
+    volumes:
+      - lb-data:/data
+
+volumes:
+  lb-data:
+    name: lazybones-local-data
