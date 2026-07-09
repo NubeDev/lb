@@ -134,6 +134,18 @@ export interface Action {
 /** The S4 asset-sharing visibility tiers. */
 export type Visibility = "private" | "team" | "workspace";
 
+/** Header-chrome visibility flags (dashboard toolbar-settings). Each names one optional toolbar
+ *  control that is HIDDEN by default — a clean board shows none; an author opts one in from Page
+ *  settings. Host-opaque presentation data (additive/defaulted). Absent ⇒ every flag `false`. */
+export interface Toolbar {
+  /** Show the date-range pickers (`from`/`to`). Default off. */
+  dateSelect?: boolean;
+  /** Show the auto-refresh-rate control. Default off. */
+  refreshRate?: boolean;
+  /** Show the share button + private/team/workspace visibility control. Default off. */
+  share?: boolean;
+}
+
 /** One grid cell — react-grid-layout geometry + the widget it hosts + its binding/source + options.
  *
  *  v1 cells carry `widget_type` + `binding`. v2 cells carry `v:2`, `view`, `source`, and (for
@@ -250,6 +262,8 @@ export interface Dashboard {
   icon?: string;
   /** A CSS accent colour for the page icon (dashboard page-settings). Empty → the shell accent. */
   color?: string;
+  /** Header-chrome visibility flags (dashboard toolbar-settings). Absent → every control hidden. */
+  toolbar?: Toolbar;
   owner: string;
   visibility: Visibility;
   cells: Cell[];

@@ -3,7 +3,14 @@
 // named verbs (FILE-LAYOUT frontend rules). Each is capability-gated server-side; the workspace +
 // owner come from the session token (the hard wall, §7), never an argument.
 
-import type { Cell, Dashboard, DashboardSummary, Variable, Visibility } from "./dashboard.types";
+import type {
+  Cell,
+  Dashboard,
+  DashboardSummary,
+  Toolbar,
+  Variable,
+  Visibility,
+} from "./dashboard.types";
 import { invoke } from "@/lib/ipc/invoke";
 
 /** The roster the caller can reach (own + team-shared + workspace), summaries only. Mirrors
@@ -45,6 +52,8 @@ export interface DashboardMeta {
   description?: string;
   icon?: string;
   color?: string;
+  /** Header-chrome visibility flags (dashboard toolbar-settings) — omitted preserves the stored ones. */
+  toolbar?: Toolbar;
 }
 
 /** Soft-delete a dashboard (idempotent tombstone; owner-only). Mirrors `dashboard.delete`. */

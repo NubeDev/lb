@@ -41,7 +41,9 @@ pub use delete::dashboard_delete;
 pub use error::DashboardError;
 pub use get::dashboard_get;
 pub use list::dashboard_list;
-pub use model::{Action, Cell, Dashboard, DashboardSummary, Source, Target, Variable, Visibility};
+pub use model::{
+    Action, Cell, Dashboard, DashboardSummary, Source, Target, Toolbar, Variable, Visibility,
+};
 pub use pin::{dashboard_pin, mint_cell_from_envelope, pin_descriptor};
 pub use save::{dashboard_save, dashboard_save_meta, save_descriptor};
 pub use seed::{seed_iot_demo, SeedReport};

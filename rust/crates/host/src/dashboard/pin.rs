@@ -88,6 +88,7 @@ pub async fn dashboard_pin(
                     description: String::new(),
                     icon: String::new(),
                     color: String::new(),
+                    toolbar: Default::default(),
                     owner: principal.owner_sub().to_string(),
                     visibility: Visibility::Private,
                     cells: Vec::new(),

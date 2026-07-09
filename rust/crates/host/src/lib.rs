@@ -148,9 +148,9 @@ pub use dashboard::{
     dashboard_pin, dashboard_save, dashboard_save_meta, dashboard_share, mint_cell_from_envelope,
     pin_descriptor, seed_iot_demo, AccessReport, Action, Cell, Dashboard, DashboardError,
     DashboardSummary, DepKind, DepVerdict, ExtWidget as DashboardExtWidget, SeedReport,
-    Source as CellSource, Target as CellTarget, Variable as DashboardVariable,
-    Visibility as DashboardVisibility, WidgetCatalog, MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES,
-    MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
+    Source as CellSource, Target as CellTarget, Toolbar as DashboardToolbar,
+    Variable as DashboardVariable, Visibility as DashboardVisibility, WidgetCatalog,
+    MAX_OVERRIDES as DASHBOARD_MAX_OVERRIDES, MAX_TRANSFORMS as DASHBOARD_MAX_TRANSFORMS,
 };
 pub use dbview::{
     authorize_dbview, call_dbview_tool, store_graph_view, store_scan_view, store_tables_view,

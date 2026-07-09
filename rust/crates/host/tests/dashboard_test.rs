@@ -12,8 +12,8 @@ use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_member, dashboard_delete, dashboard_get, dashboard_list, dashboard_save,
     dashboard_save_meta, dashboard_share, seed_iot_demo, series_find, series_read_range, Cell,
-    CellSource, CellTarget, DashboardError, DashboardVisibility, DASHBOARD_MAX_OVERRIDES,
-    DASHBOARD_MAX_TRANSFORMS,
+    CellSource, CellTarget, DashboardError, DashboardToolbar as Toolbar, DashboardVisibility,
+    DASHBOARD_MAX_OVERRIDES, DASHBOARD_MAX_TRANSFORMS,
 };
 use lb_store::Store;
 use lb_tags::Facet;
@@ -151,6 +151,12 @@ async fn page_settings_round_trip_and_preserve() {
         Some("Fleet health at a glance".into()),
         Some("activity".into()),
         Some("#3b82f6".into()),
+        // Opt the date-select + share controls into the header (toolbar-settings); refresh stays hidden.
+        Some(Toolbar {
+            date_select: true,
+            refresh_rate: false,
+            share: true,
+        }),
         vec![chart_cell("cooler.temp")],
         vec![],
         10,
@@ -162,6 +168,7 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.icon, "activity");
     assert_eq!(got.color, "#3b82f6");
+    assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
 
     // The cheap summary carries icon + colour (roster paints them without a full get).
     let roster = dashboard_list(&store, &ada, ws).await.unwrap();
@@ -188,8 +195,10 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.icon, "activity");
     assert_eq!(got.color, "#3b82f6");
+    // Toolbar flags are page chrome too — a plain layout save preserves them.
+    assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
 
-    // Setting one field via meta preserves the others (Some on icon, None on the rest).
+    // Setting one field via meta preserves the others (Some on icon, None on the rest — incl. toolbar).
     dashboard_save_meta(
         &store,
         &ada,
@@ -198,6 +207,7 @@ async fn page_settings_round_trip_and_preserve() {
         "Ops v2",
         None,
         Some("gauge".into()),
+        None,
         None,
         got.cells.clone(),
         vec![],
@@ -209,6 +219,8 @@ async fn page_settings_round_trip_and_preserve() {
     assert_eq!(got.icon, "gauge");
     assert_eq!(got.description, "Fleet health at a glance");
     assert_eq!(got.color, "#3b82f6");
+    // `None` toolbar on the meta save preserved the opted-in flags (never re-hidden by a partial edit).
+    assert!(got.toolbar.date_select && got.toolbar.share && !got.toolbar.refresh_rate);
 }
 
 // widget-config-vars scope, Slice 1: a cell's `title` round-trips through `dashboard.save`/`get` with no

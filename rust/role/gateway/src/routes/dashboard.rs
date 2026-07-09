@@ -60,6 +60,10 @@ pub struct SaveDashboard {
     pub icon: Option<String>,
     #[serde(default)]
     pub color: Option<String>,
+    /// Header-chrome visibility flags (dashboard toolbar-settings) — additive & OPTIONAL, same
+    /// preserve-on-omit discipline as the fields above. Only the settings dialog sends this.
+    #[serde(default)]
+    pub toolbar: Option<lb_host::DashboardToolbar>,
     #[serde(default)]
     pub cells: Vec<Cell>,
     /// Variable definitions (widget-config-vars Slice 2) — additive; a pre-variables client omits it.
@@ -86,6 +90,7 @@ pub async fn save_dashboard(
         body.description,
         body.icon,
         body.color,
+        body.toolbar,
         body.cells,
         body.variables,
         gw.now(),

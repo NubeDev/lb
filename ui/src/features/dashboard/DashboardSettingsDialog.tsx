@@ -17,9 +17,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Icon, IconPicker } from "@/lib/icons";
 import { cn } from "@/lib/utils";
-import type { Dashboard, DashboardMeta } from "@/lib/dashboard";
+import type { Dashboard, DashboardMeta, Toolbar } from "@/lib/dashboard";
 
 interface Props {
   dashboard: Dashboard;
@@ -47,22 +48,64 @@ const SWATCHES = [
   "#64748b", // slate
 ];
 
+/** The three opt-in header controls (dashboard toolbar-settings), each hidden by default. Keyed by the
+ *  `Toolbar` field so the toggle maps 1:1 to what the header reads. */
+const TOOLBAR_CONTROLS: {
+  key: keyof Toolbar;
+  label: string;
+  hint: string;
+}[] = [
+  {
+    key: "dateSelect",
+    label: "Date range",
+    hint: "From / to date pickers for the board's time window.",
+  },
+  {
+    key: "refreshRate",
+    label: "Refresh rate",
+    hint: "Auto-refresh interval control.",
+  },
+  {
+    key: "share",
+    label: "Share & visibility",
+    hint: "Share button and the private / team / workspace selector.",
+  },
+];
+
 export function DashboardSettingsDialog({ dashboard, open, onOpenChange, onSave }: Props) {
   const [description, setDescription] = useState(dashboard.description ?? "");
   const [icon, setIcon] = useState(dashboard.icon ?? "");
   const [color, setColor] = useState(dashboard.color ?? "");
+  // Header-chrome flags (dashboard toolbar-settings) — each control is HIDDEN by default; the author
+  // opts it in here. Seeded from the stored `toolbar` (absent ⇒ all off).
+  const [toolbar, setToolbar] = useState<Toolbar>(dashboard.toolbar ?? {});
 
-  // Re-seed from the record each time the dialog opens (a fresh edit starts from the stored value).
+  // Re-seed from the record ONLY on the open→ transition (a fresh edit starts from the stored value).
+  // Depending on `dashboard` here would re-seed on every parent re-render while the dialog is open,
+  // silently wiping a pending edit (e.g. a toggle flipped but not yet saved). `open` is the only trigger.
   useEffect(() => {
     if (open) {
       setDescription(dashboard.description ?? "");
       setIcon(dashboard.icon ?? "");
       setColor(dashboard.color ?? "");
+      setToolbar(dashboard.toolbar ?? {});
     }
-  }, [open, dashboard]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const save = () => {
-    onSave({ description: description.trim(), icon, color });
+    onSave({
+      description: description.trim(),
+      icon,
+      color,
+      // Send explicit booleans (not an undefined-riddled partial) so the stored flags mirror the
+      // toggles exactly — the host preserves an OMITTED `toolbar`, but here we mean to set it.
+      toolbar: {
+        dateSelect: !!toolbar.dateSelect,
+        refreshRate: !!toolbar.refreshRate,
+        share: !!toolbar.share,
+      },
+    });
     onOpenChange(false);
   };
 
@@ -112,6 +155,37 @@ export function DashboardSettingsDialog({ dashboard, open, onOpenChange, onSave 
               A one-line subtitle shown under the page title.
             </span>
           </label>
+
+          {/* Toolbar chrome — each control is hidden by default; opt one in here (toolbar-settings). */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-fg">Toolbar</span>
+            <div className="flex flex-col divide-y divide-border/60 rounded-md border border-border/60 bg-panel-2/40">
+              {TOOLBAR_CONTROLS.map(({ key, label, hint }) => (
+                // A plain row, NOT a <label> — the Switch is a <button>, and a <button> nested in a
+                // <label> double-fires (the label forwards its click to the control), toggling on then
+                // off. The Switch carries its own aria-label for the accessible name.
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-3 px-3 py-2.5"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm text-fg">{label}</span>
+                    <span className="block text-xs text-muted">{hint}</span>
+                  </span>
+                  <Switch
+                    aria-label={label}
+                    checked={!!toolbar[key]}
+                    onCheckedChange={(on) =>
+                      setToolbar((t) => ({ ...t, [key]: on }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="text-xs text-muted">
+              All hidden by default — turn on only what this page needs.
+            </span>
+          </div>
 
           {/* Colour — presets + a custom picker */}
           <div className="flex flex-col gap-1.5">

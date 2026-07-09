@@ -343,6 +343,45 @@ describe("DashboardView (real gateway)", () => {
     expect(after.cells.length).toBe(2);
   });
 
+  it("toolbar settings — the share control is HIDDEN by default; enabling it in the dialog reveals it + persists the flag", async () => {
+    const user = userEvent.setup();
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    await seedIotDemo();
+
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1")]);
+
+    renderDashboard(ws);
+    await user.click(await screen.findByLabelText("select dashboard ops"));
+    await screen.findByLabelText("cell w1");
+
+    // Hidden by default — no share button, no visibility selector in the header.
+    expect(screen.queryByLabelText("copy dashboard link")).toBeNull();
+    expect(screen.queryByLabelText("dashboard visibility")).toBeNull();
+
+    // Open page settings and flip the "Share & visibility" toggle on, then save.
+    await user.click(await screen.findByLabelText("page settings"));
+    await user.click(
+      await screen.findByRole("switch", { name: "Share & visibility" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // The share control now renders in the header.
+    expect(await screen.findByLabelText("dashboard visibility")).toBeInTheDocument();
+    expect(screen.getByLabelText("copy dashboard link")).toBeInTheDocument();
+
+    // Persisted through the REAL record; the other flags stay off (only share was enabled).
+    const got = await getDashboard("ops");
+    expect(got.toolbar?.share).toBe(true);
+    expect(got.toolbar?.dateSelect).toBeFalsy();
+    expect(got.toolbar?.refreshRate).toBeFalsy();
+
+    // A plain layout save PRESERVES the toolbar flags (preserve-on-omit, same as the other page chrome).
+    await saveDashboard("ops", "Ops", [builtSeriesCell("w1"), builtSeriesCell("w2")]);
+    const after = await getDashboard("ops");
+    expect(after.toolbar?.share).toBe(true);
+  });
+
   it("deletes a dashboard from the roster through the confirm gate; it disappears from the list", async () => {
     const user = userEvent.setup();
     const ws = nextWs();

@@ -13,7 +13,7 @@ use lb_store::Store;
 
 use super::authorize::authorize_dashboard;
 use super::error::DashboardError;
-use super::model::{Cell, Dashboard, Variable, Visibility};
+use super::model::{Cell, Dashboard, Toolbar, Variable, Visibility};
 use super::store::{read_dashboard, write_dashboard};
 
 /// The `dashboard.save` descriptor — a real arg schema so a model advertised the verb can FORM the
@@ -35,6 +35,11 @@ pub fn save_descriptor() -> ToolDescriptor {
                 "description": { "type": "string", "x-lb": { "label": "Description", "description": "Optional one-line subtitle for the page (omit to keep the existing one)" } },
                 "icon": { "type": "string", "x-lb": { "label": "Icon", "description": "Optional icon-lib name for the page, e.g. 'activity' (omit to keep the existing one)" } },
                 "color": { "type": "string", "x-lb": { "label": "Colour", "description": "Optional CSS accent colour for the page icon (omit to keep the existing one)" } },
+                "toolbar": { "type": "object", "properties": {
+                    "dateSelect": { "type": "boolean" },
+                    "refreshRate": { "type": "boolean" },
+                    "share": { "type": "boolean" }
+                }, "x-lb": { "label": "Toolbar", "description": "Optional header-chrome flags (all hidden by default): dateSelect, refreshRate, share (omit to keep the existing ones)" } },
                 "cells": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Cells", "description": "A JSON ARRAY of cell objects (never a JSON-encoded string). Each cell: { i, x, y, w, h, view, title?, sources?, options?, fieldConfig? } — view names come from dashboard.catalog; read an existing dashboard with dashboard.get for a template" } },
                 "variables": { "type": "array", "items": { "type": "object" }, "x-lb": { "label": "Variables", "description": "Optional dashboard variables (omit if none)" } },
                 "now": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "Logical time of the save — unix epoch seconds" } }
@@ -63,7 +68,7 @@ pub async fn dashboard_save(
     // preserved. The settings dialog is the only writer of icon/colour/subtitle; it calls
     // `dashboard_save_meta` directly.
     dashboard_save_meta(
-        store, principal, ws, id, title, None, None, None, cells, variables, now,
+        store, principal, ws, id, title, None, None, None, None, cells, variables, now,
     )
     .await
 }
@@ -83,6 +88,7 @@ pub async fn dashboard_save_meta(
     description: Option<String>,
     icon: Option<String>,
     color: Option<String>,
+    toolbar: Option<Toolbar>,
     mut cells: Vec<Cell>,
     variables: Vec<Variable>,
     now: u64,
@@ -125,7 +131,7 @@ pub async fn dashboard_save_meta(
 
     // Preserve owner + visibility across an update; only the owner may update. A tombstoned record
     // is treated as absent — a save with that id resurrects it under the new owner (create).
-    let (owner, visibility, prev_desc, prev_icon, prev_color) =
+    let (owner, visibility, prev_desc, prev_icon, prev_color, prev_toolbar) =
         match read_dashboard(store, ws, id).await?.filter(|d| !d.deleted) {
             Some(existing) => {
                 if existing.owner != principal.owner_sub() {
@@ -137,6 +143,7 @@ pub async fn dashboard_save_meta(
                     existing.description,
                     existing.icon,
                     existing.color,
+                    existing.toolbar,
                 )
             }
             None => (
@@ -145,6 +152,7 @@ pub async fn dashboard_save_meta(
                 String::new(),
                 String::new(),
                 String::new(),
+                Toolbar::default(),
             ),
         };
 
@@ -155,6 +163,7 @@ pub async fn dashboard_save_meta(
         description: description.unwrap_or(prev_desc),
         icon: icon.unwrap_or(prev_icon),
         color: color.unwrap_or(prev_color),
+        toolbar: toolbar.unwrap_or(prev_toolbar),
         owner,
         visibility,
         cells,

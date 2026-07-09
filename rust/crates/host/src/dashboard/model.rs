@@ -276,6 +276,24 @@ pub struct Variable {
     pub hide: String,
 }
 
+/// Toolbar-chrome visibility flags (dashboard toolbar-settings). Each names one optional header
+/// control that is **hidden by default** — a clean board shows none of them; an author opts a control
+/// in from Page settings. Host-opaque presentation data (additive/defaulted, exactly like `icon`/
+/// `color`): the host stores the booleans and never branches on them. A pre-toolbar dashboard
+/// deserializes with every flag `false` (all hidden), matching the default-off intent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct Toolbar {
+    /// Show the date-range pickers (`from`/`to`) in the header. Default off.
+    #[serde(default, deserialize_with = "null_default", rename = "dateSelect")]
+    pub date_select: bool,
+    /// Show the auto-refresh-rate control in the header. Default off.
+    #[serde(default, deserialize_with = "null_default", rename = "refreshRate")]
+    pub refresh_rate: bool,
+    /// Show the share button + the private/team/workspace visibility control. Default off.
+    #[serde(default, deserialize_with = "null_default")]
+    pub share: bool,
+}
+
 /// A dashboard record. The persisted layout + sharing metadata (dashboard scope, "Data").
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Dashboard {
@@ -296,6 +314,10 @@ pub struct Dashboard {
     /// to the host; additive/defaulted (empty = the shell accent).
     #[serde(default, deserialize_with = "null_default")]
     pub color: String,
+    /// Optional header-chrome visibility flags (dashboard toolbar-settings). Additive/defaulted — a
+    /// pre-toolbar dashboard round-trips with every flag off (all controls hidden). Opaque to the host.
+    #[serde(default, deserialize_with = "null_default")]
+    pub toolbar: Toolbar,
     /// The principal who created it (the private→shared model's anchor).
     pub owner: String,
     #[serde(default, deserialize_with = "null_default")]
@@ -458,6 +480,31 @@ mod tests {
         assert!(d.description.is_empty());
         assert!(d.icon.is_empty());
         assert!(d.color.is_empty());
+    }
+
+    /// The toolbar-chrome flags round-trip through the record (the host stores the definitions, so a
+    /// dropped flag is a setting the client silently loses), and a pre-toolbar dashboard deserializes
+    /// with every flag `false` (all controls hidden — the default-off intent).
+    #[test]
+    fn toolbar_round_trips_and_defaults_off() {
+        let sent = serde_json::json!({
+            "id": "ops", "title": "Ops", "owner": "sub|u1", "updated_ts": 1,
+            "toolbar": { "dateSelect": true, "refreshRate": false, "share": true },
+        });
+        let d: Dashboard = serde_json::from_value(sent).expect("deserializes");
+        assert!(d.toolbar.date_select && d.toolbar.share && !d.toolbar.refresh_rate);
+        let out = serde_json::to_value(&d).expect("serializes");
+        assert_eq!(out["toolbar"]["dateSelect"], true);
+        assert_eq!(out["toolbar"]["refreshRate"], false);
+        assert_eq!(out["toolbar"]["share"], true);
+
+        // Pre-toolbar shape: no `toolbar` key ⇒ every flag off (hidden by default).
+        let old: Dashboard = serde_json::from_value(serde_json::json!({
+            "id": "old", "title": "Old", "owner": "sub|u1", "updated_ts": 1
+        }))
+        .expect("pre-toolbar shape deserializes");
+        assert_eq!(old.toolbar, Toolbar::default());
+        assert!(!old.toolbar.date_select && !old.toolbar.refresh_rate && !old.toolbar.share);
     }
 
     /// A pre-advanced variable (only the original fields) still deserializes — the new fields default,

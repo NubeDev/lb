@@ -27,7 +27,10 @@ fn gateway_signing_key() -> SigningKey {
     };
     let hex_seed = hex_seed.trim();
     if hex_seed.len() != 64 {
-        eprintln!("LB_SIGNING_KEY: expected 64 hex chars (32-byte seed), got {} — generating a fresh key", hex_seed.len());
+        eprintln!(
+            "LB_SIGNING_KEY: expected 64 hex chars (32-byte seed), got {} — generating a fresh key",
+            hex_seed.len()
+        );
         return SigningKey::generate();
     }
     let mut seed = [0u8; 32];

@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use lb_authz::Subject;
 
-use super::model::{Cell, Visibility};
+use super::model::{Cell, Toolbar, Visibility};
 use super::{
     dashboard_access_check, dashboard_delete, dashboard_get, dashboard_list, dashboard_pin,
     dashboard_save_meta, dashboard_share, DashboardError,
@@ -62,6 +62,7 @@ pub async fn call_dashboard_tool(
                 opt_str_arg(input, "description"),
                 opt_str_arg(input, "icon"),
                 opt_str_arg(input, "color"),
+                opt_toolbar_arg(input),
                 cells,
                 variables,
                 u64_arg(input, "now")?,
@@ -185,6 +186,17 @@ fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
 /// non-string is coerced to `None` too (lenient — no reason to fail a whole save over it).
 fn opt_str_arg(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// The OPTIONAL `toolbar` arg (dashboard toolbar-settings): the header-chrome visibility flags.
+/// `Some` when present as an object (the settings dialog is the only writer), `None` when absent or
+/// null — the "preserve the stored flags" signal, exactly like the page-settings string fields. A
+/// present-but-malformed value is coerced to `None` (lenient — never fail a whole save over chrome).
+fn opt_toolbar_arg(input: &Value) -> Option<Toolbar> {
+    match input.get("toolbar") {
+        Some(v) if !v.is_null() => serde_json::from_value(v.clone()).ok(),
+        _ => None,
+    }
 }
 
 /// A u64 arg, tolerating the numeric-STRING form (`"1783235133"`) AI callers routinely emit —

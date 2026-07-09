@@ -521,7 +521,10 @@ case "dashboard_save": {
       // round-trip; a pre-variable caller omits it (the gateway defaults it to []). `description`/
       // `icon`/`color` are the page-settings fields (dashboard page-settings) — forwarded ONLY when
       // present (undefined ⇒ omitted from the body ⇒ the host preserves the stored value).
-      const { id, title, cells, variables, description, icon, color } = args as {
+      // `toolbar` is the header-chrome flags (dashboard toolbar-settings) — forwarded ONLY when present
+      // (undefined ⇒ omitted ⇒ the host preserves the stored flags), same preserve-on-omit as the
+      // page-settings fields above.
+      const { id, title, cells, variables, description, icon, color, toolbar } = args as {
         id: string;
         title: string;
         cells: unknown[];
@@ -529,6 +532,7 @@ case "dashboard_save": {
         description?: string;
         icon?: string;
         color?: string;
+        toolbar?: unknown;
       };
       return postJson<T>(`${base}/dashboards`, {
         id,
@@ -538,6 +542,7 @@ case "dashboard_save": {
         ...(description !== undefined ? { description } : {}),
         ...(icon !== undefined ? { icon } : {}),
         ...(color !== undefined ? { color } : {}),
+        ...(toolbar !== undefined ? { toolbar } : {}),
       });
     }
     case "dashboard_pin": {

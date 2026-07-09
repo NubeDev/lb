@@ -165,6 +165,9 @@ function DashboardViewInner({
   // UI gate is defense-in-depth only: the host re-checks `dashboard.save`/`.delete` server-side (§5).
   const { caps } = useAppRoutingContext();
   const canEdit = isAdmin(caps);
+  // Header-chrome visibility flags (dashboard toolbar-settings). Every optional control is HIDDEN by
+  // default — a clean board shows none; an author opts one in from Page settings. Absent ⇒ all off.
+  const tb = current?.toolbar ?? {};
   // The current variable selection (from the URL) + a writer that updates one variable's URL param.
   const selectedVars = range ? varsFromSearch(range) : {};
   const setVar = (name: string, value: string | string[] | undefined) => {
@@ -260,7 +263,7 @@ function DashboardViewInner({
               <Settings2 size={13} className="mr-1" /> Manage
             </Button>
           )}
-          {current && (
+          {current && tb.share && (
             <Badge variant="outline" className="rounded-full">
               {current.visibility}
             </Badge>
@@ -280,7 +283,7 @@ function DashboardViewInner({
                 : "s"}
             </Badge>
           )}
-          {range && (
+          {range && tb.dateSelect && (
             <div className="hidden items-center gap-1 text-xs text-muted md:flex">
               <Input
                 aria-label="dashboard range from"
@@ -303,7 +306,7 @@ function DashboardViewInner({
               />
             </div>
           )}
-          {range && current && (
+          {range && current && tb.refreshRate && (
             <RefreshControl
               value={range.refresh}
               onChange={(refresh) => onSearchChange?.({ ...range, refresh })}
@@ -311,16 +314,18 @@ function DashboardViewInner({
           )}
           {current && (
             <>
-              <Button
-                aria-label="copy dashboard link"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                title="Copy link"
-                onClick={copyLink}
-              >
-                <Share2 size={13} />
-              </Button>
+              {tb.share && (
+                <Button
+                  aria-label="copy dashboard link"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  title="Copy link"
+                  onClick={copyLink}
+                >
+                  <Share2 size={13} />
+                </Button>
+              )}
               <Button
                 aria-label="export dashboard"
                 variant="ghost"
@@ -331,18 +336,20 @@ function DashboardViewInner({
               >
                 <Download size={13} />
               </Button>
-              <Select
-                aria-label="dashboard visibility"
-                className="h-8 w-auto"
-                value={current.visibility}
-                onChange={(e) => void dash.share(e.target.value as Visibility)}
-              >
-                {VISIBILITIES.map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </Select>
+              {tb.share && (
+                <Select
+                  aria-label="dashboard visibility"
+                  className="h-8 w-auto"
+                  value={current.visibility}
+                  onChange={(e) => void dash.share(e.target.value as Visibility)}
+                >
+                  {VISIBILITIES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </Select>
+              )}
               {canEdit && (
                 <Button
                   aria-label="edit variables"
