@@ -14,7 +14,8 @@ export interface InsightRowProps {
   selected?: boolean;
   /** Click handler — present → the row is a button; absent → a static row (read-only). */
   onSelect?: (id: string) => void;
-  /** Which badges to show on the side column. Default: both. */
+  /** Which badges to show on the side column. Status shows by default; severity is already carried by
+   *  the leading dot, so its redundant chip is off by default (opt in for a legend-style row). */
   showStatus?: boolean;
   showSeverity?: boolean;
   /** Optional inline actions node (rendered below the row body) — the acknowledge widget's buttons. */
@@ -29,7 +30,7 @@ export function InsightRow({
   selected,
   onSelect,
   showStatus = true,
-  showSeverity = true,
+  showSeverity = false,
   actions,
   now,
 }: InsightRowProps): JSX.Element {

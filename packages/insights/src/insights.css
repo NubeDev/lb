@@ -72,19 +72,27 @@
 }
 
 /* One row — a severity dot + a title + a mono meta line + a trailing status/time column. The whole row
- * is a button when selectable; a plain div when the widget is read-only + non-navigating. */
+ * is a button when selectable; a plain div when the widget is read-only + non-navigating. Rows read as a
+ * dense, evenly-spaced list: centered vertically, a hairline separator, one line of side meta. */
 .ins-root .ins-row {
   display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.625rem;
   width: 100%;
-  padding: 0.4375rem 0.5rem;
+  padding: 0.5rem 0.625rem;
   border: 0;
   border-radius: 0.375rem;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
+  transition: background 150ms ease;
+}
+
+/* Hairline between rows so a dense list scans as rows, not floating text — the last row has none. */
+.ins-root .ins-list > li:not(:last-child) .ins-row {
+  border-radius: 0;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--ins-border) 60%, transparent);
 }
 
 .ins-root button.ins-row {
@@ -100,37 +108,33 @@
 }
 
 .ins-root .ins-dot {
-  margin-top: 0.3125rem;
   width: 0.5rem;
   height: 0.5rem;
   flex-shrink: 0;
   border-radius: 9999px;
+  /* A soft ring so the dot reads as a status indicator, not a stray bullet. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent);
 }
 
 .ins-root .ins-dot.is-critical {
   background: var(--ins-destructive);
-  animation: ins-pulse 1.6s ease-in-out infinite;
+  color: var(--ins-destructive);
 }
 .ins-root .ins-dot.is-warning {
   background: var(--ins-warning);
+  color: var(--ins-warning);
 }
 .ins-root .ins-dot.is-info {
   background: var(--ins-accent-2);
-}
-
-@keyframes ins-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.4;
-  }
+  color: var(--ins-accent-2);
 }
 
 .ins-root .ins-row-main {
   min-width: 0;
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.0625rem;
 }
 
 .ins-root .ins-row-title {
@@ -140,6 +144,7 @@
   white-space: nowrap;
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .ins-root .ins-row-meta {
@@ -154,9 +159,8 @@
 
 .ins-root .ins-row-side {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 

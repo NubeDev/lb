@@ -478,6 +478,9 @@ function NewPanelRoute() {
           onExit={() =>
             void navigate({
               to: fullPathForSurface(ctx.workspace, "dashboards"),
+              // Carry the target dashboard id so save/cancel land back ON the dashboard that was
+              // edited (the `?d=` selector the `/dashboards` grid reads), not the default one.
+              search: { d: dashboardId },
             })
           }
         />

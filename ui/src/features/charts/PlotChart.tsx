@@ -146,9 +146,11 @@ export function PlotChart({ rows, spec, xLabel, yLabel, valueFormatter = default
       tick={axisTick}
       tickLine={false}
       axisLine={false}
-      width={54}
+      // Reserve a title lane (~16px) to the LEFT of the tick-number band so the rotated axis title
+      // never sits on top of the numbers. Without a title, the ticks alone need far less room.
+      width={yTitle ? 68 : 44}
       tickFormatter={(v: number) => valueFormatter(Number(v))}
-      label={yTitle ? { value: yTitle, angle: -90, position: "insideLeft", offset: 12, style: { ...axisLabelStyle, textAnchor: "middle" } } : undefined}
+      label={yTitle ? { value: yTitle, angle: -90, position: "left", offset: -2, style: { ...axisLabelStyle, textAnchor: "middle" } } : undefined}
     />
   );
 
