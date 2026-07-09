@@ -232,6 +232,22 @@
       "data": true,
       "action": true,
       "options": []
+    },
+    {
+      "id": "insights",
+      "label": "Insights",
+      "kind": "read",
+      "version": 1,
+      "buildable": true,
+      "data": false,
+      "action": true,
+      "options": [
+        { "id": "insights.readOnly", "label": "Read only", "scope": "options", "path": "insights.readOnly", "control": "toggle" },
+        { "id": "insights.status", "label": "Status", "scope": "options", "path": "insights.status", "control": "select", "choices": ["all", "open", "acked", "resolved"] },
+        { "id": "insights.severity", "label": "Severity", "scope": "options", "path": "insights.severity", "control": "select", "choices": ["all", "info", "warning", "critical"] },
+        { "id": "insights.limit", "label": "Max items", "scope": "options", "path": "insights.limit", "control": "number" },
+        { "id": "insights.showRefresh", "label": "Show refresh", "scope": "options", "path": "insights.showRefresh", "control": "toggle" }
+      ]
     }
   ]
 }

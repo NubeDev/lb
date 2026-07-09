@@ -69,6 +69,11 @@ function toRows(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) return result as Array<Record<string, unknown>>;
   if (typeof result === "object") {
     const o = result as Record<string, unknown>;
+    // A `rules.run`/`rules.eval` result is a `RunResult`/`RuleOutput` envelope — unwrap by SHAPE first
+    // (never by tool id) so a panel bound to a rule renders its N rows, not one blob row. Mirrors the
+    // host `viz/frame.rs::unwrap_rule_envelope` (rules-for-widgets-scope slice 1, layer 2).
+    const unwrapped = unwrapRuleEnvelope(o);
+    if (unwrapped) return unwrapped;
     // `reminders` unwraps `reminder.list` → `{reminders:[…]}` into N rows (the channel-rich-responses
     // reminders tenant); keep in lock-step with the host mirror `viz/frame.rs::ROW_KEYS`.
     for (const k of ["samples", "items", "rows", "templates", "dashboards", "reminders"]) {
@@ -77,6 +82,29 @@ function toRows(result: unknown): Array<Record<string, unknown>> {
     return [o];
   }
   return [{ value: result }];
+}
+
+/** Unwrap a rules `RunResult`/`RuleOutput` envelope by SHAPE to rows, or `null` if not one. Mirrors the
+ *  host `viz/frame.rs::unwrap_rule_envelope`: a full RunResult (`{output, findings, log, ms}`) recurses
+ *  into `output`; a bare RuleOutput is `kind`-discriminated (`scalar`→value, `grid`→columnar zip,
+ *  `findings`/`nothing`→empty). Kept in lock-step so the direct-bridge path matches the viz.query path. */
+function unwrapRuleEnvelope(o: Record<string, unknown>): Array<Record<string, unknown>> | null {
+  // Layer A: a full RunResult carries `output` alongside `findings`/`log`/`ms`.
+  if ("output" in o && ("findings" in o || "log" in o || "ms" in o)) {
+    return toRows(o.output);
+  }
+  // Layer B: a bare RuleOutput, discriminated by `kind`.
+  switch (o.kind) {
+    case "scalar":
+      return toRows(o.value ?? null);
+    case "grid":
+      return toRows({ columns: o.columns, rows: o.rows });
+    case "findings":
+    case "nothing":
+      return [];
+    default:
+      return null;
+  }
 }
 
 /** Pull a scalar "latest" value from a result (the newest row's `value`/`payload`, or the scalar). */

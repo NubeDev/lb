@@ -133,6 +133,7 @@ describe("PanelWizard Save — the no-drift invariant + cap gate + isolation (re
       </WithDashboardCache>,
     );
     // Pick a source.
+    await user.click(await screen.findByLabelText("source track workspace"));
     await user.click(screen.getByLabelText("wizard source"));
     const opt = await screen.findByRole("option", { name: "cooler.temp" });
     await user.click(opt);

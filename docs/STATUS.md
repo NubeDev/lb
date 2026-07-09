@@ -329,9 +329,12 @@ SKILL.md). Domain-free (rule 10): core never learns "fraud"/"HVAC". **Tests (rea
 gateway, rule 9):** ladder unit **10/10**, host integration **14/14** (per-verb cap-deny +
 ws-isolation + dedup/ring/2 KB-reject/matcher/ladder/digest-idempotency/kill-switch), gateway routes
 **4/4**, UI gateway **4/4**; `core_skills_test` 11/11 (`core.insights` seeds + resolves); `pnpm test`
-631/631. Follow-ups (recorded, not gaps): the rhai handle + flow `insight` sink producer doors;
-InsightDetail origin deep-link + typed body renderer; retention/purge. Scope
-[`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3 sub-scopes);
+631/631. Follow-ups (recorded, not gaps): the rhai handle
+([`scope/insights/rule-raises-insight-scope.md`](scope/insights/rule-raises-insight-scope.md) —
+a rule raises/acks/closes an insight inline; scoped 2026-07-09) + flow `insight` sink producer
+doors; InsightDetail origin deep-link + typed body renderer; retention/purge. Scope
+[`scope/insights/insights-scope.md`](scope/insights/insights-scope.md) (umbrella + 3 sub-scopes,
+index at [`scope/insights/README.md`](scope/insights/README.md));
 shipped [`public/insights/insights.md`](public/insights/insights.md); skill
 [`skills/insights/SKILL.md`](skills/insights/SKILL.md); session
 [`sessions/insights/insights-session.md`](sessions/insights/insights-session.md).

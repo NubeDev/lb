@@ -31,6 +31,15 @@ const TIME_KEYS: &[&str] = &["ts", "time", "timestamp", "_time"];
 /// — column-aligned arrays zipped into objects), `{samples:[…]}`/`{items}`/…, a bare array, a single
 /// object, or a scalar (wrapped as `{value: scalar}`, mirroring the client).
 pub fn result_to_rows(result: &Value) -> Vec<Value> {
+    // A `rules.run`/`rules.eval` result is a `RunResult` envelope (`{output, findings, log, ms, ai}`)
+    // whose `output` is a `RuleOutput` (`{kind:"scalar", value}` / `{kind:"grid", columns, rows}`).
+    // Unwrap it FIRST — generically by shape (a `kind`-discriminated object), never by tool id — so a
+    // panel bound to a rule renders the rule's N rows, not one JSON-blob row (rules-for-widgets-scope
+    // slice 1, layer 2). A tool that happens to return a plain `{output: […]}` without `kind` falls
+    // through untouched.
+    if let Some(rows) = unwrap_rule_envelope(result) {
+        return rows;
+    }
     match result {
         Value::Null => Vec::new(),
         Value::Array(a) => a.clone(),
@@ -39,32 +48,8 @@ pub fn result_to_rows(result: &Value) -> Vec<Value> {
             // column-aligned arrays, NOT row-objects). Zip each row array against `columns` into an
             // object so the frame builder sees named fields. Only when `rows` is an array-of-arrays;
             // a `{rows:[{…}]}` tool (already objects) falls through to the generic ROW_KEYS path.
-            if let (Some(Value::Array(columns)), Some(Value::Array(rows))) =
-                (o.get("columns"), o.get("rows"))
-            {
-                if rows.iter().all(|r| r.is_array()) {
-                    let names: Vec<String> = columns
-                        .iter()
-                        .enumerate()
-                        .map(|(i, c)| {
-                            c.as_str()
-                                .map(str::to_string)
-                                .unwrap_or_else(|| i.to_string())
-                        })
-                        .collect();
-                    return rows
-                        .iter()
-                        .map(|row| {
-                            let cells = row.as_array().cloned().unwrap_or_default();
-                            let obj: serde_json::Map<String, Value> = names
-                                .iter()
-                                .cloned()
-                                .zip(cells.into_iter().chain(std::iter::repeat(Value::Null)))
-                                .collect();
-                            Value::Object(obj)
-                        })
-                        .collect();
-                }
+            if let Some(zipped) = columnar_rows(o) {
+                return zipped;
             }
             for k in ROW_KEYS {
                 if let Some(Value::Array(a)) = o.get(*k) {
@@ -126,6 +111,57 @@ mod tests {
     // returns `{reminders:[…]}`; before `reminders` was added to ROW_KEYS this unwrapped to ONE
     // JSON-blob row, so the channel `/reminders` table showed one cell instead of N per-reminder rows
     // and a row control's `${id}` bound nothing.
+    // rules-for-widgets-scope slice 1, layer 2: a `rules.run` result unwraps by shape to the rule's rows.
+    #[test]
+    fn rule_run_result_scalar_array_unwraps_to_rows() {
+        // The full RunResult envelope with a scalar-array output (an array of row maps).
+        let result = json!({
+            "output": { "kind": "scalar", "value": [{"h": 0, "v": 10}, {"h": 1, "v": 20}] },
+            "findings": [], "log": [], "ms": 0,
+        });
+        assert_eq!(
+            result_to_rows(&result),
+            vec![json!({"h": 0, "v": 10}), json!({"h": 1, "v": 20})],
+            "RunResult unwraps to the rule's N rows, not one blob row"
+        );
+    }
+
+    #[test]
+    fn rule_output_grid_unwraps_via_columnar_path() {
+        // A bare RuleOutput of kind grid — column-aligned arrays zipped into named rows.
+        let result = json!({
+            "kind": "grid",
+            "columns": ["building", "kwh"],
+            "rows": [["north", 100], ["south", 200]],
+        });
+        assert_eq!(
+            result_to_rows(&result),
+            vec![
+                json!({"building": "north", "kwh": 100}),
+                json!({"building": "south", "kwh": 200})
+            ],
+            "grid output zips through the columnar path"
+        );
+    }
+
+    #[test]
+    fn rule_output_scalar_non_array_is_one_value_row() {
+        // A scalar that is not an array renders as an honest single `{value}` row.
+        let result = json!({ "output": { "kind": "scalar", "value": 42 }, "findings": [], "log": [], "ms": 0 });
+        assert_eq!(result_to_rows(&result), vec![json!({ "value": 42 })]);
+    }
+
+    #[test]
+    fn rule_output_findings_kind_is_empty() {
+        // findings/nothing carry no chart rows.
+        let result =
+            json!({ "output": { "kind": "findings" }, "findings": [{"x": 1}], "log": [], "ms": 0 });
+        assert!(
+            result_to_rows(&result).is_empty(),
+            "findings output → no chart rows"
+        );
+    }
+
     #[test]
     fn reminders_shape_unwraps_to_n_rows() {
         let result = json!({ "reminders": [{"id": "r1"}, {"id": "r2"}] });
@@ -134,6 +170,73 @@ mod tests {
             vec![json!({"id": "r1"}), json!({"id": "r2"})],
             "reminder.list unwraps to N reminder rows, not one blob row"
         );
+    }
+}
+
+/// The columnar `{columns:[…], rows:[[…], …]}` shape (`federation.query` / a rule's `grid` output):
+/// column-aligned arrays zipped into named row objects. `Some(rows)` only when `rows` is an array of
+/// arrays (a `{rows:[{…}]}` of objects is already row-shaped and returns `None` so the generic path
+/// handles it). Short rows pad with `null`; an unnamed column falls back to its index.
+fn columnar_rows(o: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
+    let (Some(Value::Array(columns)), Some(Value::Array(rows))) = (o.get("columns"), o.get("rows"))
+    else {
+        return None;
+    };
+    if !rows.iter().all(|r| r.is_array()) {
+        return None;
+    }
+    let names: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            c.as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| i.to_string())
+        })
+        .collect();
+    Some(
+        rows.iter()
+            .map(|row| {
+                let cells = row.as_array().cloned().unwrap_or_default();
+                let obj: serde_json::Map<String, Value> = names
+                    .iter()
+                    .cloned()
+                    .zip(cells.into_iter().chain(std::iter::repeat(Value::Null)))
+                    .collect();
+                Value::Object(obj)
+            })
+            .collect(),
+    )
+}
+
+/// Unwrap a rules result envelope by SHAPE (never by tool id — the viz plane treats `rules.run` as an
+/// opaque tool, CLAUDE §10). Two nested envelopes, both `kind`/key-discriminated:
+///   - a full `RunResult` `{output, findings, log, ms, …}` → recurse into `output`;
+///   - a `RuleOutput` `{kind:"scalar", value}` → the value; `{kind:"grid", columns, rows}` → the grid
+///     object (the existing columnar path zips it); `{kind:"findings"|"nothing"}` → empty (no rows).
+/// Returns `None` for anything that is not one of these documented shapes, so every other tool result
+/// flows through the normal `result_to_rows` matching untouched — and `Some(rows)` (already normalized)
+/// when it IS a rules envelope. Grid is dispatched to the shared columnar zip; scalar recurses on the
+/// value; findings/nothing are honestly empty.
+fn unwrap_rule_envelope(result: &Value) -> Option<Vec<Value>> {
+    let o = result.as_object()?;
+    // Layer A: a full RunResult carries `output` alongside `findings`/`log`/`ms`. Recurse into output.
+    if let Some(output) = o.get("output") {
+        if o.contains_key("findings") || o.contains_key("log") || o.contains_key("ms") {
+            return Some(result_to_rows(output));
+        }
+    }
+    // Layer B: a bare RuleOutput, discriminated by `kind`.
+    match o.get("kind").and_then(Value::as_str) {
+        // A scalar `value` is usually the array of row maps; recurse so an array unwraps to N rows and a
+        // non-array renders as an honest single `{value}` row (the same shaping every other path uses).
+        Some("scalar") => Some(result_to_rows(o.get("value").unwrap_or(&Value::Null))),
+        // Route the grid's `{columns, rows}` straight into the shared columnar zip (NOT back through the
+        // envelope check — the `kind:"grid"` key would re-match and recurse forever).
+        Some("grid") => Some(columnar_rows(o).unwrap_or_default()),
+        // findings/nothing carry no chart rows (findings are the insights plane's food, not chart rows).
+        Some("findings") | Some("nothing") => Some(Vec::new()),
+        _ => None,
     }
 }
 

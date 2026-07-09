@@ -86,16 +86,12 @@ describe("template view · real gateway · any-source renders in-process", () =>
     expect(container.querySelector("iframe")).toBeNull();
   });
 
-  // SKIPPED — a known, pre-existing HOST-side gap, NOT a template-view bug. A `template` (or chart/
-  // table) bound to `{tool:"rules.run"}` renders ZERO rows through `viz.query`, even though the direct
-  // `rules_run` route returns the rows (verified: `runRule({ruleId})` → `{kind:"scalar", value:[3 rows]}`
-  // ✓; the same rule via `viz.query` → `rows.length === 0` ✗). The gap is in the recursive dispatch
-  // (`viz.query` → `call_tool_at_depth("rules.run")`) + the `RuleOutput` envelope normalization — a
-  // pipeline change this client-only render scope explicitly excludes. Tracked in
-  // docs/debugging/frontend/rules-as-source-render-path-empty.md. The in-process template view is
-  // source-agnostic (proven by the series/SQL test above); it will render rule rows the moment the host
-  // gap is fixed, with NO template-side change.
-  it.skip("renders real rows from a RULES source (rules.run) — BLOCKED by host gap, see debug entry", async () => {
+  // The rules-as-source RENDER path (rules-for-widgets-scope slice 1): a `template` bound to
+  // `{tool:"rules.run"}` renders the rule's rows through `viz.query`. Previously `it.skip`-ed by a
+  // two-layer host gap (recursive dispatch empty + `RuleOutput` envelope never unwrapped); the fix is
+  // `viz/frame.rs::unwrap_rule_envelope` (mirrored client-side in `useSource.ts`). NO template-side
+  // change — the in-process template view was always source-agnostic.
+  it("renders real rows from a RULES source (rules.run)", async () => {
     const ws = nextWs();
     await signInWithCaps("user:ada", ws, [
       "mcp:rules.run:call", "mcp:rules.save:call", "store:rule:read", "store:rule:write",

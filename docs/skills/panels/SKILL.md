@@ -79,6 +79,35 @@ curl -s -X POST http://127.0.0.1:8080/panels/cooler-temp-24h/share \
   -d '{ "visibility": "workspace" }'
 ```
 
+### Bind a panel to a saved rule (rules-for-widgets)
+
+A rule is the most general query — anything the cage can compute (a federation JOIN, polars `Frame`,
+stats) becomes a chart, table, stat, or template. Point a source at `rules.run`, keyed by the saved
+rule id, and any view renders its rows through the standard read path:
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/panels -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{
+    "id": "energy-by-building", "title": "Energy by building",
+    "spec": {
+      "v": 3, "view": "timeseries", "widget_type": "chart", "title": "Energy by building",
+      "sources": [{ "refId": "A", "tool": "rules.run",
+                    "args": { "rule_id": "energy-intensity", "route": false } }]
+    }
+  }'
+```
+
+- **`route:false`** makes the panel run **read-only** — a repainting dashboard won't spam the Inbox/
+  Outbox from an `alert()` in the rule body (findings still return, they just don't fan out). The picker
+  sets this for you; set it by hand when composing the source directly.
+- **Caps:** the viewer needs `mcp:rules.run:call` **and** every source cap the rule reads (a rule can't
+  widen its invoker — `caller ∩ grant`). Missing `rules.run` → an honestly empty panel, not a crash.
+- **The rule owns the shape.** Return chart-ready rows from the rule (the `chart` helpers — see the
+  rules skill "Returning chart data"); the panel draws whatever `output` resolves to. A non-record
+  output renders honestly empty.
+- The new-panel **wizard** gets this for free: its Source step uses the shared picker, so saved rules
+  appear in the Rules group with no wizard change.
+
 ## 4. Reference it from a dashboard (a "ref cell")
 
 A ref cell carries **layout + the ref + bounded overrides only** — NO spec. `dashboard.save` validates

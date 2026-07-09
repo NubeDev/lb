@@ -417,7 +417,12 @@ describe("Field tab — links DEAD on every wizard view; mappings DEAD on table 
     return html;
   }
 
-  it.each(WIZARD_VIEWS)("links DEAD on %s — setting it leaves the rendered DOM unchanged", async (view) => {
+  // `insights` is fieldConfig-less (a list widget, not a field render) — the standard `links`/`mappings`
+  // options don't register for it (`excludeViews`), and `renderView` has no field-panel branch for it.
+  // It is covered instead by the insights option round-trip + its own view test; skip it here.
+  const FIELD_RENDER_VIEWS = WIZARD_VIEWS.filter((v) => v !== "insights");
+
+  it.each(FIELD_RENDER_VIEWS)("links DEAD on %s — setting it leaves the rendered DOM unchanged", async (view) => {
     const ws = nextWs();
     await signInReal("user:ada", ws);
     await seedOne("l.dead", 7);

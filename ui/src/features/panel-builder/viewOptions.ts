@@ -11,6 +11,7 @@ import { defaultBarGaugeOptions } from "@/features/dashboard/views/bargauge/opti
 import { defaultBarChartOptions } from "@/features/dashboard/views/barchart/options";
 import { defaultPieChartOptions } from "@/features/dashboard/views/piechart/options";
 import { defaultTableOptions } from "@/features/dashboard/views/table/options";
+import { defaultInsightsOptions } from "@/features/dashboard/views/insights/options";
 
 /** The Grafana default `options` for `view` (empty for views without a per-viz option block yet). */
 export function defaultOptionsForView(view: View): Record<string, unknown> {
@@ -32,6 +33,10 @@ export function defaultOptionsForView(view: View): Record<string, unknown> {
     case "slider":
       // Flow slider defaults (flow-dashboard-binding-ux-scope): a usable 0–100 range, step 1.
       return { min: 0, max: 100, step: 1 };
+    case "insights":
+      // The insights triage list nests its config under `options.insights` (insights-package-scope):
+      // read-only, unfiltered, 20 rows. The option registry's insights defs read/write this nested block.
+      return { insights: { ...defaultInsightsOptions() } };
     default:
       return {};
   }

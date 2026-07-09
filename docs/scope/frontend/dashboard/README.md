@@ -98,6 +98,14 @@ because existing session docs point at them; new dashboard notes should live her
     bound to `rules.run` renders empty for every view — out of scope, tracked in
     `debugging/frontend/rules-as-source-render-path-empty.md`). See the shipped iframe reference
     [`render-template-widget.md`](render-template-widget.md).
+3m. [`rules-as-source-scope.md`](rules-as-source-scope.md) — **a saved rule is a picker source**:
+    the Rules group in the source picker (`rules.run {rule_id}` + typed params) — the **picker**
+    half shipped 2026-07-05; the **render** half (a view bound to `rules.run` actually drawing the
+    rule's rows) is blocked by a host gap and is scoped as its own slice:
+    [`rules-for-widgets-scope.md`](rules-for-widgets-scope.md) — fix the `viz.query` recursive
+    dispatch + unwrap the `RuleOutput` envelope, add read-only panel runs (`route:false` so a
+    30 s auto-refresh never spams the Inbox), and ship chart-return helpers in the cage
+    (`timeseries`/`wide`/`category`) so "make this rule chartable" is one line.
 4. [`../../extensions/ui-federation-scope.md`](../../extensions/ui-federation-scope.md) - the broader
    extension UI page/federation model that widgets narrow down to one dashboard cell.
 
@@ -152,6 +160,12 @@ because existing session docs point at them; new dashboard notes should live her
   catalog is a **host-owned JSON data file** (`widget_catalog.json`, the `genui_catalog.json` pattern) —
   backend-driven and client-agnostic (the web UI **and** the RN app render from it). Sibling of the
   (shipped) human `widget-palette-scope.md`.
+- **Rules rendering in widgets** — a panel/widget bound to a saved rule renders zero rows for every
+  view (the `viz.query` → `rules.run` recursive dispatch fails and the `RuleOutput` envelope is not
+  unwrapped) — **scoped, not built**: [`rules-for-widgets-scope.md`](rules-for-widgets-scope.md)
+  (fix the two host layers, `route:false` read-only panel runs, chart-return helpers in the cage).
+  The picker half (Rules group + typed params) already shipped
+  ([`rules-as-source-scope.md`](rules-as-source-scope.md)).
 - The **reusable source-picker package** (`@nube/source-picker`) — extract the shipped picker (db /
   datasources / Zenoh / flows / extension widgets) so surfaces OUTSIDE the dashboard reuse it — is
   **scoped, not built**: [`source-picker-package-scope.md`](source-picker-package-scope.md). Dashboard

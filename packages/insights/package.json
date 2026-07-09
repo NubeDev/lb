@@ -1,0 +1,45 @@
+{
+  "name": "@nube/insights",
+  "version": "0.1.0",
+  "description": "Reusable, transport-agnostic insights machinery for React — the Lazybones 'triage findings raised by rules, flows, and agents' surface, extracted so any host (the dashboard page, an extension UI, a dashboard widget) reuses ONE implementation. Headless model + hooks + an OPTIONAL self-themed UI (read-only + acknowledge/dismiss widgets); the host injects how to reach the node (an InsightsClient) and may bring its own look.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "files": ["dist"],
+  "main": "./dist/insights.cjs",
+  "module": "./dist/insights.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/insights.js",
+      "require": "./dist/insights.cjs"
+    },
+    "./style.css": "./dist/insights.css"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "lucide-react": "^0.460.0",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.2.0",
+    "jsdom": "^25.0.0",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.0.0",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^4.0.0",
+    "vitest": "^2.0.0"
+  }
+}

@@ -18,7 +18,7 @@ import type { OptionDef } from "./types";
 /** The views the wizard authors. Scope of `OPTION_LIVENESS`: every `(view, optionId)` pair where the
  *  registry's `appliesToView(view)` returns true for one of these views must have a row. A view outside
  *  this set (e.g. `plot`, `d3`, `ext:…`) is not wizard-authored — it has no liveness entry by design. */
-export const WIZARD_VIEWS: View[] = ["timeseries", "barchart", "stat", "gauge", "bargauge", "piechart", "table"];
+export const WIZARD_VIEWS: View[] = ["timeseries", "barchart", "stat", "gauge", "bargauge", "piechart", "table", "insights"];
 
 /**
  * The declared liveness table. Outer key = view; inner key = option id; value = `live`.
@@ -159,6 +159,17 @@ export const OPTION_LIVENESS: Record<string, Record<string, boolean>> = {
     "custom.align": false,
     "custom.cellOptions.type": false,
     "custom.filterable": false,
+  },
+  insights: {
+    // The insights list is fieldConfig-less (the standard options are excluded), so only its own
+    // `options.insights.*` block registers. Every one LIVE: the `@nube/insights` widget re-queries on a
+    // filter change (status/severity/limit) and re-renders on a presentation toggle (readOnly/refresh),
+    // so setting any of them observably changes the rendered panel.
+    "insights.readOnly": true,
+    "insights.showRefresh": true,
+    "insights.status": true,
+    "insights.severity": true,
+    "insights.limit": true,
   },
 };
 

@@ -28,6 +28,7 @@
     "@fontsource/source-serif-4": "^5.2.9",
     "@microlink/react-json-view": "^1.31.21",
     "@nube/genui": "workspace:*",
+    "@nube/insights": "workspace:*",
     "@nube/nav-rail": "workspace:*",
     "@nube/panel": "workspace:*",
     "@nube/source-picker": "workspace:*",

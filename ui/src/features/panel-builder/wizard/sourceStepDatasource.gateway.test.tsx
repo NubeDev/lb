@@ -45,6 +45,8 @@ describe("SourceStep — datasource track reuses the QueryWorkbench + saved quer
       </WithDashboardCache>,
     );
 
+    // Choose the Datasource track — its card reveals the Datasource select.
+    await user.click(await screen.findByLabelText("source track datasource", {}, { timeout: 5000 }));
     // The registered datasource appears in the wizard's Datasource select.
     const dsSelect = (await screen.findByLabelText("wizard datasource", {}, { timeout: 5000 })) as HTMLSelectElement;
     await waitFor(() => {

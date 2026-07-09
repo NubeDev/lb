@@ -5,6 +5,7 @@
 
 mod ai;
 pub(crate) mod channel;
+mod chart;
 mod data;
 mod duration;
 mod emit;
@@ -57,6 +58,7 @@ pub fn register(
     register_grid_methods(engine);
     data::register(engine, ctx.clone(), allow.clone(), inputs);
     timeseries::register(engine);
+    chart::register(engine);
     emit::register(engine, collectors);
     ai::register(engine);
     inbox::register(engine);

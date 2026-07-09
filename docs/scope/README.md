@@ -343,7 +343,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   back when quiet; first-occurrence / severity-escalation / re-open always break through; ack
   suppresses; ws policy record + per-sub overrides + per-member kill switch). The fraud and
   HVAC/energy (SkySpark-style, `docker/postgres/seed.py`) verticals build on it as
-  config/extensions with zero core branches.
+  config/extensions with zero core branches. `rule-raises-insight-scope.md` builds the **rule
+  producer door**: a rule body raises/**acks**/**closes** an insight in one line via a new
+  `insight` rhai handle over the existing verbs (no new verb, no new cap), deciding the
+  `route:false` read-only-panel suppression and the emit/alert boundary. Index:
+  `insights/README.md`.
 - `ros/` — the native (Tier-2) **`ros` driver extension** — it is **100% an extension**, so ALL of
   its docs live with it (nothing in this central tree beyond this pointer), exactly like
   `control-engine`. Authoritative scope: `rust/extensions/ros/docs/ros-scope.md`. Manages a fleet of

@@ -1,0 +1,278 @@
+/* The insights stylesheet — SCOPED, so it can NEVER touch the host app (the @nube/source-picker /
+ * nav-rail discipline). No preflight, no global utilities: every rule is prefixed `.ins-root`, and the
+ * components use their own `ins-*` classes only. Colors alias the host's shadcn vars with dark-ish
+ * fallbacks, so the widget follows the app theme; a host overrides by setting `--ins-*` on any ancestor.
+ *
+ * The look is OPTIONAL — a host that wants its own skin ignores this file and drives the headless hooks
+ * (`useInsights`/`useInsight`) + model helpers (`severityTone`/`timeAgo`) into its own markup. This
+ * stylesheet is what the package's OWN widgets render against. */
+
+.ins-root {
+  /* The host's shadcn vars are RAW HSL CHANNELS (`--bg: 218 22% 7%`), not colors — `var(--bg)` alone
+   * is an invalid <color> and silently renders transparent. Wrap in hsl(); the fallback channels apply
+   * when the host defines no theme at all. */
+  --ins-bg: hsl(var(--bg, 222 14% 11%));
+  --ins-panel: hsl(var(--panel, 222 14% 13%));
+  --ins-fg: hsl(var(--fg, 210 20% 92%));
+  --ins-muted: hsl(var(--muted, 217 12% 60%));
+  --ins-border: hsl(var(--border, 215 14% 24%));
+  --ins-accent: hsl(var(--accent, 199 89% 48%));
+  /* Tone palette — the severity/status hues. Alias the host's semantic vars where it defines them. */
+  --ins-destructive: hsl(var(--destructive, 0 72% 55%));
+  --ins-warning: hsl(var(--warning, 38 92% 55%));
+  --ins-accent-2: hsl(var(--accent-2, 199 89% 48%));
+  --ins-success: hsl(var(--success, 142 71% 45%));
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  color: var(--ins-fg);
+  font-size: 0.8125rem;
+}
+
+/* Header band — a title + optional count + slot for host actions (refresh). */
+.ins-root .ins-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ins-border);
+}
+
+.ins-root .ins-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ins-root .ins-header-count {
+  font-size: 0.6875rem;
+  color: var(--ins-muted);
+}
+
+.ins-root .ins-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* The scrollable list body. */
+.ins-root .ins-list {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* One row — a severity dot + a title + a mono meta line + a trailing status/time column. The whole row
+ * is a button when selectable; a plain div when the widget is read-only + non-navigating. */
+.ins-root .ins-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4375rem 0.5rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ins-root button.ins-row {
+  cursor: pointer;
+}
+
+.ins-root button.ins-row:hover {
+  background: color-mix(in srgb, var(--ins-fg) 6%, transparent);
+}
+
+.ins-root .ins-row.is-selected {
+  background: color-mix(in srgb, var(--ins-accent) 15%, transparent);
+}
+
+.ins-root .ins-dot {
+  margin-top: 0.3125rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.ins-root .ins-dot.is-critical {
+  background: var(--ins-destructive);
+  animation: ins-pulse 1.6s ease-in-out infinite;
+}
+.ins-root .ins-dot.is-warning {
+  background: var(--ins-warning);
+}
+.ins-root .ins-dot.is-info {
+  background: var(--ins-accent-2);
+}
+
+@keyframes ins-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.ins-root .ins-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.ins-root .ins-row-title {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.ins-root .ins-row-meta {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--ins-muted);
+}
+
+.ins-root .ins-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.ins-root .ins-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--ins-muted);
+  white-space: nowrap;
+}
+
+/* Badges — a tone-tinted chip for severity + status. */
+.ins-root .ins-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 9999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.4;
+}
+
+.ins-root .ins-badge.tone-destructive {
+  background: color-mix(in srgb, var(--ins-destructive) 18%, transparent);
+  color: var(--ins-destructive);
+}
+.ins-root .ins-badge.tone-warning {
+  background: color-mix(in srgb, var(--ins-warning) 18%, transparent);
+  color: var(--ins-warning);
+}
+.ins-root .ins-badge.tone-accent-2 {
+  background: color-mix(in srgb, var(--ins-accent-2) 18%, transparent);
+  color: var(--ins-accent-2);
+}
+.ins-root .ins-badge.tone-success {
+  background: color-mix(in srgb, var(--ins-success) 18%, transparent);
+  color: var(--ins-success);
+}
+.ins-root .ins-badge.tone-default {
+  background: color-mix(in srgb, var(--ins-accent) 18%, transparent);
+  color: var(--ins-accent);
+}
+
+/* Action buttons — ack / resolve / dismiss. Ghost by default; the primary (resolve) tinted accent. */
+.ins-root .ins-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.ins-root .ins-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.75rem;
+  padding: 0 0.625rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--ins-border);
+  background: transparent;
+  color: var(--ins-fg);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.ins-root .ins-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ins-fg) 6%, transparent);
+}
+
+.ins-root .ins-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.ins-root .ins-btn.is-primary {
+  border-color: transparent;
+  background: var(--ins-accent);
+  color: hsl(var(--accent-fg, 0 0% 100%));
+}
+
+.ins-root .ins-spin {
+  animation: ins-rotate 0.9s linear infinite;
+}
+
+@keyframes ins-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Empty / loading / error states — one quiet centered line. */
+.ins-root .ins-empty,
+.ins-root .ins-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem 1rem;
+  font-size: 0.75rem;
+  color: var(--ins-muted);
+}
+
+.ins-root .ins-error {
+  color: var(--ins-destructive);
+}
+
+/* Load-more footer. */
+.ins-root .ins-more {
+  padding: 0.375rem;
+  border-top: 1px solid var(--ins-border);
+}
+
+.ins-root .ins-more .ins-btn {
+  width: 100%;
+  justify-content: center;
+  border-color: transparent;
+}

@@ -32,7 +32,7 @@ describe("SourcePicker", () => {
     fireEvent.change(screen.getByLabelText("source"), { target: { value: "rule:r1" } });
     expect(onSelect).toHaveBeenCalledWith({
       id: "rule:r1",
-      source: { tool: "rules.run", args: { rule_id: "r1" } },
+      source: { tool: "rules.run", args: { rule_id: "r1", route: false } },
       action: undefined,
       viewKey: undefined,
     });

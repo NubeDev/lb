@@ -178,6 +178,48 @@ outbox trio the coding workflow ships — no new approval primitive.
   released effect can never exceed what was staged. The reviewer sees the exact held effect before
   approving (informed consent).
 
+## 6. Returning chart data — a rule IS a panel source (rules-for-widgets)
+
+A rule's **`output`** (the last expression) is what a dashboard/widget draws when it binds a
+`{tool:"rules.run", args:{rule_id}}` source. The convention: **the last expression is an array of row
+maps**; a `time` column makes it a time-series. `RuleOutput::Scalar(array)` and `RuleOutput::Grid`
+(a returned `Grid`) both render — the host unwraps the envelope by shape. (Findings/`log` do **not**
+render as rows — they're the insights/inbox plane's food; a panel draws `output` only.)
+
+You don't have to reverse-engineer the shape. The **chart-return helpers** (`chart` family, pure compute
+over rows, zero authority) make it one line:
+
+```rhai
+// One line per building → a multi-line chart. `wide` pivots long rows to one column per series.
+let rows = query("demo-buildings",
+  "SELECT s.name AS building, substr(pr.time,1,10) AS ts, ROUND(SUM(pr.value),0) AS kwh
+   FROM point_reading pr JOIN point p ON p.id = pr.point_id
+   JOIN meter m ON m.id = p.meter_id JOIN site s ON s.id = m.site_id
+   WHERE p.name = 'Energy kWh' GROUP BY s.name, ts").records();
+wide(rows, "ts", "building", "kwh")
+```
+
+| Helper | Shape |
+|---|---|
+| `timeseries(rows, "ts")` | Normalize `ts` (ISO-8601 string \| epoch-secs \| epoch-ms → canonical epoch-ms), rename it `time`, sort ascending. The frame builder tags the x-axis without guessing. |
+| `timeseries(rows, "ts", ["v1","v2"])` | Same, plus trim to `time` + the named value columns. |
+| `wide(rows, "ts", "series", "value")` | Long→wide pivot: one row per timestamp, one numeric column per distinct `series` (multi-line shape). |
+| `category(rows, "name", "value")` | Bar/pie shape: one label column + one numeric column (validated). |
+
+Raw rows keep working — the helpers are normalization sugar, not a required layer.
+`timeseries(query(…).records(), "ts")` as the last line is a complete chart-ready rule. A missing/
+non-numeric column is a clear **author error** (surfaced verbatim in the run result), never a silent
+empty chart.
+
+**Heavy rules + fast refresh don't mix.** A rule re-runs per panel per refresh (bounded by `RuleLimits`
++ the `viz.query` timeout, but **not** by frequency). A big `frame()`/slow federation query on a 5 s
+auto-refresh multiplies — same exposure as a heavy SQL source. Keep expensive rules on slow refreshes.
+
+**Panel runs are read-only.** The picker emits `route:false` on a rule source, so a repainting dashboard
+does **not** stamp a new inbox item + must-deliver outbox entry on every refresh from an `alert()` in the
+body — the finding still returns in the result, it just doesn't fan out. A scheduled flow
+(`rules.eval`, default `route:true`) still alerts: one rule, two consumption modes.
+
 ## Gotchas
 
 - **A run can't widen its invoker** — a data verb hitting a source the *caller* lacks is denied

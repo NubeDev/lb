@@ -56,7 +56,7 @@ describe("SourceCombobox", () => {
     // onMouseDown (not click) fires before the input blur closes the list.
     fireEvent.mouseDown(screen.getByRole("option", { name: "Hourly mean" }));
     expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "rule:r1", source: { tool: "rules.run", args: { rule_id: "r1" } } }),
+      expect.objectContaining({ id: "rule:r1", source: { tool: "rules.run", args: { rule_id: "r1", route: false } } }),
     );
     expect(onSelectEntry).toHaveBeenCalledWith(expect.objectContaining({ id: "rule:r1", group: "rules" }));
   });

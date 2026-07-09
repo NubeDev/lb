@@ -4,6 +4,14 @@
 // they actually run — an example that lies is worse than none. This is a static catalog of examples
 // (data, named by concept — not a `utils` dump).
 
+// The buildings-demo examples are HOST-OWNED (`rust/crates/host/src/rules/buildings_examples.json`),
+// the single source of truth shared with the Rust regression test
+// (`rules_buildings_examples_test.rs`) that runs each body through the REAL federation + rules.run
+// path against the seeded buildings.db. Importing the exact same strings here means a click-to-load
+// example can never silently drift from a query that actually runs. `body` is stored as a line array
+// (readable JSON diffs) and joined on load. Same cross-tree import pattern as the widget catalog.
+import buildingsExamples from "../../../../../rust/crates/host/src/rules/buildings_examples.json";
+
 /** One example rule — a title, a one-line teaching note, and the runnable body. */
 export interface RuleExample {
   id: string;
@@ -11,6 +19,13 @@ export interface RuleExample {
   summary: string;
   body: string;
 }
+
+const BUILDINGS_EXAMPLES: RuleExample[] = buildingsExamples.examples.map((e) => ({
+  id: e.id,
+  title: e.title,
+  summary: e.summary,
+  body: e.body.join("\n"),
+}));
 
 export const EXAMPLES: RuleExample[] = [
   {
@@ -57,6 +72,14 @@ export const EXAMPLES: RuleExample[] = [
       'ai.complete("how many sites are there", sites)',
     ].join("\n"),
   },
+
+  // Buildings demo: query the seeded `demo-buildings` SQLite source, then raise a finding.
+  // All three run the SAME energy-intensity query (kWh per m² per building) and differ only in the
+  // "raise a finding" block at the end: commented out in the first two (uncomment to enable), live
+  // in the third. `emit` records a plain finding (Findings panel below); `alert` also pushes it to
+  // your Inbox + Outbox. Needs `demo-buildings` registered (`make seed-demo-sqlite WS=<your-ws>`)
+  // and the `mcp:federation.query:call` cap. Bodies are host-owned (see BUILDINGS_EXAMPLES above).
+  ...BUILDINGS_EXAMPLES,
 
   // --- Inbox: raise / read / close attention items ------------------------------------------------
   // These need no seeded data — they write to (or read) your own workspace's inbox and work on a fresh

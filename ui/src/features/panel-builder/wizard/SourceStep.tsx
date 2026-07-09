@@ -12,10 +12,13 @@
 //
 // One responsibility: pick a read source into the wizard's primary target.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Lightbulb, ListTree, Database } from "lucide-react";
 
 import type { EditorState } from "@/lib/panel-kit/cellEditorState";
-import type { Target } from "@/lib/dashboard";
+import type { Target, View } from "@/lib/dashboard";
+import { canonicalView } from "@/lib/dashboard";
+import { SOURCELESS_VIEWS } from "@/lib/panel-kit";
 import { useSourcePicker } from "@/features/dashboard/builder/useSourcePicker";
 import { READ_SOURCE_GROUPS, SourceCombobox, type SourceEntry, SQL_SOURCE_ID } from "@/features/dashboard/builder/sourcePicker";
 import { Select } from "@/components/ui/select";
@@ -27,7 +30,22 @@ interface Props {
   ws: string;
   state: EditorState;
   patch: (next: Partial<EditorState>) => void;
+  /** Switch the panel's view (resets per-view options). The source step uses it for the sourceless
+   *  views (e.g. Insights) — picking one clears the target so the "no source" gate is satisfied. */
+  onPickView: (view: View) => void;
+  /** Advance to the next wizard step. A complete source choice (picking Insights, or adopting a
+   *  workspace source / datasource query) moves the flow forward without a second click on Next. */
+  onAdvance: () => void;
 }
+
+/** The three source tracks the user chooses between up front — one card each, one selected at a time.
+ *  The chosen track is DERIVED from state (no wizard-only field): Insights ⇐ a sourceless view,
+ *  workspace ⇐ a non-federation target, datasource ⇐ a `federation.query` target. */
+type Track = "insights" | "workspace" | "datasource";
+
+/** The sourceless view the Insights track selects — it reads its own data, so it needs no target. Kept
+ *  in sync with SOURCELESS_VIEWS (`insights` = the triage list, `@nube/insights`). */
+const SOURCELESS_VIEW: View = "insights";
 
 /** Build the primary target from a chosen picker entry (mirrors QueryTab.targetFromEntry). */
 function targetFromEntry(entry: SourceEntry | null, prev: Target | undefined): Target {
@@ -42,10 +60,14 @@ function targetFromEntry(entry: SourceEntry | null, prev: Target | undefined): T
   };
 }
 
-export function SourceStep({ ws, state, patch }: Props) {
+export function SourceStep({ ws, state, patch, onPickView, onAdvance }: Props) {
   // EAGER: the wizard's whole purpose is to pick a source, so the picker loads on mount (unlike the
   // editor's Query tab, which waits for focus — the wizard IS the focused surface).
   const { entries, loading } = useSourcePicker(ws, { enabled: true });
+  // Whether the panel is currently a SOURCELESS view (Insights) — it needs no target, so the source
+  // pickers collapse and the sourceless card reads as selected.
+  const currentView = canonicalView((state.view || "timeseries") as View);
+  const isSourceless = SOURCELESS_VIEWS.has(currentView);
   const { options: dsOptions, loading: dsLoading } = useDatasourceList(ws);
   const fedOptions = dsOptions.filter((o) => o.type === "federation");
   const primary = state.targets[0];
@@ -56,6 +78,66 @@ export function SourceStep({ ws, state, patch }: Props) {
   const fedSql = primary?.tool === "federation.query" ? ((primary.args?.sql as string) ?? "") : "";
   // The saved-query dialog selection — presentation-only (the adopted SQL is what persists).
   const [sel, setSel] = useState<string | null>(null);
+
+  // The active track — DERIVED from state so Back/Next never loses it, with a transient override for
+  // the moment between clicking a track's card and picking within it (e.g. "datasource" chosen but no
+  // federation target yet, so the workbench chooser can show). `null` = no manual pick this mount.
+  const [pickedTrack, setPickedTrack] = useState<Track | null>(null);
+  const derivedTrack: Track | null = isSourceless
+    ? "insights"
+    : fedSource || primary?.tool === "federation.query"
+      ? "datasource"
+      : primary?.tool
+        ? "workspace"
+        : null;
+  const track = derivedTrack ?? pickedTrack;
+
+  const TRACKS = useMemo(
+    () =>
+      [
+        {
+          id: "insights" as Track,
+          label: "Insights",
+          hint: "A triage list of findings from rules, flows & agents. No data source needed.",
+          Icon: Lightbulb,
+        },
+        {
+          id: "workspace" as Track,
+          label: "Workspace source",
+          hint: "A series, saved query, or rule already in this workspace.",
+          Icon: ListTree,
+        },
+        ...(fedOptions.length > 0
+          ? [
+              {
+                id: "datasource" as Track,
+                label: "Datasource",
+                hint: "Author a query against a registered datasource, with saved queries.",
+                Icon: Database,
+              },
+            ]
+          : []),
+      ] as const,
+    [fedOptions.length],
+  );
+
+  /** Choose a track's card. Insights is a complete choice → set the view and advance. Workspace and
+   *  datasource reveal their chooser (a second pick binds the actual source). Re-picking the active
+   *  track is a no-op beyond keeping it open. */
+  const pickTrack = (next: Track) => {
+    setPickedTrack(next);
+    if (next === "insights") {
+      pickSourceless(SOURCELESS_VIEW);
+      onAdvance();
+      return;
+    }
+    // Leaving Insights (or datasource↔workspace) — clear the prior track's binding so the revealed
+    // chooser starts empty and the derived track follows the new pick.
+    if (isSourceless) onPickView("timeseries");
+    if (next === "workspace" && primary?.tool === "federation.query") selectDatasource("");
+    if (next === "datasource" && primary?.tool && primary.tool !== "federation.query")
+      patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }] });
+  };
 
   /** The picker entry id matching the current target (so the combobox reopens showing the picked source). */
   const pickedEntryId = primary?.tool
@@ -110,62 +192,128 @@ export function SourceStep({ ws, state, patch }: Props) {
     });
   };
 
+  /** Pick a sourceless view (Insights) — set the view (resets options to its defaults) and clear any
+   *  target so the wizard's "no source" gate is satisfied. Picking the already-active one is a no-op. */
+  const pickSourceless = (view: View) => {
+    if (currentView === view) return;
+    patch({ sql: undefined, targets: [{ refId: primary?.refId || "A", tool: "", args: {}, datasource: { type: "surreal" } }] });
+    onPickView(view);
+  };
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3" aria-label="wizard source step">
+    <div className="flex min-h-0 flex-1 flex-col gap-4" aria-label="wizard source step">
       <div className="grid gap-1">
-        <h2 className="text-sm font-medium text-fg">Pick a source</h2>
+        <h2 className="text-sm font-medium text-fg">Where does this panel read from?</h2>
         <p className="text-xs text-muted">
-          A workspace read source (series, SQL, queries, rules) — or a registered datasource with its
-          full query editor and saved queries.
+          Pick one. Insights needs no data source; a workspace source or datasource binds real rows.
         </p>
       </div>
-      <label className="grid gap-1 text-xs text-muted">
-        Source
-        <SourceCombobox
-          aria-label="wizard source"
-          entries={entries}
-          value={fedSource ? "" : pickedEntryId}
-          loading={loading}
-          groups={READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows")}
-          onSelect={() => {}}
-          onSelectEntry={(e) => selectEntry(e ?? null)}
-        />
-      </label>
-      {fedOptions.length > 0 && (
-        <label className="grid gap-1 text-xs text-muted">
-          Datasource
-          <Select
-            aria-label="wizard datasource"
-            className="h-8 w-full"
-            value={fedSource}
-            disabled={dsLoading}
-            onChange={(e) => selectDatasource(e.target.value)}
-          >
-            <option value="">— none (use a source above) —</option>
-            {fedOptions.map((o) => (
-              <option key={o.name} value={o.name}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </label>
+
+      {/* The three tracks — one selected at a time. Choosing a card either completes the step
+          (Insights → advance) or reveals that track's chooser below. */}
+      <div
+        className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3"
+        role="radiogroup"
+        aria-label="source tracks"
+      >
+        {TRACKS.map(({ id, label, hint, Icon }) => {
+          const selected = track === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="radio"
+              aria-label={`source track ${id}`}
+              aria-checked={selected}
+              onClick={() => pickTrack(id)}
+              className={`group flex flex-col gap-2 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${
+                selected
+                  ? "border-accent bg-accent/10 shadow-[inset_0_0_0_1px_hsl(var(--accent))]"
+                  : "border-border hover:border-fg/30 hover:bg-fg/[0.02]"
+              }`}
+            >
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+                  selected ? "bg-accent/15 text-accent" : "bg-fg/5 text-muted group-hover:text-fg"
+                }`}
+              >
+                <Icon size={18} />
+              </span>
+              <span className="grid gap-0.5">
+                <span className="text-sm font-medium text-fg">{label}</span>
+                <span className="text-xs text-muted">{hint}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* The chosen track's chooser — only the selected track's controls, never all three at once. */}
+      {track === "insights" && (
+        <p className="text-xs text-muted" aria-label="wizard source picked">
+          <code className="text-fg">insights</code> reads its own findings — no data source. Continue to{" "}
+          <span className="text-fg">2. Chart type</span> to confirm.
+        </p>
       )}
-      {fedSource && (
-        <div className="grid min-h-0 flex-1 grid-rows-[auto_1fr] gap-1.5">
-          <p className="text-[11px] text-muted">
-            Author against <code className="text-fg">{fedSource}</code> — Run a query (or load a saved
-            one) to use it as the panel's source.
-          </p>
-          <div className="min-h-[26rem] overflow-hidden rounded-md border border-border" aria-label="wizard datasource workbench">
-            {/* `initial={state.sql}` — the wizard REMOUNTS this on Back/Next; seeding from the
-                persisted EditorState keeps the authored query instead of resetting the editor.
-                Fills the wizard's available height (a fixed 26rem was cramped for the visual/SQL
-                builder on any real monitor) with a 26rem floor so it never collapses. */}
-            <QueryWorkbench ws={ws} source={fedSource} sel={sel} onSel={setSel} onUseSql={adoptSql} initial={state.sql} />
-          </div>
+
+      {track === "workspace" && (
+        <div className="grid gap-2">
+          <label className="grid gap-1 text-xs text-muted">
+            Source
+            <SourceCombobox
+              aria-label="wizard source"
+              entries={entries}
+              value={pickedEntryId}
+              loading={loading}
+              groups={READ_SOURCE_GROUPS.filter(({ group }) => group !== "flows")}
+              onSelect={() => {}}
+              onSelectEntry={(e) => selectEntry(e ?? null)}
+            />
+          </label>
         </div>
       )}
-      {primary?.tool && (
+
+      {track === "datasource" && (
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_auto_1fr] gap-2">
+          <label className="grid gap-1 text-xs text-muted">
+            Datasource
+            <Select
+              aria-label="wizard datasource"
+              className="h-8 w-full"
+              value={fedSource}
+              disabled={dsLoading}
+              onChange={(e) => selectDatasource(e.target.value)}
+            >
+              <option value="">— choose a datasource —</option>
+              {fedOptions.map((o) => (
+                <option key={o.name} value={o.name}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+          {fedSource ? (
+            <>
+              <p className="text-[11px] text-muted">
+                Author against <code className="text-fg">{fedSource}</code> — Run a query (or load a
+                saved one) to bind it as the panel's source.
+              </p>
+              <div className="min-h-[26rem] overflow-hidden rounded-md border border-border" aria-label="wizard datasource workbench">
+                {/* `initial={state.sql}` — the wizard REMOUNTS this on Back/Next; seeding from the
+                    persisted EditorState keeps the authored query instead of resetting the editor.
+                    Fills the wizard's available height with a 26rem floor so it never collapses. */}
+                <QueryWorkbench ws={ws} source={fedSource} sel={sel} onSel={setSel} onUseSql={adoptSql} initial={state.sql} />
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-muted">Pick a datasource to author its query.</p>
+          )}
+        </div>
+      )}
+
+      {/* The bound-source readout — shown for the query tracks (workspace / datasource) once a target
+          exists, so the user sees exactly what will read before advancing. Insights has its own line. */}
+      {track !== "insights" && primary?.tool && (
         <p className="text-[11px] text-muted" aria-label="wizard source picked">
           picked:{" "}
           <code className="text-fg">
