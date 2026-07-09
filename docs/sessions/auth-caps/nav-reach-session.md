@@ -72,6 +72,43 @@ server boundary. This is why reach is a page-entry gate, not a per-verb gate.
 - `docs/scope/auth-caps/access-model-scope.md` + `docs/skills/nav/SKILL.md` — amended the "pure lens,
   never gates" rule to "lens for widening, gates reach for narrowing."
 
+## NavAdmin UX fix — "who sees this nav" (closes the `main`-was-private root cause)
+
+The reach gate has a sharp edge: if the nav is the allow-list, an **invisible** nav locks people out
+entirely. That is exactly what happened live — nav `main` (workspace `acme`, owned by `user:ada`) was
+saved with its default `private` visibility and **zero team shares**, so `bob` resolved nothing and saw
+nothing. The old editor made this easy to walk into: audience was three disjoint controls (Save + a
+visibility `<Select>` + an "Apply visibility" button + a separate Add-team), so an admin could Save the
+items and never touch visibility — leaving it `private` = invisible to all but the owner.
+
+**Fix (`ui/src/features/admin/nav/NavAdmin.tsx`):** one "Who sees this nav" section replaces the three
+controls. Audience is explicit and self-applying:
+
+- **Just me** — `private` (the default). The section says so in one plain line ("Only you (private). Add
+  a team below, or share with everyone.") so the invisible state is obvious, not silent.
+- **One or more teams** — the team picker (fed by the real `teams.list`, no id typing) auto-switches to
+  the Team tier AND writes the `nav -[share]-> team` edge in a **single click** (`addTeam`); a
+  `teamName(team)` helper shows the team's display name in the roster, never the raw `team:ops` id.
+- **Everyone in workspace** — a self-applying toggle (`applyVis("workspace")` / `applyVis("private")`).
+
+Removed the standalone visibility `<Select>` and the "Apply visibility" button; renamed the handler
+`applyTier`→`applyVis(vis)`. Team/workspace controls are guarded by `!editId`, so a brand-new unsaved
+nav shows no half-working share controls. (Design-token note: warnings use `text-amber-500` — there is
+no `warning` token; it renders invisibly.)
+
+Tested over the real gateway (`NavAdmin.gateway.test.tsx`, 6 green): the existing add/remove-team roster
+flow still passes, plus a new focused test that closes the bug end-to-end — author a nav, Save, assign
+NO audience → the persisted record is `private` and the UI shows "Only you (private)"; a `team:ops`
+member (Ben) cannot resolve it (`source: fallback`); one click on the team picker flips it to `team` +
+writes the edge; Ben then resolves the nav (`nav_id: main`). Real teams (`teams.create` +
+`members_add`), real resolve, no mocks (CLAUDE §9).
+
+**Harness fix (login-hardening fallout):** the real-gateway harness spawn
+(`ui/src/test/real-gateway.ts`) now sets `LB_DEV_LOGIN=1`. `Gateway::boot()` selects its credential
+check from the env; unset → `PasswordHash`, which `401`ed the password-less `signInReal` login ("invalid
+or missing credential") for every `*.gateway.test.tsx`. The harness is dev/CI, so it opts into the
+password-less `DevTrustAny` check the same way `make dev` does.
+
 ## Follow-ups (not blocking)
 
 - Reach refreshes on **re-login** (like every cap). A nav edit reaches a logged-in user on their next

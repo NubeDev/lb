@@ -183,6 +183,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   `series-paging-scope.md` (B: native `series.read` rows fast path), `series-decimation-scope.md`
   (C: chart bucket downsampling), `federation-paging-scope.md` (D: external pushdown + mirror routing),
   and `page-chaining-ui-scope.md` (E: the data-console table + dashboard viz callers).
+  **`schema-designer-scope.md`** adds the federation **write plane** + visual schema design: a
+  `db_schema:{ws}:{name}` record edited on a React Flow canvas (tables/columns/PK/FK; tabularis
+  Apache-2.0 lift, ChartDB UX-reference-only), applied by an Ask-gated `federation.migrate`
+  (dry-run-default DDL diff), written per-message by a bounded upsert `federation.write` (the
+  flow `tool`-node target), and backfilled by `federation.export` — a checkpointed `lb-jobs`
+  batch, the outbound dual of `federation.mirror`. External DBs become sinks, never authority.
 - `control-engine/` — the native (Tier-2) **`control-engine` extension** (scope co-located with the
   extension at `rust/extensions/control-engine/docs/control-engine-scope.md` — it is **100% an
   extension**, so its docs live with it; the core stays CE-ignorant, CI-enforced):

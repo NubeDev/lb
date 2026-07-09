@@ -14,6 +14,7 @@ import { NavAdmin } from "./NavAdmin";
 import { CAP } from "@/lib/session/admin-caps";
 import { resolveNav, saveNav, shareNav, listNavShares, setNavPref, getNav } from "@/lib/nav";
 import { addMember } from "@/lib/members/members.api";
+import { createTeam } from "@/lib/admin/teams.api";
 import { useRealGateway, signInReal, signInWithCaps } from "@/test/gateway-session";
 
 let n = 0;
@@ -162,5 +163,51 @@ describe("NavAdmin (real gateway)", () => {
     expect((await resolveNav()).source).toBe("fallback");
     await signInWithCaps("user:cleo", ws, [CAP.navResolve]);
     expect((await resolveNav()).nav_id).toBe("ops");
+  });
+
+  it("closes the private-by-default bug: authored-but-unshared nav is invisible, one-click team share fixes it", async () => {
+    // The live bug this UX rewrite fixes: an admin builds a nav, Saves, and walks away — the nav is
+    // `private` (its default visibility), so it's invisible to everyone (nav `main` shipped private
+    // with zero team shares → bob saw nothing). This proves (a) the state is real and (b) the new
+    // "Who sees this nav" section makes it obvious AND one-click-fixable: picking a team both switches
+    // the nav to the Team tier and writes the share edge, after which a member of that team resolves it.
+    const ws = nextWs();
+    await signInReal("user:ada", ws);
+    // Seed a real team RECORD (so the picker has a real option) + a member (so there's someone to
+    // resolve it). Seed BEFORE render — the builder loads `teams.list` once on mount.
+    await createTeam("team:ops", "Operations");
+    await addMember("team:ops", "user:ben");
+
+    const user = userEvent.setup();
+    render(<NavAdmin ws={ws} caps={AUTHOR_CAPS} />);
+
+    // Author a nav and Save it — but DON'T assign any audience (the walk-away path).
+    await user.click(await screen.findByLabelText("New nav"));
+    await user.type(screen.getByLabelText("Nav title"), "Main");
+    await user.click(screen.getByLabelText("Add item")); // a default `channels` surface
+    await user.click(screen.getByLabelText("Save nav"));
+    await waitFor(() => expect(screen.getByText("Saved.")).toBeInTheDocument());
+
+    // The saved nav is `private` — the persisted record proves the invisible-by-default state.
+    expect((await getNav("main")).visibility).toBe("private");
+    // And the UI says so, in one obvious line (not buried in a dropdown).
+    const shares = await screen.findByTestId("nav-shares");
+    expect(within(shares).getByText(/Only you \(private\)/)).toBeInTheDocument();
+
+    // Ben (in team:ops) cannot resolve it yet — private = invisible to everyone but the owner.
+    await signInWithCaps("user:ben", ws, [CAP.navResolve]);
+    expect((await resolveNav()).source).toBe("fallback");
+
+    // Back to Ada: ONE click on the team picker fixes it (switch to Team tier + write the edge).
+    await signInReal("user:ada", ws);
+    await user.selectOptions(within(shares).getByLabelText("Team to add"), "team:ops");
+    await user.click(within(shares).getByLabelText("Add team share"));
+    // The roster shows the team NAME (not the raw id) via `teamName`.
+    await waitFor(() => expect(within(shares).getByText("Operations")).toBeInTheDocument());
+    expect((await getNav("main")).visibility).toBe("team");
+
+    // Now Ben resolves the nav via his team — the bug is closed.
+    await signInWithCaps("user:ben", ws, [CAP.navResolve]);
+    expect((await resolveNav()).nav_id).toBe("main");
   });
 });

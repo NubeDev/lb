@@ -1,0 +1,13 @@
+# Datasources
+
+TODO — promoted from `docs/scope/datasources/` when the slices ship.
+
+Shipped so far (to be written up here): the native `federation` extension —
+`datasource.*` admin CRUD, read-first `federation.query`, `federation.schema` /
+`federation.sample` introspection, and the inbound `federation.mirror` job.
+
+In flight: the **schema designer + write plane**
+(`docs/scope/datasources/schema-designer-scope.md`) — `db_schema` records with a
+visual designer, `federation.migrate` (Ask-gated DDL), `federation.write`
+(bounded upsert, the flow `tool`-node target), and `federation.export`
+(checkpointed bulk job out).

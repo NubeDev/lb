@@ -10,6 +10,7 @@
 mod authenticate;
 mod credential;
 mod credentials;
+pub mod events;
 mod reach;
 mod trusted;
 

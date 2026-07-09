@@ -2,7 +2,8 @@
 
 - **Date:** 2026-07-09
 - **Area:** frontend / gateway transport
-- **Status:** open — fix scoped in `docs/scope/bus/unified-event-stream-scope.md`
+- **Status:** fix implemented (2026-07-09) — the unified event stream shipped backend + client;
+  live browser `ss < 6` verify is the one remaining manual step (see "Fix").
 
 ## Symptom
 
@@ -50,10 +51,27 @@ of the six slots stay occupied for minutes.
 
 ## Fix
 
-Scoped as the **unified event stream** (`scope/bus/unified-event-stream-scope.md`): one
-multiplexed SSE connection per app session, all feeds as subjects with per-subject cap
-re-check, client hub with refcounted subject dedupe. TLS+HTTP/2 alone was rejected as the
-fix (browsers won't h2c; plain-HTTP dev/edge posture keeps the cap).
+Built as the **unified event stream** (`scope/bus/unified-event-stream-scope.md`, session
+`sessions/bus/unified-event-stream-session.md`): one multiplexed SSE connection per app session
+(`GET /events/stream` + `POST /events/{sid}/{subscribe,unsubscribe}`), all feeds as subjects with
+per-subject cap re-check (the gateway reuses each dedicated route's `lb_host::watch_*` gate, never
+re-implements it), and a client hub (`ui/src/lib/events/hub.ts`) holding ONE `EventSource` with
+refcounted subject dedupe + reconnect re-subscribe. Every `*.stream.ts` opener became a thin adapter
+over the hub (signatures unchanged). TLS+HTTP/2 alone was rejected (browsers won't h2c; plain-HTTP
+dev/edge posture keeps the cap).
+
+**Proven mechanically** (2026-07-09):
+- `rust/role/gateway/tests/events_stream_test.rs::two_subjects_interleave_on_one_connection_with_parity`
+  — two subjects ride ONE TCP connection, payloads byte-identical to the dedicated route (6/6 green,
+  incl. cap-deny + ws-isolation as opaque per-subject error frames).
+- `ui/src/lib/events/hub.test.ts` — the hub holds **exactly one** `EventSource` across N subscribers,
+  dedupes N-on-one-subject to one server subscription, refcount-zero unsubscribes, re-subscribes on
+  reconnect (5/5 green).
+
+**Remaining (manual):** the symptom's own check — with a run active + a live dashboard,
+`ss -tn state established '( dport = :8080 )'` well under 6 and a Flows/Rules REST call completing
+mid-run — needs a running dev node + the browser app (couldn't be driven headlessly this session; the
+`update-auth` branch's login gate also currently 401s the dev/test node until `LB_DEV_LOGIN` is set).
 
 ## Lesson
 

@@ -1,6 +1,8 @@
 # Bus scope — unified event stream (the browser leg of the bus)
 
-Status: scope (the ask). Promotes to `doc-site/content/public/bus/` once shipped.
+Status: **built (2026-07-09)** — backend + client shipped and tested; promoted to
+`doc-site/content/public/bus/bus.md`. Session: `sessions/bus/unified-event-stream-session.md`.
+One manual step left (the live browser `ss < 6` verify).
 
 The browser app opens **one `EventSource` per live thing it watches** — a run stream, a
 channel stream, a series stream *per dashboard cell*, flow debug/run streams, telemetry,
@@ -185,16 +187,28 @@ Per `scope/testing/testing-scope.md` — real gateway, real store, real bus, no 
 
 ## Open questions
 
-- Final subject grammar — flat strings as above, or `{kind, id}` structured? (Lean flat:
-  opaque to the mux, parsed only by the subject registry.)
-- Per-subject queue depth + drop policy per message class (series samples can drop-oldest;
-  run events should be lossless up to a bound — is the bound the existing snapshot re-read?).
-- Do the dedicated SSE routes log a deprecation warning once the browser app is migrated,
-  or stay silently supported for extensions?
-- Does `app/sdk` (RN shell) adopt the hub in the same change or as a follow-up? (Assumed
-  follow-up.)
-- Per-subject resume cursors (`Last-Event-ID`-style) to avoid full catch-up on reconnect —
-  v1 re-runs snapshot catch-up (matches today); cursors are an optimization, deferred.
+Resolved as built (2026-07-09, `sessions/bus/unified-event-stream-session.md`):
+
+- **Subject grammar — RESOLVED: flat `kind:id` strings**, split on the FIRST colon (so a
+  `bus:` subject keeps its own `/`s and inner colons; `insights`/`telemetry` are all-kind, empty
+  id). Opaque to the mux; parsed only by the subject registry (`session/events/subject.rs`).
+- **Per-subject queue depth + drop policy — RESOLVED: one bounded (1024) per-connection queue,
+  drop-oldest for motion frames** (`try_send`; a full queue drops the frame, a closed queue stops
+  the task). All feeds share the connection queue rather than a per-subject one — simpler, and the
+  connection is what the browser cared about. Run/flow catch-up stays bounded by the host's snapshot
+  read (unchanged). A per-subject queue with per-class policy is a refinement if a chatty series is
+  ever seen to starve the run feed (not observed).
+- **Dedicated route deprecation — RESOLVED: stay silently supported.** No deprecation warning; the
+  routes remain for curl/tests/extensions/ACP (a Non-goal was removing them). The browser app's
+  libs stopped using them.
+- **`app/sdk` (RN shell) — RESOLVED: follow-up**, as assumed (a scope Non-goal). The hub is
+  browser-only (`ui/src/lib/events/`); the RN SDK adopts the same shape later.
+- **Per-subject resume cursors — RESOLVED: deferred.** v1 re-runs the snapshot catch-up on
+  reconnect (matches today's per-stream reconnect). `Last-Event-ID`-style cursors remain the named
+  optimization.
+
+Remaining (not a design question — an environment step): the live browser `ss < 6` symptom verify,
+pending a running dev node on the auth-fixed branch.
 
 ## Related
 
