@@ -112,7 +112,7 @@ export interface ThemePreference {
 }
 
 export const DEFAULT_THEME: ThemePreference = {
-  mode: "dark",
+  mode: "system",
   preset: "teal",
   radius: "0.5rem",
   layout: DEFAULT_LAYOUT,
