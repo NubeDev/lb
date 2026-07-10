@@ -57,9 +57,9 @@ describe("TemplateWidgetWizard (real seeded gateway)", () => {
     await signInWithCaps("user:ada", ws, CAPS);
     renderWizard(ws, CAPS);
 
-    // ── Step 1 (intro): the overview names the five parts. ──
+    // ── Step 1 (intro): the overview names the four parts. ──
     await screen.findByText("Build a render-template widget");
-    expect(screen.getByText(/Design — write the widget/)).toBeInTheDocument();
+    expect(screen.getByText(/Design — build & preview the widget/)).toBeInTheDocument();
     await user.click(screen.getByLabelText("Continue"));
 
     // ── Step 2 (datasource): register the demo → a REAL datasource.list row lands. ──
@@ -76,34 +76,41 @@ describe("TemplateWidgetWizard (real seeded gateway)", () => {
     await waitFor(() => expect(screen.getByLabelText("Run the query")).toBeEnabled());
     await user.click(screen.getByLabelText("Continue"));
 
-    // ── Step 4 (design): the real in-process TemplateView preview mounts + the inline editor is here. ──
+    // ── Step 4 (design): the starter gallery + the live preview; the code editor is hidden by default. ──
     await screen.findByLabelText("widget preview");
+    // The starter gallery is offered (incl. the Draft-with-AI canvas); pick the stat-tiles one.
+    expect(screen.getByLabelText("starter leader")).toBeInTheDocument();
+    expect(screen.getByLabelText("starter ai")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("starter stats"));
+    // The Copy-AI-prompt lives HERE (next to the preview), not on a separate step.
+    expect(screen.getByLabelText("copy ai prompt")).toBeInTheDocument();
+    // Code is collapsed by default (big preview) — reveal the editor via the toggle.
+    expect(screen.queryByLabelText("template code")).toBeNull();
+    await user.click(screen.getByLabelText("edit code"));
     expect(screen.getByLabelText("template code")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Continue"));
 
-    // ── Step 5 (ask an AI): the shipped Copy-AI-prompt control mounts. ──
-    await screen.findByLabelText("copy ai prompt");
-    await user.click(screen.getByLabelText("Continue"));
-
-    // ── Step 6 (save): Save lands a REAL render_template; read it back over the gateway. ──
+    // ── Step 4 (save): Save lands a REAL render_template; read it back over the gateway. ──
     await user.click(await screen.findByLabelText("Save the template"));
     await screen.findByText(/Saved as/i);
     const saved = await waitFor(async () => {
       const list = await listTemplates();
-      const row = list.find((t) => t.title === "Hourly energy by site");
+      const row = list.find((t) => t.title === "Energy by site");
       expect(row).toBeTruthy();
       return row!;
     });
     const tpl = await getTemplate(saved.id);
     expect(tpl.engine).toBe("template");
-    expect(tpl.code).toContain("{{#each rows}}");
+    // The saved code IS the picked starter (stats tiles) — its markup + a real binding round-tripped.
+    expect(tpl.code).toContain("Energy overview");
+    expect(tpl.code).toContain("{{rows.0.total_kwh}}");
 
     // ── Add to a new dashboard → a REAL dashboard.save with a `view:"template"` cell. ──
     await user.click(await screen.findByLabelText("Add to a new dashboard"));
     await screen.findByText(/Added to dashboard/i);
     const dashRow = await waitFor(async () => {
       const list = await listDashboards();
-      const row = list.find((d) => d.title === "Hourly energy by site");
+      const row = list.find((d) => d.title === "Energy by site");
       expect(row).toBeTruthy();
       return row!;
     });
@@ -121,9 +128,9 @@ describe("TemplateWidgetWizard (real seeded gateway)", () => {
     await signInWithCaps("user:viewer", ws, denyCaps);
     renderWizard(ws, denyCaps);
 
-    // Jump to the Save step (the rail lets a reached step be revisited; walk Continue through).
+    // Walk Continue through to the Save step (intro → datasource → query → design → save).
     await screen.findByText("Build a render-template widget");
-    for (let i = 0; i < 5; i++) await user.click(screen.getByLabelText("Continue"));
+    for (let i = 0; i < 4; i++) await user.click(screen.getByLabelText("Continue"));
 
     // The save controls are hidden (display gate) — and the host is the wall regardless.
     await screen.findByText(/needs widget-write access/i);

@@ -33,13 +33,21 @@ export function buildTemplatePrompt(rows: Row[], sample: PromptSample, query?: P
   value needs deriving, it must already be a column.
 - Optional write buttons: <button data-call="tool.name" data-args='{"k":1}'>…</button> (host-mediated).
 
-## Styling (the widget must look native in the host app)
-- Use INLINE style attributes only — utility CSS classes will NOT exist at runtime.
-- Use the host theme tokens so light/dark both work: color via hsl(var(--fg)), hsl(var(--muted)),
-  hsl(var(--accent)), surfaces via hsl(var(--panel)), borders via hsl(var(--border)); alpha like
-  hsl(var(--accent)/0.15). Small type (10–12px), rounded corners, tabular-nums for numbers.
-- The widget fills a dashboard panel: one flex column, inner lists scroll (overflow-y:auto), nothing
-  may overflow the panel. Keep the whole template under 4 KB.
+## Styling (the widget must look polished and native in the host app)
+- INLINE style="" attributes ONLY. A <style> block and its CSS are STRIPPED by the sanitizer, and CSS
+  custom properties (--x) won't apply — so put every style on the element, and a bar width is a literal
+  width:NN% (from a column), never a var.
+- NO <svg> (it is stripped) and no external images — draw icons/marks with CSS (gradients, radial/
+  linear backgrounds, borders, box-shadow, border-triangles, small colored divs) or use a unicode glyph.
+- Use the host theme tokens so light/dark both work: text hsl(var(--fg))/hsl(var(--muted)), accent
+  hsl(var(--accent)), surfaces hsl(var(--panel)), borders hsl(var(--border)); alpha like
+  hsl(var(--accent)/0.15). Use tabular-nums for numbers.
+- Make it look DESIGNED and BIG, not a plain list: a clear hierarchy with one or two large hero numbers
+  (28–44px, font-weight:800), generous padding (16–20px), rounded cards (border-radius:14–20px), a
+  gradient or accent-tinted highlight, and comfortable spacing. It fills a whole dashboard tile.
+- The root fills the tile: height:100%;box-sizing:border-box; one flex column; inner lists scroll
+  (overflow-y:auto); nothing overflows the panel. Keep the whole template under 4 KB.
+- For an in-widget show/hide toggle use a native <details><summary>…</summary>…</details> (no JS).
 
 ## The query that produces the rows
 ${

@@ -400,6 +400,19 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   response with per-row pause/run-now/delete controls, all rendered by the shipped widget views over the
   viewer-grant-leashed bridge (no reminders-specific channel UI); adds two `x-lb` widgets (`cron`, static
   `select`) and a small `reminder.fire` run-now verb.
+- `reports/` — the **report builder + branded PDF exporter** (`report-builder-scope.md`): a
+  notebook-style `report:{ws}:{id}` asset of ordered blocks — markdown (true-A4 TipTap WYSIWYG),
+  images (`assets.*` refs), and **existing dashboard panels** (the shipped `panel_ref`/inline-spec
+  Cell duality, rendered through the one `WidgetHost` path — extension widgets work with zero
+  report-side code) — plus reusable **`brand:{ws}:{id}` profiles** (logo/colors/fonts/header/footer
+  + a shared BrandPicker; workspace `ui_branding` stays identity, this is document branding) and a
+  **branded PDF** via a pure `lb-render` crate ported from the proven lazybones Typst pipeline
+  (pinned `typst =0.15.0`, custom `RenderWorld`, embedded fonts, no external binary). Panels export
+  as **client-captured snapshots** under the exporter's caps (server never fetches widget data;
+  headless-browser and Rust re-render rejected); `report.export` is a gated bounded-sync verb on a
+  binary gateway route. Sharing a report is a lens — embedded panel data re-checks the viewer's
+  caps per render. GitHub publishing, sources/RAG, and scheduled/emailed exports are named
+  deferrals.
 - `prefs/` — per-(workspace,user) preferences + localization: language (en/es), timezone, date/number
   display style, and a backend unit-conversion layer (metric/imperial). Canonical data in, localized
   presentation out, exposed as `format.*`/`convert.*` MCP tools so thin clients don't re-implement it.
@@ -482,7 +495,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   one-click **look packs** — code editor, professional, retro, modern dashboard, liquid glass — plus font
   tokens, surface treatments (translucency/blur/elevation/gradients), a motion.dev-backed motion system with
   an off switch, a wider tone palette, the radius-coverage and color-picker fixes, and the widened `ctx.theme`
-  live re-theme signal for extensions), and `workspace-branding-scope.md` (admin-owned workspace **identity**
+  live re-theme signal for extensions), and its own successor `shell-chrome-layout-scope.md` (two more
+  Layout-tab appearance axes on the same `ui_theme` blob — a **header style** rendered as a shadcn
+  `Breadcrumb` vs today's icon-chip band, and a **navigation mode** that moves the sidebar into a
+  top `Menubar` with dropdowns; frontend-only, two data axes + two sibling renderers, no backend),
+  and `workspace-branding-scope.md` (admin-owned workspace **identity**
   — logo, favicon, site/login heading — via workspace-default prefs + `assets.*`, including the narrow
   read-only pre-auth `/public/branding/{ws}` seam that brands the login page before any token exists),
   and `rules-workbench-scope.md` (the rules workbench: a Playground to write/run/save Rhai rules, a

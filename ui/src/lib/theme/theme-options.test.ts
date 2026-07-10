@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_THEME, normalizeThemePreference } from "./theme-options";
+import { DEFAULT_THEME, DEFAULT_LAYOUT, normalizeThemePreference } from "./theme-options";
 import { deriveTones } from "./derive-tones";
 import type { RequiredPalette } from "./theme-tokens";
 
@@ -79,5 +79,48 @@ describe("normalizeThemePreference — tone-widening migration", () => {
     const norm = normalizeThemePreference(widened);
     expect(norm.custom!.light.panel2).toBe("1 1% 1%");
     expect(norm.custom!.dark.accent2).toBe("6 6% 6%");
+  });
+});
+
+// The shell-chrome-layout axes (header style + nav mode). The load-bearing case: a stored theme that
+// PREDATES these fields (every existing ui_theme blob) normalizes to the current look (band/sidebar)
+// so no existing user flips layout on next load — the migration-safety guarantee.
+describe("normalizeThemePreference — header/nav layout axes", () => {
+  it("fills header/nav from DEFAULT_LAYOUT when absent (an old stored theme stays put)", () => {
+    const old = { mode: "dark", preset: "teal", radius: "0.5rem", layout: { variant: "sidebar", collapsible: "icon", side: "left" } };
+    const norm = normalizeThemePreference(old);
+    expect(norm.layout.header).toBe(DEFAULT_LAYOUT.header);
+    expect(norm.layout.nav).toBe(DEFAULT_LAYOUT.nav);
+    // the other axes it DID carry are preserved
+    expect(norm.layout.variant).toBe("sidebar");
+  });
+
+  it("rejects unknown header/nav values (fails closed to the default, never partial)", () => {
+    const bad = { mode: "dark", preset: "teal", radius: "0.5rem", layout: { header: "tabs", nav: "ribbon" } };
+    const norm = normalizeThemePreference(bad);
+    expect(norm.layout.header).toBe(DEFAULT_LAYOUT.header);
+    expect(norm.layout.nav).toBe(DEFAULT_LAYOUT.nav);
+  });
+
+  it("preserves explicitly-set header/nav values (breadcrumbs/topmenu round-trip through normalize)", () => {
+    const set = { mode: "dark", preset: "teal", radius: "0.5rem", layout: { header: "breadcrumbs", nav: "topmenu" } };
+    const norm = normalizeThemePreference(set);
+    expect(norm.layout.header).toBe("breadcrumbs");
+    expect(norm.layout.nav).toBe("topmenu");
+  });
+
+  it("keeps the other layout axes when only header/nav are malformed", () => {
+    const mixed = {
+      mode: "dark",
+      preset: "teal",
+      radius: "0.5rem",
+      layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "garbage" },
+    };
+    const norm = normalizeThemePreference(mixed);
+    expect(norm.layout.variant).toBe("floating");
+    expect(norm.layout.collapsible).toBe("offcanvas");
+    expect(norm.layout.side).toBe("right");
+    expect(norm.layout.header).toBe(DEFAULT_LAYOUT.header); // the bad one fell back
+    expect(norm.layout.nav).toBe(DEFAULT_LAYOUT.nav); // absent → default
   });
 });

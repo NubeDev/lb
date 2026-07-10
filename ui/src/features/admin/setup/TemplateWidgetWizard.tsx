@@ -14,16 +14,18 @@
 //   5. Save       — the real `template.save` (`saveTemplate`) persists a durable `render_template`;
 //                   optionally the same cell is dropped on a fresh dashboard via `dashboard.save`.
 //
-// No new backend, no new verb, no duplicated editor. New code is this flow + `templateCell`/
-// `TEMPLATE_STARTER` in `dataToInsight.ts`. Cap-gating hides controls the caller couldn't use anyway;
+// No new backend, no new verb, no duplicated editor. New code is this flow + `templateCell` in
+// `dataToInsight.ts` + the three polished starter widgets in `templateGallery.ts`. Cap-gating hides
+// controls the caller couldn't use anyway;
 // the gateway re-checks every write (rule 5). Datasource/source ids stay opaque (rule 10). One
 // responsibility per file (FILE-LAYOUT).
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   Code2,
   Database,
+  EyeOff,
   LayoutDashboard,
   LayoutTemplate,
   Loader2,
@@ -46,7 +48,8 @@ import {
 import { StepFlow, StepShell, type FlowStep } from "../wizard/StepFlow";
 import { DatasourceStep } from "./steps/DatasourceStep";
 import { SqlPreviewStep } from "./steps/SqlPreviewStep";
-import { DEFAULT_SOURCE, DEMO_SQL, TEMPLATE_STARTER, templateCell } from "./dataToInsight";
+import { DEFAULT_SOURCE, templateCell } from "./dataToInsight";
+import { DEFAULT_TEMPLATE, TEMPLATE_GALLERY, type TemplateExample } from "./templateGallery";
 
 type Row = Record<string, unknown>;
 
@@ -62,11 +65,24 @@ export function TemplateWidgetWizard({ ws, caps, onDone }: Props) {
   // caps map exposes only `dashboard.save`, so it gates BOTH the durable save and the dashboard drop.
   const canSave = hasCap(caps, CAP.dashboardSave);
 
-  // Accumulated across steps: the chosen datasource, the ran rows (feed preview + prompt), the template
-  // HTML the user is designing, and where a saved template/dashboard landed.
+  // Accumulated across steps: the chosen datasource, the picked starter example (drives BOTH the query
+  // SQL and the initial template code), the ran rows (feed preview + prompt), the template HTML the user
+  // is designing, and where a saved template/dashboard landed. Each gallery example ships its own summary
+  // SQL, so switching examples re-points the query the widget renders.
   const [source, setSource] = useState(DEFAULT_SOURCE);
+  const [example, setExample] = useState<TemplateExample>(DEFAULT_TEMPLATE);
   const [rows, setRows] = useState<Row[]>([]);
-  const [code, setCode] = useState(TEMPLATE_STARTER);
+  const [code, setCode] = useState(DEFAULT_TEMPLATE.code);
+  const sql = example.sql;
+
+  /** Pick a starter example — swaps the query SQL AND resets the editor to that example's code (so the
+   *  preview + AI prompt track the new shape). Re-picking the active one is a no-op. */
+  const pickExample = (next: TemplateExample) => {
+    if (next.id === example.id) return;
+    setExample(next);
+    setCode(next.code);
+    setRows([]); // the previous run's rows are the old shape — re-run against the new SQL
+  };
 
   const steps: FlowStep[] = [
     {
@@ -77,14 +93,13 @@ export function TemplateWidgetWizard({ ws, caps, onDone }: Props) {
         <StepShell
           icon={Sparkles}
           title="Build a render-template widget"
-          blurb="A render-template widget turns query rows into a custom HTML panel — no charting library, just your own markup bound to the data. This walks you from the seeded buildings datasource, through the query, to designing the widget (and asking an AI to draft it), then saves it as a reusable template."
+          blurb="A render-template widget turns query rows into a custom HTML panel — no charting library, just your own markup bound to the data. This walks you from the seeded buildings datasource, through the query, to designing the widget — start from a polished example or draft one with AI and preview it live — then saves it as a reusable template."
         >
           <ol className="space-y-2">
             <IntroItem icon={Database} n={1} title="Datasource — where the data lives" body="A registered connection (here the SQLite buildings dataset). The query reads through it." />
             <IntroItem icon={ScrollText} n={2} title="Query — the rows to render" body="Run a preloaded query and see the rows. Your widget will render exactly this shape." />
-            <IntroItem icon={Code2} n={3} title="Design — write the widget" body="Edit the template HTML/JSX beside a live preview, bound to your real query rows." />
-            <IntroItem icon={Sparkles} n={4} title="Ask an AI — draft it for you" body="Copy a prompt with the engine rules + your real data; paste any agent's reply back into the editor." />
-            <IntroItem icon={LayoutTemplate} n={5} title="Save — a reusable widget" body="Persist it as a durable template you can drop into any panel, and optionally onto a new dashboard." />
+            <IntroItem icon={Code2} n={3} title="Design — build & preview the widget" body="Start from an example or draft one with AI (copy the prompt), edit the HTML, and preview it live against your real rows." />
+            <IntroItem icon={LayoutTemplate} n={4} title="Save — a reusable widget" body="Persist it as a durable template you can drop into any panel, and optionally onto a new dashboard." />
           </ol>
         </StepShell>
       ),
@@ -111,9 +126,9 @@ export function TemplateWidgetWizard({ ws, caps, onDone }: Props) {
         <StepShell
           icon={ScrollText}
           title="Run the query your widget will render"
-          blurb="This preloaded query averages energy use per site, per hour, over the last 4 days. Run it — the rows it returns are exactly what your template will render, and what the AI prompt embeds as sample data."
+          blurb="This preloaded query summarises energy use per site over the last 4 days — total, peak, and each site's share of the leader. Run it: the rows it returns are exactly what your template renders, and what the AI prompt embeds as sample data."
         >
-          <SqlPreviewStep source={source} canRun={canRunQuery} sql={DEMO_SQL} onRows={setRows} />
+          <SqlPreviewStep source={source} canRun={canRunQuery} sql={sql} onRows={setRows} />
         </StepShell>
       ),
     },
@@ -124,34 +139,19 @@ export function TemplateWidgetWizard({ ws, caps, onDone }: Props) {
       render: () => (
         <StepShell
           icon={Code2}
-          title="Design the widget"
-          blurb="Edit the template HTML on the left; the live preview on the right renders it against your real query rows. The engine is pure {{…}} interpolation (no JavaScript) — bind fields with {{site}}, iterate with {{#each rows}}…{{/each}}. Styling must be inline + host theme tokens."
+          title="Design & preview the widget"
+          blurb="Pick a polished example — or “Draft with AI”: copy the prompt (it carries the engine rules + your real data), paste any agent's HTML into the editor, and preview it live here. The engine is pure {{…}} interpolation (no JavaScript): bind fields with {{site}}, iterate with {{#each rows}}…{{/each}}. Styling must be inline + host theme tokens (SVG is stripped — use CSS)."
         >
-          <DesignStep ws={ws} source={source} code={code} onCode={setCode} rows={rows} />
-        </StepShell>
-      ),
-    },
-    {
-      key: "ai",
-      label: "Ask an AI",
-      hint: "Draft it for you",
-      render: () => (
-        <StepShell
-          icon={Sparkles}
-          title="Let an AI draft the widget"
-          blurb="Copy a prompt that includes the template-engine rules AND a sample of your real rows, then paste it into any LLM. Paste its reply back into the Design step's editor. The data in the prompt is your own on-screen query result — sharing it is your call."
-        >
-          {/* The prompt embeds the ran rows (via the provider) + this widget's query provenance. */}
-          <ResultRowsProvider rows={rows}>
-            <div className="space-y-3">
-              <CopyTemplatePrompt query={{ tool: "federation.query", source, sql: DEMO_SQL }} />
-              <p className="text-xs text-muted">
-                {rows.length === 0
-                  ? "Run the query in the previous step first so the prompt carries real sample rows."
-                  : `The prompt will embed a sample of the ${rows.length} rows your query returned.`}
-              </p>
-            </div>
-          </ResultRowsProvider>
+          <DesignStep
+            ws={ws}
+            source={source}
+            sql={sql}
+            code={code}
+            onCode={setCode}
+            rows={rows}
+            example={example}
+            onPickExample={pickExample}
+          />
         </StepShell>
       ),
     },
@@ -165,7 +165,7 @@ export function TemplateWidgetWizard({ ws, caps, onDone }: Props) {
           title="Save the widget"
           blurb="Save it as a durable template — a reusable render_template you can drop into any panel from the Saved-template picker. Optionally, drop it straight onto a new dashboard so it's visible right away."
         >
-          <SaveStep ws={ws} source={source} code={code} canSave={canSave} />
+          <SaveStep ws={ws} source={source} sql={sql} code={code} canSave={canSave} />
         </StepShell>
       ),
     },
@@ -201,26 +201,34 @@ function IntroItem({
   );
 }
 
-// ── Step 3: design ── the real inline template editor beside a live WidgetHost preview of a
-//    `view:"template"` cell bound to the same query. Editing the HTML re-renders the preview against
-//    the query's rows — the same in-process TemplateView the dashboard uses (no fork, no mock).
+// ── Step 3: design ── a gallery of polished starter examples + the real inline template editor beside a
+//    live WidgetHost preview of a `view:"template"` cell bound to the same query. Picking an example
+//    seeds the code; editing the HTML re-renders the preview against the query's rows — the same
+//    in-process TemplateView the dashboard uses (no fork, no mock).
 function DesignStep({
   ws,
   source,
+  sql,
   code,
   onCode,
   rows,
+  example,
+  onPickExample,
 }: {
   ws: string;
   source: string;
+  sql: string;
   code: string;
   onCode: (code: string) => void;
   rows: Row[];
+  example: TemplateExample;
+  onPickExample: (next: TemplateExample) => void;
 }) {
-  // The preview cell — rebuilt when the code changes so the WidgetHost re-renders the edited template.
+  // The preview cell — rebuilt when the code or query changes so the WidgetHost re-renders the edited
+  // template against the selected example's rows.
   const cell = useMemo(
-    () => templateCell(ws, source, DEMO_SQL, code, "Template preview"),
-    [ws, source, code],
+    () => templateCell(ws, source, sql, code, "Template preview"),
+    [ws, source, sql, code],
   );
   // TemplateSourceField edits a TemplateValue; the wizard only uses inline mode (a saved reference has
   // nothing to save yet). Map its onChange back to the raw code string.
@@ -228,18 +236,96 @@ function DesignStep({
   const onChange = (next: TemplateValue) => {
     if (next.mode === "inline") onCode(next.code);
   };
+  // Whether the editor still holds the picked example's pristine code (so re-picking is a clean reset
+  // and an edited example reads as "customised").
+  const pristine = code === example.code;
+  // The code editor is HIDDEN by default so the polished preview gets the whole width — a designed
+  // widget should read as a widget, not a wall of JSX. The toggle reveals the editor to customise it.
+  const [showCode, setShowCode] = useState(false);
+  // "Draft with AI" opens the editor automatically — that's where the copied AI reply gets pasted.
+  useEffect(() => {
+    if (example.id === "ai") setShowCode(true);
+  }, [example.id]);
 
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
-      <div className="min-w-0">
-        <TemplateSourceField value={value} onChange={onChange} />
+    <div className="space-y-3">
+      {/* The starter gallery — polished examples + a Draft-with-AI canvas; picking one seeds the editor. */}
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4" role="radiogroup" aria-label="starter templates">
+        {TEMPLATE_GALLERY.map((ex) => {
+          const active = ex.id === example.id;
+          return (
+            <Button
+              key={ex.id}
+              type="button"
+              variant="ghost"
+              role="radio"
+              aria-checked={active}
+              aria-label={`starter ${ex.id}`}
+              onClick={() => onPickExample(ex)}
+              className={`h-auto flex-col items-start gap-1 whitespace-normal rounded-lg border p-3 text-left ${
+                active
+                  ? "border-accent bg-accent/10 shadow-[inset_0_0_0_1px_hsl(var(--accent))]"
+                  : "border-border hover:border-fg/30 hover:bg-fg/[0.02]"
+              }`}
+            >
+              <span className="text-sm font-medium text-fg">{ex.label}</span>
+              <span className="text-xs font-normal text-muted">{ex.description}</span>
+            </Button>
+          );
+        })}
       </div>
-      {/* Live preview — the exact in-process render path the dashboard grid uses. */}
-      <div className="h-72 min-w-0 overflow-hidden rounded-md border border-border bg-panel p-2" aria-label="widget preview">
-        <WidgetHost cell={cell} workspace={ws} />
+
+      {/* The toolbar — Copy-AI-prompt (make one with any agent) + the show/hide-code toggle. The editor
+          is collapsed by default so the widget preview is big; picking "Draft with AI" opens it. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* The prompt embeds the ran rows (via the provider) + this widget's query provenance, so an
+            agent designs against the real shape. Copying it is the user's own data — their call. */}
+        <ResultRowsProvider rows={rows}>
+          <CopyTemplatePrompt query={{ tool: "federation.query", source, sql }} />
+        </ResultRowsProvider>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-pressed={showCode}
+          aria-label={showCode ? "hide code" : "edit code"}
+          className="h-7 gap-1.5"
+          onClick={() => setShowCode((s) => !s)}
+        >
+          {showCode ? <EyeOff size={13} /> : <Code2 size={13} />}
+          {showCode ? "Hide code" : "Edit code"}
+        </Button>
       </div>
+
+      <div className={showCode ? "grid gap-3 lg:grid-cols-2" : ""}>
+        {showCode && (
+          <div className="min-w-0">
+            <TemplateSourceField value={value} onChange={onChange} />
+            {!pristine && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => onCode(example.code)}
+                className="mt-1 h-auto px-1.5 py-0.5 text-[11px] text-muted hover:text-fg"
+              >
+                Reset to “{example.label}” starter
+              </Button>
+            )}
+          </div>
+        )}
+        {/* Live preview — the exact in-process render path the dashboard grid uses. Full width + tall
+            when the code is hidden so the widget has room to look good (these examples fill a real tile). */}
+        <div
+          className={`${showCode ? "h-[30rem]" : "h-[34rem]"} min-w-0 overflow-hidden rounded-lg border border-border bg-bg p-2 shadow-sm`}
+          aria-label="widget preview"
+        >
+          <WidgetHost cell={cell} workspace={ws} />
+        </div>
+      </div>
+
       {rows.length === 0 && (
-        <p className="text-xs text-muted lg:col-span-2">
+        <p className="text-xs text-muted">
           Tip: run the query in the previous step so the preview binds real rows (it renders empty until
           then).
         </p>
@@ -252,15 +338,17 @@ function DesignStep({
 function SaveStep({
   ws,
   source,
+  sql,
   code,
   canSave,
 }: {
   ws: string;
   source: string;
+  sql: string;
   code: string;
   canSave: boolean;
 }) {
-  const [title, setTitle] = useState("Hourly energy by site");
+  const [title, setTitle] = useState("Energy by site");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -289,7 +377,7 @@ function SaveStep({
     setError(null);
     try {
       const id = `template-widget-${Date.now()}`;
-      const cell = templateCell(ws, source, DEMO_SQL, code, title);
+      const cell = templateCell(ws, source, sql, code, title);
       await saveDashboard(id, title, [cell]);
       setDashboardId(id);
     } catch (e) {

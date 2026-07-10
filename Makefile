@@ -415,6 +415,15 @@ seed-thecrew:
 seed-demo-sqlite:
 	bash docker/postgres/seed-demo-sqlite.sh $(LB_DIR)/data/demo/buildings.db $(GW_URL) $(SEED_USER) $(WS)
 
+# Seed the energy/insights INBOX + OUTBOX demo (inbox-outbox scope): energy alerts land as inbox
+# items on the `energy-ops` channel (some tagged needs:approval), a few are resolved, and must-
+# deliver effects sit in the outbox — all through the real host verbs (inbox.record / inbox.resolve
+# / outbox.enqueue). Pairs with `seed-demo-sqlite` (the alerts read as if raised off that dataset).
+# Needs a RUNNING `make dev` node. Idempotent (stable-id upserts).
+.PHONY: seed-demo-energy
+seed-demo-energy:
+	bash docs/testing/inbox-outbox/seed-demo-energy.sh $(GW_URL) $(SEED_USER) $(WS)
+
 # Serve the BUILT shell so extension pages actually load. The `dev`/`ui` targets run the Vite DEV
 # server, where @originjs/vite-plugin-federation's host runtime is absent -- every federated remote
 # fails with `getUrl(...).then is not a function`. A federated remote needs a production build.

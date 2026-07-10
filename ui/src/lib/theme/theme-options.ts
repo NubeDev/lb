@@ -38,16 +38,34 @@ export type SidebarVariant = (typeof SIDEBAR_VARIANTS)[number];
 export type SidebarCollapsible = (typeof SIDEBAR_COLLAPSIBLES)[number];
 export type SidebarSide = (typeof SIDEBAR_SIDES)[number];
 
+/** The page-header style axis (shell-chrome-layout scope). `band` is today's `AppPageHeader`
+ *  icon-chip band (unchanged, pixel-identical when selected); `breadcrumbs` renders a shadcn
+ *  `Breadcrumb` trail (Workspace / <Surface> [/ <page title>]) with the same actions slot. */
+export const HEADER_STYLES = ["band", "breadcrumbs"] as const;
+export type HeaderStyle = (typeof HEADER_STYLES)[number];
+
+/** The workspace-nav mode axis (shell-chrome-layout scope). `sidebar` is today's left `NavRail`
+ *  (unchanged); `topmenu` renders a horizontal shadcn `Menubar` above the header, fed the exact
+ *  same resolved-nav data the rail consumes (a second renderer, not a new source of truth). */
+export const NAV_MODES = ["sidebar", "topmenu"] as const;
+export type NavMode = (typeof NAV_MODES)[number];
+
 export interface ThemeLayout {
   variant: SidebarVariant;
   collapsible: SidebarCollapsible;
   side: SidebarSide;
+  /** Page-header style. Defaults to `band` so a stored theme with no field renders unchanged. */
+  header: HeaderStyle;
+  /** Workspace-nav mode. Defaults to `sidebar` so a stored theme with no field renders unchanged. */
+  nav: NavMode;
 }
 
 export const DEFAULT_LAYOUT: ThemeLayout = {
   variant: "sidebar",
   collapsible: "icon",
   side: "left",
+  header: "band",
+  nav: "sidebar",
 };
 
 /** A member's full theme preference. `preset` is a built-in id OR a library preset id; `custom` holds
@@ -118,7 +136,9 @@ export function isBuiltinPreset(value: unknown): value is BuiltinPreset {
   return typeof value === "string" && BUILTIN_PRESETS.includes(value as BuiltinPreset);
 }
 
-/** Validate a layout blob, filling any unknown/absent axis from DEFAULT_LAYOUT (never partial). */
+/** Validate a layout blob, filling any unknown/absent axis from DEFAULT_LAYOUT (never partial).
+ *  The header/nav axes default the same way — a stored theme predating them normalizes to the
+ *  current look, never a broken half-state (the migration-safety guarantee, tested explicitly). */
 function normalizeLayout(value: unknown): ThemeLayout {
   const c = (value && typeof value === "object" ? value : {}) as Partial<ThemeLayout>;
   return {
@@ -127,6 +147,8 @@ function normalizeLayout(value: unknown): ThemeLayout {
       ? (c.collapsible as SidebarCollapsible)
       : DEFAULT_LAYOUT.collapsible,
     side: SIDEBAR_SIDES.includes(c.side as SidebarSide) ? (c.side as SidebarSide) : DEFAULT_LAYOUT.side,
+    header: HEADER_STYLES.includes(c.header as HeaderStyle) ? (c.header as HeaderStyle) : DEFAULT_LAYOUT.header,
+    nav: NAV_MODES.includes(c.nav as NavMode) ? (c.nav as NavMode) : DEFAULT_LAYOUT.nav,
   };
 }
 

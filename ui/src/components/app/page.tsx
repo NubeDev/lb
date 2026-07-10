@@ -10,8 +10,10 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
+import { useTheme } from "@/lib/theme";
 import { Reveal } from "@/lib/motion";
 import { AppPageHeader } from "./page-header";
+import { HeaderBreadcrumbs } from "./header-breadcrumbs";
 import { useEmbeddedPage } from "./page-embedded";
 
 interface AppPageProps {
@@ -49,10 +51,15 @@ export function AppPage({
 }: AppPageProps) {
   const ctxEmbedded = useEmbeddedPage();
   const inPane = embedded ?? ctxEmbedded;
+  // The header style is a member choice (Settings → Theme → Layout → Header). `band` (default) is
+  // today's AppPageHeader icon-chip band; `breadcrumbs` renders the breadcrumb trail. Both carry the
+  // same actions slot (workspace chip + Settings gear). Chosen here — the one place the header mounts.
+  const { theme } = useTheme();
+  const Header = theme.layout.header === "breadcrumbs" ? HeaderBreadcrumbs : AppPageHeader;
   return (
     <section aria-label={label} className="flex h-full min-w-0 flex-col bg-bg text-fg">
       {!inPane && (
-        <AppPageHeader
+        <Header
           icon={icon}
           iconColor={iconColor}
           title={title}

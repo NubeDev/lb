@@ -22,6 +22,7 @@ import { useTheme } from "@/lib/theme";
 
 import { BrandHeader } from "./BrandHeader";
 import { NavActivePill, NavMenuMotionItem } from "./NavMenuMotion";
+import { itemRef } from "./nav-item-ref";
 import { SURFACE_DEF, SURFACES } from "./surfaceDefs";
 
 /** The fixed core surfaces the shell ships. */
@@ -111,12 +112,9 @@ interface Props {
   onUseMyMenu?: () => void;
 }
 
-/** A rail entry's ref in the shared hide/pin grammar (mirrors the resolver's `item_ref`). */
-function itemRef(it: ResolvedNavItem): string {
-  if (it.kind === "ext" && it.ext) return `ext:${it.ext}`;
-  if (it.kind === "dashboard" && it.dashboard) return it.dashboard;
-  return it.surface ?? "";
-}
+/** A rail entry's ref in the shared hide/pin grammar (mirrors the resolver's `item_ref`). Extracted
+ *  to `nav-item-ref.ts` so the top-menu renderer imports the same mapping — never re-defined here. */
+export { itemRef } from "./nav-item-ref";
 
 /** The built-in fallback rail, bucketed into labelled categories so it reads as sections rather than
  *  one long flat list (sidebar-16 shape). This ONLY shapes the fallback: when a server-authored nav

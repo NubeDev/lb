@@ -35,7 +35,7 @@ const WIDENED: ThemePreference = {
   fontMono: "jetbrains-mono",
   surface: "glass",
   motion: "full",
-  layout: { variant: "floating", collapsible: "offcanvas", side: "right" },
+  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "breadcrumbs", nav: "topmenu" },
 };
 
 const TEAL: ThemePreference = {
@@ -43,14 +43,14 @@ const TEAL: ThemePreference = {
   preset: "teal",
   radius: "0.75rem",
   look: "default",
-  layout: { variant: "floating", collapsible: "offcanvas", side: "right" },
+  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "band", nav: "sidebar" },
 };
 const AMBER_LIGHT: ThemePreference = {
   mode: "light",
   preset: "amber",
   radius: "0.5rem",
   look: "default",
-  layout: { variant: "sidebar", collapsible: "icon", side: "left" },
+  layout: { variant: "sidebar", collapsible: "icon", side: "left", header: "band", nav: "sidebar" },
 };
 
 beforeAll(() => useRealGateway());

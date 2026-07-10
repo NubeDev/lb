@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { NavRail, StatusBar, useResolvedNav, type Surface } from "@/features/shell";
+import { NavRail, StatusBar, TopMenuNav, useResolvedNav, type Surface } from "@/features/shell";
 import { useTheme } from "@/lib/theme";
 import {
   AgentDock,
@@ -80,21 +80,43 @@ export function RoutedShell() {
       collapsible={theme.layout.collapsible}
       className="h-full bg-bg"
     >
-      <NavRail
-        active={active}
-        onSelect={selectSurface}
-        onSignOut={ctx.onSignOut}
-        allowed={ctx.allowed}
-        extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
-        resolvedItems={resolvedItems}
-        onSelectDashboard={selectDashboard}
-        hidden={hidden}
-        pinned={pinned}
-        onTogglePin={togglePin}
-        usingBuiltin={usingBuiltin}
-        onShowAllPages={showAllPages}
-        onUseMyMenu={useMyMenu}
-      />
+      {/* The workspace-nav mode (shell-chrome-layout scope): `sidebar` (default) mounts the left
+          NavRail as today; `topmenu` mounts a horizontal TopMenuNav ABOVE the content and OMITS the
+          rail (the chosen renderer is the *only* nav mounted — no phantom collapsed sidebar). The
+          nav data is identical; only the renderer differs. */}
+      {theme.layout.nav === "topmenu" ? (
+        <TopMenuNav
+          active={active}
+          onSelect={selectSurface}
+          onSignOut={ctx.onSignOut}
+          allowed={ctx.allowed}
+          extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
+          resolvedItems={resolvedItems}
+          onSelectDashboard={selectDashboard}
+          hidden={hidden}
+          pinned={pinned}
+          onTogglePin={togglePin}
+          usingBuiltin={usingBuiltin}
+          onShowAllPages={showAllPages}
+          onUseMyMenu={useMyMenu}
+        />
+      ) : (
+        <NavRail
+          active={active}
+          onSelect={selectSurface}
+          onSignOut={ctx.onSignOut}
+          allowed={ctx.allowed}
+          extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
+          resolvedItems={resolvedItems}
+          onSelectDashboard={selectDashboard}
+          hidden={hidden}
+          pinned={pinned}
+          onTogglePin={togglePin}
+          usingBuiltin={usingBuiltin}
+          onShowAllPages={showAllPages}
+          onUseMyMenu={useMyMenu}
+        />
+      )}
 
       <SidebarInset className="min-w-0 overflow-hidden">
         <PageContextProvider>

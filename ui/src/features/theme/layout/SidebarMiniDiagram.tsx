@@ -5,7 +5,7 @@
 
 import { cn } from "@/lib/utils";
 
-import type { SidebarCollapsible, SidebarSide, SidebarVariant } from "@/lib/theme";
+import type { HeaderStyle, NavMode, SidebarCollapsible, SidebarSide, SidebarVariant } from "@/lib/theme";
 
 /** Menu-line marks inside the rail. */
 function Lines({ vertical = false }: { vertical?: boolean }) {
@@ -95,6 +95,59 @@ export function SideDiagram({ side }: { side: SidebarSide }) {
           {rail}
         </>
       )}
+    </div>
+  );
+}
+
+/** The header-style preview: `band` shows today's icon-chip + title strip; `breadcrumbs` shows a
+ *  Workspace / Page crumb trail in the same strip. Both carry the same height so the cards align. */
+export function HeaderDiagram({ header }: { header: HeaderStyle }) {
+  return (
+    <div className="flex h-12 items-center gap-2 rounded-md border border-border bg-bg px-2">
+      {header === "band" ? (
+        <>
+          <div className="flex h-6 w-6 items-center justify-center rounded-md border border-accent/30 bg-accent/15">
+            <div className="h-2.5 w-2.5 rounded-sm bg-accent/70" />
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <div className="h-1.5 w-12 rounded-sm bg-fg/70" />
+            <div className="h-1 w-8 rounded-sm bg-fg/40" />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="h-1.5 w-6 rounded-sm bg-fg/50" />
+          <span className="text-muted">/</span>
+          <div className="h-1.5 w-10 rounded-sm bg-fg/70" />
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The nav-mode preview: `sidebar` shows a left rail beside a pane; `topmenu` shows a horizontal
+ *  menu strip above a pane (no rail). */
+export function NavDiagram({ nav }: { nav: NavMode }) {
+  if (nav === "sidebar") {
+    return (
+      <div className="flex h-12 rounded-md border border-border bg-bg">
+        <div className="flex w-5 flex-shrink-0 flex-col gap-1 border-r border-border bg-panel p-1">
+          <div className="h-1 w-full rounded-sm bg-fg/60" />
+          <div className="h-1 w-3/4 rounded-sm bg-fg/45" />
+          <div className="h-1 w-2/3 rounded-sm bg-fg/35" />
+        </div>
+        <Pane />
+      </div>
+    );
+  }
+  return (
+    <div className="flex h-12 flex-col gap-0 rounded-md border border-border bg-bg p-0">
+      <div className="flex items-center gap-2 border-b border-border px-1.5 py-1">
+        <div className="h-1.5 w-6 rounded-sm bg-fg/60" />
+        <div className="h-1.5 w-5 rounded-sm bg-fg/45" />
+        <div className="h-1.5 w-7 rounded-sm bg-fg/35" />
+      </div>
+      <Pane />
     </div>
   );
 }

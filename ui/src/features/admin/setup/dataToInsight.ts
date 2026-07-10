@@ -119,27 +119,9 @@ export function timeseriesCell(ws: string, source: string, sql: string, title: s
     },
   };
 }
-
-/** The starter render-template the render-template wizard preloads — a per-row energy table rendered
- *  with the eval-free `{{…}}` engine over `DEMO_SQL`'s columns (site / hour / avg_energy). It is the
- *  worked example the user edits or replaces with agent-authored HTML; it uses inline styles + host
- *  theme tokens (the only styling that survives the sanitizer) so it looks native and both themes work.
- *  Kept here beside `DEMO_SQL` so the template + the query it renders stay in one place (FILE-LAYOUT). */
-export const TEMPLATE_STARTER = `<div style="display:flex;flex-direction:column;gap:8px;height:100%;font-size:12px;color:hsl(var(--fg))">
-  <div style="display:flex;align-items:baseline;justify-content:space-between">
-    <span style="font-weight:600">Hourly energy by site</span>
-    <span style="color:hsl(var(--muted))">{{rows.length}} rows</span>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:4px;overflow-y:auto">
-    {{#each rows}}<div style="display:flex;align-items:center;gap:10px;border-radius:8px;border:1px solid hsl(var(--border));background:hsl(var(--panel));padding:6px 10px">
-      <span style="width:3px;align-self:stretch;border-radius:2px;background:hsl(var(--accent)/0.7)"></span>
-      <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{site}}</span>
-      <span style="font-variant-numeric:tabular-nums;color:hsl(var(--muted))">{{hour}}</span>
-      <span style="font-weight:600;font-variant-numeric:tabular-nums">{{avg_energy}}</span>
-      <span style="font-size:9px;padding:1px 6px;border-radius:999px;background:hsl(var(--accent)/0.12);color:hsl(var(--accent))">kWh</span>
-    </div>{{/each}}
-  </div>
-</div>`;
+// The render-template wizard's starter widgets live in `templateGallery.ts` (three polished examples,
+// each with its own summary SQL) — not here. `dataToInsight.ts` keeps the data→insight wizard's
+// artifacts (DEMO_SQL / DEMO_RULE / DEMO_PLOT) + the cell builders both wizards share.
 
 /** Build a real v3 `view:"template"` `Cell` bound to `source`'s federation query for `sql`, rendering
  *  the given template `code`. The sibling of `timeseriesCell`: same `federation.query` source binding

@@ -62,13 +62,65 @@ JSX, and copy an AI prompt so they can have any external agent draft one. See
 No new backend, no new verb, no duplicated editor. Datasource/source ids stay opaque (rule 10 — no
 branch on a named extension); the wizard operates only in the session workspace (rule 6).
 
+## Making the widgets actually look good (the starter gallery)
+
+The first cut shipped one cramped starter and it looked bad. The rebuild adds a **gallery of three
+polished starter widgets** (`templateGallery.ts`) the Design step offers as cards — pick one and it
+seeds the editor + re-points the query. All three are genuinely designed (big numbers, gradient hero,
+icon-badged KPI tiles, glowing bar meters), verified by screenshotting the real sanitized output in
+both light and dark themes with real `demo-buildings` rows.
+
+Two hard constraints the rebuild had to honor (both discovered by rendering, not by reading):
+
+1. **The sanitizer STRIPS `<style>` blocks.** DOMPurify drops `<style>` contents entirely, so a
+   class-based stylesheet renders as unstyled stacked text (the original bug). Every element now carries
+   an **inline `style=""`** attribute, and a bar width is a literal `width:{{pct}}%` — CSS custom
+   properties (`--p`) are useless without a stylesheet. `templateGallery.test.ts` asserts `style=`
+   survives and `<style` does not, so this can't regress.
+2. **No CTE in the query.** The host's schema/parse pass resolves every FROM/JOIN name against the
+   catalog, so a `WITH per_site AS (…)` failed with `no such table: per_site`. The shared `SUMMARY_SQL`
+   runs the window functions (`MAX(SUM(value)) OVER ()` for the bar denominator, `RANK() OVER (…)` for
+   position) **directly over the GROUP BY** — no CTE. Verified end-to-end against the live dev node via
+   `POST /mcp/call federation.query` (8 sites, `pct`/`rnk` computed).
+
+The three examples (each answers "a view we don't already have pre-made"): **Top consumer spotlight**
+(hero card for #1 + ranked list with inline share bars), **Energy stat tiles** (big KPI tiles), and
+**Bar-meter ranking** (labelled progress bars sized by share of the leader).
+
+Follow-up polish (from live review of the rendered widgets):
+
+- **CSS-drawn monochrome icons, not emoji.** Color emoji (⚡🏆📈) looked cheap and ignore the theme, so
+  the marks are drawn with divs (a bar-chart glyph, a CSS-border triangle, a 2×2 grid, a baseline dot)
+  tinted `hsl(var(--accent))` — crisp in both themes.
+- **A real interactive toggle.** The stats example carries a native `<details>`/`<summary>` "Show all
+  sites" disclosure — a JS-free expander the pure `{{…}}` engine can't otherwise express (there is no
+  `{{#if}}`), and `<details>` survives the sanitizer. (A `data-call` button is for host-mediated WRITES,
+  not a client-side view toggle, so it's the wrong tool for "show more"; `<details>` is the right one.)
+- **Code hidden by default in the wizard.** The Design step collapses the JSX editor behind an
+  "Edit code" / "Hide code" toggle so the polished preview takes the full width (taller when code is
+  hidden) — a designed widget should read as a widget, not a wall of markup.
+- **"Ask an AI" folded INTO the Design step (no separate step 5).** The point of the AI prompt is to
+  draft a widget and preview it, so the Copy-AI-prompt button now lives on the Design toolbar next to
+  the editor + live preview — copy the prompt, paste the agent's HTML into the editor, see it render.
+  A 4th gallery card, **"Draft with AI"**, seeds a minimal accent-dashed canvas (already binding the
+  real fields, so the preview isn't empty) and auto-opens the editor as the paste target. The shared
+  `buildTemplatePrompt` was tuned to produce a *polished, big* widget on this data: it now forbids
+  `<style>`/SVG explicitly (both are stripped), pushes large hero numbers + generous padding + rounded
+  cards + accent highlight, and points at `<details>` for a JS-free toggle. Wizard is now 4 real steps:
+  Datasource → Query → Design (with AI + preview) → Save.
+
 ## Files touched
 
 - `ui/src/features/admin/setup/steps/DatasourceStep.tsx` — **new** (rule-3 extraction, shared).
 - `ui/src/features/admin/setup/steps/SqlPreviewStep.tsx` — **new** (rule-3 extraction, shared; `onRows` seam).
 - `ui/src/features/admin/setup/DatasourceWizard.tsx` — consume the extracted steps (local copies deleted).
-- `ui/src/features/admin/setup/dataToInsight.ts` — add `templateCell()` + `TEMPLATE_STARTER`.
-- `ui/src/features/admin/setup/TemplateWidgetWizard.tsx` — **new** wizard (6 steps: intro + 5 real).
+- `ui/src/features/admin/setup/dataToInsight.ts` — add `templateCell()`.
+- `ui/src/features/admin/setup/templateGallery.ts` — **new**: the three polished starter widgets +
+  the shared CTE-free summary SQL.
+- `ui/src/features/admin/setup/templateGallery.test.ts` — **new**: interpolate+sanitize each example
+  (no leftover tokens, inline styles survive, bar width lands).
+- `ui/src/features/admin/setup/TemplateWidgetWizard.tsx` — **new** wizard (6 steps: intro + 5 real),
+  with the Design-step gallery picker + taller live preview.
 - `ui/src/features/admin/setup/TemplateWidgetWizard.gateway.test.tsx` — **new** real-gateway test.
 - `ui/src/features/admin/setup/catalog.ts` — add the `template` entry (`LayoutTemplate` icon).
 - `ui/src/features/admin/setup/SetupHub.tsx` — add the `template` branch inside `DashboardCacheProvider`.

@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { QueryCard } from "./query/QueryCard";
 import { AgentCard } from "./AgentCard";
 import { ResponseView } from "./ResponseView";
+import { MarkdownView } from "./MarkdownView";
 
 interface Props {
   item: Item;
@@ -219,7 +220,7 @@ export function MessageItem({
           queryActions={queryActions}
         />
       ) : (
-        <div className="break-words leading-6 text-fg">{item.body}</div>
+        <MarkdownView>{item.body}</MarkdownView>
       )}
     </li>
   );
