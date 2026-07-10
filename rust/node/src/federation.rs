@@ -35,7 +35,7 @@ fn unix_seconds() -> u64 {
 
 /// The federation extension manifest (compiled in so the binary needs no file at this path at run
 /// time — it is the same source the E2E test installs from).
-const MANIFEST: &str = include_str!("../../extensions/federation/extension.toml");
+const MANIFEST: &str = include_str!("../../crates/federation/extension.toml");
 
 /// Resolve the directory holding the built `federation` binary (the workspace target dir). `cargo run`
 /// builds debug; a release run uses release. Overridable with `LB_FEDERATION_DIR`.

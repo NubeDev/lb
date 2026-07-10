@@ -13,8 +13,10 @@ This is the proof of rule 10: if core truly knows no extension, the extensions c
 
 ## Goals
 
-- **`rust/extensions/` reduced to `federation`.** Every other extension moves to a new
-  `lb-extensions` repo. Minimal **test fixtures** (`hello`, `hello-v2`, `echo-sidecar`) move to
+- **`rust/extensions/` reduced to test fixtures.** Every product extension moves to a new
+  `lb-extensions` repo. (`federation` was the "stays core" exception here; it has since been **promoted
+  out of `rust/extensions/` entirely** to the core crate `rust/crates/federation/` — see
+  `federation-promote-to-core-scope.md`. It is no longer part of this folder's story.) Minimal **test fixtures** (`hello`, `hello-v2`, `echo-sidecar`) move to
   `rust/fixtures/ext/` so `cargo test --workspace` stays green with no external clone (rule 10 allows
   test fixtures; product extensions are what leave).
 - **Three SDK surfaces, versioned and owned by standalone repos** (`lb` becomes a consumer of each):
@@ -55,7 +57,9 @@ This is the proof of rule 10: if core truly knows no extension, the extensions c
 - **Not splitting `federation` or the host's `crates/host/src/federation/*` module.** Federation is
   effectively part of the data plane: the host holds a first-class `federation.*` surface (query,
   datasource CRUD, endpoint gating, dbschema) and `FED_ENDPOINTS` config. Extracting it means first
-  formalizing that host module as an API — a separate, later scope if ever. It stays a workspace member.
+  formalizing that host module as an API — a separate, later scope if ever. It stays a workspace member —
+  and has now been **promoted to the core crate `rust/crates/federation/`** (out of `rust/extensions/`),
+  since it never was a product extension (`federation-promote-to-core-scope.md`).
 - **Not the generator/Studio features themselves** — `ext-sdk-scope.md` shipped those; this scope
   re-points what they emit and adds the CLI face it explicitly deferred.
 

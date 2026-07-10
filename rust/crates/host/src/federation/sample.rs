@@ -7,7 +7,7 @@
 //! WORKSPACE, enforce `net:*`, mediate the DSN, ONE supervised-sidecar call — and authorizes under
 //! the SAME read cap (`mcp:federation.query:call`): sampling is the same read privilege as a live
 //! query, so no new capability/grant is introduced. Bounding, cell truncation, and the fixed
-//! sensitive-column redaction live sidecar-side (`extensions/federation/src/sample.rs`).
+//! sensitive-column redaction live sidecar-side (`crates/federation/src/sample.rs`).
 
 use lb_auth::Principal;
 use lb_supervisor::Launcher;

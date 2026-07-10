@@ -36,8 +36,11 @@ out-of-tree migration is validated**. They are **not authoritative** anymore —
 out-of-tree extension repos are:
 
 - `rust/extensions/*` — the in-tree extensions (`proof-panel`, `fleet-monitor`, `hello`, `echarts-panel`,
-  …). **Exception:** `rust/extensions/federation` stays **first-class core** (least separable) and is
-  **not** migrating out.
+  …). **`federation` is no longer here:** it was **promoted to a first-class core crate** at
+  `rust/crates/federation/` (it fails the rule-10 swap test, shares `lb-supervisor` verbatim, and is
+  platform datastore-federation surface — see
+  `docs/scope/extensions/federation-promote-to-core-scope.md`). It stays a supervised Tier-2 sidecar
+  (DB drivers never link into the node); the `rust/extensions/*` cleanup must **not** touch it.
 - `ui/` — the in-tree React shell (the reference the product shells are vendored from).
 
 **Do not** point new work at these in-tree copies as the source of truth, and **do not** delete them yet.
@@ -47,8 +50,9 @@ out-of-tree extension repos are:
 Keep the retained code **until the downstream migration is proven** — `rubix-ai` (host) +
 `rubix-ai-extensions` (its extensions) running against the published contracts, for **~a few weeks**
 (target: **late July / early August 2026**). Once that bar is met, the migrated-out in-tree
-`rust/extensions/*` (except `federation`) and `ui/` are removed in a dedicated cleanup, and **this file
-is deleted**. Until then: this repo intentionally contains both the old in-tree code and the new
+`rust/extensions/*` and `ui/` are removed in a dedicated cleanup, and **this file
+is deleted**. (`federation` is already out of `rust/extensions/` — promoted to `rust/crates/federation/`,
+so the cleanup does not touch it.) Until then: this repo intentionally contains both the old in-tree code and the new
 library/SDK posture.
 
 ## First downstream proof (already green)

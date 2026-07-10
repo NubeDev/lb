@@ -16,7 +16,7 @@ use lb_host::{call_tool, install_native, Node};
 use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 
-const MANIFEST: &str = include_str!("../../../extensions/federation/extension.toml");
+const MANIFEST: &str = include_str!("../../federation/extension.toml");
 
 fn principal(ws: &str, caps: &[&str]) -> Principal {
     let key = SigningKey::generate();

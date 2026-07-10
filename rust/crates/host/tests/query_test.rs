@@ -562,7 +562,7 @@ mod postgres_rig {
     use lb_supervisor::OsLauncher;
     use serde_json::Value;
 
-    pub const MANIFEST: &str = include_str!("../../../extensions/federation/extension.toml");
+    pub const MANIFEST: &str = include_str!("../../federation/extension.toml");
 
     pub fn principal(ws: &str, caps: &[&str]) -> Principal {
         let key = SigningKey::generate();
