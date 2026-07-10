@@ -7,14 +7,15 @@
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { Label } from "@/components/ui/label";
-import { BASE_TOKENS, readComputedBasePalette, useTheme, type BasePalette, type CustomTheme } from "@/lib/theme";
+import { BASE_TOKENS, readComputedBasePalette, resolveEffectiveMode, useTheme, type BasePalette, type CustomTheme } from "@/lib/theme";
 
 export function BrandColors() {
   const { theme, setCustom } = useTheme();
+  const effectiveMode = resolveEffectiveMode(theme.mode);
 
   // The palette currently on screen (custom override, or the resolved preset/static block).
   const active: BasePalette = theme.custom
-    ? theme.custom[theme.mode]
+    ? theme.custom[effectiveMode]
     : readComputedBasePalette();
 
   const editToken = (key: keyof BasePalette, triplet: string) => {
@@ -22,12 +23,12 @@ export function BrandColors() {
     // mode (leaving the other mode as whatever the custom theme / a fresh read gives). This keeps the
     // opposite mode's colors intact when tweaking one mode.
     const base: CustomTheme = theme.custom ?? {
-      light: readComputedBasePaletteFor("light", theme.mode, active),
-      dark: readComputedBasePaletteFor("dark", theme.mode, active),
+      light: readComputedBasePaletteFor("light", effectiveMode, active),
+      dark: readComputedBasePaletteFor("dark", effectiveMode, active),
     };
     setCustom({
       ...base,
-      [theme.mode]: { ...base[theme.mode], [key]: triplet },
+      [effectiveMode]: { ...base[effectiveMode], [key]: triplet },
     });
   };
 

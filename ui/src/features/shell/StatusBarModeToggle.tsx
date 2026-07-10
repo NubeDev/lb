@@ -3,14 +3,15 @@
 // itself comes from the shell's ThemeProvider, and the same change flows through the same DOM/token
 // path the Settings → Theme ModeToggle uses, so this is purely a discoverable pointer affordance.
 
-import { Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useTheme, type ThemeMode } from "@/lib/theme";
 
 const NEXT: Record<ThemeMode, { icon: typeof Sun; to: ThemeMode; label: string }> = {
   dark: { icon: Sun, to: "light", label: "Switch to light mode" },
-  light: { icon: Moon, to: "dark", label: "Switch to dark mode" },
+  light: { icon: Monitor, to: "system", label: "Switch to system mode" },
+  system: { icon: Moon, to: "dark", label: "Switch to dark mode" },
 };
 
 export function StatusBarModeToggle() {

@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { applyThemePreference } from "./theme-dom";
 import { resolveAppearance } from "./look-resolve";
@@ -38,6 +38,23 @@ export function ThemeProvider({ children }: Props) {
     const appearance = resolveAppearance(theme);
     loadFont(appearance.fontSans);
     loadFont(appearance.fontMono);
+  }, [theme]);
+
+  // Listen for OS color-scheme changes when mode is "system". Re-applies the theme so the DOM reflects
+  // the new OS preference without a page reload. Cleanup removes the listener on unmount or mode change.
+  useEffect(() => {
+    if (theme.mode !== "system") return;
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = () => {
+      applyThemePreference(document, theme);
+      saveThemePreference(theme);
+      const appearance = resolveAppearance(theme);
+      loadFont(appearance.fontSans);
+      loadFont(appearance.fontMono);
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, [theme]);
 
   // A local edit: mark dirty and update state+cache. Persistence + reconcile are handled by the hook.

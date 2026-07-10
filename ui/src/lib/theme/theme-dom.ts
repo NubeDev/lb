@@ -17,14 +17,25 @@ import { resolveAppearance } from "./look-resolve";
 import { resolveMotion } from "./resolve-motion";
 import { emitThemeChange } from "./theme-events";
 import { fontById } from "./theme-fonts.data";
-import type { ThemePreference } from "./theme-options";
+import type { ThemeMode, ThemePreference } from "./theme-options";
+
+/** Resolve a mode preference to an effective dark/light value. System mode follows the OS preference. */
+export function resolveEffectiveMode(mode: ThemeMode): "dark" | "light" {
+  if (mode !== "system") return mode;
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+}
 
 export function applyThemePreference(doc: Document, pref: ThemePreference) {
   const root = doc.documentElement;
   const appearance = resolveAppearance(pref);
+  const effectiveMode = resolveEffectiveMode(pref.mode);
+  const colorScheme = pref.mode === "system" ? "light dark" : pref.mode;
 
-  root.classList.toggle("dark", pref.mode === "dark");
-  root.style.colorScheme = pref.mode;
+  root.classList.toggle("dark", effectiveMode === "dark");
+  root.style.colorScheme = colorScheme;
   root.style.setProperty("--radius", appearance.radius);
 
   // A look can change which preset drives the palette; fold it in before resolving colors.

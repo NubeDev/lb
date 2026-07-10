@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyThemePreference } from "./theme-dom";
+import { applyThemePreference, resolveEffectiveMode } from "./theme-dom";
 import { DEFAULT_THEME, type ThemePreference } from "./theme-options";
 import type { CustomTheme } from "./theme-tokens";
 
@@ -137,5 +137,39 @@ describe("theme DOM application", () => {
     // A preference where the member picked the modern look (applyLook stamped radius 1rem).
     applyThemePreference(doc, pref({ look: "modern", radius: "1rem" }));
     expect(doc.documentElement.style.getPropertyValue("--radius")).toBe("1rem");
+  });
+
+  it("applies system mode based on OS preference (dark)", () => {
+    // jsdom has no matchMedia by default; set it up.
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ matches: query === "(prefers-color-scheme: dark)", media: query } as MediaQueryList);
+
+    const doc = document.implementation.createHTMLDocument("theme");
+    applyThemePreference(doc, pref({ mode: "system", preset: "teal", radius: "0.5rem" }));
+
+    expect(doc.documentElement.classList.contains("dark")).toBe(true);
+    expect(doc.documentElement.style.colorScheme).toBe("light dark");
+
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("applies system mode based on OS preference (light)", () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = () =>
+      ({ matches: false } as MediaQueryList);
+
+    const doc = document.implementation.createHTMLDocument("theme");
+    applyThemePreference(doc, pref({ mode: "system", preset: "teal", radius: "0.5rem" }));
+
+    expect(doc.documentElement.classList.contains("dark")).toBe(false);
+    expect(doc.documentElement.style.colorScheme).toBe("light dark");
+
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("resolveEffectiveMode returns dark/light for explicit modes", () => {
+    expect(resolveEffectiveMode("dark")).toBe("dark");
+    expect(resolveEffectiveMode("light")).toBe("light");
   });
 });
