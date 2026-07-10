@@ -88,3 +88,4 @@ desktop/build/linux/executable/lazybones-shell
 desktop/build/linux/full/lazybones-shell
 desktop/build/windows-full/lazybones-shell.exe
 rust/extensions/ds-pick-1783508039542/buildings.db
+.zcode/
