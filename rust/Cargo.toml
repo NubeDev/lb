@@ -39,6 +39,7 @@ members = [
     "crates/prefs",
     "crates/prql",
     "crates/registry",
+    "crates/render",
     "crates/reminders",
     "crates/rules",
     "crates/run-events",
@@ -99,6 +100,7 @@ lb-prefs = { path = "crates/prefs" }
 lb-prql = { path = "crates/prql" }
 lb-reminders = { path = "crates/reminders" }
 lb-registry = { path = "crates/registry" }
+lb-render = { path = "crates/render" }
 lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
@@ -170,6 +172,16 @@ csv = "1"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde_yaml = "0.9"
 base64 = "0.22"
+# Typst PDF render stack (reports scope, ported from lazybones-render). The WHOLE set is exact-pinned
+# to the version proven to compile → PDF bytes on this toolchain (rustc 1.96, the Phase-3a spike); see
+# crates/render. `typst-layout` is a direct dep because `PagedDocument` (compile output / pdf input)
+# is NOT re-exported by `typst`. `comemo` backs Typst's incremental cache. Only `lb-render` uses these.
+typst = "=0.15.0"
+typst-pdf = "=0.15.0"
+typst-assets = { version = "=0.15.0", features = ["fonts"] }
+typst-layout = "=0.15.0"
+comemo = "=0.5.1"
+pulldown-cmark = { version = "0.13", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 chrono-tz = "0.10"
 # The cron "next after T" math (reminders scope): `Cron::find_next_occurrence(&DateTime, inclusive)`

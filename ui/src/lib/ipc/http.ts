@@ -596,6 +596,79 @@ case "dashboard_save": {
       return getJson<T>(`${base}/panels/${enc(id)}/usage`);
     }
 
+    // ── reports (reports scope): the browser's `report.*` CRUD + share + the binary PDF export.
+    //    Owner + workspace come from the token (§7). `report_export` posts client-captured panel
+    //    snapshots and returns raw `%PDF` bytes (a Blob), NOT JSON — through `postBytes`. ──
+    case "report_list":
+      return getJson<T>(`${base}/reports`);
+    case "report_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/reports/${enc(id)}`);
+    }
+    case "report_save": {
+      const { id, title, blocks, brandId, toolbar } = args as {
+        id: string;
+        title: string;
+        blocks?: unknown[];
+        brandId?: string;
+        toolbar?: unknown;
+      };
+      return postJson<T>(`${base}/reports`, { id, title, blocks, brandId, toolbar });
+    }
+    case "report_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/reports/${enc(id)}`);
+    }
+    case "report_share": {
+      const { id, visibility, team } = args as { id: string; visibility: string; team?: string };
+      return postJson<T>(`${base}/reports/${enc(id)}/share`, { visibility, team });
+    }
+    case "report_export": {
+      const { id, snapshots } = args as { id: string; snapshots: unknown[] };
+      // Returns a `application/pdf` Blob, not JSON. `T` is `Blob` at the call site.
+      return postBytes(`${base}/reports/${enc(id)}/export.pdf`, { snapshots }) as Promise<T>;
+    }
+
+    // ── brand profiles (reports scope): the browser's `brand.*` CRUD (workspace-shared, no
+    //    visibility tiers). Owner comes from the token (§7). ──
+    case "brand_list":
+      return getJson<T>(`${base}/brands`);
+    case "brand_get": {
+      const { id } = args as { id: string };
+      return getJson<T>(`${base}/brands/${enc(id)}`);
+    }
+    case "brand_save": {
+      const { id, name, logoAssetId, colors, fonts, headerText, footerText } = args as {
+        id: string;
+        name: string;
+        logoAssetId?: string;
+        colors?: unknown;
+        fonts?: unknown;
+        headerText?: string;
+        footerText?: string;
+      };
+      return postJson<T>(`${base}/brands`, {
+        id,
+        name,
+        logoAssetId,
+        colors,
+        fonts,
+        headerText,
+        footerText,
+      });
+    }
+    case "brand_delete": {
+      const { id } = args as { id: string };
+      return delJson<T>(`${base}/brands/${enc(id)}`);
+    }
+
+    // ── binary assets (reports scope): raw byte PUT for report image blocks + brand logos. The
+    //    bytes travel base64-encoded over JSON; the gateway decodes to raw `Vec<u8>`. ──
+    case "assets_put_asset": {
+      const { id, mime, bytes } = args as { id: string; mime: string; bytes: string };
+      return postJson<T>(`${base}/assets`, { id, mime, bytes });
+    }
+
     // ── nav (nav scope): the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
     //    renders + the member-owned pick + the workspace-default pointer. The owner + workspace come
     //    from the token (§7); the per-user pick is keyed to the token `sub` (a caller cannot curate
@@ -895,6 +968,18 @@ async function postJson<T>(url: string, body: unknown, auth = true): Promise<T> 
   if (!res.ok) throw await requestError(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+/** POST a JSON body and receive raw bytes (a `Blob`), NOT JSON — the binary-export path (report PDF).
+ *  The gateway returns `application/pdf` bytes; the caller downloads/previews the Blob. */
+async function postBytes(url: string, body: unknown): Promise<Blob> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await requestError(res);
+  return await res.blob();
 }
 
 /** Turn a non-OK response into an `Error`. A `401` on a request we DID authenticate means the stored

@@ -61,6 +61,8 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "nav.",
     "layout.",
     "panel.",
+    "report.",
+    "brand.",
     "channel.",
     "viz.",
     "template.",
@@ -367,6 +369,12 @@ async fn dispatch_at_depth(
         } else if qualified_tool.starts_with("panel.") {
             // library-panels scope: the reusable panel asset. Same store-only surface as dashboards.
             crate::call_panel_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("report.") {
+            // reports scope: the report-builder asset. Store-only surface (export is a gateway route).
+            crate::call_report_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("brand.") {
+            // reports scope: the reusable brand-profile asset. Store-only surface.
+            crate::call_brand_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("channel.chart_pref.") {
             // channel query charts: a viewer's per-item plot override. The outer gate ran
             // `mcp:channel.chart_pref.<verb>:call`; the verb re-checks the channel `sub` gate.

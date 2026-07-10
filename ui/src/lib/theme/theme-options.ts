@@ -50,6 +50,13 @@ export type HeaderStyle = (typeof HEADER_STYLES)[number];
 export const NAV_MODES = ["sidebar", "topmenu"] as const;
 export type NavMode = (typeof NAV_MODES)[number];
 
+/** Where the top-menu nav triggers sit within the floating menubar (shell-chrome-layout scope). Only
+ *  meaningful when `nav === "topmenu"`: `start` hugs the brand (desktop-app convention); `center`
+ *  floats the trigger group between the pinned brand (left) and account cluster (right). Defaults to
+ *  `start` so a stored theme with no field renders unchanged. */
+export const MENU_ALIGNS = ["start", "center"] as const;
+export type MenuAlign = (typeof MENU_ALIGNS)[number];
+
 export interface ThemeLayout {
   variant: SidebarVariant;
   collapsible: SidebarCollapsible;
@@ -58,6 +65,8 @@ export interface ThemeLayout {
   header: HeaderStyle;
   /** Workspace-nav mode. Defaults to `sidebar` so a stored theme with no field renders unchanged. */
   nav: NavMode;
+  /** Top-menu trigger alignment (topmenu mode only). Defaults to `start`. */
+  menuAlign: MenuAlign;
 }
 
 export const DEFAULT_LAYOUT: ThemeLayout = {
@@ -66,6 +75,7 @@ export const DEFAULT_LAYOUT: ThemeLayout = {
   side: "left",
   header: "band",
   nav: "sidebar",
+  menuAlign: "start",
 };
 
 /** A member's full theme preference. `preset` is a built-in id OR a library preset id; `custom` holds
@@ -149,6 +159,7 @@ function normalizeLayout(value: unknown): ThemeLayout {
     side: SIDEBAR_SIDES.includes(c.side as SidebarSide) ? (c.side as SidebarSide) : DEFAULT_LAYOUT.side,
     header: HEADER_STYLES.includes(c.header as HeaderStyle) ? (c.header as HeaderStyle) : DEFAULT_LAYOUT.header,
     nav: NAV_MODES.includes(c.nav as NavMode) ? (c.nav as NavMode) : DEFAULT_LAYOUT.nav,
+    menuAlign: MENU_ALIGNS.includes(c.menuAlign as MenuAlign) ? (c.menuAlign as MenuAlign) : DEFAULT_LAYOUT.menuAlign,
   };
 }
 

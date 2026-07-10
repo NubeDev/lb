@@ -1,0 +1,19 @@
+[package]
+name = "lb-render"
+version.workspace = true
+# NOTE: edition 2024 is REQUIRED by the pinned typst 0.15 stack and is set explicitly here
+# because the workspace default is edition 2021 (this crate is the sole 2024 island).
+edition = "2024"
+rust-version = "1.93"
+license.workspace = true
+
+[dependencies]
+# The exact-pinned Typst render set — see the root Cargo.toml note (Phase-3a spike proven).
+typst = { workspace = true }
+typst-pdf = { workspace = true }
+typst-assets = { workspace = true }
+typst-layout = { workspace = true }
+comemo = { workspace = true }
+# Markdown → Typst markup (the main port risk + most-tested piece).
+pulldown-cmark = { workspace = true }
+thiserror = { workspace = true }

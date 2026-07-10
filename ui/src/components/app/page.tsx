@@ -10,7 +10,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
-import { useTheme } from "@/lib/theme";
+import { useThemeOptional } from "@/lib/theme";
 import { Reveal } from "@/lib/motion";
 import { AppPageHeader } from "./page-header";
 import { HeaderBreadcrumbs } from "./header-breadcrumbs";
@@ -53,9 +53,20 @@ export function AppPage({
   const inPane = embedded ?? ctxEmbedded;
   // The header style is a member choice (Settings → Theme → Layout → Header). `band` (default) is
   // today's AppPageHeader icon-chip band; `breadcrumbs` renders the breadcrumb trail. Both carry the
-  // same actions slot (workspace chip + Settings gear). Chosen here — the one place the header mounts.
-  const { theme } = useTheme();
-  const Header = theme.layout.header === "breadcrumbs" ? HeaderBreadcrumbs : AppPageHeader;
+  // same actions slot (workspace chip + Settings gear). The OPTIONAL hook lets a host that mounts
+  // AppPage without a ThemeProvider (e.g. a standalone /panel render) fall back to `band` gracefully.
+  const ctx = useThemeOptional();
+  // Top-menu mode already puts a full-width chrome bar above the page; stacking the tall `band` header
+  // under it reads as two competing headers. So in top-menu mode we always use the slim breadcrumb
+  // header (the menubar + breadcrumb pairing, à la VS Code / Linear) regardless of the header axis —
+  // the axis still fully controls the sidebar layout. `band` only pairs with the sidebar.
+  const layout = ctx?.theme.layout;
+  // Top-menu mode already floats a full nav card above the page; the tall `band` header under it
+  // reads as two competing headers, so top-menu mode always uses the slim breadcrumb trail (the
+  // menubar + breadcrumb pairing, à la VS Code / Linear). The header axis still fully controls the
+  // sidebar layout; `band` only pairs with the sidebar.
+  const header = layout?.nav === "topmenu" ? "breadcrumbs" : layout?.header ?? "band";
+  const Header = header === "breadcrumbs" ? HeaderBreadcrumbs : AppPageHeader;
   return (
     <section aria-label={label} className="flex h-full min-w-0 flex-col bg-bg text-fg">
       {!inPane && (

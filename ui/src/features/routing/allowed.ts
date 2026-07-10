@@ -48,6 +48,7 @@ export function allowedSurfaces(caps: string[] | undefined): CoreSurface[] {
   // The workspace-default + agent controls inside it are cap-gated per-control (admin), server-enforced.
   const allowed: CoreSurface[] = ["channels", "inbox", "outbox", "settings"];
   if (hasCap(caps, CAP.dashboardList)) allowed.push("dashboards");
+  if (hasCap(caps, CAP.reportList)) allowed.push("reports");
   if (hasCap(caps, CAP.rulesRun)) allowed.push("rules");
   if (hasCap(caps, CAP.flowsList)) allowed.push("flows");
   if (hasCap(caps, CAP.datasourceList)) allowed.push("datasources");

@@ -35,7 +35,7 @@ const WIDENED: ThemePreference = {
   fontMono: "jetbrains-mono",
   surface: "glass",
   motion: "full",
-  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "breadcrumbs", nav: "topmenu" },
+  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "breadcrumbs", nav: "topmenu", menuAlign: "center" },
 };
 
 const TEAL: ThemePreference = {
@@ -43,14 +43,14 @@ const TEAL: ThemePreference = {
   preset: "teal",
   radius: "0.75rem",
   look: "default",
-  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "band", nav: "sidebar" },
+  layout: { variant: "floating", collapsible: "offcanvas", side: "right", header: "band", nav: "sidebar", menuAlign: "start" },
 };
 const AMBER_LIGHT: ThemePreference = {
   mode: "light",
   preset: "amber",
   radius: "0.5rem",
   look: "default",
-  layout: { variant: "sidebar", collapsible: "icon", side: "left", header: "band", nav: "sidebar" },
+  layout: { variant: "sidebar", collapsible: "icon", side: "left", header: "band", nav: "sidebar", menuAlign: "start" },
 };
 
 beforeAll(() => useRealGateway());
@@ -89,6 +89,11 @@ describe("theme persistence over prefs (real gateway)", () => {
     expect(restored?.surface).toBe("glass");
     expect(restored?.motion).toBe("full");
     expect(restored?.fontSans).toBe("inter");
+    // The shell-chrome-layout axes (header style + nav mode) round-trip through the real prefs
+    // path verbatim — proves the new fields are NOT silently dropped by the opaque ui_theme blob
+    // (the dashboard-variable-closed-struct / prefs-closed-struct class of bug).
+    expect(restored?.layout.header).toBe("breadcrumbs");
+    expect(restored?.layout.nav).toBe("topmenu");
   });
 
   it("folds member over workspace-default; a member with none inherits the default", async () => {

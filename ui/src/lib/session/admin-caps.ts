@@ -65,6 +65,13 @@ export const CAP = {
   // dashboard (Dashboards page): member-level — the nav entry shows for any session that may list
   // dashboards; gate 3 / ownership still decides which specific ones they see/edit.
   dashboardList: "mcp:dashboard.list:call",
+  // reports (report-builder scope): member-level — the Reports nav entry shows for any session that
+  // may list reports; the gateway re-checks every verb server-side. `reportSave` gates authoring,
+  // `reportExport` the snapshot→PDF pass, and `brandSave` the brand-profile write (shared BrandPicker).
+  reportList: "mcp:report.list:call",
+  reportSave: "mcp:report.save:call",
+  reportExport: "mcp:report.export:call",
+  brandSave: "mcp:brand.save:call",
   dashboardGet: "mcp:dashboard.get:call",
   dashboardSave: "mcp:dashboard.save:call",
   // dashboardDeleteAny — ADMIN override: the host checks this as a second gate inside

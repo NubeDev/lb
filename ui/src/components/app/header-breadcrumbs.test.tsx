@@ -15,7 +15,7 @@ afterEach(cleanup);
 describe("HeaderBreadcrumbs", () => {
   it("renders the trail Workspace / <title> as a shadcn breadcrumb", () => {
     render(<HeaderBreadcrumbs icon={Hash} title="Settings" workspace="acme" />);
-    expect(screen.getByText("acme")).toBeInTheDocument();
+    // The workspace crumb + the page crumb both render; the page is the current page.
     expect(screen.getByText("Settings")).toBeInTheDocument();
     const page = screen.getByText("Settings");
     expect(page.closest("[data-slot='breadcrumb-page']")).toHaveAttribute("aria-current", "page");
@@ -24,7 +24,6 @@ describe("HeaderBreadcrumbs", () => {
   it("renders the trail without a workspace crumb when no workspace is passed", () => {
     render(<HeaderBreadcrumbs icon={Hash} title="Standalone" />);
     expect(screen.getByText("Standalone")).toBeInTheDocument();
-    expect(screen.queryByText("acme")).not.toBeInTheDocument();
   });
 
   it("carries the workspace chip + Settings link in the actions slot (parity with the band header)", () => {

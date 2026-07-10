@@ -14,6 +14,8 @@ mod agent_config;
 mod agent_defs;
 mod agent_invoke;
 mod assets;
+mod assets_bin;
+mod brand;
 mod bus;
 mod catalog;
 mod channel_registry;
@@ -42,6 +44,7 @@ mod outbox;
 mod panel;
 mod post;
 mod prefs;
+mod report;
 mod rules;
 mod run_control;
 mod run_stream;
@@ -77,6 +80,8 @@ pub use agent_invoke::agent_invoke;
 pub use assets::{
     get_doc, grant_skill, link_doc, list_docs, load_skill, put_doc, put_skill, share_doc,
 };
+pub use assets_bin::{get_asset_bin, put_asset as put_asset_bin};
+pub use brand::{delete_brand, get_brand, list_brands, save_brand};
 pub use bus::{bus_stream, publish_message};
 pub use catalog::{get_catalog, render_message as render_catalog_message, set_catalog};
 pub use channel_registry::{create_channel, list_channels};
@@ -129,6 +134,9 @@ pub use post::post_message;
 pub use prefs::{
     convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,
     set_default_prefs, set_prefs,
+};
+pub use report::{
+    delete_report, export_report, get_report, list_reports, save_report, share_report,
 };
 pub use rules::{delete_rule, get_rule, list_rules, run_rule, save_rule};
 pub use run_control::run_control;

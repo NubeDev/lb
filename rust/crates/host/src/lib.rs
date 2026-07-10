@@ -15,6 +15,7 @@ mod approval_reactor;
 mod assets;
 mod authz;
 mod boot;
+mod brand;
 mod bus;
 mod callback;
 mod channel;
@@ -49,6 +50,7 @@ mod reload;
 mod reminder;
 mod remote;
 mod render_templates;
+mod report;
 mod role;
 mod rules;
 mod run_events;
@@ -192,6 +194,10 @@ pub mod flow_engine {
     pub use crate::flows::retain_runs::{retain_runs, DEFAULT_FINISHED_RUN_CAP};
     pub use crate::flows::run_store::set_run_status;
 }
+pub use brand::{
+    brand_delete, brand_get, brand_list, brand_save, call_brand_tool, seed_default_brand, Brand,
+    BrandColors, BrandError, BrandFonts, BrandSummary,
+};
 pub use credential::{
     call_credential_tool, credential_verify, identity_set_credential, CredentialCheck,
     CredentialError,
@@ -228,6 +234,7 @@ pub use installed::installed;
 pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
 };
+pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
@@ -252,6 +259,11 @@ pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
     panel_usage, validate_and_strip_refs, Panel, PanelError, PanelSpec, PanelSummary,
     PanelUsageRow, Visibility as PanelVisibility,
+};
+pub use report::{
+    call_report_tool, report_delete, report_export, report_get, report_list, report_save,
+    report_share, Block as ReportBlock, Report, ReportError, ReportSummary, ReportVisibility,
+    MAX_BLOCKS,
 };
 pub use weather::{call_weather_tool, weather_current, WeatherCurrent, OPEN_METEO_BASE_ENV};
 // The production sidecar launcher, re-exported so a caller that drives `call_sidecar` (e.g. the

@@ -14,11 +14,11 @@ import { LineChart } from "lucide-react";
 import { AppPage } from "@/components/app/page";
 import { AppEmptyState } from "@/components/app/empty-state";
 import { Input } from "@/components/ui/input";
-import { WidgetHost } from "@/features/dashboard/WidgetHost";
 import { DashboardCacheProvider } from "@/features/dashboard/cache/DashboardQueryProvider";
 import { useVarScope } from "@/features/dashboard/vars/useVarScope";
-import { specToCell, getPanel, type Panel } from "@/lib/panel";
+import { getPanel, type Panel } from "@/lib/panel";
 import type { DashboardSearch } from "@/features/routing/search";
+import { PanelEmbed } from "./PanelEmbed";
 
 interface Props {
   ws: string;
@@ -100,7 +100,7 @@ function PanelPageInner({ ws, id, range, onSearchChange }: Props) {
         />
       ) : (
         <div className="min-h-0 flex-1" data-testid="standalone-panel">
-          <WidgetHost cell={specToCell(id, panel.spec)} range={range} workspace={ws} scope={scope} />
+          <PanelEmbed ws={ws} id={id} spec={panel.spec} range={range} scope={scope} />
         </div>
       )}
     </AppPage>

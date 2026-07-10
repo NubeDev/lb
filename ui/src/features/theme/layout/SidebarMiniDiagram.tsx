@@ -5,7 +5,7 @@
 
 import { cn } from "@/lib/utils";
 
-import type { HeaderStyle, NavMode, SidebarCollapsible, SidebarSide, SidebarVariant } from "@/lib/theme";
+import type { HeaderStyle, MenuAlign, NavMode, SidebarCollapsible, SidebarSide, SidebarVariant } from "@/lib/theme";
 
 /** Menu-line marks inside the rail. */
 function Lines({ vertical = false }: { vertical?: boolean }) {
@@ -148,6 +148,27 @@ export function NavDiagram({ nav }: { nav: NavMode }) {
         <div className="h-1.5 w-7 rounded-sm bg-fg/35" />
       </div>
       <Pane />
+    </div>
+  );
+}
+
+/** The menu-alignment preview (topmenu only): a floating menubar with the brand pinned left, the
+ *  account chip pinned right, and the trigger group either hugging the brand (`start`) or centered. */
+export function MenuAlignDiagram({ align }: { align: MenuAlign }) {
+  const triggers = (
+    <div className="flex items-center gap-1">
+      <div className="h-1.5 w-4 rounded-sm bg-fg/55" />
+      <div className="h-1.5 w-4 rounded-sm bg-fg/45" />
+      <div className="h-1.5 w-4 rounded-sm bg-fg/35" />
+    </div>
+  );
+  return (
+    <div className="flex h-12 flex-col justify-center rounded-md border border-border bg-bg p-1.5">
+      <div className="flex items-center gap-1.5 rounded-md border border-border bg-panel px-1.5 py-1">
+        <div className="h-2 w-2 shrink-0 rounded-sm bg-accent/70" />
+        <div className={cn("flex flex-1", align === "center" ? "justify-center" : "justify-start")}>{triggers}</div>
+        <div className="h-2 w-2 shrink-0 rounded-full bg-fg/40" />
+      </div>
     </div>
   );
 }

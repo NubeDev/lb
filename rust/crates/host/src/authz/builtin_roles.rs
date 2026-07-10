@@ -205,6 +205,11 @@ const VIEWER_CAPS: &[&str] = &[
     "mcp:panel.get:call",
     "mcp:panel.list:call",
     "mcp:panel.usage:call",
+    // reports — a viewer READS reports + brand profiles (a report is a LENS; export is author-gated).
+    "mcp:report.get:call",
+    "mcp:report.list:call",
+    "mcp:brand.get:call",
+    "mcp:brand.list:call",
     // nav READS — a viewer resolves the menu they were given. save/delete/share/set_default are admin.
     "mcp:nav.get:call",
     "mcp:nav.list:call",
@@ -322,6 +327,14 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:panel.save:call",
     "mcp:panel.delete:call",
     "mcp:panel.share:call",
+    // reports — a member authors + shares + exports reports and authors brand profiles.
+    // `report.export` is a CONCRETE cap (not covered by any wildcard) — the view-but-not-export line.
+    "mcp:report.save:call",
+    "mcp:report.delete:call",
+    "mcp:report.share:call",
+    "mcp:report.export:call",
+    "mcp:brand.save:call",
+    "mcp:brand.delete:call",
     // scripted-view templates — a member's own (author-ownership owns which).
     "mcp:template.save:call",
     "mcp:template.get:call",

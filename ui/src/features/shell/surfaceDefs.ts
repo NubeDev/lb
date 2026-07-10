@@ -13,6 +13,7 @@ import {
   Boxes,
   CalendarClock,
   Database,
+  FileText,
   FlaskConical,
   Hash,
   Inbox,
@@ -49,6 +50,7 @@ export interface SurfaceDef {
 export const SURFACE_DEF: Record<CoreSurface, SurfaceDef> = {
   channels: { key: "channels", icon: Hash, label: "Channels" },
   dashboards: { key: "dashboards", icon: LayoutDashboard, label: "Dashboards" },
+  reports: { key: "reports", icon: FileText, label: "Reports" },
   rules: { key: "rules", icon: ScrollText, label: "Rules" },
   flows: { key: "flows", icon: Workflow, label: "Flows" },
   datasources: { key: "datasources", icon: Plug, label: "Datasources" },

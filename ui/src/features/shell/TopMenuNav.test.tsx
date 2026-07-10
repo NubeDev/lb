@@ -51,18 +51,18 @@ function renderMenu(props: {
 describe("TopMenuNav — fallback (no resolved nav)", () => {
   it("renders each SURFACE_GROUPS bucket as a menubar menu trigger", () => {
     renderMenu({ allowed: ["channels", "dashboards", "flows", "datasources", "system"] });
-    // The buckets with at least one allowed surface appear as triggers.
-    expect(screen.getByRole("button", { name: "Workspace" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Automation" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Data" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    // Radix Menubar triggers expose role="menuitem"; the buckets with at least one allowed surface appear.
+    expect(screen.getByRole("menuitem", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Automation" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Data" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "System" })).toBeInTheDocument();
   });
 
   it("omits a group whose members are all cap-stripped (no empty menu)", () => {
     renderMenu({ allowed: ["channels"] });
-    expect(screen.getByRole("button", { name: "Workspace" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Automation" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Data" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Automation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Data" })).not.toBeInTheDocument();
   });
 
   it("navigates via onSelect when a menu item is clicked", async () => {
@@ -80,8 +80,8 @@ describe("TopMenuNav — fallback (no resolved nav)", () => {
         </BrandingProvider>
       </ThemeProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Automation" }));
-    // The Flows item opens in the dropdown.
+    await user.click(screen.getByRole("menuitem", { name: "Automation" }));
+    // The Flows item opens in the dropdown (radix menubar items share role="menuitem").
     await user.click(screen.getByRole("menuitem", { name: /^Flows/ }));
     expect(onSelect).toHaveBeenCalledWith("flows");
   });
@@ -99,10 +99,10 @@ describe("TopMenuNav — resolved nav", () => {
       },
     ];
     renderMenu({ allowed: ["channels", "dashboards", "rules", "flows"], resolvedItems });
-    expect(screen.getByRole("button", { name: "Menu" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Admin" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Menu" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Admin" })).toBeInTheDocument();
     // A surface in `allowed` but NOT in the resolved menu is HIDDEN (the resolved menu wins).
-    expect(screen.queryByRole("button", { name: "Workspace" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Workspace" })).not.toBeInTheDocument();
   });
 });
 
@@ -113,14 +113,14 @@ describe("TopMenuNav — affordance parity with the rail", () => {
       pinned: [{ kind: "surface", label: "Rules", surface: "rules" }],
       extSlots: [{ ext: "weather", label: "Weather" }],
     });
-    expect(screen.getByRole("button", { name: /Pinned/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Extensions/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Pinned/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Extensions/ })).toBeInTheDocument();
   });
 
   it("keeps extension ids opaque — no branch on identity", () => {
     // The ext slot is rendered as an ext:<id> surface; the id is opaque data, never a special case.
     renderMenu({ allowed: ["channels"], extSlots: [{ ext: "mqtt", label: "MQTT" }] });
-    expect(screen.getByRole("button", { name: /Extensions/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Extensions/ })).toBeInTheDocument();
   });
 
   it("carries the no-lockout escape hatch + Sign out in the account menu", async () => {
@@ -141,7 +141,7 @@ describe("TopMenuNav — affordance parity with the rail", () => {
         </BrandingProvider>
       </ThemeProvider>,
     );
-    await user.click(screen.getByRole("button", { name: "Account" }));
+    await user.click(screen.getByRole("menuitem", { name: "Account" }));
     await user.click(screen.getByRole("menuitem", { name: /Show all pages/ }));
     expect(onShowAllPages).toHaveBeenCalledOnce();
   });
@@ -149,6 +149,6 @@ describe("TopMenuNav — affordance parity with the rail", () => {
   it("subtracts the workspace hidden-set from the fallback menus", () => {
     renderMenu({ allowed: ["channels", "dashboards", "flows"], hidden: ["dashboards"] });
     // Dashboards is hidden; Channels still reaches its group.
-    expect(screen.getByRole("button", { name: "Workspace" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Workspace" })).toBeInTheDocument();
   });
 });

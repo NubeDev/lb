@@ -188,18 +188,24 @@ Per `scope/testing/testing-scope.md`. This is a frontend, prefs-backed feature �
 
 ## Open questions
 
+> **Resolved at ship time (2026-07-10) — see the session doc for the reasoning.** All four resolved
+> as the recommended lean. The depth/responsive/registry items are named follow-ups, not silent gaps.
+
 - **Breadcrumb depth.** v1 is `Workspace / <surface> [/ <page title>]`. Do any surfaces (Dashboards
   → a specific board, Studio → a tab) want a real third segment now, or is that a follow-up? (Lean:
-  follow-up; ship two-level first.)
+  follow-up; ship two-level first.) **Resolved: deferred — v1 ships two-level.** A deeper multi-
+  segment trail (with a per-page sub-title registry) is a named follow-up.
 - **Top-menu overflow placement.** Should Pinned + Extensions be their own menus, or fold into a
   single right-aligned "More ▾"? (Lean: Pinned and Extensions as their own menus when non-empty;
-  Sign out + escape hatch in a right-aligned account/overflow menu.)
+  Sign out + escape hatch in a right-aligned account/overflow menu.) **Resolved as recommended.**
 - **Collapsed narrow-viewport top menu.** Do we collapse the whole `Menubar` into one "Menu ▾"
   button below some width in v1, or defer responsive behavior? (Lean: defer; desktop-first.)
+  **Resolved: deferred — desktop-first.** Responsive collapse is a named follow-up.
 - **Does the top menu replace *or* co-exist with the sidebar's collapse toggle / brand?** The brand
   mark currently lives in the sidebar header and doubles as the collapse toggle. In top-menu mode
   where does the brand go — leading item of the menubar? (Lean: brand as the leading, non-menu
-  element of the menubar.)
+  element of the menubar.) **Resolved as recommended — the brand is the leading, non-menu element
+  (static `BrandHeader`, `canToggle=false`: there's no sidebar to collapse in top-menu mode).**
 
 ## Related
 

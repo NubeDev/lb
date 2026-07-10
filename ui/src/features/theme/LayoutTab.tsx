@@ -8,12 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import {
   HEADER_STYLES,
+  MENU_ALIGNS,
   NAV_MODES,
   SIDEBAR_COLLAPSIBLES,
   SIDEBAR_SIDES,
   SIDEBAR_VARIANTS,
   useTheme,
   type HeaderStyle,
+  type MenuAlign,
   type NavMode,
   type SidebarCollapsible,
   type SidebarSide,
@@ -24,6 +26,7 @@ import { OptionCard } from "./layout/OptionCard";
 import {
   CollapsibleDiagram,
   HeaderDiagram,
+  MenuAlignDiagram,
   NavDiagram,
   SideDiagram,
   VariantDiagram,
@@ -53,10 +56,15 @@ const NAV_HINT: Record<NavMode, string> = {
   sidebar: "Left navigation rail (today)",
   topmenu: "Horizontal menu bar above content",
 };
+const MENU_ALIGN_LABEL: Record<MenuAlign, string> = { start: "Left", center: "Center" };
+const MENU_ALIGN_HINT: Record<MenuAlign, string> = {
+  start: "Menu hugs the brand",
+  center: "Menu centered in the bar",
+};
 
 export function LayoutTab() {
   const { theme, setLayout } = useTheme();
-  const { variant, collapsible, side, header, nav } = theme.layout;
+  const { variant, collapsible, side, header, nav, menuAlign } = theme.layout;
   // When the nav mode is `topmenu`, the sidebar-specific axes (variant/collapsible/side) no longer
   // affect the layout — they're kept (never cleared) but visibly marked "sidebar only" so there's no
   // hidden state and no dead end. Switching back to `sidebar` restores them intact.
@@ -107,6 +115,33 @@ export function LayoutTab() {
           ))}
         </div>
       </div>
+
+      {/* Menu alignment (shell-chrome-layout scope) — only meaningful in top-menu mode. Shown just
+          under Navigation so it reads as a sub-choice of it; hidden in sidebar mode (no dead control). */}
+      {nav === "topmenu" && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <div>
+              <Label>Menu alignment</Label>
+              <p className="mt-1 text-xs text-muted">{MENU_ALIGN_HINT[menuAlign]}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {MENU_ALIGNS.map((a) => (
+                <OptionCard
+                  key={a}
+                  name={MENU_ALIGN_LABEL[a]}
+                  aria-label={`Menu alignment ${MENU_ALIGN_LABEL[a]}`}
+                  selected={menuAlign === a}
+                  onSelect={() => setLayout({ menuAlign: a })}
+                >
+                  <MenuAlignDiagram align={a} />
+                </OptionCard>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <Separator />
 

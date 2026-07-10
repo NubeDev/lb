@@ -74,88 +74,83 @@ export function RoutedShell() {
     void navigate({ to: fullPathForSurface(ctx.workspace, "dashboards"), search });
   };
 
+  // The page body (the routed page + the agent dock + the StatusBar) is identical in both nav modes —
+  // only the chrome around it differs. Extracted so each mode wraps it in its own layout tree.
+  const pageBody = (
+    <PageContextProvider>
+      <div className="flex h-full min-w-0 flex-col overflow-hidden">
+        {/* The routed page + the agent dock share a horizontal row: the dock shrinks the page
+            (reflow), and because it is shell-mounted it survives navigation (agent-dock scope). */}
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <Outlet />
+          </div>
+          {dock.open && (
+            <AgentDock
+              ws={ctx.workspace}
+              principal={ctx.principal}
+              width={dock.width}
+              onWidth={dock.setWidth}
+              onClose={closeDock}
+              onRunningChange={setDockRunning}
+            />
+          )}
+        </div>
+        {/* The ops strip: session facts (workspace wall, identity, cap count) always in view; the
+            dock launcher + run pip ride at its right edge. */}
+        <StatusBar
+          workspace={ctx.workspace}
+          principal={ctx.principal}
+          capCount={ctx.caps?.length ?? 0}
+          trailing={
+            <DockLauncher
+              ref={launcherRef}
+              open={dock.open}
+              running={dockRunning}
+              onToggle={dock.toggle}
+            />
+          }
+        />
+      </div>
+    </PageContextProvider>
+  );
+
+  const navProps = {
+    active,
+    onSelect: selectSurface,
+    onSignOut: ctx.onSignOut,
+    allowed: ctx.allowed,
+    extSlots: ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label })),
+    resolvedItems,
+    onSelectDashboard: selectDashboard,
+    hidden,
+    pinned,
+    onTogglePin: togglePin,
+    usingBuiltin,
+    onShowAllPages: showAllPages,
+    onUseMyMenu: useMyMenu,
+  };
+
+  // TOP-MENU MODE: the TopMenuNav spans the FULL WIDTH above the content (a vertical stack), and the
+  // left NavRail is omitted entirely — no SidebarProvider row, so the menu never lands in the left
+  // column. SIDEBAR MODE: the shipped SidebarProvider row (NavRail | SidebarInset) — unchanged.
+  if (theme.layout.nav === "topmenu") {
+    return (
+      <div className="flex h-full min-w-0 flex-col bg-bg">
+        <TopMenuNav {...navProps} />
+        <div className="min-h-0 flex-1 overflow-hidden">{pageBody}</div>
+      </div>
+    );
+  }
+
   return (
     <SidebarProvider
       defaultOpen={sidebarDefaultOpen()}
       collapsible={theme.layout.collapsible}
       className="h-full bg-bg"
     >
-      {/* The workspace-nav mode (shell-chrome-layout scope): `sidebar` (default) mounts the left
-          NavRail as today; `topmenu` mounts a horizontal TopMenuNav ABOVE the content and OMITS the
-          rail (the chosen renderer is the *only* nav mounted — no phantom collapsed sidebar). The
-          nav data is identical; only the renderer differs. */}
-      {theme.layout.nav === "topmenu" ? (
-        <TopMenuNav
-          active={active}
-          onSelect={selectSurface}
-          onSignOut={ctx.onSignOut}
-          allowed={ctx.allowed}
-          extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
-          resolvedItems={resolvedItems}
-          onSelectDashboard={selectDashboard}
-          hidden={hidden}
-          pinned={pinned}
-          onTogglePin={togglePin}
-          usingBuiltin={usingBuiltin}
-          onShowAllPages={showAllPages}
-          onUseMyMenu={useMyMenu}
-        />
-      ) : (
-        <NavRail
-          active={active}
-          onSelect={selectSurface}
-          onSignOut={ctx.onSignOut}
-          allowed={ctx.allowed}
-          extSlots={ctx.extPages.map((p) => ({ ext: p.ext, label: p.ui.label }))}
-          resolvedItems={resolvedItems}
-          onSelectDashboard={selectDashboard}
-          hidden={hidden}
-          pinned={pinned}
-          onTogglePin={togglePin}
-          usingBuiltin={usingBuiltin}
-          onShowAllPages={showAllPages}
-          onUseMyMenu={useMyMenu}
-        />
-      )}
-
-      <SidebarInset className="min-w-0 overflow-hidden">
-        <PageContextProvider>
-          <div className="flex h-full min-w-0 flex-col overflow-hidden">
-            {/* The routed page + the agent dock share a horizontal row: the dock shrinks the page
-                (reflow), and because it is shell-mounted it survives navigation (agent-dock scope). */}
-            <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-                <Outlet />
-              </div>
-              {dock.open && (
-                <AgentDock
-                  ws={ctx.workspace}
-                  principal={ctx.principal}
-                  width={dock.width}
-                  onWidth={dock.setWidth}
-                  onClose={closeDock}
-                  onRunningChange={setDockRunning}
-                />
-              )}
-            </div>
-            {/* The ops strip: session facts (workspace wall, identity, cap count) always in view; the
-                dock launcher + run pip ride at its right edge. */}
-            <StatusBar
-              workspace={ctx.workspace}
-              principal={ctx.principal}
-              capCount={ctx.caps?.length ?? 0}
-              trailing={
-                <DockLauncher
-                  ref={launcherRef}
-                  open={dock.open}
-                  running={dockRunning}
-                  onToggle={dock.toggle}
-                />
-              }
-            />
-          </div>
-        </PageContextProvider>
-      </SidebarInset>
+      <NavRail {...navProps} />
+      <SidebarInset className="min-w-0 overflow-hidden">{pageBody}</SidebarInset>
     </SidebarProvider>
   );
 }

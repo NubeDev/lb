@@ -9,6 +9,7 @@ import type { CoreSurface, Surface } from "@/features/shell";
 export const CORE_PATHS: Record<CoreSurface, string> = {
   channels: "/channels",
   dashboards: "/dashboards",
+  reports: "/reports",
   rules: "/rules",
   flows: "/flows",
   datasources: "/datasources",

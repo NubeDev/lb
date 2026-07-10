@@ -17,6 +17,7 @@ import { AdminView, WebhooksAdmin } from "@/features/admin";
 import { ChannelView } from "@/features/channel";
 import { DashboardView, DashboardsManagerPage } from "@/features/dashboard";
 import { PanelPage } from "@/features/panel";
+import { ReportsView } from "@/features/reports";
 import { PanelWizard } from "@/features/panel-builder/wizard/PanelWizard";
 import { PICK_DASHBOARD } from "@/features/panel-builder/wizard/steps";
 import type { Cell } from "@/lib/dashboard";
@@ -276,6 +277,7 @@ const routeTree = rootRoute.addChildren([
     newPanelRoute,
     panelRoute,
     dataStudioRoute,
+    coreRoute("/reports", "reports", () => <ReportsView />),
     coreRoute("/rules", "rules", () => <Rules />),
     rulesDetailRoute,
     coreRoute("/flows", "flows", () => <Flows />),

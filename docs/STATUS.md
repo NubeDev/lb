@@ -16,6 +16,46 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new
+**appearance axes** on the existing Layout tab (Settings → Theme → Layout), additive and
+migration-safe, riding the same `ui_theme` prefs blob as every other Layout axis (no new verb/cap/
+table/MCP surface — reuses `prefs.set` / `set_default` / `resolve`). **(1) Header style**
+(`ThemeLayout.header: "band" | "breadcrumbs"`): `band` (default) is today's `AppPageHeader`
+icon-chip band, pixel-identical and untouched; `breadcrumbs` is a **clean shadcn/ui `Breadcrumb`**
+header rendering `Workspace / <Surface>` — the shadcn look exactly (no icon chip, no gradient, no
+sub-line), with the trailing actions slot (workspace chip + Settings gear) preserved. **(2) Nav mode**
+(`ThemeLayout.nav: "sidebar" | "topmenu"`): `sidebar` (default) is today's left `NavRail`; `topmenu`
+is a horizontal **shadcn `Menubar`** mounted above the content — the rail is omitted entirely (the
+chosen renderer is the *only* nav mounted). Each `SURFACE_GROUPS` bucket becomes a `MenubarMenu`; a
+resolved/curated nav renders the same way (flat entries fold into a leading "Menu", `group`s become
+their own menus); Pinned + Extensions get their own menus when non-empty; the no-lockout escape
+hatch + Sign out live in a right-aligned account menu. The top menu is a **second renderer** over the
+exact same resolved-nav data the rail consumes — not a new source of truth; ext ids stay opaque
+`ext:<id>` (rule 10). When `nav==="topmenu"` the sidebar-only controls (Variant/Collapsible/Position)
+are marked "sidebar only" but keep their values (no hidden state). **shadcn primitives added:**
+`breadcrumb.tsx` (reaches `@radix-ui/react-slot` — no new radix dep) + `menubar.tsx` +
+`dropdown-menu.tsx` (two NEW `@radix-ui/*` deps), all themed to the shell tokens (`bg-panel`/
+`text-fg`/`border-border`/`text-muted`/`accent`) like `sidebar.tsx`. **`itemRef` extracted** to
+`nav-item-ref.ts` so both renderers share the one hide/pin grammar (no drift). **AppPage uses
+`useThemeOptional`** so standalone `/panel` renders (no provider) fall back to `band` gracefully.
+**Tests (real store/bus/gateway/caps, rule 9):** unit 25 files / **127 green** across `lib/theme` +
+`features/theme` + `features/shell` + `components/app` — incl. the `normalizeLayout` migration-safety
+guarantee (an old stored theme with no header/nav stays `band`/`sidebar`), the LayoutTab "sidebar
+only" hint + value-retention, `TopMenuNav` (fallback-as-menus, resolved nav, Pinned/Extensions,
+opaque ext ids, escape hatch, hidden-set) and `HeaderBreadcrumbs` (the shadcn trail + actions-slot
+parity); gateway `theme-prefs.gateway.test.ts` **6/6** — the WIDENED blob now carries
+`header:"breadcrumbs", nav:"topmenu"` and round-trips through a fresh-boot re-resolve (the
+prefs-closed-struct class of bug), with the existing **capability-deny** + **workspace-isolation**
+cases covering the new axes. `pnpm exec tsc --noEmit` clean. Scope
+[`scope/frontend/shell-chrome-layout-scope.md`](scope/frontend/shell-chrome-layout-scope.md) (OQs all
+resolved as recommended); session
+[`sessions/frontend/shell-chrome-layout-session.md`](sessions/frontend/shell-chrome-layout-session.md);
+public [`public/frontend/shell-chrome-layout.md`](public/frontend/shell-chrome-layout.md). **Named
+follow-ups (not gaps):** breadcrumb depth beyond two levels; top-menu responsive collapse on narrow
+viewports; a per-page sub-title registry for richer crumb trails.
+
+---
+
 **Just shipped (2026-07-09): flow input ports — Slice 2 (`any` runtime + `fctx`) + Slice 3 (the `link`
 pair) + Slice 4 (the per-port canvas). The `flow-input-ports` scope is COMPLETE.** Node-RED's
 "fire-per-message" OR is reachable end to end: three wires into one `any` port print **three** times,

@@ -29,6 +29,7 @@ import { SURFACE_DEF, SURFACES } from "./surfaceDefs";
 export type CoreSurface =
   | "channels"
   | "dashboards"
+  | "reports"
   | "rules"
   | "flows"
   | "datasources"
@@ -124,7 +125,7 @@ export { itemRef } from "./nav-item-ref";
 export const SURFACE_GROUPS: { label: string; items: CoreSurface[] }[] = [
   {
     label: "Workspace",
-    items: ["channels", "dashboards", "inbox", "outbox",
+    items: ["channels", "dashboards", "reports", "inbox", "outbox",
       // insights (insights umbrella scope): the durable data-finding record. Workspace-level
       // attention surface — open/acked/resolved findings with severity + dedup, faceted through the
       // tag graph. Cap-gated on `insight.list` (allowed.ts); the gateway re-checks every verb.
