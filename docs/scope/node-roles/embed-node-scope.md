@@ -174,9 +174,11 @@ Mandatory categories (`scope/testing/testing-scope.md`), all real (store `mem://
 
 - `node-roles-scope.md` — the roles this ritual selects; §3.1's "thin role-aware layer" doctrine
   this scope leans on for placement.
-- `../extensions/ext-out-of-tree-scope.md` — the sibling split: SDK crates publish to
-  crates.io/npm; **embedding deliberately does not** (git-dep on `lb`), and the no-hand-edited-
-  mirror lesson is why there's no separate embed repo.
+- `../extensions/ext-out-of-tree-scope.md` — the sibling split: the SDK is its own standalone repo
+  (`lb-ext-sdk`/`lb-ext-ui-sdk`) publishing to crates.io/npm, because a downstream consumer needs a
+  real library without `lb`-repo access. **Embedding is the opposite call**: `lb-host` is not a
+  reusable contract but the whole platform, so it stays a git-dep on `lb` — no separate repo, no
+  crates.io publish.
 - `../crate-layout/crate-layout-scope.md` — the workspace shape the lib target slots into.
 - `../desktop/desktop-packaging-scope.md` — the Tauri shell whose `full.rs` becomes a thin caller.
 - `rust/node/Cargo.toml` — the version-keyed core-skills seeding the tag question touches.

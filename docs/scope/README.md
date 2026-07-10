@@ -233,7 +233,7 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
   behind one `Toolchain` trait), and `ext-out-of-tree-scope.md` (**split the extensions out**:
-  every product extension moves to a `lazybones-extensions` repo — only `federation` stays — against
+  every product extension moves to a `lb-extensions` repo — only `federation` stays — against
   three published SDK surfaces (`lb-sdk` WIT/wasm, a new `lb-ext-native` child-side facade with a
   versioned `init` handshake, and `@nube/ext-ui-sdk` as the single source of the page/widget contracts),
   an Artifact v2 that carries the UI bundle, and the previously deferred thin `lb-ext` CLI — the

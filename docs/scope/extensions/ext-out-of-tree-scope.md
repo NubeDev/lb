@@ -5,7 +5,7 @@ Status: scope (the ask). Promotes to `public/extensions/extensions.md` (SDK/dev-
 Move the product extensions out of this repo. `rust/extensions/` today holds a dozen extensions that
 core, by rule 10, must know nothing about — yet they live inside the core workspace, reach core through
 `../../crates/*` path deps, and publish via a Makefile that hand-copies UI bundles. We want: **one
-`lazybones-extensions` repo** holding every product extension (all of `rust/extensions/*` except
+`lb-extensions` repo** holding every product extension (all of `rust/extensions/*` except
 `federation`, which stays), and **three published SDK surfaces** — a WASM SDK (the WIT world), a native
 Rust SDK (the sidecar wire + callback), and a UI SDK (the mount/widget contract + build preset) — so an
 extension builds, packs, and publishes against **versioned contracts** instead of a sibling directory.
@@ -14,18 +14,20 @@ This is the proof of rule 10: if core truly knows no extension, the extensions c
 ## Goals
 
 - **`rust/extensions/` reduced to `federation`.** Every other extension moves to a new
-  `lazybones-extensions` repo. Minimal **test fixtures** (`hello`, `hello-v2`, `echo-sidecar`) move to
+  `lb-extensions` repo. Minimal **test fixtures** (`hello`, `hello-v2`, `echo-sidecar`) move to
   `rust/fixtures/ext/` so `cargo test --workspace` stays green with no external clone (rule 10 allows
   test fixtures; product extensions are what leave).
-- **Three SDK surfaces, versioned and published from the core repo:**
-  - **WASM:** `lb-sdk` (exists, `rust/sdk/`) becomes the published crate an out-of-tree wasm extension
-    depends on — it owns `wit/world.wit`, `WORLD_MAJOR`, and a wit-bindgen re-export/helper so a guest
-    writes `lb_sdk::export!` instead of hand-wiring bindgen against a copied `.wit`.
-  - **Rust (native):** a new facade crate **`lb-ext-native`** (`rust/sdk-native/`) re-exporting exactly
+- **Three SDK surfaces, versioned and owned by standalone repos** (`lb` becomes a consumer of each):
+  - **WASM:** `lb-sdk` **moves out of `lb`'s `rust/sdk/` into `NubeDev/lb-ext-sdk`** as the published
+    crate an out-of-tree wasm extension depends on — it owns `wit/world.wit`, `WORLD_MAJOR`, and a
+    wit-bindgen re-export/helper so a guest writes `lb_sdk::export!` instead of hand-wiring bindgen
+    against a copied `.wit`. `lb`'s `ext-loader`/`runtime` switch from the `rust/sdk` path dep to the
+    published crate.
+  - **Rust (native):** a new facade crate **`lb-ext-native`** (in `lb-ext-sdk`) re-exporting exactly
     the child-side surface: the stdio wire protocol (init/health/call/shutdown serve loop from
     `lb-supervisor`), the host-callback client (`lb-sidecar-client`), and the `LB_EXT_TOKEN` self-check
     (from `lb-auth`). Extensions never import `lb-supervisor` directly again.
-  - **UI:** a new package **`@nube/ext-ui-sdk`** (`packages/ext-ui-sdk/`) — the **single source** of the
+  - **UI:** a new package **`@nube/ext-ui-sdk`** (in `NubeDev/lb-ext-ui-sdk`) — the **single source** of the
     page contract (`RemoteMount`, `ctx`, `bridge`), the widget contract (`WidgetCtx` v4, frames-in,
     `ctx.theme`), and a `defineExtConfig()` Vite preset encoding the import-map externals
     (react/react-dom/jsx-runtime) and the css-isolation rules. The host's `ext-host/federation.ts` and
@@ -59,22 +61,31 @@ This is the proof of rule 10: if core truly knows no extension, the extensions c
 
 ## Intent / approach
 
-**SDK source of truth stays in the core repo; extensions consume published versions.** The rejected
-alternative — an SDK-first repo that core consumes as a git dep — breaks atomic evolution: host bindgen
-and guest bindings generate from the same `world.wit`, and the supervisor wire is shared verbatim so
-host/child ABI can't drift; putting that file a release-dance away from the host makes every contract
-change a two-repo commit. Instead the core repo keeps owning `rust/sdk`, `rust/sdk-native`, and
-`packages/ext-ui-sdk`, and a **release step publishes them**: git tags on the core repo consumed as
-`{ git, tag }` deps now (same org, private is fine), crates.io/npm when the contracts are public. The
-runtime stays the enforcement point — a `WORLD_MAJOR` mismatch is already refused at load; the native
-tier gets the same treatment (below).
+**The SDK is a real standalone library in its own repo; `lb` consumes it — not the reverse, and not a
+mirror.** The WIT world, the native child-side wire, and the UI contract move OUT of `lb` into
+`NubeDev/lb-ext-sdk` (Rust) and `NubeDev/lb-ext-ui-sdk` (TypeScript), where the SDK source *lives*.
+`lb`'s core crates (`ext-loader`, `runtime`, and the extension tiers) depend on the published SDK like
+any other consumer. This is the honest answer to "why would I want a mirror": a mirror is a second copy
+of code that lives elsewhere — pure overhead. A standalone-authoritative repo has **one** source of
+truth (the SDK repo itself), so there is nothing to mirror or sync.
+
+We weighed this against keeping the SDK inside `lb` and publishing from the monorepo. That keeps host
+and guest bindings generating from one `world.wit` with zero release dance — genuinely simpler for `lb`
+— but it means **no real SDK repo exists**: a downstream team (`NubeIO/rubix-ai-extensions`) that must
+NOT see the private `lb` source has nothing to depend on, browse, or file issues against except a
+published tarball. That is the requirement that decides it: the SDK must be a first-class library with
+its own repo, versioning, and issue tracker. The cost — a `world.wit` change is now a two-repo dance
+(bump `lb-ext-sdk`, then `lb`) — is real but bounded: the WIT major is deliberately rare-to-change, the
+contract surface is tiny (one export, two imports), and the refuse-at-load version gate catches any
+skew loudly (`WORLD_MAJOR` for wasm, the native protocol major below). Atomic co-evolution is traded
+for a genuinely reusable, independently-consumable SDK — which is the whole point.
 
 **Facade crates, not raw internals.** `lb-supervisor` contains both the host-side supervision
 machinery and the child-side protocol; publishing it whole would freeze host internals as public API.
 `lb-ext-native` exports only the child face. Same logic for the UI: `@nube/ext-ui-sdk` exports the
 contract types and the build preset, not host shell components.
 
-**One extensions repo, not repo-per-extension.** `lazybones-extensions` is a folder-per-extension
+**One extensions repo, not repo-per-extension.** `lb-extensions` is a folder-per-extension
 monorepo where each extension is **standalone** — own `Cargo.toml`, own lockfile, own `ui/` with its
 own `pnpm-lock.yaml`. This is not new structure: it generalizes the pattern the wasm tier already has
 (all workspace-excluded, self-contained) to the four natives currently riding the core workspace.
@@ -98,32 +109,30 @@ mismatch. Without this, splitting the repo turns ABI drift from impossible into 
 
 ### Repo layout (github.com/NubeDev)
 
-**The SDKs publish directly from the `lb` monorepo — there is no separate SDK repo.** crates.io and
-npm publish a single crate/package out of a larger repo without ceremony (tokio, serde, et al. do
-exactly this): `cargo publish -p lb-sdk` / `-p lb-ext-native` / `-p lb-ext`, and `npm publish` from
-`packages/ext-ui-sdk`. The published `.crate`/tarball **is** the public artifact — consumers get the
-source in it — so a standalone "SDK repo" would be a pure mirror: a second copy, sync CI, and issues
-landing in the wrong place. **Rejected** (this was an earlier draft's mistake): a mirror repo buys
-nothing publishing-from-the-monorepo doesn't already give, and a pre-release consumer who wants the
-unpublished tip pins a git dep at `lb`'s subdir directly (`{ git = ".../lb", tag = "sdk-v0.2.0" }`).
+The SDK source **lives in its own repo** — `lb-ext-sdk` (Rust) and `lb-ext-ui-sdk` (TypeScript) are
+real, standalone libraries, not copies of anything. `lb` depends ON them; they depend on nothing in
+`lb`. Anyone (including the private `NubeIO/rubix-ai-extensions`) consumes them by git tag today and
+crates.io/npm once published — with **no access to the `lb` repo**, which is exactly why they exist.
 
-| Repo | Contents | Publishes / consumed as |
+| Repo | Contents | Role |
 |---|---|---|
-| `lb` *(existing)* | Core **and** the SDK sources: `rust/sdk` (`lb-sdk`, WIT world), the new `rust/sdk-native` (`lb-ext-native`), `rust/tools/ext-cli` (`lb-ext`), `packages/ext-ui-sdk` (`@nube/ext-ui-sdk`). Tagged `sdk-vX.Y.Z`. | **publishes** the SDK crates → crates.io + the UI package → npm, straight from the monorepo |
-| `lb-extensions` | The extensions monorepo — everything leaving `rust/extensions/`: proof-panel, echarts-panel, fleet-monitor, ros, mqtt, github-bridge, energy-dashboard, thecrew, control-engine (container-build token mount for `rubix-ce`). | built + published as signed Artifacts to a node |
+| `lb-ext-sdk` | **Authoritative** Rust SDK: `lb-sdk` (the WIT world `lazybones:ext`, `WORLD_MAJOR`, the `world_major_matches` gate), `lb-ext-native` (child-side wire + host-callback client + `LB_EXT_TOKEN` self-check + the native protocol major), and the `lb-ext` CLI (`new`/`build`/`pack`/`publish`). Its own cargo workspace, own lockfile, own CI, `sdk-vX.Y.Z` tags. | **owns** the contract → publishes to crates.io (`NubeDev`) |
+| `lb-ext-ui-sdk` | **Authoritative** TypeScript SDK: `@nube/ext-ui-sdk` — the page contract (`RemoteMount`, `ctx`, `bridge`), the widget contract (`WidgetCtx` v4, frames-in, `ctx.theme`), and `defineExtConfig()` (the Vite import-map + css-isolation preset). Optional home for `@nube/source-picker`. | **owns** the UI contract → publishes to npm (`aidanpick`) |
+| `lb` *(existing)* | Core. **Consumes** `lb-sdk`/`lb-ext-native` (git tag → crates.io) in `ext-loader`/`runtime`/the tiers, and `@nube/ext-ui-sdk` in the shell (`ext-host/federation.ts`, `dashboard/builder/federationWidget.ts` import the contract types from the package — killing the copied `contract.ts` mirrors). | consumer, like everyone else |
+| `lb-extensions` | The extensions monorepo — everything leaving `rust/extensions/`: proof-panel, echarts-panel, fleet-monitor, ros, mqtt, github-bridge, energy-dashboard, thecrew, control-engine (container-build token mount for `rubix-ce`). | consumes the SDKs; publishes signed Artifacts to a node |
 
-**Downstream consumer org — `github.com/NubeIO`** (the first real proof both seams work; lb-side
-repos must not special-case it, rule 10):
+**Downstream consumer org — `github.com/NubeIO`** (the proof both seams work; lb-side repos must not
+special-case it, rule 10):
 
 | Repo | Contents | Consumes |
 |---|---|---|
 | `NubeIO/rubix-ai` | A product **host/node**: embeds lb via the `BootConfig`/`NodeBuilder` seam (`../node-roles/embed-node-scope.md`), git-dep on `NubeDev/lb`. | `lb` (git tag) |
-| `NubeIO/rubix-ai-extensions` | That product's extensions, built against the **published SDKs** exactly like `lb-extensions` — same templates, same signed-Artifact publish, zero lb-repo access needed once the SDKs are on crates.io/npm. | `lb-sdk`/`lb-ext-native` (crates.io) + `@nube/ext-ui-sdk` (npm) |
+| `NubeIO/rubix-ai-extensions` | That product's extensions, built against the SDKs exactly like `lb-extensions` — same templates, same signed-Artifact publish, **zero `lb`-repo access**. | `lb-ext-sdk` (crates.io) + `@nube/ext-ui-sdk` (npm) |
 
 Publishing accounts are **confirmed and named**: crates.io publishes under **`NubeDev`**, npm under
 **`aidanpick`** — the registries are the destination. Until the first `sdk-v*` release lands there,
-consumers pin `{ git = ".../lb", tag }` at the subdir. `@nube/app-sdk` stays inside `lb` until the app
-contract settles (open question below).
+consumers pin `{ git = "https://github.com/NubeDev/lb-ext-sdk", tag }` / the ui-sdk git URL directly.
+`@nube/app-sdk` stays inside `lb` until the app contract settles (open question below).
 
 **Templates become the authoritative shapes.** Today the devkit templates are "cut from proof-panel /
 fleet-monitor"; once those move out, the embedded templates in `lb-devkit` are the in-core source of
@@ -161,9 +170,9 @@ release — the direction of authority inverts, deliberately.
 
 ## Example flow
 
-1. A developer clones `lazybones-extensions`, runs `lb-ext new cooler-panel --tier native --features ui,ingest`.
+1. A developer clones `lb-extensions`, runs `lb-ext new cooler-panel --tier native --features ui,ingest`.
    The generator (same `lb-devkit` templates) emits a standalone crate whose `Cargo.toml` pins
-   `lb-ext-native = { git = "…/lb", tag = "sdk-v0.2.0" }` and whose `ui/package.json` pins
+   `lb-ext-native = { git = "…/lb-ext-sdk", tag = "sdk-v0.2.0" }` and whose `ui/package.json` pins
    `@nube/ext-ui-sdk@0.4.x` — no path deps, no copied `contract.ts`.
 2. `lb-ext build` — cargo (host target or `wasm32-wasip2`) + `vite build` via the `defineExtConfig()`
    preset. Nothing here touches a node.
@@ -174,20 +183,26 @@ release — the direction of authority inverts, deliberately.
    422. SDK pinned to an old major → the node refuses at load (`world` mismatch for wasm, `init`
    protocol mismatch for native) with a message naming both versions.
 5. In-shell path still works: Studio on a local node with `LB_DEVKIT_ROOT` pointed at the
-   `lazybones-extensions` checkout scaffolds/builds/publishes the same folders via `devkit.*`.
+   `lb-extensions` checkout scaffolds/builds/publishes the same folders via `devkit.*`.
 
 ## Migration order (slices)
 
-1. **SDK surfaces in-core:** `lb-ext-native` facade + native protocol version in the handshake;
-   `lb-sdk` helper polish; `@nube/ext-ui-sdk` package with host importing its types. In-tree extensions
-   switch to the facades while still path-dep'd — proves the surface is sufficient before any move.
-2. **Artifact v2 + `lb-ext` CLI:** UI bundle in the artifact; `make publish-ext` reduced to a wrapper
-   over `lb-ext publish`.
-3. **The move:** create `lazybones-extensions`, migrate extensions one at a time (wasm tier first —
-   already standalone — then natives, `control-engine` last), flipping each to `{ git, tag }` SDK deps;
+1. **Stand up `lb-ext-sdk` + `lb-ext-ui-sdk` as real repos:** move `lb-sdk` (the WIT world) out of
+   `lb/rust/sdk` into `lb-ext-sdk`; add the `lb-ext-native` facade (with the native protocol major in
+   the handshake) and the `lb-ext` CLI; create `lb-ext-ui-sdk` with `@nube/ext-ui-sdk`. Each repo
+   builds + tests green **on its own**. First `sdk-v*` tag cut here.
+2. **`lb` becomes a consumer:** repoint `ext-loader`/`runtime`/the extension tiers from the `rust/sdk`
+   path dep to the `lb-ext-sdk` git-tag (→ crates.io) dep, delete `lb/rust/sdk`, and switch the shell's
+   `ext-host/federation.ts` + `dashboard/builder/federationWidget.ts` to import the contract types from
+   `@nube/ext-ui-sdk`. Full `cargo test --workspace` + `pnpm test` green proves the extraction is
+   behavior-neutral. In-tree extensions switch to the SDK deps here too (proves the surface suffices).
+3. **Artifact v2 + wire `lb-ext` into the flow:** UI bundle in the artifact; `make publish-ext` reduced
+   to a wrapper over `lb-ext publish`.
+4. **The extensions move:** create `lb-extensions`, migrate extensions one at a time (wasm tier first —
+   already standalone — then natives, `control-engine` last), each pinning the published SDK deps;
    move fixtures to `rust/fixtures/ext/`; delete the emptied dirs; retarget `make build-wasm` and the
    devkit templates.
-4. **Close-out:** extensions-repo CI (build + publish each ext against a spawned node), core CI
+5. **Close-out:** extensions-repo CI (build + publish each ext against a spawned node), core CI
    conformance job (generate → build → publish for both tiers against the released SDK), docs promoted.
 
 ## Testing plan
@@ -234,10 +249,10 @@ Mandatory categories (`scope/testing/testing-scope.md`), all against the real st
 ## Open questions
 
 - **Publish naming:** destinations decided — crates.io as **`NubeDev`**, npm as **`aidanpick`**,
-  published straight from the `lb` monorepo (no SDK repo). Remaining: the crate names (`lb-sdk` may be
-  taken on crates.io — `lazybones-sdk`?) and the npm package scope (`@nube/` matches the existing
-  packages — confirm the `aidanpick` account can claim/own that org scope, else publish under
-  `@aidanpick/`).
+  published from the standalone `lb-ext-sdk` / `lb-ext-ui-sdk` repos. Remaining: the crate names
+  (`lb-sdk` may be taken on crates.io — `lazybones-sdk`?) and the npm package scope (`@nube/` matches
+  the existing packages — confirm the `aidanpick` account can claim/own that org scope, else publish
+  under `@aidanpick/`).
 - **Native protocol version mechanics:** a major constant in `lb-ext-native` checked at `init`, or
   carried in `extension.toml` `[runtime]` beside `world`? (Recommend the handshake — the manifest can
   lie; the running child can't.)
@@ -245,7 +260,7 @@ Mandatory categories (`scope/testing/testing-scope.md`), all against the real st
   cache need eviction once artifacts are MBs?
 - **`source-picker`:** publish it, absorb the needed subset into `@nube/ext-ui-sdk`, or vendor into
   thecrew? Decide when thecrew migrates (slice 3).
-- **`control-engine` home:** in `lazybones-extensions` with the token mount (recommended) or its own
+- **`control-engine` home:** in `lb-extensions` with the token mount (recommended) or its own
   repo because of `rubix-ce`'s cadence?
 - **`app/sdk` alignment:** `app-sdk-scope.md` wants one shared panel/widget SDK direction — does
   `@nube/ext-ui-sdk` and `@nube/app-sdk` converge now or stay parallel until the app contract settles?
