@@ -1,10 +1,10 @@
 //! Generated Tier-1 WASM extension. Stateless by construction: every response is derived from the
 //! call input and any platform access must go through host-mediated tools.
 
-wit_bindgen::generate!({
-    path: "../../sdk/wit",
-    world: "extension",
-});
+// The `generate!` call is emitted by `build.rs` into `$OUT_DIR/wit_gen.rs`, reading the WIT from the
+// standalone `lb-sdk` crate (the authoritative owner) — see the build script. Generated against the
+// SAME WIT the host uses, so the ABI cannot drift.
+include!(concat!(env!("OUT_DIR"), "/wit_gen.rs"));
 
 use serde::Serialize;
 

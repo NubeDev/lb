@@ -5801,7 +5801,8 @@ dependencies = [
 
 [[package]]
 name = "lb-sdk"
-version = "0.1.0"
+version = "0.2.0"
+source = "git+https://github.com/NubeDev/lb-ext-sdk?tag=sdk-v0.2.1#fdf18272505d89630ca416597828082949798955"
 
 [[package]]
 name = "lb-secrets"

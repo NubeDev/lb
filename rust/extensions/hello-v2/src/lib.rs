@@ -4,10 +4,9 @@
 //! well-behaved extension keeps nothing in the instance (stateless-extension, §3.4). All
 //! state lives in the store/bus, so a swap is safe.
 
-wit_bindgen::generate!({
-    path: "../../sdk/wit",
-    world: "extension",
-});
+// The `generate!` call is emitted by `build.rs` into `$OUT_DIR/wit_gen.rs`, reading the WIT from the
+// standalone `lb-sdk` crate (the authoritative owner) — see the build script. Same WIT as the host.
+include!(concat!(env!("OUT_DIR"), "/wit_gen.rs"));
 
 use serde::{Deserialize, Serialize};
 

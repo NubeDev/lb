@@ -71,6 +71,8 @@ fn wasm_files(request: &ScaffoldRequest) -> Vec<RenderedFile> {
         file("Cargo.toml", render(CARGO_WASM, request)),
         file("extension.toml", render_manifest(request)),
         file("build.sh", render(BUILD_SH, request)),
+        // Emits the `generate!` against the standalone `lb-sdk` WIT (out-of-tree, not `../../sdk`).
+        file("build.rs", WASM_BUILD.into()),
         file("src/lib.rs", render(WASM_LIB, request)),
     ]
 }
@@ -212,6 +214,7 @@ const CARGO_NATIVE: &str = include_str!("../templates/native/Cargo.toml.tmpl");
 const MANIFEST: &str = include_str!("../templates/common/extension.toml.tmpl");
 const BUILD_SH: &str = include_str!("../templates/common/build.sh.tmpl");
 const WASM_LIB: &str = include_str!("../templates/wasm/src_lib.rs.tmpl");
+const WASM_BUILD: &str = include_str!("../templates/wasm/build.rs.tmpl");
 const NATIVE_MAIN: &str = include_str!("../templates/native/src_main.rs.tmpl");
 const UI_PACKAGE: &str = include_str!("../templates/ui/package.json.tmpl");
 const UI_PNPM_WS: &str = include_str!("../templates/ui/pnpm-workspace.yaml.tmpl");

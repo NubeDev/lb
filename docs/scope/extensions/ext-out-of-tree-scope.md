@@ -246,6 +246,27 @@ Mandatory categories (`scope/testing/testing-scope.md`), all against the real st
 - **`thecrew`'s `@nube/source-picker` import** — the one extension UI that reaches into `packages/*`.
   It must stop: either `source-picker` ships in/alongside `@nube/ext-ui-sdk`, or thecrew vendors it.
 
+## Status (2026-07-10)
+
+Slices 1–2 **shipped + green** (session: `sessions/extensions/ext-out-of-tree-cutover-session.md`):
+
+- **Slice 1** — `lb-ext-sdk` filled: `lb-ext-native` now speaks lb's REAL supervisor wire (it had a
+  divergent shape no host could read) — `frame.rs`/`wire.rs`/`handshake.rs` mirror `lb-supervisor`
+  byte-for-byte, plus a `serve(reader, writer, tools)` loop + `serve_stdio(tools)` a native ext calls
+  with a `Tools` impl. `lb-sdk` documents the guest WIT pattern + exposes `WORLD_NAME` and a `links`
+  build script exporting `DEP_LB_SDK_WIT*`. Tagged `sdk-v0.2.0` → `sdk-v0.2.1`. 26 tests green.
+- **Slice 2 (the cutover)** — `lb` is now a CONSUMER: workspace dep repointed to the `sdk-v0.2.1` git
+  tag, `lb/rust/sdk` **deleted**, host `runtime` bindgen sourced from the SDK WIT via a `build.rs` that
+  reads the `links` metadata (no in-repo WIT copy — the host-mirror leak the scope names is closed),
+  guests (hello/hello-v2/the 5 product exts/core-thing/devkit template) converted to the same seam, and
+  the UI shell (`ext-host/federation.ts`, `dashboard/builder/federationWidget.ts`) imports the
+  page/widget contract from `@nube/ext-ui-sdk` (`ui-v0.4.0`, linked interim). `cargo build --workspace`
+  green; `cargo test --workspace` green but for one **pre-existing** authz-WIP failure; `make
+  build-wasm` green; `pnpm test` 166/168 files (2 pre-existing) — the extraction is behavior-neutral.
+
+Slices 3 (Artifact v2 + `lb-ext` publish wired), 4 (extensions move to `lb-extensions`, fixtures to
+`rust/fixtures/ext/`), 5 (CI conformance) remain.
+
 ## Open questions
 
 - **Publish naming:** destinations decided — crates.io as **`NubeDev`**, npm as **`aidanpick`**,
@@ -253,9 +274,15 @@ Mandatory categories (`scope/testing/testing-scope.md`), all against the real st
   (`lb-sdk` may be taken on crates.io — `lazybones-sdk`?) and the npm package scope (`@nube/` matches
   the existing packages — confirm the `aidanpick` account can claim/own that org scope, else publish
   under `@aidanpick/`).
-- **Native protocol version mechanics:** a major constant in `lb-ext-native` checked at `init`, or
-  carried in `extension.toml` `[runtime]` beside `world`? (Recommend the handshake — the manifest can
-  lie; the running child can't.)
+- **Native protocol version mechanics:** DECIDED — the handshake. `lb-ext-native::PROTOCOL_MAJOR` is a
+  compile-time constant the child stamps into its `init` reply (`InitReply { protocol_major, tools }`);
+  the host reads it at `init` and refuses a mismatch. The manifest can lie; the running child can't.
+- **Guest `generate!` helper:** DECIDED (partial) — a zero-boilerplate `lb_sdk::export!` macro is
+  **deferred, not faked**: re-exporting wit-bindgen's generated `export!` across a published-crate
+  boundary is version-fragile. Shipped instead: `lb-sdk` owns the WIT and a `links` build script
+  exports `DEP_LB_SDK_WIT`, so a guest's `build.rs` emits the `generate!` against the ONE authoritative
+  WIT (no copied `.wit` path) — the actual pain point — plus `WORLD_NAME` and documented usage. Revisit
+  the macro once wit-bindgen stabilises cross-crate `export!` re-export.
 - **Artifact size bound:** what's the max `ui_bundle` size the gateway accepts, and does the artifact
   cache need eviction once artifacts are MBs?
 - **`source-picker`:** publish it, absorb the needed subset into `@nube/ext-ui-sdk`, or vendor into

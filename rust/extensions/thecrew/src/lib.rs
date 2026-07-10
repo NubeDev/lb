@@ -12,10 +12,10 @@
 //! silent success. The extension is stateless by construction (§3.4): there is nothing to
 //! keep, so a hot-reload swap loses nothing.
 
-wit_bindgen::generate!({
-    path: "../../sdk/wit",
-    world: "extension",
-});
+// The `generate!` call is emitted by `build.rs` into `$OUT_DIR/wit_gen.rs`, reading the WIT from the
+// standalone `lb-sdk` crate (the authoritative owner) — see the build script. Generated against the
+// SAME WIT the host uses, so the ABI cannot drift.
+include!(concat!(env!("OUT_DIR"), "/wit_gen.rs"));
 
 struct TheCrew;
 

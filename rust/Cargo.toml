@@ -57,7 +57,6 @@ members = [
     "extensions/federation",
     "extensions/fleet-monitor",
     "extensions/ros",
-    "sdk",
     "node",
     "role/acp",
     "role/external-agent",
@@ -114,7 +113,12 @@ lb-telemetry = { path = "crates/telemetry" }
 lb-undo = { path = "crates/undo" }
 lb-viz = { path = "crates/viz" }
 lb-host = { path = "crates/host" }
-lb-sdk = { path = "sdk" }
+# The extension SDK is now a standalone, authoritative repo (NubeDev/lb-ext-sdk); lb CONSUMES it by
+# git tag like any other downstream. The WIT world, the version gate, and the native child wire live
+# THERE — not in a sibling `sdk/` dir. A `world.wit` change is a deliberate two-repo dance (tag the
+# SDK, bump this pin), caught loudly by the refuse-at-load version gates. See
+# docs/scope/extensions/ext-out-of-tree-scope.md (slice 2, the cutover).
+lb-sdk = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.2.1" }
 # The external-agent driver (leaf) + its role crate (external-agent topic). The leaf carries no ACP
 # SDK and is a plain member; the role crate is pulled ONLY behind the `external-agent` feature on the
 # `node` binary (runtime-seam #1 "the node pulls it only with the feature"), so a feature-off node
