@@ -37,36 +37,7 @@ use lb_host::{
 };
 use lb_role_ai_gateway::{AiGateway, OpenAiCompat};
 
-/// The node's in-house model config — the `ModelEndpoint` shape (provider / model / api-key-env NAME /
-/// base-url), read from env at boot. Present on every node regardless of the external-agent feature
-/// (the in-house default agent is symmetric). Names only — the `api_key_env` is the NAME of the env var
-/// holding the key, never the key value.
-#[derive(Debug, Clone)]
-struct InHouseModelConfig {
-    provider: String,
-    model: String,
-    api_key_env: String,
-    base_url: Option<String>,
-}
-
-impl InHouseModelConfig {
-    /// Read the in-house model config from env. Returns `None` (→ keep `UnconfiguredModel`) unless a
-    /// provider is named — the honest "no model configured" state. `LB_AGENT_MODEL_PROVIDER`,
-    /// `LB_AGENT_MODEL_MODEL`, `LB_AGENT_MODEL_API_KEY_ENV` (the env NAME), `LB_AGENT_MODEL_BASE_URL`.
-    fn from_env() -> Option<Self> {
-        let provider = std::env::var("LB_AGENT_MODEL_PROVIDER").ok()?;
-        let provider = provider.trim().to_string();
-        if provider.is_empty() {
-            return None;
-        }
-        Some(Self {
-            provider,
-            model: std::env::var("LB_AGENT_MODEL_MODEL").unwrap_or_default(),
-            api_key_env: std::env::var("LB_AGENT_MODEL_API_KEY_ENV").unwrap_or_default(),
-            base_url: std::env::var("LB_AGENT_MODEL_BASE_URL").ok(),
-        })
-    }
-}
+use crate::config::AgentModelConfig;
 
 /// Build the in-house [`ModelAccess`](lb_host::ModelAccess) from config, erased for the registry. This
 /// is the real wiring seam: match the configured `provider` to a concrete `AiGateway<Provider>` and
@@ -81,28 +52,28 @@ impl InHouseModelConfig {
 /// per-workspace path ([`NodeModelBuilder`]) adds sealed secrets host-mediated
 /// (`resolve_endpoint_key_host`) so "test passes" and "run works" can never diverge (agent-catalog
 /// test-and-secrets scope). Kept `cfg`-only (env key) so the boot path reads linearly.
-fn build_in_house_model(cfg: &InHouseModelConfig) -> Option<Arc<dyn ErasedModel>> {
+fn build_in_house_model(cfg: &AgentModelConfig, provider: &str) -> Option<Arc<dyn ErasedModel>> {
     // The node-level fallback model (the `LB_AGENT_MODEL_*` tier) is built from the SAME adapter
     // selection the per-workspace [`NodeModelBuilder`] uses (below), so "the node's default model" and
     // "a workspace's picked model" can never diverge on which providers are real. The key is resolved
     // from the configured env NAME (the node-level tier is env-only; the per-ws path adds sealed
-    // secrets via `resolve_endpoint_key_host`). Never logged.
+    // secrets via `resolve_endpoint_key_host`). Never logged. The env NAME lookup happens at the
+    // binary boundary — the NAME itself is config; only the secret VALUE is read from the process env.
     let key = if cfg.api_key_env.is_empty() {
         None
     } else {
         std::env::var(&cfg.api_key_env).ok()
     };
     let model = adapter_for(
-        &cfg.provider,
+        provider,
         &cfg.model,
         cfg.base_url.as_deref(),
         key.as_deref(),
     );
     if model.is_none() {
         eprintln!(
-            "agent: in-house model provider '{}' has no adapter — keeping UnconfiguredModel (the \
-             honest empty state). Known providers: zaicoding, openai-compat, openai.",
-            cfg.provider
+            "agent: in-house model provider '{provider}' has no adapter — keeping UnconfiguredModel \
+             (the honest empty state). Known providers: zaicoding, openai-compat, openai."
         );
     }
     model
@@ -162,11 +133,14 @@ impl ModelBuilder for NodeModelBuilder {
 }
 
 /// The in-house model to install: the real `AiGateway<Provider>` when configured AND an adapter exists,
-/// else the honest [`UnconfiguredModel`]. Kept as one function so the boot path reads linearly.
-fn in_house_model() -> Arc<dyn ErasedModel> {
-    match InHouseModelConfig::from_env()
-        .as_ref()
-        .and_then(build_in_house_model)
+/// else the honest [`UnconfiguredModel`]. Kept as one function so the boot path reads linearly. The
+/// config is passed in (from [`BootConfig`](crate::BootConfig)) — no env read here below the seam.
+fn in_house_model(cfg: &AgentModelConfig) -> Arc<dyn ErasedModel> {
+    match cfg
+        .provider
+        .as_deref()
+        .filter(|p| !p.is_empty())
+        .and_then(|provider| build_in_house_model(cfg, provider))
     {
         Some(model) => {
             println!("agent: in-house model configured");
@@ -179,15 +153,10 @@ fn in_house_model() -> Arc<dyn ErasedModel> {
 /// The capabilities the served agent actor holds (its half of `agent_caps ∩ caller.caps`). Broad on
 /// purpose — the effective grant is always intersected with the CALLER's caps at the wall, so this is a
 /// ceiling, never a widening. A minimal node just has no remote callers. Read from
-/// `LB_AGENT_CAPS` (comma-separated) or defaults to the platform-tool surface the in-house agent uses.
-fn agent_caps() -> Vec<String> {
-    if let Ok(raw) = std::env::var("LB_AGENT_CAPS") {
-        let caps: Vec<String> = raw
-            .split(',')
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .collect();
+/// the configured override (from [`BootConfig`](crate::BootConfig), `LB_AGENT_CAPS` at the binary
+/// boundary); `None` ⇒ the platform-tool surface the in-house agent uses.
+fn agent_caps(configured: Option<Vec<String>>) -> Vec<String> {
+    if let Some(caps) = configured {
         if !caps.is_empty() {
             return caps;
         }
@@ -214,12 +183,16 @@ fn agent_caps() -> Vec<String> {
 /// run's tool callbacks verify. Returns the live [`AgentServer`]; the caller keeps it alive for the
 /// node's lifetime (dropping it stops serving). A serve failure is logged, not fatal — the node still
 /// runs the in-channel `/agent` path off the installed registry.
-pub async fn mount(node: Arc<Node>) -> Option<AgentServer> {
+pub async fn mount(
+    node: Arc<Node>,
+    model_cfg: &AgentModelConfig,
+    caps: Option<Vec<String>>,
+) -> Option<AgentServer> {
     // 1. WIRE THE MODEL: build the registry (in-house default over the wired model), add the external
     //    `AcpRuntime` entries when the `external-agent` feature is on, then install it on the node. This
     //    replaces the boot-time default-only `UnconfiguredModel` registry with the configured one — the
     //    seam is the registry, not a code branch (unconfigured vs configured is config only).
-    let mut registry = RuntimeRegistry::with_default(in_house_model());
+    let mut registry = RuntimeRegistry::with_default(in_house_model(model_cfg));
     crate::external_agent::register_external(&mut registry);
     let ids = registry.ids();
     node.install_runtimes(registry);
@@ -234,7 +207,7 @@ pub async fn mount(node: Arc<Node>) -> Option<AgentServer> {
     //    node's finished agent (the serve-wiring TODO, now closed). The registry the server resolves
     //    against is the SAME one just installed (read back via `node.runtimes()`), so routed and
     //    in-channel runs drive the identical registry.
-    match serve_agent(node.clone(), node.runtimes(), agent_caps()).await {
+    match serve_agent(node.clone(), node.runtimes(), agent_caps(caps)).await {
         Ok(server) => {
             println!("agent: serving routed agent.invoke");
             Some(server)

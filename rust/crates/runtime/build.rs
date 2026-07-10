@@ -12,8 +12,9 @@
 use std::path::Path;
 
 fn main() {
-    let wit = std::env::var("DEP_LB_SDK_WIT")
-        .expect("DEP_LB_SDK_WIT — lb-sdk must be a direct dependency exporting its WIT via `links`");
+    let wit = std::env::var("DEP_LB_SDK_WIT").expect(
+        "DEP_LB_SDK_WIT — lb-sdk must be a direct dependency exporting its WIT via `links`",
+    );
     let wit_compat = std::env::var("DEP_LB_SDK_WIT_COMPAT")
         .expect("DEP_LB_SDK_WIT_COMPAT — lb-sdk must export its 0.1 compat WIT via `links`");
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
@@ -29,7 +30,8 @@ fn main() {
     imports: {{ default: async }},
 }});"#
     );
-    std::fs::write(Path::new(&out).join("bindings_gen.rs"), bindings).expect("write bindings_gen.rs");
+    std::fs::write(Path::new(&out).join("bindings_gen.rs"), bindings)
+        .expect("write bindings_gen.rs");
 
     // The frozen @0.1.0 world snapshot, linked alongside so existing 0.1 guests still load.
     let compat = format!(

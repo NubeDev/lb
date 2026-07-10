@@ -158,11 +158,22 @@ Mandatory categories (`scope/testing/testing-scope.md`), all real (store `mem://
 
 ## Open questions
 
-- **Lib/package naming:** keep package `node` with `lib name = "lb_node"`, or rename the package
-  `lb-node` (bin stays `node`)? (Recommend the rename — a git-dep on a package called `node` is
-  needlessly confusing.)
+- **Lib/package naming:** ~~keep package `node` with `lib name = "lb_node"`, or rename the package
+  `lb-node`?~~ **RESOLVED (embed-node-session, Phase 2a):** package renamed **`lb-node`**, bin stays
+  `node`, lib is `lb_node`. All `cargo …-p node` callers repointed to `-p lb-node` (Makefile
+  `NODE_BIN`, `deploy/common/Dockerfile`). `version = "0.1.9"` kept (core-skills seeder key).
 - **What does `RunningNode` hand back exactly** — the `Gateway` value, join handles, a shutdown
-  token, all three? Decide when the teardown work lands.
+  token, all three? **DECIDED (Phase 2a):** `{ node: Arc<Node>, gateway: Option<(Gateway,
+  SocketAddr)>, agent_server: Option<AgentServer> }`, with `RunningNode::serve()` blocking on the
+  gateway (no-op when off). Fields are `pub` so a `shutdown()` (reactor cancel + sidecar shutdown
+  token) lands additively. **Teardown itself is still deferred** — `serve()` runs to process exit
+  today, exactly like the binaries. `GatewayMode::Listener` (`serve_listener` hand-back) also deferred.
+- **`#[non_exhaustive]` construction:** the example's `BootConfig { .. ..Default::default() }` struct
+  literal is *forbidden* cross-crate by `#[non_exhaustive]` (which is what makes additive fields
+  safe). Supported path: `let mut c = BootConfig::default(); c.field = ..;` (all fields `pub`).
+- **Role-mount de-env (follow-up):** the core ritual is fully struct-config, but `federation::mount` /
+  `control_engine::mount` still read their own `LB_FEDERATION_*` / `LB_CONTROL_ENGINE_*` env. Folding
+  those into `BootConfig` (a `FederationConfig`/`ControlEngineConfig` axis) is a bounded next slice.
 - **Tag discipline:** do embedders pin the existing `v0.1.x` node-version tags, the `sdk-v*` tags
   from ext-out-of-tree, or a new `node-v*` series? (Recommend: reuse the node binary's existing
   version — it already keys the core-skills seeder.)
