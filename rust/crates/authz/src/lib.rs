@@ -46,9 +46,13 @@ pub use membership::{
     membership_add_raw, membership_get, membership_has_any, membership_is_member, membership_list,
     membership_remove_raw, Membership, MEMBERSHIP_KIND, MEMBERSHIP_TABLE, MEMBERSHIP_TOMBSTONE,
 };
-pub use resolve::{resolve_caps, resolve_subject_caps};
+pub use resolve::{
+    resolve_caps, resolve_caps_with, resolve_subject_caps, resolve_subject_caps_with,
+    BuiltinRoleCaps, NoBuiltinRoleCaps,
+};
 pub use resolve_sourced::{
-    resolve_caps_sourced, resolve_subject_caps_sourced, CapSource, SourcedCap,
+    resolve_caps_sourced, resolve_caps_sourced_with, resolve_subject_caps_sourced,
+    resolve_subject_caps_sourced_with, CapSource, SourcedCap,
 };
 pub use revoke::revoke_subject;
 pub use role::{role_caps, role_define, role_delete, role_list, Role, ROLE_TABLE};

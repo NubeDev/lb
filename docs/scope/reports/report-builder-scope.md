@@ -21,6 +21,36 @@ against its code, not its docs — the two disagree; see "Lessons imported"), do
 
 ---
 
+## Post-scope demo pass — what's built (2026-07-10)
+
+The full feature (all 5 tracks) is **built, compiles, tests green** — see the handover at
+`/home/user/code/rust/lb/HANDOVER-reports.md` for the per-track detail. Two things happened
+after the initial build, both demo-driven and both deliberate:
+
+1. **Live-store role reseed.** New `report.*`/`brand.*` caps didn't reach the already-seeded
+   dev store (the frozen built-in-role-row footgun). Fixed for the demo by reseeding
+   (`rust/node/examples/reseed_roles.rs -- acme`). **RESOLVED (durable):** the resolver now UNIONES
+   the live built-in cap bundle on top of the stored record for granted built-in roles, so a new
+   built-in cap takes effect the moment code ships — no re-seed. The throwaway `reseed_roles.rs` is
+   deleted. Scope note: `../auth-caps/builtin-role-freshness-scope.md`;
+   debug: `../../debugging/auth/builtin-role-row-frozen-stale-on-new-caps.md`.
+2. **Editor swap + demo widgets.** The TipTap A4 editor was replaced with the ported lazybones
+   textarea editor (`components/markdown-editor/MarkdownEditor.tsx` + new `MarkdownBody.tsx`,
+   react-markdown/remark-gfm — already repo deps). The `PanelPicker` now offers **starter
+   widgets** built from the Data→insight setup wizard's `timeseriesCell`/`templateCell`
+   builders (`features/admin/setup/dataToInsight.ts` + `templateGallery.ts`) so a panel block
+   renders live against `demo-buildings` immediately, and library picks hydrate client-side.
+
+**Demo shortcut — UNWOUND (2026-07-10):** the `PanelPicker` cross-feature import into
+`features/admin/setup/*` is gone. The shared demo cell builders (`timeseriesCell`/`templateCell`,
+`DEFAULT_SOURCE`, `DEMO_SQL`) now live in `ui/src/lib/panel/demoCells.ts` and the starter template
+gallery in `ui/src/lib/panel/demoGallery.ts` (one responsibility/file); `PanelPicker` imports from
+`@/lib/panel`. `dataToInsight.ts` keeps the wizard-only artifacts (`DEMO_RULE`/`DEMO_DSN`/
+`DEMO_ENDPOINT`) and re-exports the moved symbols, so the wizard imports are unchanged. The unused
+TipTap deps (`@tiptap/*`, `tiptap-markdown`) are **removed** from `ui/package.json` + the lockfile;
+`a4-sheet.ts` is kept (the preview geometry `ReportView` still uses). Finishing session:
+`../../sessions/reports/reports-finish-session.md`; public: `../../../doc-site/content/public/reports/reports.md`.
+
 ## Goals
 
 - **A `report:{ws}:{id}` asset** — modeled on `dashboard`/`panel` (stable slug, `owner`,
@@ -57,10 +87,13 @@ against its code, not its docs — the two disagree; see "Lessons imported"), do
   snapshots into the PDF. The server **never fetches widget data for export** — the PDF can
   only ever contain what the exporting user could see on screen. (Alternative rejected below.)
 - **The lazybones editing UX, kept** — this is the headline requirement:
-  - a **true-A4 WYSIWYG markdown editor** (TipTap + `tiptap-markdown` round-trip) sized to
-    the real print geometry (210×297 mm, the same margins the Typst template uses) with an
-    overflow indicator — on-screen matches print;
-  - **drag-to-reorder blocks** (the `page-organizer` pattern);
+  - a **toolbar + Write/Preview markdown editor** — the exact editor lazybones shipped
+    (`ui/src/components/ui/markdown-editor.tsx`): a monospace textarea with a formatting toolbar
+    (heading/bold/italic/code/lists/link that wrap or prefix the selection) and a Write/Preview
+    toggle whose preview renders through `react-markdown` + `remark-gfm`. **Ported verbatim** in
+    the demo pass — see "Post-scope demo pass" below (the TipTap A4 editor was tried first, then
+    replaced because the plain-textarea editor is what shipped and reads better in-panel);
+  - **move-up/down block reorder** (@dnd-kit is not a repo dep; keyboard-accessible buttons);
   - **live preview that IS the report** — blocks render live in the editor (widgets are real,
     through `WidgetHost`), on A4 "sheets on a grey desk" print-fidelity styling; switching
     the brand re-styles the preview immediately;
@@ -139,9 +172,12 @@ The lazybones docs and code **disagree**; the port follows the code:
 
 1. Content shipped as **ordered pages with `page_break` toggles**, not the single
    `Document.body` the docs describe → our `blocks[]` + per-markdown-block `page_break`.
-2. The "no editor lib, plain textarea" doc decision was reversed in practice — **TipTap on a
-   true-A4 sheet is what shipped and what made the UX good**. We adopt TipTap deliberately,
-   up front.
+2. The editor: lazybones' **shipped** editor is the plain-textarea + toolbar + Write/Preview
+   toggle (`markdown-editor.tsx` + `markdown.tsx`), NOT a rich WYSIWYG. This scope initially
+   called for TipTap on a true-A4 sheet; the demo pass tried that, then **reverted to the
+   lazybones textarea editor** (ported verbatim) because it's the proven surface and reads
+   correctly inside the report block card. The A4 print geometry is preserved on the *preview*
+   sheet (`ReportView`), not in the editor itself.
 3. `render_pdf` returns `Result<Vec<u8>, RenderError>`; `typst-as-lib` was **not** used — a
    custom `World` was; `typst-layout` is a direct dep (for `PagedDocument`). Pin the working
    set: `typst = =0.15.0`, `typst-pdf = =0.15.0`, `typst-assets = =0.15.0` (`fonts`),

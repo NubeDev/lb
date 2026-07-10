@@ -1,7 +1,8 @@
-// The render-template wizard's STARTER GALLERY (setup scope) — three worked, good-looking template
-// widgets the Design step offers as starting points. The whole point of the template widget is building
-// a view we DON'T already have pre-made, so these lean into that: a spotlight leaderboard, a KPI stat
-// row, and a bar-meter ranking — none of which is a stock chart type.
+// The render-template STARTER GALLERY — three worked, good-looking template widgets offered as
+// starting points (setup scope's render-template wizard, and now the reports PanelPicker's starter
+// widgets). The whole point of the template widget is building a view we DON'T already have pre-made,
+// so these lean into that: a spotlight leaderboard, a KPI stat row, a bar-meter ranking, and a
+// draft-with-AI scaffold — none of which is a stock chart type.
 //
 // Each example ships its OWN summary SQL (a small, per-site aggregate — not 840 raw hourly rows) so the
 // widget renders a handful of clean rows with pre-computed, pre-ROUNDED columns. That matters because
@@ -20,8 +21,10 @@
 //   - The root fills the tile (height:100%;box-sizing:border-box) and inner scroll regions use
 //     overflow:auto. Generous padding + large type so it reads as a real, designed panel — not a list.
 //
+// MOVED here from features/admin/setup/templateGallery.ts so BOTH the setup wizard and the reports
+// PanelPicker share one source of truth (the cell builders in demoCells.ts consume this gallery).
 // One responsibility per file (FILE-LAYOUT): the gallery data (id, label, description, sql, code). No
-// markup rendering, no verbs — the wizard's Design step consumes this list.
+// markup rendering, no verbs.
 
 export interface TemplateExample {
   id: string;

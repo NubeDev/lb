@@ -24,10 +24,11 @@ use lb_store::{Store, StoreError};
 use serde::{Deserialize, Serialize};
 
 use crate::grant::grant_list;
+use crate::resolve::NoBuiltinRoleCaps;
 use crate::role::role_caps;
 use crate::subject::Subject;
 use crate::team::team_list;
-use crate::MEMBER;
+use crate::{BuiltinRoleCaps, MEMBER};
 
 /// Where a resolved cap came from — the provenance tag the access console shows beside each cap.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,10 +53,26 @@ pub struct SourcedCap {
 /// Resolve `user`'s effective caps in workspace `ws` WITH provenance — the sourced twin of
 /// [`resolve_caps`](crate::resolve_caps). Same fold (direct ∪ roles ∪ team-inherited), each cap
 /// tagged with its contributing edge(s). The cap set equals `resolve_caps(store, ws, user)`.
+///
+/// Reads only the stored role records (no live built-in caps); the host access-console entry
+/// ([`resolve_caps_sourced_with`]) injects the live built-in bundles so a new built-in cap shows up
+/// in the console the moment code ships (builtin-role-freshness scope).
 pub async fn resolve_caps_sourced(
     store: &Store,
     ws: &str,
     user: &str,
+) -> Result<Vec<SourcedCap>, StoreError> {
+    resolve_caps_sourced_with(store, ws, user, &NoBuiltinRoleCaps).await
+}
+
+/// [`resolve_caps_sourced`] with an injected [`BuiltinRoleCaps`] (builtin-role-freshness scope). The
+/// access console passes the host's live `*_role_caps()` so its displayed set matches the minted
+/// token set (the resolver↔mint cross-check stays exact).
+pub async fn resolve_caps_sourced_with(
+    store: &Store,
+    ws: &str,
+    user: &str,
+    builtins: &dyn BuiltinRoleCaps,
 ) -> Result<Vec<SourcedCap>, StoreError> {
     let mut acc: BTreeMap<String, Vec<CapSource>> = BTreeMap::new();
     // The user's own direct grants + their roles.
@@ -64,11 +81,12 @@ pub async fn resolve_caps_sourced(
         ws,
         &Subject::User(user.to_string()),
         Ctx::UserDirect,
+        builtins,
         &mut acc,
     )
     .await?;
     // Team-inherited: for every team the user is a member of, fold the team's grants + roles. Same
-    // membership walk `resolve_caps` performs (a membership/visibility relation is the live edge).
+    // membership walk `resolve_caps_with` performs (a membership/visibility relation is the live edge).
     for team in team_list(store, ws).await? {
         let members = list_related(store, ws, MEMBER, &team.team).await?;
         if members.iter().any(|m| m == user) {
@@ -77,6 +95,7 @@ pub async fn resolve_caps_sourced(
                 ws,
                 &Subject::Team(team.team.clone()),
                 Ctx::TeamInherited(team.team.clone()),
+                builtins,
                 &mut acc,
             )
             .await?;
@@ -94,8 +113,18 @@ pub async fn resolve_subject_caps_sourced(
     ws: &str,
     subject: &Subject,
 ) -> Result<Vec<SourcedCap>, StoreError> {
+    resolve_subject_caps_sourced_with(store, ws, subject, &NoBuiltinRoleCaps).await
+}
+
+/// [`resolve_subject_caps_sourced`] with an injected [`BuiltinRoleCaps`] (builtin-role-freshness).
+pub async fn resolve_subject_caps_sourced_with(
+    store: &Store,
+    ws: &str,
+    subject: &Subject,
+    builtins: &dyn BuiltinRoleCaps,
+) -> Result<Vec<SourcedCap>, StoreError> {
     let mut acc: BTreeMap<String, Vec<CapSource>> = BTreeMap::new();
-    fold_subject(store, ws, subject, Ctx::UserDirect, &mut acc).await?;
+    fold_subject(store, ws, subject, Ctx::UserDirect, builtins, &mut acc).await?;
     Ok(finalize(acc))
 }
 
@@ -108,14 +137,16 @@ enum Ctx {
     TeamInherited(String),
 }
 
-/// Fold `subject`'s grants into `acc`, mirroring [`resolve_subject_caps`](crate::resolve_subject_caps)
-/// exactly (same `grant_list` → `role:`-expand loop) but tagging each contributed cap with its
-/// source under the current [`Ctx`]. A cap contributed more than once keeps every distinct source.
+/// Fold `subject`'s grants into `acc`, mirroring [`resolve_subject_caps_with`](crate::resolve_subject_caps_with)
+/// exactly (same `grant_list` → `role:`-expand loop, same live-built-in union) but tagging each
+/// contributed cap with its source under the current [`Ctx`]. A cap contributed more than once keeps
+/// every distinct source. `builtins` carries the live built-in bundles (builtin-role-freshness).
 async fn fold_subject(
     store: &Store,
     ws: &str,
     subject: &Subject,
     ctx: Ctx,
+    builtins: &dyn BuiltinRoleCaps,
     acc: &mut BTreeMap<String, Vec<CapSource>>,
 ) -> Result<(), StoreError> {
     for cap in grant_list(store, ws, subject).await? {
@@ -123,6 +154,13 @@ async fn fold_subject(
             Some(role) => {
                 for rc in role_caps(store, ws, role).await? {
                     push_source(acc, rc, source_for_role(&ctx, role));
+                }
+                // BUILTIN-ROLE FRESHNESS: union the live bundle on top of the stored record — keeps
+                // the sourced fold byte-for-byte with `resolve_subject_caps_with`.
+                if let Some(live) = builtins.live_caps(role) {
+                    for rc in live {
+                        push_source(acc, rc, source_for_role(&ctx, role));
+                    }
                 }
             }
             None => push_source(acc, cap, source_for_direct(&ctx)),

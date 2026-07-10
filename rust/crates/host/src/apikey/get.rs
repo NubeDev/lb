@@ -6,13 +6,14 @@
 use std::collections::BTreeSet;
 
 use lb_auth::Principal;
-use lb_authz::{resolve_subject_caps, Subject};
+use lb_authz::Subject;
 use lb_mcp::authorize_tool;
 use lb_store::{read, Store};
 
 use super::error::ApiKeyError;
 use super::list::assigned_roles;
 use super::model::{ApiKeyFull, ApiKeyRecord, TABLE};
+use crate::authz::resolve_subject_caps_live as resolve_subject_caps;
 
 /// The full view of key `id` in `ws`, for `principal`, including the resolved cap set.
 pub async fn apikey_get(

@@ -23,7 +23,7 @@ use lb_reminders::{Action, Reminder, ReminderError};
 use lb_store::Store;
 use serde_json::Value;
 
-use crate::authz::resolve_caps;
+use crate::authz::resolve_caps_live as resolve_caps;
 use crate::boot::Node;
 
 /// The deterministic lb-jobs job id for one firing of `reminder_id` at `scheduled_ts`. Stable, so a

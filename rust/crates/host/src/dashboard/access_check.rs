@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use lb_auth::Principal;
-use lb_authz::{resolve_subject_caps, Subject};
+use lb_authz::Subject;
 use lb_mcp::authorize_tool;
 use lb_store::Store;
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ use super::error::DashboardError;
 use super::model::{Cell, Target, Variable};
 use super::store::read_dashboard;
 use super::visibility::may_read_dashboard;
-use crate::authz::resolve_caps;
+use crate::authz::{resolve_caps_live, resolve_subject_caps_live};
 use crate::federation::{enforce_endpoint, resolve_datasource};
 use crate::panel::{may_read_panel, Panel};
 use crate::query::{resolve_query, QueryTarget};
@@ -209,19 +209,20 @@ pub async fn dashboard_access_check(
 }
 
 /// Resolve a subject's effective caps: a `user:` folds the full session projection (direct ∪ roles ∪
-/// team-inherited) via [`resolve_caps`]; any other subject (team/role/key) folds its own direct
-/// grants + roles via [`resolve_subject_caps`] — the SAME split `authz.resolve` uses, so the caps the
-/// preflight tests are exactly the caps a live token would carry.
+/// team-inherited) via [`resolve_caps_live`]; any other subject (team/role/key) folds its own direct
+/// grants + roles via [`resolve_subject_caps_live`] — the SAME split `authz.resolve` uses, so the caps
+/// the preflight tests are exactly the caps a live token would carry. Both bake in the live built-in
+/// bundles (builtin-role-freshness) so the preflight matches the mint.
 async fn resolve_subject_effective_caps(
     store: &Store,
     ws: &str,
     subject: &Subject,
 ) -> Result<Vec<String>, DashboardError> {
     match subject {
-        Subject::User(user) => Ok(resolve_caps(store, ws, user).await?),
+        Subject::User(user) => Ok(resolve_caps_live(store, ws, user).await?),
         other => {
             let mut caps = BTreeSet::new();
-            resolve_subject_caps(store, ws, other, &mut caps).await?;
+            resolve_subject_caps_live(store, ws, other, &mut caps).await?;
             Ok(caps.into_iter().collect())
         }
     }

@@ -14,8 +14,9 @@
 //   5. Save       — the real `template.save` (`saveTemplate`) persists a durable `render_template`;
 //                   optionally the same cell is dropped on a fresh dashboard via `dashboard.save`.
 //
-// No new backend, no new verb, no duplicated editor. New code is this flow + `templateCell` in
-// `dataToInsight.ts` + the three polished starter widgets in `templateGallery.ts`. Cap-gating hides
+// No new backend, no new verb, no duplicated editor. New code is this flow + the shared `templateCell`
+// / starter gallery in `@/lib/panel` (lifted there so the reports PanelPicker shares them without a
+// cross-feature import). Cap-gating hides
 // controls the caller couldn't use anyway;
 // the gateway re-checks every write (rule 5). Datasource/source ids stay opaque (rule 10). One
 // responsibility per file (FILE-LAYOUT).
@@ -49,7 +50,7 @@ import { StepFlow, StepShell, type FlowStep } from "../wizard/StepFlow";
 import { DatasourceStep } from "./steps/DatasourceStep";
 import { SqlPreviewStep } from "./steps/SqlPreviewStep";
 import { DEFAULT_SOURCE, templateCell } from "./dataToInsight";
-import { DEFAULT_TEMPLATE, TEMPLATE_GALLERY, type TemplateExample } from "./templateGallery";
+import { DEFAULT_TEMPLATE, TEMPLATE_GALLERY, type TemplateExample } from "@/lib/panel";
 
 type Row = Record<string, unknown>;
 

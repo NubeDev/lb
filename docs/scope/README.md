@@ -232,7 +232,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   Extension Studio wizard that **generate** a fresh extension (wasm|native backend + shadcn/Tailwind
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
-  behind one `Toolchain` trait), and `extension-watch-scope.md` (the **generic live-feed primitive for
+  behind one `Toolchain` trait), and `ext-out-of-tree-scope.md` (**split the extensions out**:
+  every product extension moves to a `lazybones-extensions` repo — only `federation` stays — against
+  three published SDK surfaces (`lb-sdk` WIT/wasm, a new `lb-ext-native` child-side facade with a
+  versioned `init` handshake, and `@nube/ext-ui-sdk` as the single source of the page/widget contracts),
+  an Artifact v2 that carries the UI bundle, and the previously deferred thin `lb-ext` CLI — the
+  publish/trust path unchanged), and `extension-watch-scope.md` (the **generic live-feed primitive for
   extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
   host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
   ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
@@ -243,7 +248,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   canvas widget like `echarts-panel` recolors via the v-next `update` hook) and `css-isolation-scope.md`
   (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
   regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
-  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence).
+  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence). `node-roles/` also
+  holds `embed-node-scope.md` (**lb as a Rust library**: the boot ritual `main.rs`/the Tauri shell/
+  `test_gateway` each hand-copy today becomes ONE `BootConfig` + `NodeBuilder` lib target on the
+  `node` package — the sanctioned role-aware layer, §3.1 — with struct config (`from_env()` only at
+  binary boundaries), composable subsets (gateway/reactors/federation toggles), real teardown, and
+  the three existing embedders refactored onto it as proof; git-dep embedding, deliberately NOT a
+  crates.io publish of `lb-host` and NOT a new repo).
 - `desktop/` — the Tauri v2 desktop shell as a **shipped executable**. `desktop-packaging-scope.md`
   builds the existing `lazybones-shell` (`ui/src-tauri` — node in-process + window, the `workstation`
   persona) into **plain binaries** (no AppImage/installer) for Linux x86-64 (`tauri build --no-bundle`

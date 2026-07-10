@@ -13,12 +13,13 @@
 use std::collections::BTreeSet;
 
 use lb_auth::Principal;
-use lb_authz::{resolve_subject_caps, Subject};
+use lb_authz::Subject;
 use lb_store::{read, Store};
 
 use super::cache::ApiKeyCache;
 use super::error::ApiKeyError;
 use super::model::{ApiKeyRecord, TABLE};
+use crate::authz::resolve_subject_caps_live as resolve_subject_caps;
 
 /// Verify `secret` against key `id` in workspace `ws` at logical time `now`, resolving the key's
 /// caps and building a `Principal::for_key`. `cache` is the node's shared verification cache.

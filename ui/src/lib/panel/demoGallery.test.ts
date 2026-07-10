@@ -4,12 +4,14 @@
 // markup the sanitizer strips (a tag/attr not on the allow-list — e.g. someone adds an <svg>). If a
 // binding didn't resolve, a `{{token}}` survives; if the sanitizer ate the structure, the row content
 // vanishes. Both are asserted here so the examples can't rot into the ugly/empty state we fixed.
+//
+// MOVED from features/admin/setup/templateGallery.test.ts alongside the gallery (now demoGallery.ts).
 
 import { describe, expect, it } from "vitest";
 
 import { interpolateTemplate, type TemplateData } from "@/features/dashboard/builder/templateInterpolate";
 import { sanitizeTemplateHtml } from "@/features/dashboard/builder/sanitizeTemplateHtml";
-import { TEMPLATE_GALLERY } from "./templateGallery";
+import { TEMPLATE_GALLERY } from "@/lib/panel";
 
 const ROWS = [
   { site: "Airport Terminal T2", total_kwh: 1284.5, peak_kwh: 9.4, avg_kwh: 4.31, pct: 100, rnk: 1 },
