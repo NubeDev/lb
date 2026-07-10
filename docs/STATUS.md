@@ -14,6 +14,13 @@ start of any session; update it at the end of any session that changed state.
 
 ---
 
+> ⚠️ **Repo posture (2026-07-11): lb is a LIBRARY now.** Consumed by product hosts via the `lb-node`
+> embed seam; extension SDKs + product extensions + product UI shell have moved out-of-tree. The in-tree
+> `rust/extensions/*` and `ui/` are **retained temporarily** (reference/fallback, removed in ~a few
+> weeks once downstream is proven). Authoritative posture + retention window: [`../MIGRATION.md`](../MIGRATION.md).
+
+---
+
 ## Current stage
 
 **Just shipped (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new

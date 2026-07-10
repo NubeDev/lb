@@ -1,5 +1,11 @@
 # lazybones
 
+> ⚠️ **lb is a LIBRARY now.** It is the platform **core**, consumed by product hosts (e.g.
+> `NubeIO/rubix-ai`) via the `lb-node` embed seam — not "the app you run." The extension SDKs, product
+> extensions, and product UI shell have **moved out of this repo**; the in-tree `rust/extensions/*` and
+> `ui/` are **retained temporarily** as a reference/fallback during migration, **not** authoritative.
+> See **[`MIGRATION.md`](MIGRATION.md)** before treating anything here as the source of truth.
+
 
 # Core Stack Scope
 
