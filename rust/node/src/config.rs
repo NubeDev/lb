@@ -100,6 +100,14 @@ pub struct BootConfig {
     /// The served agent actor's capability ceiling (today's `LB_AGENT_CAPS`, comma-separated). `None`
     /// ⇒ the default platform-tool surface. Always intersected with the caller at the wall.
     pub agent_caps: Option<Vec<String>>,
+
+    /// Where the gateway serves installed extension **UI bundles** from — `{ext_ui_dir}/{ext}/{file}`,
+    /// reachable at `GET /extensions/{ext}/ui/{file}` (ui-federation scope). Mirrors `store_path`'s
+    /// posture: `Some` ⇒ the gateway is built with `Gateway::with_ext_ui_dir(dir)`, pinning the serve
+    /// dir to an embedder-chosen (typically absolute) path; `None` ⇒ today's unchanged behaviour — the
+    /// gateway keeps its own `LB_EXT_UI_DIR`/`"extensions-ui"` default read at the binary boundary. Like
+    /// every other field, no library code below the seam reads this from env — an embedder fills it.
+    pub ext_ui_dir: Option<String>,
 }
 
 impl Default for BootConfig {
@@ -120,6 +128,9 @@ impl Default for BootConfig {
             telemetry: lb_telemetry::SinkConfig::Off,
             agent_model: AgentModelConfig::default(),
             agent_caps: None,
+            // `None` ⇒ the gateway keeps its own `LB_EXT_UI_DIR`/"extensions-ui" default (the standalone
+            // binary is untouched); an embedder sets an absolute path to relocate the ext-UI serve dir.
+            ext_ui_dir: None,
         }
     }
 }
@@ -144,6 +155,10 @@ impl BootConfig {
             telemetry: lb_telemetry::SinkConfig::from_env(),
             agent_model: agent_model_from_env(),
             agent_caps: agent_caps_from_env(),
+            // Left `None` on the binary path ON PURPOSE: the gateway reads `LB_EXT_UI_DIR` itself in
+            // `Gateway::build`, so the standalone `node` binary's ext-UI serve dir is unchanged. Only an
+            // embedder (filling the struct directly) uses this field to relocate the dir off env.
+            ext_ui_dir: None,
         }
     }
 }

@@ -110,7 +110,13 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
         GatewayMode::Addr(addr) => {
             // A LIVE clock: `Gateway::new_live` reads wall time per request and installs its key onto
             // the node. Do NOT call `Gateway::boot()` here — that would open a second store handle.
-            let gw = Gateway::new_live(node.clone(), cfg.signing_key.clone());
+            let mut gw = Gateway::new_live(node.clone(), cfg.signing_key.clone());
+            // Relocate the extension-UI serve dir when the embedder set one (`Some` ⇒ pin it via the
+            // builder); `None` leaves the gateway's own `LB_EXT_UI_DIR`/"extensions-ui" default in place,
+            // so the standalone binary is untouched (ext-UI-dir embed seam).
+            if let Some(dir) = cfg.ext_ui_dir.as_deref().filter(|d| !d.is_empty()) {
+                gw = gw.with_ext_ui_dir(dir);
+            }
             Some((gw, *addr))
         }
         GatewayMode::Off => None,
