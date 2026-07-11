@@ -101,13 +101,13 @@ before login. No `*.fake.ts`.
 
 ## Open questions
 
-- Package (`@nube/minimal-shell`, runtime dep, updates by tag bump) vs devkit **template**
-  (scaffold, product owns the copy)? Recommend: **package with a thin config entry** —
-  vendoring is the disease this scope treats.
-- Does the invite-accept surface live here or gateway-served? (Coordinate with
-  `invites-scope.md`; recommend here — it's a themed client screen over one public verb.)
-- Home = one ext page v1 (recommended) — is a bottom-tab multi-page mode (N pages of the
-  *same* ext) v1.5 or full-shell territory?
+- ✅ **Package** (`@nube/minimal-shell`, runtime dep, updates by tag bump) — vendoring is the
+  disease this scope treats. (Rejected: devkit template — product owns the copy, drifts.)
+- ✅ Invite-accept surface lives here — a themed client screen over `POST /public/invite/accept`
+  (the `acceptInvite` function in `session.ts`). The shell provides the API; the product host
+  adds the screen.
+- ✅ Home = one ext page v1 (recommended). A bottom-tab multi-page mode is v1.5 or full-shell
+  territory.
 
 ## Related
 
