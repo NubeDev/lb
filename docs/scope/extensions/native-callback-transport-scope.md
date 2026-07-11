@@ -5,6 +5,12 @@ Status: **SHIPPED** (2026-07-02). Built per this scope — see
 This resolves the deferred **"child→host callback transport"** open question in
 [`native-tier-scope.md`](native-tier-scope.md) (now marked RESOLVED there).
 
+> **Follow-up (2026-07-11, `sdk-v0.3.0`):** the `SidecarClient` transport built here shipped as an
+> **in-tree `lb` crate** (path dep). It has since been **published through the SDK** so an
+> *out-of-tree* native extension can consume it by git tag (re-exported from `lb-ext-native`); lb now
+> consumes it back from the SDK. Behavior is unchanged — only the crate's home. See
+> [`native-callback-sdk-export-scope.md`](native-callback-sdk-export-scope.md).
+
 The native-tier slice shipped supervision + a scoped injected identity, but proved its exit gate
 with a child that used **only the control line** — it deliberately deferred the transport a sidecar
 uses to call *back* into host capabilities. It also left the injected `LB_EXT_TOKEN` as a

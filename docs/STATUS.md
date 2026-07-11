@@ -23,7 +23,21 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-11, later the same day): `updates-to-core` RELEASED.** The branch's two
+**Just shipped (2026-07-11): native host-callback client PUBLISHED through the SDK →
+`sdk-v0.3.0` + `node-v0.3.0`.** An out-of-tree native (Tier-2) extension could speak the host→child
+control wire (`lb-ext-native`) but had no way to call BACK into the host's MCP surface — the callback
+client (`SidecarClient`) lived only in the lb monorepo as a path crate. Now it's a first-class SDK
+crate (`lb-sidecar-client`, `NubeDev/lb-ext-sdk`), **re-exported from `lb-ext-native`** so a native
+extension carries one dependency for both directions of the wire; lb consumes it **back** by git tag
+(dropped the in-tree `crates/sidecar-client`). Verb-agnostic (rule 10) — the motivating consumer is a
+downstream native authz chokepoint calling the generic `authz.check_scoped`/`authz.scope_filter`.
+Host end (`/mcp/call`) unchanged; no WIT/grammar change. Real-infra tests green: SDK
+`host_callback_test` (round-trip + 403→`Denied`) + lb `native_callback_test` (3/3 real-gateway:
+round-trip, capability-deny, workspace-isolation), all building against the git tag. Also fixed a
+latent `lb-ext-native` serve-test EOF hang. See
+[native-callback-sdk-export session](sessions/extensions/native-callback-sdk-export-session.md).
+
+**Earlier (2026-07-11): `updates-to-core` RELEASED.** The branch's two
 release-blocking gaps are closed and the branch is merged to `master` and tagged:
 **`node-v0.2.0`** (lb core + node), **`minimal-shell-v0.2.0`** (`@nube/minimal-shell` 0.2.0),
 **`ui-v0.7.0`** (`@nube/ext-ui-sdk` 0.7.0, sibling repo).
