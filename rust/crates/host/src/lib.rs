@@ -266,8 +266,9 @@ pub use nav::{
     reach_caps, reach_check, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
-    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS,
-    MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
+    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
+    MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED,
+    MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
 };
 pub use notify::{
     call_notify_tool, device_list, device_register, device_remove, notify_send,

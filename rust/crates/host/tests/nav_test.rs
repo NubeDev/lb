@@ -15,7 +15,7 @@ use lb_host::{
     add_member, dashboard_save, nav_delete, nav_get, nav_hidden_get, nav_hidden_set, nav_list,
     nav_list_shares, nav_pref_get, nav_pref_set, nav_resolve, nav_save, nav_set_default, nav_share,
     nav_unshare, tags_add, Cell, NavError, NavFacet, NavItem, NavResolvedSource, NavVisibility,
-    Node, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_PINNED,
+    Node, NAV_MAX_GROUP_DEPTH, NAV_MAX_HIDDEN, NAV_MAX_ITEMS, NAV_MAX_PINNED,
 };
 use lb_store::Store;
 use lb_tags::{Provenance, Source as TagSource, Tag};
@@ -222,14 +222,11 @@ async fn over_cap_items_rejected() {
         NavError::BadInput(_)
     ));
 
-    // A nested `group` inside a `group` → rejected (one nesting level only).
+    // One level of `group`-in-`group` nesting is now ALLOWED (nested-nav scope) — no longer rejected.
     let nested = group_item("Outer", vec![group_item("Inner", vec![])]);
-    assert!(matches!(
-        nav_save(&store, &ada, ws, "ops2", "Ops", vec![nested], 1)
-            .await
-            .unwrap_err(),
-        NavError::BadInput(_)
-    ));
+    nav_save(&store, &ada, ws, "ops2", "Ops", vec![nested], 1)
+        .await
+        .expect("shallow nesting is valid");
 
     // An unknown item kind → rejected.
     let mut bad = surface_item("x", "channels");
@@ -1511,4 +1508,310 @@ async fn reserved_nav_id_rejected() {
             .unwrap_err(),
         NavError::BadInput(_)
     ));
+}
+
+// --- nested nav groups (nested-nav scope) -------------------------------------------------------
+//
+// Groups may nest recursively up to `NAV_MAX_GROUP_DEPTH` (top-level list = depth 1). The resolver's
+// strip/expand pipeline runs at EVERY depth as one recursive pure function, and prunes empty groups
+// POST-ORDER so a permitted user never sees a folder that expands to nothing. The 100-node cap and the
+// depth cap fire INDEPENDENTLY.
+
+/// Wrap `leaf` in `depth` nested `group`s. `depth == 1` = one group holding the leaf (a top-level
+/// group at depth 1). `depth == 5` = five groups deep (a group at depth 5 holding the leaf at depth 6).
+fn nest_groups(depth: usize, leaf: NavItem) -> NavItem {
+    let mut item = group_item(&format!("g{depth}"), vec![leaf]);
+    for d in (1..depth).rev() {
+        item = group_item(&format!("g{d}"), vec![item]);
+    }
+    item
+}
+
+/// Descend into the single nested `group` chain and return the deepest group's items.
+fn deepest_group_items<'a>(item: &'a lb_host::NavResolvedItem) -> &'a [lb_host::NavResolvedItem] {
+    let mut cur = item;
+    while let Some(inner) = cur.items.iter().find(|c| c.kind == "group") {
+        cur = inner;
+    }
+    &cur.items
+}
+
+/// `nav.save` ACCEPTS a nav nested exactly `NAV_MAX_GROUP_DEPTH` deep and REJECTS one a level deeper
+/// with `BadInput` — nothing persists, the error names the limit. Round-trips the accepted deep tree.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn depth_at_cap_accepted_over_cap_rejected() {
+    let ws = "ws-nav-depth";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // Exactly at the cap: a group at depth `NAV_MAX_GROUP_DEPTH` holding a leaf. Accepted.
+    let at_cap = nest_groups(NAV_MAX_GROUP_DEPTH, surface_item("Channels", "channels"));
+    nav_save(&store, &ada, ws, "deep", "Deep", vec![at_cap.clone()], 1)
+        .await
+        .expect("exactly at the depth cap is valid");
+    // Round-trips identically (order + nesting preserved).
+    let got = nav_get(&store, &ada, ws, "deep").await.unwrap();
+    assert_eq!(got.items, vec![at_cap], "deep tree round-trips identically");
+
+    // One level deeper: a group at depth `NAV_MAX_GROUP_DEPTH + 1`. Rejected, nothing persists, the
+    // error names the limit.
+    let over = nest_groups(
+        NAV_MAX_GROUP_DEPTH + 1,
+        surface_item("Channels", "channels"),
+    );
+    let err = nav_save(&store, &ada, ws, "over", "Over", vec![over], 2)
+        .await
+        .unwrap_err();
+    match err {
+        NavError::BadInput(m) => assert!(
+            m.contains(&NAV_MAX_GROUP_DEPTH.to_string()),
+            "error names the depth limit: {m}"
+        ),
+        other => panic!("expected BadInput, got {other:?}"),
+    }
+    assert!(
+        matches!(
+            nav_get(&store, &ada, ws, "over").await.unwrap_err(),
+            NavError::NotFound
+        ),
+        "the over-cap save persisted nothing"
+    );
+}
+
+/// The 100-node cap and the depth cap are INDEPENDENT: a wide-but-shallow tree over `NAV_MAX_ITEMS`
+/// nodes still `BadInput`s even though its nesting is well under the depth cap.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn node_cap_and_depth_cap_are_independent() {
+    let ws = "ws-nav-wide";
+    let store = Store::memory().await.unwrap();
+    let ada = principal("user:ada", ws, ALL);
+
+    // One shallow (depth 2) group holding > MAX_ITEMS leaves — over the NODE cap, under the DEPTH cap.
+    let leaves: Vec<NavItem> = (0..NAV_MAX_ITEMS)
+        .map(|i| surface_item(&format!("s{i}"), "channels"))
+        .collect();
+    let wide = group_item("Wide", leaves); // group (1) + MAX_ITEMS children = MAX_ITEMS + 1 nodes.
+    let err = nav_save(&store, &ada, ws, "wide", "Wide", vec![wide], 1)
+        .await
+        .unwrap_err();
+    match err {
+        NavError::BadInput(m) => assert!(
+            m.contains(&NAV_MAX_ITEMS.to_string()),
+            "over-node error names the node cap, not the depth cap: {m}"
+        ),
+        other => panic!("expected BadInput, got {other:?}"),
+    }
+}
+
+/// Recursive cap-strip / "nav never widens at depth": a surface the caller lacks, nested several
+/// levels deep, is stripped by `nav.resolve` AND a direct route to it still succeeds server-side (the
+/// lens grants nothing — enforced at every depth).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn deep_leaf_stripped_but_route_still_reachable() {
+    let ws = "ws-nav-deep-strip";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+
+    // A group tree 4 deep whose innermost group holds BOTH `rules` (gated on rules.run, which ada
+    // lacks) and `channels` (always visible). `rules` must strip at depth 4; `channels` survives.
+    let inner = group_item(
+        "g4",
+        vec![
+            surface_item("Rules", "rules"),
+            surface_item("Channels", "channels"),
+        ],
+    );
+    let tree = group_item(
+        "g1",
+        vec![group_item("g2", vec![group_item("g3", vec![inner])])],
+    );
+    nav_save(store, &ada, ws, "deep", "Deep", vec![tree], 1)
+        .await
+        .unwrap();
+    nav_pref_set(store, &ada, ws, Some("deep"), None, 2)
+        .await
+        .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let top = r.items.iter().find(|i| i.kind == "group").unwrap();
+    let deepest = deepest_group_items(top);
+    let surfaces: Vec<&str> = deepest.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(
+        surfaces,
+        vec!["channels"],
+        "the deep `rules` leaf is stripped (ada lacks rules.run); channels survives"
+    );
+
+    // With rules.run, the deep `rules` leaf survives too — same recursion, more caps.
+    let ada2 = principal("user:ada", ws, &[SAVE, RESOLVE, RULES_RUN]);
+    let r = nav_resolve(&node, &ada2, ws).await.unwrap();
+    let top = r.items.iter().find(|i| i.kind == "group").unwrap();
+    assert_eq!(
+        deepest_group_items(top).len(),
+        2,
+        "both survive with the cap"
+    );
+}
+
+/// Empty-group pruning (post-order): a group whose WHOLE subtree strips disappears; a group whose ONLY
+/// survivor is a nested group several levels down STAYS. Proves the prune is post-order, not leaf-level.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn empty_group_pruned_but_deep_survivor_keeps_ancestors() {
+    let ws = "ws-nav-prune";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    // Ada holds RESOLVE but NOT rules.run — a `rules`-only subtree strips entirely.
+    let ada = principal("user:ada", ws, &[SAVE, RESOLVE]);
+
+    let nav_items = vec![
+        // (a) A whole subtree of only unreachable `rules`, nested 3 deep → must PRUNE entirely.
+        group_item(
+            "AllStripped",
+            vec![group_item(
+                "inner",
+                vec![group_item(
+                    "innermost",
+                    vec![surface_item("Rules", "rules")],
+                )],
+            )],
+        ),
+        // (b) A group whose only survivor sits 3 levels down (a reachable `channels`) → must STAY, and
+        //     every ancestor group with it.
+        group_item(
+            "DeepSurvivor",
+            vec![group_item(
+                "mid",
+                vec![group_item(
+                    "leaf-group",
+                    vec![
+                        surface_item("Rules", "rules"),       // strips
+                        surface_item("Channels", "channels"), // the lone deep survivor
+                    ],
+                )],
+            )],
+        ),
+    ];
+    nav_save(store, &ada, ws, "prune", "Prune", nav_items, 1)
+        .await
+        .unwrap();
+    nav_pref_set(store, &ada, ws, Some("prune"), None, 2)
+        .await
+        .unwrap();
+
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let labels: Vec<&str> = r.items.iter().map(|i| i.label.as_str()).collect();
+    assert!(
+        !labels.contains(&"AllStripped"),
+        "a group whose whole subtree strips is pruned (never an empty folder)"
+    );
+    let survivor = r
+        .items
+        .iter()
+        .find(|i| i.label == "DeepSurvivor")
+        .expect("the group with one deep survivor STAYS (post-order prune)");
+    // The lone `channels` survives at the bottom, and the whole ancestor chain is intact.
+    let deepest = deepest_group_items(survivor);
+    let surfaces: Vec<&str> = deepest.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(surfaces, vec!["channels"], "only the deep survivor remains");
+}
+
+/// Recursive hidden-strip and recursive tag-group expansion behave at depth exactly as at the top:
+/// a hidden ref inside a deep group is stripped (and its now-empty group pruned), and a tag-group
+/// nested in a group still expands to a flat, cap-bounded list at its position.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn hidden_and_tag_group_apply_at_depth() {
+    let ws = "ws-nav-depth-hide-tag";
+    let node = std::sync::Arc::new(Node::boot().await.unwrap());
+    let store = &node.store;
+    let ada = principal(
+        "user:ada",
+        ws,
+        &[
+            SAVE,
+            RESOLVE,
+            GET,
+            DASH_SAVE,
+            DASH_GET,
+            RULES_RUN,
+            "mcp:tags.add:call",
+            "mcp:tags.find:call",
+        ],
+    );
+
+    // Two dashboards Ada owns, both tagged `site` — the tag-group expansion target.
+    seed_dashboard(store, &ada, ws, "d1", "Board One").await;
+    seed_dashboard(store, &ada, ws, "d2", "Board Two").await;
+    for id in ["d1", "d2"] {
+        tags_add(
+            store,
+            &ada,
+            ws,
+            &format!("dashboard:{id}"),
+            &Tag::new("site", json!("plant")),
+            &Provenance::new(1, "user:ada", TagSource::Human),
+        )
+        .await
+        .unwrap();
+    }
+
+    // A nested tree: a depth-2 group holds a tag-group (must expand at depth) and, in a SIBLING deep
+    // group, a `channels` surface + a `rules` surface we'll hide.
+    let nav_items = vec![group_item(
+        "Outer",
+        vec![
+            tag_group_item(
+                "Sites",
+                vec![NavFacet {
+                    key: "site".into(),
+                    value: None,
+                }],
+            ),
+            group_item(
+                "Inner",
+                vec![
+                    surface_item("Rules", "rules"),
+                    surface_item("Channels", "channels"),
+                ],
+            ),
+        ],
+    )];
+    nav_save(store, &ada, ws, "deep", "Deep", nav_items, 2)
+        .await
+        .unwrap();
+    nav_pref_set(store, &ada, ws, Some("deep"), None, 3)
+        .await
+        .unwrap();
+
+    // Before hiding: the nested tag-group expands to a flat group of both boards at its position.
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let outer = r.items.iter().find(|i| i.kind == "group").unwrap();
+    let sites = outer
+        .items
+        .iter()
+        .find(|i| i.label == "Sites")
+        .expect("the nested tag-group expanded at depth");
+    assert_eq!(
+        sites.items.len(),
+        2,
+        "tag-group expands flat at depth (both boards)"
+    );
+    assert!(
+        sites.items.iter().all(|c| c.kind == "dashboard"),
+        "tag-group children are flat dashboard leaves, not further groups"
+    );
+
+    // Hide the deep `rules` surface: it strips inside the deep `Inner` group at depth, `channels` stays.
+    nav_hidden_set(store, &ada, ws, vec!["rules".into()], 4)
+        .await
+        .unwrap();
+    let r = nav_resolve(&node, &ada, ws).await.unwrap();
+    let outer = r.items.iter().find(|i| i.kind == "group").unwrap();
+    let inner = outer.items.iter().find(|i| i.label == "Inner").unwrap();
+    let surfaces: Vec<&str> = inner.items.iter().map(|i| i.surface.as_str()).collect();
+    assert_eq!(
+        surfaces,
+        vec!["channels"],
+        "deep hidden ref stripped at depth"
+    );
 }
