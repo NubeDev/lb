@@ -176,6 +176,9 @@ csv = "1"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde_yaml = "0.9"
 base64 = "0.22"
+# Image processing for media variants (media scope). Minimal features — only decode/resize/encode
+# for the supported upload types (jpeg, png, webp).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Typst PDF render stack (reports scope, ported from lazybones-render). The WHOLE set is exact-pinned
 # to the version proven to compile → PDF bytes on this toolchain (rustc 1.96, the Phase-3a spike); see
 # crates/render. `typst-layout` is a direct dep because `PagedDocument` (compile output / pdf input)

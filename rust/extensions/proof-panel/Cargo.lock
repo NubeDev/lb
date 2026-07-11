@@ -326,6 +326,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "lb-sdk"
+version = "0.2.0"
+source = "git+https://github.com/NubeDev/lb-ext-sdk?tag=sdk-v0.2.1#fdf18272505d89630ca416597828082949798955"
+
+[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -409,6 +414,7 @@ dependencies = [
 name = "proof-panel-ext"
 version = "0.1.0"
 dependencies = [
+ "lb-sdk",
  "serde",
  "serde_json",
  "wit-bindgen",

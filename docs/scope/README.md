@@ -426,6 +426,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   response with per-row pause/run-now/delete controls, all rendered by the shipped widget views over the
   viewer-grant-leashed bridge (no reminders-specific channel UI); adds two `x-lb` widgets (`cron`, static
   `select`) and a small `reminder.fire` run-now verb.
+- `release/` — release engineering. `updates-to-core-release-scope.md`: finish and tag the
+  `updates-to-core` branch (five platform-gap features) — the reviewed gap list (relay-reactor
+  boot wiring, the four i18n surface fixes riding the existing prefs MF1 en/es catalog engine),
+  what is already done (invite-accept rate-limit), and the tag/publish checklist.
 - `reports/` — the **report builder + branded PDF exporter** (`report-builder-scope.md`): a
   notebook-style `report:{ws}:{id}` asset of ordered blocks — markdown (true-A4 TipTap WYSIWYG),
   images (`assets.*` refs), and **existing dashboard panels** (the shipped `panel_ref`/inline-spec

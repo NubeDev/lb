@@ -10,19 +10,19 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
-    ack_insight, add_datasource, add_member, add_team_member, agent_invoke, archive_workspace,
-    assign_grant, bus_stream, channel_stream, convert_unit, create_apikey, create_channel,
-    create_def, create_identity, create_team, create_user, create_webhook, create_workspace,
-    define_role, delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight,
-    delete_message, delete_nav, delete_occurrence, delete_panel, delete_report, delete_role,
-    delete_rule, delete_team, delete_user, disable_extension, disable_user, edit_message,
-    enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
+    accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
+    archive_workspace, assign_grant, bus_stream, channel_stream, convert_unit, create_apikey,
+    create_channel, create_def, create_identity, create_team, create_user, create_webhook,
+    create_workspace, define_role, delete_brand, delete_dashboard, delete_def, delete_flow,
+    delete_insight, delete_message, delete_nav, delete_occurrence, delete_panel, delete_report,
+    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
+    edit_message, enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
     events_unsubscribe, export_report, find_series, flow_debug_stream, flow_node_state,
     flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
     get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
-    get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_nav,
-    get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report, get_rule,
-    get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
+    get_flow_node, get_flow_run, get_history, get_identity, get_insight, get_layout, get_media,
+    get_nav, get_nav_hidden, get_nav_pref, get_outbox_status, get_panel, get_prefs, get_report,
+    get_rule, get_webhook, grant_skill, identity_workspaces_route, inject_flow, insight_events,
     latest_sample, lifecycle_flow, link_doc, list_apikeys, list_brands, list_channels,
     list_dashboards, list_datasources, list_defs, list_docs, list_extensions, list_flow_nodes,
     list_flow_runs, list_flows, list_grants, list_identities, list_inbox, list_insights,
@@ -30,18 +30,18 @@ use crate::routes::{
     list_series, list_shares_nav, list_tables, list_team_members, list_teams, list_users,
     list_webhooks, list_workspaces, load_skill, login, mcp_call, mcp_catalog, native_call,
     panel_usage, patch_flow_run, pin_dashboards, post_message, post_webhook, publish_extension,
-    publish_message, purge_workspace, put_asset_bin, put_doc, put_skill, read_graph, read_samples,
-    read_schema, refresh_run_token, remove_datasource, remove_member, remove_team_member,
-    rename_team, rename_workspace, render_catalog_message, reset_extension, resolve_caps,
-    resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey, revoke_grant,
-    revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control, run_flow,
-    run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav, save_panel,
-    save_report, save_rule, scan_table, series_stream, serve_ext_ui, set_agent_config_route,
-    set_catalog, set_default_nav, set_default_prefs, set_layout, set_nav_hidden, set_nav_pref,
-    set_prefs, share_dashboard, share_doc, share_nav, share_panel, share_report, surface_reach,
-    system_acp, system_overview, system_subsystem, system_tools, system_topology, telemetry_stream,
-    test_active_def, test_datasource, test_def, uninstall_extension, unshare_nav, update_def,
-    update_flow_node, write_samples,
+    publish_message, purge_workspace, put_asset_bin, put_doc, put_media_chunk, put_skill,
+    read_graph, read_samples, read_schema, refresh_run_token, remove_datasource, remove_member,
+    remove_team_member, rename_team, rename_workspace, render_catalog_message, reset_extension,
+    resolve_caps, resolve_inbox, resolve_insight, resolve_nav, resolve_prefs, revoke_apikey,
+    revoke_grant, revoke_tokens_route, revoke_webhook, rotate_apikey, rotate_webhook, run_control,
+    run_flow, run_query, run_rule, run_stream, save_brand, save_dashboard, save_flow, save_nav,
+    save_panel, save_report, save_rule, scan_table, series_stream, serve_ext_ui,
+    set_agent_config_route, set_catalog, set_default_nav, set_default_prefs, set_layout,
+    set_nav_hidden, set_nav_pref, set_prefs, share_dashboard, share_doc, share_nav, share_panel,
+    share_report, surface_reach, system_acp, system_overview, system_subsystem, system_tools,
+    system_topology, telemetry_stream, test_active_def, test_datasource, test_def,
+    uninstall_extension, unshare_nav, update_def, update_flow_node, write_samples,
 };
 use crate::state::Gateway;
 
@@ -66,6 +66,28 @@ pub fn router(gw: Gateway) -> Router {
         // 404/410 so the route is not a webhook-id oracle. Registered FIRST so it sits at a stable
         // public path unrelated to the session-authed `/admin/webhooks/*` surface.
         .route("/hooks/{ws}/{id}", post(post_webhook))
+        // The pre-auth invite accept route (invites scope) — `POST /public/invite/accept`. The
+        // THIRD unauthenticated route (besides /login and /hooks): the caller presents the invite
+        // token (not a session), and the accept chain runs the atomic onboarding. The gateway's
+        // signing key mints the session.
+        // Rate-limited per client IP from day one (invites scope risk note) — the route is a
+        // token oracle AND (via current_secret) a password oracle. Limiter: routes/rate_limit.rs.
+        .route(
+            "/public/invite/accept",
+            post(accept_invite).layer(axum::middleware::from_fn(
+                crate::routes::invite_accept_rate_limit,
+            )),
+        )
+        // The pre-auth invite VERIFY route (release scope, i18n gap a) — `GET
+        // /public/invite/verify`. Read-only token preview (locale/email/redeemable) so the accept
+        // page renders in the invite's language before any session exists. Same token-oracle
+        // posture as accept, so it shares the same per-IP rate limiter.
+        .route(
+            "/public/invite/verify",
+            get(crate::routes::verify_invite).layer(axum::middleware::from_fn(
+                crate::routes::invite_accept_rate_limit,
+            )),
+        )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(
@@ -319,6 +341,13 @@ pub fn router(gw: Gateway) -> Router {
             post(put_asset_bin).layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
         )
         .route("/assets/{id}", get(get_asset_bin))
+        // media (media scope) — chunked upload + streaming serve. The chunk PUT carries raw bytes
+        // (up to chunk_size = 1 MiB + headroom). The serve GET supports ?variant=thumb.
+        .route(
+            "/media/{id}/chunk/{n}",
+            put(put_media_chunk).layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route("/media/{id}", get(get_media))
         // nav (nav scope) — the browser's `nav.*` CRUD + the composite `nav.resolve` menu NavRail
         // renders + the member-owned pick + the workspace-default pointer. Each route re-checks the
         // gates server-side; ws + owner from the token; the per-user pick keyed to the token `sub`.

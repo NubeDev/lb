@@ -1,6 +1,8 @@
 # Inbox-outbox scope — push notifications as an outbox target (FCM/APNs/WebPush)
 
-Status: scope (the ask). Promotes to `public/inbox-outbox/` once shipped.
+Status: scope (the ask) — v1 substrate shipped + review-fixed 2026-07-11 (see "Shipped (v1)"
+below); WebPush(VAPID) adapter + admin device-count surface still open. Promotes to
+`public/inbox-outbox/` once those close.
 
 > Read with: `outbox-scope.md` (the must-deliver substrate + the generic `Target` trait this
 > plugs into), `../auth-caps/api-keys-scope.md` (hashed-credential pattern),
@@ -99,11 +101,50 @@ everything else (store, outbox, caps) real.
 
 ## Open questions
 
-- Is `notify.send` its own verb or a thin alias over a generic `outbox.enqueue{target:
-  "push"}`? (Recommend the named verb — it's where the audience/prefs policy lives.)
-- WebPush first (PWA, no store approvals) then FCM/APNs? (Recommend yes — v1 = WebPush.)
-- Do quiet hours live in prefs v1 or ship later? (Recommend the prefs axis v1 — retrofitting
-  DND after users are annoyed is the wrong order.)
+- ✅ `notify.send` is its own named verb (the audience/prefs policy lives here). *Rejected:* a
+  thin alias over `outbox.enqueue{target:"push"}` — loses the named policy seam.
+- ✅ WebPush first (PWA, no store approvals), then FCM/APNs. v1 = WebPush.
+- ✅ Quiet hours live in prefs v1 (`push_muted` axis — the `insight_notifications` pattern).
+  Retrofitting DND after users are annoyed is the wrong order.
+
+## Shipped (v1) + review-fix amendments (2026-07-11)
+
+What is actually in-tree after the peer-review pass, and what is honestly deferred:
+
+- **Wiring contract — SUPERSEDED (2026-07-11, release scope gap 1):** the `node` boot ritual now
+  registers BOTH targets itself: `node/src/reactors.rs::spawn` builds a generic `RouterTarget`
+  (dispatch on the effect's opaque `target` string) with `EmailTarget` + `PushTarget` and spawns
+  `spawn_relay_reactors` (2s tick), gated by `BootConfig.reactors`. Providers come through the
+  additive `BootConfig.outbox_providers` seam (`Option<Arc<dyn EmailProvider/PushProvider>>`);
+  unset ⇒ logging no-op providers (log + ack — boot never crashes, effects never strand). Core
+  still names no provider (rule 10). Boot-level proof: `node/tests/relay_boot_test.rs`.
+- **i18n (2026-07-11, release scope gap c):** `notify.send` additionally accepts
+  `title_key`/`body_key`/`args` (a catalog reference); `PushTarget` renders **per-recipient** in
+  each recipient's `language` pref at deliver time. Literal title/body remain the compat path and
+  are never translated. Proof: `host/tests/push_i18n_test.rs` (one notify → en+es payloads).
+- **Workspace comes from the payload, never guessed:** `notify.send` embeds `"workspace": ws`
+  in the effect payload at enqueue (it authorized against that ws); `deliver()` fails the
+  effect if it is absent. The audience is membership-checked in that ws — a non-member `sub`
+  is silently excluded (tested). This replaced a review-found hardcoded workspace
+  (`debugging/inbox-outbox/push-target-hardcoded-workspace.md`).
+- **At-least-once, per-device:** `notify/delivered.rs` keeps a ws-scoped delivered marker per
+  `(idempotency_key, device_id)`; an outbox retry re-sends **only** the failures. `collapse_key`
+  is NOT the dedup key — it is forwarded to the provider (WebPush `Topic` / FCM `collapse_key`)
+  for provider-side collapse of stacked notifications; distinct effects sharing a collapse key
+  are each still delivered once.
+- **Effect ids are ULIDs** (`notify:{ulid}`) — the earlier `notify:{now}:{first_recipient}`
+  collided within one second and the outbox idempotency dedup silently swallowed the second
+  notification.
+- **WebPush (VAPID) adapter: DEFERRED.** v1 shipped the `PushProvider` trait, the `Target`
+  adapter, and the one sanctioned recording fake — no HTTP provider yet. Why: the adapter needs
+  the VAPID keypair via `secrets/` mediation plus the credential runbook (Risks: "credential
+  ceremony"), and no in-repo consumer exercises a real endpoint yet; shipping the trait-shaped
+  seam first keeps the product host unblocked (it can wire any impl today). **Runbook item:**
+  when the WebPush adapter lands, ship with it the VAPID key generation/rotation runbook and
+  the secrets names it resolves.
+- **`device.remove` disables, it does not delete** — rows accrete with no pruning; and the
+  admin device-**count** surface (scope Goals: "admin sees counts not tokens") is not built.
+  Both deferred to the next slice.
 
 ## Related
 

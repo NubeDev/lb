@@ -252,6 +252,13 @@ const VIEWER_CAPS: &[&str] = &[
     // reminders nav gate — the concrete list cap the frontend `hasCap` checks EXACTLY (it does not
     // expand a wildcard), so the Reminders sidebar entry needs it spelled out. fire is author.
     "mcp:reminder.list:call",
+    // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API.
+    // These are informational (the enforcement happens at the verb level); a caller only learns its
+    // OWN reach (the verbs use the calling principal, never a `user` arg).
+    "mcp:authz.check_scoped:call",
+    "mcp:authz.scope_filter:call",
+    // push-target scope: a member registers/lists/removes their own devices (self-only).
+    "mcp:device.register:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
     "store:doc/*:read",
     "store:skill/**:read",
@@ -381,6 +388,12 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:agent.memory.delete:call",
     // reminders run-now (re-checks the ACTION's own cap under the stored principal).
     "mcp:reminder.fire:call",
+    // media scope: a member uploads/reads/deletes their own media.
+    "mcp:media.upload:call",
+    "mcp:media.get:call",
+    "mcp:media.delete:call",
+    // push-target scope: a member sends push notifications (the audience/prefs policy lives here).
+    "mcp:notify.send:call",
     // shared-asset doc/skill store WRITES (gate-3/ownership owns which specific asset).
     "store:doc/*:write",
     "store:skill/**:write",
@@ -474,6 +487,9 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:apikey.manage:call",
     "mcp:webhook.manage:call",
     "secret:webhook/*:write",
+    // invites scope: admin mints/list/revokes/resends invite tokens (accept is pre-auth).
+    "mcp:invite.create:call",
+    "mcp:invite.list:call",
 ];
 
 #[cfg(test)]

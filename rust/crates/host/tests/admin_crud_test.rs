@@ -7,8 +7,8 @@ use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     add_team_member, grants_assign, list_members, remove_member, resolve_caps, teams_create,
     teams_delete, user_create, user_delete, user_disable, user_enable, user_list, user_login_check,
-    workspace_create, workspace_delete, workspace_list, workspace_purge, workspace_rename, Subject,
-    UsersError,
+    workspace_create, workspace_delete, workspace_list, workspace_purge, workspace_rename, Scope,
+    Subject, UsersError,
 };
 use lb_store::Store;
 
@@ -185,6 +185,7 @@ async fn delete_user_revokes_grants_and_blocks_login_idempotently() {
         "acme",
         &Subject::User("bob".into()),
         "mcp:x.y:call",
+        &Scope::All,
     )
     .await
     .unwrap();
@@ -223,6 +224,7 @@ async fn teams_delete_cascades_members_and_revokes_grants() {
         "acme",
         &Subject::Team("facilities".into()),
         "mcp:hvac.setpoint:call",
+        &Scope::All,
     )
     .await
     .unwrap();

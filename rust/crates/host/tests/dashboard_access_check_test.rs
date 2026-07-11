@@ -18,6 +18,7 @@ use lb_authz::Subject;
 use lb_host::{
     add_member, dashboard_access_check, dashboard_save, dashboard_share, panel_save,
     put_datasource, resolve_caps, Cell, DashboardVisibility, Datasource, DepKind, DepVerdict,
+    Scope,
 };
 use lb_mcp::authorize_tool;
 use lb_store::Store;
@@ -252,6 +253,7 @@ async fn closure_red_then_green_and_deny_matches_live() {
         ws,
         &Subject::User("bob".into()),
         "mcp:federation.query:call",
+        &Scope::All,
     )
     .await
     .unwrap();

@@ -98,7 +98,7 @@ pub async fn role_delete(store: &Store, ws: &str, name: &str) -> Result<usize, S
         let grant: Grant =
             serde_json::from_value(v.clone()).map_err(|e| StoreError::Decode(e.to_string()))?;
         let tombstone = serde_json::json!({ "subject": grant.subject.as_key(), "cap": TOMBSTONE });
-        tombstones.push((grant_id(&grant.subject, &cap), tombstone));
+        tombstones.push((grant_id(&grant.subject, &cap, &grant.scope), tombstone));
     }
     let affected = tombstones.len();
     let upserts: Vec<UpsertBatch<'_>> = tombstones

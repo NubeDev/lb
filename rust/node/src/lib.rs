@@ -29,7 +29,7 @@ pub mod external_agent;
 pub mod federation;
 
 pub use builder::{boot_full, RunningNode};
-pub use config::{AgentModelConfig, BootConfig, GatewayMode};
+pub use config::{AgentModelConfig, BootConfig, GatewayMode, OutboxProviders};
 
 // Re-exports so a third-party embedder needs only the `lb-node` dep to fill a [`BootConfig`] and drive
 // the node — no direct dep on the internal `lb-auth`/`lb-host` crates. `SigningKey` fills

@@ -63,7 +63,19 @@ one grant row per (principal, cap, scope) and reads naturally in the console.
 ## How it fits the core
 
 - **Tenancy / isolation:** selectors are workspace-scoped like the grants that carry them;
-  a selector can never name a record in another workspace (checked at write).
+  a selector can never name a record in another workspace. **Decision (review pass):
+  isolation is enforced structurally at read, not by a write-time existence check.** Ids in
+  a selector are opaque, workspace-namespace-relative strings: the grant row lives under the
+  writer's workspace namespace, and resolution (`resolve_caps_scoped` → `check_scoped` /
+  `scope_filter`) reads only the caller's workspace — the same id string in another workspace
+  addresses a *different* record, so a selector physically cannot confer cross-workspace
+  reach (proven by `scoped_grants_never_cross_the_workspace_wall` and
+  `scoped_grant_stays_inside_its_workspace`). *Rejected alternative — validate at
+  `grants.assign` that each id exists in the workspace:* ids are opaque to the core (rule 10,
+  the core doesn't know which store table an extension's "table" maps to), and grants may
+  legitimately precede the records they name (a domain event mints the grant before the
+  first log row exists), so an existence check would be both a layering leak and a false
+  rejection.
 - **Capabilities:** pure narrowing of the existing grammar. Deny path: `check_scoped` on a
   record outside the union → the same 403 shape as a missing cap; `scope_filter` → `Ids([])`
   (an empty list, not an error) so lists degrade to empty.
@@ -92,8 +104,8 @@ one grant row per (principal, cap, scope) and reads naturally in the console.
 ## Testing plan
 
 Mandatory: **capability-deny** (cap present but record outside scope → 403), **workspace
-isolation** (selector naming a foreign-ws id rejected at grant write; resolution never
-crosses), plus: union-of-grants (two selectors merge), `All`-wins, empty-scope lists return
+isolation** (a selector is namespace-relative — resolution never crosses the wall; no
+write-time rejection, see the isolation decision above), plus: union-of-grants (two selectors merge), `All`-wins, empty-scope lists return
 empty not error, revoke → immediate deny (freshness), console renders selectors. Regression
 harness seeds two "families" and asserts every read/list/watch verb of a fixture extension.
 
@@ -108,12 +120,23 @@ harness seeds two "families" and asserts every read/list/watch verb of a fixture
 
 ## Open questions
 
-- Selector forms for v1: `ids` only, or `ids + tag`? (Recommend ids-only first; tag when a
-  real cohort caller exists.)
-- Does `scope_filter` return ids or a Surreal `WHERE` fragment? (Recommend ids — keeps the
-  core out of query-string business.)
-- Should the outbox/bus watch verbs (`*.watch`) get a scoped subscription helper, or is
-  filter-at-emit in the extension enough for v1?
+- ✅ Selector forms for v1: `ids` only (tag deferred — no real cohort caller yet). The `Scope`
+  enum is designed so `tag` is an additive variant later.
+- ✅ `scope_filter` returns ids (not a WHERE fragment) — keeps the core out of query-string
+  business. The caller pushes ids into its own indexed query.
+- ✅ Watch verbs: filter-at-emit in the extension for v1 (no scoped subscription helper).
+- ✅ **Malformed selector = hard error (review fix):** a present-but-unparseable `scope` on
+  `grants.assign`/`revoke` is `BadInput` (MCP) / 422 (REST) — it never falls back to `All`.
+  Fail closed, not open.
+- ✅ **Cross-table union never widens (review fix):** the per-cap scope union of `Ids` for
+  *different* tables accumulates into the additive `Scope::Tables` variant (per-table
+  id-sets) — it no longer collapses to `All`. Single-table grants still serialize as `Ids`,
+  so `grant_id` keys and stored records are byte-stable (zero migration holds).
+- ✅ REST passthrough: `POST /admin/grants` (+ `/revoke`) accept the additive optional
+  `scope` field (default `All`).
+- ⬜ **Access console UI for selectors is deferred:** the gateway now carries `scope`
+  end-to-end and `grants.list_scoped` returns it, but the console rendering/editing of
+  selectors has not been built yet.
 
 ## Related
 

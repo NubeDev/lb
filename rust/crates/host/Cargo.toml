@@ -57,11 +57,15 @@ dirs.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 base64ct = { version = "1", features = ["alloc"] }
+# Base64 for media chunk encoding (media scope).
+base64.workspace = true
 # HMAC-SHA256 verification for `signature`-mode webhooks (webhooks scope) — over the raw request
 # body, constant-time compared. Pairs with `sha2`; same pinned versions as the workspace `apikey`
 # and `github-webhook` crates (the vetted discipline).
 hmac.workspace = true
 sha2.workspace = true
+# Image processing for media variants (media scope) — thumbnail derivation in the variant job.
+image.workspace = true
 # Argon2id password hashing for the login credential check (login-hardening scope). The credential
 # store holds only a PHC hash string; verification is constant-time. See `credential/hash.rs`.
 argon2.workspace = true

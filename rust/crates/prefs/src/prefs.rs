@@ -80,6 +80,12 @@ pub struct Prefs {
     /// `ResolvedPrefs`, no `format.*` reads it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_persona: Option<String>,
+    /// The member's (or workspace-default's) **push notification mute** (push-target scope).
+    /// `None` = inherit (default ON); `Some(true)` = all push notifications suppressed (quiet
+    /// hours / DND). A whole-fold nullable axis (the `insight_notifications` pattern): the push
+    /// target reads it once at fan-out time; zero host/gateway plumbing beyond that read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_muted: Option<bool>,
 }
 
 /// Deserialize an `option<object>` column: a present map decodes normally, a stored `null` (the

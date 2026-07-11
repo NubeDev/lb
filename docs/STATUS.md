@@ -23,7 +23,107 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-11): `federation` promoted to a first-class core crate.** The federation
+**Just shipped (2026-07-11, later the same day): `updates-to-core` RELEASED.** The branch's two
+release-blocking gaps are closed and the branch is merged to `master` and tagged:
+**`node-v0.2.0`** (lb core + node), **`minimal-shell-v0.2.0`** (`@nube/minimal-shell` 0.2.0),
+**`ui-v0.7.0`** (`@nube/ext-ui-sdk` 0.7.0, sibling repo).
+
+- **Relay boot wiring (the blocker):** node boot now spawns the outbox relay — a generic
+  `RouterTarget` (opaque `effect.target` dispatch, rule 10) registering `EmailTarget` +
+  `PushTarget`, providers injected via the additive `BootConfig.outbox_providers` seam (unset ⇒
+  logging no-op: never crash boot, never strand effects). Drain-at-boot proven end to end in
+  `rust/node/tests/relay_boot_test.rs`.
+- **i18n (en+es, the one catalog engine everywhere):** invite `locale` (record + `invite.create`
+  param + pre-auth `GET /public/invite/verify` + copied to the member's `language` pref on
+  accept); invite email rendered through the catalog (`invite.email.*` in `en.mf`/`es.mf` — the
+  "no templating in core" non-goal is overturned, recorded in the invites scope); `notify.send`
+  catalog key+args with **per-recipient** render in `PushTarget`; `@nube/ext-ui-sdk` i18n seam
+  (`resolveLocale`/`makeTranslator`/`catalogParity`) + fully-catalogued minimal-shell with a CI
+  key-parity gate. Tests: `invite_i18n_test` (5), `push_i18n_test` (3), `relay_boot_test` (2),
+  shell vitest 9, SDK vitest 20.
+- **Known allowed failure on the tag:** pre-existing `lb-cli reminder_test` deny — logged at
+  `debugging/cli/reminder-create-denied-in-cli-round-trip-test.md`, not chased.
+- **Deferred (explicit):** media HTTP Range, real WebPush VAPID / FCM / APNs / SMTP providers,
+  orphaned-upload GC — all behind shipped traits/seams.
+
+Scope: [`scope/release/updates-to-core-release-scope.md`](scope/release/updates-to-core-release-scope.md);
+session: [`sessions/release/updates-to-core-release-session.md`](sessions/release/updates-to-core-release-session.md).
+Downstream: cc-app milestone 00 unblocked (pins `node-v0.2.0` / minimal-shell 0.2.0).
+
+---
+
+**Earlier the same day (2026-07-11): the five cc-app platform-gap scopes — entity-scoped grants, invites,
+media, push-target, minimal-shell.** Five scopes built end to end for the downstream cc-app
+childcare product, each with full verb surfaces, capability-deny + workspace-isolation tests, and
+session docs. All on branch `updates-to-core`.
+
+1. **Entity-scoped grants** — row-level reach inside a workspace. Additive `Scope` selector on
+   the grant record (`All` default = zero migration; `Ids` narrows to listed record ids).
+   `resolve_caps_scoped` unions per-cap scopes; `check_scoped`/`scope_filter` are the host-facing
+   read API extensions reach via `host.call-tool` (no WIT change — more additive than the flagged
+   host-callback pair). Scope:
+   [`scope/auth-caps/entity-scoped-grants-scope.md`](scope/auth-caps/entity-scoped-grants-scope.md);
+   session: [`sessions/auth-caps/entity-scoped-grants-session.md`](sessions/auth-caps/entity-scoped-grants-session.md).
+   Tests: lb-authz 15 + lb-host 7.
+
+2. **Invites** — token onboarding for people who don't exist yet. `Invite` record (hash-at-rest,
+   single-use, workspace-scoped). Admin verbs: create/list/revoke/resend (gated
+   `mcp:invite.create/list:call`). Pre-auth accept route (`POST /public/invite/accept`) — the
+   atomic onboarding chain: verify token → create-or-match identity → set credential →
+   membership.add → apply grants → mint session. Email outbox `Target` + `EmailProvider` trait
+   (the one sanctioned external). Email-match takeover prevention. Scope:
+   [`scope/auth-caps/invites-scope.md`](scope/auth-caps/invites-scope.md);
+   session: [`sessions/auth-caps/invites-session.md`](sessions/auth-caps/invites-session.md).
+   Tests: lb-host 11.
+
+3. **Media** — resumable chunked upload + variant jobs + streaming serve. Protocol: `begin` →
+   `PUT /media/{id}/chunk/{n}` → `commit` (SHA-256 verify, flip to Ready, derive thumbnail via
+   the `image` crate). Serve route (`GET /media/{id}?variant=thumb`) with ETag. Per-mime max size
+   (the governed knob — the 413 lesson). One datastore (SurrealDB — rule 2). Scope:
+   [`scope/files/media-scope.md`](scope/files/media-scope.md);
+   session: [`sessions/files/media-session.md`](sessions/files/media-session.md).
+   Tests: lb-host 9.
+
+4. **Push target** — push as an outbox `Target` (WebPush first). Device records (per-member,
+   self-only). `notify.send` verb enqueues a push effect. `PushTarget` impl `Target`: resolves
+   audience → live devices, checks quiet-hours prefs (`push_muted` axis), auto-disables on
+   `TokenGone`. `PushProvider` trait (one sanctioned external). Scope:
+   [`scope/inbox-outbox/push-target-scope.md`](scope/inbox-outbox/push-target-scope.md);
+   session: [`sessions/inbox-outbox/push-target-session.md`](sessions/inbox-outbox/push-target-session.md).
+   Tests: lb-host 9.
+
+5. **Minimal shell** — the publishable minimal host for 100%-extension UIs. `@nube/minimal-shell`
+   package (~15 files): auth screens (login + invite-accept API), `ext.list` discovery,
+   full-screen scoped mount via `@nube/ext-ui-sdk` federation seam, SSE hub, theme-token
+   provider, PWA manifest. No lb chrome. Extension id is opaque config data (rule 10). Retires
+   vendor-the-whole-shell. Scope:
+   [`scope/frontend/minimal-shell-scope.md`](scope/frontend/minimal-shell-scope.md);
+   session: [`sessions/frontend/minimal-shell-session.md`](sessions/frontend/minimal-shell-session.md).
+   Tests: 2 unit.
+
+**Test totals (new scopes):** 15 + 7 + 11 + 9 + 9 + 2 = **53 new tests**, all green. All existing
+authz/admin_crud/builtin_roles/catalog tests green (no regressions). `cargo fmt` clean. `cargo
+build --workspace` clean.
+
+**Peer-review hardening pass (2026-07-11, same branch):** an independent review of the five
+scopes found and fixed real holes in each — entity-grants **fail-open widening to `Scope::All`**
+(malformed selector + cross-table union; new additive `Scope::Tables` variant, gateway scope
+passthrough), invites **accept race** (credential written before redemption was claimed; now a
+store-level CAS claim) + rate limit on the public accept route + email proven through the real
+relay, media **unchecked chunk PUT** (uncapped, unvalidated, post-commit tampering; now a gated
+host verb) + Range/304 serve + multi-chunk resume test, push **hardcoded `"acme"` workspace in
+`deliver()`** (rule-6 hole; ws now rides the effect payload) + per-device retry dedup + ULID
+effect ids + 7 relay-driven tests (deliver had zero) + the `push_muted` prefs axis was silently
+dropped by the store schema, minimal-shell **SSE subscribe missing auth header** + 401
+stale-session + `getSession` snapshot loop. Every fix has a regression test; deviations from the
+scope docs (variant-jobs inline, WebPush adapter, workspace pick, publishing, hardcoded media
+limits, no GC) are now recorded honestly as deferred items in each scope doc instead of ✅s.
+Debugging entries: see `docs/debugging/README.md` rows dated 2026-07-11 (6 new). Review-fix
+sessions in `docs/sessions/{auth-caps,files,inbox-outbox,frontend}/*review-fixes*`. Known
+pre-existing red (NOT this branch): `agent_persona_catalog_test` (personas grounding — zero
+persona/agent/assets files touched by these scopes).
+
+**Previously (2026-07-11): `federation` promoted to a first-class core crate.** The federation
 datasources sidecar moved out of the misleading `rust/extensions/` folder to
 [`rust/crates/federation/`](../rust/crates/federation/) — it is **core, not a product extension**
 (fails the rule-10 swap test: the host holds a first-class `federation.*` surface + `FED_ENDPOINTS`;

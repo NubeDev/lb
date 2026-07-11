@@ -14,7 +14,7 @@ use lb_store::{Store, StoreError};
 /// id-part does not round-trip cleanly through `serde_json::Value`), only the `Prefs` fields.
 pub const PREFS_COLUMNS: &str = "language, timezone, date_style, time_style, first_day_of_week, \
      number_format, unit_system, unit_overrides, ui_theme, ui_branding, insight_notifications, \
-     agent_persona";
+     agent_persona, push_muted";
 
 /// The per-(workspace,user) preference table.
 pub const USER_PREFS_TABLE: &str = "user_prefs";
@@ -41,6 +41,7 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS ui_branding ON {USER_PREFS_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS insight_notifications ON {USER_PREFS_TABLE} TYPE option<bool>;
          DEFINE FIELD IF NOT EXISTS agent_persona ON {USER_PREFS_TABLE} TYPE option<string>;
+         DEFINE FIELD IF NOT EXISTS push_muted ON {USER_PREFS_TABLE} TYPE option<bool>;
 
          DEFINE TABLE IF NOT EXISTS {WORKSPACE_PREFS_TABLE} SCHEMAFULL;
          DEFINE FIELD IF NOT EXISTS ws ON {WORKSPACE_PREFS_TABLE} TYPE string;
@@ -55,7 +56,8 @@ pub async fn define_prefs_schema(store: &Store, ws: &str) -> Result<(), StoreErr
          DEFINE FIELD IF NOT EXISTS ui_theme ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS ui_branding ON {WORKSPACE_PREFS_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS insight_notifications ON {WORKSPACE_PREFS_TABLE} TYPE option<bool>;
-         DEFINE FIELD IF NOT EXISTS agent_persona ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;"
+         DEFINE FIELD IF NOT EXISTS agent_persona ON {WORKSPACE_PREFS_TABLE} TYPE option<string>;
+         DEFINE FIELD IF NOT EXISTS push_muted ON {WORKSPACE_PREFS_TABLE} TYPE option<bool>;"
     );
     store.query_ws(ws, &sql, vec![]).await?;
     Ok(())

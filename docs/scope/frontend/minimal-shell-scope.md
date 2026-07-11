@@ -101,13 +101,54 @@ before login. No `*.fake.ts`.
 
 ## Open questions
 
-- Package (`@nube/minimal-shell`, runtime dep, updates by tag bump) vs devkit **template**
-  (scaffold, product owns the copy)? Recommend: **package with a thin config entry** —
-  vendoring is the disease this scope treats.
-- Does the invite-accept surface live here or gateway-served? (Coordinate with
-  `invites-scope.md`; recommend here — it's a themed client screen over one public verb.)
-- Home = one ext page v1 (recommended) — is a bottom-tab multi-page mode (N pages of the
-  *same* ext) v1.5 or full-shell territory?
+- ✅ **Package** (`@nube/minimal-shell`, runtime dep, updates by tag bump) — vendoring is the
+  disease this scope treats. (Rejected: devkit template — product owns the copy, drifts.)
+- ✅ Invite-accept surface lives here — a themed client screen over `POST /public/invite/accept`
+  (the `acceptInvite` function in `session.ts`). The shell provides the API; the product host
+  adds the screen. Pre-auth locale: `GET /public/invite/verify` returns the invite's
+  `{email, locale, redeemable}` so that screen renders in the invitee's language.
+- ✅ **i18n (2026-07-11, release scope gap d):** every shell string flows through en+es catalogs
+  (`src/i18n.tsx`) via the `@nube/ext-ui-sdk` seam (`resolveLocale`/`makeTranslator`/
+  `catalogParity` — user pref → `navigator.language` → `en`); `src/i18n.test.tsx` is the CI
+  key-parity gate (the TS twin of the `.mf` parity test). Extensions ship their own catalogs
+  through the same SDK seam.
+- ✅ Home = one ext page v1 (recommended). A bottom-tab multi-page mode is v1.5 or full-shell
+  territory.
+
+## Shipped (v1) + review-fix amendments (2026-07-11)
+
+Shipped: `packages/minimal-shell` (~15 files) — login screen, invite-accept API
+(`acceptInvite` in `session.ts`), `ext.list` discovery with an opaque `VITE_HOME_EXT`
+config override (rule 10 holds: a swap is a config change), full-screen scoped mount via
+`@nube/ext-ui-sdk`, refcounted SSE hub, theme-token provider, PWA manifest.
+
+Review fixes applied in-place:
+- **SSE subscribe was unauthenticated** — `POST /events/{sid}/subscribe` is header-authed
+  on the gateway; `events.ts` sent no `Authorization`, so every subscription 401'd. Fixed
+  (both the reconnect re-declare and `subscribe()`), see
+  `docs/debugging/frontend/minimal-shell-sse-subscribe-401.md`.
+- **401 left a stale UI** — `ipc.ts` cleared `lb.session` without notifying the session
+  store; the app stayed "logged in" until reload. Fixed via a `lb.session.cleared` window
+  event re-emitted by `session.ts` (regression test in `App.test.tsx`).
+- **`getSession` snapshot loop** — a fresh `JSON.parse` object per call breaks
+  `useSyncExternalStore` (`Object.is`) once a session exists; now cached by raw string
+  (regression test).
+
+Deferred honestly (named in Goals, not built — each needs a driver before it earns code):
+- **Workspace pick for multi-ws identities** — v1 login asks for the workspace by name.
+  (Rejected building it blind: the pick list needs a pre-auth "my workspaces" surface that
+  doesn't exist yet.)
+- **Branding (`ui_branding` blob + pre-auth cache) and boot-config fetch** — login is
+  unbranded; the pre-auth cache pattern exists in the full shell and should be extracted,
+  not re-written here.
+- **Publishing** — the package is still `"private": true` with a `link:` dep on the SDK;
+  the ✅ "published like the SDKs" decision stands but the `ui-v*` publish pipeline hasn't
+  been wired.
+- **Testing plan** — unit tests only (4, real jsdom render, no fakes). The mandatory
+  capability-deny e2e (unreachable home ext → denied state) and the Playwright
+  login→mount-the-`hello`-fixture run, PWA installability, SSE reconnect/resume, and
+  branding pre-auth paint are open items; the deny path today renders the generic error
+  state, not a distinct "not available" screen.
 
 ## Related
 
