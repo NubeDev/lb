@@ -95,8 +95,10 @@ pub async fn nav_resolve(
 }
 
 /// The hidden-set filter (hide-and-pins scope) — drop a resolved item whose ref the admin hid, and
-/// recurse into a `group`'s children (the group itself stays: an author section header survives, its
-/// hidden members don't). The ref grammar mirrors [`item_ref`]: bare surface key, `ext:<id>`,
+/// recurse into a `group`'s children at EVERY depth (nested-nav scope). Pruning is **post-order**: a
+/// group whose descendants all get hidden-stripped disappears too (never a folder that expands to
+/// nothing — the same invariant `resolve_group` enforces for cap-strip). A group with ≥1 surviving
+/// descendant stays. The ref grammar mirrors [`item_ref`]: bare surface key, `ext:<id>`,
 /// `dashboard:<id>` — all matched as opaque strings (rule 10).
 fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<ResolvedItem> {
     if hidden.is_empty() {
@@ -109,6 +111,10 @@ fn strip_hidden(item: ResolvedItem, hidden: &BTreeSet<String>) -> Option<Resolve
             .into_iter()
             .filter_map(|c| strip_hidden(c, hidden))
             .collect();
+        // Post-order prune: a group left empty by hidden-strip vanishes, at any depth.
+        if kept.items.is_empty() {
+            return None;
+        }
         return Some(kept);
     }
     if hidden.contains(&item_ref(&item)) {
@@ -253,8 +259,8 @@ async fn readable_nav(
 }
 
 /// Resolve one item to its rendered form, or `None` if the caller can't reach it (the strip). A
-/// `tag-group` expands to a `group` of readable dashboards; a `group` recurses one level; every other
-/// kind maps 1:1 iff reachable.
+/// `tag-group` expands to a `group` of readable dashboards; a `group` recurses to any depth and prunes
+/// empty subtrees post-order (nested-nav scope); every other kind maps 1:1 iff reachable.
 async fn resolve_item(
     node: &Arc<Node>,
     principal: &Principal,
@@ -419,9 +425,12 @@ async fn resolve_tag_group(
     }))
 }
 
-/// A `group` recurses one level: resolve its children (each stripped independently) into a resolved
-/// `group`. A group whose children all strip away still renders (an empty section header) — the
-/// author put it there deliberately.
+/// A `group` recurses to ANY depth (nested-nav scope, capped at save by `MAX_GROUP_DEPTH`): resolve
+/// each child through the same `resolve_item` pipeline — nested groups included — then **prune empty
+/// groups post-order**. Children are resolved first; this group is then dropped (`None`) iff its
+/// resolved `items[]` is empty. A group with ≥1 surviving descendant, even one several levels down,
+/// stays: because pruning runs post-order, a deep survivor keeps every ancestor group alive. This is
+/// what stops a permitted user from ever seeing a folder that expands to nothing.
 async fn resolve_group(
     node: &Arc<Node>,
     principal: &Principal,
@@ -430,13 +439,17 @@ async fn resolve_group(
 ) -> Result<Option<ResolvedItem>, NavError> {
     let mut children = Vec::new();
     for child in &item.items {
-        // One level only — a nested `group` is rejected at save, but guard anyway (never recurse).
-        if child.kind == "group" {
-            continue;
-        }
+        // Recurse uniformly — a nested `group` returns `None` here iff its own subtree is empty, so
+        // an empty inner folder never contributes a survivor to this group (the post-order prune).
         if let Some(resolved) = Box::pin(resolve_item(node, principal, ws, child)).await? {
             children.push(resolved);
         }
+    }
+    // Post-order prune: an author `group` that resolves to nothing the caller can reach disappears
+    // entirely (never a folder that expands to nothing). A tag-group/template-group expansion keeps
+    // its own semantics (it resolves via its own kind, not here).
+    if children.is_empty() {
+        return Ok(None);
     }
     Ok(Some(ResolvedItem {
         kind: "group".into(),
