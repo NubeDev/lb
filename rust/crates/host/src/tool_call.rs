@@ -59,6 +59,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "insight.",
     "authz.",
     "invite.",
+    "media.",
     "dashboard.",
     "nav.",
     "layout.",
@@ -365,6 +366,10 @@ async fn dispatch_at_depth(
             // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
             // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
             crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("media.") {
+            // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
+            // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.
+            crate::call_media_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only

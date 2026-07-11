@@ -386,6 +386,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:agent.memory.delete:call",
     // reminders run-now (re-checks the ACTION's own cap under the stored principal).
     "mcp:reminder.fire:call",
+    // media scope: a member uploads/reads/deletes their own media.
+    "mcp:media.upload:call",
+    "mcp:media.get:call",
+    "mcp:media.delete:call",
     // shared-asset doc/skill store WRITES (gate-3/ownership owns which specific asset).
     "store:doc/*:write",
     "store:skill/**:write",

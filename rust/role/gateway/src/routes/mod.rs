@@ -36,6 +36,7 @@ mod layout;
 mod login;
 mod mcp;
 mod mcp_catalog;
+mod media;
 mod members;
 mod membership;
 mod message;
@@ -119,6 +120,7 @@ pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;
+pub use media::{get_media, put_media_chunk};
 pub use members::{add_team_member, list_team_members};
 pub use membership::{
     add_member_route as add_member, list_members_route as list_members,

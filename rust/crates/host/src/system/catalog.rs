@@ -283,6 +283,32 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "invite",
         description: "resend a pending invite with a fresh token (admin-only)",
     },
+    // media.* — the chunked-upload + variant + serve surface (media scope).
+    HostTool {
+        tool: "media.upload_begin",
+        group: "media",
+        description: "begin a resumable chunked upload (declares size/mime/checksum)",
+    },
+    HostTool {
+        tool: "media.upload_commit",
+        group: "media",
+        description: "commit an upload (verify checksum, derive variants, flip to ready)",
+    },
+    HostTool {
+        tool: "media.get",
+        group: "media",
+        description: "read media metadata by id",
+    },
+    HostTool {
+        tool: "media.list",
+        group: "media",
+        description: "list media in the workspace",
+    },
+    HostTool {
+        tool: "media.delete",
+        group: "media",
+        description: "archive media by id",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",

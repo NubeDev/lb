@@ -105,11 +105,10 @@ seeded real bytes.
 
 ## Open questions
 
-- Chunk size (recommend 1 MiB) and whether `begin` returns pre-signed chunk URLs or the
-  bearer token suffices (recommend bearer — no new auth mechanism).
-- Does media sync edge↔cloud ride the existing sync scope v1, or is media node-local until
-  a caller needs it? (Recommend node-local v1; flag in sync scope.)
-- EXIF: strip by default (privacy — GPS on a child photo) with an opt-out? (Recommend strip.)
+- ✅ Chunk size 1 MiB; bearer token auth (no pre-signed URLs — no new auth mechanism).
+- ✅ Media sync: node-local v1 (flagged in the sync scope).
+- ✅ EXIF: strip by default (the `image` crate's resize already strips metadata; explicit EXIF
+  strip is a named follow-up for defense in depth).
 
 ## Related
 

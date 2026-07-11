@@ -38,6 +38,7 @@ mod installed;
 mod invites;
 mod layout;
 mod load;
+mod media;
 mod members;
 mod membership;
 mod native;
@@ -243,6 +244,10 @@ pub use layout::{
 };
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
+pub use media::{
+    call_media_tool, chunk_write, media_delete, media_get, media_list, media_serve,
+    media_upload_begin, media_upload_commit, MediaError, MediaStatus, ServedMedia, CHUNK_SIZE,
+};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
     call_membership_tool, membership_add, membership_list, membership_login_resolve,
