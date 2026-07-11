@@ -1,6 +1,6 @@
 {
   "name": "@nube/minimal-shell",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "The publishable minimal host for 100%-extension UIs — auth, ext.list discovery, full-screen scoped mount, SSE, theme tokens, PWA. No lb chrome.",
@@ -13,7 +13,7 @@
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "@nube/ext-ui-sdk": "link:../../lb-ext-ui-sdk"
+    "@nube/ext-ui-sdk": "link:../../../lb-ext-ui-sdk"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

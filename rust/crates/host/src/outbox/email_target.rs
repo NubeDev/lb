@@ -43,7 +43,7 @@ pub struct EmailMeta {
 /// `Arc<RecordingEmailProvider>` for assertions while the `EmailTarget` (and the relay reactor
 /// that owns it) holds a clone. Delivery to a real relay is otherwise unobservable.
 #[async_trait]
-impl<P: EmailProvider> EmailProvider for std::sync::Arc<P> {
+impl<P: EmailProvider + ?Sized> EmailProvider for std::sync::Arc<P> {
     async fn send(
         &self,
         to: &str,
@@ -90,15 +90,45 @@ impl Target for EmailTarget {
                 workspace: workspace.to_string(),
                 action: effect.action.clone(),
             };
-            let subject = match effect.action.as_str() {
-                "send_invite" => "You're invited",
-                _ => "Notification",
+            // Render subject/body through the prefs catalog engine in the effect's locale
+            // (release scope, i18n gap b — the old "no templating in core" non-goal is
+            // overturned by the multi-lang requirement; catalogs hold the words, the effect
+            // holds the locale). An absent/unknown locale falls back to `en` in the resolver.
+            let locale = payload.get("locale").and_then(|v| v.as_str()).unwrap_or("");
+            let resolved = lb_prefs::resolve(&[lb_prefs::Prefs {
+                language: Some(locale.to_string()),
+                ..Default::default()
+            }]);
+            let args = serde_json::json!({ "workspace": workspace, "token": token });
+            let empty = std::collections::BTreeMap::new();
+            let (subject, body) = match effect.action.as_str() {
+                "send_invite" => (
+                    lb_prefs::render_message("invite.email.subject", &args, &empty, &resolved).text,
+                    lb_prefs::render_message("invite.email.body", &args, &empty, &resolved).text,
+                ),
+                _ => ("Notification".to_string(), String::new()),
             };
-            let body = format!(
-                "You have been invited to workspace '{workspace}'.\n\nClick the link to accept:\n  /accept?token={token}\n"
-            );
-            provider.send(to, subject, &body, &meta).await
+            provider.send(to, &subject, &body, &meta).await
         }
+    }
+}
+
+/// The **default boot provider** when no real one is configured (release scope, gap 1): logs the
+/// send and acks it, so a node without email config boots and drains its outbox instead of
+/// crashing or dead-lettering every invite. A product host replaces it via the boot provider seam.
+pub struct LoggingEmailProvider;
+
+#[async_trait]
+impl EmailProvider for LoggingEmailProvider {
+    async fn send(
+        &self,
+        to: &str,
+        subject: &str,
+        _body: &str,
+        meta: &EmailMeta,
+    ) -> Result<(), String> {
+        tracing::info!(to = %to, subject = %subject, ws = %meta.workspace, "email (no provider configured — logged only)");
+        Ok(())
     }
 }
 

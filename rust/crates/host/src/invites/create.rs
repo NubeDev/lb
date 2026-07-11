@@ -31,10 +31,22 @@ pub async fn invite_create(
     role: &str,
     team: &str,
     payload: Option<&str>,
+    locale: Option<&str>,
     expires_ts: u64,
     now: u64,
 ) -> Result<String, InviteError> {
     authorize_tool(principal, ws, "invite.create").map_err(|_| InviteError::Denied)?;
+
+    // Locale rides the invite so the email + pre-auth accept page render in the invitee's
+    // language (release scope, i18n gap a). Validated against the enabled-language axis — an
+    // unknown code is a caller error, not a silent en-fallback at mint time.
+    if let Some(l) = locale {
+        if !lb_prefs::language_enabled(l) {
+            return Err(InviteError::BadInput(format!(
+                "locale '{l}' is not an enabled language"
+            )));
+        }
+    }
 
     // No-widening for roles follows the `grants.assign` precedent: a `role:<name>` grant is
     // exempt from the holds-cap check (the role's caps were bounded at `roles.define` time).
@@ -47,6 +59,7 @@ pub async fn invite_create(
     invite.role = role.to_string();
     invite.team = team.to_string();
     invite.payload = payload.map(|s| s.to_string());
+    invite.locale = locale.map(|s| s.to_string());
 
     // Enqueue the email delivery effect transactionally WITH the invite record (the outbox's
     // atomic change+effect write — no window where the invite is durable but the email is lost).
@@ -57,6 +70,9 @@ pub async fn invite_create(
         "workspace": ws,
         "token": token,
         "minter": principal.sub(),
+        // The invitee's locale rides the effect so the email target renders subject/body through
+        // the catalog in their language (release scope, i18n gap b). Absent ⇒ `en`.
+        "locale": locale,
     });
     let effect = Effect::new(
         format!("invite:{token_hash}"),

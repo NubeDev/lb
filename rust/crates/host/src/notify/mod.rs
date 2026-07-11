@@ -16,8 +16,8 @@ mod verbs;
 pub use device::{Device, Platform};
 pub use error::NotifyError;
 pub use push_target::{
-    PushError, PushPayload, PushProvider, PushTarget, RecordedPush, RecordingPushProvider,
-    PUSH_TARGET,
+    LoggingPushProvider, PushError, PushPayload, PushProvider, PushTarget, RecordedPush,
+    RecordingPushProvider, PUSH_TARGET,
 };
 pub use tool::call_notify_tool;
-pub use verbs::{device_list, device_register, device_remove, notify_send};
+pub use verbs::{device_list, device_register, device_remove, notify_send, NotifyCatalogRef};

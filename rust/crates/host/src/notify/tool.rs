@@ -51,8 +51,21 @@ pub async fn call_notify_tool(
                         .ok_or_else(|| ToolError::BadInput("to entry not a string".into()))
                 })
                 .collect::<Result<Vec<_>, _>>()?;
-            let title = str_arg(input, "title")?;
-            let body = str_arg(input, "body")?;
+            // Literal title/body are optional when a catalog key is supplied (i18n gap c).
+            let title = input.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
+            let title_key = input
+                .get("title_key")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let body_key = input.get("body_key").and_then(|v| v.as_str()).unwrap_or("");
+            let catalog = (!title_key.is_empty() || !body_key.is_empty()).then(|| {
+                super::verbs::NotifyCatalogRef {
+                    title_key,
+                    body_key,
+                    args: input.get("args").cloned().unwrap_or(Value::Null),
+                }
+            });
             let deep_link = input.get("deep_link").and_then(|v| v.as_str());
             let collapse_key = input.get("collapse_key").and_then(|v| v.as_str());
             let priority = input.get("priority").and_then(|v| v.as_str());
@@ -63,6 +76,7 @@ pub async fn call_notify_tool(
                 &to,
                 title,
                 body,
+                catalog,
                 deep_link,
                 collapse_key,
                 priority,

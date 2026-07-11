@@ -102,6 +102,7 @@ async fn denies_notify_send_without_cap() {
         None,
         None,
         None,
+        None,
         100,
     )
     .await
@@ -162,6 +163,7 @@ async fn notify_send_enqueues_effect() {
         None,
         None,
         None,
+        None,
         100,
     )
     .await
@@ -184,6 +186,9 @@ async fn recording_provider_records_sends() {
         to: vec!["user:bob".into()],
         title: "Hello".into(),
         body: "World".into(),
+        title_key: None,
+        body_key: None,
+        args: serde_json::Value::Null,
         deep_link: None,
         collapse_key: None,
         priority: None,

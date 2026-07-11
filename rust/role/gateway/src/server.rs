@@ -78,6 +78,16 @@ pub fn router(gw: Gateway) -> Router {
                 crate::routes::invite_accept_rate_limit,
             )),
         )
+        // The pre-auth invite VERIFY route (release scope, i18n gap a) — `GET
+        // /public/invite/verify`. Read-only token preview (locale/email/redeemable) so the accept
+        // page renders in the invite's language before any session exists. Same token-oracle
+        // posture as accept, so it shares the same per-IP rate limiter.
+        .route(
+            "/public/invite/verify",
+            get(crate::routes::verify_invite).layer(axum::middleware::from_fn(
+                crate::routes::invite_accept_rate_limit,
+            )),
+        )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(

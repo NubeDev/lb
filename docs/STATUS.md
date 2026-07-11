@@ -23,7 +23,36 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-11): the five cc-app platform-gap scopes — entity-scoped grants, invites,
+**Just shipped (2026-07-11, later the same day): `updates-to-core` RELEASED.** The branch's two
+release-blocking gaps are closed and the branch is merged to `master` and tagged:
+**`node-v0.2.0`** (lb core + node), **`minimal-shell-v0.2.0`** (`@nube/minimal-shell` 0.2.0),
+**`ui-v0.7.0`** (`@nube/ext-ui-sdk` 0.7.0, sibling repo).
+
+- **Relay boot wiring (the blocker):** node boot now spawns the outbox relay — a generic
+  `RouterTarget` (opaque `effect.target` dispatch, rule 10) registering `EmailTarget` +
+  `PushTarget`, providers injected via the additive `BootConfig.outbox_providers` seam (unset ⇒
+  logging no-op: never crash boot, never strand effects). Drain-at-boot proven end to end in
+  `rust/node/tests/relay_boot_test.rs`.
+- **i18n (en+es, the one catalog engine everywhere):** invite `locale` (record + `invite.create`
+  param + pre-auth `GET /public/invite/verify` + copied to the member's `language` pref on
+  accept); invite email rendered through the catalog (`invite.email.*` in `en.mf`/`es.mf` — the
+  "no templating in core" non-goal is overturned, recorded in the invites scope); `notify.send`
+  catalog key+args with **per-recipient** render in `PushTarget`; `@nube/ext-ui-sdk` i18n seam
+  (`resolveLocale`/`makeTranslator`/`catalogParity`) + fully-catalogued minimal-shell with a CI
+  key-parity gate. Tests: `invite_i18n_test` (5), `push_i18n_test` (3), `relay_boot_test` (2),
+  shell vitest 9, SDK vitest 20.
+- **Known allowed failure on the tag:** pre-existing `lb-cli reminder_test` deny — logged at
+  `debugging/cli/reminder-create-denied-in-cli-round-trip-test.md`, not chased.
+- **Deferred (explicit):** media HTTP Range, real WebPush VAPID / FCM / APNs / SMTP providers,
+  orphaned-upload GC — all behind shipped traits/seams.
+
+Scope: [`scope/release/updates-to-core-release-scope.md`](scope/release/updates-to-core-release-scope.md);
+session: [`sessions/release/updates-to-core-release-session.md`](sessions/release/updates-to-core-release-session.md).
+Downstream: cc-app milestone 00 unblocked (pins `node-v0.2.0` / minimal-shell 0.2.0).
+
+---
+
+**Earlier the same day (2026-07-11): the five cc-app platform-gap scopes — entity-scoped grants, invites,
 media, push-target, minimal-shell.** Five scopes built end to end for the downstream cc-app
 childcare product, each with full verb surfaces, capability-deny + workspace-isolation tests, and
 session docs. All on branch `updates-to-core`.

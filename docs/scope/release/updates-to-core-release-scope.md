@@ -1,6 +1,6 @@
 # Release scope — finish and tag `updates-to-core`
 
-Status: scope (the ask). Written 2026-07-11 from a full review of the branch.
+Status: **done** (2026-07-11) — both gaps closed, released. Session: `../../sessions/release/updates-to-core-release-session.md`. Tags: `node-v0.2.0`, `minimal-shell-v0.2.0`, lb-ext-ui-sdk `ui-v0.7.0`.
 Downstream driver: the cc-app milestone `../cc-app/docs/build/00-lb-release.md` — but per
 rule 10 **everything here ships as generic lb capability; nothing names any downstream
 product**.
@@ -28,7 +28,7 @@ features; do not chase it as a regression, but do not let it rot either — log 
   (`rust/crates/host/tests/invite_email_relay_test.rs`, `push_deliver_test.rs`:
   fan-out, token-gone auto-disable, quiet-hours, ws-isolation, dedup). ✅
 
-## Gap 1 — relay reactors are never booted (BLOCKER)
+## Gap 1 — relay reactors are never booted (BLOCKER) — ✅ CLOSED (RouterTarget + BootConfig.outbox_providers + node/tests/relay_boot_test.rs)
 
 `spawn_relay_reactors` (`rust/crates/host/src/outbox/relay_reactor.rs:30`) has **zero
 production call sites**. Node boot (`rust/node/src/builder.rs` → `boot_full` →
@@ -49,7 +49,7 @@ assert the recording email provider actually received the send via the *spawned*
 Known-deferred (do NOT block the tag): real WebPush VAPID provider, FCM/APNs, SMTP —
 fakes/no-op are fine; the traits are the seam.
 
-## Gap 2 — i18n: the catalog engine exists but is connected to nothing
+## Gap 2 — i18n: the catalog engine exists but is connected to nothing — ✅ CLOSED (all four surfaces; see the session doc)
 
 lb's multi-lang is **real but confined to `rust/crates/prefs`**: en+es MF1 catalogs
 (`rust/crates/prefs/src/catalog/builtin/{en,es}.mf`), parser/plural/interpolate/fallback

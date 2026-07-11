@@ -54,6 +54,7 @@ async fn double_redeem_loses_before_credential_mutation() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -107,6 +108,7 @@ async fn existing_identity_requires_current_secret() {
         "sam@example.com",
         "member",
         "",
+        None,
         None,
         0,
         100,
@@ -183,6 +185,7 @@ async fn accept_then_first_call_passes_a_real_cap_gate() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -218,6 +221,7 @@ async fn resend_refreshes_expiry_old_token_dead_new_token_works() {
         "sam@example.com",
         "member",
         "",
+        None,
         None,
         200,
         100,

@@ -14,6 +14,7 @@ mod list;
 mod revoke;
 mod token;
 mod tool;
+mod verify;
 
 pub use accept::{invite_accept, AcceptedInvite};
 pub use create::{invite_create, EMAIL_ACTION, EMAIL_TARGET};
@@ -21,3 +22,4 @@ pub use error::InviteError;
 pub use list::invite_list;
 pub use revoke::{invite_resend, invite_revoke};
 pub use tool::call_invite_tool;
+pub use verify::{invite_verify, InvitePreview};

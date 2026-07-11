@@ -66,6 +66,8 @@ pub async fn invite_resend(
         "workspace": ws,
         "token": new_token,
         "minter": principal.sub(),
+        // Carry the original invite's locale so a resent email renders in the same language.
+        "locale": invite.locale,
     });
     let effect = Effect::new(
         format!("invite:{new_hash}"),

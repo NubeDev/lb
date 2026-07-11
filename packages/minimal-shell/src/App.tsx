@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "./theme";
+import { I18nProvider, useT } from "./i18n";
 import { useSession, signIn, signOut } from "./session";
 import { listExtensions, type ExtRow } from "./ipc";
 import { loadRemoteMount, makeBridge, type ExtPage } from "./federation";
@@ -23,11 +24,15 @@ export function App() {
 
 function Shell() {
   const session = useSession();
-  if (!session) return <LoginView />;
-  return <ExtMount session={session} />;
+  return (
+    <I18nProvider session={session}>
+      {session ? <ExtMount session={session} /> : <LoginView />}
+    </I18nProvider>
+  );
 }
 
 function LoginView() {
+  const t = useT();
   const [user, setUser] = useState("");
   const [ws, setWs] = useState("");
   const [secret, setSecret] = useState("");
@@ -39,19 +44,19 @@ function LoginView() {
     try {
       await signIn(user, ws, secret);
     } catch (e: any) {
-      setErr(e.message || "login failed");
+      setErr(e.message || t("login.failed"));
     }
   };
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg, #0f172a)", color: "var(--text, #f8fafc)" }}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem", width: "100%", maxWidth: "320px" }}>
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 600, textAlign: "center" }}>Sign in</h1>
-        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder="user" style={inputStyle} />
-        <input value={ws} onChange={(e) => setWs(e.target.value)} placeholder="workspace" style={inputStyle} />
-        <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="password" style={inputStyle} />
+        <h1 style={{ fontSize: "1.25rem", fontWeight: 600, textAlign: "center" }}>{t("login.title")}</h1>
+        <input value={user} onChange={(e) => setUser(e.target.value)} placeholder={t("login.user")} style={inputStyle} />
+        <input value={ws} onChange={(e) => setWs(e.target.value)} placeholder={t("login.workspace")} style={inputStyle} />
+        <input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={t("login.password")} style={inputStyle} />
         {err && <p style={{ color: "#f87171", fontSize: "0.875rem" }}>{err}</p>}
-        <button type="submit" style={btnStyle}>Sign in</button>
+        <button type="submit" style={btnStyle}>{t("login.title")}</button>
       </form>
     </div>
   );
@@ -75,6 +80,7 @@ const btnStyle: React.CSSProperties = {
 };
 
 function ExtMount({ session }: { session: NonNullable<ReturnType<typeof useSession>> }) {
+  const t = useT();
   const [page, setPage] = useState<ExtPage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -93,10 +99,10 @@ function ExtMount({ session }: { session: NonNullable<ReturnType<typeof useSessi
         if (!cancelled && withUi.length > 0) {
           setPage({ ext: withUi[0].ext, entry: withUi[0].ui!.entry });
         } else if (!cancelled) {
-          setError("No extension UI available.");
+          setError(t("ext.none"));
         }
       } catch (e: any) {
-        if (!cancelled) setError(e.message || "ext.list failed");
+        if (!cancelled) setError(e.message || t("ext.list_failed"));
       }
     })();
     return () => { cancelled = true; };
@@ -113,7 +119,7 @@ function ExtMount({ session }: { session: NonNullable<ReturnType<typeof useSessi
   if (!page) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        Loading…
+        {t("ext.loading")}
       </div>
     );
   }
@@ -122,13 +128,14 @@ function ExtMount({ session }: { session: NonNullable<ReturnType<typeof useSessi
     <div style={{ minHeight: "100vh" }}>
       <RemoteExt page={page} workspace={session.workspace} />
       <button onClick={signOut} style={{ position: "fixed", bottom: "0.5rem", right: "0.5rem", opacity: 0.3, ...btnStyle }}>
-        Sign out
+        {t("shell.sign_out")}
       </button>
     </div>
   );
 }
 
 function RemoteExt({ page, workspace }: { page: ExtPage; workspace: string }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -143,7 +150,7 @@ function RemoteExt({ page, workspace }: { page: ExtPage; workspace: string }) {
         const bridge = makeBridge(HOME_SCOPE);
         teardown = mount(ref.current!, { workspace }, bridge);
       } catch (e: any) {
-        if (!cancelled) setErr(e.message || "mount failed");
+        if (!cancelled) setErr(e.message || t("ext.mount_failed"));
       }
     })();
     return () => {

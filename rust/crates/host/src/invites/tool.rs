@@ -33,12 +33,13 @@ pub async fn call_invite_tool(
             let role = input.get("role").and_then(|v| v.as_str()).unwrap_or("");
             let team = input.get("team").and_then(|v| v.as_str()).unwrap_or("");
             let payload = input.get("payload").and_then(|v| v.as_str());
+            let locale = input.get("locale").and_then(|v| v.as_str());
             let expires_ts = input
                 .get("expires_ts")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0);
             let token = invite_create(
-                store, principal, ws, email, role, team, payload, expires_ts, now,
+                store, principal, ws, email, role, team, payload, locale, expires_ts, now,
             )
             .await
             .map_err(to_tool)?;

@@ -116,7 +116,7 @@ pub use insight::{
     ack_insight, delete_insight, delete_occurrence, get_insight, insight_events, list_insights,
     list_occurrences, resolve_insight,
 };
-pub use invite_accept::accept_invite;
+pub use invite_accept::{accept_invite, verify_invite};
 pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;

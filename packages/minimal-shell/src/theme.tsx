@@ -11,13 +11,21 @@ function loadTheme(): Theme {
   try {
     const t = JSON.parse(localStorage.getItem(KEY) || "null");
     if (t?.mode === "dark") return "dark";
+    if (t?.mode === "light") return "light";
   } catch {}
+  // No persisted choice → follow the system (the ThemeProvider re-checks on OS changes).
+  if (typeof matchMedia !== "undefined" && matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
   return "light";
 }
 
 function applyTheme(theme: Theme) {
   document.documentElement.style.colorScheme = theme;
   document.documentElement.dataset.themeMode = theme;
+  // The shadcn-compatible token swap: extension UIs style off a host-level `.dark` class, so a
+  // host toggle propagates into every mounted extension via the CSS cascade.
+  document.documentElement.classList.toggle("dark", theme === "dark");
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

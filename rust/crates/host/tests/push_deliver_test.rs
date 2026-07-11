@@ -74,6 +74,7 @@ async fn relay_fans_out_to_each_recipients_devices() {
         "Leo checked in",
         "9:00 AM",
         None,
+        None,
         Some("care-feed"),
         None,
         100,
@@ -115,6 +116,7 @@ async fn token_gone_auto_disables_device_and_stops_sending() {
                 &["user:bob".into()],
                 title,
                 "b",
+                None,
                 None,
                 None,
                 None,
@@ -176,6 +178,7 @@ async fn quiet_hours_suppresses_muted_member() {
         None,
         None,
         None,
+        None,
         100,
     )
     .await
@@ -214,6 +217,7 @@ async fn non_member_audience_sub_is_excluded() {
         None,
         None,
         None,
+        None,
         100,
     )
     .await
@@ -243,6 +247,7 @@ async fn retry_after_partial_failure_does_not_resend_succeeded_devices() {
         &["user:bob".into()],
         "t",
         "b",
+        None,
         None,
         None,
         None,
@@ -286,6 +291,7 @@ async fn same_second_sends_do_not_collide() {
         None,
         None,
         None,
+        None,
         100,
     )
     .await
@@ -297,6 +303,7 @@ async fn same_second_sends_do_not_collide() {
         &["user:bob".into()],
         "two",
         "b",
+        None,
         None,
         None,
         None,

@@ -52,6 +52,20 @@ pub struct AgentModelConfig {
     pub base_url: Option<String>,
 }
 
+/// The **outbox delivery providers** an embedder injects at boot (release scope, gap 1 — the
+/// provider-injection seam). Each is the one sanctioned external behind its host trait; `None`
+/// falls back to the logging no-op provider so boot never crashes and the relay still drains
+/// (the send is logged, not performed). The `node` binary leaves both `None` today; a product
+/// host fills them with its real SMTP/WebPush/FCM adapters.
+#[derive(Clone, Default)]
+#[non_exhaustive]
+pub struct OutboxProviders {
+    /// The email delivery provider (`EmailTarget`'s external). `None` ⇒ logging no-op.
+    pub email: Option<std::sync::Arc<dyn lb_host::EmailProvider>>,
+    /// The push delivery provider (`PushTarget`'s external). `None` ⇒ logging no-op.
+    pub push: Option<std::sync::Arc<dyn lb_host::PushProvider>>,
+}
+
 /// Everything the boot ritual needs. Filled at the binary boundary (env today, via [`from_env`]) or by
 /// an embedder (mutating [`default()`](Default::default)). No library code below the boot seam reads
 /// this from env.
@@ -108,6 +122,12 @@ pub struct BootConfig {
     /// gateway keeps its own `LB_EXT_UI_DIR`/`"extensions-ui"` default read at the binary boundary. Like
     /// every other field, no library code below the seam reads this from env — an embedder fills it.
     pub ext_ui_dir: Option<String>,
+
+    /// The outbox delivery providers (email/push) the relay reactor delivers through (release
+    /// scope, gap 1). Additive: `Default` (both `None`) keeps prior behaviour safe — the relay
+    /// spawns with logging no-op providers, so effects drain and boot never crashes for lack of
+    /// delivery config. An embedder fills these with real adapters.
+    pub outbox_providers: OutboxProviders,
 }
 
 impl Default for BootConfig {
@@ -131,6 +151,7 @@ impl Default for BootConfig {
             // `None` ⇒ the gateway keeps its own `LB_EXT_UI_DIR`/"extensions-ui" default (the standalone
             // binary is untouched); an embedder sets an absolute path to relocate the ext-UI serve dir.
             ext_ui_dir: None,
+            outbox_providers: OutboxProviders::default(),
         }
     }
 }
@@ -159,6 +180,9 @@ impl BootConfig {
             // `Gateway::build`, so the standalone `node` binary's ext-UI serve dir is unchanged. Only an
             // embedder (filling the struct directly) uses this field to relocate the dir off env.
             ext_ui_dir: None,
+            // The binary configures no real delivery providers today — the relay drains through
+            // the logging no-ops. Real adapters come from an embedder filling the struct.
+            outbox_providers: OutboxProviders::default(),
         }
     }
 }

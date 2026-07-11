@@ -11,7 +11,8 @@ export interface ExtPage {
 }
 
 export interface PageBridge {
-  call: (tool: string, args?: unknown) => Promise<unknown>;
+  // Matches the SDK's PageBridge.call signature exactly (the generic is the caller's cast seam).
+  call: <T = unknown>(tool: string, args?: Record<string, unknown>) => Promise<T>;
 }
 
 export interface PageCtx {
@@ -35,12 +36,12 @@ export function loadRemoteMount(ext: string, entry: string): Promise<{ mount: Re
 
 export function makeBridge(allowedTools: string[]): PageBridge {
   return {
-    call: async (tool: string, args?: unknown) => {
+    call: async <T = unknown>(tool: string, args?: Record<string, unknown>): Promise<T> => {
       if (allowedTools.length > 0 && !allowedTools.includes(tool)) {
         throw new Error(`bridge: tool not in scope: ${tool}`);
       }
       const { mcpCall } = await import("./ipc");
-      return mcpCall(tool, args ?? {});
+      return (await mcpCall(tool, args ?? {})) as T;
     },
   };
 }

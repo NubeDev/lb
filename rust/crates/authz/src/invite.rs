@@ -46,6 +46,12 @@ pub struct Invite {
     /// (rule 10).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub payload: Option<String>,
+    /// The invitee's locale (BCP-47 base code, e.g. `es`) — set at mint time so the invite email
+    /// and the pre-auth accept page render in the invitee's language, and copied into the new
+    /// member's `language` pref on accept (release scope, i18n gap a). Additive serde-default:
+    /// `None` on old records ⇒ the `en` fallback.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
     /// The lifecycle status.
     pub status: InviteStatus,
     /// Who minted the invite (their sub).
@@ -78,6 +84,7 @@ impl Invite {
             role: String::new(),
             team: String::new(),
             payload: None,
+            locale: None,
             status: InviteStatus::Pending,
             minter: minter.into(),
             created_ts,

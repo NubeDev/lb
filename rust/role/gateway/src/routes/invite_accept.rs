@@ -7,7 +7,7 @@
 //! authenticate layer. Rate-limiting is the gateway's concern (the public route ships rate-limited
 //! from day one per the scope's risk note).
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -64,6 +64,7 @@ pub async fn accept_invite(
             | lb_host::InviteError::AlreadyAccepted
             | lb_host::InviteError::Revoked => StatusCode::GONE,
             lb_host::InviteError::IdentityExists(_) => StatusCode::CONFLICT,
+            lb_host::InviteError::BadInput(_) => StatusCode::BAD_REQUEST,
             lb_host::InviteError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (code, e.to_string())
@@ -75,4 +76,38 @@ pub async fn accept_invite(
         workspace: accepted.workspace,
         caps: accepted.caps,
     }))
+}
+
+/// The `GET /public/invite/verify` query — the pre-auth token preview (release scope, i18n gap a).
+#[derive(Debug, Deserialize)]
+pub struct VerifyInviteQuery {
+    pub token: String,
+    pub workspace: String,
+}
+
+/// `GET /public/invite/verify?workspace=…&token=…` — pre-auth, read-only: the accept page fetches
+/// the invite's locale/email before any session exists so it can render in the invitee's language.
+/// Token-gated (full-entropy token = the authority) and rate-limited like the accept route.
+pub async fn verify_invite(
+    State(gw): State<Gateway>,
+    Query(q): Query<VerifyInviteQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let now = gw.now();
+    let preview = lb_host::invite_verify(&gw.node.store, &q.workspace, &q.token, now)
+        .await
+        .map_err(|e| {
+            let code = match &e {
+                lb_host::InviteError::NotFound | lb_host::InviteError::BadToken => {
+                    StatusCode::NOT_FOUND
+                }
+                lb_host::InviteError::Store(_) => StatusCode::INTERNAL_SERVER_ERROR,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            (code, e.to_string())
+        })?;
+    Ok(Json(serde_json::json!({
+        "email": preview.email,
+        "locale": preview.locale,
+        "redeemable": preview.redeemable,
+    })))
 }

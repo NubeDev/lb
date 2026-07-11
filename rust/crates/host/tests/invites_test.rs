@@ -48,6 +48,7 @@ async fn create_and_list_invite() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -75,6 +76,7 @@ async fn accept_invite_onboards_new_member() {
         "sam@example.com",
         "member",
         "",
+        None,
         None,
         0,
         100,
@@ -113,6 +115,7 @@ async fn double_redeem_is_rejected() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -143,6 +146,7 @@ async fn expired_invite_is_rejected() {
         "member",
         "",
         None,
+        None,
         50,
         10,
     )
@@ -168,6 +172,7 @@ async fn revoke_then_accept_is_rejected() {
         "sam@example.com",
         "member",
         "",
+        None,
         None,
         0,
         100,
@@ -209,6 +214,7 @@ async fn denies_create_without_invite_create_cap() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -241,6 +247,7 @@ async fn invite_not_visible_from_other_workspace() {
         "member",
         "",
         None,
+        None,
         0,
         100,
     )
@@ -266,6 +273,7 @@ async fn accept_with_wrong_workspace_fails() {
         "sam@example.com",
         "member",
         "",
+        None,
         None,
         0,
         100,
@@ -296,6 +304,7 @@ async fn admin_can_invite_with_any_role() {
         "sam@example.com",
         "workspace-admin",
         "",
+        None,
         None,
         0,
         100,

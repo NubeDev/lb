@@ -10,6 +10,7 @@ pub enum InviteError {
     AlreadyAccepted,
     Revoked,
     BadToken,
+    BadInput(String),
     IdentityExists(String),
     Store(String),
 }
@@ -23,6 +24,7 @@ impl std::fmt::Display for InviteError {
             Self::AlreadyAccepted => write!(f, "invite already accepted"),
             Self::Revoked => write!(f, "invite revoked"),
             Self::BadToken => write!(f, "bad invite token"),
+            Self::BadInput(msg) => write!(f, "bad input: {msg}"),
             Self::IdentityExists(msg) => write!(f, "identity exists: {msg}"),
             Self::Store(s) => write!(f, "store error: {s}"),
         }
@@ -44,7 +46,9 @@ impl From<InviteError> for ToolError {
             | InviteError::AlreadyAccepted
             | InviteError::Revoked
             | InviteError::NotFound => ToolError::BadInput(e.to_string()),
-            InviteError::IdentityExists(msg) => ToolError::BadInput(msg),
+            InviteError::BadInput(msg) | InviteError::IdentityExists(msg) => {
+                ToolError::BadInput(msg)
+            }
             InviteError::Store(s) => ToolError::Extension(s),
         }
     }

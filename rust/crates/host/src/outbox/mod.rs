@@ -24,11 +24,13 @@ mod error;
 mod relay;
 mod relay_ops;
 mod relay_reactor;
+mod router_target;
 mod status;
 mod target;
 
 pub use email_target::{
-    EmailMeta, EmailProvider, EmailTarget, RecordedEmail, RecordingEmailProvider,
+    EmailMeta, EmailProvider, EmailTarget, LoggingEmailProvider, RecordedEmail,
+    RecordingEmailProvider,
 };
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
@@ -36,5 +38,6 @@ pub use error::OutboxError;
 pub use relay::{relay_outbox, RelayPass};
 pub use relay_ops::{outbox_due, outbox_mark_delivered, outbox_mark_failed};
 pub use relay_reactor::spawn_relay_reactors;
+pub use router_target::{DynTarget, RouterTarget};
 pub use status::{outbox_status, OutboxStatus};
 pub use target::Target;

@@ -48,6 +48,16 @@ on first login.
 - **Not open self-signup.** Every join is minted by someone holding `invite:create`.
   A public "join this workspace" link is a *later* mode on the same record (`max_uses`).
 - **Not the email service.** One `Deliver` trait; providers are config.
+- ~~**No templating in core** — the email subject/body were fixed English strings.~~
+  **OVERTURNED (2026-07-11, release scope):** the platform's multi-lang requirement means the
+  invite email must render in the invitee's language *pre-auth* — every downstream re-implementing
+  templating (the original rationale for keeping it out) is exactly what a core catalog avoids.
+  Subject/body now render through the prefs **catalog engine** (`invite.email.*` keys in
+  `en.mf`/`es.mf`) per the invite's `locale`; the provider still receives final strings. The
+  invite record carries an additive `locale`, `invite.create` validates it against the
+  enabled-language axis, `GET /public/invite/verify` exposes it pre-auth, and accept copies it
+  into the member's `language` pref. See
+  `sessions/release/updates-to-core-release-session.md`.
 
 ## Intent / approach
 

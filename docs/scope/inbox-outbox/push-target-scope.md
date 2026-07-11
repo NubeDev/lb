@@ -111,13 +111,17 @@ everything else (store, outbox, caps) real.
 
 What is actually in-tree after the peer-review pass, and what is honestly deferred:
 
-- **Wiring contract (the target is registered by the product host, not core boot):**
-  `PushTarget` mirrors the `EmailTarget` contract exactly — core ships the `Target` adapter +
-  `PushProvider` trait + recording fake, and the **product host binary registers
-  `PushTarget::new(provider, store)` with `spawn_relay_reactors` at boot** (which node runs it
-  is config, rule 1; core names no provider, rule 10). In-repo proof it works end to end is the
-  relay-driven suite `host/tests/push_deliver_test.rs`, which drives `relay_outbox` — the exact
-  loop `spawn_relay_reactors` ticks — over real enqueued effects.
+- **Wiring contract — SUPERSEDED (2026-07-11, release scope gap 1):** the `node` boot ritual now
+  registers BOTH targets itself: `node/src/reactors.rs::spawn` builds a generic `RouterTarget`
+  (dispatch on the effect's opaque `target` string) with `EmailTarget` + `PushTarget` and spawns
+  `spawn_relay_reactors` (2s tick), gated by `BootConfig.reactors`. Providers come through the
+  additive `BootConfig.outbox_providers` seam (`Option<Arc<dyn EmailProvider/PushProvider>>`);
+  unset ⇒ logging no-op providers (log + ack — boot never crashes, effects never strand). Core
+  still names no provider (rule 10). Boot-level proof: `node/tests/relay_boot_test.rs`.
+- **i18n (2026-07-11, release scope gap c):** `notify.send` additionally accepts
+  `title_key`/`body_key`/`args` (a catalog reference); `PushTarget` renders **per-recipient** in
+  each recipient's `language` pref at deliver time. Literal title/body remain the compat path and
+  are never translated. Proof: `host/tests/push_i18n_test.rs` (one notify → en+es payloads).
 - **Workspace comes from the payload, never guessed:** `notify.send` embeds `"workspace": ws`
   in the effect payload at enqueue (it authorized against that ws); `deliver()` fails the
   effect if it is absent. The audience is membership-checked in that ws — a non-member `sub`

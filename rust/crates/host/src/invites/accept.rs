@@ -207,5 +207,17 @@ async fn onboard(
         // Team membership is via the lb_assets member edge.
         let _ = lb_assets::relate(store, ws, "member", &invite.team, bare).await;
     }
+
+    // Copy the invite's locale into the new member's `language` pref (release scope, i18n gap a):
+    // the invitee chose nothing yet, so the language they were invited in is their starting
+    // language — push/email/UI all read this pref from first login on. Merge-patch: only the
+    // language axis is touched.
+    if let Some(locale) = invite.locale.as_deref().filter(|l| !l.is_empty()) {
+        let patch = lb_prefs::Prefs {
+            language: Some(locale.to_string()),
+            ..Default::default()
+        };
+        lb_prefs::set_user_prefs(store, ws, sub, &patch).await?;
+    }
     Ok(())
 }

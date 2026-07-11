@@ -238,7 +238,7 @@ pub use install::install_extension;
 pub use installed::installed;
 pub use invites::{
     call_invite_tool, invite_accept, invite_create, invite_list, invite_resend, invite_revoke,
-    AcceptedInvite, InviteError, EMAIL_ACTION, EMAIL_TARGET,
+    invite_verify, AcceptedInvite, InviteError, InvitePreview, EMAIL_ACTION, EMAIL_TARGET,
 };
 pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
@@ -271,8 +271,9 @@ pub use nav::{
 };
 pub use notify::{
     call_notify_tool, device_list, device_register, device_remove, notify_send,
-    Device as NotifyDevice, NotifyError, Platform as DevicePlatform, PushError, PushPayload,
-    PushProvider, PushTarget, RecordedPush, RecordingPushProvider, PUSH_TARGET,
+    Device as NotifyDevice, LoggingPushProvider, NotifyCatalogRef, NotifyError,
+    Platform as DevicePlatform, PushError, PushPayload, PushProvider, PushTarget, RecordedPush,
+    RecordingPushProvider, PUSH_TARGET,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
@@ -295,8 +296,9 @@ pub use lb_store::new_ulid;
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, EmailMeta, EmailProvider, EmailTarget,
-    OutboxError, OutboxStatus, RecordedEmail, RecordingEmailProvider, RelayPass, Target,
+    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, EmailMeta, EmailProvider,
+    EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus, RecordedEmail,
+    RecordingEmailProvider, RelayPass, RouterTarget, Target,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

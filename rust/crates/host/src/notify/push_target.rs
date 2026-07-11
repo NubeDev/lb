@@ -41,6 +41,16 @@ pub struct PushPayload {
     pub to: Vec<String>,
     pub title: String,
     pub body: String,
+    /// Catalog keys for a localized notification (release scope, i18n gap c): when set, the
+    /// target renders title/body per-recipient through the prefs catalog in THEIR `language`
+    /// pref at deliver time. The literal `title`/`body` above are the untranslated compat path.
+    #[serde(default)]
+    pub title_key: Option<String>,
+    #[serde(default)]
+    pub body_key: Option<String>,
+    /// The render args for the catalog keys.
+    #[serde(default)]
+    pub args: serde_json::Value,
     #[serde(default)]
     pub deep_link: Option<String>,
     /// Provider-side collapse handle (WebPush `Topic` / FCM `collapse_key`) — forwarded to the
@@ -121,11 +131,41 @@ impl Target for PushTarget {
                 }
 
                 // Check quiet-hours prefs (whole-fold axis on Prefs).
-                if let Ok(Some(prefs)) = get_user_prefs(&store, &ws, sub).await {
-                    if prefs.push_muted == Some(true) {
-                        continue; // suppressed — not an error.
-                    }
+                let recipient_prefs = get_user_prefs(&store, &ws, sub)
+                    .await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                if recipient_prefs.push_muted == Some(true) {
+                    continue; // suppressed — not an error.
                 }
+
+                // Per-recipient localization (release scope, i18n gap c): when the payload names
+                // catalog keys, render them in THIS recipient's resolved language (their pref →
+                // en fallback). The literal title/body are the untranslated compat path.
+                let localized = if payload.title_key.is_some() || payload.body_key.is_some() {
+                    let resolved = lb_prefs::resolve(&[recipient_prefs.clone()]);
+                    let empty = std::collections::BTreeMap::new();
+                    let title = match payload.title_key.as_deref().filter(|k| !k.is_empty()) {
+                        Some(key) => {
+                            lb_prefs::render_message(key, &payload.args, &empty, &resolved).text
+                        }
+                        None => payload.title.clone(),
+                    };
+                    let body = match payload.body_key.as_deref().filter(|k| !k.is_empty()) {
+                        Some(key) => {
+                            lb_prefs::render_message(key, &payload.args, &empty, &resolved).text
+                        }
+                        None => payload.body.clone(),
+                    };
+                    PushPayload {
+                        title,
+                        body,
+                        ..payload.clone()
+                    }
+                } else {
+                    payload.clone()
+                };
 
                 // Resolve the recipient's live devices.
                 let devices = device_list_raw(&store, &ws, sub)
@@ -143,7 +183,7 @@ impl Target for PushTarget {
                         Ok(false) => {}
                         Err(e) => return Err(format!("push target: delivered check: {e}")),
                     }
-                    match provider.send(&device, &payload).await {
+                    match provider.send(&device, &localized).await {
                         Ok(()) => {
                             delivered_mark(&store, &ws, &dedup_key, &device.id, effect_ts)
                                 .await
@@ -172,9 +212,21 @@ impl Target for PushTarget {
 /// Any `Arc<P>` is itself a provider — lets a test keep a handle on the recording fake after
 /// boxing it into the target.
 #[async_trait]
-impl<P: PushProvider> PushProvider for std::sync::Arc<P> {
+impl<P: PushProvider + ?Sized> PushProvider for std::sync::Arc<P> {
     async fn send(&self, device: &Device, payload: &PushPayload) -> Result<(), PushError> {
         (**self).send(device, payload).await
+    }
+}
+
+/// The **default boot provider** when no real one is configured (release scope, gap 1): logs the
+/// send and acks it. A product host replaces it via the boot provider seam.
+pub struct LoggingPushProvider;
+
+#[async_trait]
+impl PushProvider for LoggingPushProvider {
+    async fn send(&self, device: &Device, payload: &PushPayload) -> Result<(), PushError> {
+        tracing::info!(device = %device.id, title = %payload.title, "push (no provider configured — logged only)");
+        Ok(())
     }
 }
 

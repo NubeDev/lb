@@ -8,9 +8,13 @@ use std::time::Duration;
 
 use lb_host::Node;
 
+use crate::config::OutboxProviders;
+
 /// Spawn the background reactor loops for `ws` on `node`, and run the one-shot insight-ts heal. One
 /// detached owner per reactor per node, each scanning the configured workspace on its own cadence.
-pub async fn spawn(node: &Arc<Node>, ws: &str) {
+/// `providers` is the boot provider-injection seam (release scope, gap 1): the relay reactor
+/// delivers email/push effects through them; unset providers fall back to the logging no-ops.
+pub async fn spawn(node: &Arc<Node>, ws: &str, providers: &OutboxProviders) {
     // FLOW REACTOR TICK: drive cron/reconcile scans so a `mode:"cron"` trigger actually fires. A
     // few-second period catches a minute-granularity cron promptly; each tick is a cheap ws scan.
     lb_host::spawn_flow_reactors(
@@ -32,6 +36,35 @@ pub async fn spawn(node: &Arc<Node>, ws: &str) {
     // INSIGHT TS HEAL (one-shot, idempotent): rewrite historical insights whose `ts` landed in the
     // seconds-band `[1e9, 1e12)` ×1000. A no-op once healed, so safe every boot.
     let _ = lb_host::heal_insight_timestamps(&node.store, ws).await;
+
+    // OUTBOX RELAY REACTOR TICK (release scope, gap 1 — previously never booted): drain staged
+    // outbox effects through the registered delivery adapters. The RouterTarget dispatches on the
+    // effect's opaque `target` string (rule 10): `email` → EmailTarget, `push` → PushTarget. A
+    // provider the embedder didn't configure falls back to the logging no-op — the relay still
+    // drains (never crash boot, never strand effects); the send is logged, not performed.
+    let email_provider: Box<dyn lb_host::EmailProvider> = match &providers.email {
+        Some(p) => Box::new(p.clone()),
+        None => Box::new(lb_host::LoggingEmailProvider),
+    };
+    let push_provider: Box<dyn lb_host::PushProvider> = match &providers.push {
+        Some(p) => Box::new(p.clone()),
+        None => Box::new(lb_host::LoggingPushProvider),
+    };
+    let router = lb_host::RouterTarget::new()
+        .route(
+            lb_host::EMAIL_TARGET,
+            lb_host::EmailTarget::new(email_provider),
+        )
+        .route(
+            lb_host::PUSH_TARGET,
+            lb_host::PushTarget::new(push_provider, node.store.clone()),
+        );
+    lb_host::spawn_relay_reactors(
+        node.clone(),
+        vec![ws.to_string()],
+        router,
+        Duration::from_secs(2),
+    );
 
     // INSIGHT DIGEST REACTOR TICK: digest the anti-spam ladder — one message per (sub, window), decay
     // quiet keys, post under each sub's stored principal. 30s cadence (windows are hours/days).

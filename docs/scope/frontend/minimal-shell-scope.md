@@ -105,7 +105,13 @@ before login. No `*.fake.ts`.
   disease this scope treats. (Rejected: devkit template — product owns the copy, drifts.)
 - ✅ Invite-accept surface lives here — a themed client screen over `POST /public/invite/accept`
   (the `acceptInvite` function in `session.ts`). The shell provides the API; the product host
-  adds the screen.
+  adds the screen. Pre-auth locale: `GET /public/invite/verify` returns the invite's
+  `{email, locale, redeemable}` so that screen renders in the invitee's language.
+- ✅ **i18n (2026-07-11, release scope gap d):** every shell string flows through en+es catalogs
+  (`src/i18n.tsx`) via the `@nube/ext-ui-sdk` seam (`resolveLocale`/`makeTranslator`/
+  `catalogParity` — user pref → `navigator.language` → `en`); `src/i18n.test.tsx` is the CI
+  key-parity gate (the TS twin of the `.mf` parity test). Extensions ship their own catalogs
+  through the same SDK seam.
 - ✅ Home = one ext page v1 (recommended). A bottom-tab multi-page mode is v1.5 or full-shell
   territory.
 
