@@ -479,6 +479,9 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:apikey.manage:call",
     "mcp:webhook.manage:call",
     "secret:webhook/*:write",
+    // invites scope: admin mints/list/revokes/resends invite tokens (accept is pre-auth).
+    "mcp:invite.create:call",
+    "mcp:invite.list:call",
 ];
 
 #[cfg(test)]

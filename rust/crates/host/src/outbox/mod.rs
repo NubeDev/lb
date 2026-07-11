@@ -17,6 +17,7 @@
 //! scope). They are provider-free (rule 10) and drive the outbox-sink flow node's outbound delivery
 //! plus the reminders/approval reactors.
 
+mod email_target;
 mod enqueue;
 mod enqueue_held;
 mod error;
@@ -26,6 +27,9 @@ mod relay_reactor;
 mod status;
 mod target;
 
+pub use email_target::{
+    EmailMeta, EmailProvider, EmailTarget, RecordedEmail, RecordingEmailProvider,
+};
 pub use enqueue::enqueue_outbox;
 pub use enqueue_held::enqueue_held_outbox;
 pub use error::OutboxError;

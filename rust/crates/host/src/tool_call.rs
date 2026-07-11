@@ -58,6 +58,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "inbox.",
     "insight.",
     "authz.",
+    "invite.",
     "dashboard.",
     "nav.",
     "layout.",
@@ -360,6 +361,10 @@ async fn dispatch_at_depth(
             // (never accepts a `user` arg — no information leak). `authz.resolve` /
             // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
             crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("invite.") {
+            // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
+            // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
+            crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only

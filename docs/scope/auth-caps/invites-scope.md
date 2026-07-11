@@ -107,11 +107,12 @@ public route. All against a real booted node; the email trait's test impl record
 
 ## Open questions
 
-- Does `invite.accepted` ride the bus (motion) or is invite-record polling enough for v1?
-- `max_uses > 1` (a room's "join link") in v1 or strictly single-use first? (Recommend
-  single-use first.)
-- Where does the accept UI live — the minimal shell package (`frontend/minimal-shell-scope.md`)
-  seems the natural home. Decide there.
+- ✅ `invite.accepted` rides polling for v1 (bus event deferred — the extension observes
+  acceptance by checking `status == accepted` + `accepted_by` on the invite record).
+- ✅ `max_uses > 1` deferred (strictly single-use first; a "join link" mode is a later additive
+  field on the same record).
+- ✅ Accept UI lives in the minimal shell (`frontend/minimal-shell-scope.md`) — a themed client
+  route (`/accept?token=…`) calling `POST /public/invite/accept`.
 
 ## Related
 

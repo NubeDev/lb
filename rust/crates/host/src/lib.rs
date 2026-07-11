@@ -35,6 +35,7 @@ mod ingest;
 mod insight;
 mod install;
 mod installed;
+mod invites;
 mod layout;
 mod load;
 mod members;
@@ -233,6 +234,10 @@ pub use insight::{
 };
 pub use install::install_extension;
 pub use installed::installed;
+pub use invites::{
+    call_invite_tool, invite_accept, invite_create, invite_list, invite_resend, invite_revoke,
+    AcceptedInvite, InviteError, EMAIL_ACTION, EMAIL_TARGET,
+};
 pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
 };

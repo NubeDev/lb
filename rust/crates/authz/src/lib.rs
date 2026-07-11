@@ -29,6 +29,7 @@
 mod check_scoped;
 mod grant;
 mod identity;
+mod invite;
 mod membership;
 mod resolve;
 mod resolve_scoped;
@@ -48,6 +49,10 @@ pub use grant::{
 pub use identity::{
     identity_create, identity_get, identity_list, Identity, IDENTITY_KIND, IDENTITY_NS,
     IDENTITY_TABLE,
+};
+pub use invite::{
+    invite_create_raw, invite_get_raw, invite_list_raw, invite_mark_accepted_raw,
+    invite_revoke_raw, Invite, InviteStatus, INVITE_KIND, INVITE_TABLE,
 };
 pub use membership::{
     membership_add_raw, membership_get, membership_has_any, membership_is_member, membership_list,

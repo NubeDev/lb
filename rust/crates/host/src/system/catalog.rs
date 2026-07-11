@@ -262,6 +262,27 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "authz",
         description: "kill live tokens + tombstone grants for a subject (admin-only)",
     },
+    // invite.* — the token onboarding surface (invites scope). Accept is pre-auth (gateway route).
+    HostTool {
+        tool: "invite.create",
+        group: "invite",
+        description: "mint a single-use invite token (enqueues email delivery; admin-only)",
+    },
+    HostTool {
+        tool: "invite.list",
+        group: "invite",
+        description: "list invites in the workspace with status (admin-only)",
+    },
+    HostTool {
+        tool: "invite.revoke",
+        group: "invite",
+        description: "revoke a pending invite (admin-only)",
+    },
+    HostTool {
+        tool: "invite.resend",
+        group: "invite",
+        description: "resend a pending invite with a fresh token (admin-only)",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",

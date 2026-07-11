@@ -10,13 +10,13 @@ use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::routes::{
-    ack_insight, add_datasource, add_member, add_team_member, agent_invoke, archive_workspace,
-    assign_grant, bus_stream, channel_stream, convert_unit, create_apikey, create_channel,
-    create_def, create_identity, create_team, create_user, create_webhook, create_workspace,
-    define_role, delete_brand, delete_dashboard, delete_def, delete_flow, delete_insight,
-    delete_message, delete_nav, delete_occurrence, delete_panel, delete_report, delete_role,
-    delete_rule, delete_team, delete_user, disable_extension, disable_user, edit_message,
-    enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
+    accept_invite, ack_insight, add_datasource, add_member, add_team_member, agent_invoke,
+    archive_workspace, assign_grant, bus_stream, channel_stream, convert_unit, create_apikey,
+    create_channel, create_def, create_identity, create_team, create_user, create_webhook,
+    create_workspace, define_role, delete_brand, delete_dashboard, delete_def, delete_flow,
+    delete_insight, delete_message, delete_nav, delete_occurrence, delete_panel, delete_report,
+    delete_role, delete_rule, delete_team, delete_user, disable_extension, disable_user,
+    edit_message, enable_extension, enable_flow, enable_user, events_stream, events_subscribe,
     events_unsubscribe, export_report, find_series, flow_debug_stream, flow_node_state,
     flow_run_stream, format_datetime, format_number, format_quantity, get_agent_config_route,
     get_apikey, get_asset_bin, get_brand, get_catalog, get_dashboard, get_def, get_doc, get_flow,
@@ -66,6 +66,11 @@ pub fn router(gw: Gateway) -> Router {
         // 404/410 so the route is not a webhook-id oracle. Registered FIRST so it sits at a stable
         // public path unrelated to the session-authed `/admin/webhooks/*` surface.
         .route("/hooks/{ws}/{id}", post(post_webhook))
+        // The pre-auth invite accept route (invites scope) — `POST /public/invite/accept`. The
+        // THIRD unauthenticated route (besides /login and /hooks): the caller presents the invite
+        // token (not a session), and the accept chain runs the atomic onboarding. The gateway's
+        // signing key mints the session.
+        .route("/public/invite/accept", post(accept_invite))
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(
