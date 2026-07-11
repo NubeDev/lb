@@ -46,7 +46,6 @@ members = [
     "crates/run-events",
     "crates/runtime",
     "crates/secrets",
-    "crates/sidecar-client",
     "crates/store",
     "crates/supervisor",
     "crates/sync",
@@ -104,7 +103,10 @@ lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
-lb-sidecar-client = { path = "crates/sidecar-client" }
+# The native host-callback client is now published by the SDK (NubeDev/lb-ext-sdk) so out-of-tree
+# native extensions can consume it by git tag; lb consumes it back from there — one source of truth,
+# the same way it consumes `lb-sdk`. (Was an in-tree `crates/sidecar-client` path crate.)
+lb-sidecar-client = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.3.0" }
 lb-store = { path = "crates/store" }
 lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
