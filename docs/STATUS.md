@@ -23,7 +23,60 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-11): `federation` promoted to a first-class core crate.** The federation
+**Just shipped (2026-07-11): the five cc-app platform-gap scopes — entity-scoped grants, invites,
+media, push-target, minimal-shell.** Five scopes built end to end for the downstream cc-app
+childcare product, each with full verb surfaces, capability-deny + workspace-isolation tests, and
+session docs. All on branch `updates-to-core`.
+
+1. **Entity-scoped grants** — row-level reach inside a workspace. Additive `Scope` selector on
+   the grant record (`All` default = zero migration; `Ids` narrows to listed record ids).
+   `resolve_caps_scoped` unions per-cap scopes; `check_scoped`/`scope_filter` are the host-facing
+   read API extensions reach via `host.call-tool` (no WIT change — more additive than the flagged
+   host-callback pair). Scope:
+   [`scope/auth-caps/entity-scoped-grants-scope.md`](scope/auth-caps/entity-scoped-grants-scope.md);
+   session: [`sessions/auth-caps/entity-scoped-grants-session.md`](sessions/auth-caps/entity-scoped-grants-session.md).
+   Tests: lb-authz 15 + lb-host 7.
+
+2. **Invites** — token onboarding for people who don't exist yet. `Invite` record (hash-at-rest,
+   single-use, workspace-scoped). Admin verbs: create/list/revoke/resend (gated
+   `mcp:invite.create/list:call`). Pre-auth accept route (`POST /public/invite/accept`) — the
+   atomic onboarding chain: verify token → create-or-match identity → set credential →
+   membership.add → apply grants → mint session. Email outbox `Target` + `EmailProvider` trait
+   (the one sanctioned external). Email-match takeover prevention. Scope:
+   [`scope/auth-caps/invites-scope.md`](scope/auth-caps/invites-scope.md);
+   session: [`sessions/auth-caps/invites-session.md`](sessions/auth-caps/invites-session.md).
+   Tests: lb-host 11.
+
+3. **Media** — resumable chunked upload + variant jobs + streaming serve. Protocol: `begin` →
+   `PUT /media/{id}/chunk/{n}` → `commit` (SHA-256 verify, flip to Ready, derive thumbnail via
+   the `image` crate). Serve route (`GET /media/{id}?variant=thumb`) with ETag. Per-mime max size
+   (the governed knob — the 413 lesson). One datastore (SurrealDB — rule 2). Scope:
+   [`scope/files/media-scope.md`](scope/files/media-scope.md);
+   session: [`sessions/files/media-session.md`](sessions/files/media-session.md).
+   Tests: lb-host 9.
+
+4. **Push target** — push as an outbox `Target` (WebPush first). Device records (per-member,
+   self-only). `notify.send` verb enqueues a push effect. `PushTarget` impl `Target`: resolves
+   audience → live devices, checks quiet-hours prefs (`push_muted` axis), auto-disables on
+   `TokenGone`. `PushProvider` trait (one sanctioned external). Scope:
+   [`scope/inbox-outbox/push-target-scope.md`](scope/inbox-outbox/push-target-scope.md);
+   session: [`sessions/inbox-outbox/push-target-session.md`](sessions/inbox-outbox/push-target-session.md).
+   Tests: lb-host 9.
+
+5. **Minimal shell** — the publishable minimal host for 100%-extension UIs. `@nube/minimal-shell`
+   package (~15 files): auth screens (login + invite-accept API), `ext.list` discovery,
+   full-screen scoped mount via `@nube/ext-ui-sdk` federation seam, SSE hub, theme-token
+   provider, PWA manifest. No lb chrome. Extension id is opaque config data (rule 10). Retires
+   vendor-the-whole-shell. Scope:
+   [`scope/frontend/minimal-shell-scope.md`](scope/frontend/minimal-shell-scope.md);
+   session: [`sessions/frontend/minimal-shell-session.md`](sessions/frontend/minimal-shell-session.md).
+   Tests: 2 unit.
+
+**Test totals (new scopes):** 15 + 7 + 11 + 9 + 9 + 2 = **53 new tests**, all green. All existing
+authz/admin_crud/builtin_roles/catalog tests green (no regressions). `cargo fmt` clean. `cargo
+build --workspace` clean.
+
+**Previously (2026-07-11): `federation` promoted to a first-class core crate.** The federation
 datasources sidecar moved out of the misleading `rust/extensions/` folder to
 [`rust/crates/federation/`](../rust/crates/federation/) — it is **core, not a product extension**
 (fails the rule-10 swap test: the host holds a first-class `federation.*` surface + `FED_ENDPOINTS`;
