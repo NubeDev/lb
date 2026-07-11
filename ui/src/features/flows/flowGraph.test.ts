@@ -253,40 +253,39 @@ const desc = (
 });
 
 describe("joinOf + effectiveInputPorts (the per-port policy the canvas paints)", () => {
-  it("defaults `all` for a transform and `any` for a sink (Node-RED's debug/funnel)", () => {
+  it("defaults `any` for EVERY kind (plain per-message wiring, flow-plain-wiring-scope)", () => {
     const rhai = desc("rhai", "transform", ["payload"]);
-    expect(joinOf(rhai)).toBe("all");
-    expect(joinOf(rhai, "payload")).toBe("all");
+    expect(joinOf(rhai)).toBe("any");
+    expect(joinOf(rhai, "payload")).toBe("any");
     const dbg = desc("debug", "sink", ["payload"]);
     expect(joinOf(dbg)).toBe("any");
     expect(joinOf(dbg, "payload")).toBe("any");
   });
 
-  it("an explicit `inputPorts` override wins over the per-kind default (both directions)", () => {
-    // A transform overridden to `any` (a custom funnel).
-    const funnel = desc("funnel", "transform", ["payload"], [
-      { name: "payload", join: "any" },
-    ]);
-    expect(joinOf(funnel)).toBe("any");
-    // A sink overridden back to `all` (a join-over-sink).
-    const joiner = desc("joiner", "sink", ["payload"], [{ name: "payload", join: "all" }]);
+  it("an explicit `inputPorts` entry declaring `all` opts the port into the barrier", () => {
+    // The opt-in (an extension descriptor may declare it; no built-in does).
+    const joiner = desc("joiner", "transform", ["payload"], [{ name: "payload", join: "all" }]);
+    expect(joinOf(joiner)).toBe("all");
     expect(joinOf(joiner, "payload")).toBe("all");
+    // A redundant explicit `any` is honoured too.
+    const funnel = desc("funnel", "sink", ["payload"], [{ name: "payload", join: "any" }]);
+    expect(joinOf(funnel, "payload")).toBe("any");
   });
 
   it("resolves the primary (first) port when no port name is given", () => {
     const multi = desc("multi", "transform", ["left", "right"]);
-    expect(joinOf(multi)).toBe("all"); // left is primary, transform ⇒ all
-    expect(joinOf(multi, "right")).toBe("all");
+    expect(joinOf(multi)).toBe("any"); // left is primary — still the universal any default
+    expect(joinOf(multi, "right")).toBe("any");
   });
 
   it("effectiveInputPorts pairs each declared port with its effective policy", () => {
     const dbg = desc("debug", "sink", ["payload"]);
     expect(effectiveInputPorts(dbg)).toEqual([{ name: "payload", join: "any" }]);
     const rhai = desc("rhai", "transform", ["payload"]);
-    expect(effectiveInputPorts(rhai)).toEqual([{ name: "payload", join: "all" }]);
-    // link-in is the canonical any-funnel collector.
-    const linkIn = desc("link-in", "transform", ["payload"], [{ name: "payload", join: "any" }]);
-    expect(effectiveInputPorts(linkIn)).toEqual([{ name: "payload", join: "any" }]);
+    expect(effectiveInputPorts(rhai)).toEqual([{ name: "payload", join: "any" }]);
+    // Only the explicit opt-in yields an `all` port.
+    const joiner = desc("joiner", "transform", ["payload"], [{ name: "payload", join: "all" }]);
+    expect(effectiveInputPorts(joiner)).toEqual([{ name: "payload", join: "all" }]);
   });
 
   it("a trigger/source with no inputs yields no canvas ports (no target handle)", () => {

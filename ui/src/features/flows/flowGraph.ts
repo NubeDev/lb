@@ -16,27 +16,26 @@ import type {
   NodeDescriptor,
 } from "@/lib/flows";
 
-/** A resolved input port for canvas rendering: its name + the **effective** join policy (the
- *  descriptor's per-kind default applied — `any` for a sink, `all` otherwise — then overridden by an
- *  explicit `inputPorts` entry). Mirrors `NodeDescriptor::join_of` on the host (flow-input-ports-scope
- *  Axis 2). */
+/** A resolved input port for canvas rendering: its name + the **effective** join policy — `any`
+ *  for every port unless the descriptor's `inputPorts` table explicitly declares `all`
+ *  (flow-plain-wiring-scope: plain per-message wiring is the universal default). Mirrors
+ *  `NodeDescriptor::join_of` on the host. */
 export interface CanvasInputPort {
   name: string;
   join: JoinPolicy;
 }
 
-/** The effective join policy a port settles under, applying the descriptor's per-kind default (`any`
- *  for a `sink` — Node-RED's debug/funnel; `all` otherwise) then any explicit `inputPorts` override.
- *  `port === undefined` resolves the primary (first) input port. Mirrors the host's `join_of`. */
+/** The effective join policy a port settles under: **`any` for every port, every kind** — plain
+ *  per-message wiring (flow-plain-wiring-scope; no per-kind branch). Only an explicit `inputPorts`
+ *  entry declaring `all` (a descriptor opt-in; no built-in has one) barriers. `port === undefined`
+ *  resolves the primary (first) input port. Mirrors the host's `join_of`. */
 export function joinOf(desc: NodeDescriptor, port?: string): JoinPolicy {
   const name =
     port && port !== ""
       ? port
       : desc.inputs[0] ?? desc.inputPorts?.[0]?.name;
-  if (!name) return "all";
-  const declared = desc.inputPorts?.find((p) => p.name === name)?.join;
-  if (declared) return declared;
-  return desc.kind === "sink" ? "any" : "all";
+  if (!name) return "any";
+  return desc.inputPorts?.find((p) => p.name === name)?.join ?? "any";
 }
 
 /** The canvas-facing input ports of a descriptor: each declared `inputs[]` port paired with its
