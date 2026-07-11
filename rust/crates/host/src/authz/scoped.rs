@@ -16,6 +16,7 @@ use lb_mcp::{authorize_tool, ToolError};
 use lb_store::Store;
 use serde_json::{json, Value};
 
+use super::tool::str_arg;
 use crate::authz::LiveBuiltinRoleCaps;
 
 /// `authz.check_scoped { cap, table, id }` — may the calling principal reach `(table, id)` under
@@ -65,11 +66,4 @@ pub async fn authz_scope_filter(
 /// prefix is returned as-is (a non-user principal has no scoped grants in v1).
 fn bare_user(sub: &str) -> &str {
     sub.strip_prefix("user:").unwrap_or(sub)
-}
-
-fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
-    input
-        .get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| ToolError::BadInput(format!("missing/!string arg: {key}")))
 }

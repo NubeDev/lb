@@ -9,7 +9,7 @@
 //! `mcp:care.log.list:call` with `Ids{child, [leo]}` and another with `Ids{child, [mia]}`
 //! resolves to `Ids{child, [leo, mia]}` — one union, one cached read.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -25,6 +25,14 @@ pub enum Scope {
     /// The grant reaches only the listed record ids in `table`. `table` and `ids` are opaque
     /// data to the core (rule 10) — the extension owns their meaning.
     Ids { table: String, ids: Vec<String> },
+    /// Per-table id-sets — the **union of `Ids` selectors for different tables** (additive
+    /// variant, entity-scoped-grants review fix). Arises from resolution (a principal holding the
+    /// same cap scoped to `child:[leo]` and `site:[north]`), never widens to `All`: a scope union
+    /// is only ever the sum of what was granted, "only ever subtractive" relative to `All`.
+    /// Single-table grants keep using `Ids`, so existing `grant_id` keys are unchanged.
+    Tables {
+        tables: BTreeMap<String, BTreeSet<String>>,
+    },
 }
 
 impl Scope {
@@ -39,6 +47,13 @@ impl Scope {
                 sorted.dedup();
                 format!("{table}:{}", sorted.join(","))
             }
+            Scope::Tables { tables } => tables
+                .iter()
+                .map(|(t, ids)| {
+                    format!("{t}:{}", ids.iter().cloned().collect::<Vec<_>>().join(","))
+                })
+                .collect::<Vec<_>>()
+                .join(";"),
         }
     }
 
@@ -48,27 +63,53 @@ impl Scope {
         match self {
             Scope::All => true,
             Scope::Ids { table: t, ids } => t == table && ids.iter().any(|i| i == id),
+            Scope::Tables { tables } => tables.get(table).is_some_and(|ids| ids.contains(id)),
         }
     }
 
-    /// Union two scopes for the same cap. `All` absorbs `Ids` (any `All` grant wins — the cap is
-    /// fully reachable). Two `Ids` for the same table merge their id sets. `Ids` for different
-    /// tables is an edge case that shouldn't arise (one cap, one table per domain); if it does,
-    /// the union is `All` (conservative — widen to safe, not to a mixed-table selector).
+    /// Union two scopes for the same cap. `All` absorbs everything (any `All` grant wins — the
+    /// cap is fully reachable). Two `Ids` for the same table merge their id sets. Selectors for
+    /// **different tables** accumulate into [`Scope::Tables`] — never `All`: a union of scoped
+    /// grants must reach exactly what was granted, "only ever subtractive" relative to `All`
+    /// (review fix: the old `t1 != t2 → All` branch was a silent privilege widening).
     pub fn union(&self, other: &Scope) -> Scope {
         match (self, other) {
             (Scope::All, _) | (_, Scope::All) => Scope::All,
-            (Scope::Ids { table: t1, ids: i1 }, Scope::Ids { table: t2, ids: i2 }) => {
-                if t1 != t2 {
-                    return Scope::All;
+            (a, b) => {
+                let mut tables = a.to_table_map();
+                for (t, ids) in b.to_table_map() {
+                    tables.entry(t).or_default().extend(ids);
                 }
-                let mut merged: BTreeSet<String> = i1.iter().cloned().collect();
-                merged.extend(i2.iter().cloned());
-                Scope::Ids {
-                    table: t1.clone(),
-                    ids: merged.into_iter().collect(),
-                }
+                Scope::from_table_map(tables)
             }
+        }
+    }
+
+    /// Normalize a non-`All` scope to a per-table id-set map (`All` yields an empty map — callers
+    /// handle `All` before calling this).
+    fn to_table_map(&self) -> BTreeMap<String, BTreeSet<String>> {
+        match self {
+            Scope::All => BTreeMap::new(),
+            Scope::Ids { table, ids } => {
+                let mut m = BTreeMap::new();
+                m.insert(table.clone(), ids.iter().cloned().collect());
+                m
+            }
+            Scope::Tables { tables } => tables.clone(),
+        }
+    }
+
+    /// Collapse a per-table map back to the smallest variant: one table → `Ids` (keeps existing
+    /// single-table `grant_id` keys stable), several → `Tables`.
+    fn from_table_map(tables: BTreeMap<String, BTreeSet<String>>) -> Scope {
+        if tables.len() == 1 {
+            let (table, ids) = tables.into_iter().next().expect("len checked");
+            Scope::Ids {
+                table,
+                ids: ids.into_iter().collect(),
+            }
+        } else {
+            Scope::Tables { tables }
         }
     }
 
@@ -85,6 +126,12 @@ impl Scope {
                     ScopeFilter::Ids(vec![])
                 }
             }
+            Scope::Tables { tables } => ScopeFilter::Ids(
+                tables
+                    .get(table)
+                    .map(|ids| ids.iter().cloned().collect())
+                    .unwrap_or_default(),
+            ),
         }
     }
 
@@ -172,7 +219,9 @@ mod tests {
     }
 
     #[test]
-    fn union_ids_different_table_widens_to_all() {
+    fn union_ids_different_table_accumulates_without_widening() {
+        // Regression (review fix): this used to widen to Scope::All — a silent privilege
+        // escalation. The union must reach EXACTLY the granted rows, nothing more.
         let a = Scope::Ids {
             table: "child".into(),
             ids: vec!["leo".into()],
@@ -181,7 +230,55 @@ mod tests {
             table: "site".into(),
             ids: vec!["north".into()],
         };
-        assert_eq!(a.union(&b), Scope::All);
+        let u = a.union(&b);
+        assert_ne!(u, Scope::All);
+        assert!(u.contains("child", "leo"));
+        assert!(u.contains("site", "north"));
+        assert!(!u.contains("child", "mia"));
+        assert!(!u.contains("site", "south"));
+        assert!(!u.contains("project", "x"));
+        // filter_for stays per-table.
+        assert_eq!(u.filter_for("child"), ScopeFilter::Ids(vec!["leo".into()]));
+        assert_eq!(u.filter_for("site"), ScopeFilter::Ids(vec!["north".into()]));
+        assert_eq!(u.filter_for("project"), ScopeFilter::Ids(vec![]));
+        // Union is associative-enough: folding a third table keeps all three.
+        let c = Scope::Ids {
+            table: "child".into(),
+            ids: vec!["mia".into()],
+        };
+        let u2 = u.union(&c);
+        assert!(u2.contains("child", "leo"));
+        assert!(u2.contains("child", "mia"));
+        assert!(u2.contains("site", "north"));
+        assert_ne!(u2, Scope::All);
+    }
+
+    #[test]
+    fn union_multi_table_collapses_back_to_ids_when_one_table() {
+        // Same-table unions keep the Ids variant so grant_id keys are byte-stable.
+        let a = Scope::Ids {
+            table: "child".into(),
+            ids: vec!["leo".into()],
+        };
+        let b = Scope::Ids {
+            table: "child".into(),
+            ids: vec!["mia".into()],
+        };
+        assert!(matches!(a.union(&b), Scope::Ids { .. }));
+    }
+
+    #[test]
+    fn tables_key_is_deterministic() {
+        let a = Scope::Ids {
+            table: "site".into(),
+            ids: vec!["north".into()],
+        };
+        let b = Scope::Ids {
+            table: "child".into(),
+            ids: vec!["mia".into(), "leo".into()],
+        };
+        assert_eq!(a.union(&b).key(), b.union(&a).key());
+        assert_eq!(a.union(&b).key(), "child:leo,mia;site:north");
     }
 
     #[test]

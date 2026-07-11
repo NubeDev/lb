@@ -70,7 +70,14 @@ pub fn router(gw: Gateway) -> Router {
         // THIRD unauthenticated route (besides /login and /hooks): the caller presents the invite
         // token (not a session), and the accept chain runs the atomic onboarding. The gateway's
         // signing key mints the session.
-        .route("/public/invite/accept", post(accept_invite))
+        // Rate-limited per client IP from day one (invites scope risk note) — the route is a
+        // token oracle AND (via current_secret) a password oracle. Limiter: routes/rate_limit.rs.
+        .route(
+            "/public/invite/accept",
+            post(accept_invite).layer(axum::middleware::from_fn(
+                crate::routes::invite_accept_rate_limit,
+            )),
+        )
         .route("/workspaces", get(list_workspaces).post(create_workspace))
         .route("/channels", get(list_channels).post(create_channel))
         .route(

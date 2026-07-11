@@ -39,6 +39,22 @@ pub struct EmailMeta {
     pub action: String,
 }
 
+/// A shared provider delivers like its inner provider — lets a test hold an
+/// `Arc<RecordingEmailProvider>` for assertions while the `EmailTarget` (and the relay reactor
+/// that owns it) holds a clone. Delivery to a real relay is otherwise unobservable.
+#[async_trait]
+impl<P: EmailProvider> EmailProvider for std::sync::Arc<P> {
+    async fn send(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+        meta: &EmailMeta,
+    ) -> Result<(), String> {
+        (**self).send(to, subject, body, meta).await
+    }
+}
+
 /// The email `Target` adapter — reads the effect payload, calls the provider. Matches on
 /// `effect.target == "email"` (the `EMAIL_TARGET` const).
 pub struct EmailTarget {

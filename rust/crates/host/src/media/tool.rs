@@ -6,7 +6,6 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
-use super::error::MediaError;
 use super::{media_delete, media_get, media_list, media_upload_begin, media_upload_commit};
 
 /// Dispatch a `media.*` MCP call.

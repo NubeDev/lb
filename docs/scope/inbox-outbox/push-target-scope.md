@@ -1,6 +1,8 @@
 # Inbox-outbox scope — push notifications as an outbox target (FCM/APNs/WebPush)
 
-Status: scope (the ask). Promotes to `public/inbox-outbox/` once shipped.
+Status: scope (the ask) — v1 substrate shipped + review-fixed 2026-07-11 (see "Shipped (v1)"
+below); WebPush(VAPID) adapter + admin device-count surface still open. Promotes to
+`public/inbox-outbox/` once those close.
 
 > Read with: `outbox-scope.md` (the must-deliver substrate + the generic `Target` trait this
 > plugs into), `../auth-caps/api-keys-scope.md` (hashed-credential pattern),
@@ -104,6 +106,41 @@ everything else (store, outbox, caps) real.
 - ✅ WebPush first (PWA, no store approvals), then FCM/APNs. v1 = WebPush.
 - ✅ Quiet hours live in prefs v1 (`push_muted` axis — the `insight_notifications` pattern).
   Retrofitting DND after users are annoyed is the wrong order.
+
+## Shipped (v1) + review-fix amendments (2026-07-11)
+
+What is actually in-tree after the peer-review pass, and what is honestly deferred:
+
+- **Wiring contract (the target is registered by the product host, not core boot):**
+  `PushTarget` mirrors the `EmailTarget` contract exactly — core ships the `Target` adapter +
+  `PushProvider` trait + recording fake, and the **product host binary registers
+  `PushTarget::new(provider, store)` with `spawn_relay_reactors` at boot** (which node runs it
+  is config, rule 1; core names no provider, rule 10). In-repo proof it works end to end is the
+  relay-driven suite `host/tests/push_deliver_test.rs`, which drives `relay_outbox` — the exact
+  loop `spawn_relay_reactors` ticks — over real enqueued effects.
+- **Workspace comes from the payload, never guessed:** `notify.send` embeds `"workspace": ws`
+  in the effect payload at enqueue (it authorized against that ws); `deliver()` fails the
+  effect if it is absent. The audience is membership-checked in that ws — a non-member `sub`
+  is silently excluded (tested). This replaced a review-found hardcoded workspace
+  (`debugging/inbox-outbox/push-target-hardcoded-workspace.md`).
+- **At-least-once, per-device:** `notify/delivered.rs` keeps a ws-scoped delivered marker per
+  `(idempotency_key, device_id)`; an outbox retry re-sends **only** the failures. `collapse_key`
+  is NOT the dedup key — it is forwarded to the provider (WebPush `Topic` / FCM `collapse_key`)
+  for provider-side collapse of stacked notifications; distinct effects sharing a collapse key
+  are each still delivered once.
+- **Effect ids are ULIDs** (`notify:{ulid}`) — the earlier `notify:{now}:{first_recipient}`
+  collided within one second and the outbox idempotency dedup silently swallowed the second
+  notification.
+- **WebPush (VAPID) adapter: DEFERRED.** v1 shipped the `PushProvider` trait, the `Target`
+  adapter, and the one sanctioned recording fake — no HTTP provider yet. Why: the adapter needs
+  the VAPID keypair via `secrets/` mediation plus the credential runbook (Risks: "credential
+  ceremony"), and no in-repo consumer exercises a real endpoint yet; shipping the trait-shaped
+  seam first keeps the product host unblocked (it can wire any impl today). **Runbook item:**
+  when the WebPush adapter lands, ship with it the VAPID key generation/rotation runbook and
+  the secrets names it resolves.
+- **`device.remove` disables, it does not delete** — rows accrete with no pruning; and the
+  admin device-**count** surface (scope Goals: "admin sees counts not tokens") is not built.
+  Both deferred to the next slice.
 
 ## Related
 

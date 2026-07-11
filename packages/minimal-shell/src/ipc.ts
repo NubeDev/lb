@@ -27,6 +27,9 @@ async function postJson(path: string, body: unknown): Promise<any> {
   });
   if (r.status === 401) {
     localStorage.removeItem("lb.session");
+    // The session store (session.ts) listens for this so React re-renders to the login view;
+    // removing the key alone would leave the UI stale until a reload.
+    window.dispatchEvent(new Event("lb.session.cleared"));
   }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();

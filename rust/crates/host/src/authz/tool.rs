@@ -32,7 +32,7 @@ pub async fn call_authz_tool(
                 ws,
                 &subject(input)?,
                 str_arg(input, "cap")?,
-                &scope_arg(input),
+                &scope_arg(input)?,
             )
             .await
             .map_err(authz_to_tool)?;
@@ -45,7 +45,7 @@ pub async fn call_authz_tool(
                 ws,
                 &subject(input)?,
                 str_arg(input, "cap")?,
-                &scope_arg(input),
+                &scope_arg(input)?,
             )
             .await
             .map_err(authz_to_tool)?;
@@ -126,12 +126,14 @@ fn subject(input: &Value) -> Result<Subject, ToolError> {
 }
 
 /// Parse the optional `{ "scope": { "kind": "ids", "table": "child", "ids": [...] } }` argument.
-/// Absent or null → `Scope::All` (today's behaviour). This is the additive field on `grants.assign`
-/// / `grants.revoke` (entity-scoped-grants scope).
-fn scope_arg(input: &Value) -> Scope {
+/// Absent or null → `Scope::All` (today's behaviour). A **present-but-malformed** selector is a
+/// hard `BadInput` — never a silent fallback to `All`, which would grant every row when the caller
+/// asked for a subset (review fix: fail closed, not open).
+fn scope_arg(input: &Value) -> Result<Scope, ToolError> {
     match input.get("scope") {
-        Some(v) if !v.is_null() => serde_json::from_value(v.clone()).unwrap_or(Scope::All),
-        _ => Scope::All,
+        Some(v) if !v.is_null() => serde_json::from_value(v.clone())
+            .map_err(|e| ToolError::BadInput(format!("bad scope selector: {e}"))),
+        _ => Ok(Scope::All),
     }
 }
 
@@ -159,7 +161,10 @@ fn authz_to_tool(e: AuthzError) -> ToolError {
     }
 }
 
-fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
+/// Parse a required string argument. `pub(crate)` — this MCP bridge owns the authz verbs' arg
+/// parsing; `scoped.rs` (the `authz.check_scoped`/`scope_filter` wrappers) reuses it rather than
+/// duplicating (FILE-LAYOUT: one owner, no utils file).
+pub(crate) fn str_arg<'a>(input: &'a Value, key: &str) -> Result<&'a str, ToolError> {
     input
         .get(key)
         .and_then(|v| v.as_str())

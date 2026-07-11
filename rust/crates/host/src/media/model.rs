@@ -156,7 +156,7 @@ pub async fn chunk_read(
     match read(store, ws, CHUNK_TABLE, &chunk_id).await? {
         Some(v) => {
             let bytes_b64 = v.get("bytes").and_then(|b| b.as_str()).unwrap_or("");
-            Ok(Some(base64_decode(bytes_b64)))
+            Ok(Some(base64_decode(bytes_b64)?))
         }
         None => Ok(None),
     }
@@ -203,7 +203,7 @@ pub async fn variant_read(
     match read(store, ws, CHUNK_TABLE, &id).await? {
         Some(v) => {
             let bytes_b64 = v.get("bytes").and_then(|b| b.as_str()).unwrap_or("");
-            Ok(Some(base64_decode(bytes_b64)))
+            Ok(Some(base64_decode(bytes_b64)?))
         }
         None => Ok(None),
     }
@@ -214,9 +214,11 @@ fn base64_encode(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-fn base64_decode(s: &str) -> Vec<u8> {
+/// Decode stored chunk bytes. A corrupt row is a hard error (`StoreError::Decode`) — silently
+/// serving truncated bytes with a 200 would poison caches under a stale-but-matching ETag.
+fn base64_decode(s: &str) -> Result<Vec<u8>, StoreError> {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD
         .decode(s)
-        .unwrap_or_default()
+        .map_err(|e| StoreError::Decode(format!("corrupt chunk (base64): {e}")))
 }

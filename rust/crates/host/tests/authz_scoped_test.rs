@@ -186,6 +186,136 @@ async fn scope_filter_over_mcp_returns_ids() {
     assert_eq!(filter_ids.len(), 2);
 }
 
+// ── Regression: malformed scope selector fails closed (review fix) ──────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn malformed_scope_selector_is_bad_input_and_writes_no_grant() {
+    // A present-but-malformed `scope` used to silently fall back to Scope::All — assigning the
+    // FULL cap when the admin asked for a subset. It must be a hard BadInput, and no grant row
+    // may be written.
+    let store = Store::memory().await.unwrap();
+    let admin = principal("user:alice", "acme", ADMIN);
+
+    for bad in [
+        json!("child:leo"),                                    // not an object
+        json!({ "kind": "ids", "table": "child" }),            // missing ids
+        json!({ "kind": "idz", "table": "child", "ids": [] }), // unknown kind
+        json!({ "table": "child", "ids": ["leo"] }),           // missing kind tag
+        json!(42),
+    ] {
+        let err = call_authz_tool(
+            &store,
+            &admin,
+            "acme",
+            "grants.assign",
+            &json!({
+                "subject": "user:ana",
+                "cap": "mcp:hvac.setpoint:call",
+                "scope": bad,
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ToolError::BadInput(_)),
+            "malformed scope must be BadInput, got {err:?}"
+        );
+    }
+
+    // No grant was written: ana holds nothing.
+    let caps = call_authz_tool(
+        &store,
+        &admin,
+        "acme",
+        "grants.list",
+        &json!({ "subject": "user:ana" }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(caps["caps"], json!([]));
+}
+
+// ── Regression: multi-table scope union never widens (review fix) ───────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn multi_table_scoped_grants_reach_only_their_rows_not_everything() {
+    // The union of child:[leo] + site:[north] used to widen to Scope::All — every row of every
+    // table. It must reach EXACTLY the granted rows.
+    let store = Store::memory().await.unwrap();
+    let admin = principal("user:alice", "acme", ADMIN);
+
+    for (table, id) in [("child", "leo"), ("site", "north")] {
+        grants_assign(
+            &store,
+            &admin,
+            "acme",
+            &Subject::User("ana".into()),
+            "mcp:hvac.setpoint:call",
+            &Scope::Ids {
+                table: table.into(),
+                ids: vec![id.into()],
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    let ana = principal(
+        "user:ana",
+        "acme",
+        &[
+            "mcp:authz.check_scoped:call",
+            "mcp:authz.scope_filter:call",
+            "mcp:hvac.setpoint:call",
+        ],
+    );
+    let check = |table: &str, id: &str| {
+        let store = &store;
+        let ana = &ana;
+        let (table, id) = (table.to_string(), id.to_string());
+        async move {
+            let r = call_authz_tool(
+                store,
+                ana,
+                "acme",
+                "authz.check_scoped",
+                &json!({"cap": "mcp:hvac.setpoint:call", "table": table, "id": id}),
+            )
+            .await
+            .unwrap();
+            r["allowed"] == json!(true)
+        }
+    };
+    assert!(check("child", "leo").await);
+    assert!(check("site", "north").await);
+    // NOT everything: other rows and other tables stay denied.
+    assert!(!check("child", "mia").await);
+    assert!(!check("site", "south").await);
+    assert!(!check("project", "leo").await);
+
+    // scope_filter stays per-table too — never "all".
+    let filter = call_authz_tool(
+        &store,
+        &ana,
+        "acme",
+        "authz.scope_filter",
+        &json!({"cap": "mcp:hvac.setpoint:call", "table": "child"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(filter["filter"]["ids"], json!(["leo"]));
+    let filter = call_authz_tool(
+        &store,
+        &ana,
+        "acme",
+        "authz.scope_filter",
+        &json!({"cap": "mcp:hvac.setpoint:call", "table": "project"}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(filter["filter"]["ids"], json!([]));
+}
+
 // ── Mandatory: capability-deny ──────────────────────────────────────────────────────────────
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

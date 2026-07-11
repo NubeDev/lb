@@ -5,7 +5,7 @@
 
 use lb_auth::Principal;
 use lb_authz as raw;
-use lb_authz::{Invite, Subject};
+use lb_authz::Invite;
 use lb_mcp::authorize_tool;
 use lb_outbox::Effect;
 use lb_store::Store;

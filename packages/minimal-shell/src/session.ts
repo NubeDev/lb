@@ -5,12 +5,22 @@ import { login as apiLogin, acceptInvite as apiAccept } from "./ipc";
 
 const KEY = "lb.session";
 
+// useSyncExternalStore compares snapshots with Object.is: returning a fresh JSON.parse object
+// every call makes React loop ("getSnapshot should be cached") once a session exists. Cache the
+// parsed value keyed by the raw string so the snapshot is stable between changes.
+let cachedRaw: string | null = null;
+let cachedSession: Session | null = null;
+
 function getSession(): Session | null {
+  const raw = localStorage.getItem(KEY);
+  if (raw === cachedRaw) return cachedSession;
+  cachedRaw = raw;
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "null");
+    cachedSession = raw ? JSON.parse(raw) : null;
   } catch {
-    return null;
+    cachedSession = null;
   }
+  return cachedSession;
 }
 
 function setSession(s: Session | null) {
@@ -26,6 +36,12 @@ function emit() {
 function subscribe(l: () => void) {
   listeners.add(l);
   return () => listeners.delete(l);
+}
+
+// ipc.ts clears the stored session on a 401 and fires this event (it can't import us — cycle);
+// re-emit so useSession subscribers drop to the login view immediately.
+if (typeof window !== "undefined") {
+  window.addEventListener("lb.session.cleared", emit);
 }
 
 export function useSession(): Session | null {

@@ -6,7 +6,7 @@ use lb_auth::Principal;
 use lb_mcp::authorize_tool;
 use lb_outbox::Effect;
 use lb_store::Store;
-use serde_json::{json, Value};
+use serde_json::json;
 
 use super::device::{device_disable_raw, device_list_raw, device_write, Device, Platform};
 use super::error::NotifyError;
@@ -85,7 +85,9 @@ pub async fn notify_send(
     if to.is_empty() {
         return Err(NotifyError::BadInput("empty audience".into()));
     }
-    let effect_id = format!("notify:{}:{}", now, to.first().unwrap());
+    // A ULID, not `notify:{now}:{first_recipient}` — that collided within one second and the
+    // outbox's idempotency dedup silently swallowed the second notification.
+    let effect_id = format!("notify:{}", lb_store::new_ulid());
     let payload = json!({
         "to": to,
         "title": title,
@@ -93,6 +95,9 @@ pub async fn notify_send(
         "deep_link": deep_link,
         "collapse_key": collapse_key,
         "priority": priority.unwrap_or("normal"),
+        // The delivery-time workspace: PushTarget::deliver reads it (and FAILS without it) — the
+        // same embed-ws-in-payload pattern as the email target. Rule 6: never guess a ws.
+        "workspace": ws,
     });
     let effect = Effect::new(
         &effect_id,

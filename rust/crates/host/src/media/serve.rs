@@ -6,7 +6,7 @@ use lb_caps::{check, Action, Decision, Request, Surface};
 use lb_store::Store;
 
 use super::error::MediaError;
-use super::model::{media_get_raw, read_all_bytes, variant_read, Media, MediaStatus};
+use super::model::{media_get_raw, read_all_bytes, variant_read, MediaStatus};
 
 /// The result of a serve read: the bytes + content type.
 #[derive(Debug)]
@@ -66,9 +66,4 @@ pub async fn media_serve(
             etag,
         })
     }
-}
-
-/// Read media metadata for the serve route (the gateway's GET /media/{id} header check).
-pub async fn media_meta(store: &Store, ws: &str, id: &str) -> Result<Option<Media>, MediaError> {
-    Ok(media_get_raw(store, ws, id).await?)
 }

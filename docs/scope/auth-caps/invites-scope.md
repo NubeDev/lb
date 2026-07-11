@@ -32,6 +32,11 @@ on first login.
   half-joined member.
 - **Delivery via the outbox:** `invite.create` enqueues a must-deliver effect to a generic
   `email` target (one trait, one named file — the sanctioned external). No SMTP in core.
+  **Wiring contract (explicit):** the core only *stages* the effect. Delivery happens
+  **only if the product host registers `EmailTarget` (with its `EmailProvider` impl) with
+  `spawn_relay_reactors` at boot** — a host that skips this silently accumulates pending
+  `invite:*` effects and no mail ever leaves. This is by design (core names no provider,
+  rule 10), but it is the deploying host's responsibility, not an implicit default.
 - **Fresh caps immediately:** accept mints the token *after* grants are applied — no
   "re-login to pick up caps" on first entry (the known publish/install friction must not
   apply to a person's first minute).
@@ -62,8 +67,18 @@ revocable, not auditable, can't be single-use.
 - **Tenancy / isolation:** invites are rows in the target workspace; accept joins exactly
   that workspace. The token embeds nothing but entropy — ws/role live server-side.
 - **Capabilities:** `mcp:invite.create/list/revoke/resend:call` gate the admin verbs
-  (deny-tested); accept is pre-auth by design and gated by the token itself. An invite may
-  only grant roles/teams its **minter** could grant (no escalation-by-invite).
+  (deny-tested); accept is pre-auth by design and gated by the token itself.
+  **Resolved (no-escalation, review 2026-07-11):** role grants carried by an invite follow
+  the **`grants.assign` precedent** — a `role:<name>` grant is *exempt* from a
+  holds-cap check on the minter, because the role's caps were bounded at `roles.define`
+  time and `mcp:invite.create:call` is the same authority tier as `mcp:grants.assign:call`
+  (anyone who can create invites could equally `grants.assign` the role after a plain
+  `membership.add`). *Rejected alternative:* "invite may only grant roles the minter
+  holds" (this scope's original wording) — it is stricter than `grants.assign`, so it
+  would not close any real escalation (the minter just assigns the role post-join) while
+  breaking the common case of a delegated onboarding admin who isn't themselves a
+  `workspace-admin`. If grants.assign ever gains a minter-bound check, invites must
+  inherit it in the same change.
 - **Placement:** identity is hub-authoritative (global-identity), so invite mint/accept are
   hub verbs; role decides mounting, no `if cloud`.
 - **MCP surface (§6.1):** CRUD-ish (`create/revoke/resend`) + `list` (filter by status).
@@ -88,12 +103,20 @@ revocable, not auditable, can't be single-use.
 
 ## Testing plan
 
-Mandatory: **capability-deny** (member without `invite:create` → 403; invite granting a
-role above the minter → rejected), **workspace isolation** (accept joins only the minting
-ws; invite of ws A invisible from B). Plus: expiry, double-redeem (second → 410),
-revoke-then-accept, resend rotates the token, existing-identity email joins without a
-duplicate identity, accept-then-first-call has live caps (no re-login), rate-limit on the
-public route. All against a real booted node; the email trait's test impl records sends.
+Mandatory: **capability-deny** (member without `invite:create` → 403; role grants follow
+the `grants.assign` precedent — see the resolved no-escalation decision above, tested as
+"admin with `invite.create` may invite with any defined role"), **workspace isolation**
+(accept joins only the minting ws; invite of ws A invisible from B). Plus: expiry,
+double-redeem (second → 410, and the loser must be rejected **before any credential
+mutation** — the winner's password stays intact), revoke-then-accept, resend rotates the
+token **and refreshes the expiry** (old token dead, new token works past the original
+expiry), existing-identity takeover prevention (missing/wrong `current_secret` → 409 with
+the original credential untouched; correct one binds without a duplicate identity),
+accept-then-first-call makes a **real cap-gated call** with the minted token (no
+re-login), rate-limit on the public route (429 past the per-IP window, other clients
+unaffected), and the invite email driven through the **real outbox relay** to the
+recording provider. All against a real booted node; the email trait's test impl records
+sends.
 
 ## Risks & hard problems
 
@@ -102,8 +125,15 @@ public route. All against a real booted node; the email trait's test impl record
 - **Email-match account takeover** — matching an existing identity by unverified email is
   the classic hole; the invite email is treated as verified *for that address only*, and an
   existing identity must authenticate before the membership binds.
-- **Atomicity of accept** — five steps, one outcome; needs the store's transaction or an
-  idempotent resume, tested by killing mid-accept.
+- **Atomicity of accept** — five steps, one outcome. **Resolved (review 2026-07-11):**
+  the redemption is **claimed first** via a store-level conditional `CREATE` (an
+  `invite_claim` row — first write binds, every racer gets `Conflict`, the
+  `lb_store::create` first-settle primitive), and only the claim winner runs the
+  credential/membership mutations; a post-claim failure releases the claim back to
+  `pending` for idempotent retry. Previously the credential write ran *before* a plain
+  read-modify-write mark-accepted, so two concurrent accepts could both pass and the
+  loser overwrote the winner's password
+  (`docs/debugging/auth-caps/invite-accept-credential-race.md`).
 
 ## Open questions
 
@@ -113,6 +143,15 @@ public route. All against a real booted node; the email trait's test impl record
   field on the same record).
 - ✅ Accept UI lives in the minimal shell (`frontend/minimal-shell-scope.md`) — a themed client
   route (`/accept?token=…`) calling `POST /public/invite/accept`.
+- ❓ **Takeover check is workspace-local while identity is global.** The credential record
+  is stored per-workspace (`(ws, sub)` — the login-hardening seam), so accept's
+  `current_secret` check verifies against the *inviting workspace's* credential row. An
+  identity that holds a credential only in another workspace looks `Absent` here and binds
+  without proof — the cross-ws half of the email-match takeover hole. Do NOT restructure
+  credentials inside this scope; resolve it with the credential-placement question in
+  `login-hardening-scope.md` (global credential vs per-ws credential + a global check at
+  the pre-auth surfaces). Until then, treat an invite as trusting its own workspace's
+  credential state only.
 
 ## Related
 

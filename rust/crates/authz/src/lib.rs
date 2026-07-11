@@ -52,7 +52,8 @@ pub use identity::{
 };
 pub use invite::{
     invite_create_raw, invite_get_raw, invite_list_raw, invite_mark_accepted_raw,
-    invite_revoke_raw, Invite, InviteStatus, INVITE_KIND, INVITE_TABLE,
+    invite_release_claim_raw, invite_revoke_raw, Invite, InviteStatus, INVITE_CLAIM_TABLE,
+    INVITE_KIND, INVITE_TABLE,
 };
 pub use membership::{
     membership_add_raw, membership_get, membership_has_any, membership_is_member, membership_list,

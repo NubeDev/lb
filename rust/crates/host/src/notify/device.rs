@@ -113,15 +113,6 @@ pub async fn device_list_raw(
         .collect()
 }
 
-/// List ALL devices in workspace `ws` (for the push target fan-out — resolves audience to live
-/// devices).
-pub async fn device_list_all_raw(store: &Store, ws: &str) -> Result<Vec<Device>, StoreError> {
-    let rows = store_list(store, ws, DEVICE_TABLE, "kind", DEVICE_KIND).await?;
-    rows.into_iter()
-        .map(|v| serde_json::from_value(v).map_err(|e| StoreError::Decode(e.to_string())))
-        .collect()
-}
-
 /// Disable a device (auto-remove on provider 410/UNREGISTERED). Idempotent.
 pub async fn device_disable_raw(store: &Store, ws: &str, id: &str) -> Result<bool, StoreError> {
     let Some(mut device) = device_get_raw(store, ws, id).await? else {

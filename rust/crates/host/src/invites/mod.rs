@@ -20,5 +20,4 @@ pub use create::{invite_create, EMAIL_ACTION, EMAIL_TARGET};
 pub use error::InviteError;
 pub use list::invite_list;
 pub use revoke::{invite_resend, invite_revoke};
-pub use token::{generate_token, hash_token, TOKEN_PREFIX};
 pub use tool::call_invite_tool;

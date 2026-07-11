@@ -167,3 +167,63 @@ Scope open questions resolved (see Decisions above):
 - Access console UI renders the scope selector (the `grants.list_scoped` verb is ready).
 - The gateway REST body for `/admin/grants` could accept a `scope` field (the MCP path already
   does).
+
+---
+
+## Review-fixes pass (2026-07-11)
+
+Peer review of the slice confirmed five findings; all fixed on `updates-to-core`.
+
+### 1. Malformed `scope` selector fell back to `Scope::All` (fail-open)
+
+`host/src/authz/tool.rs::scope_arg` used `unwrap_or(Scope::All)` — a typo'd selector wrote an
+UNSCOPED grant. Now returns `Result`: absent/null → `All` (additive default unchanged);
+present-but-malformed → `ToolError::BadInput`, nothing written. Regression:
+`authz_scoped_test::malformed_scope_selector_is_bad_input_and_writes_no_grant`.
+
+### 2. Cross-table scope union widened to `All`
+
+`Scope::union` collapsed `Ids{child} ∪ Ids{site}` to `All` — a privilege widening contradicting
+the scope doc ("only ever subtractive"). Added the additive `Scope::Tables { tables:
+BTreeMap<table, BTreeSet<id>> }` variant: unions accumulate per-table id-sets, never widen.
+Single-table unions still collapse to `Ids`, so `grant_id` keys and stored records are
+byte-stable (zero migration holds); `Tables` normally arises only inside resolution.
+Replaced the wrong test (`union_ids_different_table_widens_to_all` →
+`union_ids_different_table_accumulates_without_widening`) and added
+`scoped_grants_test::union_across_tables_reaches_only_granted_rows_not_everything` +
+`authz_scoped_test::multi_table_scoped_grants_reach_only_their_rows_not_everything`.
+
+### 3. Workspace isolation at grant write — decision recorded
+
+The scope doc said "checked at write" but `grants_assign` stores ids unvalidated. Decision:
+**isolation is structural at read** — selector ids are opaque, workspace-namespace-relative;
+the grant row lives under the writer's ws and resolution reads only the caller's ws, so a
+selector cannot confer cross-ws reach. Write-time existence validation was rejected (rule-10
+layering leak + grants legitimately precede records on domain events). Scope doc amended with
+the decision + rejected alternative; proven by the existing
+`scoped_grants_never_cross_the_workspace_wall` and the new gateway
+`scoped_grant_stays_inside_its_workspace`.
+
+### 4. Gateway REST hardcoded `Scope::All`
+
+`role/gateway/src/routes/admin_grants.rs` assign/revoke now carry an optional additive
+`scope` body field (`#[serde(default)]`, absent = `All`; malformed = 422 — consistent with
+fix 1). New test file `role/gateway/tests/entity_scoped_grants_routes_test.rs` (5 tests:
+selector persisted + revoked, default-All compat, malformed rejected, cap-deny, ws-isolation).
+**Access console UI rendering of selectors remains deferred** — marked open in the scope doc.
+
+### 5. `str_arg` dedupe
+
+`scoped.rs` reused `tool.rs::str_arg` (now `pub(crate)`) instead of duplicating — the MCP
+bridge owns the authz verbs' arg parsing (no utils file, per FILE-LAYOUT).
+
+### Debugging
+
+Logged `docs/debugging/auth-caps/entity-scope-widens-to-all-silently.md` (both widening paths)
+and indexed it in `docs/debugging/README.md`.
+
+### Green output
+
+`cargo test -p lb-authz` → 16/16 `scoped_grants_test` + unit tests all ok;
+`cargo test -p lb-host --test authz_scoped_test` → 9 passed;
+`cargo test -p lb-role-gateway --test entity_scoped_grants_routes_test` → 5 passed.

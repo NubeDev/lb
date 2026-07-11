@@ -8,7 +8,7 @@ use lb_store::Store;
 use std::io::Cursor;
 
 use super::error::MediaError;
-use super::model::{media_get_raw, media_write, variant_write, MediaVariant, VariantStatus};
+use super::model::{media_get_raw, media_write, variant_write, VariantStatus};
 
 /// The thumbnail max dimension (pixels). The longest side is scaled to this; aspect preserved.
 const THUMB_MAX: u32 = 256;

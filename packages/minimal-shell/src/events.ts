@@ -1,5 +1,5 @@
 // Minimal SSE hub — one EventSource per tab, refcounted. Opens GET /events/stream?token=...
-import { gatewayUrl, sessionToken } from "./ipc";
+import { gatewayUrl, sessionToken, authHeaders } from "./ipc";
 
 type FrameHandler = (data: string) => void;
 
@@ -18,7 +18,7 @@ function ensureOpen() {
     for (const sub of subjects.keys()) {
       fetch(`${gatewayUrl()}/events/${sid}/subscribe`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify({ subject: sub }),
       });
     }
@@ -47,7 +47,7 @@ export function subscribe(subject: string, handler: FrameHandler): () => void {
   if (sid) {
     fetch(`${gatewayUrl()}/events/${sid}/subscribe`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ subject }),
     });
   }

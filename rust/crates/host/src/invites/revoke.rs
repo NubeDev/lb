@@ -23,9 +23,12 @@ pub async fn invite_revoke(
     Ok(raw::invite_revoke_raw(store, ws, token_hash).await?)
 }
 
-/// Resend a pending invite: rotates the token (new hash, new link), keeps the record. The old
-/// token is dead (the old hash record is replaced). Gated by `mcp:invite.create:call`.
-/// Returns the new raw one-time token.
+/// Resend a pending invite: rotates the token (new hash, new link) AND **refreshes the expiry**
+/// (the new invite gets the original's TTL measured from `now` — a resend must never mint a
+/// born-expired link; review fix). Write order is load-bearing: the NEW invite (+ its email
+/// effect) is enqueued atomically FIRST, the old record is revoked SECOND — so a failure between
+/// the two leaves at worst BOTH pending briefly (the admin retries the revoke), never ZERO pending
+/// invites. Gated by `mcp:invite.create:call`. Returns the new raw one-time token.
 pub async fn invite_resend(
     store: &Store,
     principal: &Principal,
@@ -43,12 +46,19 @@ pub async fn invite_resend(
         return Err(InviteError::AlreadyAccepted);
     }
 
-    // Rotate the token: write the invite under the new hash (the old record stays as a revoked
+    // Rotate the token: write the invite under the new hash (the old record becomes a revoked
     // tombstone — the old link is dead). The new record + email effect are written atomically.
     let new_token = generate_token();
     let new_hash = hash_token(&new_token);
-    raw::invite_revoke_raw(store, ws, token_hash).await?;
     invite.token_hash = new_hash.clone();
+    // Refresh the expiry: keep the original TTL but measure it from NOW (a resend of an
+    // almost-expired — or already-stale — invite must yield a usable link, not a born-expired one).
+    // A never-expiring invite (expires_ts == 0) stays never-expiring.
+    if invite.expires_ts > 0 {
+        let ttl = invite.expires_ts.saturating_sub(invite.created_ts).max(1);
+        invite.expires_ts = now + ttl;
+    }
+    invite.created_ts = now;
     let invite_value =
         serde_json::to_value(&invite).map_err(|e| InviteError::Store(e.to_string()))?;
     let effect_payload = json!({
@@ -75,6 +85,11 @@ pub async fn invite_resend(
     )
     .await
     .map_err(|e| InviteError::Store(e.to_string()))?;
+
+    // Revoke the old record LAST (new-before-old): if this write fails the workspace briefly holds
+    // two pending invites for the same email — annoying, retryable, and safe. The reverse order
+    // (revoke-then-write) could fail into ZERO pending invites, silently stranding the invitee.
+    raw::invite_revoke_raw(store, ws, token_hash).await?;
 
     Ok(new_token)
 }

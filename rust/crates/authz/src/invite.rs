@@ -8,7 +8,7 @@
 //! the raw token (the token is 32 random bytes — full entropy, so a fast hash is correct, same
 //! reasoning as apikeys). Status: `pending → accepted | revoked | expired`.
 
-use lb_store::{list as store_list, read, write, Store, StoreError};
+use lb_store::{create, delete, list as store_list, read, write, Store, StoreError};
 use serde::{Deserialize, Serialize};
 
 /// The store table invites live in, within a workspace namespace.
@@ -160,9 +160,19 @@ pub async fn invite_revoke_raw(
     Ok(true)
 }
 
+/// The table the atomic redemption claims live in. A claim is a `CREATE`-only row keyed by the
+/// token hash: SurrealDB's `CREATE` errors on a duplicate id, so the FIRST claimer binds and every
+/// concurrent loser gets [`StoreError::Conflict`] — the same first-settle primitive the agent's
+/// Ask decision uses (`lb_store::create`). This is what makes double-redeem lose **before** any
+/// credential/membership mutation (invites review fix: the plain read-modify-write mark let two
+/// concurrent accepts both pass, the loser overwriting the winner's password).
+pub const INVITE_CLAIM_TABLE: &str = "invite_claim";
+
 /// Mark an invite as accepted by `sub` at `now`. Raw store verb. Returns `false` if the invite is
-/// not redeemable (already accepted/revoked/expired) — the caller checks `is_redeemable` first
-/// and calls this in the same logical transaction.
+/// not redeemable (already accepted/revoked/expired) **or** if another accept already claimed the
+/// redemption — the claim is a store-level conditional `CREATE` (first write binds, `Conflict`
+/// for everyone else), so exactly ONE caller ever sees `true`. The caller must invoke this
+/// **before** any credential/membership mutation and only mutate on `true`.
 pub async fn invite_mark_accepted_raw(
     store: &Store,
     ws: &str,
@@ -176,10 +186,52 @@ pub async fn invite_mark_accepted_raw(
     if !invite.is_redeemable(now) {
         return Ok(false);
     }
+    // The atomic claim: CREATE binds the first caller, Conflict rejects every racer. Nothing has
+    // been mutated for the loser at this point — it never proceeds past here.
+    let claim = serde_json::json!({ "sub": sub, "ts": now, "kind": "invite_claim" });
+    match create(
+        store,
+        ws,
+        INVITE_CLAIM_TABLE,
+        &invite_id(token_hash),
+        &claim,
+    )
+    .await
+    {
+        Ok(()) => {}
+        Err(StoreError::Conflict) => return Ok(false),
+        Err(e) => return Err(e),
+    }
+    // Winner only from here: reflect the claim on the invite record itself.
     invite.status = InviteStatus::Accepted;
     invite.accepted_by = Some(sub.to_string());
     invite.accepted_ts = now;
     let value = serde_json::to_value(&invite).map_err(|e| StoreError::Decode(e.to_string()))?;
     write(store, ws, INVITE_TABLE, &invite_id(token_hash), &value).await?;
     Ok(true)
+}
+
+/// Release a redemption claim held by `sub` — the winner's **rollback** when a post-claim
+/// onboarding step fails (the invite returns to `pending` so the invitee can retry, per the scope's
+/// "partial failure leaves the invite `pending`"). Only the claim's own `sub` may release it, and
+/// only while the invite is `accepted` — so a racer can never un-claim the winner.
+pub async fn invite_release_claim_raw(
+    store: &Store,
+    ws: &str,
+    token_hash: &str,
+    sub: &str,
+) -> Result<(), StoreError> {
+    let Some(mut invite) = invite_get_raw(store, ws, token_hash).await? else {
+        return Ok(());
+    };
+    if invite.status != InviteStatus::Accepted || invite.accepted_by.as_deref() != Some(sub) {
+        return Ok(());
+    }
+    invite.status = InviteStatus::Pending;
+    invite.accepted_by = None;
+    invite.accepted_ts = 0;
+    let value = serde_json::to_value(&invite).map_err(|e| StoreError::Decode(e.to_string()))?;
+    write(store, ws, INVITE_TABLE, &invite_id(token_hash), &value).await?;
+    delete(store, ws, INVITE_CLAIM_TABLE, &invite_id(token_hash)).await?;
+    Ok(())
 }

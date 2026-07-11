@@ -3,28 +3,27 @@
 //! records. The upload protocol (begin → chunk → commit) survives flaky cellular; variants
 //! (thumb/preview) are derived on commit; the serve route checks workspace + capability + ETag.
 //!
-//! Verbs (one concern per file): `begin` / `commit` / `get` / `list` / `delete` / `serve` /
-//! `variant` / `tool`. The chunk upload (`PUT /media/{id}/chunk/{n}`) and serve
+//! Verbs (one concern per file): `begin` / `chunk` / `commit` / `get` / `list` / `delete` /
+//! `serve` / `range` / `variant` / `tool`. The chunk upload (`PUT /media/{id}/chunk/{n}`) and serve
 //! (`GET /media/{id}`) are HTTP routes (bytes over HTTP, not MCP payloads).
 
 mod begin;
+mod chunk;
 mod commit;
 mod error;
 mod get;
 mod model;
+mod range;
 mod serve;
 mod tool;
 mod variant;
 
-pub use begin::{max_bytes_for_mime, media_upload_begin};
+pub use begin::media_upload_begin;
+pub use chunk::media_chunk_put;
 pub use commit::media_upload_commit;
 pub use error::MediaError;
 pub use get::{media_delete, media_get, media_list};
-pub use model::{
-    chunk_count, chunk_read, chunk_write, media_get_raw, media_list_raw, media_write, variant_read,
-    variant_write, Media, MediaStatus, MediaVariant, VariantStatus, CHUNK_SIZE, CHUNK_TABLE,
-    MEDIA_KIND, MEDIA_TABLE,
-};
-pub use serve::{media_meta, media_serve, ServedMedia};
+pub use model::{chunk_write, MediaStatus, CHUNK_SIZE, CHUNK_TABLE};
+pub use range::{plan_serve, ServePlan};
+pub use serve::{media_serve, ServedMedia};
 pub use tool::call_media_tool;
-pub use variant::derive_thumb;

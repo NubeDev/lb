@@ -20,6 +20,12 @@ use super::hold::holds_cap;
 /// Assign `cap` to `subject` in `ws` with `scope` (entity-scoped-grants scope). Gated by
 /// `mcp:grants.assign:call`; a plain cap also requires the assigner to hold it (no widening).
 /// Idempotent. `Scope::All` = today's behaviour.
+///
+/// Selector ids are **opaque, workspace-namespace-relative** — no write-time existence check
+/// (records may legitimately not exist yet, and the core can't interpret an extension's table).
+/// Workspace isolation is structural: the grant row lives under `ws`, and resolution reads only
+/// the caller's workspace, so a selector can never confer cross-workspace reach (see the
+/// isolation decision in `docs/scope/auth-caps/entity-scoped-grants-scope.md`).
 pub async fn grants_assign(
     store: &Store,
     principal: &Principal,

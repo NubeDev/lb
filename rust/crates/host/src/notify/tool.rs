@@ -5,7 +5,6 @@ use lb_mcp::ToolError;
 use lb_store::Store;
 use serde_json::{json, Value};
 
-use super::error::NotifyError;
 use super::verbs::{device_list, device_register, device_remove, notify_send};
 
 /// Dispatch a `device.*` / `notify.*` MCP call.

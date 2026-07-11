@@ -46,6 +46,7 @@ mod outbox;
 mod panel;
 mod post;
 mod prefs;
+mod rate_limit;
 mod report;
 mod rules;
 mod run_control;
@@ -138,6 +139,10 @@ pub use post::post_message;
 pub use prefs::{
     convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,
     set_default_prefs, set_prefs,
+};
+pub use rate_limit::{
+    invite_accept_rate_limit, MAX_PER_WINDOW as INVITE_ACCEPT_MAX_PER_WINDOW,
+    WINDOW_SECS as INVITE_ACCEPT_WINDOW_SECS,
 };
 pub use report::{
     delete_report, export_report, get_report, list_reports, save_report, share_report,

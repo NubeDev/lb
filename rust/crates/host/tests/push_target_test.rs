@@ -187,6 +187,7 @@ async fn recording_provider_records_sends() {
         deep_link: None,
         collapse_key: None,
         priority: None,
+        workspace: Some("acme".into()),
     };
     provider.send(&device, &payload).await.unwrap();
     let sends = provider.sends();

@@ -1,7 +1,7 @@
 // The minimal shell App — login → full-screen extension mount. No sidebar, no dock, no chrome.
 // The extension id is OPAQUE CONFIG DATA (rule 10): the shell never branches on it.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ThemeProvider } from "./theme";
 import { useSession, signIn, signOut } from "./session";
@@ -162,5 +162,3 @@ function RemoteExt({ page, workspace }: { page: ExtPage; workspace: string }) {
 
   return <div ref={ref} style={{ width: "100%", height: "100vh" }} />;
 }
-
-import { useRef } from "react";

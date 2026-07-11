@@ -162,8 +162,45 @@ async fn union_of_multiple_scoped_grants_merges_ids() {
             assert!(ids.contains(&"leo".to_string()));
             assert!(ids.contains(&"mia".to_string()));
         }
-        Scope::All => panic!("expected Ids union, got All"),
+        other => panic!("expected Ids union, got {other:?}"),
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn union_across_tables_reaches_only_granted_rows_not_everything() {
+    // Regression (review fix): child:[leo] + site:[north] used to widen to Scope::All. The union
+    // must reach exactly those two rows and nothing else, in every table.
+    let store = Store::memory().await.unwrap();
+    let sam = Subject::User("sam".into());
+    let cap = "mcp:care.log.list:call";
+    grant_assign_scoped(&store, WS, &sam, cap, &ids("child", &["leo"]))
+        .await
+        .unwrap();
+    grant_assign_scoped(&store, WS, &sam, cap, &ids("site", &["north"]))
+        .await
+        .unwrap();
+
+    for (table, id, want) in [
+        ("child", "leo", true),
+        ("site", "north", true),
+        ("child", "mia", false),
+        ("site", "south", false),
+        ("project", "leo", false),
+    ] {
+        let ok = lb_authz::check_scoped(&store, WS, "sam", cap, table, id)
+            .await
+            .unwrap();
+        assert_eq!(ok, want, "check_scoped({table}, {id})");
+    }
+    // Query-side filter stays per-table — never All.
+    let filter = lb_authz::scope_filter(&store, WS, "sam", cap, "child")
+        .await
+        .unwrap();
+    assert_eq!(filter, lb_authz::ScopeFilter::Ids(vec!["leo".into()]));
+    let filter = lb_authz::scope_filter(&store, WS, "sam", cap, "project")
+        .await
+        .unwrap();
+    assert_eq!(filter, lb_authz::ScopeFilter::Ids(vec![]));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

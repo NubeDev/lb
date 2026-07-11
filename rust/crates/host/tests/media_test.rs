@@ -5,8 +5,9 @@
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
-    chunk_write, media_delete, media_get, media_list, media_serve, media_upload_begin,
-    media_upload_commit, MediaError,
+    chunk_write, media_chunk_put, media_delete, media_get, media_list, media_serve,
+    media_upload_begin, media_upload_commit, plan_serve, MediaError, ServePlan, CHUNK_SIZE,
+    CHUNK_TABLE,
 };
 use lb_store::Store;
 use sha2::{Digest, Sha256};
@@ -332,4 +333,295 @@ async fn delete_archives_media() {
         .await
         .unwrap_err();
     assert!(matches!(err, MediaError::NotReady));
+}
+
+// ── Validated chunk PUT (media_chunk_put — the gateway route's host verb) ────────────────────
+
+/// Begin a small PNG upload; return (id, img bytes).
+async fn begin_png(store: &Store, p: &Principal) -> (String, Vec<u8>) {
+    let img = tiny_png();
+    let cs = checksum(&img);
+    let begin = media_upload_begin(
+        store,
+        p,
+        "acme",
+        "image/png",
+        img.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    (begin["id"].as_str().unwrap().to_string(), img)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_denied_without_upload_cap() {
+    let store = Store::memory().await.unwrap();
+    let owner = principal("user:alice", "acme", CAPS);
+    let (id, img) = begin_png(&store, &owner).await;
+
+    // Authenticated but uncapped: no mcp:media.upload:call → denied before any byte lands.
+    let mallory = principal("user:mallory", "acme", &["mcp:media.get:call"]);
+    let err = media_chunk_put(&store, &mallory, "acme", &id, 0, &img)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::Denied));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_unknown_upload_rejected() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let err = media_chunk_put(&store, &p, "acme", "no-such-upload", 0, b"bytes")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::NotFound));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_after_ready_rejected() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let (id, img) = begin_png(&store, &p).await;
+    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+        .await
+        .unwrap();
+    media_upload_commit(&store, &p, "acme", &id, 200)
+        .await
+        .unwrap();
+
+    // Re-PUT after Ready would change served bytes while the ETag stayed stale — rejected.
+    let err = media_chunk_put(&store, &p, "acme", &id, 0, b"tampered bytes")
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::BadInput(_)));
+
+    // Served bytes are untouched.
+    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    assert_eq!(served.bytes, img);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_out_of_range_n_rejected() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let (id, img) = begin_png(&store, &p).await; // 1-chunk upload
+    let err = media_chunk_put(&store, &p, "acme", &id, 1, &img)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::BadInput(_)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_oversize_body_rejected() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let (id, _img) = begin_png(&store, &p).await;
+    let oversize = vec![0u8; CHUNK_SIZE as usize + 1];
+    let err = media_chunk_put(&store, &p, "acme", &id, 0, &oversize)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::TooLarge));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn chunk_put_isolated_across_workspaces() {
+    let store = Store::memory().await.unwrap();
+    let p_a = principal("user:alice", "acme", CAPS);
+    let p_b = principal("user:carol", "globex", CAPS);
+    let (id, img) = begin_png(&store, &p_a).await;
+
+    // A ws-B caller cannot write chunks into ws-A's upload (record invisible in globex).
+    let err = media_chunk_put(&store, &p_b, "globex", &id, 0, &img)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::NotFound));
+}
+
+// ── Corrupt chunk row → hard error, never a truncated 200 ────────────────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn corrupt_chunk_row_is_a_serve_error() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let (id, img) = begin_png(&store, &p).await;
+    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+        .await
+        .unwrap();
+    media_upload_commit(&store, &p, "acme", &id, 200)
+        .await
+        .unwrap();
+
+    // Corrupt the chunk row directly in the store (real store, real row — rule 9).
+    let chunk_id = format!("{id}:0");
+    let corrupt = serde_json::json!({
+        "media_id": id, "n": 0, "bytes": "%%%not-base64%%%", "len": img.len(),
+    });
+    lb_store::write(&store, "acme", CHUNK_TABLE, &chunk_id, &corrupt)
+        .await
+        .unwrap();
+
+    // Serving must fail loudly (Store/Decode), never return truncated bytes with a 200.
+    let err = media_serve(&store, &p, "acme", &id, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, MediaError::Store(_)), "got: {err}");
+}
+
+// ── Multi-chunk resume: out of order + re-upload + commit + serve ────────────────────────────
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn multi_chunk_out_of_order_resume_and_serve() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+
+    // 2.5 MiB of deterministic non-trivial bytes → 3 chunks at the 1 MiB chunk size.
+    let total = 2 * CHUNK_SIZE as usize + CHUNK_SIZE as usize / 2;
+    let blob: Vec<u8> = (0..total).map(|i| (i % 251) as u8).collect();
+    let cs = checksum(&blob);
+
+    let begin = media_upload_begin(
+        &store,
+        &p,
+        "acme",
+        "application/octet-stream",
+        blob.len() as u64,
+        &cs,
+        None,
+        100,
+    )
+    .await
+    .unwrap();
+    let id = begin["id"].as_str().unwrap().to_string();
+    assert_eq!(begin["chunks"].as_u64().unwrap(), 3);
+
+    let chunk =
+        |n: usize| &blob[n * CHUNK_SIZE as usize..(total.min((n + 1) * CHUNK_SIZE as usize))];
+
+    // Upload out of order: 2, 0, 1 — then chunk 1 "times out" and is re-PUT (idempotent).
+    media_chunk_put(&store, &p, "acme", &id, 2, chunk(2))
+        .await
+        .unwrap();
+    media_chunk_put(&store, &p, "acme", &id, 0, chunk(0))
+        .await
+        .unwrap();
+    media_chunk_put(&store, &p, "acme", &id, 1, chunk(1))
+        .await
+        .unwrap();
+    media_chunk_put(&store, &p, "acme", &id, 1, chunk(1))
+        .await
+        .unwrap();
+
+    // Commit verifies the checksum over the assembled bytes.
+    let commit = media_upload_commit(&store, &p, "acme", &id, 200)
+        .await
+        .unwrap();
+    assert_eq!(commit["ok"], serde_json::json!(true));
+
+    // Serve returns the full assembled blob.
+    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    assert_eq!(served.bytes.len(), total);
+    assert_eq!(served.bytes, blob);
+}
+
+// ── Conditional / Range serve planning (the gateway route's host logic) ──────────────────────
+
+#[test]
+fn if_none_match_matching_etag_is_304() {
+    // The ETag the serve path emits is the quoted checksum; a matching If-None-Match → 304.
+    assert_eq!(
+        plan_serve(100, "\"abc123\"", Some("\"abc123\""), None),
+        ServePlan::NotModified
+    );
+    // If-None-Match wins over Range (RFC 9110 evaluation order).
+    assert_eq!(
+        plan_serve(100, "\"abc123\"", Some("\"abc123\""), Some("bytes=0-9")),
+        ServePlan::NotModified
+    );
+    // A stale ETag does not 304.
+    assert_eq!(
+        plan_serve(100, "\"abc123\"", Some("\"old\""), None),
+        ServePlan::Full
+    );
+}
+
+#[test]
+fn range_plans_are_correct() {
+    // Bounded range.
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=10-19")),
+        ServePlan::Partial { start: 10, end: 19 }
+    );
+    // Open-ended + end clamped to len-1.
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=90-")),
+        ServePlan::Partial { start: 90, end: 99 }
+    );
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=90-500")),
+        ServePlan::Partial { start: 90, end: 99 }
+    );
+    // Suffix range: last 10 bytes.
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=-10")),
+        ServePlan::Partial { start: 90, end: 99 }
+    );
+    // Unsatisfiable: start beyond the body.
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=100-")),
+        ServePlan::Unsatisfiable
+    );
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=200-300")),
+        ServePlan::Unsatisfiable
+    );
+    // Malformed / multi-range → full 200 (Range ignored).
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=abc")),
+        ServePlan::Full
+    );
+    assert_eq!(
+        plan_serve(100, "\"e\"", None, Some("bytes=0-9,20-29")),
+        ServePlan::Full
+    );
+    assert_eq!(plan_serve(100, "\"e\"", None, None), ServePlan::Full);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn range_slice_matches_served_bytes() {
+    let store = Store::memory().await.unwrap();
+    let p = principal("user:alice", "acme", CAPS);
+    let (id, img) = begin_png(&store, &p).await;
+    media_chunk_put(&store, &p, "acme", &id, 0, &img)
+        .await
+        .unwrap();
+    media_upload_commit(&store, &p, "acme", &id, 200)
+        .await
+        .unwrap();
+
+    let served = media_serve(&store, &p, "acme", &id, None).await.unwrap();
+    // A ranged GET for the first 8 bytes yields the PNG magic prefix.
+    match plan_serve(
+        served.bytes.len() as u64,
+        &served.etag,
+        None,
+        Some("bytes=0-7"),
+    ) {
+        ServePlan::Partial { start, end } => {
+            assert_eq!(&served.bytes[start as usize..=end as usize], &img[0..8]);
+        }
+        other => panic!("expected partial, got {other:?}"),
+    }
+    // And a matching If-None-Match against the real ETag plans a 304.
+    assert_eq!(
+        plan_serve(
+            served.bytes.len() as u64,
+            &served.etag,
+            Some(&served.etag),
+            None
+        ),
+        ServePlan::NotModified
+    );
 }

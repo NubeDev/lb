@@ -76,6 +76,24 @@ session docs. All on branch `updates-to-core`.
 authz/admin_crud/builtin_roles/catalog tests green (no regressions). `cargo fmt` clean. `cargo
 build --workspace` clean.
 
+**Peer-review hardening pass (2026-07-11, same branch):** an independent review of the five
+scopes found and fixed real holes in each — entity-grants **fail-open widening to `Scope::All`**
+(malformed selector + cross-table union; new additive `Scope::Tables` variant, gateway scope
+passthrough), invites **accept race** (credential written before redemption was claimed; now a
+store-level CAS claim) + rate limit on the public accept route + email proven through the real
+relay, media **unchecked chunk PUT** (uncapped, unvalidated, post-commit tampering; now a gated
+host verb) + Range/304 serve + multi-chunk resume test, push **hardcoded `"acme"` workspace in
+`deliver()`** (rule-6 hole; ws now rides the effect payload) + per-device retry dedup + ULID
+effect ids + 7 relay-driven tests (deliver had zero) + the `push_muted` prefs axis was silently
+dropped by the store schema, minimal-shell **SSE subscribe missing auth header** + 401
+stale-session + `getSession` snapshot loop. Every fix has a regression test; deviations from the
+scope docs (variant-jobs inline, WebPush adapter, workspace pick, publishing, hardcoded media
+limits, no GC) are now recorded honestly as deferred items in each scope doc instead of ✅s.
+Debugging entries: see `docs/debugging/README.md` rows dated 2026-07-11 (6 new). Review-fix
+sessions in `docs/sessions/{auth-caps,files,inbox-outbox,frontend}/*review-fixes*`. Known
+pre-existing red (NOT this branch): `agent_persona_catalog_test` (personas grounding — zero
+persona/agent/assets files touched by these scopes).
+
 **Previously (2026-07-11): `federation` promoted to a first-class core crate.** The federation
 datasources sidecar moved out of the misleading `rust/extensions/` folder to
 [`rust/crates/federation/`](../rust/crates/federation/) — it is **core, not a product extension**

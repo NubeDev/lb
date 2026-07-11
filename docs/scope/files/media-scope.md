@@ -110,6 +110,42 @@ seeded real bytes.
 - ✅ EXIF: strip by default (the `image` crate's resize already strips metadata; explicit EXIF
   strip is a named follow-up for defense in depth).
 
+## Deferred — shipped narrower than the goals above (post-review honesty, 2026-07-11)
+
+What shipped in v1 deliberately under-delivers four goal bullets. Each is a real gap, not a
+tick; the review that found them also closed the chunk-PUT security hole (see
+`docs/debugging/files/unchecked-chunk-put-writes.md`).
+
+- **Limits are hardcoded, not config.** `begin.rs` bakes 50 MiB (default) / 500 MiB (video/)
+  into `max_bytes_for_mime`; there is **no per-workspace quota and no mime allowlist**. The
+  "Limits as config" goal (BootConfig/prefs — the 413 lesson) is deferred. *Rejected
+  alternative:* shipping a half-config (env var for one number) — a partial knob invites the
+  same drift the 413 fix taught us about; when limits move to config they move together
+  (per-mime max + quota + allowlist as one governed block). Deferred because v1's single
+  consumer (cc-app) operates inside the hardcoded ceiling.
+- **Variants derive inline at commit, not via a durable job.** `commit.rs` calls
+  `derive_thumb` synchronously; a node crash mid-derive leaves the variant `Pending` with no
+  retry, and — the bigger risk — **image decoding (attacker-controlled input) runs in the
+  gateway process**, exactly what "Risks" above says to avoid. *Rejected alternative:* wiring
+  the jobs substrate now — a thumbnail is fast enough that the job round-trip dominated, and
+  the job wiring is mechanical once a heavy variant (video) forces it. Deferred, but the
+  decode-in-gateway exposure is the first thing the jobs move must fix.
+- **No orphaned-upload GC and no `upload_abort`; delete never frees bytes.** An upload begun
+  and abandoned sits as `Uploading` rows forever, and `media.delete` flips the record to
+  `Archived` but **never deletes chunk rows — storage grows monotonically**. *Rejected
+  alternative:* a delete that hard-drops chunks inline — without the housekeeping sweep
+  (outbox `next_attempt_ts` pattern) it still misses orphans, so the sweep should land as one
+  mechanism covering both. Deferred to the housekeeping slice.
+- **No `media.ready` bus event and no SDK ticket callbacks.** Feed UIs must poll `media.get`;
+  extensions cannot yet request upload tickets (`media.ticket`/`media.stat` host callbacks
+  unshipped) — the SDK-surface goal is unmet, and an extension wanting media today would have
+  to proxy bytes, which the scope forbids. *Rejected alternative:* emitting the event without
+  a consumer — untested motion is worse than none; it lands with the first feed UI.
+- **Serve reads the full buffer into memory** (`read_all_bytes`) even for a 1-byte Range —
+  acceptable at photo size, a real memory caveat at 500 MiB video; chunk-aligned streaming
+  reads are the follow-up. Range requests themselves (single-range 206/416 + ETag/304)
+  **are** shipped.
+
 ## Related
 
 `files-scope.md` · `../document-store/document-store-scope.md` · `../jobs/jobs-scope.md` ·

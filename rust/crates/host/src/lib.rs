@@ -246,8 +246,9 @@ pub use layout::{
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
 pub use media::{
-    call_media_tool, chunk_write, media_delete, media_get, media_list, media_serve,
-    media_upload_begin, media_upload_commit, MediaError, MediaStatus, ServedMedia, CHUNK_SIZE,
+    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list,
+    media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError, MediaStatus,
+    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE,
 };
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
@@ -270,8 +271,8 @@ pub use nav::{
 };
 pub use notify::{
     call_notify_tool, device_list, device_register, device_remove, notify_send,
-    Device as NotifyDevice, NotifyError, Platform as DevicePlatform, PushPayload, PushProvider,
-    PushTarget, RecordedPush, RecordingPushProvider, PUSH_TARGET,
+    Device as NotifyDevice, NotifyError, Platform as DevicePlatform, PushError, PushPayload,
+    PushProvider, PushTarget, RecordedPush, RecordingPushProvider, PUSH_TARGET,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
@@ -294,8 +295,8 @@ pub use lb_store::new_ulid;
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, OutboxError, OutboxStatus, RelayPass,
-    Target,
+    outbox_status, relay_outbox, spawn_relay_reactors, EmailMeta, EmailProvider, EmailTarget,
+    OutboxError, OutboxStatus, RecordedEmail, RecordingEmailProvider, RelayPass, Target,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

@@ -6,16 +6,14 @@
 //! Verbs: `device.register` / `device.list` / `device.remove` / `notify.send`. The push
 //! `Target` adapter fans out to each recipient's live devices at delivery time.
 
+mod delivered;
 mod device;
 mod error;
 mod push_target;
 mod tool;
 mod verbs;
 
-pub use device::{
-    device_disable_raw, device_get_raw, device_list_all_raw, device_list_raw, device_write, Device,
-    Platform, DEVICE_KIND, DEVICE_TABLE,
-};
+pub use device::{Device, Platform};
 pub use error::NotifyError;
 pub use push_target::{
     PushError, PushPayload, PushProvider, PushTarget, RecordedPush, RecordingPushProvider,
