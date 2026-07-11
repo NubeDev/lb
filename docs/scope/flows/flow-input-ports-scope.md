@@ -1,6 +1,11 @@
 # Flows scope — port-labelled edges + a per-input-port join policy (the Node-RED multi-input model, done right)
 
-Status: **shipped** (2026-07-09, Slices 1–4). Promoted to
+Status: **shipped** (2026-07-09, Slices 1–4) — **partially overturned.** The `link-out`/`link-in`
+pair and the `all`-barrier default for non-sink nodes were not what the user asked for and are
+removed by [`flow-plain-wiring-scope.md`](flow-plain-wiring-scope.md) (every port defaults to the
+`any` per-message funnel; plain multi-wire is the whole story). The structural seams this scope
+shipped — port-labelled edges (`to_port`), per-port graph math, and the propagated firing context
+(`fctx`) — **stand**; they are what makes plain wiring work. Promoted to
 [`public/flows/flows.md`](../../../doc-site/content/public/flows/flows.md). Read the spine
 [`flows-scope.md`](flows-scope.md) (canonical **Decisions 1–16**),
 [`flow-message-envelope-scope.md`](flow-message-envelope-scope.md) (the `{payload, topic}` envelope +
