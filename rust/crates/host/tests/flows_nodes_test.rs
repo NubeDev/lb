@@ -104,8 +104,6 @@ const BUILTINS: &[&str] = &[
     "switch",
     "delay",
     "debug",
-    "link-out",
-    "link-in",
 ];
 
 fn types(out: &serde_json::Value) -> Vec<String> {

@@ -10,21 +10,22 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_flows::{resolve_links, Flow, NodeDescriptor};
+use lb_flows::{Flow, NodeDescriptor};
 use serde_json::Value;
 
 use crate::boot::Node;
 
 use super::execute_node;
-use super::record::ClaimState;
 use super::run_store;
 
 /// Seed the run (the coordinator record + the frontier slots). Idempotent on `run_id`.
 ///
-/// flow-input-ports-scope Slice 3: the wireless `link-out`/`link-in` pair is resolved to ordinary
-/// port-targeted edges HERE (on a transient copy), so the persisted `flow` record keeps the author's
-/// wireless sugar (editor round-trip, no stale wires on delete) while the engine schedules ordinary
-/// wires. The resolved graph is threaded through `drive` too (resolved identically — deterministic).
+/// Run-load guard (flow-plain-wiring-scope): node kinds are validated against the merged registry
+/// BEFORE the run seeds. The cron/source reactors execute persisted flows without a re-save, so an
+/// already-armed flow holding a removed kind (e.g. the deleted `link-out`/`link-in` pair) must fail
+/// here with a clear unknown-kind error — not fall into the extension-dispatch leg and settle as a
+/// confusing unknown-tool denial. The version-pinning order is untouched: the guard runs first,
+/// then `create_run` pins `flow.version` (Decision 1).
 pub async fn start(
     node: &Arc<Node>,
     ws: &str,
@@ -34,15 +35,34 @@ pub async fn start(
     now: u64,
     entry: Option<&str>,
 ) -> Result<(), String> {
-    let resolved = resolve_links(flow);
-    run_store::create_run(&node.store, ws, run_id, &resolved, params, now, entry).await
+    validate_known_kinds(node, ws, flow).await?;
+    run_store::create_run(&node.store, ws, run_id, flow, params, now, entry).await
+}
+
+/// Fail with a clear error when any node's kind is absent from the workspace's merged registry (a
+/// removed built-in or an uninstalled extension). Run-load counterpart of the save-time unknown-type
+/// check — needed because the reactors run persisted flows that never re-validate at save.
+async fn validate_known_kinds(node: &Arc<Node>, ws: &str, flow: &Flow) -> Result<(), String> {
+    let registry = super::nodes::merged_registry_internal(&node.store, ws)
+        .await
+        .map_err(|e| e.to_string())?;
+    for n in &flow.nodes {
+        if !registry.iter().any(|d| d.r#type == n.node_type) {
+            return Err(format!(
+                "node `{}`: unknown node kind `{}` — not in this workspace's registry (a removed \
+                 built-in or an uninstalled extension); re-save the flow",
+                n.id, n.node_type
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The per-node input-port join policy, read once at drive start and pinned with the run's flow
 /// version (flow-input-ports-scope: "fctx/policy are read once at run start and pinned with the
-/// version"). Maps a node id → its descriptor (for `join_of(port)` + `primary_input()`). A node whose
-/// descriptor is missing (an unknown type) defaults to `All` — the safe barrier (and the save lint
-/// already rejected unknown types).
+/// version"). Maps a node id → its descriptor (for `join_of(port)` + `primary_input()`). Unknown
+/// kinds cannot reach here — `validate_known_kinds` fails the run at load; the release-path
+/// fallback for a missing descriptor is `Any`, the universal default (flow-plain-wiring-scope).
 pub async fn policy_map(
     node: &Arc<Node>,
     ws: &str,
@@ -79,10 +99,10 @@ pub async fn drive(
     params: &serde_json::Map<String, Value>,
     now: u64,
 ) -> Result<(), String> {
-    // flow-input-ports-scope Slice 3: resolve the wireless link pair on a transient copy (the same
-    // resolution `start` used) so the engine schedules ordinary wires. The pinned `flow.version` is
-    // untouched (the resolved copy shares it); `policy_map` + `read_run` see the resolved node set.
-    let flow = resolve_links(flow);
+    // Run-load guard (see `start`): a resumed/reactor-driven run of a persisted flow holding a
+    // removed kind fails clearly here, before any slot claims.
+    validate_known_kinds(node, ws, flow).await?;
+    let flow = flow.clone();
     // Pin the per-node join policy + the run's subgraph for the whole drive (flow-input-ports-scope).
     let policies = policy_map(node, ws, &flow).await?;
     let subgraph = match run_store::read_run(&node.store, ws, run_id).await? {
@@ -136,22 +156,4 @@ async fn control_halt(node: &Arc<Node>, ws: &str, run_id: &str) -> Result<Option
 async fn publish_finished(node: &Arc<Node>, ws: &str, run_id: &str, status: &str) {
     let event = super::watch::run_finished_event(status);
     super::watch::publish_flow_event(&node.bus, ws, run_id, &event).await;
-}
-
-/// (Legacy frontier helper, retained for any external caller.) The set of `Enqueued` node ids at the
-/// empty firing context — the all-`all` frontier. The drive loop itself uses [`run_store::ready_slots`]
-/// (the per-`(node, fctx)` view); this wraps it for callers that still think per-node.
-#[allow(dead_code)]
-async fn ready_frontier(
-    store: &lb_store::Store,
-    ws: &str,
-    run_id: &str,
-    _flow: &Flow,
-) -> Result<Vec<String>, String> {
-    let _ = ClaimState::Pending; // (keep the import used)
-    Ok(run_store::ready_slots(store, ws, run_id)
-        .await?
-        .into_iter()
-        .map(|(n, _)| n)
-        .collect())
 }

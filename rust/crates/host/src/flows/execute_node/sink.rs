@@ -36,7 +36,7 @@ pub(super) async fn dispatch_sink(
     let topic = inputs.get("topic").and_then(|v| v.as_str());
     let name = topic.filter(|t| !t.is_empty()).unwrap_or(config_name);
     let value = inputs.get("payload").cloned().unwrap_or(Value::Null);
-    // The (node, fctx)-scoped suffix: `""` in the all-`all` common case (byte-for-byte today's key),
+    // The (node, fctx)-scoped suffix: `""` in the empty-`fctx` common case (byte-for-byte today's key),
     // `@{fctx}` for a sink inside an `any`-funnel's reach. Each funnel firing re-runs the sink under
     // a distinct slot ⇒ a distinct dedup key ⇒ a distinct idempotent delivery.
     let slot = slot_suffix(fctx);

@@ -25,9 +25,15 @@ use super::super::run_store;
 
 /// After a `switch` settles (under `fctx`), release its matched dependents and gate the rest — under
 /// the SAME `fctx`. Reads the switch's recorded output payload, evaluates the ordered rules against
-/// the routed value, and fans out: a matched dependent is released as a barrier slot (decrement,
-/// enqueue at 0) under `fctx`; an unmatched dependent's `(dep, fctx)` slot is gated Skipped (a
-/// `switch` upstream of an `any` port simply contributes no firing for that branch).
+/// the routed value, and fans out. A matched dependent is released **policy-aware** through the one
+/// [`run_store::release_one_dependent`] seam (flow-plain-wiring-scope — the matched-release fix): an
+/// `any` dependent port gets a normal minted/propagated firing (`triggered_by` = the switch), an
+/// explicit-`all` port keeps the barrier decrement. Releasing unconditionally through the barrier
+/// path was the latent hang: a matched switch plus plain wires into one `any` node seeded a Pending
+/// barrier slot the sibling any-firings never touched, so the run never reached terminal. An
+/// unmatched dependent's `(dep, fctx)` slot is gated Skipped (a `switch` upstream of an `any` port
+/// simply contributes no firing for that branch).
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn release_matched(
     node: &Arc<Node>,
     ws: &str,
@@ -36,6 +42,7 @@ pub(super) async fn release_matched(
     node_id: &str,
     fctx: &str,
     config: &Value,
+    policies: &std::collections::HashMap<String, lb_flows::NodeDescriptor>,
     subgraph: &HashSet<String>,
 ) -> Result<(), String> {
     // The routed value: the switch's payload (its input, passed through), narrowed by `property`.
@@ -57,8 +64,18 @@ pub(super) async fn release_matched(
             continue;
         }
         if fire.contains(&dep) {
-            run_store::ready_one_dependent(&node.store, ws, flow, run_id, &dep, fctx, subgraph)
-                .await?;
+            run_store::release_one_dependent(
+                &node.store,
+                ws,
+                flow,
+                run_id,
+                &dep,
+                node_id,
+                fctx,
+                policies,
+                subgraph,
+            )
+            .await?;
         } else {
             run_store::skip_gated(&node.store, ws, flow, run_id, &dep, fctx).await?;
         }

@@ -331,49 +331,6 @@ impl Flow {
             .map(|n| n.needs.iter().filter(|dep| set.contains(*dep)).count())
             .unwrap_or(0)
     }
-
-    /// The wired edges landing on `node_id`, as `(from, to_port)` pairs — the per-port view of this
-    /// node's incoming wires (flow-input-ports-scope Axis 1). `to_port = None` ⇒ the node's primary
-    /// input port (the edge carries no port metadata). The port label is read off [`Node::inputs`],
-    /// so this is pure graph math (no descriptor needed); resolving `None` to the actual primary
-    /// port name is the descriptor's job (host-side, where the registry lives).
-    pub fn edges_into(&self, node_id: &str) -> Vec<(String, Option<String>)> {
-        let Some(n) = self.node(node_id) else {
-            return Vec::new();
-        };
-        n.needs
-            .iter()
-            .map(|from| {
-                let to_port = n
-                    .inputs
-                    .iter()
-                    .find(|e| &e.from == from)
-                    .and_then(|e| e.to_port.clone());
-                (from.clone(), to_port)
-            })
-            .collect()
-    }
-
-    /// In-degree per **(node, port)** counting only `needs` whose source is in `set` — the per-port
-    /// barrier count a join policy reads (flow-input-ports-scope Axis 2). An `all` port's indegree
-    /// is its wired in-subgraph upstream count; an `any` port is released per settled upstream, not
-    /// as a barrier. The policy decision is the host's (it holds the registry); this helper gives
-    /// the per-port grouping the policy applies to. `to_port = None` is grouped under the primary
-    /// port sentinel `None`.
-    pub fn indegrees_within_by_port(
-        &self,
-        set: &HashSet<String>,
-    ) -> HashMap<(String, Option<String>), usize> {
-        let mut out: HashMap<(String, Option<String>), usize> = HashMap::new();
-        for n in self.nodes.iter().filter(|n| set.contains(&n.id)) {
-            for (from, to_port) in self.edges_into(&n.id) {
-                if set.contains(&from) {
-                    *out.entry((n.id.clone(), to_port)).or_insert(0) += 1;
-                }
-            }
-        }
-        out
-    }
 }
 
 /// The kinds of `node_type` a flow may reference, resolved from its descriptor at validate time.
@@ -402,38 +359,10 @@ pub enum DagError {
     UnknownDependency(String, String),
     #[error("flow has a cycle")]
     Cycle,
-    #[error(
-        "node {0} has {1} inputs — a join must bind `payload` (auto-wire is single-upstream only)"
-    )]
-    #[allow(dead_code)]
-    // the policy-aware join lint lives in `flows.save` (registry-aware); this
-    // variant is retained on the public enum for callers that surface DagError.
-    UnboundJoin(String, usize),
     /// A `[[node.inputs]]` port entry whose `from` is not in the node's `needs` (the port metadata
     /// drifted from the topology). The two must agree — a port label with no wire is a mistake.
     #[error("node {0} has an input-port entry for upstream `{1}` which is not in its needs")]
     PortForUnknownNeed(String, String),
-    /// A `link-out {target}` whose target names no `link-in {name}` — a wireless sender pointing
-    /// nowhere (flow-input-ports-scope Slice 3). Caught at save; the target is a naming typo.
-    #[error("link-out `{0}` targets `{1}` but no link-in names it")]
-    LinkOutMissingTarget(String, String),
-    /// A `link-out` with no `config.target` at all (an unfinished node).
-    #[error("link-out `{0}` has no `config.target` — set the target link-in name")]
-    LinkOutNoTarget(String),
-    /// A node wires from a `link-out` (lists one in its `needs`) — `link-out`'s only output is the
-    /// wireless name, not a data port; that wire vanishes when the link-out is dropped at run load.
-    #[error("node `{0}` wires from link-out `{1}` — link-out forwards wirelessly, wire from the matching link-in instead")]
-    WiresFromLinkOut(String, String),
-    /// A `link-in` with no `link-out` targeting it AND no physical wire — a dead node that would
-    /// never fire (almost certainly a naming typo on its `name` or a sender's `target`).
-    #[error("link-in `{0}` (name `{1}`) has no link-outs targeting it and no physical wires")]
-    LinkInDead(String, String),
-    /// Two `link-in` nodes share one `name` — ambiguous (the resolver would funnel both, silently
-    /// duplicating firings). A `link-in` name must be unique within a flow.
-    #[error(
-        "link-in name `{0}` is claimed by multiple link-in nodes {1:?} — names must be unique"
-    )]
-    LinkNameCollision(String, Vec<String>),
 }
 
 /// Validate a flow's DAG: non-empty, within `max_nodes`, unique ids, deps resolve, no self-edge,
@@ -492,9 +421,9 @@ pub fn validate_flow(flow: &Flow, max_nodes: usize) -> Result<(), DagError> {
     if processed != flow.nodes.len() {
         return Err(DagError::Cycle);
     }
-    // (The join lint — "a multi-input `all` port must bind `payload`" — is policy-aware and lives in
-    // `flows.save`, where the descriptor registry resolves a port's `all` vs `any` policy. An `any`
-    // port with multiple wires is valid: the funnel fires once per upstream. flow-input-ports-scope.)
+    // (Multiple wires into one port are plain per-message wiring — valid, no binding demand
+    // (flow-plain-wiring-scope). The registry-aware save lints — explicit-`all` binding demand,
+    // undeclared ports, cross-branch bindings — live in `flows.save`, where the descriptors are.)
     Ok(())
 }
 
@@ -602,7 +531,8 @@ mod tests {
         );
     }
 
-    /// A node whose `with` binds `payload` (a join author resolved the ambiguity explicitly).
+    /// A node whose `with` binds `payload` explicitly (bindings are always allowed; only an
+    /// explicit-`all` port *demands* one at save).
     fn join_node(id: &str, needs: &[&str]) -> Node {
         let mut n = node(id, needs);
         n.with.insert("payload".into(), json!("${steps.b.payload}"));
@@ -611,7 +541,7 @@ mod tests {
 
     #[test]
     fn diamond_frontier_orders_correctly() {
-        // The diamond's sink `d` joins `b` + `c`, so it MUST bind `payload` (D3 join lint).
+        // The diamond's `d` has two wires (plain per-message wiring — fires per upstream at run).
         let f = flow(vec![
             node("a", &[]),
             node("b", &["a"]),
@@ -626,11 +556,9 @@ mod tests {
 
     #[test]
     fn rejects_a_join_with_no_payload_binding() {
-        // The join lint is policy-aware and lives in `flows.save` (where the descriptor registry
-        // resolves a port's `all` vs `any`). validate_flow's job is the pure DAG (cycle/dangling/
-        // dup/self-edge/port-agreement) — a multi-input node is structurally valid here; the binding
-        // check is save-time against the registry. (flow-input-ports-scope moved the lint off the
-        // pure model so an `any` funnel with N wires is not falsely rejected.)
+        // validate_flow's job is the pure DAG (cycle/dangling/dup/self-edge/port-agreement) — a
+        // multi-input node is structurally valid here AND at save (plain per-message wiring); only
+        // an explicit-`all` port's binding demand lives in `flows.save`, against the registry.
         let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &["a", "b"])]);
         validate_flow(&f, MAX_FLOW_NODES).expect("pure DAG accepts a multi-input node");
         // ...and a node that names its ports round-trips them.
@@ -718,36 +646,6 @@ mod tests {
         assert_eq!(back.to_port_from("a"), Some("payload".to_string()));
         // An unmentioned edge ⇒ None (primary).
         assert_eq!(back.to_port_from("b"), None);
-    }
-
-    #[test]
-    fn edges_into_returns_per_port_wires() {
-        // Two wires into `d` on the primary port, one wire into `joiner` on a named port.
-        let mut d = node("d", &["a", "b"]);
-        d.inputs.push(InputEdge::new("b", Some("control".into()))); // a ⇒ primary (None), b ⇒ control
-        let f = flow(vec![node("a", &[]), node("b", &[]), d]);
-        let edges = f.edges_into("d");
-        assert_eq!(edges.len(), 2);
-        // Each upstream's port is resolved from `inputs`; an absent entry ⇒ None (primary).
-        let by_from: std::collections::HashMap<&str, &Option<String>> =
-            edges.iter().map(|(f, p)| (f.as_str(), p)).collect();
-        assert_eq!(by_from["a"], &None);
-        assert_eq!(by_from["b"], &Some("control".to_string()));
-    }
-
-    #[test]
-    fn indegrees_within_by_port_groups_per_port() {
-        // joiner has two wires on the primary port (a, c) and one on `secondary` (b). A per-port
-        // barrier reads the primary count (2) and the `secondary` count (1) separately.
-        let mut joiner = node("joiner", &["a", "b", "c"]);
-        joiner
-            .inputs
-            .push(InputEdge::new("b", Some("secondary".into())));
-        let f = flow(vec![node("a", &[]), node("b", &[]), node("c", &[]), joiner]);
-        let set: HashSet<String> = f.nodes.iter().map(|n| n.id.clone()).collect();
-        let by_port = f.indegrees_within_by_port(&set);
-        assert_eq!(by_port[&("joiner".into(), None)], 2); // a + c on the primary port
-        assert_eq!(by_port[&("joiner".into(), Some("secondary".into()))], 1); // b on secondary
     }
 
     #[test]
