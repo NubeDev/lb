@@ -27,7 +27,7 @@ use lb_supervisor::OsLauncher;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-const MANIFEST: &str = include_str!("../../../extensions/federation/extension.toml");
+const MANIFEST: &str = include_str!("../../federation/extension.toml");
 
 /// The HOST-OWNED example catalog — the single source of truth shared with the UI. Parsed here so the
 /// bodies this test runs ARE the bodies the editor ships.

@@ -125,7 +125,15 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
-  datasource).
+  datasource), and `entity-scoped-grants-scope.md` (**row-level reach inside a workspace** — an
+  additive `scope` selector on the grant record + `check_scoped`/`scope_filter` at the wall and via
+  SDK host-callback, so "a member reaches only *their* records" — a guardian's children, a
+  technician's sites — is platform-enforced data instead of N hand-rolled ext filters; first
+  consumer: the cc-app childcare product), and `invites-scope.md` (**token onboarding for people
+  who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
+  opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept
+  route into identity + membership + grants atomically, caps live on first login; the missing
+  "self-join link" half of global-identity).
 - `admin/setup/` — **setup wizards**: the AI-facing playbook for building a guided, multi-step flow
   in the Setup tab (`setup-wizards-scope.md`). The hard rule it enforces: a wizard is **pure
   orchestration over existing editors/hooks/verbs** — if the surface it guides already exists, the
@@ -296,7 +304,11 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   finally lands) + a queryable **link graph** (doc→doc links, doc→asset embeds), shared to a
   **user/team/workspace**, undo-journaled save, CRUD over the additive `assets.*` verbs, **reusable
   by extensions** (host-callback ABI) and the doc-site authoring side. Public/anonymous serving is a
-  deferred slice with its own threat model.
+  deferred slice with its own threat model. `files/` also holds `media-scope.md` (**photo-class
+  binaries at product volume** — chunked/resumable `upload_begin/chunk/commit` that survives
+  cellular, server-side variants (thumb/preview) as a durable job, and a capability-checked
+  streaming `GET /media/{id}` with Range/ETag — all on SurrealDB buckets, rule 2 intact; the
+  generic binary path under document-store attachments and any feed of daily photos).
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
@@ -345,7 +357,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   coverage, channel→widget→dashboard authoring, and extension-capability introspection. The **channel is
   the test-bench** for the whole system.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
-  (`outbox-scope.md`, the S6 driver).
+  (`outbox-scope.md`, the S6 driver); plus `push-target-scope.md` (**push notifications as one more
+  outbox `Target`** — per-member `device` registrations (FCM/APNs/WebPush) + a generic opaque
+  notification effect fanned out behind one `PushProvider` trait, token-gone auto-eviction, a prefs
+  quiet-hours gate; the outbox already owns durability/retry, so this is a target, not a service).
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
@@ -473,7 +488,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   **no new MCP verbs, capabilities, routes, or tables**; the four folders live outside both the core
   `rust/Cargo.toml` workspace and the root `pnpm-workspace.yaml` so a change here cannot break the
   core build.
-- `frontend/` — the React/Tauri UI shell; `agent-dock-scope.md` (the persistent
+- `frontend/` — the React/Tauri UI shell; `minimal-shell-scope.md` (the **publishable minimal
+  host** for 100%-extension UIs — only the host-side contract: auth screens + workspace pick,
+  `ext.list` discovery, full-screen scoped mount of a *configured* ext page, SSE + theme-token
+  provider, PWA defaults; retires "vendor the whole shell" as the only embedder option — the
+  rubix-ai compromise — and gives mobile-first products like cc-app a stand);
+  `agent-dock-scope.md` (the persistent
   `@nube/panel` right-dock AI panel — open on every page, survives navigation, durable
   channel-backed session history with new-session, always the active catalog agent,
   page-context injected, answers streamed with live progress over the run-event SSE),

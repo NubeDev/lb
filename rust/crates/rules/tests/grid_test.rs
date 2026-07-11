@@ -124,7 +124,7 @@ fn empty_body_is_nothing() {
     assert!(matches!(out, RuleOutput::Nothing), "got {out:?}");
 }
 
-/// Federation's wire shape is column-aligned ARRAYS (`extensions/federation/src/query.rs::shape`
+/// Federation's wire shape is column-aligned ARRAYS (`crates/federation/src/query.rs::shape`
 /// re-projects Arrow objects to `[v, …]`), not keyed objects. `records()` must collapse those to named
 /// maps at the seam boundary so the catalog's `Array<Map>` contract holds on every source kind —
 /// otherwise the documented `category(query(...).records(), ...)` one-liner fails on the federation

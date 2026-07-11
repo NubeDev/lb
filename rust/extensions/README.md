@@ -11,7 +11,13 @@
 > fallback while the migration is validated. They will be removed once downstream is proven (~a few
 > weeks). Do not treat them as the source of truth.
 >
-> **Exception:** `federation/` stays **first-class core** (least separable) and is **not** migrating out.
+> **`federation` has been PROMOTED to a first-class core crate** — it moved OUT of this folder to
+> [`../crates/federation/`](../crates/federation/) (a normal workspace member). It never belonged here:
+> it fails the rule-10 swap test (the host holds a first-class `federation.*` surface + `FED_ENDPOINTS`),
+> shares `lb-supervisor` verbatim, and is platform datastore-federation surface. It is **still** a
+> supervised Tier-2 sidecar (its DB drivers never link into the node) — only its source home changed.
+> The upcoming `rust/extensions/*` cleanup **must not touch it** (it is core, not "retained temporarily").
+> See [`../../docs/scope/extensions/federation-promote-to-core-scope.md`](../../docs/scope/extensions/federation-promote-to-core-scope.md).
 >
 > Authoritative posture + retention window: [`../../MIGRATION.md`](../../MIGRATION.md).
 > Owning scope: [`../../docs/scope/extensions/ext-out-of-tree-scope.md`](../../docs/scope/extensions/ext-out-of-tree-scope.md).
@@ -20,5 +26,6 @@
 
 `proof-panel` (migrated to `rubix-ai-extensions`), `fleet-monitor`, `hello` / `hello-v2` (test
 fixtures), `echarts-panel`, `energy-dashboard`, `github-bridge`, `mqtt`, `ros`, `thecrew`,
-`control-engine`, `echo-sidecar`, and **`federation`** (stays core). The `ds-hidden-*` / `ds-pick-*`
+`control-engine`, and `echo-sidecar`. (**`federation` is gone** — promoted to `../crates/federation/`.)
+The `ds-hidden-*` / `ds-pick-*`
 directories are untracked DesignSync scratch, not extensions.

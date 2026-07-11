@@ -105,7 +105,7 @@ impl RecordingData {
     /// Same as `platform()` but the source resolves to the `Federation` kind — so the cage composes
     /// ANSI SQL (not SurrealQL) and, critically for the `records()` contract, the seeded rows should
     /// match federation's real wire shape: column-aligned ARRAYS (`["a", 1]`), not objects. That's the
-    /// shape `extensions/federation/src/query.rs::shape` actually emits; seeding it here is what lets
+    /// shape `crates/federation/src/query.rs::shape` actually emits; seeding it here is what lets
     /// a unit test prove `records()` collapses positional rows to named maps on the federation path.
     pub fn federation(sources: &[&str], rows: GridJson) -> Self {
         Self {

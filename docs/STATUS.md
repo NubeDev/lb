@@ -23,7 +23,22 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new
+**Just shipped (2026-07-11): `federation` promoted to a first-class core crate.** The federation
+datasources sidecar moved out of the misleading `rust/extensions/` folder to
+[`rust/crates/federation/`](../rust/crates/federation/) — it is **core, not a product extension**
+(fails the rule-10 swap test: the host holds a first-class `federation.*` surface + `FED_ENDPOINTS`;
+shares `lb-supervisor` verbatim; is platform datastore-federation surface). It is **still** a supervised
+Tier-2 sidecar: its DB drivers (datafusion/postgres/rusqlite) link ONLY into this crate — `cargo tree`
+confirms `lb-node`/`lb-host` link zero DB drivers, and the host still spawns it as a separate 311MB ELF
+process over stdio from the shared `target/` dir (source-relocation only; manifest/caps/`exec`/wire/
+`-p federation` all unchanged). Proven live: `federation_sqlite_test` green (real node → real sidecar →
+register datasource → SELECT real rows + cap-deny + `net:*` deny + ws-B isolation, no-Docker sqlite
+path); the moved `include_str!` manifest paths pass across the host federation suites. So the upcoming
+`rust/extensions/*` cleanup does NOT touch federation. Scope:
+[`scope/extensions/federation-promote-to-core-scope.md`](scope/extensions/federation-promote-to-core-scope.md);
+session: [`sessions/extensions/federation-promote-to-core-session.md`](sessions/extensions/federation-promote-to-core-session.md).
+
+**Previously (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new
 **appearance axes** on the existing Layout tab (Settings → Theme → Layout), additive and
 migration-safe, riding the same `ui_theme` prefs blob as every other Layout axis (no new verb/cap/
 table/MCP surface — reuses `prefs.set` / `set_default` / `resolve`). **(1) Header style**

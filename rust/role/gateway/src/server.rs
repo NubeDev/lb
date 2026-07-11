@@ -205,7 +205,17 @@ pub fn router(gw: Gateway) -> Router {
         .route("/admin/webhooks/{id}/revoke", post(revoke_webhook))
         .route("/admin/webhooks/{id}/rotate", post(rotate_webhook))
         // extension lifecycle (lifecycle-management scope) — the browser's `ext.*` surface.
-        .route("/extensions", get(list_extensions).post(publish_extension))
+        // GET keeps the default body limit; POST (publish) raises it: a NATIVE-tier artifact packs a
+        // host-target binary (megabytes) into the signed Artifact's `wasm` field, JSON-encoded as a
+        // byte array (~8x the binary), which blows past axum's 2 MiB default → 413. WASM artifacts
+        // (tens–hundreds of KiB) never hit it, so this only surfaced once a native ext published
+        // over the wire. 32 MiB matches the other large-upload routes (export_report, put_asset_bin).
+        .route(
+            "/extensions",
+            get(list_extensions)
+                .post(publish_extension)
+                .layer(axum::extract::DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
         .route("/extensions/{ext}", delete(uninstall_extension))
         .route("/extensions/{ext}/ui/{*path}", get(serve_ext_ui))
         .route("/mcp/call", post(mcp_call))
