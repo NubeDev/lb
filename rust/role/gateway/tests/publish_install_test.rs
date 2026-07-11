@@ -185,3 +185,50 @@ async fn publish_without_the_capability_is_denied_server_side() {
         "no cap → 403 server-side"
     );
 }
+
+/// Regression (native-tier publish): a NATIVE artifact packs a host-target BINARY (megabytes) into the
+/// signed `wasm` field, JSON-encoded as a byte array — several MiB on the wire, far past axum's 2 MiB
+/// default request-body limit. WASM artifacts (tens–hundreds of KiB) never hit it, so a native ext
+/// publishing over `POST /extensions` used to 413 ("length limit exceeded") before the body was ever
+/// read. The route now raises its body limit; this asserts a >2 MiB body is BUFFERED (not 413) and
+/// reaches verification. The oversized payload is not a trusted artifact, so it lands at 422 (verify),
+/// which is exactly the point: it got PAST the body limit to be judged on its merits.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn publish_accepts_a_body_larger_than_the_2mib_default_native_binary_size() {
+    let (gw, key) = gateway().await;
+    let (id, sk, trusted) = publisher(7);
+    let gw = Gateway::new(Arc::clone(&gw.node), key.clone(), common::NOW).with_trusted(trusted);
+    let tok = token(&key, "user:admin", "acme", &[PUBLISH_CAP]);
+
+    // A 3 MiB payload in the `wasm` field — comfortably past the old 2 MiB default, the size class of a
+    // real native sidecar binary. Signed with a trusted key over its real digest so ONLY the body limit,
+    // not the signature or the cap, could reject it. (The bytes are not a valid component; if it ever
+    // gets past verify it would fail to load — but it is a native-tier size test, and the manifest here
+    // is the wasm hello manifest, so it verifies-then-fails-load rather than 413.)
+    let big = vec![0u8; 3 * 1024 * 1024];
+    let d = digest(MANIFEST, &big);
+    let big_artifact = Artifact {
+        ext_id: "hello".into(),
+        version: "0.2.0".into(),
+        manifest_toml: MANIFEST.into(),
+        wasm: big,
+        digest_hex: digest_hex(&d),
+        publisher_key_id: id,
+        signature: sk.sign(&d).to_bytes().to_vec(),
+    };
+
+    let resp = router(gw)
+        .oneshot(bearer(
+            json_post("/extensions", serde_json::to_value(big_artifact).unwrap()),
+            &tok,
+        ))
+        .await
+        .unwrap();
+
+    // The load-bearing assertion: NOT 413. The body was buffered past the old 2 MiB limit and judged.
+    assert_ne!(
+        resp.status(),
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "a native-sized (>2 MiB) publish body must be accepted, not 413"
+    );
+}
