@@ -57,6 +57,7 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "outbox.",
     "inbox.",
     "insight.",
+    "authz.",
     "dashboard.",
     "nav.",
     "layout.",
@@ -351,6 +352,14 @@ async fn dispatch_at_depth(
             // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
             // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
             crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("authz.") {
+            // entity-scoped-grants scope: `authz.check_scoped` / `authz.scope_filter` — the scoped
+            // read API extensions reach via `host.call-tool` so an extension verb asks the wall
+            // "what can this principal reach?" instead of re-implementing the filter. The outer
+            // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
+            // (never accepts a `user` arg — no information leak). `authz.resolve` /
+            // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
+            crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only

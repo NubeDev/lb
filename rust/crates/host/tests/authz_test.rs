@@ -7,7 +7,7 @@
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
 use lb_host::{
     call_authz_tool, grants_assign, resolve_caps, revoke_subject, roles_define, teams_create,
-    AuthzError, Subject,
+    AuthzError, Scope, Subject,
 };
 use lb_mcp::ToolError;
 use lb_store::Store;
@@ -105,6 +105,7 @@ async fn ws_b_admin_cannot_see_or_touch_ws_a_authz() {
         "acme",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
+        &Scope::All,
     )
     .await
     .unwrap();
@@ -151,6 +152,7 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
         "acme",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
+        &Scope::All,
     )
     .await
     .unwrap();
@@ -174,6 +176,7 @@ async fn resolve_unions_direct_role_and_team_inherited_caps() {
         "acme",
         &Subject::Team("facilities".into()),
         "role:operator",
+        &Scope::All,
     )
     .await
     .unwrap();
@@ -217,6 +220,7 @@ async fn no_widening_blocks_granting_a_cap_the_admin_lacks() {
         "acme",
         &Subject::User("bob".into()),
         "mcp:hvac.setpoint:call",
+        &Scope::All,
     )
     .await
     .unwrap_err();
@@ -230,12 +234,26 @@ async fn assign_and_revoke_are_idempotent_and_revoke_seam_strips_all() {
     let bob = Subject::User("bob".into());
 
     // Double-assign the same grant → still just one live cap.
-    grants_assign(&store, &admin, "acme", &bob, "mcp:hvac.setpoint:call")
-        .await
-        .unwrap();
-    grants_assign(&store, &admin, "acme", &bob, "mcp:hvac.setpoint:call")
-        .await
-        .unwrap();
+    grants_assign(
+        &store,
+        &admin,
+        "acme",
+        &bob,
+        "mcp:hvac.setpoint:call",
+        &Scope::All,
+    )
+    .await
+    .unwrap();
+    grants_assign(
+        &store,
+        &admin,
+        "acme",
+        &bob,
+        "mcp:hvac.setpoint:call",
+        &Scope::All,
+    )
+    .await
+    .unwrap();
     assert_eq!(resolve_caps(&store, "acme", "bob").await.unwrap().len(), 1);
 
     // The revoke seam strips every grant (admin-crud calls this on user.delete). Returns the count.

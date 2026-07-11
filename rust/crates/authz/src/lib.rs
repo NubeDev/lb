@@ -26,18 +26,25 @@
 //! strip a deleted user's/team's grants in one place — so deletion-revocation is not reimplemented
 //! per caller.
 
+mod check_scoped;
 mod grant;
 mod identity;
 mod membership;
 mod resolve;
+mod resolve_scoped;
 mod resolve_sourced;
 mod revoke;
 mod role;
+mod scope;
 mod subject;
 mod team;
 mod token_revoke;
 
-pub use grant::{grant_assign, grant_list, grant_revoke, granted, Grant, GRANT_TABLE};
+pub use check_scoped::{check_scoped, check_scoped_with, scope_filter, scope_filter_with};
+pub use grant::{
+    grant_assign, grant_assign_scoped, grant_list, grant_list_scoped, grant_revoke,
+    grant_revoke_scoped, granted, Grant, GRANT_TABLE,
+};
 pub use identity::{
     identity_create, identity_get, identity_list, Identity, IDENTITY_KIND, IDENTITY_NS,
     IDENTITY_TABLE,
@@ -50,12 +57,14 @@ pub use resolve::{
     resolve_caps, resolve_caps_with, resolve_subject_caps, resolve_subject_caps_with,
     BuiltinRoleCaps, NoBuiltinRoleCaps,
 };
+pub use resolve_scoped::{resolve_caps_scoped, resolve_caps_scoped_with, ScopedCap};
 pub use resolve_sourced::{
     resolve_caps_sourced, resolve_caps_sourced_with, resolve_subject_caps_sourced,
     resolve_subject_caps_sourced_with, CapSource, SourcedCap,
 };
 pub use revoke::revoke_subject;
 pub use role::{role_caps, role_define, role_delete, role_list, Role, ROLE_TABLE};
+pub use scope::{Scope, ScopeFilter};
 pub use subject::Subject;
 pub use team::{team_create, team_delete, team_list, Team, TEAM_TABLE};
 pub use token_revoke::{token_revoke_mark, token_revoked, TOKEN_REVOKE_TABLE};

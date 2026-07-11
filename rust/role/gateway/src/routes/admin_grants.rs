@@ -6,7 +6,7 @@
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{authz_resolve, revoke_tokens, roles_delete, AuthzRole, SourcedCap, Subject};
+use lb_host::{authz_resolve, revoke_tokens, roles_delete, AuthzRole, Scope, SourcedCap, Subject};
 use serde::Deserialize;
 
 use crate::session::authenticate;
@@ -88,7 +88,7 @@ pub async fn assign_grant(
         .await
         .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
-    lb_host::grants_assign(&gw.node.store, &p, p.ws(), &subject, &body.cap)
+    lb_host::grants_assign(&gw.node.store, &p, p.ws(), &subject, &body.cap, &Scope::All)
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
@@ -104,7 +104,7 @@ pub async fn revoke_grant(
         .await
         .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
-    lb_host::grants_revoke(&gw.node.store, &p, p.ws(), &subject, &body.cap)
+    lb_host::grants_revoke(&gw.node.store, &p, p.ws(), &subject, &body.cap, &Scope::All)
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)

@@ -108,12 +108,11 @@ harness seeds two "families" and asserts every read/list/watch verb of a fixture
 
 ## Open questions
 
-- Selector forms for v1: `ids` only, or `ids + tag`? (Recommend ids-only first; tag when a
-  real cohort caller exists.)
-- Does `scope_filter` return ids or a Surreal `WHERE` fragment? (Recommend ids — keeps the
-  core out of query-string business.)
-- Should the outbox/bus watch verbs (`*.watch`) get a scoped subscription helper, or is
-  filter-at-emit in the extension enough for v1?
+- ✅ Selector forms for v1: `ids` only (tag deferred — no real cohort caller yet). The `Scope`
+  enum is designed so `tag` is an additive variant later.
+- ✅ `scope_filter` returns ids (not a WHERE fragment) — keeps the core out of query-string
+  business. The caller pushes ids into its own indexed query.
+- ✅ Watch verbs: filter-at-emit in the extension for v1 (no scoped subscription helper).
 
 ## Related
 

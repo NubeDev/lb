@@ -252,6 +252,11 @@ const VIEWER_CAPS: &[&str] = &[
     // reminders nav gate — the concrete list cap the frontend `hasCap` checks EXACTLY (it does not
     // expand a wildcard), so the Reminders sidebar entry needs it spelled out. fire is author.
     "mcp:reminder.list:call",
+    // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API.
+    // These are informational (the enforcement happens at the verb level); a caller only learns its
+    // OWN reach (the verbs use the calling principal, never a `user` arg).
+    "mcp:authz.check_scoped:call",
+    "mcp:authz.scope_filter:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
     "store:doc/*:read",
     "store:skill/**:read",

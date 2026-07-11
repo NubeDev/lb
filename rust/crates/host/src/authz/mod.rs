@@ -21,6 +21,7 @@ mod resolve;
 mod resolve_live;
 mod revoke_tokens;
 mod roles;
+mod scoped;
 mod teams;
 mod tool;
 
@@ -31,18 +32,19 @@ pub use builtin_roles::{
 };
 pub use error::AuthzError;
 pub use grant_ui::grant_ui_scope_to_admin;
-pub use grants::{grants_assign, grants_list, grants_revoke};
+pub use grants::{grants_assign, grants_list, grants_list_scoped, grants_revoke};
 pub use hold::holds_cap;
 pub use resolve::authz_resolve;
 pub use resolve_live::{resolve_caps_live, resolve_subject_caps_live};
 pub use revoke_tokens::revoke_tokens;
 pub use roles::{roles_define, roles_delete, roles_list};
+pub use scoped::{authz_check_scoped, authz_scope_filter};
 pub use teams::{teams_create, teams_list};
 pub use tool::call_authz_tool;
 
 // The model types + the two seams admin-crud consumes — re-exported so host callers and the gateway
 // use one set (the same way `tags` re-exports its `lb_tags` value types).
 pub use lb_authz::{
-    resolve_caps, revoke_subject, token_revoked, CapSource, Grant, Role as AuthzRole, SourcedCap,
-    Subject, Team,
+    resolve_caps, revoke_subject, token_revoked, CapSource, Grant, Role as AuthzRole, Scope,
+    ScopeFilter, SourcedCap, Subject, Team,
 };

@@ -241,6 +241,27 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "outbox",
         description: "stage a must-deliver effect for the outbox relay (with backoff)",
     },
+    // authz.* — the scoped read API (entity-scoped-grants scope) + the access-console verbs.
+    HostTool {
+        tool: "authz.check_scoped",
+        group: "authz",
+        description: "check if the calling principal may reach a record under a cap (entity-scoped)",
+    },
+    HostTool {
+        tool: "authz.scope_filter",
+        group: "authz",
+        description: "which rows in a table the calling principal may reach under a cap",
+    },
+    HostTool {
+        tool: "authz.resolve",
+        group: "authz",
+        description: "resolved effective caps with provenance (access-console; admin-only)",
+    },
+    HostTool {
+        tool: "authz.revoke-tokens",
+        group: "authz",
+        description: "kill live tokens + tombstone grants for a subject (admin-only)",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",
