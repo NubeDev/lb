@@ -43,6 +43,7 @@ mod members;
 mod membership;
 mod native;
 mod nav;
+mod notify;
 mod outbox;
 mod panel;
 mod prefs;
@@ -266,6 +267,11 @@ pub use nav::{
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
     BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS,
     MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
+};
+pub use notify::{
+    call_notify_tool, device_list, device_register, device_remove, notify_send,
+    Device as NotifyDevice, NotifyError, Platform as DevicePlatform, PushPayload, PushProvider,
+    PushTarget, RecordedPush, RecordingPushProvider, PUSH_TARGET,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,

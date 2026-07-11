@@ -257,6 +257,8 @@ const VIEWER_CAPS: &[&str] = &[
     // OWN reach (the verbs use the calling principal, never a `user` arg).
     "mcp:authz.check_scoped:call",
     "mcp:authz.scope_filter:call",
+    // push-target scope: a member registers/lists/removes their own devices (self-only).
+    "mcp:device.register:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
     "store:doc/*:read",
     "store:skill/**:read",
@@ -390,6 +392,8 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:media.upload:call",
     "mcp:media.get:call",
     "mcp:media.delete:call",
+    // push-target scope: a member sends push notifications (the audience/prefs policy lives here).
+    "mcp:notify.send:call",
     // shared-asset doc/skill store WRITES (gate-3/ownership owns which specific asset).
     "store:doc/*:write",
     "store:skill/**:write",

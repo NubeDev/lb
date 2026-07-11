@@ -309,6 +309,27 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "media",
         description: "archive media by id",
     },
+    // device.* / notify.* — the push-notification surface (push-target scope).
+    HostTool {
+        tool: "device.register",
+        group: "notify",
+        description: "register a push device (self-only, upsert by token)",
+    },
+    HostTool {
+        tool: "device.list",
+        group: "notify",
+        description: "list the caller's own registered devices",
+    },
+    HostTool {
+        tool: "device.remove",
+        group: "notify",
+        description: "remove a registered device (self-only)",
+    },
+    HostTool {
+        tool: "notify.send",
+        group: "notify",
+        description: "enqueue a push notification to an audience (outbox-delivered)",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",

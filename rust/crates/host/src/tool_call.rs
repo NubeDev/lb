@@ -60,6 +60,8 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "authz.",
     "invite.",
     "media.",
+    "device.",
+    "notify.",
     "dashboard.",
     "nav.",
     "layout.",
@@ -370,6 +372,9 @@ async fn dispatch_at_depth(
             // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
             // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.
             crate::call_media_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("device.") || qualified_tool.starts_with("notify.") {
+            // push-target scope: device.register/list/remove + notify.send.
+            crate::call_notify_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only

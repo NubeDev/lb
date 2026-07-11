@@ -99,11 +99,11 @@ everything else (store, outbox, caps) real.
 
 ## Open questions
 
-- Is `notify.send` its own verb or a thin alias over a generic `outbox.enqueue{target:
-  "push"}`? (Recommend the named verb — it's where the audience/prefs policy lives.)
-- WebPush first (PWA, no store approvals) then FCM/APNs? (Recommend yes — v1 = WebPush.)
-- Do quiet hours live in prefs v1 or ship later? (Recommend the prefs axis v1 — retrofitting
-  DND after users are annoyed is the wrong order.)
+- ✅ `notify.send` is its own named verb (the audience/prefs policy lives here). *Rejected:* a
+  thin alias over `outbox.enqueue{target:"push"}` — loses the named policy seam.
+- ✅ WebPush first (PWA, no store approvals), then FCM/APNs. v1 = WebPush.
+- ✅ Quiet hours live in prefs v1 (`push_muted` axis — the `insight_notifications` pattern).
+  Retrofitting DND after users are annoyed is the wrong order.
 
 ## Related
 
