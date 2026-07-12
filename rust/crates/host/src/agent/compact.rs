@@ -66,7 +66,8 @@ pub fn compact_to_budget(
     }
 
     // Remove a previous breadcrumb — it is re-inserted below with the cumulative count.
-    messages.retain(|(role, content)| !(role == "system" && content.starts_with(BREADCRUMB_PREFIX)));
+    messages
+        .retain(|(role, content)| !(role == "system" && content.starts_with(BREADCRUMB_PREFIX)));
 
     let mut dropped = 0u32;
     while over(messages) {
@@ -117,9 +118,7 @@ fn oldest_droppable_group(messages: &[(String, String)]) -> Option<(usize, usize
     // later user message exists (a nudge, a follow-up) — everything from that latest user group on
     // (the scope's "always keep … the latest user group").
     let last_user = starts.iter().rposition(|&i| messages[i].0 == "user");
-    let protect_from = last_user
-        .unwrap_or(starts.len() - 1)
-        .min(starts.len() - 1);
+    let protect_from = last_user.unwrap_or(starts.len() - 1).min(starts.len() - 1);
     if protect_from == 0 {
         return None;
     }

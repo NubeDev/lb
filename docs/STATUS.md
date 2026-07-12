@@ -23,7 +23,37 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-12): flows plain wiring — the `link` pair removed, every port fires per
+**Just shipped (2026-07-12): agent loop hardening — all five slices, in-house runtime
+(branch `agent-loop-hardening`, one commit per slice, not yet merged).** The in-house loop now
+(D) gets **typed provider faults** (`ProviderFault`: status + `Retry-After` + overflow
+discriminant; `ModelAccess::turn` → `Result`; transient → bounded retry *below* step accounting,
+fatal → job **Failed** + `RunFinish(Failed)`, never a fault dressed as a completion; the gateway
+never caches a fault; `MockProvider::scripted()` failure arm); (A) **context compaction** —
+chars/4 preflight incl. tool schemas, whole-turn-group drops (system/goal/latest-user protected),
+one cumulative breadcrumb, provider overflow → compact + continue the SAME run
+(`agent.config.compact_budget`, default 48k); (C) the **dangling-tool-call invariant** — every
+transcript append through ONE chokepoint (`TranscriptWriter`), new additive
+`ToolCancelled` transcript/run events, dead turns resolve pending proposals, load-time heal of
+pre-fix orphans **appended at the cursor (never renumbered)**; (B) a **loop detector**
+(window 20 default, `agent.config.loop_window`, 0=off; exact-repeat/ping-pong/interleaved
+no-progress; warn → block → break ladder with reset-on-progress) + a **graceful ceiling exit**
+(one tools-free summary completion, persisted); (E) **`emits_external` taint** on
+descriptors/manifests (self-declared, opaque — rule 10) + `agent.config.exfiltration_guard`
+(menu exclusion AND dispatch deny). Zero new verbs/tables; three additive `agent.config` axes,
+each proven ws-walled. External-runtime coverage of B/E explicitly waits for the capability wall.
+~21 new Rust tests green (fault table, compaction properties, heal/renumber, ladder, exfil deny)
++ the agent regression suites; pre-existing `agent_persona_catalog_test`/`agent_persona_coding_test`
+failures verified identical on clean master (not chased). Scope
+[`scope/agent/agent-loop-hardening-scope.md`](scope/agent/agent-loop-hardening-scope.md); session
+[`sessions/agent/agent-loop-hardening-session.md`](sessions/agent/agent-loop-hardening-session.md);
+public [`doc-site/content/public/agent/agent.md`](../doc-site/content/public/agent/agent.md)
+("Loop hardening"). **Named follow-ups:** wall-level detector/guard for external runtimes
+(capability-wall scope); budget-gate the ceiling summary + retry usage when close-out A/B ship;
+`lb-ext-sdk` manifest gains the optional `emits_external` authoring field.
+
+---
+
+**Earlier (2026-07-12): flows plain wiring — the `link` pair removed, every port fires per
 message (`flow-plain-wiring`, branch `flow-plain-wiring`).** Plain wiring is now the whole story —
 exactly the Node-RED model: N wires onto ANY node's input port ⇒ one firing per arriving message, no
 barrier, no binding demand, no policy question; one output port fans to every wired downstream.

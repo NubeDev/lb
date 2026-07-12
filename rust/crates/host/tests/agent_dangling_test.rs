@@ -78,9 +78,18 @@ async fn a_killed_run_with_pending_calls_heals_on_resume_without_renumbering() {
     // Resume through the real entry; the model just wraps up.
     let gw = AiGateway::new(MockProvider::new(vec![AiResponse::stop("wrapped up", 5)]));
     let caller = principal("user:ada", ws, &[INVOKE]);
-    let answer = resume(&node, &gw, &caller, &[INVOKE.to_string()], ws, job_id, &[], 2)
-        .await
-        .expect("resume completes");
+    let answer = resume(
+        &node,
+        &gw,
+        &caller,
+        &[INVOKE.to_string()],
+        ws,
+        job_id,
+        &[],
+        2,
+    )
+    .await
+    .expect("resume completes");
     assert_eq!(answer, "wrapped up");
 
     let job = load(&node.store, ws, job_id).await.unwrap().unwrap();
@@ -88,7 +97,10 @@ async fn a_killed_run_with_pending_calls_heals_on_resume_without_renumbering() {
 
     // The invariant: no proposal without a resolution — both orphans were cancelled.
     let events: Vec<&TranscriptEvent> = job.events().collect();
-    assert!(orphaned_calls(&events).is_empty(), "no orphan survives a resume");
+    assert!(
+        orphaned_calls(&events).is_empty(),
+        "no orphan survives a resume"
+    );
     let cancelled: Vec<&str> = events
         .iter()
         .filter_map(|e| match e {
@@ -167,9 +179,18 @@ async fn a_suspension_parked_call_is_not_cancelled_by_the_heal() {
     // cancelled the gated call (it is awaiting a human, not dangling).
     let gw = AiGateway::new(MockProvider::new(vec![AiResponse::stop("never asked", 5)]));
     let caller = principal("user:ada", ws, &[INVOKE]);
-    let _ = resume(&node, &gw, &caller, &[INVOKE.to_string()], ws, job_id, &[], 2)
-        .await
-        .expect("resume settles as still-pending");
+    let _ = resume(
+        &node,
+        &gw,
+        &caller,
+        &[INVOKE.to_string()],
+        ws,
+        job_id,
+        &[],
+        2,
+    )
+    .await
+    .expect("resume settles as still-pending");
 
     let job = load(&node.store, ws, job_id).await.unwrap().unwrap();
     assert!(

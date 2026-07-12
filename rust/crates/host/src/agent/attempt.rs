@@ -68,7 +68,10 @@ pub(super) async fn attempt_turn<M: ModelAccess>(
     let mut attempt: u32 = 0;
     let mut overflow_rounds: u32 = 0;
     loop {
-        match model.turn(ws, messages, tools, prior, idempotency_key).await {
+        match model
+            .turn(ws, messages, tools, prior, idempotency_key)
+            .await
+        {
             Ok(turn) => return Ok(turn),
             Err(TurnError::Transient {
                 detail,

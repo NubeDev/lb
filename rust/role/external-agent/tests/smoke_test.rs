@@ -66,8 +66,13 @@ fn null_model() -> std::sync::Arc<dyn lb_host::ErasedModel> {
             _t: &'a [AllowedTool],
             _p: &'a [lb_host::CallOutcome],
             _k: &'a str,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<lb_host::Turn, lb_host::TurnError>> + Send + 'a>>
-        {
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<lb_host::Turn, lb_host::TurnError>>
+                    + Send
+                    + 'a,
+            >,
+        > {
             Box::pin(async {
                 Ok(lb_host::Turn {
                     content: String::new(),

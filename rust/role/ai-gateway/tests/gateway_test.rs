@@ -53,8 +53,14 @@ async fn distinct_keys_advance_the_provider() {
         AiResponse::stop("second", 5),
     ]));
 
-    let first = gw.complete(&AiRequest::new("ws-gw", "k1")).await.expect("completion");
-    let second = gw.complete(&AiRequest::new("ws-gw", "k2")).await.expect("completion");
+    let first = gw
+        .complete(&AiRequest::new("ws-gw", "k1"))
+        .await
+        .expect("completion");
+    let second = gw
+        .complete(&AiRequest::new("ws-gw", "k2"))
+        .await
+        .expect("completion");
     assert_eq!(first.content, "first");
     assert_eq!(second.content, "second");
     assert_eq!(gw.provider_calls(), 2);

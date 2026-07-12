@@ -29,10 +29,12 @@ use super::activate::intercept_activations;
 use super::attempt::{attempt_turn, fail_run, finish_run, CompactState};
 use super::ceiling::wrap_up_at_ceiling;
 use super::compact::{estimate_tool_tokens, DEFAULT_COMPACT_BUDGET_TOKENS};
-use super::loop_detector::{LoopDetector, LoopSignal, DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 use super::decision::{open_suspension, resume_suspensions};
 use super::error::AgentError;
 use super::exfil::tainted_tools;
+use super::loop_detector::{
+    LoopDetector, LoopSignal, DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING,
+};
 use super::model_access::{AllowedTool, ModelAccess};
 use super::partition::partition_by_policy;
 use super::policy::load_policy;
@@ -114,8 +116,7 @@ pub async fn run_session<M: ModelAccess>(
     // the transcript is empty and this yields just the system + goal seed (the old starting point);
     // on resume it reconstructs `messages` + `prior` + active skills so the model continues, not
     // re-asks.
-    let all_events: Vec<&TranscriptEvent> =
-        events.iter().copied().chain(healed.iter()).collect();
+    let all_events: Vec<&TranscriptEvent> = events.iter().copied().chain(healed.iter()).collect();
     let mut state = rehydrate(SYSTEM_PROMPT, goal, &all_events);
     let events = all_events;
 
@@ -164,7 +165,16 @@ pub async fn run_session<M: ModelAccess>(
     // Seed the live context (never persisted; re-injected per segment): the granted-skills catalog
     // (Part 5, persona-filtered), the memory index (on-behalf-of read), and — on resume — the
     // bodies of previously-activated skills. See `seed_context.rs` for the full rationale.
-    inject_context(node, &agent, caller, agent_caps, ws, persona_catalog, &mut state).await?;
+    inject_context(
+        node,
+        &agent,
+        caller,
+        agent_caps,
+        ws,
+        persona_catalog,
+        &mut state,
+    )
+    .await?;
 
     // RESUME PAST A SETTLED SUSPENSION (Part 2). A run that suspended on an Ask re-enters here with
     // an open suspension in its transcript. Apply the settled decision (Deny → denied result;
@@ -322,13 +332,17 @@ pub async fn run_session<M: ModelAccess>(
             Some(d) => to_run.into_iter().partition(|c| !d.should_block(c)),
             None => (to_run, Vec::new()),
         };
-        denied.extend(blocked.into_iter().map(|c| super::model_access::CallOutcome {
-            id: c.id.clone(),
-            name: c.name.clone(),
-            input: c.input.clone(),
-            ok: None,
-            error: Some(LOOP_BLOCKED.to_string()),
-        }));
+        denied.extend(
+            blocked
+                .into_iter()
+                .map(|c| super::model_access::CallOutcome {
+                    id: c.id.clone(),
+                    name: c.name.clone(),
+                    input: c.input.clone(),
+                    ok: None,
+                    error: Some(LOOP_BLOCKED.to_string()),
+                }),
+        );
 
         // ASK → suspend durably and return. We open a suspension for each Ask call (each gets its own
         // `agent_decision` record + transcript `SuspensionOpened`), then end the turn — the run is now

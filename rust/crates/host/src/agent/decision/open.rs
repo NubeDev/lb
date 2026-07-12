@@ -57,7 +57,9 @@ pub async fn open_suspension(
         Ok(()) => {}
         Err(StoreError::Conflict) => {
             // Already open: make sure the job is suspended, then return without re-appending.
-            suspend(&node.store, ws, job_id).await.map_err(AgentError::from)?;
+            suspend(&node.store, ws, job_id)
+                .await
+                .map_err(AgentError::from)?;
             return Ok(());
         }
         Err(e) => return Err(e.into()),
@@ -79,7 +81,9 @@ pub async fn open_suspension(
         .await?;
 
     // 4. Suspend the job — terminal for this turn, restartable when the decision settles.
-    suspend(&node.store, ws, job_id).await.map_err(AgentError::from)?;
+    suspend(&node.store, ws, job_id)
+        .await
+        .map_err(AgentError::from)?;
 
     Ok(())
 }

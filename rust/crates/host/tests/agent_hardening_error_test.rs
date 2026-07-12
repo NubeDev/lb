@@ -84,7 +84,12 @@ async fn a_persistent_transient_fault_fails_the_run_honestly() {
     let ws = "hard-exhaust";
     let node = Arc::new(Node::boot().await.unwrap());
     let fault = || Err(ProviderFault::http(429, Some(0), "rate limited"));
-    let gw = AiGateway::new(MockProvider::scripted(vec![fault(), fault(), fault(), fault()]));
+    let gw = AiGateway::new(MockProvider::scripted(vec![
+        fault(),
+        fault(),
+        fault(),
+        fault(),
+    ]));
 
     let answer = run(&node, ws, "job-exhaust", &gw).await;
     assert!(

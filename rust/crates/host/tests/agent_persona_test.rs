@@ -107,7 +107,11 @@ impl ErasedModel for RecordingModel {
         tools: &'a [AllowedTool],
         _prior: &'a [lb_host::CallOutcome],
         _key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<lb_host::Turn, lb_host::TurnError>> + Send + 'a>> {
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<lb_host::Turn, lb_host::TurnError>> + Send + 'a,
+        >,
+    > {
         {
             let mut c = self.captured.lock().unwrap();
             // Only capture the FIRST turn's menu/seed (the loop may re-ask; we care about assembly).

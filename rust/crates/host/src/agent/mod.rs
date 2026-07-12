@@ -65,7 +65,6 @@ pub use compact::{
     compact_to_budget, estimate_message_tokens, estimate_tool_tokens, BREADCRUMB_PREFIX,
     DEFAULT_COMPACT_BUDGET_TOKENS,
 };
-pub use loop_detector::{DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 pub use config::{
     agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
     ModelEndpointPatch, AGENT_CONFIG_TABLE,
@@ -87,6 +86,7 @@ pub use exfil::EXFIL_DENIED;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
+pub use loop_detector::{DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 pub use memory::{
     call_agent_memory_tool, memory_delete, memory_get, memory_index_for_injection, memory_list,
     memory_set, render_index, Memory, MemoryKind, MemoryScope, INJECT_CAP, MAX_BODY,

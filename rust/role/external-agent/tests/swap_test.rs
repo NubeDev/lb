@@ -68,7 +68,8 @@ impl ErasedModel for NullModel {
         _tools: &'a [lb_host::AllowedTool],
         _prior: &'a [lb_host::CallOutcome],
         _key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Turn, TurnError>> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Turn, TurnError>> + Send + 'a>>
+    {
         Box::pin(async {
             Ok(Turn {
                 content: String::new(),

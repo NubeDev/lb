@@ -152,8 +152,7 @@ impl LoopDetector {
         }
         match &self.flagged {
             Some(flag) => {
-                flag.tool == call.name
-                    && flag.args.map(|a| a == fnv1a(&call.input)).unwrap_or(true)
+                flag.tool == call.name && flag.args.map(|a| a == fnv1a(&call.input)).unwrap_or(true)
             }
             None => false,
         }
@@ -166,12 +165,10 @@ impl LoopDetector {
         }
         let tail: Vec<&Sig> = self.window.iter().rev().take(EXACT_REPEAT).collect();
         let first = tail[0];
-        tail.iter()
-            .all(|s| *s == first)
-            .then(|| Flag {
-                tool: first.tool.clone(),
-                args: Some(first.args),
-            })
+        tail.iter().all(|s| *s == first).then(|| Flag {
+            tool: first.tool.clone(),
+            args: Some(first.args),
+        })
     }
 
     /// A,B,A,B… alternation (A ≠ B) sustained for `PING_PONG_CYCLES` cycles (2× that in calls).
@@ -326,7 +323,11 @@ mod tests {
                 outcome("other.tool", &format!("{{x-{i}}}"), &format!("v{i}")),
             ]);
         }
-        assert_eq!(fired, Some(LoopSignal::Warn), "interleaving must not evade the window");
+        assert_eq!(
+            fired,
+            Some(LoopSignal::Warn),
+            "interleaving must not evade the window"
+        );
         // Its block flag matches the tool regardless of args (the spiral varies them).
         d.observe(&[outcome("q.run", "{sql-9}", "empty")]);
         assert!(d.should_block(&call("q.run", "{anything}")));

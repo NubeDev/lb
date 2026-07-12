@@ -202,10 +202,7 @@ async fn a_plain_400_classifies_as_fatal() {
     .await;
 
     let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
-    let fault = gw
-        .complete(&request())
-        .await
-        .expect_err("a 400 is a fault");
+    let fault = gw.complete(&request()).await.expect_err("a 400 is a fault");
     assert_eq!(fault.status, Some(400));
     assert_eq!(fault.lane(), FaultLane::Fatal);
 }
@@ -413,10 +410,7 @@ async fn a_429_carries_the_retry_after_header_seconds() {
     .await;
 
     let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
-    let fault = gw
-        .complete(&request())
-        .await
-        .expect_err("a 429 is a fault");
+    let fault = gw.complete(&request()).await.expect_err("a 429 is a fault");
     assert_eq!(fault.status, Some(429));
     assert_eq!(fault.retry_after_secs, Some(2));
     assert_eq!(fault.lane(), FaultLane::Transient);

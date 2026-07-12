@@ -38,8 +38,14 @@ fn conversation(n: usize) -> Vec<Msg> {
         if i == n / 2 {
             m.push(msg("system", "[skill mid-run] injected body"));
         }
-        m.push(msg("assistant", &format!("assistant-turn-{i:02} {}", "x".repeat(40))));
-        m.push(msg("tool", &format!("tool-summary-{i:02} {}", "y".repeat(40))));
+        m.push(msg(
+            "assistant",
+            &format!("assistant-turn-{i:02} {}", "x".repeat(40)),
+        ));
+        m.push(msg(
+            "tool",
+            &format!("tool-summary-{i:02} {}", "y".repeat(40)),
+        ));
     }
     m
 }
@@ -55,24 +61,41 @@ fn groups_drop_whole_never_split_and_protected_content_survives() {
     assert!(m.contains(&original[0]), "the system seed survives");
     assert!(m.contains(&original[1]), "the goal survives");
     assert!(
-        m.iter().any(|(r, c)| r == "system" && c.starts_with("[skill mid-run]")),
+        m.iter()
+            .any(|(r, c)| r == "system" && c.starts_with("[skill mid-run]")),
         "an injected system line survives compaction"
     );
     let last_assistant = original[original.len() - 2].clone();
     let last_tool = original[original.len() - 1].clone();
-    assert!(m.contains(&last_assistant) && m.contains(&last_tool), "the latest group survives");
+    assert!(
+        m.contains(&last_assistant) && m.contains(&last_tool),
+        "the latest group survives"
+    );
 
     // Atomicity: for every turn i, the assistant message and its tool summary live or die together.
     for i in 0..10 {
-        let a = m.iter().any(|(_, c)| c.starts_with(&format!("assistant-turn-{i:02}")));
-        let t = m.iter().any(|(_, c)| c.starts_with(&format!("tool-summary-{i:02}")));
-        assert_eq!(a, t, "group {i} was split (assistant retained={a}, tool retained={t})");
+        let a = m
+            .iter()
+            .any(|(_, c)| c.starts_with(&format!("assistant-turn-{i:02}")));
+        let t = m
+            .iter()
+            .any(|(_, c)| c.starts_with(&format!("tool-summary-{i:02}")));
+        assert_eq!(
+            a, t,
+            "group {i} was split (assistant retained={a}, tool retained={t})"
+        );
     }
 
     // Exactly one breadcrumb, carrying the drop count.
-    let crumbs: Vec<&Msg> = m.iter().filter(|(_, c)| c.starts_with(BREADCRUMB_PREFIX)).collect();
+    let crumbs: Vec<&Msg> = m
+        .iter()
+        .filter(|(_, c)| c.starts_with(BREADCRUMB_PREFIX))
+        .collect();
     assert_eq!(crumbs.len(), 1, "exactly one breadcrumb");
-    assert!(crumbs[0].1.contains(&format!("{dropped} turns")), "breadcrumb counts the drops");
+    assert!(
+        crumbs[0].1.contains(&format!("{dropped} turns")),
+        "breadcrumb counts the drops"
+    );
 
     // Subsequence: the retained non-breadcrumb messages appear in the original, in order.
     let mut it = original.iter();
@@ -97,13 +120,26 @@ fn under_budget_is_untouched_and_recompaction_keeps_one_cumulative_breadcrumb() 
     assert!(d1 > 0);
     // Grow the tail again, compact harder.
     for i in 10..16 {
-        m.push(msg("assistant", &format!("assistant-turn-{i:02} {}", "x".repeat(40))));
-        m.push(msg("tool", &format!("tool-summary-{i:02} {}", "y".repeat(40))));
+        m.push(msg(
+            "assistant",
+            &format!("assistant-turn-{i:02} {}", "x".repeat(40)),
+        ));
+        m.push(msg(
+            "tool",
+            &format!("tool-summary-{i:02} {}", "y".repeat(40)),
+        ));
     }
     let d2 = compact_to_budget(&mut m, 100, 0, d1);
     assert!(d2 > 0);
-    let crumbs: Vec<&Msg> = m.iter().filter(|(_, c)| c.starts_with(BREADCRUMB_PREFIX)).collect();
-    assert_eq!(crumbs.len(), 1, "re-compaction replaces, never stacks, the breadcrumb");
+    let crumbs: Vec<&Msg> = m
+        .iter()
+        .filter(|(_, c)| c.starts_with(BREADCRUMB_PREFIX))
+        .collect();
+    assert_eq!(
+        crumbs.len(),
+        1,
+        "re-compaction replaces, never stacks, the breadcrumb"
+    );
     assert!(
         crumbs[0].1.contains(&format!("{} turns", d1 + d2)),
         "the breadcrumb is cumulative: {}",
@@ -118,7 +154,10 @@ fn nothing_droppable_returns_zero_not_a_mangled_seed() {
     let before = m.clone();
     assert_eq!(compact_to_budget(&mut m, 1, 0, 0), 0);
     assert_eq!(m, before, "protected-only content is never mangled");
-    assert!(estimate_message_tokens(&m) > 1, "and it genuinely was over budget");
+    assert!(
+        estimate_message_tokens(&m) > 1,
+        "and it genuinely was over budget"
+    );
 }
 
 // ── integration: overflow → compact → continue the SAME run ─────────────────────────────────────
@@ -218,9 +257,16 @@ async fn a_provider_overflow_is_recovered_by_compaction_and_the_run_continues() 
     });
 
     let answer = drive(&node, ws, "job-overflow", &gw).await;
-    assert_eq!(answer, "recovered after compaction", "the SAME run continued");
     assert_eq!(
-        lb_jobs::load(&node.store, ws, "job-overflow").await.unwrap().unwrap().status,
+        answer, "recovered after compaction",
+        "the SAME run continued"
+    );
+    assert_eq!(
+        lb_jobs::load(&node.store, ws, "job-overflow")
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
         JobStatus::Done
     );
 

@@ -13,9 +13,7 @@
 use std::sync::{Arc, Mutex};
 
 use lb_auth::{mint, verify, Claims, Principal, Role, SigningKey};
-use lb_host::{
-    agent_config_set, invoke, AgentConfig, AllowedTool, Invocation, Node, EXFIL_DENIED,
-};
+use lb_host::{agent_config_set, invoke, AgentConfig, AllowedTool, Invocation, Node, EXFIL_DENIED};
 use lb_jobs::TranscriptEvent;
 use lb_mcp::ToolDescriptor;
 use lb_role_ai_gateway::{AiGateway, AiRequest, AiResponse, Provider, ProviderFault, ToolCall};

@@ -123,14 +123,21 @@ async fn an_identical_call_spiral_climbs_warn_block_break() {
 
     // The ladder's shape: turn 3 fired Warn → turn 4's request carries the corrective message.
     let seen = seen.lock().unwrap();
-    assert_eq!(seen.len(), 5, "warn at 3, block at 4, break at 5 — five provider calls");
+    assert_eq!(
+        seen.len(),
+        5,
+        "warn at 3, block at 4, break at 5 — five provider calls"
+    );
     assert!(
         seen[3].iter().any(|(_, c)| c == LOOP_WARNING),
         "the model was warned before being blocked"
     );
 
     // Block: turn 5's proposal was refused pre-dispatch, error-as-observation in the transcript.
-    let job = lb_jobs::load(&node.store, ws, "job-spiral").await.unwrap().unwrap();
+    let job = lb_jobs::load(&node.store, ws, "job-spiral")
+        .await
+        .unwrap()
+        .unwrap();
     assert!(
         job.events().any(|e| matches!(
             e,
@@ -163,11 +170,19 @@ async fn loop_window_zero_disables_the_detector_for_that_workspace_only() {
     // call) — the detector never intervenes.
     let seen = Arc::new(Mutex::new(Vec::new()));
     let gw = AiGateway::new(CapturingScript {
-        script: Mutex::new((0..MAX_STEPS as usize + 1).map(|i| Ok(same_call(i))).collect()),
+        script: Mutex::new(
+            (0..MAX_STEPS as usize + 1)
+                .map(|i| Ok(same_call(i)))
+                .collect(),
+        ),
         seen: seen.clone(),
     });
     let (answer, status) = drive(&node, ws_off, "job-undetected", &gw).await;
-    assert_eq!(status, JobStatus::Done, "no detector break in the opted-out ws");
+    assert_eq!(
+        status,
+        JobStatus::Done,
+        "no detector break in the opted-out ws"
+    );
     assert!(
         answer.contains("turn ceiling"),
         "the run ran to the honest ceiling instead: {answer}"
@@ -185,7 +200,11 @@ async fn loop_window_zero_disables_the_detector_for_that_workspace_only() {
         seen: seen2.clone(),
     });
     let (_, status2) = drive(&node, "detector-default-ws", "job-detected", &gw2).await;
-    assert_eq!(status2, JobStatus::Failed, "the default ws still breaks the spiral");
+    assert_eq!(
+        status2,
+        JobStatus::Failed,
+        "the default ws still breaks the spiral"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -227,7 +246,10 @@ async fn the_ceiling_exit_makes_one_tools_free_summary_call() {
     // The summary request was TOOLS-FREE: exactly one more provider call than the ceiling, and the
     // summary turn is persisted as a normal assistant turn (watchers/transcript carry it).
     assert_eq!(seen.lock().unwrap().len() as u32, MAX_STEPS + 1);
-    let job = lb_jobs::load(&node.store, ws, "job-ceiling").await.unwrap().unwrap();
+    let job = lb_jobs::load(&node.store, ws, "job-ceiling")
+        .await
+        .unwrap()
+        .unwrap();
     assert!(job.events().any(|e| matches!(
         e,
         TranscriptEvent::AssistantTurn { content } if content.contains("I mapped the schema")
