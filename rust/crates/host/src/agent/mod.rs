@@ -20,6 +20,7 @@ mod activate;
 mod attempt;
 mod authorize;
 mod catalog;
+mod ceiling;
 mod compact;
 mod config;
 mod decision;
@@ -30,6 +31,7 @@ mod error;
 mod in_house;
 mod invoke;
 mod invoke_remote;
+mod loop_detector;
 mod memory;
 mod menu;
 mod model_access;
@@ -62,6 +64,7 @@ pub use compact::{
     compact_to_budget, estimate_message_tokens, estimate_tool_tokens, BREADCRUMB_PREFIX,
     DEFAULT_COMPACT_BUDGET_TOKENS,
 };
+pub use loop_detector::{DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 pub use config::{
     agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
     ModelEndpointPatch, AGENT_CONFIG_TABLE,

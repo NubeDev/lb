@@ -141,3 +141,26 @@ pub(super) async fn fail_run(
     .await;
     Ok(answer)
 }
+
+/// The normal terminal exit: mark the job **Done** and end the watcher's stream with
+/// `RunFinish(Done)` carrying the final answer (best-effort motion — the durable status is the
+/// record; `project` derives the same RunFinish on reattach).
+pub(super) async fn finish_run(
+    node: &Node,
+    ws: &str,
+    job_id: &str,
+    answer: String,
+) -> Result<String, AgentError> {
+    complete(&node.store, ws, job_id, JobStatus::Done).await?;
+    publish_run_event(
+        &node.bus,
+        ws,
+        job_id,
+        &RunEvent::RunFinish {
+            outcome: RunOutcome::Done,
+            answer: answer.clone(),
+        },
+    )
+    .await;
+    Ok(answer)
+}

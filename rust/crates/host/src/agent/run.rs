@@ -23,11 +23,13 @@
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
+use lb_jobs::{cancel, create, load, Job, TranscriptEvent};
 
 use super::activate::intercept_activations;
-use super::attempt::{attempt_turn, fail_run, CompactState};
+use super::attempt::{attempt_turn, fail_run, finish_run, CompactState};
+use super::ceiling::wrap_up_at_ceiling;
 use super::compact::{estimate_tool_tokens, DEFAULT_COMPACT_BUDGET_TOKENS};
+use super::loop_detector::{LoopDetector, LoopSignal, DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 use super::decision::{open_suspension, resume_suspensions};
 use super::error::AgentError;
 use super::model_access::{AllowedTool, ModelAccess};
@@ -35,11 +37,9 @@ use super::partition::partition_by_policy;
 use super::policy::load_policy;
 use super::rehydrate::{rehydrate, summarize};
 use super::seed_context::inject_context;
-use super::step::{count_turns, is_cancelled, is_paused, run_calls};
+use super::step::{count_turns, is_cancelled, is_paused, pause_exit, run_calls};
 use super::transcript::TranscriptWriter;
 use crate::boot::Node;
-use crate::run_events::publish_run_event;
-use lb_run_events::{RunEvent, RunOutcome};
 
 /// The loop ceiling, counted in **model turns**. A fixed default at S5 (a per-workspace policy is a
 /// scope follow-up). The transcript may hold more than `MAX_STEPS` events (several per turn).
@@ -125,19 +125,19 @@ pub async fn run_session<M: ModelAccess>(
     // floor can't beat a blanket Allow under the evaluator's Deny>Allow>Ask precedence).
     let policy = load_policy(&node.store, ws).await?;
 
-    // CONTEXT COMPACTION (slice A): the run's budget — the workspace's `agent.config.compact_budget`
-    // when set, else the node default — plus the tool-schema cost (rides every request) and the
-    // cumulative dropped-group counter the breadcrumb reports. Read once per run, like the policy.
+    // The hardening knobs, read once per run (like the policy) from `agent.config`:
+    // slice A's compaction budget and slice B's loop-detector window (0 disables).
+    let cfg = super::config::get_agent_config(&node.store, ws)
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default();
     let mut compact_state = CompactState {
-        budget_tokens: super::config::get_agent_config(&node.store, ws)
-            .await
-            .ok()
-            .flatten()
-            .and_then(|c| c.compact_budget)
-            .unwrap_or(DEFAULT_COMPACT_BUDGET_TOKENS),
+        budget_tokens: cfg.compact_budget.unwrap_or(DEFAULT_COMPACT_BUDGET_TOKENS),
         tool_tokens: estimate_tool_tokens(tools),
         dropped: 0,
     };
+    let mut detector = LoopDetector::new(cfg.loop_window.unwrap_or(DEFAULT_LOOP_WINDOW));
 
     // Seed the live context (never persisted; re-injected per segment): the granted-skills catalog
     // (Part 5, persona-filtered), the memory index (on-behalf-of read), and — on resume — the
@@ -192,16 +192,7 @@ pub async fn run_session<M: ModelAccess>(
         // an error and NOT terminal like cancel — the job stays `Suspended` (resumable). Checked after
         // cancel so a run cancelled AND paused resolves as cancelled (terminal wins).
         if is_paused(node, ws, job_id).await? {
-            publish_run_event(
-                &node.bus,
-                ws,
-                job_id,
-                &RunEvent::RunFinish {
-                    outcome: RunOutcome::Suspended,
-                    answer: state.last_content.clone(),
-                },
-            )
-            .await;
+            pause_exit(node, ws, job_id, &state.last_content).await;
             return Ok(state.last_content);
         }
 
@@ -302,6 +293,21 @@ pub async fn run_session<M: ModelAccess>(
         let parts = partition_by_policy(model_calls, &policy, persona_preset);
         let (to_run, mut denied, ask) = (parts.to_run, parts.denied, parts.ask);
 
+        // LOOP DETECTOR — the block rung (slice B): on the second consecutive strike, calls that
+        // match the fired pattern are refused pre-dispatch, error-as-observation (the model is
+        // told; the loop continues). Only matching calls are blocked — new approaches dispatch.
+        let (to_run, blocked): (Vec<_>, Vec<_>) = match &detector {
+            Some(d) => to_run.into_iter().partition(|c| !d.should_block(c)),
+            None => (to_run, Vec::new()),
+        };
+        denied.extend(blocked.into_iter().map(|c| super::model_access::CallOutcome {
+            id: c.id.clone(),
+            name: c.name.clone(),
+            input: c.input.clone(),
+            ok: None,
+            error: Some(LOOP_BLOCKED.to_string()),
+        }));
+
         // ASK → suspend durably and return. We open a suspension for each Ask call (each gets its own
         // `agent_decision` record + transcript `SuspensionOpened`), then end the turn — the run is now
         // `Suspended` and resumes when the decision settles. We suspend BEFORE running the Allowed
@@ -313,18 +319,9 @@ pub async fn run_session<M: ModelAccess>(
                 // the stream follows the record (Part 3), one projection for live and snapshot.
                 open_suspension(&mut writer, &agent, &c.id, ts).await?;
             }
-            // The run is now `Suspended` — emit a terminal RunFinish(Suspended) so a watcher's stream
-            // ends cleanly for this turn (it resumes via a fresh watch after the decision settles).
-            publish_run_event(
-                &node.bus,
-                ws,
-                job_id,
-                &RunEvent::RunFinish {
-                    outcome: RunOutcome::Suspended,
-                    answer: state.last_content.clone(),
-                },
-            )
-            .await;
+            // The run is now `Suspended` — end the watcher's stream cleanly for this turn (it
+            // resumes via a fresh watch after the decision settles).
+            pause_exit(node, ws, job_id, &state.last_content).await;
             return Ok(state.last_content);
         }
 
@@ -349,39 +346,45 @@ pub async fn run_session<M: ModelAccess>(
         // Mirror the durable results into the live conversation, identically to a rehydrated fold.
         let summary = summarize(&outcomes);
         state.messages.push(("tool".into(), summary));
+
+        // LOOP DETECTOR — observe this turn's (tool, args-hash, result-hash) triples and climb the
+        // ladder: warn (a corrective message the model sees) → block (handled above next turn) →
+        // break (an honest terminal). A genuinely new result resets the ladder inside `observe`.
+        if let Some(signal) = detector.as_mut().and_then(|d| d.observe(&outcomes)) {
+            match signal {
+                LoopSignal::Warn => {
+                    // Live-context only (like the nudge): a resume replays the same turn key and
+                    // re-warns deterministically.
+                    state.messages.push(("user".into(), LOOP_WARNING.into()));
+                }
+                LoopSignal::Block => {}
+                LoopSignal::Break => {
+                    // The run is going in circles despite the warn + block rungs — end honestly.
+                    writer.cancel_pending().await?;
+                    return fail_run(
+                        node,
+                        ws,
+                        job_id,
+                        &state.last_content,
+                        "loop detector: repeated tool calls with no progress — the run was ended \
+                         after a warning and a block were ignored",
+                    )
+                    .await;
+                }
+            }
+        }
+
         state.prior = outcomes;
         turn_no += 1;
     }
 
-    // CEILING EXIT: the model was still proposing calls when MAX_STEPS ran out. Say so — a silent
-    // `Done` with whatever text a mid-work turn happened to carry (often nothing) reads as a broken
-    // or empty answer in the dock. The note is part of the answer (both runtimes' one channel).
+    // CEILING EXIT (slice B): the model was still proposing calls when MAX_STEPS ran out — one
+    // tools-free summary + the honest note (see `ceiling.rs`), never a silent mid-work `Done`.
     if !model_finished {
-        let note = format!(
-            "[the run stopped at its {MAX_STEPS}-turn ceiling before the agent finished; \
-             tool effects already applied are saved — ask again to continue the task]"
-        );
-        state.last_content = if state.last_content.is_empty() {
-            note
-        } else {
-            format!("{}\n\n{note}", state.last_content)
-        };
+        state.last_content = wrap_up_at_ceiling(model, &mut writer, &state, turn_no).await?;
     }
 
-    complete(&node.store, ws, job_id, JobStatus::Done).await?;
-    // The terminal motion: a watcher's stream ends with the final answer (Part 3). Best-effort —
-    // the durable `Done` status is the record; `project` derives the same RunFinish on reattach.
-    publish_run_event(
-        &node.bus,
-        ws,
-        job_id,
-        &RunEvent::RunFinish {
-            outcome: RunOutcome::Done,
-            answer: state.last_content.clone(),
-        },
-    )
-    .await;
-    Ok(state.last_content)
+    finish_run(node, ws, job_id, state.last_content).await
 }
 
 /// Cancel a run — the durable stop hook (Part 0). A UI stop button and ACP `session/cancel` both

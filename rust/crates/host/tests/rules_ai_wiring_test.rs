@@ -79,6 +79,7 @@ async fn select_model(node: &Arc<Node>, ws: &str) {
     let admin = principal("user:admin", ws, &[CONFIG_SET]);
     let patch = AgentConfig {
         compact_budget: None,
+        loop_window: None,
         active_definition: None,
         active_persona: None,
         enabled_personas: None,

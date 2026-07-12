@@ -11,10 +11,12 @@ use std::sync::Arc;
 
 use lb_auth::Principal;
 use lb_jobs::{load, JobStatus, TranscriptEvent};
+use lb_run_events::{RunEvent, RunOutcome};
 
 use super::error::AgentError;
 use super::model_access::{CallOutcome, ProposedCall};
 use crate::boot::Node;
+use crate::run_events::publish_run_event;
 use crate::tool_call::call_tool;
 
 /// Re-read the durable job to see whether it was cancelled mid-run (agent-run scope Part 0). Cheap at
@@ -86,4 +88,20 @@ pub(crate) async fn run_calls(
         outcomes.push(outcome);
     }
     outcomes
+}
+
+/// The pause exit's motion: emit a terminal `RunFinish(Suspended)` so a watcher's stream ends
+/// cleanly for this turn (it resumes via a fresh watch after `resume_run`). The job status is
+/// already `Suspended` (that IS the pause); the transcript + cursor are intact.
+pub(super) async fn pause_exit(node: &Node, ws: &str, job_id: &str, answer: &str) {
+    publish_run_event(
+        &node.bus,
+        ws,
+        job_id,
+        &RunEvent::RunFinish {
+            outcome: RunOutcome::Suspended,
+            answer: answer.to_string(),
+        },
+    )
+    .await;
 }

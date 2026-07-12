@@ -36,6 +36,7 @@ fn principal(sub: &str, ws: &str, caps: &[&str]) -> Principal {
 fn sample_patch() -> AgentConfig {
     AgentConfig {
         compact_budget: None,
+        loop_window: None,
         active_definition: None,
         active_persona: None,
         enabled_personas: None,
@@ -161,6 +162,7 @@ async fn setting_an_unknown_runtime_is_rejected() {
 
     let patch = AgentConfig {
         compact_budget: None,
+        loop_window: None,
         active_definition: None,
         active_persona: None,
         enabled_personas: None,

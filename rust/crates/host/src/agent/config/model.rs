@@ -74,4 +74,10 @@ pub struct AgentConfig {
     /// A flat number by decision — per-model context metadata is an agent-catalog follow-up.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compact_budget: Option<u32>,
+    /// The in-house loop detector's sliding-window size (agent-loop-hardening slice B). `None` →
+    /// the node default ([`DEFAULT_LOOP_WINDOW`](crate::agent::DEFAULT_LOOP_WINDOW), 20); `0`
+    /// disables the detector. The rule thresholds (repeat 3 / ping-pong 4 / no-progress 5) stay
+    /// node constants by decision — config the on/off + window, not the numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_window: Option<u32>,
 }
