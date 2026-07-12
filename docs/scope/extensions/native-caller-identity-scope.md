@@ -171,6 +171,15 @@ Real infra, no mocks (rule 4), mirroring `native-callback-transport`'s live-gate
   byte-for-byte today's behaviour (proven by the still-green entity-scoped suite + a dedicated test).
 - ✅ **Caller projection fidelity** — **minimal shipped**: `{sub, ws, role, delegated}`. The subject's
   caps are resolved server-side behind the delegation cap, so the caller's caps never ride the wire.
+  **Follow-up (`sdk-v0.4.1` / `node-v0.4.1`): added `admin: bool`.** The minimal projection was a
+  half-measure: `role` is *cosmetic* in lb (the gateway mints every session as `member`; admin power
+  rides caps, never the role enum — `lb-role-gateway::session::credentials`), so a sidecar that
+  bypasses its row filter for admins had NO usable signal — `role` said `member` for admins and
+  guardians alike, and the projection deliberately omits caps. `admin` closes that: the host derives
+  it once from the caller's caps (`lb_host::caps_hold_admin`, the admin-only cap delta) and hands the
+  child one boolean. Additive-by-absence; a caller is only ever treated as LESS privileged if a stale
+  host omits it. Surfaced downstream by `cc-app` `tests/live_node.rs` (admin reads denied because the
+  chokepoint read the cosmetic role).
 - ⬜ **Does the wasm guest want the same explicit `subject` verb** for symmetry? Left as-is — the
   guest's in-process `call_with_ctx` delegation is sufficient; the `subject` arg is available to a
   guest via `host.call-tool` too, gated by the same delegation cap, if a future guest wants it.

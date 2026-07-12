@@ -27,8 +27,8 @@ mod tool;
 
 pub use builtin_caps::LiveBuiltinRoleCaps;
 pub use builtin_roles::{
-    admin_only_caps, author_caps, ensure_builtin_authz_roles, member_role_caps, viewer_role_caps,
-    workspace_admin_role_caps, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
+    admin_only_caps, author_caps, caps_hold_admin, ensure_builtin_authz_roles, member_role_caps,
+    viewer_role_caps, workspace_admin_role_caps, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
 };
 pub use error::AuthzError;
 pub use grant_ui::grant_ui_scope_to_admin;

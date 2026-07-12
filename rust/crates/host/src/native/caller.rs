@@ -21,6 +21,9 @@ pub(super) fn project(p: &Principal) -> Caller {
         ws: p.ws().to_string(),
         role: role_str(p.role()).to_string(),
         delegated: p.owner_sub() != p.sub(),
+        // Admin is caps-based, not the (cosmetic) role enum — resolve it here so the sidecar reads
+        // one boolean instead of the caps the minimal projection intentionally omits.
+        admin: crate::authz::caps_hold_admin(p.caps()),
     }
 }
 
