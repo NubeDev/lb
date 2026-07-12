@@ -82,6 +82,7 @@ fn definition(id: &str, provider: &str, model: &str) -> AgentDefinition {
 /// UI `pick()` sends). LWW/UPSERT idempotent.
 fn pick_patch(def: &AgentDefinition) -> AgentConfig {
     AgentConfig {
+        compact_budget: None,
         active_definition: Some(def.id.clone()),
         active_persona: None,
         enabled_personas: None,
@@ -443,6 +444,7 @@ async fn a_builtin_pick_resolves_its_sealed_key_from_agent_config() {
         active_definition: Some("builtin.in-house-glm-4.6".into()),
         active_persona: None,
         enabled_personas: None,
+        compact_budget: None,
         default_runtime: Some("default".into()),
         model_endpoint: Some(ModelEndpointPatch {
             api_key_secret: Some(secret_path.into()),

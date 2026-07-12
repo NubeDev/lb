@@ -25,18 +25,18 @@ use std::sync::Arc;
 use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
-use super::activate::{activate_skill, SKILL_ACTIVATE};
+use super::activate::intercept_activations;
 use super::attempt::{attempt_turn, fail_run, CompactState};
 use super::compact::{estimate_tool_tokens, DEFAULT_COMPACT_BUDGET_TOKENS};
-use super::catalog::render_catalog_filtered;
-use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
+use super::decision::{open_suspension, resume_suspensions};
 use super::error::AgentError;
-use super::memory::memory_index_for_injection;
-use super::model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall};
-use super::policy::{evaluate, load_policy, Effect};
+use super::model_access::{AllowedTool, ModelAccess};
+use super::partition::partition_by_policy;
+use super::policy::load_policy;
 use super::rehydrate::{rehydrate, summarize};
-use super::step::{count_turns, emit, is_cancelled, is_paused, run_calls};
-use crate::assets::load_skill;
+use super::seed_context::inject_context;
+use super::step::{count_turns, is_cancelled, is_paused, run_calls};
+use super::transcript::TranscriptWriter;
 use crate::boot::Node;
 use crate::run_events::publish_run_event;
 use lb_run_events::{RunEvent, RunOutcome};
@@ -98,17 +98,25 @@ pub async fn run_session<M: ModelAccess>(
         return Ok(state.last_content);
     }
 
+    // The durable cursor + turn counter, owned by the ONE transcript-write chokepoint (slice C):
+    // every append below goes through `writer`, which also tracks proposed-but-unresolved calls.
+    let events: Vec<&TranscriptEvent> = job.events().collect();
+    let mut turn_no = count_turns(&events);
+    let mut writer = TranscriptWriter::new(node, ws, job_id, job.cursor, turn_no);
+
+    // LOAD-TIME HEAL (slice C's sanitizer): orphaned proposals from a segment that died mid-turn
+    // resolve as `ToolCancelled`, appended at the cursor (never renumbered), then fold into the
+    // rehydrated view below.
+    let healed = writer.heal_orphans(&events).await?;
+
     // Rehydrate the EXACT working state from the durable transcript — the Part-0 fix. On a fresh run
     // the transcript is empty and this yields just the system + goal seed (the old starting point);
     // on resume it reconstructs `messages` + `prior` + active skills so the model continues, not
     // re-asks.
-    let events: Vec<&TranscriptEvent> = job.events().collect();
-    let mut state = rehydrate(SYSTEM_PROMPT, goal, &events);
-
-    // The next transcript slot to append at — also the count of recorded events (the durable
-    // cursor). Turns are counted separately, from the assistant-turn events already recorded.
-    let mut index = job.cursor;
-    let mut turn_no = count_turns(&events);
+    let all_events: Vec<&TranscriptEvent> =
+        events.iter().copied().chain(healed.iter()).collect();
+    let mut state = rehydrate(SYSTEM_PROMPT, goal, &all_events);
+    let events = all_events;
 
     // The workspace permission policy consulted in front of `caps::check` (Part 2). Loaded once per
     // run; default-allow when absent, so a workspace with no policy behaves exactly as before. The
@@ -131,48 +139,10 @@ pub async fn run_session<M: ModelAccess>(
         dropped: 0,
     };
 
-    // MODEL-ACTIVATED SKILLS (Part 5): inject the granted-skills CATALOG (title+description only)
-    // into context ONCE per run, so the model knows what it may `skill.activate`. Resolved decision:
-    // render once + cache, re-inject only on change — here we render once at loop start and inject
-    // once (it is context framing, never persisted to the transcript, so each run/resume re-injects
-    // it cleanly without a rehydrate double-up). FOLLOW-UP: a re-inject-on-change hook (re-render
-    // when the granted set changes mid-run, rare) is deferred — the once-per-run render is the
-    // load-bearing half of the decision. The read is grant- + ws-gated (`render_catalog`); an
-    // ungranted skill never reaches the rendered text.
-    // Filter the catalog to the persona's pinned skills when a persona is active (agent-personas #1) —
-    // the model's advertised skill set matches its focus. `None` → the full granted catalog (unchanged).
-    // The persona's identity + pinned-skill BODIES are already in the goal (baked upstream in
-    // dispatch.rs), so this is the catalog (name+description) half only. The grant is the wall either
-    // way — filtering only removes already-granted entries.
-    if let Some(catalog) = render_catalog_filtered(node, &agent, ws, persona_catalog).await? {
-        state.messages.push(("system".into(), catalog));
-    }
-
-    // AGENT MEMORY (agent-memory scope): inject the derived memory index AFTER the persona + skill
-    // catalog, framed as recalled background (not instructions). Read under an ON-BEHALF-OF principal
-    // — the CALLER's sub (so the `member:{user}` scope resolves to the human behind the run, the same
-    // identity-based contract as the skill/doc gate-3 in `substrate.rs`) with the AGENT's intersected
-    // caps (so the read can never widen). Using the bare `agent:session` sub would resolve
-    // `member:agent:session` and miss the caller's own memory. Best-effort (a deny/empty → no
-    // injection, never a run failure); not persisted, so each run/resume re-injects cleanly.
-    let on_behalf = caller.derive(caller.sub(), agent_caps.to_vec());
-    if let Some(index) = memory_index_for_injection(&node.store, &on_behalf, ws).await {
-        state.messages.push(("system".into(), index));
-    }
-
-    // RESUME: re-inject the bodies of any skills activated in a PRIOR run segment (Part 5 survives
-    // resume — Part 0). `rehydrate` folds `SkillActivated` into `state.active_skills` (de-duped) but
-    // not the body text (it has no store); here we reload each under the grant gate and re-inject, so
-    // a resumed run continues with its activated skills in context. On a fresh run `active_skills` is
-    // empty and this is a no-op. A skill revoked between segments simply drops (grant gate denies),
-    // exactly as it would in the catalog.
-    for id in state.active_skills.clone() {
-        if let Ok(skill) = load_skill(&node.store, &agent, ws, &id, None).await {
-            state
-                .messages
-                .push(("system".into(), format!("[skill {id}]\n{}", skill.body)));
-        }
-    }
+    // Seed the live context (never persisted; re-injected per segment): the granted-skills catalog
+    // (Part 5, persona-filtered), the memory index (on-behalf-of read), and — on resume — the
+    // bodies of previously-activated skills. See `seed_context.rs` for the full rationale.
+    inject_context(node, &agent, caller, agent_caps, ws, persona_catalog, &mut state).await?;
 
     // RESUME PAST A SETTLED SUSPENSION (Part 2). A run that suspended on an Ask re-enters here with
     // an open suspension in its transcript. Apply the settled decision (Deny → denied result;
@@ -183,11 +153,10 @@ pub async fn run_session<M: ModelAccess>(
         .iter()
         .any(|e| matches!(e, TranscriptEvent::SuspensionOpened { .. }))
     {
-        let resumed = resume_suspensions(node, &agent, ws, job_id, &events, index).await?;
+        let resumed = resume_suspensions(node, &agent, &events, &mut writer).await?;
         if resumed.still_pending {
             return Ok(state.last_content);
         }
-        index = resumed.index;
         if !resumed.outcomes.is_empty() {
             // Mirror the resolved suspension's results into the live conversation, identically to a
             // rehydrated fold, so the next model turn sees them.
@@ -267,20 +236,14 @@ pub async fn run_session<M: ModelAccess>(
         }
 
         // Record the assistant turn durably first (the transcript is the record), then mirror it
-        // into the live message list — and emit the live `RunEvent` (StepStart + TextDelta) for any
-        // watcher (Part 3).
-        emit(
-            node,
-            ws,
-            job_id,
-            index,
-            TranscriptEvent::AssistantTurn {
+        // into the live message list — the writer publishes the live `RunEvent` (StepStart +
+        // TextDelta) for any watcher (Part 3).
+        writer.turn = turn_no;
+        writer
+            .append(TranscriptEvent::AssistantTurn {
                 content: turn.content.clone(),
-            },
-            turn_no,
-        )
-        .await?;
-        index += 1;
+            })
+            .await?;
         if !turn.content.is_empty() {
             state
                 .messages
@@ -313,103 +276,31 @@ pub async fn run_session<M: ModelAccess>(
         //   - Deny  → fed a "denied by policy" tool result, never dispatched;
         //   - Ask   → suspend the run durably and end the turn (resumed when a human decides).
         for c in &turn.calls {
-            emit(
-                node,
-                ws,
-                job_id,
-                index,
-                TranscriptEvent::ToolCallProposed {
+            writer
+                .append(TranscriptEvent::ToolCallProposed {
                     id: c.id.clone(),
                     name: c.name.clone(),
                     args: c.input.clone(),
-                },
-                turn_no,
-            )
-            .await?;
-            index += 1;
+                })
+                .await?;
         }
 
-        // MODEL-ACTIVATED SKILLS (Part 5): `skill.activate` is a LOOP-INTERNAL built-in, intercepted
-        // HERE rather than dispatched out through `lb_mcp::call` — the run-state mutation (append
-        // `SkillActivated` + inject the body into context) lives only in the loop, where the
-        // transcript/cursor/messages are. `activate_skill` enforces the S4 grant via `load_skill`
-        // (ungranted → an error result the model sees, never an activation), so the wall holds. On
-        // success we record `SkillActivated` (survives resume — Part 0; `rehydrate` de-dups) BEFORE
-        // the `ToolResult`, then inject the body as a system message for the following turns.
-        let mut activated_outcomes: Vec<CallOutcome> = Vec::new();
-        let mut model_calls: Vec<&ProposedCall> = Vec::new();
-        for c in &turn.calls {
-            if c.name == SKILL_ACTIVATE {
-                let act = activate_skill(&node.store, &agent, ws, &c.id, &c.input).await;
-                if let Some((id, body)) = act.activated {
-                    emit(
-                        node,
-                        ws,
-                        job_id,
-                        index,
-                        TranscriptEvent::SkillActivated { id: id.clone() },
-                        turn_no,
-                    )
-                    .await?;
-                    index += 1;
-                    // Inject the body once into context (idempotent at the conversation level — a
-                    // re-activation re-appends, harmless; the rehydrated `active_skills` de-dups).
-                    state
-                        .messages
-                        .push(("system".into(), format!("[skill {id}]\n{body}")));
-                }
-                activated_outcomes.push(act.outcome);
-            } else {
-                model_calls.push(c);
-            }
-        }
+        // MODEL-ACTIVATED SKILLS (Part 5): `skill.activate` is a LOOP-INTERNAL built-in — the
+        // interception (grant-gated activate + durable SkillActivated/ToolResult + body injection)
+        // lives in `activate.rs::intercept_activations`; the wall holds there.
+        let (mut activated_outcomes, model_calls) = intercept_activations(
+            &node.store,
+            &agent,
+            ws,
+            &turn.calls,
+            &mut writer,
+            &mut state.messages,
+        )
+        .await?;
 
-        // Record each activation's ToolResult durably NOW (before the possible Ask early-return), so
-        // a turn that both activates a skill and suspends still has the activation in its transcript.
-        for o in &activated_outcomes {
-            emit(
-                node,
-                ws,
-                job_id,
-                index,
-                TranscriptEvent::ToolResult {
-                    id: o.id.clone(),
-                    ok: o.ok.clone(),
-                    err: o.error.clone(),
-                },
-                turn_no,
-            )
-            .await?;
-            index += 1;
-        }
-
-        // Evaluate the policy per call (the args are parsed once for the shallow arg match).
-        let mut to_run: Vec<ProposedCall> = Vec::new();
-        let mut denied: Vec<CallOutcome> = Vec::new();
-        let mut ask: Vec<&ProposedCall> = Vec::new();
-        for c in model_calls {
-            let args = serde_json::from_str(&c.input).unwrap_or(serde_json::Value::Null);
-            // Evaluate the ws policy, then apply the persona's supervision FLOOR (persona-coding #4):
-            // a preset Ask/Deny on a node-mutating tool clamps the evaluated effect UP unless the ws
-            // policy explicitly ruled on that exact tool (the auditable loosen). `None` preset → no-op.
-            let effect = super::personas::clamp_to_preset(
-                evaluate(&policy, &c.name, &args),
-                &c.name,
-                &policy,
-                persona_preset,
-            );
-            match effect {
-                Effect::Allow => to_run.push(c.clone()),
-                Effect::Deny => denied.push(CallOutcome {
-                    id: c.id.clone(),
-                    name: c.name.clone(),
-                    input: c.input.clone(),
-                    ok: None,
-                    error: Some(DENIED_BY_POLICY.to_string()),
-                }),
-                Effect::Ask => ask.push(c),
-            }
-        }
+        // Partition the remaining calls by the ws policy + persona floor (see `partition.rs`).
+        let parts = partition_by_policy(model_calls, &policy, persona_preset);
+        let (to_run, mut denied, ask) = (parts.to_run, parts.denied, parts.ask);
 
         // ASK → suspend durably and return. We open a suspension for each Ask call (each gets its own
         // `agent_decision` record + transcript `SuspensionOpened`), then end the turn — the run is now
@@ -418,21 +309,9 @@ pub async fn run_session<M: ModelAccess>(
         // model sees a coherent next-turn state (no half-applied turn racing a human decision).
         if !ask.is_empty() {
             for c in &ask {
-                index = open_suspension(node, &agent, ws, job_id, &c.id, index, ts).await?;
-                // Emit the live `Suspended` delta so a watching lifecycle client (ACP
-                // `session/request_permission`) sees the pause immediately — the durable
-                // `SuspensionOpened` was just written by `open_suspension`, so the stream follows the
-                // record (Part 3). The decision id is the convention `{job}:{tool_call}` (Part 2).
-                publish_run_event(
-                    &node.bus,
-                    ws,
-                    job_id,
-                    &RunEvent::Suspended {
-                        tool_call_id: c.id.clone(),
-                        decision_id: format!("{job_id}:{}", c.id),
-                    },
-                )
-                .await;
+                // The writer's append of `SuspensionOpened` publishes the live `Suspended` delta —
+                // the stream follows the record (Part 3), one projection for live and snapshot.
+                open_suspension(&mut writer, &agent, &c.id, ts).await?;
             }
             // The run is now `Suspended` — emit a terminal RunFinish(Suspended) so a watcher's stream
             // ends cleanly for this turn (it resumes via a fresh watch after the decision settles).
@@ -454,20 +333,13 @@ pub async fn run_session<M: ModelAccess>(
         let mut outcomes = run_calls(node, &agent, ws, &to_run).await;
         outcomes.append(&mut denied);
         for o in &outcomes {
-            emit(
-                node,
-                ws,
-                job_id,
-                index,
-                TranscriptEvent::ToolResult {
+            writer
+                .append(TranscriptEvent::ToolResult {
                     id: o.id.clone(),
                     ok: o.ok.clone(),
                     err: o.error.clone(),
-                },
-                turn_no,
-            )
-            .await?;
-            index += 1;
+                })
+                .await?;
         }
 
         // Fold the activation results (already recorded above) into the live outcomes so the next

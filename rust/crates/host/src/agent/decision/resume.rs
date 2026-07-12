@@ -24,12 +24,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_jobs::{append_event, SuspensionDecision, TranscriptEvent};
+use lb_jobs::{SuspensionDecision, TranscriptEvent};
 
 use super::model::decision_id;
 use super::store::load_decision;
 use crate::agent::model_access::{CallOutcome, ProposedCall};
 use crate::agent::step::run_calls;
+use crate::agent::transcript::TranscriptWriter;
 use crate::boot::Node;
 use crate::AgentError;
 
@@ -39,8 +40,6 @@ pub const DENIED_BY_POLICY: &str = "denied by policy";
 
 /// The outcome of resolving the open suspensions on a resumed run.
 pub struct ResumeOutcome {
-    /// The next free transcript index after the appended settle + result events.
-    pub index: u32,
     /// The tool outcomes produced (one per resolved call) — fed into the loop's `prior`/messages so
     /// the next model turn sees them.
     pub outcomes: Vec<CallOutcome>,
@@ -49,17 +48,17 @@ pub struct ResumeOutcome {
     pub still_pending: bool,
 }
 
-/// Resolve every open suspension in `events` (proposed + opened, not yet resulted) for run `job_id`,
-/// appending the settle + result events starting at `index`. `agent` is the derived principal a
-/// replayed Allow runs under (same authority as the original dispatch).
+/// Resolve every open suspension in `events` (proposed + opened, not yet resulted), appending the
+/// settle + result events through `writer` — the ONE transcript chokepoint (slice C), which owns
+/// the slot index and publishes the live projections. `agent` is the derived principal a replayed
+/// Allow runs under (same authority as the original dispatch).
 pub async fn resume_suspensions(
     node: &Arc<Node>,
     agent: &Principal,
-    ws: &str,
-    job_id: &str,
     events: &[&TranscriptEvent],
-    mut index: u32,
+    writer: &mut TranscriptWriter<'_>,
 ) -> Result<ResumeOutcome, AgentError> {
+    let (ws, job_id) = (writer.ws, writer.job_id);
     let open = open_calls(events);
     let mut outcomes = Vec::new();
     let mut still_pending = false;
@@ -78,18 +77,12 @@ pub async fn resume_suspensions(
         };
 
         // Record that the decision bound (idempotent marker), then the call's result.
-        append_event(
-            &node.store,
-            ws,
-            job_id,
-            index,
-            TranscriptEvent::SuspensionSettled {
+        writer
+            .append(TranscriptEvent::SuspensionSettled {
                 decision_id: did,
                 decision: settled,
-            },
-        )
-        .await?;
-        index += 1;
+            })
+            .await?;
 
         let outcome = match settled {
             SuspensionDecision::Deny => CallOutcome {
@@ -125,24 +118,17 @@ pub async fn resume_suspensions(
             },
         };
 
-        append_event(
-            &node.store,
-            ws,
-            job_id,
-            index,
-            TranscriptEvent::ToolResult {
+        writer
+            .append(TranscriptEvent::ToolResult {
                 id: outcome.id.clone(),
                 ok: outcome.ok.clone(),
                 err: outcome.error.clone(),
-            },
-        )
-        .await?;
-        index += 1;
+            })
+            .await?;
         outcomes.push(outcome);
     }
 
     Ok(ResumeOutcome {
-        index,
         outcomes,
         still_pending,
     })
