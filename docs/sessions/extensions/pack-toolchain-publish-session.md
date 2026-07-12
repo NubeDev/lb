@@ -107,11 +107,22 @@ workspace `.cargo/config.toml`. A normal embedder box with a C toolchain needs n
 
 ## Suite status
 
-`cargo test --workspace --no-fail-fast` run in-session; green except the **pre-existing**
-failing set already recorded (persona catalog/coding, agent_routed, reminder, devkit
-build/e2e, proof_panel — red on clean master, verified before this change; see
-`docs/debugging/` history). No new failures introduced; all pack/devkit/registry/cli
-sign+publish tests green. <!-- final output pasted below when the background run completes -->
+`cargo test --workspace --no-fail-fast` run in-session: 8 failing targets, of which **6 are the
+recorded pre-existing set** (`lb-cli reminder_test`, `lb-devkit build_test`, `lb-host`
+persona_catalog / persona_coding / devkit_e2e / proof_panel — red on clean master; see the
+debugging history). The other two were triaged in-session:
+
+- `lb-host rules_test` — hung under load (another agent was saturating the box), killed;
+  targeted re-run: **22/22 green in 1.4s**.
+- `lb-host federation_test::federation_end_to_end_postgres` — deterministic **stack overflow**,
+  pre-existing/unrelated (no host/federation source in this diff; likely surfaced now because
+  docker is present so the harness stops skipping). Logged open:
+  `docs/debugging/extensions/federation-postgres-e2e-stack-overflow.md`.
+
+No new failures introduced by this change; everything this change touches is green —
+`cargo test -p lb-pack` (5/5 incl. the publishable-chain check), `-p lb-devkit`,
+`-p lb-registry`, `lb-cli sign_test`/`ext_publish_test`, plus
+`cargo check -p lb-devkit --no-default-features` (the standalone stable core).
 
 ## Release
 
