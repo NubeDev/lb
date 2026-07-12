@@ -98,3 +98,15 @@ the safe (join) path is the *only* path and the familiar (funnel) path is unreac
 never chose. Making the input the typed, first-class unit on two axes (port-labelled edges + a declared
 per-port policy) turns the guess into a decision — and the multiplicity must propagate via a carried
 identity (`fctx`), not a depth-1 suffix, or it works at the funnel and silently collapses one hop down.
+
+## Pointer (2026-07-12, append-only)
+
+The `flow-plain-wiring` scope superseded two things this entry describes: the `link-out`/`link-in`
+pair was **removed** (plain multi-wire ports fire per message for every node kind, so the wireless
+collector had nothing left to collect) and the `all` barrier is no longer any port's **default** —
+it survives only as an extension descriptor opt-in (`[[node.input]] join = "all"`). The structural
+fix this entry records (port-labelled edges + the propagated firing context `fctx`) **stands** and
+is the engine of plain wiring. The propagate-one-hop test deferred to "Slice 3" above now lives
+link-free as `funnel_multiplicity_propagates_one_hop_downstream` in `flows_run_test.rs`. See
+`scope/flows/flow-plain-wiring-scope.md`, `sessions/flows/flow-plain-wiring-session.md`, and the
+sibling entry `matched-switch-hangs-run-after-any-default-flip.md`.

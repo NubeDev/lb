@@ -59,6 +59,18 @@ pub fn resolve_value(
     Ok(lookup(reference, recorded, params))
 }
 
+/// The upstream node id a binding value references, when it is a whole-string `${steps.<id>...}`
+/// reference — `None` for literals and `${params.*}`. The save-time cross-branch lint reads this
+/// (flow-plain-wiring-scope): a `${steps.X}` where X can never be in the bound node's firing
+/// lineage is a data-drop mistake, flagged at save instead of silently binding null per firing.
+pub fn referenced_step(value: &Value) -> Option<&str> {
+    let Value::String(s) = value else { return None };
+    match parse_reference(s)? {
+        Reference::Step(id) | Reference::StepPath(id, _) => Some(id),
+        Reference::Param(_) => None,
+    }
+}
+
 enum Reference<'a> {
     Param(&'a str),
     /// The upstream node's whole envelope.
@@ -209,6 +221,17 @@ mod tests {
         params.insert("x".into(), json!("hello"));
         let v = resolve_value(&json!("${params.x}"), &HashMap::new(), &params).unwrap();
         assert_eq!(v, json!("hello"));
+    }
+
+    #[test]
+    fn referenced_step_extracts_the_step_id_only_for_step_references() {
+        assert_eq!(referenced_step(&json!("${steps.a}")), Some("a"));
+        assert_eq!(referenced_step(&json!("${steps.a.payload.x}")), Some("a"));
+        // params, literals, partial interpolations, and non-strings are not step references.
+        assert_eq!(referenced_step(&json!("${params.x}")), None);
+        assert_eq!(referenced_step(&json!("plain")), None);
+        assert_eq!(referenced_step(&json!("pre-${steps.a}")), None);
+        assert_eq!(referenced_step(&json!(42)), None);
     }
 
     #[test]

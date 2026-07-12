@@ -69,14 +69,33 @@ fn rhai_node(id: &str, needs: &[&str], source: &str) -> Node {
     node(id, "rhai", needs, json!({ "source": source }))
 }
 
-/// A `link-out {target}` node forwarding its upstream(s) wirelessly (flow-input-ports-scope Slice 3).
-fn link_out_node(id: &str, target: &str, needs: &[&str]) -> Node {
-    node(id, "link-out", needs, json!({ "target": target }))
-}
-
-/// A `link-in {name}` collector — the `any`-funnel every matching `link-out` resolves onto.
-fn link_in_node(id: &str, name: &str, needs: &[&str]) -> Node {
-    node(id, "link-in", needs, json!({ "name": name }))
+/// Seed an extension install whose one node (`extall.collect`) declares an **explicit `all`**
+/// primary input port — the descriptor-level opt-in flow-plain-wiring-scope keeps. No built-in
+/// declares `all` any more, so the barrier tests use this real install record (seeded through the
+/// real `record_install` write path — no fake registry).
+async fn seed_explicit_all_ext(node: &Arc<HostNode>, ws: &str) {
+    use lb_flows::{InputPort, JoinPolicy};
+    let block = lb_flows::NodeBlock {
+        r#type: "collect".into(),
+        kind: lb_flows::NodeKind::Transform,
+        tool: "collect".into(),
+        title: Some("Collect (all)".into()),
+        category: None,
+        inputs: vec!["payload".into()],
+        outputs: vec!["payload".into()],
+        input_ports: vec![InputPort {
+            name: "payload".into(),
+            join: JoinPolicy::All,
+        }],
+        config_version: 1,
+        config: json!({}),
+    };
+    let install =
+        lb_assets::Install::new("extall", "0.1.0", vec!["mcp:extall.collect:call".into()], 1)
+            .with_nodes(vec![block]);
+    lb_assets::record_install(&node.store, ws, &install)
+        .await
+        .unwrap();
 }
 
 /// Save a flow through the real `flows.save` write path (DAG + config validated).
@@ -207,24 +226,51 @@ async fn count_node_counts_its_input() {
 async fn diamond_frontier_runs_in_dependency_order() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    // `d` joins `b` + `c` (≥2 upstreams), so it MUST bind `payload` explicitly (D3 join lint) —
-    // auto-wire is single-upstream only.
-    let mut d = rhai_node("d", &["b", "c"], "4");
-    d.with.insert("payload".into(), json!("${steps.b.payload}"));
+    // flow-plain-wiring-scope: `d`'s two wires are plain per-message wiring — the diamond join now
+    // fires TWICE (once per arriving branch), each firing auto-wired to its own upstream's message.
+    // No binding demanded, no barrier. (Was: an `all` barrier firing once behind a payload lint.)
     let f = flow(
         "dia",
         vec![
             rhai_node("a", &[], "1"),
             rhai_node("b", &["a"], "2"),
             rhai_node("c", &["a"], "3"),
-            d,
+            rhai_node("d", &["b", "c"], "payload + 10"),
         ],
     );
     save_flow(&node, &p, "ws", &f).await;
     run_flow(&node, &p, "ws", "dia", "dia-run-1").await;
     let snap = runs_get(&node, &p, "ws", "dia-run-1").await;
     assert_eq!(snap["status"], "success");
-    assert_eq!(snap["steps"].as_array().unwrap().len(), 4);
+    // a, b, c settle once each; d settles TWICE (per-message) ⇒ 5 slots.
+    assert_eq!(snap["steps"].as_array().unwrap().len(), 5);
+    let d_slots: Vec<&Value> = snap["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|s| s["id"] == "d")
+        .collect();
+    assert_eq!(d_slots.len(), 2, "the diamond join fires once per branch");
+    let mut fctxs: Vec<&str> = d_slots
+        .iter()
+        .map(|s| s["fctx"].as_str().unwrap_or(""))
+        .collect();
+    fctxs.sort();
+    assert_eq!(
+        fctxs,
+        vec!["d#b", "d#c"],
+        "one minted firing per sibling wire"
+    );
+    let mut payloads: Vec<i64> = d_slots
+        .iter()
+        .map(|s| s["output"]["payload"].as_i64().unwrap())
+        .collect();
+    payloads.sort();
+    assert_eq!(
+        payloads,
+        vec![12, 13],
+        "each firing reads its OWN branch's message"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -531,10 +577,11 @@ async fn auto_wire_flows_the_envelope_end_to_end_with_no_with() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn save_rejects_a_join_with_no_payload_binding() {
+async fn save_is_silent_on_multi_wire_plain_wiring() {
     let node = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    // `j` joins `a` + `b` but binds no `payload` → the save-time join lint rejects it (D3).
+    // flow-plain-wiring-scope: `j` has two plain wires and NO binding — this now saves GREEN (no
+    // bind-payload lint, no policy question). Fail-before: the old `all` default rejected it.
     let f = flow(
         "join",
         vec![
@@ -543,16 +590,13 @@ async fn save_rejects_a_join_with_no_payload_binding() {
             rhai_node("j", &["a", "b"], "3"),
         ],
     );
-    let body = serde_json::to_value(&f).unwrap().to_string();
-    let err = call_tool(&node, &p, "ws", "flows.save", &body)
-        .await
-        .unwrap_err();
-    assert!(matches!(err, lb_mcp::ToolError::BadInput(_)));
-    // ...and saving succeeds once `payload` is bound.
+    let saved = save_flow(&node, &p, "ws", &f).await;
+    assert_eq!(saved["version"], 1);
+    // A binding to an actual upstream is still allowed (and lineage-linted, not policy-linted).
     let mut j = rhai_node("j", &["a", "b"], "3");
     j.with.insert("payload".into(), json!("${steps.a.payload}"));
     let f = flow(
-        "join",
+        "join2",
         vec![rhai_node("a", &[], "1"), rhai_node("b", &[], "2"), j],
     );
     let saved = save_flow(&node, &p, "ws", &f).await;
@@ -881,19 +925,20 @@ async fn save_rejects_a_wire_into_a_node_with_no_input_ports() {
     );
 }
 
-/// The join lint still holds for an `all` (barrier) port — `count` is a transform (default `all`),
-/// so ≥2 wires with no `payload` binding is a data-drop bug, rejected at save. (flow-input-ports-
-/// scope Slice 2: the lint is now per-port policy-aware; an `any` port with N wires is valid.)
+/// The join lint survives ONLY for an **explicit** `all` port (a descriptor opt-in — no built-in
+/// declares one after flow-plain-wiring-scope): ≥2 wires with no `payload` binding is a data-drop
+/// bug, rejected at save. A built-in (`count`) with the same wiring saves green (plain wiring).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn save_still_requires_a_payload_binding_for_a_multi_input_join() {
+async fn save_still_requires_a_payload_binding_for_an_explicit_all_join() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
+    seed_explicit_all_ext(&host, "ws").await;
     let f = flow(
         "join",
         vec![
             rhai_node("a", &[], "1"),
             rhai_node("b", &[], "2"),
-            node("c", "count", &["a", "b"], json!({})), // no `with.payload`
+            node("c", "extall.collect", &["a", "b"], json!({})), // explicit-all, no `with.payload`
         ],
     );
     let body = serde_json::to_value(&f).unwrap().to_string();
@@ -902,8 +947,19 @@ async fn save_still_requires_a_payload_binding_for_a_multi_input_join() {
         .unwrap_err();
     assert!(
         err.to_string().contains("`all` (join) input port"),
-        "expected the all-port join lint, got: {err}"
+        "expected the explicit-all join lint, got: {err}"
     );
+    // The same wiring into a BUILT-IN (default `any`) saves green — the lint retired to the opt-in.
+    let f = flow(
+        "join-plain",
+        vec![
+            rhai_node("a", &[], "1"),
+            rhai_node("b", &[], "2"),
+            node("c", "count", &["a", "b"], json!({})),
+        ],
+    );
+    let saved = save_flow(&host, &p, "ws", &f).await;
+    assert_eq!(saved["version"], 1);
 }
 
 // --- flow-input-ports-scope Slice 2: the `any` funnel runtime + firing context ---
@@ -972,35 +1028,45 @@ async fn any_funnel_fires_once_per_upstream() {
     }
 }
 
-/// The all-`all` barrier is **byte-for-byte unchanged**: a 2-upstream `all` join fires exactly once,
-/// at `fctx=""`, with the today's claim-key shape (no `@fctx` suffix). This is the invariant the
-/// firing-context seam must not disturb (empty `fctx` ⇒ today's key).
+/// The **explicit-`all`** barrier still works (the opt-in flow-plain-wiring-scope keeps): a
+/// 2-upstream explicit-`all` join settles exactly once, at `fctx=""` (no `@fctx` suffix — the
+/// pre-ports claim-key shape). A built-in never barriers (none declares `all` — audited by the
+/// descriptor unit tests); this uses the real ext-install opt-in fixture.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn all_join_barrier_settles_once_at_empty_fctx() {
+async fn explicit_all_join_barrier_settles_once_at_empty_fctx() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    // `rhai` is a transform (default `all`); `j` joins hi + lo with an explicit payload binding.
+    seed_explicit_all_ext(&host, "ws").await;
     let hi = rhai_node("hi", &[], "10");
     let lo = rhai_node("lo", &[], "20");
-    let mut j = rhai_node("j", &["hi", "lo"], "payload");
+    let mut j = node("j", "extall.collect", &["hi", "lo"], json!({}));
     j.with
         .insert("payload".into(), json!("${steps.hi.payload}"));
     let f = flow("ajoin", vec![hi, lo, j]);
     save_flow(&host, &p, "ws", &f).await;
     run_flow(&host, &p, "ws", "ajoin", "ajoin-1").await;
     let snap = runs_get(&host, &p, "ws", "ajoin-1").await;
-    assert_eq!(snap["status"], "success");
-    // The join settles exactly once (a barrier), no firing-context suffix.
+    // The join settles exactly once (a barrier), no firing-context suffix. (Its OUTCOME is `err` —
+    // the fixture ext has no runnable sidecar tool — which is irrelevant here: the barrier count and
+    // key shape are the invariants; the run still reaches a terminal status.)
     let j_slots: Vec<&serde_json::Value> = snap["steps"]
         .as_array()
         .unwrap()
         .iter()
         .filter(|s| s["id"] == "j")
         .collect();
-    assert_eq!(j_slots.len(), 1, "an all-join settles once");
+    assert_eq!(j_slots.len(), 1, "an explicit-all join settles once");
     assert!(
         j_slots[0].get("fctx").is_none() || j_slots[0]["fctx"].as_str() == Some(""),
-        "the all-all common case carries no fctx (today's shape)"
+        "the barrier slot carries no fctx (the pre-ports key shape)"
+    );
+    assert!(
+        matches!(
+            snap["status"].as_str(),
+            Some("partialFailure" | "failed" | "success")
+        ),
+        "the run reaches terminal: {}",
+        snap["status"]
     );
 }
 
@@ -1027,89 +1093,163 @@ async fn workspace_isolation_any_funnel_step_keys() {
     );
 }
 
-// ───────────────────────── flow-input-ports-scope Slice 3: the `link` pair ─────────────────────────
+// ──────────────────────── flow-plain-wiring-scope: plain per-message wiring ────────────────────────
 //
-// THE seam test lives here: a non-sink `any` node (link-in) feeding a downstream transform W must
-// settle W ONCE PER link-in firing — proving the firing context (`fctx`) propagates one hop past the
-// funnel. A naive `#{upstream}` depth-1 suffix settles W ONCE (W has a single wire from link-in ⇒ one
-// slot). Plus the per-firing cap-deny, the per-firing outbox-dedup, exactly-once-on-redelivery one
-// hop past the funnel, and the save-time link topology lints.
+// The link pair is GONE (`link-out`/`link-in` are unknown kinds at save AND at run load) and every
+// port defaults to `any`: N wires onto a port ⇒ one firing per arriving message, exactly Node-RED.
+// The suite covers the headline flip, the switch matched-release fix (the peer-review blocker),
+// lineage bindings, the cross-branch save lint, propagate-vs-mint, fan-out, duplicate-wire collapse,
+// suspend/resume across partial firing sets, and the mandatory cap-deny + ws-isolation categories.
 
-/// A flow `failure_policy` override helper (the default `flow()` builder uses Halt; some link tests
-/// need Continue so independent per-firing failures don't gate each other).
+/// A flow `failure_policy` override helper (the default `flow()` builder uses Halt; some tests need
+/// Continue so independent per-firing failures don't gate each other).
 fn flow_with_policy(id: &str, nodes: Vec<Node>, policy: lb_flows::FailurePolicy) -> Flow {
     let mut f = flow(id, nodes);
     f.failure_policy = policy;
     f
 }
 
-/// THE headline of Slice 3 (the scope's load-bearing fail-before for a naive depth-1 suffix):
-/// `link-in` (`any`, fed by 3 `link-out`s each from a distinct source) → transform `W` (one wire from
-/// link-in) ⇒ **`W` settles THREE times**, each `W@<fctx>` reading its OWN firing's `link-in` message.
-/// A naive `#{upstream}` scheme settles `W` ONCE — this proves the `fctx` propagates past the funnel.
-#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn link_funnel_propagates_one_hop_past_the_funnel() {
-    let host = Arc::new(HostNode::boot().await.unwrap());
-    let p = principal("ws", FULL);
-    // Three independent sources, each forwarded wirelessly onto link-in `T`; W reads link-in.
-    let a = rhai_node("a", &[], "1");
-    let b = rhai_node("b", &[], "2");
-    let c = rhai_node("c", &[], "3");
-    let lo_a = link_out_node("lo-a", "T", &["a"]);
-    let lo_b = link_out_node("lo-b", "T", &["b"]);
-    let lo_c = link_out_node("lo-c", "T", &["c"]);
-    let li = link_in_node("li", "T", &[]);
-    let w = rhai_node("w", &["li"], "payload");
-    let f = flow("linkfun", vec![a, b, c, lo_a, lo_b, lo_c, li, w]);
-    save_flow(&host, &p, "ws", &f).await;
-    run_flow(&host, &p, "ws", "linkfun", "linkfun-1").await;
-    let snap = runs_get(&host, &p, "ws", "linkfun-1").await;
-    assert_eq!(snap["status"], "success", "run reaches terminal (no park)");
+/// Poll `flows.runs.get` until the run reaches `wanted` (e.g. "suspended") AND no slot is still
+/// `running` — the drive batch in flight when the status flips is allowed to finish, so assertions
+/// see the quiesced slot set. Bounded.
+async fn await_run_status(
+    node: &Arc<HostNode>,
+    p: &Principal,
+    ws: &str,
+    run_id: &str,
+    wanted: &str,
+) -> Value {
+    for _ in 0..600 {
+        let snap = runs_get(node, p, ws, run_id).await;
+        let quiesced = snap["steps"]
+            .as_array()
+            .map(|s| s.iter().all(|st| st["claim"] != "running"))
+            .unwrap_or(false);
+        if snap["status"].as_str() == Some(wanted) && quiesced {
+            return snap;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    panic!("run {run_id} never reached a quiesced {wanted}");
+}
 
-    // link-in fires THREE times (one per resolved upstream) — the any-funnel.
-    let li_slots: Vec<&Value> = snap["steps"]
+/// The slots of one node in a snapshot.
+fn slots_of<'a>(snap: &'a Value, id: &str) -> Vec<&'a Value> {
+    snap["steps"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|s| s["id"] == "li")
+        .filter(|s| s["id"] == id)
+        .collect()
+}
+
+/// THE headline (flow-plain-wiring-scope): three wires into an ordinary TRANSFORM fire it once per
+/// arriving message — no barrier, no binding, no link nodes. Each firing carries its own upstream's
+/// payload AND its carried `topic`. One durable whole-graph run. Fail-before: the old `all` default
+/// barriered the transform into one firing behind a bind-payload lint.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn transform_funnels_by_default() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], r#"#{payload: 1, topic: "t.a"}"#);
+    let b = rhai_node("b", &[], r#"#{payload: 2, topic: "t.b"}"#);
+    let c = rhai_node("c", &[], r#"#{payload: 3, topic: "t.c"}"#);
+    let tf = rhai_node("tf", &["a", "b", "c"], "payload * 2");
+    let f = flow("plain", vec![a, b, c, tf]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "plain", "plain-1").await;
+    let snap = runs_get(&host, &p, "ws", "plain-1").await;
+    assert_eq!(snap["status"], "success", "one run, reaches terminal");
+    let tf_slots = slots_of(&snap, "tf");
+    assert_eq!(tf_slots.len(), 3, "three messages in, three firings out");
+    let mut got: Vec<(i64, String)> = tf_slots
+        .iter()
+        .map(|s| {
+            (
+                s["output"]["payload"].as_i64().unwrap(),
+                s["output"]["topic"].as_str().unwrap_or("").to_string(),
+            )
+        })
         .collect();
+    got.sort();
     assert_eq!(
-        li_slots.len(),
-        3,
-        "link-in fires once per resolved upstream"
+        got,
+        vec![
+            (2, "t.a".to_string()),
+            (4, "t.b".to_string()),
+            (6, "t.c".to_string())
+        ],
+        "each firing reads + carries ITS message (payload doubled, topic forwarded)"
     );
+    // Whole-graph posture: 3 sources + 3 tf firings = 6 slots in ONE run.
+    assert_eq!(snap["steps"].as_array().unwrap().len(), 6);
+}
+
+/// Reactive posture of the same flow: firing FROM one source (`entry`) runs only that subgraph —
+/// one run per event, the transform settling ONCE per run (the run-count caveat the scope names:
+/// same per-message behaviour, different run bookkeeping).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn reactive_posture_fires_one_run_per_event() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], "1");
+    let b = rhai_node("b", &[], "2");
+    let c = rhai_node("c", &[], "3");
+    let tf = rhai_node("tf", &["a", "b", "c"], "payload * 2");
+    let f = flow("reactive", vec![a, b, c, tf]);
+    save_flow(&host, &p, "ws", &f).await;
+    for (i, entry) in ["a", "b", "c"].iter().enumerate() {
+        let run_id = format!("re-{i}");
+        let req =
+            json!({ "id": "reactive", "run_id": run_id, "ts": 1, "entry": entry }).to_string();
+        call_tool(&host, &p, "ws", "flows.run", &req).await.unwrap();
+        let snap = await_terminal(&host, &p, "ws", &run_id).await;
+        assert_eq!(snap["status"], "success");
+        assert_eq!(
+            slots_of(&snap, "tf").len(),
+            1,
+            "reactive: one firing per run (entry {entry})"
+        );
+        // Only the fired source + tf are in the run (the induced subgraph).
+        assert_eq!(snap["steps"].as_array().unwrap().len(), 2);
+    }
+}
+
+/// Multiplicity propagates one hop downstream WITHOUT the link pair: a plain 3-wire funnel node
+/// feeding a single-wire transform `w` settles `w` once per funnel firing, each reading its own
+/// firing's message — and the single-wire hop PROPAGATES the funnel's `fctx` (no per-hop mint, no
+/// lineage growth on the chain).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn funnel_multiplicity_propagates_one_hop_downstream() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], "1");
+    let b = rhai_node("b", &[], "2");
+    let c = rhai_node("c", &[], "3");
+    let li = rhai_node("li", &["a", "b", "c"], "payload");
+    let w = rhai_node("w", &["li"], "payload");
+    let f = flow("fun", vec![a, b, c, li, w]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "fun", "fun-1").await;
+    let snap = runs_get(&host, &p, "ws", "fun-1").await;
+    assert_eq!(snap["status"], "success");
+    let li_slots = slots_of(&snap, "li");
+    assert_eq!(li_slots.len(), 3, "the funnel fires once per upstream");
     let mut li_fctxs: Vec<String> = li_slots
         .iter()
         .map(|s| s["fctx"].as_str().unwrap_or("").to_string())
         .collect();
     li_fctxs.sort();
     assert_eq!(li_fctxs, vec!["li#a", "li#b", "li#c"]);
-
-    // THE seam: W (one wire from link-in, `all` transform) settles THREE times — once per link-in
-    // firing — each `W@<fctx>` carrying the matching firing's payload. A depth-1 suffix would settle W
-    // ONCE (W has a single wire ⇒ one slot) and `${steps.li.payload}` would be ambiguous.
-    let w_slots: Vec<&Value> = snap["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| s["id"] == "w")
-        .collect();
-    assert_eq!(
-        w_slots.len(),
-        3,
-        "W settles once per link-in firing (fctx propagates past the funnel)"
-    );
+    let w_slots = slots_of(&snap, "w");
+    assert_eq!(w_slots.len(), 3, "the downstream settles once per firing");
     let mut w_payloads: Vec<i64> = w_slots
         .iter()
         .map(|s| s["output"]["payload"].as_i64().unwrap_or(0))
         .collect();
     w_payloads.sort();
-    assert_eq!(
-        w_payloads,
-        vec![1, 2, 3],
-        "each W reads its OWN firing's message"
-    );
-    // Each W firing's fctx extends its triggering link-in firing (the propagated context).
+    assert_eq!(w_payloads, vec![1, 2, 3], "each w reads its OWN firing");
+    // The single-wire hop PROPAGATES: w's fctxs are the funnel's, not extended per hop.
     let mut w_fctxs: Vec<String> = w_slots
         .iter()
         .map(|s| s["fctx"].as_str().unwrap_or("").to_string())
@@ -1118,106 +1258,69 @@ async fn link_funnel_propagates_one_hop_past_the_funnel() {
     assert_eq!(
         w_fctxs,
         vec!["li#a", "li#b", "li#c"],
-        "W's fctx is the link-in firing it rides on"
-    );
-    // The link-out senders are NOT in the run snapshot (dropped at run load — editor sugar only).
-    assert!(
-        !snap["steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|s| s["id"] == "lo-a" || s["id"] == "lo-b" || s["id"] == "lo-c"),
-        "link-out nodes are dropped from the run graph"
+        "single-wire ports propagate the fctx (no lineage growth on a chain)"
     );
 }
 
-/// Per-firing capability deny: an `any` funnel feeding a `tool` node whose verb the caller lacks is
-/// denied at EACH firing (N err settles, not one swallowed). The no-widening run gate bites per slot.
+/// Mandatory capability-deny, per firing: a 2-wire funnel feeding a `rhai` node whose `rules.eval`
+/// verb the caller lacks is denied at EACH firing (two independent `Err` settles, not one).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn link_funnel_denies_per_firing_at_a_downstream_tool() {
+async fn plain_funnel_denies_per_firing_at_a_downstream_tool() {
     let host = Arc::new(HostNode::boot().await.unwrap());
-    // The caller has NO `mcp:series.write:call` — the tool node's verb is ungranted.
+    // The caller lacks the rhai cage's verbs — the funnel's downstream is denied per slot.
     let mut caps = FULL.to_vec();
     caps.retain(|c| c != &"mcp:rules.run:call" && c != &"mcp:rules.eval:call");
     let p = principal("ws", &caps);
-    let a = rhai_node("a", &[], "1");
-    let b = rhai_node("b", &[], "2");
-    let lo_a = link_out_node("lo-a", "T", &["a"]);
-    let lo_b = link_out_node("lo-b", "T", &["b"]);
-    let li = link_in_node("li", "T", &[]);
-    // A tool node whose verb the caller lacks — each firing is denied, independently.
-    let tool = node(
-        "denied",
-        "tool",
-        &["li"],
-        json!({ "verb": "series.write", "args": {} }),
-    );
+    let a = node("a", "trigger", &[], json!({ "mode": "manual" }));
+    let b = node("b", "trigger", &[], json!({ "mode": "manual" }));
+    let denied = rhai_node("denied", &["a", "b"], "payload");
     let f = flow_with_policy(
-        "linkdeny",
-        vec![a, b, lo_a, lo_b, li, tool],
+        "plaindeny",
+        vec![a, b, denied],
         lb_flows::FailurePolicy::Continue,
     );
     save_flow(&host, &p, "ws", &f).await;
-    run_flow(&host, &p, "ws", "linkdeny", "linkdeny-1").await;
-    let snap = runs_get(&host, &p, "ws", "linkdeny-1").await;
-    // Two firings ⇒ two err settles (not one). The deny bites per (node, fctx) slot.
-    let err_slots: Vec<&Value> = snap["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| s["id"] == "denied" && s["outcome"] == "err")
+    run_flow(&host, &p, "ws", "plaindeny", "plaindeny-1").await;
+    let snap = runs_get(&host, &p, "ws", "plaindeny-1").await;
+    let err_slots: Vec<&Value> = slots_of(&snap, "denied")
+        .into_iter()
+        .filter(|s| s["outcome"] == "err")
         .collect();
     assert_eq!(
         err_slots.len(),
         2,
-        "the denied tool errs once per funnel firing (per-firing deny)"
+        "the deny bites once per (node, fctx) firing: {snap}"
     );
 }
 
-/// Outbox dedup per firing: an `any` funnel feeding a must-deliver sink ⇒ N idempotent outbox
-/// deliveries (one per `fctx`-scoped effect id), not one swallowing the rest. The tripwire the scope
-/// named — the outbox key now carries the `fctx` suffix wherever the node key was used.
+/// Outbox dedup per firing over DIRECT wiring: a 2-wire funnel sink stages two idempotent outbox
+/// effects (one per `fctx`-scoped effect id), not one swallowing the other.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn link_funnel_outbox_dedups_per_firing() {
+async fn plain_funnel_outbox_dedups_per_firing() {
     let host = Arc::new(HostNode::boot().await.unwrap());
-    // The outbox enqueue cap is the one new cap this run needs (under `flows.run` like any node).
     let mut caps = FULL.to_vec();
     caps.push("mcp:outbox.enqueue:call");
     let p = principal("ws", &caps);
     let a = rhai_node("a", &[], "1");
     let b = rhai_node("b", &[], "2");
-    let lo_a = link_out_node("lo-a", "T", &["a"]);
-    let lo_b = link_out_node("lo-b", "T", &["b"]);
-    let li = link_in_node("li", "T", &[]);
     let sink = node(
         "out",
         "sink",
-        &["li"],
-        json!({ "target": "outbox", "name": "link-deliver" }),
+        &["a", "b"],
+        json!({ "target": "outbox", "name": "plain-deliver" }),
     );
-    let f = flow("linkoutbox", vec![a, b, lo_a, lo_b, li, sink]);
+    let f = flow("plainoutbox", vec![a, b, sink]);
     save_flow(&host, &p, "ws", &f).await;
-    run_flow(&host, &p, "ws", "linkoutbox", "linkoutbox-1").await;
-    let snap = runs_get(&host, &p, "ws", "linkoutbox-1").await;
+    run_flow(&host, &p, "ws", "plainoutbox", "plainoutbox-1").await;
+    let snap = runs_get(&host, &p, "ws", "plainoutbox-1").await;
     assert_eq!(snap["status"], "success", "run snapshot: {snap}");
-    // The sink fired TWICE (one per link-in firing) — two distinct (node, fctx) slots.
-    let sink_slots: Vec<&Value> = snap["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| s["id"] == "out")
-        .collect();
-    assert_eq!(sink_slots.len(), 2, "the sink fires once per funnel firing");
-
-    // TWO distinct outbox effects were staged (the `@{fctx}` effect-id suffix makes each firing its
-    // own idempotent delivery, not one delivery swallowing the rest).
+    assert_eq!(slots_of(&snap, "out").len(), 2, "one sink firing per wire");
     let pending = lb_outbox::pending(&host.store, "ws").await.unwrap();
     let ours: Vec<&lb_outbox::Effect> = pending
         .iter()
-        .filter(|e| e.target == "link-deliver")
+        .filter(|e| e.target == "plain-deliver")
         .collect();
     assert_eq!(ours.len(), 2, "N firings ⇒ N outbox effects: {pending:?}");
-    // The two effect ids are the per-firing keys (run:node@fctx), distinct.
     let mut ids: Vec<&str> = ours.iter().map(|e| e.id.as_str()).collect();
     ids.sort();
     assert!(
@@ -1227,108 +1330,398 @@ async fn link_funnel_outbox_dedups_per_firing() {
     assert_ne!(ids[0], ids[1]);
 }
 
-/// Exactly-once per firing on redelivery one hop past the funnel: re-running the SAME run_id no-ops
-/// every `(node, fctx)` slot (the deterministic fctx re-mints the same keys ⇒ CAS claim no-ops). A
-/// different upstream still fires its own slot. This is the redelivery guarantee past the funnel.
+/// Exactly-once per firing on redelivery, one hop past a plain funnel: re-running the SAME run_id
+/// no-ops every `(node, fctx)` slot (deterministic fctx ⇒ same keys ⇒ CAS no-op).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn link_funnel_exactly_once_per_firing_on_redelivery() {
+async fn plain_funnel_exactly_once_per_firing_on_redelivery() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
     let a = rhai_node("a", &[], "1");
     let b = rhai_node("b", &[], "2");
-    let lo_a = link_out_node("lo-a", "T", &["a"]);
-    let lo_b = link_out_node("lo-b", "T", &["b"]);
-    let li = link_in_node("li", "T", &[]);
+    let li = rhai_node("li", &["a", "b"], "payload");
     let w = rhai_node("w", &["li"], "payload");
-    let f = flow("linkonce", vec![a, b, lo_a, lo_b, li, w]);
+    let f = flow("plainonce", vec![a, b, li, w]);
     save_flow(&host, &p, "ws", &f).await;
-    run_flow(&host, &p, "ws", "linkonce", "linkonce-1").await;
-    let snap1 = runs_get(&host, &p, "ws", "linkonce-1").await;
-    let w_count_1 = snap1["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| s["id"] == "w")
-        .count();
-    assert_eq!(w_count_1, 2, "first run: W settles once per link-in firing");
-
-    // Re-run with the SAME run_id (the redelivery seam): every slot is already terminal ⇒ the CAS
-    // claim no-ops, no new settles, the per-firing exactly-once holds one hop past the funnel.
-    let req = json!({ "id": "linkonce", "run_id": "linkonce-1", "ts": 2 }).to_string();
+    run_flow(&host, &p, "ws", "plainonce", "plainonce-1").await;
+    let snap1 = runs_get(&host, &p, "ws", "plainonce-1").await;
+    assert_eq!(slots_of(&snap1, "w").len(), 2, "first run: w per firing");
+    let req = json!({ "id": "plainonce", "run_id": "plainonce-1", "ts": 2 }).to_string();
     let _ = call_tool(&host, &p, "ws", "flows.run", &req).await;
-    let snap2 = runs_get(&host, &p, "ws", "linkonce-1").await;
-    let w_count_2 = snap2["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|s| s["id"] == "w")
-        .count();
+    let snap2 = runs_get(&host, &p, "ws", "plainonce-1").await;
     assert_eq!(
-        w_count_2, 2,
-        "redelivery no-ops every (node, fctx) slot — still exactly two W settles"
+        slots_of(&snap2, "w").len(),
+        2,
+        "redelivery no-ops every (node, fctx) slot"
     );
 }
 
-/// The save-time link topology lints: a `link-out` naming a missing `link-in` is rejected before any
-/// run (a wireless sender pointing nowhere is a naming typo, not a silently-dead link).
+/// The removal contract at SAVE: `link-out`/`link-in` are unknown kinds (the registry no longer
+/// carries them), rejected with the standard unknown-type error before any run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn save_rejects_a_link_out_naming_a_missing_link_in() {
+async fn save_rejects_link_kinds_as_unknown() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    let a = rhai_node("a", &[], "1");
-    let lo = link_out_node("lo", "nope", &["a"]); // no link-in names "nope"
-    let f = flow("linkbad", vec![a, lo]);
-    let body = serde_json::to_value(&f).unwrap().to_string();
-    let err = call_tool(&host, &p, "ws", "flows.save", &body).await;
-    assert!(
-        err.is_err(),
-        "a link-out targeting a missing link-in is rejected at save"
-    );
-    let msg = err.unwrap_err().to_string();
-    assert!(
-        msg.contains("nope") && msg.contains("link-in"),
-        "error names the bad target + the missing link-in: {msg}"
-    );
+    for kind in ["link-out", "link-in"] {
+        let a = rhai_node("a", &[], "1");
+        let l = node("l", kind, &["a"], json!({ "target": "T", "name": "T" }));
+        let f = flow("linkgone", vec![a, l]);
+        let body = serde_json::to_value(&f).unwrap().to_string();
+        let err = call_tool(&host, &p, "ws", "flows.save", &body)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("unknown type"),
+            "{kind} is an unknown kind at save: {err}"
+        );
+    }
 }
 
-/// The save-time link topology lints: a node may not wire FROM a `link-out` (its output is the
-/// wireless name, not a data port). Caught at save — that wire would vanish at run load otherwise.
+/// The removal contract at RUN LOAD (the reactor path never re-saves): an already-armed persisted
+/// flow holding a removed kind fails `flows.run` with a clear unknown-kind error — never a
+/// confusing unknown-tool denial from the extension-dispatch leg. The stale record is written
+/// through the real store write path, bypassing save (exactly what an armed pre-removal flow is).
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn save_rejects_a_wire_from_a_link_out() {
+async fn run_load_guard_fails_an_armed_flow_with_a_removed_kind() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p = principal("ws", FULL);
-    let a = rhai_node("a", &[], "1");
-    let lo = link_out_node("lo", "T", &["a"]);
-    let li = link_in_node("li", "T", &[]);
-    let bad = rhai_node("bad", &["lo"], "payload"); // wires from a link-out — a mistake
-    let f = flow("linkwire", vec![a, lo, li, bad]);
-    let body = serde_json::to_value(&f).unwrap().to_string();
-    let err = call_tool(&host, &p, "ws", "flows.save", &body).await;
-    assert!(err.is_err(), "a wire from a link-out is rejected at save");
+    let mut f = flow(
+        "armedlink",
+        vec![
+            rhai_node("a", &[], "1"),
+            node("li", "link-in", &["a"], json!({ "name": "T" })),
+        ],
+    );
+    f.version = 1;
+    let value = serde_json::to_value(&f).unwrap();
+    lb_store::write(&host.store, "ws", "flow", "armedlink", &value)
+        .await
+        .unwrap();
+    let req = json!({ "id": "armedlink", "run_id": "armed-1", "ts": 1 }).to_string();
+    let err = call_tool(&host, &p, "ws", "flows.run", &req)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("unknown node kind") && msg.contains("link-in"),
+        "the run-load guard names the removed kind clearly: {msg}"
+    );
 }
 
-/// Workspace isolation holds for the link pair's per-firing slots: a ws-B caller cannot read a ws-A
-/// `link-in` funnel's per-firing settles (the `@{fctx}` slots stay inside `{ws}:{run}`).
+/// Mandatory workspace isolation over a link-free multi-wire topology: ws-B cannot read ws-A's
+/// per-firing `@{fctx}` slots.
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
-async fn workspace_isolation_link_funnel_step_keys() {
+async fn workspace_isolation_plain_funnel_step_keys() {
     let host = Arc::new(HostNode::boot().await.unwrap());
     let p_a = principal("wsA", FULL);
     let p_b = principal("wsB", FULL);
     let a = rhai_node("a", &[], "1");
     let b = rhai_node("b", &[], "2");
-    let lo_a = link_out_node("lo-a", "T", &["a"]);
-    let lo_b = link_out_node("lo-b", "T", &["b"]);
-    let li = link_in_node("li", "T", &[]);
+    let li = rhai_node("li", &["a", "b"], "payload");
     let w = rhai_node("w", &["li"], "payload");
-    let f = flow("linkiso", vec![a, b, lo_a, lo_b, li, w]);
+    let f = flow("plainiso", vec![a, b, li, w]);
     save_flow(&host, &p_a, "wsA", &f).await;
-    run_flow(&host, &p_a, "wsA", "linkiso", "linkiso-1").await;
-
-    // ws-B cannot read ws-A's run (the run + every link-in `@{fctx}` slot is ws-walled).
-    let req = json!({ "run_id": "linkiso-1" }).to_string();
+    run_flow(&host, &p_a, "wsA", "plainiso", "plainiso-1").await;
+    let req = json!({ "run_id": "plainiso-1" }).to_string();
     let res = call_tool(&host, &p_b, "wsB", "flows.runs.get", &req).await;
+    assert!(res.is_err(), "ws-B cannot read ws-A's per-firing slots");
+}
+
+// ───────────── the switch matched-release fix (the peer-review blocker) ─────────────
+
+/// THE blocker (flow-plain-wiring-scope): a matched `switch` plus two plain wires into ONE node.
+/// The matched release must mint a normal `any` firing (`triggered_by` = the switch) — releasing
+/// through the barrier path seeds a Pending slot at indegree 3 that the sibling any-firings never
+/// touch, and the run HANGS. Fail-before: `await_terminal` times out (verified by reverting the
+/// matched release to the barrier path).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn matched_switch_into_a_multi_wire_any_port_reaches_terminal() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], "1");
+    let b = rhai_node("b", &[], "2");
+    let src = rhai_node("src", &[], "5");
+    let sw = node(
+        "sw",
+        "switch",
+        &["src"],
+        json!({ "rules": [ { "op": "gt", "value": 0, "to": ["w"] } ] }),
+    );
+    let w = rhai_node("w", &["a", "b", "sw"], "payload");
+    let f = flow("swany", vec![a, b, src, sw, w]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "swany", "swany-1").await;
+    let snap = runs_get(&host, &p, "ws", "swany-1").await;
+    assert_eq!(snap["status"], "success", "the run reaches terminal");
+    let w_slots = slots_of(&snap, "w");
+    assert_eq!(
+        w_slots.len(),
+        3,
+        "w fires once per upstream incl. the matched switch: {snap}"
+    );
+    let mut fctxs: Vec<String> = w_slots
+        .iter()
+        .map(|s| s["fctx"].as_str().unwrap_or("").to_string())
+        .collect();
+    fctxs.sort();
+    assert_eq!(
+        fctxs,
+        vec!["w#a", "w#b", "w#sw"],
+        "the matched release minted a normal any-firing (triggered_by = switch)"
+    );
+    let mut payloads: Vec<i64> = w_slots
+        .iter()
+        .map(|s| s["output"]["payload"].as_i64().unwrap_or(-1))
+        .collect();
+    payloads.sort();
+    assert_eq!(
+        payloads,
+        vec![1, 2, 5],
+        "the switch firing carries its routed message"
+    );
+}
+
+/// The gated side stays as-is: a `switch` wire into a multi-wire `any` port that does NOT match
+/// settles its `(dep, fctx)` slot `Skipped` — one fewer firing, and the run still reaches terminal.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn gated_switch_wire_into_a_multi_wire_port_settles_skipped() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], "1");
+    let b = rhai_node("b", &[], "2");
+    let src = rhai_node("src", &[], "5");
+    // The rule can never match (5 is not < 0) and there is no `else` ⇒ w's switch wire is gated.
+    let sw = node(
+        "sw",
+        "switch",
+        &["src"],
+        json!({ "rules": [ { "op": "lt", "value": 0, "to": ["w"] } ] }),
+    );
+    let w = rhai_node("w", &["a", "b", "sw"], "payload");
+    let f = flow("swgate", vec![a, b, src, sw, w]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "swgate", "swgate-1").await;
+    let snap = runs_get(&host, &p, "ws", "swgate-1").await;
+    assert_eq!(snap["status"], "success", "no hang on the gated slot");
+    let w_slots = slots_of(&snap, "w");
+    let ok: Vec<&&Value> = w_slots.iter().filter(|s| s["outcome"] == "ok").collect();
+    let skipped: Vec<&&Value> = w_slots
+        .iter()
+        .filter(|s| s["outcome"] == "skipped")
+        .collect();
+    assert_eq!(ok.len(), 2, "the two plain wires still fire");
+    assert_eq!(
+        skipped.len(),
+        1,
+        "the gated switch wire is one fewer firing"
+    );
+}
+
+/// A matched `switch` into an EXPLICIT-`all` port still takes the barrier path (the opt-in
+/// survives): the dependent settles once, at the shared `fctx`, after every wired upstream —
+/// switch included — has released it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn matched_switch_into_an_explicit_all_port_takes_the_barrier() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    seed_explicit_all_ext(&host, "ws").await;
+    let hi = rhai_node("hi", &[], "10");
+    let src = rhai_node("src", &[], "5");
+    let sw = node(
+        "sw",
+        "switch",
+        &["src"],
+        json!({ "rules": [ { "op": "gt", "value": 0, "to": ["j"] } ] }),
+    );
+    let mut j = node("j", "extall.collect", &["hi", "sw"], json!({}));
+    j.with
+        .insert("payload".into(), json!("${steps.hi.payload}"));
+    let f = flow_with_policy(
+        "swall",
+        vec![hi, src, sw, j],
+        lb_flows::FailurePolicy::Continue,
+    );
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "swall", "swall-1").await;
+    let snap = runs_get(&host, &p, "ws", "swall-1").await;
+    let j_slots = slots_of(&snap, "j");
+    assert_eq!(
+        j_slots.len(),
+        1,
+        "the explicit-all barrier settles once: {snap}"
+    );
     assert!(
-        res.is_err(),
-        "ws-B cannot read a ws-A link-funnel run's per-firing slots"
+        j_slots[0]["fctx"].as_str().unwrap_or("").is_empty(),
+        "the barrier slot keeps the shared (empty) fctx"
+    );
+}
+
+// ───────────── lineage bindings + the cross-branch save lint ─────────────
+
+/// Lineage bindings (flow-plain-wiring-scope): in a linear chain `t → a → b` under universal `any`,
+/// `b`'s `${steps.t.payload}` (a GRANDPARENT binding) resolves — X's settle matches from any
+/// ancestor fctx in the firing's lineage. Fail-before: the recorded map held only the arriving
+/// upstream (`a`), so the grandparent binding silently bound null.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn lineage_binding_resolves_a_grandparent_under_any() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let t = rhai_node("t", &[], "7");
+    let a = rhai_node("a", &["t"], "payload * 2");
+    let mut b = rhai_node("b", &["a"], "payload");
+    b.with.insert("payload".into(), json!("${steps.t.payload}"));
+    let f = flow("lineage", vec![t, a, b]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "lineage", "lineage-1").await;
+    let snap = runs_get(&host, &p, "ws", "lineage-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(
+        slots_of(&snap, "b")[0]["output"]["payload"],
+        7,
+        "the grandparent binding resolves along the lineage (not a's 14): {snap}"
+    );
+}
+
+/// The cross-branch save lint: a `${steps.X}` binding where X is neither the node itself nor a
+/// transitive upstream can never be in the firing's lineage — a save ERROR, not a silent per-firing
+/// null. Fail-before: saved green and bound null.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn cross_branch_binding_is_a_save_error() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let t1 = rhai_node("t1", &[], "1");
+    let p1 = rhai_node("p1", &["t1"], "payload");
+    let t2 = rhai_node("t2", &[], "2");
+    let mut q = rhai_node("q", &["t2"], "payload");
+    // q references p1 — an unrelated branch, never in q's lineage.
+    q.with
+        .insert("payload".into(), json!("${steps.p1.payload}"));
+    let f = flow("crossbranch", vec![t1, p1, t2, q]);
+    let body = serde_json::to_value(&f).unwrap().to_string();
+    let err = call_tool(&host, &p, "ws", "flows.save", &body)
+        .await
+        .unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("lineage") && msg.contains("p1"),
+        "the lint names the cross-branch reference: {msg}"
+    );
+    // The same binding on a node that IS downstream of p1 saves green (a real ancestor).
+    let t1 = rhai_node("t1", &[], "1");
+    let p1 = rhai_node("p1", &["t1"], "payload");
+    let mut q = rhai_node("q", &["p1"], "payload");
+    q.with
+        .insert("payload".into(), json!("${steps.t1.payload}"));
+    let f = flow("inbranch", vec![t1, p1, q]);
+    let saved = save_flow(&host, &p, "ws", &f).await;
+    assert_eq!(saved["version"], 1);
+}
+
+// ───────────── named divergences + structure pins ─────────────
+
+/// Duplicate wires collapse (the named Node-RED divergence, pinned deliberately): two wires from
+/// the same output to the same input are ONE firing — the firing id is deterministic per
+/// `(node, upstream, parent fctx)`, so the second release re-mints the same slot and no-ops.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn duplicate_wire_collapses_to_one_firing() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let a = rhai_node("a", &[], "1");
+    let x = rhai_node("x", &["a", "a"], "payload");
+    let f = flow("dup", vec![a, x]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "dup", "dup-1").await;
+    let snap = runs_get(&host, &p, "ws", "dup-1").await;
+    assert_eq!(snap["status"], "success");
+    assert_eq!(
+        slots_of(&snap, "x").len(),
+        1,
+        "two identical wires are one firing (deterministic slot id): {snap}"
+    );
+}
+
+/// Output fan-out is plain too (stated + pinned): one output port wired to three downstreams fires
+/// all three, each from its own immutable copy of the envelope.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn output_fanout_fires_every_downstream() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    let src = rhai_node("src", &[], "7");
+    let d1 = rhai_node("d1", &["src"], "payload + 1");
+    let d2 = rhai_node("d2", &["src"], "payload + 2");
+    let d3 = rhai_node("d3", &["src"], "payload + 3");
+    let f = flow("fan", vec![src, d1, d2, d3]);
+    save_flow(&host, &p, "ws", &f).await;
+    run_flow(&host, &p, "ws", "fan", "fan-1").await;
+    let snap = runs_get(&host, &p, "ws", "fan-1").await;
+    assert_eq!(snap["status"], "success");
+    for (id, want) in [("d1", 8), ("d2", 9), ("d3", 10)] {
+        let slots = slots_of(&snap, id);
+        assert_eq!(slots.len(), 1, "{id} fires once");
+        assert_eq!(
+            slots[0]["output"]["payload"], want,
+            "{id} read its own immutable copy"
+        );
+    }
+}
+
+/// The durable-suspend analogue of hot-reload (mandatory): a suspend BETWEEN two `any` firings
+/// (one settled, its sibling parked behind a durable delay) resumes by rebuilding the partial
+/// `(node, fctx)` slot set — the settled firing is not re-run, the parked one completes, and the
+/// funnel's downstream settles once per firing across the suspend boundary.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn suspend_resume_between_any_firings_rebuilds_the_slot_set() {
+    let host = Arc::new(HostNode::boot().await.unwrap());
+    let p = principal("ws", FULL);
+    // a → fn (fires immediately); t0 → dl (delay 1000ms) → fn (fires after resume). fn → w.
+    let a = rhai_node("a", &[], "1");
+    let t0 = rhai_node("t0", &[], "9");
+    let dl = node(
+        "dl",
+        "delay",
+        &["t0"],
+        json!({ "mode": "delay", "ms": 1000 }),
+    );
+    let fnode = rhai_node("fn", &["a", "dl"], "payload");
+    let w = rhai_node("w", &["fn"], "payload");
+    let f = flow("suspany", vec![a, t0, dl, fnode, w]);
+    save_flow(&host, &p, "ws", &f).await;
+    // Fire at t=1: the delay parks and the run suspends; fn's `a` firing has settled by then
+    // (same drive batch), its sibling has not — the partial slot set.
+    let req = json!({ "id": "suspany", "run_id": "susp-1", "ts": 1 }).to_string();
+    call_tool(&host, &p, "ws", "flows.run", &req).await.unwrap();
+    let s1 = await_run_status(&host, &p, "ws", "susp-1", "suspended").await;
+    let settled_fn = slots_of(&s1, "fn")
+        .iter()
+        .filter(|s| s["outcome"] == "ok")
+        .count();
+    assert_eq!(
+        settled_fn, 1,
+        "exactly one any-firing settled pre-suspend: {s1}"
+    );
+    // Resume past the timer: the parked branch completes; the settled firing is NOT re-run.
+    let req = json!({ "run_id": "susp-1", "ts": 2000 }).to_string();
+    call_tool(&host, &p, "ws", "flows.resume", &req)
+        .await
+        .unwrap();
+    let s2 = await_terminal(&host, &p, "ws", "susp-1").await;
+    assert_eq!(s2["status"], "success");
+    let fn_slots = slots_of(&s2, "fn");
+    assert_eq!(fn_slots.len(), 2, "both firings present after resume");
+    assert!(fn_slots.iter().all(|s| s["outcome"] == "ok"));
+    let w_slots = slots_of(&s2, "w");
+    assert_eq!(
+        w_slots.len(),
+        2,
+        "the downstream settled once per firing across the suspend"
+    );
+    let mut w_payloads: Vec<i64> = w_slots
+        .iter()
+        .map(|s| s["output"]["payload"].as_i64().unwrap_or(-1))
+        .collect();
+    w_payloads.sort();
+    assert_eq!(
+        w_payloads,
+        vec![1, 9],
+        "each downstream slot rode its own firing"
     );
 }

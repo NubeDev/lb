@@ -23,6 +23,50 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
+**Just shipped (2026-07-12): flows plain wiring — the `link` pair removed, every port fires per
+message (`flow-plain-wiring`, branch `flow-plain-wiring`).** Plain wiring is now the whole story —
+exactly the Node-RED model: N wires onto ANY node's input port ⇒ one firing per arriving message, no
+barrier, no binding demand, no policy question; one output port fans to every wired downstream.
+**The default join policy flipped to `any` for every node kind** at all four sites together
+(`join_of` — the Sink branch deleted, not inverted; the run-store fallback; the save lint's policy
+read; the UI `joinOf` mirror). `JoinPolicy::All` survives only as a descriptor-level opt-in
+(`[[node.input]] join = "all"`); **no built-in declares it** (audited), so the funnel/merge glyphs
+vanish from the default authoring surface (a `PolicyMark` renders ONLY on an explicit-`all` port).
+**Removed:** `link-out`/`link-in` + all machinery (`builtins/link.rs`, the resolver/validator
+`link.rs`, five link `DagError` variants, the coordinator/save call sites, the `link-in` dispatch
+leg; `flows.nodes` = **33** built-ins, no `Links` category) + the dead code
+(`indegrees_within_by_port`, `edges_into`, `ready_frontier`, `UnboundJoin`). **The blocker fix:** a
+matched `switch` released its dependent through the barrier path unconditionally — under universal
+`any` that HANGS the mainline topology (switch + 2 plain wires into one node seeds a Pending
+indegree-3 barrier slot the any-firings never touch). Matched release is now policy-aware through
+the one `release_one_dependent` seam (an `any` dependent gets a normal minted firing,
+`triggered_by = switch`; explicit-`all` keeps the barrier) — fail-before verified (the new test
+hangs on the reverted path); debug entry
+[`debugging/flows/matched-switch-hangs-run-after-any-default-flip.md`](debugging/flows/matched-switch-hangs-run-after-any-default-flip.md).
+**Two engine refinements the flip forced:** (1) a **single-wire `any` port PROPAGATES** the incoming
+`fctx` (only a ≥2-wire port mints) — a linear chain never grows its lineage and keeps byte-identical
+claim keys; (2) **`${steps.X}` resolves along the firing lineage** (`is_ancestor` whole-segment
+prefix walk, nearest settle wins) — a grandparent binding down a chain resolves instead of silently
+binding null, and a genuine cross-branch reference is a new **save lint** (graph-ancestor check via
+`referenced_step`). Plus a **run-load unknown-kind guard** in `coordinator::start`/`drive` (the
+cron/source reactors never re-save, so an armed persisted link flow fails with a clear
+unknown-kind error, not a tool denial); version-pinning order intact. **Tests (real store/caps/
+gateway, rule 9):** `lb-flows` unit 96; `flows_run_test` **49** (headline transform-funnel +
+reactive posture, THE blocker + gated + explicit-all-barrier switch cases, lineage binding,
+cross-branch lint, duplicate-wire pin, output fan-out, suspend/resume-between-any-firings slot
+rebuild, run-load guard, per-firing cap-deny/outbox-dedup/ws-isolation — explicit-`all` via a real
+`record_install` fixture); all 15 host flows binaries green; UI `flowGraph` 22, `FlowsCanvas.gateway`
+15/15 (pins 33 built-ins, no link kinds, no built-in `all` port), `flowsDebug`/`FlowsRuntimeControl`/
+`FlowDashboardBinding` gateway green. Scope
+[`scope/flows/flow-plain-wiring-scope.md`](scope/flows/flow-plain-wiring-scope.md); session
+[`sessions/flows/flow-plain-wiring-session.md`](sessions/flows/flow-plain-wiring-session.md); public
+[`doc-site/content/public/flows/flows.md`](../doc-site/content/public/flows/flows.md). **Named
+follow-ups:** mixed-port extension nodes (explicit-`all` + other wires) still hit port-blind barrier
+counting + a primary-port-only lint (only reachable via the opt-in); collect-join detection carries
+over.
+
+---
+
 **Just shipped (2026-07-11): native host-callback client PUBLISHED through the SDK →
 `sdk-v0.3.0` + `node-v0.3.0`.** An out-of-tree native (Tier-2) extension could speak the host→child
 control wire (`lb-ext-native`) but had no way to call BACK into the host's MCP surface — the callback
@@ -192,49 +236,23 @@ viewports; a per-page sub-title registry for richer crumb trails.
 
 ---
 
-**Just shipped (2026-07-09): flow input ports — Slice 2 (`any` runtime + `fctx`) + Slice 3 (the `link`
-pair) + Slice 4 (the per-port canvas). The `flow-input-ports` scope is COMPLETE.** Node-RED's
-"fire-per-message" OR is reachable end to end: three wires into one `any` port print **three** times,
-in one durable run, exactly-once per firing; multiplicity **propagates past the funnel**; and the
-wireless `link` pair + the per-port canvas ship. **The seam (Slice 2):** a **firing context (`fctx`)**
-— a per-message identity carried in an additive envelope field, minted at each `any` slot
-(deterministic per `(node, upstream, parent)`; nested funnels extend it: `link-in#mqtt-a` → `…·funnel2#w`),
-so every claim key + `${steps.*}` resolution is scoped by `(node, fctx)` and multiplicity survives past
-the funnel without a per-event fan-out storm. Empty `fctx` in the all-`all` case ⇒ `{run}:{node}` byte-
-for-byte; non-empty ⇒ `{run}:{node}@{fctx}`. **Slice 3 — the `link` pair:** `link-out {target}` /
-`link-in {name}` (built-ins under a `Links` category), the canonical `any`-funnel collector that needs
-no physical wire. Resolution is **run-load** (`coordinator::start`/`drive` call `Flow::resolve_links`
-on a transient copy — the persisted flow keeps the author's link nodes, so the editor round-trips the
-wireless sugar and a deleted `link-out` can never leave a stale wire); save-time only `validate_links`s
-the topology (a `link-out` targeting a missing `link-in`, a wire from a `link-out`, a dead `link-in`,
-a name collision). The **outbox/inbox dedup tripwire the scope named** is threaded: the sink's effect
-id is now `{run}:{node}@{fctx}` ⇒ N firings are N idempotent deliveries, not one swallowing the rest.
-**Slice 4 — the canvas:** per-named-input-port handles (one per declared port; a multi-port node stacks
-them, primary anonymous + non-primary `id = portName`), each wearing an `any` (funnel) vs `all` (join)
-glyph; `flowToEdges` labels a named-port wire with its `toPort` (the wire-inspector surface); the
-palette shows each node's input ports + policy marks. **Tests (real store/caps/gateway, rule 9):**
-`lb-flows` unit **108** (+12 `link` resolver/validator/descriptor); `lb-host` flows integration green
-across the full suite, with **+7 in `flows_run_test` → 39** — incl. **THE headline**
-`link_funnel_propagates_one_hop_past_the_funnel` (`link-in` any, 3 senders → transform `W` settles
-**three** times, each `W@<fctx>` reading its own firing's message — the fail-before for a naive
-depth-1 suffix), `link_funnel_denies_per_firing_at_a_downstream_tool` (N err settles), the
-`link_funnel_outbox_dedups_per_firing` (N distinct `@{fctx}` outbox effects read off the real store),
-`link_funnel_exactly_once_per_firing_on_redelivery`, the link save-lints, +
-`workspace_isolation_link_funnel_step_keys`. UI unit **93** (+7 `flowGraph` for `joinOf`/
-`effectiveInputPorts` + the wire-inspector label); UI gateway `FlowsCanvas.gateway` **15/15** (incl.
-the real-registry assertion that `link-out`/`link-in` ship under `Links` + `link-in`'s `any` port),
-`flowsDebug.gateway` 2/2, `FlowsRuntimeControl.gateway` 6/6. `cargo fmt` + `cargo build --workspace`
-clean; `tsc --noEmit` adds no new flows errors. **Pre-existing reds NOT this scope:** the 2
-`DebugValueView.test.tsx` unit cases (verified). Debug: [`debugging/flows/multi-input-node-fires-once-not-per-message.md`](debugging/flows/multi-input-node-fires-once-not-per-message.md).
-Scope [`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (**shipped** —
-OQs all resolved, incl. the collect-join question overturned by what the runtime does); sessions
-[`slice2`](sessions/flows/flow-input-ports-slice2-session.md) /
+**Just shipped (2026-07-09): flow input ports — Slices 2–4 (the `any` runtime + `fctx`, and the
+per-port canvas).** *(Partially overturned 2026-07-12 by `flow-plain-wiring`, above: the `link-out`/
+`link-in` pair and the `all`-barrier default shipped here were removed; the structural seams below
+stand.)* **The seam (Slice 2):** a **firing context (`fctx`)** — a per-message identity carried in an
+additive envelope field, minted per multi-wire release (deterministic per `(node, upstream, parent)`;
+nested fan-ins extend it segment-by-segment), so every claim key + `${steps.*}` resolution is scoped
+by `(node, fctx)` and multiplicity survives downstream without a per-event fan-out storm. Empty
+`fctx` ⇒ `{run}:{node}` byte-for-byte; non-empty ⇒ `{run}:{node}@{fctx}`. The outbox dedup tripwire
+is threaded: a sink's effect id is `{run}:{node}@{fctx}` ⇒ N firings are N idempotent deliveries.
+**Slice 4 — the canvas:** per-named-input-port handles (a multi-port node stacks them, primary
+anonymous + non-primary `id = portName`); `flowToEdges` labels a named-port wire with its `toPort`
+(the wire-inspector surface). Debug:
+[`debugging/flows/multi-input-node-fires-once-not-per-message.md`](debugging/flows/multi-input-node-fires-once-not-per-message.md).
+Scope [`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (shipped,
+partially overturned); sessions [`slice2`](sessions/flows/flow-input-ports-slice2-session.md) /
 [`slice3`](sessions/flows/flow-input-ports-slice3-session.md) /
-[`slice4`](sessions/flows/flow-input-ports-slice4-session.md); public [`public/flows/flows.md`](public/flows/flows.md).
-**Named follow-up (not a silent gap):** collect-join detection — an `all` port joining funnel-carrying
-+ different-`fctx` upstreams can deadlock (needs full `fctx`-lineage reachability a save-time heuristic
-can't soundly approximate); the pure single-funnel-into-`all` case is coherent (inherits multiplicity,
-pinned by the headline test).
+[`slice4`](sessions/flows/flow-input-ports-slice4-session.md).
 
 ---
 

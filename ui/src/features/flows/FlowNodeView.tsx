@@ -8,16 +8,17 @@
 // wire `needs` dependencies — except a `trigger`/`source` (entry) node renders NO target handle, so an
 // author cannot wire an incoming edge to a node that has no inputs.
 //
-// flow-input-ports-scope Slice 4: the target handles are **per named input port** (one per declared
-// port), each wearing an `any` (funnel) vs `all` (join) glyph so the author sees at a glance which
-// convergence a port settles under. A single-port node keeps the one anonymous primary handle (the
-// back-compat shape an edge with no `targetHandle` connects to); a multi-port node stacks named
-// handles, each matched by React Flow to the edge's `targetHandle` port name.
+// flow-input-ports-scope Slice 4 + flow-plain-wiring-scope: the target handles are **per named
+// input port** (one per declared port). A port is just a port — the default (`any`, plain
+// per-message wiring) gets NO glyph; only a port that EXPLICITLY opts into the `all` barrier (an
+// extension descriptor; never a built-in) wears the merge glyph. A single-port node keeps the one
+// anonymous primary handle (the back-compat shape an edge with no `targetHandle` connects to); a
+// multi-port node stacks named handles, each matched by React Flow to the edge's `targetHandle`
+// port name.
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Filter, Merge } from "lucide-react";
+import { Merge } from "lucide-react";
 
-import type { JoinPolicy } from "@/lib/flows";
 import { cn } from "@/lib/utils";
 import { COLOUR_BORDER, COLOUR_DOT, type FlowCanvasNode, type CanvasInputPort } from "./flowGraph";
 import { nodeIcon } from "./flowIcons";
@@ -29,15 +30,6 @@ const STATUS_LABEL: Record<FlowCanvasNode["data"]["colour"], string> = {
   running: "running",
   pending: "idle",
 };
-
-/** The glyph + title for an input-port join policy — `any` (a funnel: fires per upstream, Node-RED
- *  OR) vs `all` (a join: barrier over the port's wired upstreams). flow-input-ports-scope Axis 2. */
-function policyGlyph(join: JoinPolicy) {
-  if (join === "any") {
-    return { Icon: Filter, title: "any (funnel — fires once per upstream)" };
-  }
-  return { Icon: Merge, title: "all (join — barrier over this port's upstreams)" };
-}
 
 /** Render a node's output value as a compact, scrollable string. Objects/arrays are JSON; long
  *  strings are clamped by the box's max-height. */
@@ -89,12 +81,12 @@ export function FlowNodeView({ id, data, selected }: NodeProps<FlowCanvasNode>) 
     >
       {isEntry ? null : singlePrimary ? (
         // Single input port (the common case): one anonymous handle (React Flow connects a null
-        // `targetHandle` edge to it) + a subtle policy glyph so debug=any / rhai=all is legible.
+        // `targetHandle` edge to it). No policy glyph — a default (`any`) port is just a port.
         <PortHandle port={ports[0]} top="50%" />
       ) : (
         // Multi-port: the PRIMARY port keeps an anonymous handle (a null `targetHandle` edge lands on
         // it — the canvas convention); each non-primary port carries `id = portName` so its named wire
-        // matches, and every handle is labelled with its port + policy glyph.
+        // matches, and every handle is labelled with its port name (+ the merge glyph iff explicit-all).
         <>
           {ports.map((p, i) => (
             <PortHandle
@@ -152,8 +144,9 @@ export function FlowNodeView({ id, data, selected }: NodeProps<FlowCanvasNode>) 
 
 /** One input-port target handle. The PRIMARY port (the single port, or the first of a multi-port
  *  node) has NO `id` so an edge with a null `targetHandle` connects to it (the canvas convention);
- *  a non-primary port carries `id = portName` so its named wire matches. A small `any`/`all` glyph +
- *  (optionally) the port name makes the convergence legible. */
+ *  a non-primary port carries `id = portName` so its named wire matches. Only an EXPLICIT-`all`
+ *  port renders the merge glyph (flow-plain-wiring-scope: the `any` default is unmarked — a port
+ *  is just a port); (optionally) the port name is labelled beside it. */
 function PortHandle({
   port,
   top,
@@ -165,8 +158,7 @@ function PortHandle({
   anonymous?: boolean;
   showLabel?: boolean;
 }) {
-  const join = port?.join ?? "all";
-  const { Icon, title } = policyGlyph(join);
+  const explicitAll = port?.join === "all";
   const id = anonymous ? undefined : port?.name;
   return (
     <>
@@ -177,19 +169,21 @@ function PortHandle({
         style={{ top }}
         className="!h-2.5 !w-2.5 !border-0 !bg-accent"
       />
-      {/* The policy glyph sits just inside the handle so the author reads the convergence at a glance:
-          a funnel = `any` (fires per upstream), a merge = `all` (barrier join). */}
-      <span
-        title={title}
-        style={{ top, left: 10 }}
-        className="pointer-events-none absolute -translate-y-1/2 text-muted"
-        aria-hidden
-      >
-        <Icon size={10} className={join === "any" ? "text-accent" : "text-muted"} />
-      </span>
+      {/* Only an explicit-`all` (barrier) port is marked — the merge glyph flags the exception.
+          A default (`any`) port renders nothing: plain wiring has no policy to think about. */}
+      {explicitAll ? (
+        <span
+          title="all (join — barrier over this port's upstreams)"
+          style={{ top, left: 10 }}
+          className="pointer-events-none absolute -translate-y-1/2 text-muted"
+          aria-hidden
+        >
+          <Merge size={10} className="text-muted" />
+        </span>
+      ) : null}
       {showLabel && port ? (
         <span
-          style={{ top, left: 24 }}
+          style={{ top, left: explicitAll ? 24 : 10 }}
           className="pointer-events-none absolute -translate-y-1/2 truncate text-[10px] text-muted"
         >
           {port.name}

@@ -199,7 +199,10 @@ pub async fn execute_one(
         // Decision 14 edge-gating: fire only the dependents the matched rules name; gate (skip) the
         // rest of the switch's exclusive subtrees — under THIS `fctx`. A `switch` that failed falls
         // through to the normal release path above's Halt/Continue handling.
-        switch::release_matched(node, ws, flow, run_id, node_id, fctx, &config, subgraph).await?;
+        switch::release_matched(
+            node, ws, flow, run_id, node_id, fctx, &config, policies, subgraph,
+        )
+        .await?;
     } else {
         run_store::release_dependents(
             &node.store,
@@ -275,14 +278,6 @@ async fn dispatch(
         // `switch` passes the envelope through unchanged; the routing decision gates dependents in
         // `execute_one` (Decision 14), not here.
         "switch" => NodeOutcome::ok(
-            json!({ "payload": inputs.get("payload").cloned().unwrap_or(Value::Null) }),
-        ),
-        // The wireless `link-in` collector (flow-input-ports-scope Slice 3). At run load the
-        // coordinator resolved every `link-out {target}` onto this node's `any` primary port, so a
-        // `link-in` firing is just an `any`-funnel pass-through: the fctx-scoped auto-wire already
-        // placed the triggering upstream's envelope in `inputs`, and the node emits it unchanged. A
-        // downstream then settles once per `link-in` firing (the fctx propagates past the funnel).
-        "link-in" => NodeOutcome::ok(
             json!({ "payload": inputs.get("payload").cloned().unwrap_or(Value::Null) }),
         ),
         "delay" => {

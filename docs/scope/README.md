@@ -41,6 +41,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   carries their ids (`AgentPayload.context_items` — refs, not bodies); the worker resolves + fences
   them into the run's goal ws/channel-scoped with hard caps (`channel/context_items.rs`, the sibling
   of the page-context fence).
+  `agent-loop-hardening-scope.md` adopts the best transferable ideas from a survey of three OSS Rust
+  agent runtimes (zeroclaw, carapace, hermes-rs): turn-group-preserving transcript compaction +
+  in-loop context-overflow recovery, a stuck-loop detector (repeat / ping-pong / no-progress →
+  warn/block/break) + a graceful ceiling exit, the dangling-tool-call invariant (a dead turn never
+  persists a proposed call without its result), a transient/model-recoverable/fatal error taxonomy
+  on structured provider errors, and an `emits_external` exfiltration taint declared on tool
+  descriptors (guard filters the advertised menu AND the dispatch). Zero new verbs/tables; composes
+  with `agent-close-out`; survey ideas owned elsewhere routed to `agent-memory`/`jobs`/`ai-gateway`.
 - `agent-personas/` — **user-selectable agent focus**: a persona = `{granted_tools,
   grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
   active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the

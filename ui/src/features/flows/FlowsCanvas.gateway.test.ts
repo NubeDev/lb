@@ -82,14 +82,18 @@ describe("flows canvas (real gateway)", () => {
     const mqtt = nodes.find((d) => d.type === "mqtt.publish");
     expect(mqtt?.category).toBe("Messaging");
     expect((mqtt?.config.properties as Record<string, unknown> | undefined)?.topic).toBeTruthy();
-    // flow-input-ports-scope Slice 3/4: the wireless `link-out`/`link-in` pair ships as built-ins
-    // under a `Links` category, and `link-in`'s primary port carries the `any` (funnel) join policy.
-    const linkOut = nodes.find((d) => d.type === "link-out");
-    const linkIn = nodes.find((d) => d.type === "link-in");
-    expect(linkOut?.category).toBe("Links");
-    expect(linkIn?.category).toBe("Links");
-    expect(linkIn?.inputs).toContain("payload");
-    expect(linkIn?.inputPorts?.find((p) => p.name === "payload")?.join).toBe("any");
+    // flow-plain-wiring-scope: the link pair is GONE — no `link-out`/`link-in` kinds, no `Links`
+    // palette category, 33 built-ins, and no built-in declares an explicit `all` port (a port is
+    // just a port; the barrier is an extension opt-in only).
+    expect(types).not.toContain("link-out");
+    expect(types).not.toContain("link-in");
+    expect(nodes.filter((d) => !d.type.includes(".")).map((d) => d.category)).not.toContain("Links");
+    expect(nodes.filter((d) => !d.type.includes(".")).length).toBe(33);
+    for (const d of nodes.filter((n) => !n.type.includes("."))) {
+      for (const p of d.inputPorts ?? []) {
+        expect(p.join).not.toBe("all");
+      }
+    }
   });
 
   it("save round-trips a flow; get returns the typed graph; list shows it", async () => {

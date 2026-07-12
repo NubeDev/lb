@@ -12,14 +12,14 @@
  *  record does not (single source of truth — the descriptor is the join). */
 export type NodeKind = "trigger" | "transform" | "sink" | "source";
 
-/** The per-input-port join policy (flow-input-ports-scope Axis 2). `all` = a barrier (the node
- *  fires once when every wired upstream on that port has settled — today's behaviour); `any` = a
- *  funnel (the node fires once per settled upstream — Node-RED's fire-per-message OR). Slice 1
- *  declares the type; the run engine honours `any` in a follow-up slice. */
+/** The per-input-port join policy. `any` = plain per-message wiring — **the universal default**
+ *  (the node fires once per settled upstream, Node-RED's fire-per-message OR;
+ *  flow-plain-wiring-scope). `all` = a barrier, a descriptor-level opt-in (the node fires once when
+ *  every wired upstream on that port has settled); no built-in declares it. */
 export type JoinPolicy = "all" | "any";
 
 /** One declared input port with its join policy (the `[[node.input]]` table form). `name` matches
- *  an entry in `NodeDescriptor.inputs`; `join` defaults to `all` when omitted. */
+ *  an entry in `NodeDescriptor.inputs`; `join` defaults to `any` when omitted. */
 export interface InputPort {
   name: string;
   join?: JoinPolicy;
@@ -41,8 +41,9 @@ export interface NodeDescriptor {
   /** Named input ports (the simple string list). Per-port join policy rides `inputPorts`. */
   inputs: string[];
   outputs: string[];
-  /** Per-input-port join-policy table (flow-input-ports-scope Axis 2). Absent/empty ⇒ every port
-   *  is `all` (today's barrier behaviour). */
+  /** Per-input-port join-policy table. Absent/empty ⇒ every port is `any` (plain per-message
+   *  wiring, the universal default — flow-plain-wiring-scope); an entry declaring `all` opts that
+   *  port into the barrier. */
   inputPorts?: InputPort[];
   configVersion: number;
   /** Inline JSON-Schema 2020-12 the SchemaForm renders + the host validates saved config against. */
