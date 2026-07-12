@@ -1,6 +1,6 @@
 # Session — flows: plain wiring (remove link pair, any-by-default per-message firing)
 
-- Status: done (pending final workspace-suite paste below)
+- Status: done
 - Date: 2026-07-12
 - Scope: [../../scope/flows/flow-plain-wiring-scope.md](../../scope/flows/flow-plain-wiring-scope.md)
 - Branch: `flow-plain-wiring`
@@ -122,7 +122,19 @@ run-load unknown-kind guard for already-armed persisted flows.
 
 ### Full workspace suite
 
-(pasted on completion)
+`cargo build --workspace` clean; `cargo fmt` clean; `make build-wasm` (hello + hello-v2) then
+`cargo test --workspace --no-fail-fast`:
+
+```
+branch flow-plain-wiring: 360 suites `test result: ok`; 28 failing cases across 6 binaries
+clean master (same command, same machine): 360 suites ok; the IDENTICAL 28 failing cases
+diff of failing-test-name sets: IDENTICAL-TEST-SETS (zero regressions from this branch)
+```
+
+The 6 pre-existing red binaries (environment/fixture-dependent, red on clean master too):
+`reminder_test` (1 — cli gateway grant), `build_test` (1 — wasm target availability),
+`agent_persona_catalog_test` (6) + `agent_persona_coding_test` (2), `devkit_e2e_test` (1),
+`proof_panel_test` (17 — the proof-panel wasm ext isn't built by `make build-wasm`).
 
 ## Follow-ups (named, not silent)
 
