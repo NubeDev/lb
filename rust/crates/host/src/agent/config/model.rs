@@ -67,4 +67,25 @@ pub struct AgentConfig {
     /// whole-list per patch (no per-entry merge).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled_personas: Option<Vec<String>>,
+    /// The in-house loop's **context compaction budget**, in estimated tokens (agent-loop-hardening
+    /// slice A). When a run's conversation + tool schemas exceed it, the oldest whole turn groups
+    /// are dropped (with a visible breadcrumb) before the next model call. `None` → the node
+    /// default ([`DEFAULT_COMPACT_BUDGET_TOKENS`](crate::agent::DEFAULT_COMPACT_BUDGET_TOKENS)).
+    /// A flat number by decision — per-model context metadata is an agent-catalog follow-up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compact_budget: Option<u32>,
+    /// The in-house loop detector's sliding-window size (agent-loop-hardening slice B). `None` →
+    /// the node default ([`DEFAULT_LOOP_WINDOW`](crate::agent::DEFAULT_LOOP_WINDOW), 20); `0`
+    /// disables the detector. The rule thresholds (repeat 3 / ping-pong 4 / no-progress 5) stay
+    /// node constants by decision — config the on/off + window, not the numbers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_window: Option<u32>,
+    /// The workspace's **exfiltration guard** (agent-loop-hardening slice E): when `true`, an
+    /// in-house run excludes every `emits_external`-tainted tool from its advertised menu AND
+    /// denies one at dispatch if the model proposes it anyway (it can hallucinate a tool it was
+    /// never shown). Defense-in-depth over the capability wall for prompt-injection→exfiltration:
+    /// steered or not, the model has nothing to exfiltrate *with*. External-runtime coverage
+    /// arrives with the capability wall.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exfiltration_guard: Option<bool>,
 }

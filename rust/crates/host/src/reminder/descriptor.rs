@@ -72,6 +72,7 @@ pub(crate) fn create_schema() -> Value {
 /// — the name IS the gate.
 pub fn create_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "reminder.create".to_string(),
         title: "Schedule a reminder (cron + action)".to_string(),
         group: "reminder".to_string(),
@@ -133,6 +134,7 @@ pub(crate) fn list_render() -> Value {
 /// `mcp:reminder.list:call` via the name.
 pub fn list_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "reminder.list".to_string(),
         title: "List reminders (interactive)".to_string(),
         group: "reminder".to_string(),
@@ -155,6 +157,7 @@ pub fn list_descriptor() -> ToolDescriptor {
 /// the catalog only for a caller who may fire).
 pub fn fire_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "reminder.fire".to_string(),
         title: "Fire a reminder now".to_string(),
         group: "reminder".to_string(),

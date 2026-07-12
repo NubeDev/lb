@@ -44,6 +44,13 @@ pub struct Tool {
     /// from the TOML `[tools]` table (TOML ↔ JSON values are compatible for schema shapes).
     #[serde(default)]
     pub input_schema: Option<serde_json::Value>,
+    /// This tool **can transmit data off the node** (send a message, fetch a URL, call a webhook) —
+    /// the self-declared exfiltration taint (agent-loop-hardening slice E), carried onto the
+    /// registered `ToolDescriptor` and consumed generically by `exfiltration_guard`-flagged runs.
+    /// Additive + versioned by absence: an old manifest omits it (false), nothing else changes.
+    /// (The `lb-ext-sdk` manifest authoring type gains the same optional field — flagged there.)
+    #[serde(default)]
+    pub emits_external: bool,
 }
 
 /// The `[native]` block — present iff `tier="native"` (native-tier scope, the extensions-scope

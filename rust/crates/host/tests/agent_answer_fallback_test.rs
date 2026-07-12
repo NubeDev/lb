@@ -32,7 +32,9 @@ fn a_call(id: &str) -> ToolCall {
         id: id.into(),
         // A tool that will simply fail dispatch (no extension loaded) — the loop feeds the error
         // back to the model; this test only cares about the ANSWER text, not the tool outcome.
-        name: "nosuch.tool".into(),
+        // The name varies per call id so the ceiling run is genuine WORK, not the identical-call
+        // spiral the loop detector (hardening slice B) now deliberately ends before the ceiling.
+        name: format!("nosuch-{id}.tool"),
         input: "{}".into(),
     }
 }

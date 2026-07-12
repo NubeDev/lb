@@ -51,6 +51,11 @@ pub enum TranscriptEvent {
         ok: Option<String>,
         err: Option<String>,
     },
+    /// A proposed call that will never run: the turn died (cancel, crash, detector break) before
+    /// its result landed (agent-loop-hardening slice C). Recorded so the durable transcript never
+    /// carries a proposed call without a resolution — a watcher's spinner resolves, and a resume
+    /// folds it as a "cancelled" tool error the model can see. Additive (`#[non_exhaustive]`).
+    ToolCancelled { id: String },
     /// The model activated a granted skill mid-run (Part 5). Recorded so the active-skill set
     /// survives resume — a rehydrated run re-loads exactly the skills it had activated.
     SkillActivated { id: String },

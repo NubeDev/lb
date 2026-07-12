@@ -54,6 +54,7 @@ pub(crate) fn compile_schema() -> Value {
 /// The `query.save` descriptor.
 pub fn save_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "query.save".to_string(),
         title: "Save (upsert) a PRQL/raw query as an editable workspace record".to_string(),
         group: "query".to_string(),
@@ -83,6 +84,7 @@ pub(crate) fn run_result_render() -> Value {
 /// The `query.run` descriptor.
 pub fn run_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "query.run".to_string(),
         title: "Run a saved/inline query against the platform store or a datasource".to_string(),
         group: "query".to_string(),
@@ -99,6 +101,7 @@ pub fn run_descriptor() -> ToolDescriptor {
 /// The `query.compile` descriptor (dry-run, no data access).
 pub fn compile_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "query.compile".to_string(),
         title: "Compile a PRQL/raw query to its target SQL without executing".to_string(),
         group: "query".to_string(),

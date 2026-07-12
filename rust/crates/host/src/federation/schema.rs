@@ -75,6 +75,7 @@ pub async fn federation_schema<L: Launcher>(
 /// the same `@`-picker as `federation.query`'s `source`.
 pub fn schema_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "federation.schema".to_string(),
         title: "List a registered datasource's tables, or one table's columns".to_string(),
         group: "federation".to_string(),

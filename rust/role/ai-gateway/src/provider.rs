@@ -11,12 +11,20 @@
 
 use std::future::Future;
 
+use crate::fault::ProviderFault;
 use crate::request::AiRequest;
 use crate::response::AiResponse;
 
 /// A model backend. `complete` answers one turn. `Send + Sync` so the gateway holding it can be
 /// shared across the node's async tasks.
+///
+/// A failed call is a typed [`ProviderFault`] (status + `Retry-After` + overflow discriminant),
+/// never a completion-shaped error string — the loop classifies faults into retry/compact/terminal
+/// lanes (agent-loop-hardening slice D), which a flattened `stop` answer made impossible.
 pub trait Provider: Send + Sync {
     /// Answer one turn for `req`. Real adapters do network IO here; the mock resolves immediately.
-    fn complete(&self, req: &AiRequest) -> impl Future<Output = AiResponse> + Send;
+    fn complete(
+        &self,
+        req: &AiRequest,
+    ) -> impl Future<Output = Result<AiResponse, ProviderFault>> + Send;
 }

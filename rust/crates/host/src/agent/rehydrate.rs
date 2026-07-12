@@ -84,6 +84,19 @@ pub fn rehydrate(system: &str, goal: &str, events: &[&TranscriptEvent]) -> LoopS
                     error: err.clone(),
                 })
             }
+            // A cancelled call folds as an error outcome (slice C): the model resumed into this
+            // conversation SEES that its proposal never ran (with the echo context from the
+            // proposal map) instead of a silent gap it might misread as success.
+            TranscriptEvent::ToolCancelled { id } => {
+                let (name, input) = proposed.get(id).cloned().unwrap_or_default();
+                pending.push(CallOutcome {
+                    id: id.clone(),
+                    name,
+                    input,
+                    ok: None,
+                    error: Some("cancelled: the call never ran (the run was interrupted)".into()),
+                })
+            }
             TranscriptEvent::SkillActivated { id } => {
                 if !state.active_skills.iter().any(|s| s == id) {
                     state.active_skills.push(id.clone());

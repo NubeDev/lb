@@ -94,6 +94,7 @@ pub async fn federation_query<L: Launcher>(
 /// the read (a pure read has no row-control write verbs).
 pub fn query_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "federation.query".to_string(),
         title: "Run a read-only SQL query against a registered datasource".to_string(),
         group: "federation".to_string(),

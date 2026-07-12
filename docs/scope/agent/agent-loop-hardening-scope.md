@@ -1,6 +1,11 @@
 # Agent scope — loop hardening (adopted ideas from zeroclaw, carapace, hermes-rs)
 
-Status: scope (the ask). Promotes to `doc-site/content/public/agent/agent.md` (new sections) once shipped.
+Status: **shipped (in-house slices, 2026-07-12)** — branch `agent-loop-hardening`, one commit per
+slice (D `ea7c4d6`, A `6b2d0f6`, C `ce8abbb`, B `71c565e`, E `fcab7c2`); session log + decisions in
+`../../sessions/agent/agent-loop-hardening-session.md`; promoted to
+`doc-site/content/public/agent/agent.md` ("Loop hardening"). The **wall-level external-runtime
+coverage of slices B and E** is explicitly deferred to `../external-agent/capability-wall-scope.md`
+(the external runtime does not cross the wall yet) — a stated non-goal of the shipped cut, not a gap.
 
 We surveyed three open-source Rust agent runtimes — **zeroclaw** (self-hosted agent runtime,
 microkernel loop), **carapace** (security-hardened personal assistant), **hermes-rs** (ReAct
@@ -233,21 +238,24 @@ deterministic scripts (rule 9; the provider HTTP is the one sanctioned fake):
   absent) is not caught — same trust model as every descriptor field. The guard is
   defense-in-depth over the capability wall, not a replacement; say so in the public doc.
 
-## Open questions
+## Open questions — all resolved (2026-07-12, session doc "Unsupervised decisions")
 
-- **Detector thresholds:** window 20 / repeat 3 / ping-pong 4 / no-progress 5 are zeroclaw's
-  defaults — adopt as node defaults and revisit with real transcripts, or make them
-  `agent.config` fields from day one? (Lean: node defaults only; config the on/off, not the
-  numbers.)
-- **Compact budget source:** derive from the active definition's model (context-window
-  metadata we don't yet store on `model_endpoint`) vs a flat configured number. Flat number
-  first; per-model metadata is an `agent-catalog` follow-up.
-- **Where slice C's sanitizer runs:** load-time only (heals old records lazily) vs a one-shot
-  boot heal like the insight-ts one. Lean load-time; measure whether old orphaned records
-  actually exist in the wild first.
-- **Does `exfiltration_guard` belong on personas instead?** A persona already narrows the
-  menu; the guard could be a persona field rather than `agent.config`. Decide when slicing —
-  whichever avoids a second narrowing seam.
+- **Detector thresholds:** RESOLVED as the lean — node constants (window 20 / repeat 3 /
+  ping-pong 4 / no-progress 5); `agent.config.loop_window` configures the on/off + window only
+  (`0` disables). Revisit the numbers with real transcripts.
+- **Compact budget source:** RESOLVED as the lean — a flat configured number
+  (`agent.config.compact_budget`, node default 48 000 estimated tokens); per-model context
+  metadata stays the `agent-catalog` follow-up.
+- **Where slice C's sanitizer runs:** RESOLVED as the lean — load-time, lazily, on first resume:
+  orphans are healed as `ToolCancelled` events **appended at the cursor** (existing step indices
+  never renumbered). No boot heal; nothing measured in the wild demanded one.
+- **Does `exfiltration_guard` belong on personas instead?** RESOLVED — `agent.config`. A persona
+  narrows only the *advertised menu* and is caller-switchable per invoke; the guard must also deny
+  at dispatch and be an admin-held workspace posture, so it rides the admin-gated config record
+  (no second narrowing seam; the model/caller cannot opt out).
+- **New (discovered):** the summary-call token gate and retry usage accounting await close-out
+  slices A/B (`Turn.usage`, `max_run_tokens`) — the seams are in place (`ceiling.rs` header,
+  `attempt_turn`), currently ungated because no budget exists to gate on.
 
 ## Related
 

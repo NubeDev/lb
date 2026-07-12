@@ -54,6 +54,9 @@ pub fn project(job: &Job) -> Vec<RunEvent> {
                     err: err.clone(),
                 });
             }
+            TranscriptEvent::ToolCancelled { id } => {
+                out.push(RunEvent::ToolCancelled { id: id.clone() });
+            }
             TranscriptEvent::SkillActivated { id } => {
                 out.push(RunEvent::SkillActivated { id: id.clone() });
             }
@@ -113,6 +116,7 @@ pub fn project_one(event: &TranscriptEvent, turn: u32) -> Vec<RunEvent> {
             ok: ok.clone(),
             err: err.clone(),
         }],
+        TranscriptEvent::ToolCancelled { id } => vec![RunEvent::ToolCancelled { id: id.clone() }],
         TranscriptEvent::SkillActivated { id } => vec![RunEvent::SkillActivated { id: id.clone() }],
         TranscriptEvent::SuspensionOpened {
             tool_call_id,

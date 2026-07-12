@@ -46,6 +46,10 @@ pub enum RunEvent {
         ok: Option<String>,
         err: Option<String>,
     },
+    /// A proposed call was cancelled before it ran (the turn died — cancel, crash heal, detector
+    /// break; agent-loop-hardening slice C). A watcher resolves the call's spinner on this exactly
+    /// as it would on a result — "tool running…" never hangs.
+    ToolCancelled { id: String },
     /// The model activated a granted skill mid-run (Part 5).
     SkillActivated { id: String },
     /// The run suspended for a human decision on `tool_call_id`; `decision_id` is the

@@ -19,6 +19,7 @@ const SHARE: &str = "share";
 /// the call (live, the agent's share failed on a mis-typed `now` it had to guess).
 pub fn share_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "dashboard.share".to_string(),
         title: "Set a dashboard's visibility (private / team / workspace)".to_string(),
         group: "dashboard".to_string(),

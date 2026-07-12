@@ -24,7 +24,7 @@ use std::sync::Arc;
 use lb_auth::Principal;
 
 use super::error::AgentError;
-use super::model_access::{AllowedTool, ModelAccess, Turn};
+use super::model_access::{AllowedTool, ModelAccess, Turn, TurnError};
 use crate::boot::Node;
 
 /// Everything a runtime needs to drive one run — assembled by `agent.invoke` and handed to whichever
@@ -111,7 +111,7 @@ pub trait ErasedModel: Send + Sync {
         tools: &'a [AllowedTool],
         prior: &'a [super::model_access::CallOutcome],
         idempotency_key: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Turn> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Turn, TurnError>> + Send + 'a>>;
 
     /// Mirrors [`ModelAccess::is_configured`] through the erasure — whether this is a real provider
     /// vs. the placeholder. Lets a registry-stored (erased) model tell a non-agent caller (the rules
@@ -127,7 +127,7 @@ impl<M: ModelAccess + Send + Sync> ErasedModel for M {
         tools: &'a [AllowedTool],
         prior: &'a [super::model_access::CallOutcome],
         idempotency_key: &'a str,
-    ) -> Pin<Box<dyn Future<Output = Turn> + Send + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Turn, TurnError>> + Send + 'a>> {
         Box::pin(self.turn(ws, messages, tools, prior, idempotency_key))
     }
 
@@ -149,7 +149,7 @@ impl ModelAccess for ModelHandle {
         tools: &[AllowedTool],
         prior: &[super::model_access::CallOutcome],
         idempotency_key: &str,
-    ) -> impl Future<Output = Turn> + Send {
+    ) -> impl Future<Output = Result<Turn, TurnError>> + Send {
         // Clone the model turn's inputs into an owned future so the returned `impl Future` captures
         // no borrow beyond `&self`'s erased model — matching the trait's elided RPITIT shape, which
         // the in-house loop consumes by `.await`ing immediately (no cross-await borrow held).

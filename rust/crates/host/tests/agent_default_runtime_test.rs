@@ -90,6 +90,9 @@ async fn set_default(node: &Node, admin: &Principal, ws: &str, runtime: &str) {
         admin,
         ws,
         &AgentConfig {
+            compact_budget: None,
+            loop_window: None,
+            exfiltration_guard: None,
             active_definition: None,
             active_persona: None,
             enabled_personas: None,

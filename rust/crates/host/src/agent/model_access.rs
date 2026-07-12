@@ -56,9 +56,42 @@ pub struct Turn {
     pub done: bool,
 }
 
+/// A failed model turn, pre-classified into the lane the loop acts on (agent-loop-hardening slice
+/// D). The classification happens in the provider adapter on **structured** status/headers (see
+/// the gateway's `ProviderFault`); this is its host-altitude projection — the loop never sees a
+/// status code, only the lane. The scope's fourth lane (*model-recoverable*: denied tool, unknown
+/// tool, bad args) never surfaces here — those are tool outcomes fed back as observations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TurnError {
+    /// Retry the same step, bounded, honoring `retry_after_secs` when the provider sent one.
+    Transient {
+        detail: String,
+        retry_after_secs: Option<u64>,
+    },
+    /// The conversation exceeded the model's context window — compact and continue the same run
+    /// (slice A's recovery), never retry verbatim.
+    Overflow { detail: String },
+    /// Unrecoverable (auth failure, malformed request, …) — the run ends with an honest terminal
+    /// event, never a fake completion.
+    Fatal { detail: String },
+}
+
+impl TurnError {
+    /// The human-readable detail, whatever the lane — for the terminal event / logs.
+    pub fn detail(&self) -> &str {
+        match self {
+            TurnError::Transient { detail, .. }
+            | TurnError::Overflow { detail }
+            | TurnError::Fatal { detail } => detail,
+        }
+    }
+}
+
 /// One model turn over the conversation. The host passes the running messages, the allowed tools,
 /// the outcomes of the previous turn's calls, and an **idempotency key** (so a resumed turn is
 /// replay-safe — the gateway caches by it, agent scope offline/sync).
+///
+/// A failed call is a typed [`TurnError`] (slice D), never a completion-shaped error string.
 pub trait ModelAccess {
     fn turn(
         &self,
@@ -67,7 +100,7 @@ pub trait ModelAccess {
         tools: &[AllowedTool],
         prior: &[CallOutcome],
         idempotency_key: &str,
-    ) -> impl Future<Output = Turn> + Send;
+    ) -> impl Future<Output = Result<Turn, TurnError>> + Send;
 
     /// Whether this is a **real** model provider vs. the [`UnconfiguredModel`](super::unconfigured)
     /// placeholder a node binds before a provider is wired. Defaults to `true` (a real model);

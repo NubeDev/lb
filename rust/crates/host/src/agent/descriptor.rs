@@ -37,6 +37,7 @@ pub(crate) fn invoke_schema() -> Value {
 /// `authorize_tool`; see the module docs for why the name IS the gate.
 pub fn invoke_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "agent.invoke".to_string(),
         title: "Ask the in-channel agent to pursue a goal (pick a runtime)".to_string(),
         group: "agent".to_string(),

@@ -7,12 +7,27 @@
 //! idempotency key) to/from the gateway contract ([`AiRequest`]/[`AiResponse`]). It runs **no
 //! loop** — `complete` answers one turn; the host loop runs the proposed calls (agent scope).
 
-use lb_host::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
+use lb_host::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn, TurnError};
 
+use crate::fault::{FaultLane, ProviderFault};
 use crate::gateway::AiGateway;
 use crate::provider::Provider;
 use crate::request::{AiRequest, Message, ToolSchema};
 use crate::response::{FinishReason, ToolResult};
+
+/// Project a typed provider fault onto the host's [`TurnError`] lanes — the classification itself
+/// lives with the fault ([`ProviderFault::lane`], on structured status/headers); this is a pure
+/// altitude change (slice D).
+fn to_turn_error(f: ProviderFault) -> TurnError {
+    match f.lane() {
+        FaultLane::Transient => TurnError::Transient {
+            retry_after_secs: f.retry_after_secs,
+            detail: f.detail,
+        },
+        FaultLane::Overflow => TurnError::Overflow { detail: f.detail },
+        FaultLane::Fatal => TurnError::Fatal { detail: f.detail },
+    }
+}
 
 impl<P: Provider> ModelAccess for AiGateway<P> {
     async fn turn(
@@ -22,7 +37,7 @@ impl<P: Provider> ModelAccess for AiGateway<P> {
         tools: &[AllowedTool],
         prior: &[CallOutcome],
         idempotency_key: &str,
-    ) -> Turn {
+    ) -> Result<Turn, TurnError> {
         let mut req = AiRequest::new(ws, idempotency_key);
         req.messages = messages
             .iter()
@@ -47,9 +62,9 @@ impl<P: Provider> ModelAccess for AiGateway<P> {
             })
             .collect();
 
-        let resp = self.complete(&req).await;
+        let resp = self.complete(&req).await.map_err(to_turn_error)?;
 
-        Turn {
+        Ok(Turn {
             content: resp.content,
             calls: resp
                 .tool_calls
@@ -61,6 +76,6 @@ impl<P: Provider> ModelAccess for AiGateway<P> {
                 })
                 .collect(),
             done: resp.finish_reason == FinishReason::Stop,
-        }
+        })
     }
 }

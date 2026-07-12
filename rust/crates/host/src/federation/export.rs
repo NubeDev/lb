@@ -177,6 +177,7 @@ fn sample_to_row(
 /// (`{series: "name"}`); `range` bounds the export; `key` makes it idempotent.
 pub fn export_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "federation.export".to_string(),
         title: "Export platform series data to an external datasource (durable job)".to_string(),
         group: "federation".to_string(),
