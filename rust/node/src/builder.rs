@@ -19,7 +19,7 @@ use std::sync::Arc;
 use lb_host::{load_enabled, AgentServer, Node};
 use lb_role_gateway::Gateway;
 
-use crate::config::{BootConfig, GatewayMode};
+use crate::config::{BootConfig, CredentialMode, GatewayMode};
 
 /// A booted node, ready to serve. Hands back the [`Node`] (store / bus / host verbs — the embedder
 /// calls verbs in-process), and — when the gateway is on — the [`Gateway`] value + bind address to
@@ -111,6 +111,17 @@ pub async fn boot_full(cfg: BootConfig) -> anyhow::Result<RunningNode> {
             // A LIVE clock: `Gateway::new_live` reads wall time per request and installs its key onto
             // the node. Do NOT call `Gateway::boot()` here — that would open a second store handle.
             let mut gw = Gateway::new_live(node.clone(), cfg.signing_key.clone());
+            // Select the credential check `POST /login` runs (embedder-credential-mode scope).
+            // `new_live` hardwired `DevTrustAny` (password-less); apply the config's choice through
+            // the existing `with_credential_check` builder so an embedded node can enforce real
+            // passwords (`PasswordHash` → argon2, wrong/absent secret 401s). This is the ONLY place
+            // an embedded node's login check is selected; the mode came down from `BootConfig`
+            // (from_env at the binary, or the embedder's explicit choice), never re-read from env.
+            let check: Arc<dyn lb_role_gateway::CredentialCheck> = match cfg.credential_mode {
+                CredentialMode::DevTrustAny => Arc::new(lb_role_gateway::DevTrustAny),
+                CredentialMode::PasswordHash => Arc::new(lb_role_gateway::PasswordHash),
+            };
+            gw = gw.with_credential_check(check);
             // Relocate the extension-UI serve dir when the embedder set one (`Some` ⇒ pin it via the
             // builder); `None` leaves the gateway's own `LB_EXT_UI_DIR`/"extensions-ui" default in place,
             // so the standalone binary is untouched (ext-UI-dir embed seam).

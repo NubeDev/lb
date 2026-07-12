@@ -50,6 +50,14 @@ lb-role-external-agent = { workspace = true, optional = true }
 anyhow.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+# The embedder-credential-mode integration test drives the REAL gateway `boot_full` builds (its
+# `router()` via a tower oneshot — no HTTP port), proving `BootConfig::credential_mode` reaches the
+# gateway's login check. Same harness the gateway crate's route tests use (no mocks, testing §0).
+tower = { version = "0.5", features = ["util"] }
+axum = { workspace = true }
+http-body-util = "0.1"
+
 [features]
 # OFF by default (runtime-seam-scope: "the `external-agent` cargo feature, OFF by default"). Turning
 # it on pulls the role crate and lets the node register the external `AcpRuntime` entries into its
