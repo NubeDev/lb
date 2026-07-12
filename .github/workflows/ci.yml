@@ -41,6 +41,13 @@ jobs:
       - name: Test
         working-directory: rust
         run: cargo test --workspace
+      - name: Pack toolchain stays publishable
+        # The stable published core (sign/key/trust-line) must build without `devkit-full`, and the
+        # lb-pack dependency chain must stay publish-able — the gap that broke cc-app's `make dev`.
+        working-directory: rust
+        run: |
+          cargo check -p lb-devkit --no-default-features
+          cargo test -p lb-pack --test pack_verify_test
       - name: Format check
         working-directory: rust
         run: cargo fmt --all --check

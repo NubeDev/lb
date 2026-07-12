@@ -83,7 +83,7 @@ lb-auth = { path = "crates/auth" }
 lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
-lb-devkit = { path = "crates/devkit" }
+lb-devkit = { path = "crates/devkit", default-features = false }
 lb-ext-loader = { path = "crates/ext-loader" }
 lb-frame = { path = "crates/frame" }
 lb-flows = { path = "crates/flows" }

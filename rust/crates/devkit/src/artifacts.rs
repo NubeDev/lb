@@ -11,11 +11,11 @@ use std::fs::{self, Metadata};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
-use crate::model::Artifact;
+use crate::model::BuildArtifact;
 use crate::Tier;
 
 /// Every build output currently on disk for `path`, sorted by kind then path for a stable order.
-pub fn collect_artifacts(path: &Path, tier: Tier) -> Vec<Artifact> {
+pub fn collect_artifacts(path: &Path, tier: Tier) -> Vec<BuildArtifact> {
     let mut out = Vec::new();
 
     // The compiled binary/component. wasm builds land under a wasm32-wasip2 triple; native under the
@@ -52,8 +52,8 @@ pub fn collect_artifacts(path: &Path, tier: Tier) -> Vec<Artifact> {
     out
 }
 
-fn artifact(kind: &str, path: &Path, meta: &Metadata) -> Artifact {
-    Artifact {
+fn artifact(kind: &str, path: &Path, meta: &Metadata) -> BuildArtifact {
+    BuildArtifact {
         kind: kind.to_string(),
         path: path.to_path_buf(),
         size: meta.len(),

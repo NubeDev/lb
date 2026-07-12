@@ -258,7 +258,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   three published SDK surfaces (`lb-sdk` WIT/wasm, a new `lb-ext-native` child-side facade with a
   versioned `init` handshake, and `@nube/ext-ui-sdk` as the single source of the page/widget contracts),
   an Artifact v2 that carries the UI bundle, and the previously deferred thin `lb-ext` CLI — the
-  publish/trust path unchanged), and `extension-watch-scope.md` (the **generic live-feed primitive for
+  publish/trust path unchanged), and `pack-toolchain-publish-scope.md` (the **prerequisite slice** of
+  that CLI: `lb-devkit` + `lb-pack` are `publish = false` today, so **no embedder can sign an
+  extension artifact** — an embedder builds a `.wasm` but cannot package it into the signed `Artifact`
+  the gateway accepts (cc-app's `make dev` dies at `cargo build -p lb-pack`); drop the flag, make the
+  packager git-tag/`cargo install`-consumable, and document it in the dev flow — no new trust model),
+  and `extension-watch-scope.md` (the **generic live-feed primitive for
   extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
   host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
   ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s

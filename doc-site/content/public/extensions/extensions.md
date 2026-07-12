@@ -8,6 +8,48 @@ and (per `docs/scope/extensions/ext-out-of-tree-scope.md`) the out-of-tree SDKs
 See `docs/scope/extensions/` for the asks and `docs/public/extensions/dev-flow.md` (if present)
 for the current build → pack → publish chain.
 
+## Dev flow: packaging & publishing (build → pack → publish)
+
+The bridge between an extension's `build.sh` and the gateway's `POST /extensions` is **`lb-pack`**,
+the artifact packager. It and its library `lb-devkit` are **published lb crates, consumed by git
+tag** (the same model as embedding the core via `lb-node`) — an embedder never copies the tool or
+re-implements the signing. `lb-pack` shares the exact digest + Ed25519 idiom the node verifies with
+(`lb-devkit` → `lb-registry`), so a packed artifact verifies **by construction**.
+
+```sh
+# 1. Install once, pinned to the SAME lb tag you embed (version alignment = format alignment):
+cargo install --git https://github.com/NubeDev/lb --tag node-v0.3.3 lb-pack
+
+# 2. Build your extension, then pack it (generates the publisher key on first run):
+lb-pack myext/extension.toml myext/target/wasm32-wasip2/release/myext.wasm \
+        keys/dev.key --key-id my-publisher --out artifacts/myext.json
+
+# 3. First run only — print the trust line and start the node with it:
+lb-pack pubkey keys/dev.key --key-id my-publisher   # → my-publisher=<hexpubkey>
+#    LB_TRUSTED_PUBKEYS="my-publisher=<hexpubkey>" …
+
+# 4. Publish with a session token carrying ext.publish:
+curl -X POST "$NODE/extensions" -H "Authorization: Bearer $TOKEN" \
+     -H 'content-type: application/json' --data @artifacts/myext.json   # → 204
+```
+
+**The publisher signing key is sensitive.** It is the identity a node trusts via
+`LB_TRUSTED_PUBKEYS` — never commit the key file; only the trust *line* (the public half) is
+shared. Signing is local and grants nothing: trust is established node-side, an artifact from an
+untrusted key is rejected at verify, and uploading still requires the `ext.publish` capability.
+
+For programmatic packing (an embedder's own tooling, the future `lb-ext` CLI), depend on the
+stable `lb-devkit` core at the same tag:
+
+```toml
+lb-devkit = { git = "https://github.com/NubeDev/lb", tag = "node-v0.3.3", default-features = false }
+```
+
+The stable surface is `sign_artifact`, `load_or_create_key`, `publisher_trust_line`,
+`LoadedPublisherKey`, and the signed `Artifact` type; the default-on `devkit-full` feature
+(scaffold/build/inspect/toolchains) is node-side machinery, not an embedder contract. Full how-to:
+`docs/skills/lb-pack/SKILL.md`.
+
 ## Native extensions: calling host MCP verbs back (host-callback)
 
 A native (Tier-2) extension is a subprocess the host supervises over stdio. The `lb-ext-native` SDK

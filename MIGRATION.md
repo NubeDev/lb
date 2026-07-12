@@ -16,6 +16,11 @@ runs *its own* binary. lb is no longer "the product you run" — it is the core 
   `BootConfig` at the binary boundary → `lb_node::boot_full`. See
   [`docs/scope/node-roles/embed-node-scope.md`](docs/scope/node-roles/embed-node-scope.md).
 - Symmetric nodes still hold: role = config, never a code branch.
+- **Pack toolchain (since `node-v0.3.3`):** `lb-pack` (artifact packager) and `lb-devkit` (its
+  signing library) are published at the same tags — `cargo install --git
+  https://github.com/NubeDev/lb --tag <node-v*> lb-pack`. An embedder never runs
+  `cargo build -p lb-pack` (that only worked inside lb's workspace). See
+  [`docs/skills/lb-pack/SKILL.md`](docs/skills/lb-pack/SKILL.md).
 
 ## What has MOVED OUT (authoritative homes are no longer in this repo)
 
