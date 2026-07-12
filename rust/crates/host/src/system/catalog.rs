@@ -262,6 +262,53 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "authz",
         description: "kill live tokens + tombstone grants for a subject (admin-only)",
     },
+    // grants.*/roles.*/teams.* — the authz admin write+read surface (authz-grants scope), reachable
+    // over the one MCP bridge (authz-verbs-mcp-dispatch scope) so a native ext can mint scoped grants.
+    HostTool {
+        tool: "grants.assign",
+        group: "authz",
+        description: "grant a cap (optionally scoped to rows) to a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.revoke",
+        group: "authz",
+        description: "revoke a granted cap+scope from a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.list",
+        group: "authz",
+        description: "list the caps directly granted to a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.list_scoped",
+        group: "authz",
+        description: "list a subject's grants with their row scopes (admin-only)",
+    },
+    HostTool {
+        tool: "roles.define",
+        group: "authz",
+        description: "create or replace a role's cap bundle (admin-only)",
+    },
+    HostTool {
+        tool: "roles.list",
+        group: "authz",
+        description: "list the roles defined in the workspace (admin-only)",
+    },
+    HostTool {
+        tool: "roles.delete",
+        group: "authz",
+        description: "delete a role and detach its grants (admin-only; built-ins immutable)",
+    },
+    HostTool {
+        tool: "teams.create",
+        group: "authz",
+        description: "create or rename a team (admin-only)",
+    },
+    HostTool {
+        tool: "teams.list",
+        group: "authz",
+        description: "list the teams in the workspace (admin-only)",
+    },
     // invite.* — the token onboarding surface (invites scope). Accept is pre-auth (gateway route).
     HostTool {
         tool: "invite.create",
