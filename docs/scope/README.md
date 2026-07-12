@@ -137,7 +137,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   additive `scope` selector on the grant record + `check_scoped`/`scope_filter` at the wall and via
   SDK host-callback, so "a member reaches only *their* records" — a guardian's children, a
   technician's sites — is platform-enforced data instead of N hand-rolled ext filters; first
-  consumer: the cc-app childcare product), and `invites-scope.md` (**token onboarding for people
+  consumer: the cc-app childcare product), and `authz-verbs-mcp-dispatch-scope.md` (the
+  one-arm routing gap that blocks the above from the native tier: the MCP dispatcher routes
+  `authz.*` to `call_authz_tool` but not `grants.*`/`roles.*`/`teams.*` — which that handler
+  already implements — so a native extension can *read* the scoped-grant surface over the
+  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT), and
+  `invites-scope.md` (**token onboarding for people
   who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
   opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept
   route into identity + membership + grants atomically, caps live on first login; the missing

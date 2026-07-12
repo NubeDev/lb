@@ -33,7 +33,11 @@ by the same grant store, checkable at the same wall.
   Access console with their selector, and are revoked/re-derived like any grant.
 - **Deriveable by extensions:** a domain event (a guardianship edge linked/unlinked) can
   create/remove scoped grants through the normal granted `grants.*` verbs — the extension
-  owns *when*, the core owns *what it means*.
+  owns *when*, the core owns *what it means*. **Native tier:** a Tier-2 (native/sidecar)
+  extension derives grants by calling `grants.*` back over the host MCP callback — which
+  requires the dispatcher to route those verbs. That routing is a separate one-arm fix,
+  `authz-verbs-mcp-dispatch-scope.md`; until it ships, the *read* half
+  (`check_scoped`/`scope_filter`) works over the callback but the *write* half does not.
 
 ## Non-goals
 
