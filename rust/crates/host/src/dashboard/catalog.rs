@@ -123,6 +123,7 @@ pub async fn dashboard_catalog(
 /// the palette can offer it). Mirrors how `tools.catalog` itself is listed: a named host-native verb.
 pub fn catalog_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "dashboard.catalog".to_string(),
         title: "Widget catalog".to_string(),
         group: "dashboard".to_string(),

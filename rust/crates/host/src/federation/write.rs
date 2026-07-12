@@ -82,6 +82,7 @@ pub async fn federation_write<L: Launcher>(
 /// `tool` node's config form renders `table`/`columns` from the matching `db_schema` record.
 pub fn write_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "federation.write".to_string(),
         title: "Write rows to a registered datasource (bounded INSERT/UPSERT)".to_string(),
         group: "federation".to_string(),

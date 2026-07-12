@@ -95,7 +95,8 @@ pub async fn resume_suspensions(
             SuspensionDecision::Allow => {
                 // Allow→replay: run the ORIGINALLY-proposed call from the persisted args.
                 let replay = vec![call.clone()];
-                run_calls(node, agent, ws, &replay)
+                // `tainted: None` — an Allow-replay was explicitly human-decided (see run_calls).
+                run_calls(node, agent, ws, &replay, None)
                     .await
                     .into_iter()
                     .next()

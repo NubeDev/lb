@@ -79,6 +79,7 @@ pub async fn tools_catalog(
         }
         if authorize_tool(principal, ws, crate::tool_call::gate_tool_for(&info.tool)).is_ok() {
             tools.push(ToolDescriptor {
+                emits_external: false,
                 name: info.tool,
                 title: info.description,
                 group: info.group,

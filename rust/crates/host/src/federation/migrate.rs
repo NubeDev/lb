@@ -75,6 +75,7 @@ pub async fn federation_migrate<L: Launcher>(
 /// gate); an agent proposing a migrate must name the schema + source and opt into apply explicitly.
 pub fn migrate_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "federation.migrate".to_string(),
         title: "Plan/apply a designed schema to a datasource (additive DDL, dry-run default)"
             .to_string(),

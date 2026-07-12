@@ -32,6 +32,7 @@ use super::compact::{estimate_tool_tokens, DEFAULT_COMPACT_BUDGET_TOKENS};
 use super::loop_detector::{LoopDetector, LoopSignal, DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 use super::decision::{open_suspension, resume_suspensions};
 use super::error::AgentError;
+use super::exfil::tainted_tools;
 use super::model_access::{AllowedTool, ModelAccess};
 use super::partition::partition_by_policy;
 use super::policy::load_policy;
@@ -138,6 +139,27 @@ pub async fn run_session<M: ModelAccess>(
         dropped: 0,
     };
     let mut detector = LoopDetector::new(cfg.loop_window.unwrap_or(DEFAULT_LOOP_WINDOW));
+
+    // EXFILTRATION GUARD (slice E): a guarded workspace's run gets NO `emits_external` tool — the
+    // advertised menu is filtered here AND every dispatch is re-checked below (the model can
+    // hallucinate a tool it was never shown; gate at definition time and call time). Taint is
+    // self-declared descriptor data, resolved generically (rule 10 — no tool-name list in core).
+    let tainted = cfg
+        .exfiltration_guard
+        .unwrap_or(false)
+        .then(|| tainted_tools(node));
+    let guarded_menu: Vec<AllowedTool>;
+    let tools: &[AllowedTool] = match &tainted {
+        Some(taint) => {
+            guarded_menu = tools
+                .iter()
+                .filter(|t| !taint.contains(&t.name))
+                .cloned()
+                .collect();
+            &guarded_menu
+        }
+        None => tools,
+    };
 
     // Seed the live context (never persisted; re-injected per segment): the granted-skills catalog
     // (Part 5, persona-filtered), the memory index (on-behalf-of read), and — on resume — the
@@ -327,7 +349,7 @@ pub async fn run_session<M: ModelAccess>(
 
         // Run the Allowed calls; combine with the policy-denied results, preserving proposal order is
         // unnecessary (the model keys on the call id), so denied-then-run is fine.
-        let mut outcomes = run_calls(node, &agent, ws, &to_run).await;
+        let mut outcomes = run_calls(node, &agent, ws, &to_run, tainted.as_ref()).await;
         outcomes.append(&mut denied);
         for o in &outcomes {
             writer

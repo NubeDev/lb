@@ -123,6 +123,7 @@ fn item_from_input(principal: &Principal, input: &Value) -> Result<Item, ToolErr
 /// persona leans on needs a schema).
 pub fn post_descriptor() -> lb_mcp::ToolDescriptor {
     lb_mcp::ToolDescriptor {
+        emits_external: false,
         name: "channel.post".to_string(),
         title: "Post a message to a channel".to_string(),
         group: "channel".to_string(),

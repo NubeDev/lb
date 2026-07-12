@@ -59,6 +59,7 @@ fn delete_schema() -> Value {
 pub fn secret_descriptors() -> Vec<ToolDescriptor> {
     vec![
         ToolDescriptor {
+            emits_external: false,
             name: "secret.set".to_string(),
             title: "Store (create/overwrite) a secret".to_string(),
             group: "secret".to_string(),
@@ -66,6 +67,7 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
             result: None,
         },
         ToolDescriptor {
+            emits_external: false,
             name: "secret.get".to_string(),
             title: "Read a secret value (three-gate: owner for private, any member for workspace)"
                 .to_string(),
@@ -74,6 +76,7 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
             result: None,
         },
         ToolDescriptor {
+            emits_external: false,
             name: "secret.set_visibility".to_string(),
             title: "Toggle a secret's visibility (private | workspace) — owner only".to_string(),
             group: "secret".to_string(),
@@ -81,6 +84,7 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
             result: None,
         },
         ToolDescriptor {
+            emits_external: false,
             name: "secret.delete".to_string(),
             title: "Delete a secret — owner only".to_string(),
             group: "secret".to_string(),
@@ -88,6 +92,7 @@ pub fn secret_descriptors() -> Vec<ToolDescriptor> {
             result: None,
         },
         ToolDescriptor {
+            emits_external: false,
             name: "secret.list".to_string(),
             title: "List secret metadata (path/owner/visibility) — never the values".to_string(),
             group: "secret".to_string(),

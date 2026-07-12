@@ -7,6 +7,7 @@
 //! Kept together because they share the loop's vocabulary; the *policy* and *decision* and
 //! *catalog* mechanics live in their own sibling modules.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_auth::Principal;
@@ -60,15 +61,31 @@ pub(super) fn count_turns(events: &[&TranscriptEvent]) -> u32 {
 /// the intersection forbids is `Denied` — captured as an error outcome (the model is told; the loop
 /// continues). `skill.activate` is the loop-internal built-in intercepted in `run.rs` BEFORE this, so
 /// it never reaches the bridge. `pub(crate)` so the Part-2 `decision/resume` path can replay an
-/// `Allow→replay` call through the identical mechanism.
+/// `Allow→replay` call through the identical mechanism (which passes `tainted: None` — a replayed
+/// call was explicitly human-decided, so the exfiltration guard does not re-veto it).
+///
+/// `tainted` is the exfiltration guard's dispatch check (slice E): a guarded run's proposed call to
+/// a tainted tool is refused HERE, error-as-observation, even though it was never advertised — the
+/// model can hallucinate a tool it was never shown.
 pub(crate) async fn run_calls(
     node: &Arc<Node>,
     agent: &Principal,
     ws: &str,
     calls: &[ProposedCall],
+    tainted: Option<&HashSet<String>>,
 ) -> Vec<CallOutcome> {
     let mut outcomes = Vec::with_capacity(calls.len());
     for c in calls {
+        if tainted.map(|t| t.contains(&c.name)).unwrap_or(false) {
+            outcomes.push(CallOutcome {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                input: c.input.clone(),
+                ok: None,
+                error: Some(super::exfil::EXFIL_DENIED.to_string()),
+            });
+            continue;
+        }
         let outcome = match call_tool(node, agent, ws, &c.name, &c.input).await {
             Ok(out) => CallOutcome {
                 id: c.id.clone(),

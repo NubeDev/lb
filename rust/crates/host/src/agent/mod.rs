@@ -28,6 +28,7 @@ mod defs;
 mod descriptor;
 mod dispatch;
 mod error;
+mod exfil;
 mod in_house;
 mod invoke;
 mod invoke_remote;
@@ -82,6 +83,7 @@ pub use defs::{
 pub use descriptor::invoke_descriptor;
 pub use dispatch::{invoke_via_runtime, Substrate};
 pub use error::AgentError;
+pub use exfil::EXFIL_DENIED;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;

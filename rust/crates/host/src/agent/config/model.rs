@@ -80,4 +80,12 @@ pub struct AgentConfig {
     /// node constants by decision — config the on/off + window, not the numbers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub loop_window: Option<u32>,
+    /// The workspace's **exfiltration guard** (agent-loop-hardening slice E): when `true`, an
+    /// in-house run excludes every `emits_external`-tainted tool from its advertised menu AND
+    /// denies one at dispatch if the model proposes it anyway (it can hallucinate a tool it was
+    /// never shown). Defense-in-depth over the capability wall for prompt-injection→exfiltration:
+    /// steered or not, the model has nothing to exfiltrate *with*. External-runtime coverage
+    /// arrives with the capability wall.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exfiltration_guard: Option<bool>,
 }
