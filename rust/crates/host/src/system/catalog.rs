@@ -253,6 +253,11 @@ const HOST_TOOLS: &[HostTool] = &[
         description: "which rows in a table the calling principal may reach under a cap",
     },
     HostTool {
+        tool: "authz.delegate_reach",
+        group: "authz",
+        description: "marker cap: hold it to name a `subject` on check_scoped/scope_filter (delegated reach)",
+    },
+    HostTool {
         tool: "authz.resolve",
         group: "authz",
         description: "resolved effective caps with provenance (access-console; admin-only)",

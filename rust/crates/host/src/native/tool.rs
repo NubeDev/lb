@@ -79,7 +79,11 @@ pub async fn call_sidecar<L: Launcher>(
     // (one place owns the fault shape). Here the recovery IS the supervision proof: apply the
     // crash-restart policy via the launcher and bump the durable restart count, so a killed sidecar
     // is restarted cleanly and the call still answers.
-    let out = super::call::call_once_or_restart(&handle, tool, input, || async {
+    // Stamp the authorized caller into the frame (native-caller-identity scope): the direct
+    // `native.call` verb propagates identity exactly as the routed `<ext>.<tool>` adapter does, so a
+    // sidecar enforces per-caller row visibility regardless of which entry point reached it.
+    let frame_caller = Some(super::caller::project(caller));
+    let out = super::call::call_once_or_restart(&handle, tool, input, frame_caller, || async {
         let restarts = {
             let mut sidecar = handle.lock().await;
             sidecar.restart(launcher).await?;

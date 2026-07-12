@@ -38,6 +38,10 @@ by the same grant store, checkable at the same wall.
   requires the dispatcher to route those verbs. That routing is a separate one-arm fix,
   `authz-verbs-mcp-dispatch-scope.md`; until it ships, the *read* half
   (`check_scoped`/`scope_filter`) works over the callback but the *write* half does not.
+  **Reach ABOUT another subject (shipped):** a native sidecar holds the *extension's* token, not
+  the end-user's, so "does `user:ana` reach `child:leo`?" needs a delegated reach — `check_scoped`/
+  `scope_filter` gained an optional `subject` gated by `mcp:authz.delegate_reach:call`. See
+  [`../extensions/native-caller-identity-scope.md`](../extensions/native-caller-identity-scope.md).
 
 ## Non-goals
 
