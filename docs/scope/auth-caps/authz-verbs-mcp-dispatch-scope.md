@@ -1,6 +1,9 @@
 # Auth-caps scope — route `grants.*` / `roles.*` / `teams.*` through the MCP dispatcher
 
-Status: scope (the ask). Promotes to `public/auth-caps/` once shipped.
+Status: **shipped** 2026-07-12 (branch `authz-verbs-mcp-dispatch`). Implemented per Intent /
+approach §1–4; tests in `rust/crates/host/tests/authz_mcp_dispatch_test.rs` (5, green) + existing
+authz suites (16, green); promoted to `doc-site/content/public/auth-caps/auth-caps.md`. Session:
+`docs/sessions/auth-caps/authz-verbs-mcp-dispatch-session.md`.
 
 > Read with: `entity-scoped-grants-scope.md` (this closes the "**Deriveable by extensions**"
 > goal it stated but could not yet deliver over the native tier), `authz-grants-scope.md`

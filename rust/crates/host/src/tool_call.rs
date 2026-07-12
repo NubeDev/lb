@@ -58,6 +58,13 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "inbox.",
     "insight.",
     "authz.",
+    // authz admin verbs (authz-verbs-mcp-dispatch scope): `call_authz_tool` already implements
+    // every `grants.*`/`roles.*`/`teams.*` verb; these prefixes route them through the one MCP
+    // bridge so a native (Tier-2) extension can MINT a scoped grant over the host callback, not
+    // just READ it (`authz.check_scoped`/`scope_filter` were already reachable under `authz.`).
+    "grants.",
+    "roles.",
+    "teams.",
     "invite.",
     "media.",
     "device.",
@@ -154,6 +161,24 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
         // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap.
         "nav.save"
+    } else if qualified_tool == "grants.revoke" {
+        // authz-verbs-mcp-dispatch scope: assign/revoke MUTATE the same grant surface and share the
+        // ONE cap `mcp:grants.assign:call` — the verb's inner gate (`authz/grants.rs`) checks that
+        // cap for both. No `mcp:grants.revoke:call` exists in any role bundle, so without this alias
+        // the outer gate would deny revoke for every caller, admins included.
+        "grants.assign"
+    } else if qualified_tool == "grants.list_scoped" {
+        // authz-verbs-mcp-dispatch scope: listing scoped grants is the SAME read privilege as
+        // `grants.list` — the inner gate checks `mcp:grants.list:call`; no per-verb cap exists.
+        "grants.list"
+    } else if qualified_tool == "teams.create" {
+        // authz-verbs-mcp-dispatch scope: the inner gate + admin role bundle use
+        // `mcp:teams.manage:call` (there is no `mcp:teams.create:call`); align the outer gate.
+        "teams.manage"
+    } else if qualified_tool == "roles.delete" {
+        // authz-verbs-mcp-dispatch scope: deleting a role is the SAME authority as defining/managing
+        // one — the inner gate checks `mcp:roles.manage:call`; no `mcp:roles.delete:call` exists.
+        "roles.manage"
     } else {
         qualified_tool
     }
@@ -356,13 +381,23 @@ async fn dispatch_at_depth(
             // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
             // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
             crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
-        } else if qualified_tool.starts_with("authz.") {
+        } else if qualified_tool.starts_with("authz.")
+            || qualified_tool.starts_with("grants.")
+            || qualified_tool.starts_with("roles.")
+            || qualified_tool.starts_with("teams.")
+        {
             // entity-scoped-grants scope: `authz.check_scoped` / `authz.scope_filter` — the scoped
             // read API extensions reach via `host.call-tool` so an extension verb asks the wall
             // "what can this principal reach?" instead of re-implementing the filter. The outer
             // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
             // (never accepts a `user` arg — no information leak). `authz.resolve` /
             // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
+            //
+            // authz-verbs-mcp-dispatch scope: `grants.*`/`roles.*`/`teams.*` route here too — the
+            // same `call_authz_tool` implements them, gated by the same admin caps (with the outer
+            // gate aliased to the inner cap for the four verbs `gate_tool_for` maps). This makes the
+            // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
+            // READ half above.
             crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("invite.") {
             // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
