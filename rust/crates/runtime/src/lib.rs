@@ -17,7 +17,7 @@ mod dispatch;
 mod engine;
 mod instance;
 
-pub use bridge::{BridgeError, CallContext, HostBridge};
+pub use bridge::{BridgeError, CallContext, Caller, HostBridge};
 pub use dispatch::LocalDispatch;
 pub use engine::{Engine, RuntimeError};
 pub use instance::Instance;

@@ -30,6 +30,6 @@ pub use error::SupervisorError;
 pub use frame::{read_frame, write_frame, MAX_FRAME};
 pub use launcher::{Channel, ChildRead, ChildWrite, Kill, Launcher};
 pub use os::OsLauncher;
-pub use rpc::{CallParams, Method, Reply, Request};
+pub use rpc::{CallParams, Caller, Method, Reply, Request};
 pub use sidecar::Sidecar;
 pub use spec::{Backoff, RestartPolicy, Spec};

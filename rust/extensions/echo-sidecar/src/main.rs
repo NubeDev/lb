@@ -80,6 +80,19 @@ fn handle_call(req: &Request, ws: &str) -> (Reply, bool) {
             ),
             false,
         ),
+        // `whoami` reflects the CALLER the host stamped into the frame (native-caller-identity scope):
+        // it proves the projection survived host → frame → child. `caller: null` when the frame carried
+        // none (an old-host shape); otherwise the `{sub, ws, role, delegated}` the host authorized.
+        "whoami" => {
+            let caller = match &params.caller {
+                Some(c) => serde_json::to_string(c).unwrap_or_else(|_| "null".into()),
+                None => "null".into(),
+            };
+            (
+                Reply::ok(req.id, format!(r#"{{"caller":{caller}}}"#)),
+                false,
+            )
+        }
         other => (Reply::err(req.id, format!("unknown tool: {other}")), false),
     }
 }

@@ -16,7 +16,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use lb_runtime::{CallContext, LocalDispatch, RuntimeError};
-use lb_supervisor::{Sidecar, SupervisorError};
+use lb_supervisor::{Caller, Sidecar, SupervisorError};
 use tokio::sync::Mutex as AsyncMutex;
 
 use super::registry::SidecarMap;
@@ -29,6 +29,7 @@ pub(super) async fn call_once_or_restart<F, Fut>(
     handle: &Arc<AsyncMutex<Sidecar>>,
     tool: &str,
     input: &str,
+    caller: Option<Caller>,
     on_fault: F,
 ) -> Result<String, SupervisorError>
 where
@@ -37,7 +38,7 @@ where
 {
     let first = {
         let mut sidecar = handle.lock().await;
-        sidecar.call(tool, input).await
+        sidecar.call_with_caller(tool, input, caller.clone()).await
     };
     match first {
         Ok(out) => Ok(out),
@@ -48,7 +49,9 @@ where
         Err(SupervisorError::Transport(_)) => {
             on_fault().await?;
             let mut sidecar = handle.lock().await;
-            sidecar.call(tool, input).await
+            // Re-stamp the same caller on the retry — the restarted child is a fresh process that
+            // never saw the first frame, so it must learn the caller again (identity is per-call).
+            sidecar.call_with_caller(tool, input, caller).await
         }
         Err(other) => Err(other),
     }
@@ -84,11 +87,10 @@ impl LocalDispatch for SidecarDispatch {
         ws: &str,
         tool: &str,
         input_json: &str,
-        _ctx: Option<CallContext>,
+        ctx: Option<CallContext>,
     ) -> Result<String, RuntimeError> {
         // Resolve the live child for THIS workspace — `None` means not running here (or a ws-mismatch
-        // that structurally cannot cross the wall). `ctx` is ignored: a sidecar has its own
-        // `LB_EXT_TOKEN` identity for any callback.
+        // that structurally cannot cross the wall).
         let handle = self
             .sidecars
             .get(ws, &self.ext_id)
@@ -100,10 +102,32 @@ impl LocalDispatch for SidecarDispatch {
         // which passes the qualified name through. Generic: `ext_id` + `.` + the bare tool.
         let qualified = format!("{}.{}", self.ext_id, tool);
 
+        // Stamp the authorized caller into the frame so the child can enforce per-caller row
+        // visibility (native-caller-identity scope). Projected from `ctx` — a READ of the principal
+        // the host already gated (`mcp:<tool>:call` fired first, workspace-first); NOT a token. A
+        // routed cross-node call carries no `ctx` (the serve side passes `None`), so the frame is the
+        // old shape — the caller-in-frame guarantee is single-node this slice, matching the scope's
+        // non-goal. `LB_EXT_TOKEN` remains the child's identity for its OWN callbacks; the frame
+        // caller is a separate, inert projection the child reads to attribute a decision.
+        let caller = ctx.and_then(|c| c.caller).map(project);
+
         // No-op recovery: the adapter carries no `Launcher` (see module doc), so a transport fault
         // surfaces; the typed lifecycle path drives supervised restart.
-        call_once_or_restart(&handle, &qualified, input_json, || async { Ok(()) })
+        call_once_or_restart(&handle, &qualified, input_json, caller, || async { Ok(()) })
             .await
             .map_err(|e| RuntimeError::Tool(e.to_string()))
+    }
+}
+
+/// Map the runtime's [`lb_runtime::Caller`] (carried on `CallContext`, shared with the wasm path)
+/// onto the supervisor's wire [`Caller`] (serialized into the sidecar frame). Two identical minimal
+/// projections, one per crate boundary: `lb-runtime` stays free of `lb-supervisor` and vice versa —
+/// the host is the one place that bridges the wasm-runtime and native-supervisor worlds.
+fn project(c: lb_runtime::Caller) -> Caller {
+    Caller {
+        sub: c.sub,
+        ws: c.ws,
+        role: c.role,
+        delegated: c.delegated,
     }
 }

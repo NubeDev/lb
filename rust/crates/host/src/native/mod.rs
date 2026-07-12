@@ -26,6 +26,7 @@
 
 mod authorize;
 mod call;
+mod caller;
 mod error;
 mod install;
 mod lifecycle;

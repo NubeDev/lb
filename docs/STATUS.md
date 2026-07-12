@@ -112,7 +112,29 @@ over.
 
 ---
 
-**Just shipped (2026-07-11): native host-callback client PUBLISHED through the SDK →
+**Just shipped (2026-07-12): a native sidecar learns WHO called it + can reach ABOUT a subject →
+`sdk-v0.4.0` + host.** Two generic platform gaps blocked a native (Tier-2) sidecar from enforcing
+per-caller row visibility (the childcare product's guardian-isolation invariant): **(A)** the native
+call frame carried no caller — `CallParams {tool, input}` was all the host sent, so every dispatch
+defaulted to a synthetic admin that bypasses the row filter; **(B)** `authz.check_scoped`/
+`scope_filter` answered only about the caller's OWN token, but a sidecar holds the *extension's*
+token, not the guardian's. Both closed generically + additively (rule 10, no product named). **A:**
+`CallParams` gains an additive `caller: Option<Caller>` (`{sub, ws, role, delegated}`, non-replayable,
+`#[serde(default)]` → an old host/child is unaffected, no `PROTOCOL_MAJOR` bump); the host projects
+the already-authorized `&Principal` into it through `CallContext` → `SidecarDispatch`; `Tools` gains a
+`call_with_caller` default-method (forwards to `call`, so identity-unaware extensions need no change).
+**B:** `authz.check_scoped`/`scope_filter` gain an optional `subject`, gated by the new marker cap
+`mcp:authz.delegate_reach:call` — present ⇒ resolve the subject's reach; absent ⇒ byte-for-byte
+today's behaviour; a `subject` without the cap **fails closed** (403, never a fallback to the caller's
+own reach). Decisions: subject-reach **(a)** (parameterize, not a sibling verb); projection **minimal**.
+Real-infra tests green (rule 9): a REAL spawned `echo-sidecar` reflects the stamped caller
+(`native_caller_identity_test`); `delegated_reach_test` **5/5** (allow, the sacred deny, absent-subject
+unchanged, cross-ws isolation) over the real gateway; SDK unit **21/21** (incl. two backward-compat).
+**Release:** push `sdk-v0.4.0` then cut the node tag; a downstream embedder bumps both, requests
+`mcp:authz.delegate_reach:call` at install, and flips its rule-7 chokepoint on with no call-site change.
+See [native-caller-identity session](sessions/extensions/native-caller-identity-session.md).
+
+**Earlier (2026-07-11): native host-callback client PUBLISHED through the SDK →
 `sdk-v0.3.0` + `node-v0.3.0`.** An out-of-tree native (Tier-2) extension could speak the host→child
 control wire (`lb-ext-native`) but had no way to call BACK into the host's MCP surface — the callback
 client (`SidecarClient`) lived only in the lb monorepo as a path crate. Now it's a first-class SDK

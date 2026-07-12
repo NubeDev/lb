@@ -21,7 +21,7 @@ use lb_assets::read_install;
 use lb_auth::Principal;
 use lb_inbox::Decision;
 use lb_mcp::{authorize_tool, ToolError};
-use lb_runtime::CallContext;
+use lb_runtime::{CallContext, Caller};
 use serde_json::{json, Value};
 
 use crate::boot::Node;
@@ -390,7 +390,10 @@ async fn dispatch_at_depth(
             // read API extensions reach via `host.call-tool` so an extension verb asks the wall
             // "what can this principal reach?" instead of re-implementing the filter. The outer
             // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
-            // (never accepts a `user` arg — no information leak). `authz.resolve` /
+            // by default. native-caller-identity scope: an optional `subject` lets a caller that
+            // holds `mcp:authz.delegate_reach:call` ask about ANOTHER subject (a native sidecar
+            // answering "does the guardian reach this child?"); absent `subject` is unchanged, and a
+            // `subject` without the delegation cap fails closed (see `authz::scoped`). `authz.resolve` /
             // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
             //
             // authz-verbs-mcp-dispatch scope: `grants.*`/`roles.*`/`teams.*` route here too — the
@@ -620,7 +623,28 @@ async fn build_call_context(
     Some(CallContext {
         bridge: Arc::new(bridge),
         depth,
+        // Stamp the ROUTED caller (not the derived-for-the-ext principal) — the sidecar must learn
+        // who the human/agent behind the call is, to attribute its row-filter decision. The wasm
+        // guest ignores this; the native adapter serializes it into the frame. Projected here from
+        // the already-authorized principal — a read, no new trust (native-caller-identity scope).
+        caller: Some(Caller {
+            sub: caller.sub().to_string(),
+            ws: caller.ws().to_string(),
+            role: role_wire(caller.role()).to_string(),
+            delegated: caller.owner_sub() != caller.sub(),
+        }),
     })
+}
+
+/// The lower-cased wire spelling of a role (matches `#[serde(rename_all = "kebab-case")]` on
+/// `lb_auth::Role`), so a native child reads the same token the gateway would serialize. Kept beside
+/// the one `CallContext` construction that needs it; the native-tier dual lives in `native::caller`.
+fn role_wire(role: lb_auth::Role) -> &'static str {
+    match role {
+        lb_auth::Role::SuperAdmin => "super-admin",
+        lb_auth::Role::WorkspaceAdmin => "workspace-admin",
+        lb_auth::Role::Member => "member",
+    }
 }
 
 /// Dispatch the durable-workflow host verbs a federated page (or a wasm guest, via the host callback)

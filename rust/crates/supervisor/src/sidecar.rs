@@ -12,7 +12,7 @@
 use crate::error::SupervisorError;
 use crate::frame::{read_frame, write_frame};
 use crate::launcher::{Channel, Launcher};
-use crate::rpc::{CallParams, Method, Reply, Request};
+use crate::rpc::{CallParams, Caller, Method, Reply, Request};
 use crate::spec::{RestartPolicy, Spec};
 
 /// A supervised child: its spec, its live control channel, and how many times it has been restarted.
@@ -49,10 +49,28 @@ impl Sidecar {
     /// Dispatch `tool` with opaque-JSON `input` to the child; return its JSON result string. A
     /// transport failure (the child died mid-call) surfaces as [`SupervisorError::Transport`] — the
     /// host decides whether to restart-and-retry per policy.
+    ///
+    /// Carries **no caller** — the frame's `caller` is `None` (an old-host-shaped call). Use
+    /// [`call_with_caller`](Self::call_with_caller) to stamp the authorized principal into the frame
+    /// so the child can enforce per-caller row visibility (native-caller-identity scope).
     pub async fn call(&mut self, tool: &str, input: &str) -> Result<String, SupervisorError> {
+        self.call_with_caller(tool, input, None).await
+    }
+
+    /// Dispatch `tool` like [`call`](Self::call), but additionally stamp `caller` — a minimal,
+    /// non-replayable projection of the principal the host already authorized — into the frame
+    /// (native-caller-identity scope). The child receives it as `CallParams.caller` and may attribute
+    /// its row-filter decision to the real caller. `None` is byte-for-byte the old `call` frame.
+    pub async fn call_with_caller(
+        &mut self,
+        tool: &str,
+        input: &str,
+        caller: Option<Caller>,
+    ) -> Result<String, SupervisorError> {
         let params = serde_json::to_string(&CallParams {
             tool: tool.to_string(),
             input: input.to_string(),
+            caller,
         })
         .map_err(|e| SupervisorError::Transport(e.to_string()))?;
         self.request(Method::Call, params).await
