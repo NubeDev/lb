@@ -20,6 +20,7 @@ mod activate;
 mod attempt;
 mod authorize;
 mod catalog;
+mod compact;
 mod config;
 mod decision;
 mod defs;
@@ -54,6 +55,10 @@ mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog, render_catalog_filtered};
+pub use compact::{
+    compact_to_budget, estimate_message_tokens, estimate_tool_tokens, BREADCRUMB_PREFIX,
+    DEFAULT_COMPACT_BUDGET_TOKENS,
+};
 pub use config::{
     agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
     ModelEndpointPatch, AGENT_CONFIG_TABLE,

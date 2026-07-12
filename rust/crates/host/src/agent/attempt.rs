@@ -1,13 +1,19 @@
-//! Attempt one model turn through the slice-D fault lanes (agent-loop-hardening): a **transient**
-//! fault (network, timeout, 429/5xx) is retried mechanically, bounded, honoring `Retry-After` —
-//! *below* step accounting, so the loop sees one turn however many attempts it took (same turn
-//! number, same idempotency key; the gateway never caches a fault, so a retry really re-calls the
-//! provider). An **overflow** or **fatal** fault is returned to the loop, which compacts (slice A)
-//! or ends the run honestly ([`fail_run`]).
+//! Attempt one model turn through the fault lanes (agent-loop-hardening slices D + A): a
+//! **transient** fault (network, timeout, 429/5xx) is retried mechanically, bounded, honoring
+//! `Retry-After` — *below* step accounting, so the loop sees one turn however many attempts it took
+//! (same turn number, same idempotency key; the gateway never caches a fault, so a retry really
+//! re-calls the provider). An **overflow** fault is recovered by compacting the live context and
+//! continuing the *same* run (slice A), never retried verbatim. A **fatal** fault (or an exhausted
+//! transient/overflow) is returned to the loop, which ends the run honestly ([`fail_run`]).
+//!
+//! Compaction also runs as a **preflight** before the first attempt: when the conversation + tool
+//! schemas already exceed the budget, the oldest turn groups are dropped (breadcrumbed) without
+//! waiting for the provider to reject the request.
 
 use lb_jobs::{complete, JobStatus};
 use lb_run_events::{RunEvent, RunOutcome};
 
+use super::compact::{compact_to_budget, estimate_message_tokens};
 use super::error::AgentError;
 use super::model_access::{AllowedTool, CallOutcome, ModelAccess, Turn, TurnError};
 use crate::boot::Node;
@@ -17,21 +23,50 @@ use crate::run_events::publish_run_event;
 /// call + bounded retries). Deliberately small — a stuck provider should surface, not spin.
 pub(super) const MAX_TURN_ATTEMPTS: u32 = 3;
 
+/// How many compact-and-retry rounds an overflow gets before the run fails honestly. Each round
+/// halves the estimate, so three rounds is already an eighth of the original context.
+const MAX_OVERFLOW_ROUNDS: u32 = 3;
+
 /// The ceiling on how long a `Retry-After` is honored. A provider asking for more than this is
 /// treated as "come back later" — the run fails honestly rather than parking a live loop.
 const RETRY_AFTER_CAP_SECS: u64 = 30;
 
-/// One model turn with the transient-retry lane applied. Overflow/fatal faults pass through to the
-/// caller (the loop) — overflow recovery needs the transcript, which lives there (slice A).
+/// The run's compaction bookkeeping, threaded through every turn: the (workspace-configured)
+/// budget, the pre-computed tool-schema cost, and the cumulative dropped-group count (the
+/// breadcrumb shows the running total).
+pub(super) struct CompactState {
+    pub budget_tokens: u32,
+    pub tool_tokens: u32,
+    pub dropped: u32,
+}
+
+impl CompactState {
+    /// Compact `messages` to `target` tokens, updating the cumulative counter. Returns how many
+    /// groups were newly dropped.
+    fn compact(&mut self, messages: &mut Vec<(String, String)>, target: u32) -> u32 {
+        let newly = compact_to_budget(messages, target, self.tool_tokens, self.dropped);
+        self.dropped += newly;
+        newly
+    }
+}
+
+/// One model turn through the fault lanes: preflight compaction, bounded transient retry,
+/// compact-and-continue overflow recovery. Returns the turn, or the **fatal** error the loop must
+/// surface (transient/overflow exhaustion is folded into a fatal with the original evidence).
 pub(super) async fn attempt_turn<M: ModelAccess>(
     model: &M,
     ws: &str,
-    messages: &[(String, String)],
+    messages: &mut Vec<(String, String)>,
     tools: &[AllowedTool],
     prior: &[CallOutcome],
     idempotency_key: &str,
+    compact: &mut CompactState,
 ) -> Result<Turn, TurnError> {
+    // Preflight: over budget already → compact before spending a provider call on a rejection.
+    compact.compact(messages, compact.budget_tokens);
+
     let mut attempt: u32 = 0;
+    let mut overflow_rounds: u32 = 0;
     loop {
         match model.turn(ws, messages, tools, prior, idempotency_key).await {
             Ok(turn) => return Ok(turn),
@@ -57,7 +92,20 @@ pub(super) async fn attempt_turn<M: ModelAccess>(
                     tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
                 }
             }
-            Err(other) => return Err(other),
+            Err(TurnError::Overflow { detail }) => {
+                // The estimate undershot this model's real window — force below HALF the current
+                // estimate and continue the same run (never a verbatim retry). No droppable group
+                // left (or too many rounds) → honest failure.
+                overflow_rounds += 1;
+                let target = (estimate_message_tokens(messages) + compact.tool_tokens) / 2;
+                let newly = compact.compact(messages, target);
+                if newly == 0 || overflow_rounds > MAX_OVERFLOW_ROUNDS {
+                    return Err(TurnError::Fatal {
+                        detail: format!("context overflow not recoverable by compaction: {detail}"),
+                    });
+                }
+            }
+            Err(fatal) => return Err(fatal),
         }
     }
 }

@@ -67,4 +67,11 @@ pub struct AgentConfig {
     /// whole-list per patch (no per-entry merge).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enabled_personas: Option<Vec<String>>,
+    /// The in-house loop's **context compaction budget**, in estimated tokens (agent-loop-hardening
+    /// slice A). When a run's conversation + tool schemas exceed it, the oldest whole turn groups
+    /// are dropped (with a visible breadcrumb) before the next model call. `None` → the node
+    /// default ([`DEFAULT_COMPACT_BUDGET_TOKENS`](crate::agent::DEFAULT_COMPACT_BUDGET_TOKENS)).
+    /// A flat number by decision — per-model context metadata is an agent-catalog follow-up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compact_budget: Option<u32>,
 }

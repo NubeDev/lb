@@ -17,7 +17,7 @@ pub const AGENT_CONFIG_TABLE: &str = "workspace_agent_config";
 /// NB: `active_persona` is deliberately NOT projected — legacy decode-only (persona-session #5); the
 /// boot migration reads it directly, nothing else may.
 const AGENT_CONFIG_COLUMNS: &str =
-    "default_runtime, model_endpoint, active_definition, enabled_personas";
+    "default_runtime, model_endpoint, active_definition, enabled_personas, compact_budget";
 
 /// Define the `workspace_agent_config` table in `ws`. Idempotent (`DEFINE ... IF NOT EXISTS`).
 /// SCHEMAFULL with `default_runtime` nullable and `model_endpoint` a flexible object (the nested
@@ -30,7 +30,8 @@ pub async fn define_agent_config_schema(store: &Store, ws: &str) -> Result<(), S
          DEFINE FIELD IF NOT EXISTS model_endpoint ON {AGENT_CONFIG_TABLE} FLEXIBLE TYPE option<object>;
          DEFINE FIELD IF NOT EXISTS active_definition ON {AGENT_CONFIG_TABLE} TYPE option<string>;
          DEFINE FIELD IF NOT EXISTS active_persona ON {AGENT_CONFIG_TABLE} TYPE option<string>;
-         DEFINE FIELD IF NOT EXISTS enabled_personas ON {AGENT_CONFIG_TABLE} TYPE option<array<string>>;"
+         DEFINE FIELD IF NOT EXISTS enabled_personas ON {AGENT_CONFIG_TABLE} TYPE option<array<string>>;
+         DEFINE FIELD IF NOT EXISTS compact_budget ON {AGENT_CONFIG_TABLE} TYPE option<number>;"
     );
     store.query_ws(ws, &sql, vec![]).await?;
     Ok(())

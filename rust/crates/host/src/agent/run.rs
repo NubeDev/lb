@@ -26,7 +26,8 @@ use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
 use super::activate::{activate_skill, SKILL_ACTIVATE};
-use super::attempt::{attempt_turn, fail_run};
+use super::attempt::{attempt_turn, fail_run, CompactState};
+use super::compact::{estimate_tool_tokens, DEFAULT_COMPACT_BUDGET_TOKENS};
 use super::catalog::render_catalog_filtered;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
@@ -115,6 +116,20 @@ pub async fn run_session<M: ModelAccess>(
     // over the evaluated effect (see `clamp_to_preset` — a clamp, not a merged rule, because an Ask
     // floor can't beat a blanket Allow under the evaluator's Deny>Allow>Ask precedence).
     let policy = load_policy(&node.store, ws).await?;
+
+    // CONTEXT COMPACTION (slice A): the run's budget — the workspace's `agent.config.compact_budget`
+    // when set, else the node default — plus the tool-schema cost (rides every request) and the
+    // cumulative dropped-group counter the breadcrumb reports. Read once per run, like the policy.
+    let mut compact_state = CompactState {
+        budget_tokens: super::config::get_agent_config(&node.store, ws)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|c| c.compact_budget)
+            .unwrap_or(DEFAULT_COMPACT_BUDGET_TOKENS),
+        tool_tokens: estimate_tool_tokens(tools),
+        dropped: 0,
+    };
 
     // MODEL-ACTIVATED SKILLS (Part 5): inject the granted-skills CATALOG (title+description only)
     // into context ONCE per run, so the model knows what it may `skill.activate`. Resolved decision:
@@ -224,10 +239,21 @@ pub async fn run_session<M: ModelAccess>(
         // Replay-safe: the gateway caches by this key, so a resumed turn does not re-spend. Keyed by
         // the TURN number (not the event index) so the same turn maps to the same cached response.
         // Slice D: a transient fault retries below step accounting inside `attempt_turn` (one turn,
-        // N attempts, same key — the gateway never caches a fault); an unrecoverable fault ends the
+        // N attempts, same key — the gateway never caches a fault). Slice A: over-budget context is
+        // compacted (whole turn groups, breadcrumbed) before the call, and a provider overflow is
+        // recovered by compacting harder and continuing THIS run. An unrecoverable fault ends the
         // run honestly (`Failed` + `RunFinish(Failed)`), never a fault dressed as a completion.
         let key = format!("{ws}:{job_id}:{turn_no}");
-        let turn = match attempt_turn(model, ws, &state.messages, tools, &state.prior, &key).await
+        let turn = match attempt_turn(
+            model,
+            ws,
+            &mut state.messages,
+            tools,
+            &state.prior,
+            &key,
+            &mut compact_state,
+        )
+        .await
         {
             Ok(turn) => turn,
             Err(e) => return fail_run(node, ws, job_id, &state.last_content, e.detail()).await,
