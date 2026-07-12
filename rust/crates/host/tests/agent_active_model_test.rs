@@ -132,7 +132,8 @@ async fn resolved_turn(node: &Arc<Node>, caller: &Principal, ws: &str) -> (Strin
     let configured = model.is_configured();
     let turn = model
         .turn_boxed(ws, &[("user".into(), "hi".into())], &[], &[], "k")
-        .await;
+        .await
+        .expect("resolved model turn");
     (turn.content, configured)
 }
 

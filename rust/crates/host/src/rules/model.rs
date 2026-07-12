@@ -63,7 +63,11 @@ impl AgentRuleModel {
         let tools: Vec<AllowedTool> = Vec::new();
         let turn = self
             .handle
-            .block_on(async move { model.turn_boxed(&ws, &messages, &tools, &[], &key).await });
+            .block_on(async move { model.turn_boxed(&ws, &messages, &tools, &[], &key).await })
+            // A rule's `ai.*` is single-turn: no loop to retry/compact in, so ANY turn fault —
+            // whatever its lane — surfaces as the rule error the meter/engine already handle
+            // (agent-loop-hardening slice D keeps this seam honest, not clever).
+            .map_err(|e| format!("AI call failed: {}", e.detail()))?;
         if turn.content.trim().is_empty() && !turn.calls.is_empty() {
             // The model asked to call tools but a rule's `ai.*` is single-turn with no tool channel —
             // there is nothing to run and no next turn. Surface a clear error rather than loop/hang.

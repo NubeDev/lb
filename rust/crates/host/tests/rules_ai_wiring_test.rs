@@ -250,14 +250,14 @@ impl ModelAccess for AnswerModel {
         _tools: &[AllowedTool],
         _prior: &[CallOutcome],
         _key: &str,
-    ) -> impl Future<Output = Turn> + Send {
+    ) -> impl Future<Output = Result<Turn, lb_host::TurnError>> + Send {
         let c = self.0.clone();
         async move {
-            Turn {
+            Ok(Turn {
                 content: c,
                 calls: vec![],
                 done: true,
-            }
+            })
         }
     }
 }
@@ -273,9 +273,9 @@ impl ModelAccess for ToolOnlyModel {
         _tools: &[AllowedTool],
         _prior: &[CallOutcome],
         _key: &str,
-    ) -> impl Future<Output = Turn> + Send {
+    ) -> impl Future<Output = Result<Turn, lb_host::TurnError>> + Send {
         async {
-            Turn {
+            Ok(Turn {
                 content: String::new(),
                 calls: vec![lb_host::ProposedCall {
                     id: "c1".into(),
@@ -283,7 +283,7 @@ impl ModelAccess for ToolOnlyModel {
                     input: "{}".into(),
                 }],
                 done: false,
-            }
+            })
         }
     }
 }

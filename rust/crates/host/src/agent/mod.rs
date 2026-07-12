@@ -17,6 +17,7 @@
 //! to invoke the agent never implies the tools/skills/docs it may then reach (no widening).
 
 mod activate;
+mod attempt;
 mod authorize;
 mod catalog;
 mod config;
@@ -79,7 +80,7 @@ pub use memory::{
     MAX_DESCRIPTION, MEMORY_HEADER,
 };
 pub use menu::reachable_tools;
-pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
+pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn, TurnError};
 pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
 pub use personas::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,

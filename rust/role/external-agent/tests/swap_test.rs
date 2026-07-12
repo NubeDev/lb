@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use lb_host::{ErasedModel, RuntimeRegistry, Turn};
+use lb_host::{ErasedModel, RuntimeRegistry, Turn, TurnError};
 use lb_role_external_agent::profiles::{
     default_model_endpoint, resolve_builtin, CODEX_DEFAULT, OPEN_INTERPRETER_DEFAULT,
     VTCODE_DEFAULT,
@@ -68,13 +68,13 @@ impl ErasedModel for NullModel {
         _tools: &'a [lb_host::AllowedTool],
         _prior: &'a [lb_host::CallOutcome],
         _key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Turn> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Turn, TurnError>> + Send + 'a>> {
         Box::pin(async {
-            Turn {
+            Ok(Turn {
                 content: String::new(),
                 calls: vec![],
                 done: true,
-            }
+            })
         })
     }
 

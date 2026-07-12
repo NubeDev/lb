@@ -26,6 +26,7 @@ use lb_auth::Principal;
 use lb_jobs::{cancel, complete, create, load, Job, JobStatus, TranscriptEvent};
 
 use super::activate::{activate_skill, SKILL_ACTIVATE};
+use super::attempt::{attempt_turn, fail_run};
 use super::catalog::render_catalog_filtered;
 use super::decision::{open_suspension, resume_suspensions, DENIED_BY_POLICY};
 use super::error::AgentError;
@@ -222,10 +223,15 @@ pub async fn run_session<M: ModelAccess>(
 
         // Replay-safe: the gateway caches by this key, so a resumed turn does not re-spend. Keyed by
         // the TURN number (not the event index) so the same turn maps to the same cached response.
+        // Slice D: a transient fault retries below step accounting inside `attempt_turn` (one turn,
+        // N attempts, same key — the gateway never caches a fault); an unrecoverable fault ends the
+        // run honestly (`Failed` + `RunFinish(Failed)`), never a fault dressed as a completion.
         let key = format!("{ws}:{job_id}:{turn_no}");
-        let turn = model
-            .turn(ws, &state.messages, tools, &state.prior, &key)
-            .await;
+        let turn = match attempt_turn(model, ws, &state.messages, tools, &state.prior, &key).await
+        {
+            Ok(turn) => turn,
+            Err(e) => return fail_run(node, ws, job_id, &state.last_content, e.detail()).await,
+        };
         // Keep the LAST NON-EMPTY content as the running answer. A tool-call turn (and some models'
         // final `done` turn — GLM after think-stripping) carries empty content; overwriting here
         // wiped a real earlier answer and the run settled with an EMPTY durable result (see

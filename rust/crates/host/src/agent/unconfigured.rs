@@ -12,7 +12,7 @@
 
 use std::future::Future;
 
-use super::model_access::{AllowedTool, CallOutcome, ModelAccess, Turn};
+use super::model_access::{AllowedTool, CallOutcome, ModelAccess, Turn, TurnError};
 
 /// The message the in-house default returns on a node with no model provider configured. Deliberately
 /// explicit so a caller (or a channel `agent_result`) never mistakes it for a real answer.
@@ -32,13 +32,13 @@ impl ModelAccess for UnconfiguredModel {
         _tools: &[AllowedTool],
         _prior: &[CallOutcome],
         _idempotency_key: &str,
-    ) -> impl Future<Output = Turn> + Send {
+    ) -> impl Future<Output = Result<Turn, TurnError>> + Send {
         async {
-            Turn {
+            Ok(Turn {
                 content: UNCONFIGURED_ANSWER.to_string(),
                 calls: vec![],
                 done: true,
-            }
+            })
         }
     }
 

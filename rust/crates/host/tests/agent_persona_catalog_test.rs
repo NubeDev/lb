@@ -74,7 +74,7 @@ impl ErasedModel for RecordingModel {
         tools: &'a [AllowedTool],
         _prior: &'a [lb_host::CallOutcome],
         _key: &'a str,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = lb_host::Turn> + Send + 'a>> {
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<lb_host::Turn, lb_host::TurnError>> + Send + 'a>> {
         {
             let mut c = self.0.lock().unwrap();
             if c.turns == 0 {
@@ -83,11 +83,11 @@ impl ErasedModel for RecordingModel {
             c.turns += 1;
         }
         Box::pin(async move {
-            lb_host::Turn {
+            Ok(lb_host::Turn {
                 content: "done".into(),
                 calls: vec![],
                 done: true,
-            }
+            })
         })
     }
     fn is_configured(&self) -> bool {

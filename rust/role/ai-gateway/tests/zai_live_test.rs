@@ -43,7 +43,8 @@ async fn a_live_zai_glm46_turn_completes_with_content() {
             &[],
             "live-1",
         )
-        .await;
+        .await
+        .expect("live turn (a fault here is a real API/auth error)");
 
     eprintln!("live Z.AI answer: {:?}", turn.content);
     eprintln!("done={} calls={}", turn.done, turn.calls.len());
@@ -101,7 +102,8 @@ async fn a_live_turn_with_a_real_tool_schema_proposes_a_call_not_prose() {
             &[],
             "live-tools-1",
         )
-        .await;
+        .await
+        .expect("live tool turn (a fault here is a real API/auth error)");
 
     eprintln!(
         "live tool turn: content={:?} calls={:?}",

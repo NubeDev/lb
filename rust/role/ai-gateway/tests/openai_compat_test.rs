@@ -7,8 +7,8 @@
 //! Cases:
 //!   - **happy turn:** a canned completion → content + tokens flow through as a `stop`.
 //!   - **tool-call turn:** `finish_reason:"tool_calls"` → one carried `ToolCall`, `ToolCalls`.
-//!   - **API error:** a 500 → a terminal `stop` attributed `"model call failed: …/{model}: …"`
-//!     (honest failure — not a panic, not an empty answer).
+//!   - **API error:** a 500 → a typed `ProviderFault` (status carried, classified Transient)
+//!     — honest failure, not a panic, not a completion-shaped error string (slice D).
 //!   - **request shape:** the server actually received `Authorization: Bearer <key>`, the right
 //!     `model`, and the messages (captured and asserted).
 
@@ -20,7 +20,9 @@ use axum::http::HeaderMap;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
-use lb_role_ai_gateway::{AiGateway, AiRequest, FinishReason, Message, OpenAiCompat, ToolSchema};
+use lb_role_ai_gateway::{
+    AiGateway, AiRequest, FaultLane, FinishReason, Message, OpenAiCompat, ToolSchema,
+};
 use serde_json::{json, Value};
 
 /// What the scripted server saw and what it should answer. Shared so a test asserts on the request
@@ -103,7 +105,7 @@ async fn happy_turn_flows_content_and_tokens_through() {
         "glm-4".into(),
         Some(base),
     ));
-    let resp = gw.complete(&request()).await;
+    let resp = gw.complete(&request()).await.expect("completion");
 
     assert_eq!(resp.content, "hello from glm");
     assert_eq!(resp.finish_reason, FinishReason::Stop);
@@ -137,7 +139,7 @@ async fn tool_call_turn_carries_the_proposed_call() {
         "glm-4".into(),
         Some(base),
     ));
-    let resp = gw.complete(&request()).await;
+    let resp = gw.complete(&request()).await.expect("completion");
 
     assert_eq!(resp.finish_reason, FinishReason::ToolCalls);
     assert_eq!(resp.tool_calls.len(), 1);
@@ -147,9 +149,9 @@ async fn tool_call_turn_carries_the_proposed_call() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn api_error_is_an_attributed_terminal_stop() {
-    // A 500 must not panic and must not look like a real empty completion — it is a terminal stop
-    // whose content names the fault and the model (honest-failure contract).
+async fn api_error_is_a_typed_transient_fault() {
+    // A 500 must not panic and must not look like a real completion — it is a typed fault carrying
+    // the status, classified Transient (the loop's retry lane), attributed to the model.
     let (base, _seen) = serve(500, json!({ "error": "boom" })).await;
 
     let gw = AiGateway::new(OpenAiCompat::new(
@@ -157,20 +159,55 @@ async fn api_error_is_an_attributed_terminal_stop() {
         "glm-4".into(),
         Some(base),
     ));
-    let resp = gw.complete(&request()).await;
+    let fault = gw
+        .complete(&request())
+        .await
+        .expect_err("a 500 is a fault, not a completion");
 
-    assert_eq!(resp.finish_reason, FinishReason::Stop);
-    assert_eq!(resp.tokens, 0);
+    assert_eq!(fault.status, Some(500));
+    assert_eq!(fault.lane(), FaultLane::Transient);
     assert!(
-        resp.content.contains("model call failed"),
-        "attributed failure, got: {}",
-        resp.content
-    );
-    assert!(
-        resp.content.contains("glm-4"),
+        fault.detail.contains("glm-4"),
         "names the model, got: {}",
-        resp.content
+        fault.detail
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_context_overflow_body_classifies_as_overflow() {
+    // The structured overflow discriminant: `error.code == "context_length_exceeded"` on a 400.
+    // The lane must be Overflow (compact + continue), never Fatal and never a verbatim retry.
+    let (base, _seen) = serve(
+        400,
+        json!({ "error": { "code": "context_length_exceeded", "message": "too long" } }),
+    )
+    .await;
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let fault = gw
+        .complete(&request())
+        .await
+        .expect_err("an overflow is a fault");
+    assert!(fault.overflow, "the overflow discriminant must be set");
+    assert_eq!(fault.lane(), FaultLane::Overflow);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_plain_400_classifies_as_fatal() {
+    // A 400 without the overflow code cannot succeed on a verbatim retry — Fatal, surfaced honestly.
+    let (base, _seen) = serve(
+        400,
+        json!({ "error": { "code": "invalid_request_error", "message": "bad" } }),
+    )
+    .await;
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let fault = gw
+        .complete(&request())
+        .await
+        .expect_err("a 400 is a fault");
+    assert_eq!(fault.status, Some(400));
+    assert_eq!(fault.lane(), FaultLane::Fatal);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -294,7 +331,7 @@ async fn a_think_block_is_stripped_from_the_answer() {
     .await;
 
     let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
-    let resp = gw.complete(&request()).await;
+    let resp = gw.complete(&request()).await.expect("completion");
 
     assert_eq!(
         resp.content, "Here is your chart.",
@@ -362,4 +399,83 @@ async fn prior_results_are_folded_in_the_conformant_tool_call_shape() {
     assert_eq!(result["role"], "tool");
     assert_eq!(result["tool_call_id"], "call_1");
     assert_eq!(result["content"], "bad input: rejected sql");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_429_carries_the_retry_after_header_seconds() {
+    // The structured retry evidence: `Retry-After: 2` (delta-seconds) reaches the fault so the
+    // retry lane can honor it — never parsed out of an error-message string.
+    let (base, _seen) = serve_with_headers(
+        429,
+        vec![("retry-after", "2")],
+        json!({ "error": { "message": "rate limited" } }),
+    )
+    .await;
+
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+    let fault = gw
+        .complete(&request())
+        .await
+        .expect_err("a 429 is a fault");
+    assert_eq!(fault.status, Some(429));
+    assert_eq!(fault.retry_after_secs, Some(2));
+    assert_eq!(fault.lane(), FaultLane::Transient);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn faults_are_never_cached_by_the_idempotency_key() {
+    // A transient fault pinned in the replay cache would replay as a permanent failure on every
+    // retry/resume. The gateway must re-call the provider under the same key after a fault.
+    let (base, seen) = serve(500, json!({ "error": "boom" })).await;
+    let gw = AiGateway::new(OpenAiCompat::new("k".into(), "glm-4".into(), Some(base)));
+
+    let first = gw.complete(&request()).await;
+    assert!(first.is_err());
+    *seen.lock().unwrap() = None;
+    let second = gw.complete(&request()).await; // same idempotency key "k1"
+    assert!(second.is_err());
+    assert!(
+        seen.lock().unwrap().is_some(),
+        "the provider must be re-called after a fault (the fault was cached)"
+    );
+}
+
+/// Like `serve`, but the handler also sets response headers (e.g. `Retry-After`).
+async fn serve_with_headers(
+    status: u16,
+    headers: Vec<(&'static str, &'static str)>,
+    reply: Value,
+) -> (String, Arc<Mutex<Option<Seen>>>) {
+    use axum::response::Response;
+    let seen: Arc<Mutex<Option<Seen>>> = Arc::new(Mutex::new(None));
+    let seen2 = seen.clone();
+    let app = Router::new().route(
+        "/chat/completions",
+        post(move |Json(body): Json<Value>| {
+            let seen = seen2.clone();
+            let headers = headers.clone();
+            let reply = reply.clone();
+            async move {
+                *seen.lock().unwrap() = Some(Seen {
+                    body,
+                    authorization: None,
+                });
+                let mut resp = Response::builder().status(status);
+                for (k, v) in headers {
+                    resp = resp.header(k, v);
+                }
+                resp.header("content-type", "application/json")
+                    .body(axum::body::Body::from(reply.to_string()))
+                    .unwrap()
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr: SocketAddr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (format!("http://{addr}"), seen)
 }

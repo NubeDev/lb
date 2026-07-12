@@ -36,7 +36,11 @@ impl<P: Provider> AiGateway<P> {
 
     /// Answer one turn. If `req.idempotency_key` was served before, return the cached response
     /// (the provider is NOT called again — replay-safe). Otherwise call the provider, cache, return.
-    pub async fn complete(&self, req: &AiRequest) -> AiResponse {
+    ///
+    /// Only a **successful** completion is cached: a fault must never be pinned, or a transient
+    /// 429/timeout would replay as a permanent failure on every retry and resume (agent-loop-
+    /// hardening slice D — the retry lane re-calls the provider under the same key).
+    pub async fn complete(&self, req: &AiRequest) -> Result<AiResponse, crate::ProviderFault> {
         // Fast path: a cache hit is a resumed/duplicated call — serve the pinned response.
         if let Some(hit) = self
             .cache
@@ -45,16 +49,16 @@ impl<P: Provider> AiGateway<P> {
             .get(&req.idempotency_key)
             .cloned()
         {
-            return hit;
+            return Ok(hit);
         }
 
-        // Miss: the first execution. Call the provider (model access), then pin the result.
-        let resp = self.provider.complete(req).await;
+        // Miss: the first execution. Call the provider (model access), then pin a success.
+        let resp = self.provider.complete(req).await?;
         self.cache
             .lock()
             .expect("gateway cache lock")
             .insert(req.idempotency_key.clone(), resp.clone());
-        resp
+        Ok(resp)
     }
 
     /// How many times the provider was actually invoked (= distinct idempotency keys served). Lets
