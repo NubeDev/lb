@@ -1,6 +1,6 @@
 # Extensions scope — publish the pack toolchain (`lb-pack` + `lb-devkit`) for embedders
 
-Status: scope (the ask). Promotes to `public/extensions/extensions.md` (SDK/dev-flow section) once shipped.
+Status: **done** — shipped 2026-07-12 ([session](../../sessions/extensions/pack-toolchain-publish-session.md)); promoted to `public/extensions/extensions.md` (dev-flow section) + `docs/skills/lb-pack/SKILL.md`. Tagged `node-v0.3.3`.
 
 > Read with: `ext-out-of-tree-scope.md` (the larger destination — the `lb-ext` CLI over
 > `lb-devkit`, shipped with the SDK release; **this scope is the prerequisite slice** that

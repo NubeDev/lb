@@ -23,7 +23,22 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-12): agent loop hardening — all five slices, in-house runtime
+**Just shipped (2026-07-12): the pack toolchain is published for embedders (`pack-toolchain-publish`,
+tagged `node-v0.3.3`).** `lb-devkit` + `lb-pack` dropped `publish = false` — the artifact
+packager/signing idiom is now git-tag-consumable (`cargo install --git …lb --tag node-v0.3.3 lb-pack`),
+unblocking cc-app's `make dev` wall (`cargo build -p lb-pack`: no such package). The load-bearing part
+was the **API audit**: `lb-devkit`'s published contract is minimized to the pack surface
+(`sign_artifact` / `load_or_create_key` / `publisher_trust_line` / `LoadedPublisherKey` / the signed
+`Artifact` re-exported from `lb-registry`; the internal build-listing struct renamed `BuildArtifact`);
+everything else moved behind the default-on `devkit-full` feature — explicitly NOT an embedder
+contract until the `lb-ext` CLI stabilizes it. Trust model unchanged (signing is local; trust stays
+node-side in `LB_TRUSTED_PUBKEYS`). Proven by real-binary tests (`rust/tools/pack/tests/`):
+pack→`verify_artifact` round-trip, untrusted-key deny, tamper, determinism, and a publishable-chain
+metadata check (fails on old master) now also a CI step. Docs: dev-flow section in
+`public/extensions/extensions.md`, `docs/skills/lb-pack/SKILL.md` (grounded in a live git-install +
+pack run), [session](sessions/extensions/pack-toolchain-publish-session.md).
+
+**Previously shipped (2026-07-12): agent loop hardening — all five slices, in-house runtime
 (branch `agent-loop-hardening`, one commit per slice, not yet merged).** The in-house loop now
 (D) gets **typed provider faults** (`ProviderFault`: status + `Retry-After` + overflow
 discriminant; `ModelAccess::turn` → `Result`; transient → bounded retry *below* step accounting,
