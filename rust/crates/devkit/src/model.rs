@@ -107,13 +107,13 @@ pub struct InspectReport {
     /// each with its current size + mtime. The UI snapshots these before a build and diffs against a
     /// fresh inspect after, so "built" becomes *proof this build wrote a fresh artifact*, not just
     /// "a release dir exists". Empty when nothing has been built yet.
-    pub artifacts: Vec<Artifact>,
+    pub artifacts: Vec<BuildArtifact>,
 }
 
 /// One build output on disk. `kind` classifies it (`native-bin` | `wasm` | `remote-entry`); `path`
 /// is absolute; `size`/`mtime` come from the same `fs::metadata` facts `host.fs.stat` reports.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Artifact {
+pub struct BuildArtifact {
     pub kind: String,
     pub path: PathBuf,
     pub size: u64,

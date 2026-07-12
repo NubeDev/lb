@@ -3,18 +3,28 @@
 # upload route and the UI's UploadArtifact accept. It reuses the SAME digest + Ed25519 idiom the node
 # verifies with (`lb-registry`, `ed25519-dalek`) — there is no second crypto stack, so a packaged
 # artifact verifies by construction. A dev tool, not a runtime crate: it never compiles into a node.
+#
+# Embedders install it pinned to the same lb tag they embed:
+#   cargo install --git https://github.com/NubeDev/lb --tag <node-v*> lb-pack
 [package]
 name = "lb-pack"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
+description = "Package a built Lazybones extension (*.wasm + extension.toml) into the signed Artifact JSON a lb node's POST /extensions accepts"
+keywords = ["lazybones", "extension", "packager", "signing", "cli"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "lb-pack"
 path = "src/main.rs"
 
 [dependencies]
-lb-devkit.workspace = true
+# Only the stable pack surface — proves the published core builds without `devkit-full`.
+lb-devkit = { workspace = true, default-features = false }
 serde_json.workspace = true
 anyhow.workspace = true
+
+[dev-dependencies]
+lb-registry.workspace = true
+tempfile.workspace = true

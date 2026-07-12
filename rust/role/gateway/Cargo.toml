@@ -16,7 +16,7 @@ lb-mcp.workspace = true
 lb-run-events.workspace = true
 lb-auth.workspace = true
 lb-registry.workspace = true
-lb-devkit.workspace = true
+lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-inbox.workspace = true
 lb-insights.workspace = true
 lb-prefs.workspace = true

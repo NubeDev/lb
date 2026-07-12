@@ -41,6 +41,10 @@ This is the proof of rule 10: if core truly knows no extension, the extensions c
 - **A thin `lb-ext` CLI** over the existing `lb-devkit` library (`new` / `build` / `pack` / `publish`),
   shipped with the SDK release — the out-of-tree replacement for `make publish-ext`. The in-shell
   Extension Studio keeps working (`LB_DEVKIT_ROOT` points at an extensions-repo checkout).
+  **Prerequisite:** `lb-devkit` + `lb-pack` are `publish = false` today, so the CLI has nothing
+  consumable to build on and no embedder can sign an artifact at all — `pack-toolchain-publish-scope.md`
+  is the slice that publishes the library + `pack` binary first (the CLI then calls the same
+  `lb-devkit`, one implementation regardless of entry point).
 - Devkit **templates emit SDK version deps**, not `../../crates` path deps, and become the
   authoritative source of the reference shapes once proof-panel/fleet-monitor move out.
 
