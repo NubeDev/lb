@@ -1063,6 +1063,12 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "assets",
         description: "load a granted skill's body (grant-gated)",
     },
+    // docs.* — doc-derived operations (doc-extraction scope; embeddings scope adds search/reindex).
+    HostTool {
+        tool: "docs.extract",
+        group: "docs",
+        description: "derive markdown docs from binary media (PDF/XLSX/CSV/HTML/text)",
+    },
     // telemetry.* — the redacted dispatch/telemetry log (observability scope).
     HostTool {
         tool: "telemetry.query",

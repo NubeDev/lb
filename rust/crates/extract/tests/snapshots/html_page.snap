@@ -1,0 +1,15 @@
+extractor: html v1
+docs: 1
+
+--- doc 0 part=None title="Cooler Maintenance" ---
+# Cooler Maintenance
+
+Check the **compressor** and the *fan* monthly.
+
+## Steps
+
+- Power off the unit
+
+- Inspect wiring & connectors
+
+- See [the alarm matrix](lb-doc://alarm-matrix)

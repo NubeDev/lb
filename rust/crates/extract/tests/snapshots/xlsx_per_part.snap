@@ -1,0 +1,17 @@
+extractor: xlsx v1
+docs: 2
+
+--- doc 0 part=Some("Sales") title="Sales" ---
+| Month | Units | Revenue |
+| --- | --- | --- |
+| Jan | 120 | 3400.5 |
+| Feb | 98 | 2810 |
+| Mar | 143 | 4102.75 |
+
+
+--- doc 1 part=Some("Regions") title="Regions" ---
+| Region | Lead |
+| --- | --- |
+| North | Ada |
+| South | Grace |
+

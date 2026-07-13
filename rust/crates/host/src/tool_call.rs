@@ -94,6 +94,11 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "reminder.",
     "query.",
     "assets.",
+    // doc-extraction scope: the `docs.*` doc-derived verb family (v1: `docs.extract`). A NEW
+    // native prefix, NOT an `assets.` arm — doc CRUD lives under `assets.` (`assets.put_doc`), while
+    // `docs.` is the home for operations that DERIVE docs (extract now; the embeddings scope's
+    // `docs.search`/`docs.reindex` next). Reached over the one MCP bridge like every host-native verb.
+    "docs.",
     "telemetry.",
     "history.",
     "tools.",
@@ -485,6 +490,12 @@ async fn dispatch_at_depth(
             // (document-store scope: "save participates in undo/redo") and lets a guest
             // extension reach the store over the same dispatch path as everyone else.
             crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("docs.") {
+            // doc-extraction scope: the `docs.*` doc-derived verbs (v1: `docs.extract`). Its own
+            // native family (see the prefix note above). The outer gate ran `mcp:docs.<verb>:call`;
+            // `call_docs_tool` re-runs it, then the service adds the per-item media-read + doc-write
+            // gates — a `docs.extract` grant never bypasses those.
+            crate::call_docs_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("flows.") {

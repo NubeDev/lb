@@ -12,7 +12,10 @@ mod chunk;
 mod commit;
 mod error;
 mod get;
-mod model;
+// `pub(crate)` so the extraction service (`assets/extract/`) can read media metadata + bytes
+// (`media_get_raw`, `read_all_bytes`, `Media`) — extraction's source-of-truth input. Reads only;
+// the write path (`begin`/`chunk`/`commit`) stays private to the media verbs.
+pub(crate) mod model;
 mod range;
 mod serve;
 mod tool;
