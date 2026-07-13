@@ -8,18 +8,20 @@
 //! out (with any proposed tool calls carried, not run). It holds no loop and never touches the
 //! store — the agent owns those (agent scope).
 //!
-//! **Honest-failure contract (load-bearing — scope Risks).** A model call can fail: the network is
-//! down, the endpoint returns non-2xx, the body is garbage. This adapter **never** returns a silent
-//! empty answer and **never** panics. On any such fault it returns a *terminal* [`AiResponse::stop`]
-//! whose content is an attributed error — `"model call failed: openai-compat/{model}: {detail}"` —
-//! with zero tokens. The gateway/agent loop treats a `stop` as terminal, so the fault surfaces as
-//! the turn's answer (attributed to the model) rather than looking like a real, empty completion.
+//! **Honest-failure contract (load-bearing — scope Risks, upgraded by agent-loop-hardening slice
+//! D).** A model call can fail: the network is down, the endpoint returns non-2xx, the body is
+//! garbage. This adapter **never** returns a silent empty answer and **never** panics. On any such
+//! fault it returns a typed [`ProviderFault`] carrying the *structured* evidence — status code,
+//! `Retry-After` delta-seconds, the overflow discriminant (`error.code ==
+//! "context_length_exceeded"` or a 413) — so the loop can retry a transient, compact on overflow,
+//! and surface a fatal honestly. It never classifies by parsing an error-message string.
 //!
 //! **Secrets.** The API key arrives already resolved (the caller pulls it from secrets) and is only
-//! ever placed in the `Authorization` header — it is never logged, never put in the error string.
+//! ever placed in the `Authorization` header — it is never logged, never put in the fault detail.
 
 use serde_json::{json, Value};
 
+use crate::fault::ProviderFault;
 use crate::provider::Provider;
 use crate::request::AiRequest;
 use crate::response::{AiResponse, ToolCall};
@@ -132,18 +134,15 @@ impl OpenAiCompat {
         body
     }
 
-    /// The attributed terminal failure — one place so the message shape is exact (scope Risks). The
-    /// key is never in `detail`.
-    fn failed(&self, detail: impl std::fmt::Display) -> AiResponse {
-        AiResponse::stop(
-            format!("model call failed: openai-compat/{}: {detail}", self.model),
-            0,
-        )
+    /// The attributed fault detail prefix — one place so the message shape is exact (scope Risks).
+    /// The key is never in the detail.
+    fn detail(&self, detail: impl std::fmt::Display) -> String {
+        format!("openai-compat/{}: {detail}", self.model)
     }
 }
 
 impl Provider for OpenAiCompat {
-    async fn complete(&self, req: &AiRequest) -> AiResponse {
+    async fn complete(&self, req: &AiRequest) -> Result<AiResponse, ProviderFault> {
         let resp = match self
             .client
             .post(self.endpoint())
@@ -154,22 +153,63 @@ impl Provider for OpenAiCompat {
             .await
         {
             Ok(resp) => resp,
-            Err(e) => return self.failed(e),
+            Err(e) if e.is_timeout() => return Err(ProviderFault::timeout(self.detail(e))),
+            Err(e) => return Err(ProviderFault::network(self.detail(e))),
         };
 
-        // Non-2xx is a fault, not a completion — attribute the status rather than trusting the body.
+        // Non-2xx is a fault, not a completion. Carry the STRUCTURED evidence: the status, the
+        // `Retry-After` header (delta-seconds form only), and — read from the error body's
+        // machine field, never its prose — the context-overflow discriminant.
         let status = resp.status();
         if !status.is_success() {
-            return self.failed(format!("http {}", status.as_u16()));
+            let retry_after = parse_retry_after(&resp);
+            let body: Value = resp.json().await.unwrap_or(Value::Null);
+            let fault = if is_overflow_body(&body) {
+                ProviderFault::overflow(status.as_u16(), self.detail("context overflow"))
+            } else {
+                ProviderFault::http(
+                    status.as_u16(),
+                    retry_after,
+                    self.detail(format!("http {}", status.as_u16())),
+                )
+            };
+            return Err(fault);
         }
 
         let value: Value = match resp.json().await {
             Ok(v) => v,
-            Err(e) => return self.failed(format!("unparseable body: {e}")),
+            Err(e) => {
+                return Err(ProviderFault::malformed(
+                    self.detail(format!("unparseable body: {e}")),
+                ))
+            }
         };
 
-        parse_completion(&value).unwrap_or_else(|| self.failed("no choices in response"))
+        parse_completion(&value)
+            .ok_or_else(|| ProviderFault::malformed(self.detail("no choices in response")))
     }
+}
+
+/// Parse the `Retry-After` header's delta-seconds form. The HTTP-date form is ignored on purpose
+/// (it would need a wall clock; the retry lane then just uses its default backoff).
+fn parse_retry_after(resp: &reqwest::Response) -> Option<u64> {
+    resp.headers()
+        .get("retry-after")?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+}
+
+/// The structured overflow discriminant: `error.code == "context_length_exceeded"` (the OpenAI-
+/// compat machine field). A machine code is data, not prose — this is NOT error-string parsing.
+fn is_overflow_body(body: &Value) -> bool {
+    body.get("error")
+        .and_then(|e| e.get("code"))
+        .and_then(Value::as_str)
+        .map(|c| c == "context_length_exceeded")
+        .unwrap_or(false)
 }
 
 /// Read one turn out of a chat-completions response. `None` when the shape is missing the pieces a

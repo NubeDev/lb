@@ -241,6 +241,147 @@ const HOST_TOOLS: &[HostTool] = &[
         group: "outbox",
         description: "stage a must-deliver effect for the outbox relay (with backoff)",
     },
+    // authz.* — the scoped read API (entity-scoped-grants scope) + the access-console verbs.
+    HostTool {
+        tool: "authz.check_scoped",
+        group: "authz",
+        description: "check if the calling principal may reach a record under a cap (entity-scoped)",
+    },
+    HostTool {
+        tool: "authz.scope_filter",
+        group: "authz",
+        description: "which rows in a table the calling principal may reach under a cap",
+    },
+    HostTool {
+        tool: "authz.delegate_reach",
+        group: "authz",
+        description: "marker cap: hold it to name a `subject` on check_scoped/scope_filter (delegated reach)",
+    },
+    HostTool {
+        tool: "authz.resolve",
+        group: "authz",
+        description: "resolved effective caps with provenance (access-console; admin-only)",
+    },
+    HostTool {
+        tool: "authz.revoke-tokens",
+        group: "authz",
+        description: "kill live tokens + tombstone grants for a subject (admin-only)",
+    },
+    // grants.*/roles.*/teams.* — the authz admin write+read surface (authz-grants scope), reachable
+    // over the one MCP bridge (authz-verbs-mcp-dispatch scope) so a native ext can mint scoped grants.
+    HostTool {
+        tool: "grants.assign",
+        group: "authz",
+        description: "grant a cap (optionally scoped to rows) to a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.revoke",
+        group: "authz",
+        description: "revoke a granted cap+scope from a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.list",
+        group: "authz",
+        description: "list the caps directly granted to a subject (admin-only)",
+    },
+    HostTool {
+        tool: "grants.list_scoped",
+        group: "authz",
+        description: "list a subject's grants with their row scopes (admin-only)",
+    },
+    HostTool {
+        tool: "roles.define",
+        group: "authz",
+        description: "create or replace a role's cap bundle (admin-only)",
+    },
+    HostTool {
+        tool: "roles.list",
+        group: "authz",
+        description: "list the roles defined in the workspace (admin-only)",
+    },
+    HostTool {
+        tool: "roles.delete",
+        group: "authz",
+        description: "delete a role and detach its grants (admin-only; built-ins immutable)",
+    },
+    HostTool {
+        tool: "teams.create",
+        group: "authz",
+        description: "create or rename a team (admin-only)",
+    },
+    HostTool {
+        tool: "teams.list",
+        group: "authz",
+        description: "list the teams in the workspace (admin-only)",
+    },
+    // invite.* — the token onboarding surface (invites scope). Accept is pre-auth (gateway route).
+    HostTool {
+        tool: "invite.create",
+        group: "invite",
+        description: "mint a single-use invite token (enqueues email delivery; admin-only)",
+    },
+    HostTool {
+        tool: "invite.list",
+        group: "invite",
+        description: "list invites in the workspace with status (admin-only)",
+    },
+    HostTool {
+        tool: "invite.revoke",
+        group: "invite",
+        description: "revoke a pending invite (admin-only)",
+    },
+    HostTool {
+        tool: "invite.resend",
+        group: "invite",
+        description: "resend a pending invite with a fresh token (admin-only)",
+    },
+    // media.* — the chunked-upload + variant + serve surface (media scope).
+    HostTool {
+        tool: "media.upload_begin",
+        group: "media",
+        description: "begin a resumable chunked upload (declares size/mime/checksum)",
+    },
+    HostTool {
+        tool: "media.upload_commit",
+        group: "media",
+        description: "commit an upload (verify checksum, derive variants, flip to ready)",
+    },
+    HostTool {
+        tool: "media.get",
+        group: "media",
+        description: "read media metadata by id",
+    },
+    HostTool {
+        tool: "media.list",
+        group: "media",
+        description: "list media in the workspace",
+    },
+    HostTool {
+        tool: "media.delete",
+        group: "media",
+        description: "archive media by id",
+    },
+    // device.* / notify.* — the push-notification surface (push-target scope).
+    HostTool {
+        tool: "device.register",
+        group: "notify",
+        description: "register a push device (self-only, upsert by token)",
+    },
+    HostTool {
+        tool: "device.list",
+        group: "notify",
+        description: "list the caller's own registered devices",
+    },
+    HostTool {
+        tool: "device.remove",
+        group: "notify",
+        description: "remove a registered device (self-only)",
+    },
+    HostTool {
+        tool: "notify.send",
+        group: "notify",
+        description: "enqueue a push notification to an audience (outbox-delivered)",
+    },
     // dashboard.* — the grid-of-widgets surface verbs (dashboard scope).
     HostTool {
         tool: "dashboard.get",
@@ -921,6 +1062,12 @@ const HOST_TOOLS: &[HostTool] = &[
         tool: "assets.load_skill",
         group: "assets",
         description: "load a granted skill's body (grant-gated)",
+    },
+    // docs.* — doc-derived operations (doc-extraction scope; embeddings scope adds search/reindex).
+    HostTool {
+        tool: "docs.extract",
+        group: "docs",
+        description: "derive markdown docs from binary media (PDF/XLSX/CSV/HTML/text)",
     },
     // telemetry.* — the redacted dispatch/telemetry log (observability scope).
     HostTool {

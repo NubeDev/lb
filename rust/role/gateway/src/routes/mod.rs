@@ -31,10 +31,12 @@ mod identity;
 mod inbox;
 mod ingest;
 mod insight;
+mod invite_accept;
 mod layout;
 mod login;
 mod mcp;
 mod mcp_catalog;
+mod media;
 mod members;
 mod membership;
 mod message;
@@ -44,6 +46,7 @@ mod outbox;
 mod panel;
 mod post;
 mod prefs;
+mod rate_limit;
 mod report;
 mod rules;
 mod run_control;
@@ -113,10 +116,12 @@ pub use insight::{
     ack_insight, delete_insight, delete_occurrence, get_insight, insight_events, list_insights,
     list_occurrences, resolve_insight,
 };
+pub use invite_accept::{accept_invite, verify_invite};
 pub use layout::{get_layout, set_layout};
 pub use login::login;
 pub use mcp::mcp_call;
 pub use mcp_catalog::mcp_catalog;
+pub use media::{get_media, put_media_chunk};
 pub use members::{add_team_member, list_team_members};
 pub use membership::{
     add_member_route as add_member, list_members_route as list_members,
@@ -134,6 +139,10 @@ pub use post::post_message;
 pub use prefs::{
     convert_unit, format_datetime, format_number, format_quantity, get_prefs, resolve_prefs,
     set_default_prefs, set_prefs,
+};
+pub use rate_limit::{
+    invite_accept_rate_limit, MAX_PER_WINDOW as INVITE_ACCEPT_MAX_PER_WINDOW,
+    WINDOW_SECS as INVITE_ACCEPT_WINDOW_SECS,
 };
 pub use report::{
     delete_report, export_report, get_report, list_reports, save_report, share_report,

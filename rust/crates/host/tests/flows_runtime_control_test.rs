@@ -417,11 +417,11 @@ async fn cancel_before_run_stops_the_drive_leaving_downstream_unrun() {
     // The run is terminal as cancelled OR raced to success; if cancelled, at least one node is un-run.
     let status = snap["status"].as_str().unwrap();
     if status == "cancelled" {
-        let unrun = snap["steps"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|s| s["terminal"] != json!(true));
+        // At least one of the four nodes is un-run: either its slot exists non-terminal, or (the
+        // snapshot raced the drive between a settle and its dependent's slot-mint) the slot was
+        // never created at all. Both shapes prove the drive stopped short.
+        let steps = snap["steps"].as_array().unwrap();
+        let unrun = steps.len() < 4 || steps.iter().any(|s| s["terminal"] != json!(true));
         assert!(
             unrun,
             "a cancelled run leaves at least one node un-run: {snap}"

@@ -252,6 +252,13 @@ const VIEWER_CAPS: &[&str] = &[
     // reminders nav gate — the concrete list cap the frontend `hasCap` checks EXACTLY (it does not
     // expand a wildcard), so the Reminders sidebar entry needs it spelled out. fire is author.
     "mcp:reminder.list:call",
+    // entity-scoped-grants scope: every member asks "what can I reach?" — the scoped read API.
+    // These are informational (the enforcement happens at the verb level); a caller only learns its
+    // OWN reach (the verbs use the calling principal, never a `user` arg).
+    "mcp:authz.check_scoped:call",
+    "mcp:authz.scope_filter:call",
+    // push-target scope: a member registers/lists/removes their own devices (self-only).
+    "mcp:device.register:call",
     // shared-asset doc/skill store READS (gate-3/ownership owns which specific asset). Writes are author.
     "store:doc/*:read",
     "store:skill/**:read",
@@ -305,6 +312,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:ingest.write:call",
     // documents WRITE (a member's own shared docs).
     "mcp:assets.put_doc:call",
+    // doc extraction (doc-extraction scope): a member derives docs from their own media. The verb
+    // re-gates per-item media read + doc write, so this grant alone can't widen reach — it only
+    // opens the surface, exactly like `assets.put_doc` above.
+    "mcp:docs.extract:call",
     // generic bus PRODUCE (publish/watch a subject the member drives).
     "mcp:bus.publish:call",
     "mcp:bus.watch:call",
@@ -381,6 +392,12 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:agent.memory.delete:call",
     // reminders run-now (re-checks the ACTION's own cap under the stored principal).
     "mcp:reminder.fire:call",
+    // media scope: a member uploads/reads/deletes their own media.
+    "mcp:media.upload:call",
+    "mcp:media.get:call",
+    "mcp:media.delete:call",
+    // push-target scope: a member sends push notifications (the audience/prefs policy lives here).
+    "mcp:notify.send:call",
     // shared-asset doc/skill store WRITES (gate-3/ownership owns which specific asset).
     "store:doc/*:write",
     "store:skill/**:write",
@@ -474,7 +491,24 @@ const ADMIN_ONLY_CAPS: &[&str] = &[
     "mcp:apikey.manage:call",
     "mcp:webhook.manage:call",
     "secret:webhook/*:write",
+    // invites scope: admin mints/list/revokes/resends invite tokens (accept is pre-auth).
+    "mcp:invite.create:call",
+    "mcp:invite.list:call",
 ];
+
+/// Does this cap set carry workspace-admin authority? True iff it holds ANY [`ADMIN_ONLY_CAPS`]
+/// entry — the caps that MANAGE other principals or the workspace itself, which lb grants only via
+/// the `workspace-admin` role bundle and a `member`/`viewer`/guardian never holds.
+///
+/// This is the AUTHORITATIVE admin signal in lb's caps-based model: the JWT `role` claim is
+/// cosmetic (`dev_claims` mints `member` for admins and members alike — the check path reads caps,
+/// never `role`; see `lb-role-gateway::session::credentials`). A caller-projection that needs to
+/// answer "is this an admin?" (e.g. the native-caller-identity frame a sidecar reads to bypass a
+/// per-caller row filter) MUST resolve it from caps, not the role enum. One owner of the rule so
+/// the frame's `admin` marker and lb's own admin gating can never drift.
+pub fn caps_hold_admin(caps: &[String]) -> bool {
+    caps.iter().any(|c| ADMIN_ONLY_CAPS.contains(&c.as_str()))
+}
 
 #[cfg(test)]
 mod tests {
@@ -501,6 +535,38 @@ mod tests {
                 "member bundle must NOT carry admin cap {admin_cap} (the escalation)"
             );
         }
+    }
+
+    /// `caps_hold_admin` is the authoritative admin signal for the native-caller frame: the
+    /// workspace-admin bundle reads as admin, the member/viewer bundles do NOT (the escalation the
+    /// role-enum can't answer — lb mints every session as `member`). Guards the frame's `admin`
+    /// marker against drift with the admin-only cap delta.
+    #[test]
+    fn caps_hold_admin_tracks_the_admin_bundle_only() {
+        assert!(
+            caps_hold_admin(&workspace_admin_role_caps()),
+            "the workspace-admin bundle must read as admin"
+        );
+        assert!(
+            !caps_hold_admin(&member_role_caps()),
+            "the member bundle must NOT read as admin (the escalation)"
+        );
+        assert!(
+            !caps_hold_admin(&viewer_role_caps()),
+            "the viewer bundle must NOT read as admin"
+        );
+        // A guardian-style token (a couple of scoped care read caps, no admin-only cap) is NOT admin.
+        let guardian = vec![
+            "mcp:care.child.get:call".to_string(),
+            "mcp:care.child.list:call".to_string(),
+        ];
+        assert!(
+            !caps_hold_admin(&guardian),
+            "a guardian token must NOT read as admin"
+        );
+        // The single canonical marker is enough on its own.
+        assert!(caps_hold_admin(&["mcp:members.manage:call".to_string()]));
+        assert!(!caps_hold_admin(&[]), "an empty cap set is never admin");
     }
 
     /// A member keeps the LOAD-BEARING caps the `mcp:*.<verb>:call` wildcards miss (`.catalog`/

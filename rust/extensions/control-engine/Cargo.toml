@@ -40,7 +40,7 @@ lb-supervisor = { path = "../../crates/supervisor" }
 # The host callback transport (S4): the sidecar reaches the store (`store.write`/
 # `store.query`/`store.delete` for the `ce_appliance` registry) via the node-signed
 # `LB_EXT_TOKEN` over `POST /mcp/call`. Shared crate, so the callback ABI cannot drift.
-lb-sidecar-client = { path = "../../crates/sidecar-client" }
+lb-sidecar-client = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.3.0" }
 # Parse the injected `LB_EXT_TOKEN` grant for the per-verb capability self-check (the
 # inbound `native.call` carries no caller identity — the sidecar self-checks its grant).
 lb-auth = { path = "../../crates/auth" }

@@ -3,7 +3,17 @@ name = "lb-devkit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-publish = false
+description = "Lazybones extension developer kit: the signed-Artifact packaging idiom (sign, key custody, trust line) plus the node-side devkit tooling behind `devkit-full`"
+keywords = ["lazybones", "extension", "devkit", "signing"]
+categories = ["development-tools"]
+
+[features]
+# The stable published contract is the default-off core: sign_artifact / load_or_create_key /
+# publisher_trust_line / LoadedPublisherKey / Artifact. `devkit-full` (scaffold/build/inspect/
+# templates/toolchains) is on by default for in-workspace consumers but is NOT semver-stable for
+# embedders — pin with `default-features = false`.
+default = ["devkit-full"]
+devkit-full = []
 
 [dependencies]
 lb-registry.workspace = true

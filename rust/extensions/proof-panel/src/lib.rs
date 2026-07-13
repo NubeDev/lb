@@ -24,10 +24,10 @@
 //! principal — the guest can only reach what both its caller and its install allow. The guest holds no
 //! store/bus handle; it touches the platform ONLY through the mediated callback (rules 4/5).
 
-wit_bindgen::generate!({
-    path: "../../sdk/wit",
-    world: "extension",
-});
+// The `generate!` call is emitted by `build.rs` into `$OUT_DIR/wit_gen.rs`, reading the WIT from the
+// standalone `lb-sdk` crate (the authoritative owner) — see the build script. Generated against the
+// SAME WIT the host uses, so the ABI cannot drift.
+include!(concat!(env!("OUT_DIR"), "/wit_gen.rs"));
 
 use serde::{Deserialize, Serialize};
 

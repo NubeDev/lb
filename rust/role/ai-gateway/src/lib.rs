@@ -19,6 +19,7 @@
 //! mock, the gateway, and one real adapter per file under `providers/`.
 
 mod bridge;
+mod fault;
 mod gateway;
 mod mock;
 mod provider;
@@ -26,6 +27,7 @@ mod providers;
 mod request;
 mod response;
 
+pub use fault::{FaultKind, FaultLane, ProviderFault};
 pub use gateway::AiGateway;
 pub use mock::MockProvider;
 pub use provider::Provider;

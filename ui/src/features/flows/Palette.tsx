@@ -4,13 +4,13 @@
 // underlying tool the caller lacks is SHOWN but marked gated (the menu reflects permissions; the
 // deny lives at the engine, never widened — `caller ∩ grant`).
 //
-// flow-input-ports-scope Slice 4: each entry shows the node's declared INPUT PORTS with their join
-// policy (a funnel glyph for `any`, a merge glyph for `all`) — so an author picks a node knowing
-// whether it funnels (debug/link-in) or joins (rhai/avg). Styled as a compact, searchable catalog
+// flow-plain-wiring-scope: every port is plain per-message wiring (`any`) and is shown unmarked —
+// a port is just a port. Only an EXPLICIT-`all` port (an extension descriptor opt-in; no built-in)
+// wears the merge glyph, flagging the barrier exception. Styled as a compact, searchable catalog
 // using shadcn primitives + tokens — the same look as the rest of the flows surface.
 
 import { useMemo, useState } from "react";
-import { Filter, Merge, Search } from "lucide-react";
+import { Merge, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,7 +103,11 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
                         <span
                           key={p.name}
                           className="inline-flex items-center gap-0.5"
-                          title={`${p.name}: ${p.join} (${p.join === "any" ? "funnel — fires per upstream" : "join — barrier"})`}
+                          title={
+                            p.join === "all"
+                              ? `${p.name}: all (join — barrier over this port's upstreams)`
+                              : `${p.name}: fires once per arriving message`
+                          }
                         >
                           <PolicyMark join={p.join} />
                           {p.name}
@@ -126,9 +130,10 @@ export function Palette({ nodes, onAdd }: PaletteProps) {
   );
 }
 
-/** The compact glyph marking a port's join policy in the palette — a funnel (`any`, fires per
- *  upstream) or a merge (`all`, barrier join). Mirrors the canvas node's per-port glyph. */
+/** The compact glyph marking ONLY an explicit-`all` (barrier) port in the palette — the default
+ *  (`any`, plain per-message wiring) is unmarked (flow-plain-wiring-scope). Mirrors the canvas
+ *  node's per-port glyph. */
 function PolicyMark({ join }: { join: JoinPolicy }) {
-  const Icon = join === "any" ? Filter : Merge;
-  return <Icon size={9} className={join === "any" ? "text-accent" : "text-muted"} aria-hidden />;
+  if (join !== "all") return null;
+  return <Merge size={9} className="text-muted" aria-hidden />;
 }

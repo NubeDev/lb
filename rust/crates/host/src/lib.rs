@@ -35,12 +35,15 @@ mod ingest;
 mod insight;
 mod install;
 mod installed;
+mod invites;
 mod layout;
 mod load;
+mod media;
 mod members;
 mod membership;
 mod native;
 mod nav;
+mod notify;
 mod outbox;
 mod panel;
 mod prefs;
@@ -79,7 +82,8 @@ pub use agent::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,
     agent_persona_update, build_identity_fold, builtin_definitions, builtin_personas,
     call_agent_catalog_tool, call_agent_memory_tool, call_agent_persona_tool, call_agent_tool,
-    cancel_run, check_runtime, clamp_to_preset, decision_id, evaluate_policy, fence_into_goal,
+    cancel_run, check_runtime, clamp_to_preset, compact_to_budget, decision_id,
+    estimate_message_tokens, estimate_tool_tokens, evaluate_policy, fence_into_goal,
     format_catalog, get_agent_config, glob_matches, invoke, invoke_descriptor, invoke_remote,
     invoke_via_runtime, list_runtimes, load_decision, load_policy, memory_delete, memory_get,
     memory_index_for_injection, memory_list, memory_set, migrate_active_persona, narrow_tools,
@@ -93,11 +97,12 @@ pub use agent::{
     EffectivePersona, ErasedModel, InHouseRuntime, Invocation, LoopState, Memory, MemoryKind,
     MemoryScope, ModelAccess, ModelBuilder, ModelEndpointPatch, Persona, PersonaListItem,
     PersonaPatch, Policy, PolicyPreset, ProposedCall, Rule, RunContext, RuntimeRegistry,
-    SettleOutcome, Substrate, TestContext, TestResult, Turn, UnconfiguredModel, AGENT_CONFIG_TABLE,
-    AGENT_DEFS_NS, AGENT_DEFS_TABLE, BUILTIN_PREFIX, DECISION_APPROVAL_CHANNEL, DECISION_TABLE,
-    DEFAULT_RUNTIME, DENIED_BY_POLICY, INJECT_CAP, MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION,
-    MAX_STEPS, MEMORY_HEADER, PERSONA_NS, PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE,
-    UNCONFIGURED_ANSWER,
+    SettleOutcome, Substrate, TestContext, TestResult, Turn, TurnError, UnconfiguredModel,
+    AGENT_CONFIG_TABLE, AGENT_DEFS_NS, AGENT_DEFS_TABLE, BREADCRUMB_PREFIX, BUILTIN_PREFIX,
+    DECISION_APPROVAL_CHANNEL, DECISION_TABLE, DEFAULT_COMPACT_BUDGET_TOKENS, DEFAULT_LOOP_WINDOW,
+    DEFAULT_RUNTIME, DENIED_BY_POLICY, EXFIL_DENIED, INJECT_CAP, LOOP_BLOCKED, LOOP_WARNING,
+    MAX_BODY, MAX_CONTEXT_BYTES, MAX_DESCRIPTION, MAX_STEPS, MEMORY_HEADER, PERSONA_NS,
+    PERSONA_TABLE, POLICY_TABLE, SKILL_ACTIVATE, UNCONFIGURED_ANSWER,
 };
 /// The background driver for detached channel agent runs (run-lifecycle #5): `spawn_agent_reactors`
 /// is the node-boot entry (beside `spawn_flow_reactors`); `drain_channel_agent_runs` is a synchronous,
@@ -119,24 +124,29 @@ pub use approval_reactor::{
     held_effect_id, react_to_approval_releases, spawn_approval_reactors, ApprovalReleasePass,
 };
 pub use assets::{
-    add_member, backlinks, call_asset_tool, delete_asset, delete_doc, deprecate_skill, get_asset,
-    get_doc, grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill,
-    put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError,
-    SkillCatalogEntry, SkillTier, MAX_ASSET_BYTES,
+    add_member, backlinks, call_asset_tool, call_docs_tool, delete_asset, delete_doc,
+    deprecate_skill, docs_extract, extract_descriptor, get_asset, get_doc, get_extraction,
+    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset,
+    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError, ExtractRequest,
+    ExtractResult, ExtractSvcError, Extraction, ItemOutcome, SkillCatalogEntry, SkillTier,
+    DERIVED_FROM, EXTRACTION_TABLE, MAX_ASSET_BYTES,
 };
 // Core-skill boot seeder (core-skills scope): the node binary calls `seed_core_skills` at boot to
 // write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
 // through `lb_host` without depending on `lb_assets` directly.
 pub use authz::{
-    admin_only_caps, author_caps, authz_resolve, call_authz_tool, ensure_builtin_authz_roles,
-    grants_assign, grants_list, grants_revoke, member_role_caps, resolve_caps, revoke_subject,
-    revoke_tokens, roles_define, roles_delete, roles_list, teams_create, teams_list, token_revoked,
-    viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole, CapSource, Grant,
-    SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER, ROLE_WORKSPACE_ADMIN,
+    admin_only_caps, author_caps, authz_check_scoped, authz_resolve, authz_scope_filter,
+    call_authz_tool, ensure_builtin_authz_roles, grants_assign, grants_list, grants_list_scoped,
+    grants_revoke, member_role_caps, resolve_caps, resolve_caps_live, resolve_subject_caps_live,
+    revoke_subject, revoke_tokens, roles_define, roles_delete, roles_list, teams_create,
+    teams_list, token_revoked, viewer_role_caps, workspace_admin_role_caps, AuthzError, AuthzRole,
+    CapSource, Grant, Scope, ScopeFilter, SourcedCap, Subject, Team, ROLE_MEMBER, ROLE_VIEWER,
+    ROLE_WORKSPACE_ADMIN,
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
-    authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
+    authorize_bus, authorize_subject_scoped, bus_publish, bus_watch, call_bus_tool,
+    still_scoped_authorized, wall_subject, BusError, BusSub, WatchMode,
 };
 pub use channel::{
     call_channel_chart_pref_tool, call_channel_tool, delete, edit, history, join, post,
@@ -199,7 +209,7 @@ pub use brand::{
     BrandColors, BrandError, BrandFonts, BrandSummary,
 };
 pub use credential::{
-    call_credential_tool, credential_verify, identity_set_credential, CredentialCheck,
+    call_credential_tool, credential_verify, hash_secret, identity_set_credential, CredentialCheck,
     CredentialError,
 };
 pub use host_tools::{
@@ -231,11 +241,20 @@ pub use insight::{
 };
 pub use install::install_extension;
 pub use installed::installed;
+pub use invites::{
+    call_invite_tool, invite_accept, invite_create, invite_list, invite_resend, invite_revoke,
+    invite_verify, AcceptedInvite, InviteError, InvitePreview, EMAIL_ACTION, EMAIL_TARGET,
+};
 pub use layout::{
     call_layout_tool, layout_get, layout_set, LayoutError, UiLayout, MAX_LAYOUT_BYTES,
 };
 pub use lb_render::RenderError;
 pub use load::{load_extension, LoadError, Loaded};
+pub use media::{
+    call_media_tool, chunk_write, media_chunk_put, media_delete, media_get, media_list,
+    media_serve, media_upload_begin, media_upload_commit, plan_serve, MediaError, MediaStatus,
+    ServePlan, ServedMedia, CHUNK_SIZE, CHUNK_TABLE,
+};
 pub use members::{add_team_member, list_members, remove_member, MembersError};
 pub use membership::{
     call_membership_tool, membership_add, membership_list, membership_login_resolve,
@@ -252,8 +271,15 @@ pub use nav::{
     reach_caps, reach_check, Nav, NavError, NavFacet, NavHidden, NavItem, NavPref, NavSummary,
     ResolvedItem as NavResolvedItem, ResolvedNav as NavResolved,
     ResolvedSource as NavResolvedSource, Visibility as NavVisibility,
-    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS,
-    MAX_PINNED as NAV_MAX_PINNED, MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
+    BUILTIN_PICK as NAV_BUILTIN_PICK, MAX_GROUP_DEPTH as NAV_MAX_GROUP_DEPTH,
+    MAX_HIDDEN as NAV_MAX_HIDDEN, MAX_ITEMS as NAV_MAX_ITEMS, MAX_PINNED as NAV_MAX_PINNED,
+    MAX_TAG_GROUP as NAV_MAX_TAG_GROUP, REACH_ALL,
+};
+pub use notify::{
+    call_notify_tool, device_list, device_register, device_remove, notify_send,
+    Device as NotifyDevice, LoggingPushProvider, NotifyCatalogRef, NotifyError,
+    Platform as DevicePlatform, PushError, PushPayload, PushProvider, PushTarget, RecordedPush,
+    RecordingPushProvider, PUSH_TARGET,
 };
 pub use panel::{
     call_panel_tool, hydrate_cells, panel_delete, panel_get, panel_list, panel_save, panel_share,
@@ -276,8 +302,9 @@ pub use lb_store::new_ulid;
 pub use lb_supervisor::OsLauncher;
 pub use outbox::{
     enqueue_held_outbox, enqueue_outbox, outbox_due, outbox_mark_delivered, outbox_mark_failed,
-    outbox_status, relay_outbox, spawn_relay_reactors, OutboxError, OutboxStatus, RelayPass,
-    Target,
+    outbox_status, relay_outbox, spawn_relay_reactors, DynTarget, EmailMeta, EmailProvider,
+    EmailTarget, LoggingEmailProvider, OutboxError, OutboxStatus, RecordedEmail,
+    RecordingEmailProvider, RelayPass, RouterTarget, Target,
 };
 pub use prefs::{
     authorize_prefs, call_catalog_tool, call_format_tool, call_prefs_catalog_tool, call_prefs_tool,

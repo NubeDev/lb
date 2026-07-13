@@ -19,6 +19,7 @@ mod tool;
 mod verify;
 
 pub use error::CredentialError;
+pub use hash::hash_secret;
 pub use set::identity_set_credential;
 pub use tool::call_credential_tool;
 pub use verify::{credential_verify, CredentialCheck};

@@ -15,8 +15,11 @@ lb-host.workspace = true
 lb-mcp.workspace = true
 lb-run-events.workspace = true
 lb-auth.workspace = true
+# The bus-watch re-check (issue #49) re-reads grants from the node store on a tick to close a
+# revoked open stream; the `Store` handle is cloned from `gw.node.store`.
+lb-store.workspace = true
 lb-registry.workspace = true
-lb-devkit.workspace = true
+lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-inbox.workspace = true
 lb-insights.workspace = true
 lb-prefs.workspace = true
@@ -62,6 +65,9 @@ name = "test_gateway"
 required-features = ["test-harness"]
 
 [dev-dependencies]
+# The bus-watch revoke test (issue #49) seeds/revokes `bus:<subject>:watch` grants through the real
+# authz write path to prove revoke-terminates-stream against a live node.
+lb-authz.workspace = true
 # The active-agent-wiring route test loads the durable agent-session job back to prove it lands in
 # the caller's workspace (the hard wall) — `lb_jobs::load(store, ws, id)` is ws-scoped.
 lb-jobs.workspace = true

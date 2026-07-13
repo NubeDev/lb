@@ -18,6 +18,11 @@ pub mod session;
 mod signing_key;
 mod state;
 
+pub use routes::{INVITE_ACCEPT_MAX_PER_WINDOW, INVITE_ACCEPT_WINDOW_SECS};
 pub use server::{router, serve, serve_listener};
 pub use session::{authenticate, dev_claims, verify_token, AuthRejection};
+// The credential-check seam (login-hardening) — re-exported at the crate root so an embedder
+// (via `lb-node`'s builder, embedder-credential-mode scope) can name the two impls without
+// reaching into `session::credential`.
+pub use session::{credential_check_from_env, CredentialCheck, DevTrustAny, PasswordHash};
 pub use state::Gateway;

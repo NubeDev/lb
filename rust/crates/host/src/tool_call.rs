@@ -21,7 +21,7 @@ use lb_assets::read_install;
 use lb_auth::Principal;
 use lb_inbox::Decision;
 use lb_mcp::{authorize_tool, ToolError};
-use lb_runtime::CallContext;
+use lb_runtime::{CallContext, Caller};
 use serde_json::{json, Value};
 
 use crate::boot::Node;
@@ -57,6 +57,18 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "outbox.",
     "inbox.",
     "insight.",
+    "authz.",
+    // authz admin verbs (authz-verbs-mcp-dispatch scope): `call_authz_tool` already implements
+    // every `grants.*`/`roles.*`/`teams.*` verb; these prefixes route them through the one MCP
+    // bridge so a native (Tier-2) extension can MINT a scoped grant over the host callback, not
+    // just READ it (`authz.check_scoped`/`scope_filter` were already reachable under `authz.`).
+    "grants.",
+    "roles.",
+    "teams.",
+    "invite.",
+    "media.",
+    "device.",
+    "notify.",
     "dashboard.",
     "nav.",
     "layout.",
@@ -82,6 +94,11 @@ pub(crate) const HOST_NATIVE_PREFIXES: &[&str] = &[
     "reminder.",
     "query.",
     "assets.",
+    // doc-extraction scope: the `docs.*` doc-derived verb family (v1: `docs.extract`). A NEW
+    // native prefix, NOT an `assets.` arm — doc CRUD lives under `assets.` (`assets.put_doc`), while
+    // `docs.` is the home for operations that DERIVE docs (extract now; the embeddings scope's
+    // `docs.search`/`docs.reindex` next). Reached over the one MCP bridge like every host-native verb.
+    "docs.",
     "telemetry.",
     "history.",
     "tools.",
@@ -149,6 +166,24 @@ pub(crate) fn gate_tool_for(qualified_tool: &str) -> &str {
         // hide-and-pins scope: curating the workspace hidden-set is the SAME authoring authority as
         // the workspace-default pointer — it rides `mcp:nav.save:call`, no separate cap.
         "nav.save"
+    } else if qualified_tool == "grants.revoke" {
+        // authz-verbs-mcp-dispatch scope: assign/revoke MUTATE the same grant surface and share the
+        // ONE cap `mcp:grants.assign:call` — the verb's inner gate (`authz/grants.rs`) checks that
+        // cap for both. No `mcp:grants.revoke:call` exists in any role bundle, so without this alias
+        // the outer gate would deny revoke for every caller, admins included.
+        "grants.assign"
+    } else if qualified_tool == "grants.list_scoped" {
+        // authz-verbs-mcp-dispatch scope: listing scoped grants is the SAME read privilege as
+        // `grants.list` — the inner gate checks `mcp:grants.list:call`; no per-verb cap exists.
+        "grants.list"
+    } else if qualified_tool == "teams.create" {
+        // authz-verbs-mcp-dispatch scope: the inner gate + admin role bundle use
+        // `mcp:teams.manage:call` (there is no `mcp:teams.create:call`); align the outer gate.
+        "teams.manage"
+    } else if qualified_tool == "roles.delete" {
+        // authz-verbs-mcp-dispatch scope: deleting a role is the SAME authority as defining/managing
+        // one — the inner gate checks `mcp:roles.manage:call`; no `mcp:roles.delete:call` exists.
+        "roles.manage"
     } else {
         qualified_tool
     }
@@ -351,6 +386,38 @@ async fn dispatch_at_depth(
             // delivery for matched subs); the read/act verbs use `node.store`. The matcher + ladder
             // state machine + digest reactor are pure / reactor-driven (no MCP arm of their own).
             crate::call_insight_tool(node, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("authz.")
+            || qualified_tool.starts_with("grants.")
+            || qualified_tool.starts_with("roles.")
+            || qualified_tool.starts_with("teams.")
+        {
+            // entity-scoped-grants scope: `authz.check_scoped` / `authz.scope_filter` — the scoped
+            // read API extensions reach via `host.call-tool` so an extension verb asks the wall
+            // "what can this principal reach?" instead of re-implementing the filter. The outer
+            // gate ran `mcp:authz.<verb>:call`; the verb resolves the CALLING principal's own reach
+            // by default. native-caller-identity scope: an optional `subject` lets a caller that
+            // holds `mcp:authz.delegate_reach:call` ask about ANOTHER subject (a native sidecar
+            // answering "does the guardian reach this child?"); absent `subject` is unchanged, and a
+            // `subject` without the delegation cap fails closed (see `authz::scoped`). `authz.resolve` /
+            // `authz.revoke-tokens` are the access-console admin verbs (already in `call_authz_tool`).
+            //
+            // authz-verbs-mcp-dispatch scope: `grants.*`/`roles.*`/`teams.*` route here too — the
+            // same `call_authz_tool` implements them, gated by the same admin caps (with the outer
+            // gate aliased to the inner cap for the four verbs `gate_tool_for` maps). This makes the
+            // WRITE half of the scoped-grant surface reachable over the callback, symmetric with the
+            // READ half above.
+            crate::call_authz_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("invite.") {
+            // invites scope: the admin verbs (create/list/revoke/resend). The pre-auth `accept` is
+            // a gateway route (POST /public/invite/accept), NOT an MCP verb — it has no principal.
+            crate::call_invite_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("media.") {
+            // media scope: upload_begin/commit/get/list/delete MCP verbs. The chunk upload (PUT)
+            // and serve (GET) are HTTP routes — bytes over HTTP, not MCP payloads.
+            crate::call_media_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("device.") || qualified_tool.starts_with("notify.") {
+            // push-target scope: device.register/list/remove + notify.send.
+            crate::call_notify_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool == "dashboard.catalog" {
             // widget-catalog scope: the palette read needs the full `&Node` (ext-tile discovery via
             // `ext.list`, like `nav.resolve`), so it is dispatched HERE — before the generic store-only
@@ -423,6 +490,12 @@ async fn dispatch_at_depth(
             // (document-store scope: "save participates in undo/redo") and lets a guest
             // extension reach the store over the same dispatch path as everyone else.
             crate::call_asset_tool(&node.store, principal, ws, qualified_tool, &input).await?
+        } else if qualified_tool.starts_with("docs.") {
+            // doc-extraction scope: the `docs.*` doc-derived verbs (v1: `docs.extract`). Its own
+            // native family (see the prefix note above). The outer gate ran `mcp:docs.<verb>:call`;
+            // `call_docs_tool` re-runs it, then the service adds the per-item media-read + doc-write
+            // gates — a `docs.extract` grant never bypasses those.
+            crate::call_docs_tool(&node.store, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("rules.") {
             crate::call_rules_tool(node, principal, ws, qualified_tool, &input).await?
         } else if qualified_tool.starts_with("flows.") {
@@ -561,7 +634,30 @@ async fn build_call_context(
     Some(CallContext {
         bridge: Arc::new(bridge),
         depth,
+        // Stamp the ROUTED caller (not the derived-for-the-ext principal) — the sidecar must learn
+        // who the human/agent behind the call is, to attribute its row-filter decision. The wasm
+        // guest ignores this; the native adapter serializes it into the frame. Projected here from
+        // the already-authorized principal — a read, no new trust (native-caller-identity scope).
+        caller: Some(Caller {
+            sub: caller.sub().to_string(),
+            ws: caller.ws().to_string(),
+            role: role_wire(caller.role()).to_string(),
+            delegated: caller.owner_sub() != caller.sub(),
+            // Admin is caps-based, not the (cosmetic) role enum (native-caller-identity scope).
+            admin: crate::authz::caps_hold_admin(caller.caps()),
+        }),
     })
+}
+
+/// The lower-cased wire spelling of a role (matches `#[serde(rename_all = "kebab-case")]` on
+/// `lb_auth::Role`), so a native child reads the same token the gateway would serialize. Kept beside
+/// the one `CallContext` construction that needs it; the native-tier dual lives in `native::caller`.
+fn role_wire(role: lb_auth::Role) -> &'static str {
+    match role {
+        lb_auth::Role::SuperAdmin => "super-admin",
+        lb_auth::Role::WorkspaceAdmin => "workspace-admin",
+        lb_auth::Role::Member => "member",
+    }
 }
 
 /// Dispatch the durable-workflow host verbs a federated page (or a wasm guest, via the host callback)

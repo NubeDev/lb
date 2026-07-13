@@ -28,7 +28,7 @@ RUN cargo build --target wasm32-wasip2 --release
 # headline datasource; see extensions/federation/Cargo.toml). One `cargo build` invocation so the
 # dependency graph is resolved once.
 WORKDIR /src/rust
-RUN cargo build --release -p node -p federation --features federation/postgres \
+RUN cargo build --release -p lb-node -p federation --features federation/postgres \
  && cp target/release/node /tmp/node \
  && cp target/release/federation /tmp/federation
 

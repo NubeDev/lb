@@ -59,4 +59,34 @@ pub struct CallContext {
     /// The current re-entrancy depth — incremented by the host as each callback dispatches a fresh
     /// guest call, so the host can enforce a fixed limit (host-callback scope, open question 1).
     pub depth: u32,
+    /// A minimal, non-replayable projection of the authorized caller (native-caller-identity scope).
+    /// The **wasm** guest ignores it — its per-call identity rides `bridge` (the `HostBridge` closes
+    /// over the effective principal in-process). The **native** dispatch adapter serializes it into
+    /// the sidecar call frame so an out-of-process child learns WHO called it. `None` when the host
+    /// could not resolve a caller for this call (an old-shaped frame results).
+    pub caller: Option<Caller>,
+}
+
+/// A minimal projection of the routed caller, carried on a [`CallContext`] so the **native** dispatch
+/// path can serialize it into the sidecar frame (native-caller-identity scope). Mirror of
+/// `lb_supervisor::Caller` — the host maps between the two (this crate stays free of the supervisor,
+/// and the supervisor stays free of the wasm runtime; the host is the one place that knows both).
+///
+/// **Not a token.** It is identity for *attributing a decision*, never bearer authority — see
+/// `lb_supervisor::Caller` for the full non-replayability contract.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Caller {
+    /// The global identity the host authorized (`user:…` / `key:…` / `agent:…`).
+    pub sub: String,
+    /// The workspace the call is scoped to (the hard wall).
+    pub ws: String,
+    /// The caller's role, lower-cased (`super-admin` / `workspace-admin` / `member`). **Cosmetic —
+    /// do NOT authorize on this** (lb mints every session as `member`; admin power rides caps). Use
+    /// [`admin`](Self::admin).
+    pub role: String,
+    /// True when the caller is itself a derived (on-behalf-of) principal.
+    pub delegated: bool,
+    /// True when the caller holds workspace-admin authority (host-derived from caps, not the role
+    /// enum). Mirror of `lb_supervisor::Caller::admin` — see it for the full contract.
+    pub admin: bool,
 }

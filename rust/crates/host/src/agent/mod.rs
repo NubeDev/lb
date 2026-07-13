@@ -17,22 +17,28 @@
 //! to invoke the agent never implies the tools/skills/docs it may then reach (no widening).
 
 mod activate;
+mod attempt;
 mod authorize;
 mod catalog;
+mod ceiling;
+mod compact;
 mod config;
 mod decision;
 mod defs;
 mod descriptor;
 mod dispatch;
 mod error;
+mod exfil;
 mod in_house;
 mod invoke;
 mod invoke_remote;
+mod loop_detector;
 mod memory;
 mod menu;
 mod model_access;
 mod overlay_endpoint;
 mod page_context;
+mod partition;
 mod personas;
 mod policy;
 mod registry;
@@ -45,14 +51,20 @@ mod route;
 mod run;
 mod runtime;
 mod runtimes;
+mod seed_context;
 mod serve;
 mod step;
 mod substrate;
 mod tool;
+mod transcript;
 mod unconfigured;
 
 pub use activate::{activate_skill, Activation, SKILL_ACTIVATE};
 pub use catalog::{format_catalog, render_catalog, render_catalog_filtered};
+pub use compact::{
+    compact_to_budget, estimate_message_tokens, estimate_tool_tokens, BREADCRUMB_PREFIX,
+    DEFAULT_COMPACT_BUDGET_TOKENS,
+};
 pub use config::{
     agent_config_get, agent_config_set, call_agent_config_tool, get_agent_config, AgentConfig,
     ModelEndpointPatch, AGENT_CONFIG_TABLE,
@@ -70,16 +82,18 @@ pub use defs::{
 pub use descriptor::invoke_descriptor;
 pub use dispatch::{invoke_via_runtime, Substrate};
 pub use error::AgentError;
+pub use exfil::EXFIL_DENIED;
 pub use in_house::{InHouseRuntime, DEFAULT_RUNTIME};
 pub use invoke::{invoke, resume, Invocation};
 pub use invoke_remote::invoke_remote;
+pub use loop_detector::{DEFAULT_LOOP_WINDOW, LOOP_BLOCKED, LOOP_WARNING};
 pub use memory::{
     call_agent_memory_tool, memory_delete, memory_get, memory_index_for_injection, memory_list,
     memory_set, render_index, Memory, MemoryKind, MemoryScope, INJECT_CAP, MAX_BODY,
     MAX_DESCRIPTION, MEMORY_HEADER,
 };
 pub use menu::reachable_tools;
-pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn};
+pub use model_access::{AllowedTool, CallOutcome, ModelAccess, ProposedCall, Turn, TurnError};
 pub use page_context::{fence_into_goal, MAX_CONTEXT_BYTES};
 pub use personas::{
     agent_persona_create, agent_persona_delete, agent_persona_get, agent_persona_list,

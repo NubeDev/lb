@@ -70,6 +70,8 @@ pub(crate) fn descriptors_from(manifest: &Manifest) -> Vec<ToolDescriptor> {
             title: t.description.clone(),
             group: manifest.id.clone(),
             input_schema: t.input_schema.clone(),
+            // The self-declared exfiltration taint, carried verbatim (opaque data — rule 10).
+            emits_external: t.emits_external,
             // Extension manifests declare no response render (yet); a manifest tool is a plain call.
             result: None,
         })

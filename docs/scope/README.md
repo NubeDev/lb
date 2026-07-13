@@ -41,6 +41,14 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   carries their ids (`AgentPayload.context_items` — refs, not bodies); the worker resolves + fences
   them into the run's goal ws/channel-scoped with hard caps (`channel/context_items.rs`, the sibling
   of the page-context fence).
+  `agent-loop-hardening-scope.md` adopts the best transferable ideas from a survey of three OSS Rust
+  agent runtimes (zeroclaw, carapace, hermes-rs): turn-group-preserving transcript compaction +
+  in-loop context-overflow recovery, a stuck-loop detector (repeat / ping-pong / no-progress →
+  warn/block/break) + a graceful ceiling exit, the dangling-tool-call invariant (a dead turn never
+  persists a proposed call without its result), a transient/model-recoverable/fatal error taxonomy
+  on structured provider errors, and an `emits_external` exfiltration taint declared on tool
+  descriptors (guard filters the advertised menu AND the dispatch). Zero new verbs/tables; composes
+  with `agent-close-out`; survey ideas owned elsewhere routed to `agent-memory`/`jobs`/`ai-gateway`.
 - `agent-personas/` — **user-selectable agent focus**: a persona = `{granted_tools,
   grounding_skills, identity}` as pure data (rule 10), picked per workspace (`agent.config.
   active_persona`) or per invoke — narrowing the run's advertised menu/catalog/prompt, NEVER the
@@ -93,6 +101,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   suspend/resume**, and **model-activated skills** (the model picks from a granted catalog). Opens up
   the S5 black-box loop; ideas reviewed from the Awaken framework, its plugin framework rejected.
 - `ai-gateway/` — the swappable model-access sidecar (S5).
+- `embeddings/` — the doc→vector pipeline: `Provider::embed` on the ai-gateway contract, a
+  chunk→embed→HNSW indexer over the document store (reactor + `docs.reindex` job), and a hybrid
+  `docs.search` verb (metadata filter + KNN, results re-gated per doc read reach). Vectors are
+  derived, rebuildable, never synced; model + dimension pinned per index, migration = explicit job.
 - `observability/`, `audit/`, `undo/` — the **three cross-cutting projections of the host dispatch
   chokepoint** (README §6.5/§6.6), scoped together as the S10 retrofit: `observability/` (structured
   logs + distributed traces + metrics, emitted everywhere with a `trace_id` that survives the routed
@@ -125,7 +137,20 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   that walks a dashboard's transitive **dependency closure** — panels, datasources, query verb +
   `net:` endpoint caps, required vars — so "assigned a dashboard" provably means "the queries run";
   a live session found bob assigned a page whose cells still 403'd on a private panel + a missing
-  datasource).
+  datasource), and `entity-scoped-grants-scope.md` (**row-level reach inside a workspace** — an
+  additive `scope` selector on the grant record + `check_scoped`/`scope_filter` at the wall and via
+  SDK host-callback, so "a member reaches only *their* records" — a guardian's children, a
+  technician's sites — is platform-enforced data instead of N hand-rolled ext filters; first
+  consumer: the cc-app childcare product), and `authz-verbs-mcp-dispatch-scope.md` (the
+  one-arm routing gap that blocks the above from the native tier: the MCP dispatcher routes
+  `authz.*` to `call_authz_tool` but not `grants.*`/`roles.*`/`teams.*` — which that handler
+  already implements — so a native extension can *read* the scoped-grant surface over the
+  host callback but cannot *mint* a grant; additive, no new verb/cap/WIT), and
+  `invites-scope.md` (**token onboarding for people
+  who don't exist yet** — a durable single-use `invite` record carrying role/team intent + an
+  opaque caller payload, delivered via an outbox email target, redeemed on the one pre-auth accept
+  route into identity + membership + grants atomically, caps live on first login; the missing
+  "self-join link" half of global-identity).
 - `admin/setup/` — **setup wizards**: the AI-facing playbook for building a guided, multi-step flow
   in the Setup tab (`setup-wizards-scope.md`). The hard rule it enforces: a wizard is **pure
   orchestration over existing editors/hooks/verbs** — if the surface it guides already exists, the
@@ -232,7 +257,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   Extension Studio wizard that **generate** a fresh extension (wasm|native backend + shadcn/Tailwind
   federated page), **build** a folder via the local toolchain as a durable job with a live log stream, and
   **publish** it through the unchanged signed-`Artifact` path; build is a gated **local-only** capability
-  behind one `Toolchain` trait), and `extension-watch-scope.md` (the **generic live-feed primitive for
+  behind one `Toolchain` trait), and `ext-out-of-tree-scope.md` (**split the extensions out**:
+  every product extension moves to a `lb-extensions` repo — only `federation` stays — against
+  three published SDK surfaces (`lb-sdk` WIT/wasm, a new `lb-ext-native` child-side facade with a
+  versioned `init` handshake, and `@nube/ext-ui-sdk` as the single source of the page/widget contracts),
+  an Artifact v2 that carries the UI bundle, and the previously deferred thin `lb-ext` CLI — the
+  publish/trust path unchanged), and `pack-toolchain-publish-scope.md` (the **prerequisite slice** of
+  that CLI: `lb-devkit` + `lb-pack` are `publish = false` today, so **no embedder can sign an
+  extension artifact** — an embedder builds a `.wasm` but cannot package it into the signed `Artifact`
+  the gateway accepts (cc-app's `make dev` dies at `cargo build -p lb-pack`); drop the flag, make the
+  packager git-tag/`cargo install`-consumable, and document it in the dev flow — no new trust model),
+  and `extension-watch-scope.md` (the **generic live-feed primitive for
   extensions**: an extension marks a `[[tools]] kind="watch"` and the host relays it as SSE over a
   host-allocated workspace subject — closing the asymmetry where only core tools could stream; the WIT
   ABI stays frozen, streaming rides the bus, and the routed cross-node relay is free; `control-engine`'s
@@ -243,7 +278,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   canvas widget like `echarts-panel` recolors via the v-next `update` hook) and `css-isolation-scope.md`
   (an extension's CSS **never leaks into the host shell** — the shipped `library-css-leaks-global-utilities`
   regression turned into an enforced remote-CSS contract: scoped utilities, aliased tokens, no preflight,
-  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence).
+  a build-time guard in `lb devkit`, and a runtime cascade-layer/container fence). `node-roles/` also
+  holds `embed-node-scope.md` (**lb as a Rust library**: the boot ritual `main.rs`/the Tauri shell/
+  `test_gateway` each hand-copy today becomes ONE `BootConfig` + `NodeBuilder` lib target on the
+  `node` package — the sanctioned role-aware layer, §3.1 — with struct config (`from_env()` only at
+  binary boundaries), composable subsets (gateway/reactors/federation toggles), real teardown, and
+  the three existing embedders refactored onto it as proof; git-dep embedding, deliberately NOT a
+  crates.io publish of `lb-host` and NOT a new repo).
 - `desktop/` — the Tauri v2 desktop shell as a **shipped executable**. `desktop-packaging-scope.md`
   builds the existing `lazybones-shell` (`ui/src-tauri` — node in-process + window, the `workstation`
   persona) into **plain binaries** (no AppImage/installer) for Linux x86-64 (`tauri build --no-bundle`
@@ -285,7 +326,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   finally lands) + a queryable **link graph** (doc→doc links, doc→asset embeds), shared to a
   **user/team/workspace**, undo-journaled save, CRUD over the additive `assets.*` verbs, **reusable
   by extensions** (host-callback ABI) and the doc-site authoring side. Public/anonymous serving is a
-  deferred slice with its own threat model.
+  deferred slice with its own threat model. `files/` also holds `media-scope.md` (**photo-class
+  binaries at product volume** — chunked/resumable `upload_begin/chunk/commit` that survives
+  cellular, server-side variants (thumb/preview) as a durable job, and a capability-checked
+  streaming `GET /media/{id}` with Range/ETag — all on SurrealDB buckets, rule 2 intact; the
+  generic binary path under document-store attachments and any feed of daily photos).
+  `document-store/` also holds `doc-extraction-scope.md`: the **binary→markdown derivation seam** —
+  a per-mime `Extractor` registry (PDF text-layer, XLSX/CSV, HTML; pure, offline, no network) run
+  as a `docs.extract` **job** that derives markdown docs from media, with a `derived_from` edge to
+  the original, an extraction ledger (`checksum + extractor@version`, idempotent re-runs, in-place
+  re-derivation on version bumps so links/embeddings survive), and caller-supplied tags/visibility
+  (core knows mimes, never domains). Completes file→doc→vector→search with `embeddings/`.
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
@@ -326,6 +377,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   through the dashboard's `WidgetView`/`views/*` renderers + host-mediated bridge, leashed to the viewer's
   grant. Generative UI (JSX `template`, future A2UI/JSON-render) is one more sandboxed `view`, not a base
   layer; forms/wizards are the palette arg-rail over a versioned `x-lb` widget enum.
+- `calendar/` — workspace / team / user **calendars** with shareable events (`calendar-scope.md`):
+  a Gmail-style calendar as one native (Tier-2) extension — RFC 5545 recurring events (canonical
+  event + `rrule`-materialized occurrence window, never expanded at read time), per-calendar reach
+  via **entity-scoped grants** (team share = one `team:{id}` grant), invites as an attendee
+  PARTSTAT/sequence state machine (RFC 5546) with must-deliver outbox notifications, event
+  reminders as `lb-jobs` `run_at` jobs (no new scheduler), keyset-paged merged `events.range`,
+  a `watch` live feed, and `.ics` import (job) / export via the `icalendar` crate.
 - `widgets/` — the **system-wide widget platform** umbrella (`widget-platform-scope.md`): a widget is one
   `{view,source|data,options,action,tools}` envelope, one renderer (`WidgetView`) across dashboards,
   channels, and the app. Maps the four widget sources (built-in views, **tool result-renders** — e.g. the
@@ -334,7 +392,17 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   coverage, channel→widget→dashboard authoring, and extension-capability introspection. The **channel is
   the test-bench** for the whole system.
 - `inbox-outbox/` — the normalized inbox (S2) and the transactional must-deliver **outbox**
-  (`outbox-scope.md`, the S6 driver).
+  (`outbox-scope.md`, the S6 driver); plus `push-target-scope.md` (**push notifications as one more
+  outbox `Target`** — per-member `device` registrations (FCM/APNs/WebPush) + a generic opaque
+  notification effect fanned out behind one `PushProvider` trait, token-gone auto-eviction, a prefs
+  quiet-hours gate; the outbox already owns durability/retry, so this is a target, not a service).
+  Also holds `mail-source-scope.md` (**inbound email as a generic producer**, receive-only):
+  `mail.source.*` CRUD with credentials as a **secrets path** (never values), a durable poll job
+  per source (IMAP v1 behind one `MailFetch` trait; UID cursor, Message-ID ledger, resumable,
+  node-claimed) running as a narrow per-source api-key principal, normalizing each message to the
+  existing surfaces — raw `.eml` as media, body as a markdown doc, attachments through
+  `docs.extract` — plus an arrival bus event; routing/tagging policy stays caller-side (rules),
+  sender allowlist/quarantine ships v1. Sending stays the outbox's job.
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,
@@ -400,6 +468,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   response with per-row pause/run-now/delete controls, all rendered by the shipped widget views over the
   viewer-grant-leashed bridge (no reminders-specific channel UI); adds two `x-lb` widgets (`cron`, static
   `select`) and a small `reminder.fire` run-now verb.
+- `release/` — release engineering. `updates-to-core-release-scope.md`: finish and tag the
+  `updates-to-core` branch (five platform-gap features) — the reviewed gap list (relay-reactor
+  boot wiring, the four i18n surface fixes riding the existing prefs MF1 en/es catalog engine),
+  what is already done (invite-accept rate-limit), and the tag/publish checklist.
 - `reports/` — the **report builder + branded PDF exporter** (`report-builder-scope.md`): a
   notebook-style `report:{ws}:{id}` asset of ordered blocks — markdown (true-A4 TipTap WYSIWYG),
   images (`assets.*` refs), and **existing dashboard panels** (the shipped `panel_ref`/inline-spec
@@ -462,7 +534,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   **no new MCP verbs, capabilities, routes, or tables**; the four folders live outside both the core
   `rust/Cargo.toml` workspace and the root `pnpm-workspace.yaml` so a change here cannot break the
   core build.
-- `frontend/` — the React/Tauri UI shell; `agent-dock-scope.md` (the persistent
+- `frontend/` — the React/Tauri UI shell; `minimal-shell-scope.md` (the **publishable minimal
+  host** for 100%-extension UIs — only the host-side contract: auth screens + workspace pick,
+  `ext.list` discovery, full-screen scoped mount of a *configured* ext page, SSE + theme-token
+  provider, PWA defaults; retires "vendor the whole shell" as the only embedder option — the
+  rubix-ai compromise — and gives mobile-first products like cc-app a stand);
+  `agent-dock-scope.md` (the persistent
   `@nube/panel` right-dock AI panel — open on every page, survives navigation, durable
   channel-backed session history with new-session, always the active catalog agent,
   page-context injected, answers streamed with live progress over the run-event SSE),

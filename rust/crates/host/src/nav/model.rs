@@ -4,7 +4,8 @@
 //! not a field — so the existing three-gate read check applies unchanged (nav scope, "How it fits").
 //!
 //! `items` is a typed nested array (queryable, not a JSON blob) — the storage discipline the dashboard
-//! scope established. An item is one of four **kinds** plus one level of `group` nesting. The nav is a
+//! scope established. An item is one of four **kinds** plus `group` nesting (recursive, capped at
+//! [`MAX_GROUP_DEPTH`]; nested-nav scope). The nav is a
 //! **lens over existing access, never a grant** — an item carries no caps and cannot widen reach; the
 //! resolver strips what the caller can't reach and the server re-checks every verb regardless.
 
@@ -35,8 +36,16 @@ pub const HIDDEN_TABLE: &str = "nav_hidden";
 pub const SCHEMA_VERSION: u32 = 1;
 
 /// The largest `items[]` a nav may hold (nav scope, "Resolution cost" / open-question item cap). The
-/// host rejects an over-cap save rather than store it unbounded — the resolver stays cheap.
+/// host rejects an over-cap save rather than store it unbounded — the resolver stays cheap. Counts
+/// EVERY node at EVERY depth (groups included); fires independently of [`MAX_GROUP_DEPTH`].
 pub const MAX_ITEMS: usize = 100;
+
+/// The deepest a `group` may nest (nested-nav scope). The top-level `items[]` is depth 1; a `group` at
+/// depth 5 may hold leaves but no further `group`. Sourced from ONE place (re-exported on the lib API
+/// as `NAV_MAX_GROUP_DEPTH`) so a consumer UI can echo the limit rather than hardcode `5`. `nav.save`
+/// rejects an over-cap nesting with `BadInput` (never a silent flatten/truncate), independently of the
+/// [`MAX_ITEMS`] node cap.
+pub const MAX_GROUP_DEPTH: usize = 5;
 
 /// The largest number of dashboards one `tag-group` entry expands to at resolve time (nav scope: cap
 /// tag-group results separately so a broad facet can't blow up the menu). Extra matches are dropped.
@@ -81,13 +90,14 @@ pub struct NavFacet {
 }
 
 /// One nav entry. Exactly one of the four **kinds** (`surface` | `dashboard` | `ext` | `tag-group`)
-/// or a `group` (one nesting level). All the target-reference fields are opaque data — a `surface`
-/// key, a `dashboard:{id}`, an **opaque** ext id (rule 10, never branched on), a facet set — none of
-/// which the core interprets beyond the generic gated seams (nav scope, "Four entry kinds").
+/// or a `group` (recursive nesting, capped at [`MAX_GROUP_DEPTH`]). All the target-reference fields are
+/// opaque data — a `surface` key, a `dashboard:{id}`, an **opaque** ext id (rule 10, never branched
+/// on), a facet set — none of which the core interprets beyond the generic gated seams (nav scope,
+/// "Four entry kinds").
 ///
 /// The shape is a flat tagged union: `kind` selects which reference fields are meaningful; unused
-/// fields default. A `group` carries nested `items` (one level; a nested item's own `items` is
-/// ignored — the resolver never recurses past depth 1).
+/// fields default. A `group` carries nested `items` — itself possibly holding further `group`s, up to
+/// [`MAX_GROUP_DEPTH`] deep (top-level list = depth 1). Leaf kinds may appear at any depth.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct NavItem {
     /// `"surface"` | `"dashboard"` | `"ext"` | `"tag-group"` | `"template-group"` | `"group"`.
@@ -111,7 +121,8 @@ pub struct NavItem {
     /// otherwise.
     #[serde(default)]
     pub facets: Vec<NavFacet>,
-    /// `group`: the nested items (one level of nesting only). Empty otherwise.
+    /// `group`: the nested items — recursive, capped at [`MAX_GROUP_DEPTH`] (nested-nav scope). Empty
+    /// otherwise.
     #[serde(default)]
     pub items: Vec<NavItem>,
     /// `dashboard` / `template-group`: an optional **pinned variable binding** (reusable-pages scope)

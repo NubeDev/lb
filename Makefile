@@ -55,7 +55,9 @@
 
 BE_DIR  := rust
 UI_DIR  := ui
-NODE_BIN := node
+# The node PACKAGE selector for `cargo run -p` (renamed `node` → `lb-node` for the embed lib API;
+# the compiled BINARY is still `node`). `cargo run -p lb-node` runs that package's one binary.
+NODE_BIN := lb-node
 
 # Optional cargo features for the `node` binary in `make dev`/`make edge`. OFF by default (the
 # external agent is opt-in per its scope). Turn Open Interpreter on for the live UI with either:

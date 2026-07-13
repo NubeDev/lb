@@ -22,9 +22,12 @@
 //! and `rehydrate` already de-dups `active_skills`, so a duplicate `SkillActivated` is harmless.
 
 use lb_auth::Principal;
+use lb_jobs::TranscriptEvent;
 use lb_store::Store;
 
-use super::model_access::CallOutcome;
+use super::error::AgentError;
+use super::model_access::{CallOutcome, ProposedCall};
+use super::transcript::TranscriptWriter;
 use crate::assets::{load_skill, AssetError};
 
 /// The qualified name of the loop-internal skill-activation tool. The loop matches proposed calls
@@ -99,4 +102,48 @@ pub async fn activate_skill(
             activated: None,
         },
     }
+}
+
+/// Intercept every `skill.activate` in this turn's proposed calls (the loop-internal built-in):
+/// activate under the derived principal, record `SkillActivated` + the activation's `ToolResult`
+/// durably through the ONE transcript chokepoint, inject the body into the live context. Returns
+/// the activation outcomes and the remaining (non-activation) calls for the policy/dispatch path.
+/// Results are recorded NOW — before any Ask early-return — so a turn that both activates and
+/// suspends still carries its activation.
+pub(super) async fn intercept_activations<'c>(
+    store: &Store,
+    agent: &Principal,
+    ws: &str,
+    calls: &'c [ProposedCall],
+    writer: &mut TranscriptWriter<'_>,
+    messages: &mut Vec<(String, String)>,
+) -> Result<(Vec<CallOutcome>, Vec<&'c ProposedCall>), AgentError> {
+    let mut activated_outcomes: Vec<CallOutcome> = Vec::new();
+    let mut model_calls: Vec<&ProposedCall> = Vec::new();
+    for c in calls {
+        if c.name == SKILL_ACTIVATE {
+            let act = activate_skill(store, agent, ws, &c.id, &c.input).await;
+            if let Some((id, body)) = act.activated {
+                writer
+                    .append(TranscriptEvent::SkillActivated { id: id.clone() })
+                    .await?;
+                // Inject the body once into context (idempotent at the conversation level — a
+                // re-activation re-appends, harmless; the rehydrated `active_skills` de-dups).
+                messages.push(("system".into(), format!("[skill {id}]\n{body}")));
+            }
+            activated_outcomes.push(act.outcome);
+        } else {
+            model_calls.push(c);
+        }
+    }
+    for o in &activated_outcomes {
+        writer
+            .append(TranscriptEvent::ToolResult {
+                id: o.id.clone(),
+                ok: o.ok.clone(),
+                err: o.error.clone(),
+            })
+            .await?;
+    }
+    Ok((activated_outcomes, model_calls))
 }

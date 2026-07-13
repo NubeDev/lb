@@ -31,7 +31,7 @@ lb-host.workspace = true
 lb-auth.workspace = true
 # `lb devkit sign` folds over the existing signing library (one crypto idiom, unchanged); `ext publish`
 # sends the `Artifact` JSON `lb-registry` defines and the gateway verifies.
-lb-devkit.workspace = true
+lb-devkit = { workspace = true, features = ["devkit-full"] }
 lb-registry.workspace = true
 # The local transport maps `lb_mcp::ToolError` (a host deny) to the CLI's honest DENY.
 lb-mcp.workspace = true

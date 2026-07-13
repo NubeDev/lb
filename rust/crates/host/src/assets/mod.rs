@@ -20,6 +20,7 @@ mod delete_asset;
 mod delete_doc;
 mod deprecate_skill;
 mod error;
+mod extract;
 mod get_asset;
 mod get_doc;
 mod grant_skill;
@@ -43,6 +44,10 @@ pub use delete_asset::delete_asset;
 pub use delete_doc::delete_doc;
 pub use deprecate_skill::deprecate_skill;
 pub use error::AssetError;
+pub use extract::{
+    call_docs_tool, docs_extract, extract_descriptor, get_extraction, ExtractRequest,
+    ExtractResult, ExtractSvcError, Extraction, ItemOutcome, DERIVED_FROM, EXTRACTION_TABLE,
+};
 pub use get_asset::get_asset;
 pub use get_doc::get_doc;
 pub use grant_skill::{grant_skill, revoke_skill};

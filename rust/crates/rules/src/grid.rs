@@ -208,7 +208,7 @@ impl Grid {
     /// `for r in rows { r.col }`) reads named fields, so a positional row is normalized HERE, not at
     /// each call site. Two seam shapes feed this: the **platform** path (`store.query`/SurrealDB)
     /// returns JSON OBJECTS (`{"col": v, …}`) which pass through unchanged; the **federation** path
-    /// (DataFusion over sqlite/postgres — see `extensions/federation/src/query.rs::shape`) returns
+    /// (DataFusion over sqlite/postgres — see `crates/federation/src/query.rs::shape`) returns
     /// column-aligned ARRAYS (`[v, …]`) which `row_to_map` zips with `columns` into a map here.
     /// Honoring the contract at the seam boundary is what makes `timeseries(query(...).records(), "ts")`
     /// a complete chart-ready rule on every source kind, not just the platform one.

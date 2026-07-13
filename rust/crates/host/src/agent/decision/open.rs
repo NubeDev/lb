@@ -19,34 +19,35 @@
 //! suspended job with no decision to settle.
 
 use lb_auth::Principal;
-use lb_jobs::{append_event, suspend, TranscriptEvent};
-use lb_store::StoreError;
+use lb_jobs::{suspend, TranscriptEvent};
 
 use super::model::{decision_id, AgentDecision};
 use super::store::create_pending;
-use crate::boot::Node;
+use crate::agent::transcript::TranscriptWriter;
+use crate::agent::AgentError;
 use crate::record_inbox;
+use lb_store::StoreError;
 
 /// The inbox channel agent Ask suspensions surface on for routing — the same `needs:approval` shape
 /// the human-decision UI lists. (The binding settle is the decision record, not this item.)
 pub const APPROVAL_CHANNEL: &str = "needs:approval";
 
-/// Open a durable suspension for `tool_call_id` in run `job_id`. `index` is the next transcript slot
-/// to append the `SuspensionOpened` at; returns the index advanced past it. `service` is the host
-/// service principal recording the inbox item (the agent service is the author, as for the reactor).
+/// Open a durable suspension for `tool_call_id` in the writer's run. All transcript writes go
+/// through `writer` — the ONE chokepoint (agent-loop-hardening slice C), which also publishes the
+/// live `Suspended` projection and un-parks the call from its dangling-pending set. `service` is
+/// the host service principal recording the inbox item (the agent service is the author, as for
+/// the reactor).
 ///
 /// On a re-open of an already-open decision (`create` `Conflict`) this is a no-op append-and-suspend:
 /// the suspension is already durable, so we still ensure the job is `Suspended` and return without
 /// duplicating the transcript event.
 pub async fn open_suspension(
-    node: &Node,
+    writer: &mut TranscriptWriter<'_>,
     service: &Principal,
-    ws: &str,
-    job_id: &str,
     tool_call_id: &str,
-    index: u32,
     ts: u64,
-) -> Result<u32, StoreError> {
+) -> Result<(), AgentError> {
+    let (node, ws, job_id) = (writer.node, writer.ws, writer.job_id);
     let did = decision_id(job_id, tool_call_id);
 
     // 1. Reserve the decision (first-write). A Conflict means it is already open — fall through to
@@ -55,11 +56,13 @@ pub async fn open_suspension(
     match create_pending(&node.store, ws, &record).await {
         Ok(()) => {}
         Err(StoreError::Conflict) => {
-            // Already open: make sure the job is suspended, then return the unchanged index.
-            suspend(&node.store, ws, job_id).await?;
-            return Ok(index);
+            // Already open: make sure the job is suspended, then return without re-appending.
+            suspend(&node.store, ws, job_id)
+                .await
+                .map_err(AgentError::from)?;
+            return Ok(());
         }
-        Err(e) => return Err(e),
+        Err(e) => return Err(e.into()),
     }
 
     // 2. Surface a routing item (best-effort visibility, not the authority). A denial here would be a
@@ -68,21 +71,19 @@ pub async fn open_suspension(
     let body = format!("agent run {job_id} awaits a decision on tool call {tool_call_id}");
     let _ = record_inbox(&node.store, service, ws, APPROVAL_CHANNEL, &did, &body, ts).await;
 
-    // 3. Persist the durable pause in the transcript BEFORE suspending/emitting (durable-before-motion).
-    append_event(
-        &node.store,
-        ws,
-        job_id,
-        index,
-        TranscriptEvent::SuspensionOpened {
+    // 3. Persist the durable pause in the transcript BEFORE suspending (durable-before-motion); the
+    //    writer publishes the live `Suspended` delta from the same projection.
+    writer
+        .append(TranscriptEvent::SuspensionOpened {
             tool_call_id: tool_call_id.to_string(),
             decision_id: did,
-        },
-    )
-    .await?;
+        })
+        .await?;
 
     // 4. Suspend the job — terminal for this turn, restartable when the decision settles.
-    suspend(&node.store, ws, job_id).await?;
+    suspend(&node.store, ws, job_id)
+        .await
+        .map_err(AgentError::from)?;
 
-    Ok(index + 1)
+    Ok(())
 }

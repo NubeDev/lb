@@ -64,9 +64,60 @@ impl Reply {
     }
 }
 
-/// The `params` shape for a [`Method::Call`]: which tool and its opaque-JSON input.
+/// The `params` shape for a [`Method::Call`]: which tool, its opaque-JSON input, and — additively —
+/// **who** the host already authorized for this call ([`Caller`]).
+///
+/// `caller` is **additive-by-absence** (native-caller-identity scope): an old host omits it
+/// (`skip_serializing_if`), an old child ignores an unknown field (`#[serde(default)]`), so the
+/// frame stays backward compatible across a host/child version skew — the same rule the manifest's
+/// `input_schema`/`emits_external` fields use. A child that DOES read it can attribute its per-call
+/// row-filter decision to the real caller instead of a synthetic admin.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CallParams {
     pub tool: String,
     pub input: String,
+    /// A minimal, **non-replayable** projection of the principal the host authorized for this call.
+    /// `None` on an old-host frame (or a call with no resolvable caller). See [`Caller`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller: Option<Caller>,
+}
+
+/// A minimal projection of the routed caller the host stamps into a [`CallParams`] frame
+/// (native-caller-identity scope). It is deliberately the *least* a per-caller row filter needs:
+/// **who** (`sub`), **which tenant** (`ws`), **role**, and a **delegation marker** (`delegated`,
+/// true when the caller is itself an on-behalf-of/derived principal).
+///
+/// **This is NOT a token.** It carries no signature the gateway would accept for a *new* call, so a
+/// child can never *act as* the caller against a third tool (native-caller-identity scope, the #1
+/// risk). A child may only (1) attribute its own row-filter decision to this identity and (2) name
+/// `sub` as the `subject` of a reach verb it is *separately* granted to delegate. The projection
+/// alone confers nothing — the delegation cap is what authorizes a subject reach.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Caller {
+    /// The global identity the host authorized (`user:…` / `key:…` / `agent:…`).
+    pub sub: String,
+    /// The workspace the call is scoped to — equals the frame's ws and the child token's ws (the
+    /// hard wall; a `subject` derived from this can only ever resolve within it).
+    pub ws: String,
+    /// The caller's role (`super-admin` / `workspace-admin` / `member`), lower-cased on the wire.
+    ///
+    /// **Cosmetic — do NOT authorize on this.** lb's gateway mints EVERY session as `member`
+    /// regardless of authority (admin power rides caps, not the role enum; see
+    /// `lb-role-gateway::session::credentials`). A sidecar that needs to know whether the caller is
+    /// an admin must read [`admin`](Self::admin), which the host derives from the caller's caps.
+    pub role: String,
+    /// True when the caller is itself a *derived* (on-behalf-of) principal — an agent acting for a
+    /// user, or a re-entrant host-callback chain. A child MAY treat a delegated caller more
+    /// conservatively; it is a marker, never additional authority.
+    #[serde(default)]
+    pub delegated: bool,
+    /// True when the caller holds workspace-admin authority — the host derives it from the caller's
+    /// caps (`lb_host::caps_hold_admin`, keyed on the admin-only cap delta), NOT from the cosmetic
+    /// [`role`](Self::role) claim. This is the signal a native sidecar reads to grant an admin the
+    /// row-filter bypass (native-caller-identity scope): admin-ness is caps-based in lb, and the
+    /// minimal frame projection carries no caps, so the host resolves it once and hands the child
+    /// this boolean. Additive-by-absence: an old host omits it (defaults `false`), so an
+    /// admin-unaware child is unaffected and a caller is only ever treated as LESS privileged.
+    #[serde(default)]
+    pub admin: bool,
 }

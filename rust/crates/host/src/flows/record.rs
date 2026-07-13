@@ -73,7 +73,7 @@ pub struct FlowStepRecord {
     #[serde(default)]
     pub patched_config: Option<Value>,
     /// The **firing context** this slot fired under (flow-input-ports-scope). Empty for a
-    /// barrier/frontier firing (the all-`all` common case ⇒ today's record shape); a minted id for an
+    /// barrier/frontier firing (the empty-`fctx` common case ⇒ the plain record shape); a minted id for an
     /// `any`-funnel firing or a node downstream of one. The recorded `output` envelope carries this
     /// same `fctx` so a downstream binding resolves the matching settle.
     #[serde(default)]

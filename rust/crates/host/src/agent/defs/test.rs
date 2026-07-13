@@ -191,10 +191,15 @@ pub async fn agent_def_test(
         // still tested as the `UnconfiguredModel` placeholder.) Ignores proposed calls (one turn).
         let model = crate::agent::resolve_workspace_model(node, caller, ws).await;
         let configured = model.is_configured();
-        let turn = model
+        match model
             .turn_boxed(ws, &messages, &[], &[], &format!("{ws}:agent-def-test"))
-            .await;
-        (turn.content, configured)
+            .await
+        {
+            Ok(turn) => (turn.content, configured),
+            // A one-turn test has no loop to retry/compact in — any fault lane is the honest
+            // "call failed" answer with `provider_configured=false` (mirrors the external arm).
+            Err(e) => (format!("model call failed: {}", e.detail()), false),
+        }
     };
 
     Ok(TestResult {

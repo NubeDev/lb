@@ -1,16 +1,18 @@
 //! The loop's per-step **helpers** — extracted from `run.rs` so the orchestrator there stays within
 //! the one-responsibility / ≤400-line file budget (FILE-LAYOUT §3). These are the small, reused
-//! mechanics the loop calls each turn: the durable-append-then-emit ([`emit`]), the cancellation
-//! check, the turn counter, and running a batch of proposed calls under the derived principal.
+//! mechanics the loop calls each turn: the cancellation/pause checks, the turn counter, and running
+//! a batch of proposed calls under the derived principal. (The durable-append-then-emit moved to
+//! `transcript.rs` — the ONE write chokepoint, agent-loop-hardening slice C.)
 //!
-//! Kept together because they share the loop's vocabulary (transcript events + `RunEvent` motion);
-//! the *policy* and *decision* and *catalog* mechanics live in their own sibling modules.
+//! Kept together because they share the loop's vocabulary; the *policy* and *decision* and
+//! *catalog* mechanics live in their own sibling modules.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use lb_auth::Principal;
-use lb_jobs::{append_event, load, JobStatus, TranscriptEvent};
-use lb_run_events::project_one;
+use lb_jobs::{load, JobStatus, TranscriptEvent};
+use lb_run_events::{RunEvent, RunOutcome};
 
 use super::error::AgentError;
 use super::model_access::{CallOutcome, ProposedCall};
@@ -41,27 +43,6 @@ pub(super) async fn is_paused(node: &Node, ws: &str, job_id: &str) -> Result<boo
         .unwrap_or(false))
 }
 
-/// Append a transcript event durably AND emit its live [`RunEvent`](lb_run_events::RunEvent)
-/// projection onto the run's bus subject (Part 3). The order is deliberate: the durable append is the
-/// **record** (it must land, hence `?`), then the bus publish is **motion** (best-effort — a watcher
-/// that misses it catches up from the transcript snapshot, §3.3). `turn` is the loop's current turn
-/// number, so a `StepStart` carries the right index; `project_one` is the SAME projection the snapshot
-/// uses, so a live watcher and a reconnecting one can never diverge (Part 1, review point 5).
-pub(super) async fn emit(
-    node: &Node,
-    ws: &str,
-    job_id: &str,
-    index: u32,
-    event: TranscriptEvent,
-    turn: u32,
-) -> Result<(), AgentError> {
-    append_event(&node.store, ws, job_id, index, event.clone()).await?;
-    for run_event in project_one(&event, turn) {
-        publish_run_event(&node.bus, ws, job_id, &run_event).await;
-    }
-    Ok(())
-}
-
 /// How many model turns the transcript already records — one per [`TranscriptEvent::AssistantTurn`].
 /// Used to resume the turn counter (and so the ceiling + idempotency key) at the right place.
 pub(super) fn count_turns(events: &[&TranscriptEvent]) -> u32 {
@@ -80,15 +61,31 @@ pub(super) fn count_turns(events: &[&TranscriptEvent]) -> u32 {
 /// the intersection forbids is `Denied` — captured as an error outcome (the model is told; the loop
 /// continues). `skill.activate` is the loop-internal built-in intercepted in `run.rs` BEFORE this, so
 /// it never reaches the bridge. `pub(crate)` so the Part-2 `decision/resume` path can replay an
-/// `Allow→replay` call through the identical mechanism.
+/// `Allow→replay` call through the identical mechanism (which passes `tainted: None` — a replayed
+/// call was explicitly human-decided, so the exfiltration guard does not re-veto it).
+///
+/// `tainted` is the exfiltration guard's dispatch check (slice E): a guarded run's proposed call to
+/// a tainted tool is refused HERE, error-as-observation, even though it was never advertised — the
+/// model can hallucinate a tool it was never shown.
 pub(crate) async fn run_calls(
     node: &Arc<Node>,
     agent: &Principal,
     ws: &str,
     calls: &[ProposedCall],
+    tainted: Option<&HashSet<String>>,
 ) -> Vec<CallOutcome> {
     let mut outcomes = Vec::with_capacity(calls.len());
     for c in calls {
+        if tainted.map(|t| t.contains(&c.name)).unwrap_or(false) {
+            outcomes.push(CallOutcome {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                input: c.input.clone(),
+                ok: None,
+                error: Some(super::exfil::EXFIL_DENIED.to_string()),
+            });
+            continue;
+        }
         let outcome = match call_tool(node, agent, ws, &c.name, &c.input).await {
             Ok(out) => CallOutcome {
                 id: c.id.clone(),
@@ -108,4 +105,20 @@ pub(crate) async fn run_calls(
         outcomes.push(outcome);
     }
     outcomes
+}
+
+/// The pause exit's motion: emit a terminal `RunFinish(Suspended)` so a watcher's stream ends
+/// cleanly for this turn (it resumes via a fresh watch after `resume_run`). The job status is
+/// already `Suspended` (that IS the pause); the transcript + cursor are intact.
+pub(super) async fn pause_exit(node: &Node, ws: &str, job_id: &str, answer: &str) {
+    publish_run_event(
+        &node.bus,
+        ws,
+        job_id,
+        &RunEvent::RunFinish {
+            outcome: RunOutcome::Suspended,
+            answer: answer.to_string(),
+        },
+    )
+    .await;
 }

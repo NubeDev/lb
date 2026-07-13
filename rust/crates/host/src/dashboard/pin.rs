@@ -456,6 +456,7 @@ fn slug(s: &str) -> String {
 /// `envelope` is an opaque object (the `x-lb-render` shape); `dashboard` + `now` are required.
 pub fn pin_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "dashboard.pin".to_string(),
         title: "Pin a tool result to a dashboard".to_string(),
         group: "dashboard".to_string(),

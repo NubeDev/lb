@@ -24,6 +24,7 @@ use super::store::{read_dashboard, write_dashboard};
 /// (bounds/views/genui/refs) stay authoritative.
 pub fn save_descriptor() -> ToolDescriptor {
     ToolDescriptor {
+        emits_external: false,
         name: "dashboard.save".to_string(),
         title: "Create or update a dashboard (idempotent upsert)".to_string(),
         group: "dashboard".to_string(),

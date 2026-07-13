@@ -9,3 +9,5 @@ alert.severity = {level, select, critical{Alerta crítica} warning{Advertencia} 
 notify.welcome = ¡Bienvenido, {name}!
 notify.new_messages = {name} te envió {count, plural, one{un mensaje} other{# mensajes}}
 report.reading = Lectura: {value, quantity, temperature} registrada el {ts, date}
+invite.email.subject = Te han invitado a unirte a {workspace}
+invite.email.body = Has sido invitado al espacio de trabajo {workspace}. Haz clic en el enlace para aceptar: /accept?token={token}

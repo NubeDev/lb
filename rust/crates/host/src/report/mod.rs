@@ -38,9 +38,7 @@ pub use error::ReportError;
 pub use export::report_export;
 pub use get::report_get;
 pub use list::report_list;
-pub use model::{
-    Block, Report, ReportSummary, Visibility as ReportVisibility, MAX_BLOCKS,
-};
+pub use model::{Block, Report, ReportSummary, Visibility as ReportVisibility, MAX_BLOCKS};
 pub use save::report_save;
 pub use share::report_share;
 pub use tool::call_report_tool;

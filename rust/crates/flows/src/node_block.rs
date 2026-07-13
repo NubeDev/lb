@@ -166,19 +166,20 @@ mod tests {
 
     #[test]
     fn input_ports_table_carries_the_join_policy() {
-        // The `[[node.input]]` table form lifts into the descriptor's `input_ports`, overriding the
-        // `All` default for the named port (flow-input-ports-scope Axis 2).
-        let mut b = block(NodeKind::Sink, "publish");
+        // The `[[node.input]]` table form lifts into the descriptor's `input_ports`; an explicit
+        // `join = "all"` opts the named port into the barrier (flow-plain-wiring-scope — the only
+        // way a port barriers; the default everywhere is `any`).
+        let mut b = block(NodeKind::Transform, "publish");
         b.inputs = vec!["payload".into()];
         b.input_ports = vec![InputPort {
             name: "payload".into(),
-            join: JoinPolicy::Any,
+            join: JoinPolicy::All,
         }];
         let d = validate_node_block(&b, "mqtt", &["publish".into()]).unwrap();
-        assert_eq!(d.join_of(Some("payload")), JoinPolicy::Any);
-        // An empty table ⇒ the `All` default is preserved.
+        assert_eq!(d.join_of(Some("payload")), JoinPolicy::All);
+        // An empty table ⇒ the universal `Any` default.
         let b2 = block(NodeKind::Transform, "publish");
         let d2 = validate_node_block(&b2, "mqtt", &["publish".into()]).unwrap();
-        assert_eq!(d2.join_of(None), JoinPolicy::All);
+        assert_eq!(d2.join_of(None), JoinPolicy::Any);
     }
 }

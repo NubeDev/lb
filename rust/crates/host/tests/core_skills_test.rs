@@ -360,7 +360,10 @@ struct CapturingProvider {
 }
 
 impl Provider for CapturingProvider {
-    async fn complete(&self, req: &AiRequest) -> AiResponse {
+    async fn complete(
+        &self,
+        req: &AiRequest,
+    ) -> Result<AiResponse, lb_role_ai_gateway::ProviderFault> {
         let joined = req
             .messages
             .iter()
@@ -368,7 +371,7 @@ impl Provider for CapturingProvider {
             .collect::<Vec<_>>()
             .join("\n");
         *self.seen.lock().unwrap() = vec![joined];
-        AiResponse::stop("done", 1)
+        Ok(AiResponse::stop("done", 1))
     }
 }
 

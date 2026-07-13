@@ -121,7 +121,12 @@ pub async fn login(
     // `Subject::User("user:ada")` and match zero grant rows (the bug that made an admin resolve to no
     // caps → every installed-extension page 403'd).
     let bare_user = principal.strip_prefix("user:").unwrap_or(&principal);
-    if let Ok(resolved) = lb_host::resolve_caps(&gw.node.store, &req.workspace, bare_user).await {
+    // resolve_caps_live (not the raw resolve_caps) UNIONES the live built-in role bundles on top of
+    // the stored records — so a new built-in cap (e.g. `mcp:report.save:call`) reaches an
+    // already-seeded workspace's tokens without a re-seed (builtin-role-freshness scope).
+    if let Ok(resolved) =
+        lb_host::resolve_caps_live(&gw.node.store, &req.workspace, bare_user).await
+    {
         claims.caps.extend(resolved);
         claims.caps.sort();
         claims.caps.dedup();

@@ -1,0 +1,22 @@
+[package]
+name = "lb-extract"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+# The pure extraction layer (doc-extraction scope): a per-mime `Extractor` registry that turns
+# binary bytes into markdown `ExtractedDoc`s. ZERO host dependencies (no store, no auth, no bus) —
+# so the parsing logic is fixture-testable offline and can later move behind the native-sidecar
+# seam untouched. Pure-Rust parsers only (rule: no C deps — the workspace links via zigcc): PDF
+# text-layer via `pdf-extract`, XLSX via `calamine`, CSV via `csv`. HTML→markdown is a dependency-
+# light in-crate scan (no markdown/HTML engine pulled in).
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+csv = { workspace = true }
+calamine = "0.26"
+pdf-extract = "0.7"
+
+[dev-dependencies]
+serde_json.workspace = true

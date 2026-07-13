@@ -15,3 +15,8 @@ crate-type = ["cdylib"]
 wit-bindgen = "0.40"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The authoritative WIT lives in the standalone SDK. A `links` crate: its build script exposes the
+# WIT path (`DEP_LB_SDK_WIT`) that this crate's `build.rs` feeds to `wit_bindgen::generate!`. A
+# normal dep (not build-dep) because cargo only hands `DEP_*` metadata to a dependent whose build
+# script's package links it via `[dependencies]`. Same tag lb's host pins — one contract, no drift.
+lb-sdk = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.2.1" }

@@ -18,3 +18,9 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wit-bindgen = "0.40"
+
+# The authoritative WIT lives in the standalone SDK; a build-time dep only — its `links` build script
+# exposes the WIT path (`DEP_LB_SDK_WIT`) that `build.rs` feeds to `generate!`. Pinned to the same tag
+# lb's host pins, so guest and host generate from one contract.
+[build-dependencies]
+lb-sdk = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.2.1" }

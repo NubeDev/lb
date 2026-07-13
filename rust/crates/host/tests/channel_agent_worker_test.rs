@@ -583,6 +583,9 @@ async fn an_omitted_runtime_run_uses_and_labels_the_workspace_default() {
         &admin,
         ws,
         &AgentConfig {
+            compact_budget: None,
+            loop_window: None,
+            exfiltration_guard: None,
             active_definition: None,
             active_persona: None,
             enabled_personas: None,

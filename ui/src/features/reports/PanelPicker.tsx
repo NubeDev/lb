@@ -1,19 +1,27 @@
 // PanelPicker — pick a panel to embed as a report panel block (reports scope). Two sections: the
-// wizard's DEMO widgets (the same `timeseriesCell`/`templateCell` builders the Data→insight setup
-// wizard's panel + design steps use — fully-specified v3 cells that render LIVE immediately), and the
-// workspace's library panels (`listPanels()`). A library pick is hydrated CLIENT-SIDE at choose
-// (`getPanel` → `specToCell`) so the preview renders live without a save+reload round-trip (a bare
-// `panel:{id}` ref only hydrates server-side at `report.get`). One responsibility: choose a panel →
-// a renderable cell.
+// starter widgets (the shared `timeseriesCell`/`templateCell` demo builders from `@/lib/panel` — the
+// same ones the Data→insight setup wizard uses, fully-specified v3 cells that render LIVE immediately),
+// and the workspace's library panels (`listPanels()`). A library pick is hydrated CLIENT-SIDE at
+// choose (`getPanel` → `specToCell`) so the preview renders live without a save+reload round-trip (a
+// bare `panel:{id}` ref only hydrates server-side at `report.get`). One responsibility: choose a panel
+// → a renderable cell.
 
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getPanel, listPanels, specToCell, type PanelSummary } from "@/lib/panel";
+import {
+  DEFAULT_SOURCE,
+  DEMO_SQL,
+  TEMPLATE_GALLERY,
+  getPanel,
+  listPanels,
+  specToCell,
+  templateCell,
+  timeseriesCell,
+  type PanelSummary,
+} from "@/lib/panel";
 import type { Cell } from "@/lib/dashboard";
-import { DEFAULT_SOURCE, DEMO_SQL, templateCell, timeseriesCell } from "@/features/admin/setup/dataToInsight";
-import { TEMPLATE_GALLERY } from "@/features/admin/setup/templateGallery";
 
 interface Props {
   ws: string;

@@ -14,9 +14,273 @@ start of any session; update it at the end of any session that changed state.
 
 ---
 
+> ⚠️ **Repo posture (2026-07-11): lb is a LIBRARY now.** Consumed by product hosts via the `lb-node`
+> embed seam; extension SDKs + product extensions + product UI shell have moved out-of-tree. The in-tree
+> `rust/extensions/*` and `ui/` are **retained temporarily** (reference/fallback, removed in ~a few
+> weeks once downstream is proven). Authoritative posture + retention window: [`../MIGRATION.md`](../MIGRATION.md).
+
+---
+
 ## Current stage
 
-**Just shipped (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new
+**Just shipped (2026-07-13): subject-scoped `bus.watch` grants + revoke-terminates-stream
+(`bus-watch-subject-scope`, issue #49, tagged `node-v0.4.3`).** Closes two data-isolation gaps on the
+generic bus motion plane so an embedder can stream a per-entity feed safely. **Gap 1:** a
+`bus:<subject>:watch` scoped grant (new `Action::Watch`, `Surface::Bus`, wildcard-capable) narrows
+`bus.watch` — coarse `mcp:bus.watch:call` unchanged, then "present ⇒ required, absent ⇒ open" (fully
+backward-compatible; the scoped read is a live store read, so a post-login grant authorizes on next
+subscribe). Converges the generic path with the channel `bus:chan/*:sub` subject-cap grammar onto one
+model. **Gap 2:** an open SSE stream re-checks its grant on a bounded tick (`WatchRecheck`, 3s;
+node-local, symmetric-safe) and closes when the grant is revoked — mode-sticky so revoking a caller's
+*last* grant denies (never re-opens). Additive: no WIT/ABI/SDK change; one new host file
+(`bus/scoped.rs`) + one gateway file (`events/recheck.rs`). 12 host + 2 gateway (real node/bus/gateway)
++ 5 unit tests green, incl. the mandatory capability-deny and workspace-isolation. Unblocks cc-app
+`care.feed.watch` (milestone 10) to upgrade from reach-check-at-subscribe to platform stream isolation.
+Docs: [scope](scope/bus/bus-watch-subject-scope-scope.md),
+[session](sessions/bus/bus-watch-subject-scope-session.md), public in
+`doc-site/content/public/auth-caps/auth-caps.md`.
+
+**Previously shipped (2026-07-12): the pack toolchain is published for embedders (`pack-toolchain-publish`,
+tagged `node-v0.3.3`).** `lb-devkit` + `lb-pack` dropped `publish = false` — the artifact
+packager/signing idiom is now git-tag-consumable (`cargo install --git …lb --tag node-v0.3.3 lb-pack`),
+unblocking cc-app's `make dev` wall (`cargo build -p lb-pack`: no such package). The load-bearing part
+was the **API audit**: `lb-devkit`'s published contract is minimized to the pack surface
+(`sign_artifact` / `load_or_create_key` / `publisher_trust_line` / `LoadedPublisherKey` / the signed
+`Artifact` re-exported from `lb-registry`; the internal build-listing struct renamed `BuildArtifact`);
+everything else moved behind the default-on `devkit-full` feature — explicitly NOT an embedder
+contract until the `lb-ext` CLI stabilizes it. Trust model unchanged (signing is local; trust stays
+node-side in `LB_TRUSTED_PUBKEYS`). Proven by real-binary tests (`rust/tools/pack/tests/`):
+pack→`verify_artifact` round-trip, untrusted-key deny, tamper, determinism, and a publishable-chain
+metadata check (fails on old master) now also a CI step. Docs: dev-flow section in
+`public/extensions/extensions.md`, `docs/skills/lb-pack/SKILL.md` (grounded in a live git-install +
+pack run), [session](sessions/extensions/pack-toolchain-publish-session.md).
+
+**Previously shipped (2026-07-12): agent loop hardening — all five slices, in-house runtime
+(branch `agent-loop-hardening`, one commit per slice, not yet merged).** The in-house loop now
+(D) gets **typed provider faults** (`ProviderFault`: status + `Retry-After` + overflow
+discriminant; `ModelAccess::turn` → `Result`; transient → bounded retry *below* step accounting,
+fatal → job **Failed** + `RunFinish(Failed)`, never a fault dressed as a completion; the gateway
+never caches a fault; `MockProvider::scripted()` failure arm); (A) **context compaction** —
+chars/4 preflight incl. tool schemas, whole-turn-group drops (system/goal/latest-user protected),
+one cumulative breadcrumb, provider overflow → compact + continue the SAME run
+(`agent.config.compact_budget`, default 48k); (C) the **dangling-tool-call invariant** — every
+transcript append through ONE chokepoint (`TranscriptWriter`), new additive
+`ToolCancelled` transcript/run events, dead turns resolve pending proposals, load-time heal of
+pre-fix orphans **appended at the cursor (never renumbered)**; (B) a **loop detector**
+(window 20 default, `agent.config.loop_window`, 0=off; exact-repeat/ping-pong/interleaved
+no-progress; warn → block → break ladder with reset-on-progress) + a **graceful ceiling exit**
+(one tools-free summary completion, persisted); (E) **`emits_external` taint** on
+descriptors/manifests (self-declared, opaque — rule 10) + `agent.config.exfiltration_guard`
+(menu exclusion AND dispatch deny). Zero new verbs/tables; three additive `agent.config` axes,
+each proven ws-walled. External-runtime coverage of B/E explicitly waits for the capability wall.
+~21 new Rust tests green (fault table, compaction properties, heal/renumber, ladder, exfil deny)
++ the agent regression suites; pre-existing `agent_persona_catalog_test`/`agent_persona_coding_test`
+failures verified identical on clean master (not chased). Scope
+[`scope/agent/agent-loop-hardening-scope.md`](scope/agent/agent-loop-hardening-scope.md); session
+[`sessions/agent/agent-loop-hardening-session.md`](sessions/agent/agent-loop-hardening-session.md);
+public [`doc-site/content/public/agent/agent.md`](../doc-site/content/public/agent/agent.md)
+("Loop hardening"). **Named follow-ups:** wall-level detector/guard for external runtimes
+(capability-wall scope); budget-gate the ceiling summary + retry usage when close-out A/B ship;
+`lb-ext-sdk` manifest gains the optional `emits_external` authoring field.
+
+---
+
+**Earlier (2026-07-12): flows plain wiring — the `link` pair removed, every port fires per
+message (`flow-plain-wiring`, branch `flow-plain-wiring`).** Plain wiring is now the whole story —
+exactly the Node-RED model: N wires onto ANY node's input port ⇒ one firing per arriving message, no
+barrier, no binding demand, no policy question; one output port fans to every wired downstream.
+**The default join policy flipped to `any` for every node kind** at all four sites together
+(`join_of` — the Sink branch deleted, not inverted; the run-store fallback; the save lint's policy
+read; the UI `joinOf` mirror). `JoinPolicy::All` survives only as a descriptor-level opt-in
+(`[[node.input]] join = "all"`); **no built-in declares it** (audited), so the funnel/merge glyphs
+vanish from the default authoring surface (a `PolicyMark` renders ONLY on an explicit-`all` port).
+**Removed:** `link-out`/`link-in` + all machinery (`builtins/link.rs`, the resolver/validator
+`link.rs`, five link `DagError` variants, the coordinator/save call sites, the `link-in` dispatch
+leg; `flows.nodes` = **33** built-ins, no `Links` category) + the dead code
+(`indegrees_within_by_port`, `edges_into`, `ready_frontier`, `UnboundJoin`). **The blocker fix:** a
+matched `switch` released its dependent through the barrier path unconditionally — under universal
+`any` that HANGS the mainline topology (switch + 2 plain wires into one node seeds a Pending
+indegree-3 barrier slot the any-firings never touch). Matched release is now policy-aware through
+the one `release_one_dependent` seam (an `any` dependent gets a normal minted firing,
+`triggered_by = switch`; explicit-`all` keeps the barrier) — fail-before verified (the new test
+hangs on the reverted path); debug entry
+[`debugging/flows/matched-switch-hangs-run-after-any-default-flip.md`](debugging/flows/matched-switch-hangs-run-after-any-default-flip.md).
+**Two engine refinements the flip forced:** (1) a **single-wire `any` port PROPAGATES** the incoming
+`fctx` (only a ≥2-wire port mints) — a linear chain never grows its lineage and keeps byte-identical
+claim keys; (2) **`${steps.X}` resolves along the firing lineage** (`is_ancestor` whole-segment
+prefix walk, nearest settle wins) — a grandparent binding down a chain resolves instead of silently
+binding null, and a genuine cross-branch reference is a new **save lint** (graph-ancestor check via
+`referenced_step`). Plus a **run-load unknown-kind guard** in `coordinator::start`/`drive` (the
+cron/source reactors never re-save, so an armed persisted link flow fails with a clear
+unknown-kind error, not a tool denial); version-pinning order intact. **Tests (real store/caps/
+gateway, rule 9):** `lb-flows` unit 96; `flows_run_test` **49** (headline transform-funnel +
+reactive posture, THE blocker + gated + explicit-all-barrier switch cases, lineage binding,
+cross-branch lint, duplicate-wire pin, output fan-out, suspend/resume-between-any-firings slot
+rebuild, run-load guard, per-firing cap-deny/outbox-dedup/ws-isolation — explicit-`all` via a real
+`record_install` fixture); all 15 host flows binaries green; UI `flowGraph` 22, `FlowsCanvas.gateway`
+15/15 (pins 33 built-ins, no link kinds, no built-in `all` port), `flowsDebug`/`FlowsRuntimeControl`/
+`FlowDashboardBinding` gateway green. Scope
+[`scope/flows/flow-plain-wiring-scope.md`](scope/flows/flow-plain-wiring-scope.md); session
+[`sessions/flows/flow-plain-wiring-session.md`](sessions/flows/flow-plain-wiring-session.md); public
+[`doc-site/content/public/flows/flows.md`](../doc-site/content/public/flows/flows.md). **Named
+follow-ups:** mixed-port extension nodes (explicit-`all` + other wires) still hit port-blind barrier
+counting + a primary-port-only lint (only reachable via the opt-in); collect-join detection carries
+over.
+
+---
+
+**Just shipped (2026-07-12): a native sidecar learns WHO called it + can reach ABOUT a subject →
+`sdk-v0.4.0` + host.** Two generic platform gaps blocked a native (Tier-2) sidecar from enforcing
+per-caller row visibility (the childcare product's guardian-isolation invariant): **(A)** the native
+call frame carried no caller — `CallParams {tool, input}` was all the host sent, so every dispatch
+defaulted to a synthetic admin that bypasses the row filter; **(B)** `authz.check_scoped`/
+`scope_filter` answered only about the caller's OWN token, but a sidecar holds the *extension's*
+token, not the guardian's. Both closed generically + additively (rule 10, no product named). **A:**
+`CallParams` gains an additive `caller: Option<Caller>` (`{sub, ws, role, delegated}`, non-replayable,
+`#[serde(default)]` → an old host/child is unaffected, no `PROTOCOL_MAJOR` bump); the host projects
+the already-authorized `&Principal` into it through `CallContext` → `SidecarDispatch`; `Tools` gains a
+`call_with_caller` default-method (forwards to `call`, so identity-unaware extensions need no change).
+**B:** `authz.check_scoped`/`scope_filter` gain an optional `subject`, gated by the new marker cap
+`mcp:authz.delegate_reach:call` — present ⇒ resolve the subject's reach; absent ⇒ byte-for-byte
+today's behaviour; a `subject` without the cap **fails closed** (403, never a fallback to the caller's
+own reach). Decisions: subject-reach **(a)** (parameterize, not a sibling verb); projection **minimal**.
+Real-infra tests green (rule 9): a REAL spawned `echo-sidecar` reflects the stamped caller
+(`native_caller_identity_test`); `delegated_reach_test` **5/5** (allow, the sacred deny, absent-subject
+unchanged, cross-ws isolation) over the real gateway; SDK unit **21/21** (incl. two backward-compat).
+**Release:** push `sdk-v0.4.0` then cut the node tag; a downstream embedder bumps both, requests
+`mcp:authz.delegate_reach:call` at install, and flips its rule-7 chokepoint on with no call-site change.
+See [native-caller-identity session](sessions/extensions/native-caller-identity-session.md).
+
+**Earlier (2026-07-11): native host-callback client PUBLISHED through the SDK →
+`sdk-v0.3.0` + `node-v0.3.0`.** An out-of-tree native (Tier-2) extension could speak the host→child
+control wire (`lb-ext-native`) but had no way to call BACK into the host's MCP surface — the callback
+client (`SidecarClient`) lived only in the lb monorepo as a path crate. Now it's a first-class SDK
+crate (`lb-sidecar-client`, `NubeDev/lb-ext-sdk`), **re-exported from `lb-ext-native`** so a native
+extension carries one dependency for both directions of the wire; lb consumes it **back** by git tag
+(dropped the in-tree `crates/sidecar-client`). Verb-agnostic (rule 10) — the motivating consumer is a
+downstream native authz chokepoint calling the generic `authz.check_scoped`/`authz.scope_filter`.
+Host end (`/mcp/call`) unchanged; no WIT/grammar change. Real-infra tests green: SDK
+`host_callback_test` (round-trip + 403→`Denied`) + lb `native_callback_test` (3/3 real-gateway:
+round-trip, capability-deny, workspace-isolation), all building against the git tag. Also fixed a
+latent `lb-ext-native` serve-test EOF hang. See
+[native-callback-sdk-export session](sessions/extensions/native-callback-sdk-export-session.md).
+
+**Earlier (2026-07-11): `updates-to-core` RELEASED.** The branch's two
+release-blocking gaps are closed and the branch is merged to `master` and tagged:
+**`node-v0.2.0`** (lb core + node), **`minimal-shell-v0.2.0`** (`@nube/minimal-shell` 0.2.0),
+**`ui-v0.7.0`** (`@nube/ext-ui-sdk` 0.7.0, sibling repo).
+
+- **Relay boot wiring (the blocker):** node boot now spawns the outbox relay — a generic
+  `RouterTarget` (opaque `effect.target` dispatch, rule 10) registering `EmailTarget` +
+  `PushTarget`, providers injected via the additive `BootConfig.outbox_providers` seam (unset ⇒
+  logging no-op: never crash boot, never strand effects). Drain-at-boot proven end to end in
+  `rust/node/tests/relay_boot_test.rs`.
+- **i18n (en+es, the one catalog engine everywhere):** invite `locale` (record + `invite.create`
+  param + pre-auth `GET /public/invite/verify` + copied to the member's `language` pref on
+  accept); invite email rendered through the catalog (`invite.email.*` in `en.mf`/`es.mf` — the
+  "no templating in core" non-goal is overturned, recorded in the invites scope); `notify.send`
+  catalog key+args with **per-recipient** render in `PushTarget`; `@nube/ext-ui-sdk` i18n seam
+  (`resolveLocale`/`makeTranslator`/`catalogParity`) + fully-catalogued minimal-shell with a CI
+  key-parity gate. Tests: `invite_i18n_test` (5), `push_i18n_test` (3), `relay_boot_test` (2),
+  shell vitest 9, SDK vitest 20.
+- **Known allowed failure on the tag:** pre-existing `lb-cli reminder_test` deny — logged at
+  `debugging/cli/reminder-create-denied-in-cli-round-trip-test.md`, not chased.
+- **Deferred (explicit):** media HTTP Range, real WebPush VAPID / FCM / APNs / SMTP providers,
+  orphaned-upload GC — all behind shipped traits/seams.
+
+Scope: [`scope/release/updates-to-core-release-scope.md`](scope/release/updates-to-core-release-scope.md);
+session: [`sessions/release/updates-to-core-release-session.md`](sessions/release/updates-to-core-release-session.md).
+Downstream: cc-app milestone 00 unblocked (pins `node-v0.2.0` / minimal-shell 0.2.0).
+
+---
+
+**Earlier the same day (2026-07-11): the five cc-app platform-gap scopes — entity-scoped grants, invites,
+media, push-target, minimal-shell.** Five scopes built end to end for the downstream cc-app
+childcare product, each with full verb surfaces, capability-deny + workspace-isolation tests, and
+session docs. All on branch `updates-to-core`.
+
+1. **Entity-scoped grants** — row-level reach inside a workspace. Additive `Scope` selector on
+   the grant record (`All` default = zero migration; `Ids` narrows to listed record ids).
+   `resolve_caps_scoped` unions per-cap scopes; `check_scoped`/`scope_filter` are the host-facing
+   read API extensions reach via `host.call-tool` (no WIT change — more additive than the flagged
+   host-callback pair). Scope:
+   [`scope/auth-caps/entity-scoped-grants-scope.md`](scope/auth-caps/entity-scoped-grants-scope.md);
+   session: [`sessions/auth-caps/entity-scoped-grants-session.md`](sessions/auth-caps/entity-scoped-grants-session.md).
+   Tests: lb-authz 15 + lb-host 7.
+
+2. **Invites** — token onboarding for people who don't exist yet. `Invite` record (hash-at-rest,
+   single-use, workspace-scoped). Admin verbs: create/list/revoke/resend (gated
+   `mcp:invite.create/list:call`). Pre-auth accept route (`POST /public/invite/accept`) — the
+   atomic onboarding chain: verify token → create-or-match identity → set credential →
+   membership.add → apply grants → mint session. Email outbox `Target` + `EmailProvider` trait
+   (the one sanctioned external). Email-match takeover prevention. Scope:
+   [`scope/auth-caps/invites-scope.md`](scope/auth-caps/invites-scope.md);
+   session: [`sessions/auth-caps/invites-session.md`](sessions/auth-caps/invites-session.md).
+   Tests: lb-host 11.
+
+3. **Media** — resumable chunked upload + variant jobs + streaming serve. Protocol: `begin` →
+   `PUT /media/{id}/chunk/{n}` → `commit` (SHA-256 verify, flip to Ready, derive thumbnail via
+   the `image` crate). Serve route (`GET /media/{id}?variant=thumb`) with ETag. Per-mime max size
+   (the governed knob — the 413 lesson). One datastore (SurrealDB — rule 2). Scope:
+   [`scope/files/media-scope.md`](scope/files/media-scope.md);
+   session: [`sessions/files/media-session.md`](sessions/files/media-session.md).
+   Tests: lb-host 9.
+
+4. **Push target** — push as an outbox `Target` (WebPush first). Device records (per-member,
+   self-only). `notify.send` verb enqueues a push effect. `PushTarget` impl `Target`: resolves
+   audience → live devices, checks quiet-hours prefs (`push_muted` axis), auto-disables on
+   `TokenGone`. `PushProvider` trait (one sanctioned external). Scope:
+   [`scope/inbox-outbox/push-target-scope.md`](scope/inbox-outbox/push-target-scope.md);
+   session: [`sessions/inbox-outbox/push-target-session.md`](sessions/inbox-outbox/push-target-session.md).
+   Tests: lb-host 9.
+
+5. **Minimal shell** — the publishable minimal host for 100%-extension UIs. `@nube/minimal-shell`
+   package (~15 files): auth screens (login + invite-accept API), `ext.list` discovery,
+   full-screen scoped mount via `@nube/ext-ui-sdk` federation seam, SSE hub, theme-token
+   provider, PWA manifest. No lb chrome. Extension id is opaque config data (rule 10). Retires
+   vendor-the-whole-shell. Scope:
+   [`scope/frontend/minimal-shell-scope.md`](scope/frontend/minimal-shell-scope.md);
+   session: [`sessions/frontend/minimal-shell-session.md`](sessions/frontend/minimal-shell-session.md).
+   Tests: 2 unit.
+
+**Test totals (new scopes):** 15 + 7 + 11 + 9 + 9 + 2 = **53 new tests**, all green. All existing
+authz/admin_crud/builtin_roles/catalog tests green (no regressions). `cargo fmt` clean. `cargo
+build --workspace` clean.
+
+**Peer-review hardening pass (2026-07-11, same branch):** an independent review of the five
+scopes found and fixed real holes in each — entity-grants **fail-open widening to `Scope::All`**
+(malformed selector + cross-table union; new additive `Scope::Tables` variant, gateway scope
+passthrough), invites **accept race** (credential written before redemption was claimed; now a
+store-level CAS claim) + rate limit on the public accept route + email proven through the real
+relay, media **unchecked chunk PUT** (uncapped, unvalidated, post-commit tampering; now a gated
+host verb) + Range/304 serve + multi-chunk resume test, push **hardcoded `"acme"` workspace in
+`deliver()`** (rule-6 hole; ws now rides the effect payload) + per-device retry dedup + ULID
+effect ids + 7 relay-driven tests (deliver had zero) + the `push_muted` prefs axis was silently
+dropped by the store schema, minimal-shell **SSE subscribe missing auth header** + 401
+stale-session + `getSession` snapshot loop. Every fix has a regression test; deviations from the
+scope docs (variant-jobs inline, WebPush adapter, workspace pick, publishing, hardcoded media
+limits, no GC) are now recorded honestly as deferred items in each scope doc instead of ✅s.
+Debugging entries: see `docs/debugging/README.md` rows dated 2026-07-11 (6 new). Review-fix
+sessions in `docs/sessions/{auth-caps,files,inbox-outbox,frontend}/*review-fixes*`. Known
+pre-existing red (NOT this branch): `agent_persona_catalog_test` (personas grounding — zero
+persona/agent/assets files touched by these scopes).
+
+**Previously (2026-07-11): `federation` promoted to a first-class core crate.** The federation
+datasources sidecar moved out of the misleading `rust/extensions/` folder to
+[`rust/crates/federation/`](../rust/crates/federation/) — it is **core, not a product extension**
+(fails the rule-10 swap test: the host holds a first-class `federation.*` surface + `FED_ENDPOINTS`;
+shares `lb-supervisor` verbatim; is platform datastore-federation surface). It is **still** a supervised
+Tier-2 sidecar: its DB drivers (datafusion/postgres/rusqlite) link ONLY into this crate — `cargo tree`
+confirms `lb-node`/`lb-host` link zero DB drivers, and the host still spawns it as a separate 311MB ELF
+process over stdio from the shared `target/` dir (source-relocation only; manifest/caps/`exec`/wire/
+`-p federation` all unchanged). Proven live: `federation_sqlite_test` green (real node → real sidecar →
+register datasource → SELECT real rows + cap-deny + `net:*` deny + ws-B isolation, no-Docker sqlite
+path); the moved `include_str!` manifest paths pass across the host federation suites. So the upcoming
+`rust/extensions/*` cleanup does NOT touch federation. Scope:
+[`scope/extensions/federation-promote-to-core-scope.md`](scope/extensions/federation-promote-to-core-scope.md);
+session: [`sessions/extensions/federation-promote-to-core-session.md`](sessions/extensions/federation-promote-to-core-session.md).
+
+**Previously (2026-07-10): shell chrome layout — header style + top-nav mode.** Two new
 **appearance axes** on the existing Layout tab (Settings → Theme → Layout), additive and
 migration-safe, riding the same `ui_theme` prefs blob as every other Layout axis (no new verb/cap/
 table/MCP surface — reuses `prefs.set` / `set_default` / `resolve`). **(1) Header style**
@@ -56,49 +320,23 @@ viewports; a per-page sub-title registry for richer crumb trails.
 
 ---
 
-**Just shipped (2026-07-09): flow input ports — Slice 2 (`any` runtime + `fctx`) + Slice 3 (the `link`
-pair) + Slice 4 (the per-port canvas). The `flow-input-ports` scope is COMPLETE.** Node-RED's
-"fire-per-message" OR is reachable end to end: three wires into one `any` port print **three** times,
-in one durable run, exactly-once per firing; multiplicity **propagates past the funnel**; and the
-wireless `link` pair + the per-port canvas ship. **The seam (Slice 2):** a **firing context (`fctx`)**
-— a per-message identity carried in an additive envelope field, minted at each `any` slot
-(deterministic per `(node, upstream, parent)`; nested funnels extend it: `link-in#mqtt-a` → `…·funnel2#w`),
-so every claim key + `${steps.*}` resolution is scoped by `(node, fctx)` and multiplicity survives past
-the funnel without a per-event fan-out storm. Empty `fctx` in the all-`all` case ⇒ `{run}:{node}` byte-
-for-byte; non-empty ⇒ `{run}:{node}@{fctx}`. **Slice 3 — the `link` pair:** `link-out {target}` /
-`link-in {name}` (built-ins under a `Links` category), the canonical `any`-funnel collector that needs
-no physical wire. Resolution is **run-load** (`coordinator::start`/`drive` call `Flow::resolve_links`
-on a transient copy — the persisted flow keeps the author's link nodes, so the editor round-trips the
-wireless sugar and a deleted `link-out` can never leave a stale wire); save-time only `validate_links`s
-the topology (a `link-out` targeting a missing `link-in`, a wire from a `link-out`, a dead `link-in`,
-a name collision). The **outbox/inbox dedup tripwire the scope named** is threaded: the sink's effect
-id is now `{run}:{node}@{fctx}` ⇒ N firings are N idempotent deliveries, not one swallowing the rest.
-**Slice 4 — the canvas:** per-named-input-port handles (one per declared port; a multi-port node stacks
-them, primary anonymous + non-primary `id = portName`), each wearing an `any` (funnel) vs `all` (join)
-glyph; `flowToEdges` labels a named-port wire with its `toPort` (the wire-inspector surface); the
-palette shows each node's input ports + policy marks. **Tests (real store/caps/gateway, rule 9):**
-`lb-flows` unit **108** (+12 `link` resolver/validator/descriptor); `lb-host` flows integration green
-across the full suite, with **+7 in `flows_run_test` → 39** — incl. **THE headline**
-`link_funnel_propagates_one_hop_past_the_funnel` (`link-in` any, 3 senders → transform `W` settles
-**three** times, each `W@<fctx>` reading its own firing's message — the fail-before for a naive
-depth-1 suffix), `link_funnel_denies_per_firing_at_a_downstream_tool` (N err settles), the
-`link_funnel_outbox_dedups_per_firing` (N distinct `@{fctx}` outbox effects read off the real store),
-`link_funnel_exactly_once_per_firing_on_redelivery`, the link save-lints, +
-`workspace_isolation_link_funnel_step_keys`. UI unit **93** (+7 `flowGraph` for `joinOf`/
-`effectiveInputPorts` + the wire-inspector label); UI gateway `FlowsCanvas.gateway` **15/15** (incl.
-the real-registry assertion that `link-out`/`link-in` ship under `Links` + `link-in`'s `any` port),
-`flowsDebug.gateway` 2/2, `FlowsRuntimeControl.gateway` 6/6. `cargo fmt` + `cargo build --workspace`
-clean; `tsc --noEmit` adds no new flows errors. **Pre-existing reds NOT this scope:** the 2
-`DebugValueView.test.tsx` unit cases (verified). Debug: [`debugging/flows/multi-input-node-fires-once-not-per-message.md`](debugging/flows/multi-input-node-fires-once-not-per-message.md).
-Scope [`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (**shipped** —
-OQs all resolved, incl. the collect-join question overturned by what the runtime does); sessions
-[`slice2`](sessions/flows/flow-input-ports-slice2-session.md) /
+**Just shipped (2026-07-09): flow input ports — Slices 2–4 (the `any` runtime + `fctx`, and the
+per-port canvas).** *(Partially overturned 2026-07-12 by `flow-plain-wiring`, above: the `link-out`/
+`link-in` pair and the `all`-barrier default shipped here were removed; the structural seams below
+stand.)* **The seam (Slice 2):** a **firing context (`fctx`)** — a per-message identity carried in an
+additive envelope field, minted per multi-wire release (deterministic per `(node, upstream, parent)`;
+nested fan-ins extend it segment-by-segment), so every claim key + `${steps.*}` resolution is scoped
+by `(node, fctx)` and multiplicity survives downstream without a per-event fan-out storm. Empty
+`fctx` ⇒ `{run}:{node}` byte-for-byte; non-empty ⇒ `{run}:{node}@{fctx}`. The outbox dedup tripwire
+is threaded: a sink's effect id is `{run}:{node}@{fctx}` ⇒ N firings are N idempotent deliveries.
+**Slice 4 — the canvas:** per-named-input-port handles (a multi-port node stacks them, primary
+anonymous + non-primary `id = portName`); `flowToEdges` labels a named-port wire with its `toPort`
+(the wire-inspector surface). Debug:
+[`debugging/flows/multi-input-node-fires-once-not-per-message.md`](debugging/flows/multi-input-node-fires-once-not-per-message.md).
+Scope [`scope/flows/flow-input-ports-scope.md`](scope/flows/flow-input-ports-scope.md) (shipped,
+partially overturned); sessions [`slice2`](sessions/flows/flow-input-ports-slice2-session.md) /
 [`slice3`](sessions/flows/flow-input-ports-slice3-session.md) /
-[`slice4`](sessions/flows/flow-input-ports-slice4-session.md); public [`public/flows/flows.md`](public/flows/flows.md).
-**Named follow-up (not a silent gap):** collect-join detection — an `all` port joining funnel-carrying
-+ different-`fctx` upstreams can deadlock (needs full `fctx`-lineage reachability a save-time heuristic
-can't soundly approximate); the pure single-funnel-into-`all` case is coherent (inherits multiplicity,
-pinned by the headline test).
+[`slice4`](sessions/flows/flow-input-ports-slice4-session.md).
 
 ---
 
@@ -2130,6 +2368,9 @@ One row per vertical slice being built. State: `scoped` → `building` → `test
 
 | Slice | Topic | Stage | State | Scope | Session | Notes |
 |---|---|---|---|---|---|---|
+| **Embed-node — `lb-node` lib target + `boot_full(BootConfig)` seam (Phase 2a)** — give the `node` package a LIBRARY target exposing a supported embed API (`BootConfig` + `boot_full`) so a third-party embedder (`NubeIO/rubix-ai`) git-deps `lb-node` and boots a full node in-process; refactor `main.rs` onto it. | node-roles | S10+ | **tested** (2026-07-10; working tree, not git-committed) | [embed-node](scope/node-roles/embed-node-scope.md) | [embed-node](sessions/node-roles/embed-node-session.md) | **Package renamed** `node`→**`lb-node`** (bin stays `node`, lib `lb_node`, `version=0.1.9` kept for the core-skills seeder); all `cargo …-p node` repointed to `-p lb-node` (Makefile `NODE_BIN`, `deploy/common/Dockerfile`). **New lib** (`rust/node/src/`, folder-of-verbs, all files <400 lines): `lib.rs` barrel · `config.rs` (`BootConfig` `#[non_exhaustive]`+`Default` + `from_env()` — the ONE place `LB_*` boot vars are read · `GatewayMode` · `AgentModelConfig`) · `builder.rs` (`boot_full(cfg)->RunningNode` = the one ritual + `RunningNode::serve()` + struct-sourced `open_store`) · `seeds.rs` · `reactors.rs` · `seed_identity.rs` · `hello_demo.rs` (gated). **`main.rs` thin** (17 lines): `boot_full(BootConfig::from_env()).await?; running.serve().await`. **`RunningNode`** hands back `{ node: Arc<Node>, gateway: Option<(Gateway,SocketAddr)>, agent_server: Option<AgentServer> }` (fields `pub` for an additive `shutdown()`). **Config-vs-drift:** `hello_demo`/`seed_user` are config postures (`from_env` = exact binary parity, `Default` = embed-friendly off/skip); store-path selection relocated from `Node::boot`'s internal env read up to `from_env()` (same behaviour). Load-bearing native-role/agent mount-AFTER-gateway-key ordering preserved EXACTLY. **Deferred (named):** de-env the `federation`/`control_engine` role mounts (still read their own `LB_*` env — the core ritual is fully struct-config); `GatewayMode::Listener` + real `RunningNode::shutdown()` (reactor cancel + sidecar token); refactor the OTHER two embedders (`ui/src-tauri/src/full.rs`, `test_gateway.rs`) onto `boot_full` (Phase 2b). **Tests green** (`rust/node/tests/embed_test.rs`, real `mem://` store, no mocks): `embedded_node_denies_a_caller_without_the_cap` (MANDATORY cap-deny), `embedded_node_isolates_workspaces` (MANDATORY ws-isolation), `from_env_defaults_match_the_binary` — all via `boot_full`. `cargo build --workspace` ok · `cargo build -p lb-node --features external-agent` ok · `cargo test -p lb-node` 5/5 · `cargo fmt`. |
+| **Extensions out-of-tree — SDK extraction + cutover (slices 1–2)** — make `NubeDev/lb-ext-sdk` (Rust) + `NubeDev/lb-ext-ui-sdk` (TS) the AUTHORITATIVE owners of the extension contract; `lb` becomes a consumer. | extensions | S10+ | **shipped** (2026-07-10; working tree, not git-committed) | [ext-out-of-tree](scope/extensions/ext-out-of-tree-scope.md) | [cutover](sessions/extensions/ext-out-of-tree-cutover-session.md) | **Slice 1 (SDK filled):** `lb-ext-native` now speaks lb's REAL supervisor wire — it had a divergent `Request`/`Response`/`Init` shape no host could read; rewrote `frame.rs`/`wire.rs`/`handshake.rs` as byte-for-byte mirrors of `lb-supervisor::{frame,rpc}` + a `serve(reader,writer,tools)` loop (`init`/`health`/`call`/`shutdown` → a caller `Tools` impl) + `serve_stdio(tools)`. `lb-sdk` gained a `links` build script exporting `DEP_LB_SDK_WIT*`, `WORLD_NAME`, and documented guest usage. Tagged `sdk-v0.2.0`→`sdk-v0.2.1`; 26 tests green, clippy -D clean. **Slice 2 (cutover, behavior-neutral):** workspace `lb-sdk` dep repointed path→git-tag `sdk-v0.2.1`; **`lb/rust/sdk` deleted**; host `runtime` bindgen sourced from the SDK WIT via a new `build.rs` reading the `links` metadata + `include!`ing a generated `bindgen!` from `$OUT_DIR` (no in-repo WIT copy — closes the host-mirror leak the scope names); `ext-loader` unchanged (only `world_major_matches`). Guests (hello, hello-v2, the 5 product exts, core-thing fixture, devkit wasm template) converted to the same seam (`build.rs` reads `DEP_LB_SDK_WIT`→`generate!`; normal `lb-sdk` dep — a build-dep does NOT get `DEP_*`). UI shell (`ext-host/federation.ts`, `dashboard/builder/federationWidget.ts`) imports the page/widget contract from `@nube/ext-ui-sdk` (`ui-v0.4.0`, `link:` interim) — the "three mirrors" collapse to one; `contract-mirrors.guard.test.ts` updated to assert the package is authoritative. **Green:** `make build-wasm` ok · `cargo build --workspace` ok · `cargo test --workspace` ok EXCEPT one **pre-existing** failure (`lb-cli reminder_test`, from the tree's builtin-role-freshness authz WIP — touches zero SDK code) · `pnpm test` 166/168 files (2 pre-existing: radius-scale.guard, DebugValueView). The extraction's own tests pass (contract-mirrors 6, ExtWidget 6, ExtWidgetTheme 1, ext-host federation). **Deferred (named):** slice 3 Artifact v2 + `lb-ext publish` wired · slice 4 exts move to `lb-extensions` + fixtures to `rust/fixtures/ext/` · slice 5 CI conformance · npm publish (`link:` until then) · the zero-boilerplate `lb_sdk::export!` guest macro (fragile cross-crate; `generate!`-from-`DEP_LB_SDK_WIT` shipped instead). |
+| **Reports — the report builder + branded PDF exporter (finish)** — close the demo-pass loose ends on the built reports feature: drop the unused TipTap deps, unwind the PanelPicker's cross-feature import, and land the DURABLE fix for the frozen-built-in-role-row footgun that blocked the demo (the throwaway reseed). | reports | post-S8 | **shipped** (2026-07-10; working tree, not git-committed) | [report-builder](scope/reports/report-builder-scope.md) · [builtin-role-freshness](scope/auth-caps/builtin-role-freshness-scope.md) | [reports-finish](sessions/reports/reports-finish-session.md) · [debug](debugging/auth/builtin-role-row-frozen-stale-on-new-caps.md) | The feature (all 5 tracks) was built/green per `HANDOVER-reports.md`; this session finished four things. **A — editor port + deps:** verified the ported textarea editor (`components/markdown-editor/MarkdownEditor.tsx` + `MarkdownBody.tsx`, react-markdown/remark-gfm) is a faithful port of lazybones' shipped editor and reads in the block card + the A4 preview; `a4-sheet.ts` kept (preview geometry); deleted the now-unused TipTap deps (`@tiptap/react`/`starter-kit`/`pm`/`tiptap-markdown`, 0 imports) from `ui/package.json` + refreshed `pnpm-lock.yaml` (−572 lines, all tiptap/pm). **B — demo coupling unwound:** lifted the shared demo cell builders out of `features/admin/setup/*` into `lib/panel/demoCells.ts` + `lib/panel/demoGallery.ts` (one responsibility/file); `dataToInsight.ts` keeps wizard-only artifacts + re-exports; `PanelPicker` now imports from `@/lib/panel` (no cross-feature import); `templateGallery.ts` deleted, its test moved to `lib/panel/demoGallery.test.ts`. **C — durable role-freshness fix:** a workspace seeded before a new built-in cap was added kept the stale `member`/`workspace-admin` role rows forever (idempotent seed writes only when absent) and `resolve_caps` read that stored record — so a new built-in cap never reached already-seeded tokens. Fix: `resolve_caps_with`/`_subject_caps_with`/`_sourced_with` take a `BuiltinRoleCaps` callback and UNION the live `*_role_caps()` on top of the stored record for granted built-in roles (union not replace — an ext's `grant_assign(Subject::Role(name))` still honoured; custom roles untouched); `LiveBuiltinRoleCaps` (host) + `resolve_caps_live`/`resolve_subject_caps_live` are the canonical host entry points every caller (login mint, apikey, reminder, dashboard access_check, access console) uses. The throwaway `rust/node/examples/reseed_roles.rs` + `examples/` dir DELETED. **D — tests:** `crates/authz/tests/builtin_role_freshness_test.rs` (4: stale row → missing without the union, present with it; NoBuiltin=raw; custom role unaffected; union keeps direct role-subject grants) + the `sourced_cap_set_equals_resolve_caps_no_drift` cross-check still green; UI `MarkdownEditor`/`MarkdownBody`/`PanelPicker` unit (15). **Green:** `cargo test -p lb-render --lib` (24) · `cargo test -p lb-host --test report_test` (7) · `cargo test -p lb-role-gateway --test report_routes_test` (4) · `cargo test -p lb-authz` (all) · `npx tsc --noEmit` clean · `npx vitest run src/features/reports src/features/panel src/components/markdown-editor` (106). **E — docs:** session + debugging entry + README row + public `reports.md` promoted + this row + `docs/skills/reports/SKILL.md` + scope "Post-scope demo pass" updated. Rule 10 held (no branch on an ext id). Lesson: two halves of one role-resolution path went stale at different rates (viewer live via the login floor, author/admin frozen via the stored row); make the resolver AUTHORITATIVE for built-in names, don't repair the stored row. |
 | **weather — `weather.current` host-native tool + dashboard widget (first increment)** — ship the smallest useful slice of the weather scope before the full compile-optional native extension: a keyless Open-Meteo lookup as a host verb + one shadcn Card widget | weather | post-S8 | **shipped** (2026-07-09; working tree, not git-committed) | [weather-feed](scope/weather/weather-feed-scope.md) (increment note at top) | [weather-feed](sessions/weather/weather-feed-session.md) · [debug](debugging/weather/weather-fetch-error-sending-request.md) | **Direct-in-host, not the extension.** `weather.current(lat,lon)` built into `rust/crates/host/src/weather/` (dispatcher gates `mcp:weather.current:call`; `"weather."` in `HOST_NATIVE_PREFIXES` — generic prefix table, no `if ext==`, rule 10); `reqwest::get` Open-Meteo → `{location,temp_c,wind_kph,code,observed_ts}`, base URL overridable via `LB_WEATHER_OPEN_METEO_BASE` (the one sanctioned external seam, rule 9). Catalog entry + `weather` widget in `widget_catalog.json` (kind read, data true) + `mcp:weather.current:call` in `VIEWER_CAPS`. UI: `dashboard/views/weather/{WeatherPanel,wmoCode}.tsx` + `WidgetView` `case "weather"` + `View` type + VizGallery/VizPicker cards + `weather` in `NO_FIELDCONFIG_VIEWS`. **NOT built (deferred to the extension increment):** the durable 30-min `lb-jobs` poll, run-now verb, series persistence, location CRUD, the compile-optional cargo feature, `net:*` pre-approval. **Tests green:** host `weather_tool_test` 4/4 (stub fetch, cap-deny, bad-input, ws-isolation — real node/store/caps, local HTTP stub for Open-Meteo), UI `weather.gateway.test.tsx` 4/4 + registry round-trip; `cargo build --workspace`/`fmt`/`tsc` clean. **Verified live** (2026-07-09): a real dashboard `mcp/call` returns real conditions (`temp_c 14.3, wind 5.3, code 1`). One debug entry: a live "error sending request" was a **transient network blip**, not code (env probe with the node's exact env got 200 OK; not a sandbox — node's parent is `make dev`←VSCode). |
 | **rules cage — `records()` honors its `Array<Map>` contract on the federation path + a chart-ready buildings example** — the documented `category(query(...).records(), ...)` one-liner was a lie on every sqlite/postgres source; collapse the two seam shapes at the boundary + add the chart example the docs promised | rules | S10+ | **shipped** (2026-07-09) | [rules-for-widgets](scope/frontend/dashboard/rules-for-widgets-scope.md) (slice 3 follow-up) | [records-maps-federation-chart-example](sessions/rules/records-maps-federation-chart-example-session.md) · [debug](debugging/rules/records-returns-positionals-on-federation.md) | **The drift:** the catalog advertised `records(grid) -> Array<Map>` and the rules skill doc documented `category(query(...).records(), "name", "value")` as a chart-ready rule's last line — but on the **federation** path (every sqlite/postgres source, including `demo-buildings`) `records()` returned positional **arrays**, so the one-liner errored `every row must be a record`. Two seams feed the cage `Grid` with two row shapes: platform (`store.query`/Surreal) → JSON objects; federation (`extensions/federation/src/query.rs::shape`) → column-aligned arrays. `grid.rs::records()` forwarded whatever the seam returned; the cage unit tests ran against `RecordingData::platform(...)` (object fixtures) so they masked the drift; the host render path (`viz::frame::result_to_rows`) was already correct via a separate columnar-zip arm. **The fix (one normalizer at the seam boundary):** `grid.rs` gained `row_to_map(row, columns)` (object→pass through; array→zip with `columns` into a map keyed by SELECT aliases; scalar→single-cell map) and `records()` routes every row through it — so the `chart` family, `emit` data, and plain `r.col` access work uniformly on every source kind. The three buildings examples + their regression-test assertions moved off the broken positional shape (`r[0]`/`r[1]` → `r.building`/`r.kwh_per_m2`; `rows[0][0]` → `rows[0].get("building")`). **New chart-ready example** `buildings-intensity-chart` in `buildings_examples.json` — same proven intensity query, last line `category(rows, "building", "kwh_per_m2")`; bind a panel to `{tool:"rules.run", args:{rule_id:"buildings-intensity-chart"}}` and it renders. `RecordingData::federation(...)` test helper seeds federation's real positional wire shape so the contract is unit-testable without the sidecar. **Tests green:** `cargo test -p lb-rules` (24, incl. 2 new — `records_returns_named_maps_from_federation_positional_rows` + `category_runs_on_federation_records`), `rules_buildings_examples_test` (121s, real spawned federation sidecar + real `buildings.db`: chart body → 8 rows trimmed to label+value, Riverside 4.68 kWh/m²), + `query_test`/`rules_test`/`rules_ai_wiring_test`/`federation_sqlite_test` (no blast-radius breakage). Lesson: a catalog signature is a contract not a description of behavior, and two shapes at a seam need exactly one normalizer at the boundary — and a "hard-won fact" recorded against a green test can be a fact about a bug (the test asserting the broken shape was the drift's hiding place). |
 | **Widget catalog + save-validation (widget-platform Slice A)** — backend-owned `widget_catalog.json` served over a new `dashboard.catalog` MCP verb (built-in view palette + per-view config schema + ext tiles + genui components) + host-side `dashboard.save` rejection of unknown `view` kinds (closes G4: the AI hallucinating views the save then accepts). | widgets / frontend | S9+ | **shipped** | [slice scope](scope/frontend/dashboard/widget-catalog-scope.md) · [umbrella](scope/widgets/widget-platform-scope.md) | [widget-catalog](sessions/widgets/widget-catalog-session.md) | **Shipped (2026-07-04):** `dashboard.catalog` verb (`host/src/dashboard/catalog.rs`, `&Arc<Node>` branch before the generic `dashboard.`) merges built-ins (`widget_catalog.json`) + ext `[[widget]]` tiles (generic `ext.list`, opaque ids) + genui names; `views.rs` validator rejects unknown `view` on `dashboard.save` (store-only, view-NAME only; `ext:<id>/<widget>` accepted structurally); `mcp:dashboard.catalog:call` added to `member_caps()`; dead TS `View` ids trimmed to match the 17-case render switch. Green: host `widget_catalog_test` 8/8 (deny+plain-member, ws-iso with a real widget install, save-validation over shell + headless `POST /mcp/call`, round-trip), `views.rs`/`credentials.rs` units, TS catalog↔renderer consistency guard; `pnpm test` 536. Follow-ups: option-key validation, version stamping/migration, `ext:` install-resolve `warnings[]`, the RN app renderer. |

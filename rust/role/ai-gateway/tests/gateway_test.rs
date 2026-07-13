@@ -18,7 +18,7 @@ async fn returns_the_providers_turn() {
     )]));
 
     let req = AiRequest::new("ws-gw", "k1");
-    let resp = gw.complete(&req).await;
+    let resp = gw.complete(&req).await.expect("completion");
     assert_eq!(resp.finish_reason, FinishReason::ToolCalls);
     assert_eq!(resp.tool_calls.len(), 1);
     assert_eq!(resp.tool_calls[0].name, "hello.echo");
@@ -34,8 +34,8 @@ async fn a_repeated_idempotency_key_is_served_from_cache_not_re_spent() {
     ]));
 
     let req = AiRequest::new("ws-gw", "same-key");
-    let a = gw.complete(&req).await;
-    let b = gw.complete(&req).await; // resume: same key
+    let a = gw.complete(&req).await.expect("completion");
+    let b = gw.complete(&req).await.expect("completion"); // resume: same key
 
     assert_eq!(a.content, "first");
     assert_eq!(b.content, "first", "cache replayed the first response");
@@ -53,8 +53,14 @@ async fn distinct_keys_advance_the_provider() {
         AiResponse::stop("second", 5),
     ]));
 
-    let first = gw.complete(&AiRequest::new("ws-gw", "k1")).await;
-    let second = gw.complete(&AiRequest::new("ws-gw", "k2")).await;
+    let first = gw
+        .complete(&AiRequest::new("ws-gw", "k1"))
+        .await
+        .expect("completion");
+    let second = gw
+        .complete(&AiRequest::new("ws-gw", "k2"))
+        .await
+        .expect("completion");
     assert_eq!(first.content, "first");
     assert_eq!(second.content, "second");
     assert_eq!(gw.provider_calls(), 2);

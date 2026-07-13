@@ -9,7 +9,7 @@
 
 use lb_auth::Principal;
 use lb_caps::{check, Action, Decision, Request, Surface};
-use lb_flows::{validate_flow, validate_links, Flow, FlowSummary, MAX_FLOW_NODES};
+use lb_flows::{validate_flow, Flow, FlowSummary, MAX_FLOW_NODES};
 use lb_store::{read, scan, write, Store};
 use serde_json::Value;
 
@@ -28,11 +28,6 @@ pub async fn flows_save(
     authorize_store_write(principal, ws)?;
     flow.workspace = ws.to_string();
     validate_flow(flow, MAX_FLOW_NODES).map_err(|e| FlowsError::BadInput(e.to_string()))?; // rejected before any run
-                                                                                           // flow-input-ports-scope Slice 3: validate the wireless link-pair topology (a link-out naming a
-                                                                                           // missing link-in, a wire from a link-out, a dead link-in) BEFORE any run. Resolution to physical
-                                                                                           // edges happens at run load (`coordinator::resolve_links`); validation is save-time so a typo
-                                                                                           // surfaces here, not as a silent no-op at run.
-    validate_links(flow).map_err(|e| FlowsError::BadInput(e.to_string()))?;
     validate_node_configs(store, ws, flow).await?;
     // Decision 1: editing writes a new version. An existing flow's version bumps; the live run keeps
     // the version it pinned.
@@ -137,25 +132,78 @@ async fn validate_node_configs(store: &Store, ws: &str, flow: &Flow) -> Result<(
                 n.needs.len()
             )));
         }
-        // Policy-aware join lint (flow-input-ports-scope, replacing envelope D3's node-id-only lint).
-        // A multi-wire `all` port is a barrier that must bind `payload` explicitly (the engine cannot
-        // know which upstream's message to carry — silently picking one would hide a join bug / drop
-        // data). An `any` port with multiple wires is VALID — the funnel fires once per upstream
-        // (the whole point). The primary port is the load-bearing one for v1's single-port nodes.
+        // Explicit-`all` join lint (flow-plain-wiring-scope: the default is `any` everywhere, so
+        // multiple wires into an ordinary port are plain per-message wiring — valid, silent). Only
+        // a port that EXPLICITLY declares `join = "all"` (a descriptor opt-in; no built-in does) is
+        // a barrier that must bind `payload` — the engine cannot know which upstream's message to
+        // carry, and silently picking one would hide a join bug / drop data.
         let primary_policy = desc.join_of(None);
         if n.needs.len() >= 2
             && primary_policy == lb_flows::JoinPolicy::All
             && !n.with.contains_key("payload")
         {
             return Err(FlowsError::BadInput(format!(
-                "node `{}` ({}) has {} wires into an `all` (join) input port — bind `payload` explicitly (an `any` funnel fires per upstream and needs no binding)",
+                "node `{}` ({}) has {} wires into an explicit `all` (join) input port — bind `payload` explicitly",
                 n.id,
                 n.node_type,
                 n.needs.len()
             )));
         }
     }
+    validate_binding_lineage(flow)?;
     Ok(())
+}
+
+/// The cross-branch binding lint (flow-plain-wiring-scope). Under universal per-message firing, a
+/// `${steps.X}` binding resolves along the firing's **lineage**; a node's lineage can only ever
+/// contain the node itself and its transitive graph **ancestors** (upstreams via `needs`). A binding
+/// referencing anything else — a sibling wire's branch, an unrelated branch, an unknown id — can
+/// never resolve and would silently bind `null` per firing (a data-drop mistake). Save error.
+fn validate_binding_lineage(flow: &Flow) -> Result<(), FlowsError> {
+    for n in &flow.nodes {
+        let refs: Vec<(&String, &str)> = n
+            .with
+            .iter()
+            .filter_map(|(k, v)| lb_flows::referenced_step(v).map(|x| (k, x)))
+            .collect();
+        if refs.is_empty() {
+            continue;
+        }
+        let ancestors = graph_ancestors(flow, &n.id);
+        for (key, x) in refs {
+            if x == n.id || ancestors.contains(x) {
+                continue;
+            }
+            return Err(FlowsError::BadInput(format!(
+                "node `{}` binds `{}` to `${{steps.{}}}` but `{}` is not an upstream of `{}` — \
+                 under per-message firing it can never be in the firing's lineage and would \
+                 silently bind null (wire it upstream, or reference an actual ancestor)",
+                n.id, key, x, x, n.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// The transitive upstream closure of `node_id` via `needs` (the graph ancestors a firing's lineage
+/// can draw from).
+fn graph_ancestors(flow: &Flow, node_id: &str) -> std::collections::HashSet<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut stack: Vec<String> = flow
+        .nodes
+        .iter()
+        .find(|n| n.id == node_id)
+        .map(|n| n.needs.clone())
+        .unwrap_or_default();
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+        if let Some(n) = flow.nodes.iter().find(|n| n.id == id) {
+            stack.extend(n.needs.iter().cloned());
+        }
+    }
+    seen
 }
 
 /// Delete a flow (tombstone, idempotent). Teardown ordering (disarm sources → cancel runs → drop

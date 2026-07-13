@@ -6,7 +6,7 @@
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
-use lb_host::{authz_resolve, revoke_tokens, roles_delete, AuthzRole, SourcedCap, Subject};
+use lb_host::{authz_resolve, revoke_tokens, roles_delete, AuthzRole, Scope, SourcedCap, Subject};
 use serde::Deserialize;
 
 use crate::session::authenticate;
@@ -71,11 +71,16 @@ pub async fn define_role(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// The `POST /admin/grants` (assign) / `DELETE`-style revoke body: subject + cap.
+/// The `POST /admin/grants` (assign) / `DELETE`-style revoke body: subject + cap + optional
+/// entity-scope selector (entity-scoped-grants scope). `scope` is additive — absent defaults to
+/// `Scope::All` (today's behaviour); a present-but-malformed selector fails deserialization (422),
+/// never silently widens to `All`.
 #[derive(Debug, Deserialize)]
 pub struct GrantBody {
     pub subject: String,
     pub cap: String,
+    #[serde(default)]
+    pub scope: Scope,
 }
 
 /// `POST /admin/grants` — assign a cap (or `role:<name>`) to a subject.
@@ -88,7 +93,7 @@ pub async fn assign_grant(
         .await
         .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
-    lb_host::grants_assign(&gw.node.store, &p, p.ws(), &subject, &body.cap)
+    lb_host::grants_assign(&gw.node.store, &p, p.ws(), &subject, &body.cap, &body.scope)
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)
@@ -104,7 +109,7 @@ pub async fn revoke_grant(
         .await
         .map_err(|e| e.into_response())?;
     let subject = parse_subject(&body.subject)?;
-    lb_host::grants_revoke(&gw.node.store, &p, p.ws(), &subject, &body.cap)
+    lb_host::grants_revoke(&gw.node.store, &p, p.ws(), &subject, &body.cap, &body.scope)
         .await
         .map_err(forbid)?;
     Ok(StatusCode::NO_CONTENT)

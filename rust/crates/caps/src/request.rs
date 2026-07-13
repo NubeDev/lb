@@ -57,6 +57,10 @@ pub enum Action {
     Write,
     Pub,
     Sub,
+    /// Subscribe to a live bus subject scoped by subject (`bus:<subject>:watch`,
+    /// bus-watch-subject-scope). Distinct from `Sub` (the channel `chan/*:sub` grammar) so a
+    /// generic subject-scoped watch grant and a channel-subscribe grant never alias.
+    Watch,
     Get,
     /// Open an outbound connection (the `net` surface): `net:tls:host:5432:connect`.
     Connect,
@@ -73,6 +77,7 @@ impl Action {
             Action::Write => "write",
             Action::Pub => "pub",
             Action::Sub => "sub",
+            Action::Watch => "watch",
             Action::Get => "get",
             Action::Connect => "connect",
             Action::View => "view",
@@ -87,6 +92,7 @@ impl Action {
             "write" => Some(Action::Write),
             "pub" => Some(Action::Pub),
             "sub" => Some(Action::Sub),
+            "watch" => Some(Action::Watch),
             "get" => Some(Action::Get),
             "connect" => Some(Action::Connect),
             "view" => Some(Action::View),

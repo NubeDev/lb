@@ -39,7 +39,7 @@ fn seed_lock(ws: &str, run_id: &str) -> Arc<AsyncMutex<()>> {
 /// upstreams settle (a barrier slot when its indegree hits 0; an `any`-funnel firing per settled
 /// upstream). The pinned version is the spine of resume (Decision 1).
 ///
-/// For an all-`all` flow this is byte-for-byte today's end state: every node settles once at
+/// For a plain linear flow (empty `fctx` throughout) this is byte-for-byte the pre-ports end state: every node settles once at
 /// `fctx=""` under the key `{run}:{node}`. The only difference is *when* a non-frontier record
 /// appears (on first release, not at seed) — never observable in a terminal snapshot, and no test
 /// asserts a mid-run pending non-frontier node.
@@ -200,7 +200,7 @@ pub async fn record_outcome(
                 }
             }
             // flow-input-ports-scope: stamp the firing context into the envelope so a downstream
-            // binding `${steps.<this>}` resolves THIS firing's settle (empty in the all-`all` case ⇒
+            // binding `${steps.<this>}` resolves THIS firing's settle (empty in the common case ⇒ a
             // no-op field for back-compat of a non-fctx-aware reader).
             envelope.insert(FCTX_FIELD.into(), Value::String(fctx.to_string()));
             let envelope = Value::Object(envelope);
@@ -269,18 +269,9 @@ pub async fn park_step(
 }
 
 /// Release the dependents of a settled `(node, fctx)` slot, **per input-port join policy**
-/// (flow-input-ports-scope Axis 2). For each in-subgraph dependent `D` wired from `finished`:
-/// - **`all` port (barrier):** touch the `(D, fctx)` slot — create it Pending with D's in-subgraph
-///   barrier indegree if absent, then decrement (this upstream settled under `fctx`); at 0 → Enqueued.
-///   This is today's `ready_dependents` path; in an all-`all` flow `fctx` is `""` everywhere so the
-///   behaviour + keys are byte-identical.
-/// - **`any` port (funnel):** mint a NEW firing `(D, mint(fctx, D, finished))` Enqueued, with
-///   `triggered_by = finished` + `parent_fctx = fctx` — the Node-RED fire-per-message OR. Deterministic
-///   per `(D, finished, fctx)`, so a redelivered upstream re-mints the same slot id (a no-op).
-///
-/// `policies` carries each node's descriptor (read once at drive start, pinned with the flow version).
-/// `subgraph` is the run's node set (the reachable-from-entry set); out-of-subgraph deps are not
-/// released (a per-trigger run never fires them).
+/// (flow-plain-wiring-scope — every port defaults to `any`). Each in-subgraph dependent `D` wired
+/// from `finished` goes through [`release_one_dependent`] (the ONE policy-aware release seam — the
+/// `switch` matched-release path uses it too, so a matched release can never bypass the policy).
 pub async fn release_dependents(
     store: &Store,
     ws: &str,
@@ -294,33 +285,93 @@ pub async fn release_dependents(
     let dependents = flow.dependents();
     let deps = dependents.get(finished).cloned().unwrap_or_default();
     for dep in deps {
-        if !subgraph.contains(&dep) {
-            continue;
+        release_one_dependent(
+            store, ws, flow, run_id, &dep, finished, fctx, policies, subgraph,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Release ONE dependent `dep` of a settled `(finished, fctx)` slot, per `dep`'s input-port join
+/// policy — the single policy-aware release seam (flow-plain-wiring-scope; the `switch`
+/// matched-release fix routes through here so a matched release honours the policy too):
+/// - **`any` port** (the universal default): a per-message firing. A **single-wire** port
+///   PROPAGATES the incoming `fctx` unchanged (a linear chain never grows its lineage — keys stay
+///   byte-identical to the pre-ports engine); a **multi-wire** port MINTS a new firing id
+///   `mint(dep, finished, fctx)` so sibling wires get distinct slots. Either way the slot records
+///   `triggered_by = finished` + `parent_fctx = fctx` (the auto-wire), deterministically keyed so a
+///   redelivered upstream re-mints the same slot (a no-op).
+/// - **explicit-`all` port** (a descriptor opt-in — no built-in declares it): today's barrier —
+///   touch the `(dep, fctx)` slot, create Pending at the port's in-subgraph indegree, decrement,
+///   Enqueue at 0.
+///
+/// Out-of-subgraph dependents are not released (a per-trigger run never fires them).
+#[allow(clippy::too_many_arguments)]
+pub async fn release_one_dependent(
+    store: &Store,
+    ws: &str,
+    flow: &Flow,
+    run_id: &str,
+    dep: &str,
+    finished: &str,
+    fctx: &str,
+    policies: &HashMap<String, lb_flows::NodeDescriptor>,
+    subgraph: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    if !subgraph.contains(dep) {
+        return Ok(());
+    }
+    let Some(dep_node) = flow.node(dep) else {
+        return Ok(());
+    };
+    let desc = policies.get(dep);
+    let port = dep_node.to_port_from(finished);
+    let policy = desc
+        .map(|d| d.join_of(port.as_deref()))
+        .unwrap_or(lb_flows::JoinPolicy::Any);
+    match policy {
+        lb_flows::JoinPolicy::All => {
+            touch_barrier_slot(store, ws, flow, run_id, dep, fctx, subgraph).await?;
         }
-        let Some(dep_node) = flow.node(&dep) else {
-            continue;
-        };
-        let port = dep_node.to_port_from(finished);
-        let policy = policies
-            .get(&dep)
-            .map(|d| d.join_of(port.as_deref()))
-            .unwrap_or(lb_flows::JoinPolicy::All);
-        match policy {
-            lb_flows::JoinPolicy::All => {
-                touch_barrier_slot(store, ws, flow, run_id, &dep, fctx, subgraph).await?;
-            }
-            lb_flows::JoinPolicy::Any => {
-                let new_fctx = lb_flows::firing_context::mint(dep.as_str(), finished, fctx);
-                mint_firing(store, ws, run_id, &dep, &new_fctx, finished, fctx).await?;
-            }
+        lb_flows::JoinPolicy::Any => {
+            let wires = port_wire_count(dep_node, port.as_deref(), desc, subgraph);
+            let new_fctx = if wires <= 1 {
+                // Single-wire port: propagate — no lineage growth on a linear chain.
+                fctx.to_string()
+            } else {
+                lb_flows::firing_context::mint(dep, finished, fctx)
+            };
+            mint_firing(store, ws, run_id, dep, &new_fctx, finished, fctx).await?;
         }
     }
     Ok(())
 }
 
+/// The number of in-subgraph wires landing on the SAME input port of `dep_node` as the edge whose
+/// `to_port` is `port`. Ports are compared by their **effective** name (an omitted `to_port`
+/// resolves to the descriptor's primary input), so `None` and an explicit primary name count as one
+/// port. This is what decides propagate (1 wire) vs mint (≥2 wires) for an `any` release.
+fn port_wire_count(
+    dep_node: &lb_flows::Node,
+    port: Option<&str>,
+    desc: Option<&lb_flows::NodeDescriptor>,
+    subgraph: &std::collections::HashSet<String>,
+) -> usize {
+    let primary = desc.and_then(|d| d.primary_input());
+    let effective = |p: Option<&str>| p.or(primary).map(str::to_string);
+    let this_port = effective(port);
+    dep_node
+        .needs
+        .iter()
+        .filter(|up| subgraph.contains(*up))
+        .filter(|up| effective(dep_node.to_port_from(up).as_deref()) == this_port)
+        .count()
+}
+
 /// Decrement an `all`-port dependent's `(node, fctx)` barrier slot; Enqueue at 0. Creates the slot
 /// Pending (with the node's in-subgraph barrier indegree) on first touch — the dynamic counterpart of
-/// today's pre-seed, so an all-`all` flow's slots appear exactly as before, just on first release
+/// today's pre-seed, so an explicit-`all` barrier's slots appear exactly as before, just on first release
 /// rather than at seed (byte-identical keys + end state).
 async fn touch_barrier_slot(
     store: &Store,
@@ -413,22 +464,6 @@ async fn mint_firing(
         parent_fctx: Some(parent_fctx.into()),
     };
     write_step(store, ws, &rec).await
-}
-
-/// Release exactly **one** barrier dependent by decrementing its `(node, fctx)` in-degree (enqueue at
-/// 0) — the selective counterpart of [`release_dependents`], used by `switch` edge-gating
-/// (Decision 14) to fire only the dependents a matched rule named. Idempotent: a non-`Pending`
-/// dependent is only decremented.
-pub async fn ready_one_dependent(
-    store: &Store,
-    ws: &str,
-    flow: &Flow,
-    run_id: &str,
-    dep: &str,
-    fctx: &str,
-    subgraph: &std::collections::HashSet<String>,
-) -> Result<(), String> {
-    touch_barrier_slot(store, ws, flow, run_id, dep, fctx, subgraph).await
 }
 
 /// Gate a `(node, fctx)` slot and its exclusive subtree as Skipped — a `switch` unmatched branch
@@ -633,18 +668,23 @@ pub struct ResolvedInputs {
     pub carry: serde_json::Map<String, Value>,
 }
 
-/// Resolve a `(node, fctx)` slot's incoming message (flow-message-envelope-scope D2/D3, +
-/// flow-input-ports-scope for the `any`-funnel auto-wire). Two shapes:
+/// Resolve a `(node, fctx)` slot's incoming message (flow-message-envelope-scope D2/D3, widened to
+/// the firing **lineage** by flow-plain-wiring-scope). Two shapes:
 ///
-/// - **`any`-funnel firing** (`triggered_by` set): the slot fires for exactly ONE upstream — the
-///   triggering one — whose envelope (settled under `parent_fctx`) is auto-wired as the input, and
-///   whose non-`payload` fields carry forward (Node-RED "metadata survives a join", unambiguous
-///   because each `any` firing has exactly one incoming message).
-/// - **barrier/frontier firing** (`triggered_by` None): today's logic. Auto-wire when there is
-///   exactly one `needs` upstream and no explicit `payload` binding (copy that upstream's envelope —
-///   resolved under THIS `fctx`); else build `inputs` from the explicit `with` bindings. `${steps.X}`
-///   resolves the upstream settle **carrying the same `fctx`** (empty in all-`all` ⇒ every settle,
-///   byte-for-byte today's resolution).
+/// - **`any` firing** (`triggered_by` set — the universal per-message case): the slot fires for
+///   exactly ONE upstream — the triggering one — whose envelope (settled under `parent_fctx`) is
+///   auto-wired as the input, and whose non-`payload` fields carry forward (Node-RED "metadata
+///   survives a join", unambiguous because each firing has exactly one incoming message).
+/// - **barrier/frontier firing** (`triggered_by` None): auto-wire when there is exactly one `needs`
+///   upstream and no explicit `payload` binding (copy that upstream's envelope); else build
+///   `inputs` from the explicit `with` bindings.
+///
+/// In BOTH shapes, an explicit `${steps.X}` binding resolves against X's settle whose `fctx` is an
+/// **ancestor** of this firing's ([`lb_flows::is_ancestor`] — equal, a whole-segment prefix, or
+/// `""`), nearest ancestor winning. That keeps a grandparent binding resolvable down a linear chain
+/// under universal `any` (the recorded map used to hold only the arriving upstream — a silent-null
+/// regression this widening prevents); a genuine cross-branch settle never matches (and is a save
+/// lint). Empty `fctx` everywhere ⇒ byte-for-byte the pre-ports resolution.
 pub async fn resolve_node_bindings(
     store: &Store,
     ws: &str,
@@ -678,9 +718,11 @@ pub async fn resolve_node_bindings(
                 m
             }
         };
-        // Apply any explicit non-`payload` bindings the author set on top (e.g. a hand-set `topic`),
-        // resolved against the triggering upstream's envelope.
-        let mut recorded = HashMap::new();
+        // Apply any explicit bindings the author set on top (e.g. a hand-set `topic`, a grandparent
+        // `${steps.X}` read), resolved against the firing's LINEAGE — every settle whose fctx is an
+        // ancestor of this firing's, nearest winning. The triggering upstream's just-read envelope
+        // overrides its recorded settle (same value; keeps the auto-wire authoritative).
+        let mut recorded = lineage_recorded(store, ws, run_id, fctx).await?;
         recorded.insert(up.to_string(), NodeOutput::new(inputs_serialize(&inputs)));
         let bound = resolve_bindings(with, &recorded, params).map_err(|e| e.to_string())?;
         for (k, v) in bound {
@@ -692,16 +734,10 @@ pub async fn resolve_node_bindings(
         return Ok(ResolvedInputs { inputs, carry });
     }
 
-    // Barrier/frontier: build `recorded` from every done-ok settle carrying THIS `fctx` (the matching
-    // firing's upstreams). Empty `fctx` ⇒ every settle, byte-for-byte today's resolution.
-    let mut recorded = HashMap::new();
-    for n in &flow.nodes {
-        if let Some(rec) = read_step(store, ws, run_id, &n.id, fctx).await? {
-            if rec.claim == ClaimState::Done && rec.outcome == "ok" {
-                recorded.insert(n.id.clone(), NodeOutput::new(rec.output));
-            }
-        }
-    }
+    // Barrier/frontier: build `recorded` from every done-ok settle in this firing's LINEAGE (its
+    // own fctx, or any whole-segment-prefix ancestor down to ""). In the all-empty-fctx case this
+    // is every settle — byte-for-byte the pre-ports resolution.
+    let recorded = lineage_recorded(store, ws, run_id, fctx).await?;
 
     // D3 auto-wire: single upstream, no explicit `payload` binding → copy the upstream's envelope.
     if needs.len() == 1 && !binds_payload {
@@ -748,6 +784,39 @@ pub async fn resolve_node_bindings(
 /// Serialize a map into an object `Value` (a tiny helper for the any-firing recorded-envelope build).
 fn inputs_serialize(m: &serde_json::Map<String, Value>) -> Value {
     Value::Object(m.clone())
+}
+
+/// The `${steps.X}` resolution map for a firing at `fctx`: every node's done-ok settle whose own
+/// `fctx` is an **ancestor** of this firing's (equal / whole-segment prefix / `""`), keeping the
+/// **nearest** (longest-prefix) settle when a node settled at several ancestor depths. This is the
+/// lineage walk (flow-plain-wiring-scope): a linear chain's grandparent binding resolves under
+/// universal `any`; a sibling firing's settle (a cross-branch fctx) never matches.
+async fn lineage_recorded(
+    store: &Store,
+    ws: &str,
+    run_id: &str,
+    fctx: &str,
+) -> Result<HashMap<String, NodeOutput>, String> {
+    let mut best: HashMap<String, (usize, Value)> = HashMap::new();
+    for rec in scan_run_slots(store, ws, run_id).await? {
+        if rec.claim != ClaimState::Done || rec.outcome != "ok" {
+            continue;
+        }
+        if !lb_flows::is_ancestor(&rec.fctx, fctx) {
+            continue;
+        }
+        let depth = rec.fctx.len(); // a longer ancestor prefix = a nearer ancestor
+        match best.get(&rec.node_id) {
+            Some((d, _)) if *d >= depth => {}
+            _ => {
+                best.insert(rec.node_id.clone(), (depth, rec.output));
+            }
+        }
+    }
+    Ok(best
+        .into_iter()
+        .map(|(k, (_, v))| (k, NodeOutput::new(v)))
+        .collect())
 }
 
 /// Overlay this node's retained `flow_input` onto its resolved `inputs`, establishing the binding

@@ -27,5 +27,9 @@ request = []
 name        = "echo"
 description = "Echo the input back, tagged with the workspace identity injected at spawn."
 
+[[tools]]
+name        = "whoami"
+description = "Reflect the caller the host stamped into the call frame (native-caller-identity probe)."
+
 [visibility]
 class = "private"

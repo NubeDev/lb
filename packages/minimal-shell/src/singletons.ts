@@ -1,0 +1,13 @@
+// Publish React globals BEFORE any remote extension loads (the federation contract).
+// An extension's bare `import "react"` resolves to the shim → globalThis.__lbReact → THIS copy.
+import React from "react";
+import ReactDOM from "react-dom";
+import * as ReactDOMClient from "react-dom/client";
+import * as JSXRuntime from "react/jsx-runtime";
+
+(globalThis as any).__lbReact = React as any;
+(globalThis as any).__lbReactDom = ReactDOM as any;
+(globalThis as any).__lbReactDomClient = ReactDOMClient as any;
+(globalThis as any).__lbReactJsxRuntime = JSXRuntime as any;
+
+export {};

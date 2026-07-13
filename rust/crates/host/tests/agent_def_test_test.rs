@@ -592,6 +592,9 @@ async fn the_in_house_test_rides_the_workspace_picked_model_not_the_node_default
         &AgentConfig {
             active_definition: Some("acme".into()),
             default_runtime: Some("default".into()),
+            compact_budget: None,
+            loop_window: None,
+            exfiltration_guard: None,
             model_endpoint: Some(ModelEndpointPatch {
                 provider: Some("zaicoding".into()),
                 model: Some("glm-4.6".into()),

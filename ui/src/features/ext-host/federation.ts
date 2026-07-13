@@ -10,13 +10,11 @@
 // second React and broke hooks ("Invalid hook call"). See
 // debugging/extensions/federated-remote-fails-in-dev-server.md.
 
-/** The mount contract every extension remote must expose from its `remoteEntry.js` (ui-federation
- *  scope) — frozen, byte-for-byte the extension's `app/contract.ts`. */
-export type RemoteMount = (
-  el: HTMLElement,
-  ctx: { workspace: string },
-  bridge: { call: <T = unknown>(tool: string, args?: Record<string, unknown>) => Promise<T> },
-) => void | (() => void);
+// The page mount contract now lives in the standalone `@nube/ext-ui-sdk` — the single authoritative
+// source the old per-extension `app/contract.ts` copies collapse into (ext-out-of-tree scope, slice 2).
+// Re-exported so the in-shell importers of `RemoteMount` keep their import path unchanged.
+export type { RemoteMount } from "@nube/ext-ui-sdk";
+import type { RemoteMount } from "@nube/ext-ui-sdk";
 
 /** A loaded remote module. The remote exports `mount` (named); some bundlers also surface it as the
  *  default export, so we accept either shape. */

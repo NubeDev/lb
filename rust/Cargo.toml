@@ -26,6 +26,8 @@ members = [
     "crates/devkit",
     "crates/ext-loader",
     "crates/external-agent",
+    "crates/extract",
+    "crates/federation",
     "crates/frame",
     "crates/flows",
     "crates/host",
@@ -45,7 +47,6 @@ members = [
     "crates/run-events",
     "crates/runtime",
     "crates/secrets",
-    "crates/sidecar-client",
     "crates/store",
     "crates/supervisor",
     "crates/sync",
@@ -54,10 +55,8 @@ members = [
     "crates/undo",
     "crates/viz",
     "extensions/echo-sidecar",
-    "extensions/federation",
     "extensions/fleet-monitor",
     "extensions/ros",
-    "sdk",
     "node",
     "role/acp",
     "role/external-agent",
@@ -85,8 +84,9 @@ lb-auth = { path = "crates/auth" }
 lb-authz = { path = "crates/authz" }
 lb-bus = { path = "crates/bus" }
 lb-caps = { path = "crates/caps" }
-lb-devkit = { path = "crates/devkit" }
+lb-devkit = { path = "crates/devkit", default-features = false }
 lb-ext-loader = { path = "crates/ext-loader" }
+lb-extract = { path = "crates/extract" }
 lb-frame = { path = "crates/frame" }
 lb-flows = { path = "crates/flows" }
 lb-inbox = { path = "crates/inbox" }
@@ -105,7 +105,10 @@ lb-rules = { path = "crates/rules" }
 lb-run-events = { path = "crates/run-events" }
 lb-runtime = { path = "crates/runtime" }
 lb-secrets = { path = "crates/secrets" }
-lb-sidecar-client = { path = "crates/sidecar-client" }
+# The native host-callback client is now published by the SDK (NubeDev/lb-ext-sdk) so out-of-tree
+# native extensions can consume it by git tag; lb consumes it back from there — one source of truth,
+# the same way it consumes `lb-sdk`. (Was an in-tree `crates/sidecar-client` path crate.)
+lb-sidecar-client = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.3.0" }
 lb-store = { path = "crates/store" }
 lb-supervisor = { path = "crates/supervisor" }
 lb-sync = { path = "crates/sync" }
@@ -114,7 +117,12 @@ lb-telemetry = { path = "crates/telemetry" }
 lb-undo = { path = "crates/undo" }
 lb-viz = { path = "crates/viz" }
 lb-host = { path = "crates/host" }
-lb-sdk = { path = "sdk" }
+# The extension SDK is now a standalone, authoritative repo (NubeDev/lb-ext-sdk); lb CONSUMES it by
+# git tag like any other downstream. The WIT world, the version gate, and the native child wire live
+# THERE — not in a sibling `sdk/` dir. A `world.wit` change is a deliberate two-repo dance (tag the
+# SDK, bump this pin), caught loudly by the refuse-at-load version gates. See
+# docs/scope/extensions/ext-out-of-tree-scope.md (slice 2, the cutover).
+lb-sdk = { git = "https://github.com/NubeDev/lb-ext-sdk", tag = "sdk-v0.2.1" }
 # The external-agent driver (leaf) + its role crate (external-agent topic). The leaf carries no ACP
 # SDK and is a plain member; the role crate is pulled ONLY behind the `external-agent` feature on the
 # `node` binary (runtime-seam #1 "the node pulls it only with the feature"), so a feature-off node
@@ -172,6 +180,9 @@ csv = "1"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde_yaml = "0.9"
 base64 = "0.22"
+# Image processing for media variants (media scope). Minimal features — only decode/resize/encode
+# for the supported upload types (jpeg, png, webp).
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 # Typst PDF render stack (reports scope, ported from lazybones-render). The WHOLE set is exact-pinned
 # to the version proven to compile → PDF bytes on this toolchain (rustc 1.96, the Phase-3a spike); see
 # crates/render. `typst-layout` is a direct dep because `PagedDocument` (compile output / pdf input)

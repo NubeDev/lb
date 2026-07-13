@@ -55,7 +55,7 @@ pub use list::nav_list;
 pub use list_shares::nav_list_shares;
 pub use model::{
     Nav, NavFacet, NavHidden, NavItem, NavPref, NavSummary, ResolvedItem, ResolvedNav,
-    ResolvedSource, Visibility, MAX_HIDDEN, MAX_ITEMS, MAX_PINNED, MAX_TAG_GROUP,
+    ResolvedSource, Visibility, MAX_GROUP_DEPTH, MAX_HIDDEN, MAX_ITEMS, MAX_PINNED, MAX_TAG_GROUP,
 };
 pub use pref::{nav_pref_get, nav_pref_set};
 pub use reach::{reach_caps, reach_check, REACH_ALL};

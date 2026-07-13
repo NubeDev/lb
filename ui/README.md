@@ -1,5 +1,10 @@
 # ui/
 
+> ⚠️ **Reference copy — retained temporarily.** This in-tree shell is no longer the authoritative product
+> UI. Product hosts **vendor** their own copy (e.g. `rubix-ai/ui`) and consume the shared `@nube/*`
+> packages + `@nube/ext-ui-sdk`. This `ui/` is kept as the reference the vendored shells track, and will
+> be removed once the migration is proven. See [`../MIGRATION.md`](../MIGRATION.md).
+
 The frontend — one React + TypeScript codebase, delivered two ways.
 
 - **Edge:** bundled in a Tauri v2 shell, talking to the local node over IPC.

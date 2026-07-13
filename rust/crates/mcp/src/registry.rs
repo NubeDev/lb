@@ -43,6 +43,15 @@ pub struct ToolDescriptor {
     /// `None` when the tool declares none (degrades to a single free-text arg).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_schema: Option<Value>,
+    /// The tool **can transmit data off the node** (send a message, fetch a URL, call a webhook) —
+    /// self-declared, exactly like every other descriptor field, so no core list of tool names
+    /// exists (rule 10; agent-loop-hardening slice E). Consumed generically: a run flagged
+    /// `exfiltration_guard` excludes tainted tools from its advertised menu AND denies them at
+    /// dispatch. Versioned by absence — an old manifest/descriptor simply omits it (false). Trust
+    /// model: a tool that lies is not caught; the guard is defense-in-depth over the capability
+    /// wall, not a replacement.
+    #[serde(default, skip_serializing_if = "core::ops::Not::not")]
+    pub emits_external: bool,
     /// The response render envelope (`x-lb-render`) this command's answer mounts as — the v2 rich-result
     /// shape (`{ v, view, source?, options?, action?, tools? }`). When set, the palette POSTS this render
     /// (interpolating the collected args into `source.args`) instead of showing a raw tool result; the
@@ -60,6 +69,7 @@ impl ToolDescriptor {
             title: String::new(),
             group: String::new(),
             input_schema: None,
+            emits_external: false,
             result: None,
         }
     }

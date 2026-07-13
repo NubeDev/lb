@@ -2,7 +2,9 @@
 # This is one of the two thin role-aware layers (§3.1): no core crate is role-aware, the role
 # selection lives here. S1 runs solo.
 [package]
-name = "node"
+# The package is `lb-node` (the embed scope's open-question resolution: a git-dep on a package called
+# `node` is confusing). The BINARY stays `node` ([[bin]] below) and the LIB is `lb_node` ([lib] below).
+name = "lb-node"
 # Local override of the workspace version: the node binary's version keys the core-skill boot seeder
 # (core.<name>@<version> — idempotent on (id, version)). Bump this when the embedded skill corpus
 # changes so a restart re-seeds the new bodies instead of skipping them as no-ops.
@@ -10,6 +12,12 @@ version = "0.1.9"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+# The LIBRARY target: the supported embed API (`lb_node::{BootConfig, boot_full, RunningNode}`). An
+# embedder git-deps `lb-node` and calls `boot_full`. `main.rs` is refactored onto this lib.
+[lib]
+name = "lb_node"
+path = "src/lib.rs"
 
 [[bin]]
 name = "node"
@@ -37,10 +45,18 @@ lb-role-ai-gateway.workspace = true
 # The external-agent role (external-agent topic, runtime-seam #1). OPTIONAL + behind the
 # `external-agent` feature: a default `cargo build` does NOT compile it (nor its transitive
 # `lb-external-agent`), so the OFF build carries none of the external-agent code — the compile-time
-# optionality gate. Built with `cargo build -p node --features external-agent`.
+# optionality gate. Built with `cargo build -p lb-node --features external-agent`.
 lb-role-external-agent = { workspace = true, optional = true }
 anyhow.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+# The embedder-credential-mode integration test drives the REAL gateway `boot_full` builds (its
+# `router()` via a tower oneshot — no HTTP port), proving `BootConfig::credential_mode` reaches the
+# gateway's login check. Same harness the gateway crate's route tests use (no mocks, testing §0).
+tower = { version = "0.5", features = ["util"] }
+axum = { workspace = true }
+http-body-util = "0.1"
 
 [features]
 # OFF by default (runtime-seam-scope: "the `external-agent` cargo feature, OFF by default"). Turning

@@ -32,7 +32,7 @@ use lb_supervisor::OsLauncher;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-const MANIFEST: &str = include_str!("../../../extensions/federation/extension.toml");
+const MANIFEST: &str = include_str!("../../../crates/federation/extension.toml");
 
 /// The full cap set an admin needs to install the sidecar + register and query a source. Mirrors
 /// `federation_test.rs::admin`, trimmed to what this happy-path needs.

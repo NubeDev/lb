@@ -112,7 +112,7 @@ async fn node_snapshot(store: &Store, ws: &str, run_id: &str) -> Result<Vec<Valu
             .unwrap_or("pending");
         let terminal = claim == "done";
         // The firing context labels WHICH firing this slot is (flow-input-ports-scope). Empty for a
-        // barrier/frontier firing (the all-`all` common case); a minted id for an `any`-funnel firing
+        // barrier/frontier firing (the empty-`fctx` common case); a minted id for an `any`-funnel firing
         // or a node downstream of one — so the debug story stays legible one hop past the funnel.
         let fctx = inner.get("fctx").and_then(|v| v.as_str()).unwrap_or("");
         let mut step = json!({

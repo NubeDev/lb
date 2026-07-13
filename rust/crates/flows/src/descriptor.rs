@@ -62,19 +62,18 @@ pub struct NodeDescriptor {
     pub tool: String,
     /// Named input ports (edges land here). A `trigger`/`source` has none. The simple string list
     /// (the port names); the per-port **join policy** rides the parallel [`Self::input_ports`]
-    /// table — when that is empty, every port here defaults to [`JoinPolicy::All`] (today's
-    /// behaviour; flow-input-ports-scope Axis 2).
+    /// table — when that is empty, every port here defaults to [`JoinPolicy::Any`] (plain
+    /// per-message wiring, the Node-RED model; flow-plain-wiring-scope).
     #[serde(default)]
     pub inputs: Vec<String>,
     /// Named output ports (edges leave here). A `sink` has none.
     #[serde(default)]
     pub outputs: Vec<String>,
-    /// Per-input-port **join policy** table (flow-input-ports-scope Axis 2). Additive + serde-
-    /// defaulted: an empty table means every port in [`Self::inputs`] is [`JoinPolicy::All`] (the
-    /// safe barrier default — today's behaviour). An entry overrides the policy for its named port
-    /// (`All` = join/barrier; `Any` = funnel/fire-per-message, the Node-RED OR). Slice 1 ships the
-    /// declaration infrastructure only — no built-in declares `Any` yet; Slice 2 flips `sink`-kind
-    /// ports to `Any` together with the runtime that honours it (no silent gap).
+    /// Per-input-port **join policy** table. Additive + serde-defaulted: an empty table means every
+    /// port in [`Self::inputs`] is [`JoinPolicy::Any`] (plain per-message wiring — the universal
+    /// default, flow-plain-wiring-scope). An entry is a descriptor-level **opt-in**: an extension
+    /// node may declare `join = "all"` on a port to get the barrier (fire once when every wired
+    /// upstream settles). No built-in declares it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub input_ports: Vec<InputPort>,
     /// Bumped when the config schema changes shape (the job `schema_version` discipline). A run
@@ -91,30 +90,32 @@ fn default_config() -> serde_json::Value {
     serde_json::json!({})
 }
 
-/// The per-input-port **join policy** (flow-input-ports-scope Axis 2). Declares how a port combines
-/// the wires that land on it.
+/// The per-input-port **join policy** (flow-input-ports-scope Axis 2, default flipped by
+/// flow-plain-wiring-scope). Declares how a port combines the wires that land on it.
 ///
-/// - `All` — a **barrier** (the default, today's behaviour). The node fires **once** when every
-///   wired upstream on that port has settled; the port's value is the set of those upstream
-///   envelopes, combined by an explicit binding. This is the safe durable join.
-/// - `Any` — a **funnel** (Node-RED's fire-per-message OR). The node is released **once per settled
-///   upstream** on that port, each firing carrying that one upstream's envelope. Multiplicity is
-///   statically bounded by the wire topology (path count), never by event volume.
+/// - `Any` — a **funnel** (Node-RED's fire-per-message OR) — **the universal default**. The node is
+///   released **once per settled upstream** on that port, each firing carrying that one upstream's
+///   envelope. Multiplicity is statically bounded by the wire topology (path count), never by event
+///   volume. Plain wiring is the whole story: no built-in declares anything else.
+/// - `All` — a **barrier**, a descriptor-level **opt-in** (an extension `[[node.input]]` may declare
+///   `join = "all"`). The node fires **once** when every wired upstream on that port has settled;
+///   the port's value is combined by an explicit binding (the save lint demands one).
 ///
-/// Slice 1 declares the type and parses it; the run engine honours `Any` in Slice 2 (the firing-
-/// context `fctx` seam). Until then every port is effectively `All`, so the descriptor honestly
-/// reflects the engine.
+/// The serde `Default` derive still needs a variant marker; the *effective* default every resolver
+/// applies ([`NodeDescriptor::join_of`], the host run-store fallback, the UI `joinOf` mirror) is
+/// `Any` — an `[[node.input]]` entry that omits `join` means `any` too.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum JoinPolicy {
     #[default]
-    All,
     Any,
+    All,
 }
 
-/// One declared input port with its join policy (flow-input-ports-scope Axis 2 — the `[[node.input]]`
-/// manifest table form). `name` matches an entry in [`NodeDescriptor::inputs`]; `join` defaults to
-/// [`JoinPolicy::All`] when omitted (the string `inputs = [...]` shorthand keeps its meaning).
+/// One declared input port with its join policy (the `[[node.input]]` manifest table form). `name`
+/// matches an entry in [`NodeDescriptor::inputs`]; `join` defaults to [`JoinPolicy::Any`] when
+/// omitted — the same per-message default the string `inputs = [...]` shorthand means. `all` is the
+/// explicit opt-in (flow-plain-wiring-scope).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InputPort {
@@ -184,28 +185,23 @@ impl NodeDescriptor {
         self.inputs.first().map(|s| s.as_str())
     }
 
-    /// The declared [`JoinPolicy`] for `port`, applying the **per-kind default** when the port is not
-    /// in the `input_ports` table (flow-input-ports-scope Axis 2): `any` for a `sink`-kind node's
-    /// ports (Node-RED's debug/funnel — three wires in ⇒ three firings), `all` for every other kind
-    /// (the safe barrier — today's behaviour). An explicit `input_ports` entry always wins. `port =
-    /// None` resolves the primary input port.
+    /// The declared [`JoinPolicy`] for `port`. **Every port defaults to `any`** — plain per-message
+    /// wiring, for every node kind (flow-plain-wiring-scope; there is deliberately no per-kind
+    /// branch left to re-grow policy-by-kind). An explicit `input_ports` entry declaring `all` is
+    /// the only way a port barriers. `port = None` resolves the primary input port.
     pub fn join_of(&self, port: Option<&str>) -> JoinPolicy {
         let name = match port {
             Some(p) if !p.is_empty() => p,
             _ => match self.primary_input() {
                 Some(p) => p,
-                None => return JoinPolicy::All,
+                None => return JoinPolicy::Any,
             },
         };
-        let declared = self
-            .input_ports
+        self.input_ports
             .iter()
             .find(|ip| ip.name == name)
-            .map(|ip| ip.join);
-        declared.unwrap_or_else(|| match self.kind {
-            NodeKind::Sink => JoinPolicy::Any,
-            _ => JoinPolicy::All,
-        })
+            .map(|ip| ip.join)
+            .unwrap_or(JoinPolicy::Any)
     }
 }
 
@@ -219,37 +215,46 @@ mod tests {
     }
 
     #[test]
-    fn join_defaults_all_for_transforms_any_for_sinks() {
-        // flow-input-ports-scope Axis 2: the per-kind default — `any` for a sink (Node-RED's
-        // debug/funnel: three wires in ⇒ three firings), `all` for every other kind (today's barrier).
-        let transform = desc(NodeKind::Transform, vec!["payload"]);
-        assert_eq!(transform.join_of(None), JoinPolicy::All);
-        assert_eq!(transform.join_of(Some("payload")), JoinPolicy::All);
-        let sink = desc(NodeKind::Sink, vec!["payload"]);
-        assert_eq!(sink.join_of(None), JoinPolicy::Any);
-        assert_eq!(sink.join_of(Some("payload")), JoinPolicy::Any);
-        // A port not declared on the node still resolves the primary-port default.
-        assert_eq!(sink.join_of(Some("nope")), JoinPolicy::Any);
+    fn join_defaults_any_for_every_kind() {
+        // flow-plain-wiring-scope: EVERY port defaults to `any` — plain per-message wiring, no
+        // per-kind branch. Three wires into a transform behaves exactly like Node-RED.
+        for kind in [
+            NodeKind::Transform,
+            NodeKind::Sink,
+            NodeKind::Trigger,
+            NodeKind::Source,
+        ] {
+            let d = desc(kind, vec!["payload"]);
+            assert_eq!(d.join_of(None), JoinPolicy::Any, "{kind:?} primary");
+            assert_eq!(d.join_of(Some("payload")), JoinPolicy::Any, "{kind:?}");
+            // A port not declared on the node still resolves the default.
+            assert_eq!(d.join_of(Some("nope")), JoinPolicy::Any, "{kind:?} unknown");
+        }
+        // A node with no inputs at all still answers `any` (nothing to barrier on).
+        assert_eq!(
+            desc(NodeKind::Trigger, vec![]).join_of(None),
+            JoinPolicy::Any
+        );
     }
 
     #[test]
-    fn input_ports_table_overrides_the_default() {
-        // A transform defaults to `all`; the table overrides `payload` to `any`.
+    fn input_ports_table_opts_a_port_into_all() {
+        // The `all` barrier survives as a descriptor-level opt-in (an extension may declare it);
+        // it is never a default and no built-in declares it.
         let d = desc(NodeKind::Transform, vec!["payload"]).with_input_ports(vec![InputPort {
-            name: "payload".into(),
-            join: JoinPolicy::Any,
-        }]);
-        assert_eq!(d.join_of(None), JoinPolicy::Any); // None ⇒ primary, which is overridden
-        assert_eq!(d.join_of(Some("payload")), JoinPolicy::Any);
-        // A port not in the table still defaults to the per-kind default (all for a transform).
-        assert_eq!(d.join_of(Some("other")), JoinPolicy::All);
-
-        // A sink defaults to `any`; the table can override it back to `all` (a join-over-sink).
-        let s = desc(NodeKind::Sink, vec!["payload"]).with_input_ports(vec![InputPort {
             name: "payload".into(),
             join: JoinPolicy::All,
         }]);
-        assert_eq!(s.join_of(Some("payload")), JoinPolicy::All);
+        assert_eq!(d.join_of(None), JoinPolicy::All); // None ⇒ primary, which is opted in
+        assert_eq!(d.join_of(Some("payload")), JoinPolicy::All);
+        // A port not in the table still defaults to `any`.
+        assert_eq!(d.join_of(Some("other")), JoinPolicy::Any);
+        // An entry that (redundantly) declares `any` is honoured too.
+        let s = desc(NodeKind::Sink, vec!["payload"]).with_input_ports(vec![InputPort {
+            name: "payload".into(),
+            join: JoinPolicy::Any,
+        }]);
+        assert_eq!(s.join_of(Some("payload")), JoinPolicy::Any);
     }
 
     #[test]
