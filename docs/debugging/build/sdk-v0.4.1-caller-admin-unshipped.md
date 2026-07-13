@@ -1,9 +1,13 @@
 # SDK fix: ship `Caller.admin` (`sdk-v0.4.1`) + push the `*-v0.4.1`/`v0.4.2` tags
 
 **Date:** 2026-07-13
-**Status:** OPEN — the design shipped in-tree, the RELEASE did not. Blocks every
-downstream embedder that pins the native SDK (surfaced by `cc-app`, which cannot
-`cargo build` from published tags).
+**Status:** RESOLVED (2026-07-13) — the release shipped. `sdk-v0.4.1` is pushed on
+`NubeDev/lb-ext-sdk` (PR #3, merge `f80fa7d`) carrying `Caller.admin`; `node-v0.4.1`
+and `node-v0.4.2` are pushed on `NubeDev/lb` (PR #46, merge `56072710`). The host
+stamp was already in-tree; this release added the SDK field + the end-to-end guard
+(`native_test.rs::routed_call_stamps_admin_from_caps_not_role`) and cut the tags.
+Downstream (`cc-app`) can now drop its `[patch]` and build from the pushed tags —
+that re-verification is the remaining downstream step, run in that repo.
 **Owning repos:** `NubeDev/lb-ext-sdk` (the SDK `Caller` field) → `NubeDev/lb`
 (the host stamp + tags) → downstream drops its local `[patch]`.
 **Design of record (do NOT re-scope):**
