@@ -27,9 +27,7 @@ pub async fn run(node: &Arc<Node>, cfg: &BootConfig) {
     // gate still enforces membership; this just guarantees the dev user IS a member (provisioning, not a
     // login bypass). `seed_user: None` skips it (an embedder that provisions its own identities).
     if let Some(user) = &cfg.seed_user {
-        if let Err(e) =
-            seed_dev_identity(node, ws, user, cfg.seed_credential.as_deref()).await
-        {
+        if let Err(e) = seed_dev_identity(node, ws, user, cfg.seed_credential.as_deref()).await {
             eprintln!("boot seed for ws={ws} user={user} failed: {e}");
         }
     }

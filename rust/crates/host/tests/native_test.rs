@@ -102,7 +102,12 @@ async fn killed_sidecar_restarts_cleanly_with_no_durable_state_lost() {
     .await
     .expect("native sidecar installs + spawns");
     assert_eq!(supervised.version, "0.1.0");
-    assert_eq!(supervised.tools, vec!["echo".to_string()]);
+    // The reference sidecar declares two tools: `echo` (the workspace-identity probe) and `whoami`
+    // (the caller-identity probe added by the native-caller-identity scope).
+    assert_eq!(
+        supervised.tools,
+        vec!["echo".to_string(), "whoami".to_string()]
+    );
 
     // It answers, tagged with the injected workspace identity (the scoped env reached the child).
     let out = call_sidecar(
@@ -597,4 +602,110 @@ async fn native_artifact_installs_through_registry() {
     .await
     .ok();
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+// ---- the caller-identity frame stamps `admin` from CAPS, not the cosmetic role ----
+
+/// A routed native `call` stamps `caller.admin` into the frame, and it is derived from the caller's
+/// CAPS (`caps_hold_admin`), NOT the role enum. Proven end to end through a real child: the same
+/// `echo-sidecar` `whoami` tool reflects back the caller the host stamped. Both principals mint as
+/// `Role::Member` (lb's gateway mints every session `member`; admin power rides caps) — so the ONLY
+/// difference between the two calls is whether the token carries an admin-only cap. The admin call
+/// must see `admin: true`, the member call `admin: false`. This is the release guard for the
+/// `sdk-v0.4.1` / `node-v0.4.1` admin marker: a sidecar that keyed its row-filter bypass off `role`
+/// would treat a real admin as a member (the downstream rule-7 regression this marker fixes).
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn routed_call_stamps_admin_from_caps_not_role() {
+    let ws = "native-caller-admin";
+    let node = Node::boot().await.unwrap();
+    let launcher = OsLauncher;
+
+    // An ADMIN caller: carries an admin-only cap (`native.install`, in ADMIN_ONLY_CAPS) → the host
+    // derives `admin: true`. Its role is still the cosmetic `Member` every session gets.
+    let admin = principal(ws, &["mcp:native.install:call", "mcp:native.call:call"]);
+    // A MEMBER caller: `native.call` only, no admin-only cap → `admin: false`. Same role enum.
+    let member = principal(ws, &["mcp:native.call:call"]);
+
+    install_native(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        MANIFEST,
+        &sidecar_dir(),
+        &[],
+        1,
+    )
+    .await
+    .expect("native sidecar installs + spawns");
+
+    // The admin caller: the frame carries `admin: true`, derived from its caps.
+    let out = call_sidecar(
+        &node,
+        &launcher,
+        &admin,
+        ws,
+        "echo-sidecar",
+        "whoami",
+        "null",
+        1,
+    )
+    .await
+    .expect("whoami answers for the admin caller");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    let caller = &v["caller"];
+    assert!(
+        !caller.is_null(),
+        "the routed call must stamp a caller: {v}"
+    );
+    assert_eq!(
+        caller["sub"], "user:test",
+        "the authorized sub reached the child"
+    );
+    assert_eq!(
+        caller["ws"], ws,
+        "the caller's ws is the frame's ws (the hard wall)"
+    );
+    assert_eq!(
+        caller["role"], "member",
+        "role is cosmetic `member` even for an admin (admin power rides caps, not role)"
+    );
+    assert_eq!(
+        caller["admin"], true,
+        "an admin-only cap must derive caller.admin == true (caps-based, not role): {v}"
+    );
+
+    // The member caller (same ws + role, NO admin-only cap): `admin: false` — the marker distinguishes
+    // them where the role enum cannot.
+    let out = call_sidecar(
+        &node,
+        &launcher,
+        &member,
+        ws,
+        "echo-sidecar",
+        "whoami",
+        "null",
+        2,
+    )
+    .await
+    .expect("whoami answers for the member caller");
+    let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+    assert_eq!(
+        v["caller"]["role"], "member",
+        "same cosmetic role as the admin caller — the enum can't tell them apart"
+    );
+    assert_eq!(
+        v["caller"]["admin"], false,
+        "a member (no admin-only cap) must derive caller.admin == false (fail closed): {v}"
+    );
+
+    stop_native(
+        &node,
+        &principal(ws, &["mcp:native.stop:call"]),
+        ws,
+        "echo-sidecar",
+        3,
+    )
+    .await
+    .ok();
 }
