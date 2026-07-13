@@ -79,20 +79,29 @@ pub async fn bus_stream(
         .map_err(|e| e.into_response())?;
     let ws = principal.ws().to_string();
 
-    let sub = lb_host::bus_watch(&gw.node.bus, &principal, &ws, &q.subject)
+    let sub = lb_host::bus_watch(&gw.node.store, &gw.node.bus, &principal, &ws, &q.subject)
         .await
         .map_err(bus_status)?;
 
-    let stream = futures::stream::unfold(sub, |sub| async move {
-        let event = sub.recv().await.map(|bytes| {
-            // The payload is the JSON the publisher sent; emit it as parsed data (or the raw text).
-            let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
-            Event::default()
-                .event("message")
-                .json_data(&value)
-                .unwrap_or_else(|_| Event::default().comment("encode error"))
-        });
-        event.map(|e| (Ok(e), sub))
+    // Gap 2 (bus-watch-subject-scope, issue #49): re-check the subject-scoped grant on a bounded
+    // tick so a `grants.revoke` closes this open stream. The subscribe gate above runs once; the
+    // re-check ends the feed the first tick the grant no longer authorizes (revoke → stream close).
+    let recheck = crate::session::events::WatchRecheck::new(
+        gw.node.store.clone(),
+        principal,
+        ws,
+        q.subject.clone(),
+    );
+
+    let stream = futures::stream::unfold((sub, recheck), |(sub, mut recheck)| async move {
+        let bytes = recheck.next_authorized(&sub).await?;
+        // The payload is the JSON the publisher sent; emit it as parsed data (or the raw text).
+        let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        let event = Event::default()
+            .event("message")
+            .json_data(&value)
+            .unwrap_or_else(|_| Event::default().comment("encode error"));
+        Some((Ok(event), (sub, recheck)))
     });
 
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))

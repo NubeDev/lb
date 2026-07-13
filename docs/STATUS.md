@@ -23,7 +23,24 @@ start of any session; update it at the end of any session that changed state.
 
 ## Current stage
 
-**Just shipped (2026-07-12): the pack toolchain is published for embedders (`pack-toolchain-publish`,
+**Just shipped (2026-07-13): subject-scoped `bus.watch` grants + revoke-terminates-stream
+(`bus-watch-subject-scope`, issue #49, tagged `node-v0.4.3`).** Closes two data-isolation gaps on the
+generic bus motion plane so an embedder can stream a per-entity feed safely. **Gap 1:** a
+`bus:<subject>:watch` scoped grant (new `Action::Watch`, `Surface::Bus`, wildcard-capable) narrows
+`bus.watch` — coarse `mcp:bus.watch:call` unchanged, then "present ⇒ required, absent ⇒ open" (fully
+backward-compatible; the scoped read is a live store read, so a post-login grant authorizes on next
+subscribe). Converges the generic path with the channel `bus:chan/*:sub` subject-cap grammar onto one
+model. **Gap 2:** an open SSE stream re-checks its grant on a bounded tick (`WatchRecheck`, 3s;
+node-local, symmetric-safe) and closes when the grant is revoked — mode-sticky so revoking a caller's
+*last* grant denies (never re-opens). Additive: no WIT/ABI/SDK change; one new host file
+(`bus/scoped.rs`) + one gateway file (`events/recheck.rs`). 12 host + 2 gateway (real node/bus/gateway)
++ 5 unit tests green, incl. the mandatory capability-deny and workspace-isolation. Unblocks cc-app
+`care.feed.watch` (milestone 10) to upgrade from reach-check-at-subscribe to platform stream isolation.
+Docs: [scope](scope/bus/bus-watch-subject-scope-scope.md),
+[session](sessions/bus/bus-watch-subject-scope-session.md), public in
+`doc-site/content/public/auth-caps/auth-caps.md`.
+
+**Previously shipped (2026-07-12): the pack toolchain is published for embedders (`pack-toolchain-publish`,
 tagged `node-v0.3.3`).** `lb-devkit` + `lb-pack` dropped `publish = false` — the artifact
 packager/signing idiom is now git-tag-consumable (`cargo install --git …lb --tag node-v0.3.3 lb-pack`),
 unblocking cc-app's `make dev` wall (`cargo build -p lb-pack`: no such package). The load-bearing part

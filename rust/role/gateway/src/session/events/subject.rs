@@ -112,7 +112,7 @@ pub async fn open_subject(
             Ok(Box::pin(stream))
         }
         "bus" => {
-            let sub = lb_host::bus_watch(&gw.node.bus, principal, &ws, id)
+            let sub = lb_host::bus_watch(&gw.node.store, &gw.node.bus, principal, &ws, id)
                 .await
                 .map_err(|_| SubjectError::Denied)?;
             let stream = futures::stream::unfold(sub, |sub| async move {
@@ -122,7 +122,15 @@ pub async fn open_subject(
                     (raw_frame("message", value), sub)
                 })
             });
-            Ok(Box::pin(stream))
+            // Gap 2 (issue #49): re-check the subject-scoped grant on a bounded tick so a
+            // `grants.revoke` closes this multiplexed subscription (the connection lives on).
+            let recheck = super::recheck::WatchRecheck::new(
+                gw.node.store.clone(),
+                principal.clone(),
+                ws,
+                id.to_string(),
+            );
+            Ok(super::recheck::guard_stream(recheck, stream))
         }
         "flow-run" => {
             let watch = lb_host::watch_flow_run(&gw.node.store, &gw.node.bus, principal, &ws, id)
