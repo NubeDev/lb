@@ -15,6 +15,7 @@
 mod authorize;
 mod error;
 mod publish;
+mod scoped;
 mod subscribe;
 mod tool;
 mod watch;
@@ -22,6 +23,7 @@ mod watch;
 pub use authorize::{authorize_bus, wall_subject};
 pub use error::BusError;
 pub use publish::bus_publish;
+pub use scoped::{authorize_subject_scoped, still_scoped_authorized, WatchMode};
 pub use subscribe::BusSub;
 pub use tool::call_bus_tool;
 pub use watch::bus_watch;

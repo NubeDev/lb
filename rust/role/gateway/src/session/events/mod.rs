@@ -14,6 +14,8 @@
 //! `routes/events.rs`, thin glue over [`EventHub`].
 
 pub mod hub;
+pub mod recheck;
 pub mod subject;
 
 pub use hub::{EventHub, NoSuchConn};
+pub use recheck::{guard_stream, WatchRecheck};

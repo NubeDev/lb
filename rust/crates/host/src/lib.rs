@@ -145,7 +145,8 @@ pub use authz::{
 };
 pub use boot::{Node, NodeError};
 pub use bus::{
-    authorize_bus, bus_publish, bus_watch, call_bus_tool, wall_subject, BusError, BusSub,
+    authorize_bus, authorize_subject_scoped, bus_publish, bus_watch, call_bus_tool,
+    still_scoped_authorized, wall_subject, BusError, BusSub, WatchMode,
 };
 pub use channel::{
     call_channel_chart_pref_tool, call_channel_tool, delete, edit, history, join, post,

@@ -32,3 +32,31 @@ gets an opaque `Denied` with no existence signal.
 
 The verbs (nine): `grants.assign`, `grants.revoke`, `grants.list`, `grants.list_scoped`,
 `roles.define`, `roles.list`, `roles.delete`, `teams.create`, `teams.list`.
+
+## Subject-scoped `bus.watch` grants (per-entity motion isolation)
+
+The generic bus subscribe (`bus.watch`, backing `GET /bus/{subject}/stream` and the multiplexed
+`bus:` event subject) is gated coarsely by the workspace-wide `mcp:bus.watch:call`. That cap alone
+lets any holder in a workspace watch **any** `ext/*` subject — fine for a shared feed, wrong for a
+**per-entity** one (a live feed keyed by a child, a device, an order).
+
+A **subject-scoped grant** narrows it, converging on the channel service's `bus:chan/*:sub` idiom:
+the cap is `bus:<subject>:watch` (surface `bus`, the subject as the resource, action `watch`, with
+the usual `*`/`**` wildcards — `bus:care.feed.*:watch` matches `care.feed.leo` but not
+`other.feed.x`).
+
+- **Coarse gate unchanged.** `mcp:bus.watch:call` is still required (workspace-first, then the cap).
+- **Present ⇒ required, absent ⇒ open.** If the caller holds **no** `bus:*:watch` grant, behaviour
+  is exactly as before (every subject reachable — fully backward-compatible). If the caller holds
+  **any** `bus:*:watch` grant, they are under subject enforcement: the watched subject needs a
+  matching grant, else an opaque `Denied`. The scoped read is **live** (a store read, not the
+  token), so a grant assigned after login authorizes on the next subscribe.
+- **Revoke terminates the stream.** An open stream re-checks its grant on a bounded tick (a few
+  seconds); revoking the matching grant **closes** the stream. The requirement is anchored to the
+  grant, so revoking a caller's *last* grant denies the subject — it never silently re-opens under
+  back-compat mode.
+
+An extension mints/revokes the grant through the same generic `grants.assign` / `grants.revoke`
+verbs (above) — the cap string is opaque data to the core. Typical flow: on linking an entity to a
+principal, `grants.assign(user, "bus:<entity-subject>:watch")`; on unlinking, `grants.revoke(...)`,
+which closes any open stream within a tick.
