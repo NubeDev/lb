@@ -179,7 +179,10 @@ Real infra, no mocks (rule 4), mirroring `native-callback-transport`'s live-gate
   it once from the caller's caps (`lb_host::caps_hold_admin`, the admin-only cap delta) and hands the
   child one boolean. Additive-by-absence; a caller is only ever treated as LESS privileged if a stale
   host omits it. Surfaced downstream by `cc-app` `tests/live_node.rs` (admin reads denied because the
-  chokepoint read the cosmetic role).
+  chokepoint read the cosmetic role). **Release status:** the host stamp is in-tree but
+  `sdk-v0.4.1` / `node-v0.4.1` were never pushed — the SDK `Caller` on the published
+  `sdk-v0.4.0` still lacks the field, so downstream can't build from tags. Release fix +
+  exact steps: [`../../debugging/build/sdk-v0.4.1-caller-admin-unshipped.md`](../../debugging/build/sdk-v0.4.1-caller-admin-unshipped.md).
 - ⬜ **Does the wasm guest want the same explicit `subject` verb** for symmetry? Left as-is — the
   guest's in-process `call_with_ctx` delegation is sufficient; the `subject` arg is available to a
   guest via `host.call-tool` too, gated by the same delegation cap, if a future guest wants it.
