@@ -151,16 +151,35 @@ the implementing session from a live run.
 
 ## Open questions
 
-- Crate choices: `pdf-extract`/`lopdf` (pure Rust) vs `pdfium` bindings (better fidelity,
-  heavier/unsafe) — fixture quality decides; `calamine` for XLSX seems settled.
-- Default split policy for multi-part sources: one doc per workbook with sheet headings, or
-  per-sheet docs? (Caller-overridable either way; pick the default from real fixtures.)
-- Where does the derived-doc read-only convention live — a `derived` flag on the doc record
-  the UI/verbs respect, or convention only in v1?
-- Size caps for embedded tables (a 10k-row sheet should summarize + link, not inline) —
-  fixed cap or caller opt?
-- Does `docs.extract` accept binary-asset ids too, or media only? (Document-store's
-  attachments vs the media path — probably both, one resolver.)
+_Resolved during implementation (2026-07-13 session — see `sessions/document-store/
+doc-extraction-session.md`):_
+
+- **Crate choices → RESOLVED.** `pdf-extract` 0.7 (pure Rust, text-layer) — clean on the
+  multi-page fixture; `calamine` 0.26 (pure Rust XLSX); `csv` 1 (already in-workspace). HTML
+  → a dependency-light in-crate scanner (no `html2text`/`scraper`): HTML fidelity is
+  best-effort and the raw media is the escape hatch, so a focused tag walk is right-sized.
+  No `pdfium`/unsafe bindings in v1 (rejected as heavier/unsafe, per Risks).
+- **Default split policy → RESOLVED: `whole`.** The multi-sheet fixture reads best as one doc
+  with `## {sheet}` sections; per-sheet fragments search/backlinks. Caller-overridable
+  (`split: "per_part"`); the `part` key = sheet name → stable per-part derived doc id.
+- **Derived-doc read-only convention → v1 = convention only** (documented; no `derived` flag
+  on the doc record yet). The stable derived-doc id + the ledger make re-derivation
+  overwrite-in-place; a `rev`-conflict guard (refuse to clobber a doc whose rev moved since
+  derivation) is the honest backstop — **deferred to a follow-up** (new stub, see below).
+- **Table size caps → RESOLVED: caller opt with a default.** `ExtractOpts.max_table_cells`
+  (default 5000); past it the table truncates at a row boundary with a `_… N more rows
+  elided (source has M rows) …_` marker. The MCP verb uses the default in v1 (no per-call
+  knob yet — additive when a caller needs it).
+- **Media vs binary-asset ids → RESOLVED: media only in v1.** One resolver over the `media`
+  table (the chunked-upload path, which carries the `checksum` the ledger keys on). Extending
+  to inline `asset` ids is additive (same `derive_one`, a second id resolver) — **deferred**;
+  no real caller needs it yet.
+
+_New follow-up surfaced this session (not worked around — filed as a stub):_
+
+- **Re-extraction vs hand edits** — v1 overwrites a derived doc on re-derivation. The
+  `rev`-conflict guard + a fork-to-editable-copy verb is scoped in
+  `derived-doc-rev-guard-scope.md` (stub).
 
 ## Related
 

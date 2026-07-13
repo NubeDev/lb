@@ -1,0 +1,11 @@
+extractor: pdf-text v1
+docs: 1
+
+--- doc 0 part=None title="Quarterly Report" ---
+Quarterly Report
+Page one covers revenue.
+Total was up ten percent.
+
+Appendix
+Page two lists regions.
+North and South led sales.

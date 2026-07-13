@@ -312,6 +312,10 @@ const AUTHOR_CAPS: &[&str] = &[
     "mcp:ingest.write:call",
     // documents WRITE (a member's own shared docs).
     "mcp:assets.put_doc:call",
+    // doc extraction (doc-extraction scope): a member derives docs from their own media. The verb
+    // re-gates per-item media read + doc write, so this grant alone can't widen reach — it only
+    // opens the surface, exactly like `assets.put_doc` above.
+    "mcp:docs.extract:call",
     // generic bus PRODUCE (publish/watch a subject the member drives).
     "mcp:bus.publish:call",
     "mcp:bus.watch:call",
@@ -556,7 +560,10 @@ mod tests {
             "mcp:care.child.get:call".to_string(),
             "mcp:care.child.list:call".to_string(),
         ];
-        assert!(!caps_hold_admin(&guardian), "a guardian token must NOT read as admin");
+        assert!(
+            !caps_hold_admin(&guardian),
+            "a guardian token must NOT read as admin"
+        );
         // The single canonical marker is enough on its own.
         assert!(caps_hold_admin(&["mcp:members.manage:call".to_string()]));
         assert!(!caps_hold_admin(&[]), "an empty cap set is never admin");

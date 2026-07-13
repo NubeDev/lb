@@ -124,10 +124,12 @@ pub use approval_reactor::{
     held_effect_id, react_to_approval_releases, spawn_approval_reactors, ApprovalReleasePass,
 };
 pub use assets::{
-    add_member, backlinks, call_asset_tool, delete_asset, delete_doc, deprecate_skill, get_asset,
-    get_doc, grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill,
-    put_asset, put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError,
-    SkillCatalogEntry, SkillTier, MAX_ASSET_BYTES,
+    add_member, backlinks, call_asset_tool, call_docs_tool, delete_asset, delete_doc,
+    deprecate_skill, docs_extract, extract_descriptor, get_asset, get_doc, get_extraction,
+    grant_skill, link_doc, list_assets, list_docs, list_granted_skills, load_skill, put_asset,
+    put_doc, put_skill, revoke_skill, share_doc, unshare_doc, AssetError, ExtractRequest,
+    ExtractResult, ExtractSvcError, Extraction, ItemOutcome, SkillCatalogEntry, SkillTier,
+    DERIVED_FROM, EXTRACTION_TABLE, MAX_ASSET_BYTES,
 };
 // Core-skill boot seeder (core-skills scope): the node binary calls `seed_core_skills` at boot to
 // write the embedded corpus into the reserved system namespace. Re-exported so the binary reaches it
