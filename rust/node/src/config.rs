@@ -241,7 +241,9 @@ impl BootConfig {
             // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
             // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
             // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
-            seed_credential: std::env::var("LB_SEED_PASSWORD").ok().filter(|s| !s.is_empty()),
+            seed_credential: std::env::var("LB_SEED_PASSWORD")
+                .ok()
+                .filter(|s| !s.is_empty()),
         }
     }
 }

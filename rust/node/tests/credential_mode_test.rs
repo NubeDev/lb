@@ -76,7 +76,11 @@ async fn login(gw: &Gateway, user: &str, ws: &str, secret: &str) -> String {
         ))
         .await
         .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK, "login {user}@{ws} expected 200");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "login {user}@{ws} expected 200"
+    );
     let reply = json_body(resp).await;
     reply["token"].as_str().unwrap().to_string()
 }
@@ -154,7 +158,10 @@ async fn boot_full_default_mode_is_password_less() {
     // Default-constructed config → DevTrustAny; a login with any (or no) secret 200s.
     let (gw, _seeder) = boot_gateways(CredentialMode::DevTrustAny).await;
     let token = login(&gw, "user:ada", "acme", "anything").await;
-    assert!(!token.is_empty(), "DevTrustAny mints a token with any secret");
+    assert!(
+        !token.is_empty(),
+        "DevTrustAny mints a token with any secret"
+    );
     assert_eq!(
         login_status(&gw, "user:ada", "acme", "").await,
         StatusCode::OK,
@@ -182,7 +189,10 @@ async fn boot_full_seeds_the_dev_admin_credential_for_password_hash() {
     // The seeded admin logs in with the seeded password → 200 + token (was impossible: no admin
     // could authenticate to set its own credential under PasswordHash before this).
     let token = login(&gw, "user:ada", "acme", "dev-admin-pw").await;
-    assert!(!token.is_empty(), "seeded admin logs in with the seeded password");
+    assert!(
+        !token.is_empty(),
+        "seeded admin logs in with the seeded password"
+    );
     // Wrong password still 401s — the seed sets a REAL argon2 credential, not a bypass.
     assert_eq!(
         login_status(&gw, "user:ada", "acme", "WRONG").await,
