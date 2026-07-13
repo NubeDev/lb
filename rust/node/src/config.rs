@@ -36,6 +36,30 @@ pub enum GatewayMode {
     Addr(SocketAddr),
 }
 
+/// Which credential check `POST /login` runs before minting a token (embedder-credential-mode
+/// scope — the embed-seam completion of login-hardening). The gateway already ships two checks
+/// behind the `CredentialCheck` trait; this selects which one a `boot_full` node installs, through
+/// the existing `Gateway::with_credential_check` seam. Selecting it here (a `BootConfig` field) is
+/// what lets an embedded node run **real** password login — before this, `builder.rs` hardwired
+/// `DevTrustAny` and an embedded `POST /login` accepted any password.
+///
+/// `Default` is [`DevTrustAny`](CredentialMode::DevTrustAny) — the back-compat embed default, so
+/// every existing embedder and `boot_full`-based test keeps today's password-less login until it
+/// opts in. `from_env()` differs on purpose: it mirrors the standalone binary's `LB_DEV_LOGIN`
+/// rule (unset ⇒ `PasswordHash`), reproducing the `node` binary exactly.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CredentialMode {
+    /// Password-less: trust any `(user, workspace)` with no secret (today's `boot_full` default,
+    /// and the standalone binary's `LB_DEV_LOGIN=1` mode). Dev/CI only — the token is still
+    /// role-scoped, so a dev member is not an admin.
+    #[default]
+    DevTrustAny,
+    /// The real check: argon2 against the stored per-`(ws, user)` credential. A wrong/absent secret
+    /// `401`s with no token (the standalone binary's `LB_DEV_LOGIN`-unset mode).
+    PasswordHash,
+}
+
 /// The in-house agent model config — the `ModelEndpoint` shape (provider / model / api-key-env NAME /
 /// base-url). Names only: `api_key_env` is the NAME of an env var holding the key, never the key value.
 /// `None` provider ⇒ the honest [`UnconfiguredModel`](lb_host::UnconfiguredModel) is kept.
@@ -128,6 +152,25 @@ pub struct BootConfig {
     /// spawns with logging no-op providers, so effects drain and boot never crashes for lack of
     /// delivery config. An embedder fills these with real adapters.
     pub outbox_providers: OutboxProviders,
+
+    /// Which credential check `POST /login` runs before minting (embedder-credential-mode scope).
+    /// Additive: `Default` is [`CredentialMode::DevTrustAny`] — today's `boot_full` password-less
+    /// behaviour, so no existing embedder breaks. An embedder sets [`CredentialMode::PasswordHash`]
+    /// to enforce real passwords (argon2 against the stored credential); `from_env()` derives it
+    /// from `LB_DEV_LOGIN` to reproduce the standalone binary. Applied through
+    /// `Gateway::with_credential_check` in the builder's `GatewayMode::Addr` arm; irrelevant when
+    /// the gateway is `Off` (no login route).
+    pub credential_mode: CredentialMode,
+
+    /// An optional password to seed for the dev [`seed_user`](Self::seed_user) at boot, so a node
+    /// running [`CredentialMode::PasswordHash`] has a first admin who can actually log in (the
+    /// bootstrap-paradox fix: `identity.set_credential` needs an admin token, but no admin can
+    /// authenticate until a credential exists). `Some(non-empty)` ⇒ the boot seed argon2-hashes it
+    /// into the seed user's credential record (idempotent, alongside the membership seed). `None`
+    /// (the default) seeds no credential — correct for `DevTrustAny` nodes (password-less) and for
+    /// an embedder that provisions credentials its own way. Secret-class: filled at the binary
+    /// boundary, hashed before write, never logged (mirrors `signing_key`'s custody).
+    pub seed_credential: Option<String>,
 }
 
 impl Default for BootConfig {
@@ -152,6 +195,12 @@ impl Default for BootConfig {
             // binary is untouched); an embedder sets an absolute path to relocate the ext-UI serve dir.
             ext_ui_dir: None,
             outbox_providers: OutboxProviders::default(),
+            // Back-compat embed default: password-less. An embedder opts into `PasswordHash`
+            // explicitly; `from_env()` (below) derives it from `LB_DEV_LOGIN` for the binary.
+            credential_mode: CredentialMode::DevTrustAny,
+            // No seed password by default — a `DevTrustAny` node needs none, and an embedder fills
+            // this only when it boots `PasswordHash` and wants the dev admin to be able to log in.
+            seed_credential: None,
         }
     }
 }
@@ -183,7 +232,28 @@ impl BootConfig {
             // The binary configures no real delivery providers today — the relay drains through
             // the logging no-ops. Real adapters come from an embedder filling the struct.
             outbox_providers: OutboxProviders::default(),
+            // Mirror the standalone gateway's `credential_check_from_env`: `LB_DEV_LOGIN` set/
+            // non-empty ⇒ `DevTrustAny` (password-less dev/CI), unset ⇒ `PasswordHash` (the real
+            // argon2 check). This reproduces the `node` binary exactly — the binary's default is
+            // password-enforcing, unlike the embed `Default` which stays `DevTrustAny` for
+            // back-compat.
+            credential_mode: credential_mode_from_env(),
+            // Optional dev-admin seed password (`LB_SEED_PASSWORD`) — so a `PasswordHash` binary
+            // has a first admin who can log in. Absent ⇒ no credential seeded (correct for a
+            // `DevTrustAny` binary). Secret-class: read here, hashed at seed time, never logged.
+            seed_credential: std::env::var("LB_SEED_PASSWORD").ok().filter(|s| !s.is_empty()),
         }
+    }
+}
+
+/// Map `LB_DEV_LOGIN` to a [`CredentialMode`], matching the standalone gateway's
+/// `credential_check_from_env` rule: set/non-empty ⇒ `DevTrustAny`, unset/empty ⇒ `PasswordHash`.
+/// Only `from_env` (the binary boundary) reads this env — the field carries the choice below the
+/// boot seam so no library code re-reads env.
+fn credential_mode_from_env() -> CredentialMode {
+    match std::env::var("LB_DEV_LOGIN") {
+        Ok(v) if !v.trim().is_empty() => CredentialMode::DevTrustAny,
+        _ => CredentialMode::PasswordHash,
     }
 }
 

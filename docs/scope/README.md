@@ -101,6 +101,10 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   suspend/resume**, and **model-activated skills** (the model picks from a granted catalog). Opens up
   the S5 black-box loop; ideas reviewed from the Awaken framework, its plugin framework rejected.
 - `ai-gateway/` — the swappable model-access sidecar (S5).
+- `embeddings/` — the doc→vector pipeline: `Provider::embed` on the ai-gateway contract, a
+  chunk→embed→HNSW indexer over the document store (reactor + `docs.reindex` job), and a hybrid
+  `docs.search` verb (metadata filter + KNN, results re-gated per doc read reach). Vectors are
+  derived, rebuildable, never synced; model + dimension pinned per index, migration = explicit job.
 - `observability/`, `audit/`, `undo/` — the **three cross-cutting projections of the host dispatch
   chokepoint** (README §6.5/§6.6), scoped together as the S10 retrofit: `observability/` (structured
   logs + distributed traces + metrics, emitted everywhere with a `trace_id` that survives the routed
@@ -327,6 +331,12 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   cellular, server-side variants (thumb/preview) as a durable job, and a capability-checked
   streaming `GET /media/{id}` with Range/ETag — all on SurrealDB buckets, rule 2 intact; the
   generic binary path under document-store attachments and any feed of daily photos).
+  `document-store/` also holds `doc-extraction-scope.md`: the **binary→markdown derivation seam** —
+  a per-mime `Extractor` registry (PDF text-layer, XLSX/CSV, HTML; pure, offline, no network) run
+  as a `docs.extract` **job** that derives markdown docs from media, with a `derived_from` edge to
+  the original, an extraction ledger (`checksum + extractor@version`, idempotent re-runs, in-place
+  re-derivation on version bumps so links/embeddings survive), and caller-supplied tags/visibility
+  (core knows mimes, never domains). Completes file→doc→vector→search with `embeddings/`.
 - `host-tools/` — built-in, cross-platform `host.*` MCP introspection verbs for facts about the node a
   call runs on: **networking** (`host.net.info`/`host.net.reach`), **timezone** (`host.time.now`/
   `host.time.zones`), **files** (`host.fs.stat`/`host.fs.list` — node-filesystem **metadata**, *not*
@@ -367,6 +377,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   through the dashboard's `WidgetView`/`views/*` renderers + host-mediated bridge, leashed to the viewer's
   grant. Generative UI (JSX `template`, future A2UI/JSON-render) is one more sandboxed `view`, not a base
   layer; forms/wizards are the palette arg-rail over a versioned `x-lb` widget enum.
+- `calendar/` — workspace / team / user **calendars** with shareable events (`calendar-scope.md`):
+  a Gmail-style calendar as one native (Tier-2) extension — RFC 5545 recurring events (canonical
+  event + `rrule`-materialized occurrence window, never expanded at read time), per-calendar reach
+  via **entity-scoped grants** (team share = one `team:{id}` grant), invites as an attendee
+  PARTSTAT/sequence state machine (RFC 5546) with must-deliver outbox notifications, event
+  reminders as `lb-jobs` `run_at` jobs (no new scheduler), keyset-paged merged `events.range`,
+  a `watch` live feed, and `.ics` import (job) / export via the `icalendar` crate.
 - `widgets/` — the **system-wide widget platform** umbrella (`widget-platform-scope.md`): a widget is one
   `{view,source|data,options,action,tools}` envelope, one renderer (`WidgetView`) across dashboards,
   channels, and the app. Maps the four widget sources (built-in views, **tool result-renders** — e.g. the
@@ -379,6 +396,13 @@ A feature reads top-to-bottom across folders: `scope/<topic>/` → `sessions/<to
   outbox `Target`** — per-member `device` registrations (FCM/APNs/WebPush) + a generic opaque
   notification effect fanned out behind one `PushProvider` trait, token-gone auto-eviction, a prefs
   quiet-hours gate; the outbox already owns durability/retry, so this is a target, not a service).
+  Also holds `mail-source-scope.md` (**inbound email as a generic producer**, receive-only):
+  `mail.source.*` CRUD with credentials as a **secrets path** (never values), a durable poll job
+  per source (IMAP v1 behind one `MailFetch` trait; UID cursor, Message-ID ledger, resumable,
+  node-claimed) running as a narrow per-source api-key principal, normalizing each message to the
+  existing surfaces — raw `.eml` as media, body as a markdown doc, attachments through
+  `docs.extract` — plus an arrival bus event; routing/tagging policy stays caller-side (rules),
+  sender allowlist/quarantine ships v1. Sending stays the outbox's job.
 - `ingest/` — a generic buffered read/write surface for high-volume external data; the cloud-side
   ingest buffer (the read-side analog of the outbox). Stays domain-free — IoT is one caller (S9).
   Also holds `webhooks-scope.md` — a first-class inbound-HTTP surface (keyed like an API key,

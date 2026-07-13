@@ -80,8 +80,13 @@ pub struct Caller {
     pub sub: String,
     /// The workspace the call is scoped to (the hard wall).
     pub ws: String,
-    /// The caller's role, lower-cased (`super-admin` / `workspace-admin` / `member`).
+    /// The caller's role, lower-cased (`super-admin` / `workspace-admin` / `member`). **Cosmetic —
+    /// do NOT authorize on this** (lb mints every session as `member`; admin power rides caps). Use
+    /// [`admin`](Self::admin).
     pub role: String,
     /// True when the caller is itself a derived (on-behalf-of) principal.
     pub delegated: bool,
+    /// True when the caller holds workspace-admin authority (host-derived from caps, not the role
+    /// enum). Mirror of `lb_supervisor::Caller::admin` — see it for the full contract.
+    pub admin: bool,
 }

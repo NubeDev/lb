@@ -129,5 +129,6 @@ fn project(c: lb_runtime::Caller) -> Caller {
         ws: c.ws,
         role: c.role,
         delegated: c.delegated,
+        admin: c.admin,
     }
 }

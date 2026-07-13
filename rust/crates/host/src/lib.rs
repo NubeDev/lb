@@ -206,7 +206,7 @@ pub use brand::{
     BrandColors, BrandError, BrandFonts, BrandSummary,
 };
 pub use credential::{
-    call_credential_tool, credential_verify, identity_set_credential, CredentialCheck,
+    call_credential_tool, credential_verify, hash_secret, identity_set_credential, CredentialCheck,
     CredentialError,
 };
 pub use host_tools::{

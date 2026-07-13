@@ -632,6 +632,8 @@ async fn build_call_context(
             ws: caller.ws().to_string(),
             role: role_wire(caller.role()).to_string(),
             delegated: caller.owner_sub() != caller.sub(),
+            // Admin is caps-based, not the (cosmetic) role enum (native-caller-identity scope).
+            admin: crate::authz::caps_hold_admin(caller.caps()),
         }),
     })
 }

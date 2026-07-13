@@ -100,10 +100,24 @@ pub struct Caller {
     /// hard wall; a `subject` derived from this can only ever resolve within it).
     pub ws: String,
     /// The caller's role (`super-admin` / `workspace-admin` / `member`), lower-cased on the wire.
+    ///
+    /// **Cosmetic — do NOT authorize on this.** lb's gateway mints EVERY session as `member`
+    /// regardless of authority (admin power rides caps, not the role enum; see
+    /// `lb-role-gateway::session::credentials`). A sidecar that needs to know whether the caller is
+    /// an admin must read [`admin`](Self::admin), which the host derives from the caller's caps.
     pub role: String,
     /// True when the caller is itself a *derived* (on-behalf-of) principal — an agent acting for a
     /// user, or a re-entrant host-callback chain. A child MAY treat a delegated caller more
     /// conservatively; it is a marker, never additional authority.
     #[serde(default)]
     pub delegated: bool,
+    /// True when the caller holds workspace-admin authority — the host derives it from the caller's
+    /// caps (`lb_host::caps_hold_admin`, keyed on the admin-only cap delta), NOT from the cosmetic
+    /// [`role`](Self::role) claim. This is the signal a native sidecar reads to grant an admin the
+    /// row-filter bypass (native-caller-identity scope): admin-ness is caps-based in lb, and the
+    /// minimal frame projection carries no caps, so the host resolves it once and hands the child
+    /// this boolean. Additive-by-absence: an old host omits it (defaults `false`), so an
+    /// admin-unaware child is unaffected and a caller is only ever treated as LESS privileged.
+    #[serde(default)]
+    pub admin: bool,
 }
