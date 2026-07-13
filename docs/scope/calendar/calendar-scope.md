@@ -231,23 +231,37 @@ fakes (`rrule`/`icalendar` are in-process libraries, nothing to fake):
   rows; that's fine for an indexed range scan, but the import job and top-up tick must
   batch writes (`write_batch`) and page, never load a calendar into memory.
 
-## Open questions
+## Open questions — RESOLVED (v1 shipped 2026-07-13, `lb-extensions/extensions/calendar`)
 
-1. **Merged-view default:** does `calendar.events.range` with no `calendars` filter
-   return *all reachable* calendars (proposed) or require an explicit list? (Proposed:
-   all reachable via one `scope_filter` call — it's the Gmail default.)
-2. **Event-level reach for attendees:** confirm the chokepoint checks the attendee edge
-   live (proposed) rather than minting a per-event scoped grant per invitee (grant-store
-   churn; revocation on cancel gets messy).
-3. **`apply_to: following`** — split into a second event (Google's model, proposed) or
-   store as an UNTIL + new-rule pair inside one event? Decide during build with the
-   override representation.
-4. **Default reminder offsets:** per-calendar setting with per-event override (proposed)
-   — and do they ride `prefs` axes for the user default, or stay calendar records?
-5. **Where the extension lives:** out-of-tree in `lb-extensions` (the platform posture)
-   or in the private product repo? Decides where these docs co-locate after v1 ships.
-6. **Widget:** ship a dashboard "agenda / upcoming" `[[widget]]` in v1 or defer? (Cheap
-   with frames-in; proposed: v1, it's the demo surface.)
+1. **Merged-view default → RESOLVED: all reachable.** `calendar.events.range` with no `calendars`
+   filter returns all reachable calendars (one `scope_filter` call) PLUS events the caller is a live
+   attendee of. An explicit `calendars` list is a scoped read (no attendee widening).
+2. **Event-level reach for attendees → RESOLVED: live edge check.** The chokepoint checks the
+   `cal_attendee` edge live (both single `event.get` and the merged `events.range`), NOT a per-event
+   grant. (A regression bug where the merged range missed the edge was caught by the live run + fixed.)
+3. **`apply_to: following` → RESOLVED: second-event split (Google's model).** Cap the original rule
+   with `UNTIL` at the split; create a `{id}-fwd-{ts}` event carrying the edited tail.
+4. **Default reminder offsets → RESOLVED: calendar record + per-event override, no prefs axis in v1.**
+   `cal_calendar.default_reminder_offsets`, overridable per event via `reminder_offsets`.
+5. **Placement → RESOLVED: out-of-tree in `lb-extensions`.** Standalone project, production graph pins
+   only the published SDK (`lb-ext-native`, sdk-v0.4.0); no `lb` deps. (Real-node tests use a dev-only
+   git dep on lb until a published `lb-ext-testkit` exists.)
+6. **Agenda widget → RESOLVED: v1 (blueprint).** Specified in `ui/README.md`; buildable once
+   `@nube/ext-ui-sdk` publishes (unpublished this session — Rule 9 forbids faking it).
+
+### New findings (platform gaps surfaced building v1 — follow-ups, not calendar-specific)
+
+- **No extension-facing SCHEMAFULL/DEFINE-INDEX seam.** The four tables ride the generic
+  `store.write`/`store.query` verbs as SCHEMALESS records (typed structs, `store.query`-able, bounded
+  range scan) — "SCHEMAFULL + indexed" is met functionally, not literally. A published
+  `store.define_schema` / migration hook would close the gap.
+- **No native extension-watch seam** → `calendar.watch` (live feed) is declared but not wired; poll
+  `events.range` (a missed frame heals on the next read).
+- **No `jobs.*` callback seam** → `ics.import` runs inline (per-item results) rather than as a durable
+  job.
+- **`store.query` rejects `ORDER BY`/`LIMIT`** inside its bounding wrapper → `events.range` sorts +
+  keyset-pages in Rust over the window-bounded set (fine for v1; a bounded server-side ORDER BY would
+  let it page past the host row cap in one span).
 
 ## Related
 
