@@ -910,6 +910,11 @@ const HOST_TOOLS: &[HostTool] = &[
     },
     // channel.* — the host's messaging plane (rules-messaging scope).
     HostTool {
+        tool: "channel.create",
+        group: "channel",
+        description: "register a channel so it is listable before the first post (bus pub cap re-checked)",
+    },
+    HostTool {
         tool: "channel.post",
         group: "channel",
         description: "post a message to a channel (bus cap re-checked per channel)",
