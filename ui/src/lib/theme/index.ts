@@ -30,6 +30,7 @@ export {
   type ThemePreference,
   type ThemeRadius,
 } from "./theme-options";
+export { resolveEffectiveMode } from "./theme-dom";
 export {
   BASE_TOKENS,
   REQUIRED_TOKENS,

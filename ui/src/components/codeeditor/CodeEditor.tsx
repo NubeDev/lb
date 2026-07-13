@@ -9,6 +9,7 @@ import { forwardRef, useContext, useImperativeHandle } from "react";
 import CodeMirror, { type ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import type { Extension } from "@codemirror/state";
 
+import { resolveEffectiveMode } from "@/lib/theme/theme-dom";
 import { ThemeContext } from "@/lib/theme/theme-context";
 
 import { useEditorInsert } from "./useEditorInsert";
@@ -46,7 +47,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   // its built-in light theme, so the editor stays white on the shell's dark surface. Read the context
   // directly (not the throwing `useTheme` hook) so this shared editor also renders outside a
   // ThemeProvider (e.g. isolated tests), defaulting to light.
-  const mode = useContext(ThemeContext)?.theme.mode ?? "light";
+  const mode = resolveEffectiveMode(useContext(ThemeContext)?.theme.mode ?? "light");
 
   return (
     <CodeMirror

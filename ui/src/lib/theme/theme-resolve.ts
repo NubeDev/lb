@@ -11,11 +11,12 @@ import { adaptPreset } from "./preset-adapter";
 import { isBuiltinPreset, type ThemePreference } from "./theme-options";
 import { THEME_PRESETS } from "./theme-presets.data";
 import type { BasePalette } from "./theme-tokens";
+import { resolveEffectiveMode } from "./theme-dom";
 
 /** The base palette to write inline for `pref` in the active mode, or null when the preference is a
  *  built-in accent (which needs no inline write — `globals.css` + `data-theme-accent` own it). */
 export function resolvePalette(pref: ThemePreference): BasePalette | null {
-  const mode = pref.mode;
+  const mode = resolveEffectiveMode(pref.mode);
   if (pref.custom) return pref.custom[mode];
   if (pref.imported) return pref.imported[mode];
 

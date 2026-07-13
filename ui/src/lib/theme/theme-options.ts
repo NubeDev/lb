@@ -13,7 +13,7 @@ import { fontById } from "./theme-fonts.data";
 import { lookById } from "./theme-looks.data";
 import { isValidHex } from "./icon-colors.data";
 
-export const THEME_MODES = ["dark", "light"] as const;
+export const THEME_MODES = ["dark", "light", "system"] as const;
 export type ThemeMode = (typeof THEME_MODES)[number];
 
 /** The five corner-radius stops the Customizer exposes; each is a CSS length written to `--radius`. */
@@ -112,7 +112,7 @@ export interface ThemePreference {
 }
 
 export const DEFAULT_THEME: ThemePreference = {
-  mode: "dark",
+  mode: "system",
   preset: "teal",
   radius: "0.5rem",
   layout: DEFAULT_LAYOUT,
@@ -124,6 +124,7 @@ export const THEME_STORAGE_KEY = "lb.theme";
 export const THEME_MODE_OPTIONS: ReadonlyArray<{ value: ThemeMode; label: string }> = [
   { value: "dark", label: "Dark" },
   { value: "light", label: "Light" },
+  { value: "system", label: "System" },
 ];
 
 export const THEME_RADIUS_OPTIONS: ReadonlyArray<{ value: ThemeRadius; label: string }> = [

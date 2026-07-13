@@ -28,16 +28,29 @@ function renderToggle() {
 }
 
 describe("StatusBarModeToggle", () => {
-  it("renders a Sun button in dark mode that switches to light on click", async () => {
-    // DEFAULT_THEME.mode is "dark" — the toggle offers the opposite move (to light).
-    expect(DEFAULT_THEME.mode).toBe("dark");
+  it("cycles system → dark → light → system on successive clicks", async () => {
+    expect(DEFAULT_THEME.mode).toBe("system");
     renderToggle();
-    const btn = screen.getByRole("button", { name: /switch to light mode/i });
-    // dark is the active press state
-    expect(btn).toHaveAttribute("aria-pressed", "true");
+    const btn = screen.getByRole("button", { name: /switch to dark mode/i });
+    // system is active, but "dark" is not pressed
+    expect(btn).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(btn);
-    // The provider reflects the new mode, and the button now offers the move back to dark.
+    // After the first click: "system" → "dark"; button now offers the move to light.
+    expect(screen.getByTestId("probe")).toHaveTextContent("dark");
+    expect(screen.getByRole("button", { name: /switch to light mode/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /switch to light mode/i }));
+    // After the second click: "dark" → "light"; button now offers the move to system.
     expect(screen.getByTestId("probe")).toHaveTextContent("light");
+    expect(screen.getByRole("button", { name: /switch to system mode/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /switch to system mode/i }));
+    // After the third click: "light" → "system"; back to start.
+    expect(screen.getByTestId("probe")).toHaveTextContent("system");
     expect(screen.getByRole("button", { name: /switch to dark mode/i })).toHaveAttribute(
       "aria-pressed",
       "false",
