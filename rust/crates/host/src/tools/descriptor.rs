@@ -65,6 +65,9 @@ pub(crate) fn host_descriptors() -> Vec<ToolDescriptor> {
         // The channel write (channel-widgets scope) — schema'd so a model can form the call; the
         // name-only row left the live agent guessing arg names ("missing arg: cid" × a whole run).
         crate::channel::post_descriptor(),
+        // The channel register verb (collaboration scope) — makes a channel `channel.list`-visible
+        // before the first post. Reuses the channel `pub` gate (no new cap), like `channel_create`.
+        crate::channel::create_descriptor(),
         // The doc-extraction verb (doc-extraction scope). Named `docs.extract` on purpose: the
         // catalog gates each tool on `authorize_tool(principal, ws, <name>)`, so the verb's own
         // `mcp:docs.extract:call` gate decides its visibility — no new cap, no `if` in the catalog.

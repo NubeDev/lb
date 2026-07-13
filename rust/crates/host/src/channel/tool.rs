@@ -32,6 +32,18 @@ pub async fn call_channel_tool(
     input: &Value,
 ) -> Result<Value, ToolError> {
     match qualified_tool {
+        "channel.create" => {
+            // Explicitly register a channel so it is `channel.list`-visible before the first post.
+            // Reuses the channel `pub` gate inside `channel_create` (creating is "may I post here"),
+            // so a caller holding `bus:chan/{cid}:pub` is authorized and one without is DENIED (not
+            // NotFound). Idempotent on `cid`: create-then-create settles (upsert).
+            let cid = arg_str(input, "cid")?;
+            let ts = input.get("ts").and_then(Value::as_u64).unwrap_or(0);
+            let record = crate::channel_create(&node.store, principal, ws, cid, ts)
+                .await
+                .map_err(chan_err)?;
+            serde_json::to_value(record).map_err(|e| ToolError::Extension(e.to_string()))
+        }
         "channel.post" => {
             // `channel` accepted as an alias (models guess it); a miss names WHERE the cid comes
             // from — the live run burned 13 turns on a bare "missing arg: cid" (2026-07-06).
@@ -136,6 +148,26 @@ pub fn post_descriptor() -> lb_mcp::ToolDescriptor {
                 "body": { "type": "string", "x-lb": { "label": "Body", "description": "The message text, or a rich_result render envelope serialized as ONE JSON string (see the channel-widgets skill)" } }
             },
             "required": ["cid", "id", "body"]
+        })),
+        result: None,
+    }
+}
+
+/// The `channel.create` descriptor — catalog parity with [`post_descriptor`]. Create reuses the
+/// channel `pub` gate (no new cap), so its visibility is decided by `mcp:channel.create:call`.
+pub fn create_descriptor() -> lb_mcp::ToolDescriptor {
+    lb_mcp::ToolDescriptor {
+        emits_external: false,
+        name: "channel.create".to_string(),
+        title: "Create (register) a channel".to_string(),
+        group: "channel".to_string(),
+        input_schema: Some(json!({
+            "type": "object",
+            "properties": {
+                "cid": { "type": "string", "x-lb": { "label": "Channel id", "description": "The channel id to register; listable immediately, before any post. Idempotent (re-creating upserts)" } },
+                "ts": { "type": "integer", "x-lb": { "label": "Timestamp", "description": "The caller's logical clock (any increasing integer)" } }
+            },
+            "required": ["cid"]
         })),
         result: None,
     }

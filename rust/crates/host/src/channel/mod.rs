@@ -52,7 +52,7 @@ pub(crate) use payload::{
 pub use post::post;
 pub use presence::{join, watch, ChannelPresence, PresenceFeed};
 pub use subscribe::{subscribe_channel, ChannelSub};
-pub use tool::{call_channel_tool, post_descriptor};
+pub use tool::{call_channel_tool, create_descriptor, post_descriptor};
 
 // Re-export the bus-key helpers crate-internally so the sync layer publishes/subscribes on the
 // EXACT same keys `post`/`subscribe_channel` use — they cannot drift (one owner, `key.rs`).

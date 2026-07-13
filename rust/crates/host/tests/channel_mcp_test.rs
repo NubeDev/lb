@@ -40,6 +40,7 @@ fn full_caps() -> Vec<&'static str> {
     vec![
         "bus:chan/*:pub",
         "bus:chan/*:sub",
+        "mcp:channel.create:call",
         "mcp:channel.post:call",
         "mcp:channel.history:call",
         "mcp:channel.edit:call",
@@ -143,6 +144,87 @@ async fn post_history_edit_delete_list_roundtrip() {
     .await
     .unwrap();
     assert_eq!(hist["messages"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn create_makes_channel_listable_before_any_post_and_is_idempotent() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    let p = principal("user:ada", "acme", &full_caps());
+
+    // CREATE a channel — no post yet.
+    let rec = call(
+        &node,
+        &p,
+        "acme",
+        "channel.create",
+        json!({ "cid": "care-child-7", "ts": 1 }),
+    )
+    .await
+    .expect("create ok");
+    assert_eq!(
+        rec["cid"].as_str().or_else(|| rec["id"].as_str()),
+        Some("care-child-7"),
+        "create returns the descriptor: {rec:?}"
+    );
+
+    // LIST surfaces it immediately, before any post.
+    let list = call(&node, &p, "acme", "channel.list", json!({}))
+        .await
+        .expect("list ok");
+    let cids: Vec<&str> = list["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["cid"].as_str().or_else(|| c["id"].as_str()))
+        .collect();
+    assert!(
+        cids.contains(&"care-child-7"),
+        "created channel listed before any post: {list:?}"
+    );
+
+    // IDEMPOTENT — create-then-create settles (no error).
+    call(
+        &node,
+        &p,
+        "acme",
+        "channel.create",
+        json!({ "cid": "care-child-7", "ts": 2 }),
+    )
+    .await
+    .expect("re-create idempotent");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn create_denied_without_pub_cap_is_opaque() {
+    let node = Arc::new(Node::boot().await.expect("node boots"));
+    // Holds the MCP door but NOT `bus:chan/*:pub` — must DENY, not NotFound.
+    let p = principal(
+        "user:eve",
+        "acme",
+        &[
+            "bus:chan/*:sub",
+            "mcp:channel.create:call",
+            "mcp:channel.list:call",
+        ],
+    );
+    let err = call(
+        &node,
+        &p,
+        "acme",
+        "channel.create",
+        json!({ "cid": "care-child-7" }),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(err, ToolError::Denied), "opaque deny, got {err:?}");
+    // NO channel was registered.
+    let list = call(&node, &p, "acme", "channel.list", json!({}))
+        .await
+        .expect("list ok");
+    assert!(
+        list["channels"].as_array().unwrap().is_empty(),
+        "no channel registered on deny: {list:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
