@@ -17,6 +17,29 @@ fn sample(series: &str, producer: &str, seq: u64, payload: serde_json::Value, qo
     }
 }
 
+/// Like [`sample`], but with `ts` set INDEPENDENTLY of `seq`.
+///
+/// `sample` above ties `ts: seq`, so the two axes can never disagree there — which is why no test in
+/// this file could catch an ordering bug between them. The whole point of a producer restart is that
+/// they DO disagree: seq goes backwards while the clock goes forwards.
+fn sample_at(
+    series: &str,
+    producer: &str,
+    seq: u64,
+    ts: u64,
+    payload: serde_json::Value,
+) -> Sample {
+    Sample {
+        series: series.into(),
+        producer: producer.into(),
+        ts,
+        seq,
+        payload,
+        labels: serde_json::json!({}),
+        qos: Qos::BestEffort,
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn write_commit_read_round_trips_typed() {
     let store = Store::memory().await.unwrap();
@@ -49,6 +72,85 @@ async fn write_commit_read_round_trips_typed() {
 
     let last = latest(&store, "acme", "cpu").await.unwrap().unwrap();
     assert_eq!(last.seq, 2);
+}
+
+/// A producer whose in-memory `seq` restarts at 0 (any restarted process) must not pin
+/// `series.latest` to its PRE-restart sample.
+///
+/// `latest` ordered by `seq DESC` across the whole series, but `seq` is monotonic per
+/// `(series, producer)` ONLY — across producers those are two unrelated scales. So a new stream's
+/// seq=0,1,2… lost to the old stream's seq=807 forever: a live meter read a stale value for hours
+/// while fresh samples landed underneath it. `ts` is the only axis the streams share.
+///
+/// Found live in ems, not by a test: a FRESH series has no prior epoch, so no green e2e run could
+/// reproduce it — only a series that outlives a sidecar restart, i.e. every real one.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_follows_wall_clock_across_a_producer_restart() {
+    let store = Store::memory().await.unwrap();
+
+    // Epoch 1 ran a long time: its seq climbed high.
+    let old = vec![
+        sample_at(
+            "v",
+            "ext:modbus/net@1",
+            806,
+            1_000,
+            serde_json::json!(230.0),
+        ),
+        sample_at(
+            "v",
+            "ext:modbus/net@1",
+            807,
+            1_001,
+            serde_json::json!(230.9),
+        ),
+    ];
+    write(&store, "acme", &old, 0).await.unwrap();
+    commit_batch(&store, "acme", 100).await.unwrap();
+    assert_eq!(latest(&store, "acme", "v").await.unwrap().unwrap().seq, 807);
+
+    // Epoch 2: the process restarted — seq resets to 0, but the clock moved FORWARD.
+    let new = vec![
+        sample_at("v", "ext:modbus/net@2", 0, 9_000, serde_json::json!(239.8)),
+        sample_at("v", "ext:modbus/net@2", 1, 9_001, serde_json::json!(240.1)),
+    ];
+    write(&store, "acme", &new, 0).await.unwrap();
+    commit_batch(&store, "acme", 100).await.unwrap();
+
+    let last = latest(&store, "acme", "v").await.unwrap().unwrap();
+    assert_eq!(
+        last.payload,
+        serde_json::json!(240.1),
+        "latest must follow the clock, not the (per-producer) seq — got seq={} producer={} ts={}",
+        last.seq,
+        last.producer,
+        last.ts
+    );
+    assert_eq!(last.producer, "ext:modbus/net@2");
+    assert_eq!(
+        last.seq, 1,
+        "seq still breaks ties WITHIN the newest stream"
+    );
+
+    // Both epochs' rows survive — a restart is not data loss (the two-producer guarantee).
+    assert_eq!(
+        read(&store, "acme", "v", None, None).await.unwrap().len(),
+        4
+    );
+}
+
+/// Within ONE producer batching several samples onto one `ts`, `seq` must still order them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn latest_breaks_a_ts_tie_by_seq() {
+    let store = Store::memory().await.unwrap();
+    let s = vec![
+        sample_at("v", "p", 1, 5_000, serde_json::json!("first")),
+        sample_at("v", "p", 2, 5_000, serde_json::json!("second")),
+    ];
+    write(&store, "acme", &s, 0).await.unwrap();
+    commit_batch(&store, "acme", 100).await.unwrap();
+    let last = latest(&store, "acme", "v").await.unwrap().unwrap();
+    assert_eq!(last.payload, serde_json::json!("second"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]

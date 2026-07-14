@@ -38,8 +38,14 @@ impl Default for Qos {
 pub struct Sample {
     /// The named, workspace-scoped sequence this point belongs to (e.g. `node.cpu_temp`).
     pub series: String,
-    /// The authenticated producing principal — half of the dedup identity. The caller sets this to
-    /// the principal; the ingest verb overrides it with the real principal (un-spoofable).
+    /// The producing stream id — half of the dedup identity, and always ROOTED at the authenticated
+    /// principal. A caller MAY declare a sub-namespace here (e.g. a per-process epoch); `ingest.write`
+    /// rewrites this to `{principal}` or `{principal}/{declared}`, so the root is un-spoofable while
+    /// one principal can still run many independent streams.
+    ///
+    /// Declare a sub-namespace whenever your `seq` counter can restart (it lives in memory), or the
+    /// new stream re-enters the old one's seq space and `series.latest` — which returns the highest
+    /// `seq` — pins to a pre-restart sample.
     pub producer: String,
     /// A caller-supplied logical timestamp (datetime). Data, never the ordering key — an external
     /// producer's clock is untrusted and may skew.
